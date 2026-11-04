@@ -325,6 +325,156 @@ principal {
     assert!(at(operation, &["responses", "401"]).is_some());
 }
 
+/// An app that signs callers in two ways, whose `main` API's entry holds
+/// `setting`, with every route open to anyone.
+fn signing_in(setting: &str) -> Vec<(&'static str, String)> {
+    let app = format!(
+        "use planning/entities {{ Member }}\n\napplication {{\n    apis: {{\n        main: {{\n            prefix: /v1\n{setting}        }}\n    }}\n}}\n\nprincipal {{\n    user: {{\n        subject: Member.handle\n    }}\n    service: {{\n        subject: Member.handle\n    }}\n}}\n"
+    );
+    let mut files: Vec<(&'static str, String)> = FILES
+        .iter()
+        .map(|(path, text)| (*path, text.to_string()))
+        .collect();
+    files.push((
+        "domains/planning/entities/member.jadpo",
+        "/// Someone who signs in, or a service that does.\nentity Member {\n    id: Uuid\n    handle: Text {\n        max_length: 100\n        unique: true\n    }\n\n    policy: {\n        read: [Access.public]\n    }\n}\n".to_string(),
+    ));
+    files.push(("app.jadpo", app));
+    files.push((
+        "config.jadpo",
+        "config {\n    session_signing_key: SigningKey\n    browser_origin: Url\n}\n".to_string(),
+    ));
+    files.push((
+        "authentication.jadpo",
+        "authentication {\n    browser_session: {\n        cookie: \"todo_session\"\n        signing_key: config.session_signing_key\n        origin: config.browser_origin\n    }\n    service_key: {\n        signing_key: config.session_signing_key\n    }\n}\n".to_string(),
+    ));
+    files
+}
+
+fn borrowed<'f>(files: &'f [(&'static str, String)]) -> Vec<(&'f str, &'f str)> {
+    files
+        .iter()
+        .map(|(path, text)| (*path, text.as_str()))
+        .collect()
+}
+
+/// What an app's API record and document say, or its problems.
+fn built(files: &[(&str, &str)]) -> Result<(String, String), Vec<String>> {
+    let found = problems(files);
+    if !found.is_empty() {
+        return Err(found);
+    }
+    let db = Database::default();
+    let project = support::project(&db, Layout::Project, files);
+    let record = jadpo_check::routes::record::record_texts(&db, project);
+    let document = jadpo_check::routes::openapi::document(&db, project, "main", "todos", "1")
+        .expect("a document");
+    Ok((
+        record.get("main").expect("a record").clone(),
+        format!("{document:?}"),
+    ))
+}
+
+/// `authentication: []` says the API accepts no way to sign in, whatever
+/// `authentication.jadpo` declares (area 7, "Serving the document"): anyone
+/// may read its document, as its record and its document say.
+#[test]
+fn an_api_that_accepts_no_sign_in_serves_its_document_to_anyone() {
+    let files = signing_in("            authentication: []\n");
+    let files = borrowed(&files);
+    let (record, _) = built(&files).expect("it checks");
+    assert!(
+        !record.contains("authentication browser_session"),
+        "{record}"
+    );
+    assert!(!record.contains("authentication service_key"), "{record}");
+    assert!(
+        record.contains("\nGET /v1/openapi.json\n    generated openapi\n    authentication none\n    status 200\n"),
+        "{record}"
+    );
+    let db = Database::default();
+    let project = support::project(&db, Layout::Project, &files);
+    let document = jadpo_check::routes::openapi::document(&db, project, "main", "todos", "1")
+        .expect("a document");
+    let operation = at(&document, &["paths", "/v1/openapi.json", "get"]).expect("served");
+    assert_eq!(operation.get("security"), Some(&Value::Array(Vec::new())));
+    assert!(at(operation, &["responses", "401"]).is_none());
+    // The sign-in the app declares is served by no API here.
+    assert!(!format!("{document:?}").contains("todo_session"));
+}
+
+/// A route that needs a caller in an API no caller can sign in to could
+/// never be reached, and opening it is a person's choice, so it is refused
+/// rather than opened (`api.route_needs_sign_in`).
+#[test]
+fn a_route_that_needs_a_caller_where_nothing_signs_in_is_refused() {
+    let mut files = signing_in("            authentication: []\n");
+    for (path, text) in &mut files {
+        if *path == "domains/planning/routes/v1_todos.jadpo" {
+            *text = text.replacen("        authentication: RouteAuthentication.none\n", "", 1);
+        }
+    }
+    let files = borrowed(&files);
+    assert_eq!(
+        problems(&files),
+        vec![
+            "domains/planning/routes/v1_todos.jadpo api.route_needs_sign_in: `POST /v1/todos` needs a signed-in caller, but API `main` accepts no way to sign in"
+                .to_string()
+        ]
+    );
+}
+
+/// A setting accepted and ignored is the fault `authentication: []` had:
+/// every setting an API's entry takes changes what is built from it, or is
+/// refused where it is written. A new setting fails here until it has a row.
+#[test]
+fn no_api_setting_is_accepted_and_ignored() {
+    let cases = [
+        ("prefix", "            prefix: /\n"),
+        (
+            "authentication",
+            "            authentication: [AuthenticationMethod.browser_session]\n",
+        ),
+        ("authentication", "            authentication: []\n"),
+        (
+            "idempotency",
+            "            idempotency: Idempotency.required\n",
+        ),
+        ("serve_openapi", "            serve_openapi: false\n"),
+        ("rate_limit", "            rate_limit: 10\n"),
+    ];
+    for setting in jadpo_check::routes::apis::API_SETTINGS {
+        assert!(
+            cases.iter().any(|(name, _)| *name == setting),
+            "`{setting}:` has no row here"
+        );
+    }
+    let plain = signing_in("");
+    let plain = built(&borrowed(&plain)).expect("it checks");
+    for (setting, written) in cases {
+        let files = signing_in(written);
+        let files: Vec<(&str, String)> = files
+            .into_iter()
+            .map(|(path, text)| {
+                // The one `prefix:` the entry may hold is the one tried.
+                let text = if setting == "prefix" && path == "app.jadpo" {
+                    text.replace("            prefix: /v1\n", "")
+                } else {
+                    text
+                };
+                (path, text)
+            })
+            .collect();
+        match built(&borrowed(&files)) {
+            Ok(changed) => assert_ne!(changed, plain, "`{written}` changed nothing"),
+            Err(refused) => assert!(
+                refused.iter().any(|problem| problem.contains("app.jadpo")),
+                "`{written}`: {refused:#?}"
+            ),
+        }
+    }
+}
+
 /// A field's own rules, written inline (`reply: Text { max_length: 2000 }`),
 /// reach its schema as a named type's do: the schema's keywords and its
 /// `x-jadpo-constraints` (chunk 7.7d).

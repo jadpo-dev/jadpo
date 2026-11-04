@@ -526,10 +526,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
 - [ ] **G4 A route's `rate_limit:`** `opus · high`: area 16's route limits. The
   registry's `POST releases` is anonymous and starts verifications, and the
   default 120 a minute per address doesn't fit it.
-- [ ] **G5 Small gaps the registry found** `opus · high`: `authentication: []`
-  honoured on `openapi.json`, which is accepted and ignored today; a `jadpo`
-  command that runs R4's conformance test against a document, so R7's CI needs
-  no Rust; `bytes.concat`.
+- [x] **G5 Small gaps the registry found**: area 7, "Serving the document"; area 14, "`jadpo package protocol`"; area 19, "Bytes"; area 2, "A record names its type alone"; `docs/errors/api.route_needs_sign_in.md`, `docs/errors/protocol.mismatch.md`, `docs/errors/protocol.unreadable.md`, `docs/errors/type.record_type_arguments.md`.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
   jadpo.dev session, after R1, R4, R6, R6b, 8.2n and G1 to G5: built against the
   protocol and passing R4's conformance test. Until the S3 driver its archives

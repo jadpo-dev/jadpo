@@ -1353,6 +1353,14 @@ error: `Booking { ... }` can't fail, so it takes no `attempt`
 check failed: 1 error, 1 file
 ```
 
+### A record names its type alone
+
+A record's head is its type's name, never type arguments. `Range { ... }`,
+`Feature { ... }` and `FeatureCollection { ... }`, the standard types that take
+them, get them from the type the record's place expects, or else from its
+values, so `Feature<Point, Pin> { ... }` is
+[`type.record_type_arguments`](../errors/type.record_type_arguments.md).
+
 ## Building a type from other types
 <!-- topic: building-a-type-from-other-types -->
 

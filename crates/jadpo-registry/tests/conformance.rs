@@ -1,9 +1,8 @@
 //! The conformance test (area 11, "The registry protocol"): a served
 //! OpenAPI document checked against the protocol's table. It runs here
 //! against the local registry, built from the same table, and against
-//! every way a registry application's document could drift from it. With
-//! `JADPO_REGISTRY_OPENAPI` set to a file or an `http://` address it
-//! checks that document too: the registry application's CI runs it so.
+//! every way a registry application's document could drift from it. The
+//! registry application's CI runs it through `jadpo package protocol`.
 
 use jadpo_registry::conformance::{Mismatch, check, load};
 use jadpo_registry::http::fetch;
@@ -48,20 +47,6 @@ fn the_local_registrys_served_document_conforms() {
     let document = served();
     assert_eq!(document["openapi"], "3.1.0");
     assert_eq!(problems(&document), Vec::<String>::new());
-}
-
-#[test]
-fn a_document_set_from_outside_conforms() {
-    let Ok(source) = std::env::var("JADPO_REGISTRY_OPENAPI") else {
-        return;
-    };
-    let document = load(&source).unwrap_or_else(|e| panic!("{source}: {e}"));
-    let found = problems(&document);
-    assert!(
-        found.is_empty(),
-        "{source} drifts from the protocol:\n{}",
-        found.join("\n")
-    );
 }
 
 #[test]

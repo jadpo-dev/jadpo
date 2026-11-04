@@ -912,14 +912,20 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     out
 }
 
-/// Routes that need a signed-in caller when nothing signs anyone in (area
-/// 8; area 14, "Build-only errors in `check`": `jadpo check` reports what couldn't run),
+/// Routes that need a signed-in caller where nothing signs anyone in (area
+/// 8; area 14, "Build-only errors in `check`": `jadpo check` reports what couldn't run):
+/// in an API whose `authentication: []` accepts no way to sign in, each
+/// reported where it is written, and in an app that declares none,
 /// reported once, at the first in file order.
 #[salsa::tracked(returns(ref))]
 pub fn signin_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
-    if crate::identity::identity(db, project).signs_in() {
-        return Vec::new();
-    }
+    let apis = api_table(db, project);
+    let shut = |api: &str| {
+        apis.get(api)
+            .is_some_and(|api| api.methods.as_ref().is_some_and(Vec::is_empty))
+    };
+    let signs_in = crate::identity::identity(db, project).signs_in();
+    let mut out = Vec::new();
     let mut protected: Vec<(String, Span)> = Vec::new();
     for name in group_names(db, project) {
         let Some(read) = group_read(db, project, Name::new(db, name.clone())) else {
@@ -930,16 +936,37 @@ pub fn signin_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             if !route.authentication.needs_caller() {
                 continue;
             }
-            if let Some((label, span)) =
-                read.spans.iter().find(|(label, _)| *label == route.label())
-            {
+            let Some((label, span)) = read.spans.iter().find(|(label, _)| *label == route.label())
+            else {
+                continue;
+            };
+            if shut(&model.api) {
+                out.push(
+                    Diagnostic::new(
+                        &rule::API_ROUTE_NEEDS_SIGN_IN,
+                        format!(
+                            "`{label}` needs a signed-in caller, but API `{}` accepts no way to sign in",
+                            model.api
+                        ),
+                    )
+                    .at(span.clone(), "needs a signed-in caller")
+                    .reason(format!(
+                        "Every route needs a signed-in caller unless it says `authentication: RouteAuthentication.none`, and API `{}` says `authentication: []`, so no request could reach this one.",
+                        model.api
+                    ))
+                    .next(format!(
+                        "List the ways to sign in API `{}` accepts in its `authentication:`, or let anyone call the route with `authentication: RouteAuthentication.none`",
+                        model.api
+                    )),
+                );
+            } else if !signs_in {
                 protected.push((label.clone(), span.clone()));
             }
         }
     }
     protected.sort_by(|a, b| (&a.1.path, a.1.start).cmp(&(&b.1.path, b.1.start)));
     let Some((label, span)) = protected.first() else {
-        return Vec::new();
+        return out;
     };
     let others = protected.len() - 1;
     let reach = match others {
@@ -947,7 +974,7 @@ pub fn signin_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         1 => "this route or the other one that needs a caller".to_string(),
         n => format!("this route or the {n} others that need a caller"),
     };
-    vec![
+    out.push(
         Diagnostic::new(
             &rule::SEMANTIC_AUTH_NOT_SET_UP,
             format!("`{label}` needs a signed-in caller, but nothing signs anyone in"),
@@ -957,7 +984,8 @@ pub fn signin_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             "Every route needs a signed-in caller unless it says `authentication: RouteAuthentication.none`, and `authentication.jadpo` declares no way to sign in that is built, so no request could reach {reach}."
         ))
         .next("Declare how callers sign in, `authentication { browser_session: { cookie: \"<name>\" } }`, or let anyone call the route with `authentication: RouteAuthentication.none`"),
-    ]
+    );
+    out
 }
 
 /// Whether one request could match both paths, a fixed segment beating a

@@ -109,16 +109,7 @@ pub(crate) fn table(
                 name: api.name.clone(),
                 prefix: api.prefix.clone(),
                 idempotency: api.idempotency,
-                // An API that names none accepts every declared method.
-                methods: if api.methods.is_empty() {
-                    identity
-                        .methods
-                        .iter()
-                        .map(|method| method.method)
-                        .collect()
-                } else {
-                    api.methods.clone()
-                },
+                methods: jadpo_check::routes::apis::accepted_methods(db, project, &api.name),
             })
             .collect(),
         ..RouteTable::default()

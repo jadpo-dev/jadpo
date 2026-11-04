@@ -32,6 +32,7 @@ never `count(items)`.
 | `money` | `Money`, its rates and discounts | 10 | This page |
 | `units` | Physical quantities, `DataSize` and `Bitrate` | 3 | This page |
 | `text` | Operations on text, and the contract's `parse`, `format` and `from` for every type | 21 | This page |
+| `bytes` | Joining bytes | 1 | This page |
 | `hash` | SHA-256 digests | 1 | This page |
 | `encoding` | Bytes as text and back | 9 | This page |
 | `crypto` | Encryption, passwords, signatures, message authentication | 10 | This page |
@@ -6120,6 +6121,66 @@ Each is a named collection the standard library declares, as a standard
 type may be a list or a map of parts. It is sent as JSON's own
 collection, and a `RichText`, a `RichTextBlock` and a `LocalisedText` are
 each stored as that JSON in one `jsonb` column.
+
+## Bytes
+<!-- topic: bytes -->
+
+A `Bytes` value is a whole: the `bytes` operations make a new one, `encoding`
+writes it as text and reads it back, and `hash` digests it. Each is called as
+`bytes.<name>`. `bytes` is a reserved name, as every standard namespace is, so
+a variable that holds bytes is called something else, such as `raw` or
+`body`.
+
+| Operation | Gives | Fails | SQL form |
+|---|---|---|---|
+| `concat(first, second)` | `Bytes`, `first`'s bytes then `second`'s; any value built on `Bytes` goes in, and what comes out is plain `Bytes` | | none |
+
+Joining works on the bytes themselves, so nothing passes through text. A
+Merkle tree's node hash, RFC 6962 section 2.1's `SHA-256(0x01 || left ||
+right)`, is two joins. The value in the test is the root of RFC 6962's first
+two test leaves:
+
+```jadpo check project=bytes-concat
+type TreeHash = Bytes {}
+
+type HexDigits = Text {}
+
+type BadHexDigits = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// The bytes hexadecimal text holds.
+function read_tree_hash(hex_text: HexDigits) fails BadHexDigits -> TreeHash {
+    var raw: Bytes = attempt encoding.from_hex(hex_text) {
+        malformed: BadHexDigits
+    }
+    return TreeHash(raw)
+}
+
+/// A node's hash, from its two children's: a `01` byte says it is a node's.
+function join_children(left: TreeHash, right: TreeHash) fails BadHexDigits -> TreeHash {
+    var prefix: TreeHash = attempt read_tree_hash("01")
+    return TreeHash(hash.sha256(bytes.concat(bytes.concat(prefix, left), right)))
+}
+```
+
+```jadpo check project=bytes-concat file=main.test.jadpo
+test "two joins make a node's input" {
+    var left: TreeHash = attempt read_tree_hash(
+        "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+    )
+    var right: TreeHash = attempt read_tree_hash(
+        "96a296d224f285c67bee93c30f8a309157f0daa35dc5b87e410b78630a09cfc7"
+    )
+    var joined_hash: TreeHash = attempt join_children(left, right)
+    assert encoding.to_hex(
+        joined_hash
+    ) == "fac54203e7cc696cf0dfcb42c92a1d9dbaf70ad9e621f4bd8d98662f00e3c125"
+    var no_bytes: Bytes = encoding.to_utf8("")
+    assert encoding.to_hex(bytes.concat(no_bytes, left)) == encoding.to_hex(left)
+    assert encoding.to_hex(bytes.concat(left, no_bytes)) == encoding.to_hex(left)
+}
+```
 
 ## Hashing and cryptography
 <!-- topic: hashing-and-cryptography -->

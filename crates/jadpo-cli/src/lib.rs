@@ -46,6 +46,7 @@ mod package;
 mod package_cache;
 mod package_conform;
 mod package_import;
+mod package_protocol;
 mod package_recipe;
 mod package_record;
 mod package_release;

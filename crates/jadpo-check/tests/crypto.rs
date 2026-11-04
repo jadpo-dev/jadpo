@@ -29,7 +29,7 @@ fn shown(source: &str) -> Vec<String> {
 
 const NONE: &[&str] = &[];
 
-const EVERY_OPERATION: &str = "action seal(note: Note, record: RecordId) -> Sealed {\n    return Sealed(crypto.encrypt(note, key: config.notes_key, context: record))\n}\n\nfunction open(sealed: Sealed, record: RecordId) fails NoteUnreadable -> Opened {\n    var bytes: Bytes = attempt crypto.decrypt(sealed, key: config.notes_key, context: record) {\n        unreadable: NoteUnreadable\n    }\n    return Opened(bytes)\n}\n\naction register(password: PasswordText) -> PasswordHash {\n    return crypto.hash_password(password)\n}\n\nfunction signs_in(password: PasswordText, stored: PasswordHash) -> PasswordCheck {\n    return crypto.verify_password(password, stored)\n}\n\nfunction mac(body: Note) -> Mac {\n    return Mac(crypto.hmac(body, key: config.webhook_secret))\n}\n\nfunction genuine(body: Note, given: Mac) -> Genuine {\n    return Genuine(crypto.verify_hmac(body, given, key: config.webhook_secret))\n}\n\nfunction signed(body: Note) -> Mac {\n    return Mac(crypto.sign(body, key: config.receipt_key))\n}\n\nfunction verified(body: Note, signature: Mac, signer: PublicKey) -> Genuine {\n    return Genuine(crypto.verify_signature(body, signature, signer))\n}\n\nfunction published() -> PublicKey {\n    return crypto.public_key(key: config.receipt_key)\n}\n";
+const EVERY_OPERATION: &str = "action seal(note: Note, record: RecordId) -> Sealed {\n    return Sealed(crypto.encrypt(note, key: config.notes_key, context: record))\n}\n\nfunction open(sealed: Sealed, record: RecordId) fails NoteUnreadable -> Opened {\n    var raw: Bytes = attempt crypto.decrypt(sealed, key: config.notes_key, context: record) {\n        unreadable: NoteUnreadable\n    }\n    return Opened(raw)\n}\n\naction register(password: PasswordText) -> PasswordHash {\n    return crypto.hash_password(password)\n}\n\nfunction signs_in(password: PasswordText, stored: PasswordHash) -> PasswordCheck {\n    return crypto.verify_password(password, stored)\n}\n\nfunction mac(body: Note) -> Mac {\n    return Mac(crypto.hmac(body, key: config.webhook_secret))\n}\n\nfunction genuine(body: Note, given: Mac) -> Genuine {\n    return Genuine(crypto.verify_hmac(body, given, key: config.webhook_secret))\n}\n\nfunction signed(body: Note) -> Mac {\n    return Mac(crypto.sign(body, key: config.receipt_key))\n}\n\nfunction verified(body: Note, signature: Mac, signer: PublicKey) -> Genuine {\n    return Genuine(crypto.verify_signature(body, signature, signer))\n}\n\nfunction published() -> PublicKey {\n    return crypto.public_key(key: config.receipt_key)\n}\n";
 
 #[test]
 fn every_operation_checks_with_its_key_setting() {
@@ -81,7 +81,7 @@ fn decrypting_can_fail_unreadable_only_under_attempt() {
     // Not a construction's rule: `invalid` doesn't cover it.
     assert_eq!(
         check(
-            "function f(sealed: Sealed, record: RecordId) fails NoteUnreadable -> Opened {\n    var bytes: Bytes = attempt crypto.decrypt(sealed, key: config.notes_key, context: record) {\n        malformed: NoteUnreadable\n    }\n    return Opened(bytes)\n}\n"
+            "function f(sealed: Sealed, record: RecordId) fails NoteUnreadable -> Opened {\n    var raw: Bytes = attempt crypto.decrypt(sealed, key: config.notes_key, context: record) {\n        malformed: NoteUnreadable\n    }\n    return Opened(raw)\n}\n"
         )
         .first()
         .map(String::as_str),
