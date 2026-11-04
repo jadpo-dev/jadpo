@@ -143,6 +143,7 @@ fn target(view: &View<'_>, need: &Need) -> Option<Target> {
     match need.change.as_str() {
         "PolicyChange.route_public"
         | "PolicyChange.confirmation_removed"
+        | "ApiChange.media_type_changed"
         | "ApiChange.route_removed" => {
             let text = subject.trim_matches('"');
             let (api, name) = text.split_once(' ')?;

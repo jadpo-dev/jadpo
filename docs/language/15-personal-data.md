@@ -1254,6 +1254,10 @@ and no purge is listed in the report as "kept until erased".
   [`acceptance.missing`](../errors/acceptance.missing.md)).
 - **Sensitive fields stay out of caches.** A cache on an entity that holds
   one leaves those fields out.
+- **A public cache keeps nothing marked.** A route saying `cache: immutable`
+  can't give a marked field, sensitive or not, directly or through what it
+  calls ([`route.cache_invalid`](../errors/route.cache_invalid.md)), since no
+  erasure reaches a copy a CDN holds.
 - **Retention can be carried out.** A field's retention clears a field
   that can be `none` and that no lifecycle owns or reads, an entity's
   deletes records nothing `restricted` holds, and every period is a
