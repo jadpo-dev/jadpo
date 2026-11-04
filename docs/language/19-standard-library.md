@@ -10697,7 +10697,10 @@ These are held as text:
 **Personal data:** a name, a given or family name and a username are
 `identifying`; an email address, a mailbox, an address, an extension and a
 UPRN are `contact`; a nationality is `demographic`. The lists of places aren't
-personal data.
+personal data. Erasure clears a name, a given or family name, an email address,
+a mailbox, a phone number and an address with no `personal:`
+([Contact details and names need no mark](15-personal-data.md#contact-details-and-names-need-no-mark));
+the others only when marked.
 
 **No shapes:** `type.standard_exists` matches none of the objects,
 because `{ name, email }` and `{ first_name, last_name }` are too common

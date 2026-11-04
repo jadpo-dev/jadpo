@@ -885,6 +885,8 @@ Both come when an app needs them.
 ## Audit trail
 <!-- topic: audit-trail -->
 
+[Keep a record of who changed what](../guides/16-keep-a-record-of-who-changed-what.md) does the whole job, start to finish.
+
 An entity keeps no history of its changes unless you ask. Give it an
 `audit:` section and it keeps a history of every change: who made it,
 when, through which action and request, and each changed field's value

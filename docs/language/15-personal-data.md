@@ -43,7 +43,7 @@ is the one fact Jadpo asks you to write down.
 
 | Capability | What you write | What the compiler does | Built yet |
 |---|---|---|---|
-| Marking | `personal:` on a field; nothing on an `Email`, which is `contact` already | Hashes it in logs, lists it in the report | Partly: read for the AI check and the report's connections, and checked that erasure can find it; nothing hashes it |
+| Marking | `personal:` on a field; nothing on an `Email`, a `PhoneNumber`, a name or a `PostalAddress`, which are personal data already | Hashes it in logs, lists it in the report | Partly: read for the AI check and the report's connections, and checked that erasure can find it; nothing hashes it |
 | The person | `person: true` on an entity | Finds every record that belongs to them | Yes |
 | Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache | Partly: in the person's store, files' bytes and the person's own record kept field by field included; not yet another store |
 | Export | nothing | Generates `User.export(id)` | No: `toolchain.not_built_yet` |
@@ -57,7 +57,7 @@ A field that identifies or describes a person says so in its block, with
 `personal:` and one category from a fixed list. The category decides how
 carefully the compiler treats the value. Here a user's display name
 identifies them, and their email address is contact data without saying so
-([An email address needs no mark](#an-email-address-needs-no-mark)):
+([Contact details and names need no mark](#contact-details-and-names-need-no-mark)):
 
 ```jadpo fragment
 // domains/accounts/entities/user.jadpo
@@ -119,39 +119,109 @@ app's own object, input or output carries no mark
 (`type.unknown_setting`): it holds what a marked field gave it, and
 Jadpo follows the value back to that field.
 
-### An email address needs no mark
+### Contact details and names need no mark
 
-A field typed `Email`, a type built on it, or an `EmailWithName`, counts as
-`PersonalData.contact` without saying so, and so does a value of one wherever
-it goes:
+These standard types are personal data without a `personal:`, on a field of the
+type or of one built on it, and so is a value of one wherever it goes:
+
+| Type | Counts as |
+|---|---|
+| `Email`, `EmailWithName` | `PersonalData.contact` |
+| `PhoneNumber` | `PersonalData.contact` |
+| `PostalAddress` | `PersonalData.contact` |
+| `PersonName`, `GivenName`, `FamilyName` | `PersonalData.identifying` |
 
 - It is hashed in logs, and [the report](#where-personal-data-goes) lists each
   connection it reaches, the address an email is sent to among them. A
   connection that can't erase it needs
   [an acceptance](#erasure-at-providers).
-- A model is sent one only where `ai: { personal_data: { allowed: } }` lists
-  `PersonalData.contact`
+- A model is sent one only where `ai: { personal_data: { allowed: } }` lists its
+  category
   ([Personal data sent to a model](21-ai.md#personal-data-sent-to-a-model)),
   [a public cache](07-http.md#answers-that-never-change) can't keep one, and an
   [audited entity](16-built-in-services.md#audit-trail) can't hold one yet.
 - Erasure clears it as it clears a marked field, so on a record erasure keeps
-  it is written `Email?`, or says `erase: Erasure.retained` on a person's own
-  record ([Erasure](#erasure)).
+  it is optional, or says `erase: Erasure.retained` on a person's own record
+  ([Erasure](#erasure)).
 - [The first record](18-records-and-manifest.md#what-a-first-record-holds) that
   lets anyone read one, with no sign-in, says so to a person.
 
-A business's own address is an `Email` too, and there is no mark that says one
-isn't personal data. Nothing here stops one being kept: an entity erasing a
-person never reaches may hold it, as a shop may hold its own phone number
+Here an order is kept when its buyer is erased, and what it was sent to goes:
+
+```jadpo check project=contact-details-cleared
+entity User {
+    id: Uuid
+    email: Email
+
+    person: true
+}
+
+entity Order {
+    id: Uuid
+    buyer_id: User.id? {
+        on_delete: OnDelete.cleared
+    }
+    recipient: PersonName?
+    ship_to: PostalAddress?
+    delivery_phone: PhoneNumber?
+}
+```
+
+Written `delivery_phone: PhoneNumber`, it couldn't be cleared
+([`data.erase_field_required`](../errors/data.erase_field_required.md)):
+
+```jadpo check project=contact-details-not-optional expect=data.erase_field_required
+entity User {
+    id: Uuid
+    email: Email
+
+    person: true
+}
+
+entity Order {
+    id: Uuid
+    buyer_id: User.id? {
+        on_delete: OnDelete.cleared
+    }
+    delivery_phone: PhoneNumber
+}
+```
+
+```text output
+error: Erasing a `User` can't clear `Order.delivery_phone`
+ --> main.jadpo:13:5
+   |
+10 |     buyer_id: User.id? {
+   |     -------- keeps the record without the person
+13 |     delivery_phone: PhoneNumber
+   |     ^^^^^^^^^^^^^^ personal data that can't be `none`
+  reason: `buyer_id` is `OnDelete.cleared`, which means `Erasure.anonymised`: erasing a `User` keeps each order that refers to them, clearing the reference and every marked field. `delivery_phone` is a phone number, which counts as `PersonalData.contact`, and only an optional field (`PhoneNumber?`) can be cleared.
+  next: Make `delivery_phone` `PhoneNumber?`, or say `erase: Erasure.deleted` on `buyer_id` to delete the order instead (human)
+  rule: data.erase_field_required
+  help: https://jadpo.dev/docs/errors/data.erase_field_required
+
+check failed: 1 error, 1 file
+```
+
+The other standard types that are personal data, such as a `PostalCode` or a
+`Username`, are hashed, listed and checked the same way, and erasure clears
+them only when marked.
+
+A business's own address, phone number or manager's name is one of these too,
+and there is no mark that says one isn't personal data. Nothing here stops one
+being kept: an entity erasing a person never reaches may hold it, as a shop may
+hold its own phone number
 ([What the compiler checks](#what-the-compiler-checks)). It is listed as any
 other is, a person reads the notice and goes on, and a connection it reaches
-takes a one-line acceptance. A category written on one, `personal:
-PersonalData.contact` or any other, is read as on any field.
+takes a one-line acceptance. On a record erasure keeps it is cleared like a
+person's, so a shop's number belongs on the shop, not copied onto each order. A
+category written on one, `personal: PersonalData.contact` or any other, is read
+as on any field.
 
 ### Marked fields in logs
 
 A marked field is written to logs as a keyed hash, whatever its type, and so
-is an `Email` with no mark. So a
+is an `Email` or another standard type that is personal data with no mark. So a
 marked `date_of_birth: CalendarDate` is hashed, though
 [logs](04-failures.md#logging) otherwise show dates and numbers as
 values, and so is a marked field in a failure's context. The marking, not
@@ -274,8 +344,10 @@ and the compiler refuses an erasure it can't complete.
 | `Erasure.retained` | Kept as it is until its own retention ends; only the reference is cleared | the reference nullable, and `retention:` on the entity |
 
 A marked field is one with a `personal:` setting, which says it holds
-personal data, or one typed `Email`, which holds it without saying so
-([Marking personal fields](#marking-personal-fields)). A
+personal data, or one typed `Email`, `EmailWithName`, `PhoneNumber`,
+`PersonName`, `GivenName`, `FamilyName` or `PostalAddress`, which holds it
+without saying so
+([Contact details and names need no mark](#contact-details-and-names-need-no-mark)). A
 record that belongs to someone else too keeps its marked fields until
 the last of its people is erased
 ([Records that belong to several people](#records-that-belong-to-several-people)). A
@@ -1277,8 +1349,9 @@ and no purge is listed in the report as "kept until erased".
   or to mark the entity `person: true`. A field is marked here only by
   its `personal:`: a
   standard type that is personal data whatever holds it, such as a
-  `PhoneNumber` or an `Email`, is hashed in logs and its reads recorded, but
-  a shop's own phone number or address doesn't make the shop a person. With
+  `PhoneNumber`, an `Email` or a `PersonName`, is hashed in logs and its reads
+  recorded, but a shop's own phone number, address or manager's name doesn't
+  make the shop a person. With
   the completeness check above, every stored copy of what is marked can be
   reached.
 - **What leaves can be erased.** A connection that receives personal data

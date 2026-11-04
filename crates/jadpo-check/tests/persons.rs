@@ -344,14 +344,17 @@ entity LossReport {
 fn only_a_personal_setting_marks_a_field() {
     // A standard type that is personal data whatever holds it (area 19)
     // is hashed in logs and its reads recorded, but a shop's own phone
-    // number, its address and its manager's name don't make it a person.
+    // number, its addresses and its manager's name don't make it a person.
     assert_eq!(
         problems(
             "entity Shop {
     id: Uuid
     phone: PhoneNumber
     address: Email
+    premises: PostalAddress
     manager: PersonName
+    owner_first_name: GivenName
+    owner_last_name: FamilyName
 }
 "
         ),

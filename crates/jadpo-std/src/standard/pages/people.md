@@ -6,7 +6,8 @@ Use it wherever you store or show what someone is called, such as a customer
 on an order or the person a letter is addressed to. It keeps the two parts
 apart, so `text.format` can write them in the order the reader's language
 expects. For the name someone signs in with, use `Username`. For one part on
-its own, use `GivenName` or `FamilyName`.
+its own, use `GivenName` or `FamilyName`. Any of the three is personal data with
+no `personal:` on the field: it counts as `PersonalData.identifying`.
 
 ```jadpo
 PersonName { given: "Mary" family: "Somerville" }
@@ -98,7 +99,8 @@ A phone number with its country code, written `+447400123456`.
 Use it for any number you might call or text. It is stored in one
 international form, so two people typing the same number differently can't
 create two records. For the digits dialled after it, use `PhoneExtension`. For
-a country's code on its own, use `CallingCode`.
+a country's code on its own, use `CallingCode`. It is personal data with no
+`personal:` on the field: it counts as `PersonalData.contact`.
 
 ```jadpo
 PhoneNumber("+447400123456")
@@ -130,7 +132,8 @@ A postal address in any country.
 Use it for where to send a parcel or a letter. It fits every country, since
 locality, region and postal code are only there when the country uses them. A
 point on a map is a `Point`, and a property's own number in Great Britain is a
-`Uprn`.
+`Uprn`. It is personal data with no `personal:` on the field: it counts as
+`PersonalData.contact`.
 
 ```jadpo
 PostalAddress {

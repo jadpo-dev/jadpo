@@ -4349,6 +4349,8 @@ route for either.
 
 ### Webhooks as events
 
+[Receive a webhook](../guides/17-receive-a-webhook.md) does the whole job, start to finish.
+
 A webhook is a request a provider such as Stripe sends your app when
 something happens there, such as a payment going through. The package
 declares the provider's events and how it signs them, so your app only

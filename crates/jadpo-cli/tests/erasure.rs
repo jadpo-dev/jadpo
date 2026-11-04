@@ -6,8 +6,9 @@
 //!   renewals that cascade from them, and each loan's notes, whose
 //!   restricted reference says `Erasure.deleted`, are deleted outright;
 //! - their reviews, whose reference is cleared, are kept without the
-//!   reference, the name they were signed with or the address to reply to,
-//!   which is an `Email` with no mark, and count as changed;
+//!   reference, the name they were signed with or the address, phone number,
+//!   name and postal address to reply to, none of which has a mark, and count
+//!   as changed;
 //! - their fines, kept with `Erasure.retained`, stay as they are with
 //!   their lines, only the reference cleared;
 //! - their sessions go with them, and another member's records, sessions
@@ -234,6 +235,10 @@ entity Review {{
         personal: PersonalData.identifying
     }}
     reply_to: Email?
+    reply_phone: PhoneNumber?
+    reply_name: PersonName?
+    reply_first_name: GivenName?
+    reply_post: PostalAddress?
     photo: File? {{
         store: scans
         max_size: 1mb
@@ -345,7 +350,7 @@ entity Letter {{
             "review_with_photo",
             "use app { scans }\nuse lending/entities { Member, Review }\nuse lending/failures { ScanNotKept }\nuse lending/types { ScanText }",
             "(member: Member, body: Review.body, signed_as: Review.signed_as, photo_text: ScanText) fails ScanNotKept -> Review",
-            "    var photo: File = attempt scans.put(encoding.to_utf8(photo_text), FileType.csv) {\n        storage_full: ScanNotKept\n    }\n    return Review.create {\n        set: {\n            member_id: member.id\n            body: body\n            signed_as: signed_as\n            reply_to: none\n            photo: photo\n        }\n    }\n",
+            "    var photo: File = attempt scans.put(encoding.to_utf8(photo_text), FileType.csv) {\n        storage_full: ScanNotKept\n    }\n    return Review.create {\n        set: {\n            member_id: member.id\n            body: body\n            signed_as: signed_as\n            reply_to: none\n            reply_phone: none\n            reply_name: none\n            reply_first_name: none\n            reply_post: none\n            photo: photo\n        }\n    }\n",
         ),
         action(
             "send",
@@ -381,7 +386,7 @@ entity Letter {{
             "write_review",
             "use lending/entities { Member, Review }",
             "(member: Member, body: Review.body, signed_as: Review.signed_as) -> Review",
-            "    return Review.create {\n        set: {\n            member_id: member.id\n            body: body\n            signed_as: signed_as\n            reply_to: \"reader@example.com\"\n            photo: none\n        }\n    }\n",
+            "    return Review.create {\n        set: {\n            member_id: member.id\n            body: body\n            signed_as: signed_as\n            reply_to: \"reader@example.com\"\n            reply_phone: \"+447400123456\"\n            reply_name: PersonName {\n                given: \"Ada\"\n                family: \"Lovelace\"\n            }\n            reply_first_name: \"Ada\"\n            reply_post: PostalAddress {\n                lines: [\"12 St James's Square\"]\n                locality: \"London\"\n                region: none\n                postal_code: \"SW1Y 4LB\"\n                country: Country.gb\n            }\n            photo: none\n        }\n    }\n",
         ),
         action(
             "charge",
@@ -476,6 +481,10 @@ test "erasing a member deletes, anonymises or keeps each record as its reference
     assert kept.member_id == none
     assert kept.signed_as == none
     assert kept.reply_to == none
+    assert kept.reply_phone == none
+    assert kept.reply_name == none
+    assert kept.reply_first_name == none
+    assert kept.reply_post == none
     assert kept.body == "A long read"
     var still: Fine = attempt Fine.get(owed.id)
     assert still.member_id == none
