@@ -74,5 +74,5 @@ Why [Values and types](../02-values-and-types.md) is the way it is: the decision
   your approval `jadpo suggest share` sends what was learned to Jadpo, so
   the signals improve for everyone ([tooling](../14-tooling.md#suggestions)).
 
-[Area 19](../19-standard-library.md#the-standard-types) has the full list and
-every operation.
+[Standard types](https://jadpo.dev/docs/types) lists every type, and
+[Standard library](../19-standard-library.md) every operation.

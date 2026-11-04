@@ -57,9 +57,8 @@ compiler can check.
 The bundle also holds a page per standard type and their index
 (TypeReference), which the compiler renders (`jadpo help types --json`), the
 same pages `jadpo help <Type>` prints; every example is compiled and run
-(type_example_problems), and the tables of types by group on the Standard
-library and Values and types pages must agree with the compiler's groups
-(type_table_problems).
+(type_example_problems), and no page lists them by hand
+(hand_type_table_problems).
 
 The Learn path (docs/learn/) is checked the same way, each page's
 project built on the pages before it (LearnPage). The guides
@@ -2164,8 +2163,13 @@ class Bundle:
             own = reference_pages.own_page(node, paths)
             if own:
                 openers[own] = (node, id(node) in groups)
+        group_of_type = {entry['id']: own_id for node in reference_pages.walk(self.tree)
+                         for own_id in [reference_pages.own_page(node, paths)]
+                         for entry in node['topics'] if entry['kind'] == 'type' and own_id}
         pages = []
         for kind, page_id, path, title, area, text, linked in built:
+            if page_id in group_of_type:
+                linked = {*linked, group_of_type[page_id]}
             if page_id in openers:
                 text = writer.with_contents(text, *openers[page_id], path)
             pages.append((kind, page_id, path, title, area, text, linked))
@@ -2450,55 +2454,52 @@ def check_skill(root=ROOT):
     return problems
 
 
-def type_table_problems(pages, types):
-    """Where a page's table of the standard types disagrees with the
-    compiler's groups (`jadpo help --json`'s `types`): how many there are, a
-    group the data doesn't have, or in another order, or of another size, a
-    type the table leaves out, names under another group or that isn't one."""
+# The most standard types a table on a page may name before it is a list of
+# them. The largest table that isn't one names 33.
+MOST_TYPES_IN_A_TABLE = 40
+# The one table allowed to name them all: the record of which release added
+# each, which crates/jadpo-check/tests/standard_types.rs reads.
+RELEASE_TABLE = '| Release | Standard types it adds |'
+TYPE_NAME_IN_CODE = re.compile(r'`([A-Z][A-Za-z0-9]*)(?:<[^`]*>)?`')
+TYPE_COUNT = re.compile(r'\b[Tt]here are \d[\d,]* standard types\b')
+
+
+def hand_type_table_problems(sources, types):
+    """Where a page lists the standard types by hand (docs/documentation.md,
+    "The bundle"): a table by group, a table naming more than a list's
+    worth of them, or a count. The one list is generated from the compiler's
+    data. `sources` are (name, text) pairs."""
     if not types:
         return []
-    group_of = {entry['name']: entry.get('group') for entry in types}
-    groups = list(dict.fromkeys(entry.get('group') for entry in types))
+    names = {entry['name'] for entry in types}
     problems = []
-    for area in (2, 19):
-        page = next((p for p in pages if p.area() == area), None)
-        if page is None:
-            continue
-        lines = page.body.split('\n')
-        count = re.search(r'There are (\d+) standard types', page.body)
-        if not count or int(count.group(1)) != len(types):
-            problems.append(f'{page.path.name}: says "There are {count.group(1) if count else "?"} standard types", '
-                            f'but the compiler has {len(types)}')
-        start = next((i for i, line in enumerate(lines) if line.startswith('| Group | Types |')), None)
-        if start is None:
-            problems.append(f'{page.path.name}: no table of the standard types by group (`| Group | Types |`)')
-            continue
-        listed, seen = [], set()
-        for line in lines[start + 2:]:
-            if not line.startswith('|'):
-                break
-            cells = line.split('|')
-            size = re.search(r'\((\d+)\)$', cells[1].strip())
-            group = re.sub(r'\s*\(.*\)$', '', cells[1].strip())
-            listed.append(group)
-            names = re.findall(r'`([A-Z][A-Za-z0-9]*)(?:<[^`]*>)?`', cells[2])
-            seen.update(names)
-            for name in names:
-                if name not in group_of:
-                    problems.append(f'{page.path.name}: lists `{name}`, which isn\'t a standard type')
-                elif group_of[name] != group:
-                    problems.append(f'{page.path.name}: `{name}` is listed under "{group}", but the compiler groups '
-                                    f'it under "{group_of[name]}" (crates/jadpo-std/src/standard/groups.rs)')
-            if not size or int(size.group(1)) != sum(1 for g in group_of.values() if g == group):
-                problems.append(f'{page.path.name}: the group "{group}" should say how many it has, '
-                                f'({sum(1 for g in group_of.values() if g == group)})')
-        if listed != groups:
-            problems.append(f'{page.path.name}: the standard types\' groups are {listed}, but the compiler\'s are '
-                            f'{groups} (crates/jadpo-std/src/standard/groups.rs)')
-        for name in group_of:
-            if name not in seen:
-                problems.append(f'{page.path.name}: the table of standard types leaves out `{name}`')
+    for name, text in sources:
+        table, fenced = [], False
+        for line in text.split('\n') + ['']:
+            if line.startswith('```'):
+                fenced = not fenced
+            if not fenced and line.startswith('|'):
+                table.append(line)
+                continue
+            if table:
+                problems += hand_table_problem(name, table, names)
+            table = []
+        if TYPE_COUNT.search(text):
+            problems.append(f'{name}: says how many standard types there are; link '
+                            f'https://jadpo.dev/docs/types, which the compiler\'s data writes')
     return problems
+
+
+def hand_table_problem(name, table, names):
+    """A problem if this table is a hand list of the standard types."""
+    head = [cell.strip().lower() for cell in table[0].strip('|').split('|')]
+    if table[0].startswith(RELEASE_TABLE):
+        return []
+    named = {found for line in table for found in TYPE_NAME_IN_CODE.findall(line) if found in names}
+    if (head[0] == 'group' and any('types' in cell for cell in head[1:])) or len(named) > MOST_TYPES_IN_A_TABLE:
+        return [f'{name}: a table lists standard types by hand (`{table[0][:60]}`); link '
+                f'https://jadpo.dev/docs/types, which the compiler\'s data writes']
+    return []
 
 
 def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), guides=(), help_data=None):
@@ -2513,7 +2514,10 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), 
             problems.append(f'standard type `{entry["name"]}`: its page ID {type_id(entry["name"])} isn\'t kebab case')
     if types:
         seen.setdefault(TYPES_INDEX, []).append('the standard types\' index')
-    problems += type_table_problems(pages, types)
+    problems += hand_type_table_problems(
+        [(page.path.name, page.body) for page in [*pages, *learn, *guides, *errors]]
+        + [(path.name, path.read_text()) for path in [root / 'docs/primer.md'] if path.exists()],
+        types)
     for page in list(pages) + list(learn) + list(guides):
         problems += [f'{page.path.name} {problem}' for problem in page.check_topics()]
         for topic in page.topics():

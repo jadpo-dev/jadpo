@@ -978,7 +978,7 @@ changes stored values, so it needs a migration.
 
 A standard type whose data entry lists named columns is stored in those,
 as `Money` is, rather than as `jsonb`
-([Every boundary through the contract](19-standard-library.md#every-boundary-through-the-contract)).
+([How a standard value is sent, stored and shown](19-standard-library.md#how-a-standard-value-is-sent-stored-and-shown)).
 Every standard object and choice type is stored in named columns laid out
 from its parts, `<field>_<part>`:
 

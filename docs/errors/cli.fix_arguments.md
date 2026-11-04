@@ -39,4 +39,4 @@ An error such as `type.standard_exists` names the declaration and the `jadpo fix
 ## Related
 
 - [`jadpo fix`](../language/14-tooling.md#jadpo-fix)
-- [The standard types](../language/19-standard-library.md#the-standard-types)
+- [How standard types are named, and what is left out](../language/19-standard-library.md#how-standard-types-are-named-and-what-is-left-out)

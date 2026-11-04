@@ -1689,26 +1689,33 @@ class TypeReference(unittest.TestCase):
         self.assertEqual(docs.split_type_example('type A = Object {\n    b: Text\n}\n\nvar c: A = d'),
                          (['type A = Object {\n    b: Text\n}'], 'var c: A = d'))
 
-    def test_the_group_tables_must_match_the_compiler(self):
-        def page(area, count=2):
-            return SimpleNamespace(area=lambda: area, path=Path(f'{area}.md'), body=(
-                f'There are {count} standard types, listed here.\n\n'
-                '| Group | Types | Extras in |\n|---|---|---|\n'
-                '| People and contact (1) | **`PostalAddress`** | `web` |\n'
-                '| Money and banking (1) | **`Money`** (enum) | `Money` |\n'))
-        self.assertEqual(docs.type_table_problems([page(19)], [ADDRESS, MONEY]), [])
-        self.assertEqual(docs.type_table_problems([page(2)], [ADDRESS, MONEY]), [])
-        wrong_order = docs.type_table_problems([page(19)], [MONEY, ADDRESS])
-        self.assertEqual(len(wrong_order), 1, wrong_order)
-        moved = docs.type_table_problems([page(19)], [ADDRESS, dict(MONEY, group='People and contact')])
-        self.assertTrue(any('`Money` is listed under' in p for p in moved), moved)
-        count = docs.type_table_problems([page(19, count=247)], [ADDRESS, MONEY])
-        self.assertTrue(any('There are 247' in p and '2' in p for p in count), count)
-        left_out = docs.type_table_problems([page(19)], [ADDRESS, MONEY, dict(MONEY, name='Iban')])
-        self.assertTrue(any('leaves out `Iban`' in p for p in left_out), left_out)
-        self.assertTrue(any('should say how many' in p for p in left_out), left_out)
-        extra = docs.type_table_problems([page(19)], [ADDRESS])
-        self.assertTrue(any('`Money`, which isn\'t a standard type' in p for p in extra), extra)
+    def test_a_hand_table_of_types_is_a_problem(self):
+        types = [ADDRESS, MONEY]
+        def problems(text):
+            return docs.hand_type_table_problems([('page.md', text)], types)
+        by_group = '| Group | Types |\n|---|---|\n| Money and banking | `Money` |\n'
+        self.assertEqual(len(problems(by_group)), 1)
+        self.assertIn('page.md', problems(by_group)[0])
+        self.assertIn('https://jadpo.dev/docs/types', problems(by_group)[0])
+        headline = '| Group | Headline types | Namespaces |\n|---|---|---|\n| Money | `Money` | `money` |\n'
+        self.assertEqual(len(problems(headline)), 1)
+        self.assertEqual(len(problems('There are 2 standard types.\n')), 1)
+        self.assertEqual(problems('| Group | Extras |\n|---|---|\n| Money and banking | `money.sum` |\n'), [])
+        self.assertEqual(problems('Jadpo has about 260 standard types.\n'), [])
+        self.assertEqual(problems('```text\n| Group | Types |\n```\n'), [])
+
+    def test_any_table_naming_a_list_of_types_is_a_problem(self):
+        many = [dict(MONEY, name=f'Type{i}') for i in range(docs.MOST_TYPES_IN_A_TABLE + 1)]
+        row = ' '.join(f'`{entry["name"]}`' for entry in many)
+        table = f'| Kind | What |\n|---|---|\n| All | {row} |\n'
+        self.assertEqual(len(docs.hand_type_table_problems([('page.md', table)], many)), 1)
+        self.assertEqual(docs.hand_type_table_problems([('page.md', table)], many[:docs.MOST_TYPES_IN_A_TABLE]), [])
+
+    def test_the_release_record_may_name_them_all(self):
+        many = [dict(MONEY, name=f'Type{i}') for i in range(docs.MOST_TYPES_IN_A_TABLE + 1)]
+        row = ' '.join(f'`{entry["name"]}`' for entry in many)
+        record = f'{docs.RELEASE_TABLE}\n|---|---|\n| 0.1.0 | {row} |\n'
+        self.assertEqual(docs.hand_type_table_problems([('page.md', record)], many), [])
 
 
 class ReleaseLine(unittest.TestCase):

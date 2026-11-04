@@ -1,5 +1,5 @@
 //! The contract's JSON for a standard type a built-in type holds (area 19,
-//! "Every boundary through the contract"; chunk 5.5w3): its canonical text
+//! "How a standard value is sent, stored and shown"; chunk 5.5w3): its canonical text
 //! as a JSON string, or, for one its entry sends as an object
 //! ([`Json::Parts`]), an object of its members, each read and written as
 //! its [`Member`] says. Every boundary that carries JSON (a request, a

@@ -153,6 +153,7 @@ Carried from other areas, and the choices the topic sections leave open:
 | Topic | Decision |
 |---|---|
 | Triggers | From area 1: routes, schedules and subscribers each call actions; durable workflows are subscribers |
+| Background work and `FieldAccess.server_only` | The system may write one (Richard's standing instruction, 2026-11-04; chunk A23). Area 9 says only that no request may touch the field, and no request is ever the system, so nothing keeps it out. A field's write adds the condition "this is the system", as `update: [Access.system]` does, so the same statement refuses every request on the interpreter, in native code and on Workers. A read isn't changed: the system's reads are never narrowed by a field's list, and a route's proof still says no client may read it |
 | Keyword and folders | From area 1: `schedule` in `schedules/`; events in `events/`; subscribers in `subscribers/` |
 | Cross-domain changes | From area 1: public actions inside the caller's transaction, or events for reactions that need not be all-or-nothing |
 | Actions | From area 3: every action is all-or-nothing and has no settings; `attempt` only on calls that can fail |

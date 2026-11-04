@@ -1,4 +1,4 @@
-//! Area 19, "Hashing and cryptography" and "The standard types" (chunk
+//! Area 19, "Hashing and cryptography" and "How standard types are named, and what is left out" (chunk
 //! 5.5r): `crypto.verify_jwt` and the token types `Jwt`, `JwtClaims`,
 //! `Jwk`, `OAuthScope` and `OidcClaims`. `verify_jwt` reads the clock, so
 //! only actions and tests call it; what a token says is known only when the
