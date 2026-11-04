@@ -5,7 +5,7 @@ area: 8
 
 # Identity: design notes
 
-Why [Identity](../08-identity.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
+Why [Sign-in and identity](../08-identity.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
 
 ## Related areas
 
@@ -191,7 +191,7 @@ Why [Identity](../08-identity.md) is the way it is: the decisions behind it, how
 
 ## Moved from the area page
 
-When [Identity](../08-identity.md) was rewritten to the
+When [Sign-in and identity](../08-identity.md) was rewritten to the
 [writing guide](../../writing.md), its references to the questions above,
 its comparisons with other frameworks and the reasons it gave moved here.
 Nothing in this list changed a rule.

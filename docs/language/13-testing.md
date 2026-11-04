@@ -1174,7 +1174,7 @@ A scripted answer is a value of the clean output type or one of the
 operation's provider failures. The test never writes the wire shape: the
 fake encodes the value and decodes it, as "Values a fake answers with"
 says. `jadpo calls script` sets the same answers by hand in
-`jadpo dev` ([Debugging and review](17-debugging-and-review.md)).
+`jadpo dev` ([Debugging](17-debugging-and-review.md)).
 
 #### Several changing calls
 
@@ -1290,7 +1290,7 @@ and a test turns it into a stored `File` with
 #### Batches
 
 A batch run works through many items, such as the rows of a file, a few
-at a time ([Batches: work over many items](12-jobs-and-events.md#batches-work-over-many-items)).
+at a time ([Batches](12-jobs-and-events.md#batches)).
 In a test, batches run to the end within the test, after the action that
 started them commits, like events. `jadpo test` runs them in batches of
 two items and simulates a restart between every batch, so every import or
@@ -1535,7 +1535,7 @@ FAIL  a rate-limited reminder is retried
 - **For `assert … fails X`:** the failure that happened instead, with its
   internal fields, or the value the call returned.
 - **What ran:** the test's trace in short
-  ([Debugging and review](17-debugging-and-review.md)): actions, queries,
+  ([Debugging](17-debugging-and-review.md)): actions, queries,
   writes, events delivered or pending, retries, and provider calls with
   what was sent and answered.
 - **How to reproduce it:** the clock, the order seed, configuration
@@ -1614,7 +1614,7 @@ a focused test is never committed by accident.
 
 `jadpo test --watch` reruns, on every save, the tests the change reaches.
 It finds them with the compiler's own dependency graph, as `--affected`
-does ([Tooling](14-tooling.md)).
+does ([Tools](14-tooling.md)).
 
 ### Interactive mode: `--interactive`
 
@@ -1936,7 +1936,7 @@ Not built yet: caches, which need the Redis driver.
 | Interactive mode | Not built yet: `jadpo test --interactive` says `toolchain.not_built_yet`. |
 | Caches in tests | Not built yet: caches need the Redis driver. |
 | Golden application contract | Built: the shared black-box harness in `benchmarks/contract/` executes all 44 versioned application cases interpreted, on generated native code and on compiled workerd, with real credential verification, raw invalid inputs, physical SQL observation, persisted-state assertions, controlled clocks and provider faults. These checks supplement authored Jadpo tests; they add no application-facing test controls. Full-gate ownership is interpreted and native in `compiled`, workerd in `wasm32`, and verifier negative controls in `lint`. |
-| `test.no_tests` | Built: raised by `jadpo test` only ([Tooling](14-tooling.md)), when the project has no tests or a file, line, name, kind or `--failed` picks none. |
+| `test.no_tests` | Built: raised by `jadpo test` only ([Tools](14-tooling.md)), when the project has no tests or a file, line, name, kind or `--failed` picks none. |
 
 ## Errors
 

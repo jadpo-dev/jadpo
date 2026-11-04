@@ -434,7 +434,7 @@ judgement call you can decline: a `decline constant.similar_exists:
 ([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
 
 The library catalogue, the list of shared code that `jadpo check` writes
-into `build/catalogue/` ([Tooling](14-tooling.md)), lists each constant
+into `build/catalogue/` ([Tools](14-tooling.md)), lists each constant
 with its type, value, `///` description and the code that reads it.
 
 ### A constant or a setting
@@ -469,7 +469,7 @@ From fixed to live, there are three kinds of value:
 
 **Making a constant a setting** is a job for a tool: `jadpo config move
 <constant>`, or the editor's "Make this a setting"
-([Tooling](14-tooling.md)). It adds a field of the same name and type to
+([Tools](14-tooling.md)). It adds a field of the same name and type to
 `config.jadpo` whose `default:` is the constant's value, deletes the
 constant, and rewrites every read (`security.max_login_attempts` becomes
 `config.max_login_attempts`). The reviewer then sees each place whose
@@ -949,7 +949,7 @@ these is a compile error, in any action. A query inside a loop already is
 ([Reading in a loop](06-reads-and-writes.md#reading-in-a-loop)).
 
 To make a call for each item, use `batches.each`, the one way
-([Batches: work over many items](12-jobs-and-events.md#batches-work-over-many-items)).
+([Batches](12-jobs-and-events.md#batches)).
 A provider that takes a list is called once, with the list.
 
 Keeping calls out of loops means the steps of an action that makes several
@@ -1051,7 +1051,7 @@ The error's `next:` gives the one that fits the name.
 The batch helpers take inline functions written with `->` too: `each:` and
 `finished:` of `csv.read`, `csv.write`, `tsv`, `json_lines`, `json.read`,
 `json.write` and `batches.each`
-([Batches: work over many items](12-jobs-and-events.md#batches-work-over-many-items)).
+([Batches](12-jobs-and-events.md#batches)).
 They run later, in the background, after the action that started them
 commits, so they differ from the collection operations in two ways:
 

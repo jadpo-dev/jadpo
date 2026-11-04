@@ -153,7 +153,7 @@ itself, and declaring one of those is the error
 |---|---:|---|---|
 | `invalid_request` | 400 | The request could not be read (bad JSON, wrong shape) | runtime |
 | `invalid_value` | 422 | A well-formed value breaks a rule | you; the runtime for request input |
-| `unauthenticated` | 401 | No valid identity | runtime ([Identity](08-identity.md)) |
+| `unauthenticated` | 401 | No valid identity | runtime ([Sign-in and identity](08-identity.md)) |
 | `not_permitted` | 403 | The caller is known but may not do this | you; [policy](09-policy.md) |
 | `not_visible` | 404 | Hidden from this caller | policy only ([Concealing records](#concealing-records)) |
 | `not_found` | 404 | The record does not exist | you |
