@@ -355,6 +355,24 @@ fn a_batch_whose_actions_reach_what_only_the_public_may_change_is_refused() {
 }
 
 #[test]
+fn a_batch_reaching_a_list_naming_only_people_is_refused() {
+    let item = "use shop/types { ShelfCode }\n\nentity Item {\n    id: Uuid\n    code: ShelfCode\n    seen: Bool\n\n    policy: {\n        create: [Access.public]\n        read: [Access.authenticated]\n        update: [Access.system]\n    }\n}\n";
+    assert_eq!(
+        with_entity("item", item),
+        [
+            "policy.system_grant_missing `items` runs as the system, which `Item`'s `read:` doesn't let in (runs as `Access.system`)"
+        ]
+    );
+    let item = "use shop/types { ShelfCode }\n\nentity Item {\n    id: Uuid\n    code: ShelfCode\n    seen: Bool\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public, Access.system]\n        update: [Access.authenticated]\n    }\n}\n";
+    assert_eq!(
+        with_entity("item", item),
+        [
+            "policy.system_grant_missing `see` runs as the system, which `Item`'s `update:` doesn't let in (runs as `Access.system`)"
+        ]
+    );
+}
+
+#[test]
 fn a_batch_reaching_what_no_list_grants_is_refused() {
     let item = "use shop/types { ShelfCode }\n\nentity Item {\n    id: Uuid\n    code: ShelfCode\n    seen: Bool\n\n    policy: {\n        create: [Access.public]\n        update: [Access.system]\n    }\n}\n";
     assert_eq!(

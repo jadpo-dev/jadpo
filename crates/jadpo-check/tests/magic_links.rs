@@ -1464,6 +1464,15 @@ fn on_first_sign_in_runs_as_the_system() {
     );
     let found = with(SENDS, LINK, FIRST, &code("Access.public, Access.system"));
     assert!(!has(&found, "policy.system_grant_missing"), "{found:?}");
+    let people = code("Access.authenticated");
+    let found = with(SENDS, LINK, FIRST, &people);
+    assert!(
+        has(
+            &found,
+            "policy.system_grant_missing: `create_member` runs as the system, which `SignUp`'s `create:` doesn't let in"
+        ),
+        "{found:?}"
+    );
     let none = code("GONE").replace("        create: [GONE]\n", "");
     let found = with(SENDS, LINK, FIRST, &none);
     assert!(

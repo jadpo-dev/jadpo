@@ -346,10 +346,18 @@ So is one that reaches a statement no list grants anyone, such as a create
 on an entity with no `create:`. It could only ever be refused, and a route
 reaching it is `policy.effect_ungranted`, so nothing could run it.
 
-A list that names people and not the system isn't a compile error, since
-an action a route runs too may reach it on a branch the system never
-takes. If the system does take that branch, it is refused like any caller
-no list names ([When policy says no](#when-policy-says-no)).
+### A list naming only people
+
+So is one that reaches a list naming only people: `create:
+[Access.authenticated]`, `update: [owner_id]`, a role, a line under
+`actions:` without `Access.system`, or a listed query, whose line can't
+name it. What counts is what the code could reach, whichever branch runs,
+as for a route anyone may call (`policy.public_grant_missing`).
+
+So an action a route and a subscriber share is refused when the people's
+write is on a branch the subscriber never takes. Split it: the subscriber
+runs an action of its own, which the route's action may call
+([How to fix it](../errors/policy.system_grant_missing.md#how-to-fix-it)).
 
 ### Which tenant background work reaches
 
@@ -398,10 +406,9 @@ request:
 None of them reaches a tenant's records, only those every tenant shares,
 since no tenant's event starts them and "no tenant" means every tenant
 only for a schedule. Each is let in only by `Access.system`. So when one
-of them reaches a grant, or a line under `actions:`, that names
-`Access.public` and not `Access.system`, or a statement no list grants
-anyone, that is `policy.system_grant_missing`, reported where the action
-is named.
+of them reaches a grant, or a line under `actions:`, that doesn't name
+`Access.system`, that is `policy.system_grant_missing`, reported where the
+action is named.
 
 ### Proving which tenant work is for
 
@@ -1628,7 +1635,8 @@ customer.
 A route anyone may call can't run a listed query, since its line never
 names `Access.public` (`policy.public_grant_missing`). A schedule,
 subscriber or batch never passes one either: the system is let in only
-by a line naming `Access.system`, which a query's can't.
+by a line naming `Access.system`, which a query's can't. Reaching one is
+`policy.system_grant_missing`.
 
 Here every signed-in customer reads a book, and only a bookseller where
 it is shelved:
@@ -2000,8 +2008,8 @@ has no `delete`, since a field is deleted with its record.
 
 `FieldAccess.server_only`, as on `import_reference` above, lets no request
 read or write the field. A test's or a seed's call without a caller runs
-without policy, so it may. [Jobs and events](12-jobs-and-events.md) says
-how schedules and subscribers write one.
+without policy, so it may. [Jobs and events](12-jobs-and-events.md#runs-as-the-system)
+says how schedules and subscribers write one.
 
 ### Writes
 
