@@ -54,7 +54,7 @@ pub enum Kind {
     /// is given as its text.
     Format,
     /// A value the standard type contract's operations take (area 19,
-    /// "Every standard type meets one contract"): which types fit, and
+    /// "What every standard type can do"): which types fit, and
     /// what each gives, is the value's standard type's data entry
     /// ([`crate::standard`]), which the checker reads.
     Contract,
@@ -1579,8 +1579,7 @@ pub const OPERATIONS: &[Operation] = &[
         LENGTH_VALUE,
         "geo::distance",
     ),
-    // The constructions at an axis order's named edges (area 19, "Shared
-    // vocabulary types"; chunk 5.11): GeoJSON text, read by the one
+    // The constructions at an axis order's named edges (area 19's design notes, "Shared vocabulary types"; chunk 5.11): GeoJSON text, read by the one
     // GeoJSON reader into the `Geometry` of the kind it names, and a pair
     // of numbers, or three with an altitude in metres, in the order the
     // name says. A coordinate out of its range is `out_of_range`, and
@@ -2573,8 +2572,7 @@ pub const OPERATIONS: &[Operation] = &[
         BOOL,
         "text::ends_with",
     ),
-    // The standard type contract's three operations (area 19, "Every
-    // standard type meets one contract"), each one implementation in
+    // The standard type contract's three operations (area 19, "What every standard type can do"), each one implementation in
     // `jadpo-value`'s `standard` module over the data entries in
     // [`crate::standard`]. `text.format` writes text for people over the
     // locale data of the locales the application supports.

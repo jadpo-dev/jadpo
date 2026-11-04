@@ -397,9 +397,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [ ] **D17g What an agent reads first** `opus · high`: nothing tells an agent
   to read all of `index.json`, 173,000 tokens; about 9,000 once and under
   1,000 per lookup.
-- [ ] **D17h Standard types under Values and types** `opus · high`: one
-  generated list, in the sidebar, not two hand tables at the bottom of the
-  reference home.
+- [x] **D17h Standard types under Values and types**: docs/documentation.md, "The bundle"; `hand_type_table_problems` in `tools/docs/language_docs.py`; `/docs/types` in jadpo-website.
 - [ ] **D17i Built-in services, one home each** `opus · high`: usage first,
   details last, the landing's rows all linking.
 - [ ] **D17j Every other area** `opus · high`: the remaining merges and

@@ -1,5 +1,4 @@
-//! The standard type contract's operations (area 19, "Every standard type
-//! meets one contract"): `text.from`, `text.parse` and `text.format`, each
+//! The standard type contract's operations (area 19, "What every standard type can do"): `text.from`, `text.parse` and `text.format`, each
 //! one implementation that reads a type's data entry
 //! (`jadpo_std::standard`), so a type added later is an entry, not a new
 //! code path. `text.from` and `text.parse` also take the representations
@@ -806,7 +805,7 @@ pub(crate) fn decimal(raw: &str) -> Option<Decimal> {
 }
 
 /// An `Instant`'s canonical text: ISO 8601 ending in `Z`, never with an
-/// offset (area 19, "Every boundary through the contract"), as every
+/// offset (area 19, "How a standard value is sent, stored and shown"), as every
 /// boundary reads one.
 pub(crate) fn instant(raw: &str) -> Option<i64> {
     jadpo_std::instant_millis(raw).filter(|_| raw.ends_with('Z'))

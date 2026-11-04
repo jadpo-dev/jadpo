@@ -1548,7 +1548,7 @@ action disable_user(user_id: User.id) fails UserNotFound, UserDisabled -> User {
 The statement is `UPDATE "user" SET "stage" = $1, "disabled_at" = $2
 WHERE "id" = $3 AND "stage" = $4`, with the stages bound as their column
 holds them, `'disabled'` and `'active'`
-([Every boundary through the contract](19-standard-library.md#every-boundary-through-the-contract)).
+([How a standard value is sent, stored and shown](19-standard-library.md#how-a-standard-value-is-sent-stored-and-shown)).
 When it changes no row, a second statement asks whether the user is there
 and visible, which tells `UserDisabled` from `UserNotFound`.
 `jadpo sql disable_user` shows both.

@@ -742,7 +742,7 @@ paste it into a test.
 
 A report is read by people and agents and never read back in as data, so
 it isn't one of the boundaries a standard type is encoded across
-([Every boundary through the contract](19-standard-library.md#every-boundary-through-the-contract)).
+([How a standard value is sent, stored and shown](19-standard-library.md#how-a-standard-value-is-sent-stored-and-shown)).
 Still, no standard type loses its currency, unit or precision in one. A
 personal value in a report follows the rules for
 [personal data](15-personal-data.md).

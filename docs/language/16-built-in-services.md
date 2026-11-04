@@ -1768,7 +1768,7 @@ Writing anything else out is a compile error that says how to format it
 (`email.template_value_invalid`):
 
 - an `Instant` or `Money`, with `text.format`
-  ([Every standard type meets one contract](19-standard-library.md#every-standard-type-meets-one-contract));
+  ([What every standard type can do](19-standard-library.md#what-every-standard-type-can-do));
 - a `Bool`, as a condition for `if`;
 - a list, walked with `for`;
 - an object, by writing its fields one by one;

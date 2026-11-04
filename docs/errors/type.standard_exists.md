@@ -135,6 +135,6 @@ type.
 - [Swap to the standard type](../language/19-standard-library.md#swap-to-the-standard-type)
 - [Decline, with a reason, on the type itself](../language/19-standard-library.md#decline-with-a-reason-on-the-type-itself)
 - [False matches](../language/19-standard-library.md#false-matches)
-- [The standard types](../language/19-standard-library.md#the-standard-types)
+- [How standard types are named, and what is left out](../language/19-standard-library.md#how-standard-types-are-named-and-what-is-left-out)
 - [Writing a decline](../language/01-project-layout-and-modules.md#writing-a-decline)
 - [Latitude and longitude by name](../language/20-geospatial.md#latitude-and-longitude-by-name)

@@ -123,7 +123,7 @@ class Writer:
         commands = self.rows_of(node, here, 'command')
         if node['id'] == TYPES_INDEX:
             out += ['## By group', '', '| Group | Types |', '|---|---|']
-            out += [f'| {self.link(c["title"], own_page(c, self.pages), here)} | {len(c["topics"])} |'
+            out += [f'| {self.link(c["title"], own_page(c, self.pages), here)} | {sum(e["kind"] == "type" for e in c["topics"])} |'
                     for c in node['children']]
             out += ['', '## About standard types', '']
             out += self.table(topics)

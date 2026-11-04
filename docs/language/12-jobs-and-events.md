@@ -2164,7 +2164,7 @@ An event saved in the outbox, a job's arguments and the values a batch
 captures are all written as the JSON of their types, by the same codec a
 request's body goes through. So a standard type keeps its currency, its
 unit and every decimal place
-([Every boundary through the contract](19-standard-library.md#every-boundary-through-the-contract)).
+([How a standard value is sent, stored and shown](19-standard-library.md#how-a-standard-value-is-sent-stored-and-shown)).
 Every event type is numbered in the plan's JSON table by its identity
 key, and the outbox writes and reads its payload through that table
 ([Structured values](05-data.md#structured-values)).

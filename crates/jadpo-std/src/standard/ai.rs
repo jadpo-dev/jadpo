@@ -1,4 +1,4 @@
-//! The AI types' baselines (area 19, "The standard types" and "AI
+//! The AI types' baselines (area 19, "How standard types are named, and what is left out" and "AI
 //! types"): token counts and a call's usage, a message
 //! in a conversation with a model, and vectors and the embeddings a model
 //! makes. A vector is stored in a pgvector `vector` column

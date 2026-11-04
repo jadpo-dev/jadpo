@@ -1,4 +1,4 @@
-//! Area 19, "The standard types" (chunk 5.5r3): the security records.
+//! Area 19, "How standard types are named, and what is left out" (chunk 5.5r3): the security records.
 //! `Hash`, `Hmac` and `EncryptedValue` are built on `Bytes` and built
 //! without an arm from the call that makes their bytes; `OneTimeCode` is a
 //! secret value; `PasswordPolicy`'s fewest characters are never more than

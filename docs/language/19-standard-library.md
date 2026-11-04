@@ -6,16 +6,17 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Standard library
-<!-- topic: standard-library -->
+<!-- topic: standard-library (was language-gaps-this-page-depends-on, scenario-applications) -->
 
-The standard library is the set of types and operations every program can
-use without declaring them, such as `Money`, `list.count(items)` and
-`temporal.in_zone(at, zone)`. A few are defined on the pages whose
+The standard library is the set of operations every program can use without
+declaring them, such as `list.count(items)` and `temporal.in_zone(at, zone)`,
+over the standard types, such as `Money`. A few are defined on the pages whose
 features need them: [Values and types](02-values-and-types.md),
 [Logic](03-logic.md) and [Configuration and time](10-configuration-and-time.md).
-This page collects them all, adds the types and operations real
-applications keep reaching for, lists the language changes they rely on,
-and says what is left out on purpose.
+This page collects the operations, and adds the ones real applications keep
+reaching for. [Standard types](https://jadpo.dev/docs/types) lists every type.
+The [design notes](notes/19-standard-library.md#left-out-by-design) say what is
+left out on purpose, and what to use instead.
 
 Operations are grouped into namespaces, each named for what it works on.
 You always call an operation through its namespace: `list.count(items)`,
@@ -60,88 +61,25 @@ on geometry and AI are counted on the [Geospatial](20-geospatial.md) and
 Every standard type also gets the same baseline of operations, generated
 for it and not counted per type: construction, `text.parse`,
 `text.format`, `text.from`, JSON, storage, `==` and order
-([Every standard type meets one contract](#every-standard-type-meets-one-contract)).
+([What every standard type can do](#what-every-standard-type-can-do)).
 
 The [design notes](notes/19-standard-library.md) record why each part of
 this page is the way it is, and [What is built](#what-is-built) says
 which parts work today. One operation, `crypto.verify_totp`, isn't built
 yet.
 
-## Shared vocabulary types
-<!-- topic: shared-vocabulary-types -->
+## How standard types are named, and what is left out
+<!-- topic: the-standard-types (was shared-vocabulary-types) -->
 
-Some types are needed by nearly every package and app, and each would
-otherwise invent its own. Geospatial libraries disagree on whether a
-point is `[lat, lng]` or `[lng, lat]`, and payment libraries on whether
-ten pounds is `10.00`, `"10.00"` or `1000`. When the language owns the
-type, every package and every app uses the same one, and that whole class
-of bug goes away. So the standard library defines a type wherever two
-packages would otherwise each define their own, even when the heavy
-operations on it live in a package or on another page.
-
-- **Each one is defined once.** It has one construction that validates
-  it, one shape on the wire and one shape in storage. Nothing else may
-  give it a second.
-- **Ambiguity is designed out.** Fields are named, never positional:
-  `Point { latitude: ...  longitude: ... }`, never a pair. An axis order
-  appears only in a conversion whose name says it: `geo.from_lng_lat(list)`,
-  `geo.from_lat_lng(list)`, `geo.from_geojson`.
-- **The types are global names.** Every standard type is a global name,
-  as `Email` and `Instant` are, so you write `PostalAddress`, never
-  something like `geo.Point`. Only the functions live in namespaces
-  (`geo.`, `money.`, `list.`).
-- **Your app names its own types for their purpose.** Don't declare your
-  own `Address`. Name a type for what it is for and what it holds:
-  `DeliveryStop { address: PostalAddress }`, `BillingContact`.
-- **A standard type's name can't be reused.** Declaring a type with a
-  standard type's name is the error `type.standard_clash`
-  ([A release that adds a standard type](#a-release-that-adds-a-standard-type)),
-  as reusing any built-in name is an error
-  ([Values and types](02-values-and-types.md)). So the shape check below
-  only has to catch equivalents under other names.
-- **Packages and apps use them.** When a package's public types, or your
-  app's own code, declare their own equivalent of a standard type, the
-  compiler reports the error `type.standard_exists`, pointing at the
-  standard type ([Packages use the standard types](#packages-use-the-standard-types)).
-  You can decline it with a reason. It is an error rather than a warning
-  because Jadpo has no warnings
-  ([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
-
-## The standard types
-<!-- topic: the-standard-types -->
-
-There are 259 standard types, listed here by group, and each has a page
-saying what it is and how to make one: [the A-to-Z list](https://jadpo.dev/docs/types). Each part or kind a
-standard type names is a standard type too, so it is read, sent and
+A standard type's name says exactly what it is, and a type you might look for
+may be folded into another or left to your app.
+[Standard types](https://jadpo.dev/docs/types) lists every one, from A to Z and
+by group, and each has a page saying what it is and how to make one. Each part
+or kind a standard type names is a standard type too, so it is read, sent and
 stored by its code: `IdentityDocumentKind` or `RichTextBlock`, for instance.
 GeoJSON's `Feature` and `FeatureCollection` are defined on the
-[Geospatial](20-geospatial.md) page.
-
-In the table, "(enum)" marks a closed list held as a built-in enum, and
-"Extras in" names the namespace whose operations go beyond the
-[baseline](#every-standard-type-meets-one-contract). Every type is built,
-which the bold marks.
-
-| Group | Types | Extras in |
-|---|---|---|
-| People and contact (12) | **`PersonName`**, **`GivenName`**, **`FamilyName`**, **`Username`**, **`Email`**, **`EmailWithName`**, **`PhoneNumber`**, **`PhoneExtension`**, **`PostalAddress`**, **`PostalCode`**, **`Uprn`**, **`Nationality`** (enum) | `web` |
-| Places (10) | **`Country`** (enum), **`CountrySubdivision`** (enum), **`Continent`** (enum), **`UnLocode`**, **`CallingCode`**, **`Language`** (enum), **`WritingScript`** (enum), **`TextDirection`** (enum), **`Locale`** (enum), **`Zone`** (enum) | |
-| Geospatial (19) | **`Point`** (optional altitude), **`Latitude`**, **`Longitude`**, **`LineString`**, **`Polygon`**, **`MultiPoint`**, **`MultiLineString`**, **`MultiPolygon`**, **`Geometry`**, **`BoundingBox`**, **`Circle`**, **`Bearing`**, **`Crs`**, **`EastingNorthing`**, **`MapTile`**, **`H3Cell`**, **`Geohash`**, **`Feature`**, **`FeatureCollection`** | `geo` ([Geospatial](20-geospatial.md)) |
-| Money and banking (25) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, **`Price`**, **`UnitPrice`**, **`TaxRate`**, **`Discount`**, **`BasisPoints`**, **`InterestRate`**, **`PaymentCardNumber`**, **`MaskedCardNumber`**, **`CardBrand`** (enum), **`CardBin`**, **`CardExpiry`**, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, **`BankAccount`**, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`**, **`InterestRateBasis`** | `money` |
-| Tax and identity numbers (12) | **`VatNumber`**, **`TaxId`**, **`UkUtr`**, **`UkCompanyNumber`**, **`UkNationalInsuranceNumber`**, **`UsSsn`**, **`UsEin`**, **`PassportNumber`**, **`DrivingLicenceNumber`**, **`IdentityDocument`** with **`IdentityDocumentKind`** (enum), **`NhsNumber`** | |
-| Commerce and logistics (22) | **`Sku`**, **`Ean13`**, **`UpcA`**, **`Isbn`**, **`Sscc`**, **`Barcode`**, **`UnitQuantity`**, **`Rating`**, **`ClothingSize`** with **`ClothingSizeSystem`** (enum), **`ShoeSize`** with **`ShoeSizeSystem`** (enum), **`Dimensions`**, **`HsCode`**, **`Incoterm`** (enum), **`TrackingNumber`**, **`Carrier`**, **`ContainerNumber`**, **`LotNumber`**, **`SerialNumber`**, **`Vin`**, **`VehicleRegistration`** | `units`, `media` |
-| Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, **`RecurrenceRule`**, **`OpeningHours`**, **`CalendarEvent`** | `temporal`, `range` |
-| Physical quantities (17) | **`Length`**, **`Area`**, **`Volume`**, **`Angle`**, **`Mass`**, **`Pressure`**, **`Energy`**, **`Power`**, **`Temperature`**, **`TemperatureDifference`**, **`Speed`**, **`Frequency`**, **`Voltage`**, **`Current`**, **`Illuminance`**, **`SoundLevel`**, **`Concentration`** | `units` |
-| Maths and data (8) | **`Percentage`**, **`Ratio`**, **`Fraction`**, **`Range<T>`**, **`DataSize`**, **`Bitrate`**, **`Vector`**, **`Embedding`** | `range`, `units`; [AI](21-ai.md) |
-| Health (10) | **`BloodType`** (enum), **`Icd10Code`**, **`SnomedConcept`**, **`Dose`**, **`DosageInstruction`** with **`RouteOfAdministration`** (enum), **`HeartRate`**, **`BloodPressure`**, **`BloodGlucose`**, **`Allergen`** (enum) | |
-| Media and visual (16) | **`Colour`**, **`ImageDimensions`**, **`AspectRatio`**, **`Rect`**, **`Insets`**, **`PaperSize`** (enum), **`ExifOrientation`** (enum), **`AltText`**, **`FrameRate`**, **`VideoResolution`**, **`VideoCodec`**, **`AudioCodec`**, **`Timecode`**, **`SubtitleCue`**, **`ContentRating`** with **`ContentRatingScheme`** (enum) | `colour`, `media` |
-| Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
-| Software (19) | **`SemanticVersion`**, **`VersionRange`**, **`GitRef`**, **`PackageUrl`**, **`Cve`**, **`SpdxLicence`**, **`TraceId`**, **`SpanId`**, **`TraceParent`**, **`LogLevel`** (enum), **`FilePath`**, **`FileName`**, **`RegularExpression`**, **`ContainerImage`**, **`Digest`**, **`Uuid`**, **`Ulid`**, **`IdempotencyKey`**, **`Doi`** | `semver` |
-| Text formats (7) | **`Markdown`**, **`Html`**, **`RichText`**, **`LocalisedText`**, **`RichTextBlock`**, **`RichTextSpan`**, **`RichTextMark`** (enum) | `markup`, `text` |
-| Security (20) | **`Password`**, **`PasswordHash`**, **`PasswordPolicy`**, **`Hash`**, **`Hmac`**, **`Jwt`**, **`JwtClaims`**, **`Jwk`**, **`PublicKey`**, **`Certificate`**, **`TotpSecret`**, **`OneTimeCode`**, **`ApiKey`**, **`SecretText`**, **`BearerToken`**, **`OAuthScope`**, **`OidcClaims`**, **`WebAuthnCredential`**, **`EncryptedValue`**, **`PasswordCheck`** (enum) | `crypto` |
-| Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, **`FlightNumber`**, **`CabinClass`** (enum), **`BookingReference`** | |
-| Other with a published standard (10) | **`UnNumber`**, **`Orcid`**, **`CefrLevel`** (enum), **`Mpan`**, **`Mprn`**, **`EpcRating`** (enum), **`Tenure`** (enum), **`LawfulBasis`** (enum), **`Jurisdiction`**, **`ModelId`** | |
-| AI (4) | **`TokenCount`**, **`TokenUsage`**, **`ChatMessage`** with **`ChatRole`** (enum) | [AI](21-ai.md) |
+[Geospatial](20-geospatial.md) page. Why the language owns these types at all is
+in the [design notes](notes/19-standard-library.md#shared-vocabulary-types).
 
 Three rules shape the list:
 
@@ -201,7 +139,7 @@ entities are left out:
 | `HashAlgorithm`, `KeyAlgorithm`; `SessionId`; `AcceptLanguage` | Out: no algorithm choices; the runtime's ([Sign-in and identity](08-identity.md)); a call, `locale.from_accept_language` |
 | Niche, silly, or a maybe with no published standard | Out: 729 entries, a package's to define |
 
-## Every standard type meets one contract
+## What every standard type can do
 <!-- topic: every-standard-type-meets-one-contract -->
 
 Every standard type comes with the same baseline of operations, so once
@@ -229,7 +167,7 @@ be built on a built-in type with bounds of its own (`TaxRate`), or be a
 named collection (`RichText` a list, `LocalisedText` a map). A named
 collection is built, sent and read as one your app declares is. Every
 standard object and choice is stored in named columns laid out from its
-parts ([Every boundary through the contract](#every-boundary-through-the-contract)).
+parts ([How a standard value is sent, stored and shown](#how-a-standard-value-is-sent-stored-and-shown)).
 
 `jadpo suggest` uses each standard type's shape and its signals, such as
 conversion constants, the words of names, format literals and validation
@@ -491,7 +429,7 @@ function winter_sale() -> DateRange {
 }
 ```
 
-## Every boundary through the contract
+## How a standard value is sent, stored and shown
 <!-- topic: every-boundary-through-the-contract -->
 
 A standard value keeps its currency, unit and precision wherever it goes
@@ -1136,7 +1074,7 @@ with its signature, failures and SQL form, one section per namespace or
 group of types. The baseline itself (construction, `text.parse`,
 `text.format`, `text.from`, JSON, storage, `==` and order) is defined
 once, under
-[Every standard type meets one contract](#every-standard-type-meets-one-contract),
+[What every standard type can do](#what-every-standard-type-can-do),
 and isn't repeated.
 
 | Section | Namespace | Operations |
@@ -2366,7 +2304,7 @@ these operations do what an operator can't.
   There is no `decimal.from_integer`.
 - **Parsing and formatting** work as for every standard type, through
   the contract
-  ([Every standard type meets one contract](#every-standard-type-meets-one-contract)):
+  ([What every standard type can do](#what-every-standard-type-can-do)):
   `text.parse(raw, as: Quantity)` and `text.format(n, locale:)`. Parsing
   takes only the form a number has on the wire: no grouping, no decimal
   comma, no exponent. A spreadsheet's `1.234,50` is a job for a cell
@@ -5359,8 +5297,8 @@ formats for people, because it is a representation of its own
 | `drop_first(value, n)`, `drop_last(value, n)` | `Text` without `n` code points from that end; never longer | | `substr(x, n + 1)`; `CASE WHEN n = 0 THEN x ELSE left(x, -n) END` |
 | `pad_start(value, length, fill:)` | `Text` of at least `length` code points, `fill` added at the start; never cut; `fill:` one code point written out | | `CASE` on `char_length(x)` with `lpad` |
 | `from(value)` | `Text`, the value as JSON carries it: an `Int`'s digits, a `Decimal` with its scale's places, a `Uuid` in lowercase, `true` or `false`, a time in its wire form | | `x::text` for `Int`, `Decimal`, `Uuid` and `Bool`; times none |
-| `parse(raw, as: T)` | `T`, any standard type or type built on a representation, from its canonical text ([the contract](#every-standard-type-meets-one-contract)) | `malformed`, or the rule it breaks | none |
-| `format(value, locale:)` | `PresentationText` for people, any standard type, with the type's own options (`unit:`, `precision:`) ([the contract](#every-standard-type-meets-one-contract)) | | none |
+| `parse(raw, as: T)` | `T`, any standard type or type built on a representation, from its canonical text ([the contract](#what-every-standard-type-can-do)) | `malformed`, or the rule it breaks | none |
+| `format(value, locale:)` | `PresentationText` for people, any standard type, with the type's own options (`unit:`, `precision:`) ([the contract](#what-every-standard-type-can-do)) | | none |
 | `pick(value, locale:)` | `Text` from a `LocalisedText`: the locale's entry, else its language's, else the default | | none |
 | `slug(value)` | `Text` of lowercase ASCII letters, digits and single `-`: accents dropped, every other run of characters one `-`, none at either end; may be empty | | none |
 
@@ -5582,7 +5520,7 @@ There is no `trim_start`, `trim_end` or `pad_end`, and no way to go
 through text character by character. Each job that needs one, such as a
 slug, a mask, a preview or a change of case, is an operation instead.
 Unicode normalisation happens where text comes in, not in a call (below,
-and [Language gaps](#language-gaps-this-page-depends-on)).
+and [Language gaps](notes/19-standard-library.md#language-gaps-this-page-depends-on)).
 
 ### Arguments checked while compiling
 
@@ -5691,7 +5629,7 @@ takes no text either, since a value built on `Text` already is text
 (`Email`, `Url` and `IpAddress` included).
 
 A standard type's canonical text is the one form
-[the contract](#every-standard-type-meets-one-contract) writes it as:
+[the contract](#what-every-standard-type-can-do) writes it as:
 
 - A standard enum's code is its variant's entry in its table: a
   `Country`'s `GB`, a `Zone`'s IANA name, a `Locale`'s BCP 47 tag, a
@@ -6937,7 +6875,7 @@ ASCII characters) and the claims a sign-in reads: `name` and
 `preferred_username` as lines, `given_name` and `family_name` as the
 standard types, `email`, `email_verified`, `phone_number`,
 `phone_number_verified` and `picture`. `gender` stays out, by the rule
-in [The standard types](#the-standard-types). `birthdate`, `address`,
+in [How standard types are named, and what is left out](#how-standard-types-are-named-and-what-is-left-out). `birthdate`, `address`,
 `locale`, `zoneinfo` and `updated_at` aren't held, since a sign-in
 doesn't need them. JSON naming a claim it doesn't hold isn't an
 `OidcClaims`, as for every object. It is shown by its name, else its
@@ -7997,7 +7935,7 @@ problems) is described with batches; the operations are here.
   no single text form (`PostalAddress`, `PersonName`, `Price`, a choice
   such as `Discount`) counts as an object here, so the compile error
   points to JSON Lines, whose rows carry the contract's JSON
-  ([Every boundary through the contract](#every-boundary-through-the-contract)).
+  ([How a standard value is sent, stored and shown](#how-a-standard-value-is-sent-stored-and-shown)).
 - **Writing names its reader.** `CsvFormat.spreadsheet` writes a
   byte-order mark and CRLF line endings, and escapes text that looks
   like a formula. `CsvFormat.standard` writes CRLF only. A write without
@@ -9913,7 +9851,7 @@ A `LogLevel` isn't ordered, because no enum is yet. So when
 Many standard types are a value with a check and nothing more: an IBAN, a
 card number, a barcode, an NHS number. They have no operations of their
 own. They do what every standard type does
-([Every standard type meets one contract](#every-standard-type-meets-one-contract)):
+([What every standard type can do](#what-every-standard-type-can-do)):
 each is built and checked from text or from its parts, sent, stored and
 shown to people. Their rules are how they are built, which `text.parse`
 and the type's data entry already cover.
@@ -11845,162 +11783,6 @@ test "an embedding has its model's length" {
 
 [What is built: AI](21-ai.md#what-is-built) says which parts of AI work
 are built.
-
-## Scenario applications
-<!-- topic: scenario-applications -->
-
-Nine kinds of application Jadpo is meant for, what each does, and the
-operations it uses. Use these tables to find the operation for a job;
-each operation is described in its section of this page, or on the page
-linked beside it.
-
-**1. Online shop**
-
-| Does | Needs |
-|---|---|
-| Basket total and a 10% discount | `money.sum`, `total * 90%` |
-| Discount spread across the lines for the receipt | `money.allocate` |
-| Product page address from its title | `text.slug` |
-| Order reference read out on the phone | `random.code` |
-| Products by price, highest first | `list.sort_by`, `list.reverse`; `order:` in a query |
-| Product feed for a marketplace | `csv.write` |
-| Image cache key | `hash.sha256`, `encoding.to_hex` |
-
-**2. Appointment bookings**
-
-| Does | Needs |
-|---|---|
-| Slots in the clinic's zone | `temporal.resolve`, `temporal.day_bounds` |
-| Free slots: all slots without booked ones | `set.difference` |
-| Earliest free slot | `list.min_by` |
-| Cancel link in the confirmation email | `random.token`, `encoding.to_url_component` |
-| Reminder a day before | `temporal.add_days` |
-| A booking ends after it starts | A rule across fields ([Rules across fields](02-values-and-types.md#rules-across-fields)) |
-| Calendar invite file | `.ics` package |
-
-**3. Delivery and logistics**
-
-| Does | Needs |
-|---|---|
-| Driver's next stop and the rest | `list.first`, `list.drop_first` |
-| Estimated arrival | `Instant + Duration` ([Arithmetic and comparison](10-configuration-and-time.md#arithmetic-and-comparison)) |
-| Is the address inside the zone, distance to depot | [Geospatial](20-geospatial.md) |
-| Tracking code | `random.code` |
-| Carrier manifest import | `csv.read` |
-| Proof-of-delivery photo fingerprint | `hash.sha256` |
-| Parcels by weight band | `list.group_by` |
-
-**4. Property listings**
-
-| Does | Needs |
-|---|---|
-| Asking price shown in the visitor's locale | `text.format` |
-| Price per square metre | `price / units.in(floor_area, AreaUnit.square_metre, ...)`: `Money` by a `Decimal` |
-| Listing address | `text.slug` |
-| Description preview | `text.trim`, `text.keep_first` |
-| Features filter | `set.contains`, `set.intersection` |
-| Map search in the visible area | [Geospatial](20-geospatial.md) |
-| Portal feed import | `json.read` as a batch |
-
-**5. SaaS with subscriptions and billing**
-
-| Does | Needs |
-|---|---|
-| Plan prices per customer's currency | `Money` with a currency known while running |
-| Proration for a mid-month change | `price * (days_left / days_in_month)`, the type's rounding |
-| Invoice total of lines | `money.sum` |
-| Signed webhooks to customers | `crypto.hmac`, `json.write` |
-| Customers' third-party tokens kept safe | `crypto.encrypt`, encrypted fields |
-| Features per plan | `set.contains` |
-| Usage per day | `map.get`, `map.with`; monthly totals by an aggregate query ([Counts, sums and groups](06-reads-and-writes.md#counts-sums-and-groups)) |
-
-**6. CMS with CSV imports and exports**
-
-| Does | Needs |
-|---|---|
-| Import articles from a spreadsheet | `csv.read`, construction per row |
-| Export for editors | `csv.write` with `CsvFormat.spreadsheet` |
-| Tags typed by hand, tidied | `text.trim`, `text.lower`, `set.with` |
-| Excerpt and word count | `text.keep_first`, `text.split`, `list.filter`, `list.count` |
-| Articles in a locale's alphabetical order | `list.sort_by` with `locale:` |
-| Rich text kept safe | `Html`, made safe by its construction |
-
-**7. IoT telemetry**
-
-| Does | Needs |
-|---|---|
-| Readings arriving in bulk | `json_lines.read` |
-| Average, spread and extremes per window | `list.sum`, `decimal.divide`, `decimal.sqrt`, `list.min_by`, `list.max_by` |
-| Drop repeated messages | `set.contains`, `list.distinct` |
-| Latest reading per device | `list.group_by`, `list.last` |
-| Hourly charts over months | Aggregate queries ([Counts, sums and groups](06-reads-and-writes.md#counts-sums-and-groups)) |
-| Each device signs its messages with its own key | `crypto.new_key`, and `crypto.sign` with a key-type field as its `key:` ([A key is never a value](#a-key-is-never-a-value)) |
-| Bit-packed payloads | The device's provider package ([Logic and bits](#logic-and-bits)) |
-
-**8. Internal admin tool**
-
-| Does | Needs |
-|---|---|
-| Bulk actions on selected records | `Set<Uuid>`, `set.difference` |
-| Email shown masked | `text.keep_first`, `text.keep_last` |
-| Export of a filtered list | `csv.write` |
-| A record's raw JSON for support | `json.write` |
-| Counts by status | Aggregate queries ([Counts, sums and groups](06-reads-and-writes.md#counts-sums-and-groups)) |
-| Roles | `set.contains` |
-| Two-factor codes | TOTP package; passkeys or a provider ([Ways to sign in](08-identity.md#ways-to-sign-in)) |
-
-**9. Support assistant with retrieval (AI)**
-
-| Does | Needs |
-|---|---|
-| Embed help articles and find the closest | `Vector`, pgvector query ([Embeddings and search](21-ai.md#embeddings-and-search)) |
-| Answer as a typed reply with sources | `ai.generate(..., as:)` ([Typed output](21-ai.md#typed-output)) |
-| Show the answer as it is written | `ai.stream` ([Streaming](21-ai.md#streaming)) |
-| Keep within a monthly budget | AI limits ([Budgets](21-ai.md#budgets)) |
-| Strip personal data before sending | `text.replace`; the [personal-data report](15-personal-data.md#the-personal-data-report) |
-| Chunk articles into passages | `text.split`, `list.keep_first` |
-
-How much of the standard library each application uses, and how each
-need was met, is in the
-[design notes](notes/19-standard-library.md#scenario-coverage).
-
-## Language gaps this page depends on
-<!-- topic: language-gaps-this-page-depends-on -->
-
-Some operations on this page rely on parts of the language that other
-pages describe: `for` over a set, `[]` as an empty map, inline functions
-of two values, maths on `Decimal`, secrets used only as a `crypto` key,
-`random`, `locale:` on sorting and case, `text.format` and `text.parse`,
-aggregate queries, rules across fields, normalised text, and `Money`. The
-[design notes](notes/19-standard-library.md#language-gaps-this-page-depends-on)
-list each one, the page it lives on and the operations it makes possible.
-
-Some things are left out on purpose. Here is what to use instead:
-
-| Left out | Instead |
-|---|---|
-| Generic functions in your own code | The standard library stays generic ([Generic code](03-logic.md#generic-code)) |
-| `reduce`, `fold` | `for` with `var mut`; `list.sum` |
-| Comparators | `sort_by`, `reverse` |
-| `items[i]` | `list.at`, which gives `T?` |
-| Regular expressions as calls | `pattern:` and construction ([Constraints](02-values-and-types.md#constraints)) |
-| Graphemes | Code points |
-| Dynamic keys on records | `Map` |
-| A dynamic JSON value | `json.read(..., as:)`; `Text` to pass on |
-| CSV in memory | `csv.read` through a store |
-| MD5, SHA-1 | A package ([External services](11-integrations.md)) |
-| Bitwise operations | `Set<Enum>` |
-| Fetching exchange rates | A provider package; `money.convert` applies a rate the app holds |
-| Gender, sex at birth | Your app's own type, marked sensitive ([Personal data](15-personal-data.md)) |
-| CMYK and print colour | A package on the standard `Colour` |
-| Training models | A package or an outside service |
-| Aliases (`size` for `count`) | The table's name |
-
-Why each is left out is in the
-[design notes](notes/19-standard-library.md#left-out-by-design).
-
-Of the parts of the language these operations rely on, only keys held as
-data aren't built yet; see [What is built](#what-is-built).
 
 ## How the five languages compare
 <!-- topic: how-the-five-languages-compare -->
