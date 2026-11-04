@@ -1564,6 +1564,8 @@ OpenTelemetry stays the transport; only what is sent changes.
 ## Email
 <!-- topic: email -->
 
+[Send an email](../guides/12-send-an-email.md) does the whole job, start to finish.
+
 Most apps send a handful of emails: confirm your address, an invoice, a
 welcome. Each is a type, `type X = EmailMessage`, whose fields are the
 values its text uses. It lives in its domain's `emails/` folder, beside
