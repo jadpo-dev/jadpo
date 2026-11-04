@@ -204,6 +204,17 @@ fn inputs_that_differ_are_named() {
         },
         "POST /registry/v1/releases: body.dry_run: missing",
     );
+    // Whose release it is comes with the facts of every release.
+    drifts(
+        |d| {
+            let schema = component(d, "Facts");
+            schema["properties"]
+                .as_object_mut()
+                .unwrap()
+                .remove("publisher");
+        },
+        "facts.publisher: missing",
+    );
     drifts(
         |d| {
             op(d, "releases", "post")

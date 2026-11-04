@@ -16,6 +16,7 @@ use super::http::{jadpo, tempdir, write};
 
 pub(super) const INDEX: &str = "/// UK postcodes: reading and normalising them.
 package Postcodes.v2 {
+    publisher: \"@acme\"
     licence: Licence.mit
     jadpo: \"1.0\"
 }
@@ -121,6 +122,7 @@ fn show_prints_a_packages_description_and_public_surface() {
   kind: library
   version: 2.1.0
   source: path ../postcodes
+  publisher: @acme
   licence: mit
   jadpo: 1.0
   folder: packages/postcodes/v2
@@ -128,6 +130,7 @@ fn show_prints_a_packages_description_and_public_surface() {
 
 Facts
   kind: library, pure
+  publisher: @acme
   storable: UkPostcode, WrittenPostcode
   failures: uk.parse: InvalidPostcode
 
@@ -267,6 +270,7 @@ fn show_works_for_the_apps_own_integration() {
   package: Postcodes.v2
   kind: library
   source: the app's own
+  publisher: @acme
   licence: mit
   jadpo: 1.0
   folder: shared/providers/postcodes/v2
@@ -404,6 +408,7 @@ fn check_runs_the_publishing_bar_and_writes_the_surface() {
 
 Facts
   kind: library, pure
+  publisher: @acme
   storable: UkPostcode, WrittenPostcode
   failures: uk.parse: InvalidPostcode
 
@@ -414,11 +419,12 @@ Publishing bar
   tests         passed                        1 test
   version       passed                        2.0.0, the first release
   changelog     failed                        2.0.0 doesn't say why
+  publisher     passed                        @acme
   licence       passed                        mit, from Jadpo 1.0
 
 Wrote surface.jadpo_record and CHANGELOG.md
 
-package check failed: 1 failed, 6 passed
+package check failed: 1 failed, 7 passed
 "
     );
     let surface = std::fs::read_to_string(root.join("surface.jadpo_record")).expect("surface");
@@ -450,6 +456,7 @@ package Postcodes.v2
         second.stdout,
         "Facts
   kind: library, pure
+  publisher: @acme
   storable: UkPostcode, WrittenPostcode
   failures: uk.parse: InvalidPostcode
 
@@ -460,9 +467,10 @@ Publishing bar
   tests         passed                        1 test
   version       passed                        2.0.0, the first release
   changelog     passed                        2.0.0 says why
+  publisher     passed                        @acme
   licence       passed                        mit, from Jadpo 1.0
 
-package check passed: Postcodes.v2 2.0.0, 7 passed
+package check passed: Postcodes.v2 2.0.0, 8 passed
 
 next: git tag v2.0.0  tags the release once surface.jadpo_record is committed
 "
@@ -805,7 +813,7 @@ public type GeoPoint = Object {
     assert!(
         failed
             .stdout
-            .ends_with("package check failed: 2 failed, 1 passed, 4 not checked yet\n"),
+            .ends_with("package check failed: 2 failed, 2 passed, 4 not checked yet\n"),
         "{}",
         failed.stdout
     );

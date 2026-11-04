@@ -919,7 +919,7 @@ pub static COMMANDS: &[Command] = &[
                       examples in its descriptions run as tests, its tests, a version its changes since \
                       the last tag allow, a changelog that says why), prints the release's facts and change \
                       record, and writes surface.jadpo_record and CHANGELOG.md's new section. `verify \
-                      <folder> [--previous <folder>]` runs the same bar as the registry's verifier does, on \
+                      <folder> [--previous <folder>] [--publisher <handle>]` runs the same bar as the registry's verifier does, on \
                       a commit as it stands, writing nothing, and `--json` gives all a release shows; \
                       `--serve` answers the registry, in a sandbox with no network. \
                       `import openapi <file>` reads an OpenAPI 3 document, \
@@ -1002,6 +1002,12 @@ pub static COMMANDS: &[Command] = &[
                 name: "--previous",
                 value: Some("folder"),
                 description: "For verify: the release before this one",
+                values: &[],
+            },
+            Flag {
+                name: "--publisher",
+                value: Some("handle"),
+                description: "For verify: who the release is for",
                 values: &[],
             },
             Flag {
@@ -1139,6 +1145,8 @@ pub static COMMANDS: &[Command] = &[
             &rule::PUBLISH_EXAMPLE_MISSING,
             &rule::PUBLISH_FAILED,
             &rule::PUBLISH_NOT_AT_TAG,
+            &rule::PUBLISH_PUBLISHER_MISMATCH,
+            &rule::PUBLISH_PUBLISHER_MISSING,
             &rule::PUBLISH_REPOSITORY_REFUSED,
             &rule::PUBLISH_STALE_FILES,
             &rule::REGISTRY_UNREACHABLE,

@@ -273,6 +273,7 @@ pub const SURFACE: Kind = Kind {
         "file",
         "kind",
         "version",
+        "publisher",
         "licence",
         "jadpo",
         "guide",

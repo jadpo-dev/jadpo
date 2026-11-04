@@ -12,6 +12,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 
 use jadpo_registry::http::{Fetched, Handler, Incoming, Server};
+use jadpo_registry::names::Handle;
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 
@@ -319,10 +320,16 @@ fn start(verifier: &Verifier, shared: &Shared, waiting: usize, body: &[u8]) -> F
         Value::String(digest) if is_digest(digest) => Some(digest.clone()),
         _ => return failure(422, "digest_refused", "That isn't a release's digest."),
     };
+    let publisher = match &body["publisher"] {
+        Value::Null => None,
+        Value::String(handle) if Handle::parse(handle).is_ok() => Some(handle.clone()),
+        _ => return failure(422, "publisher_refused", "That isn't a publisher's handle."),
+    };
     let named = format!(
-        "{}\n{commit}\n{}\n",
+        "{}\n{commit}\n{}\n{}\n",
         repository.url(),
-        previous.as_deref().unwrap_or("")
+        previous.as_deref().unwrap_or(""),
+        publisher.as_deref().unwrap_or("")
     );
     let id: String = Sha256::digest(named.as_bytes())
         .iter()
@@ -350,6 +357,7 @@ fn start(verifier: &Verifier, shared: &Shared, waiting: usize, body: &[u8]) -> F
                 repository,
                 commit: commit.to_string(),
                 previous,
+                publisher,
             },
         ));
         shared.1.notify_all();

@@ -241,6 +241,13 @@ pub(crate) fn surface_version(text: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// The publisher a surface's text names.
+pub(crate) fn surface_publisher(text: &str) -> Option<String> {
+    text.lines()
+        .find_map(|line| line.strip_prefix("    publisher "))
+        .map(str::to_string)
+}
+
 /// Verifies the package in `folder` (area 11, "Installing safely"): it
 /// compiles, and the surface its code gives at its committed surface's
 /// version is that surface, byte for byte. `tag` is a git release's,

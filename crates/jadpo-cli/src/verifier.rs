@@ -96,10 +96,13 @@ pub(crate) fn reply(call: &Call) -> Reply {
             usage.to_string(),
         ));
     }
-    if call.value("--previous").is_some() || call.flag("--no-run") {
+    if call.value("--previous").is_some()
+        || call.value("--publisher").is_some()
+        || call.flag("--no-run")
+    {
         return Reply::failed(arguments(
-            "`--serve` can't be given with `--previous` or `--no-run`".to_string(),
-            "Each request to it names its previous release, and it runs both passes itself."
+            "`--serve` can't be given with `--previous`, `--publisher` or `--no-run`".to_string(),
+            "Each request to it names its previous release and its publisher, and it runs both passes itself."
                 .to_string(),
             usage.to_string(),
         ));

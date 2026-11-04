@@ -12,7 +12,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::log::{Hash, LogEntry};
-use crate::names::{Digest, NameError, ScopedName, Version};
+use crate::names::{Digest, Handle, NameError, ScopedName, Version};
 use crate::shape::{Shape, check_value};
 
 /// Where the protocol is served, below the registry's origin.
@@ -501,6 +501,9 @@ pub struct StandardCandidate {
 #[serde(deny_unknown_fields)]
 pub struct Facts {
     pub kind: PackageKind,
+    /// Who publishes it, as its `package.jadpo` names them: `null` for a
+    /// package that names none, which the publishing bar refuses.
+    pub publisher: Option<Handle>,
     pub pure: bool,
     pub hosts: Vec<HostFact>,
     /// The operations that change something at the provider.

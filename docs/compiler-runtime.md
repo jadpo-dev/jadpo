@@ -931,6 +931,18 @@ uses and raises from the app's own code, and `type_shape` reduces a type as a
 fingerprint does. Tests run them against `jadpo-registry`'s local registry, and
 a stand-in in front of it that changes its answers.
 
+**A package's publisher** (chunk G6, area 11, "Names and publishers") is read
+by `jadpo_check::packages`, kept on the `Surface` (one line of its text, loose
+to the version) and carried by `release::Facts`. `package::bar` adds the
+`publisher` row: `check` leaves a package with none alone, and `verify` refuses
+it, or one naming another handle than `--publisher`. `jadpo-verifier` passes a
+request's `publisher` to both of its runs of `verify`, never to the run with the
+release a package declares, which may not know the flag. `LocalRegistry::checked`
+is the registry's own check, which R7 builds in the application: a repository's
+earlier releases, and where the name it would take is released from.
+`package_publish` shows that row as `publish.publisher_mismatch`, and
+`registry::holds` compares the scope of the name asked for with the surface.
+
 **What a release shows** (chunk R3, area 11) is worked out by
 `jadpo_check::release`, not held in the graph, since it describes a package's
 release rather than an app. `facts` reads the surface,

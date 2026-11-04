@@ -796,6 +796,10 @@ rules! {
         "A commit holds a file a release can't: anything but Jadpo source and the package's text files";
     PUBLISH_NOT_AT_TAG: "publish.not_at_tag", area 14, Error, Agent,
         "What `jadpo package publish` would ask for isn't a pushed `v<version>` tag whose commit is the one checked out";
+    PUBLISH_PUBLISHER_MISMATCH: "publish.publisher_mismatch", area 14, Error, Human,
+        "A release names another publisher than the one asked to publish it";
+    PUBLISH_PUBLISHER_MISSING: "publish.publisher_missing", area 14, Error, Human,
+        "A package's index names no publisher, and it has to for the registry";
     PUBLISH_REPOSITORY_REFUSED: "publish.repository_refused", area 14, Error, Human,
         "The package's repository isn't one the registry can fetch: a public git repository reached over HTTPS";
     PUBLISH_SAMPLE_MISSING: "publish.sample_missing", area 14, Error, Agent,

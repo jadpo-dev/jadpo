@@ -207,6 +207,7 @@ fn page(folder: &Path) -> String {
         Mode::Verify {
             previous: crate::package_publish::previous_release(folder, &name, &tag).map(Box::new),
             run: true,
+            publisher: None,
         },
     );
     let (data, problems): (Value, Vec<Diagnostic>) = match reply {
@@ -271,6 +272,13 @@ fn facts_section(facts: &Value) -> String {
         "<dt>kind</dt><dd>{}{}</dd>",
         esc(kind),
         if facts["pure"] == true { ", pure" } else { "" }
+    ));
+    rows.push_str(&format!(
+        "<dt>publisher</dt><dd>{}</dd>",
+        match facts["publisher"].as_str() {
+            Some(publisher) => esc(publisher),
+            None => "none, and publishing needs one".to_string(),
+        }
     ));
     if provider {
         let hosts: Vec<String> = facts["hosts"]
@@ -582,7 +590,7 @@ fn body(folder: &Path, name: &str, data: &Value, problems: &[Diagnostic]) -> Str
         });
     }
     main.push_str(
-        "<section class=\"later\"><h2>What the registry adds</h2><p>At release it writes a model's account of the package, marked as one, and adds its publisher, the Jadpo releases it works with and the last contract run. Those can't be shown from here.</p></section>",
+        "<section class=\"later\"><h2>What the registry adds</h2><p>At release it writes a model's account of the package, marked as one, and adds whether its publisher is verified, the Jadpo releases it works with and the last contract run. Those can't be shown from here.</p></section>",
     );
     format!("<main>{main}</main>")
 }

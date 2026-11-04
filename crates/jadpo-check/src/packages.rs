@@ -30,9 +30,29 @@ use jadpo_syntax::ast::{self, AstNode, Decl};
 use crate::case::to_snake;
 use crate::tree::{self, file_span, node_span};
 
-/// The keys every package index has, and the only ones (area 11, "The
-/// index: `package.jadpo`").
+/// The keys every package index has (area 11, "The index: `package.jadpo`").
 pub const INDEX_KEYS: [&str; 2] = ["licence", "jadpo"];
+
+/// The one key an index may leave out: a package only used by path or from
+/// git needs no publisher, and the publishing bar asks for it.
+pub const PUBLISHER_KEY: &str = "publisher";
+
+/// `@acme`: one part of a registry's scoped name, as the protocol's `Handle`
+/// reads it, with its `@`.
+pub fn is_publisher_handle(text: &str) -> bool {
+    let Some(part) = text.strip_prefix('@') else {
+        return false;
+    };
+    let bytes = part.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 39
+        && bytes[0].is_ascii_lowercase()
+        && bytes[bytes.len() - 1] != b'-'
+        && !part.contains("--")
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'-')
+}
 
 /// The licences a package may declare (area 11): `Licence.<name>`.
 pub const LICENCES: [&str; 8] = [
@@ -290,8 +310,8 @@ fn index_path(home: &PackageHome) -> String {
 }
 
 /// The package's index: present, one `package` declaration naming the
-/// package its folder holds, a description, and exactly `licence:` and
-/// `jadpo:`.
+/// package its folder holds, a description, `licence:` and `jadpo:`, and
+/// perhaps `publisher:`.
 fn index(db: &dyn Db, package: &Package, out: &mut Vec<Diagnostic>) -> Option<Index> {
     let home = &package.home;
     let path = index_path(home);
@@ -384,7 +404,7 @@ fn index(db: &dyn Db, package: &Package, out: &mut Vec<Diagnostic>) -> Option<In
     for (name, member) in tree::members(decl.member_list()) {
         let key = tree::name_text(&name).unwrap_or_default();
         let span = node_span(&path, member.syntax());
-        if !INDEX_KEYS.contains(&key.as_str()) {
+        if !INDEX_KEYS.contains(&key.as_str()) && key != PUBLISHER_KEY {
             let (reason, next) = if key == "requires" {
                 (
                     "Packages have no dependencies: a package that needs another's code carries a copy, so installing one is one folder and one line in the lock.".to_string(),
@@ -393,7 +413,7 @@ fn index(db: &dyn Db, package: &Package, out: &mut Vec<Diagnostic>) -> Option<In
             } else {
                 (
                     format!(
-                        "Every package's index is the same: a `///` description and two keys, `licence:` and `jadpo:`, and nothing else; `{key}:` isn't one of them. Files are found by name, so the index lists none."
+                        "Every package's index is the same: a `///` description, `licence:` and `jadpo:`, `publisher:` when it is published, and nothing else; `{key}:` isn't one of them. Files are found by name, so the index lists none."
                     ),
                     format!("Remove `{key}:`"),
                 )
@@ -437,6 +457,21 @@ fn index(db: &dyn Db, package: &Package, out: &mut Vec<Diagnostic>) -> Option<In
                         ),
                         "Write `licence: Licence.mit`, or the licence the package is published under",
                     )),
+                }
+            }
+            PUBLISHER_KEY => {
+                let value = member.value().map(|value| tree::written(value.syntax()));
+                let handle = value
+                    .as_deref()
+                    .and_then(|value| value.strip_prefix('"')?.strip_suffix('"'));
+                if !handle.is_some_and(is_publisher_handle) {
+                    out.push(bad_value(
+                        span,
+                        "publisher",
+                        value.as_deref().unwrap_or(""),
+                        "`publisher:` is who publishes the package in the registry, a handle as its name is scoped: `@` and lower-case letters and digits, starting with a letter, with single `-`s between them, at most 39 characters. A fork publishes under its own.",
+                        "Write `publisher: \"@acme\"`, with your own handle on jadpo.dev, or remove it if the package isn't published",
+                    ));
                 }
             }
             _ => {
