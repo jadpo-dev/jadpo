@@ -198,6 +198,16 @@ fn a_request_is_checked_before_anything_runs() {
     assert_eq!(code(&answer), "tag_refused");
     let answer = call(
         service,
+        Method::Post,
+        "/v1/verifications",
+        Some(
+            &json!({ "repository": up.url, "commit": up.commit, "previous_digest": null, "publisher": "acme" }),
+        ),
+        Some(TOKEN),
+    );
+    assert_eq!(code(&answer), "publisher_refused");
+    let answer = call(
+        service,
         Method::Get,
         "/v1/verifications/none",
         None,

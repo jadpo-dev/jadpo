@@ -168,6 +168,7 @@ fn a_release_s_facts_and_change_record_have_one_shape() {
 
     let facts = serde_json::json!({
         "kind": "provider",
+        "publisher": "@acme",
         "pure": false,
         "hosts": [{"host": "https://api.acme-pay.example", "operations": ["customers.create"]}],
         "changing_calls": ["customers.create"],
@@ -188,6 +189,21 @@ fn a_release_s_facts_and_change_record_have_one_shape() {
     check_value(&Shape::Named("Facts"), &facts).expect("the shape");
     let read: Facts = serde_json::from_value(facts.clone()).expect("the type");
     assert_eq!(serde_json::to_value(read).expect("writes"), facts);
+    // A package with no key is `null` there, and the field is always sent.
+    let mut none = facts.clone();
+    none["publisher"] = serde_json::Value::Null;
+    check_value(&Shape::Named("Facts"), &none).expect("the shape");
+    for bad in [
+        serde_json::json!("acme"),
+        serde_json::json!("@acme/postcodes"),
+    ] {
+        let mut wrong = facts.clone();
+        wrong["publisher"] = bad;
+        assert!(check_value(&Shape::Named("Facts"), &wrong).is_err());
+    }
+    let mut left_out = facts.clone();
+    left_out.as_object_mut().unwrap().remove("publisher");
+    assert!(check_value(&Shape::Named("Facts"), &left_out).is_err());
 
     let entry = serde_json::json!({
         "declaration": "uk.parse",

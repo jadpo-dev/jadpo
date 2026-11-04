@@ -261,6 +261,22 @@ Numbered as the questions they settled, which other pages cite.
     it passes in any state but `failed` or `cancelled`. `JADPO_REGISTRY`
     names a stand-in as `JADPO_RUST_DIST_SERVER` does; it isn't a private
     registry, which stays ruled out.
+    Where the pages left a package's publisher open (chunk G6): the key is
+    `publisher: "@acme"`, text as `jadpo:` is. A package with none is
+    fine for `jadpo package check`, which says `left out` and passes, because a
+    private package's CI runs it before a tag; `verify` and `publish` refuse it.
+    That is the line between "only used by path or from git" and "published"
+    (Richard, 2026-11-04). `POST releases` still sends only a repository and a
+    tag, because nothing a publisher sends may disagree with the source: the
+    publisher is read from the release. "The one asked" is then what the
+    registry already holds, the package a repository releases or the name a
+    release would take, and on jadpo.dev the publisher a signed-in member asks
+    as, which it passes the verifier as `publisher`. Comparing with the previous
+    tag was rejected: a fork's history holds the original's tags, and a fork
+    naming its own handle has to pass. A package moves repository by its owner's
+    passkey, since refusing a release from elsewhere is what stops a fork, and a
+    package that genuinely moved needs a way on. The registry's own part of a
+    name comes from the name in code, the only thing a release says of it.
     Your own company's git repositories are listed in `packages:`'s
     `own_sources:` (Richard, 2026-10-31), so they install without
     `PackageChange.git_source`; adding one is itself a `PolicyChange`,

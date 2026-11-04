@@ -58,13 +58,13 @@ use crate::run::{Call, Reply};
 
 // --- verify ----------------------------------------------------------------
 
-/// `jadpo package verify <folder> [--previous <folder>]`.
+/// `jadpo package verify <folder> [--previous <folder>] [--publisher <handle>]`.
 pub(crate) fn verify(call: &Call) -> Reply {
     if call.flag("--serve") {
         return crate::verifier::reply(call);
     }
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
-    let usage = "Run `jadpo package verify <folder> [--previous <folder>]`";
+    let usage = "Run `jadpo package verify <folder> [--previous <folder>] [--publisher <handle>]`";
     let Some(folder) = call.arguments.get(1) else {
         return Reply::failed(arguments(
             "`jadpo package verify` needs a package's folder".to_string(),
@@ -87,12 +87,23 @@ pub(crate) fn verify(call: &Call) -> Reply {
             Err(reply) => return reply,
         },
     };
+    let publisher = call.value("--publisher").map(str::to_string);
+    if let Some(handle) = &publisher
+        && !jadpo_check::packages::is_publisher_handle(handle)
+    {
+        return Reply::failed(arguments(
+            format!("`{handle}` isn't a publisher's handle"),
+            "A handle is `@` and lower-case letters and digits, starting with a letter, with single `-`s between them.".to_string(),
+            usage.to_string(),
+        ));
+    }
     package::bar(
         call,
         &cwd.join(folder),
         Mode::Verify {
             previous,
             run: !call.flag("--no-run"),
+            publisher,
         },
     )
 }
@@ -635,6 +646,9 @@ pub(crate) fn facts_block(facts: &Facts) -> Block {
             facts.kind.to_string()
         },
     )];
+    if let Some(publisher) = &facts.publisher {
+        fields.push(("publisher".to_string(), publisher.clone()));
+    }
     if facts.kind == "provider" {
         // A host on a line of its own, so it copies whole.
         let hosts: Vec<&str> = facts.hosts.iter().map(|host| host.host.as_str()).collect();
@@ -727,6 +741,10 @@ pub(crate) fn facts_json(facts: &Facts) -> Json {
         |items: &[String]| Json::array(items.iter().map(|item| Json::from(item.as_str())));
     Json::object([
         ("kind", Json::from(facts.kind)),
+        (
+            "publisher",
+            facts.publisher.as_deref().map_or(Json::Null, Json::from),
+        ),
         ("pure", facts.pure.into()),
         (
             "hosts",

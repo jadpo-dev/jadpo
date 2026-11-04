@@ -455,7 +455,7 @@ A provider package adds `provider.jadpo` and the folders an API needs:
 
 ```text
 stripe/v2024_06_20/
-    package.jadpo                          the same two keys as every package
+    package.jadpo                          the same keys as every package
     provider.jadpo                         how the API is reached and called
     resources/payment_intents.jadpo        imported, corrections merged in
     types/payment_intent.jadpo             imported
@@ -492,8 +492,14 @@ stripe/v2024_06_20/
 ### The index: `package.jadpo`
 
 Every package's index has the same form: `package Name.vN { }`, a `///`
-description above it, and two keys. `licence:` names its licence, and
-`jadpo:` the lowest Jadpo version it needs.
+description above it, and its keys. `licence:` names its licence, `jadpo:`
+the lowest Jadpo version it needs, and `publisher:` who publishes it in the
+registry, as a handle: `publisher: "@acme"` for `@acme/postcodes`.
+
+A package only used by path or from git may leave `publisher:` out, since
+nothing is published and no one is named. The publishing bar asks for it
+([What publishing requires](#what-publishing-requires)). The key came with
+Jadpo 0.3, so a package that has it declares `jadpo: "0.3"` or later.
 
 The licence is one of `Licence.mit`, `.apache_2_0`, `.bsd_2_clause`,
 `.bsd_3_clause`, `.isc`, `.mpl_2_0`, `.unlicense` and `.proprietary`.
@@ -505,6 +511,7 @@ dependencies, and no list of files.
 // packages/postcodes/v2/package.jadpo
 /// UK postcodes: parsing, normalising and checking the outward code.
 package Postcodes.v2 {
+    publisher: "@acme"
     licence: Licence.mit
     jadpo: "1.0"
 }
@@ -1460,7 +1467,8 @@ package unless:
 6. its changelog's list of changes is generated from the surface diff, and
    the author writes only why;
 7. it declares a licence from the fixed list (not `.proprietary`, for the
-   public registry) and the lowest Jadpo version it needs.
+   public registry) and the lowest Jadpo version it needs;
+8. it names its publisher.
 
 The bar applies only to what is published: the app's own integrations and
 libraries skip it. Examples are part of the bar because they must run,
@@ -1482,7 +1490,10 @@ description of every public message.
 > `publish.description_missing`; item 4's tests are the package's own
 > `.test.jadpo` files; item 5 works out the version from the surface at
 > the last tag and refuses a breaking change (`publish.breaking_change`);
-> item 7 is the index's own check. Item 4's decoders are the `decoders`
+> item 7 is the index's own check. Item 8 is the `publisher` row: `check` says
+> `left out` and passes, because a private package's CI runs it before a tag,
+> and `verify` and `publish` refuse the package
+> (`publish.publisher_missing`). Item 4's decoders are the `decoders`
 > row, every decoder over every recording with each field's `decode:` and
 > `encode:` round-tripping ("Recording errors"), and its recipes the
 > `recipes` row (under "Recipes"). The surface is written whenever the
@@ -1501,9 +1512,10 @@ description of every public message.
 > ```text
 > $ jadpo package check
 > Facts
->   kind      library, pure
->   storable  OutwardCode, UkPostcode, WrittenPostcode
->   failures  uk.tidy: InvalidPostcode
+>   kind       library, pure
+>   publisher  @acme
+>   storable   OutwardCode, UkPostcode, WrittenPostcode
+>   failures   uk.tidy: InvalidPostcode
 >
 > Changes since 2.0.0
 >   + added  type OutwardCode
@@ -1516,11 +1528,12 @@ description of every public message.
 > ✓ behaviour     passed                        all 5 from 2.0.0 hold
 > ✓ version       passed                        2.1.0, 1 added since 2.0.0
 > ✓ changelog     passed                        2.1.0 says why
+> ✓ publisher     passed                        @acme
 > ✓ licence       passed                        mit, from Jadpo 1.0
 >
 > ✓ Wrote surface.jadpo_record and CHANGELOG.md
 >
-> ✓ package check passed  Postcodes.v2 2.1.0 · 8 passed
+> ✓ package check passed  Postcodes.v2 2.1.0 · 9 passed
 >
 > → git tag v2.1.0  tags the release once surface.jadpo_record is committed
 > ```
@@ -1575,8 +1588,14 @@ values or sends data to a host it may already reach.
 
 - **A package's registry name is `@publisher/name`**, such as
   `@acme/postcodes`; Jadpo's official packages are `@jadpo/…`. In code it
-  keeps its own name and version label (`Postcodes.v2`). `package.jadpo`
-  names its publisher, so a fork can't be published as the original.
+  keeps its own name and version label (`Postcodes.v2`), and the registry's
+  own part comes from that: `AcmeCouriers` under `@acme` is
+  `@acme/acme-couriers`.
+- **`package.jadpo` names its publisher**, so a fork can't be published as
+  the original. A release goes under the publisher it names, and only their
+  releasers can confirm it; a fork names its own handle and is its own package.
+  A package only used by path or from git may leave the key out, and the
+  publishing bar refuses one with none.
 - **A name is never reused**, after a yank, a takedown or a publisher
   leaving. A name close to a popular one under another publisher, or to a
   reserved brand, needs Jadpo's approval.
@@ -1610,6 +1629,18 @@ HTTPS. The registry never accepts an upload, and no publish token exists.
 4. It goes live, its digest is added to the public log, and its pages are
    written.
 
+- **A release is refused when it isn't its publisher's to make**
+  ([`publish.publisher_mismatch`](../errors/publish.publisher_mismatch.md)).
+  The registry reads the publisher from the release's facts, and fails it with
+  the bar's `publisher` row when the repository's earlier releases are another
+  publisher's, or when the name it would take is released from another
+  repository, as a fork still naming the original is. When it knows who the
+  release is for (a repository it holds, or the publisher a signed-in member
+  asks as on jadpo.dev) it also tells the verifier, which fails the release
+  itself when `package.jadpo` names anyone else. A new name from a new
+  repository has no one to compare with: it waits for a releaser of the
+  publisher it names, which a stranger can't be. An owner moves a package to
+  another repository on its page, with a passkey.
 - **Routine releases may release themselves.** A package can opt into
   automatic release 24 hours after a release goes pending, unless a member
   cancels it; every member is told when it goes pending. Only a release
@@ -1638,6 +1669,7 @@ The verifier works out a release's **facts** from the compiled graph:
 | Fact | From |
 |---|---|
 | Kind, and whether it is pure | The package's folders and what its code does |
+| Who publishes it | `publisher:` in `package.jadpo` |
 | Each host, and the operations that reach it | `provider.jadpo` and each operation |
 | Which calls change something at the provider | Each operation |
 | Which personal data reaches which host | `personal:` marking followed to each operation that sends it ([Personal data](15-personal-data.md)) |
@@ -1817,10 +1849,16 @@ it can send makes a release live.
   numbers. A release's facts are the table in [What a release
   shows](#what-a-release-shows), less the Jadpo releases it works with,
   which are the release's own field since they grow after it is checked.
+  `publisher` is the handle `package.jadpo` names, `null` where it names none,
+  which only a release that failed can have.
   A change record's entry is its `declaration`, its `kind` (`function`,
   `type`, `provider`), `change` (`added`, `removed`, `retyped`,
   `new_failure`, `new_host`, `personal_data_sent`, `behaviour_changed`),
   `detail` and `why`.
+- **A release refused for its publisher** is `failed` with a bar row whose
+  `check` is `publisher` and whose `detail` says why, which `jadpo package
+  publish` shows as `publish.publisher_mismatch`. `POST releases` sends no
+  publisher: the registry reads it from the release.
 - **Its failures** are `package_not_found`, `release_not_found`,
   `archive_not_found` and `release_request_not_found` (404), `not_in_log`
   (404, also for a release logged after the size asked about),
@@ -1854,7 +1892,9 @@ code runs and what can come back from it.
   publishing bar and writes everything a release shows: the bar's rows,
   surface, facts, change record, the fingerprints of every public function
   and declaration, the previous release's examples and tests run against
-  the new code, and the Jadpo release it was checked with.
+  the new code, and the Jadpo release it was checked with. `--publisher
+  <handle>` says who it is being released for, and the bar's `publisher` row
+  fails when `package.jadpo` names anyone else.
 - **`--serve`** answers the registry, reached over HTTPS with a credential
   the registry holds. Each request names a repository, a commit and the
   previous release's digest. It fetches over git with network to the git
@@ -1868,7 +1908,7 @@ code runs and what can come back from it.
 |---|---|
 | `GET /health` | `{ "status": "ok" }`, the only answer with no credential |
 | `POST /v1/resolve` | Given `repository` and `tag`, the `commit` it points at, for a tag being published and to tell when one moved |
-| `POST /v1/verifications` | Given `repository`, `commit` and `previous_digest` (`null` for a first release), starts one and answers 202 with its `id`. The same three name the same one |
+| `POST /v1/verifications` | Given `repository`, `commit`, `previous_digest` (`null` for a first release) and `publisher` (the handle it is being released for; absent or `null` when that isn't known), starts one and answers 202 with its `id`. The same four name the same one |
 | `GET /v1/verifications/{id}` | Its `state` (`verifying`, `checked`, `could_not_check`), its `result` once checked and its `failure`'s `code` and `message` if it couldn't be |
 | `GET /v1/verifications/{id}/source` | For a release that passed, what a model reads to write [its account](#what-a-release-shows): `files`, each with its `path` and `text`, and `truncated` |
 | `GET /v1/verifications/{id}/diff` | For a release that passed, what a model reads for what the facts can't show: `diff`, as `git diff` writes it against the previous release, `null` for a first release, and `truncated` |
@@ -1888,7 +1928,8 @@ of the release and can be asked for again: `repository_refused`,
 `commit_not_fetched`, `previous_not_found`, `previous_digest_mismatch` or
 `verifier_failed`. Its other failures, in the [failure
 envelope](07-http.md), are `unauthorized` (401), `repository_refused`,
-`commit_refused`, `tag_refused`, `digest_refused` and `invalid_body` (422),
+`commit_refused`, `tag_refused`, `digest_refused`, `publisher_refused` and
+`invalid_body` (422),
 `tag_not_found` and `verification_not_found` (404), `repository_unreachable`
 (502) and `verifier_busy` (503, when 16 are waiting).
 
@@ -5551,6 +5592,10 @@ it when you write a package by hand or a check refuses one.
 - **The index.** A `///` description is required, as are `licence:` and
   `jadpo:`; `jadpo:` is a major and minor number as text, compared with
   nothing until Jadpo has a language version to compare it with.
+  `publisher:` may be left out, and is otherwise text holding a handle, `@`
+  and one part of a scoped name; anything else, like any other key, is
+  `package.index_invalid`. It is on the surface as `publisher @acme` and no
+  part of the version: a release that only changes it needs no new major.
   `Licence.proprietary` is refused for an installed package whose lock line
   isn't a `git` source; the app's own integrations may use it.
 - **`provider.jadpo`.** Its top-level keys are checked, with `hosts:`'
@@ -5669,8 +5714,7 @@ what `jadpo package check` and `jadpo package show` do.
 
 > Polls and capability mappings aren't in the surface yet, and settings,
 > webhooks, polls and erasure aren't in the provider's entry yet.
-> `jadpo package new` and `publish` aren't built yet: they say
-> `toolchain.not_built_yet`.
+> `jadpo package new` isn't built yet: it says `toolchain.not_built_yet`.
 
 ## How a release's facts, change record and fingerprints are worked out
 <!-- topic: how-a-releases-facts-change-record-and-fingerprints-are-worked-out -->
@@ -5811,8 +5855,8 @@ command does and shows. The registry is `https://jadpo.dev/registry/v1/`;
 > that head; the head kept; the archive, whose files have to have the digest
 > the log holds; then the checks for a package from anywhere, compiling it
 > and comparing its surface with its code; and lastly that the files are what
-> the registry said: its name in code, its version, its digest and the
-> surface it shows. The facts on the screen are worked out from those files,
+> the registry said: its name in code, its publisher (the scope of the name
+> asked for), its version, its digest and the surface it shows. The facts on the screen are worked out from those files,
 > not taken from the registry.
 >
 > ```text
@@ -5930,11 +5974,15 @@ command does and shows. The registry is `https://jadpo.dev/registry/v1/`;
 > same commit, then runs the bar as `verify` does against the tag before, then
 > asks the registry and waits up to 20 minutes for its verifier. A dry run
 > passes in any state but `failed` or `cancelled`, and nothing it does is
-> published.
+> published. A package with no publisher stops at the bar, having asked
+> nothing (`publish.publisher_missing`). A failed `publisher` row, or facts
+> naming another publisher than the checkout does, is
+> `publish.publisher_mismatch` rather than `publish.failed`.
 >
 > ```text
 > $ jadpo package publish
 > ✓ Asked the registry to release Postcodes.v2 2.1.0
+>     publisher   @acme
 >     repository  https://github.com/acme/postcodes
 >     tag         v2.1.0
 >     state       pending
@@ -5951,7 +5999,7 @@ command does and shows. The registry is `https://jadpo.dev/registry/v1/`;
 > since the last tag, the publishing bar, its surface, changelog and guide, by
 > the same run of the bar as `verify`, which writes nothing. It runs the bar
 > again only when the package's files have changed. What only the registry can
-> add, the written account, its publisher, the Jadpo releases it works with and
+> add, the written account, whether its publisher is verified, the Jadpo releases it works with and
 > the last contract run, is named and not imitated.
 >
 > ```text
@@ -7488,7 +7536,8 @@ package's name, as its types are.
 | Publisher trust for third-party git packages | Built: a package from a git repository under none of `packages:`'s `own_sources:` needs an [acceptance](18-records-and-manifest.md#acceptances), as does adding or widening an entry; an entry is `package.own_source_invalid` unless it is a host and a path ending in `/`. |
 | The registry protocol: its requests and answers, the log and its proofs, a local registry and the conformance test | Built (`jadpo-registry`). |
 | The `jadpo` tool's side of the public registry: `add` and `update` checked against the log, `search`, `audit`, `publish` and `preview` ([How the registry commands work](#how-the-registry-commands-work)) | Built, against the local registry. |
-| The registry at jadpo.dev: publishing, search, advisories and compatibility runs | Not built yet. A package's `package.jadpo` doesn't name its publisher yet ([Names and publishers](#names-and-publishers)). |
+| A package's publisher ([Names and publishers](#names-and-publishers)): `publisher:` in the index, on its surface and in its facts, the bar's `publisher` row, `jadpo package publish` and `verify --publisher`, the verifier's request and the local registry's check of a release | Built. `jadpo package new` will write it, and isn't built itself. The real registry's check comes with the registry. |
+| The registry at jadpo.dev: publishing, search, advisories and compatibility runs | Not built yet. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
 | Erasure at providers | Partly built: the package's and the connection's `erasure:` are read and checked, and a connection that can't erase what it receives needs an `ErasureNotPossible` acceptance ([Erasure at providers](15-personal-data.md#erasure-at-providers)). Not built yet: calling the provider. |
@@ -7749,6 +7798,8 @@ public type SlotTaken = Failure {
 - [`publish.stale_files`](../errors/publish.stale_files.md)
 - [`publish.file_not_allowed`](../errors/publish.file_not_allowed.md)
 - [`publish.too_large`](../errors/publish.too_large.md)
+- [`publish.publisher_missing`](../errors/publish.publisher_missing.md)
+- [`publish.publisher_mismatch`](../errors/publish.publisher_mismatch.md)
 
 
 ### Connection errors
