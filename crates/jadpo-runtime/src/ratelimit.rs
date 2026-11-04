@@ -61,7 +61,14 @@ struct Shard {
     /// windows started, oldest first, so the fronts say which window ends
     /// first. A key whose window starts again is placed again at the back,
     /// and its earlier place is passed over.
-    order: Vec<(i64, VecDeque<(Arc<str>, i64)>)>,
+    order: Vec<Places>,
+}
+
+/// The counters of one window's length, by when each started.
+#[derive(Debug)]
+struct Places {
+    window: i64,
+    places: VecDeque<(Arc<str>, i64)>,
 }
 
 impl Shard {
@@ -118,12 +125,12 @@ impl Shard {
             let soonest = self
                 .order
                 .iter_mut()
-                .filter_map(|(window, places)| {
-                    let (_, start) = places.front()?;
-                    Some((start.saturating_add(*window), places))
+                .filter_map(|order| {
+                    let (_, start) = order.places.front()?;
+                    Some((start.saturating_add(order.window), order))
                 })
                 .min_by_key(|(ends, _)| *ends);
-            let Some((key, start)) = soonest.and_then(|(_, places)| places.pop_front()) else {
+            let Some((key, start)) = soonest.and_then(|(_, order)| order.places.pop_front()) else {
                 break;
             };
             if self
@@ -140,24 +147,24 @@ impl Shard {
     /// order, leaving out the places passed over once they outnumber the
     /// counters, so the orders hold at most twice the shard's counters.
     fn place(&mut self, window: i64, key: Arc<str>, start: i64) {
-        let places = match self.order.iter().position(|(length, _)| *length == window) {
-            Some(at) => at,
-            None => {
-                self.order.push((window, VecDeque::new()));
-                self.order.len() - 1
-            }
-        };
-        self.order[places].1.push_back((key, start));
+        let place = (key, start);
+        match self.order.iter_mut().find(|order| order.window == window) {
+            Some(order) => order.places.push_back(place),
+            None => self.order.push(Places {
+                window,
+                places: VecDeque::from([place]),
+            }),
+        }
         if self
             .order
             .iter()
-            .map(|(_, places)| places.len())
+            .map(|order| order.places.len())
             .sum::<usize>()
             > 2 * self.capacity
         {
             let counts = &self.counts;
-            for (_, places) in &mut self.order {
-                places.retain(|(key, start)| {
+            for order in &mut self.order {
+                order.places.retain(|(key, start)| {
                     counts
                         .get(key)
                         .is_some_and(|counter| counter.start == *start)
@@ -223,7 +230,7 @@ impl RateLimits {
             .iter()
             .fold((0, 0), |(counters, places), shard| {
                 let shard = shard.lock().unwrap();
-                let held: usize = shard.order.iter().map(|(_, order)| order.len()).sum();
+                let held: usize = shard.order.iter().map(|order| order.places.len()).sum();
                 (counters + shard.counts.len(), places + held)
             })
     }

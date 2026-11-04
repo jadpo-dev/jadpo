@@ -51,6 +51,13 @@ fn a_routes_limit_is_counted_in_its_own_binding_on_workers() {
         ]),
     );
 
+    // Wrangler accepts them, with no account and no network.
+    let dry = super::queues::dry_run(&out);
+    assert!(dry.contains("--dry-run: exiting now."), "{dry}");
+    for refused in ["WARNING", "ERROR", "jadpo-offline:"] {
+        assert!(!dry.contains(refused), "{refused} in:\n{dry}");
+    }
+
     let worker = Workerd::start(&out, &wrangler, &[]);
     let from = [("CF-Connecting-IP", "203.0.113.9")];
     answers_as_every_host_does(|method, path| {
