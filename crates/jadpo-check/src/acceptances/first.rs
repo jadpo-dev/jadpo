@@ -8,9 +8,10 @@
 //! The notices run the comparisons in [`super::compare`] against an empty
 //! before side, keeping the kinds that are a decision even as a project's
 //! first. The ones that aren't, such as the first routes, grants or domains,
-//! are what a project is made of; area 18 says which is which. A public write
-//! has no kind of its own: a new entity's grants need no acceptance, so the
-//! first record holding one says so, however old the record.
+//! are what a project is made of; area 18 says which is which. A public write,
+//! and a public read of personal data (chunk A20), has no kind of its own: a
+//! new entity's grants need no acceptance, so the first record holding one
+//! says so, however old the record.
 
 use std::collections::BTreeSet;
 
@@ -19,16 +20,23 @@ use jadpo_db::{Before, BeforeSide, Db, Layout, Project};
 
 use super::compare::{self, Need};
 use super::{access, files, needs, network, network_before, words, written};
+use crate::lookups::Lookup;
+use crate::types::TypeView;
 
 /// A notice's kind when no acceptance names it: a public create, update or
 /// delete.
 pub const PUBLIC_WRITE: &str = "public_write";
 
+/// A notice's kind when no acceptance names it: personal data anyone may
+/// read.
+pub const PUBLIC_READ: &str = "public_read";
+
 /// One thing a first record holds that a person decides.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Notice {
     pub subject: String,
-    /// [`PUBLIC_WRITE`], or the change an acceptance would name.
+    /// [`PUBLIC_WRITE`], [`PUBLIC_READ`], or the change an acceptance would
+    /// name.
     pub kind: String,
     /// In plain words, as an acceptance's message would say it.
     pub said: String,
@@ -136,6 +144,9 @@ fn from_access(
     if was.is_none_or(|was| !holds_public_write(db, project, was)) {
         public_writes(db, project, now, out);
     }
+    if was.is_none_or(|was| readable_personal(db, project, was).is_empty()) {
+        public_reads(db, project, now, out);
+    }
     if was.is_some() {
         return;
     }
@@ -200,6 +211,74 @@ fn public_writes(db: &dyn Db, project: Project, text: &str, out: &mut Vec<Notice
             ),
             subject: action,
             kind: PUBLIC_WRITE.to_string(),
+            path: access::PATH.to_string(),
+            line: line_of(text, &heading),
+            heading: Some(heading),
+        });
+    }
+}
+
+/// Each entity anyone may read, in the access record's `text`, that holds
+/// personal data they can see, as the personal-data report counts it: a field
+/// marked `personal:`, or of a standard type that is personal data. By the
+/// name the record gives it, with those fields' names.
+fn readable_personal(db: &dyn Db, project: Project, text: &str) -> Vec<(String, Vec<String>)> {
+    let access = crate::policy::access(db, project);
+    let lookup = Lookup::new(db, project);
+    let marks = crate::ai_personal::marks(db, project);
+    let reads = compare::public_reads(text);
+    let mut out = Vec::new();
+    for policy in access.entities.values() {
+        let written = crate::policy::report::qualified(&lookup, &policy.entity);
+        let Some(kept) = reads.get(&written) else {
+            continue;
+        };
+        let mut fields: Vec<String> = lookup
+            .fields(&policy.entity)
+            .into_iter()
+            .flatten()
+            .filter(|field| !kept.contains(&field.name))
+            .filter(|field| {
+                crate::ai_personal::field_holding(&lookup, marks, &policy.entity, &field.name)
+                    .is_some_and(|holding| !holding.categories.is_empty())
+            })
+            .map(|field| field.name.clone())
+            .collect();
+        fields.sort();
+        if !fields.is_empty() {
+            out.push((written, fields));
+        }
+    }
+    out
+}
+
+/// Each entity with personal data anyone may read, in the access record's
+/// `text`. What is judged, a widening or a restriction taken away, is said as
+/// a decision rather than here.
+fn public_reads(db: &dyn Db, project: Project, text: &str, out: &mut Vec<Notice>) {
+    let judged = needs(db, project);
+    let is_judged = |subject: &str| judged.iter().any(|need| need.subject == subject);
+    for (entity, fields) in readable_personal(db, project, text) {
+        if is_judged(&format!("{entity}.read")) {
+            continue;
+        }
+        let named: Vec<String> = fields
+            .into_iter()
+            .map(|field| format!("{entity}.{field}"))
+            .filter(|field| !is_judged(field) && !is_judged(&format!("{field}.read")))
+            .map(|field| format!("`{field}`"))
+            .collect();
+        if named.is_empty() {
+            continue;
+        }
+        let heading = format!("entity {entity}");
+        out.push(Notice {
+            said: format!(
+                "anyone can read {}, personal data, with no sign-in",
+                crate::and_list(&named)
+            ),
+            subject: entity,
+            kind: PUBLIC_READ.to_string(),
             path: access::PATH.to_string(),
             line: line_of(text, &heading),
             heading: Some(heading),

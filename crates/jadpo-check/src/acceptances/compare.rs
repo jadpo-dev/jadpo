@@ -791,6 +791,31 @@ pub fn public_writes(text: &str) -> BTreeMap<String, Vec<String>> {
         .collect()
 }
 
+/// The entities whose records anyone may read in the access record's `text`,
+/// each with the fields kept from them: `server_only`, or with a `read` list
+/// of their own that doesn't name anyone at all.
+pub fn public_reads(text: &str) -> BTreeMap<String, BTreeSet<String>> {
+    let access = access(text);
+    access
+        .entities
+        .iter()
+        .filter(|(_, (lists, _))| lists.get("read").is_some_and(|who| who.contains(PUBLIC)))
+        .map(|(entity, _)| {
+            let kept = access
+                .fields
+                .iter()
+                .filter_map(|(field, (server_only, lists))| {
+                    let (of, name) = field.rsplit_once('.')?;
+                    let closed =
+                        *server_only || lists.get("read").is_some_and(|who| !who.contains(PUBLIC));
+                    (of == entity && closed).then(|| name.to_string())
+                })
+                .collect();
+            (entity.clone(), kept)
+        })
+        .collect()
+}
+
 /// The actions under `actions:` in the access record's `text` that anyone
 /// may run.
 pub fn public_actions(text: &str) -> Vec<String> {

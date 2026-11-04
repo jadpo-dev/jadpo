@@ -59,6 +59,18 @@ fn notices(root: &Path) -> Vec<String> {
         .collect()
 }
 
+/// What `jadpo check --json` says of each notice, when it passes or not.
+fn notices_or_nothing(root: &Path) -> Vec<String> {
+    let output = jadpo(root, &["check", "--json"]);
+    let document: Value = serde_json::from_str(&output.stdout).expect("JSON");
+    document["data"]["notice_list"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|notice| notice["said"].as_str().unwrap_or("").to_string())
+        .collect()
+}
+
 fn public_create_and_update(root: &Path) {
     edit(
         root,
@@ -147,6 +159,156 @@ fn reads_and_signed_in_writes_are_no_notice() {
     update(&root);
     assert_eq!(notices(&root), Vec::<String>::new());
     assert!(!jadpo(&root, &["check"]).stdout.contains("(human)"));
+}
+
+const MEMBER: &str = "domains/lending/entities/member.jadpo";
+
+/// A migration for what changed, and the records.
+fn migrate(root: &Path) {
+    assert_eq!(jadpo(root, &["fmt"]).code, 0);
+    let migrated = jadpo(root, &["migrate", "new", "contact"]);
+    assert_eq!(migrated.code, 0, "{}", migrated.stdout);
+    update(root);
+}
+
+/// The record of who anyone may read, with `field` on `Member`.
+fn public_member(root: &Path, field: &str) {
+    edit(
+        root,
+        MEMBER,
+        "    policy: {\n        read: [id]\n    }",
+        &format!("{field}\n\n    policy: {{\n        read: [Access.public]\n    }}"),
+    );
+    migrate(root);
+}
+
+const READ: &str = "anyone can read `lending.Member.contact`, personal data, with no sign-in";
+
+/// A field typed `Email` is personal data with no mark, so the first record
+/// that lets anyone read one says so, until a commit holds it (chunk A20).
+#[test]
+fn a_new_projects_public_read_of_an_email_is_a_notice_for_a_person() {
+    let root = fresh("public-read");
+    public_member(&root, "    contact: Email?");
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    for words in [READ, "(human)"] {
+        assert!(
+            checked.stdout.contains(words),
+            "{words}\n{}",
+            checked.stdout
+        );
+    }
+    let found = data(&root);
+    let notice = &found["notice_list"][0];
+    assert_eq!(notice["subject"], "lending.Member");
+    assert_eq!(notice["kind"], "public_read");
+    assert_eq!(notice["said"], READ);
+    assert_eq!(notice["decides"], "human");
+    assert_eq!(notice["file"], "access.jadpo_record");
+
+    commit(&root, "The library");
+    assert_eq!(notices(&root), [format!("lending.Member: {READ}")]);
+    write(&root, "README.md", "The library.\n");
+    commit(&root, "Say what it is");
+    assert_eq!(notices(&root), Vec::<String>::new());
+}
+
+/// Any personal data counts as the report counts it, each field named.
+#[test]
+fn a_public_read_names_each_field_of_personal_data() {
+    let root = fresh("public-read-marks");
+    write(
+        &root,
+        "domains/lending/entities/visitor.jadpo",
+        "use lending/types { Handle }\n\nentity Visitor {\n    id: Uuid\n    contact: Email\n    phone: PhoneNumber\n    nickname: Handle {\n        personal: PersonalData.identifying\n    }\n    shelf: Handle\n\n    policy: {\n        read: [Access.public]\n    }\n\n    person: true\n}\n",
+    );
+    migrate(&root);
+    assert_eq!(
+        notices(&root),
+        [
+            "lending.Visitor: anyone can read `lending.Visitor.contact`, `lending.Visitor.nickname` and `lending.Visitor.phone`, personal data, with no sign-in"
+        ]
+    );
+}
+
+/// A field whose own list keeps it from anyone at all isn't read by them.
+#[test]
+fn a_field_kept_from_public_reads_is_no_notice() {
+    for narrowed in [
+        "    contact: Email? {\n        policy: FieldAccess.server_only\n    }",
+        "    contact: Email? {\n        policy: {\n            read: [id]\n        }\n    }",
+    ] {
+        let root = fresh("public-read-narrowed");
+        public_member(&root, narrowed);
+        assert_eq!(notices(&root), Vec::<String>::new(), "{narrowed}");
+    }
+}
+
+/// Signing in is still a sign-in: what a signed-in caller reads isn't said.
+#[test]
+fn personal_data_read_by_a_signed_in_caller_is_no_notice() {
+    let root = fresh("signed-in-read");
+    edit(
+        &root,
+        MEMBER,
+        "    policy: {\n        read: [id]\n    }",
+        "    contact: Email?\n\n    policy: {\n        read: [Access.authenticated]\n    }",
+    );
+    migrate(&root);
+    assert_eq!(notices(&root), Vec::<String>::new());
+}
+
+/// The change that adds the first says so though the record is old, and a
+/// widening stays judged as a decision, not a notice.
+#[test]
+fn a_later_first_public_read_is_a_notice_and_a_widening_is_judged() {
+    let root = library("later-public-read");
+    edit(
+        &root,
+        MEMBER,
+        "    policy: {\n        read: [id]\n    }",
+        "    contact: Email?\n\n    policy: {\n        read: [id]\n    }",
+    );
+    migrate(&root);
+    commit(&root, "Members can be written to");
+    edit(&root, MEMBER, "read: [id]", "read: [Access.public]");
+    update(&root);
+    assert_eq!(notices_or_nothing(&root), Vec::<String>::new());
+    assert!(
+        jadpo(&root, &["check"])
+            .stdout
+            .contains("PolicyChange.widened"),
+        "a widening is judged"
+    );
+
+    let root = library("later-first-public-read");
+    write(
+        &root,
+        "domains/lending/entities/visitor.jadpo",
+        "entity Visitor {\n    id: Uuid\n    contact: Email\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
+    );
+    migrate(&root);
+    assert_eq!(
+        notices(&root),
+        [
+            "lending.Visitor: anyone can read `lending.Visitor.contact`, personal data, with no sign-in"
+        ]
+    );
+}
+
+/// The approval report leads with it, as with a public write.
+#[test]
+fn the_approval_report_leads_with_a_public_read() {
+    let root = fresh("public-read-approval");
+    public_member(&root, "    contact: Email?");
+    let approved = jadpo(&root, &["approval"]);
+    assert_eq!(approved.code, 0, "{}", approved.stdout);
+    let report = fs::read_to_string(root.join("build/review/approval.md")).expect("the report");
+    assert!(
+        report.contains("Anyone can read `lending.Member.contact`, personal data, with no sign-in"),
+        "{report}"
+    );
 }
 
 /// What `jadpo new` writes lists an action anyone may run, which writes

@@ -146,7 +146,7 @@ commit>` compares with another. With `--json`, `data` holds the `layout`,
 the `root`, the `fileCount` and the `errors`, and any `notice_list`,
 `providers`, `per_instance` and `before`; `--full` lists the `files` and what it
 wrote to `build`. What a first commit holds that nothing can compare, such as a
-new project's public write, passes and is said as a notice for a person, in
+new project's public write or personal data anyone may read, passes and is said as a notice for a person, in
 `notice_list`
 ([What a first record holds](18-records-and-manifest.md#what-a-first-record-holds)).
 

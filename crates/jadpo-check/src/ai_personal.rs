@@ -11,8 +11,8 @@
 //!   the field is declared ([`mark_problem`]).
 //! - **The standard types' own categories** (area 19): a value of a type
 //!   that is personal data whatever holds it (an `NhsNumber`, a
-//!   `ChatMessage`), or one built on such a type, is its category, and so
-//!   is a field of one.
+//!   `ChatMessage`, an `Email`), or one built on such a type, is its
+//!   category, and so is a field of one.
 //! - **`ai: { personal_data: { allowed: } }`** lists the categories the
 //!   application's model may be sent ([`read_allowed`]); left out, it
 //!   allows none.
@@ -26,7 +26,7 @@ use jadpo_graph::TypeRef;
 use jadpo_syntax::ast::{self, AstNode};
 
 use crate::tree::{self, name_text, node_span};
-use crate::types::{Const, Def, FieldsBase, Ty, TypeView};
+use crate::types::{Const, Def, FieldsBase, Prim, Ty, TypeView};
 
 /// `personal:` on a field: its area 15 category.
 pub const PERSONAL: &str = "personal";
@@ -370,7 +370,7 @@ impl Holder {
             Holder::Field { host, field } => {
                 format!("`{}.{field}`", host.rsplit('.').next().unwrap_or(host))
             }
-            Holder::Type(ty) => format!("a `{ty}`"),
+            Holder::Type(ty) => a_type(ty),
         }
     }
 
@@ -383,6 +383,16 @@ impl Holder {
     }
 }
 
+/// A type as a sentence names one: `` a `NhsNumber` ``, `` an `Email` ``.
+pub fn a_type(ty: &str) -> String {
+    let word = if ty.starts_with(['A', 'E', 'I', 'O', 'U']) {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{word} `{ty}`")
+}
+
 /// What one holder is: its categories, and whether it is kept from
 /// every model.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -391,6 +401,10 @@ pub struct Holding {
     /// for the field's own `personal:`.
     pub categories: BTreeMap<String, Option<String>>,
     pub refused: bool,
+    /// The standard types that are personal data a field's type is or holds,
+    /// though its own `personal:` gave the category they would: what a report
+    /// names with the field rather than beside it.
+    pub of_types: BTreeSet<String>,
 }
 
 impl Holding {
@@ -401,6 +415,7 @@ impl Holding {
                 .or_insert_with(|| from.clone());
         }
         self.refused |= other.refused;
+        self.of_types.extend(other.of_types.iter().cloned());
     }
 
     fn is_empty(&self) -> bool {
@@ -432,7 +447,7 @@ pub fn field_holding(
             &mut found,
             &mut BTreeSet::new(),
         );
-        for inner in found.values() {
+        for (holder, inner) in &found {
             for (category, from) in &inner.categories {
                 holding
                     .categories
@@ -440,6 +455,9 @@ pub fn field_holding(
                     .or_insert_with(|| from.clone());
             }
             holding.refused |= inner.refused;
+            if let Holder::Type(ty) = holder {
+                holding.of_types.insert(ty.clone());
+            }
         }
     }
     (!holding.is_empty()).then_some(holding)
@@ -520,6 +538,11 @@ pub fn deep(
                 deep(lookup, marks, &def.declared, out, seen);
             }
         }
+        Ty::Prim(prim) => {
+            if let Some((name, category)) = builtin_category(*prim) {
+                standard(out, name, category);
+            }
+        }
         Ty::Variant(name, variant) => {
             for field in lookup
                 .variants(name)
@@ -539,8 +562,8 @@ pub fn deep(
 fn own_mark(marks: &Marks, host: &str, field: &str) -> Option<Holding> {
     let mark = marks.mark(host, field)?;
     let mut holding = Holding {
-        categories: BTreeMap::new(),
         refused: mark.refused,
+        ..Holding::default()
     };
     if let Some(category) = &mark.category {
         holding.categories.insert(category.clone(), None);
@@ -559,6 +582,23 @@ fn standard(out: &mut BTreeMap<Holder, Holding>, name: &str, category: &str) {
 /// whatever holds it (area 19).
 pub fn standard_category(name: &str) -> Option<&'static str> {
     jadpo_std::standard::standard_type(name).and_then(|entry| entry.personal())
+}
+
+/// The built-in type's name and category, when it is personal data whatever
+/// holds it: an `Email` is the one among them (area 15).
+fn builtin_category(prim: Prim) -> Option<(&'static str, &'static str)> {
+    let entry = jadpo_std::standard::of_builtin(prim)?;
+    Some((entry.name, entry.personal()?))
+}
+
+/// Whether a field of `ty` counts as marked `personal:` without saying so,
+/// for what erasure clears (area 15, "Marking personal fields"): it holds an
+/// email address. The other standard types that are personal data are hashed
+/// and followed as marked ones are, and are cleared only when marked.
+pub fn counts_as_marked(lookup: &dyn TypeView, ty: &Ty) -> bool {
+    standard_personal(lookup, ty)
+        .iter()
+        .any(|(name, _)| name == "Email" || name == "EmailWithName")
 }
 
 /// The standard types a value of `ty` is that are personal data whatever
@@ -590,6 +630,11 @@ fn shallow_ref(lookup: &dyn TypeView, ty: &TypeRef, out: &mut Vec<(String, Strin
         TypeRef::Map(key, value) => {
             shallow_ref(lookup, key, out, depth + 1);
             shallow_ref(lookup, value, out, depth + 1);
+        }
+        TypeRef::Builtin(prim) => {
+            if let Some((name, category)) = builtin_category(*prim) {
+                push(out, name, category);
+            }
         }
         TypeRef::Std(name, args) => {
             if let Some(category) = standard_category(name) {
@@ -624,6 +669,11 @@ fn shallow_ty(lookup: &dyn TypeView, ty: &Ty, out: &mut Vec<(String, String)>, d
         Ty::Map(key, value) => {
             shallow_ty(lookup, key, out, depth + 1);
             shallow_ty(lookup, value, out, depth + 1);
+        }
+        Ty::Prim(prim) => {
+            if let Some((name, category)) = builtin_category(*prim) {
+                push(out, name, category);
+            }
         }
         Ty::Named(name) | Ty::Opaque(name, _) => {
             if let Some(category) = standard_category(name) {

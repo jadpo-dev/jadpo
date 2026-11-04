@@ -1,0 +1,6 @@
+/// The reminder provider's package declares no call to erase an address, so each reminder's recipient stays with the provider until it lets it go.
+acceptance {
+    changes: {
+        reminder_mail: ErasureNotPossible.data_stays
+    }
+}

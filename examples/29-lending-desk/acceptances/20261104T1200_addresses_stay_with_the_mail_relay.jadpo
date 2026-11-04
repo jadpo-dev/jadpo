@@ -1,0 +1,6 @@
+/// The mail relay is reached with a driver, which has no call to erase an address, so what was sent stays in the relay's logs until they age out.
+acceptance {
+    changes: {
+        mail: ErasureNotPossible.data_stays
+    }
+}

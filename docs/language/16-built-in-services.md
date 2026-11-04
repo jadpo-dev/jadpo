@@ -1174,7 +1174,7 @@ value is copied into a history that the pages don't yet say how to keep
 or remove:
 
 - A field marked `personal:`, or of a standard type that is personal
-  data whatever holds it, such as a `PhoneNumber`. Its history will keep
+  data whatever holds it, such as a `PhoneNumber` or an `Email`. Its history will keep
   it as a keyed hash, as logs do
   ([Marked fields in logs](15-personal-data.md#marked-fields-in-logs)),
   so the history shows that an email changed, not what it was.

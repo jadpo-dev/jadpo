@@ -472,7 +472,7 @@ impl Unerased {
             .take(MOST)
             .map(|holder| match holder {
                 Holder::Field { host, field } => format!("`{host}.{field}`"),
-                Holder::Type(ty) => format!("a `{ty}`"),
+                Holder::Type(ty) => crate::ai_personal::a_type(ty),
             })
             .collect();
         if self.holders.len() > MOST {

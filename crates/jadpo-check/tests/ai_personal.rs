@@ -256,6 +256,30 @@ fn a_field_kept_from_models_is_refused() {
     );
 }
 
+/// An email address is `contact` data with no mark (chunk A20), so a model
+/// is sent one only where `ai:` lists `contact`.
+#[test]
+fn an_email_address_is_contact_data_with_no_mark() {
+    let prompt = (
+        "domains/clinic/prompts/check_number.jadpo",
+        "/// Checks an address.\ntype CheckNumber = Prompt {\n    number: Email\n}\n",
+    );
+    let ask = format!(
+        "use clinic/failures {{ SummaryUnavailable }}\nuse clinic/prompts {{ CheckNumber }}\nuse clinic/types {{ NoteSummary }}\n\n/// Asks about an address.\naction ask_about(number: Email) fails SummaryUnavailable -> NoteSummary {{\n    return attempt ai.generate(CheckNumber {{ number: number }}, as: NoteSummary) {{\n{ARMS}    }}\n}}\n"
+    );
+    let files = [
+        prompt,
+        ("domains/clinic/actions/ask_about.jadpo", ask.as_str()),
+    ];
+    assert_eq!(problems(&["contact"], &files), NONE);
+    assert_eq!(
+        problems(&[], &files),
+        [
+            "domains/clinic/actions/ask_about.jadpo semantic.ai_personal_data_not_allowed: an `Email` reaches a model, and `ai:` doesn't allow `contact` data"
+        ]
+    );
+}
+
 /// A standard type that is personal data whatever holds it is its
 /// category wherever it goes: an `NhsNumber` is `health`, and a
 /// conversation is `health` too.

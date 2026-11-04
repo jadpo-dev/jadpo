@@ -9,7 +9,7 @@ stays when they are erased, because the law makes you keep it. Every other
 marked field is cleared whatever you write, and the whole record is deleted
 when nothing stays. So `Erasure.deleted` and `Erasure.anonymised` there
 say nothing erasure doesn't already do. A field that isn't marked
-`personal:` stays anyway, and `Erasure.retained` on it would keep the
+`personal:` or typed `Email` stays anyway, and `Erasure.retained` on it would keep the
 person's record for no reason.
 
 An entity that keeps a record this way can't have a reference that deletes

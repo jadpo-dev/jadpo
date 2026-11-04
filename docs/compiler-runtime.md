@@ -908,11 +908,21 @@ closed: by exact host and whole path parts, with an address it can't tell
 apart from someone else's under nothing (area 11, "Installing safely").
 This graph diff runs in tests.
 
+**An email address is personal data** (chunk A20, area 15). `Email` is in
+`contact::PERSONAL`, and `ai_personal::builtin_category` reads a built-in type's
+category where `deep` and `shallow` walk, so every check that follows a standard
+type that is personal data follows it. `ai_personal::counts_as_marked` is what
+erasure adds to `personal:` for what it clears; `persons::personal_problems` still
+reads only `personal:`. `personal_data::sent` names a standard type with a field of
+that type at the same exit, through `Holding::of_types`.
+
 **What a first record holds** (chunk A15, area 18). `acceptances::first::notice_list`
 runs the record comparisons against an empty before side while nothing compares
 them, keeping the kinds that are a decision even as a project's first, adds each
 public write read from today's access record (an action's through
-`policy::reach::writes`, which follows its calls) and each connection
+`policy::reach::writes`, which follows its calls), each entity whose personal data
+anyone may read (`first::public_reads`, chunk A20, by `compare::public_reads` and
+`ai_personal::field_holding`) and each connection
 `provider_erasure::unerased` lists, and drops what is judged anyway or a reasoned
 acceptance names. `jadpo check` shows them through `check::notice_blocks` once it
 otherwise passes, with `notice_list` in its `--json`, and `approval::Report` leads

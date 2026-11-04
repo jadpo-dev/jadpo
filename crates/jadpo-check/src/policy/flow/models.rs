@@ -350,23 +350,33 @@ impl Held {
                 .or_insert_with(|| from.clone());
         }
         entry.0.refused |= holding.refused;
+        entry.0.of_types.extend(holding.of_types.iter().cloned());
         entry.1 &= decided;
     }
 
     /// A standard type a marked field is of is reported with the field.
     pub(super) fn fold_types(&mut self) {
-        let with_fields: BTreeSet<(String, String)> = self
-            .0
-            .iter()
-            .filter(|(holder, _)| matches!(holder, Holder::Field { .. }))
-            .flat_map(|(_, (holding, _))| holding.categories.iter())
+        let fields = || {
+            self.0
+                .iter()
+                .filter(|(holder, _)| matches!(holder, Holder::Field { .. }))
+                .map(|(_, (holding, _))| holding)
+        };
+        let with_fields: BTreeSet<(String, String)> = fields()
+            .flat_map(|holding| holding.categories.iter())
             .filter_map(|(category, from)| Some((from.clone()?, category.clone())))
             .collect();
+        let of_fields: BTreeSet<String> = fields()
+            .flat_map(|holding| holding.of_types.iter().cloned())
+            .collect();
         self.0.retain(|holder, (holding, _)| match holder {
-            Holder::Type(ty) => !holding
-                .categories
-                .keys()
-                .all(|category| with_fields.contains(&(ty.clone(), category.clone()))),
+            Holder::Type(ty) => {
+                !of_fields.contains(ty)
+                    && !holding
+                        .categories
+                        .keys()
+                        .all(|category| with_fields.contains(&(ty.clone(), category.clone())))
+            }
             Holder::Field { .. } => true,
         });
     }

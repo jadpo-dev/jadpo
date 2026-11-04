@@ -4,7 +4,7 @@
 keep it for a year. It goes on a `GET` anyone may call, answering 200, and what
 the route runs can't give personal data, since no erasure reaches a public
 cache: a field marked `personal:`, or a standard type that is personal data
-whatever holds it, such as `PhoneNumber`, on a field with no mark or as the output's
+whatever holds it, such as `PhoneNumber` or `Email`, on a field with no mark or as the output's
 own type ([What the compiler checks](../language/15-personal-data.md#what-the-compiler-checks)).
 `immutable` is the one thing `cache:` says.
 

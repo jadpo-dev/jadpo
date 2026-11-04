@@ -461,7 +461,7 @@ Anything else is `route.cache_invalid`:
   can't say it holds any. It counts as
   [the personal-data report](15-personal-data.md#where-personal-data-goes)
   counts: a field marked `personal:`, and a standard type that is personal data
-  whatever holds it, such as `PhoneNumber`, on a field with no mark as much as on its
+  whatever holds it, such as `PhoneNumber` or `Email`, on a field with no mark as much as on its
   own ([What the compiler checks](15-personal-data.md#what-the-compiler-checks)).
 
 OpenAPI says `x-jadpo-cache: immutable` on the operation and lists the header

@@ -207,6 +207,63 @@ fn a_marked_field_of_a_record_kept_without_the_person_can_be_none() {
     assert_eq!(rules(&project(&[USER, RECORDS])), CLEAN);
 }
 
+/// A field typed `Email` counts as `PersonalData.contact` without saying so
+/// (area 15, "Marking personal fields"), so erasure clears it as it does a
+/// marked field, and it has to be able to be `none`.
+#[test]
+fn an_email_on_a_record_kept_without_the_person_can_be_none() {
+    let kept = |ty: &str| {
+        RECORDS.replace(
+            "    body: Caption\n",
+            &format!("    body: Caption\n    reply_to: {ty}\n"),
+        )
+    };
+    assert_eq!(
+        problems(&project(&[USER, &kept("Email")])),
+        ["main.jadpo data.erase_field_required: Erasing a `User` can't clear `Comment.reply_to`"]
+    );
+    assert_eq!(
+        problems(&project(&[USER, &kept("EmailWithName")])),
+        ["main.jadpo data.erase_field_required: Erasing a `User` can't clear `Comment.reply_to`"]
+    );
+    let source = project(&[USER, &kept("Email?")]);
+    assert_eq!(rules(&source), CLEAN);
+    let source = with_settings(&source);
+    let db = Database::default();
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", source.as_str())]);
+    let erasures = jadpo_check::erasure::erasures(&db, project);
+    let comment = erasures.people["User"]
+        .kept
+        .iter()
+        .find(|kept| kept.entity == "Comment")
+        .expect("kept");
+    assert_eq!(comment.clears, ["reply_to", "signature"]);
+}
+
+/// An `Email` of a person's own kept record goes with the other marked
+/// fields, and can say it stays, though nothing marks it.
+#[test]
+fn a_persons_own_email_is_cleared_without_a_mark() {
+    let unmarked = |ty: &str, settings: &str| {
+        CUSTOMER.replace(
+            "email: Email? {\n        personal: PersonalData.contact\n    }",
+            &format!("email: {ty}{settings}"),
+        )
+    };
+    assert_eq!(rules(&unmarked("Email?", "")), CLEAN);
+    assert_eq!(
+        problems(&unmarked("Email", "")),
+        ["main.jadpo data.erase_field_required: Erasing a `Customer` can't clear `Customer.email`"]
+    );
+    assert_eq!(
+        rules(&unmarked(
+            "Email",
+            " {\n        erase: Erasure.retained\n    }"
+        )),
+        CLEAN
+    );
+}
+
 #[test]
 fn a_record_kept_as_it_is_has_a_retention_of_its_own() {
     let forever = RECORDS.replace(

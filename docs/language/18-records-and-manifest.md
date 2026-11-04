@@ -598,7 +598,7 @@ costs one build per base commit.
 
 A first commit has nothing to compare with, so what would need a person on any
 later change passes unseen. The first of all is a new project's public create,
-update or delete. So `jadpo check` says what such a first record holds, marked
+update or delete, and personal data anyone may read. So `jadpo check` says what such a first record holds, marked
 `(human)`, and [the approval report](17-debugging-and-review.md#reviewing-a-change)
 leads with it. It is a notice and not an error, and `check` still passes: it is
 a decision, not a vulnerability, since an app may mean it (Richard, 2026-11-03).
@@ -630,6 +630,7 @@ commit holds it, it goes: from then on it is compared.
 | Said | Kind | Goes once |
 |---|---|---|
 | A create, update or delete anyone may make, or an action listed for anyone that creates, changes or deletes records, itself or through what it calls | `public_write` | A commit holds it |
+| [Personal data](15-personal-data.md#marking-personal-fields) anyone may read, with no sign-in: a field marked `personal:`, or of a standard type that is personal data such as an `Email`, on an entity whose `read:` lists `Access.public`, unless its own `policy:` keeps it from them | `public_read` | A commit holds it |
 | A connection that receives personal data and can't erase it ([Erasure at providers](15-personal-data.md#erasure-at-providers)) | `ErasureNotPossible.data_stays` | An acceptance lists it with a reason: the next change is refused until one does, since this kind says how things stand |
 | A security rule declined | `PolicyChange.<rule>_declined` | A commit holds it |
 | A sign-in setting past its limit | `PolicyChange.sign_in_loosened` | A commit holds it |
@@ -641,7 +642,20 @@ commit holds it, it goes: from then on it is compared.
 A public write has no acceptance to write, since a new entity's grants need
 none. So its notice is for the first record holding one, however old the
 record: the change that adds the first entity anyone may write to says so, and
-a later one is the diff's to show. A widening that lets anyone in is judged as
+a later one is the diff's to show. A public read of personal data goes the same
+way:
+
+```text
+◆ anyone can read `shop.Customer.email`, personal data, with no sign-in  not compared
+    access.jadpo_record:7
+```
+
+It is the grant that is said, whether or not a route reads it yet, since
+[a public read](09-policy.md#anyone-signed-in-or-anyone) needs both and a route
+added later is nothing new to anyone reading the record. Each field is named,
+and which are personal data is what the
+[report](15-personal-data.md#where-personal-data-goes) counts today. A widening
+that lets anyone in is judged as
 ever, as a decision rather than a notice. A reason already in the project for
 one of the kinds in the table says it was decided, so it isn't said again.
 
@@ -652,8 +666,8 @@ The other kinds have no such gap. Removing or changing something (`ApiChange`,
 `DataChange` is judged even so. The first grants, roles, listed actions and
 domains (`PolicyChange.widened`, `.role_requirements_changed`,
 `.listing_added`, `DomainChange.created`) are what a project is made of, so
-listing them would list the whole project; a public write is the one among them
-that is said.
+listing them would list the whole project; a public write, and a public read of
+personal data, are the ones among them that are said.
 
 `jadpo check` reads the before side's records and acceptances from git,
 and the names of its domains, and compares them with the records today's

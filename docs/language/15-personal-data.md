@@ -43,7 +43,7 @@ is the one fact Jadpo asks you to write down.
 
 | Capability | What you write | What the compiler does | Built yet |
 |---|---|---|---|
-| Marking | `personal:` on a field | Hashes it in logs, lists it in the report | Partly: read for the AI check and the report's connections, and checked that erasure can find it; nothing hashes it |
+| Marking | `personal:` on a field; nothing on an `Email`, which is `contact` already | Hashes it in logs, lists it in the report | Partly: read for the AI check and the report's connections, and checked that erasure can find it; nothing hashes it |
 | The person | `person: true` on an entity | Finds every record that belongs to them | Yes |
 | Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache | Partly: in the person's store, files' bytes and the person's own record kept field by field included; not yet another store |
 | Export | nothing | Generates `User.export(id)` | No: `toolchain.not_built_yet` |
@@ -55,8 +55,9 @@ is the one fact Jadpo asks you to write down.
 
 A field that identifies or describes a person says so in its block, with
 `personal:` and one category from a fixed list. The category decides how
-carefully the compiler treats the value. Here a user's email is contact
-data and their display name identifies them:
+carefully the compiler treats the value. Here a user's display name
+identifies them, and their email address is contact data without saying so
+([An email address needs no mark](#an-email-address-needs-no-mark)):
 
 ```jadpo fragment
 // domains/accounts/entities/user.jadpo
@@ -64,7 +65,6 @@ entity User {
     id: Uuid
     email: Email {
         unique: true
-        personal: PersonalData.contact
     }
     display_name: DisplayName {
         personal: PersonalData.identifying
@@ -119,9 +119,39 @@ app's own object, input or output carries no mark
 (`type.unknown_setting`): it holds what a marked field gave it, and
 Jadpo follows the value back to that field.
 
+### An email address needs no mark
+
+A field typed `Email`, a type built on it, or an `EmailWithName`, counts as
+`PersonalData.contact` without saying so, and so does a value of one wherever
+it goes:
+
+- It is hashed in logs, and [the report](#where-personal-data-goes) lists each
+  connection it reaches, the address an email is sent to among them. A
+  connection that can't erase it needs
+  [an acceptance](#erasure-at-providers).
+- A model is sent one only where `ai: { personal_data: { allowed: } }` lists
+  `PersonalData.contact`
+  ([Personal data sent to a model](21-ai.md#personal-data-sent-to-a-model)),
+  [a public cache](07-http.md#answers-that-never-change) can't keep one, and an
+  [audited entity](16-built-in-services.md#audit-trail) can't hold one yet.
+- Erasure clears it as it clears a marked field, so on a record erasure keeps
+  it is written `Email?`, or says `erase: Erasure.retained` on a person's own
+  record ([Erasure](#erasure)).
+- [The first record](18-records-and-manifest.md#what-a-first-record-holds) that
+  lets anyone read one, with no sign-in, says so to a person.
+
+A business's own address is an `Email` too, and there is no mark that says one
+isn't personal data. Nothing here stops one being kept: an entity erasing a
+person never reaches may hold it, as a shop may hold its own phone number
+([What the compiler checks](#what-the-compiler-checks)). It is listed as any
+other is, a person reads the notice and goes on, and a connection it reaches
+takes a one-line acceptance. A category written on one, `personal:
+PersonalData.contact` or any other, is read as on any field.
+
 ### Marked fields in logs
 
-A marked field is written to logs as a keyed hash, whatever its type. So a
+A marked field is written to logs as a keyed hash, whatever its type, and so
+is an `Email` with no mark. So a
 marked `date_of_birth: CalendarDate` is hashed, though
 [logs](04-failures.md#logging) otherwise show dates and numbers as
 values, and so is a marked field in a failure's context. The marking, not
@@ -244,7 +274,8 @@ and the compiler refuses an erasure it can't complete.
 | `Erasure.retained` | Kept as it is until its own retention ends; only the reference is cleared | the reference nullable, and `retention:` on the entity |
 
 A marked field is one with a `personal:` setting, which says it holds
-personal data ([Marking personal fields](#marking-personal-fields)). A
+personal data, or one typed `Email`, which holds it without saying so
+([Marking personal fields](#marking-personal-fields)). A
 record that belongs to someone else too keeps its marked fields until
 the last of its people is erased
 ([Records that belong to several people](#records-that-belong-to-several-people)). A
@@ -1245,9 +1276,10 @@ and no purge is listed in the report as "kept until erased".
   or to mark the entity `person: true`. A field is marked here only by
   its `personal:`: a
   standard type that is personal data whatever holds it, such as a
-  `PhoneNumber`, is hashed in logs and its reads recorded, but a shop's
-  own phone number doesn't make the shop a person. With the completeness
-  check above, every stored copy of personal data can be reached.
+  `PhoneNumber` or an `Email`, is hashed in logs and its reads recorded, but
+  a shop's own phone number or address doesn't make the shop a person. With
+  the completeness check above, every stored copy of what is marked can be
+  reached.
 - **What leaves can be erased.** A connection that receives personal data
   and can't erase it needs a person's acceptance
   ([Erasure at providers](#erasure-at-providers),
@@ -1259,10 +1291,14 @@ and no purge is listed in the report as "kept until erased".
   one leaves those fields out.
 - **A public cache keeps no personal data.** A route saying `cache: immutable`
   can't give a marked field, sensitive or not, or a standard type that is
-  personal data, such as `PhoneNumber`, marked or not, directly or through what it
+  personal data, such as `PhoneNumber` or `Email`, marked or not, directly or through what it
   calls ([`route.cache_invalid`](../errors/route.cache_invalid.md)), since no
   erasure reaches a copy a CDN holds. It counts what
   [the report](#where-personal-data-goes) counts.
+- **A person decides what anyone may read.** Personal data on an entity whose
+  `read:` lists `Access.public` has nothing to compare with in a project's first
+  record, so it is a notice for a person, and `check` still passes
+  ([What a first record holds](18-records-and-manifest.md#what-a-first-record-holds)).
 - **Retention can be carried out.** A field's retention clears a field
   that can be `none` and that no lifecycle owns or reads, an entity's
   deletes records nothing `restricted` holds, and every period is a
