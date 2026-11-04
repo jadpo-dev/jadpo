@@ -389,11 +389,7 @@ What the Reddit thread found (Richard, 2026-11-03):
   A20 (Richard, 2026-11-04), as are all of D17: the 18 "What is built" rows
   saying Built of what isn't fully built become Partly built, and a check
   keeps them so.
-- [ ] **D17b The reference's manifest** `opus · high`: one file in the
-  language repository places every topic in ten groups (Language, Data,
-  APIs, Background work, Built-in services, External services,
-  Configuration, Testing, Tools, Errors) and builds the sidebar, landing
-  pages and `llms.txt`. Area files and numbers stay; old addresses redirect.
+- [x] **D17b The reference's manifest**: `docs/reference.toml` and its check; docs/documentation.md, "The reference's manifest".
 - [ ] **D17c The navigation designed** `opus · high` **needs a maintainer**
   to look at the canvas once: sidebar, mobile menu, status marks, landing
   pages, reference home, types index, guides index, search results.
