@@ -137,7 +137,7 @@ on each change that needs a person's acceptance and has none
 ([Review and sign-off](#review-and-sign-off)); `--before <branch or
 commit>` compares with another. What a first commit holds that nothing can
 compare, such as a new project's public write, passes and is said as a notice
-for a person, `notices` in its `--json`
+for a person, `notice_list` in its `--json`
 ([What a first record holds](18-records-and-manifest.md#what-a-first-record-holds)).
 
 ### `jadpo fmt`

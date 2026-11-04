@@ -57,7 +57,7 @@ impl Notice {
 /// What this change holds that nothing compared; empty with a before side
 /// that holds it, and outside git, where no change is being reviewed.
 #[salsa::tracked(returns(ref))]
-pub fn notices(db: &dyn Db, project: Project) -> Vec<Notice> {
+pub fn notice_list(db: &dyn Db, project: Project) -> Vec<Notice> {
     if project.layout(db) != Layout::Project {
         return Vec::new();
     }
@@ -68,12 +68,12 @@ pub fn notices(db: &dyn Db, project: Project) -> Vec<Notice> {
     };
     let mut out = Vec::new();
     if let Some(Some(now)) = access::record_text(db, project) {
-        access_notices(db, project, side, now, &mut out);
+        from_access(db, project, side, now, &mut out);
     }
     if let Some(Some(now)) = network::record_text(db, project)
         && side.is_none_or(|side| network_before(side).is_none())
     {
-        network_notices(now, &mut out);
+        from_network(now, &mut out);
     }
     if side.is_none() {
         let now = written(db, project, jadpo_db::LOCK).unwrap_or_default();
@@ -81,7 +81,7 @@ pub fn notices(db: &dyn Db, project: Project) -> Vec<Notice> {
         let mut found = Vec::new();
         compare::lock(jadpo_db::LOCK, "", &now, own, &mut found);
         out.extend(found.iter().map(|need| from_need(need, &now)));
-        erasure_notices(db, project, &mut out);
+        from_erasure(db, project, &mut out);
     }
     // What is judged is said as a decision, and what a person has given a
     // reason for is decided.
@@ -125,7 +125,7 @@ fn line_of(text: &str, heading: &str) -> Option<i64> {
         .map(|at| at as i64 + 1)
 }
 
-fn access_notices(
+fn from_access(
     db: &dyn Db,
     project: Project,
     side: Option<&BeforeSide>,
@@ -232,7 +232,7 @@ fn public_actions(db: &dyn Db, project: Project, text: &str) -> Vec<String> {
 /// Each connection that reaches an outside host. The app's own database and
 /// cache aren't a decision at first: every app has them, and what leaves goes
 /// to a host someone else runs.
-fn network_notices(now: &str, out: &mut Vec<Notice>) {
+fn from_network(now: &str, out: &mut Vec<Notice>) {
     let own_stores: BTreeSet<String> = compare::entries(now, &format::NETWORK)
         .into_iter()
         .filter(|entry| {
@@ -260,7 +260,7 @@ fn network_notices(now: &str, out: &mut Vec<Notice>) {
 /// Each connection that keeps personal data after a person is erased: read
 /// from what the app sends, as [`super::erasure_needs`] reads it once there
 /// is a before side.
-fn erasure_notices(db: &dyn Db, project: Project, out: &mut Vec<Notice>) {
+fn from_erasure(db: &dyn Db, project: Project, out: &mut Vec<Notice>) {
     use crate::provider_erasure::{self, DATA_STAYS};
     if !provider_erasure::clean(db, project) {
         return;

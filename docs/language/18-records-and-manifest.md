@@ -623,7 +623,7 @@ itself, a project new since its base) and, for what a record holds, while the
 before side has no such record, as when `access.jadpo_record` arrives with this
 change. Outside git nothing is being reviewed, so nothing is said, as with
 `before none`. It is said only once `check` otherwise passes, since an agent's
-errors come first, and `--json` gives each as `notices`: its `subject`, its
+errors come first, and `--json` gives each in `notice_list`: its `subject`, its
 `kind`, what it `said`, `decides: human`, and its `file` and `line`. Once a
 commit holds it, it goes: from then on it is compared.
 
@@ -917,7 +917,7 @@ Every command takes `--json`, and `jadpo help --json` describes them all
 | Rename anything | `jadpo rename <old> <new>` | The registry gains one line |
 | What did my change do? | `jadpo approval --json` | Decisions first |
 | A change needs a person | `jadpo acceptance new <purpose>` | Stop and hand over |
-| A check passes with `notices` | Tell a person what each says | They decide whether the app means it ([What a first record holds](#what-a-first-record-holds)) |
+| A check passes with a `notice_list` | Tell a person what each says | They decide whether the app means it ([What a first record holds](#what-a-first-record-holds)) |
 | Look something up | `jadpo inspect <name> --json` | One node from the manifest |
 | Upgrade a package | `jadpo package update <name>` | Fix compile errors, then as above |
 | Explain a production event | `jadpo incident <event>` | `jadpo test new --from-event` |

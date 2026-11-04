@@ -199,7 +199,7 @@ pub(crate) fn reported(
         _ => None,
     };
     // What a first record holds that a person decides (area 18, chunk A15).
-    let notices = jadpo_check::acceptances::first::notices(db, loaded.project);
+    let notice_list = jadpo_check::acceptances::first::notice_list(db, loaded.project);
     let not_judged = match loaded.project.before(db) {
         jadpo_db::Before::Nothing(reason) if layout == Layout::Project => {
             Some(format!("none, so acceptances aren't judged: {reason}"))
@@ -226,16 +226,16 @@ pub(crate) fn reported(
         root,
         &paths,
         loaded.unreadable.len(),
-        (layout, written, reviews, &per_instance, notices),
+        (layout, written, reviews, &per_instance, notice_list),
         (elapsed, failed, before, not_judged),
     )
 }
 
-/// What a person reads of `notices`: each thing nothing compared, then that
+/// What a person reads of `notice_list`: each thing nothing compared, then that
 /// it is theirs to decide. `jadpo check` shows them once it passes, and the
 /// approval report leads with them.
-pub(crate) fn notice_blocks(notices: &[Notice]) -> Vec<Block> {
-    let (one, heading) = match notices.len() {
+pub(crate) fn notice_blocks(notice_list: &[Notice]) -> Vec<Block> {
+    let (one, heading) = match notice_list.len() {
         0 => return Vec::new(),
         1 => (true, "1 decision compared with nothing".to_string()),
         n => (false, format!("{n} decisions compared with nothing")),
@@ -243,7 +243,7 @@ pub(crate) fn notice_blocks(notices: &[Notice]) -> Vec<Block> {
     vec![
         Block::Decisions {
             heading,
-            rows: notices
+            rows: notice_list
                 .iter()
                 .map(|notice| DecisionRow {
                     decided: false,
@@ -273,9 +273,9 @@ pub(crate) fn notice_blocks(notices: &[Notice]) -> Vec<Block> {
     ]
 }
 
-/// `notices` as `--json` gives them.
-fn notices_json(notices: &[Notice]) -> Json {
-    Json::array(notices.iter().map(|notice| {
+/// `notice_list` as `--json` gives it.
+fn notice_list_json(notice_list: &[Notice]) -> Json {
+    Json::array(notice_list.iter().map(|notice| {
         Json::object([
             ("subject", notice.subject.as_str().into()),
             ("kind", notice.kind.as_str().into()),
@@ -426,7 +426,7 @@ fn report(
     root: Option<String>,
     paths: &[&String],
     unreadable: usize,
-    (layout, written, reviews, per_instance, notices): (
+    (layout, written, reviews, per_instance, notice_list): (
         Layout,
         Vec<String>,
         &[jadpo_check::review::ProviderReview],
@@ -438,7 +438,7 @@ fn report(
     let errors = diagnostics.len();
     // With errors the agent's work comes first: a person is asked once it
     // passes.
-    let notices = if errors == 0 { notices } else { &[] };
+    let notice_list = if errors == 0 { notice_list } else { &[] };
     let mut facts = Vec::new();
     if errors > 0 {
         facts.push(Fact::problem(count(errors, "error", "errors")));
@@ -474,7 +474,7 @@ fn report(
             screen.push(per_instance_block(per_instance));
         }
     }
-    for block in notice_blocks(notices) {
+    for block in notice_blocks(notice_list) {
         screen.push(block);
     }
     if let Some(said) = &not_judged {
@@ -505,7 +505,7 @@ fn report(
                 ])
             })),
         ),
-        ("notices", notices_json(notices)),
+        ("notice_list", notice_list_json(notice_list)),
     ]);
     if let (Some(before), Json::Object(fields)) = (before, &mut data) {
         fields.push(("before".to_string(), before));

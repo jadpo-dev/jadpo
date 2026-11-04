@@ -44,9 +44,9 @@ fn data(root: &Path) -> Value {
 
 /// What `jadpo check --json` says of each notice, `subject: said`.
 fn notices(root: &Path) -> Vec<String> {
-    data(root)["notices"]
+    data(root)["notice_list"]
         .as_array()
-        .expect("notices")
+        .expect("notice_list")
         .iter()
         .map(|notice| {
             format!(
@@ -102,7 +102,7 @@ fn a_new_projects_public_write_is_a_notice_for_a_person() {
     assert!(said < checked.stdout.find("checked").expect("the summary"));
 
     let found = data(&root);
-    let notice = &found["notices"][0];
+    let notice = &found["notice_list"][0];
     assert_eq!(notice["subject"], "lending.Book");
     assert_eq!(notice["kind"], "public_write");
     assert_eq!(notice["said"], PUBLIC);
@@ -304,7 +304,7 @@ fn a_widening_is_a_decision_rather_than_a_notice() {
     let output = jadpo(&root, &["check", "--json"]);
     let document: Value = serde_json::from_str(&output.stdout).expect("JSON");
     assert_eq!(document["ok"], false, "{}", output.stdout);
-    assert_eq!(document["data"]["notices"], serde_json::json!([]));
+    assert_eq!(document["data"]["notice_list"], serde_json::json!([]));
     assert_eq!(
         document["diagnostics"][0]["rule"], "acceptance.missing",
         "{}",
@@ -366,9 +366,9 @@ fn what_else_a_first_commit_passes_unseen_says_so() {
         "{found:#?}"
     );
     let report = data(&root);
-    let kinds: Vec<&str> = report["notices"]
+    let kinds: Vec<&str> = report["notice_list"]
         .as_array()
-        .expect("notices")
+        .expect("notice_list")
         .iter()
         .filter_map(|notice| notice["kind"].as_str())
         .collect();
@@ -468,8 +468,8 @@ fn the_approval_report_leads_with_a_notice() {
         &fs::read_to_string(root.join("build/review/approval.json")).expect("the twin"),
     )
     .expect("JSON");
-    assert_eq!(json["notices"][0]["subject"], "lending.Log");
-    assert_eq!(json["notices"][0]["decides"], "human");
+    assert_eq!(json["notice_list"][0]["subject"], "lending.Log");
+    assert_eq!(json["notice_list"][0]["decides"], "human");
 }
 
 /// With no commit there is no before side to build, so the report holds what
@@ -499,6 +499,6 @@ fn with_no_commit_the_report_is_what_nothing_compared() {
         &fs::read_to_string(root.join("build/review/approval.json")).expect("the twin"),
     )
     .expect("JSON");
-    assert_eq!(json["notices"][0]["subject"], "lending.Book");
+    assert_eq!(json["notice_list"][0]["subject"], "lending.Book");
     assert_eq!(json["before"]["not_judged_because"], "no commit yet");
 }

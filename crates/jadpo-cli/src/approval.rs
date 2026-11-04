@@ -94,7 +94,7 @@ pub fn approval(call: &Call) -> Reply {
             );
         }
         Before::Nothing(reason) => {
-            if jadpo_check::acceptances::first::notices(db, project).is_empty() {
+            if jadpo_check::acceptances::first::notice_list(db, project).is_empty() {
                 return Reply::failed(nothing_to_compare(reason));
             }
             if !blocking.is_empty() {
@@ -236,7 +236,7 @@ fn count(n: usize, one: &str) -> String {
 /// What the terminal shows of `report`.
 fn screen(report: &Report) -> Screen {
     let mut screen = Screen::new();
-    for block in crate::check::notice_blocks(&report.notices) {
+    for block in crate::check::notice_blocks(&report.notice_list) {
         screen.push(block);
     }
     if let Some(reason) = &report.not_compared {

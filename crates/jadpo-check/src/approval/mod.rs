@@ -258,9 +258,9 @@ pub struct Report {
     /// built with errors leaves out what couldn't be resolved.
     pub base_errors: i64,
     /// What a first record holds that a person decides, which leads.
-    pub notices: Vec<Notice>,
+    pub notice_list: Vec<Notice>,
     /// Why there is no before side, when there is none: the report then
-    /// holds [`Self::notices`] alone.
+    /// holds [`Self::notice_list`] alone.
     pub not_compared: Option<String>,
     pub decisions: Vec<Decision>,
     /// The records the before side doesn't have, whose changes are
@@ -386,7 +386,7 @@ pub fn report(
     Report {
         base,
         base_errors: was.errors,
-        notices: acceptances::first::notices(db, project).clone(),
+        notice_list: acceptances::first::notice_list(db, project).clone(),
         not_compared: None,
         decisions,
         not_judged: acceptances::introduced(db, project)
@@ -409,7 +409,7 @@ pub fn first_report(db: &dyn Db, project: Project, reason: &str) -> Report {
             commit: String::new(),
         },
         base_errors: 0,
-        notices: acceptances::first::notices(db, project).clone(),
+        notice_list: acceptances::first::notice_list(db, project).clone(),
         not_compared: Some(reason.to_string()),
         decisions: Vec::new(),
         not_judged: Vec::new(),
@@ -1356,9 +1356,9 @@ fn json(report: &Report) -> Value {
     }
     out.set("before", before);
     out.set(
-        "notices",
+        "notice_list",
         report
-            .notices
+            .notice_list
             .iter()
             .map(|notice| {
                 let mut entry = Value::object();

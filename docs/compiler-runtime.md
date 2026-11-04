@@ -906,14 +906,14 @@ closed: by exact host and whole path parts, with an address it can't tell
 apart from someone else's under nothing (area 11, "Installing safely").
 This graph diff runs in tests.
 
-**What a first record holds** (chunk A15, area 18). `acceptances::first::notices`
+**What a first record holds** (chunk A15, area 18). `acceptances::first::notice_list`
 runs the record comparisons against an empty before side while nothing compares
 them, keeping the kinds that are a decision even as a project's first, adds each
 public write read from today's access record (an action's through
 `policy::reach::writes`, which follows its calls) and each connection
 `provider_erasure::unerased` lists, and drops what is judged anyway or a reasoned
 acceptance names. `jadpo check` shows them through `check::notice_blocks` once it
-otherwise passes, with `notices` in its `--json`, and `approval::Report` leads
+otherwise passes, with `notice_list` in its `--json`, and `approval::Report` leads
 with them; `approval::first_report` is the report of them alone when there is no
 before side to build.
 
