@@ -530,6 +530,8 @@ of them is a compile error naming the feature.
 ## Files
 <!-- topic: files -->
 
+[Export records to a file](../guides/18-export-records-to-a-file.md) writes a file your app makes, start to finish.
+
 To store a file, such as a user's avatar, give an entity a field of type
 `File`. The record holds the file's key, name, size and type. The bytes
 live in a connection that provides the `files` capability: the built-in

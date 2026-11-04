@@ -18,6 +18,7 @@ instead.
 | [Add sign-in](05-add-sign-in.md) | sign-in by emailed link and with Google, and routes that know who is calling |
 | [Call an outside API](06-call-an-outside-api.md) | a typed description of another service, called through a connection and faked in tests |
 | [Run background work](07-run-background-work.md) | a schedule that starts a batch, an event with its subscriber, and a test of the whole run |
+| [Export records to a file](18-export-records-to-a-file.md) | a query's records written to a spreadsheet-safe CSV in the background, with its run tracked on a record |
 | [Write tests](08-write-tests.md) | action and route tests, fixtures, a fixed clock and tests signed in as someone |
 | [Get a person's sign-off](09-get-a-sign-off.md) | an acceptance for a change that could break someone, with a person's reason |
 | [Deploy natively](10-deploy-natively.md) | the app built into one program, running against a real database |
