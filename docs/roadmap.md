@@ -510,11 +510,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
   the repository variable `JADPO_VERIFIER_IMAGE` set to `on`, the app and its
   credential on Fly.io, then the image deployed. Before R7 can reach it.
 - [x] **G1 Reserved words as names**: area 2, "Names from reserved words"; area 1, "Reserved words"; `docs/errors/syntax.expected_name.md`, `docs/errors/type.reserved_variant_name.md`.
-- [ ] **G2 A `GET` that runs a read-only action** `opus · high` after G1: area
-  7, "What a route runs"; area 3. A `GET` still runs a named query, or an
-  action the graph proves writes nothing, emits nothing and makes no changing
-  call (Richard, 2026-11-03), so it can work a value out, raise several
-  failures and call `ai.embed`.
+- [x] **G2 A `GET` that runs a read-only action**: area 7, "A `GET` that runs an action"; area 3, "Functions and actions"; `docs/errors/route.run_kind.md`; compiler/runtime, "An action on a `GET`".
 - [ ] **G3 A route that sends raw bytes** `opus · high` after G2: area 7,
   "Output and status" and OpenAPI; area 18, the API record. `sends:
   "application/x-tar"` on an `Output` with exactly one `Bytes` field; that

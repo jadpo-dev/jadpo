@@ -604,6 +604,19 @@ impl<D: Database> Database for Recorded<D> {
         })
     }
 
+    fn begin_read_only(
+        &self,
+        isolation: Isolation,
+    ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+        Box::pin(async move {
+            let inner = self.inner.begin_read_only(isolation).await?;
+            Ok(Box::new(RecordedTransaction {
+                inner,
+                record: Rc::clone(&self.record),
+            }) as Box<dyn Transaction>)
+        })
+    }
+
     fn begin(&self) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
         Box::pin(async move {
             let inner = self.inner.begin().await?;

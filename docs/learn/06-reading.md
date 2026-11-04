@@ -88,8 +88,8 @@ query list_todos(filter: TodoFilter) -> List<TodoView> {
 
 ## Routes that read
 
-A `GET` route runs a query. A route that changes something, such as a
-`POST`, runs an action:
+A `GET` route runs a query, or an action that only reads. A route that
+changes something, such as a `POST`, runs an action:
 
 `domains/todos/routes/todos.jadpo`, changed. The two `GET` routes and their `use` lines are new.
 

@@ -1,6 +1,7 @@
 # `route.run_required`
 
-A route runs a named action, or a named query for a `GET`:
+A route runs a named action, or for a `GET` a named query or an action
+that only reads:
 
 ```jadpo check project=e-run-required expect=route.run_required
 type Memo = Text {
@@ -39,7 +40,7 @@ error: `POST /memos` doesn't say what it runs
    |
 24 |     POST / {
    |     ^^^^^^ no `run:`
-  reason: A route runs one named action, or a named query for a `GET`, with `run:`; the logic lives there, not in the route.
+  reason: A route runs one named action with `run:`, or for a `GET` a named query or an action that only reads; the logic lives there, not in the route.
   next: Add `run: <action>(...)` (agent)
   rule: route.run_required
   help: https://jadpo.dev/docs/errors/route.run_required

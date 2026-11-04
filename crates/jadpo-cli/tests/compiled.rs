@@ -701,6 +701,11 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             "an audit trail".into(),
             corpus_project(&crate::audit::files(), "compiled-audit").expect("it checks"),
         ),
+        (
+            "a GET running actions".into(),
+            corpus_project(&crate::read_only_get::files(), "compiled-read-only-get")
+                .expect("it checks"),
+        ),
     ]
 }
 

@@ -90,6 +90,10 @@ pub(crate) struct Boundary {
     /// Of `versions`, the rows its open transaction checked and locked,
     /// which stay checked while their locks survive, including savepoints.
     checked: BTreeSet<RowKey>,
+    /// Whether it runs what a `GET` runs (area 7, "What a route runs"; chunk
+    /// G2): the graph proved it writes nothing, so its transaction is begun
+    /// `READ ONLY` and asking to write is a fault, never a write.
+    read_only: bool,
     /// Whether its open transaction has updated or deleted a record, which
     /// may have left a stored file held by none (area 16, "Deleting and
     /// erasing"; chunk B3): then, in a store keeping the record of held
@@ -109,6 +113,15 @@ impl Boundary {
         self.isolation
     }
 
+    /// Runs what a `GET` runs from here on.
+    pub(crate) fn set_read_only(&mut self) {
+        self.read_only = true;
+    }
+
+    pub(crate) fn read_only(&self) -> bool {
+        self.read_only
+    }
+
     /// Its transaction in `store`, begun at the first store operation at
     /// its isolation level in the store `capabilities` give (area 6), or
     /// again after an outside call closed the last ([`Boundary::close_snapshot`]).
@@ -121,6 +134,9 @@ impl Boundary {
         store: &str,
         writes: bool,
     ) -> Result<&mut dyn Transaction, StoreError> {
+        if self.read_only && writes {
+            return Err(StoreError::Fault(READ_ONLY_WRITE.into()));
+        }
         if let Some(open) = &self.store
             && open != store
         {
@@ -132,7 +148,11 @@ impl Boundary {
             let Some(database) = capabilities.database(store) else {
                 return Err(StoreError::Fault(format!("no store called `{store}`")));
             };
-            self.transaction = Some(database.begin_at(self.isolation).await?);
+            self.transaction = Some(if self.read_only {
+                database.begin_read_only(self.isolation).await?
+            } else {
+                database.begin_at(self.isolation).await?
+            });
             self.store = Some(store.to_string());
             self.generation = self.generation.wrapping_add(1);
             self.wrote = false;
@@ -356,6 +376,15 @@ pub(crate) fn may_rerun(ctx: &Ctx<'_>, attempt: u32, began: Option<u64>) -> bool
         }
 }
 
+/// What a `GET`'s action asking to write is reported as. The graph proves
+/// it never does (`route.run_kind`), so meeting it is a defect in Jadpo.
+pub(crate) const READ_ONLY_WRITE: &str =
+    "what a `GET` runs asked to write, which the compiler proved it doesn't";
+
+/// The same for a changing call.
+pub(crate) const READ_ONLY_CHANGE: &str =
+    "what a `GET` runs made a changing call, which the compiler proved it doesn't";
+
 /// An action's body, as an executor runs it; the boundary may run it more
 /// than once, each time from the start.
 pub trait ActionBody<'p> {
@@ -545,6 +574,7 @@ async fn bounded<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcom
 
 /// [`action`] in a boundary of its own.
 async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
+    let read_only = ctx.take_read_only();
     let hold = ctx.own_boundary();
     let isolation = body.isolation();
     let mut attempt = 1;
@@ -559,6 +589,9 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
         ctx.set_steps(steps);
         crate::steps::rewind(ctx);
         ctx.open_boundary(isolation);
+        if read_only && let Some(boundary) = ctx.boundary_mut() {
+            boundary.set_read_only();
+        }
         let mut outcome = gated(ctx, body).await;
         // A run that ends before replaying every recorded step no longer
         // runs as the record's did (chunk 7.5b).
