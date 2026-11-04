@@ -4,6 +4,47 @@
 # vocabulary, or a word the language itself defines. Never add an example
 # application's own nouns (todo, invoice, customer) to make a check pass.
 
+# Words the language itself reserves, which a field or variant may take (area 2,
+# "Names from reserved words")
+action
+and
+assert
+attempt
+constant
+decline
+else
+emit
+entity
+fails
+false
+fixture
+for
+function
+if
+in
+library
+match
+mut
+none
+not
+or
+package
+propagate
+provide
+public
+query
+reject
+resource
+return
+routes
+schedule
+seed
+subscriber
+test
+true
+type
+use
+var
 # Words the language itself defines: a feature flag's `owner:` (area 16,
 # "Feature flags")
 owner
@@ -81,7 +122,6 @@ small
 # Rust keywords and ordinary programming vocabulary
 # ordinary English: `configuration.move_name_taken`
 taken
-mut
 self
 add
 after
@@ -274,7 +314,6 @@ cutoff
 deliver
 # A delivery of an event to a subscriber, and its record (area 12, chunk 6.1b)
 delivery
-decline
 declined
 due
 done

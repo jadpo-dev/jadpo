@@ -1089,14 +1089,14 @@ after its enum's name.
 application {}
 ```
 
-```jadpo check project=reserved-names file=domains/registry/types/package_name.jadpo hidden
-type PackageName = Text {
+```jadpo check project=reserved-names file=domains/depot/types/parcel_name.jadpo hidden
+type ParcelName = Text {
     min_length: 1
     max_length: 80
 }
 ```
 
-```jadpo check project=reserved-names file=domains/registry/types/kind.jadpo
+```jadpo check project=reserved-names file=domains/depot/types/kind.jadpo
 type Kind = Enum {
     library
     package
@@ -1104,25 +1104,25 @@ type Kind = Enum {
 }
 ```
 
-```jadpo check project=reserved-names file=domains/registry/types/source.jadpo
-use registry/types { PackageName }
+```jadpo check project=reserved-names file=domains/depot/types/haulier.jadpo
+use depot/types { ParcelName }
 
-type Source = Enum {
+type Haulier = Enum {
     public
     test: {
-        for: PackageName
+        for: ParcelName
     }
 }
 ```
 
-```jadpo check project=reserved-names file=domains/registry/entities/release.jadpo migrate=initial
-use registry/types { Kind, PackageName }
+```jadpo check project=reserved-names file=domains/depot/entities/parcel.jadpo
+use depot/types { Kind, ParcelName }
 
-entity Release {
+entity Parcel {
     id: Uuid
-    package: PackageName
+    package: ParcelName
     type: Kind
-    in: PackageName?
+    in: ParcelName?
 
     policy: {
         create: [Access.public]
@@ -1131,99 +1131,99 @@ entity Release {
 }
 ```
 
-```jadpo check project=reserved-names file=domains/registry/types/release_view.jadpo
-use registry/entities { Release }
-use registry/types { Kind }
+```jadpo check project=reserved-names file=domains/depot/types/parcel_view.jadpo
+use depot/entities { Parcel }
+use depot/types { Kind }
 
-/// A release as clients see it.
-type ReleaseView = Output {
-    pick: [Release.package, Release.in]
+/// A parcel as clients see it.
+type ParcelView = Output {
+    pick: [Parcel.package, Parcel.in]
     type: Kind
 }
 ```
 
-```jadpo check project=reserved-names file=domains/registry/queries/releases_of.jadpo
-use registry/entities { Release }
-use registry/types { Kind, ReleaseView }
+```jadpo check project=reserved-names file=domains/depot/queries/parcels_of.jadpo
+use depot/entities { Parcel }
+use depot/types { Kind, ParcelView }
 
-query releases_of(name: Release.package, wanted: Kind) -> List<ReleaseView> {
-    from: Release
-    where: Release.package == name
-    where: Release.type == wanted
-    order: [Release.in asc]
+query parcels_of(name: Parcel.package, asked: Kind) -> List<ParcelView> {
+    from: Parcel
+    where: Parcel.package == name
+    where: Parcel.type == asked
+    order: [Parcel.in asc]
     limit: 20
 }
 ```
 
-```jadpo check project=reserved-names file=domains/registry/actions/publish.jadpo
-use registry/entities { Release }
-use registry/types { Kind, Published, ReleaseView, Source }
-use registry/libraries { labels }
+```jadpo check project=reserved-names file=domains/depot/actions/ship_parcel.jadpo
+use depot/entities { Parcel }
+use depot/types { Haulier, Kind, ParcelView, Waybill }
+use depot/libraries { notices }
 
-/// What publishing a release takes.
-type Publish = Input {
-    package: Release.package
+/// What shipping a parcel takes.
+type ShipParcel = Input {
+    package: Parcel.package
     type: Kind
 }
 
-action publish(input: Publish) -> ReleaseView {
-    var release: Release = Release.create {
+action ship_parcel(input: ShipParcel) -> ParcelView {
+    var parcel: Parcel = Parcel.create {
         set: {
             package: input.package
             type: input.type
-            in: labels.label(
-                Published {
+            in: notices.label(
+                Waybill {
                     if: input.package
-                    source: Source.public
+                    haulier: Haulier.public
                 }
             )
         }
     }
-    return ReleaseView {
-        package: release.package
-        type: release.type
-        in: release.in
+    return ParcelView {
+        package: parcel.package
+        type: parcel.type
+        in: parcel.in
     }
 }
 ```
 
-```jadpo check project=reserved-names file=domains/registry/types/published.jadpo
-use registry/types { PackageName, Source }
+```jadpo check project=reserved-names file=domains/depot/types/waybill.jadpo
+use depot/types { Haulier, ParcelName }
 
-type Published = Object {
-    if: PackageName
-    source: Source
+type Waybill = Object {
+    if: ParcelName
+    haulier: Haulier
 }
 ```
 
-```jadpo check project=reserved-names file=domains/registry/libraries/labels.jadpo
-use registry/types { PackageName, Published, Source }
+```jadpo check project=reserved-names file=domains/depot/libraries/notices.jadpo
+use depot/types { Haulier, ParcelName, Waybill }
 
-library labels {
-    /// Who a release is for.
-    function label(published: Published) -> PackageName {
-        return match published.source {
-            Source.public -> published.if
-            Source.test(details) -> details.for
+library notices {
+    /// Who a parcel is for.
+    function label(waybill: Waybill) -> ParcelName {
+        return match waybill.haulier {
+            Haulier.public -> waybill.if
+            Haulier.test(details) -> details.for
         }
     }
 }
 ```
 
-```jadpo check project=reserved-names file=domains/registry/routes/releases.jadpo
-use registry/types { ReleaseView }
-use registry/actions { Publish, publish }
+```jadpo check project=reserved-names file=domains/depot/routes/parcels.jadpo migrate=initial
+use depot/types { ParcelView }
+use depot/actions { ShipParcel, ship_parcel }
 
-routes Releases {
-    prefix: /releases
+routes Parcels {
+    prefix: /parcels
 
-    /// Publishes a release.
+    /// Ships a parcel.
     POST / {
         authentication: RouteAuthentication.none
-        input: Publish
-        output: ReleaseView
+        input: ShipParcel
+        output: ParcelView
         status: SuccessStatus.created
-        run: publish(input)
+        run: ship_parcel(input)
     }
 }
 ```
@@ -1237,10 +1237,10 @@ GET /openapi.json
     authentication none
     status 200
 
-POST /releases
+POST /parcels
     authentication none
-    input Publish (body)
-    output ReleaseView
+    input ShipParcel (body)
+    output ParcelView
     status 201
 
 enum Kind
@@ -1248,33 +1248,33 @@ enum Kind
     variant package
     variant type
 
-input Publish
+output ParcelView
+    in: Text { min_length: 1, max_length: 80 }?
     package: Text { min_length: 1, max_length: 80 }
     type: Kind
 
-output ReleaseView
-    in: Text { min_length: 1, max_length: 80 }?
+input ShipParcel
     package: Text { min_length: 1, max_length: 80 }
     type: Kind
 ```
 
-```jadpo check project=reserved-names file=domains/registry/routes/releases.test.jadpo hidden
-use registry/types { Kind, Published, ReleaseView, Source }
-use registry/actions { Publish, publish }
-use registry/queries { releases_of }
-use registry/libraries { labels }
+```jadpo check project=reserved-names file=domains/depot/routes/parcels.test.jadpo hidden
+use depot/types { Haulier, Kind, ParcelView, Waybill }
+use depot/actions { ShipParcel, ship_parcel }
+use depot/queries { parcels_of }
+use depot/libraries { notices }
 
-test "a release goes over the wire with the names it was given" {
+test "a parcel goes over the wire with the names it was given" {
     var response: Response = request {
         method: HttpMethod.post
-        path: "/releases"
-        input: Publish {
+        path: "/parcels"
+        input: ShipParcel {
             package: "left-pad"
             type: Kind.package
         }
     }
     assert response.status == 201
-    assert response.output == ReleaseView {
+    assert response.output == ParcelView {
         package: "left-pad"
         type: Kind.package
         in: "left-pad"
@@ -1282,36 +1282,36 @@ test "a release goes over the wire with the names it was given" {
 }
 
 test "a query filters on a field named with a reserved word" {
-    var kept: ReleaseView = publish(
-        Publish {
+    var first: ParcelView = ship_parcel(
+        ShipParcel {
             package: "left-pad"
             type: Kind.library
         }
     )
-    var other: ReleaseView = publish(
-        Publish {
+    var other: ParcelView = ship_parcel(
+        ShipParcel {
             package: "left-pad"
             type: Kind.type
         }
     )
-    var found: List<ReleaseView> = releases_of("left-pad", Kind.library)
-    assert found == [kept]
+    var shelf: List<ParcelView> = parcels_of("left-pad", Kind.library)
+    assert shelf == [first]
     assert other.type == Kind.type
 }
 
 test "a variant named with a reserved word is matched" {
-    var published: Published = Published {
+    var waybill: Waybill = Waybill {
         if: "left-pad"
-        source: Source.test {
-            for: "the registry"
+        haulier: Haulier.test {
+            for: "the depot"
         }
     }
-    assert labels.label(published) == "the registry"
+    assert notices.label(waybill) == "the depot"
 }
 ```
 
 - **What holds it says what it is.** A field is read as `thing.type`, a
-  query's condition names it as `Release.type`, and a wording or a `match`
+  query's condition names it as `Parcel.type`, and a wording or a `match`
   arm names a variant as `Kind.library`.
 - **A list of fields may name it alone**, as `unique: { both: [package, type]
   }`, a policy's `read: [for]` and `order: [type desc]` do, since nothing
@@ -1321,7 +1321,8 @@ test "a variant named with a reserved word is matched" {
   type == kind` is `syntax.expected_name`, and the field is renamed or the
   rule moved into a function. A field called `none` or `true` is the value
   wherever it stands alone, in a list too.
-- **Only fields and variants.** A parameter, a variable, a declaration, a
+- **Only fields and variants.** A parameter, a path parameter, a `match`
+  binding, a variable, a declaration, a
   rule, a `unique:` entry and a setting the language doesn't define still
   can't be named with one.
 - **No enum has a `true`, `false` or `none`.** `Kind.none` beside a `Kind?`

@@ -578,8 +578,16 @@ fn decl(p: &mut Parser<'_>) {
                 m.complete(p, kind);
             }
             Some(_) => {
+                let translations = p.at_word("translations");
                 p.bump(IDENT);
-                member_list(p, Members::Declaration);
+                member_list(
+                    p,
+                    if translations {
+                        Members::Headed
+                    } else {
+                        Members::Declaration
+                    },
+                );
                 m.complete(p, SINGLETON_DECL);
             }
             None if habits::function_keyword_at(p, 0).is_some() => {
@@ -980,7 +988,7 @@ fn callable(p: &mut Parser<'_>, m: crate::parser::Marker, kind: SyntaxKind, memb
         p.push_error(error);
     }
     if kind == QUERY_DECL && p.at(L_BRACE) {
-        member_list(p, Members::Query);
+        member_list(p, Members::Headed);
     } else {
         body_start(p, members);
     }
@@ -1435,17 +1443,19 @@ pub(crate) enum Members {
     /// An `Enum`'s body, where a reserved word may name a variant as well,
     /// and a line with only a word on it is one.
     Variants,
-    /// A query's body, whose keys are settings as a declaration's are.
-    Query,
-    /// A block inside a query (`group:`, `aggregate:`, `include:`), whose
-    /// keys name the fields of its result.
-    QueryBlock,
+    /// A query's or language file's body, whose keys are settings or
+    /// messages as a declaration's are.
+    Headed,
+    /// A block inside one: a query's `group:`, `aggregate:` and `include:`,
+    /// keyed by the fields of its result, and an enum's wording, keyed by
+    /// its variants.
+    HeadedBlock,
 }
 
 impl Members {
     /// Whether a reserved word before `:` is a name here.
     fn reserved_word_keys(self) -> bool {
-        !matches!(self, Members::Declaration | Members::Query)
+        !matches!(self, Members::Declaration | Members::Headed)
     }
 
     /// What a `name: { ... }` block inside this one holds.
@@ -1453,7 +1463,7 @@ impl Members {
         match self {
             Members::Variants => Members::Fields,
             Members::Fields => Members::Declaration,
-            Members::Query => Members::QueryBlock,
+            Members::Headed => Members::HeadedBlock,
             other => other,
         }
     }

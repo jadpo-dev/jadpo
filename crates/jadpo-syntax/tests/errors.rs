@@ -178,7 +178,9 @@ fn a_reserved_word_names_a_field_in_a_type_or_entity() {
             "type Thing = Object {{\n    {word}: Text {{\n        max_length: 9\n    }}\n}}\n"
         ));
         no_errors(&format!("type Thing = Object {{ a: Text {word}: Text }}\n"));
-        no_errors(&format!("type Thing = Object {{ a: Text? {word}: Text }}\n"));
+        no_errors(&format!(
+            "type Thing = Object {{ a: Text? {word}: Text }}\n"
+        ));
     }
 }
 

@@ -717,10 +717,7 @@ fn reserved_words_name_fields_and_variants_and_nothing_else() {
         ["type.unknown_field"]
     );
     // A setting on another base isn't a field, and is refused as one.
-    assert_ne!(
-        check("type Name = Text {\n    if: 1\n}\n"),
-        CLEAN
-    );
+    assert_ne!(check("type Name = Text {\n    if: 1\n}\n"), CLEAN);
     // A list item that names nothing.
     assert_ne!(
         check(&format!(

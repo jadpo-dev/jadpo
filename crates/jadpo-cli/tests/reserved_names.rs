@@ -150,7 +150,10 @@ fn the_record_and_openapi_have_the_names_as_written() {
     }
     let kind = serde_json::to_string(&schemas["Kind"]).expect("JSON");
     for variant in ["library", "package", "type", "in", "public", "use", "test"] {
-        assert!(kind.contains(&format!("\"{variant}\"")), "{variant}: {kind}");
+        assert!(
+            kind.contains(&format!("\"{variant}\"")),
+            "{variant}: {kind}"
+        );
     }
 }
 
@@ -162,7 +165,13 @@ fn a_column_is_quoted_and_the_formatter_keeps_the_names() {
         let path = entry.expect("an entry").path().join("postgres.sql");
         sql.push_str(&fs::read_to_string(path).expect("its statements"));
     }
-    for column in ["\"package\"", "\"type\"", "\"in\"", "\"true\"", "\"select\""] {
+    for column in [
+        "\"package\"",
+        "\"type\"",
+        "\"in\"",
+        "\"true\"",
+        "\"select\"",
+    ] {
         assert!(sql.contains(column), "{column}:\n{sql}");
     }
     let formatted = jadpo(&root, &["fmt", "--check"]);
@@ -205,4 +214,66 @@ fn a_policy_line_and_a_search_name_the_field() {
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     let access = fs::read_to_string(root.join("access.jadpo_record")).expect("the record");
     assert!(access.contains("for"), "{access}");
+}
+
+#[test]
+fn a_wording_names_the_variant_and_a_placeholder_the_field() {
+    let dir = tempdir::Dir::new("reserved-wording");
+    let root = dir.path().join("shop");
+    for (path, text) in [
+        (
+            "app.jadpo",
+            "application {}\n\nlocales {\n    default: Locale.en_gb\n    supported: [Locale.en_gb]\n}\n",
+        ),
+        (
+            "domains/shop/types/reason.jadpo",
+            "type Reason = Text {\n    max_length: 80\n}\n",
+        ),
+        (
+            "domains/shop/types/stage.jadpo",
+            "use shop/types { Reason }\n\ntype Stage = Enum {\n    library\n    type\n    test: {\n        for: Reason\n    }\n}\n",
+        ),
+        (
+            "domains/shop/translations/en_gb.jadpo",
+            "translations {\n    stage: {\n        library: \"In the library\"\n        type: \"A type\"\n        test: \"For {for}\"\n    }\n}\n",
+        ),
+        (
+            "domains/shop/actions/describe.jadpo",
+            "use shop/types { Stage }\n\ntype Described = Output {\n    if: PresentationText\n}\n\naction describe(stage: Stage, reader: Locale) -> Described {\n    return Described {\n        if: translations.shop.stage(stage, locale: reader)\n    }\n}\n",
+        ),
+        (
+            "domains/shop/actions/describe.test.jadpo",
+            "use shop/types { Stage }\n\ntest \"a variant is worded by its name\" {\n    assert translations.shop.stage(Stage.type, locale: Locale.en_gb) == \"A type\"\n    assert translations.shop.stage(\n        Stage.test {\n            for: \"you\"\n        },\n        locale: Locale.en_gb\n    ) == \"For you\"\n}\n",
+        ),
+    ] {
+        write(&root, path, text);
+    }
+    let updated = jadpo(&root, &["records", "update"]);
+    assert_eq!(updated.code, 0, "{}", updated.stdout);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    let tested = jadpo(&root, &["test"]);
+    assert_eq!(tested.code, 0, "{}", tested.stdout);
+}
+
+#[test]
+fn a_path_parameter_is_not_named_with_a_reserved_word() {
+    let dir = tempdir::Dir::new("reserved-path");
+    let root = dir.path().join("shop");
+    for (path, text) in [
+        ("app.jadpo", "application {}\n"),
+        (
+            "domains/shop/routes/items.jadpo",
+            "routes Items {\n    prefix: /items\n\n    GET /{type: Uuid} {\n        authentication: RouteAuthentication.none\n        run: nothing()\n    }\n}\n",
+        ),
+    ] {
+        write(&root, path, text);
+    }
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 1, "{}", checked.stdout);
+    assert!(
+        checked.stdout.contains("rule: syntax.expected_name"),
+        "{}",
+        checked.stdout
+    );
 }

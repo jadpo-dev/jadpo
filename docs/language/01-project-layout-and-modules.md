@@ -89,7 +89,7 @@ is `syntax.expected_name`. They are `action`, `and`,
 
 Inside a type's or entity's body one may name a field or an enum variant,
 where `package: Text` and `Kind.library` can't be misread. Such a name is
-always read through what holds it, `release.package`, and alone it is still
+always read through what holds it, `parcel.package`, and alone it is still
 the word ([Names from reserved words](02-values-and-types.md#names-from-reserved-words)).
 
 A domain is named by its folder, so a folder named with a reserved word,
