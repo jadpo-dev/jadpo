@@ -58,7 +58,7 @@ pub fn new(call: &Call) -> Reply {
             .next("Give the project's name, for example `jadpo new my-app`"),
         );
     };
-    if let Err(diagnostic) = inspect(typed, &destination) {
+    if let Err(diagnostic) = inspect("new", "project", typed, &destination) {
         return Reply::failed(*diagnostic);
     }
     let line = {
@@ -109,9 +109,14 @@ fn folder_name(typed: &str, destination: &Path) -> Option<String> {
     named.to_str().map(str::to_string)
 }
 
-/// Whether the destination can take a project: it doesn't exist yet, or
-/// is an empty folder.
-fn inspect(typed: &str, destination: &Path) -> Result<(), Box<Diagnostic>> {
+/// Whether the destination can take what `jadpo <command>` writes: it
+/// doesn't exist yet, or is an empty folder.
+pub(crate) fn inspect(
+    command: &str,
+    what: &str,
+    typed: &str,
+    destination: &Path,
+) -> Result<(), Box<Diagnostic>> {
     let unreadable = |error: std::io::Error| {
         Box::new(
             Diagnostic::new(
@@ -119,9 +124,9 @@ fn inspect(typed: &str, destination: &Path) -> Result<(), Box<Diagnostic>> {
                 format!("`{typed}` couldn't be looked at"),
             )
             .reason(format!(
-                "`jadpo new` checks that the folder is empty before it writes, and reading it failed: {error}. It wrote nothing."
+                "`jadpo {command}` checks that the folder is empty before it writes, and reading it failed: {error}. It wrote nothing."
             ))
-            .next(format!("Check that `{typed}` can be read, then run `jadpo new` again")),
+            .next(format!("Check that `{typed}` can be read, then run `jadpo {command}` again")),
         )
     };
     match fs::metadata(destination) {
@@ -132,7 +137,7 @@ fn inspect(typed: &str, destination: &Path) -> Result<(), Box<Diagnostic>> {
                 &rule::TOOLCHAIN_SCAFFOLD_DESTINATION_EXISTS,
                 format!("`{typed}` is a file"),
             )
-            .reason("`jadpo new` makes a folder holding the project, and a file already has this name. It wrote nothing.")
+            .reason(format!("`jadpo {command}` makes a folder holding the {what}, and a file already has this name. It wrote nothing."))
             .next(format!("Name a folder that doesn't exist yet, or move `{typed}` first")),
         )),
         Ok(_) => {
@@ -145,7 +150,7 @@ fn inspect(typed: &str, destination: &Path) -> Result<(), Box<Diagnostic>> {
                         &rule::TOOLCHAIN_SCAFFOLD_DESTINATION_NOT_EMPTY,
                         format!("`{typed}` already has files in it"),
                     )
-                    .reason("`jadpo new` writes a whole project, so it writes only into a folder that doesn't exist yet or is empty. It wrote nothing.")
+                    .reason(format!("`jadpo {command}` writes a whole {what}, so it writes only into a folder that doesn't exist yet or is empty. It wrote nothing."))
                     .next(format!(
                         "Name a folder that doesn't exist yet, or empty `{typed}` first"
                     )),
@@ -156,16 +161,16 @@ fn inspect(typed: &str, destination: &Path) -> Result<(), Box<Diagnostic>> {
 }
 
 /// What this run made, so a failure can take it away again.
-struct Written {
+pub(crate) struct Written {
     /// Project-relative paths of the files written, in order.
-    files: Vec<String>,
+    pub files: Vec<String>,
     /// Folders this run made, outermost first.
-    folders: Vec<PathBuf>,
-    root: PathBuf,
+    pub folders: Vec<PathBuf>,
+    pub root: PathBuf,
 }
 
 impl Written {
-    fn folder(&mut self, path: &Path) -> std::io::Result<()> {
+    pub fn folder(&mut self, path: &Path) -> std::io::Result<()> {
         let mut missing = Vec::new();
         let mut at = Some(path);
         while let Some(folder) = at {
@@ -182,7 +187,7 @@ impl Written {
         Ok(())
     }
 
-    fn file(&mut self, relative: &str, text: &str) -> std::io::Result<()> {
+    pub fn file(&mut self, relative: &str, text: &str) -> std::io::Result<()> {
         let path = self.root.join(relative);
         if let Some(parent) = path.parent() {
             self.folder(parent)?;
@@ -192,7 +197,7 @@ impl Written {
         Ok(())
     }
 
-    fn undo(&self) {
+    pub fn undo(&self) {
         for file in self.files.iter().rev() {
             let _ = fs::remove_file(self.root.join(file));
         }
@@ -332,7 +337,7 @@ fn done(typed: &str, root: &Path, line: &str, routes: &[String], written: &Writt
 
 /// `word` as a shell reads it back: as it is when it holds only letters,
 /// digits and `-_./`, otherwise in single quotes.
-fn shell_word(word: &str) -> String {
+pub(crate) fn shell_word(word: &str) -> String {
     let plain = !word.is_empty()
         && !word.starts_with('-')
         && word

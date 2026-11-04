@@ -47,6 +47,7 @@ mod package_audit;
 mod package_cache;
 mod package_conform;
 mod package_import;
+pub mod package_new;
 pub mod package_preview;
 mod package_publish;
 mod package_recipe;

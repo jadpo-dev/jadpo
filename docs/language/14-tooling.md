@@ -791,6 +791,7 @@ connection or operation is `cli.package_arguments`, with the nearest.
 
 | Command | Does |
 |---|---|
+| `jadpo package new <Name> --library` or `--provider` `[--publisher <handle>]` | Starts a package in its own repository |
 | `jadpo package add <name or source>` | Installs a package |
 | `jadpo package import <format> <file>` | Turns a published API description into the app's own integration |
 | `jadpo package update <name>` / `remove <name>` | Moves a package to a new version, or removes it |
@@ -805,6 +806,52 @@ connection or operation is `cli.package_arguments`, with the nearest.
 | `jadpo package search <words> [--from <type>] [--to <type>] [--kind <kind>]` | Finds packages and standard-library functions for a need |
 | `jadpo package audit` | Lists the advisories against the app's packages, and whether the app reaches each |
 | `jadpo package verify <folder> [--previous <folder>] [--publisher <handle>] [--no-run]`, `jadpo package verify --serve` | The registry's verifier: the bar, facts, change record and fingerprints, and the service that answers the registry |
+
+### `jadpo package new`
+
+Starts a package in its own repository ([Developing and publishing a
+package](11-integrations.md#developing-and-publishing-a-package)): `new <Name>
+--library` for code an app calls, or `--provider` for a package that describes
+an API. `<Name>` is its name in code, in UpperCamelCase and without a version,
+since it starts at `v1`. The folder is made where the command runs and named as
+the registry writes the name: `AcmeCouriers` goes in `acme-couriers/`.
+
+It writes the package format, `recipes/`, a `sample/` app and `GUIDE.md`, with
+a small example of each kind of file to replace, and the `CHANGELOG.md` and
+`surface.jadpo_record` of its first release, so it passes `jadpo package check`
+as written and that command has nothing to change. A library starts with the
+`starter` library, a recipe and a test. A provider starts with the `account`
+resource, a recipe and hosts ending `.example`, and no recording, so its contract
+says nothing is confirmed until `jadpo package record` has called the API.
+`.gitignore` and `.gitattributes` sit beside them, and git isn't run: making the
+repository is yours.
+
+- `--publisher <handle>` writes the index's `publisher:`. Without it the command
+  asks on a terminal, where enter leaves the key out, and leaves it out
+  everywhere else, `--json` included.
+- The licence is `Licence.proprietary` until you choose another, because which
+  rights to give others is yours to say. `check` passes it, and `verify` and
+  `publish` refuse it (`publish.licence_proprietary`).
+- A name that isn't one, or that a package can't compile under, is
+  `cli.package_arguments`. A folder that holds anything, or a file of that name,
+  is refused as `jadpo new` refuses it, and if a write fails partway the command
+  removes what it wrote.
+
+The screen is one status line, then the command to run next:
+
+```text
+Created acme-couriers
+    package    AcmeCouriers.v1, provider
+    publisher  @acme
+    licence    proprietary, publishing needs an open one
+    jadpo      X.Y
+    files      15 written
+
+next: cd acme-couriers && jadpo package check  runs the publishing bar on it
+```
+
+With `--json`, `data` holds the `path`, the `root`, the `package`, its `kind`,
+`publisher` and `licence`, the `jadpo` line and the `files` it wrote.
 
 ### `jadpo package add`
 
@@ -935,6 +982,9 @@ and publishing a package](11-integrations.md#developing-and-publishing-a-package
 - A `publisher` row shows who `package.jadpo` names, and says `left out` when
   it names no one: a package only used by path or from git may, and only `verify`
   and `publish` refuse it.
+- A `licence` row shows the licence and the lowest Jadpo version it declares. A
+  `Licence.proprietary` package passes it, as a private package may, and the row
+  says the registry refuses it; only `verify` and `publish` do.
 
 - A `behaviour` row runs the last release's examples and tests against the
   new code. One that fails is a change the types don't show, refused within
@@ -1001,7 +1051,8 @@ shows what the registry's verifier found; a refusal is `publish.failed`. A
 package whose index names no publisher stops at the bar, having asked nothing
 (`publish.publisher_missing`), and a release that isn't its publisher's to make
 is `publish.publisher_mismatch` ([Names and
-publishers](11-integrations.md#names-and-publishers)). `--dry-run` runs the
+publishers](11-integrations.md#names-and-publishers)). So does a package whose licence is `Licence.proprietary`
+(`publish.licence_proprietary`). `--dry-run` runs the
 verifier and publishes nothing.
 
 ### `jadpo package preview`
@@ -1037,6 +1088,10 @@ Its `publisher` row needs `package.jadpo` to name one
 used by path or from git may. `--publisher <handle>` says who the release is
 for, and a package naming anyone else fails it (`publish.publisher_mismatch`).
 
+Its `licence` row refuses `Licence.proprietary`, which the public registry
+doesn't carry (`publish.licence_proprietary`); `check`'s passes it, since a
+private package may be.
+
 `--no-run` runs none of the package's code: the rows that need it say
 `not run`, and everything worked out from its source is as it would be. It is
 how the verifier gets a release's facts from a process the package's code
@@ -1050,10 +1105,6 @@ verifier](11-integrations.md#the-verifier)).
 
 Not built yet:
 
-- `jadpo package new <Name> --library` or `--provider`, which writes a
-  package's own repository: the package format, `recipes/`, a `sample/`
-  app and `GUIDE.md`. `--publisher <handle>` writes the index's `publisher:`;
-  without it the command asks on a terminal and leaves the key out elsewhere.
 - `jadpo package add` from another Jadpo app's folder (its OpenAPI, such as
   `../orders`), or from a URL serving an OpenAPI document. Another app's
   folder says `toolchain.not_built_yet` until the importer. A package from git needs a person's
@@ -3144,6 +3195,7 @@ its command is built.
 | `publish.example_failed` | `package check` | Example in a package's description doesn't compile or doesn't hold ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.example_missing` | `package check` | Package's function has no example, or a failure it raises is shown by none ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.file_not_allowed` | `package verify` | A commit holds a file a release can't: anything but Jadpo source and the package's text files ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.licence_proprietary` | `package verify`, `package publish` | A package's licence is `Licence.proprietary`, which the public registry refuses ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.publisher_mismatch` | `package verify`, `package publish` | A release names another publisher than the one asked to publish it ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.publisher_missing` | `package verify`, `package publish` | A package's index names no publisher, and it has to for the registry ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.sample_missing` | `package check` | Package's recipes have no sample app with one domain to compile in ([Publishing errors](11-integrations.md#publishing-errors)) |
@@ -3165,11 +3217,11 @@ its command is built.
 | `toolchain.fetch_failed` | `build` | The Rust toolchain or the crates `jadpo build` compiles with couldn't be fetched, usually because the server they come from, or the mirror in its place, can't be reached |
 | `toolchain.project_not_found` | any command | You ran a command that works on a project in a folder with no `app.jadpo`, in it or in any folder above it |
 | `toolchain.project_read_failed` | any command | Project directory could not be read |
-| `toolchain.scaffold_destination_exists` | `new` | You ran `jadpo new` with the name of a file that already exists |
-| `toolchain.scaffold_destination_not_empty` | `new` | You ran `jadpo new` on a folder that already has files in it, hidden files included |
+| `toolchain.scaffold_destination_exists` | `new`, `package new` | You ran `jadpo new` or `jadpo package new` with the name of a file that already exists |
+| `toolchain.scaffold_destination_not_empty` | `new`, `package new` | You ran `jadpo new` or `jadpo package new` on a folder that already has files in it, hidden files included |
 | `toolchain.scaffold_name_invalid` | `new` | You ran `jadpo new` with a path that doesn't end in a folder's name, such as `..` or `/` |
-| `toolchain.scaffold_read_failed` | `new` | You ran `jadpo new` on a path Jadpo can't look into, such as a folder you can't read or a path through a file |
-| `toolchain.scaffold_write_failed` | `new` | You ran `jadpo new`, and writing the project's files failed, usually because the folder it goes in can't be written |
+| `toolchain.scaffold_read_failed` | `new`, `package new` | You ran `jadpo new` or `jadpo package new` on a path Jadpo can't look into, such as a folder you can't read or a path through a file |
+| `toolchain.scaffold_write_failed` | `new`, `package new` | You ran `jadpo new` or `jadpo package new`, and writing its files failed, usually because the folder they go in can't be written |
 | `toolchain.source_read_failed` | any command | A `.jadpo` file in the project couldn't be read, because it isn't UTF-8 text or you aren't allowed to read it |
 | `toolchain.target_auth_not_implemented` | `build` | Protected route `{route}` cannot be generated yet |
 | `toolchain.target_durable_workflow_not_implemented` | `build` | Durable workflow target execution is not implemented |

@@ -1,0 +1,9 @@
+/// {name}: say here which API this package reaches.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.{kebab}.example"
+        sandbox: "https://sandbox.{kebab}.example"
+    }
+    credential: CredentialScheme.bearer
+}

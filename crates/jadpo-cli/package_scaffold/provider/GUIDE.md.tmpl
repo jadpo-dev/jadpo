@@ -1,0 +1,19 @@
+# {name}
+
+Say here how to use {name} well: which operation to call first, what to store and what to do when it fails. Apps read this with
+`jadpo package show {snake} --guide`.
+
+## Before you release it
+
+Delete this section when these are done.
+
+1. Replace the `.example` hosts in `provider.jadpo`, the `account` resource, its types and the `read_account` recipe with your own. `jadpo package check` runs the
+   publishing bar on the package whenever you want to know where it stands.
+2. Confirm your operations against the API's sandbox with `jadpo package
+   record`, which the registry shows as the package's contract.
+3. Say what the package does in `package.jadpo`'s description, and why it is
+   released in `CHANGELOG.md`.
+4. To publish it to the public registry, choose an open licence in
+   `package.jadpo` and name your handle as `publisher:`. A package only used
+   by path or from git may stay `Licence.proprietary`, with no publisher.
+5. Commit it, run `jadpo package check` and tag the commit `v1.0.0`.

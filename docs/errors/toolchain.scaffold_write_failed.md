@@ -1,6 +1,6 @@
 # `toolchain.scaffold_write_failed`
 
-You ran `jadpo new`, and writing the project's files failed, usually because the folder it goes in can't be written.
+You ran `jadpo new` or `jadpo package new`, and writing its files failed, usually because the folder they go in can't be written.
 
 ## Why Jadpo refuses it
 
