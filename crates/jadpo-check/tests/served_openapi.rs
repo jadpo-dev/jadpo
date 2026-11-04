@@ -441,7 +441,10 @@ fn no_api_setting_is_accepted_and_ignored() {
             "            idempotency: Idempotency.required\n",
         ),
         ("serve_openapi", "            serve_openapi: false\n"),
-        ("rate_limit", "            rate_limit: 10\n"),
+        (
+            "rate_limit",
+            "            rate_limit: {\n                requests: 10\n                within: 1m\n            }\n",
+        ),
     ];
     for setting in jadpo_check::routes::apis::API_SETTINGS {
         assert!(
