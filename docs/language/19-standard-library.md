@@ -72,14 +72,14 @@ yet.
 <!-- topic: the-standard-types (was shared-vocabulary-types) -->
 
 A standard type's name says exactly what it is, and a type you might look for
-may be folded into another or left to your app.
+may be part of another or left for your app to define.
 [Standard types](https://jadpo.dev/docs/types) lists every one, from A to Z and
 by group, and each has a page saying what it is and how to make one. Each part
-or kind a standard type names is a standard type too, so it is read, sent and
-stored by its code: `IdentityDocumentKind` or `RichTextBlock`, for instance.
-GeoJSON's `Feature` and `FeatureCollection` are defined on the
-[Geospatial](20-geospatial.md) page. Why the language owns these types at all is
-in the [design notes](notes/19-standard-library.md#shared-vocabulary-types).
+or kind a standard type names is a standard type too: `IdentityDocument`'s
+`IdentityDocumentKind`, or `RichText`'s `RichTextBlock`. GeoJSON's `Feature` and
+`FeatureCollection` are explained on the [Geospatial](20-geospatial.md) page. Why
+Jadpo defines these types itself is in the
+[design notes](notes/19-standard-library.md#shared-vocabulary-types).
 
 Three rules shape the list:
 
