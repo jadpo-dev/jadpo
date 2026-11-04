@@ -806,6 +806,7 @@ connection or operation is `cli.package_arguments`, with the nearest.
 | `jadpo package recipe <package> <recipe> --into <domain>` | Copies a package's recipe into your code |
 | `jadpo package record <connection> <operation>` | Confirms an operation against the sandbox and saves the recording |
 | `jadpo package conform <package> <capability>` | Runs a capability's conformance suite |
+| `jadpo package protocol <document>` | Checks a registry's OpenAPI document against the registry protocol |
 | `jadpo package check` | Runs the publishing bar on a package |
 | `jadpo package publish [--dry-run]` | Asks the registry to release the package from a tag |
 | `jadpo package preview [<folder>]` | Serves the package's registry page locally |
@@ -922,6 +923,26 @@ your machine.
 connection to the package. It is refused without that connection, without
 its credential or address set, or without `ai:` through it
 (`conform.refused`). A case that fails is `conform.failed`.
+
+### `jadpo package protocol`
+
+`protocol <document>` is [the registry protocol](11-integrations.md#the-registry-protocol)'s
+conformance test: it checks a registry application's OpenAPI document against
+the protocol's table, so that application's CI needs only `jadpo`, at the
+release it targets. The document is a file, such as the
+`build/openapi/main.json` that `jadpo check` writes, an `https://` address, or
+an `http://` address on this machine. It needs no project.
+
+A document that conforms is one line:
+
+```text
+✓ Conforms to the registry protocol  build/openapi/main.json · 10 requests
+```
+
+One that differs is `protocol.mismatch` with each difference under its request,
+and exits 1; `--json` gives `document`, `conforms`, `requests` and
+`mismatches`, each with its `operation` and `problem`. A document it can't read
+is `protocol.unreadable`, which is not a difference.
 
 ### `jadpo package check`
 
@@ -3056,6 +3077,8 @@ its command is built.
 | `acceptance.unmatched` | `check`, `build` | Acceptance lists a change this change doesn't make |
 | `conform.failed` | `package conform` | A package's answers to `jadpo package conform` don't fit the capability it fills, or the suite couldn't run |
 | `conform.refused` | `package conform` | The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, or `ai:` doesn't ask its models through it |
+| `protocol.mismatch` | `package protocol` | A registry's OpenAPI document differs from the registry protocol |
+| `protocol.unreadable` | `package protocol` | The document given to `jadpo package protocol` couldn't be read as OpenAPI's JSON |
 | `recording.failed` | `package record`, `ai record` | A recording by `jadpo package record` or `jadpo ai record` got no answer worth keeping from the sandbox or the model, or its call couldn't be made |
 | `recording.refused` | `package record`, `ai record` | A recording was refused before anything was sent, because its connection would call a live API or has nothing set for its sandbox, its package is installed, or there is nothing to ask its prompt with |
 | `configuration.local_changed` | `config` | Something else saved `.env.local` while `jadpo config set` was saving a value in it |

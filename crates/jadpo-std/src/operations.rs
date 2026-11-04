@@ -177,6 +177,7 @@ pub struct Condition {
 )]
 pub enum Op {
     AiDistance,
+    BytesConcat,
     ColourContrast,
     ColourFromHsl,
     ColourFromOklch,
@@ -1108,6 +1109,17 @@ pub const OPERATIONS: &[Operation] = &[
         DECIMAL,
         "vector::distance",
     ),
+    // Joining bytes (area 19, "Bytes"), as `list.concat` joins lists.
+    Operation {
+        op: Op::BytesConcat,
+        namespace: "bytes",
+        name: "concat",
+        params: &[param("first", BYTES_VALUE), param("second", BYTES_VALUE)],
+        result: BYTES_VALUE,
+        at_least: None,
+        conditions: &[],
+        rust: "bytes::concat",
+    },
     // `colour`'s operations (area 19, "Colour"): each gives an sRGB
     // `Colour`, worked out through CSS Color 4's conversions.
     media_op(
