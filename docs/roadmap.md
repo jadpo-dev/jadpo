@@ -390,9 +390,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **D17b The reference's manifest**: `docs/reference.toml` and its check; docs/documentation.md, "The reference's manifest".
 - [x] **D17c The navigation designed**: `design/docs-nav.html` in jadpo-website.
 - [x] **D17d The site built from the manifest**: `src/lib/nav.ts` and `src/components/docs/` in jadpo-website; its `DESIGN.md`.
-- [ ] **D17e Landing pages and status lines** `opus · high`: each group has
-  a landing page that links everything in it, and a page not fully built
-  says so at its top, in its Markdown too.
+- [x] **D17e Landing pages and status lines**: `tools/docs/reference_pages.py`; docs/documentation.md, "Landing pages and status lines"; `docs/reference.toml`.
 - [x] **D17f Search that finds the docs**: `src/lib/search.ts` and `scripts/search.test.mjs` in jadpo-website.
 - [ ] **D17g What an agent reads first** `opus · high`: nothing tells an agent
   to read all of `index.json`, 173,000 tokens; about 9,000 once and under

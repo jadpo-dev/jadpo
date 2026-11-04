@@ -5,7 +5,7 @@ area: 5
 
 # Data: design notes
 
-Why [Data](../05-data.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
+Why [Entities, stores and migrations](../05-data.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
 
 ## Status
 
@@ -73,7 +73,7 @@ An entity's `policy:` and `membership:` are area 9's.
 
 ## Moved from the area page
 
-When [Data](../05-data.md) was rewritten to the [writing guide](../../writing.md),
+When [Entities, stores and migrations](../05-data.md) was rewritten to the [writing guide](../../writing.md),
 its references to the questions above, and the details of how the
 compiler and runtime build each rule, moved here. Nothing in this list
 changed a rule.

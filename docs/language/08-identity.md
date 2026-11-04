@@ -1,11 +1,11 @@
 ---
-title: Identity
+title: Sign-in and identity
 area: 8
 status: decided
 checked-with: this checkout's jadpo on every gate run
 ---
 
-# Identity
+# Sign-in and identity
 <!-- topic: identity -->
 
 Identity is how Jadpo knows who is calling. You say which of your stored
@@ -3109,7 +3109,7 @@ The route is written as [HTTP](07-http.md) describes.
 - An action that only needs policy's checks takes no caller.
   [Policy](09-policy.md) reads the caller from the request itself.
 - A schedule or a subscriber has no caller, so an action it runs can't ask
-  for one ([Jobs and events](12-jobs-and-events.md)).
+  for one ([Background work](12-jobs-and-events.md)).
 - A caller can never be returned to a client, read from request input or
   put in a failure's fields (`type.auth_principal_*`), however deeply a
   field holds it: in a list, a map or an option, or in an object's field
@@ -3658,7 +3658,7 @@ and the response of the route that ran the action sets its cookie.
 - A session or token past its end, which a lookup ignores, and a service
   key past its expiry, are deleted on the tick, Jadpo's regular background
   sweep, in the store each is kept in
-  ([Jobs and events](12-jobs-and-events.md)).
+  ([Background work](12-jobs-and-events.md)).
 - Only an action calls them (`type.auth_sessions_context`). A test reaches
   them through the route, or calls the action, which keeps the session
   without a response to set it on.

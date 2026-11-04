@@ -59,7 +59,9 @@ built = [
 ]
 
 [[group.page.section]]
+id = "dates-and-times"
 title = "Dates and times"
+summary = "The types for dates, times and durations, how to read the clock, and how to work across zones and show a time to people."
 topics = [
   "time-types",
   "durations",
@@ -529,7 +531,10 @@ details = [
 ]
 
 [[group.page]]
+# /docs/events is the old address of Sign-in events once that topic is renamed.
+id = "background-events"
 title = "Events"
+summary = "How one part of an app tells the others that something happened: declaring an event, emitting it and subscribing to it."
 topics = [
   "declaring-an-event",
   "emitting-an-event",
@@ -542,7 +547,9 @@ topics = [
 ]
 
 [[group.page]]
+id = "delivery-and-failure"
 title = "Delivery and failure"
+summary = "How an event reaches its subscribers, what happens when a subscriber fails, and what the person running the app sees."
 topics = [
   "delivery-at-least-once-safe-to-repeat",
   "retries-and-giving-up",
@@ -555,6 +562,7 @@ topics = [
 id = "built-in-services"
 title = "Built-in services"
 summary = "What Jadpo gives an app without a package: email, files, flags, rate limits, search, audit, AI and more."
+status_column = "Service"
 built = [
   "built-in-services-built",
 ]
@@ -624,7 +632,7 @@ details = [
 [[group.page]]
 title = "Search"
 status = ["16-built-in-services: Search"]
-missing = "outside search engines, jadpo search reindex and sensitive fields"
+missing = "outside search engines, `jadpo search reindex` and sensitive fields"
 topics = [
   "search",
 ]
@@ -632,7 +640,7 @@ topics = [
 [[group.page]]
 title = "Audit trail"
 status = ["16-built-in-services: Audit"]
-missing = "what its topic says it does not keep yet; publishing"
+missing = "personal fields in a history, and more on its page; publishing"
 topics = [
   "audit-trail",
 ]
@@ -644,7 +652,7 @@ status = [
   "21-ai: Keeping prompts and answers in production",
   "21-ai: A package's `embed:` with a `batch:` below 100",
 ]
-missing = "keep_content: and embed: batches below 100"
+missing = "`keep_content:` and `embed:` batches below 100"
 topics = [
   "ai",
   "the-ai-capability",
@@ -681,7 +689,7 @@ status = [
   "16-built-in-services: The `telemetry:` section",
   "16-built-in-services: Path IDs",
 ]
-missing = "telemetry and path IDs"
+missing = "telemetry, and recording the path each request takes"
 topics = [
   "monitoring-thresholds",
   "telemetry",
@@ -738,7 +746,9 @@ built = [
 ]
 
 [[group.page]]
+id = "connecting-and-calling"
 title = "Connecting and calling"
+summary = "How an app reaches an outside service, such as a courier's API, in development, in tests and in production."
 topics = [
   "connecting-in-app-jadpo",
   "calling",
@@ -779,7 +789,9 @@ topics = [
 ]
 
 [[group.page]]
+id = "using-packages"
 title = "Using packages"
+summary = "The kinds of package, where they come from, and what a package may do in your app."
 topics = [
   "kinds-of-package",
   "where-packages-live",
@@ -800,7 +812,9 @@ details = [
 ]
 
 [[group.page]]
+id = "writing-and-publishing-packages"
 title = "Writing and publishing packages"
+summary = "The package format, and how you develop, verify and publish a package."
 topics = [
   "the-package-format",
   "developing-and-publishing-a-package",
@@ -826,7 +840,9 @@ built = [
 ]
 
 [[group.page]]
+id = "settings-and-secrets"
 title = "Settings and secrets"
+summary = "The values an app reads when it starts: settings, secrets, connection URLs and signing keys."
 topics = [
   "settings-config-jadpo",
   "secrets",
@@ -839,7 +855,9 @@ topics = [
 ]
 
 [[group.page]]
+id = "languages-and-translations"
 title = "Languages and translations"
+summary = "The languages your app speaks, and how its text is translated and checked."
 topics = [
   "locales",
   "translations-as-messages",
@@ -888,27 +906,60 @@ built = [
 id = "commands"
 title = "Commands"
 summary = "Every jadpo command, what it does and how to run it."
-commands = true
-topics = [
-  "the-jadpo-command",
-  "commands-for-looking-into-and-changing-code",
-  "commands-for-the-database-settings-and-translations",
-  "commands-for-records-findings-and-review",
-  "commands-for-background-work",
-  "commands-for-packages",
-  "commands-for-services-calls-email-and-stored-data",
-  "commands-for-debugging-editors-and-help",
-]
+
+[[group.page.section]]
+id = "the-jadpo-command"
+title = "The jadpo command"
+commands = ["new", "check", "fmt", "test", "build", "dev"]
+
+[[group.page.section]]
+id = "commands-for-looking-into-and-changing-code"
+title = "Commands for looking into and changing code"
+commands = ["routes", "sql", "ai"]
+
+[[group.page.section]]
+id = "commands-for-the-database-settings-and-translations"
+title = "Commands for the database, settings and translations"
+commands = ["migrate", "seed", "config", "translations"]
+
+[[group.page.section]]
+id = "commands-for-records-findings-and-review"
+title = "Commands for records, findings and review"
+commands = ["api", "records", "acceptance", "approval", "declines", "fix", "suggest"]
+
+[[group.page.section]]
+id = "commands-for-background-work"
+title = "Commands for background work"
+commands = ["flags", "schedules", "deliveries"]
+
+[[group.page.section]]
+id = "commands-for-packages"
+title = "Commands for packages"
+commands = ["package"]
+
+[[group.page.section]]
+id = "commands-for-services-calls-email-and-stored-data"
+title = "Commands for services, calls, email and stored data"
+commands = ["calls", "email", "runs"]
+
+[[group.page.section]]
+id = "commands-for-debugging-editors-and-help"
+title = "Commands for debugging, editors and help"
+commands = ["why", "lsp", "help", "completions", "version", "toolchain"]
 
 [[group.page]]
+id = "formatter-and-editors"
 title = "Formatter and editors"
+summary = "How `jadpo fmt` lays out your code, and what your editor gets from Jadpo."
 topics = [
   "formatting",
   "editor-support",
 ]
 
 [[group.page]]
+id = "building-and-deploying"
 title = "Building and deploying"
+summary = "What `jadpo build` writes, for a server of your own or for Cloudflare Workers, and which version of `jadpo` a project runs."
 topics = [
   "a-native-deployable",
   "a-workers-deployable",
@@ -1012,3 +1063,33 @@ traces-metrics-and-logs-in-development = ["17-debugging-and-review: `jadpo trace
 production-incidents-after-the-code-has-changed = ["17-debugging-and-review: Mapped `.jadpo` stacks"]
 the-developer-console-and-mcp = ["17-debugging-and-review: The developer console"]
 what-the-graph-and-production-evidence-add = ["17-debugging-and-review: `jadpo traces`, `metrics`, `logs` and `watch`"]
+
+# A topic whose first sentence doesn't say what it is, or runs too long for a row.
+[topic_summary]
+email = "Most apps send a handful of emails: confirm your address, an invoice, a welcome."
+feature-flags = "A feature flag lets you ship code switched off, then turn it on for some users, a share of users, or everyone, without a deploy."
+rate-limits = "A rate limit caps how many requests a caller may make in a period."
+search = "Give an entity a `search:` section and people can search its records by words."
+audit-trail = "An entity's history of changes: who made each, when, and what it changed, kept when you ask for it."
+the-root = "The files and folders a project's root may hold, and nothing else."
+database = "The identity registry in `database/`, and the `.jadpo_record` files the compiler writes and you commit."
+personal-data-checks = "What the compiler refuses about personal data, such as a marked field nothing reads."
+building-a-type-from-other-types = "Most object types are slices of an entity or of another object, so you build them from it rather than repeat its fields."
+logic = "How you write what your app does: functions and actions, statements, operators, `match`, `attempt`, loops and generic code."
+language-gaps-this-page-depends-on = "Parts of the language that some standard operations rely on, and where each is described."
+reads-and-writes = "How a program reads and changes stored records: queries, filters, totals, related records, refused writes and all-or-nothing actions."
+personal-data = "Your app says which data is about a person, and Jadpo exports it, erases it and deletes it when its time is up."
+personal-data-export = "`User.export(user_id)` returns everything held about a person, as JSON, one list per entity."
+geospatial = "Geospatial values say where things are, and what is near or inside what, such as the shops within five kilometres of a customer."
+predicates-and-shapes = "Whether one shape contains, is within or intersects another, and a shape's centre and bounding box."
+geospatial-queries = "You find records by where they are with a `geo.` call as a query's `where:` condition."
+background-work-and-tenants = "In an app with a `tenant:`, each kind of background work reaches a stated set of tenants."
+flags-declared-read-and-tested = "How a flag is declared, how your code reads it, and how a test sets it."
+flags-changed-listed-and-removed = "How `jadpo flags` changes and lists a flag's value, and how a flag is removed from the code."
+calling = "Your app reaches an outside service through a connection, a named entry under `connections:` in `app.jadpo` that says which package to use."
+how-the-openapi-importer-reads-a-document = "What `jadpo package import openapi <file>` reads from a provider's OpenAPI document, what it writes, and what it leaves for you."
+shape-and-name-detection = "How the importer turns a provider's fields into standard types, by their shape and their names."
+how-the-surface-and-the-publishing-bar-work = "What a package's surface record holds, how its version is worked out, and what `jadpo package check` and `jadpo package show` do."
+package-actions-and-recipes = "What a package action may call, how the app calls one, and how `jadpo package recipe` copies a recipe into your project."
+recordings = "A recording is a provider's answer to one operation with its plain values replaced by placeholders, so its decoding can be checked without calling the provider."
+review-and-sign-off = "The changes a person must accept before they ship, such as one that can break an API client or drop something from the database."

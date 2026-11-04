@@ -1,11 +1,11 @@
 ---
-title: Records and manifest
+title: Review and records
 area: 18
 status: decided
 checked-with: this checkout's jadpo on every gate run
 ---
 
-# Records and manifest
+# Review and records
 <!-- topic: records-and-manifest -->
 
 Besides your running app, the compiler writes two kinds of file, and it
@@ -488,7 +488,7 @@ subscriber send_reminder -> notify_owner
   `priority`. Migration snapshots hold the whole schema with physical
   names, so a rename made by hand shows as a removal and an addition, and
   `jadpo migrate new` refuses it, pointing you to `jadpo rename`
-  ([Tooling](14-tooling.md)).
+  ([Tools](14-tooling.md)).
 - **Inside a callable**, branches and fault sites are numbered afresh in
   each build. Only declarations and fields need to be recognised across
   builds.
@@ -737,7 +737,7 @@ acceptance {
 | A package's service: a new or changed container image, before it runs | `PackageChange` | [Integrations](11-integrations.md) |
 | Installing a third party's package from git rather than the registry (an unverified publisher) | `PackageChange` | [Integrations](11-integrations.md) |
 | A connection that receives personal data but can't erase it, with the reason the data stays | `ErasureNotPossible` | [Integrations](11-integrations.md), [Erasure](15-personal-data.md#erasure) |
-| A threshold raised or removed | `ThresholdChange` | [Monitoring thresholds](16-built-in-services.md#monitoring-thresholds) |
+| A threshold raised or removed | `ThresholdChange` | [Monitoring](16-built-in-services.md#monitoring) |
 | Declining an error the compiler's catalogue marks as a security rule, such as `policy.call_ungranted` | `PolicyChange` | [Writing a decline](01-project-layout-and-modules.md#writing-a-decline) |
 | A new outside host the app can send data to: a provider's host, a connection's `host:`, an `outbound:` grant or an email relay | `NetworkChange` | [Integrations](11-integrations.md) |
 
@@ -900,7 +900,7 @@ events already show `.jadpo` frames
 ([Errors point at the `.jadpo` line](17-debugging-and-review.md#errors-point-at-the-jadpo-line)).
 
 - **The manifest is rebuilt, not shipped.** Builds are deterministic
-  ([Tooling](14-tooling.md)), so `jadpo incident` builds the event's
+  ([Tools](14-tooling.md)), so `jadpo incident` builds the event's
   commit, checks that the build id matches, and caches the result.
   Nothing is uploaded or archived. `jadpo` fetches and runs the exact
   compiler version the stamp names, as `rustup` installs a pinned
@@ -1034,10 +1034,10 @@ that the path number can't be decoded.
 
 | Feature | Status |
 |---|---|
-| Manifest | Built: `jadpo check` writes `build/manifest.json` at `format` 2, with nodes for [project layout and modules](01-project-layout-and-modules.md), [values and types](02-values-and-types.md), [logic](03-logic.md) and [failures](04-failures.md) and their `calls`, `uses` and `raises` edges, policy's grants, field restrictions, tenancies and listed actions with `grants` and `scopes` edges, prompts, and the connections, packages, operations, hosts, lock lines, principals, sign-in, generated routes, settings, locale set, rate limits, schedules and subscribers of [Identity](08-identity.md), [Configuration and time](10-configuration-and-time.md), [Integrations](11-integrations.md) and [Jobs and events](12-jobs-and-events.md), and the build stamp, a `person` node for each [person entity](15-personal-data.md#the-person), listing the references its records belong through and the fields erasure keeps of their record, and a `retention` node for each [retention](15-personal-data.md#retention), under its field or entity, with its period and `since:` field. The graph's diff classifies their changes as [Package upgrades](#package-upgrades) and the [acceptances](#acceptances) table say (`PackageChange`, `PolicyChange`). Each threshold is a `threshold` node with what it watches and its limits, and each disk store's floor one too ([Monitoring thresholds: checked and generated](16-built-in-services.md#monitoring-thresholds-checked-and-generated)). Caches, OAuth scopes and personal fields join as their parts of the language are built. |
+| Manifest | Built: `jadpo check` writes `build/manifest.json` at `format` 2, with nodes for [project layout and modules](01-project-layout-and-modules.md), [values and types](02-values-and-types.md), [logic](03-logic.md) and [failures](04-failures.md) and their `calls`, `uses` and `raises` edges, policy's grants, field restrictions, tenancies and listed actions with `grants` and `scopes` edges, prompts, and the connections, packages, operations, hosts, lock lines, principals, sign-in, generated routes, settings, locale set, rate limits, schedules and subscribers of [Sign-in and identity](08-identity.md), [Configuration and time](10-configuration-and-time.md), [Integrations](11-integrations.md) and [Background work](12-jobs-and-events.md), and the build stamp, a `person` node for each [person entity](15-personal-data.md#the-person), listing the references its records belong through and the fields erasure keeps of their record, and a `retention` node for each [retention](15-personal-data.md#retention), under its field or entity, with its period and `since:` field. The graph's diff classifies their changes as [Package upgrades](#package-upgrades) and the [acceptances](#acceptances) table say (`PackageChange`, `PolicyChange`). Each threshold is a `threshold` node with what it watches and its limits, and each disk store's floor one too ([Monitoring thresholds: checked and generated](16-built-in-services.md#monitoring-thresholds-checked-and-generated)). Caches, OAuth scopes and personal fields join as their parts of the language are built. |
 | Views of it | Partly built: the library and failure catalogues are built, one OpenAPI document per API in `build/openapi/`, and the monitoring rules in `build/monitoring/`; the other reports come with their parts of the language. |
 | Migrations | Built: `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
-| Stable identity | Built: a key is the kind and the born name, a function or type declared in a domain carries its domain, and a test's key is the file it sits beside and its sentence. `jadpo check` reads the registry and promotion with `jadpo fmt --layout` writes it; `jadpo rename` and the `jadpo domain` commands, which write it too, have rows of their own ([Tooling](14-tooling.md)). |
+| Stable identity | Built: a key is the kind and the born name, a function or type declared in a domain carries its domain, and a test's key is the file it sits beside and its sentence. `jadpo check` reads the registry and promotion with `jadpo fmt --layout` writes it; `jadpo rename` and the `jadpo domain` commands, which write it too, have rows of their own ([Tools](14-tooling.md)). |
 | API record | Built: `jadpo api update` writes `api/<api>.jadpo_record` for each API with routes, `jadpo check` fails with `record.out_of_date` while one disagrees with the routes, naming what changed, and a breaking change needs an [acceptance](#acceptances). |
 | `.jadpo_record` files | Partly built: every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, `jadpo records` and `jadpo records update`, and the `.gitattributes` lines `jadpo new` writes. Not built yet: telling a careful hand edit of a view from a stale one, which needs `jadpo check` to build the base as `jadpo approval` does; the editor grammar and `jadpo lsp` serving records. |
 | Event records | Built: one view per domain with events, `domains/<domain>/events/events.jadpo_record`, written by `jadpo records update` and checked as the API record is; what [The event record](12-jobs-and-events.md#the-event-record) records, and its breaking changes need an [acceptance](#acceptances). |

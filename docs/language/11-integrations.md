@@ -154,7 +154,7 @@ run by Jadpo without `host:`, and SMTP on port 25
   never privileged and can't reach the host's disk. A new or changed image
   runs only once a person accepts it in the approval report.
   `jadpo services` lists, starts and stops each one and shows its logs
-  ([Tooling](14-tooling.md)). You never write a Dockerfile or a Compose
+  ([Tools](14-tooling.md)). You never write a Dockerfile or a Compose
   file, and an app with no such connection never needs an engine
   ([Services](#services)).
 - **The operator's infrastructure is their own.** They may run
@@ -1209,7 +1209,7 @@ the sandbox for each one (see "Tests and fakes").
 > and only then is it copied into `packages/<name>/<version>/` and locked
 > with its version, digest and source. `update` moves one to its newest
 > release and shows what changed for review
-> ([Records and manifest](18-records-and-manifest.md)). `remove` takes out
+> ([Review and records](18-records-and-manifest.md)). `remove` takes out
 > one the app no longer uses (`install.in_use`), and `link` and `unlink`
 > are under [Developing and publishing a package](#developing-and-publishing-a-package).
 > The choices are in "How packages are installed and linked" below.
@@ -1271,7 +1271,7 @@ compiler works it out from the package's code and writes it to
 The surface is plain text in the format of
 [the public API record](07-http.md#the-public-api-record), not JSON. Like
 every `.jadpo_record` file, it starts with a line saying what wrote it
-([Records and manifest](18-records-and-manifest.md)). Installed packages
+([Review and records](18-records-and-manifest.md)). Installed packages
 are committed, so every upgrade's pull request carries the surface diff,
 and a reviewer reads "removed `bookings.cancel`, new failure
 `PostcodeNotServed`" in plain text.
@@ -2525,7 +2525,7 @@ A list operation returns a `Page<T>`
 provider pages, and `page.next` asks for the next page. Work over many
 pages uses `batches.each(from:, each:, finished:, key:)`, which pages
 through in the background and resumes where it stopped
-([Batches: work over many items](12-jobs-and-events.md#batches-work-over-many-items)).
+([Batches](12-jobs-and-events.md#batches)).
 
 ### Calls and writes
 
@@ -3506,7 +3506,7 @@ The card can be declined after the customer was created. So the
 package's surface lists `after_effect DeclinedCard` for
 `start_subscription`, and the app's call of it gets the warning
 `step.late_failure`: a point that can end `subscribe` for good once
-something took effect ([Jobs and events](12-jobs-and-events.md)). Here
+something took effect ([Background work](12-jobs-and-events.md)). Here
 the empty customer left behind is harmless, so the warning is declined
 with that reason.
 
@@ -4155,7 +4155,7 @@ rerun, and stops the action as `diverged` if anything differs.
 
 These rules apply to an app's action and to the package actions it
 calls, which count as one sequence. "Several changing calls in one
-action" in [Jobs and events](12-jobs-and-events.md) describes the same
+action" in [Background work](12-jobs-and-events.md) describes the same
 rules from the side of the event delivery that runs the action.
 
 - **Words.** A *step* is one outside call made by an action from its first
@@ -4249,7 +4249,7 @@ rules from the side of the event delivery that runs the action.
   is a compile error.
 - **Personal data.** Requests are kept only as fingerprints. Answers are
   encrypted with `application { steps: { encryption_key: } }`
-  ([Jobs and events](12-jobs-and-events.md)). Nothing links them to a person, so the
+  ([Background work](12-jobs-and-events.md)). Nothing links them to a person, so the
   personal-data report lists "provider answers for unfinished actions, at
   most 30 days", as it does for logs. A metric and a no-setup alert watch
   the number of unfinished records and the age of the oldest.
@@ -4328,9 +4328,9 @@ way.
 
 - What an operator sees, and the metric and the alert on unfinished
   records: "What an operator sees" and "Several changing calls in one
-  action" in [Jobs and events](12-jobs-and-events.md). Each step's state
+  action" in [Background work](12-jobs-and-events.md). Each step's state
   shows under its request's or delivery's line in `jadpo dev`.
-- `jadpo runs unfinished --build`: [Tooling](14-tooling.md).
+- `jadpo runs unfinished --build`: [Tools](14-tooling.md).
 - The fakes and crash points: "Provider calls and capabilities in tests"
   in [Testing](13-testing.md).
 - The choices behind these rules:
@@ -5001,7 +5001,7 @@ support can't arise.
 
 | Capability | Code uses | Built-in drivers | Packages |
 |---|---|---|---|
-| `database` | Entities ([Data](05-data.md)) | PostgreSQL; D1 later | No |
+| `database` | Entities ([Entities, stores and migrations](05-data.md)) | PostgreSQL; D1 later | No |
 | `cache` | `caches:` ([Caches](05-data.md#caches)) | Redis (Upstash, Valkey and ElastiCache through it, on Workers too); in memory, a warning in production and an error on Workers | No |
 | `files` | `File` fields, `store.read` and `store.put` ([Files](16-built-in-services.md#files)) | S3 (R2, B2, MinIO and the rest through its settings); disk, native only, one server | Only one that does the whole job |
 | `email` | `type X = EmailMessage`, emitted, and Jadpo's own emails ([Email](16-built-in-services.md#email)) | SMTP; the local inbox | Yes |
@@ -5458,7 +5458,7 @@ source (`recording`, `generated`, `scripted` or `sandbox`), attempts,
 duration and request id. Read it with `jadpo calls` (`--connection`,
 `--operation`, `--request`), `jadpo calls show <id>`, `jadpo trace` and
 `--json`. Calls are kept with the last 500 timelines in `build/dev/`,
-never committed. [Debugging and review](17-debugging-and-review.md)
+never committed. [Debugging](17-debugging-and-review.md)
 otherwise hashes the text it shows; call payloads in development are the
 one exception. Production keeps telemetry spans with no values
 ([Telemetry](16-built-in-services.md#telemetry)).
@@ -6086,7 +6086,7 @@ each refuses.
   empty, as CI services set it and as `jadpo suggest share` and the
   terminal's animation already read it; there `jadpo check` and `jadpo
   test` refuse each link (`install.link_refused`).
-  [Tooling](14-tooling.md) names no release or production profile, and
+  [Tools](14-tooling.md) names no release or production profile, and
   every production build goes through `jadpo build`, which refuses a link
   whatever the environment.
 - **`unlink <name>`.** Puts back the line `link` kept; with none (a
@@ -6250,7 +6250,7 @@ the app doesn't use.
   brings in every version held there; there is no `use` line per version.
 - **The lock and connections.** Each version has its own line, as
   `Postcodes.v2` and `Postcodes.v3`, sorted by name, then major version
-  ([Records and manifest](18-records-and-manifest.md)). A connection names
+  ([Review and records](18-records-and-manifest.md)). A connection names
   one version in `package:`, so two versions of a provider are two
   connections.
 - **The commands.** A package's folder or code name (`postcodes`,
@@ -6508,7 +6508,7 @@ package's own decoders, which fields are decoded, and how `retry:` and
   `unix_milliseconds` (an `Instant` as a whole number), `iso_8601` (an
   `Instant` with any offset from UTC, which the contract refuses, since it
   writes only `Z`), `day_month_year` (a `CalendarDate`, the encoding
-  [Jobs and events](12-jobs-and-events.md) and the
+  [Background work](12-jobs-and-events.md) and the
   [Standard library](19-standard-library.md) name for file rows, here
   built for providers), `text` (an `Int` or a `Decimal` as text),
   `comma_separated` (a list of single values), `base64` (`Text` as the
@@ -7580,7 +7580,7 @@ keys under "Connection errors". The rule that nothing public reaches
 something private is `visibility.public_reaches_private`
 ([Project layout and modules](01-project-layout-and-modules.md)), and
 several changing calls in the wrong place are the `step.` errors of
-[Jobs and events](12-jobs-and-events.md) and `effect.call_in_loop`
+[Background work](12-jobs-and-events.md) and `effect.call_in_loop`
 ([Logic](03-logic.md)).
 
 ## Errors
