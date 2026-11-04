@@ -851,7 +851,7 @@ impl Given {
     fn named(&self) -> String {
         match self {
             Given::Marked(field) | Given::FieldOf(field, _) => format!("`{field}`"),
-            Given::Value(ty) => format!("{} `{ty}`", article(ty)),
+            Given::Value(ty) => format!("{} `{ty}`", a_or_an(ty)),
         }
     }
 
@@ -859,14 +859,14 @@ impl Given {
         match self {
             Given::Marked(field) => format!("`{field}`, marked `personal:`"),
             Given::FieldOf(field, ty) => {
-                format!("`{field}`, {} `{ty}`, which is personal data", article(ty))
+                format!("`{field}`, {} `{ty}`, which is personal data", a_or_an(ty))
             }
-            Given::Value(ty) => format!("{} `{ty}`, which is personal data", article(ty)),
+            Given::Value(ty) => format!("{} `{ty}`, which is personal data", a_or_an(ty)),
         }
     }
 }
 
-fn article(word: &str) -> &'static str {
+fn a_or_an(word: &str) -> &'static str {
     if word.starts_with(['A', 'E', 'I', 'O', 'U']) {
         "an"
     } else {
