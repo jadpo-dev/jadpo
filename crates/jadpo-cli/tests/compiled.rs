@@ -1093,7 +1093,7 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             (1, 1),
             (3, 3),
             (3, 3),
-            (3, 3)
+            (1, 1)
         ]
     );
     println!(
