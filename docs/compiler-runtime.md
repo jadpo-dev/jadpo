@@ -3262,7 +3262,13 @@ counting only while that can't be reached, which is the one reading both
 give: the plan's route table carries the store
 `rate_limits:` names (`RateLimitStore`, with a binding for each limit
 on Cloudflare's), the Workers host counts in it, and `jadpo check`
-refuses a Workers deployable that serves an API without one. Round trips: the sign-in lookup, an idempotency key's claim (one
+refuses a Workers deployable that serves an API without one. A route's or an
+API's own `rate_limit:` reaches the runtime on its `RoutePlan`
+(`RouteRateLimit`, its count's key starting with the route's key or `api
+<name>`), counted in place of the defaults through the same capability; the
+store's bindings are numbered from every limit the app writes, and the
+in-memory table drops the counter whose window ends soonest whatever its
+length. Round trips: the sign-in lookup, an idempotency key's claim (one
 `INSERT ... ON CONFLICT` that also gives back what the key is kept with)
 and its release, the response a failed action keeps, and `SELECT 1` each
 run as one statement on their own (`Database::query_once`, autocommit),

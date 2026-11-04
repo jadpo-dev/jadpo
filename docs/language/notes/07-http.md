@@ -59,7 +59,6 @@ Moved here from the area page when it was rewritten to the writing guide.
 | `toolchain.target_liveness_not_local`, raised only by `jadpo build`; the `jadpo api update` command and CI's record check | 14 |
 | `precondition_failed` for `If-Match` (from area 4); until then a concurrent change answers 409 through area 5's check (deferred) | 7 |
 | Response headers: `Location` for created records, caching, `ETag` (deferred) | 7 |
-| Per-route rate limits (`rate_limited`) (deferred) | 7 |
 
 ## Decisions
 

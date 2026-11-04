@@ -301,7 +301,11 @@ queries send, and what a prompt sends a model.
 ### `jadpo routes`
 
 Lists every route with its full method and path, its file, its API, its
-authentication and the query or action it runs. Authentication shows
+authentication, the query or action it runs and, for a route you write, what
+it is limited to: `5/1h ip` is five an hour for each address, `600/1m caller`
+a minute's 600 for each caller ([Rate limits](16-built-in-services.md#rate-limits)).
+`--json` gives it as `rate_limit`, `null` for a route the runtime answers.
+Authentication shows
 `required`, `none` or `fresh` ([Routes: signed in by
 default](08-identity.md#routes-signed-in-by-default)). A connection's
 generated webhook shows `signature` ([External
