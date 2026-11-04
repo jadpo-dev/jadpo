@@ -3430,8 +3430,9 @@ the tenant's id), which actions emit through what they call
 keeps its outbox (`outbox_store`: the store it writes, else
 `events: { store: }`, else `event.store_required`; nothing defaults to a
 store called `main`, §2.10); a subscriber whose
-action reaches a grant naming `Access.public` but not `Access.system`
-is `policy.system_grant_missing` (`policy::reach::public_only`). The
+action reaches a grant naming `Access.public` but not `Access.system`,
+or a statement no list grants anyone, is `policy.system_grant_missing`
+(`policy::reach::system_refused`). The
 plan holds the subscriber table (`jadpo_std::subscriber::EventsPlan`,
 `Plan::events`) and each emitting action's `CallablePlan::outbox`. The
 interpreter's `emit` writes the event's payload through the JSON table

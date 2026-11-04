@@ -752,65 +752,102 @@ pub fn reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     out
 }
 
-/// What background work reaches that only `Access.public` lets it in to.
+/// What the system, running an action or a query, reaches that it should
+/// never be let in to that way, or can't be let in to at all.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PublicOnly {
-    Entity {
+pub enum SystemRefused {
+    /// A grant list naming `Access.public` and not `Access.system`.
+    PublicEntity { entity: String, effect: Effect },
+    /// The action's line under `actions:`, naming the same.
+    PublicLine { written: String },
+    /// No list grants anyone this: an entity's own, or the `written` line
+    /// under `actions:` deciding this write of a listed action's own body.
+    Ungranted {
         entity: String,
         effect: Effect,
+        line: Option<String>,
     },
-    /// The action's line under `actions:`.
-    Line {
-        written: String,
+    /// A field's own list that names nobody.
+    UngrantedField {
+        entity: String,
+        field: String,
+        effect: Effect,
     },
 }
 
 /// The first thing the action called `run`, run as the system, reaches
-/// whose grants name `Access.public` but not `Access.system` (area 9,
-/// "Background work and `Access.public`", decided 2026-10-19): a
-/// statement anyone at all may run tests no caller, so it would let the
-/// system in without the entity ever granting background work. The line
-/// under `actions:` of `run` and of every action it calls, itself or
-/// through another, is checked first, since each lets its caller in as it
-/// starts, wherever it is called from (chunk 6.6b).
-pub fn public_only(db: &dyn Db, project: Project, run: &str) -> Option<PublicOnly> {
+/// that lets the system in by no grant of its own (area 9, "Background
+/// work"). A statement whose grants name `Access.public` but not
+/// `Access.system` tests no caller, so it would let the system in without
+/// the entity ever granting background work (decided 2026-10-19). One no
+/// list grants anyone can only ever be refused, and nobody else can reach
+/// it either, since a route reaching it is `policy.effect_ungranted`
+/// (chunk A22). The line under `actions:` of `run` and of every action it
+/// calls, itself or through another, is checked first, since each lets its
+/// caller in as it starts, wherever it is called from (chunk 6.6b).
+///
+/// A list naming only people is left out: an action a route runs too may
+/// reach one on a branch the system never takes, and such a program works.
+/// So is a `FieldAccess.server_only` field, since area 9 leaves how
+/// background work writes one to area 12, which doesn't say.
+pub fn system_refused(db: &dyn Db, project: Project, run: &str) -> Option<SystemRefused> {
     let access = &Policies::new(db, project);
     for action in calls_from(db, project, run) {
         if let Some(line) = access.root().action(&action)
             && line.who.contains(&ActionWho::Public)
             && !line.who.contains(&ActionWho::System)
         {
-            return Some(PublicOnly::Line {
+            return Some(SystemRefused::PublicLine {
                 written: line.written.clone(),
             });
         }
     }
-    public_only_reached(db, project, access, run, false)
+    system_refused_reached(db, project, access, run, false)
 }
 
 /// The same for the query called `query`, which a batch's run reads as
 /// the system (chunk 6.4c).
-pub fn public_only_query(db: &dyn Db, project: Project, query: &str) -> Option<PublicOnly> {
-    public_only_reached(db, project, &Policies::new(db, project), query, true)
+pub fn system_refused_query(db: &dyn Db, project: Project, query: &str) -> Option<SystemRefused> {
+    system_refused_reached(db, project, &Policies::new(db, project), query, true)
 }
 
-fn public_only_reached(
+fn system_refused_reached(
     db: &dyn Db,
     project: Project,
     access: &Policies<'_>,
     run: &str,
     query: bool,
-) -> Option<PublicOnly> {
+) -> Option<SystemRefused> {
     let (reached, _) = reached(db, project, access, run, query);
-    reached
-        .into_iter()
-        .find(|reach| {
-            reach.grants.contains(&Grant::Public) && !reach.grants.contains(&Grant::System)
-        })
-        .map(|reach| PublicOnly::Entity {
-            entity: reach.entity,
-            effect: reach.effect,
-        })
+    reached.into_iter().find_map(|reach| {
+        if reach.grants.contains(&Grant::Public) && !reach.grants.contains(&Grant::System) {
+            return Some(SystemRefused::PublicEntity {
+                entity: reach.entity,
+                effect: reach.effect,
+            });
+        }
+        if !reach.grants.is_empty() {
+            return None;
+        }
+        match reach.field {
+            Some(field) => {
+                let server_only = access
+                    .entity(&reach.entity)
+                    .and_then(|policy| policy.field(&field))
+                    .is_some_and(|own| own.server_only);
+                (!server_only).then_some(SystemRefused::UngrantedField {
+                    entity: reach.entity,
+                    field,
+                    effect: reach.effect,
+                })
+            }
+            None => Some(SystemRefused::Ungranted {
+                entity: reach.entity,
+                effect: reach.effect,
+                line: reach.line,
+            }),
+        }
+    })
 }
 
 /// Whether policy may refuse the caller of the action called `run` with
