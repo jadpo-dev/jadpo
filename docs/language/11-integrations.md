@@ -1246,7 +1246,7 @@ adding another Jadpo app's OpenAPI document with `jadpo package add`;
 writing an operation's output type from the sandbox's answer when it has
 none; and a HAR capture's operations.
 
-## The surface
+## A package's surface
 <!-- topic: the-surface -->
 
 A package's surface is everything it offers an app, in one file you can
@@ -1480,7 +1480,7 @@ which the compiler can check.
 
 A library package also ships complete wording in its own default locale,
 with a `///` description on every public message
-([Configuration and time](10-configuration-and-time.md)). The bar's
+([Packages' text in an app](10-configuration-and-time.md#packages-text-in-an-app)). The bar's
 `wording` row, shown when the package carries translations, holds every
 language the package ships to completeness, and item 2 asks for the
 description of every public message.
@@ -2071,7 +2071,7 @@ application {
   `.live`, which picks between the package's hosts. Calls are HTTPS only,
   and redirects and proxies are always refused.
 - **The credential** is a `secret: true` setting
-  ([Configuration and time](10-configuration-and-time.md)). The package
+  ([Secrets](10-configuration-and-time.md#secrets)). The package
   says how it is sent, and code can never read it. For a provider that
   acts for each user, the credential is an `OAuthGrant` instead.
 - **`host:`** gives the address of a package with no fixed host: another
@@ -2540,7 +2540,7 @@ checks the row is unchanged
 A changing call with no idempotency key must be the only changing call
 in its action.
 Several keyed calls follow
-[Several changing calls in one action](#several-changing-calls-in-one-action).
+[Several changing calls through a package](#several-changing-calls-through-a-package).
 Work that must follow a write emits an event
 ([Emitting an event](12-jobs-and-events.md#emitting-an-event)).
 
@@ -3454,7 +3454,7 @@ written once and tested, without reaching into the apps that install it.
   email, call any other connection, or read configuration or secrets. The
   app calls one as `connection.action(input)` inside its own action. One
   with several changing calls follows
-  [Several changing calls in one action](#several-changing-calls-in-one-action).
+  [Several changing calls through a package](#several-changing-calls-through-a-package).
   Inside a package, operations are named without the connection:
   `customers.create`.
 - **Package subscribers on its own webhooks.** A package may subscribe to
@@ -3499,7 +3499,7 @@ Here a package's action calls its own operations, one of which the
 package keeps to itself, and passes each answer to the next. The app calls
 the action through its connection and maps its failure at the call. A
 package action's changing calls are steps of the action that calls it
-([Several changing calls in one action](#several-changing-calls-in-one-action)).
+([Several changing calls through a package](#several-changing-calls-through-a-package)).
 The choices are in "Package actions and recipes", further down this page.
 
 The card can be declined after the customer was created. So the
@@ -4144,7 +4144,7 @@ listed in the surface. Library packages may ship recipes too.
 Not built yet: services run by Jadpo (`runs:`), and running a recipe's
 tests in `sample/`.
 
-## Several changing calls in one action
+## Several changing calls through a package
 <!-- topic: several-changing-provider-calls -->
 
 Some jobs need several calls that each change something at a provider,
@@ -4154,9 +4154,11 @@ records each step before it is sent, replays the recorded answers on a
 rerun, and stops the action as `diverged` if anything differs.
 
 These rules apply to an app's action and to the package actions it
-calls, which count as one sequence. "Several changing calls in one
-action" in [Background work](12-jobs-and-events.md) describes the same
-rules from the side of the event delivery that runs the action.
+calls, which count as one sequence.
+[Several changing calls in one action](12-jobs-and-events.md#several-changing-calls-in-one-action)
+says where such an action may run, what's allowed in it, and when it's
+warned; this topic adds what a package and its provider bring, and how a
+record ends.
 
 - **Words.** A *step* is one outside call made by an action from its first
   changing call on, numbered along the path the action runs, package
@@ -4169,13 +4171,6 @@ rules from the side of the event delivery that runs the action.
   is safe to repeat as it is (a `PUT` that replaces, a `DELETE`). A changing call with
   neither stays the only changing call in its action. A package action over
   the limit cannot be published.
-- **Where.** Only in actions run from subscribers, or from routes whose API
-  requires `Idempotency-Key`. Reaching such an action from a schedule, or
-  from a route whose API does not require the key, is a compile error naming
-  the two fixes: require the key, or answer 202 and do the steps in a
-  subscriber.
-- **No outside call inside `for`** in such an action, so the compiler knows
-  every path's length; batch work stays one event per item.
 - **The record.** Before a step is sent the runtime records its position,
   operation, a fingerprint of its request (over the typed value, not the
   bytes) and the time sent; when the answer comes, success or failure, it
@@ -4195,7 +4190,7 @@ rules from the side of the event delivery that runs the action.
   commit ([Reads and writes](06-reads-and-writes.md)). A resumed action
   writes timestamps from when it began, which is also when the provider
   acted. Before the first changing step a rerun takes a fresh time.
-  [Configuration and time](10-configuration-and-time.md) holds the same.
+  [The current time: `clock.now`](10-configuration-and-time.md#the-current-time-clocknow) holds the same.
 - **Keys and windows.** Each step's key is derived as "Calling" says, the
   step number and key generation included. A keyed step in doubt inside its
   provider's `window:` (less a margin, the smaller of a tenth of the window
@@ -4219,20 +4214,10 @@ rules from the side of the event delivery that runs the action.
   step. The provider's "key in use" answer means wait: retried within the
   call's budget, then retry-later, never a failure. The provider's
   "different request" answer is `diverged`, never `misconfigured`.
-- **Transactions.** Database writes still come after the last call, with
-  no transaction open during calls
-  ([Outside calls hold no transaction](06-reads-and-writes.md#outside-calls-hold-no-transaction)).
-  Record writes are the runtime's own, each in a short transaction.
-- **The warning.** After the first changing step, every point that can end
-  the action for good (a step's failure, a write that can be refused,
-  `reject`, a called action's failure) is warned unless handled with
-  `match`, naming three fixes: check the condition before the first step;
-  record the answers and finish in a subscriber of an event the write emits;
-  undo as another step. A package's surface lists which of its failures
-  follow an effect, so the warning reaches through package actions. It
-  holds for single calls too.
 - **Undo is code.** There is no built-in compensation. An undo is a step
-  like any other: it needs a key, gets the same warning, and a failure
+  like any other: it needs a key, gets the same
+  [warning](12-jobs-and-events.md#ending-for-good-after-a-step-took-effect),
+  and a failure
   mapped as "already undone" (Stripe's `resource_missing` on a delete)
   counts as handled.
 - **Ending.** The record is removed in the action's commit transaction,
@@ -4244,9 +4229,6 @@ rules from the side of the event delivery that runs the action.
   (end the action as failed, keeping the list of effects for tidying up by
   hand). It is kept at most 30 days, after which the answers are dropped
   and the step list stays.
-- **Where records live.** In the store the action writes, beside the
-  outbox; an action that writes no store needs `events: { store: }`, or it
-  is a compile error.
 - **Personal data.** Requests are kept only as fingerprints. Answers are
   encrypted with `application { steps: { encryption_key: } }`
   ([Background work](12-jobs-and-events.md)). Nothing links them to a person, so the
@@ -4262,8 +4244,9 @@ rules from the side of the event delivery that runs the action.
   are not changes to the shape.
 - **Run limits.** A run cut off with a record (a Workers limit, a deploy, a
   crash) resumes; only its step in doubt follows the window rule. The
-  deadline warning sums the timeout times the attempts of every step on the
-  longest path, against the route's deadline.
+  deadline warning sums the timeout times the attempts of every outside call
+  on the longest path, a provider's operation and an `ai` call alike, against
+  the route's `deadline:`. A single call is checked the same way.
 - **Tests and tools.** Fakes keep keys as the provider does (the same key
   and request return the first answer; a different request returns the
   package's mismatch answer) and gain two scripted answers, `lost` (the
@@ -4310,19 +4293,6 @@ reads an operation's `large_output:`. A provider's `idempotency:`
 and an operation's `changes:` marks a step. The provider call records,
 replays and keys each step through the capability seam, whose exchange
 writes a step before it is sent.
-
-The warning counts each point that can end the action for good after its
-first changing call as one finding for the action, which you can
-decline, unless it is handled with `match`. Those points are an `attempt`
-passing on a failure that isn't `unavailable` or `rate_limited`,
-`reject`, and `propagate`. A package's action lists on its surface which
-failures can follow its own changing call (`after_effect`), and the app's
-call of it is the point.
-
-Each route's action sums the `timeout:` times the attempts of every
-outside call on its longest path, a provider's operation and an `ai` call
-alike, against the route's `deadline:`. A single call is checked the same
-way.
 
 ### Where else this is covered
 
@@ -4814,13 +4784,18 @@ agreement with is a `Service`, calling an ordinary route with a service
 key ([Service credentials](08-identity.md#service-credentials)).
 
 
-## Acting for each user: OAuth grants
-<!-- topic: acting-for-each-user-oauth-grants -->
+## OAuth grants
+<!-- topic: oauth-grants (was acting-for-each-user-oauth-grants, acting-for-a-user-at-another-service-oauth-grants) -->
 
 Use a grant when your app acts at another service for each of its users
 or organisations: a user's Google Calendar, an organisation's Xero, a
 Slack workspace install. Each owner connects their own account, and your
 app calls the service with that owner's permission.
+
+Signing in proves to your app who a person is. A grant goes the other way:
+your app acts at another service, with that owner's consent. It isn't a way
+to sign in. Your app acting as an OAuth provider, for other apps to sign in
+with, is a third, separate thing.
 
 ```jadpo fragment
 // app.jadpo
@@ -4847,43 +4822,54 @@ attempt calendar.events.insert(event, on_behalf_of: booking.organiser_id) {
 
 A connection's credential may be a grant owned by one of the app's
 records. The owner is `User` or any entity, such as `Organisation`. The
-provider's OAuth facts (its authorize, token and revoke addresses) are
-`oauth:` in the package's `provider.jadpo`, and each operation declares
-the scope it needs (`scope: "calendar.events"`). Nothing is specific to
-one provider, and the connection's name is the app's.
+grant belongs to that record, not to a session, so it outlives every
+session and is used from subscribers and schedules, which run with no
+caller. The provider's OAuth facts (its authorize, token and revoke
+addresses) are `oauth:` in the package's `provider.jadpo`, and each
+operation declares the scope it needs (`scope: "calendar.events"`).
+Nothing is specific to one provider, and the connection's name is the
+app's.
 
 ### Connecting
 
 Connecting is two generated endpoints, not pages:
 
 1. `POST /connections/<name>/start`, called by the signed-in caller,
-   returns the provider's consent address. It stores the OAuth `state` on
-   the server, against the caller's session or API token.
+   returns the provider's consent address. It needs a signed-in caller, so
+   `authentication: RouteAuthentication.none` isn't available on it. It
+   stores the OAuth `state` on the server, against the caller's browser
+   session or API token.
 2. The provider sends the person back to the generated
-   `GET /connections/<name>/callback`. It finds the `state`, exchanges the
+   `GET /connections/<name>/callback`. It finds the `state`, so a consent
+   can complete only once, for the caller who started it. It exchanges the
    code with PKCE, stores the grant, and redirects to the frontend's
-   `return_to` with success or failure.
+   `return_to`, a path on the app's own site, with success or failure.
 
 The callback needs no cookie, so the app's own API-token clients connect
-the same way.
-[Acting for a user at another service: OAuth grants](08-identity.md#acting-for-a-user-at-another-service-oauth-grants)
-covers how this touches sign-in.
+the same way as browsers. Both routes appear in `jadpo routes`, OpenAPI and
+the API record, marked generated
+([Generated routes](07-http.md#generated-routes)).
 
 ### Where grants are kept
 
 The runtime holds grants, as it holds sessions, in a `jadpo_grants`
 system table in the owner entity's store, so grants need a database.
 Their tokens are encrypted with
-`application { grants: { encryption_key: config.grant_encryption_key } }`.
-That key is a secret, read and rotated as signing keys are, with its
-previous key kept ([Signing keys](10-configuration-and-time.md#signing-keys)).
-No code can read a grant.
+`application { grants: { encryption_key: config.grant_encryption_key } }`,
+a `SigningKey` setting. That key is a secret, rotated as a `signing_key:`
+is: the current value encrypts, and its `_PREVIOUS` value is still read
+([Signing keys](10-configuration-and-time.md#signing-keys)).
+`encryption_key:` is one of the places in `application { }` a secret may be
+read ([Secrets](10-configuration-and-time.md#secrets)). No code can read a
+grant.
 
 ### Calling with a grant
 
-Every call names whose grant it uses: `on_behalf_of: owner_id`.
-`grant_missing` and `grant_revoked` are failures the app maps, as the
-example maps both to `CalendarNotConnected`.
+Every call names whose grant it uses: `on_behalf_of: owner_id`, an id of the
+owner's entity that the action has loaded or been given. The caller of the
+route need not be the owner: a scheduled job acting for an organisation
+names the organisation. `grant_missing` and `grant_revoked` are failures the
+app maps, as the example maps both to `CalendarNotConnected`.
 
 Tokens are refreshed for you: renewed before they expire, once when
 several calls race, and a rotated refresh token kept. A revoked grant
@@ -4896,8 +4882,10 @@ connection doesn't request is an error.
 ### Who may connect
 
 [Policy](09-policy.md) decides who may connect for an owner. Connecting
-and disconnecting need the `update` grant on the owner's record, so
-grants bring in no new kind of permission.
+and disconnecting need the `update` grant on the owner's record. So a user
+connects their own account, and an organisation's grant needs whatever lets
+the caller update the organisation. Grants bring in no new kind of
+permission, and the start route checks this before it answers.
 
 ### Disconnecting
 
@@ -4917,7 +4905,8 @@ Each of these comes when an app needs it: several accounts per owner,
 scopes added after connecting, provider notifications per grant, and
 GitHub App installation tokens (a credential scheme in the runtime).
 
-> OAuth grants aren't built yet ([What is built](#what-is-built)).
+> OAuth grants, their routes and `on_behalf_of:` aren't built yet, and nor is
+> acting as an OAuth provider ([What is built](#what-is-built)).
 
 ## Packages from other Jadpo apps
 <!-- topic: packages-from-other-jadpo-apps -->
@@ -5484,7 +5473,7 @@ How each part works is under
 > `jadpo trace` and the timelines aren't built yet. The call log keeps
 > the last 500 calls.
 
-## Compile time
+## What a provider description costs your build
 <!-- topic: compile-time -->
 
 A provider's description doesn't slow your build, however large it is,
@@ -5534,7 +5523,7 @@ The compiler checks every scripted response against the package's types,
 so a fake can't return a shape the provider never would. Tests script the
 clean type, never the shape on the wire. Fakes keep idempotency keys as
 the provider does, and accept `lost` and `in_use` as scripted answers
-([Several changing calls in one action](#several-changing-calls-in-one-action)).
+([Several changing calls through a package](#several-changing-calls-through-a-package)).
 Grants are declared as fixtures.
 
 `jadpo test --kind contract` runs the same cases against the provider's
@@ -5644,7 +5633,7 @@ it when you write a package by hand or a check refuses one.
 ## How the surface and the publishing bar work
 <!-- topic: how-the-surface-and-the-publishing-bar-work -->
 
-This is the detail behind [The surface](#the-surface) and
+This is the detail behind [A package's surface](#a-packages-surface) and
 [Developing and publishing a package](#developing-and-publishing-a-package):
 what a package's surface record holds, how its version is worked out, and
 what `jadpo package check` and `jadpo package show` do.
@@ -6428,7 +6417,7 @@ again, and how its answer is classified and read.
   any other change is unkeyed, so one whose outcome is unknown is parked
   rather than sent again.
 - **The key**, as
-  [Several changing calls in one action](#several-changing-calls-in-one-action)
+  [Several changing calls through a package](#several-changing-calls-through-a-package)
   uses it, is `jd1_` and 32 characters of RFC 4648
   base32 in lower case, the first 160 bits of a SHA-256 over the parts,
   each given by its length so two sets of parts never run together, and
@@ -6826,7 +6815,7 @@ how it is checked and how you make one.
   whose credential, environment or address nothing sets (the stand-in
   `jadpo dev` gives it would reach nobody), and one with no address. A
   keyed operation takes a key derived as any call's
-  ([Several changing calls in one action](#several-changing-calls-in-one-action)),
+  ([Several changing calls through a package](#several-changing-calls-through-a-package)),
   from a scope of its own and this run's randomness, so recording again
   is a new request. A refusal, no answer, or an answer that doesn't
   again leaves the file as it was.

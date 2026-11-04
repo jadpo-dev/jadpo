@@ -318,7 +318,7 @@ reviewed in `provider.jadpo`.
 [Calling](../language/11-integrations.md#calling),
 [Tests and fakes](../language/11-integrations.md#tests-and-fakes),
 [Provider calls in development](../language/11-integrations.md#provider-calls-in-development)
-and [Several changing calls in one action](../language/11-integrations.md#several-changing-calls-in-one-action).
+and [Several changing calls through a package](../language/11-integrations.md#several-changing-calls-through-a-package).
 To call the service from a route, see [Build an API](01-build-an-api.md);
 an action that reads no stored record needs a line in `policy.jadpo`
 saying who may run it.

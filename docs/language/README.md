@@ -43,7 +43,7 @@ status table, with the [roadmap](../roadmap.md), say what is built. A
 | 7 | [HTTP](07-http.md) | Routes, boundary contracts, API records and OpenAPI |
 | 8 | [Sign-in and identity](08-identity.md) | Principals, sessions, tokens, keys, magic links and passkeys |
 | 9 | [Policy](09-policy.md) | Ownership, grants, roles, tenancy and field-level access |
-| 10 | [Configuration and time](10-configuration-and-time.md) | Settings, secrets, connections, clocks, calendars and translations |
+| 10 | [Configuration](10-configuration-and-time.md) | Settings, secrets, connections, clocks, calendars and translations |
 | 11 | [Integrations](11-integrations.md) | Provider packages, capabilities, connections, webhooks and recordings |
 | 12 | [Background work](12-jobs-and-events.md) | Events, outbox delivery, subscribers, schedules and batches |
 | 13 | [Testing](13-testing.md) | Test kinds, fixtures, real databases, fakes and controlled clocks |

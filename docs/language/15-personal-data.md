@@ -1000,7 +1000,7 @@ test "closing an account hides the customer and keeps the policy number" {
   ([Audit trail](16-built-in-services.md#audit-trail)).
 - **OAuth grants**, the permissions a person gave your app to act for them
   at a provider, are deleted with the person or record that owns them
-  ([OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)).
+  ([OAuth grants](11-integrations.md#oauth-grants)).
   They are revoked at the provider where its package declares how.
 - **Other companies.** Data already sent to a provider, such as an email
   or payment provider, is outside your database. Providers that can erase
@@ -1519,7 +1519,7 @@ store with the configuration setting that says where it is.
 <!-- topic: the-personal-data-report -->
 
 `jadpo check` writes `build/report/personal-data.md` and a `.json` twin,
-in the same form as its other reports ([The report](14-tooling.md#the-report)).
+in the same form as its other reports ([The suggestions report](14-tooling.md#the-suggestions-report)).
 For each person entity it lists:
 
 - every marked field, with its category, entity, store and caches;

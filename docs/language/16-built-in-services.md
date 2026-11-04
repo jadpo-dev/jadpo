@@ -196,7 +196,7 @@ The first rule that matches wins:
 
 The runtime knows the caller, as it does for policy, so you don't pass
 it. Schedules and subscribers have no caller
-([Background work](09-policy.md#background-work)), so they get the
+([Policy and background work](09-policy.md#policy-and-background-work)), so they get the
 everyone value. An action that needs a user's variant later puts the
 value in the event it emits.
 
@@ -3396,7 +3396,7 @@ order it was sent. A `SentEmail` holds:
 - `sign_in_token`, a `SignInToken?`, and `sign_in_code`, a
   `SignInCode?`: the sign-in email's link token and code, which a route
   test posts to the confirmation
-  ([In development and tests](08-identity.md#in-development-and-tests)).
+  ([Sign-in in development and tests](08-identity.md#sign-in-in-development-and-tests)).
   Both are `none` on every other email. Only a host that catches mail
   is handed them, beside the message, so no driver ever sees them.
 

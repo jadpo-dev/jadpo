@@ -31,7 +31,7 @@ The language is split on the site into one page per topic. Each link below is an
 - [7. HTTP](https://jadpo.dev/docs/http.md): Routes, contracts, API records and OpenAPI.
 - [8. Identity](https://jadpo.dev/docs/identity.md): Principals, sessions, tokens, keys, magic links and passkeys.
 - [9. Policy](https://jadpo.dev/docs/policy.md): Ownership, grants, roles, tenancy and field access.
-- [10. Configuration and time](https://jadpo.dev/docs/configuration-and-time.md): Settings, secrets, connections, time and translations.
+- [10. Configuration](https://jadpo.dev/docs/configuration.md): Settings, secrets, connections, time and translations.
 - [11. Integrations](https://jadpo.dev/docs/external-services.md): Provider packages, connections, capabilities, webhooks and recordings.
 - [How packages, connections, capabilities and services fit together](https://jadpo.dev/docs/how-integrations-fit-together.md): What a package, provider, connection, driver, capability, built-in service and service run by Jadpo each are, where each runs in development, tests, native and Workers deployables, and what is built; Docker or Podman is used only for a service run by Jadpo (`runs:`), which is not built yet. Read this before areas 10, 11 and 16.
 - [12. Jobs and events](https://jadpo.dev/docs/jobs-and-events.md): Events, outbox delivery, subscribers, schedules and batches.

@@ -136,7 +136,7 @@ Numbered as the questions they settled, which other pages cite.
    safe to repeat, only where its key survives a retry (subscribers, and
    routes whose API requires `Idempotency-Key`), recorded step by step and
    replayed on a rerun; a changing call with no key stays the only one in
-   its action ("Several changing calls in one action").
+   its action ("Several changing calls through a package").
 8. **Retry settings.** `timeout:` (default 3s) and `retry: { attempts:
    within: }` (default 3 within 30s), the same words as area 12's
    subscriber retry, with exponential backoff and full jitter fixed;
@@ -399,8 +399,9 @@ Numbered as the questions they settled, which other pages cite.
     the writes, so a write refused afterwards for good (a unique rule, a
     restricted reference) would roll back the database's only record of a
     change the provider kept. `jadpo check` warns at every point after the
-    first changing step that can end the action for good ("The warning",
-    under "Several changing calls in one action"), for single calls too.
+    first changing step that can end the action for good ("Ending for good
+    after a step took effect", under "Several changing calls in one action"
+    in Background work), for single calls too.
     The run ends with its record kept, so an operator can retry once the
     cause is fixed, replaying every answer without contacting the
     provider.

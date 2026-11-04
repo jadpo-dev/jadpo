@@ -44,7 +44,7 @@ Each entry in a list names who it lets in, in one of four ways:
 | [A user field on the record](#a-user-field-on-the-record) | `owner_id` | the user that field points to |
 | [A membership role](#a-membership-role) | `CompanyRole.editor` | a user with that role in the record's company |
 | [Anyone signed in, or anyone](#anyone-signed-in-or-anyone) | `Access.authenticated`, `Access.public` | anyone signed in; anyone at all |
-| [Background work](#background-work) | `Access.system` | schedules and subscribers, limited to the tenant their event came from |
+| [Policy and background work](#policy-and-background-work) | `Access.system` | schedules and subscribers, limited to the tenant their event came from |
 
 When your app is shared by many customer companies, [Tenancy](#tenancy)
 keeps each company's records to its own members, whatever the lists say.
@@ -106,7 +106,7 @@ names someone else as the owner is refused.
 A user field that any list names can't be changed by an ordinary update,
 since changing it would hand the record to someone else. You don't mark it
 `immutable:` for that. To hand a record to someone else, write a named
-action and list it in root `policy.jadpo`, as [Actions](#actions) shows.
+action and list it in root `policy.jadpo`, as [Permissions on actions](#permissions-on-actions) shows.
 
 ## A membership role
 <!-- topic: a-membership-role -->
@@ -318,8 +318,8 @@ personal data anyone may read says so to a person
 
 There is no administrator who bypasses policy.
 
-## Background work
-<!-- topic: background-work -->
+## Policy and background work
+<!-- topic: policy-and-background-work (was background-work) -->
 
 Schedules and event subscribers are the work your app does without a
 request ([Background work](12-jobs-and-events.md)). They run as the system
@@ -469,7 +469,7 @@ policy {
 ```
 
 This file holds the rules for the whole app: the tenant, and the
-[actions](#actions) that need a permission of their own. Each entity's own
+[actions](#permissions-on-actions) that need a permission of their own. Each entity's own
 `policy:` section still lists who may create, read, change and delete its
 records. Naming a tenant adds these rules to every entity:
 
@@ -1522,7 +1522,7 @@ test "nobody seats themselves in a company everyone has left" {
 
 Moving a record to another company is rare, and it needs an action of its
 own. Only an action listed under `actions:` in root `policy.jadpo` may do
-it ([Actions](#actions) shows the list). The write checks every reference
+it ([Permissions on actions](#permissions-on-actions) shows the list). The write checks every reference
 the record keeps, and that no record of the old company refers to it. In
 the new company, it needs what creating the moved record there would: the
 entity's own `create:` and the caller's own membership there.
@@ -1531,8 +1531,8 @@ A membership moved in from another company holds no role its mover
 couldn't give there. So a viewer can't move in an owner's membership they
 hold elsewhere.
 
-## Actions
-<!-- topic: actions -->
+## Permissions on actions
+<!-- topic: action-permissions (was actions) -->
 
 Most actions need no permission of their own: an action takes its
 permission from the entities it touches. Root `policy.jadpo` lists the few
@@ -2166,7 +2166,7 @@ approval`](17-debugging-and-review.md#reviewing-a-change) shows those ways
 there.
 
 Schedules and subscribers act as the system
-([Background work](#background-work)), and what `Access.system` is granted
+([Policy and background work](#policy-and-background-work)), and what `Access.system` is granted
 shows in the permissions report. The compiler's own purge of soft-deleted
 records ([The purge schedule](12-jobs-and-events.md#the-purge-schedule)) is
 the only operation outside policy. Erasing a person needs `delete` on

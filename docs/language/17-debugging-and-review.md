@@ -341,7 +341,7 @@ In production, only the spans are kept, with no values
 `jadpo dev grants add <connection> --owner <id>` makes a fake OAuth grant,
 the permission a person gives your app to act for them at a provider, for
 that owner
-([Acting for each user: OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)).
+([OAuth grants](11-integrations.md#oauth-grants)).
 
 > **Built**, except `jadpo trace`, `jadpo watch call` and the request
 > timelines. `jadpo dev` logs each provider call as it ends in

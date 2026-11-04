@@ -37,7 +37,7 @@ than 200.
 A route holds no logic of its own. The work lives in
 [actions and queries](03-logic.md#functions-and-actions). When the action
 fails, the HTTP status comes from the failure's kind, a category such as
-`not_found` (404), never from the route ([Kinds](04-failures.md#kinds)).
+`not_found` (404), never from the route ([Failure kinds](04-failures.md#failure-kinds)).
 
 Every route needs a signed-in caller unless an `authentication:` line in
 the route says otherwise
@@ -819,7 +819,7 @@ in turn. They run in the request's own invocation, each delivery as any is
 delivered
 ([Delivery: at least once, safe to repeat](12-jobs-and-events.md#delivery-at-least-once-safe-to-repeat)),
 as the system limited to its event's tenant
-([Background work](09-policy.md#background-work)). The request's caller is
+([Policy and background work](09-policy.md#policy-and-background-work)). The request's caller is
 given back before the answer runs.
 
 The work has settled when every one of those deliveries has succeeded,
@@ -1425,7 +1425,7 @@ A response that starts a session or carries a credential is never kept.
 
 The digest isn't keyed (no secret is mixed into the hash), since a key
 would need a secret every deployment holds, and Jadpo has none
-([Configuration and time](10-configuration-and-time.md)). So a value that
+([Secrets](10-configuration-and-time.md#secrets)). So a value that
 isn't secret, sent and neither stored nor answered, can still be confirmed
 by guessing, by whoever reads the table. That person reads the kept
 responses and the application's own tables as well.
@@ -1472,8 +1472,7 @@ Some features generate their routes for you:
 - connecting and disconnecting an OAuth grant:
   `POST /connections/<name>/start`, `GET /connections/<name>/callback` and
   `POST /connections/<name>/disconnect`
-  ([Acting for a user at another service: OAuth grants](08-identity.md#acting-for-a-user-at-another-service-oauth-grants),
-  [Acting for each user: OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)).
+  ([OAuth grants](11-integrations.md#oauth-grants)).
 
 Jadpo generates endpoints only, never pages: the app's frontend owns every
 page. Generated routes appear in `jadpo routes`, the API record and OpenAPI

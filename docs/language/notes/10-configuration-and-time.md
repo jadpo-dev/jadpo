@@ -5,7 +5,7 @@ area: 10
 
 # Configuration and time: design notes
 
-Why [Configuration and time](../10-configuration-and-time.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
+Why [Configuration](../10-configuration-and-time.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
 
 ## Carried to later areas
 
@@ -127,7 +127,7 @@ Why [Configuration and time](../10-configuration-and-time.md) is the way it is: 
 
 ## Moved from the area page
 
-When [Configuration and time](../10-configuration-and-time.md) was
+When [Configuration](../10-configuration-and-time.md) was
 rewritten to the [writing guide](../../writing.md), its references to other
 areas by number, the comparisons it used to justify a choice, and the
 details of how the compiler and runtime build each rule moved here. Nothing
