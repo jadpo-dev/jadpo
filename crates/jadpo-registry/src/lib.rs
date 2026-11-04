@@ -14,10 +14,9 @@
 //! - [`conformance`] checks a served OpenAPI document against the table;
 //!   [`openapi`] is the document the table itself gives.
 //!
-//! The crate is used from outside this repository too: the registry
-//! application's CI runs this crate's conformance test against its own
-//! served document (`JADPO_REGISTRY_OPENAPI`, docs/compiler-runtime.md
-//! §2.1).
+//! The registry application's CI runs this crate's conformance test against
+//! its own document, through `jadpo package protocol`
+//! (docs/compiler-runtime.md §2.1).
 
 pub mod archive;
 pub mod conformance;
