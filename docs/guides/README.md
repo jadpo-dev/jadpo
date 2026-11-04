@@ -22,3 +22,4 @@ instead.
 | [Get a person's sign-off](09-get-a-sign-off.md) | an acceptance for a change that could break someone, with a person's reason |
 | [Deploy natively](10-deploy-natively.md) | the app built into one program, running against a real database |
 | [Deploy to Cloudflare Workers](11-deploy-to-workers.md) | the app built as a Worker, reaching its database through Hyperdrive |
+| [Limit how often a route is called](14-limit-how-often-a-route-is-called.md) | a public form limited to five requests an hour, an API's own limit, and clients counted properly behind a proxy |
