@@ -409,6 +409,20 @@ What the Reddit thread found (Richard, 2026-11-03):
   a hole and have the compiler say what type belongs there and what is in
   scope. A language decision, so it goes to Richard with a recommendation and
   what it would save, measured against the PersonName detour in the 0.2.0 run.
+- [ ] **A20 An email address is personal data** `opus · high`, in 0.3.0,
+  after A15 (Richard, 2026-11-04): a field typed `Email` counts as
+  `PersonalData.contact` without saying so, and the first commit that lets
+  anyone read personal data with no sign-in gets a notice, as A15 does for
+  public writes. Area 15, "What the compiler checks"; area 18, "What a first
+  record holds". The 0.2.0 run read a customer's email through a public
+  route and nothing said so.
+- [ ] **D17 The documentation reorganised** `opus · high`, in 0.3.0, after
+  A15 and A20 (Richard, 2026-11-04): a review of how all the documentation
+  and the site's navigation are organised, then the reorganisation it
+  calls for. Built-in services grouped by service, each with one home and
+  a landing page that links to it and says what is built; task guides for
+  the services that work; the standard types under Values and types, not
+  at the end of the primer. Old addresses keep working.
 
 Not scheduled: a way to write a query the language can't express. Richard
 will work through it and other solutions later; don't design or build one
@@ -422,7 +436,7 @@ above and before every other unticked chunk.
 
 0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
 R6, G1 to G7 (what the registry application, R7, needs from `jadpo`), the real
-deploy (8.2n) and what it finds, and D15, D16 and A12 to A15 (Richard,
+deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15 and A20 (Richard,
 2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
 
