@@ -4846,7 +4846,8 @@ calendar: {
 - **In development and tests**, `jadpo dev grants add <connection> --owner
   <id>` makes a fake grant, and tests declare grants as fixtures.
 
-Not built yet: OAuth grants, their routes and `on_behalf_of:`. Acting as
+Not built yet: OAuth grants, their routes, `on_behalf_of:` and
+`jadpo dev grants add`. Acting as
 an OAuth provider isn't built either.
 
 ## Failures

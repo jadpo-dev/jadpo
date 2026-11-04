@@ -2403,8 +2403,9 @@ run resumed under a changed build still stops as `diverged`.
 Fakes honour keys and can answer `lost` and `in_use`. `jadpo test` runs
 every multi-step test again with a crash at each step boundary, on by
 default ([Fakes for integrations](13-testing.md#fakes-for-integrations)).
-`jadpo dev`, `jadpo watch` and `jadpo deliveries show` list each step's
-state ([Debugging and review](17-debugging-and-review.md)).
+`jadpo dev` and `jadpo deliveries show` list each step's state, and
+`jadpo watch` will once it is built
+([Debugging and review](17-debugging-and-review.md)).
 
 ### Providers that take no key
 
@@ -3479,6 +3480,7 @@ These limits may change once they have been measured on real runs.
 |---|---|
 | Everything else on this page | Built. |
 | Publishing chosen public events outward | Not built yet. |
+| `jadpo batches list`, `show` and `cancel` | Not built yet: an action can call `batches.status` and `batches.cancel` meanwhile ([Tooling](14-tooling.md#commands-for-services-calls-email-and-stored-data)). |
 | `batches.each` over a provider's list operation, walked by `page.next` | Not built yet: a provider's list operation as `from:` is `toolchain.not_built_yet` where it is written; a named query giving a `Page` is built ([Walking records or a provider's list](#walking-records-or-a-providers-list-batcheseach)). |
 | Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging and review](17-debugging-and-review.md)), and a record's entry in the [personal-data report](15-personal-data.md) | Not built yet. |
 | Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for [telemetry](16-built-in-services.md). |
