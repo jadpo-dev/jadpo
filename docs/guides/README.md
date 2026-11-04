@@ -22,3 +22,4 @@ instead.
 | [Get a person's sign-off](09-get-a-sign-off.md) | an acceptance for a change that could break someone, with a person's reason |
 | [Deploy natively](10-deploy-natively.md) | the app built into one program, running against a real database |
 | [Deploy to Cloudflare Workers](11-deploy-to-workers.md) | the app built as a Worker, reaching its database through Hyperdrive |
+| [Ship a change behind a flag](13-ship-a-change-behind-a-flag.md) | a change deployed switched off, both sides tested, turned on with no deploy, and the flag removed |

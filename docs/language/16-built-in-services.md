@@ -72,6 +72,8 @@ and a conformance suite that a package filling it must pass.
 ## Feature flags
 <!-- topic: feature-flags -->
 
+[Ship a change behind a flag](../guides/13-ship-a-change-behind-a-flag.md) does the whole job, start to finish.
+
 A feature flag lets you ship code switched off, then turn it on for some
 users, a share of users, or everyone, without a deploy. You declare every
 flag once, in the file `flags.jadpo` at the root of the project, with its
