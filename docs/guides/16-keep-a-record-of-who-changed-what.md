@@ -8,11 +8,10 @@ and after. You write no logging code, and nothing can change a record without
 its entry. This guide keeps the history of a book-keeper's invoices and reads it
 back through a route.
 
-You start from an app with a `Clerk` entity that people sign in as, an `Invoice`
-entity, and actions called `hire_clerk`, `issue_invoice` and `annotate_invoice`
-that change them. [Add sign-in](05-add-sign-in.md) and
+You start from an app with a `Clerk` entity that people sign in as, and actions
+called `hire_clerk` and `annotate_invoice`. [Add sign-in](05-add-sign-in.md) and
 [Store and change a record](02-store-and-change-a-record.md) show how to write
-those.
+those. The first step needs neither.
 
 ```jadpo check project=guide-audit file=app.jadpo hidden
 use billing/entities { Clerk }
@@ -86,22 +85,6 @@ action hire_clerk(handle: Handle) fails HandleTaken -> Clerk {
 }
 ```
 
-```jadpo check project=guide-audit file=domains/billing/actions/issue_invoice.jadpo hidden
-use billing/entities { Invoice }
-
-/// Issues an invoice.
-action issue_invoice(me: Principal.user, number: InvoiceNumber) -> Invoice {
-    return Invoice.create {
-        set: {
-            clerk_id: me.id
-            number: number
-            note: none
-            discount: 5
-        }
-    }
-}
-```
-
 ```jadpo check project=guide-audit file=domains/billing/actions/annotate_invoice.jadpo hidden
 use billing/entities { Invoice, InvoiceNotFound }
 use billing/types { InvoiceNote }
@@ -126,6 +109,9 @@ action annotate_invoice(
 counted from when it was written, and takes a `Duration` setting as every period
 does. Write `audit: {}` to keep each entry until its record is erased.
 
+`audit_retention` is a setting of your own, in `config.jadpo`. `Duration` is built
+into Jadpo.
+
 `config.jadpo`:
 
 ```jadpo check project=guide-audit file=config.jadpo
@@ -137,7 +123,71 @@ config {
 }
 ```
 
-`domains/billing/entities/invoice.jadpo`. `audit:` is new:
+`Invoice` is your entity. Its `number` is an `InvoiceNumber`, a standard type built
+into Jadpo.
+
+`domains/billing/entities/invoice.jadpo`:
+
+```jadpo check project=guide-audit file=domains/billing/entities/invoice.jadpo
+/// A bill, whose every change is kept for seven years.
+entity Invoice {
+    id: Uuid
+    number: InvoiceNumber
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+
+    audit: {
+        retention: {
+            after: config.audit_retention
+        }
+    }
+}
+```
+
+An ordinary action changes it. You add nothing to the action for the change to be
+recorded.
+
+`domains/billing/actions/issue_invoice.jadpo`:
+
+```jadpo check project=guide-audit file=domains/billing/actions/issue_invoice.jadpo
+use billing/entities { Invoice }
+
+/// Issues an invoice.
+action issue_invoice(number: InvoiceNumber) -> Invoice {
+    return Invoice.create {
+        set: {
+            number: number
+        }
+    }
+}
+```
+
+The entries live in a table Jadpo owns, `jadpo_audit`, in the same store as the
+record, so make a migration:
+
+```sh
+jadpo migrate new audit_invoices
+```
+
+From now on, every write to an invoice adds an entry. Nothing in your code can
+change or remove one. A field no request may touch, `FieldAccess.server_only`, is
+left out.
+
+An audited entity can't hold an `Email`, a field marked `personal:`, or a `File`
+field yet. Keep them on an entity with no `audit:`, such as a `Customer` that the
+invoice refers to. The last section of this page says more.
+
+## Say who may see which field
+
+A history is read as the caller may see it, so an invoice worth reading has people
+and fields with different rules. Here each invoice belongs to the clerk who issued
+it, and only they may read its `discount`.
+
+`domains/billing/entities/invoice.jadpo`, changed. `clerk_id`, `note` and `discount`
+are new, and `policy:` now names the clerk:
 
 ```jadpo check project=guide-audit file=domains/billing/entities/invoice.jadpo
 use billing/entities { Clerk }
@@ -172,20 +222,29 @@ entity Invoice {
 }
 ```
 
-The entries live in a table Jadpo owns, `jadpo_audit`, in the same store as the
-record, so make a migration:
+`Clerk` is who signs in, and `InvoiceNote` is a short text type, both from the app you
+start from.
 
-```sh
-jadpo migrate new audit_invoices
+`domains/billing/actions/issue_invoice.jadpo`, changed. It now takes the signed-in clerk
+and sets the new fields:
+
+```jadpo check project=guide-audit file=domains/billing/actions/issue_invoice.jadpo
+use billing/entities { Invoice }
+
+/// Issues an invoice.
+action issue_invoice(me: Principal.user, number: InvoiceNumber) -> Invoice {
+    return Invoice.create {
+        set: {
+            clerk_id: me.id
+            number: number
+            note: none
+            discount: 5
+        }
+    }
+}
 ```
 
-From now on, every write to an invoice adds an entry. Nothing in your code can
-change or remove one. A field no request may touch, `FieldAccess.server_only`, is
-left out.
-
-An audited entity can't hold an `Email`, a field marked `personal:`, or a `File`
-field yet. Keep them on an entity with no `audit:`, such as a `Customer` that the
-invoice refers to. The last section of this page says more.
+Run `jadpo migrate new invoice_clerks` for the new columns.
 
 ## Read the history
 

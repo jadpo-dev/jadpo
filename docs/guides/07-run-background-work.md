@@ -9,31 +9,24 @@ runs an action for each one, retried until it succeeds. This guide
 reminds borrowers two days before a book is due back, using all three,
 and tests the whole run.
 
-You start from an app with a `loans` domain, holding a `Loan` entity
-with a `due_at` and a `reminded_at`, a `Reminder` entity that records
-each reminder, and the type a batch uses to page through loans.
+You start from an app with a `loans` domain, holding a `Reminder` entity
+that records each reminder.
 [Store and change a record](02-store-and-change-a-record.md) shows how
 to write entities.
 
-```jadpo check project=guide-background-work file=app.jadpo hidden
-application {}
-```
+Every action and query takes named types, so each value says what it means.
+`DueTime` is the name this app gives to the `Instant` a loan is due back, and
+`Instant` is built into Jadpo.
 
-```jadpo check project=guide-background-work file=domains/loans/types/due_time.jadpo hidden
+`domains/loans/types/due_time.jadpo`:
+
+```jadpo check project=guide-background-work file=domains/loans/types/due_time.jadpo
 /// When a loan is due back.
 type DueTime = Instant {}
 ```
 
-```jadpo check project=guide-background-work file=domains/loans/types/loan_page.jadpo hidden
-/// Where a batch has got to in a list of loans.
-type LoanPage = Input {
-    page_size: PageSize {
-        default: 50
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
+```jadpo check project=guide-background-work file=app.jadpo hidden
+application {}
 ```
 
 `domains/loans/entities/loan.jadpo`:
@@ -89,7 +82,24 @@ its people beside it.
 ## Find the loans a page at a time
 
 The query a batch walks is an ordinary query giving a `Page`, in an
-order no change to a loan moves, so a run meets each loan once:
+order no change to a loan moves, so a run meets each loan once. It takes an
+`Input` type saying where the batch has got to. `PageSize` and `PageCursor`
+are standard types, built into Jadpo, for how many records a page holds and
+where the next one starts.
+
+`domains/loans/types/loan_page.jadpo`:
+
+```jadpo check project=guide-background-work file=domains/loans/types/loan_page.jadpo
+/// Where a batch has got to in a list of loans.
+type LoanPage = Input {
+    page_size: PageSize {
+        default: 50
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+```
 
 `domains/loans/queries/loans_due.jadpo`:
 
