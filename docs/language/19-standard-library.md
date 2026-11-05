@@ -147,6 +147,28 @@ you know how one type is built, read, sent, stored and shown, you know
 them all. Some types add operations of their own on top
 ([Extras beyond the baseline](#extras-beyond-the-baseline)).
 
+Here is a time zone, read from text, written back and shown to a person.
+Save this as `main.jadpo` and run `jadpo test main.jadpo`:
+
+```jadpo check project=contract-first
+type NotAZone = Failure {
+    kind: FailureKind.invalid_value
+}
+
+test "a zone is read, written and shown one way" {
+    var zone: Zone = attempt text.parse("Europe/London", as: Zone) {
+        malformed: NotAZone
+    }
+    assert zone == Zone.europe_london
+    assert text.from(zone) == "Europe/London"
+    assert text.format(zone, locale: Locale.en_gb) == "UK Time"
+}
+```
+
+`Zone`, `Locale` and `text.` are built in, and `NotAZone` is the failure this
+example declares for text that isn't a zone. Every standard type has the
+same operations:
+
 | Baseline | What it is | Where a type has none |
 |---|---|---|
 | Construct and validate | From its parts (`PostalCode(raw)`, `Money` from `money.from_minor`), and from text with `text.parse(raw, as: T)`; each failure named by the rule it breaks, `malformed` for text that isn't the type at all | Never: every type has both |
@@ -948,19 +970,19 @@ needs ([Review and records](18-records-and-manifest.md)), and a general
 <!-- topic: what-every-operation-follows -->
 
 Every namespace follows the same rules, so a call you haven't seen before
-reads like one you have. Here are some calls, and what they give:
+reads like one you have. Here are some calls, and what they give. Save this
+as `main.jadpo` and run `jadpo test main.jadpo`:
 
-```jadpo fragment
-text.trim(input.title)                                   // "  Rye loaf " gives "Rye loaf"
-text.split("flour,sugar,,eggs", ",")                     // ["flour", "sugar", "", "eggs"]
-text.pad_start(text.from(order.number), 6, fill: "0")    // 42 gives "000042"
-list.sum(list.map(basket.lines, line -> line.price * line.count))
-set.contains(recipe.allergens, Allergen.tree_nuts)
-encoding.to_hex(hash.sha256(upload.body))                // 64 lowercase hexadecimal digits
-attempt encoding.from_base64(input.attachment) {
-    malformed: AttachmentUnreadable
+```jadpo check project=every-operation
+test "calls through the standard library" {
+    assert text.trim("  Rye loaf ") == "Rye loaf"
+    assert text.split("flour,sugar,,eggs", ",") == ["flour", "sugar", "", "eggs"]
+    assert text.pad_start(text.from(42), 6, fill: "0") == "000042"
+    assert list.sum([3, 4, 5]) == 12
 }
 ```
+
+`text.` and `list.` are built-in namespaces, so nothing is imported.
 
 - **One namespace per type it works on:** `list.`, `set.` and `map.` for
   `List<T>`, `Set<T>` and `Map<K, V>`, `text.` for text, `money.` for
@@ -2623,6 +2645,23 @@ currency's minor units, such as pence or cents, together with its
 the number of digits after its decimal point, comes from ISO 4217: `jpy`
 0, `gbp` 2, `bhd` 3.
 
+Here is a price in pounds. Save this as `main.jadpo` and run `jadpo test
+main.jadpo`:
+
+```jadpo check project=money-first
+type CakePrice = Money {
+    currency: Currency.gbp
+}
+
+test "a price is held in pence and shown in pounds" {
+    var cake: CakePrice = CakePrice(money.from_minor(1050, Currency.gbp))
+    assert text.format(cake, locale: Locale.en_gb) == "£10.50"
+}
+```
+
+`Money`, `Currency`, `Locale`, `money.` and `text.` are built in. `CakePrice` is
+your own type, defined here.
+
 `Money` is a type built into the language, as `Duration` is, not an
 object: an amount has no fields, and `money.minor` and `money.currency`
 read its two parts. Like `Int`, it is a representation, so a signature
@@ -3824,6 +3863,25 @@ temperature or a file's size. Each one (`Length`, `Mass`, `Temperature`
 ... and `DataSize`, `Bitrate`) holds an exact `Decimal` in its kind's SI
 base unit, at a fixed scale, a number of decimal places, for each kind.
 
+Here is a length with limits. Save this as `main.jadpo` and run `jadpo
+test main.jadpo`:
+
+```jadpo check project=quantities-first
+type ShelfLength = Length {
+    min: 10cm
+    max: 3metre
+}
+
+test "a length is a length, whatever unit made it" {
+    var shelf: ShelfLength = 90cm
+    assert shelf == 900mm
+    assert text.format(shelf, locale: Locale.en_gb) == "0.9 m"
+}
+```
+
+`Length`, `Locale` and `text.` are built in, and so are units such as `cm`.
+`ShelfLength` is your own type, defined here.
+
 You choose a unit only when you make a value or show one. A `Length` is
 a `Length` whatever unit built it, so `==` and comparisons work across
 units: `1km == 1000metre`. Inside a program a quantity has no unit, so
@@ -4254,7 +4312,27 @@ test "a shelf keeps its length as it was cut" {
 These types add to the [time types](10-configuration-and-time.md#time-types):
 a time of day, a month, a week, a range of dates, an amount of calendar
 time, and the text forms of recurrences, opening hours and calendar
-events. The 21 `temporal` operations of the time types still apply;
+events. Here is an amount of calendar time added to a date. Save this as
+`main.jadpo` and run `jadpo test main.jadpo`:
+
+```jadpo check project=calendar-first
+type RentalDay = CalendarDate {}
+
+test "a month on from the 31st is the month's last day" {
+    var first_day: RentalDay = "2026-01-31"
+    var one_month: CalendarPeriod = CalendarPeriod {
+        years: 0
+        months: 1
+        days: 0
+    }
+    assert first_day + one_month == RentalDay("2026-02-28")
+}
+```
+
+`CalendarDate` and `CalendarPeriod` are built in. `RentalDay` is your own type,
+defined here.
+
+The 21 `temporal` operations of the time types still apply;
 three of them have SQL forms, so an aggregate query can group by time
 buckets. The types here add three operations:
 
@@ -5726,6 +5804,18 @@ Four standard types hold text with structure:
 
 None of them is personal data, and none has a shape.
 
+Here is Markdown made into a page's HTML. Save this as `main.jadpo` and
+run `jadpo test main.jadpo`:
+
+```jadpo check project=text-formats-first
+test "Markdown becomes safe HTML" {
+    var post_markdown: Markdown = "Rye *loaf*"
+    assert markup.to_html(post_markdown) == "<p>Rye <em>loaf</em></p>\n"
+}
+```
+
+`Markdown` and `markup.` are built in, so the example declares nothing.
+
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
 | `markup.to_html(markdown)` | `Html`, the CommonMark rendered, then made safe as any `Html` is | | none |
@@ -7184,6 +7274,17 @@ as it is typed.
 These are the types for what security code keeps and checks: digests,
 signatures and sealed values, a password policy, passkeys and
 certificates.
+
+Here is a digest. Save this as `main.jadpo` and run `jadpo test main.jadpo`:
+
+```jadpo check project=security-first
+test "a digest is written as its Base64" {
+    var abc_digest: Hash = Hash(hash.sha256("abc"))
+    assert text.from(abc_digest) == "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0="
+}
+```
+
+`Hash`, `hash.` and `text.` are built in, so the example declares nothing.
 
 ### `Hash`, `Hmac` and `EncryptedValue`
 
@@ -8864,6 +8965,19 @@ colour, `#1e6fd9`, and held as its red, green, blue and alpha channels.
 Use it for a brand colour, a theme, or a check that text is readable on
 its background.
 
+Here is one colour. Save this as `main.jadpo` and run `jadpo test
+main.jadpo`:
+
+```jadpo check project=colour-first
+test "a colour is written as CSS writes it" {
+    var brand_colour: Colour = "#1E6FD9"
+    assert text.from(brand_colour) == "#1e6fd9"
+    assert brand_colour.blue == 217
+}
+```
+
+`Colour` and `text.` are built in, so the example declares nothing.
+
 Here a design system reads its brand colour from a form, checks that body
 text is readable on its page colour, lightens a button for its hover
 state, makes a tint, and turns a designer's HSL and OKLCH values into
@@ -9306,6 +9420,19 @@ and the problem documents an API reports failures with. Each follows its
 standard, and, as every standard type is, each is read only in its
 canonical text.
 
+Here is a link on a page, followed to its address. Save this as
+`main.jadpo` and run `jadpo test main.jadpo`:
+
+```jadpo check project=web-first
+test "a link on a page leads to an address" {
+    var page: Url = "https://example.com/shop/teas"
+    var page_link: RelativeUrl = "../basket"
+    assert web.resolve(page, page_link) == "https://example.com/basket"
+}
+```
+
+`Url`, `RelativeUrl` and `web.` are built in, so the example declares nothing.
+
 Here a shop builds its search links, follows the links on its pages, lets
 its office's network in, reads the domain a seller types, retries a call
 the server failed, and reports a sold-out item as RFC 9457 has it:
@@ -9612,6 +9739,19 @@ The software types are the values tools and build systems pass around:
 version numbers and ranges, git refs, package and container names,
 licences, trace ids, file names and paths. Each follows its standard, as
 the web types do.
+
+Here are two version numbers. Save this as `main.jadpo` and run `jadpo
+test main.jadpo`:
+
+```jadpo check project=software-first
+test "versions compare by SemVer's rules, not by their text" {
+    var installed_release: SemanticVersion = "1.9.0"
+    var offered_release: SemanticVersion = "1.10.0"
+    assert offered_release > installed_release
+}
+```
+
+`SemanticVersion` is built in, so the example declares nothing.
 
 Here a shop's plugin registry reads the version a release form names,
 offers a release only to the shops whose range it fits, and tells a newer
@@ -10039,6 +10179,19 @@ and last four digits, its expiry, a VAT number or tax id, a passport or a
 driving licence. Each number is checked against its country's published
 form, and the ones that identify a person are shown masked.
 
+Here is a card number, kept only as its brand and last four digits. Save
+this as `main.jadpo` and run `jadpo test main.jadpo`:
+
+```jadpo check project=cards-first
+test "a card is kept as its brand and last four digits" {
+    var card: PaymentCardNumber = "4242424242424242"
+    assert text.format(money.mask(card), locale: Locale.en_gb) == "Visa •••• 4242"
+}
+```
+
+`PaymentCardNumber`, `Locale`, `money.` and `text.` are built in, so the example
+declares nothing.
+
 Here a shop keeps what it may of a customer's card once its payment
 provider has the number, checks a supplier's VAT number by its country's
 form, and records the passport a traveller shows:
@@ -10294,6 +10447,19 @@ These types hold people's names, postal addresses and email addresses,
 and the closed lists every app needs: countries and their subdivisions,
 languages, scripts, continents, nationalities. Each list is a built-in
 enum, read by its code and shown by its name in the reader's language.
+
+Here is one of those lists. Save this as `main.jadpo` and run `jadpo test
+main.jadpo`:
+
+```jadpo check project=people-first
+test "a country is written by its code and shown by its name" {
+    assert text.from(Country.de) == "DE"
+    assert text.format(Country.de, locale: Locale.en_gb) == "Germany"
+    assert text.format(Country.de, locale: Locale.de_de) == "Deutschland"
+}
+```
+
+`Country`, `Locale` and `text.` are built in, so the example declares nothing.
 
 Here a shop sends parcels abroad and prints each label for the person who
 packs it, greets its customers by name, and reads the countries a
@@ -10818,6 +10984,19 @@ These are the codes trade, transport and healthcare use: barcodes,
 ISBNs, container numbers, delivery terms, airport codes, blood types,
 diagnosis codes. Each is checked by its standard's pattern or check
 digit, and the closed lists are enums.
+
+Here is a barcode. Save this as `main.jadpo` and run `jadpo test
+main.jadpo`:
+
+```jadpo check project=codes-first
+test "a barcode holds its 13 digits" {
+    var scanned: Ean13 = "4006381333931"
+    assert scanned == "4006381333931"
+}
+```
+
+`Ean13` is built in. The compiler checks a literal, so `"4006381333932"`, with
+the wrong last digit, doesn't compile.
 
 Here a till scans a product's barcode, a supplier's order names its
 delivery term in whatever case its system writes, and a dock prints each
@@ -11613,6 +11792,24 @@ parts of geospatial work are built.
 
 The AI types are the values an app passes to and from a model: chat
 messages and their roles, vectors and embeddings, and token counts.
+
+Here is one message, with no model involved. Save this as `main.jadpo` and
+run `jadpo test main.jadpo`:
+
+```jadpo check project=ai-types-first
+test "a chat message is its role and its content" {
+    var soup_question: ChatMessage = ChatMessage {
+        role: ChatRole.user
+        content: "Which soups are vegan?"
+    }
+    assert text.from(soup_question.role) == "user"
+    assert soup_question.content == "Which soups are vegan?"
+}
+```
+
+`ChatMessage`, `ChatRole` and `text.` are built in, so the example declares
+nothing.
+
 [AI](21-ai.md) covers the work you do with them: the `ai` capability and
 its operations `ai.generate`, `ai.stream`, `ai.embed` and `ai.embed_all`,
 with their failures ([The `ai` capability](21-ai.md#the-ai-capability));

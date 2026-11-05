@@ -57,10 +57,19 @@ A field that identifies or describes a person says so in its block, with
 `personal:` and one category from a fixed list. The category decides how
 carefully the compiler treats the value. Here a user's display name
 identifies them, and their email address is contact data without saying so
-([Contact details and names need no mark](#contact-details-and-names-need-no-mark)):
+([Contact details and names need no mark](#contact-details-and-names-need-no-mark)).
 
-```jadpo fragment
-// domains/accounts/entities/user.jadpo
+`domains/accounts/entities/user.jadpo`:
+
+```jadpo check project=marking file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=marking file=domains/accounts/entities/user.jadpo migrate=initial
+type DisplayName = Text {
+    max_length: 80
+}
+
 entity User {
     id: Uuid
     email: Email {
@@ -69,9 +78,14 @@ entity User {
     display_name: DisplayName {
         personal: PersonalData.identifying
     }
-    ...
+
+    person: true
 }
 ```
+
+`Email` and `PersonalData` are built in. `DisplayName` and `User` are defined
+here. `person: true` says each `User` record is a person, so erasure can find
+the marked field ([The person](#the-person)).
 
 Every marked field needs a category: there is no bare `personal: true`, and
 you can't add categories of your own. These are the fourteen:
