@@ -689,6 +689,33 @@ fn completions_for_an_unknown_shell_suggests_one() {
     );
 }
 
+/// `jadpo dev` answers a word it doesn't have however many follow it, so its
+/// `next:` never names a command that doesn't exist.
+#[test]
+fn a_word_jadpo_dev_doesnt_have_is_answered_with_a_command_that_works() {
+    let output = jadpo(&["dev", "grants", "add", "x"]);
+    assert_eq!(output.code, 2);
+    assert_eq!(
+        output.stderr,
+        "error: `jadpo dev` has no `grants`
+  reason: `jadpo dev` serves the app; `jadpo dev token <user-id>` signs a token from its local issuer.
+  next: Run `jadpo dev`, or `jadpo dev token <user-id>` (agent)
+  rule: cli.dev_arguments
+  help: https://jadpo.dev/docs/errors/cli.dev_arguments
+"
+    );
+    // `token` keeps the count: what it is told to keep is a command.
+    let output = jadpo(&["dev", "token", "a", "b"]);
+    assert_eq!(output.code, 2);
+    assert!(
+        output
+            .stderr
+            .contains("next: Run `jadpo dev token a` (agent)"),
+        "{}",
+        output.stderr
+    );
+}
+
 #[test]
 fn extra_arguments_are_refused() {
     let output = jadpo(&["version", "extra"]);

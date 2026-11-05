@@ -1,6 +1,5 @@
 //! What the standard type contract's calls add to an ordinary
-//! standard-library call (area 19, "Every standard type meets one
-//! contract"): `text.format`, `text.from` and `text.parse` each take every
+//! standard-library call (area 19, "What every standard type can do"): `text.format`, `text.from` and `text.parse` each take every
 //! standard type, and which types fit, which options a type takes and
 //! needs, and what each call can fail with are read from the types' data
 //! entries (`jadpo_std::standard`), never written per type here.

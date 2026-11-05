@@ -1,5 +1,4 @@
-// The standard types (area 19, "The standard types" and "Every standard
-// type meets one contract"): one declaration each, global, in one flat
+// The standard types (area 19, "How standard types are named, and what is left out" and "What every standard type can do"): one declaration each, global, in one flat
 // set. Each is paired with its data entry in `jadpo-std`'s `standard`
 // module (its canonical text, JSON shape, storage, format for people,
 // order, named validator and the shape `type.standard_exists` matches),

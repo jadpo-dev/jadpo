@@ -387,6 +387,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **A20 An email address is personal data**: area 15, "Contact details and names need no mark" and "What the compiler checks"; area 18, "What a first record holds"; compiler/runtime §2.3, "Contact details and names need no mark"; notes for areas 15 and 18.
 - [x] **A21 Phone numbers, names and addresses are cleared as an email is**: area 15, "Contact details and names need no mark" and "Erasure"; `data.erase_field_required`; compiler/runtime §2.3, "Contact details and names need no mark"; notes for area 15.
 - [x] **A22 A write background work could never make**: area 9, "Nothing grants it"; area 12, "Runs as the system"; `docs/errors/policy.system_grant_missing.md`; notes for area 9, "Background work and no grant".
+- [x] **A23 The system's lists decided**: area 9, "A list naming only people"; area 12, "Runs as the system"; `docs/errors/policy.system_grant_missing.md`; notes for areas 9 and 12.
 - [x] **A24 A `File` isn't sent or taken by a route until downloads are built**: area 16, "What a `File` holds" and "Downloading"; `toolchain.not_built_yet` and `type.batch_input`; notes for area 16.
 - [x] **D17a Honest status words**: each area's "What is built" table; [writing guide](writing.md), "A status word"; `status_word_problems` in `tools/docs/agent_guidance.py`.
 - [x] **D17b The reference's manifest**: `docs/reference.toml` and its check; docs/documentation.md, "The reference's manifest".
@@ -395,9 +396,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **D17e Landing pages and status lines**: `tools/docs/reference_pages.py`; docs/documentation.md, "Landing pages and status lines"; `docs/reference.toml`.
 - [x] **D17f Search that finds the docs**: `src/lib/search.ts` and `scripts/search.test.mjs` in jadpo-website.
 - [x] **D17g What an agent reads first**: [documentation guide](documentation.md), "How an agent uses it"; `llms.txt`, the skill and the AGENTS.md `jadpo new` writes; `whole_index_problems` and `read_once_problems` in `tools/docs/agent_guidance.py`.
-- [ ] **D17h Standard types under Values and types** `opus · high`: one
-  generated list, in the sidebar, not two hand tables at the bottom of the
-  reference home.
+- [x] **D17h Standard types under Values and types**: docs/documentation.md, "The bundle"; `hand_type_table_problems` in `tools/docs/language_docs.py`; `/docs/types` in jadpo-website.
 - [x] **D17i Built-in services, one home each**: docs/language/16-built-in-services.md; docs/language/21-ai.md, "AI"; [writing guide](writing.md), "How a built-in service's page reads"; `docs/reference.toml`.
 - [ ] **D17j Every other area** `opus · high`: the remaining merges and
   renames, translations findable under Configuration.
@@ -405,6 +404,16 @@ What the Reddit thread found (Richard, 2026-11-03):
   check.
 - [x] **D17l The guides index grouped**: `docs/guides/README.md`; docs/documentation.md, "The bundle"; `src/components/guides/GuideList.astro` in jadpo-website.
 - [x] **D17m The ten guides**: `docs/guides/12-send-an-email.md` to `21-keep-customers-data-apart.md`.
+- [ ] **D17o First examples stand alone** `opus · high`: the very first example
+  on each page is understandable without following another link. The
+  [writing guide](writing.md)'s standard and the report in
+  `tools/docs/first_examples.py` are in. What's left is rewriting the pages it
+  lists and giving its gate step `--strict`. The rewrite also corrects
+  "A flag is a `Bool`, or an enum when it has more than two values", keeps
+  flag examples' far-ahead dates and adds a sentence on a flag's lifecycle,
+  and on External services adds a short overview of a typical app and what it
+  needs, a visible link for running containers marked planned, and makes the
+  two meanings of `runs:` obvious. Comes before the review.
 - [ ] **D17n Review** `opus · high`: one independent review of the whole and
   a cold read of a service from its landing page.
 
@@ -420,7 +429,7 @@ above and before every other unticked chunk.
 
 0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
 R6, G1 to G7 (what the registry application, R7, needs from `jadpo`), the real
-deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15, A20, A21, A22 and A24 (Richard,
+deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15, A20, A21, A22, A23 and A24 (Richard,
 2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
 

@@ -1,5 +1,5 @@
 //! Every standard type through the boundaries that are built (area 19,
-//! "Every boundary through the contract"; chunk 5.5w2), made from each
+//! "How a standard value is sent, stored and shown"; chunk 5.5w2), made from each
 //! type's data entry, so a type added later is tested without a line here.
 //! A project with a route echoing each standard type is checked, and
 //! `jadpo test` sends each of the entry's valid examples through:
@@ -1015,8 +1015,7 @@ fn repository() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// No boundary encodes a standard type of its own (area 19, "Every
-/// boundary through the contract"): no source outside the contract and
+/// No boundary encodes a standard type of its own (area 19, "How a standard value is sent, stored and shown"): no source outside the contract and
 /// the code [`MAY_ENCODE`] lists, and no boundary at all, names an encoder,
 /// so each reads the type's entry and calls the contract's JSON, storage or
 /// text. And no entry of [`MAY_ENCODE`] is stale: each still exists and

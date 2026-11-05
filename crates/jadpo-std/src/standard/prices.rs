@@ -1,4 +1,4 @@
-//! The money group's records (area 19, "The standard types", chunk 5.5i3):
+//! The money group's records (area 19, "How standard types are named, and what is left out", chunk 5.5i3):
 //! `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints` and
 //! `InterestRate`, on `Money`, `Percentage` and the quantities, with
 //! `InterestRateBasis`, an interest rate's basis. `Discount` and

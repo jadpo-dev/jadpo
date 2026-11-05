@@ -572,7 +572,7 @@ impl Reference {
             "# Standard types".to_string(),
             String::new(),
             format!(
-                "Every standard type Jadpo has, {} of them, from A to Z. `jadpo help <Type>` prints the same page in your terminal. [The standard types](../topics/the-standard-types.md) explains how the list is arranged.",
+                "Every standard type Jadpo has, {} of them, from A to Z. `jadpo help <Type>` prints the same page in your terminal. For why a type you want may not be on the list, see [How standard types are named, and what is left out](../topics/the-standard-types.md).",
                 rows.len()
             ),
             String::new(),

@@ -194,15 +194,22 @@ example with `jadpo test`, and fails a page using a word the writing guide
 rules out.
 
 The index lists every type from A to Z, with its group as a column and the
-line saying what it is, since a reader looks for a name. `jadpo help types` is the same list,
-and with `--json` each type's page, which the bundle publishes. Every type's
-name in the guides, the Learn path, the primer, [The standard
-types](language/19-standard-library.md#the-standard-types) and [Built-in
-types](language/02-values-and-types.md#built-in-types) links its page in the
-bundle. The groups are the compiler's
-(`crates/jadpo-std/src/standard/groups.rs`); the docs check fails the tables of
-types on those two topics where they give another count, group or list than
-the compiler does.
+line saying what it is, since a reader looks for a name. It is the only list
+of the types: `jadpo help types` is the same list, and with `--json` each
+type's page, which the bundle publishes. The groups are the compiler's
+(`crates/jadpo-std/src/standard/groups.rs`), and each has a landing page holding
+its types. A type's `links` in `index.json` hold that page too, so its page can
+point to its group. Every type's name in the guides, the Learn path, the primer,
+[How standard types are named, and what is left
+out](language/19-standard-library.md#how-standard-types-are-named-and-what-is-left-out)
+and [Built-in types](language/02-values-and-types.md#built-in-types) links its
+page in the bundle.
+
+No page lists the types by hand. The docs check fails a table headed by group
+and types, a table naming more than 40 of them, and a page saying how many there
+are (`hand_type_table_problems`). The one exception is the record of which
+release added each, `| Release | Standard types it adds |`, which a compiler test
+reads.
 
 `python3 tools/docs/language_docs.py --bundle <dir>` builds it; the gate builds
 it into `build/docs-bundle/`, and on `main` CI keeps that folder as the
