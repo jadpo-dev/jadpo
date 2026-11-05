@@ -514,7 +514,7 @@ user page that:
 `python3 tools/docs/first_examples.py` reports each first example that
 doesn't [stand alone](#a-pages-first-example-stands-alone): it compiles the
 first example with only what a reader can see on that page, and lists what
-else it needed. The gate runs it as a report, and `--strict` makes it fail.
+else it needed. The gate runs it with `--strict`, so a page that breaks the standard fails.
 It can't judge whether an example is the simplest one, whether the page says
 where each name comes from, or whether it runs on every target.
 
