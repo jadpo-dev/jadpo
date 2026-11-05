@@ -65,4 +65,4 @@ It serves the app and restarts it on each save.
 ## Related
 
 - [`jadpo dev`](../language/14-tooling.md#jadpo-dev)
-- [In development and tests](../language/08-identity.md#in-development-and-tests)
+- [Sign-in in development and tests](../language/08-identity.md#sign-in-in-development-and-tests)

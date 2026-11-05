@@ -2079,7 +2079,7 @@ step the executor calls `jadpo_runtime::test_steps::after_step`, which
 draws each delivery due in the outbox at the test's clock from all those
 due, delivers it as the runner does, and ends the test with the failure
 of one that failed for good, `Ctx::undelivered` naming it for the
-report's `test.subscriber_failed` (area 13, "Caches and events"). A batch
+report's `test.subscriber_failed` (area 13, "Events and caches in tests"). A batch
 run the step, a delivery or an item starts is drawn among the
 deliveries, a batch at a time (`batches::run_a_batch`): each by a fresh
 runner, which claims the run, reads its saved values again and gives its

@@ -333,7 +333,7 @@ A field may be passed to three kinds of operation:
   of its own or joined by `and`. A GiST index, PostgreSQL's index for
   shapes, finds the records, and Jadpo's own code decides each one, so the
   query gives the same answer as code
-  ([Queries](20-geospatial.md#queries)).
+  ([Finding records by place](20-geospatial.md#finding-records-by-place)).
 - **A standard operation with an exact SQL form**, which stands where the
   field would ([Operations in conditions](#operations-in-conditions),
   below).
@@ -619,7 +619,7 @@ A point field is ordered by distance, nearest first, with
 `order: [geo.distance(F, p) asc]`. That must be the list's only order, and
 it goes with `where: geo.within(F, p, distance: d)` on the same field and
 point, which bounds what is sorted. Records are sorted by the distance
-`geo.distance` gives, then by `id` ([Queries](20-geospatial.md#queries)).
+`geo.distance` gives, then by `id` ([Finding records by place](20-geospatial.md#finding-records-by-place)).
 
 ## Counts, sums and groups
 <!-- topic: counts-sums-and-groups -->
@@ -980,7 +980,7 @@ every caller may read, as an output's fields must be
 <!-- topic: a-query-giving-a-map-layer -->
 
 A query can return its records as a map layer: a
-`FeatureCollection<G, P>` ([Interop](20-geospatial.md#interop)), where `G`
+`FeatureCollection<G, P>` ([GeoJSON and other formats](20-geospatial.md#geojson-and-other-formats)), where `G`
 is the geometry type and `P` the type of each feature's properties. A
 `GET` route can then send the layer a mapping library fetches, as plain
 RFC 7946 GeoJSON ([Output and status](07-http.md#output-and-status)).
@@ -1175,12 +1175,12 @@ records. `geometry:` names the stored field that is each feature's
 geometry, a `G` every record has. It has to be named because an entity may
 hold several geometry fields, and the result type can't say which. `P`
 must be an `Object` type, as a feature's properties always are
-([Interop](20-geospatial.md#interop)). Its fields are filled from the
+([GeoJSON and other formats](20-geospatial.md#geojson-and-other-formats)). Its fields are filled from the
 record's fields of the same names, as any result type's are.
 
 The query picks fields and computes nothing, so it is a bounded list like
 any other: `order:` and `limit:`, with `geo.` conditions and an order by
-`geo.distance` if it needs them ([Queries](20-geospatial.md#queries)).
+`geo.distance` if it needs them ([Finding records by place](20-geospatial.md#finding-records-by-place)).
 
 - **`geometry:`** names a field of the entity read, of exactly the layer's
   own geometry type, and never `none`, since a feature always has a
@@ -2351,7 +2351,7 @@ route GET /todos {
 
 Caches aren't built yet: they need the Redis driver.
 
-## Entities in Redis
+## Reading and writing entities in Redis
 <!-- topic: queries-on-entities-in-redis -->
 
 An entity in a Redis store

@@ -268,7 +268,7 @@ A role held in one record lets nobody in here, for the reason above.
 
 ## Related
 
-- [Actions](../language/09-policy.md#actions)
+- [Permissions on actions](../language/09-policy.md#permissions-on-actions)
 - [A membership role](../language/09-policy.md#a-membership-role)
 - [Lines that depend on a record](../language/09-policy.md#lines-that-depend-on-a-record)
 - [Anyone signed in, or anyone](../language/09-policy.md#anyone-signed-in-or-anyone)

@@ -58,5 +58,5 @@ passes those rows. The reason you wrote beneath the list stays.
 
 - [The verifier](../language/11-integrations.md#the-verifier)
 - [How a release's facts, change record and fingerprints are worked out](../language/11-integrations.md#how-a-releases-facts-change-record-and-fingerprints-are-worked-out)
-- [The surface](../language/11-integrations.md#the-surface)
+- [A package's surface](../language/11-integrations.md#a-packages-surface)
 - [`jadpo package verify`](../language/14-tooling.md#jadpo-package-verify)

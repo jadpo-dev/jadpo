@@ -522,7 +522,7 @@ system and every caller of a route alike.
 
 ## Related
 
-- [Background work](../language/09-policy.md#background-work)
+- [Policy and background work](../language/09-policy.md#policy-and-background-work)
 - [`Access.public` doesn't let background work in](../language/09-policy.md#accesspublic-doesnt-let-background-work-in)
 - [A list naming only people](../language/09-policy.md#a-list-naming-only-people)
 - [The system and `actions:` lines](../language/09-policy.md#the-system-and-actions-lines)

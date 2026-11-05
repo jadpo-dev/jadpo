@@ -74,4 +74,4 @@ It means the same `Feature<Point, Pin>`, read from the function's return type.
 ## Related
 
 - [A record names its type alone](../language/02-values-and-types.md#a-record-names-its-type-alone)
-- [Interop](../language/20-geospatial.md#interop)
+- [GeoJSON and other formats](../language/20-geospatial.md#geojson-and-other-formats)

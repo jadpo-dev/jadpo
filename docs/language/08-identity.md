@@ -76,7 +76,7 @@ looks the caller up by this field whenever it needs their current record.
 
 `active:` is a condition on the same entity, written with its fields as a
 query's `where:` is. A caller whose record doesn't meet it is refused with
-`user_disabled` or `service_disabled` (see [Failures](#failures)).
+`user_disabled` or `service_disabled` (see [Sign-in failures](#sign-in-failures)).
 Leave it out and every record counts as active.
 
 ### What code reads from the caller
@@ -2154,7 +2154,7 @@ public fixture member_called(address: Email) -> Principal.user {
 ```
 
 A route test drives the generated routes with `test_passkeys`
-([In development and tests](#in-development-and-tests)). Ada adds a passkey
+([Sign-in in development and tests](#sign-in-in-development-and-tests)). Ada adds a passkey
 and signs in with it:
 
 ```jadpo check project=passkeys file=tests/passkeys.test.jadpo
@@ -2666,8 +2666,8 @@ itself, such as someone accepting an invitation it sent, its action calls
 `sessions.issue_token(user_id)` for an API token. See
 [Starting and ending a session](#starting-and-ending-a-session).
 
-## Events
-<!-- topic: events -->
+## Sign-in events
+<!-- topic: sign-in-events (was events) -->
 
 Every sign-in publishes a built-in event, which your monitoring and your
 app's own [subscribers](12-jobs-and-events.md#subscribers) can use:
@@ -2689,7 +2689,7 @@ provider, its connection's name.
 No event carries an address, a link, a code, a challenge, or a passkey's
 credential ID or key.
 
-## In development and tests
+## Sign-in in development and tests
 <!-- topic: in-development-and-tests -->
 
 ### Magic links in `jadpo dev`
@@ -4772,85 +4772,7 @@ test "a partner's keys are listed to the partner and its owner" {
 }
 ```
 
-## Acting for a user at another service: OAuth grants
-<!-- topic: acting-for-a-user-at-another-service-oauth-grants -->
-
-Signing in proves to your app who a person is. An OAuth grant goes the
-other way: your app acts at another service, such as a user's Google
-Calendar, an organisation's Xero or a Slack workspace, with that owner's
-consent. It isn't a way to sign in. Your app acting as an OAuth provider,
-for other apps to sign in with, is a third, separate thing.
-
-The connection and its calls are in
-[Integrations](11-integrations.md#acting-for-each-user-oauth-grants). This
-topic covers what touches identity. A connection's credential is an
-`OAuthGrant`:
-
-```text
-// app.jadpo
-calendar: {
-    package: GoogleCalendar.v3
-    domains: [scheduling]
-    credential: OAuthGrant {
-        owner: User
-        client_id: config.google_client_id
-        client_secret: config.google_client_secret
-        scopes: [...]
-        return_to: "/settings/integrations"
-    }
-}
-```
-
-- **A grant is owned by one of the app's records**: `owner:` is the
-  principal's user entity or any other entity (`Organisation`). The grant
-  belongs to that record, not to a session, so it outlives every session
-  and is used from subscribers and schedules, which run with no caller.
-- **Connecting is endpoints, not pages.** `POST /connections/<name>/start`
-  is a generated route that needs a signed-in caller (`authentication:
-  RouteAuthentication.none` is not available on it) and answers with the
-  provider's consent address. It keeps the `state` on the server against
-  the caller's browser session or API token. The provider sends the browser
-  back to the generated `GET /connections/<name>/callback`, which finds the
-  `state` (a consent can complete only once, for the caller who started
-  it), exchanges the code with PKCE, stores the grant and redirects to the
-  frontend's `return_to`, a path on the app's own site, with success or
-  failure. The callback needs no cookie, so your own API-token clients
-  connect exactly as browsers do. Both appear in `jadpo routes`, OpenAPI
-  and the API record, marked generated
-  ([Generated routes](07-http.md#generated-routes)).
-- **Who may connect for an owner is [Policy](09-policy.md)'s.** Connecting
-  and disconnecting need the `update` grant on the owner's record. So a
-  user connects their own account, and an organisation's grant needs
-  whatever lets the caller update the organisation. There is no new kind
-  of permission for it. The start route checks it before answering.
-- **Grants are held by Jadpo**, like sessions, in a `jadpo_grants`
-  system table in the owner entity's store, so grants need a database.
-  Their tokens are encrypted with `application { grants: { encryption_key:
-  config.grant_encryption_key } }`, a `SigningKey` setting. It rotates as
-  a `signing_key:` does: the current value encrypts, and its `_PREVIOUS`
-  value is still read ([Signing keys](10-configuration-and-time.md#signing-keys)).
-  Code can never read the tokens, and Jadpo refreshes them before they
-  expire. `encryption_key:` is one of the places in `application { }` a
-  secret may be read ([Secrets](10-configuration-and-time.md#secrets)).
-- **Every call names whose grant it uses**, `on_behalf_of: owner_id`, an id
-  of the owner's entity that the action has loaded or been given.
-  `grant_missing` and `grant_revoked` are failures your app maps to its
-  own ([Integrations](11-integrations.md)).
-  The caller of the route need not be the owner: a scheduled job acting for
-  an organisation names the organisation.
-- **Disconnecting** is the generated `POST /connections/<name>/disconnect`
-  and its operation, revoking at the provider when the package declares
-  how. Erasing a person or a record ([Personal data](15-personal-data.md))
-  deletes and revokes its grants. A revoked grant gives the `GrantRevoked`
-  event, so your app can ask the owner to reconnect.
-- **In development and tests**, `jadpo dev grants add <connection> --owner
-  <id>` makes a fake grant, and tests declare grants as fixtures.
-
-Not built yet: OAuth grants, their routes, `on_behalf_of:` and
-`jadpo dev grants add`. Acting as
-an OAuth provider isn't built either.
-
-## Failures
+## Sign-in failures
 <!-- topic: identity-failures -->
 
 Jadpo raises the sign-in failures itself. You never declare them or list
@@ -4902,7 +4824,7 @@ A feature not built yet is `toolchain.not_built_yet` where it is written.
 | Everything else on this page | Built. |
 | `Driver.github`, `Driver.apple` and `oauth_provider:` | Not built yet. |
 | Scope declarations and policy's scope restrictions | Not built yet. As [Policy](09-policy.md) specifies, an external method narrows scopes only when it declares the scopes it reads; undeclared provider scope or profile claims never replace application authority. |
-| OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([Integrations](11-integrations.md)) | Not built yet. |
+| OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([OAuth grants](11-integrations.md#oauth-grants)) | Not built yet. |
 
 ## Errors
 

@@ -440,7 +440,7 @@ with its type, value, `///` description and the code that reads it.
 ### A constant or a setting
 
 If a deployment could ever need a different value, make it a setting in
-`config.jadpo` ([Configuration and time](10-configuration-and-time.md));
+`config.jadpo` ([Settings](10-configuration-and-time.md#settings-configjadpo));
 otherwise make it a constant. A page size an operator might tune is a
 setting. The number of pence in a pound is a constant. The Jadpo agent
 skill gives agents the same rule

@@ -156,7 +156,7 @@ An address that sets TLS itself, with `sslmode`, `sslrootcert` or another
 of libpq's `ssl…` settings, is refused as the app starts, by `jadpo config
 check` and by `jadpo migrate`, with the error
 `configuration.value_invalid`
-([Configuration and time](10-configuration-and-time.md)). A `Certificate`
+([Checking values before the app starts](10-configuration-and-time.md#checking-values-before-the-app-starts)). A `Certificate`
 setting that isn't the PEM of exactly one certificate is refused the same
 way.
 
@@ -704,7 +704,7 @@ The details:
   in `conflict:` ([Conflicts](06-reads-and-writes.md#conflicts)).
 - **How long purge waits.** `after:` takes a duration written in place
   (`30d`) or a `Duration` setting (`config.soft_delete_retention`,
-  [Configuration and time](10-configuration-and-time.md)), whose value is
+  [Settings](10-configuration-and-time.md#settings-configjadpo)), whose value is
   the one the app started with. A record is purged once `visible:`
   doesn't hold and its `since:` field is older than the run's time less
   `after:`.
@@ -918,7 +918,7 @@ entity SignUpDraft {
 
 Expired records are hidden from every read and update, as records
 `visible:` hides are
-([Entities in Redis](06-reads-and-writes.md#entities-in-redis) under
+([Reading and writing entities in Redis](06-reads-and-writes.md#reading-and-writing-entities-in-redis) under
 Reads and writes). An `expires_after:` on an entity in a database, or a
 Redis entity without one, is a compile error.
 
@@ -963,7 +963,7 @@ for the field's type:
 | `Duration` | `bigint`, in milliseconds |
 | `Enum` without data | `text` holding the variant name; a standard enum holds its code, `GBP`, `Europe/London` |
 | `Money` ([Money and payments](19-standard-library.md#money-and-payments)) | two columns, always: `<field>_amount bigint` of minor units and `<field>_currency char(3)`, with a check constraint holding the currency to the one a type fixes |
-| `ZonedTime` ([Configuration and time](10-configuration-and-time.md)) | two columns: `<field>_instant timestamptz(3)` and `<field>_zone text` holding its zone's code |
+| `ZonedTime` ([Zones and local times](10-configuration-and-time.md#zones-and-local-times)) | two columns: `<field>_instant timestamptz(3)` and `<field>_zone text` holding its zone's code |
 | `Enum` with data, `Object`, `List`, `Set`, `Map` | `jsonb` |
 
 Structured fields, recursive ones included, are stored whole as `jsonb`,
@@ -1004,7 +1004,7 @@ which the route codec writes and reads back.
 A geometry (`Point` and the other five, or `Geometry`) is one PostGIS
 `geography` column. It is untyped, and a check constraint holds it to its
 geometry type and to WGS84. The first migration with one creates the
-extension ([Storage](20-geospatial.md#storage) under Geospatial).
+extension ([Storing geometries](20-geospatial.md#storing-geometries) under Geospatial).
 
 ### Changing what a field allows
 

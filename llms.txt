@@ -28,7 +28,7 @@ The reference is on the site, one page per topic, in these groups. Open the page
 - [Background work](https://jadpo.dev/docs/jobs-and-events.md): What runs outside a request: schedules, batches, events, and what happens when a delivery fails.
 - [Built-in services](https://jadpo.dev/docs/built-in-services.md): What Jadpo gives an app without a package: email, files, flags, rate limits, search, audit, AI and more.
 - [External services](https://jadpo.dev/docs/external-services.md): Another company's API from your app: connecting to it, calling it, receiving from it, and using packages.
-- [Configuration](https://jadpo.dev/docs/configuration-and-time.md): Settings, secrets, and the languages an app speaks.
+- [Configuration](https://jadpo.dev/docs/configuration.md): Settings and secrets, and the languages your app speaks: locales and translations.
 - [Testing](https://jadpo.dev/docs/testing.md): How your tests run your real application against a real database: kinds of test, fixtures and fakes.
 - [Tools](https://jadpo.dev/docs/tooling.md): The jadpo command, your editor, building and deploying, and what a coding agent can look up.
 

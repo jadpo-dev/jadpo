@@ -265,7 +265,7 @@ test as `test.fault`, with its frames.
 
 In this example the route lets anyone call it, so the test signs no one
 in. `add_memo` reaches no entity, so the root `policy { }` says who may
-call it ([Actions](09-policy.md#actions)):
+call it ([Permissions on actions](09-policy.md#permissions-on-actions)):
 
 ```jadpo check project=route-test
 type Memo = Text {
@@ -588,7 +588,7 @@ run.
 record and takes no lease, as the tick does: a schedule test proves what
 one run does, and the compiler's own live tests prove the tick's records.
 What the run emits is delivered once it comes back, as any step's is
-([Caches and events](#caches-and-events)).
+([Events and caches in tests](#events-and-caches-in-tests)).
 
 A test that runs a schedule is a schedule test, whatever it calls to set
 up its data, a `request` included. `--kind schedule` runs only those.
@@ -1271,7 +1271,7 @@ names ([Search](16-built-in-services.md#search)).
 #### OAuth grants
 
 An OAuth grant lets the app call another service on a user's behalf
-([Acting for each user: OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)).
+([OAuth grants](11-integrations.md#oauth-grants)).
 A test declares its grants at the top, beside `fakes:`, as
 `grants: { calendar: [alice] }`: the connection's name, and the fixtures
 whose records own a grant, as `jadpo dev grants add`, not built yet, will
@@ -1596,9 +1596,18 @@ line, its `data` with a `watch` object (`event`, `changed`, `reached`,
 `failing`, `files`, `fixed`).
 
 ## Running tests
-<!-- topic: running-tests -->
+<!-- topic: running-tests (was running-tests-from-the-command-line) -->
 
-`jadpo test` runs every test in the project. To run fewer, name them:
+`jadpo test` runs every test in the project, and owns everything a run
+needs, so nothing about it appears in your source. It starts a disposable
+local PostgreSQL, from the PostgreSQL programs installed on your machine, or
+uses `JADPO_TEST_DATABASE_URL` in CI. It builds one template database from
+the migrations and copies it for each test, so tests run in parallel
+([The test database](#the-test-database)). `--keep-failed` keeps a failed
+test's database. The report lists each failed test with the failure it got
+and the one it expected.
+
+To run fewer, name them:
 
 - `jadpo test <file>` runs one file;
 - `jadpo test <file>:<line>` runs the test at that line;
@@ -1613,8 +1622,8 @@ a focused test is never committed by accident.
 ### Watch mode: `--watch`
 
 `jadpo test --watch` reruns, on every save, the tests the change reaches.
-It finds them with the compiler's own dependency graph, as `--affected`
-does ([Tools](14-tooling.md)).
+It finds them with the compiler's own dependency graph
+([`jadpo test`](14-tooling.md#jadpo-test)).
 
 ### Interactive mode: `--interactive`
 
@@ -1637,6 +1646,15 @@ it, through the language server.
 
 Interactive mode isn't built yet: `--interactive` says
 `toolchain.not_built_yet`. Use the flags above, or `--watch`, for now.
+
+Not built yet: `--affected`, which runs the tests a change reaches. Nor are
+the tests the compiler is to generate from facts it already has, run with
+your tests and shown in the report under the route they test:
+
+- every route refuses bad input with `{ field, rule }` details;
+- every declared failure reaches the client in the right envelope and
+  status;
+- no output has a field its type doesn't declare.
 
 ## The test database
 <!-- topic: the-test-database -->
@@ -1683,7 +1701,7 @@ as in production.
 built yet: its trace, with `jadpo trace` and the developer console to
 inspect exactly what it did.
 
-## Caches and events
+## Events and caches in tests
 <!-- topic: caches-and-events -->
 
 An event is a fact an action records, such as "an order was placed",
@@ -1935,6 +1953,7 @@ Not built yet: caches, which need the Redis driver.
 | Data builders, `assert emitted` | Not built yet. |
 | The trace `--keep-failed` keeps, for `jadpo trace` | Not built yet: it comes with [Debugging and review](17-debugging-and-review.md). |
 | Interactive mode | Not built yet: `jadpo test --interactive` says `toolchain.not_built_yet`. |
+| Generated tests | Not built yet: `jadpo test` runs only the tests a project declares. |
 | Caches in tests | Not built yet: caches need the Redis driver. |
 | Golden application contract | Built: the shared black-box harness in `benchmarks/contract/` executes all 44 versioned application cases interpreted, on generated native code and on compiled workerd, with real credential verification, raw invalid inputs, physical SQL observation, persisted-state assertions, controlled clocks and provider faults. These checks supplement authored Jadpo tests; they add no application-facing test controls. Full-gate ownership is interpreted and native in `compiled`, workerd in `wasm32`, and verifier negative controls in `lint`. |
 | `test.no_tests` | Built: raised by `jadpo test` only ([Tools](14-tooling.md)), when the project has no tests or a file, line, name, kind or `--failed` picks none. |

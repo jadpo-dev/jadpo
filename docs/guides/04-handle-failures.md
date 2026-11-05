@@ -273,7 +273,7 @@ A failure can also carry fields: `client:` ones the caller sees under
 ## Read more
 
 [Declaring a failure](../language/04-failures.md#declaring-a-failure),
-[Kinds](../language/04-failures.md#kinds),
+[Failure kinds](../language/04-failures.md#failure-kinds),
 [What the client sees](../language/04-failures.md#what-the-client-sees),
 [Saying what can fail](../language/04-failures.md#saying-what-can-fail-fails),
 [Passing a failure on](../language/04-failures.md#passing-a-failure-on-attempt),

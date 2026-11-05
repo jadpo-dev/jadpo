@@ -26,7 +26,7 @@ on.
 
 Each file holds one primary declaration, named after the file and written
 last in it, below everything it needs. Nothing else goes in the file unless
-the primary declaration uses it. [Decided layout](#decided-layout) gives
+the primary declaration uses it. [The layout in detail](#the-layout-in-detail) gives
 the whole layout, and [Files and names](#files-and-names) the rules for
 each file.
 
@@ -135,22 +135,6 @@ Comments in other languages' styles, `#` and `/* */`, are
 `syntax.comment_style`. Its edit rewrites them with `//`, or with `///` for
 a `/** */` comment.
 
-## Every error has the same shape
-<!-- topic: every-error-has-the-same-shape -->
-
-Each compiler error gives where the problem is, a reason, a suggested next
-step and who should act on it, and a stable rule ID with a link to its
-page. Tools read the same fields as JSON with `jadpo check --json`.
-
-`(human)` at the end of an error's `next:` line tells your coding agent to
-stop and ask you which fix you want, because the choice is yours to make
-(who can see data, what a setting holds). `(agent)` means your agent can
-make the fix itself.
-
-There is no warning severity. Every finding is an error, and it stops
-`check` and the build until it is answered: fixed or, for the few rules
-that allow it, declined.
-
 ## Declining a judgement call
 <!-- topic: declining-a-judgement-call -->
 
@@ -225,7 +209,7 @@ and a security rule's with ", which a person then accepts".
 | [`library.similar_exists`](../errors/library.similar_exists.md) | Project layout and modules | A library function already does the same |
 | [`constant.similar_exists`](../errors/constant.similar_exists.md) | [Logic](03-logic.md) | Another constant of the same type holds the same value |
 | [`policy.call_ungranted`](../errors/policy.call_ungranted.md) | [Policy](09-policy.md) | A listed action calls one that refuses some of the people its line lets in |
-| `translation.field_unused` | [Configuration and time](10-configuration-and-time.md) | No wording in a language uses one of a message's fields |
+| `translation.field_unused` | [Translations as messages](10-configuration-and-time.md#translations-as-messages) | No wording in a language uses one of a message's fields |
 | `package.standard_candidate` | [Integrations](11-integrations.md) | A provider field looks like a standard type the package doesn't use |
 | [`type.batch_order_updatable`](../errors/type.batch_order_updatable.md) | [Background work](12-jobs-and-events.md) | A batch walks a query ordered by a field an update can change |
 | [`step.late_failure`](../errors/step.late_failure.md) | [Background work](12-jobs-and-events.md) | An action can fail for good after a changing call took effect |
@@ -318,8 +302,8 @@ declinable: extending the date is the reviewed choice. When
 its date; a build outside git, or before the first commit, judges at
 today.
 
-## Decided layout
-<!-- topic: decided-layout -->
+## The layout in detail
+<!-- topic: layout-in-detail (was decided-layout) -->
 
 Every project has the same shape at every size. The root holds a fixed set
 of files and folders. All application code lives in domains under
@@ -498,7 +482,7 @@ the page that decides each:
 Seven more are decided and not built yet: `bot_check:`
 ([Bot protection](16-built-in-services.md#bot-protection)), `documents:`
 ([Documents](16-built-in-services.md#documents)), `grants:`
-([OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)),
+([OAuth grants](11-integrations.md#oauth-grants)),
 `privacy:` ([Data requests](15-personal-data.md#data-requests)),
 `publishing:` ([Where events travel](12-jobs-and-events.md#where-events-travel)),
 `scanning:` ([Image variants and scanning](16-built-in-services.md#image-variants-and-scanning))
@@ -554,7 +538,7 @@ to be revisited if a folder in a real application passes about 60 files.
 | `subscribers/` | Event triggers, including long-running coordination | |
 | (none) | Outside APIs are provider packages: connections in `app.jadpo`, installed packages in the root `packages/`, pinned in `jadpo.lock`, and the app's own in `shared/providers/` | [Integrations](11-integrations.md); there is no `integrations/` folder and no `integration` keyword |
 | `emails/` | Email types and their templates, one email per name (`welcome_email.jadpo`, `welcome_email.html`, `welcome_email.txt`), and the domain's own email partials, laid out the same way | [Email](16-built-in-services.md#email) |
-| `translations/` | One `type X = Message` per file; one `translations { }` language file per locale, named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects; and the generated, committed `sources.jadpo_record` ([Review and records](18-records-and-manifest.md)) | [Configuration and time](10-configuration-and-time.md); a message a second domain uses goes in `shared/translations/`. A language file is named after its locale, not after its `translations { }` |
+| `translations/` | One `type X = Message` per file; one `translations { }` language file per locale, named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects; and the generated, committed `sources.jadpo_record` ([Review and records](18-records-and-manifest.md)) | [Translations as messages](10-configuration-and-time.md#translations-as-messages); a message a second domain uses goes in `shared/translations/`. A language file is named after its locale, not after its `translations { }` |
 | `prompts/` | One `type X = Prompt` per file, each with its text in `<name>.prompt` beside it, in two sections, `# Instructions` and `# Request` | [Prompts as files](21-ai.md#prompts-as-files); a prompt a second domain uses goes in `shared/prompts/`, as a message does |
 | `documents/` | Document types and their templates, one document per name (`invoice_document.jadpo`, `invoice_document.html`), rendered to HTML or PDF by the `documents` capability | [Documents](16-built-in-services.md#documents) |
 | `fixtures/` | Test data shared by several test files in the domain | |
@@ -1138,13 +1122,13 @@ connections: {
 ```
 
 ## Folders other pages describe
-<!-- topic: decided-in-later-areas -->
+<!-- topic: folders-other-pages-describe (was decided-in-later-areas) -->
 
 The layout only reserves these folders; each piece has its own page. Route
 groups are on [HTTP](07-http.md), schedules on
 [Background work](12-jobs-and-events.md), integrations and provider API
 versions on [Integrations](11-integrations.md), translation files on
-[Configuration and time](10-configuration-and-time.md), and the migration
+[Translations as messages](10-configuration-and-time.md#translations-as-messages), and the migration
 workflow on [Entities, stores and migrations](05-data.md).
 
 ## What is built

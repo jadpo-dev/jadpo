@@ -1,17 +1,20 @@
 ---
-title: Configuration and time
+title: Configuration
 area: 10
 status: decided
 checked-with: this checkout's jadpo on every gate run
 ---
 
-# Configuration and time
-<!-- topic: configuration-and-time -->
+# Configuration
+<!-- topic: configuration (was configuration-and-time) -->
 
-This page covers the values your app reads from its environment, such as a
-database address or an API key, and everything to do with time: the current
-time, dates and time zones, and showing dates, times and other text to
-people in their own language.
+Configuration is the values your app reads from its environment, such as a
+database address or an API key, and the languages it speaks: its locales,
+and its text translated for the people reading it.
+
+Dates and times are in the reference under Values and types. Start at
+[Time types](#time-types) for the current time, dates and time zones, and
+showing them to people.
 
 Two rules run through the page:
 
@@ -2942,7 +2945,7 @@ any package failure ([Calling](11-integrations.md#calling)).
 
 A package that changes a message's or a failure's fields makes a breaking
 change to its surface, the list of what it offers
-([The surface](11-integrations.md#the-surface)). So your app's rewording
+([A package's surface](11-integrations.md#a-packages-surface)). So your app's rewording
 fails to compile until you update it.
 
 A package that changes its own wording marks your app's rewording stale,

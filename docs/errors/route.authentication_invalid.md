@@ -255,4 +255,4 @@ one is set.
 - [Routes: signed in by default](../language/08-identity.md#routes-signed-in-by-default)
 - [Open to anyone: `RouteAuthentication.none`](../language/08-identity.md#open-to-anyone-routeauthenticationnone)
 - [Check the caller again: `RouteAuthentication.fresh`](../language/08-identity.md#check-the-caller-again-routeauthenticationfresh)
-- [Actions](../language/09-policy.md#actions)
+- [Permissions on actions](../language/09-policy.md#permissions-on-actions)

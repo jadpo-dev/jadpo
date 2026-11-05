@@ -60,10 +60,10 @@ For another outcome, use the kind that fits it. You can declare seven:
 (403), `not_found` (404), `conflict` (409), `rejected` (422) for a
 business rule that refuses the operation, `rate_limited` (429) and
 `unavailable` (503). The runtime raises the others itself
-([Kinds](../language/04-failures.md#kinds)).
+([Failure kinds](../language/04-failures.md#failure-kinds)).
 
 ## Related
 
-- [Kinds](../language/04-failures.md#kinds)
+- [Failure kinds](../language/04-failures.md#failure-kinds)
 - [`kind:`, which sets the status](../language/04-failures.md#kind-which-sets-the-status)
 - [Declaring a failure](../language/04-failures.md#declaring-a-failure)

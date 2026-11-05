@@ -86,7 +86,7 @@ and OpenAPI. A field typed `Todo.id` has the type of `Todo`'s `id` field.
 
 ### `kind:`, which sets the status
 
-`kind:` names one of the [kinds](#kinds), the categories a failure falls
+`kind:` names one of the [failure kinds](#failure-kinds), the categories a failure falls
 into, such as `not_found` or `conflict`. The kind sets the HTTP status a
 client gets, and how background work, such as a
 [job or an event subscriber](12-jobs-and-events.md), treats the failure. A failure never states a status itself.
@@ -138,8 +138,8 @@ domain handles the failure, for example in a
 [`match`](#handling-a-failure-in-match), write `public` before the
 declaration: `public type QuantityUnavailable = Failure { ... }`.
 
-## Kinds
-<!-- topic: kinds -->
+## Failure kinds
+<!-- topic: failure-kinds (was kinds) -->
 
 Every failure has a kind, which decides the HTTP status a client gets and
 what the failure means. A kind is a `FailureKind` value, written

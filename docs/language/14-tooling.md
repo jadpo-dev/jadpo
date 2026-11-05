@@ -191,7 +191,7 @@ marked `(human)` ([The test database](13-testing.md#the-test-database)).
 
 `jadpo build` writes the runnable app into `build/target/`, with each
 API's `<api>.failures.<locale>.json` beside its OpenAPI document
-([Configuration and time](10-configuration-and-time.md)). It takes
+([Failures for client apps](10-configuration-and-time.md#failures-for-client-apps)). It takes
 `--json`. It first checks as `jadpo check` does, writing the same files,
 and stops at the errors.
 
@@ -735,8 +735,7 @@ through the app's next tick, or dismissed.
 unfinished multi-step action recorded, never a request, an answer or a
 key, and the one thing to do. `retry <id> --not-done` sends again a step
 that is in doubt or failed, under its next key generation. `abandon <id>`
-gives the run up ([Several changing calls in one
-action](11-integrations.md#several-changing-calls-in-one-action)).
+gives the run up ([Several changing calls through a package](11-integrations.md#several-changing-calls-through-a-package)).
 
 ### `jadpo flags`
 
@@ -928,8 +927,7 @@ the app's code has `use packages/<name>` (`install.in_use`).
 ### `jadpo package show`
 
 Prints a package's description, licence, version, kind and public
-surface, or one declaration with its file. `packages` is a synonym ([The
-surface](11-integrations.md#the-surface)).
+surface, or one declaration with its file. `packages` is a synonym ([A package's surface](11-integrations.md#a-packages-surface)).
 
 The description is in bold. The package's facts follow: its version and
 source from its lock line, or "the app's own". Then come [what a release
@@ -1242,8 +1240,7 @@ Not built yet:
   app, never to the container engine ([External
   services](11-integrations.md)).
 - `jadpo dev grants add <connection> --owner <id>`, which makes a fake
-  OAuth grant for local development ([Acting for each user: OAuth
-  grants](11-integrations.md#acting-for-each-user-oauth-grants)).
+  OAuth grant for local development ([OAuth grants](11-integrations.md#oauth-grants)).
 - `jadpo files ls`, `show`, `get`, `put` and `copy`, which work on any
   store, in development or production, `copy` copying files between two
   stores (S3, R2, disk) ([Files](16-built-in-services.md#files)).
@@ -1314,30 +1311,6 @@ which explains a runtime event from a file, from standard input
 (`pbpaste | jadpo incident -`, or a log stream piped in), or, with no
 argument in a terminal, from text pasted at a prompt. It finds the Jadpo
 events inside the surrounding log text and groups them by request.
-
-## Running tests
-<!-- topic: running-tests-from-the-command-line -->
-
-`jadpo test` owns everything a test run needs, so nothing about it
-appears in your source ([Testing](13-testing.md)). It starts a disposable
-local PostgreSQL, from the PostgreSQL programs installed on your machine,
-or uses `JADPO_TEST_DATABASE_URL` in CI. It builds one template database
-from the migrations and copies it for each test, so tests run in
-parallel. `--keep-failed` keeps a failed test's database, and `--kind
-route` runs one kind of test. The report lists each failed test with the
-failure it got and the one it expected.
-
-The compiler also generates tests from facts it already has:
-
-- every route refuses bad input with `{ field, rule }` details;
-- every declared failure reaches the client in the right envelope and
-  status;
-- no output has a field its type doesn't declare.
-
-They run with your tests, and the report shows them under the route they
-test.
-
-Not built yet: `--affected`, which runs the tests a change reaches.
 
 ## Formatting
 <!-- topic: formatting -->
@@ -1754,7 +1727,7 @@ writes ([Entities, stores and migrations](05-data.md), [Stable
 identity](18-records-and-manifest.md#stable-identity)).
 
 ## Error messages
-<!-- topic: error-messages -->
+<!-- topic: error-messages (was every-error-has-the-same-shape) -->
 
 Every error has one shape, in the terminal, in the editor and as JSON: what
 is wrong, where, why, the recommended next step, who decides, the rule ID
@@ -1778,6 +1751,10 @@ stop and ask you which fix you want, because the choice is yours to make
 (who can see data, what a setting holds). `(agent)` means your agent can
 make the fix itself.
 
+There is no warning severity. Every finding is an error, and it stops
+`check` and the build until it is answered: fixed or, for the few rules
+that allow it, [declined](01-project-layout-and-modules.md#declining-a-judgement-call).
+
 - Paths are relative to the project.
 - The two impact lines appear only when they say something.
 - An obvious repair carries its edit, so the editor and agents can apply
@@ -1785,8 +1762,9 @@ make the fix itself.
 - The help link is the address of the error's own page on the site,
   `https://jadpo.dev/docs/errors/<rule>`, which has an example of the
   rule.
-- JSON gives line and column as well as byte offsets, and uses one naming
-  style for its keys.
+- Tools read the same fields as JSON with `jadpo check --json`, which gives
+  line and column as well as byte offsets, and uses one naming style for
+  its keys.
 - A reason that quotes another tool's lines, as `toolchain.build_failed`
   quotes cargo's, prints each as a line of its own under the reason, its
   indent kept and blank lines left out; JSON keeps them in the one
@@ -2036,8 +2014,8 @@ share` sends. It never depends on the version of the code that makes the
 canonical form, and only lines written the same way in many projects reach
 HQ's threshold.
 
-## The report
-<!-- topic: the-report -->
+## The suggestions report
+<!-- topic: suggestions-report (was the-report) -->
 
 ```text
 $ jadpo suggest
@@ -2563,8 +2541,7 @@ manifest](18-records-and-manifest.md)):
 
 The binary holds the stamp as a constant. The runtime plan it holds
 records the build id where `jadpo dev` records the graph's digest
-([Several changing calls in one
-action](11-integrations.md#several-changing-calls-in-one-action)).
+([Several changing calls through a package](11-integrations.md#several-changing-calls-through-a-package)).
 
 ### Starting
 

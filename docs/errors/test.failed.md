@@ -234,5 +234,5 @@ action remind_if_overdue(due: DueAt, now: DueAt) -> Overdue {
 ## Related
 
 - [`jadpo test`](../language/14-tooling.md#jadpo-test)
-- [Running tests](../language/14-tooling.md#running-tests)
+- [Running tests](../language/13-testing.md#running-tests)
 - [Writing a test](../language/13-testing.md#writing-a-test)

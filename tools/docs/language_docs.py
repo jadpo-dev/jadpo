@@ -2930,7 +2930,7 @@ def export_corpus(corpus):
 AREAS = [
     (1, 'Project layout and modules'), (2, 'Values and types'), (3, 'Logic'), (4, 'Failures'),
     (5, 'Entities, stores and migrations'), (6, 'Reads and writes'), (7, 'HTTP'), (8, 'Sign-in and identity'), (9, 'Policy'),
-    (10, 'Configuration and time'), (11, 'External services'), (12, 'Background work'),
+    (10, 'Configuration'), (11, 'External services'), (12, 'Background work'),
     (13, 'Testing'), (14, 'Tools'), (15, 'Personal data'), (16, 'Built-in services'), (17, 'Debugging'), (18, 'Review and records'),
     (19, 'Standard library'), (20, 'Geospatial'),
     (21, 'AI'),

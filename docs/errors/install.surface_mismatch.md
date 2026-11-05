@@ -91,7 +91,7 @@ committed.
 
 ## Related
 
-- [The surface](../language/11-integrations.md#the-surface)
+- [A package's surface](../language/11-integrations.md#a-packages-surface)
 - [Installing safely](../language/11-integrations.md#installing-safely)
 - [How packages are installed and linked](../language/11-integrations.md#how-packages-are-installed-and-linked)
 - [`jadpo package add`](../language/14-tooling.md#jadpo-package-add)

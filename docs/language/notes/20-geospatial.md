@@ -244,7 +244,7 @@ reference answers".
   verified box whose edges bow towards the pole, away from every boundary
   but exact ones (a polygon's own corner, a point on a meridian edge). The
   gate checks them natively and under WebAssembly, which give one digest.
-  Every yes or no is PostGIS's but the four cases under "Operations",
+  Every yes or no is PostGIS's but the four cases under "Geometry operations",
   where the file records PostGIS's answer beside the page's; each
   centroid is within 4 × 10⁻¹² of a degree of `ST_Centroid(x, false)`'s
   (half a micrometre); each box's side within 3 × 10⁻¹⁴ of a degree of the

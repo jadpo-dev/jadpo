@@ -29,8 +29,8 @@ topics = [
   "what-it-looks-like-in-code",
 ]
 details = [
-  "decided-layout",
-  "decided-in-later-areas",
+  "layout-in-detail",
+  "folders-other-pages-describe",
 ]
 built = [
   "project-layout-and-modules-built",
@@ -266,7 +266,7 @@ title = "Failures"
 topics = [
   "failures",
   "declaring-a-failure",
-  "kinds",
+  "failure-kinds",
   "saying-what-can-fail-fails",
   "raising-a-failure-reject",
   "passing-a-failure-on-attempt",
@@ -307,7 +307,7 @@ topics = [
 ]
 details = [
   "sql-forms",
-  "how-the-five-languages-compare",
+  "coming-from-typescript",
 ]
 built = [
   "standard-library-built",
@@ -467,7 +467,7 @@ topics = [
   "service-credentials",
   "the-application-and-revocation",
   "in-development-and-tests",
-  "events",
+  "sign-in-events",
   "identity-failures",
 ]
 details = [
@@ -486,9 +486,9 @@ topics = [
   "a-membership-role",
   "anyone-signed-in-or-anyone",
   "tenancy",
-  "actions",
+  "action-permissions",
   "field-restrictions",
-  "background-work",
+  "policy-and-background-work",
   "the-permissions-report",
   "protecting-policy",
   "when-policy-says-no",
@@ -758,8 +758,7 @@ topics = [
   "decoding",
   "several-changing-provider-calls",
   "packages-from-other-jadpo-apps",
-  "acting-for-each-user-oauth-grants",
-  "acting-for-a-user-at-another-service-oauth-grants",
+  "oauth-grants",
   "provider-calls-in-development",
   "tests-and-fakes",
 ]
@@ -835,9 +834,9 @@ details = [
 ]
 
 [[group]]
-id = "configuration-and-time"
+id = "configuration"
 title = "Configuration"
-summary = "Settings, secrets, and the languages an app speaks."
+summary = "Settings and secrets, and the languages your app speaks: locales and translations."
 built = [
   "configuration-and-time-built",
 ]
@@ -890,7 +889,6 @@ topics = [
   "shared-test-data-fixtures",
   "assertions",
   "running-tests",
-  "running-tests-from-the-command-line",
   "the-test-database",
   "caches-and-events",
 ]
@@ -988,7 +986,7 @@ topics = [
   "suggestions",
   "signals",
   "snippets-and-their-canonical-form",
-  "the-report",
+  "suggestions-report",
   "ignoring-a-suggestion",
   "teaching-a-miss",
   "what-is-kept-and-where",
@@ -1049,7 +1047,6 @@ summary = "What each error means and how to fix it."
 href = "/docs/errors"
 topics = [
   "error-messages",
-  "every-error-has-the-same-shape",
   "declining-a-judgement-call",
   "errors-only-the-running-app-or-a-build-raises",
   "command-line-errors",
@@ -1069,8 +1066,7 @@ the-dev-inbox-and-the-health-score = ["16-built-in-services: The dev inbox and t
 monitoring-thresholds = ["16-built-in-services: Monitoring thresholds"]
 telemetry = ["16-built-in-services: The `telemetry:` section"]
 path-ids = ["16-built-in-services: Path IDs"]
-acting-for-each-user-oauth-grants = ["11-integrations: OAuth grants"]
-acting-for-a-user-at-another-service-oauth-grants = ["08-identity: OAuth grants"]
+oauth-grants = ["11-integrations: OAuth grants"]
 watching-code-run-jadpo-watch = ["17-debugging-and-review: `jadpo traces`, `metrics`, `logs` and `watch`"]
 traces-metrics-and-logs-in-development = ["17-debugging-and-review: `jadpo traces`, `metrics`, `logs` and `watch`"]
 production-incidents-after-the-code-has-changed = ["17-debugging-and-review: Mapped `.jadpo` stacks"]

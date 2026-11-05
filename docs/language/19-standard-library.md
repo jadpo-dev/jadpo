@@ -12,7 +12,7 @@ The standard library is the set of operations every program can use without
 declaring them, such as `list.count(items)` and `temporal.in_zone(at, zone)`,
 over the standard types, such as `Money`. A few are defined on the pages whose
 features need them: [Values and types](02-values-and-types.md),
-[Logic](03-logic.md) and [Configuration and time](10-configuration-and-time.md).
+[Logic](03-logic.md) and [Dates and times](10-configuration-and-time.md#time-types).
 This page collects the operations, and adds the ones real applications keep
 reaching for. [Standard types](https://jadpo.dev/docs/types) lists every type.
 The [design notes](notes/19-standard-library.md#left-out-by-design) say what is
@@ -42,7 +42,7 @@ never `count(items)`.
 | `csv` | CSV files, read and written through batches | 2 | [Batches](12-jobs-and-events.md#batches) |
 | `tsv` | TSV files, CSV's tab-separated form | 2 | [Batches](12-jobs-and-events.md#batches) |
 | `json_lines` | JSON Lines files, one value per line | 2 | [Batches](12-jobs-and-events.md#batches) |
-| `temporal` | Instants, dates, local times, zones, formats, recurrence | 24 (21 from Configuration and time) | [Zones and local times](10-configuration-and-time.md#zones-and-local-times) and this page |
+| `temporal` | Instants, dates, local times, zones, formats, recurrence | 24 (21 from Dates and times) | [Zones and local times](10-configuration-and-time.md#zones-and-local-times) and this page |
 | `locale` | Choosing a supported locale | 1 | [Choosing a locale from a request](10-configuration-and-time.md#choosing-a-locale-from-a-request) |
 | `colour` | Converting `Colour` between spaces, contrast | 5 | This page |
 | `web` | Building URLs, address blocks | 3 | This page |
@@ -51,7 +51,7 @@ never `count(items)`.
 | `markup` | Markdown and HTML, made safe | 3 | This page |
 
 There are 171 operations in all: 28 defined on the Values and types,
-Logic, and Configuration and time pages, 8 file helpers defined with
+Logic, and Dates and times pages, 8 file helpers defined with
 [batches](12-jobs-and-events.md#batches), and 135
 defined here. Operators are counted apart, in
 [the standard operator table](#the-standard-operator-table). Operations
@@ -231,13 +231,13 @@ test "standard values are read, written and shown one way" {
 ### Extras beyond the baseline
 
 Many groups of types have operations beyond the baseline. Each has its
-full table under [Operations](#operations):
+full table under [All operations](#all-operations):
 
 | Group | Extras | Count |
 |---|---|---|
 | Money and payments | `money.from_minor`, `of`, `minor`, `currency`, `sum`, `allocate`, `split`, `convert` (with a given `ExchangeRate`, never fetched), `mask` (a `MaskedCardNumber` from a `PaymentCardNumber`), `apply_discount` (a `Discount` off a `Price`) | 10; arithmetic by the operator table |
 | Physical quantities, `DataSize`, `Bitrate` | `units.of`, `in`, `sum`; operators within a kind and the defined products and quotients | 3 |
-| Time and calendar | The 21 from [Configuration and time](10-configuration-and-time.md), plus `temporal.occurrences`, `temporal.open_at` and `temporal.period_between`; `CalendarPeriod` arithmetic by the operator table | 3 new |
+| Time and calendar | The 21 from [Dates and times](10-configuration-and-time.md#time-types), plus `temporal.occurrences`, `temporal.open_at` and `temporal.period_between`; `CalendarPeriod` arithmetic by the operator table | 3 new |
 | Ranges (`Range<T>`, `DateRange`, `InstantRange`) | `range.contains`, `range.overlaps`, `range.intersection` | 3 |
 | Colour | `colour.from_hsl`, `from_oklch`, `mix`, `with_lightness`, `contrast` (WCAG 2) | 5 |
 | Security | `crypto` as tabled below, with `sign`, `verify_signature`, `verify_jwt` and `verify_totp` | 10 |
@@ -448,7 +448,7 @@ never through an encoder of its own:
 | JSON Lines rows, `json.read` and `json.write` | The contract's JSON | This page |
 | Logs and traces | Values as [Logging](04-failures.md#logging) and [Personal data](15-personal-data.md) allow; a personal value's keyed hash covers the UTF-8 of its canonical text, or of its contract JSON where it has no single text form | [Personal data](15-personal-data.md) |
 | Settings | `text.parse`'s canonical text, with the source spellings a setting also takes (`5m`) | [Settings](10-configuration-and-time.md#settings-configjadpo) |
-| Translation placeholders and email | Shown to people by `text.format` (`PresentationText`), never read back | [Configuration and time](10-configuration-and-time.md) and [Built-in services](16-built-in-services.md) |
+| Translation placeholders and email | Shown to people by `text.format` (`PresentationText`), never read back | [Translations as messages](10-configuration-and-time.md#translations-as-messages) and [Built-in services](16-built-in-services.md) |
 | Outbound provider calls and webhooks | The contract's JSON for a field without `wire:`; `wire:` only names another encoding a provider uses | [Integrations](11-integrations.md) |
 | Records and the manifest | Types and defaults as source writes them; no runtime values | [Review and records](18-records-and-manifest.md) |
 | Test fixtures and seeds | Written through the actions they call, so through storage | [Entities, stores and migrations](05-data.md) and [Testing](13-testing.md) |
@@ -815,7 +815,7 @@ reads as under [Errors](#errors).
 
 `Colour`'s alpha is the first field a shape lets an `Object` leave out.
 `LineString` and `Polygon` match through a list, which is one shape, so
-the error names both ([Interop](20-geospatial.md#interop); its example is
+the error names both ([GeoJSON and other formats](20-geospatial.md#geojson-and-other-formats); its example is
 under [Errors](#errors)).
 
 ### Reference lists ship with Jadpo
@@ -1066,7 +1066,7 @@ the object type
 ([Rules across fields](02-values-and-types.md#rules-across-fields)),
 checked by the same construction.
 
-## Operations
+## All operations
 <!-- topic: standard-library-operations -->
 
 The sections below list every operation beyond the contract's baseline,
@@ -1087,7 +1087,7 @@ and isn't repeated.
 | Numbers | `integer`, `decimal` | 18 |
 | Money and payments | `money` | 8 |
 | Physical quantities | `units` | 3 |
-| Time and calendar additions | `temporal` | 24 (21 from Configuration and time) |
+| Time and calendar additions | `temporal` | 24 (21 from Dates and times) |
 | Text | `text` | 21 |
 | Text formats | `markup` | 3 |
 | Hashing and cryptography | `hash`, `crypto` | 11 |
@@ -8461,7 +8461,7 @@ rules: unknown fields are refused, and `optional` and `default` are
 applied. `json.write` takes any value an `Output` may hold. Both use the
 wire forms that requests and responses use, `Money`'s included
 ([Values and types](02-values-and-types.md), [HTTP](07-http.md) and
-[Configuration and time](10-configuration-and-time.md)).
+[Dates and times](10-configuration-and-time.md#time-types)).
 
 That is what the wire can carry: values built on the built-in and
 standard types, enums your app or the standard library declares, and
@@ -11496,7 +11496,7 @@ A geometry has no single text form, a `Point` included. Neither does a
 tile's `z/x/y`, a box's four numbers) depends on the order of its
 numbers, and an axis order exists only at an edge that names it. WKT is a
 format, not a type: only
-the two WKT operations ([Interop](20-geospatial.md#interop)) read and write it.
+the two WKT operations ([GeoJSON and other formats](20-geospatial.md#geojson-and-other-formats)) read and write it.
 
 ### GeoJSON
 
@@ -11529,7 +11529,7 @@ leaves out:
   `FeatureCollection` where a geometry goes. Those two are standard types
   of their own, `Feature<G, P>` and `FeatureCollection<G, P>`, read where
   one is the type
-  ([Interop](20-geospatial.md#interop)).
+  ([GeoJSON and other formats](20-geospatial.md#geojson-and-other-formats)).
 
 **Ring winding.** A ring wound either way is read, and rewound to the
 right-hand rule: the outer ring counterclockwise and each hole clockwise.
@@ -11590,7 +11590,7 @@ brackets, joined by `, `.
 
 **Stored:** a geometry is one PostGIS `geography` column, checked to its
 type (`Storage::Geography`), and a `BoundingBox` and a `Circle` are named
-columns ([Storage](20-geospatial.md#storage)). A `Latitude`, `Longitude`
+columns ([Storing geometries](20-geospatial.md#storing-geometries)). A `Latitude`, `Longitude`
 or `Bearing` is one `numeric` column; a `Crs`, `Geohash` or `H3Cell` one
 `text` column; and a `MapTile` and an `EastingNorthing` a column per
 part, an easting's and a northing's `numeric`.
@@ -11784,8 +11784,8 @@ test "an embedding has its model's length" {
 [What is built: AI](21-ai.md#what-is-built) says which parts of AI work
 are built.
 
-## How the five languages compare
-<!-- topic: how-the-five-languages-compare -->
+## Coming from TypeScript
+<!-- topic: coming-from-typescript (was how-the-five-languages-compare) -->
 
 If you know TypeScript, a few of the standard library's choices will
 differ from what you expect:

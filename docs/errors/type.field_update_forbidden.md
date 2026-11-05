@@ -271,4 +271,4 @@ action renumber_note(note_id: Note.id, reference: NoteText) fails NoteNotFound -
 
 - [The field can't be changed by an update](../language/09-policy.md#the-field-cant-be-changed-by-an-update)
 - [A user field on the record](../language/09-policy.md#a-user-field-on-the-record)
-- [Actions](../language/09-policy.md#actions)
+- [Permissions on actions](../language/09-policy.md#permissions-on-actions)

@@ -365,4 +365,4 @@ see [Deploy to Cloudflare Workers](11-deploy-to-workers.md).
 [Delivery: at least once, safe to repeat](../language/12-jobs-and-events.md#delivery-at-least-once-safe-to-repeat),
 [Retries and giving up](../language/12-jobs-and-events.md#retries-and-giving-up),
 [What an operator sees](../language/12-jobs-and-events.md#what-an-operator-sees) and
-[Background work](../language/09-policy.md#background-work).
+[Policy and background work](../language/09-policy.md#policy-and-background-work).

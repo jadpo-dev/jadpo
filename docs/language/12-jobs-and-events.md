@@ -149,7 +149,7 @@ hourly purge schedule from the compiler, such as `Member.purge` for
 - **Grants.** A schedule runs as the system, so the records it reaches
   must name `Access.system` in their policy. A schedule reaching a list
   that doesn't name it is `policy.system_grant_missing`, as a subscriber
-  or a batch is ([Background work](09-policy.md#background-work)).
+  or a batch is ([Policy and background work](09-policy.md#policy-and-background-work)).
 
 ### The tick
 
@@ -876,7 +876,7 @@ the items done, and once it failed or was cancelled, the last estimate.
 It is kept in `jadpo_batch_runs.estimated_total`. A count the store
 refuses leaves the run without one rather than stopping it. A query whose
 records Jadpo checks again after its statement, such as one with `geo.`
-conditions ([Geospatial queries](20-geospatial.md#queries)), has none.
+conditions ([Finding records by place](20-geospatial.md#finding-records-by-place)), has none.
 
 ### An order an update can change
 
@@ -1208,7 +1208,7 @@ every tenant shares.
 
 A batch runs as the system, so what it reaches must let `Access.system`
 in, as for a schedule or a subscriber
-([Background work](09-policy.md#background-work)). Suppose what `from:`'s
+([Policy and background work](09-policy.md#policy-and-background-work)). Suppose what `from:`'s
 query reads, or what the action `each:` or `finished:` calls reaches
 (itself or through what it calls), has a grant list, a field's own list
 or a line under `actions:` that doesn't name `Access.system`, or is a
@@ -1395,7 +1395,7 @@ record every tenant shares (`Tenancy.shared`) isn't the tenant's.
 
 What a schedule, a subscriber or a batch reaches is checked against the
 line under `actions:` of every action it reaches, not only the one it
-runs ([Actions](09-policy.md#actions)). A listed action's line decides
+runs ([Permissions on actions](09-policy.md#permissions-on-actions)). A listed action's line decides
 its own body's writes wherever it is called from. Routes are checked the
 same way.
 
@@ -1962,7 +1962,7 @@ A subscriber's action may emit further events.
 ### Runs as the system
 
 A subscriber runs as the system (`Access.system`,
-[Background work](09-policy.md#background-work)), not as the user who
+[Policy and background work](09-policy.md#policy-and-background-work)), not as the user who
 caused the event. If it needs to know who, put a field such as
 `by: User.id` in the event. What its action could reach whose list doesn't
 name `Access.system` is `policy.system_grant_missing`, so a write it could
@@ -2010,7 +2010,7 @@ current state, as [Declaring an event](#declaring-an-event) advises.
 In an app with a `tenant:` ([Tenancy](09-policy.md#tenancy)), each kind
 of background work reaches a stated set of tenants, and "no tenant"
 means the same thing for each: only the records every tenant shares
-([Background work](09-policy.md#background-work)):
+([Policy and background work](09-policy.md#policy-and-background-work)):
 
 | Work | Reaches |
 |---|---|
@@ -2030,7 +2030,7 @@ email's `send:` action, a webhook's reply action and
 The value naming a subscriber's or a batch's tenant must come from a
 record of that tenant, which its action reached under its caller's
 policy. Otherwise it is `policy.event_tenant_unproved`
-([Background work](09-policy.md#background-work)). So a caller can never
+([Policy and background work](09-policy.md#policy-and-background-work)). So a caller can never
 aim background work at a tenant they don't belong to.
 
 ## Reacting in another domain
@@ -3044,7 +3044,7 @@ When a subscriber's action fails, Jadpo decides whether to try again
 from the way it failed. You don't write anything for that. A failure
 that may pass, such as a provider being down, is retried later; one that
 would happen again with the same input isn't. The failure kinds are
-those in [Kinds](04-failures.md#kinds):
+those in [Failure kinds](04-failures.md#failure-kinds):
 
 | How the action ended | What happens |
 |---|---|
