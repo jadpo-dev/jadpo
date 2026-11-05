@@ -2201,7 +2201,7 @@ person accepts that change
 changes and database drops are accepted the same way. `jadpo check`
 compares the change with the default branch at its merge base through
 `access.jadpo_record`, who can do what, which it keeps at the root beside
-`api/`, and the API record. These need a person (Richard, 2026-10-30):
+`api/`, and the API record. These need a person:
 
 - a caller added to any grant list, an entity's or a field's
   (`library.Book.read: PolicyChange.widened`);

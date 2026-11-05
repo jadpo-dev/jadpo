@@ -7,7 +7,11 @@ may not hold a `BatchRun`, a `BatchProgress`, a `RowProblem` or an
 `ImportSummary`, however deep. A run comes from
 `batches.each`, or from a field the caller may read where the
 application kept it. No request carries a `File` either, since it would name
-any file's store and key; take the `id` of the record that keeps it instead:
+any file's store and key; take the `id` of the record that keeps it instead.
+Nothing else from outside carries one: an operation's `output:` or
+`wire_output:`, a webhook's event and an event a queue lists are refused the
+same way. The same goes for `FileContents`, which only `store.read` builds, so
+no request or answer can be read as one; bytes from outside are `Bytes`:
 
 ```jadpo check project=e-batch-input file=stock.jadpo hidden
 type ShelfCode = Text {

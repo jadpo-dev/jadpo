@@ -1392,8 +1392,7 @@ The route is `<prefix>/<connection>` under the prefix of the `webhooks` API
 the app declares, whose record and OpenAPI document list it. Outside every
 declared API, it is `/webhooks/<connection>`. `jadpo routes` shows it as
 `generated webhook`, with `signature` for its authentication. An app route
-at the same path is `route.path_overlap` (see the
-[Integrations design notes](notes/11-integrations.md)). Replies and
+at the same path is `route.path_overlap`. Replies and
 handshakes are in
 [Webhook replies, handshakes and further signature schemes](11-integrations.md#webhook-replies-handshakes-and-further-signature-schemes).
 
@@ -1432,9 +1431,20 @@ may raise events or call providers. So the key covers them too.
   client's key ([Calling](11-integrations.md#calling)).
 
 An API can require the key with `idempotency: Idempotency.required`, and
-OpenAPI lists the header. When a repeat counts as the same request is under
-[How failures reach the client](#how-failures-reach-the-client). The rest
-is in the [design notes](notes/07-http.md), "Idempotency keys".
+OpenAPI lists the header. The default is `Idempotency.optional`. When a
+repeat counts as the same request is under
+[How failures reach the client](#how-failures-reach-the-client).
+
+- **Whose keys they are.** A signed-in caller's keys are kept under their
+  user id. A route anyone may call keeps its keys under `anonymous`.
+- **A request that never finishes.** The claim holds no response and lasts
+  only for the route's deadline and five seconds, so it lapses.
+- **What a repeat answers with.** The kept status, body and code, under the
+  repeat's own `x-request-id`.
+- **Where keys are kept.** In the store the action writes. An action that
+  writes no store but emits, or that makes a changing call, keeps them in
+  the store `events: { store: }` names. One that does none of these keeps
+  none, since running it again changes nothing.
 
 ## How failures reach the client
 <!-- topic: how-failures-reach-the-client -->

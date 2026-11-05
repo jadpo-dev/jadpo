@@ -110,6 +110,8 @@ pub struct EmailFacts {
     pub fields: Vec<(String, Ty, Span)>,
     /// Its `File` fields, each an attachment.
     pub attachments: Vec<String>,
+    /// Its fields holding a file no email would send, reported as that.
+    pub unattached: Vec<String>,
     /// Each attachment with its `max_size:` in bytes, when it gives one,
     /// and where it is written (chunk 7.3c).
     pub attachment_sizes: Vec<(String, Option<u64>, Span)>,
@@ -148,6 +150,8 @@ pub struct PartialFacts {
     /// Its fields, `locale` first, with their types and where each is
     /// written (its type's name for `locale`, which it is given).
     pub fields: Vec<(String, Ty, Span)>,
+    /// Its fields holding a file, reported as that.
+    pub unattached: Vec<String>,
 }
 
 impl PartialFacts {
@@ -634,6 +638,46 @@ pub fn smtp_connections(db: &dyn Db, project: Project) -> SmtpConnections {
     out
 }
 
+/// Whether a field of type `ty` holds a file that no email would send: a
+/// file's bytes, or a file in a collection. `top` says an email's own `File`
+/// field may be `ty`, which is its attachment. An object is read for its
+/// other fields, so one holding a file is left alone.
+fn unattached(lookup: &Lookup<'_>, ty: &Ty, top: bool) -> bool {
+    match lookup.structure(ty) {
+        Ty::Nullable(inner) => unattached(lookup, &inner, top),
+        Ty::Opaque(name, _) if name == jadpo_std::files::FILE => {
+            !top || !matches!(ty.strip_nullable(), Ty::Opaque(..))
+        }
+        Ty::Opaque(name, _) => name == jadpo_std::files::FILE_CONTENTS,
+        Ty::List(inner) | Ty::Set(inner) => unattached(lookup, &inner, false),
+        Ty::Map(key, value) => unattached(lookup, &key, false) || unattached(lookup, &value, false),
+        _ => false,
+    }
+}
+
+/// `toolchain.not_built_yet`: `host.field`, of type `ty`, holds a file no
+/// email would send.
+fn file_not_attached(host: &str, field: &str, ty: &Ty, partial: bool, span: Span) -> Diagnostic {
+    let (reason, next) = if partial {
+        (
+            "A partial's fields are what its templates write, and a file isn't written out; only an email's own `File` field is sent, as an attachment.",
+            format!("Remove `{field}`, and give the email a `File` field"),
+        )
+    } else {
+        (
+            "An email's attachments are its `File` fields, one file each, read from the store as it is sent. Nothing sends a file any other way, so this would compile and never reach anyone.",
+            format!("Give each file its own `File` field, in place of `{field}`"),
+        )
+    };
+    Diagnostic::new(
+        &rule::TOOLCHAIN_NOT_BUILT_YET,
+        format!("`{host}.{field}` is `{ty}`, and sending a file this way isn't built yet"),
+    )
+    .at(span, "never sent")
+    .reason(reason)
+    .next(next)
+}
+
 /// Every email, its templates, and the shared layout.
 #[salsa::tracked(returns(ref))]
 pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
@@ -695,6 +739,24 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
             })
             .map(|field| field.name.clone())
             .collect();
+        // Nothing sends a file held any other way.
+        let mut unattached_fields = Vec::new();
+        for field in &defs {
+            if unattached(&lookup, &field.declared, !is_partial(symbol)) {
+                let span = written
+                    .iter()
+                    .find(|(name, _)| *name == field.name)
+                    .map_or_else(|| name_span.clone(), |(_, span)| span.clone());
+                out.problems.push(file_not_attached(
+                    &symbol.name,
+                    &field.name,
+                    &field.declared,
+                    is_partial(symbol),
+                    span,
+                ));
+                unattached_fields.push(field.name.clone());
+            }
+        }
         // Each attachment's `max_size:`, which a mail package's limit is
         // checked against (chunk 7.3c); one that isn't a size counts as
         // none.
@@ -759,6 +821,7 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
                 html,
                 text,
                 fields,
+                unattached: unattached_fields,
             });
             continue;
         }
@@ -773,6 +836,7 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
             text,
             fields,
             attachments,
+            unattached: unattached_fields,
             attachment_sizes,
         });
     }
@@ -1076,6 +1140,7 @@ fn unused_partial_fields(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             if crate::types::PARTIAL_FIELDS
                 .iter()
                 .any(|(own, _)| own == name)
+                || partial.unattached.contains(name)
                 || read.contains(name)
             {
                 continue;
@@ -1136,6 +1201,7 @@ fn unused_fields(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .iter()
                 .any(|(own, _)| own == name)
                 || email.attachments.contains(name)
+                || email.unattached.contains(name)
                 || read.contains(name)
             {
                 continue;

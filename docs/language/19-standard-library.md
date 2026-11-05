@@ -15,8 +15,8 @@ features need them: [Values and types](02-values-and-types.md),
 [Logic](03-logic.md) and [Dates and times](10-configuration-and-time.md#time-types).
 This page collects the operations, and adds the ones real applications keep
 reaching for. [Standard types](https://jadpo.dev/docs/types) lists every type.
-The [design notes](notes/19-standard-library.md#left-out-by-design) say what is
-left out on purpose, and what to use instead.
+[What's left out on purpose](#whats-left-out-on-purpose) says what to use
+instead.
 
 Operations are grouped into namespaces, each named for what it works on.
 You always call an operation through its namespace: `list.count(items)`,
@@ -138,6 +138,30 @@ entities are left out:
 | `Gender`, `SexAtBirth`, `Cvv` | Out: sensitive (a CVV is never stored) |
 | `HashAlgorithm`, `KeyAlgorithm`; `SessionId`; `AcceptLanguage` | Out: no algorithm choices; the runtime's ([Sign-in and identity](08-identity.md)); a call, `locale.from_accept_language` |
 | Niche, silly, or a maybe with no published standard | Out: 729 entries, a package's to define |
+
+### What's left out on purpose
+
+Some things you might reach for aren't in the standard library, each for a
+reason and with something to use instead:
+
+| Left out | Why | Instead |
+|---|---|---|
+| Generic functions in your own code | They bring type-parameter errors for agents to fight | The standard library stays generic |
+| `reduce`, `fold` | A second way to accumulate | `for` with `var mut`; `list.sum` |
+| Comparators | A key expresses every order, and an inconsistent comparator differs by target | `sort_by`, `reverse` |
+| `items[i]` | Out of range needs an arm or a defect | `list.at` gives `T?` |
+| Regular expressions as calls | A pattern is a type's rule, in linear time | `pattern:` and construction ([Values and types](02-values-and-types.md)) |
+| Graphemes | They'd disagree with `max_length` and PostgreSQL, and change with each Unicode version | Code points |
+| Dynamic keys on records | A field is its own type and carries its own policy and marks | `Map` |
+| A dynamic JSON value | Nothing Jadpo is meant for needs one | `json.read(..., as:)`; `Text` to pass on |
+| CSV in memory | One way to read rows | `csv.read` through a store |
+| MD5, SHA-1 | Broken | A package |
+| Bitwise operations | Flags read better as a set; device formats belong in their package | `Set<Enum>` |
+| Fetching exchange rates | Outside data with a time and a source | A provider package; `money.convert` applies a rate the app holds |
+| Gender, sex at birth | Contested, and personal data | The app's own type, marked sensitive ([Personal data](15-personal-data.md)) |
+| CMYK and print colour | Needs a colour profile | A package on the standard `Colour` |
+| Training models | Needs GPUs, datasets and long jobs | A package or an outside service |
+| Aliases (`size` for `count`) | One obvious name each | The name this page gives |
 
 ## What every standard type can do
 <!-- topic: every-standard-type-meets-one-contract -->
@@ -476,7 +500,7 @@ never through an encoder of its own:
 | Test fixtures and seeds | Written through the actions they call, so through storage | [Entities, stores and migrations](05-data.md) and [Testing](13-testing.md) |
 | Files | Bytes; the format namespaces above turn them into values | [Files](16-built-in-services.md#files) |
 | Developer reports | A value as code makes one (`money.from_minor(1050, Currency.gbp)`), which keeps its currency, unit and places and is never read back | [Debugging](17-debugging-and-review.md) |
-| The interpreter and compiled code, native and wasm32 | One runtime crate, so one codec for each shape | [The compiler and runtime](../compiler-runtime.md) |
+| The interpreter and compiled code, native and wasm32 | One runtime crate, so one codec for each shape | This page |
 
 Your app's own structured values are stored as their contract's JSON
 too ([Structured values](05-data.md#structured-values)).
@@ -964,7 +988,7 @@ editor's quick fix is titled "Swap for the standard ...".
 
 Not built yet: the migration and acceptances a swap of a stored type
 needs ([Review and records](18-records-and-manifest.md)), and a general
-`jadpo rename` ([the roadmap](../roadmap.md)).
+`jadpo rename`.
 
 ## What every operation follows
 <!-- topic: what-every-operation-follows -->
@@ -5597,8 +5621,7 @@ White space, for `trim`, is Unicode's `White_Space` property.
 There is no `trim_start`, `trim_end` or `pad_end`, and no way to go
 through text character by character. Each job that needs one, such as a
 slug, a mask, a preview or a change of case, is an operation instead.
-Unicode normalisation happens where text comes in, not in a call (below,
-and [Language gaps](notes/19-standard-library.md#language-gaps-this-page-depends-on)).
+Unicode normalisation happens where text comes in, not in a call (below).
 
 ### Arguments checked while compiling
 
@@ -6613,8 +6636,7 @@ rotates by being replaced.
 Each executor gives the operation one opaque key value, which prints as
 `<key>`. It comes from the source the plan decides for the call: the
 setting, a key-type field or a `var`. Only the runtime turns it into the key
-it holds ([compiler-runtime §2.5](../compiler-runtime.md#25-executors),
-"A key as a value").
+it holds.
 
 ### The sealed format
 
@@ -12008,7 +12030,7 @@ what Jadpo took from each, is in the
 | Feature | Status |
 |---|---|
 | Everything on this page not listed below | Built |
-| What keys held as data allow: `crypto.verify_totp` and HS256 in `crypto.verify_jwt` | Not built yet: the next chunk on [the roadmap](../roadmap.md) |
+| What keys held as data allow: `crypto.verify_totp` and HS256 in `crypto.verify_jwt` | Not built yet |
 | A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename` | Not built yet: a swap waits on [Review and records](18-records-and-manifest.md), `jadpo rename` on [Tools](14-tooling.md) |
 | A query comparing or ordering by an amount of money, a one-step update working one out, a backfill of a new required one, and a condition on a JSON-held field | Not built yet: `toolchain.not_built_yet` names each |
 | The UK modulus check in `BankAccount` | Not built yet: waits on Vocalink's permission to ship its tables |

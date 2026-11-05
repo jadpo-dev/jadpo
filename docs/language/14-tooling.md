@@ -30,9 +30,13 @@ took, in `durationMs`.
 
 A report keeps what an agent reads short: what it repeats points back at
 the first, and what says nothing is left out. Every subcommand takes
-`--full`, which shows everything, on the screen or under `--json`
-([the design language](../cli-design-language.md#repeats-and---full) lists
-what is left out).
+`--full`, which shows everything, on the screen or under `--json`.
+
+Without it, a diagnostic or a failed test that repeats an earlier one keeps
+its headline and its place, and its `reason` points back at the first
+(`sameAs` under `--json`). Long output from another program is cut to the
+line that says why. `--json` leaves out `null` and empty lists and objects,
+counts the tests that passed, and `jadpo check` counts its files.
 
 Commands have plain synonyms where people reach for either word, such as
 `fmt` and `format`, and an unknown command suggests the nearest. Tab
@@ -94,7 +98,7 @@ todo-app/
   `greet`, by the code `jadpo records update` runs.
 - `AGENTS.md` says what Jadpo is, the release line `app.jadpo` names,
   where the docs are (the primer, the index and the error pages on the
-  site, as [How an agent uses it](../documentation.md) describes), and
+  site), and
   which commands to run after a change. It gives an agent a working
   method: one concern at a time, `jadpo check` after each connected
   change (a declaration and the first thing that uses it, since a
@@ -105,8 +109,8 @@ todo-app/
   ([Acceptances](18-records-and-manifest.md#acceptances)). It ends with
   the closest teaching example for each feature, linked at this
   `jadpo`'s own release, and what isn't built
-  yet, area by area, both written from the docs by
-  `tools/docs/agent_guidance.py`, so they can't drift from them. `.gitignore` holds `build/`, and
+  yet, area by area, both written from the docs, so they
+  can't drift from them. `.gitignore` holds `build/`, and
   `.gitattributes` holds the lines that keep records readable in a diff
   ([Review and records](18-records-and-manifest.md)). There are no
   hidden folders.
@@ -222,8 +226,7 @@ text. So a save that leaves a file empty that had text isn't taken as
 finished yet: the reload waits up to 2 seconds for the file's text. An
 empty routes file checks cleanly, with no routes, so this keeps a
 half-saved file from replacing the version serving. A file still empty
-after that reloads as saved ([design notes](notes/14-tooling.md),
-"Watching saves"). `jadpo test --watch` waits the same way.
+after that reloads as saved. `jadpo test --watch` waits the same way.
 
 **Settings.** The settings `config.jadpo` declares are read from the
 environment, then `.env.local`, and checked before the app starts. A
@@ -431,8 +434,7 @@ its decisions. With nothing to migrate, `new` lists what is still retired.
 with a removal nobody accepted
 ([`migration.drop_not_accepted`](../errors/migration.drop_not_accepted.md)).
 
-A missing purpose will be asked for at a prompt, as the [CLI design
-language](../cli-design-language.md) draws it, once prompts are built.
+A missing purpose will be asked for at a prompt, once prompts are built.
 Until then the command names a purpose to use.
 
 ### `jadpo seed`
@@ -1585,8 +1587,7 @@ The `jadpo.server.path` setting names the binary: `jadpo` on your `PATH`
 by default, where the installers put it. A language status item names the
 `jadpo` running and its version. When none is found, or it didn't start,
 the item says so with the one step to take, and a notification says so
-once. Nothing is shown when all is well (the [CLI design
-language](../cli-design-language.md)).
+once. Nothing is shown when all is well.
 
 "Jadpo: Open Generated File" lists the readable files `jadpo check` wrote
 in `build/`, grouped by folder, leaving out `build/rust/` and
@@ -2709,6 +2710,9 @@ subscribers, or a batch run in one that doesn't run schedules, waits for
 one that does. Every deployable's tick deletes what has expired, which
 any instance may.
 
+A package's `provider.jadpo` has a `runs:` of its own, for a container, which
+isn't built yet and [is a different thing](11-integrations.md#two-words-that-mean-two-things).
+
 ### `target:`, what it is built for
 
 `target:` is `Target.native`, a server, or `Target.wasm`, WebAssembly on
@@ -2814,8 +2818,7 @@ addresses](10-configuration-and-time.md#client-addresses)).
 A deployable built for Workers that reaches a connection with
 `max_concurrent:` is listed under "On Workers" once `jadpo check` passes,
 and `jadpo build` says so on the Worker's `calls` line. Workers runs as
-many instances as traffic needs, and each counts the cap on its own
-([External services design notes](notes/11-integrations.md)).
+many instances as traffic needs, and each counts the cap on its own.
 
 ### Nothing left unserved
 
@@ -3170,9 +3173,8 @@ alike.
 
 These are the errors only a command raises, so `jadpo check` can't show
 them with a source example; the command line's own are under
-[Command-line errors](#command-line-errors). Some rows belong to commands that the design
-notes replace (`schema`, `artifacts`, `watch`); each row is rewritten as
-its command is built.
+[Command-line errors](#command-line-errors). Some rows belong to commands that other
+commands replace (`schema`, `artifacts`, `watch`).
 
 | Rule | Raised by | What it means |
 |---|---|---|
@@ -3321,10 +3323,8 @@ Three errors can't be reached at all: `type.job_delivery_selector_invalid`
 (Delivery selector does not match its entity types),
 `type.job_delivery_service_invalid` (Delivery service does not match its
 closed payload types) and `type.job_delivery_sealed_use` (Compiler-owned
-delivery value cannot be authored or exposed). They belong to the
-delivery descriptor that the [Jobs and events design
-notes](notes/12-jobs-and-events.md) leave open, and go with it if it is
-accepted.
+delivery value cannot be authored or exposed). They belong to a job
+delivery descriptor, which the language doesn't have.
 
 ## Command-line errors
 <!-- topic: command-line-errors -->
@@ -3333,7 +3333,7 @@ These are the errors about the command line itself: a command, an action
 or a flag Jadpo doesn't have, or an argument or a value a command can't
 use. Each names what the command takes, and its page shows a run. The
 rows for `incident`, `schema` and `watch` belong to commands not built
-yet, or that the design notes replace.
+yet, or that other commands replace.
 
 | Rule | Raised by | What it means |
 |---|---|---|

@@ -81,6 +81,67 @@ class WhatIsBuilt(unittest.TestCase):
         self.assertIn('| [Identity](https://jadpo.dev/docs/identity-built.md) | All of it |', table)
 
 
+class BuilderHistory(unittest.TestCase):
+    """A reference page says what is true now, and nothing of how it was
+    built. "chunk" in everyday use is reworded on the page, not allowed."""
+
+    ROADMAP = '- [x] **B13 Thresholds**: here.\n- [ ] **8.4c A review** `opus`: soon.\n- [x] **S3 Files**: there.\n- [x] **9.3 Speed**: here.\n'
+
+    def found(self, text, name='docs/language/08-identity.md'):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'docs/language/notes').mkdir(parents=True)
+            (root / 'docs/roadmap.md').write_text(self.ROADMAP)
+            (root / name).write_text(text)
+            return guidance.builder_history_problems(root)
+
+    def test_what_only_a_builder_knows_is_a_problem(self):
+        for text, said in (('Thresholds, from chunk B13, are read.\n', 'chunk'),
+                           ('Not built yet: the next chunk.\n', 'chunk'),
+                           ('Rules are checked (decided 2026-10-19).\n', 'decided 2026'),
+                           ('These need a person (Richard, 2026-10-30).\n', 'Richard'),
+                           ('Asked for at (Richard,\n2026-10-31).\n', 'Richard'),
+                           ('[The roadmap](../roadmap.md) says when.\n', 'roadmap'),
+                           ('It is on [the plan](../roadmap.md).\n', 'roadmap'),
+                           ('See the roadmap.\n', 'roadmap'),
+                           ('This came in B13.\n', 'B13'),
+                           ('See 8.4c for it.\n', '8.4c')):
+            found = self.found(text)
+            self.assertTrue(found, text)
+            self.assertIn(f'says "{said}"', found[0])
+
+    def test_chunk_in_everyday_use_is_reworded_on_the_page(self):
+        for text in ('Read a chunk of text at a time.\n', 'This chunks a list into pages.\n', 'Usage Chunks are skipped.\n'):
+            self.assertEqual(len(self.found(text)), 1, text)
+
+    def test_each_is_named_on_its_own_line(self):
+        found = self.found('One.\n\nFrom chunk B13.\n')
+        self.assertEqual([p.split(': ')[0] for p in found], ['docs/language/08-identity.md:3'] * 2)
+
+    def test_code_and_comments_are_left_alone(self):
+        for text in ('Events of `chat.completion.chunk`s are read.\n',
+                     '```text\nthe next chunk\nB13\n```\n\nThe rest.\n',
+                     '> ```text\n> B13\n> ```\n',
+                     '<!-- topic: thresholds (was chunk-b13) -->\n',
+                     'HTTP\'s chunked encoding.\n'):
+            self.assertEqual(self.found(text), [], text)
+
+    def test_a_name_or_a_number_that_looks_like_an_id_is_not_one(self):
+        for text in ('An S3 bucket, or D1.\n', 'A4 paper, or A10.\n', 'Findings are numbered S1, S2.\n',
+                     'Rounded to 9.3 MB.\n', 'B13th is no id, and nor is B13-x.\n'):
+            self.assertEqual(self.found(text), [], text)
+
+    def test_a_design_note_keeps_its_history(self):
+        self.assertEqual(self.found('From chunk B13 (Richard, 2026-10-30).\n', 'docs/language/notes/08-identity.md'), [])
+
+    def test_the_problem_reaches_the_gate(self):
+        root = project(AREA + '\nNot built yet: the next chunk.\n')
+        self.assertTrue(any('says "chunk"' in problem for problem in guidance.problems(root)))
+
+    def test_the_real_reference_passes(self):
+        self.assertEqual(guidance.builder_history_problems(guidance.ROOT), [])
+
+
 class StatusWords(unittest.TestCase):
     def row(self, feature, status):
         area = AREA.replace('| Everything else on this page | Built. |', f'| {feature} | {status} |')

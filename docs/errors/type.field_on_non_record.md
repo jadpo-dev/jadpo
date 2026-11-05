@@ -23,3 +23,7 @@ error: `ProductName` has no fields
 
 check failed: 1 error, 1 file
 ```
+
+A `File` and a `FileContents` have no fields a program reads, even the ones a
+`File` keeps. `sheet.key` and `sheet.nope` are refused, in code and in an email's
+template ([What a `File` holds](../language/16-built-in-services.md#what-a-file-holds)).

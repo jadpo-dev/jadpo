@@ -516,6 +516,7 @@ impl Reading<'_> {
 enum Why {
     Secret(&'static str),
     Binary,
+    Run,
     Optional,
 }
 
@@ -527,8 +528,18 @@ fn sent(lookup: &Lookup<'_>, ty: &Ty) -> Result<Sent, Why> {
     if matches!(ty, Ty::Nullable(_)) || lookup.is_nullable(ty) {
         return Err(Why::Optional);
     }
-    if binary(lookup, ty, 0) {
+    // However deep: an object's placeholder is written as its JSON, which
+    // would hold the file's store and key (area 16, "What a `File` holds")
+    // or its bytes as Base64.
+    if binary(lookup, ty, 0)
+        || crate::types::decl::held_file(lookup, ty, &mut Vec::new()).is_some()
+        || crate::types::decl::held_contents(lookup, ty, &mut Vec::new()).is_some()
+    {
         return Err(Why::Binary);
+    }
+    // Written out, a run is only the id that names it (area 12).
+    if crate::types::decl::held_run(lookup, ty, &mut Vec::new()).is_some() {
+        return Err(Why::Run);
     }
     let structure = lookup.structure(ty);
     if let Ty::List(item) = &structure
@@ -573,8 +584,8 @@ fn closed(lookup: &Lookup<'_>, ty: &Ty) -> bool {
     )
 }
 
-/// Whether a value of `ty` is or holds bytes or a file, which a prompt
-/// can't send as text.
+/// Whether a value of `ty` is, or is a collection of, bytes or a file,
+/// which a prompt can't send as text.
 fn binary(lookup: &Lookup<'_>, ty: &Ty, depth: u32) -> bool {
     if depth > 8 {
         return false;
@@ -604,8 +615,14 @@ fn refused(type_name: &str, field: &str, declared: &Ty, why: Why, span: Span) ->
         Why::Binary => (
             format!("`{type_name}.{field}` is `{ty}`, which a prompt can't send"),
             "not text",
-            "A prompt is text. Images, audio and files are sent by a provider package's own operations, not in a prompt.".to_string(),
+            "A prompt is text. Images, audio and other bytes are sent by a provider package's own operations, not in a prompt, and a `File`, even inside an object, is only the store and key its bytes are under.".to_string(),
             format!("Remove `{field}`, or send what it holds as text"),
+        ),
+        Why::Run => (
+            format!("`{type_name}.{field}` holds a `BatchRun`, which a prompt can't send"),
+            "a run",
+            "A `BatchRun` is only the `id` `batches.status` and `batches.cancel` find a run by, which tells a model nothing and tells its provider how to name the run.".to_string(),
+            format!("Send what `batches.status` says of the run in `{field}`, a `BatchProgress`"),
         ),
         Why::Optional => (
             format!("`{type_name}.{field}` may be `none`"),

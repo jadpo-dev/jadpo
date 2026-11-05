@@ -443,10 +443,14 @@ impl Body<'_> {
             return reference(&host);
         }
         match structure {
-            Ty::Opaque(name, _) if name == jadpo_std::files::FILE => found(
-                "a file",
-                "A file is put in a store by the app; a model answers in text.".to_string(),
-            ),
+            Ty::Opaque(name, _)
+                if name == jadpo_std::files::FILE || name == jadpo_std::files::FILE_CONTENTS =>
+            {
+                found(
+                    "a file",
+                    "A file is put in a store by the app; a model answers in text.".to_string(),
+                )
+            }
             Ty::List(item) | Ty::Set(item) | Ty::Nullable(item) => {
                 self.unanswerable(&item, place, seen, depth + 1)
             }

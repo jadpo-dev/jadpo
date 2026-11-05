@@ -427,6 +427,45 @@ pub fn package_events(db: &dyn Db, project: Project) -> PackageEvents {
                     .next("Use a built-in encoding, `wire:`, or the field's type as the provider sends it, for now"),
                 );
             }
+            // A `File` is the store and key its bytes are under, so a
+            // webhook names any file by holding one, and a reply tells whoever
+            // sent it where one is kept (area 16, "What a `File` holds").
+            for field in fields {
+                let at = || {
+                    tree::members(decl.member_list())
+                        .into_iter()
+                        .find(|(key, _)| name_text(key).as_deref() == Some(field.name.as_str()))
+                        .map_or_else(
+                            || name_span.clone(),
+                            |(key, _)| node_span(&path, key.syntax()),
+                        )
+                };
+                let named = |held: String| {
+                    if held.contains('.') {
+                        held
+                    } else {
+                        format!("{host}.{}", field.name)
+                    }
+                };
+                if let Some(held) =
+                    crate::types::decl::held_file(table, &field.declared, &mut Vec::new())
+                {
+                    out.problems.push(crate::types::decl::file_taken(
+                        &format!("`{name}`"),
+                        &named(held),
+                        at(),
+                    ));
+                }
+                if let Some(held) =
+                    crate::types::decl::held_contents(table, &field.declared, &mut Vec::new())
+                {
+                    out.problems.push(crate::types::decl::contents_taken(
+                        &format!("`{name}`"),
+                        &named(held),
+                        at(),
+                    ));
+                }
+            }
             let reply = match reply_of(&lookup, &|name| table.base(name), &path, &decl, &name, home)
             {
                 Ok(reply) => reply,
@@ -438,6 +477,26 @@ pub fn package_events(db: &dyn Db, project: Project) -> PackageEvents {
                     None
                 }
             };
+            if let Some((_, _, canonical)) = &reply
+                && let Some(held) = crate::types::decl::held_file(
+                    table,
+                    &Ty::Named(canonical.clone()),
+                    &mut Vec::new(),
+                )
+            {
+                let at = tree::members(decl.member_list())
+                    .into_iter()
+                    .find(|(key, _)| name_text(key).as_deref() == Some(crate::types::REPLY))
+                    .map_or_else(
+                        || name_span.clone(),
+                        |(key, _)| node_span(&path, key.syntax()),
+                    );
+                out.problems.push(crate::types::decl::file_sent_to_provider(
+                    &format!("`{name}`'s `reply:`"),
+                    &held,
+                    at,
+                ));
+            }
             let (Some(wire_name), true) = (wire_name, clean) else {
                 continue;
             };

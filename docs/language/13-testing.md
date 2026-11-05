@@ -778,8 +778,7 @@ A call with a caller, outside a request, runs as someone signed in by
 magic link with one factor too, so a role that needs a way in is tested
 through a route.
 
-A caller signs in once in a test, as a browser keeps its cookie (Richard,
-2026-10-31). The first request `as:` a person signs them in, and each
+A caller signs in once in a test, as a browser keeps its cookie. The first request `as:` a person signs them in, and each
 later request by the same caller with the same `sign_in:` and
 `strength:` sends that session again. So the session behaves as a real
 one does across the test:
