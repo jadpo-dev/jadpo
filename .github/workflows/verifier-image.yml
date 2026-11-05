@@ -35,7 +35,7 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/jadpo-dev/verifier
-  ARCHIVE: jadpo-x86_64-unknown-linux-gnu.tar.xz
+  ARCHIVE: jadpo-cli-x86_64-unknown-linux-gnu.tar.gz
 
 jobs:
   # Holds a read-only token: it starts the image, which runs code fetched
@@ -63,7 +63,7 @@ jobs:
             sleep 20
           done
           gh attestation verify "$ARCHIVE" --repo "$GITHUB_REPOSITORY"
-          tar -xJf "$ARCHIVE" --strip-components=1 --wildcards '*/jadpo'
+          tar -xzf "$ARCHIVE" --strip-components=1 --wildcards '*/jadpo'
           mv jadpo deploy/verifier/jadpo
       - name: Install the pinned Rust toolchain
         if: inputs.tag == ''
