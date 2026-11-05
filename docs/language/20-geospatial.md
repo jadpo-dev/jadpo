@@ -376,9 +376,7 @@ so a line's edge between them is just its two ends.
 
 `buffer` isn't an operation ([What geospatial leaves out, and what to use instead](#what-geospatial-leaves-out-and-what-to-use-instead)).
 Neither is the distance between a point and a line or polygon. It comes
-when one of the standard library's
-[scenario applications](notes/19-standard-library.md#the-nine-scenario-applications)
-needs it.
+when an application needs it.
 
 ## Predicates and shapes
 <!-- topic: predicates-and-shapes -->
@@ -1918,7 +1916,7 @@ what to use instead:
 | Straight edges on longitude and latitude (`geometry` columns) | Two edge meanings would split every operation in two; the standard library stores geometries as `geography` | Great circles ([Edges are great circles](#edges-are-great-circles)) |
 | Routing, travel times, geocoding | Network data and paid services | Provider packages ([Integrations](11-integrations.md)) |
 | Nearest first without a radius, farthest first, pages by distance | Disagree with `geo.distance` or can't use the index | A radius ([Nearest first inside a radius](#nearest-first-inside-a-radius)) |
-| Simplifying, unions, splitting at the antimeridian | None of the standard library's [scenario applications](notes/19-standard-library.md#the-nine-scenario-applications) needs them; each is a large algorithm | Later, when one does |
+| Simplifying, unions, splitting at the antimeridian | None of the nine kinds of application the standard library is designed for needs them; each is a large algorithm | Later, when one does |
 | `GeometryCollection`, and a `Feature` with no geometry | Rare, and each makes every consumer handle an extra case | A `MultiPolygon`, or the right geometry type |
 | Altitude in any operation | WGS84's operations are on the surface; height above the ellipsoid isn't height above the ground | Kept and stored, never measured |
 

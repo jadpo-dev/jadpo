@@ -338,12 +338,13 @@ In production, only the spans are kept, with no values
 
 ### Fake OAuth grants
 
-`jadpo dev grants add <connection> --owner <id>` makes a fake OAuth grant,
-the permission a person gives your app to act for them at a provider, for
-that owner
-([OAuth grants](11-integrations.md#oauth-grants)).
+`jadpo dev grants add <connection> --owner <id>`, not built yet, is to make
+a fake OAuth grant, the permission a person gives your app to act for them
+at a provider, for that owner
+([OAuth grants](11-integrations.md#oauth-grants)). `jadpo dev` refuses it
+today, as it does any flag it doesn't have (`cli.unknown_flag`).
 
-> **Built**, except `jadpo trace`, `jadpo watch call` and the request
+> **Built**, except `jadpo dev grants add`, `jadpo trace`, `jadpo watch call` and the request
 > timelines. `jadpo dev` logs each provider call as it ends in
 > `build/dev/calls.jsonl`, and logs an answer from a recording as
 > `recording`. `jadpo calls` reads that file. Here is the plain list after
@@ -415,9 +416,7 @@ failure and slowness (`--slower-than 200ms`). `--follow` keeps printing
 as new entries arrive, and `--json` gives the output as data. The
 developer console will show the same data.
 
-These commands' screens follow the
-[CLI design language](../cli-design-language.md), as the screens of
-`jadpo watch` and `jadpo calls` do.
+These commands' screens look like those of `jadpo watch` and `jadpo calls`.
 
 ## Capturing a failing request as a test
 <!-- topic: capturing-a-failing-request-as-a-test -->
@@ -755,9 +754,10 @@ personal value in a report follows the rules for
 | Feature | Status |
 |---|---|
 | `jadpo calls`, `calls show` and `calls script` | Built. |
-| Each step a request's action reached, as a trace line in `jadpo dev` | Built: each step is a line under its request's line in `jadpo dev`, and a delivery whose action reached steps gets a line of its own ([design notes for jobs and events](notes/12-jobs-and-events.md)). |
+| Each step a request's action reached, as a trace line in `jadpo dev` | Built: each step is a line under its request's line in `jadpo dev`, and a delivery whose action reached steps gets a line of its own. |
 | `jadpo why <schedule>` | Built: it answers why a schedule didn't run ([Watching schedules](12-jobs-and-events.md#watching-schedules)). |
 | `jadpo approval` | Partly built: the report in `build/review/` in [this page's order](#reviewing-a-change), the before side built from git and its manifest kept in `build/before/<commit>/`, and the personal-data report's difference, a connection at a time. Not built yet: the rest of that difference, which comes with the rest of that report, and a package's service and a bot check, which come with those features. |
-| Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines and `jadpo trace`, `test new --from` and `call` | Not built yet: these come first ([the roadmap](../roadmap.md)). |
+| Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines and `jadpo trace`, `test new --from` and `call` | Not built yet. |
+| `jadpo dev grants add` | Not built yet. |
 | The developer console, MCP (`jadpo mcp`) and the review web view | Not built yet: they come after those, as product work. |
 | `jadpo traces`, `metrics`, `logs` and `watch`; path coverage, production counts in review, `jadpo replay` and query cost | Not built yet. |
