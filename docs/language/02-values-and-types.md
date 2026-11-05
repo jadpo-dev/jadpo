@@ -28,7 +28,22 @@ types the language's own features need.
 ### Representation types
 
 The representation types say how a value is held: as a number, as text, as
-bytes. They are the raw material you build your own types from.
+bytes. They are the raw material you build your own types from. Here is one
+in use. Save this as `main.jadpo` and run `jadpo test main.jadpo`:
+
+```jadpo check project=built-in-types
+type TodoTitle = Text {
+    max_length: 200
+}
+
+test "a title is text up to its limit" {
+    var title: TodoTitle = "Buy flour"
+    assert title == "Buy flour"
+}
+```
+
+`Text` is built in, and `TodoTitle` is a type of your own, defined here. The
+six representation types are:
 
 | Type | What it holds |
 |---|---|

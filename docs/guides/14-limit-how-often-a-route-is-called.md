@@ -5,67 +5,16 @@ Every route already has a rate limit, so you write nothing to get one: 600
 requests a minute for each signed-in caller, and 120 a minute for each address
 on routes open to anyone. You change a limit when a route needs a different
 one, such as a public form that should take far fewer. This guide limits a
-"request a demo" form to five requests an hour from each address.
+"request a demo" form to five requests a minute from each address.
 
-You start from an app with a `DemoRequest` entity and an action,
-`request_demo`, that keeps one.
-[Store and change a record](02-store-and-change-a-record.md) shows how to write
-those.
-
-```jadpo check project=guide-rate-limits file=domains/sales/entities/demo_request.jadpo hidden
-/// Someone asking to see the product.
-entity DemoRequest {
-    id: Uuid
-    company: Text {
-        min_length: 1
-        max_length: 100
-    }
-
-    policy: {
-        create: [Access.public]
-    }
-}
-```
-
-```jadpo check project=guide-rate-limits file=domains/sales/types/demo_form.jadpo hidden
-use sales/entities { DemoRequest }
-
-/// What someone sends to ask for a demo.
-type DemoForm = Input {
-    company: DemoRequest.company
-}
-```
-
-```jadpo check project=guide-rate-limits file=domains/sales/types/demo_received.jadpo hidden
-use sales/entities { DemoRequest }
-
-/// What someone gets back for asking.
-type DemoReceived = Output {
-    pick: [DemoRequest.id]
-}
-```
-
-```jadpo check project=guide-rate-limits file=domains/sales/actions/request_demo.jadpo hidden
-use sales/entities { DemoRequest }
-use sales/types { DemoForm, DemoReceived }
-
-/// Keeps a request for a demo.
-action request_demo(input: DemoForm) -> DemoReceived {
-    var demo_request: DemoRequest = DemoRequest.create {
-        set: {
-            company: input.company
-        }
-    }
-    return DemoReceived {
-        id: demo_request.id
-    }
-}
-```
+You start from an app with nothing in it. Every file this guide uses is shown.
 
 ## Limit one route
 
 `rate_limit:` goes on the route. `requests:` is how many it takes and `within:`
-is the period, in whole seconds from `1s` to `24h`.
+is the period. `RateLimitKey` and `RouteAuthentication` are built into Jadpo.
+`DemoForm`, `DemoReceived` and `request_demo` are yours, and their files come
+straight after this one.
 
 `domains/sales/routes/demo_requests.jadpo`:
 
@@ -82,13 +31,74 @@ routes DemoRequests {
         authentication: RouteAuthentication.none
         rate_limit: {
             requests: 5
-            within: 1h
+            within: 1m
             by: RateLimitKey.ip
         }
         input: DemoForm
         output: DemoReceived
         status: SuccessStatus.created
         run: request_demo(input)
+    }
+}
+```
+
+The form it takes, what it answers with and the action it runs are ordinary
+files. `DemoRequest` is the record that keeps each request.
+
+`domains/sales/entities/demo_request.jadpo`:
+
+```jadpo check project=guide-rate-limits file=domains/sales/entities/demo_request.jadpo
+/// Someone asking to see the product.
+entity DemoRequest {
+    id: Uuid
+    company: Text {
+        min_length: 1
+        max_length: 100
+    }
+
+    policy: {
+        create: [Access.public]
+    }
+}
+```
+
+`domains/sales/types/demo_form.jadpo`:
+
+```jadpo check project=guide-rate-limits file=domains/sales/types/demo_form.jadpo
+use sales/entities { DemoRequest }
+
+/// What someone sends to ask for a demo.
+type DemoForm = Input {
+    company: DemoRequest.company
+}
+```
+
+`domains/sales/types/demo_received.jadpo`:
+
+```jadpo check project=guide-rate-limits file=domains/sales/types/demo_received.jadpo
+use sales/entities { DemoRequest }
+
+/// What someone gets back for asking.
+type DemoReceived = Output {
+    pick: [DemoRequest.id]
+}
+```
+
+`domains/sales/actions/request_demo.jadpo`:
+
+```jadpo check project=guide-rate-limits file=domains/sales/actions/request_demo.jadpo
+use sales/entities { DemoRequest }
+use sales/types { DemoForm, DemoReceived }
+
+/// Keeps a request for a demo.
+action request_demo(input: DemoForm) -> DemoReceived {
+    var demo_request: DemoRequest = DemoRequest.create {
+        set: {
+            company: input.company
+        }
+    }
+    return DemoReceived {
+        id: demo_request.id
     }
 }
 ```
@@ -103,6 +113,10 @@ A limit you write replaces the default for that route, so it can loosen a limit
 as well as tighten it. This route's requests have a count of their own and use
 none of the caller's default allowance.
 
+`within:` takes whole seconds, from `1s` to `24h`, and a server program counts any
+of them. Cloudflare Workers counts only `10s` and `1m`, so this route runs on both,
+and a longer window such as `1h` is a compile error on a Worker.
+
 `jadpo routes` shows each route's limit, and the route's OpenAPI entry lists it
 as `x-jadpo-rate-limit`, so a client can see it:
 
@@ -112,7 +126,7 @@ jadpo routes
 
 ```text
 main  /
-  POST  /demo-requests  action request_demo  none  5/1h ip  domains/sales/routes/demo_requests.jadpo:9
+  POST  /demo-requests  action request_demo  none  5/1m ip  domains/sales/routes/demo_requests.jadpo:9
   GET   /openapi.json   generated openapi    none           generated
 
 2 routes: 1 API
@@ -149,9 +163,9 @@ curl -i -X POST http://localhost:3000/demo-requests \
 ```text
 HTTP/1.1 429 Too Many Requests
 content-type: application/json
-retry-after: 3600
-ratelimit-policy: "default";q=5;w=3600
-ratelimit: "default";r=0;t=3600
+retry-after: 60
+ratelimit-policy: "default";q=5;w=60
+ratelimit: "default";r=0;t=60
 x-request-id: req_70033ff2b9581e87
 content-length: 100
 date: Wed, 04 Nov 2026 11:18:18 GMT

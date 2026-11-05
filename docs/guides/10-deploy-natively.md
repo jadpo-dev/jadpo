@@ -3,12 +3,13 @@
 
 `jadpo build` turns your app into one program, with nothing else to
 install beside it, that you run on any Linux or macOS server with a
-PostgreSQL database. This guide builds the book catalogue from
-[Build an API](01-build-an-api.md), applies its migrations to a real
-database and runs it.
+PostgreSQL database. This guide builds a book catalogue, applies its
+migrations to a real database and runs it.
 
 You need PostgreSQL that the server can reach, and `jadpo` on the
-machine you build on. You start from the catalogue's code:
+machine you build on. You start from an app with a `Book` entity and routes
+that add a book and read one back.
+[Build an API](01-build-an-api.md) shows how to write those.
 
 ```jadpo check project=guide-native file=domains/books/entities/book.jadpo hidden
 /// A book the library lends.
