@@ -2121,7 +2121,7 @@ subscriber update_statistics {
 `domains/planning/actions/note_todo.jadpo`:
 
 ```jadpo check project=todo-events file=domains/planning/actions/note_todo.jadpo
-use planning/entities { TodoNote, TodoNotFound }
+use planning/entities { TodoNotFound, TodoNote }
 use planning/events { TodoCompleted }
 
 /// Keeps a note of a completed todo.
