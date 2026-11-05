@@ -457,9 +457,9 @@ build/
 
 `application { }` in `app.jadpo` holds the settings for the whole app,
 each in a section of its own. These are all the sections it takes, and
-the page that decides each:
+the page that covers each:
 
-| Section | What it sets | Decided in |
+| Section | What it sets | Where it's described |
 |---|---|---|
 | `jadpo:` | The Jadpo release line the project is written for | [The root](#the-root) |
 | `display_name:` | The app's name, as people see it | [The application and revocation](08-identity.md#the-application-and-revocation) |
@@ -479,7 +479,7 @@ the page that decides each:
 | `ai:` | The model connection, its models and its limits | [The `ai` capability](21-ai.md#the-ai-capability) |
 | `field_encryption_key:` | The key encrypted fields are sealed with | [Encrypted fields](15-personal-data.md#encrypted-fields) |
 
-Seven more are decided and not built yet: `bot_check:`
+Seven more aren't built yet: `bot_check:`
 ([Bot protection](16-built-in-services.md#bot-protection)), `documents:`
 ([Documents](16-built-in-services.md#documents)), `grants:`
 ([OAuth grants](11-integrations.md#oauth-grants)),
@@ -1172,7 +1172,7 @@ workflow on [Entities, stores and migrations](05-data.md).
 ## What is built
 <!-- topic: project-layout-and-modules-built -->
 
-The compiler builds the decided layout, with each rule's real output under
+The compiler builds this layout, with each rule's real output under
 [Errors](#errors).
 
 | Feature | Status |

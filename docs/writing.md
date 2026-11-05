@@ -292,6 +292,11 @@ standard is the topic "Routes: signed in by default" on the
 - **Link by name.** "[Policy](language/09-policy.md) still decides",
   never "area 9 still decides". "Question N" and design history go to the
   design notes in `docs/language/notes/`.
+- **Nothing of how it was built.** A page says what is true now: never a
+  chunk, a chunk's id, the roadmap, or who decided something and when.
+  `tools/docs/agent_guidance.py` fails a page that does, and "chunk" in
+  everyday use is reworded too ("piece"). A link to a design note gives only
+  the reason behind something the page has already said in full.
 - **Say constraints in plain words.** "A route can narrow its API's list
   but never add to it" says what a reader can and can't do; "narrow"
   alone doesn't.

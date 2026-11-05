@@ -577,18 +577,18 @@ costs one build per base commit.
   nothing, and `check` names it on the same line. So that an app's first
   outside host is still compared, an app with a `connections:` block keeps
   `network.jadpo_record` even while it reaches no host, with its header
-  alone (2026-10-30); and a before side with no network record whose
+  alone; and a before side with no network record whose
   `app.jadpo` has no `connections:` block reached no outside host, so its
   record is read as empty and the change that adds the block and a host
   needs `NetworkChange.host_added`. In the same way a before side with no
   `jadpo.lock` had no packages, and one with no `access.jadpo_record` no
   `own_sources:`, so the first package from git and the first entry are
   still compared. Only a before side with the block and
-  no record, a project from before the record, is compared with nothing
-  (2026-10-31). A base commit the clone doesn't hold, as in a
+  no record, a project from before the record, is compared with nothing.
+  A base commit the clone doesn't hold, as in a
   depth-1 checkout, is
   [`acceptance.base_missing`](../errors/acceptance.base_missing.md),
-  naming `git fetch` (Richard, 2026-10-30).
+  naming `git fetch`.
   A migration that removes data is judged all the same: with no before
   side, it needs an acceptance with a reason anywhere in the project
   ([`migration.drop_not_accepted`](../errors/migration.drop_not_accepted.md)).
@@ -602,7 +602,7 @@ later change passes unseen. The first of all is a new project's public create,
 update or delete, and personal data anyone may read. So `jadpo check` says what such a first record holds, marked
 `(human)`, and [the approval report](17-debugging-and-review.md#reviewing-a-change)
 leads with it. It is a notice and not an error, and `check` still passes: it is
-a decision, not a vulnerability, since an app may mean it (Richard, 2026-11-03).
+a decision, not a vulnerability, since an app may mean it.
 
 ```text
 $ jadpo check
@@ -688,7 +688,7 @@ acceptance is one file per **decision**, listing every change it allows,
 with the reason in a `///` line. Each entry is `subject: Kind.change`,
 with the subject and the change copied from the compiler's message. A
 subject is a dotted name, or, for a route, its API, method and path in
-quotes, since a route has no name (Richard, 2026-10-30):
+quotes, since a route has no name:
 
 ```jadpo fragment
 // acceptances/20261020T1400_remove_todo_priority.jadpo
@@ -862,8 +862,7 @@ listed as removed and added.
 - **Doesn't need a person:** new operations or optional fields,
   documentation, and changes to operations your app never calls.
 - **Shown, and needing a person as a new host:** a new `outbound:` grant
-  to a service, and a new connection's hosts, each a `NetworkChange`
-  (Richard, 2026-10-30).
+  to a service, and a new connection's hosts, each a `NetworkChange`.
 - **A package from git** needs a person (`PackageChange.git_source`)
   unless its repository is under one of `packages:`'s `own_sources:`
   ([Installing safely](11-integrations.md#installing-safely)).
@@ -882,8 +881,7 @@ the package. A package removed altogether isn't an upgrade.
 Each change has its entry in [Acceptances](#acceptances), its subject
 without the version. A new required input field, a new enum variant, a
 failure no longer listed and a changed failure message need nobody: the
-compiler stops what they would break, or nothing relied on them
-(2026-11-01).
+compiler stops what they would break, or nothing relied on them.
 
 `jadpo package update <name>` prints this part of the review, and the
 [approval report](17-debugging-and-review.md#reviewing-a-change) says each
@@ -1050,7 +1048,7 @@ that the path number can't be decoded.
 | Lock and package surfaces | Built. The lock is a ledger read and checked like the others, and `jadpo check` holds each installed package to its line and digest ([Integrations](11-integrations.md) gives the digest), and its `jadpo version` pin to the line `app.jadpo` names. `jadpo toolchain pin` and `unpin` write the pin, and the package commands and `jadpo records update` keep it. `jadpo package add`, `update`, `remove`, `link` and `unlink` write it, each line through the ledger's writer, sorted; `git` lines record the repository as written, the tag and the tag's commit, `path` lines a folder relative to the root, and a `link` line replaces the package's line while the replaced one waits in `.jadpo/links` (git-ignored, in the lock's own format) for `unlink`. Two versions of one package are locked side by side, each on its own line, and `update` names the version while two are held. A package surface is `record surface 1`, a view written by `jadpo package check` in a package's own repository, verified at install against its package's code, and read by `jadpo package show`; installed, a surface is held by its package's digest rather than regenerated, so `jadpo records` doesn't list it, and an own integration's is written to `build/providers/` ([Integrations](11-integrations.md)). `jadpo package update` prints the surface's changes, each entry the app uses marked `used by the app`, and this page's review under `Needs a person`, the same list `jadpo check` asks an acceptance for; a package installed from git needs `PackageChange.git_source`. |
 | Build stamp | Built for native and Workers deployables: `jadpo build` writes the build id (`b_` and twelve hex digits of a SHA-256 over the deployable's program digest, the compiler, the target and `jadpo.lock`), the commit, whether the tree was modified, the compiler, the deployable and the target into the binary or module as a constant, and every event it logs carries them ([A native deployable](14-tooling.md#a-native-deployable), [A Workers deployable](14-tooling.md#a-workers-deployable)). `jadpo check` writes the manifest's `source` (`commit`, left out when git doesn't track the project, and `modified`) and `deployables`, each deployable's target, build id and the disk stores that keep it on one server (`one_server`), which digests a declared deployable's declaration too, so two deployables of one app never share one ([Declared deployables](14-tooling.md#declared-deployables)); a project with errors has none. |
 | Approval | Built: `jadpo approval` builds the before side, keeps its manifest and writes [the report](17-debugging-and-review.md#reviewing-a-change) to `build/review/`. |
-| Package upgrade plans, `jadpo incident`, `jadpo inspect` and `jadpo test new --from-event` | Not built yet; see [the roadmap](../roadmap.md). |
+| Package upgrade plans, `jadpo incident`, `jadpo inspect` and `jadpo test new --from-event` | Not built yet. |
 
 ## Errors
 

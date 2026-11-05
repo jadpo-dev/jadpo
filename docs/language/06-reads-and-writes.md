@@ -970,7 +970,7 @@ These can't be groups:
   can differ from the one built into every Jadpo build
   ([Zones and local times](10-configuration-and-time.md#zones-and-local-times)).
   So no SQL form of `temporal.in_zone` gives exactly what code gives.
-  Until that is decided, a report keeps the day as a `CalendarDate` field.
+  So a report keeps the day as a `CalendarDate` field.
 
 ### The result
 

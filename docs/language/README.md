@@ -7,7 +7,7 @@ The [project README](../../README.md) explains the purpose, capabilities,
 current maturity and how to build the compiler.
 
 **Decided does not mean implemented.** Each page's status notes and
-status table, with the [roadmap](../roadmap.md), say what is built. A
+status table say what is built. A
 ` ```jadpo check ` block is checked with this checkout's compiler; a
 `fragment` illustrates a rule the compiler doesn't check yet.
 

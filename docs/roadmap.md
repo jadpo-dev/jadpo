@@ -401,8 +401,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **D17h Standard types under Values and types**: docs/documentation.md, "The bundle"; `hand_type_table_problems` in `tools/docs/language_docs.py`; `/docs/types` in jadpo-website.
 - [x] **D17i Built-in services, one home each**: docs/language/16-built-in-services.md; docs/language/21-ai.md, "AI"; [writing guide](writing.md), "How a built-in service's page reads"; `docs/reference.toml`.
 - [x] **D17j Every other area**: the `(was …)` declarations on the area pages; `docs/reference.toml`, Configuration.
-- [ ] **D17k Implementer history out of the topics** `opus · medium`, with a
-  check.
+- [x] **D17k Implementer history out of the topics**: [writing guide](writing.md), "Nothing of how it was built"; `builder_history_problems` in `tools/docs/agent_guidance.py`.
 - [x] **D17l The guides index grouped**: `docs/guides/README.md`; docs/documentation.md, "The bundle"; `src/components/guides/GuideList.astro` in jadpo-website.
 - [x] **D17m The ten guides**: `docs/guides/12-send-an-email.md` to `21-keep-customers-data-apart.md`.
 - [ ] **D17o First examples stand alone** `opus · high`: the very first example

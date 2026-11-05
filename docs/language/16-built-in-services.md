@@ -1606,8 +1606,7 @@ before the failure, which a stack no longer holds.
 
 Path IDs need the compiler's graph to hold the control flow inside each
 callable. Each body's ways are numbered today, and the differential run
-compares the paths each test's bodies took
-([How it is built](../compiler-runtime.md)), but no request carries a
+compares the paths each test's bodies took, but no request carries a
 `path` or a `path_key` yet ([What is built](#what-is-built)).
 
 ## Monitoring
@@ -5000,7 +4999,7 @@ The errors this page describes are built with the feature they belong to.
 
 | Feature | Status |
 |---|---|
-| Email | Built: email's templates, the shared layout, `email:`, sending after commit through the SMTP driver, attachments and parking ([Email rules: templates and sending](#email-rules-templates-and-sending)). The SMTP conversation runs in the driver, over the host's transport and its TLS upgrade ([How it is built](../compiler-runtime.md), "TLS through the transport"). |
+| Email | Built: email's templates, the shared layout, `email:`, sending after commit through the SMTP driver, attachments and parking ([Email rules: templates and sending](#email-rules-templates-and-sending)). The SMTP conversation runs in the driver, over the host's transport and its TLS upgrade. |
 | Jadpo's own magic-link email | Built: at all five levels, worded by Jadpo or reworded by the app, wrapped in the app's layout, the app's own email filled with the link and the code, or the app's own sending given them ([Jadpo's own magic-link email](#jadpos-own-magic-link-email), [Your own magic-link email](#your-own-magic-link-email)). |
 | The privacy emails | Not built yet. They come with data requests ([Data requests](15-personal-data.md#data-requests)). |
 | Mail packages | Built: a mail package as the connection, partials and `email.sent` ([Mail packages, partials and `email.sent`](#mail-packages-partials-and-emailsent)). |
@@ -5017,8 +5016,6 @@ The errors this page describes are built with the feature they belong to.
 | The `telemetry:` section | Not built yet: it is `toolchain.not_built_yet` where it is written. Nor is telemetry in the developer console, or `jadpo traces`, `jadpo metrics` and `jadpo logs`, which read it in development. |
 | Path IDs | Not built yet for requests. Each body's ways are numbered, and the differential run compares the paths each test's bodies took, but no request carries a `path` or a `path_key`, and `jadpo path` isn't built. |
 | Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([What Jadpo generates from thresholds](#what-jadpo-generates-from-thresholds)). Not built yet: acting on the per-request limits, which comes with the `telemetry:` section, starting values from the query report and production, and an agent's proposals through MCP. |
-
-[The roadmap](../roadmap.md) says when.
 
 ## Errors
 

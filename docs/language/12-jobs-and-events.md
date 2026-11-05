@@ -1843,8 +1843,7 @@ record's breaks do: an event removed (`planning.TodoCompleted:
 ApiChange.event_removed`), a field removed or retyped
 (`ApiChange.output_field_removed`, `.output_field_retyped`), a required
 field added (`.input_field_required`) or a rule tightened
-(`.rule_tightened`), each named `<domain>.<Event>.<field>` (Richard,
-2026-10-30).
+(`.rule_tightened`), each named `<domain>.<Event>.<field>`.
 
 ## Emitting an event
 <!-- topic: emitting-an-event -->
@@ -3494,8 +3493,6 @@ These limits may change once they have been measured on real runs.
 | Jitter and `Retry-After` between a delivery's attempts | Not built yet: the next attempt waits only its backoff ([Retries and giving up](#retries-and-giving-up)). |
 | Splitting a page type allowing more than 1,000 items into batches; `batches.status` and `batches.cancel` with runs in no store or several; a file's run with several databases and none written | Not built yet ([How a run is kept](#how-a-run-is-kept), [How a file's run is kept](#how-a-files-run-is-kept)). |
 | `cli.signal_handler_failed` | Not built yet ([Running background work](#running-background-work)). |
-
-[The roadmap](../roadmap.md) says when.
 
 ## Errors
 
