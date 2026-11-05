@@ -431,25 +431,38 @@ pub fn package_events(db: &dyn Db, project: Project) -> PackageEvents {
             // webhook names any file by holding one, and a reply tells whoever
             // sent it where one is kept (area 16, "What a `File` holds").
             for field in fields {
-                if let Some(held) =
-                    crate::types::decl::held_file(table, &field.declared, &mut Vec::new())
-                {
-                    let held = if held.contains('.') {
-                        held
-                    } else {
-                        format!("{host}.{}", field.name)
-                    };
-                    let at = tree::members(decl.member_list())
+                let at = || {
+                    tree::members(decl.member_list())
                         .into_iter()
                         .find(|(key, _)| name_text(key).as_deref() == Some(field.name.as_str()))
                         .map_or_else(
                             || name_span.clone(),
                             |(key, _)| node_span(&path, key.syntax()),
-                        );
+                        )
+                };
+                let named = |held: String| {
+                    if held.contains('.') {
+                        held
+                    } else {
+                        format!("{host}.{}", field.name)
+                    }
+                };
+                if let Some(held) =
+                    crate::types::decl::held_file(table, &field.declared, &mut Vec::new())
+                {
                     out.problems.push(crate::types::decl::file_taken(
                         &format!("`{name}`"),
-                        &held,
-                        at,
+                        &named(held),
+                        at(),
+                    ));
+                }
+                if let Some(held) =
+                    crate::types::decl::held_contents(table, &field.declared, &mut Vec::new())
+                {
+                    out.problems.push(crate::types::decl::contents_taken(
+                        &format!("`{name}`"),
+                        &named(held),
+                        at(),
                     ));
                 }
             }

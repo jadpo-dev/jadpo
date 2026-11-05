@@ -1,9 +1,9 @@
 # `prompt.placeholder_type`
 
-A prompt sends text: a secret, bytes, a file (however deep, since an object
-is written as its JSON), a value that may be `none` or a second conversation
-can't be one of its fields, and a conversation is sent as the turns, never
-written in the text.
+A prompt sends text: a secret, bytes, a file or its bytes, or a `BatchRun`
+(however deep, since an object is written as its JSON), a value that may be
+`none` or a second conversation can't be one of its fields, and a conversation
+is sent as the turns, never written in the text.
 
 ```jadpo check project=e-prompt-placeholder-type file=app.jadpo hidden
 application {}

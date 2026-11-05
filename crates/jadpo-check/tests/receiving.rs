@@ -375,6 +375,8 @@ fn a_queues_event_holding_a_file_is_refused() {
         "sheet: File",
         "sheets: List<File>",
         "summary: ExportSummary",
+        "whole: FileContents",
+        "wholes: List<FileContents>",
     ] {
         let shipped = SHIPPED.replace("order: Text {\n        max_length: 40\n    }", holds);
         let found = problems(&Project {

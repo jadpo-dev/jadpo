@@ -749,6 +749,16 @@ impl Reader<'_, '_> {
                 ));
                 continue;
             }
+            if let Some(held) = crate::types::decl::held_contents(self.lookup, &ty, &mut Vec::new())
+            {
+                ok = false;
+                self.out.push(crate::types::decl::contents_taken(
+                    &format!("`{}`", tree::written(expr.syntax())),
+                    &held,
+                    at,
+                ));
+                continue;
+            }
             let Some(key) = crate::graph::declaration_key(self.lookup, &event) else {
                 ok = false;
                 continue;

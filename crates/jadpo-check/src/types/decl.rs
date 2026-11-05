@@ -1025,6 +1025,16 @@ impl Decls<'_> {
                         ));
                         continue;
                     }
+                    if self.sent && held_contents(self.table, &declared, &mut Vec::new()).is_some()
+                    {
+                        let span = self.span(value.syntax());
+                        self.out.push(contents_sent(
+                            &format!("`{host}`'s `client:`"),
+                            &format!("{host}.{name}"),
+                            span,
+                        ));
+                        continue;
+                    }
                     // A secret value never leaves the server, nor is kept
                     // in an event (area 19, chunk 5.5r2).
                     if super::secrets::refuses(base, self.failure)
@@ -2960,7 +2970,7 @@ pub(crate) fn holds_batch(
     match ty {
         Ty::Opaque(name, args) => jadpo_std::batch::OBJECTS
             .into_iter()
-            .chain([jadpo_std::files::FILE])
+            .chain([jadpo_std::files::FILE, jadpo_std::files::FILE_CONTENTS])
             .find(|batch| batch == name)
             .or_else(|| args.iter().find_map(|arg| holds_batch(table, arg, seen))),
         Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => holds_batch(table, inner, seen),
@@ -3006,8 +3016,42 @@ pub(crate) fn holds_batch(
 /// `Object`'s own field an `Output` holds), or `ty` itself when it is one.
 /// An `ExportSummary` holds the file it wrote (area 2).
 pub(crate) fn held_file(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> Option<String> {
+    held_where(table, ty, seen, &|name| {
+        name == jadpo_std::files::FILE
+            || jadpo_std::batch::object_fields(name).is_some_and(|fields| {
+                fields.iter().any(|(_, part)| {
+                    matches!(part, jadpo_std::batch::Part::Kept(jadpo_std::files::FILE))
+                })
+            })
+    })
+}
+
+/// As [`held_file`], for a file's bytes: `FileContents`, however deep.
+pub(crate) fn held_contents(
+    table: &dyn TypeView,
+    ty: &Ty,
+    seen: &mut Vec<String>,
+) -> Option<String> {
+    held_where(table, ty, seen, &|name| {
+        name == jadpo_std::files::FILE_CONTENTS
+    })
+}
+
+/// As [`held_file`], for a `BatchRun`, however deep.
+pub(crate) fn held_run(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> Option<String> {
+    held_where(table, ty, seen, &|name| name == jadpo_std::batch::BATCH_RUN)
+}
+
+/// Where a built-in type `wanted` accepts is in what a value of `ty` holds,
+/// however deep, as [`held_file`] names it.
+fn held_where(
+    table: &dyn TypeView,
+    ty: &Ty,
+    seen: &mut Vec<String>,
+    wanted: &dyn Fn(&str) -> bool,
+) -> Option<String> {
     let in_field = |host: &str, field: &super::table::FieldDef, seen: &mut Vec<String>| {
-        held_file(table, &field.declared, seen).map(|held| {
+        held_where(table, &field.declared, seen, wanted).map(|held| {
             if is_file_name(&held) {
                 format!("{host}.{}", field.name)
             } else {
@@ -3017,20 +3061,17 @@ pub(crate) fn held_file(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -
     };
     match ty {
         Ty::Opaque(name, args) => {
-            let holds = name == jadpo_std::files::FILE
-                || jadpo_std::batch::object_fields(name).is_some_and(|fields| {
-                    fields.iter().any(|(_, part)| {
-                        matches!(part, jadpo_std::batch::Part::Kept(jadpo_std::files::FILE))
-                    })
-                });
-            if holds {
+            if wanted(name) {
                 return Some(name.clone());
             }
-            args.iter().find_map(|arg| held_file(table, arg, seen))
+            args.iter()
+                .find_map(|arg| held_where(table, arg, seen, wanted))
         }
-        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => held_file(table, inner, seen),
+        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => {
+            held_where(table, inner, seen, wanted)
+        }
         Ty::Map(key, value) => {
-            held_file(table, key, seen).or_else(|| held_file(table, value, seen))
+            held_where(table, key, seen, wanted).or_else(|| held_where(table, value, seen, wanted))
         }
         Ty::Field(host, path) => {
             let at = format!("{host}.{}", path.join("."));
@@ -3039,7 +3080,7 @@ pub(crate) fn held_file(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -
             }
             seen.push(at);
             let declared = table.field(host, path)?.declared.clone();
-            held_file(table, &declared, seen)
+            held_where(table, &declared, seen, wanted)
         }
         Ty::Named(name) => {
             if seen.contains(name) {
@@ -3047,7 +3088,9 @@ pub(crate) fn held_file(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -
             }
             seen.push(name.clone());
             match table.def(name) {
-                Some(super::table::Def::Scalar { parent, .. }) => held_file(table, parent, seen),
+                Some(super::table::Def::Scalar { parent, .. }) => {
+                    held_where(table, parent, seen, wanted)
+                }
                 Some(super::table::Def::Fields { fields, .. }) => {
                     fields.iter().find_map(|field| in_field(name, field, seen))
                 }
@@ -3114,6 +3157,39 @@ pub(crate) fn file_taken(what: &str, held: &str, span: Span) -> Diagnostic {
     .next("Declare what is really sent, such as an id or a link, and keep the bytes with `put`")
 }
 
+/// `toolchain.not_built_yet`: `held`, a file's bytes, in an answer a route
+/// sends, at `span`: its `output:`, or a failure's `client:` field.
+pub(crate) fn contents_sent(what: &str, held: &str, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TOOLCHAIN_NOT_BUILT_YET,
+        format!("{what} sends a file's bytes, in `{held}`, and sending them isn't built yet"),
+    )
+    .at(span, "decided, not built")
+    .reason("A route sends a file as a signed link, which comes with downloads. Until they are built, the answer would hold the whole file as Base64 in its JSON, which nothing has decided a client gets.")
+    .next(format!(
+        "Leave `{held}` out of the answer, and send the fields the client needs"
+    ))
+}
+
+/// `type.batch_input`: `what`, read from outside the app, at `span`, holds
+/// a file's bytes, in `held`: an operation's `output:` or `wire_output:`, a
+/// webhook's event, or a queue's. `held` is `FileContents` when `what` is
+/// one. Nothing decodes one, so reading it would always fail.
+pub(crate) fn contents_taken(what: &str, held: &str, span: Span) -> Diagnostic {
+    let place = if held == jadpo_std::files::FILE_CONTENTS {
+        ",".to_string()
+    } else {
+        format!(", in `{held}`,")
+    };
+    Diagnostic::new(
+        &rule::TYPE_BATCH_INPUT,
+        format!("{what} holds a `FileContents`{place} which nothing from outside carries"),
+    )
+    .at(span, "a `FileContents`")
+    .reason("Only `store.read` builds a `FileContents`, from the bytes a store kept, so no answer or message can be read as one, and reading it would always fail.")
+    .next("Declare the bytes as `Bytes`, and keep them with `put`")
+}
+
 /// `type.batch_input`: `what`, an `Input`'s field or a route's
 /// placeholder, at `span`, holds the batch type `batch`, which only the
 /// runtime builds (area 2), so a request that named one could read or
@@ -3128,6 +3204,10 @@ pub(crate) fn batch_input(what: &str, batch: &str, span: Span) -> Diagnostic {
         problem
             .reason("Only the runtime builds a `File`, from the bytes it kept. A `File` is the store and key those bytes are under, so a request that sent one could name another person's file, which the application would then read, attach or delete.")
             .next("Take the `id` of the record that keeps the file, and read the `File` from its field")
+    } else if batch == jadpo_std::files::FILE_CONTENTS {
+        problem
+            .reason("Only `store.read` builds a `FileContents`, from the bytes a store kept, so no request can be read as one, and every request to this route would be refused.")
+            .next("Take the bytes as `Bytes`, and keep them with `put`")
     } else if batch == jadpo_std::batch::BATCH_RUN {
         problem
             .reason("Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.")
