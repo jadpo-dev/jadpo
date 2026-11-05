@@ -32,7 +32,7 @@ Using what Jadpo has built in.
 |---|---|
 | [Send an email](12-send-an-email.md) | a welcome email with typed templates, sent over SMTP after commit, tested and read in the dev inbox |
 | [Ship a change behind a flag](13-ship-a-change-behind-a-flag.md) | a change deployed switched off, both sides tested, turned on with no deploy, and the flag removed |
-| [Limit how often a route is called](14-limit-how-often-a-route-is-called.md) | a public form limited to five requests an hour, an API's own limit, and clients counted properly behind a proxy |
+| [Limit how often a route is called](14-limit-how-often-a-route-is-called.md) | a public form limited to five requests a minute, an API's own limit, and clients counted properly behind a proxy |
 | [Add search to a list](15-add-search-to-a-list.md) | a searchable entity, its migration, and a route giving the best matches first, a page at a time |
 | [Keep a record of who changed what](16-keep-a-record-of-who-changed-what.md) | an audited entity, its history read back with what each caller may see, and a route that sends it |
 | [Export records to a file](18-export-records-to-a-file.md) | a query's records written to a spreadsheet-safe CSV in the background, with its run tracked on a record |
