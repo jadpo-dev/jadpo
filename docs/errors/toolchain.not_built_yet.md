@@ -25,3 +25,8 @@ error: `oauth.approve` isn't built yet
 
 check failed: 1 error, 1 file
 ```
+
+A decided feature that isn't built can also be refused where its effect would
+be wrong. A `File` in a route's `output:` or a failure's `client:` is refused,
+because downloads aren't built and the answer would hold the store and key the
+file is kept under ([What a `File` holds](../language/16-built-in-services.md#what-a-file-holds)).

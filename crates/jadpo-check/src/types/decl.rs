@@ -37,6 +37,7 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
         out: Vec::new(),
         headers: Vec::new(),
         failure: false,
+        sent: false,
         provider,
         packaged: home.is_some(),
     };
@@ -76,6 +77,8 @@ pub(super) struct Decls<'a> {
     /// Whether the fields being checked are a failure's (area 8: a caller
     /// is never put in one).
     pub failure: bool,
+    /// Inside a failure's `client:`, whose fields its answer sends.
+    pub sent: bool,
     /// Whether the file is in a provider package, whose fields and
     /// variants may give `wire_name:` (area 11).
     pub provider: bool,
@@ -478,9 +481,14 @@ impl Decls<'_> {
                     }
                     let block = section.block();
                     let lines = shape::lines(block.clone(), FieldsBase::Object);
+                    // A failure's `client:` fields are sent in its answer,
+                    // as a route's output is; its `internal:` ones stay on
+                    // the server.
+                    self.sent = tree::name_text(&key).as_deref() == Some("client");
                     self.failure = true;
                     self.lines(block, FieldsBase::Object, &shape.name, &lines);
                     self.failure = false;
+                    self.sent = false;
                 }
             }
             ShapeKind::Fields { base, lines } => {
@@ -1004,6 +1012,17 @@ impl Decls<'_> {
                         let span = self.span(value.syntax());
                         self.out
                             .push(batch_input(&format!("`{host}.{name}`"), batch, span));
+                        continue;
+                    }
+                    // A `File` goes out as a signed link, which comes with
+                    // downloads (area 16, "Downloading").
+                    if self.sent && held_file(self.table, &declared, &mut Vec::new()).is_some() {
+                        let span = self.span(value.syntax());
+                        self.out.push(file_sent(
+                            &format!("`{host}`'s `client:`"),
+                            &format!("{host}.{name}"),
+                            span,
+                        ));
                         continue;
                     }
                     // A secret value never leaves the server, nor is kept
@@ -2928,8 +2947,8 @@ pub(crate) fn holds_password_hash(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<
     }
 }
 
-/// The batch type (area 12, "Batches: work over many items") a type is,
-/// or holds, however deep: in a list, a map or an option, built on one,
+/// The batch type (area 12, "Batches: work over many items") or `File`
+/// (area 16, "What a `File` holds") a type is, or holds, however deep: in a list, a map or an option, built on one,
 /// in a field of an object or a variant's data, or a field type naming a
 /// field that holds one (`Sweep.run`). An input holding one is reported at
 /// its own declaration, so it isn't followed again.
@@ -2941,6 +2960,7 @@ pub(crate) fn holds_batch(
     match ty {
         Ty::Opaque(name, args) => jadpo_std::batch::OBJECTS
             .into_iter()
+            .chain([jadpo_std::files::FILE])
             .find(|batch| batch == name)
             .or_else(|| args.iter().find_map(|arg| holds_batch(table, arg, seen))),
         Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => holds_batch(table, inner, seen),
@@ -2981,6 +3001,87 @@ pub(crate) fn holds_batch(
     }
 }
 
+/// Where a `File` is in what a value of `ty` holds, however deep, as what
+/// to name in a diagnostic: the field that holds it (`Sheet.file`, or the
+/// `Object`'s own field an `Output` holds), or `ty` itself when it is one.
+/// An `ExportSummary` holds the file it wrote (area 2).
+pub(crate) fn held_file(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> Option<String> {
+    let in_field = |host: &str, field: &super::table::FieldDef, seen: &mut Vec<String>| {
+        held_file(table, &field.declared, seen).map(|held| {
+            if is_file_name(&held) {
+                format!("{host}.{}", field.name)
+            } else {
+                held
+            }
+        })
+    };
+    match ty {
+        Ty::Opaque(name, args) => {
+            let holds = name == jadpo_std::files::FILE
+                || jadpo_std::batch::object_fields(name).is_some_and(|fields| {
+                    fields.iter().any(|(_, part)| {
+                        matches!(part, jadpo_std::batch::Part::Kept(jadpo_std::files::FILE))
+                    })
+                });
+            if holds {
+                return Some(name.clone());
+            }
+            args.iter().find_map(|arg| held_file(table, arg, seen))
+        }
+        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => held_file(table, inner, seen),
+        Ty::Map(key, value) => {
+            held_file(table, key, seen).or_else(|| held_file(table, value, seen))
+        }
+        Ty::Field(host, path) => {
+            let at = format!("{host}.{}", path.join("."));
+            if seen.contains(&at) {
+                return None;
+            }
+            seen.push(at);
+            let declared = table.field(host, path)?.declared.clone();
+            held_file(table, &declared, seen)
+        }
+        Ty::Named(name) => {
+            if seen.contains(name) {
+                return None;
+            }
+            seen.push(name.clone());
+            match table.def(name) {
+                Some(super::table::Def::Scalar { parent, .. }) => held_file(table, parent, seen),
+                Some(super::table::Def::Fields { fields, .. }) => {
+                    fields.iter().find_map(|field| in_field(name, field, seen))
+                }
+                Some(super::table::Def::Enum { variants }) => variants
+                    .iter()
+                    .flat_map(|variant| variant.fields.iter().flatten())
+                    .find_map(|field| in_field(name, field, seen)),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Whether [`held_file`]'s answer is still the file's own type, so the
+/// field holding it hasn't been named yet.
+fn is_file_name(held: &str) -> bool {
+    !held.contains('.')
+}
+
+/// `toolchain.not_built_yet`: `held`, in an answer a route sends, at
+/// `span`: its `output:`, or a failure's `client:` field.
+pub(crate) fn file_sent(what: &str, held: &str, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TOOLCHAIN_NOT_BUILT_YET,
+        format!("{what} sends a `File`, in `{held}`, and sending one isn't built yet"),
+    )
+    .at(span, "decided, not built")
+    .reason("A route sends a `File` as a signed link, which comes with downloads. Until they are built, the answer would hold the store and key the file is kept under, and the API's OpenAPI document couldn't describe it.")
+    .next(format!(
+        "Leave `{held}` out of what the route sends, and send the fields a client needs"
+    ))
+}
+
 /// `type.batch_input`: `what`, an `Input`'s field or a route's
 /// placeholder, at `span`, holds the batch type `batch`, which only the
 /// runtime builds (area 2), so a request that named one could read or
@@ -2991,7 +3092,11 @@ pub(crate) fn batch_input(what: &str, batch: &str, span: Span) -> Diagnostic {
         format!("{what} holds a `{batch}`, which no request carries"),
     )
     .at(span, format!("a `{batch}`"));
-    if batch == jadpo_std::batch::BATCH_RUN {
+    if batch == jadpo_std::files::FILE {
+        problem
+            .reason("Only the runtime builds a `File`, from the bytes it kept. A `File` is the store and key those bytes are under, so a request that sent one could name another person's file, which the application would then read, attach or delete.")
+            .next("Take the `id` of the record that keeps the file, and read the `File` from its field")
+    } else if batch == jadpo_std::batch::BATCH_RUN {
         problem
             .reason("Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.")
             .next("Take the `id` of the record that keeps the run, and read the `BatchRun` from its field")

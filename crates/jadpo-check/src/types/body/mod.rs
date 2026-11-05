@@ -1397,6 +1397,7 @@ impl Body<'_> {
                         out: Vec::new(),
                         headers: Vec::new(),
                         failure: false,
+                        sent: false,
                         provider: false,
                         packaged: false,
                     };
