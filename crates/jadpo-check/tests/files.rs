@@ -465,3 +465,139 @@ fn a_store_of_files_held_from_two_databases_is_not_built_yet() {
         ]
     );
 }
+
+/// What the base project reports with `Sheet`'s declaration and a route
+/// that sends `output`, with `body` as what its action does after reading
+/// the record, but for what [`ids`] leaves out.
+fn answering(types: &str, output: &str, body: &str) -> Vec<String> {
+    let action = format!(
+        "use pantry/entities {{ ShelfSheet, ShelfSheetNotFound }}\nuse pantry/types {{ Sheet }}\n\naction answer(id: ShelfSheet.id) fails ShelfSheetNotFound -> {output} {{\n    var kept: ShelfSheet = attempt ShelfSheet.get(id)\n    {body}\n}}\n"
+    );
+    let routes = format!(
+        "use pantry/actions {{ answer }}\nuse pantry/entities {{ ShelfSheet }}\nuse pantry/types {{ Sheet }}\n\nroutes Sheets {{\n    prefix: /sheets\n\n    GET /{{id: ShelfSheet.id}} {{\n        authentication: RouteAuthentication.none\n        output: {output}\n        run: answer(id)\n    }}\n}}\n"
+    );
+    let types = format!("use pantry/entities {{ ShelfSheet }}\n\n{types}");
+    ids(&[
+        ("domains/pantry/types/sheet.jadpo", &types),
+        ("domains/pantry/actions/answer.jadpo", &action),
+        ("domains/pantry/routes/sheets.jadpo", &routes),
+    ])
+    .into_iter()
+    .filter(|rule| !rule.starts_with("record."))
+    .collect()
+}
+
+/// An answer sends a `File` as a signed link, which comes with downloads
+/// (area 16, "Downloading"). Until then a `File` reaching a route's output,
+/// directly or through what it holds, is `toolchain.not_built_yet`, since
+/// the answer would hold the store and key its bytes are kept under.
+#[test]
+fn a_file_in_a_routes_output_is_not_built_yet() {
+    const REFUSED: &str = "toolchain.not_built_yet";
+    let kept = "return Sheet {\n        sheet: kept.sheet\n    }";
+    for (what, types, output, body) in [
+        (
+            "a field",
+            "type Sheet = Output {\n    sheet: File\n}\n",
+            "Sheet",
+            kept,
+        ),
+        (
+            "a field named for the entity's",
+            "type Sheet = Output {\n    sheet: ShelfSheet.sheet\n}\n",
+            "Sheet",
+            kept,
+        ),
+        (
+            "a pick",
+            "type Sheet = Output {\n    pick: [ShelfSheet.sheet]\n}\n",
+            "Sheet",
+            kept,
+        ),
+        (
+            "a list of an output that holds one",
+            "type Sheet = Output {\n    sheet: File\n}\n",
+            "List<Sheet>",
+            "return [Sheet {\n        sheet: kept.sheet\n    }]",
+        ),
+        (
+            "a list in a field",
+            "type Sheet = Output {\n    sheets: List<File>\n}\n",
+            "Sheet",
+            "return Sheet {\n        sheets: [kept.sheet]\n    }",
+        ),
+        (
+            "an optional field",
+            "type Sheet = Output {\n    sheet: File?\n}\n",
+            "Sheet",
+            kept,
+        ),
+        (
+            "an object it holds",
+            "type Inner = Object {\n    file: File\n}\n\ntype Sheet = Output {\n    inner: Inner\n}\n",
+            "Sheet",
+            "return Sheet {\n        inner: Inner {\n            file: kept.sheet\n        }\n    }",
+        ),
+        (
+            "a map layer's properties",
+            "type Sheet = Object {\n    sheet: File\n}\n",
+            "FeatureCollection<Point, Sheet>",
+            kept,
+        ),
+        (
+            "an export's summary, which holds the file it wrote",
+            "type Sheet = Output {\n    summary: ExportSummary\n}\n",
+            "Sheet",
+            kept,
+        ),
+    ] {
+        let found = answering(types, output, body);
+        assert_eq!(
+            found.iter().filter(|rule| *rule == REFUSED).count(),
+            1,
+            "{what}: {found:?}"
+        );
+    }
+    // An output that leaves the file out is an answer like any other.
+    assert_eq!(
+        answering(
+            "type Sheet = Output {\n    pick: [ShelfSheet.id]\n}\n",
+            "Sheet",
+            "return Sheet {\n        id: kept.id\n    }",
+        ),
+        Vec::<String>::new()
+    );
+}
+
+/// A failure's `client:` fields are sent in its answer, so a `File` there
+/// is refused as one in an output is; its `internal:` ones stay on the
+/// server.
+#[test]
+fn a_file_in_a_failures_client_fields_is_not_built_yet() {
+    let failing = |section: &str| {
+        let failure = format!(
+            "type SheetRefused = Failure {{\n    kind: FailureKind.conflict\n    {section}: {{\n        sheet: File\n    }}\n}}\n"
+        );
+        ids(&[("domains/pantry/failures/sheet_refused.jadpo", &failure)])
+    };
+    assert_eq!(failing("client"), ["toolchain.not_built_yet"]);
+    assert_eq!(failing("internal"), Vec::<String>::new());
+}
+
+/// Only the runtime builds a `File`, and one is the store and key its
+/// bytes are under, so no request carries one (area 16, "What a `File`
+/// holds"): it would name any file, another person's included.
+#[test]
+fn a_file_in_an_input_is_refused() {
+    for (what, types) in [
+        ("a field", "type Sent = Input {\n    sheet: File\n}\n"),
+        ("a list", "type Sent = Input {\n    sheets: List<File>\n}\n"),
+        (
+            "an object it holds",
+            "type Inner = Object {\n    file: File\n}\n\ntype Sent = Input {\n    inner: Inner\n}\n",
+        ),
+    ] {
+        let found = ids(&[("domains/pantry/types/sent.jadpo", types)]);
+        assert_eq!(found, ["type.batch_input"], "{what}");
+    }
+}

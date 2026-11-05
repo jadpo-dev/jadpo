@@ -924,9 +924,9 @@ minutes, with the file's name, size and type. The read has already passed
 policy, field restrictions included, so there is no separate download
 operation to protect.
 
-Don't pick a `File` field in an `Output` yet. It isn't refused, but the route
-answers with the file's store and key rather than a link, and nothing serves
-the bytes.
+Downloads aren't built yet. Until they are, a `File` in a route's `output:`
+is `toolchain.not_built_yet`, directly or through what it holds
+([What a `File` holds](#what-a-file-holds)).
 
 On the disk driver your app serves downloads from its own origin. It
 answers single-range `Range` requests and `If-Range`, with an ETag from the
@@ -3916,11 +3916,19 @@ A `File` holds the connection its bytes are in, the key the runtime made
 for them, its name (none for one `store.put` made), its size and its
 `FileType`. It is kept as its JSON in a `jsonb` column.
 
-Only the runtime builds one: `File { ... }` is `type.not_record`. No
-request carries a `File`. An output's signed link comes with downloads, so an
-output that picks one sends its store and key instead, and shouldn't be
-written yet ([Downloading](#downloading)). A program reads none of its parts
-yet.
+Only the runtime builds one: `File { ... }` is `type.not_record`.
+
+No request carries a `File`, which would let it name any file: one in an
+`Input` or a route's placeholder, however deep, is `type.batch_input`.
+
+A route sends a `File` as a signed link, which comes with
+[downloads](#downloading). Until those are built, a `File` in a route's
+`output:` or a failure's `client:` is `toolchain.not_built_yet`, directly or
+through what it holds: a list, an `Object`, an entity's field named as a type,
+a `pick:`, or an `ExportSummary`. A failure's `internal:` fields stay on the
+server and may hold one.
+
+A program reads none of its parts yet.
 
 ### A `File` field's settings
 
