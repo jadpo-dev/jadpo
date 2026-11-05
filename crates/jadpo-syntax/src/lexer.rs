@@ -376,6 +376,13 @@ impl Lexer<'_> {
                 return;
             }
         }
+        // `>==` is never `>=` and `=`: it ends a generic type before `==`,
+        // as in `Map<K, V>== none`, and a space doesn't change what it means.
+        if self.rest().starts_with(">==") {
+            self.pos += 1;
+            self.push(R_ANGLE, start);
+            return;
+        }
         for (text, kind) in MULTI {
             if self.rest().starts_with(text) {
                 self.pos += text.len();
