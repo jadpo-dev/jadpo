@@ -1342,8 +1342,7 @@ the sandbox for each one (see "Tests and fakes").
   let a stranger's repository in. Removing one needs nothing, nor does
   narrowing one, or adding one below an entry already there, since no new
   repository gets in. The list is kept in `access.jadpo_record` as
-  `own_source` lines, which gives the check its before side (Richard,
-  2026-10-31).
+  `own_source` lines, which gives the check its before side.
 
   A repository is under an entry by its host and its whole path parts,
   never by how its text starts, and an address that can't be told apart
@@ -2052,8 +2051,7 @@ it can send makes a release live.
   through any `$ref`, and what a Jadpo application adds that the table
   doesn't constrain (the runtime's shared failures, `x-jadpo-` keywords,
   an `Idempotency-Key` header) is left alone. The registry application's
-  CI runs it against its own document
-  ([compiler/runtime §2.1](../compiler-runtime.md#21-workspace-and-crates)).
+  CI runs it against its own document.
 
 ## The verifier
 <!-- topic: the-verifier -->
@@ -2716,9 +2714,29 @@ var postcode: Postcodes.UkPostcode = attempt Postcodes.uk.parse(input.postcode) 
 The types come from the package, and your app writes none. The checker
 compares what you send with what the operation takes. At runtime a
 response is checked only for the fields your code reads, so a provider
-adding or changing other fields breaks nothing. A package input may take
-any of your app's object types, sent as JSON, such as Postmark's template
-variables or Stripe's metadata.
+adding or changing other fields breaks nothing.
+
+An operation's input holds the package's own types and the built-in ones, so
+passing your app's own object is `type.mismatch`. A field taking any of your
+app's object types, sent as JSON, as Postmark's template variables or Stripe's
+metadata need, is `AnyObject`
+([Other built-in types](02-values-and-types.md#other-built-in-types)), which
+isn't built, so writing it is `semantic.unknown_name`.
+
+A `File` is the store and key its bytes are under, so it doesn't cross to or
+from a provider, however deep a type holds it
+([What a `File` holds](16-built-in-services.md#what-a-file-holds)):
+
+- In an operation's `input:` or a webhook's `reply:` it is
+  `toolchain.not_built_yet`, since sending a file to a provider isn't built.
+  The provider would get the store and key and none of the bytes.
+- In an operation's `output:` or `wire_output:`, or a webhook's event, it is
+  `type.batch_input`, since a provider could name any file.
+
+A file's bytes do go out: an operation's `input:` may hold the `FileContents`
+`store.read` gives, sent as its Base64. It doesn't come back, so an `output:`,
+a `wire_output:` or a webhook's event holding one is `type.batch_input`
+([`store.read(file)`](16-built-in-services.md#storereadfile)).
 
 A `File` is the store and key its bytes are under, so it doesn't cross to or
 from a provider, however deep a type holds it
@@ -5654,8 +5672,7 @@ deployable reaches when it runs `Trigger.subscribers`, where the queues
 What a deployable reaches is followed from the routes of the APIs it
 serves and the background work it runs, through everything they call. An
 app that declares no deployables, and a deployable with no `target:`,
-have no target, so nothing is refused for them
-([Tooling's design notes](notes/14-tooling.md)).
+have no target, so nothing is refused for them.
 
 > An in-memory cache is checked against the target once caches are built.
 
@@ -5988,9 +6005,7 @@ it when you write a package by hand or a check refuses one.
   built-ins: not the app's `shared/`, domains, connections or other
   packages, since an installed package is published apart from any app and
   the app's own integration is written so that it could be. Its files need
-  no `use` lines. It doesn't read the app's `shared/`; whether it should
-  is an open question in the design notes, and allowing it later breaks
-  no package.
+  no `use` lines. It doesn't read the app's `shared/`.
 - **Bringing a package in.** `use packages/<name>` for an installed one and
   `use shared/providers/<name>` for the app's own bring the whole package
   in, as `use <domain>` does; there is no `{ ... }` form, since its names
@@ -7949,7 +7964,7 @@ package's name, as its types are.
 | Services (`runs:`) | Not built yet, nor is `jadpo services`. |
 | OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written, and `jadpo dev grants add` isn't a command yet. |
 | A release's facts and change record in `jadpo package check` and `show`, the previous release's examples and tests run against the new code, and `jadpo package verify` with the fingerprints ([How they are worked out](#how-a-releases-facts-change-record-and-fingerprints-are-worked-out)) | Built. |
-| [The verifier](#the-verifier): `jadpo package verify --serve`, its sandbox, the check of a commit's files and size, its container image and Fly.io configuration | Built. Not deployed yet: its image is published, and it runs on Fly.io, once a maintainer has switched them on ([documentation](../documentation.md#versions-and-releases)). |
+| [The verifier](#the-verifier): `jadpo package verify --serve`, its sandbox, the check of a commit's files and size, its container image and Fly.io configuration | Built. Not deployed yet: its image is published, and it runs on Fly.io, once a maintainer has switched them on. |
 | Publisher trust for third-party git packages | Built: a package from a git repository under none of `packages:`'s `own_sources:` needs an [acceptance](18-records-and-manifest.md#acceptances), as does adding or widening an entry; an entry is `package.own_source_invalid` unless it is a host and a path ending in `/`. |
 | The registry protocol: its requests and answers, the log and its proofs, a local registry and the conformance test | Built (`jadpo-registry`). |
 | The `jadpo` tool's side of the public registry: `add` and `update` checked against the log, `search`, `audit`, `publish` and `preview` ([How the registry commands work](#how-the-registry-commands-work)) | Built, against the local registry. |
@@ -7959,8 +7974,6 @@ package's name, as its types are.
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
 | Erasure at providers | Partly built: the package's and the connection's `erasure:` are read and checked, and a connection that can't erase what it receives needs an `ErasureNotPossible` acceptance ([Erasure at providers](15-personal-data.md#erasure-at-providers)). Not built yet: calling the provider. |
-
-[The roadmap](../roadmap.md) says when each comes.
 
 ### Mistakes not reported yet
 

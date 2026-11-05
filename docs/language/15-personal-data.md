@@ -1836,7 +1836,7 @@ This is not legal advice. A privacy professional reviews the report.
 | Encrypted fields | Built: `encrypted: true`, key-type, `TotpSecret` and `SecretText` fields, sealed on write and opened on read, interpreted, compiled and on Workers; each refusal above; rotation through `_PREVIOUS`, with `field_encryption.reseal` and `jadpo config rotation`. |
 | The personal-data report | Partly built: `jadpo check` writes `build/report/personal-data.md` and `.json`, for a project with no errors, listing [where personal data goes](#where-personal-data-goes), and `jadpo package check` shows the same for a package. Each connection says whether its copy is erased or kept for an accepted reason, and the approval review shows its difference from the before side's, a connection at a time. Not built yet: the rest of its list, each person entity's fields, category, store and readers, the queries that say `include_erased: true`, retention, what erasure does, keys in the outbox, step records and OAuth grants. |
 | `erasure:` on a package and on a connection | Partly built. Built: each is read and checked, and a connection that receives personal data and can't erase it needs an `ErasureNotPossible` acceptance ([Erasure at providers](#erasure-at-providers)). Not built yet: calling the package's `erasure:`, so a connection that declares one is not yet asked to erase anyone. |
-| Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |
+| Everything else on this page | Not built yet. |
 
 ## Errors
 

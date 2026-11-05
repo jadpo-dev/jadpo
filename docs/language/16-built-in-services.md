@@ -792,8 +792,8 @@ back, whatever store the bytes came from. Your code joins the two:
 
 - `attempt store.read(file)` returns the file's contents as
   `FileContents` ([Other built-in types](02-values-and-types.md#other-built-in-types)),
-  for passing the bytes on: to a provider as an upload, or as an email
-  attachment. The format helpers don't accept it. It reads
+  for passing the bytes on to a provider
+  ([`store.read(file)`](#storereadfile)). The format helpers don't accept it. It reads
   the whole file into memory, so it is capped: reading a field whose
   `max_size` is over the whole-read limit of 10 MB is a compile error
   pointing at the format helpers or `batches.each`.
@@ -1606,8 +1606,7 @@ before the failure, which a stack no longer holds.
 
 Path IDs need the compiler's graph to hold the control flow inside each
 callable. Each body's ways are numbered today, and the differential run
-compares the paths each test's bodies took
-([How it is built](../compiler-runtime.md)), but no request carries a
+compares the paths each test's bodies took, but no request carries a
 `path` or a `path_key` yet ([What is built](#what-is-built)).
 
 ## Monitoring
@@ -2417,13 +2416,27 @@ translations {
 
 ### Attachments
 
-A `File` field on an `EmailMessage` is an attachment. It is read from
+A `File` field on an `EmailMessage` is an attachment, and `File?` is one
+when it holds a file. It is read from
 its store when the email is sent, and checked against the size limit the
 mail package declares. Through a mail package, each `File` field needs a
 `max_size:`, and an email whose fields' sizes add up to more than the
 package's `limits: { attachments: }` is `email.attachment_limit`. A
 provider that can't send attachments can still be an ordinary package,
 but can't be the `email:` connection.
+
+An attachment goes out under the file's own name. A file with no name, as
+every file `store.put` makes is, is named from the email's field and the
+file's type: `invoice: File` holding a PDF goes out as `invoice.pdf`. A
+`FileType.json_lines` file ends in `.jsonl`. No part of the file's key goes
+out.
+
+Each attachment is one `File` field. Sending several from one field isn't
+built: a `List<File>`, a `Set<File>` or a `Map` of them, and a `FileContents`,
+on an email or a partial are `toolchain.not_built_yet`, since each would
+compile and never be sent. So is a `File` on a partial, which sends nothing of
+its own. An object or an `ExportSummary` on an email is read for its other
+fields, and a file it holds isn't attached.
 
 ### The mail health score
 
@@ -4446,7 +4459,8 @@ A `File` field on an `EmailMessage` is the one that leaves: it is sent as an
 attachment, the bytes rather than the store and key
 ([Attachments](#attachments)).
 
-A program reads none of its parts yet.
+A program reads none of its parts. `file.key`, and `file.nope`, are
+`type.field_on_non_record`, in code and in a template.
 
 ### A `File` field's settings
 
@@ -4618,9 +4632,22 @@ A `File` whose field isn't known, such as a parameter of type `File`, is
 held to the limit as it runs, and going over it is a fault. A file whose
 bytes are gone from its store is a fault too.
 
-`FileContents` is the file's bytes. Nothing takes it yet but what passes
-bytes on, such as an email's attachment or a provider's upload. Like
-`put`, `read` is called only in an action, before its first read or
+`FileContents` is the file's bytes, and a program reads none of its parts.
+It goes to a provider: an operation's `input:` holding one sends its Base64 in
+the JSON, as `Bytes` is sent. Nowhere else takes it:
+
+| Where | Refused as |
+|---|---|
+| An `Input` or a route's placeholder | `type.batch_input` |
+| An operation's `output:` or `wire_output:`, a webhook's event, an event a queue lists | `type.batch_input` |
+| A route's `output:` or a failure's `client:` | `toolchain.not_built_yet` |
+| An email or a partial ([Attachments](#attachments)) | `toolchain.not_built_yet` |
+| A prompt's field | `prompt.placeholder_type` |
+
+Each holds however deep, but for an email. A provider's own bytes come as
+`Bytes`, which `put` keeps.
+
+Like `put`, `read` is called only in an action, before its first read or
 write. A test reaches files through the application's actions.
 
 ### The disk driver in `jadpo dev`
@@ -4972,7 +4999,7 @@ The errors this page describes are built with the feature they belong to.
 
 | Feature | Status |
 |---|---|
-| Email | Built: email's templates, the shared layout, `email:`, sending after commit through the SMTP driver, attachments and parking ([Email rules: templates and sending](#email-rules-templates-and-sending)). The SMTP conversation runs in the driver, over the host's transport and its TLS upgrade ([How it is built](../compiler-runtime.md), "TLS through the transport"). |
+| Email | Built: email's templates, the shared layout, `email:`, sending after commit through the SMTP driver, attachments and parking ([Email rules: templates and sending](#email-rules-templates-and-sending)). The SMTP conversation runs in the driver, over the host's transport and its TLS upgrade. |
 | Jadpo's own magic-link email | Built: at all five levels, worded by Jadpo or reworded by the app, wrapped in the app's layout, the app's own email filled with the link and the code, or the app's own sending given them ([Jadpo's own magic-link email](#jadpos-own-magic-link-email), [Your own magic-link email](#your-own-magic-link-email)). |
 | The privacy emails | Not built yet. They come with data requests ([Data requests](15-personal-data.md#data-requests)). |
 | Mail packages | Built: a mail package as the connection, partials and `email.sent` ([Mail packages, partials and `email.sent`](#mail-packages-partials-and-emailsent)). |
@@ -4989,8 +5016,6 @@ The errors this page describes are built with the feature they belong to.
 | The `telemetry:` section | Not built yet: it is `toolchain.not_built_yet` where it is written. Nor is telemetry in the developer console, or `jadpo traces`, `jadpo metrics` and `jadpo logs`, which read it in development. |
 | Path IDs | Not built yet for requests. Each body's ways are numbered, and the differential run compares the paths each test's bodies took, but no request carries a `path` or a `path_key`, and `jadpo path` isn't built. |
 | Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([What Jadpo generates from thresholds](#what-jadpo-generates-from-thresholds)). Not built yet: acting on the per-request limits, which comes with the `telemetry:` section, starting values from the query report and production, and an agent's proposals through MCP. |
-
-[The roadmap](../roadmap.md) says when.
 
 ## Errors
 

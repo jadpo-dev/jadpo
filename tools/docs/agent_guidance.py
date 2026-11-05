@@ -272,6 +272,58 @@ def status_word_problems(root: Path = ROOT) -> list[str]:
     return found
 
 
+# What only someone building Jadpo knows, which a reference page never says.
+# Each is looked for outside code: `chat.completion.chunk` is a provider's
+# word, and a line of an example is the example's. "chunk" is held to no
+# meaning, so a page says "piece" for a piece of text; "chunked" is another
+# word, as in HTTP's chunked encoding.
+BUILDER_WORDS = re.compile(r'\b(?:chunks?|roadmap|Richard)\b|\bdecided\s+(?:on\s+)?20\d\d\b', re.IGNORECASE)
+ROADMAP = 'docs/roadmap.md'
+ROADMAP_ID = re.compile(r'\*\*([A-Z0-9][A-Za-z0-9.]*\d[A-Za-z0-9.]*)\s')
+# A roadmap's id that is also the name of something a page means: products,
+# paper sizes, the numbers `jadpo suggest` gives its findings.
+NOT_CHUNK_IDS = {'A0', 'A1', 'A4', 'A10', 'B2', 'B10', 'D1', 'S1', 'S2', 'S3'}
+
+
+def chunk_ids(root: Path) -> set[str]:
+    """The ids docs/roadmap.md gives its chunks. A number with no letter
+    (8.3, 10.1) is read as the number it looks like."""
+    path = root / ROADMAP
+    found = set(ROADMAP_ID.findall(path.read_text())) if path.is_file() else set()
+    return {name for name in found if re.search('[A-Za-z]', name)} - NOT_CHUNK_IDS
+
+
+def outside_code(text: str) -> str:
+    """The text with code and HTML comments blanked, its lines kept."""
+    def blank(match: re.Match) -> str:
+        return re.sub(r'[^\n]', ' ', match.group())
+    lines, fenced = [], False
+    for line in text.split('\n'):
+        if line.lstrip(' >').startswith('```'):
+            fenced = not fenced
+            lines.append('')
+        else:
+            lines.append('' if fenced else line)
+    return re.sub(r'<!--.*?-->|`[^`]*`', blank, '\n'.join(lines), flags=re.DOTALL)
+
+
+def builder_history_problems(root: Path = ROOT) -> list[str]:
+    """A reference page that says what only someone building Jadpo knows: a
+    chunk, a chunk's id, the roadmap, or who decided something and when."""
+    ids = chunk_ids(root)
+    named = re.compile(r'(?<![\w.-])(?:' + '|'.join(map(re.escape, sorted(ids, key=len, reverse=True))) + r')(?![\w-])') if ids else None
+    found = []
+    for path in sorted((root / 'docs/language').glob('*.md')):
+        text = outside_code(path.read_text())
+        hits = list(BUILDER_WORDS.finditer(text)) + (list(named.finditer(text)) if named else [])
+        for hit in sorted(hits, key=lambda hit: hit.start()):
+            line = 1 + text.count('\n', 0, hit.start())
+            said = ' '.join(hit.group().split())
+            found.append(f'{path.relative_to(root)}:{line}: says "{said}", which only someone building Jadpo knows: '
+                         'say what is true now (docs/writing.md, "How a reference topic reads")')
+    return found
+
+
 def install_facts(root: Path = ROOT) -> dict:
     def read(name: str) -> dict:
         return tomllib.loads((root / name).read_text())
@@ -479,7 +531,8 @@ def problems(root: Path = ROOT) -> list[str]:
         for folder in folders:
             if folder not in teaching:
                 found.append(f'the feature table names examples/{folder} for "{feature}", which isn\'t a teaching example')
-    found += install_claim_problems(root) + status_word_problems(root) + whole_index_problems(root)
+    found += (install_claim_problems(root) + status_word_problems(root) + whole_index_problems(root)
+              + builder_history_problems(root))
     # A folder holding only the examples and the areas, as a test builds.
     if all((root / path.relative_to(ROOT)).is_file() for path in (TEMPLATE, LLMS, PRIMER, LEARN_SETUP, REFERENCE)):
         found += primer_pick_problems(root) + install_problems(root)
