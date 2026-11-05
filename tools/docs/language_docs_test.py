@@ -1126,6 +1126,16 @@ class Learn(unittest.TestCase):
             self.assertIn(expected, found)
         self.assertEqual(self.user_problems('# A\n<!-- topic: a -->\n\n`area 8` in code is fine.\n'), '')
 
+    def test_a_note_beside_an_example_may_say_what_isnt_built(self):
+        example = '# A\n<!-- topic: a -->\n\n```jadpo check project=a\ntype A = Int {}\n```\n\n'
+        self.assertEqual(self.user_problems(example + "Signing in with Google isn't built yet, so this uses magic links.\n"), '')
+        for note in ("Google isn't built yet. Use magic links. They work today.\n",  # more than a sentence
+                     'One.\nTwo.\nThis is not built yet.\n',  # more than a line or two
+                     'A paragraph first.\n\nThis is not built yet.\n'):  # not straight after it
+            self.assertIn('build status', self.user_problems(example + note), note)
+        hidden = '# A\n<!-- topic: a -->\n\n```jadpo check project=a hidden\ntype A = Int {}\n```\n\n'
+        self.assertIn('build status', self.user_problems(hidden + 'This is not built yet.\n'))
+
 GUIDE_INDEX = """# Guides
 <!-- topic: guides -->
 
