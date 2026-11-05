@@ -685,10 +685,7 @@ errors it has.
 Some changes can break someone else, such as removing a field clients
 read. `jadpo check` fails on them until a person accepts them. An
 acceptance is one file per **decision**, listing every change it allows,
-with the reason in a `///` line. Each entry is `subject: Kind.change`,
-with the subject and the change copied from the compiler's message. A
-subject is a dotted name, or, for a route, its API, method and path in
-quotes, since a route has no name. This one allows removing the `priority`
+with the reason in a `///` line. This one allows removing the `priority`
 field from what API `main` sends as a `TodoView`:
 
 ```jadpo check project=acceptance-first file=app.jadpo hidden
@@ -710,8 +707,8 @@ acceptance {
 comes from the compiler: each entry is `subject: Kind.change`, with the
 subject and the change copied from its message. A subject is a dotted name,
 or, for a route, its API, method and path in quotes, since a route has no
-name (Richard, 2026-10-30). You don't need to type one, since
-`jadpo acceptance new` drafts the file (below).
+name. You don't need to type one, since `jadpo acceptance new` drafts the
+file (below).
 
 - **It counts only in the change that adds it.** Acceptances already on
   the before side are history, and editing one is an error
