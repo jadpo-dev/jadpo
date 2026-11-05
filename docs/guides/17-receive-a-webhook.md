@@ -52,9 +52,10 @@ routes Payments {
 
 ## Describe the sender
 
-A big provider's webhooks come in its package, and `jadpo package add` installs
-it, so skip to [the connection](#connect-it). Acme Pay has none, so your app holds
-its own description in `shared/providers/`, written as a package.
+If you have a package for the sender, from a folder or a git tag, its webhooks
+come with it, so install it with `jadpo package add` and skip to [the
+connection](#connect-it). Acme Pay has none, so your app holds its own description
+in `shared/providers/`, written as a package.
 
 `shared/providers/acme_pay/v1/package.jadpo`:
 

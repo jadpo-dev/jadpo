@@ -26,7 +26,7 @@ PostgreSQL database and you don't declare it yourself. Anything your app
 never saves is a `type`, not an entity.
 
 You declare other stores as connections in `app.jadpo`, in its
-`connections:` block (see [Integrations](11-integrations.md) for
+`connections:` block (see [External services](11-integrations.md) for
 connections in general). Each store's driver is written in the source, so
 every environment, from your machine to production, runs the same engine.
 Here a shop keeps its orders in a database apart from its catalogue:
@@ -82,7 +82,7 @@ database. These need one:
 - events and the outbox, the table that holds each event until it is
   delivered ([Background work](12-jobs-and-events.md));
 - idempotency keys ([Idempotent writes](07-http.md#idempotent-writes));
-- webhook de-duplication ([Integrations](11-integrations.md));
+- webhook de-duplication ([External services](11-integrations.md));
 - flags and audit ([Built-in services](16-built-in-services.md)).
 
 Where something needs a database and none can hold it, `jadpo check`
@@ -97,7 +97,7 @@ of the type its driver needs: `url: config.database_url`, with
 `jadpo migrate apply` and `jadpo migrate status` read it from the
 environment, then `.env.local`, or take the URL with `--url`. A
 connection's other settings are described under
-[Integrations](11-integrations.md).
+[External services](11-integrations.md).
 
 Not built yet: the "only once something needs one" part, which comes with
 the first feature that can run without a database, and the D1 driver
@@ -1881,7 +1881,7 @@ They go in the store such an action writes, or `events: { store: }`'s,
 only where one is kept. A resumable single keyed changing call with an
 existing record store uses these tables for dispatch details only, with
 no request fingerprints or encrypted answers, so the provider's safe key
-window also bounds its retries ([Integrations](11-integrations.md)).
+window also bounds its retries ([External services](11-integrations.md)).
 
 ### Tables for sign-in
 

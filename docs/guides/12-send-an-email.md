@@ -514,9 +514,11 @@ Jadpo's own emails, such as the sign-in email, get the same wrapper.
 ## Send through a provider
 
 `app.jadpo` is the only file that knows how mail leaves. To send through
-Postmark, Amazon SES or Resend, replace the `mail` connection with one that
-names a mail package, and the email's type, templates and `emit` stay as
-they are. A package that declares an `erasure:` call, on a connection that
+Resend, [install Jadpo's Resend package](../language/11-integrations.md#jadpos-own-packages)
+and replace the `mail` connection with one that names it, and the email's type,
+templates and `emit` stay as they are. Jadpo has no package for other mail
+services, so for one of those use its SMTP server, or write a package for its
+API. A package that declares an `erasure:` call, on a connection that
 names the person's key, needs no `ErasureNotPossible.data_stays` acceptance,
 because erasing a person then asks the provider to erase them too.
 

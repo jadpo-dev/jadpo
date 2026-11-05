@@ -525,6 +525,45 @@ fn a_registry_out_of_reach_is_said_as_that() {
     drop(dir);
 }
 
+/// A 404 or a 405 with no failure in it isn't a network that failed, nor a
+/// package the registry lacks: nothing there speaks the protocol, and every
+/// command says so rather than sending the reader to check their connection.
+#[test]
+fn a_404_that_isnt_the_protocols_says_no_registry_is_there() {
+    let (dir, _package, app) = workspace("registry-nothing-served");
+    for status in [404, 405] {
+        let server = Server::start(Arc::new(move |_: Incoming| Fetched {
+            status,
+            content_type: Some("text/html".to_string()),
+            body: b"<h1>Not here</h1>".to_vec(),
+        }))
+        .expect("serves");
+        let url = format!("http://{}/registry/v1/", server.address());
+        for args in [
+            &["package", "add", "@acme/postcodes"][..],
+            &["package", "add", "postcodes"][..],
+            &["package", "search", "postcode"][..],
+        ] {
+            let out = with(&url, &app, args);
+            assert_eq!(out.code, 1, "{args:?}: {}", out.stderr);
+            for words in [
+                "isn't serving a registry".to_string(),
+                format!("It answered {status} "),
+                "next: Check `JADPO_REGISTRY`".to_string(),
+                "rule: registry.unreachable\n".to_string(),
+            ] {
+                assert!(out.stderr.contains(&words), "{words}\n{}", out.stderr);
+            }
+            assert!(
+                !out.stderr.contains("Check your connection"),
+                "{}",
+                out.stderr
+            );
+        }
+    }
+    drop(dir);
+}
+
 // --- update ----------------------------------------------------------------
 
 /// An app with 2.0.0 installed from the registry.

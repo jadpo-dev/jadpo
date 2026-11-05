@@ -842,7 +842,8 @@ installs from the registry by its exact name, `@acme/postcodes`, from a
 folder, or from a git repository's tag, such as
 `github.com/acme/acme-pricing@v2.1.0` ([Where packages come
 from](11-integrations.md#where-packages-come-from)). A bare name means Jadpo's
-own package.
+own package. The public registry isn't live yet, so a name stops with
+`registry.unreachable`: use a folder or a tag.
 
 From the registry it takes the newest release that isn't yanked or a
 pre-release, or the one `--to <version>` names, once the registry's public log
