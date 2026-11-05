@@ -404,16 +404,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **D17k Implementer history out of the topics**: [writing guide](writing.md), "Nothing of how it was built"; `builder_history_problems` in `tools/docs/agent_guidance.py`.
 - [x] **D17l The guides index grouped**: `docs/guides/README.md`; docs/documentation.md, "The bundle"; `src/components/guides/GuideList.astro` in jadpo-website.
 - [x] **D17m The ten guides**: `docs/guides/12-send-an-email.md` to `21-keep-customers-data-apart.md`.
-- [ ] **D17o First examples stand alone** `opus · high`: the very first example
-  on each page is understandable without following another link. The
-  [writing guide](writing.md)'s standard and the report in
-  `tools/docs/first_examples.py` are in. What's left is rewriting the pages it
-  lists and giving its gate step `--strict`. The rewrite also corrects
-  "A flag is a `Bool`, or an enum when it has more than two values", keeps
-  flag examples' far-ahead dates and adds a sentence on a flag's lifecycle,
-  and on External services adds a short overview of a typical app and what it
-  needs, a visible link for running containers marked planned, and makes the
-  two meanings of `runs:` obvious. Comes before the review.
+- [x] **D17o First examples stand alone**: [writing guide](writing.md), "A page's first example stands alone"; `tools/docs/first_examples.py`, run `--strict` by the gate.
 - [ ] **D17n Review** `opus · high`: one independent review of the whole and
   a cold read of a service from its landing page.
 

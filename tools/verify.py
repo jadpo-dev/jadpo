@@ -365,8 +365,8 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
              [python, 'tools/docs/examples.py', '--export-corpus'], jadpo=True,
              postgres=full, env=no_postgres, show='skipped:'),
         # Each page's first example stands alone (docs/writing.md), and its
-        # tests. A report until the pages are rewritten: `--strict` makes it fail.
-        Step('first examples stand alone (report only)', 'docs', [python, 'tools/docs/first_examples.py'], jadpo=True,
+        # tests.
+        Step('first examples stand alone', 'docs', [python, 'tools/docs/first_examples.py', '--strict'], jadpo=True,
              show=('first examples:', '  first example fails:')),
         Step('first examples tests', 'docs', [python, 'tools/docs/first_examples_test.py'], jadpo=True),
         Step('focused TypeScript baseline types and Unicode contracts', 'lint', [python, 'benchmarks/harness/check_typescript.py']),
