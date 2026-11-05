@@ -30,9 +30,10 @@ the compiler works it out from what the action does. A read-only action can
 answer a `GET`, as a query can
 ([A `GET` that runs an action](07-http.md#a-get-that-runs-an-action)).
 
-Here is a function:
+Here is a function. Save this as `main.jadpo` and run `jadpo test
+main.jadpo`:
 
-```jadpo check project=line-total file=numbers.jadpo hidden
+```jadpo check project=line-total
 type Stock = Int {
     min: 0
 }
@@ -41,15 +42,19 @@ type Quantity = Int {
     min: 1
     max: 1000
 }
-```
 
-```jadpo check project=line-total
 /// Total for one order line before discounts.
 function stock_needed(per_pack: Stock, packs: Quantity) -> Stock {
     var total: Stock = Stock(per_pack * packs)
     return total
 }
+
+test "six packs of four need 24" {
+    assert stock_needed(4, 6) == 24
+}
 ```
+
+`Int` is built in. `Stock`, `Quantity` and `stock_needed` are defined here.
 
 And an action, which loads a todo, changes it and returns a view of it:
 

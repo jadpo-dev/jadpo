@@ -5,12 +5,13 @@ Tests in Jadpo sit beside the code they test, and each one gets a
 PostgreSQL database of its own. Test files end `.test.jadpo`, and a
 test's database is made from your migrations and thrown away after it,
 so tests never see each other's data and can run in any order. This guide tests a reading list:
-an action on its own, then its routes, signed in as different people.
+a calculation first, then an action on its own, then its routes, signed in as different people.
 
 You start from an app where each `Reader` signs in and keeps a list of
 `Entry` records, which only they may read and change, served at
 `POST /entries`, `GET /entries` and `POST /entries/{entry_id}/finish`.
-The action it tests is this one:
+[Add sign-in](05-add-sign-in.md) and [Query records](03-query-records.md) show how to
+write those. The first test needs none of it.
 
 ```jadpo check project=guide-tests file=app.jadpo hidden
 use reading/entities { Reader }
@@ -166,27 +167,53 @@ type ReaderExists = Failure {
 }
 ```
 
-`domains/reading/actions/finish_entry.jadpo`:
+## Test a calculation
 
-```jadpo check project=guide-tests file=domains/reading/actions/finish_entry.jadpo
-use reading/entities { Entry, EntryNotFound }
-use reading/types { EntryView }
+The smallest test checks an action that only works something out, so it touches no
+stored record and no route. An action takes and returns named types. `PageCount` and
+`LongRead` are this app's names for what its values mean, and `Int` and `Bool` are
+built into Jadpo.
 
-/// Marks a book on the list as read, now.
-action finish_entry(entry_id: Entry.id) fails EntryNotFound -> EntryView {
-    var entry: Entry = attempt Entry.get(entry_id)
-    var finished: Entry = Entry.update(entry) {
-        set: {
-            finished_at: clock.now
-        }
-    }
-    return EntryView {
-        id: finished.id
-        title: finished.title
-        finished_at: finished.finished_at
-    }
+`domains/reading/types/page_count.jadpo`:
+
+```jadpo check project=guide-tests file=domains/reading/types/page_count.jadpo
+/// How many pages a book has.
+type PageCount = Int {
+    min: 1
 }
 ```
+
+`domains/reading/types/long_read.jadpo`:
+
+```jadpo check project=guide-tests file=domains/reading/types/long_read.jadpo
+/// Whether a book takes a while to read.
+type LongRead = Bool {}
+```
+
+`domains/reading/actions/is_long_read.jadpo`:
+
+```jadpo check project=guide-tests file=domains/reading/actions/is_long_read.jadpo
+use reading/types { LongRead, PageCount }
+
+/// Whether a book of `pages` pages is a long read.
+action is_long_read(pages: PageCount) -> LongRead {
+    return LongRead(pages > 500)
+}
+```
+
+A test sits beside what it tests, in a file ending `.test.jadpo`, and calls it without
+importing it.
+
+`domains/reading/actions/is_long_read.test.jadpo`:
+
+```jadpo check project=guide-tests file=domains/reading/actions/is_long_read.test.jadpo
+test "a book over 500 pages is a long read" {
+    assert is_long_read(800)
+}
+```
+
+- A test's name is a sentence saying what it proves.
+- `assert` takes any condition.
 
 ## Make the data a test starts from
 
@@ -233,6 +260,30 @@ fixture an_entry(reader: Reader, title: EntryTitle) -> Entry {
 
 ## Test an action
 
+The action to test marks a book on the list as read:
+
+`domains/reading/actions/finish_entry.jadpo`:
+
+```jadpo check project=guide-tests file=domains/reading/actions/finish_entry.jadpo
+use reading/entities { Entry, EntryNotFound }
+use reading/types { EntryView }
+
+/// Marks a book on the list as read, now.
+action finish_entry(entry_id: Entry.id) fails EntryNotFound -> EntryView {
+    var entry: Entry = attempt Entry.get(entry_id)
+    var finished: Entry = Entry.update(entry) {
+        set: {
+            finished_at: clock.now
+        }
+    }
+    return EntryView {
+        id: finished.id
+        title: finished.title
+        finished_at: finished.finished_at
+    }
+}
+```
+
 An action test calls the action directly, as code does. `clock:` fixes
 the time the test runs at, so a value worked out from `clock.now` can be
 checked exactly:
@@ -253,10 +304,9 @@ test "finishing a book records when" {
 }
 ```
 
-- A test's name is a sentence saying what it proves.
 - `attempt` passes the action's failures on: a test that hits one fails,
   naming it.
-- `assert` takes any condition. `assert finish_entry(id) fails
+- `assert finish_entry(id) fails
   EntryNotFound` passes only when the call fails with that failure.
 
 ## Test a route
@@ -334,7 +384,7 @@ jadpo test
 ```
 
 ```text
-tested: 4 passed, 1 action test, 3 route tests
+tested: 5 passed, 2 action tests, 3 route tests
 ```
 
 Jadpo works out each test's kind from what it calls, and counts each
@@ -357,7 +407,7 @@ FAIL  finishing a book records when
   rule: test.assertion_failed
   rerun: jadpo test domains/reading/actions/finish_entry.test.jadpo:10 --seed 1
 
-test failed: 1 failed, 3 passed, 1 action test, 3 route tests
+test failed: 1 failed, 4 passed, 2 action tests, 3 route tests
 ```
 
 To run fewer tests, name a file, `jadpo test <file>`, or a test,
