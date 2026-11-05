@@ -352,6 +352,12 @@ fn a_model_answers_only_as_a_type_json_from_it_can_be() {
             "domains/support/actions/pick.jadpo semantic.ai_output_type: A model can't answer as `Picked`"
         ]
     );
+    assert_eq!(
+        refused(with("FileContents", "FileContents")),
+        [
+            "domains/support/actions/pick.jadpo semantic.ai_output_type: A model can't answer as `Picked`"
+        ]
+    );
     let secret = with("Password", "Password");
     assert!(
         secret.iter().any(|problem| problem.contains(

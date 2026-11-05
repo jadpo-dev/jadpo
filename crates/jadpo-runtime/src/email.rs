@@ -114,9 +114,9 @@ async fn rendered(
         if file == Value::None {
             continue;
         }
-        let Some(stored) = crate::files::stored(&file) else {
+        if crate::files::stored(&file).is_none() {
             return Err(defect(ctx, "an attachment that isn't a stored file"));
-        };
+        }
         let content = match read_whole(ctx, &file).await {
             Done::Value(bytes) => bytes,
             Done::Failed(failure) => return Err(Outcome::Failed(failure)),
@@ -130,14 +130,15 @@ async fn rendered(
             .get("type")
             .and_then(crate::files::media_type)
             .unwrap_or("application/octet-stream");
-        let file_name = match file.get("name") {
-            Some(Value::Text(name)) => name.to_string(),
-            _ => stored
-                .key
-                .rsplit('/')
-                .next()
-                .unwrap_or(&stored.key)
-                .to_string(),
+        // Named from the email's field and the file's type when it has no
+        // name of its own, so the recipient never sees any of its key.
+        let file_name = match (
+            file.get("name"),
+            file.get("type").and_then(crate::files::extension),
+        ) {
+            (Some(Value::Text(name)), _) => name.to_string(),
+            (_, Some(extension)) => format!("{name}.{extension}"),
+            (_, None) => name.clone(),
         };
         attachments.push(Value::record(
             ATTACHMENT,

@@ -611,6 +611,7 @@ fn an_attachment_is_read_from_its_store_and_sent_beside_the_body() {
     let cards = Rc::new(MemoryFiles::new());
     let host = faked(&harness, server.port, &cards);
     let card = cards.keep("cards", b"%PDF-1.7 the card", "pdf");
+    let key = jadpo_runtime::files::stored(&card).expect("a file").key;
     Runtime::new().expect("runtime").block_on(async {
         let (sent, work) = act(
             &harness,
@@ -636,8 +637,18 @@ fn an_attachment_is_read_from_its_store_and_sent_beside_the_body() {
             card_head.starts_with("Content-Type: application/pdf"),
             "{card_head}"
         );
-        assert!(card_head.contains("Content-Disposition: attachment; filename*=utf-8''"));
+        // Named from the email's field and the file's type, with no part of
+        // the file's key anywhere in what went out.
+        assert!(
+            card_head
+                .trim_end()
+                .ends_with("Content-Disposition: attachment; filename*=utf-8''card.pdf"),
+            "{card_head}"
+        );
         assert_eq!(card, "%PDF-1.7 the card");
+        for part in key.split('/') {
+            assert!(!received[0].data.contains(part), "{part} in the message");
+        }
     });
 }
 
@@ -966,12 +977,7 @@ fn an_attachment_goes_through_a_mail_package_in_base64() {
     let attachment = &body["attachments"][0];
     assert_eq!(attachment["content"], "JVBERi0xLjcgdGhlIGNhcmQ=");
     assert_eq!(attachment["content_type"], "application/pdf");
-    assert!(
-        attachment["filename"]
-            .as_str()
-            .is_some_and(|name| !name.is_empty()),
-        "{attachment}"
-    );
+    assert_eq!(attachment["filename"], "card.pdf", "{attachment}");
 }
 
 /// The package's failures the mapping names are an email's: a message

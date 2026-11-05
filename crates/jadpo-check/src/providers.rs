@@ -928,6 +928,18 @@ impl Reader<'_> {
                 crate::types::decl::file_taken(&what, &held, span.clone())
             });
         }
+        // A file's bytes go out as Base64 (area 16, "`FileContents`"), but
+        // nothing reads an answer as them.
+        if key != "input"
+            && let Some(held) =
+                crate::types::decl::held_contents(self.table, &resolved, &mut Vec::new())
+        {
+            out.push(crate::types::decl::contents_taken(
+                &format!("`{}`'s `{key}:`", self.operation),
+                &held,
+                span.clone(),
+            ));
+        }
         let shown = match &resolved {
             Ty::Named(name) if !name.contains('.') => format!("{}.{name}", self.package),
             _ => format!("{}.{written}", self.package),
