@@ -15,14 +15,20 @@ write your code makes, so you never write a permission check yourself.
 
 This todo may be created, read, changed and deleted only by its owner:
 
-```jadpo fragment
-// domains/todos/entities/todo.jadpo
+`domains/todos/entities/todo.jadpo`:
+
+```jadpo check project=policy-first file=domains/todos/entities/todo.jadpo
+use todos/entities { User }
+
+/// Something to do, belonging to one person.
 entity Todo {
     id: Uuid
     owner_id: User.id {
         on_delete: OnDelete.restricted
     }
-    title: TodoTitle
+    title: Text {
+        max_length: 200
+    }
 
     policy: {
         create: [owner_id]
@@ -36,6 +42,43 @@ entity Todo {
 `owner_id` is a reference to a `User`, so the person it points to is the
 one let in. A caller no list names is refused, and a todo they may not
 read behaves as if it didn't exist ([When policy says no](#when-policy-says-no)).
+
+`entity`, `policy:`, `Uuid`, `Text` and `OnDelete` are built into Jadpo.
+`Todo` and `User` are your app's own, and `use` brings `User` in from its
+own file. Your app says which entity is a person in `app.jadpo`, which is
+what lets a list mean "the signed-in user"
+([The principal](08-identity.md#the-principal)):
+
+`domains/todos/entities/user.jadpo`:
+
+```jadpo check project=policy-first file=domains/todos/entities/user.jadpo
+/// A person with an account.
+entity User {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [id]
+    }
+}
+```
+
+`app.jadpo`:
+
+```jadpo check project=policy-first file=app.jadpo migrate=initial
+use todos/entities { User }
+
+application {}
+
+principal {
+    user: {
+        subject: User.email
+    }
+}
+```
 
 Each entry in a list names who it lets in, in one of four ways:
 

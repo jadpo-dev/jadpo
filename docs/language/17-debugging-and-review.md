@@ -46,6 +46,108 @@ because the console worked it out.
 Most of this isn't built yet; [What is built](#what-is-built) says which
 parts are.
 
+### A request in `jadpo dev`
+
+`jadpo dev` runs your app and prints one line for each request, with its
+request id, its status and how long it took, so it is where most debugging
+starts. Here is a small app with one route, which stores nothing and which
+anyone may call:
+
+```jadpo check project=debugging-first file=app.jadpo hidden
+application {}
+```
+
+`domains/todos/routes/todos.jadpo`:
+
+```jadpo check project=debugging-first file=domains/todos/routes/todos.jadpo
+use todos/types { NewTodo, TodoView }
+use todos/actions { add_todo }
+
+/// The todo list.
+routes Todos {
+    prefix: /todos
+
+    /// Adds a todo.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: NewTodo
+        output: TodoView
+        run: add_todo(input)
+    }
+}
+```
+
+`domains/todos/types/new_todo.jadpo`:
+
+```jadpo check project=debugging-first file=domains/todos/types/new_todo.jadpo
+/// What a caller sends to add a todo.
+type NewTodo = Input {
+    title: Text
+}
+```
+
+`domains/todos/types/todo_view.jadpo`:
+
+```jadpo check project=debugging-first file=domains/todos/types/todo_view.jadpo
+/// A todo, as the app sends it back.
+type TodoView = Output {
+    title: Text
+    done: Bool
+}
+```
+
+`domains/todos/actions/add_todo.jadpo`:
+
+```jadpo check project=debugging-first file=domains/todos/actions/add_todo.jadpo
+use todos/types { NewTodo, TodoView }
+
+/// Builds the todo and sends it back. It stores nothing.
+action add_todo(input: NewTodo) -> TodoView {
+    return TodoView {
+        title: input.title
+        done: false
+    }
+}
+```
+
+`policy.jadpo`:
+
+```jadpo check project=debugging-first file=policy.jadpo
+use todos
+
+policy {
+    actions: {
+        todos.add_todo: [Access.public]
+    }
+}
+```
+
+`RouteAuthentication`, `Access`, `Text` and `Bool` are built into Jadpo, and
+every other name is declared here. Run `jadpo api update` once, then
+`jadpo dev`, and send it two requests:
+
+```sh
+curl -X POST http://localhost:3000/todos \
+  -H 'content-type: application/json' -d '{"title": "Buy milk"}'
+curl -X POST http://localhost:3000/todos \
+  -H 'content-type: application/json' -d '{"title": 5}'
+```
+
+```text
+$ jadpo dev
+jadpo dev, started 02:47:52
+listening on http://localhost:3000
+    routes  2 routes
+serving: saves reload, press ctrl-c to quit
+req_4035  POST /todos                        200   6 ms   127.0.0.1
+req_beb8  POST /todos                        422 invalid_input   0 ms   127.0.0.1
+```
+
+The second title isn't text, so the app refused it with a 422 and said why.
+Its line shows the start of the request's id, which the caller also has in
+the `x-request-id` header and an error's `request_id`, so a report from a
+caller leads to the line.
+
 ## Errors point at the `.jadpo` line
 <!-- topic: errors-point-at-the-jadpo-line -->
 

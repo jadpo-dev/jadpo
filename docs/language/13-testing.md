@@ -64,55 +64,55 @@ close to their code, and scenarios can't depend on a domain's internals.
 
 A test is a sentence that names it, then a body of ordinary code. In the
 body, `assert` fails the test when its condition is false. Here a test
-checks a function that says whether a todo is overdue:
+checks an action that says whether a todo is overdue:
 
 ```jadpo check project=writing-a-test file=app.jadpo hidden
 application {}
 ```
 
-```jadpo check project=writing-a-test file=domains/planning/types/due_at.jadpo hidden
-type DueAt = Instant {}
-```
+`domains/planning/actions/is_overdue.test.jadpo`:
 
-```jadpo check project=writing-a-test file=domains/planning/types/overdue.jadpo hidden
-type Overdue = Bool {}
-```
-
-```jadpo check project=writing-a-test file=domains/planning/libraries/due_dates.jadpo hidden
-use planning/types { DueAt, Overdue }
-
-library due_dates {
-    /// Whether a todo due at `due` is overdue at `now`.
-    function is_overdue(due: DueAt, now: DueAt) -> Overdue {
-        return Overdue(due < now)
-    }
-}
-```
-
-```jadpo check project=writing-a-test file=domains/planning/actions/remind_if_overdue.jadpo hidden
-use planning/types { DueAt, Overdue }
-use planning/libraries { due_dates }
-
-action remind_if_overdue(due: DueAt, now: DueAt) -> Overdue {
-    return due_dates.is_overdue(due, now)
-}
-```
-
-```jadpo check project=writing-a-test file=domains/planning/libraries/due_dates.test.jadpo
-// domains/planning/libraries/due_dates.test.jadpo
+```jadpo check project=writing-a-test file=domains/planning/actions/is_overdue.test.jadpo
 use planning/types { DueAt }
 
 test "a todo due yesterday is overdue" {
     var due: DueAt = "2026-01-14T12:00:00Z"
     var now: DueAt = "2026-01-15T12:00:00Z"
-    assert due_dates.is_overdue(due, now)
+    assert is_overdue(due, now)
 }
 ```
 
-`due_dates` is a library in the `planning` domain, and `is_overdue` is one
-of its functions. `DueAt` is the domain's type for a due date, an
-`Instant`. The test sits beside the library's file, so it calls the
-library without importing it.
+The test sits beside the action's file, so it calls `is_overdue` without
+importing it. `test` and `assert` are built in. `DueAt` and `Overdue` are
+your app's own types, each brought in by a `use` line from its file, and
+here is everything the test uses:
+
+`domains/planning/actions/is_overdue.jadpo`:
+
+```jadpo check project=writing-a-test file=domains/planning/actions/is_overdue.jadpo
+use planning/types { DueAt, Overdue }
+
+/// Whether a todo due at `due` is overdue at `now`.
+action is_overdue(due: DueAt, now: DueAt) -> Overdue {
+    return Overdue(due < now)
+}
+```
+
+`domains/planning/types/due_at.jadpo`:
+
+```jadpo check project=writing-a-test file=domains/planning/types/due_at.jadpo
+/// When a todo is due.
+type DueAt = Instant {}
+```
+
+`domains/planning/types/overdue.jadpo`:
+
+```jadpo check project=writing-a-test file=domains/planning/types/overdue.jadpo
+/// Whether a todo is past its due time.
+type Overdue = Bool {}
+```
+
+`jadpo test` runs it.
 
 ### The sentence names the test
 
