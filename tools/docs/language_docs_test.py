@@ -1753,6 +1753,38 @@ class ReleaseLine(unittest.TestCase):
         self.assertEqual([p.split(': ')[0] for p in problems], ['page.md:1', 'page.md:3', 'page.md:4'], problems)
         self.assertIn('write `as `application { jadpo: "X.Y" }``', problems[0])
 
+    def test_a_page_naming_any_release_in_a_log_line_or_a_status_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            page = root / 'page.md'
+            page.write_text('{"build":"b_1","compiler":"0.1.0","event":"runtime.started"}\n'
+                            '  "compiler": "0.4.0",\n'
+                            '| Which jadpo runs | Built in 0.1.0: every `jadpo` runs the release. |\n'
+                            'It was added in Jadpo 0.1.0.\n')
+            problems = docs.check_release_line([page], '0.3', '0.3.0', root)
+        self.assertEqual([p.split(': ')[0] for p in problems], ['page.md:1', 'page.md:2', 'page.md:3', 'page.md:4'],
+                         problems)
+        self.assertIn('write `"compiler":"X.Y.Z"`', problems[0])
+        self.assertIn('write `Built`', problems[2])
+
+    def test_a_release_a_page_means_to_name_is_left_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            page = root / 'page.md'
+            page.write_text('{"compiler":"X.Y.Z","event":"runtime.started"}\n'
+                            '  "compiler": "X.Y.Z",\n'
+                            '| Formatter | Built: one member per line. |\n'
+                            'It is built in Rust, and built in 2 minutes.\n'
+                            '  |      ^^^^ standard since Jadpo 0.1.0\n'
+                            'Jadpo 0.1.0 added the standard type `Uuid`.\n'
+                            'The lock\'s first line, `jadpo version 0.1.2`, and semantic versioning from 0.1.0.\n'
+                            '{"openapi":"3.1.0"}, `"version":"1.2.0"`, a field added since 2.0.0\n')
+            self.assertEqual(docs.check_release_line([page], '0.3', '0.3.0', root), [])
+
+    def test_output_shows_the_running_release_in_a_log_line_as_a_placeholder(self):
+        self.assertEqual(docs.normalised('{"compiler":"0.3.0","event":"runtime.started"}\n'),
+                         '{"compiler":"X.Y.Z","event":"runtime.started"}\n')
+
 
 if __name__ == '__main__':
     unittest.main()

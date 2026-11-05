@@ -703,7 +703,6 @@ sees](12-jobs-and-events.md#what-an-operator-sees)).
 | Command | Does |
 |---|---|
 | `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries |
-| `jadpo flags` | Lists feature flags; `set`, `reset`, `remove` |
 | `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` |
 
 ### `jadpo deliveries`
@@ -738,51 +737,6 @@ unfinished multi-step action recorded, never a request, an answer or a
 key, and the one thing to do. `retry <id> --not-done` sends again a step
 that is in doubt or failed, under its next key generation. `abandon <id>`
 gives the run up ([Several changing calls through a package](11-integrations.md#several-changing-calls-through-a-package)).
-
-### `jadpo flags`
-
-Changes who gets which value of a feature flag while the app runs, and
-removes a flag from the source
-([Feature flags](16-built-in-services.md#feature-flags)). `flag` is a
-synonym, and it takes `--json`.
-
-- `jadpo flags`, or `list`, is a table of each flag: everyone's value,
-  how many users are named, its shares, the day it last changed and its
-  state: `○ default` for a flag never changed, `● rolling out` while
-  callers get different values, `● true for everyone` once one value
-  holds, and `✓ ready to remove` when it has held for seven days. A
-  footer and, for the first flag ready to remove, its `remove` command
-  follow. It succeeds whatever it lists.
-- `set <flag> [<value>]` changes one part of the state and leaves the
-  rest: with no option, everyone's value; `--users <id>,…` the named
-  users'; `--percent <n>` one share, `0` removing the shares; `--split
-  <value>=<n>,…` a share for each value. A `Bool` flag's value is
-  `true` when an option is given without one. It shows what the flag
-  gave before and gives now, who made the change and that every server
-  has it within ten seconds.
-- `reset <flag>` gives everyone the `default:` again; with `--users` it
-  stops naming those users.
-- `remove <flag> --keep <value>` rewrites the source as if the flag had
-  always held that value, lists every change file by file, and checks
-  the result, undoing it when it doesn't check
-  ([Flag rules: changing, listing, removing](16-built-in-services.md#flag-rules-changing-listing-removing)).
-
-```text
-$ jadpo flags set new_checkout --percent 10
-✓ Set `new_checkout`
-    was       false for everyone (the default)
-    now       true for 10% of users; false (the default) for everyone else
-    logged    sam · role app_owner
-    applies   within 10 s, on every server
-```
-
-Each change writes a row of `jadpo_flag_changes` in the same statement,
-with the operator's name and the database role, as `jadpo deliveries`
-does. The database is `--url`'s, the connection's setting's, or a
-running `jadpo dev`'s; there is no `--env` flag. An unknown action,
-flag, value, user or share is `cli.flags_arguments`, with the nearest,
-and a database it can't read or a flag that changed meanwhile is
-`flags.unavailable`.
 
 ### `jadpo schedules`
 
@@ -1166,14 +1120,61 @@ Not built yet:
 ## Commands for services, calls, email and stored data
 <!-- topic: commands-for-services-calls-email-and-stored-data -->
 
-These commands show what your app sent outside while you develop it, the
-provider calls and the email, and check a deploy before it happens.
+These commands change a feature flag while your app runs, show what your app
+sent outside while you develop it, the provider calls and the email, and check a
+deploy before it happens.
 
 | Command | Does |
 |---|---|
+| `jadpo flags` | Lists feature flags; `set`, `reset`, `remove` |
 | `jadpo calls` | The development call log |
 | `jadpo email` | The dev inbox and the sending domain's records |
 | `jadpo runs unfinished --build <build id>` | Lists the multi-step runs a deploy would stop |
+
+### `jadpo flags`
+
+Changes who gets which value of a feature flag while the app runs, and
+removes a flag from the source
+([Feature flags](16-built-in-services.md#feature-flags)). `flag` is a
+synonym, and it takes `--json`.
+
+- `jadpo flags`, or `list`, is a table of each flag: everyone's value,
+  how many users are named, its shares, the day it last changed and its
+  state: `○ default` for a flag never changed, `● rolling out` while
+  callers get different values, `● true for everyone` once one value
+  holds, and `✓ ready to remove` when it has held for seven days. A
+  footer and, for the first flag ready to remove, its `remove` command
+  follow. It succeeds whatever it lists.
+- `set <flag> [<value>]` changes one part of the state and leaves the
+  rest: with no option, everyone's value; `--users <id>,…` the named
+  users'; `--percent <n>` one share, `0` removing the shares; `--split
+  <value>=<n>,…` a share for each value. A `Bool` flag's value is
+  `true` when an option is given without one. It shows what the flag
+  gave before and gives now, who made the change and that every server
+  has it within ten seconds.
+- `reset <flag>` gives everyone the `default:` again; with `--users` it
+  stops naming those users.
+- `remove <flag> --keep <value>` rewrites the source as if the flag had
+  always held that value, lists every change file by file, and checks
+  the result, undoing it when it doesn't check
+  ([Flag rules: changing, listing, removing](16-built-in-services.md#flag-rules-changing-listing-removing)).
+
+```text
+$ jadpo flags set new_checkout --percent 10
+✓ Set `new_checkout`
+    was       false for everyone (the default)
+    now       true for 10% of users; false (the default) for everyone else
+    logged    sam · role app_owner
+    applies   within 10 s, on every server
+```
+
+Each change writes a row of `jadpo_flag_changes` in the same statement,
+with the operator's name and the database role, as `jadpo deliveries`
+does. The database is `--url`'s, the connection's setting's, or a
+running `jadpo dev`'s; there is no `--env` flag. An unknown action,
+flag, value, user or share is `cli.flags_arguments`, with the nearest,
+and a database it can't read or a flag that changed meanwhile is
+`flags.unavailable`.
 
 ### `jadpo calls`
 
@@ -1897,16 +1898,20 @@ rounding.half_even   shared/libraries/rounding.jadpo:4
 - **`jadpo domain rename`, `split` and `merge`**: move files and update
   every call. A new or renamed domain appears in the approval review
   ([Project layout and modules](01-project-layout-and-modules.md)).
-- **The Jadpo agent skill** (`skills/jadpo-agent/SKILL.md`): tells an agent
-  to run `jadpo check --json` after edits, read the catalogues before
-  adding code, and run `jadpo impact <name>` before changing or removing
-  anything shared or public. It points at these pages for syntax.
-  - It gives the routine for agents working in parallel workspaces: before
+- **The Jadpo agent skill** (`skills/jadpo/SKILL.md` in the docs bundle, and
+  `https://jadpo.dev/.well-known/agent-skills/jadpo/SKILL.md`, which
+  `https://jadpo.dev/llms.txt` links): tells an agent to read the primer, find
+  the page for its task, run `jadpo check --json` and `jadpo test --json` after
+  each connected change, and report a bug in Jadpo through you. It points at
+  these pages for syntax. Three things are still to go in it:
+  - Read the catalogues before adding code, and run `jadpo impact <name>`
+    before changing or removing anything shared or public.
+  - The routine for agents working in parallel workspaces: before
     pushing, merge `main`, run `jadpo check` (it builds nothing), fix any
     clash, then push. Private functions and types need only be unique
     within their domain, so two domains' helpers don't clash. A name
     another agent took in the same domain, or across the project, does.
-  - It gives the rule for a fixed value: if a deployment could ever need a
+  - The rule for a fixed value: if a deployment could ever need a
     different value it is a setting in `config.jadpo`, otherwise a
     `constant` ([A constant or a setting](03-logic.md#a-constant-or-a-setting)).
     Never both, so a `default:` never names a constant. A constant that
@@ -1918,8 +1923,9 @@ rounding.half_even   shared/libraries/rounding.jadpo:4
   must follow this.
 
 Not built yet: the schema and query reports, `jadpo impact`, the
-`jadpo domain` commands, the agent skill and generated CI. The
-catalogues and the similar-helper check are built.
+`jadpo domain` commands, those three parts of the agent skill and generated
+CI. The catalogues, the similar-helper check and the rest of the skill are
+built.
 
 ## Suggestions
 <!-- topic: suggestions -->
@@ -3445,7 +3451,7 @@ Each row says what is built and what is specified but not built yet.
 | Command help | Built: every command has `--help` with examples, `jadpo help [command]` explains one, `jadpo help <rule>` prints a rule's page offline, and `jadpo help --json` describes them all. |
 | Project path | Built: every command finds the project by walking up to `app.jadpo`, so a path is optional; run from outside the project, printed paths start with the project as typed. |
 | Scaffold | Built: `jadpo new <name>` writes the fixed root on this `jadpo`'s release line with its project token, the `hello` domain (one route, its action, its policy line, its API record and a route test), `AGENTS.md`, `.gitignore` and `.gitattributes`, passing `check`, `fmt --check` and `test` as written, and refuses a folder that holds anything, with `--json`. The line an app declares is checked: `application { jadpo: "X.Y" }`, with `toolchain.version_newer`, `toolchain.version_older` and `toolchain.version_invalid` ([The root](01-project-layout-and-modules.md#the-root)). |
-| Which jadpo runs | Built in 0.1.0: every `jadpo` runs the release a project's line or `jadpo.lock` pin names, kept in the cache or fetched from GitHub's releases, its archive checked against its published SHA-256 and its GitHub artifact attestation (Sigstore's verifier, with the public-good trusted root carried in the binary) before it runs, and refuses with `toolchain.version_newer` or `toolchain.version_older` when it can't; `jadpo toolchain` lists, removes, pins and unpins, and `JADPO_TOOLCHAIN=local` runs everything with the `jadpo` started. The trusted root is the one this release was built with: no TUF refresh. |
+| Which jadpo runs | Built: every `jadpo` runs the release a project's line or `jadpo.lock` pin names, kept in the cache or fetched from GitHub's releases, its archive checked against its published SHA-256 and its GitHub artifact attestation (Sigstore's verifier, with the public-good trusted root carried in the binary) before it runs, and refuses with `toolchain.version_newer` or `toolchain.version_older` when it can't; `jadpo toolchain` lists, removes, pins and unpins, and `JADPO_TOOLCHAIN=local` runs everything with the `jadpo` started. The trusted root is the one this release was built with: no TUF refresh. |
 | Formatter | Built: one member per line, one blank line between declarations, and `fmt --check` counts the files it read; it keeps `use` lines at the top, sorted, fixes imports inside a project, `--layout` makes promotion moves, and it writes each file's declarations before their use, the primary declaration last. |
 | Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 3) with `durationMs`, project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys, shortened unless `--full` is given; `jadpo test --json` is described in [Testing](13-testing.md) and under `testReport` in `jadpo help --json`. |
@@ -3453,7 +3459,7 @@ Each row says what is built and what is specified but not built yet.
 | Commands | Partly built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe. Not built yet: those in their "Not built yet" notes, `jadpo inspect`, `impact`, `rename`, `domain`, `services`, `dev grants`, `files`, `batches`, `search reindex`, `trace`, `traces`, `metrics`, `logs`, `watch`, `call`, `console`, `mcp`, `replay`, `path`, `privacy requests`, `incident` and `test new --from`. |
 | Language server | Partly built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; and the code actions under [Editor support](#editor-support). Not built yet: rename, which waits for `jadpo rename`. |
 | VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release to the VS Code Marketplace and Open VSX, which publishes through trusted publishing. |
-| Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; `impact`, `domain` and `rename` are not built yet, nor are the agent skill and generated CI. |
+| Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; the agent skill is built, but for the three parts [Tools for agents](#tools-for-agents) lists; `impact`, `domain` and `rename` are not built yet, nor is generated CI. |
 | Suggestions | Partly built: `jadpo suggest` with its six signal kinds and taught signals, the catalogue, accepted findings, `ignore`, `found`, `share`, `suggestions { }` and the committed taught record, `share` against a fake of Jadpo HQ. Not built yet: HQ itself, so a real `share` has nowhere to go. |
 | Review and sign-off | Built: `jadpo check` judging acceptances against the default branch at its merge base, `--before`, `jadpo acceptance new` ([Acceptances](18-records-and-manifest.md#acceptances)) and [`jadpo approval`](#jadpo-approval). |
 | Build-only errors | Built: `jadpo build` for the one deployable an app that declares none has and for declared deployables, with their `toolchain.target_*` errors; its `settings` line, and a Worker's `secrets: { required: [ ] }`, name every setting a deployable reads, its connections' included. |

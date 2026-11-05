@@ -14,7 +14,8 @@ the blocks of its project that are shown between that topic's headings, with an
 empty `application {}` where the project's own is out of sight. The compiler
 decides, so no list of names here can go stale. `jadpo migrate new` and `jadpo
 records update` run as a reader runs them, so a migration or a record is never
-counted as missing.
+counted as missing. A block with `new` starts from what `jadpo new` writes, as a
+reader's project does, so that isn't counted as missing either.
 
 A first example is more than its first block when that block only sets things
 up: a connection in `app.jadpo` compiles alone, and says nothing of the action

@@ -219,7 +219,7 @@ its migrations.
 ```
 
 ```text
-{"address":"0.0.0.0:8080","build":"b_bd8f8b62b3ed","commit":null,"compiler":"0.1.0","deployable":"app","event":"runtime.started","modified":true,"target":"native","trigger":"native","unbuilt":[],"workers":10}
+{"address":"0.0.0.0:8080","build":"b_bd8f8b62b3ed","commit":null,"compiler":"X.Y.Z","deployable":"app","event":"runtime.started","modified":true,"target":"native","trigger":"native","unbuilt":[],"workers":10}
 ```
 
 It writes one line of JSON for each thing worth logging, and listens on
@@ -228,7 +228,7 @@ needs and doesn't have stops it at once, naming the setting but never
 printing a value:
 
 ```text
-{"build":"b_bd8f8b62b3ed","commit":null,"compiler":"0.1.0","deployable":"app","event":"runtime.startup_failed","modified":true,"problems":[{"message":"`DATABASE_URL` isn't set: `database_url` is required, so the app can't start without it.","problem":"setting_missing","setting":"database_url","variable":"DATABASE_URL"}],"target":"native"}
+{"build":"b_bd8f8b62b3ed","commit":null,"compiler":"X.Y.Z","deployable":"app","event":"runtime.startup_failed","modified":true,"problems":[{"message":"`DATABASE_URL` isn't set: `database_url` is required, so the app can't start without it.","problem":"setting_missing","setting":"database_url","variable":"DATABASE_URL"}],"target":"native"}
 ```
 
 Every deployed app answers a health check, for your load balancer or

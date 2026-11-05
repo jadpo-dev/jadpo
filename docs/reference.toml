@@ -951,7 +951,7 @@ commands = ["api", "records", "acceptance", "approval", "declines", "fix", "sugg
 [[group.page.section]]
 id = "commands-for-background-work"
 title = "Commands for background work"
-commands = ["flags", "schedules", "deliveries"]
+commands = ["schedules", "deliveries"]
 
 [[group.page.section]]
 id = "commands-for-packages"
@@ -961,7 +961,7 @@ commands = ["package"]
 [[group.page.section]]
 id = "commands-for-services-calls-email-and-stored-data"
 title = "Commands for services, calls, email and stored data"
-commands = ["calls", "email", "runs"]
+commands = ["flags", "calls", "email", "runs"]
 
 [[group.page.section]]
 id = "commands-for-debugging-editors-and-help"

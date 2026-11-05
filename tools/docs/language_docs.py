@@ -10,7 +10,8 @@ formatted unless the rule is a syntax or import error (`jadpo fmt` fixes
 imports), and be followed by a
 ```text output block holding the exact plain output, which `--bless`
 rewrites. A project with an `app.jadpo` block is checked as a project, with
-the layout rules on; one without is checked as loose files.
+the layout rules on; one without is checked as loose files. A project with a
+`new` block starts from what `jadpo new` writes.
 
 A `check` project that declares tests is also run (docs/compiler-runtime.md
 §2.7): without `expect=`, `jadpo test --json` must pass; with
@@ -94,6 +95,7 @@ import json
 import os
 import re
 import select
+import shutil
 import signal
 import subprocess
 import sys
@@ -211,11 +213,27 @@ def running_release():
 def release_shapes(line, release):
     """Where the running line or release shows, as (pattern, how a page
     writes it): `jadpo:` in `app.jadpo` and a code frame quoting it,
-    `jadpo new`'s status line, and `jadpo --version`."""
+    `jadpo new`'s status line, `jadpo --version`, and a deployable's log
+    line."""
     line, release = re.escape(line), re.escape(release)
     return [(re.compile(rf'jadpo: "{line}"'), LINE_WRITTEN),
             (re.compile(rf'^(\s*)jadpo  {line}$', re.MULTILINE), rf'\1jadpo  {LINE_SHOWN}'),
-            (re.compile(rf'^jadpo {release}$', re.MULTILINE), f'jadpo {RELEASE_SHOWN}')]
+            (re.compile(rf'^jadpo {release}$', re.MULTILINE), f'jadpo {RELEASE_SHOWN}'),
+            (re.compile(rf'"compiler":"{release}"'), f'"compiler":"{RELEASE_SHOWN}"')]
+
+
+# Where a page names a release, whichever it is: the compiler's in a log line
+# or a manifest, and a sentence saying which release something came in. Each
+# goes out of date as the version moves on, and none is the running release
+# for long. Other versions on a page are a package's, a format's or the
+# compiler's own output, and stay.
+A_RELEASE = r'\d+\.\d+\.\d+[^\s",:;)]*'
+ANY_RELEASE_SHAPES = [
+    (re.compile(rf'"compiler":(\s*)"{A_RELEASE}"'), rf'"compiler":\1"{RELEASE_SHOWN}"'),
+    (re.compile(rf'\b(built) (?:in|since) (?:Jadpo |release )*v?{A_RELEASE}', re.IGNORECASE), r'\1'),
+    (re.compile(rf'\b(added|shipped|available|introduced) (?:in|since) (?:Jadpo |release )+v?{A_RELEASE}',
+                re.IGNORECASE), r'\1'),
+]
 
 
 def with_release_line(source):
@@ -237,8 +255,10 @@ def normalised(text):
 
 def check_release_line(files, line, release, root=ROOT):
     """No Markdown file writes the running line or release where a page
-    shows one (docs/writing.md, "The release line"): each would stop
-    checking, or go out of date, when the version moves on."""
+    shows one, nor any release in a log line, a manifest or a sentence
+    saying which release something came in (docs/writing.md, "The release
+    line"): each would stop checking, or go out of date, when the version
+    moves on."""
     problems = []
     for path in files:
         for number, text in enumerate(path.read_text().split('\n'), 1):
@@ -246,6 +266,10 @@ def check_release_line(files, line, release, root=ROOT):
                 if pattern.search(text):
                     problems.append(f'{path.relative_to(root)}:{number}: names this jadpo\'s release, {release}; '
                                     f'write `{pattern.sub(shown, text).strip()}` (docs/writing.md, "The release line")')
+            for pattern, shown in ANY_RELEASE_SHAPES:
+                for found in pattern.finditer(text):
+                    problems.append(f'{path.relative_to(root)}:{number}: names a release, `{found.group(0)}`; '
+                                    f'write `{found.expand(shown)}` (docs/writing.md, "The release line")')
     return problems
 
 
@@ -1111,8 +1135,12 @@ def server_binary():
 def write_project(root, name, blocks):
     """Writes a project's blocks into `root`, in order, making each
     `migrate=` block's migration once the blocks up to it are written;
-    problems found doing it."""
+    problems found doing it. A project with a `new` block starts from what
+    `jadpo new` writes (docs/writing.md, "A page's first example stands
+    alone"), so what it builds on can't drift from the real thing."""
     problems, steps = [], 0
+    if any(block['attrs'].get('new') for block in blocks):
+        problems += write_scaffold(root, name)
     for block in blocks:
         target = root / block['attrs']['file']
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -1125,6 +1153,16 @@ def write_project(root, name, blocks):
             if migrated:
                 problems.append(f'{name}: jadpo migrate new {purpose} failed:\n{said}')
     return problems
+
+
+def write_scaffold(root, name):
+    """What `jadpo new` writes, into `root`; problems found doing it."""
+    with tempfile.TemporaryDirectory() as tmp:
+        code, said = jadpo(['new', 'project'], cwd=tmp)
+        if code:
+            return [f'{name}: jadpo new failed:\n{said}']
+        shutil.copytree(Path(tmp) / 'project', root, dirs_exist_ok=True)
+    return []
 
 
 def run_commands(block, project, home, database=None):
@@ -2911,7 +2949,6 @@ def export_corpus(corpus):
     """Writes each project with tests, as its blocks give it, and its
     `jadpo test --json` document to build/spec-corpus/<page>/<project>/,
     replacing what was there (docs/compiler-runtime.md §2.7)."""
-    import shutil
     # The pages' projects only: tools/docs/examples.py owns examples/.
     if CORPUS.exists():
         for folder in CORPUS.iterdir():

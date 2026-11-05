@@ -1159,10 +1159,21 @@ impl Body<'_> {
             return ty;
         }
         // A program reads none of a stored file's parts, nor of its bytes
-        // (area 16, "What a `File` holds").
-        if let Ty::Opaque(file, args) = &through
+        // (area 16, "What a `File` holds"), nor of a test's passkey device
+        // (area 8), nor of a built-in type no program's value ever has.
+        if let Ty::Opaque(held, args) = &through
             && args.is_empty()
-            && (file == jadpo_std::files::FILE || file == jadpo_std::files::FILE_CONTENTS)
+            && let Some(uses) = match held.as_str() {
+                jadpo_std::files::FILE | jadpo_std::files::FILE_CONTENTS => Some(
+                    " A `File` is kept in a field, read with `store.read` and sent as an email's attachment; `FileContents` is passed on.",
+                ),
+                jadpo_std::http::TEST_PASSKEY => Some(
+                    " A `TestPasskey` is a test's device, given to `test_passkeys.sign_in` and `test_passkeys.confirm`.",
+                ),
+                "ApiChange" | "CredentialScheme" | "PackageSource" | "Page" | "PersonalData"
+                | "Protocol" => Some(""),
+                _ => None,
+            }
         {
             let value = node
                 .expr()
@@ -1171,11 +1182,11 @@ impl Body<'_> {
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_FIELD_ON_NON_RECORD,
-                    format!("`{file}` has no fields"),
+                    format!("`{held}` has no fields"),
                 )
                 .at(span, "no such field")
                 .reason(format!(
-                    "`{value}` is a `{file}`, and a program reads none of what it holds. A `File` is kept in a field, read with `store.read` and sent as an email's attachment; `FileContents` is passed on."
+                    "`{value}` is a `{held}`, and a program reads none of what it holds.{uses}"
                 ))
                 .next(format!("Use `{value}` itself")),
             );

@@ -942,7 +942,7 @@ fn a_failure_after_a_changing_call_is_reported_once_at_the_first() {
     assert_eq!(
         diagnostic.next.as_ref().map(|next| next.text.as_str()),
         Some(
-            "Check the condition before `pay.customers.create`, record what happened and finish in a subscriber of an event `keep` emits, or undo `pay.customers.create` as another step in a `match` arm, or write `decline step.late_failure: \"<why>\"` above it if this is deliberate"
+            "Check the condition before `pay.customers.create`, record what happened and finish in a subscriber of an event `keep` emits, or undo `pay.customers.create` as another step in a `match` arm, or write `decline step.late_failure: \"<why>\"` above the action if this is deliberate"
         )
     );
 }

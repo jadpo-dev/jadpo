@@ -68,6 +68,13 @@ class FirstExamples(unittest.TestCase):
         self.assertEqual([(n['file'], n['hidden']) for n in entry['needed']], [('types.jadpo', True)])
         self.assertEqual(entry['fix'], check.SMALL_BLOCK)
 
+    def test_what_jadpo_new_writes_is_not_something_it_needs(self):
+        uses_greet = 'use hello/actions { greet }\n\nthresholds {\n    /// Stays quick.\n    greeting: {\n' \
+                     '        watches: greet\n        p99: 50ms\n    }\n}\n'
+        file = 'file=domains/hello/monitoring.jadpo'
+        self.assertEqual(self.one(block(f'check project=a {file} new', uses_greet))['verdict'], check.STANDS)
+        self.assertEqual(self.one(block(f'check project=a {file}', uses_greet))['verdict'], check.NEEDS)
+
     def test_a_hidden_empty_application_is_not_something_it_needs(self):
         entry = self.one(block('check project=a file=app.jadpo hidden', EMPTY_APP),
                          block('check project=a file=domains/d/types/count.jadpo', COUNT))

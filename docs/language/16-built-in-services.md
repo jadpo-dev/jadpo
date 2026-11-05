@@ -149,6 +149,10 @@ test "the new checkout takes one page" {
 }
 ```
 
+On a first run, `jadpo migrate new initial` writes the migration and `jadpo
+records update` the records, as `jadpo check`'s `next:` lines say. Commit what
+they write.
+
 ### A flag with named values
 
 ```jadpo check project=feature-flags-enum file=app.jadpo hidden
@@ -426,6 +430,10 @@ action request_demo(input: DemoForm) -> DemoReceived {
     }
 }
 ```
+
+On a first run, `jadpo migrate new initial` writes the migration and `jadpo
+records update` the records, as `jadpo check`'s `next:` lines say. Commit what
+they write.
 
 This limit's window is a minute, which every target can count. A longer one,
 such as `within: 1h`, runs on the native target but not on Workers, whose store
@@ -790,7 +798,7 @@ A store moves bytes in and out and knows nothing of what is inside.
 Formats (CSV, TSV, JSON, JSON Lines) turn bytes into your app's types and
 back, whatever store the bytes came from. Your code joins the two:
 
-- `attempt store.read(file)` returns the file's contents as
+- `store.read(file)` returns the file's contents as
   `FileContents` ([Other built-in types](02-values-and-types.md#other-built-in-types)),
   for passing the bytes on to a provider
   ([`store.read(file)`](#storereadfile)). The format helpers don't accept it. It reads
@@ -1605,9 +1613,9 @@ different paths. A path also shows the branches that ran and finished
 before the failure, which a stack no longer holds.
 
 Path IDs need the compiler's graph to hold the control flow inside each
-callable. Each body's ways are numbered today, and the differential run
-compares the paths each test's bodies took, but no request carries a
-`path` or a `path_key` yet ([What is built](#what-is-built)).
+callable. Each body's ways are numbered today, and the gate compares the
+paths each test's bodies took, run interpreted and compiled, but no request
+carries a `path` or a `path_key` yet ([What is built](#what-is-built)).
 
 ## Monitoring
 <!-- topic: monitoring-thresholds -->
@@ -1629,13 +1637,17 @@ A domain's thresholds are its `thresholds { }`, in
 `domains/<domain>/monitoring.jadpo`. Each is `name: { }` giving one
 thing it watches and its limits, and its `///` line, what it protects,
 is the summary of the alerts made from it. Here one threshold holds an action's
-p99 to 50 ms. `thresholds { }`, `watches:` and `p99:` are built into Jadpo;
-`greeting` is your name for the threshold, and `greet` an action of your app,
-imported by the `use` line.
+p99 to 50 ms.
+
+This builds on a project from [`jadpo new`](14-tooling.md#jadpo-new), which has
+a `hello` domain with an action called `greet` and a route, `POST /hello`, that
+runs it. Add this one file. `thresholds { }`, `watches:` and `p99:` are built
+into Jadpo. `greeting` is your name for the threshold, and the `use` line
+imports `jadpo new`'s `greet`.
 
 `domains/hello/monitoring.jadpo`:
 
-```jadpo check project=monitoring-first file=domains/hello/monitoring.jadpo
+```jadpo check project=monitoring-first file=domains/hello/monitoring.jadpo new
 use hello/actions { greet }
 
 thresholds {
@@ -1647,47 +1659,19 @@ thresholds {
 }
 ```
 
-```jadpo check project=monitoring-first file=app.jadpo hidden
-application {}
-```
-
-`domains/hello/types/greeting.jadpo`:
-
-```jadpo check project=monitoring-first file=domains/hello/types/greeting.jadpo
-/// What a visitor is told.
-type Greeting = Output {
-    salutation: Text
-}
-```
-
-`domains/hello/actions/greet.jadpo`:
-
-```jadpo check project=monitoring-first file=domains/hello/actions/greet.jadpo
-use hello/types { Greeting }
-
-/// Greets a visitor.
-action greet() -> Greeting {
-    return Greeting {
-        salutation: "Hello"
-    }
-}
-```
-
 A threshold can watch a route instead, and hold it to several limits at once.
-The same app, with a public route that runs `greet`. `policy.jadpo` lets anyone
-call the action, which reaches no entity to take its permission from
-([Policy](09-policy.md)).
+This one watches the `POST /hello` route.
 
 `domains/hello/monitoring.jadpo`, with `greeting_route` new:
 
-```jadpo check project=monitoring-thresholds file=domains/hello/monitoring.jadpo
+```jadpo check project=monitoring-thresholds file=domains/hello/monitoring.jadpo new
 use hello/actions { greet }
 
 thresholds {
     /// A visitor is greeted quickly.
     greeting_route: {
         route: {
-            method: HttpMethod.get
+            method: HttpMethod.post
             path: "/hello"
         }
         duration: 800ms
@@ -1701,59 +1685,6 @@ thresholds {
     greeting: {
         watches: greet
         p99: 50ms
-    }
-}
-```
-
-```jadpo check project=monitoring-thresholds file=app.jadpo hidden
-application {}
-```
-
-`policy.jadpo`:
-
-```jadpo check project=monitoring-thresholds file=policy.jadpo
-use hello
-
-policy {
-    actions: {
-        hello.greet: [Access.public]
-    }
-}
-```
-
-```jadpo check project=monitoring-thresholds file=domains/hello/types/greeting.jadpo hidden
-/// What a visitor is told.
-type Greeting = Output {
-    salutation: Text
-}
-```
-
-```jadpo check project=monitoring-thresholds file=domains/hello/actions/greet.jadpo hidden
-use hello/types { Greeting }
-
-/// Greets a visitor.
-action greet() -> Greeting {
-    return Greeting {
-        salutation: "Hello"
-    }
-}
-```
-
-`domains/hello/routes/hello.jadpo`:
-
-```jadpo check project=monitoring-thresholds file=domains/hello/routes/hello.jadpo
-use hello/types { Greeting }
-use hello/actions { greet }
-
-/// Greetings.
-routes Hello {
-    prefix: /hello
-
-    /// Greets whoever calls it.
-    GET / {
-        authentication: RouteAuthentication.none
-        output: Greeting
-        run: greet()
     }
 }
 ```
@@ -1868,24 +1799,12 @@ someone signs up. `EmailMessage`, `Email`, `Locale`, `Driver.smtp` and `emit` ar
 built into Jadpo. Everything else is your app's, shown here, and each `use` line
 imports from another file of it.
 
-`domains/accounts/types/display_name.jadpo`:
-
-```jadpo check project=email-first file=domains/accounts/types/display_name.jadpo
-/// What someone is called.
-type DisplayName = Text {
-    min_length: 1
-    max_length: 80
-}
-```
-
 The email's type, `domains/accounts/emails/welcome_email.jadpo`:
 
 ```jadpo check project=email-first file=domains/accounts/emails/welcome_email.jadpo
-use accounts/types { DisplayName }
-
 /// Sent once a user has signed up.
 type WelcomeEmail = EmailMessage {
-    display_name: DisplayName
+    display_name: Text
 }
 ```
 
@@ -1909,14 +1828,14 @@ translations {
 The record the action keeps, `domains/accounts/entities/user.jadpo`:
 
 ```jadpo check project=email-first file=domains/accounts/entities/user.jadpo
-use accounts/types { DisplayName }
-
 /// Someone with an account.
 entity User {
     id: Uuid
     email: Email
-    display_name: DisplayName
-    locale: Locale
+    display_name: Text {
+        min_length: 1
+        max_length: 80
+    }
 
     policy: {
         create: [Access.public]
@@ -1930,21 +1849,19 @@ once the action commits ([Sending](#sending)):
 
 ```jadpo check project=email-first file=domains/accounts/actions/sign_up.jadpo
 use accounts/entities { User }
-use accounts/types { DisplayName }
 use accounts/emails { WelcomeEmail }
 
 /// Signs someone up, and welcomes them once it is done.
-action sign_up(email: Email, display_name: DisplayName, chosen_locale: Locale) -> User {
+action sign_up(email: User.email, display_name: User.display_name) -> User {
     var user: User = User.create {
         set: {
             email: email
             display_name: display_name
-            locale: chosen_locale
         }
     }
     emit WelcomeEmail {
         to: user.email
-        locale: user.locale
+        locale: Locale.en_gb
         display_name: user.display_name
     }
     return user
@@ -1993,12 +1910,16 @@ A test catches the mail instead of sending it, and reads it from `email.sent`.
 use accounts/entities { User }
 
 test "signing up sends a welcome" {
-    var user: User = sign_up("ada@notes.example", "Ada", Locale.en_gb)
+    var user: User = sign_up("ada@notes.example", "Ada")
     assert user.display_name == "Ada"
     var sent: List<SentEmail> = email.sent
     assert list.any(sent, item -> item.to == "ada@notes.example" and item.subject == "Welcome, Ada")
 }
 ```
+
+On a first run, `jadpo migrate new initial` writes the migration and `jadpo
+records update` the records, as `jadpo check`'s `next:` lines say. Commit what
+they write.
 
 ### HTML, a link and translated words
 
@@ -2009,17 +1930,15 @@ A template calls `{{ translations.<domain>.<message>(...) }}`, which
 takes the email's locale, and the compiler checks every call and
 placeholder against the message types and the email's fields.
 
-`DisplayName`, `User` and `app.jadpo` stay as they are. `config.jadpo` gains one
+`User` and `app.jadpo` stay as they are. `config.jadpo` gains one
 setting, `app_url: Url`, for the link.
 
 `domains/accounts/emails/welcome_email.jadpo`, with `sign_in_link` new:
 
 ```jadpo check project=email-welcome file=domains/accounts/emails/welcome_email.jadpo
-use accounts/types { DisplayName }
-
 /// Sent once a user has signed up.
 type WelcomeEmail = EmailMessage {
-    display_name: DisplayName
+    display_name: Text
     sign_in_link: Url
 }
 ```
@@ -2056,23 +1975,15 @@ config {
 }
 ```
 
-```jadpo check project=email-welcome file=domains/accounts/types/display_name.jadpo hidden
-/// What someone is called.
-type DisplayName = Text {
-    min_length: 1
-    max_length: 80
-}
-```
-
 ```jadpo check project=email-welcome file=domains/accounts/entities/user.jadpo hidden
-use accounts/types { DisplayName }
-
 /// Someone with an account.
 entity User {
     id: Uuid
     email: Email
-    display_name: DisplayName
-    locale: Locale
+    display_name: Text {
+        min_length: 1
+        max_length: 80
+    }
 
     policy: {
         create: [Access.public]
@@ -2086,11 +1997,9 @@ Each thing a template says is one of the domain's messages, a type of your app.
 `domains/accounts/translations/welcome_heading.jadpo`:
 
 ```jadpo check project=email-welcome file=domains/accounts/translations/welcome_heading.jadpo
-use accounts/types { DisplayName }
-
 /// The heading of the welcome email.
 type WelcomeHeading = Message {
-    name: DisplayName
+    name: Text
 }
 ```
 
@@ -2143,21 +2052,19 @@ so a sign-up that is rolled back never sends a welcome. Every
 
 ```jadpo check project=email-welcome file=domains/accounts/actions/sign_up.jadpo
 use accounts/entities { User }
-use accounts/types { DisplayName }
 use accounts/emails { WelcomeEmail }
 
 /// Signs someone up, and welcomes them once it is done.
-action sign_up(email: Email, display_name: DisplayName, chosen_locale: Locale) -> User {
+action sign_up(email: User.email, display_name: User.display_name) -> User {
     var user: User = User.create {
         set: {
             email: email
             display_name: display_name
-            locale: chosen_locale
         }
     }
     emit WelcomeEmail {
         to: user.email
-        locale: user.locale
+        locale: Locale.en_gb
         display_name: user.display_name
         sign_in_link: config.app_url
     }
@@ -2192,7 +2099,7 @@ This test signs someone up and checks the welcome email.
 use accounts/entities { User }
 
 test "signing up welcomes the new user, with a link to sign in" {
-    var user: User = sign_up("ada@notes.example", "Ada", Locale.en_gb)
+    var user: User = sign_up("ada@notes.example", "Ada")
     assert user.display_name == "Ada"
     var sent: List<SentEmail> = email.sent
     assert list.count(sent) == 1
@@ -2379,27 +2286,16 @@ config {
 }
 ```
 
-```jadpo check project=email-button file=domains/accounts/types/display_name.jadpo hidden
-type DisplayName = Text {
-    min_length: 1
-    max_length: 80
-}
-```
-
 ```jadpo check project=email-button file=domains/accounts/emails/welcome_email.jadpo hidden
-use accounts/types { DisplayName }
-
 type WelcomeEmail = EmailMessage {
-    display_name: DisplayName
+    display_name: Text
     sign_in_link: Url
 }
 ```
 
 ```jadpo check project=email-button file=domains/accounts/translations/welcome_heading.jadpo hidden
-use accounts/types { DisplayName }
-
 type WelcomeHeading = Message {
-    name: DisplayName
+    name: Text
 }
 ```
 
@@ -2596,7 +2492,9 @@ built yet; they come with data requests.
 Every email, built in or your app's own, goes through your app's one
 `email:` setting in `application { }`. It names a connection that
 provides `email`: the built-in [SMTP driver](#the-smtp-driver) or any
-package that provides it.
+package that provides it. Jadpo has no Postmark package, so `Postmark.v1` here
+is a package you would write
+([External services](11-integrations.md)).
 
 ```jadpo fragment
 // app.jadpo
@@ -4636,10 +4534,24 @@ bytes are gone from its store is a fault too.
 
 `FileContents` is the file's bytes, and a program reads none of its parts.
 It goes to a provider: an operation's `input:` holding one sends its Base64 in
-the JSON, as `Bytes` is sent. Nowhere else takes it:
+the JSON, as `Bytes` is sent.
+
+Two other places can hold one on its way there:
+
+- **An event's field**, so a subscriber can pass the bytes on. They are kept in
+  the outbox, as Base64 in the event's JSON, until the event is deleted
+  ([What the tick deletes](12-jobs-and-events.md#what-the-tick-deletes)): 24
+  hours after it was emitted once every delivery has succeeded, and for as long
+  as a delivery has failed. An event's JSON is at most 64 KB, so `emit` faults on
+  a larger file.
+- **A failure's `internal:` field**, which stays on the server, so the caller's
+  answer holds none of the bytes.
+
+Nothing else takes it:
 
 | Where | Refused as |
 |---|---|
+| An entity's field | `toolchain.not_built_yet` |
 | An `Input` or a route's placeholder | `type.batch_input` |
 | An operation's `output:` or `wire_output:`, a webhook's event, an event a queue lists | `type.batch_input` |
 | A route's `output:` or a failure's `client:` | `toolchain.not_built_yet` |
@@ -5007,8 +4919,8 @@ The errors this page describes are built with the feature they belong to.
 | Mail packages | Built: a mail package as the connection, partials and `email.sent` ([Mail packages, partials and `email.sent`](#mail-packages-partials-and-emailsent)). |
 | The dev inbox and the health score | Partly built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
 | Rate limits | Partly built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. A generated route's own limits don't appear in OpenAPI's `x-jadpo-rate-limit` or `jadpo routes`, and a magic-link refusal gives `Retry-After` without the `RateLimit` headers. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |
-| The capability seam | Built: the seam every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([How every outside call is made safe](#how-every-outside-call-is-made-safe)). |
-| Files | Partly built. Built: the `files` capability's first part on that seam: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). Not built yet: upload slots, multipart ones included, downloads, fields naming one store of files in entities of two databases, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written; and the `jadpo files` commands (`ls`, `show`, `get`, `put` and `copy`). |
+| Outside calls | Built: the one place in the runtime every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([How every outside call is made safe](#how-every-outside-call-is-made-safe)). |
+| Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). Not built yet: upload slots, multipart ones included, downloads, fields naming one store of files in entities of two databases, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written; and the `jadpo files` commands (`ls`, `show`, `get`, `put` and `copy`). |
 | Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flag rules: declaring, reading, testing](#flag-rules-declaring-reading-testing)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flag rules: changing, listing, removing](#flag-rules-changing-listing-removing)). Not built yet: named tenants, which wait for tenancy to be settled for flags; and a user's erasure reaching their `id` in `jadpo_flags` and `jadpo_flag_changes`, which comes with erasures. |
 | Audit | Partly built: an entity's `audit:`, an entry in the same transaction as each change, `history` with the record's `read` grant and the fields the caller can read, retention by the purge schedule, entries deleted with their record by erasure, `AuditEntryRecorded` to subscribers, and the permissions report's line ([Audit trail](#audit-trail)). Not built yet: what [What the audit trail doesn't keep yet](#what-the-audit-trail-doesnt-keep-yet) lists, each `toolchain.not_built_yet` where it is written, and `publishing`, which comes with outgoing webhooks. |
 | Search | Partly built: on PostgreSQL, `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages; and searching a field of a sensitive category, `toolchain.not_built_yet` in `fields:` until the access records are built. |
@@ -5016,7 +4928,7 @@ The errors this page describes are built with the feature they belong to.
 | Bot protection | Not built yet: the application's `bot_check:` and a route's are `toolchain.not_built_yet` where they are written. |
 | Outgoing webhooks | Not built yet. |
 | The `telemetry:` section | Not built yet: it is `toolchain.not_built_yet` where it is written. Nor is telemetry in the developer console, or `jadpo traces`, `jadpo metrics` and `jadpo logs`, which read it in development. |
-| Path IDs | Not built yet for requests. Each body's ways are numbered, and the differential run compares the paths each test's bodies took, but no request carries a `path` or a `path_key`, and `jadpo path` isn't built. |
+| Path IDs | Not built yet for requests. Each body's ways are numbered, and the gate compares the paths each test's bodies took when it runs them interpreted and compiled, but no request carries a `path` or a `path_key`, and `jadpo path` isn't built. |
 | Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([What Jadpo generates from thresholds](#what-jadpo-generates-from-thresholds)). Not built yet: acting on the per-request limits, which comes with the `telemetry:` section, starting values from the query report and production, and an agent's proposals through MCP. |
 
 ## Errors

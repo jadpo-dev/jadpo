@@ -201,6 +201,8 @@ an agent can write a reason itself: a new decline of one is
 each rule's `security`. Every declinable error's `next:` line ends with
 ", or write `decline <rule>: "<why>"` above it if this is deliberate",
 and a security rule's with ", which a person then accepts".
+`step.late_failure`, which points at a line in an action's body, says "above
+the action" in place of "above it".
 
 ### Which rules can be declined
 
@@ -781,8 +783,7 @@ like an existing one, `jadpo check` says so and names it ("a similar
 library exists: `rounding.half_even` in
 `shared/libraries/rounding.jadpo`"). The compiler also generates a
 catalogue of every library function, with its signature, documentation
-comment and callers, and the Jadpo agent skill tells agents to consult it
-before writing a helper. Agents look things up in the compiler's project
+comment and callers, for an agent to read before writing a helper. Agents look things up in the compiler's project
 map, the language server, rather than browsing folders.
 
 Placement alone can't prevent two copies: two domains may each hold a

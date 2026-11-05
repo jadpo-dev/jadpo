@@ -9,9 +9,10 @@ leaves your machine. This guide sends a new member of a book club a
 welcome email over SMTP.
 
 You start from an app with a `POST /members` route that runs an action called
-`join`, and the `NewMember` and `Joined` types it takes and answers with.
-[Build an API](01-build-an-api.md) shows how to write those. The first email needs
-none of them.
+`join`, the `NewMember` and `Joined` types it takes and answers with, and the
+`Member` entity and migration they use.
+[Build an API](01-build-an-api.md) shows how to write those. The first email
+needs only `Member`, which this guide shows.
 
 ```jadpo check project=guide-email file=domains/club/types/new_member.jadpo hidden
 use club/entities { Member }
@@ -146,7 +147,9 @@ See you at the next meeting.
 ```
 
 An email goes out from an action that stores something, here a new member. `Member`
-is your entity, and `Email`, a field's type, is built into Jadpo.
+is the entity your app starts with, and `Email`, a field's type, is built into Jadpo.
+If you are adding `Member` now, run `jadpo migrate new add_members` too, which writes
+the migration that creates its table.
 
 `domains/club/entities/member.jadpo`:
 
@@ -232,8 +235,8 @@ type WelcomeEmail = EmailMessage {
 }
 ```
 
-Write an HTML template beside the text one, and keep both, because a mail with no
-plain-text part is one of the things `jadpo check` warns about. Inside `{{ }}` a template
+Write an HTML template beside the text one, and keep both, because `jadpo check`
+refuses a mail with no plain-text part, as `email.health_problem`. Inside `{{ }}` a template
 can use the email's fields, translations, `if` and `for`, and nothing else, and every
 value is escaped.
 
@@ -335,8 +338,9 @@ tested: 1 passed, 1 action test
 
 An email address is personal data, and this app now hands one to a mail
 server it couldn't reach before. That is two things a person has to decide,
-so once your app has a commit to compare with, `jadpo check` stops. First
-write the record of the hosts your app can reach:
+so `jadpo check` stops once it has a commit to compare with, which means a
+second commit on `main`, or a branch. First write the record of the hosts your
+app can reach:
 
 ```sh
 jadpo records update
@@ -400,9 +404,12 @@ acceptance {
 }
 ```
 
-`jadpo check` passes, and you commit the acceptance with the change. A
-project with no commit yet gets a note in place of these two errors, saying
-the connection is refused from the next change.
+`jadpo check` passes, and you commit the acceptance with the change.
+
+With no commit yet, or exactly one commit on `main` and your changes uncommitted
+on it, there is nothing to compare with. `jadpo check` then passes, and prints a
+`decision:` note in place of these two errors. The errors appear with a second
+commit or on a branch.
 
 ## Read it in development
 

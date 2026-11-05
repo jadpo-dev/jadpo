@@ -276,7 +276,7 @@ jadpo flags list
   flag          everyone  users  shares    changed     state
   new_checkout  false         –  true 10%  2026-11-04  * rolling out
 
-1 flag: main  /private/var/folders/c3/bd2p8dtn3vs2wk9ld2fmk4k00000gn/T/jadpo-pg-75891-0/jadpo_f811f521d4_0_dev_main
+1 flag: main  /tmp/jadpo-pg/jadpo_dev_main
 ```
 
 It marks a flag "ready to remove" once every caller has had one value for
