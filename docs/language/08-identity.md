@@ -977,7 +977,7 @@ sent ([Starting and ending a session](#starting-and-ending-a-session)).
 ### Providers
 
 Each sign-in provider is a connection in `app.jadpo`'s `connections:`
-([Integrations](11-integrations.md)), and `providers: [...]` names those
+([External services](11-integrations.md)), and `providers: [...]` names those
 connections, as `email:` names its connection. Google, Microsoft and
 other OpenID Connect providers are each `driver: Driver.oidc`, and the
 provider's discovery document gives the rest. GitHub and Apple aren't
@@ -3668,7 +3668,7 @@ accepts none: every route in it is open to anyone, and says so
 
 Webhooks from a provider such as Stripe aren't routes you write, so there's
 nothing here to set. Jadpo generates them, checks each one's signature and
-passes it to your app as an event ([Integrations](11-integrations.md)).
+passes it to your app as an event ([External services](11-integrations.md)).
 
 ## Service credentials
 <!-- topic: service-credentials -->

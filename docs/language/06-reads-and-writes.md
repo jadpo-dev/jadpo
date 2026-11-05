@@ -1838,7 +1838,7 @@ request A: updates todo 7, commits
 Running it again is safe because an action's outside call comes before its
 writes and carries an idempotency key, a value that lets the provider
 recognise a repeat. So a rerun repeats the call harmlessly
-([Integrations](11-integrations.md)). There are two exceptions:
+([External services](11-integrations.md)). There are two exceptions:
 
 - **A changing call with no key.** Once it has gone out, the action isn't
   run again. It stops as `outcome_unknown`, for an operator to look at,
@@ -1934,7 +1934,7 @@ This is done where every outside call goes through Jadpo's runtime
 - **A change reruns the action.** A concurrent change throws the attempt
   away and runs the action again, within the budget of three attempts. Its
   keyed calls take the same steps again, so each repeats under the key it
-  was first sent with ([Integrations](11-integrations.md)). A change found
+  was first sent with ([External services](11-integrations.md)). A change found
   at the commit of a route's or a delivery's held transaction does the
   same. A changing call without a key that went out stops the action as
   `outcome_unknown` instead. A reference to a record loaded before a call,

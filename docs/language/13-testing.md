@@ -934,7 +934,7 @@ reads. A name in a test's `config:` that is no field is
 
 A test never reaches a real provider, the outside service an integration
 talks to. Each provider is described to your app by a package
-([Integrations](11-integrations.md)). Every provider call a test reaches
+([External services](11-integrations.md)). Every provider call a test reaches
 answers through its package's fake, with the operation's generated
 default, unless the test's `fakes:` scripts it.
 
@@ -1317,7 +1317,7 @@ package's fake, a test's `fakes:` scripting an operation's answers in
 order, each a value of its output type, one of its failures by its code,
 or a condition, and batch runs going to their end within the test, two
 items a batch with a restart between batches. Why fakes work this way is in the
-[Integrations design notes](notes/11-integrations.md).
+[External services design notes](notes/11-integrations.md).
 
 ## Shared test data: fixtures
 <!-- topic: shared-test-data-fixtures -->

@@ -1914,7 +1914,7 @@ what to use instead:
 | `geo.buffer` | PostGIS buffers a `geography` by projecting it to a planar system it picks, so the result depends on PROJ's choice and can't be reproduced in Jadpo's code | `within(distance:)` and `Circle` for "near"; a provider package for drawn buffers |
 | Coordinate systems other than WGS84 (British National Grid and the rest) | Accurate conversion needs datum grids (OSTN15 for Great Britain), megabytes of data per system that every wasm32 build would carry | `EastingNorthing` kept with its `Crs`; a provider package later |
 | Straight edges on longitude and latitude (`geometry` columns) | Two edge meanings would split every operation in two; the standard library stores geometries as `geography` | Great circles ([Edges are great circles](#edges-are-great-circles)) |
-| Routing, travel times, geocoding | Network data and paid services | Provider packages ([Integrations](11-integrations.md)) |
+| Routing, travel times, geocoding | Network data and paid services | Provider packages ([External services](11-integrations.md)) |
 | Nearest first without a radius, farthest first, pages by distance | Disagree with `geo.distance` or can't use the index | A radius ([Nearest first inside a radius](#nearest-first-inside-a-radius)) |
 | Simplifying, unions, splitting at the antimeridian | None of the nine kinds of application the standard library is designed for needs them; each is a large algorithm | Later, when one does |
 | `GeometryCollection`, and a `Feature` with no geometry | Rare, and each makes every consumer handle an extra case | A `MultiPolygon`, or the right geometry type |

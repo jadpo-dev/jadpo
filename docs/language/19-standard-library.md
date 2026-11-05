@@ -495,7 +495,7 @@ never through an encoder of its own:
 | Logs and traces | Values as [Logging](04-failures.md#logging) and [Personal data](15-personal-data.md) allow; a personal value's keyed hash covers the UTF-8 of its canonical text, or of its contract JSON where it has no single text form | [Personal data](15-personal-data.md) |
 | Settings | `text.parse`'s canonical text, with the source spellings a setting also takes (`5m`) | [Settings](10-configuration-and-time.md#settings-configjadpo) |
 | Translation placeholders and email | Shown to people by `text.format` (`PresentationText`), never read back | [Translations as messages](10-configuration-and-time.md#translations-as-messages) and [Built-in services](16-built-in-services.md) |
-| Outbound provider calls and webhooks | The contract's JSON for a field without `wire:`; `wire:` only names another encoding a provider uses | [Integrations](11-integrations.md) |
+| Outbound provider calls and webhooks | The contract's JSON for a field without `wire:`; `wire:` only names another encoding a provider uses | [External services](11-integrations.md) |
 | Records and the manifest | Types and defaults as source writes them; no runtime values | [Review and records](18-records-and-manifest.md) |
 | Test fixtures and seeds | Written through the actions they call, so through storage | [Entities, stores and migrations](05-data.md) and [Testing](13-testing.md) |
 | Files | Bytes; the format namespaces above turn them into values | [Files](16-built-in-services.md#files) |
@@ -6701,7 +6701,7 @@ for an ETag or a content key.
 
 There is no MD5 or SHA-1, since both are broken. An outside system that
 still asks for one is reached through a package
-([Integrations](11-integrations.md)). That includes TOTP, whose RFC 6238
+([External services](11-integrations.md)). That includes TOTP, whose RFC 6238
 default is HMAC-SHA-1 and whose per-person secret is a `TotpSecret`, kept
 sealed ([How a secret is kept](#how-a-secret-is-kept)).
 
