@@ -1377,7 +1377,7 @@ rules! {
     TYPE_BATCH_FROM_INVALID: "type.batch_from_invalid", area 12, Error, Agent,
         "A batch's `from:` is something other than a call of a named query that gives a `Page`, such as a query that gives a `List`";
     TYPE_BATCH_INPUT: "type.batch_input", area 12, Error, Agent,
-        "An `Input` or a route placeholder holds a batch type, which only the runtime builds";
+        "An `Input` or a route placeholder holds a batch type or a `File`, or what a provider or a queue sends holds a `File`, which only the runtime builds";
     TYPE_BATCH_ORDER_UPDATABLE: "type.batch_order_updatable", area 12, Declinable, Agent,
         "A batch walks a query ordered by a field an update can change";
     TYPE_BATCH_ROW_INVALID: "type.batch_row_invalid", area 12, Error, Agent,

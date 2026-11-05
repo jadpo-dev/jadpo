@@ -4408,15 +4408,43 @@ for them, its name (none for one `store.put` made), its size and its
 
 Only the runtime builds one: `File { ... }` is `type.not_record`.
 
-No request carries a `File`, which would let it name any file: one in an
-`Input` or a route's placeholder, however deep, is `type.batch_input`.
+Nothing from outside carries a `File`, which would let the sender name any
+file. It is `type.batch_input` in an `Input` or a route's placeholder, in an
+operation's `output:` or `wire_output:`, in a webhook's event, and in an event
+a queue lists.
 
 A route sends a `File` as a signed link, which comes with
 [downloads](#downloading). Until those are built, a `File` in a route's
-`output:` or a failure's `client:` is `toolchain.not_built_yet`, directly or
-through what it holds: a list, an `Object`, an entity's field named as a type,
-a `pick:`, or an `ExportSummary`. A failure's `internal:` fields stay on the
-server and may hold one.
+`output:` or a failure's `client:` is `toolchain.not_built_yet`. A failure's
+`internal:` fields stay on the server and may hold one.
+
+Sending a file to a provider isn't built. A `File` in an operation's `input:`
+or a webhook's `reply:` is `toolchain.not_built_yet`, since the provider would
+get the store and key and none of the bytes
+([Types](11-integrations.md#types)).
+
+Each of these holds however deep: a list, a map, an `Object`, an entity's field
+named as a type, a `pick:`, or an `ExportSummary`, which holds the file it
+wrote. The other ways a value leaves or arrives refuse one too:
+
+| Where | Refused as |
+|---|---|
+| A prompt's field, however deep | `prompt.placeholder_type` |
+| A model's `as:` | `semantic.ai_output_type` |
+| `json.write`, `json.read` and `text.parse` | `type.mismatch` |
+| `crypto.verify_jwt`'s `as:` | `type.mismatch` |
+| A row an export writes | `type.batch_row_invalid` |
+| A row an import reads | `type.batch_input` |
+| An email's template | `email.template_value_invalid` |
+| A message's wording | `translation.field_type` |
+| A setting in `config.jadpo` or a package's `settings:` | `configuration.type_unsupported`, `package.provider_invalid` |
+| A feature flag | `flag.declaration_invalid` |
+| A search's fields | `search.settings_invalid` |
+| A field an audit trail keeps | `toolchain.not_built_yet` |
+
+A `File` field on an `EmailMessage` is the one that leaves: it is sent as an
+attachment, the bytes rather than the store and key
+([Attachments](#attachments)).
 
 A program reads none of its parts yet.
 

@@ -917,6 +917,17 @@ impl Reader<'_> {
                 return None;
             }
         }
+        // A `File` is the store and key its bytes are under: written out, it
+        // tells the provider where a file is kept, and read in, it lets the
+        // provider name any file (area 16, "What a `File` holds").
+        if let Some(held) = crate::types::decl::held_file(self.table, &resolved, &mut Vec::new()) {
+            let what = format!("`{}`'s `{key}:`", self.operation);
+            out.push(if key == "input" {
+                crate::types::decl::file_sent_to_provider(&what, &held, span.clone())
+            } else {
+                crate::types::decl::file_taken(&what, &held, span.clone())
+            });
+        }
         let shown = match &resolved {
             Ty::Named(name) if !name.contains('.') => format!("{}.{name}", self.package),
             _ => format!("{}.{written}", self.package),

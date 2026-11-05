@@ -1,8 +1,9 @@
 # `prompt.placeholder_type`
 
-A prompt sends text: a secret, bytes, a file, a value that may be `none`
-or a second conversation can't be one of its fields, and a conversation
-is sent as the turns, never written in the text.
+A prompt sends text: a secret, bytes, a file (however deep, since an object
+is written as its JSON), a value that may be `none` or a second conversation
+can't be one of its fields, and a conversation is sent as the turns, never
+written in the text.
 
 ```jadpo check project=e-prompt-placeholder-type file=app.jadpo hidden
 application {}
@@ -22,7 +23,7 @@ error: `DescribePhoto.photo` is `Bytes`, which a prompt can't send
   |
 3 |     photo: Bytes
   |     ^^^^^ not text
-  reason: A prompt is text. Images, audio and files are sent by a provider package's own operations, not in a prompt.
+  reason: A prompt is text. Images, audio and other bytes are sent by a provider package's own operations, not in a prompt, and a `File`, even inside an object, is only the store and key its bytes are under.
   next: Remove `photo`, or send what it holds as text (agent)
   rule: prompt.placeholder_type
   help: https://jadpo.dev/docs/errors/prompt.placeholder_type

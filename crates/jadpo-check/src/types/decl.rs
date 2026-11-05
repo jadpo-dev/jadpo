@@ -3082,6 +3082,38 @@ pub(crate) fn file_sent(what: &str, held: &str, span: Span) -> Diagnostic {
     ))
 }
 
+/// `toolchain.not_built_yet`: `held`, in what `what` sends a provider, at
+/// `span`: an operation's `input:`, or a webhook's `reply:`.
+pub(crate) fn file_sent_to_provider(what: &str, held: &str, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TOOLCHAIN_NOT_BUILT_YET,
+        format!("{what} sends a `File`, in `{held}`, and sending one to a provider isn't built yet"),
+    )
+    .at(span, "not built yet")
+    .reason("A `File` is the store and key its bytes are kept under, not the bytes. Until sending a file to a provider is built, the provider would be told where the file is kept and be given none of it.")
+    .next(format!(
+        "Leave `{held}` out of what is sent, and send the fields the provider needs"
+    ))
+}
+
+/// `type.batch_input`: `what`, read from outside the app, at `span`, holds
+/// a `File`, in `held`: an operation's `output:` or `wire_output:`, a
+/// webhook's event, or a queue's. `held` is `File` when `what` is one.
+pub(crate) fn file_taken(what: &str, held: &str, span: Span) -> Diagnostic {
+    let place = if held == jadpo_std::files::FILE {
+        ",".to_string()
+    } else {
+        format!(", in `{held}`,")
+    };
+    Diagnostic::new(
+        &rule::TYPE_BATCH_INPUT,
+        format!("{what} holds a `File`{place} which nothing from outside carries"),
+    )
+    .at(span, "a `File`")
+    .reason("Only the runtime builds a `File`, from the bytes it kept. A `File` is the store and key those bytes are under, so an answer or a message that held one could name another person's file, which the application would then read, attach or delete.")
+    .next("Declare what is really sent, such as an id or a link, and keep the bytes with `put`")
+}
+
 /// `type.batch_input`: `what`, an `Input`'s field or a route's
 /// placeholder, at `span`, holds the batch type `batch`, which only the
 /// runtime builds (area 2), so a request that named one could read or

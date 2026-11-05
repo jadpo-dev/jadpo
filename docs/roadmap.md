@@ -389,6 +389,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **A22 A write background work could never make**: area 9, "Nothing grants it"; area 12, "Runs as the system"; `docs/errors/policy.system_grant_missing.md`; notes for area 9, "Background work and no grant".
 - [x] **A23 The system's lists decided**: area 9, "A list naming only people"; area 12, "Runs as the system"; `docs/errors/policy.system_grant_missing.md`; notes for areas 9 and 12.
 - [x] **A24 A `File` isn't sent or taken by a route until downloads are built**: area 16, "What a `File` holds" and "Downloading"; `toolchain.not_built_yet` and `type.batch_input`; notes for area 16.
+- [x] **A25 A `File` doesn't cross to or from a provider, a queue or a prompt**: area 16, "What a `File` holds"; area 11, "Types" and "Queues"; `toolchain.not_built_yet`, `type.batch_input` and `prompt.placeholder_type`; notes for area 16.
 - [x] **D17a Honest status words**: each area's "What is built" table; [writing guide](writing.md), "A status word"; `status_word_problems` in `tools/docs/agent_guidance.py`.
 - [x] **D17b The reference's manifest**: `docs/reference.toml` and its check; docs/documentation.md, "The reference's manifest".
 - [x] **D17c The navigation designed**: `design/docs-nav.html` in jadpo-website.
@@ -428,7 +429,7 @@ above and before every other unticked chunk.
 
 0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
 R6, G1 to G7 (what the registry application, R7, needs from `jadpo`), the real
-deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15, A20, A21, A22, A23 and A24 (Richard,
+deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15, A20, A21, A22, A23, A24 and A25 (Richard,
 2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
 
