@@ -157,9 +157,9 @@ pub const AWS_KEYS: [&str; 2] = ["service", "target"];
 /// The keys of `runs:`.
 pub const RUNS_KEYS: [&str; 3] = ["image", "port", "asks"];
 
-/// Provider brand names Jadpo reserves for its curated packages (area 11,
-/// "Names"), as folders: the app's own integration can't take one, so
-/// `Stripe` in code always means the official package.
+/// Provider brand names Jadpo keeps for official packages, none of which
+/// exists yet (area 11, "Names"), as folders: the app's own integration
+/// can't take one, so `Stripe` in code can't come to mean two things.
 pub const RESERVED: [&str; 3] = ["stripe", "twilio", "github"];
 
 /// One package the project holds: where it is, and its files.
@@ -1192,7 +1192,7 @@ fn names(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diagnos
             )
             .at(span.clone(), "")
             .reason(format!(
-                "Jadpo reserves the names of the providers it curates packages for, so `{}` in code always means the official package. The app's own integration takes a name of its own.",
+                "Jadpo keeps a few provider names for official packages, none of which exists yet, so `{}` in code can't come to mean two things. The app's own integration takes a name of its own.",
                 home.code
             ))
             .next(format!(

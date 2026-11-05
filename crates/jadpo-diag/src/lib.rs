@@ -1604,13 +1604,18 @@ pub fn find(id: &str) -> Option<&'static Rule> {
 /// What a declinable rule's next step adds: the line that declines it,
 /// and for a security rule that a person accepts the decline.
 pub fn decline_offer(rule: &Rule) -> String {
+    decline_offer_above(rule, "it")
+}
+
+/// As [`decline_offer`], the line going above `above`.
+fn decline_offer_above(rule: &Rule, above: &str) -> String {
     let accepted = if rule.security {
         ", which a person then accepts"
     } else {
         ""
     };
     format!(
-        ", or write `decline {}: \"<why>\"` above it if this is deliberate{accepted}",
+        ", or write `decline {}: \"<why>\"` above {above} if this is deliberate{accepted}",
         rule.id
     )
 }
@@ -1760,6 +1765,19 @@ impl Diagnostic {
         self.next = Some(Next {
             text,
             decides,
+            edits: Vec::new(),
+        });
+        self
+    }
+
+    /// As [`Diagnostic::next`], for a finding in a body, where no `decline`
+    /// can go: the decline line goes above `above`, the declaration around it.
+    pub fn next_declined_above(mut self, text: impl Into<String>, above: &str) -> Diagnostic {
+        let mut text = text.into();
+        text.push_str(&decline_offer_above(self.rule, above));
+        self.next = Some(Next {
+            text,
+            decides: self.rule.decides,
             edits: Vec::new(),
         });
         self

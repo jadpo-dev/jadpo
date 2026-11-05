@@ -1221,7 +1221,7 @@ pub(crate) fn compile(folder: &Path, command: &str) -> Result<Compiled, Option<R
     problems.extend(
         jadpo_check::check(&loaded.db, loaded.project)
             .into_iter()
-            // The curated packages take the names Jadpo reserves for them.
+            // An official package takes a name Jadpo keeps for it.
             .filter(|d| d.rule.id != rule::PACKAGE_RESERVED_NAME.id),
     );
     Ok(Compiled {

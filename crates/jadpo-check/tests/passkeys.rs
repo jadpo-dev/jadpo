@@ -477,6 +477,51 @@ fn a_route_test_drives_the_passkey_routes() {
     );
 }
 
+/// A program reads none of a `TestPasskey`'s parts, and `jadpo check` says
+/// so rather than leaving the test to fault.
+#[test]
+fn a_test_reads_no_part_of_a_test_passkey() {
+    let code = ROUTE_TESTED.replace(
+        "test_passkeys.sign_in(phone)",
+        "test_passkeys.sign_in(phone.nope)",
+    );
+    assert_ne!(code, ROUTE_TESTED);
+    let found = with(SESSION, "        passkey: {}", &code);
+    assert!(
+        has(
+            &found,
+            "type.field_on_non_record: `TestPasskey` has no fields"
+        ),
+        "{found:?}"
+    );
+}
+
+/// Nor of a built-in type no program's value ever has, written as a
+/// parameter's type.
+#[test]
+fn nothing_reads_a_part_of_a_built_in_type_with_none() {
+    for held in [
+        "ApiChange",
+        "CredentialScheme",
+        "PackageSource",
+        "Page",
+        "PersonalData",
+        "Protocol",
+    ] {
+        let code = format!(
+            "/// Reads a part.\naction part(held: {held}) -> Unit {{\n    assert held.nope == held.nope\n}}\n"
+        );
+        let found = with(SESSION, "        passkey: {}", &code);
+        assert!(
+            has(
+                &found,
+                &format!("type.field_on_non_record: `{held}` has no fields")
+            ),
+            "{found:?}"
+        );
+    }
+}
+
 #[test]
 fn only_a_test_holds_a_test_passkey() {
     let code = r#"type Named = Input {

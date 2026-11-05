@@ -1165,9 +1165,12 @@ fn late_failure(
         .reason(format!(
             "Once a changing call has taken effect, a failure that ends `{action}` for good rolls back its writes but not what `{before}` did, and a retry fails the same way; a failure of kind `unavailable` or `rate_limited` is retried instead, and one handled with `match` doesn't end it."
         ))
-        .next(format!(
-            "Check the condition before `{before}`, record what happened and finish in a subscriber of an event `{action}` emits, or undo `{before}` as another step in a `match` arm"
-        ))
+        .next_declined_above(
+            format!(
+                "Check the condition before `{before}`, record what happened and finish in a subscriber of an event `{action}` emits, or undo `{before}` as another step in a `match` arm"
+            ),
+            "the action",
+        )
 }
 
 /// At each route in `file`: `step.context` when its action makes several

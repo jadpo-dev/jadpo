@@ -370,7 +370,7 @@ are decoded against, and each deployable's build id.
 {
   "format": 2,
   "source": { "commit": "8d113e6", "modified": false },
-  "compiler": "0.4.0",
+  "compiler": "X.Y.Z",
   "deployables": { "api": { "target": "wasm", "build": "b_9a1f03c6d2e4" } },
   "nodes": [
     {

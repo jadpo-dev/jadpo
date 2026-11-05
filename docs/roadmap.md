@@ -405,8 +405,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **D17l The guides index grouped**: `docs/guides/README.md`; docs/documentation.md, "The bundle"; `src/components/guides/GuideList.astro` in jadpo-website.
 - [x] **D17m The ten guides**: `docs/guides/12-send-an-email.md` to `21-keep-customers-data-apart.md`.
 - [x] **D17o First examples stand alone**: [writing guide](writing.md), "A page's first example stands alone"; `tools/docs/first_examples.py`, run `--strict` by the gate.
-- [ ] **D17n Review** `opus · high`: one independent review of the whole and
-  a cold read of a service from its landing page.
+- [x] **D17n Review**: [writing guide](writing.md), "A page's first example stands alone", "The release line" and "How a built-in service's page reads".
 
 Not scheduled: a way to write a query the language can't express. Richard
 will work through it and other solutions later; don't design or build one
@@ -742,6 +741,7 @@ After the registry is live, in order:
    ordinary frontend code.
 11. `jadpo docs` or `jadpo mcp` serving the bundle offline
    ([documentation](documentation.md), "Not decided yet").
+12. [ ] **D18 Areas by name** `opus · medium`: command and error pages and CLI strings saying "Area 14" or "(area 12)" name the area instead, as the [writing guide](writing.md)'s "Link by name, never by number" says.
 
 ## How we work
 

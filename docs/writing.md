@@ -169,6 +169,12 @@ A first example can take several files: a connection in `app.jadpo` and the
 action that uses it are one example, and all of it stands alone. It ends at
 the first file that does something, such as an action, a route or a test.
 
+A first example can build on what `jadpo new` writes, since any reader can run
+it. The words before it say so and name what it uses, as
+[Monitoring](language/16-built-in-services.md#monitoring) does with `greet`. Its
+block's `new` attribute makes the docs check start the project from a real
+`jadpo new`, so an example can't drift from it.
+
 This holds for a guide, a built-in service's home and the first topic with
 an example on any page of the reference. The Learn path is read in order,
 so its pages build on the ones before, and an error page's first example
@@ -221,7 +227,11 @@ later one. The docs check fails a Markdown file that writes the running
 release as `jadpo --version` prints it, and the release rehearsal
 (`tools/release/rehearsal.py`) checks the pages again with the next
 minor release, so a page that names the line fails on its pull
-request, not on release day.
+request, not on release day. Whichever release it is, the check also fails
+`"compiler":"…"`, the compiler's release in a log line or a manifest, which a
+page writes as `"compiler":"X.Y.Z"`, and a sentence saying which release
+something came in, such as "Built in …" or "added in Jadpo …": write what is
+true now, "Built", with no release.
 
 ### No secrets on a command line
 
