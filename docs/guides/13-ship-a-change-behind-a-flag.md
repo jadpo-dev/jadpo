@@ -28,23 +28,6 @@ policy {
 }
 ```
 
-```jadpo check project=guide-flags file=domains/shop/types/checkout_steps.jadpo hidden
-/// How many pages the checkout takes.
-type CheckoutSteps = Int {
-    min: 1
-    max: 3
-}
-```
-
-```jadpo check project=guide-flags file=domains/shop/types/checkout_shown.jadpo hidden
-use shop/types { CheckoutSteps }
-
-/// The checkout a customer is shown.
-type CheckoutShown = Output {
-    page_count: CheckoutSteps
-}
-```
-
 ```jadpo check project=guide-flags file=domains/shop/routes/checkout.jadpo hidden
 use shop/types { CheckoutShown }
 use shop/actions { start_checkout }
@@ -65,9 +48,15 @@ routes Checkout {
 ## Declare the flag
 
 Every flag is declared once, in `flags.jadpo` at the root of the project.
-`default:` is what everyone gets until you change it. `owner:` and
+`flags { }` and `Bool` are built into Jadpo, and the name `new_checkout` is
+yours. `default:` is what everyone gets until you change it. `owner:` and
 `expires:` make sure a flag doesn't stay for good: past that date
 `jadpo check` fails with an error naming the owner.
+
+A flag is meant to be short-lived. You deploy it switched off, turn it on, and
+remove it with its old code once the change has proved itself, so give yours an
+`expires:` a few weeks ahead. The date here is far off only so that this example
+never expires.
 
 `flags.jadpo`:
 
@@ -82,16 +71,32 @@ flags {
 }
 ```
 
-A flag with more than two values is an enum instead of a `Bool`, which is how
-you compare two layouts.
+A flag that chooses between named options, such as two layouts, is an enum
+instead of a `Bool`.
 
 ## Read it
 
 An action reads the flag as `flags.new_checkout`. The value stays the same
 for the whole operation, so one request never sees it change halfway
-through. You don't pass the caller: Jadpo already knows who is asking.
+through. You don't pass the caller: Jadpo already knows who is asking. Reading
+a flag sends no query, because each server holds the values in memory and rereads
+them from your database at most every 5 seconds, as a request begins.
 
-`domains/shop/actions/start_checkout.jadpo`, changed:
+`CheckoutShown` is what the action answers with, a type of your own:
+
+`domains/shop/types/checkout_shown.jadpo`:
+
+```jadpo check project=guide-flags file=domains/shop/types/checkout_shown.jadpo
+/// The checkout a customer is shown.
+type CheckoutShown = Output {
+    page_count: Int {
+        min: 1
+        max: 3
+    }
+}
+```
+
+`domains/shop/actions/start_checkout.jadpo`, changed. The `if` is new:
 
 ```jadpo check project=guide-flags file=domains/shop/actions/start_checkout.jadpo
 use shop/types { CheckoutShown }
@@ -151,8 +156,8 @@ test "the new checkout takes one page" {
 }
 ```
 
-A flag's state lives in your app's own database, in tables Jadpo owns. The
-first flag needs a migration to make them:
+A flag's state lives in your app's own PostgreSQL database, in tables Jadpo
+owns, such as `jadpo_flags`. The first flag needs a migration to make them:
 
 ```sh
 jadpo migrate new add_flags
@@ -209,8 +214,7 @@ Set `new_checkout`
     applies  within 10 s, on every server
 ```
 
-Each server refreshes its flags every few seconds, so ask again a little
-later:
+Each server rereads its flags every few seconds, so ask again a little later:
 
 ```sh
 curl http://localhost:3000/checkout
@@ -257,8 +261,9 @@ Set `new_checkout`
     applies  within 10 s, on every server
 ```
 
-The same user always gets the same answer, and raising 10% to 20% keeps the
-first 10% in. A caller who isn't signed in gets the everyone value, and so do
+The same user always gets the same answer, because their share is worked out
+from a hash of the flag's name and their `id`, with no lookup. Raising 10% to 20%
+keeps the first 10% in. A caller who isn't signed in gets the everyone value, and so do
 schedules and subscribers, which have no caller.
 
 `jadpo flags list` shows where each flag stands:

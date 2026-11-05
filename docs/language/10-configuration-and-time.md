@@ -848,6 +848,9 @@ test "time literals are checked while compiling and compare as time" {
 }
 ```
 
+`Instant` and `CalendarDate` are built in. `DueAt` and `InvoiceDate` are
+your own types, defined in the example.
+
 ### Precision and range
 
 An `Instant` keeps milliseconds, the precision JavaScript clients, SQLite

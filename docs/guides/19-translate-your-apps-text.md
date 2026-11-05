@@ -9,7 +9,7 @@ customer's screen. This guide puts a parcel-tracking headline into English and F
 
 You start from an app with an `Order` entity holding how many parcels an order has,
 and a `POST /orders` route to place one. [Build an API](01-build-an-api.md) shows how
-to write those.
+to write those. The first steps need neither: they word one message and test it.
 
 ```jadpo check project=guide-translations file=domains/shipping/entities/order.jadpo hidden
 /// An order on its way to a customer.
@@ -75,9 +75,12 @@ application {}
 
 locales {
     default: Locale.en_gb
-    supported: [Locale.en_gb, Locale.fr_fr]
+    supported: [Locale.en_gb]
 }
 ```
+
+`locales` and `Locale` are built into Jadpo. Start with the one language, and add French
+once the message works.
 
 ## Declare a message
 
@@ -95,18 +98,64 @@ type ParcelsOnTheWay = Message {
 }
 ```
 
-## Word it in each language
+## Word it
 
 Each language is a file named after its locale. Each entry takes the message's name in
 lower_snake_case. A field of the message becomes a `{field}` placeholder, and a
 `PluralCount` gives one member per form that language needs: English has `one` and
-`other`, and French has `one`, `many` and `other`. Leave one out and `jadpo check` says
-which.
-
-`order_not_found` here is the wording of a failure, which needs the same care:
-each failure a route can answer with is worded in every language.
+`other`. Leave one out and `jadpo check` says which.
 
 `domains/shipping/translations/en_gb.jadpo`:
+
+```jadpo check project=guide-translations file=domains/shipping/translations/en_gb.jadpo
+translations {
+    parcels_on_the_way: {
+        one: "{count} parcel is on its way"
+        other: "{count} parcels are on their way"
+    }
+}
+```
+
+The compiler generates one call for each message, `translations.<domain>.<message>(...)`,
+which takes every field by name, plus `locale:`. A test can call it straight away.
+
+`domains/shipping/translations/parcels_on_the_way.test.jadpo`:
+
+```jadpo check project=guide-translations file=domains/shipping/translations/parcels_on_the_way.test.jadpo
+test "one parcel and many read differently" {
+    assert translations.shipping.parcels_on_the_way(
+        count: 1,
+        locale: Locale.en_gb
+    ) == "1 parcel is on its way"
+    assert translations.shipping.parcels_on_the_way(
+        count: 2,
+        locale: Locale.en_gb
+    ) == "2 parcels are on their way"
+}
+```
+
+## Add a language
+
+Adding French starts in `locales`, which names the languages your app supports, and
+then needs a file of French wording. French has three plural forms: `one`, `many` and
+`other`.
+
+`app.jadpo`, changed. `Locale.fr_fr` is new:
+
+```jadpo check project=guide-translations file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+`order_not_found` below is the wording of a failure, which needs the same care:
+each failure a route can answer with is worded in every language. An `Order` that
+isn't there is one, so English needs it too.
+
+`domains/shipping/translations/en_gb.jadpo`, changed. `order_not_found` is new:
 
 ```jadpo check project=guide-translations file=domains/shipping/translations/en_gb.jadpo
 translations {
@@ -198,9 +247,8 @@ translations {
 
 ## Use the message
 
-The compiler generates one call for each message,
-`translations.<domain>.<message>(...)`, which takes every field by name, plus `locale:`.
-It returns `PresentationText`, so the result can be shown but never stored.
+A message's call returns `PresentationText`, so the result can be shown but never
+stored.
 
 A browser says which languages its reader wants in its `Accept-Language` header.
 `locale.from_accept_language` gives the best of your supported locales, or `default:`
@@ -291,7 +339,7 @@ routes Orders {
 }
 ```
 
-## Test it
+## Test the page
 
 `domains/shipping/actions/show_tracking.test.jadpo`:
 
@@ -335,7 +383,7 @@ jadpo test
 ```
 
 ```text
-tested: 2 passed, 2 action tests
+tested: 3 passed, 1 pure test, 2 action tests
 ```
 
 ## Try it
@@ -439,7 +487,7 @@ done.
 
 An enum's values can have wording of their own, so a template or message shows them in the
 reader's language. Emails use these same messages, written without `locale:`, as
-[Send an email](12-send-an-email.md) shows. To send wording to a translation service and
+[Email](../language/16-built-in-services.md#email) shows. To send wording to a translation service and
 bring it back, see
 [Exchanging translations with a service](../language/10-configuration-and-time.md#exchanging-translations-with-a-service).
 

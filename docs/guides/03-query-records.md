@@ -7,15 +7,24 @@ call it by name, from a route or an action, and Jadpo writes the SQL.
 This guide reads books: one by its id, and a list a page at a time that
 a caller can narrow.
 
-You start from an app with a `Book` entity that anyone may read, and a
-`BookView` output type; [Store and change a record](02-store-and-change-a-record.md)
-shows how to write them.
+You start from an app with a stored record to read, a `Book` entity that anyone
+may read, and a `BookView`, the part of a book the API sends. Both are shown
+below, and [Store and change a record](02-store-and-change-a-record.md) has more
+on writing them.
 
 ```jadpo check project=guide-query file=app.jadpo hidden
 application {}
 ```
 
-```jadpo check project=guide-query file=domains/books/entities/book.jadpo hidden
+## Read one record
+
+A query needs something to read. `Book` is the entity, and `BookView` picks the
+fields a caller gets. Both names are yours, and `Uuid`, `Text`, `Bool` and
+`Instant` are built into Jadpo.
+
+`domains/books/entities/book.jadpo`:
+
+```jadpo check project=guide-query file=domains/books/entities/book.jadpo
 /// A book the library lends.
 entity Book {
     id: Uuid
@@ -38,7 +47,9 @@ entity Book {
 }
 ```
 
-```jadpo check project=guide-query file=domains/books/types/book_view.jadpo hidden
+`domains/books/types/book_view.jadpo`:
+
+```jadpo check project=guide-query file=domains/books/types/book_view.jadpo
 use books/entities { Book }
 
 /// A book, as the API sends it.
@@ -47,9 +58,9 @@ type BookView = Output {
 }
 ```
 
-## Read one record
-
-Queries live in a domain's `queries/` folder, one to a file.
+Queries live in a domain's `queries/` folder, one to a file. Jadpo declares
+`BookNotFound` for you, because every entity has one, and you import it from the
+same place as the entity.
 
 `domains/books/queries/book_by_id.jadpo`:
 
@@ -70,8 +81,7 @@ query book_by_id(book_id: Book.id) fails BookNotFound -> BookView {
   entity, as `Book.id`.
 - The result type says how many records come back. A plain `BookView`
   is exactly one, so the query needs `missing:`, the failure it gives
-  when nothing matches. `BookNotFound` is the one Jadpo declares for
-  every entity, and a route answers it with `404`.
+  when nothing matches. A route answers `BookNotFound` with `404`.
 - The query reads only the fields `BookView` needs.
 
 ## Read a list, a page at a time

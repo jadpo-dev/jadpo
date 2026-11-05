@@ -875,9 +875,47 @@ itself. Without them, a name in one file could be declared in that file,
 in its domain's `types/`, `failures/` or `entities/`, in `shared/`, or in
 another domain, and you or an agent would have to search for it.
 
-Each `use` line names a folder, then the names it brings in, written
-exactly as the code uses them, so finding a name on the page finds its
-import. In `domains/sales/actions/price_basket.jadpo`:
+A `use` line names a folder, then the names it brings in. Here a checkout
+action uses a failure that has a file of its own in the same domain, which
+is one business area of your app.
+
+`domains/sales/failures/basket_empty.jadpo`:
+
+```jadpo check project=imports-first file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=imports-first file=domains/sales/failures/basket_empty.jadpo
+type BasketEmpty = Failure {
+    kind: FailureKind.rejected
+}
+```
+
+`domains/sales/actions/check_out.jadpo`:
+
+```jadpo check project=imports-first file=domains/sales/actions/check_out.jadpo
+use sales/failures { BasketEmpty }
+
+type BasketSize = Int {
+    min: 0
+}
+
+action check_out(items: BasketSize) fails BasketEmpty -> BasketSize {
+    if (items == 0) {
+        reject BasketEmpty
+    }
+    return items
+}
+```
+
+`use sales/failures { BasketEmpty }` says `BasketEmpty` is in
+`domains/sales/failures/basket_empty.jadpo`. `BasketSize` is declared in
+this file, so it needs no `use` line. `Int`, `Failure` and `FailureKind`
+are built in, so they don't either.
+
+Names on a `use` line are written exactly as the code uses them, so finding
+a name on the page finds its import. A longer list, from
+`domains/sales/actions/price_basket.jadpo`:
 
 ```jadpo fragment
 use shared/types { Percent, Sterling }
