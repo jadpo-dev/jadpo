@@ -150,6 +150,15 @@ pub(crate) fn media_type(file_type: &Value) -> Option<&'static str> {
         .map(|(_, media)| *media)
 }
 
+/// What a file of `file_type` ends in (area 16, "Attachments"), when it is
+/// one `FileType` holds.
+pub(crate) fn extension(file_type: &Value) -> Option<&'static str> {
+    let Value::Variant(variant) = file_type else {
+        return None;
+    };
+    jadpo_std::files::extension(&variant.name)
+}
+
 /// What an outside call's refusal is at the site that made it.
 fn unanswered(refused: Unanswered, what: &str) -> Done {
     match refused {

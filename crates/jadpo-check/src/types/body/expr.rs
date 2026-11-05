@@ -1158,6 +1158,29 @@ impl Body<'_> {
         if let Some(ty) = self.caller_field(receiver, name, node) {
             return ty;
         }
+        // A program reads none of a stored file's parts, nor of its bytes
+        // (area 16, "What a `File` holds").
+        if let Ty::Opaque(file, args) = &through
+            && args.is_empty()
+            && (file == jadpo_std::files::FILE || file == jadpo_std::files::FILE_CONTENTS)
+        {
+            let value = node
+                .expr()
+                .map(|e| tree::written(e.syntax()))
+                .unwrap_or_default();
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_FIELD_ON_NON_RECORD,
+                    format!("`{file}` has no fields"),
+                )
+                .at(span, "no such field")
+                .reason(format!(
+                    "`{value}` is a `{file}`, and a program reads none of what it holds. A `File` is kept in a field, read with `store.read` and sent as an email's attachment; `FileContents` is passed on."
+                ))
+                .next(format!("Use `{value}` itself")),
+            );
+            return Ty::Error;
+        }
         // A type a later area defines has fields this check doesn't know yet.
         if receiver.has_error() || matches!(receiver.strip_nullable(), Ty::Opaque(..) | Ty::Var(_))
         {

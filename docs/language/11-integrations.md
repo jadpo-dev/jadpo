@@ -2714,9 +2714,39 @@ var postcode: Postcodes.UkPostcode = attempt Postcodes.uk.parse(input.postcode) 
 The types come from the package, and your app writes none. The checker
 compares what you send with what the operation takes. At runtime a
 response is checked only for the fields your code reads, so a provider
-adding or changing other fields breaks nothing. A package input may take
-any of your app's object types, sent as JSON, such as Postmark's template
-variables or Stripe's metadata.
+adding or changing other fields breaks nothing.
+
+An operation's input holds the package's own types and the built-in ones, so
+passing your app's own object is `type.mismatch`. A field taking any of your
+app's object types, sent as JSON, as Postmark's template variables or Stripe's
+metadata need, is `AnyObject`
+([Other built-in types](02-values-and-types.md#other-built-in-types)), which
+isn't built, so writing it is `semantic.unknown_name`.
+
+A `File` is the store and key its bytes are under, so it doesn't cross to or
+from a provider, however deep a type holds it
+([What a `File` holds](16-built-in-services.md#what-a-file-holds)):
+
+- In an operation's `input:` or a webhook's `reply:` it is
+  `toolchain.not_built_yet`, since sending a file to a provider isn't built.
+  The provider would get the store and key and none of the bytes.
+- In an operation's `output:` or `wire_output:`, or a webhook's event, it is
+  `type.batch_input`, since a provider could name any file.
+
+A file's bytes do go out: an operation's `input:` may hold the `FileContents`
+`store.read` gives, sent as its Base64. It doesn't come back, so an `output:`,
+a `wire_output:` or a webhook's event holding one is `type.batch_input`
+([`store.read(file)`](16-built-in-services.md#storereadfile)).
+
+A `File` is the store and key its bytes are under, so it doesn't cross to or
+from a provider, however deep a type holds it
+([What a `File` holds](16-built-in-services.md#what-a-file-holds)):
+
+- In an operation's `input:` or a webhook's `reply:` it is
+  `toolchain.not_built_yet`, since sending a file to a provider isn't built.
+  The provider would get the store and key and none of the bytes.
+- In an operation's `output:` or `wire_output:`, or a webhook's event, it is
+  `type.batch_input`, since a provider could name any file.
 
 ### Failures
 
@@ -5044,8 +5074,9 @@ Each message becomes its event for your app's subscribers:
 
 `receiving:` takes `type_at:`, `id_at:` and `events:`. An event of your
 app's gives a `wire_name:`, and a package provides the capability in
-`provides/receiving.jadpo`. The details are under
-[How queues are received](#how-queues-are-received).
+`provides/receiving.jadpo`. An event a queue lists can't hold a `File`
+(`type.batch_input`), since a message could then name any file. The details
+are under [How queues are received](#how-queues-are-received).
 
 **Which queues are packages.** The usual rule decides: a service reached
 over an HTTP API is a package, and anything that needs its own protocol or

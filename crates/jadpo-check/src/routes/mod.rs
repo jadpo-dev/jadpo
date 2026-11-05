@@ -2593,6 +2593,16 @@ impl Reader<'_> {
             ));
             return None;
         }
+        if let Some(held) = crate::types::decl::held_contents(self.lookup, &ty, &mut Vec::new())
+            && held.contains('.')
+        {
+            self.out.push(crate::types::decl::contents_sent(
+                &format!("`{ty}`"),
+                &held,
+                span,
+            ));
+            return None;
+        }
         if let Ty::Opaque(name, args) = &ty
             && name == jadpo_std::standard::geo::FEATURE_COLLECTION
             && let [_, properties] = args.as_slice()

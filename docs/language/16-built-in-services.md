@@ -792,8 +792,8 @@ back, whatever store the bytes came from. Your code joins the two:
 
 - `attempt store.read(file)` returns the file's contents as
   `FileContents` ([Other built-in types](02-values-and-types.md#other-built-in-types)),
-  for passing the bytes on: to a provider as an upload, or as an email
-  attachment. The format helpers don't accept it. It reads
+  for passing the bytes on to a provider
+  ([`store.read(file)`](#storereadfile)). The format helpers don't accept it. It reads
   the whole file into memory, so it is capped: reading a field whose
   `max_size` is over the whole-read limit of 10 MB is a compile error
   pointing at the format helpers or `batches.each`.
@@ -2416,13 +2416,27 @@ translations {
 
 ### Attachments
 
-A `File` field on an `EmailMessage` is an attachment. It is read from
+A `File` field on an `EmailMessage` is an attachment, and `File?` is one
+when it holds a file. It is read from
 its store when the email is sent, and checked against the size limit the
 mail package declares. Through a mail package, each `File` field needs a
 `max_size:`, and an email whose fields' sizes add up to more than the
 package's `limits: { attachments: }` is `email.attachment_limit`. A
 provider that can't send attachments can still be an ordinary package,
 but can't be the `email:` connection.
+
+An attachment goes out under the file's own name. A file with no name, as
+every file `store.put` makes is, is named from the email's field and the
+file's type: `invoice: File` holding a PDF goes out as `invoice.pdf`. A
+`FileType.json_lines` file ends in `.jsonl`. No part of the file's key goes
+out.
+
+Each attachment is one `File` field. Sending several from one field isn't
+built: a `List<File>`, a `Set<File>` or a `Map` of them, and a `FileContents`,
+on an email or a partial are `toolchain.not_built_yet`, since each would
+compile and never be sent. So is a `File` on a partial, which sends nothing of
+its own. An object or an `ExportSummary` on an email is read for its other
+fields, and a file it holds isn't attached.
 
 ### The mail health score
 
@@ -4407,17 +4421,46 @@ for them, its name (none for one `store.put` made), its size and its
 
 Only the runtime builds one: `File { ... }` is `type.not_record`.
 
-No request carries a `File`, which would let it name any file: one in an
-`Input` or a route's placeholder, however deep, is `type.batch_input`.
+Nothing from outside carries a `File`, which would let the sender name any
+file. It is `type.batch_input` in an `Input` or a route's placeholder, in an
+operation's `output:` or `wire_output:`, in a webhook's event, and in an event
+a queue lists.
 
 A route sends a `File` as a signed link, which comes with
 [downloads](#downloading). Until those are built, a `File` in a route's
-`output:` or a failure's `client:` is `toolchain.not_built_yet`, directly or
-through what it holds: a list, an `Object`, an entity's field named as a type,
-a `pick:`, or an `ExportSummary`. A failure's `internal:` fields stay on the
-server and may hold one.
+`output:` or a failure's `client:` is `toolchain.not_built_yet`. A failure's
+`internal:` fields stay on the server and may hold one.
 
-A program reads none of its parts yet.
+Sending a file to a provider isn't built. A `File` in an operation's `input:`
+or a webhook's `reply:` is `toolchain.not_built_yet`, since the provider would
+get the store and key and none of the bytes
+([Types](11-integrations.md#types)).
+
+Each of these holds however deep: a list, a map, an `Object`, an entity's field
+named as a type, a `pick:`, or an `ExportSummary`, which holds the file it
+wrote. The other ways a value leaves or arrives refuse one too:
+
+| Where | Refused as |
+|---|---|
+| A prompt's field, however deep | `prompt.placeholder_type` |
+| A model's `as:` | `semantic.ai_output_type` |
+| `json.write`, `json.read` and `text.parse` | `type.mismatch` |
+| `crypto.verify_jwt`'s `as:` | `type.mismatch` |
+| A row an export writes | `type.batch_row_invalid` |
+| A row an import reads | `type.batch_input` |
+| An email's template | `email.template_value_invalid` |
+| A message's wording | `translation.field_type` |
+| A setting in `config.jadpo` or a package's `settings:` | `configuration.type_unsupported`, `package.provider_invalid` |
+| A feature flag | `flag.declaration_invalid` |
+| A search's fields | `search.settings_invalid` |
+| A field an audit trail keeps | `toolchain.not_built_yet` |
+
+A `File` field on an `EmailMessage` is the one that leaves: it is sent as an
+attachment, the bytes rather than the store and key
+([Attachments](#attachments)).
+
+A program reads none of its parts. `file.key`, and `file.nope`, are
+`type.field_on_non_record`, in code and in a template.
 
 ### A `File` field's settings
 
@@ -4589,9 +4632,22 @@ A `File` whose field isn't known, such as a parameter of type `File`, is
 held to the limit as it runs, and going over it is a fault. A file whose
 bytes are gone from its store is a fault too.
 
-`FileContents` is the file's bytes. Nothing takes it yet but what passes
-bytes on, such as an email's attachment or a provider's upload. Like
-`put`, `read` is called only in an action, before its first read or
+`FileContents` is the file's bytes, and a program reads none of its parts.
+It goes to a provider: an operation's `input:` holding one sends its Base64 in
+the JSON, as `Bytes` is sent. Nowhere else takes it:
+
+| Where | Refused as |
+|---|---|
+| An `Input` or a route's placeholder | `type.batch_input` |
+| An operation's `output:` or `wire_output:`, a webhook's event, an event a queue lists | `type.batch_input` |
+| A route's `output:` or a failure's `client:` | `toolchain.not_built_yet` |
+| An email or a partial ([Attachments](#attachments)) | `toolchain.not_built_yet` |
+| A prompt's field | `prompt.placeholder_type` |
+
+Each holds however deep, but for an email. A provider's own bytes come as
+`Bytes`, which `put` keeps.
+
+Like `put`, `read` is called only in an action, before its first read or
 write. A test reaches files through the application's actions.
 
 ### The disk driver in `jadpo dev`

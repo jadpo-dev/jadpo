@@ -244,6 +244,29 @@ fn a_secret_a_file_bytes_or_a_second_conversation_is_no_placeholder() {
         with("    shown_note: Text?\n", "{shown_note}\n"),
         ["prompt.placeholder_type"]
     );
+    // A file is refused however deep: an object's placeholder is written
+    // as its JSON, which would hold the file's store and key.
+    assert_eq!(
+        with("    photo: File\n", "{photo}\n"),
+        ["prompt.placeholder_type"]
+    );
+    assert_eq!(
+        with("    photos: List<File>\n", "{photos}\n"),
+        ["prompt.placeholder_type"]
+    );
+    assert_eq!(
+        with("    summary: ExportSummary\n", "{summary}\n"),
+        ["prompt.placeholder_type"]
+    );
+    // A file's bytes are bytes: written out, they were its Base64.
+    assert_eq!(
+        with("    whole: FileContents\n", "{whole}\n"),
+        ["prompt.placeholder_type"]
+    );
+    assert_eq!(
+        with("    wholes: List<FileContents>\n", "{wholes}\n"),
+        ["prompt.placeholder_type"]
+    );
     // One conversation is the turns before the request, never written.
     assert_eq!(with("    history: List<ChatMessage>\n", ""), NONE);
     assert_eq!(
@@ -441,4 +464,90 @@ fn each_prompt_is_in_the_manifest_with_its_digest() {
 /// then its bytes).
 fn expected_digest() -> &'static str {
     "864ad76b"
+}
+
+/// An object's placeholder is written as its JSON, so a `File` it holds,
+/// however deep, would send the model's provider its store and key.
+#[test]
+fn a_prompt_holding_a_file_in_an_object_is_refused() {
+    const HOLDER: (&str, &str) = (
+        "domains/support/types/photo_holder.jadpo",
+        "/// A photo with its caption.\ntype PhotoHolder = Object {\n    caption: Text\n    photo: File\n}\n",
+    );
+    const OUTER: (&str, &str) = (
+        "domains/support/types/photo_album.jadpo",
+        "use support/types { PhotoHolder }\n\n/// Photos.\ntype PhotoAlbum = Object {\n    photos: List<PhotoHolder>\n}\n",
+    );
+    for field in ["PhotoHolder", "List<PhotoHolder>", "PhotoAlbum"] {
+        let prompt_type = format!(
+            "use support/types {{ {} }}\n\n/// Asks about a photo.\ntype AnswerQuestion = Prompt {{\n    question: {field}\n}}\n",
+            field.trim_start_matches("List<").trim_end_matches('>')
+        );
+        let text = "# Instructions\n\nAnswer.\n\n# Request\n\n{question}\n";
+        let found: Vec<String> = diagnostics(&prompt_type, Some(text), &[HOLDER, OUTER])
+            .iter()
+            .map(|d| d.rule.id.to_string())
+            .filter(|rule| !rule.starts_with("layout.") && rule != "import.unused")
+            .collect();
+        assert_eq!(found, ["prompt.placeholder_type"], "{field}");
+    }
+}
+
+/// A `BatchRun` names a run by its id, which `batches.status` and
+/// `batches.cancel` find it by, and says nothing a model could read, so it
+/// isn't sent however deep a type holds it.
+#[test]
+fn a_prompt_holding_a_batch_run_is_refused() {
+    const HOLDER: (&str, &str) = (
+        "domains/support/types/run_holder.jadpo",
+        "/// A run with its caption.\ntype RunHolder = Object {\n    caption: Text\n    run: BatchRun\n}\n",
+    );
+    const OUTER: (&str, &str) = (
+        "domains/support/types/run_album.jadpo",
+        "use support/types { RunHolder }\n\n/// Runs.\ntype RunAlbum = Object {\n    runs: List<RunHolder>\n}\n",
+    );
+    for (field, using) in [
+        ("BatchRun", ""),
+        ("List<BatchRun>", ""),
+        ("Map<Text, BatchRun>", ""),
+        ("RunHolder", "use support/types { RunHolder }\n\n"),
+        ("List<RunHolder>", "use support/types { RunHolder }\n\n"),
+        ("RunAlbum", "use support/types { RunAlbum }\n\n"),
+    ] {
+        let prompt_type = format!(
+            "{using}/// Asks about a run.\ntype AnswerQuestion = Prompt {{\n    question: {field}\n}}\n"
+        );
+        let text = "# Instructions\n\nAnswer.\n\n# Request\n\n{question}\n";
+        let found: Vec<String> = diagnostics(&prompt_type, Some(text), &[HOLDER, OUTER])
+            .iter()
+            .map(|d| d.rule.id.to_string())
+            .filter(|rule| !rule.starts_with("layout.") && rule != "import.unused")
+            .collect();
+        assert_eq!(found, ["prompt.placeholder_type"], "{field}");
+    }
+    // What it says of the run, and the batch types that are only numbers
+    // and names, which a model may read.
+    let prompt_type =
+        "/// Asks about a run.\ntype AnswerQuestion = Prompt {\n    question: BatchRun\n}\n";
+    let text = "# Instructions\n\nAnswer.\n\n# Request\n\n{question}\n";
+    let found = diagnostics(prompt_type, Some(text), &[]);
+    let refused = found
+        .iter()
+        .find(|d| d.rule.id == "prompt.placeholder_type")
+        .expect("refused");
+    assert_eq!(
+        refused.message,
+        "`AnswerQuestion.question` holds a `BatchRun`, which a prompt can't send"
+    );
+    for field in ["BatchProgress", "RowProblem", "ImportSummary"] {
+        let prompt_type = format!(
+            "/// Asks about a run.\ntype AnswerQuestion = Prompt {{\n    question: {field}\n}}\n"
+        );
+        let found: Vec<String> = diagnostics(&prompt_type, Some(text), &[])
+            .iter()
+            .map(|d| d.rule.id.to_string())
+            .filter(|rule| !rule.starts_with("layout.") && rule != "import.unused")
+            .collect();
+        assert!(found.is_empty(), "{field}: {found:?}");
+    }
 }

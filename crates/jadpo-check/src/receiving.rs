@@ -738,6 +738,27 @@ impl Reader<'_, '_> {
                 );
                 continue;
             }
+            // A message is read from outside, and a `File` it held could name
+            // any file's store and key (area 16, "What a `File` holds").
+            if let Some(held) = crate::types::decl::held_file(self.lookup, &ty, &mut Vec::new()) {
+                ok = false;
+                self.out.push(crate::types::decl::file_taken(
+                    &format!("`{}`", tree::written(expr.syntax())),
+                    &held,
+                    at,
+                ));
+                continue;
+            }
+            if let Some(held) = crate::types::decl::held_contents(self.lookup, &ty, &mut Vec::new())
+            {
+                ok = false;
+                self.out.push(crate::types::decl::contents_taken(
+                    &format!("`{}`", tree::written(expr.syntax())),
+                    &held,
+                    at,
+                ));
+                continue;
+            }
             let Some(key) = crate::graph::declaration_key(self.lookup, &event) else {
                 ok = false;
                 continue;
