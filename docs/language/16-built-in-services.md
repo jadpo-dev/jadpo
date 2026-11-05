@@ -3064,12 +3064,12 @@ use planning/types { TodoView }
 use planning/actions { add_todo }
 
 test "a word finds the todos that hold it" {
-    var van: Todo = add_todo("Pack the van", none)
-    var plants: Todo = add_todo("Water plants", none)
-    assert van.title == "Pack the van"
-    assert plants.title == "Water plants"
-    var found: List<TodoView> = find_todos("packing")
-    assert list.map(found, item -> item.title) == ["Pack the van"]
+    var van_todo: Todo = add_todo("Pack the van", none)
+    var watering: Todo = add_todo("Water plants", none)
+    assert van_todo.title == "Pack the van"
+    assert watering.title == "Water plants"
+    var packing_todos: List<TodoView> = find_todos("packing")
+    assert list.map(packing_todos, item -> item.title) == ["Pack the van"]
 }
 ```
 
