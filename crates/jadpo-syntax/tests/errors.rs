@@ -871,6 +871,25 @@ fn a_comma_between_members_on_a_line_parts_them() {
 }
 
 #[test]
+fn a_null_test_tight_after_a_generic_type_keeps_its_comma_in_the_type() {
+    let text = "type E = Object {\n    a: Map<K, V>IS NULL\n}\n";
+    let (error, covered) = one_error(text);
+    assert_eq!(error.rule.id, "syntax.equality_operator");
+    assert_eq!(covered, "IS NULL");
+    assert_eq!(
+        fixed_by_edits(text, &error),
+        "type E = Object {\n    a: Map<K, V> == none\n}\n"
+    );
+    // Written directly, `>==` closes the type: no comma to complain about.
+    let parse = parse_file("type E = Object {\n    a: Map<K, V>== none\n}\n");
+    assert!(parse.errors().is_empty(), "{:#?}", parse.errors());
+    // `>=` still compares, in an argument list as much as anywhere.
+    let parse =
+        parse_file("function f(a: Int, b: Int) -> Flag {\n    return g(a < b, b >= a)\n}\n");
+    assert!(parse.errors().is_empty(), "{:#?}", parse.errors());
+}
+
+#[test]
 fn a_run_of_semicolons_is_one_error_with_one_edit() {
     // One error a line would take one `;` a round.
     let text = "type A = Int {}\n;;;; ;;\n";
