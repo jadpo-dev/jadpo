@@ -7,40 +7,9 @@ each record as a row, and tells your app when the file is ready. A crash partway
 through carries on where it stopped. This guide writes a bakery's price list as a
 file a spreadsheet can open, on the server's own disk.
 
-You start from an app with a `Loaf` entity and a `POST /loaves` route that adds
-one. [Build an API](01-build-an-api.md) shows how to write those.
-
-```jadpo check project=guide-export file=domains/bakery/types/loaf_code.jadpo hidden
-/// A loaf's code on the bakery's lists.
-type LoafCode = Text {
-    min_length: 1
-    max_length: 20
-}
-```
-
-```jadpo check project=guide-export file=domains/bakery/types/loaf_price.jadpo hidden
-/// What a loaf costs.
-type LoafPrice = Decimal {
-    scale: 2
-    min: 0.00
-}
-```
-
-```jadpo check project=guide-export file=domains/bakery/entities/loaf.jadpo hidden
-use bakery/types { LoafCode, LoafPrice }
-
-/// A loaf the bakery sells.
-entity Loaf {
-    id: Uuid
-    code: LoafCode
-    price: LoafPrice
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public, Access.system]
-    }
-}
-```
+You start from an app with a `POST /loaves` route that adds a loaf, through an
+action called `add_loaf`. [Build an API](01-build-an-api.md) shows how to write
+one.
 
 ```jadpo check project=guide-export file=domains/bakery/types/new_loaf.jadpo hidden
 use bakery/entities { Loaf }
@@ -123,22 +92,88 @@ A native app with a disk store runs on one server, since a second one wouldn't s
 the files, and the build's manifest records that. Cloudflare Workers has no disk, so
 a deployable for Workers can't use this driver.
 
+`connections:` and `Driver.disk` are built into Jadpo, and the name `price_lists` is
+yours.
+
+## Read the records a page at a time
+
+The records to export are loaves, each a stored `Loaf`.
+
+`domains/bakery/entities/loaf.jadpo`:
+
+```jadpo check project=guide-export file=domains/bakery/entities/loaf.jadpo
+/// A loaf the bakery sells.
+entity Loaf {
+    id: Uuid
+    code: Text {
+        min_length: 1
+        max_length: 20
+    }
+    price: Decimal {
+        scale: 2
+        min: 0.00
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+An export reads a query that gives pages, so a large table never has to fit in
+memory. Order it by something that doesn't change, here `id`, so a change
+during the run can't move a record between pages. `PageSize` and `PageCursor` are
+standard types for how many records a page holds and where the next one starts.
+
+`domains/bakery/types/loaf_page.jadpo`:
+
+```jadpo check project=guide-export file=domains/bakery/types/loaf_page.jadpo
+/// Where a walk over the loaves has got to.
+type LoafPage = Input {
+    page_size: PageSize {
+        default: 100
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+```
+
+`domains/bakery/queries/loaves_by_id.jadpo`:
+
+```jadpo check project=guide-export file=domains/bakery/queries/loaves_by_id.jadpo
+use bakery/entities { Loaf }
+use bakery/types { LoafPage }
+
+/// Every loaf, a page at a time, in an order no change moves.
+query loaves_by_id(page: LoafPage) -> Page<Loaf> {
+    from: Loaf
+    order: [Loaf.id asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+```
+
 ## Say what a row holds
 
 A row is an `Output` type. Its fields are the file's columns, in order, each named by
-its `column:` or by the field's name.
+its `column:` or by the field's name. A field can take its type from the entity's field,
+as these do.
 
 `domains/bakery/types/price_line.jadpo`:
 
 ```jadpo check project=guide-export file=domains/bakery/types/price_line.jadpo
-use bakery/types { LoafCode, LoafPrice }
+use bakery/entities { Loaf }
 
 /// One line of the price list a spreadsheet reads.
 type PriceLine = Output {
-    code: LoafCode {
+    code: Loaf.code {
         column: "Loaf code"
     }
-    price: LoafPrice {
+    price: Loaf.price {
         column: "Price"
     }
 }
@@ -170,43 +205,6 @@ entity PriceList {
         create: [Access.public]
         read: [Access.public, Access.system]
         update: [Access.public, Access.system]
-    }
-}
-```
-
-## Write the query
-
-An export reads a query that gives pages, so a large table never has to fit in
-memory. Order it by something that doesn't change, here `id`, so a change
-during the run can't move a record between pages.
-
-`domains/bakery/types/loaf_page.jadpo`:
-
-```jadpo check project=guide-export file=domains/bakery/types/loaf_page.jadpo
-/// Where a walk over the loaves has got to.
-type LoafPage = Input {
-    page_size: PageSize {
-        default: 100
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-```
-
-`domains/bakery/queries/loaves_by_id.jadpo`:
-
-```jadpo check project=guide-export file=domains/bakery/queries/loaves_by_id.jadpo
-use bakery/entities { Loaf }
-use bakery/types { LoafPage }
-
-/// Every loaf, a page at a time, in an order no change moves.
-query loaves_by_id(page: LoafPage) -> Page<Loaf> {
-    from: Loaf
-    order: [Loaf.id asc]
-    page: {
-        size: page.page_size
-        after: page.after
     }
 }
 ```

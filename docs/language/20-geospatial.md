@@ -103,7 +103,29 @@ decides what, say, a point's area is.
 <!-- topic: geometry-operations -->
 
 The `geo.` operations measure distances, lengths, directions and areas,
-and say whether one shape touches or holds another:
+and say whether one shape touches or holds another. Here is the distance
+between two places. Save this as `main.jadpo` and run
+`jadpo test main.jadpo`:
+
+```jadpo check project=geo-first
+test "London to Paris is measured on the ellipsoid" {
+    var big_ben: Point = Point {
+        latitude: 51.5072
+        longitude: -0.1276
+        altitude: none
+    }
+    var eiffel_tower: Point = Point {
+        latitude: 48.8566
+        longitude: 2.3522
+        altitude: none
+    }
+    assert geo.distance(big_ben, eiffel_tower) == 343896.891267metre
+}
+```
+
+`Point` and `geo.` are built in, so the example declares nothing.
+
+Every operation:
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|

@@ -63,12 +63,114 @@ has only its disk driver, with no signed links or upload slots
 [Ship a change behind a flag](../guides/13-ship-a-change-behind-a-flag.md) does the whole job, start to finish.
 
 A feature flag lets you ship code switched off, then turn it on for some
-users, a share of users, or everyone, without a deploy. You declare every
-flag once, in the file `flags.jadpo` at the root of the project, with its
-type, its default, its owner and the date it expires. The `///` comment
-above a flag is its description, as for every declaration.
+users, a share of users, or everyone, without a deploy. Its state is in your
+app's PostgreSQL database, in a table Jadpo owns. Each server holds a copy in
+memory and rereads it at most every five seconds, so a change applies within
+ten seconds and reading a flag runs no query. A percentage rollout is a hash of
+the flag's name and the user's `id`, so the same user always gets the same
+answer.
+
+A flag is temporary. You add it with an `expires:` date, roll the change out,
+and remove the flag once everyone has one value; `jadpo check` fails once a
+flag is past its date, so none stays by accident. The dates here are far ahead
+only so these examples never expire. In your app, pick one a few weeks or
+months off.
+
+You declare every flag once, with its type, its default, its owner and the date
+it expires. `flags.jadpo`, at the root of the project:
 
 ```jadpo check project=feature-flags file=flags.jadpo
+flags {
+    /// The one-page checkout replacing the three-step form.
+    new_checkout: Bool {
+        default: false
+        owner: "payments"
+        expires: "2099-01-31"
+    }
+}
+```
+
+```jadpo check project=feature-flags file=app.jadpo hidden
+application {}
+```
+
+`flags { }`, `Bool` and its settings are built into Jadpo. `new_checkout` is
+your name for the flag and `"payments"` whoever answers for it. The `///`
+comment above a flag is its description, as for every declaration. `app.jadpo`
+needs nothing for it: a project's one database holds the flags.
+
+An action reads it as `flags.new_checkout`. `CheckoutSteps` is a type of your
+app, since an action's result is always a named type.
+
+`domains/ordering/types/checkout_steps.jadpo`:
+
+```jadpo check project=feature-flags file=domains/ordering/types/checkout_steps.jadpo
+/// How many pages the checkout takes.
+type CheckoutSteps = Int {
+    min: 1
+    max: 3
+}
+```
+
+`domains/ordering/actions/checkout_page_count.jadpo`:
+
+```jadpo check project=feature-flags file=domains/ordering/actions/checkout_page_count.jadpo
+use ordering/types { CheckoutSteps }
+
+/// How many pages this customer's checkout takes.
+action checkout_page_count() -> CheckoutSteps {
+    if (flags.new_checkout) {
+        return 1
+    }
+    return 3
+}
+```
+
+Code reads a flag in actions and in a route's `run:` arguments. Functions and
+queries can't read one (`flag.read_context`), so you pass them its value as a
+parameter. As with `clock.now`, the value is fixed for the whole operation, so
+one request never sees a flag change halfway through.
+
+Every read needs a test for each value, and a test chooses the value with
+`flags:`.
+
+`domains/ordering/actions/checkout_page_count.test.jadpo`:
+
+```jadpo check project=feature-flags file=domains/ordering/actions/checkout_page_count.test.jadpo migrate=initial
+test "the three-step form is shown by default" {
+    assert checkout_page_count() == 3
+}
+
+test "the new checkout takes one page" {
+    flags: {
+        new_checkout: true
+    }
+    assert checkout_page_count() == 1
+}
+```
+
+### A flag with named values
+
+```jadpo check project=feature-flags-enum file=app.jadpo hidden
+application {}
+```
+
+A flag is a `Bool`, or an enum whose variants carry no data. An enum names its
+values, so it suits comparing two layouts as well as choosing among more.
+
+`domains/ordering/types/checkout_layout.jadpo`, a type of your app:
+
+```jadpo check project=feature-flags-enum file=domains/ordering/types/checkout_layout.jadpo
+/// How the checkout's form is laid out.
+type CheckoutLayout = Enum {
+    classic
+    single_column
+}
+```
+
+`flags.jadpo`, with `checkout_layout` and its `use` line new:
+
+```jadpo check project=feature-flags-enum file=flags.jadpo
 use ordering/types { CheckoutLayout }
 
 flags {
@@ -88,71 +190,31 @@ flags {
 }
 ```
 
-```jadpo check project=feature-flags file=app.jadpo hidden
-application {
-    connections: {
-        main: {
-            driver: Driver.postgres
-            url: config.database_url
-        }
+`domains/ordering/actions/layout_shown.jadpo`:
+
+```jadpo check project=feature-flags-enum file=domains/ordering/actions/layout_shown.jadpo
+use ordering/types { CheckoutLayout }
+
+/// The layout this customer's checkout uses.
+action layout_shown() -> CheckoutLayout {
+    return flags.checkout_layout
+}
+```
+
+`domains/ordering/actions/layout_shown.test.jadpo`, a test for each variant:
+
+```jadpo check project=feature-flags-enum file=domains/ordering/actions/layout_shown.test.jadpo migrate=initial
+use ordering/types { CheckoutLayout }
+
+test "the classic layout is shown by default" {
+    assert layout_shown() == CheckoutLayout.classic
+}
+
+test "a test can give the single-column layout" {
+    flags: {
+        checkout_layout: CheckoutLayout.single_column
     }
-}
-```
-
-```jadpo check project=feature-flags file=config.jadpo hidden
-config {
-    database_url: PostgresUrl
-}
-```
-
-```jadpo check project=feature-flags file=domains/ordering/types/checkout_layout.jadpo hidden
-/// How the checkout's form is laid out.
-type CheckoutLayout = Enum {
-    classic
-    single_column
-}
-```
-
-```jadpo check project=feature-flags file=domains/ordering/types/checkout_steps.jadpo hidden
-/// How many pages the checkout takes.
-type CheckoutSteps = Int {
-    min: 1
-    max: 3
-}
-```
-
-```jadpo check project=feature-flags file=domains/ordering/types/checkout_shown.jadpo hidden
-use ordering/types { CheckoutLayout, CheckoutSteps }
-
-/// The checkout a customer is shown.
-type CheckoutShown = Output {
-    page_count: CheckoutSteps
-    arrangement: CheckoutLayout
-}
-```
-
-A flag is a `Bool`, or an enum when it has more than two values, whose
-variants carry no data. Code reads it as `flags.new_checkout`, in actions
-and in a route's `run:` arguments. Functions and queries can't read a
-flag (`flag.read_context`), so you pass them its value as a parameter. As
-with `clock.now`, the value is fixed for the whole operation, so one
-request never sees a flag change halfway through.
-
-```jadpo check project=feature-flags file=domains/ordering/actions/start_checkout.jadpo
-use ordering/types { CheckoutShown }
-
-/// The checkout this customer is shown.
-action start_checkout() -> CheckoutShown {
-    if (flags.new_checkout) {
-        return CheckoutShown {
-            page_count: 1
-            arrangement: flags.checkout_layout
-        }
-    }
-    return CheckoutShown {
-        page_count: 3
-        arrangement: flags.checkout_layout
-    }
+    assert layout_shown() == CheckoutLayout.single_column
 }
 ```
 
@@ -216,27 +278,6 @@ value in the event it emits.
   the test; a flag it doesn't name has its `default:`. `jadpo check`
   fails until the tests that reach each read cover both `true` and
   `false`, or every variant.
-
-```jadpo check project=feature-flags file=domains/ordering/actions/start_checkout.test.jadpo migrate=initial
-use ordering/types { CheckoutLayout, CheckoutShown }
-
-test "the three-step form is shown by default" {
-    var checkout_opened: CheckoutShown = start_checkout()
-    assert checkout_opened.page_count == 3
-    assert checkout_opened.arrangement == CheckoutLayout.classic
-}
-
-test "the new checkout takes one page, in the layout the test gives" {
-    flags: {
-        new_checkout: true
-        checkout_layout: CheckoutLayout.single_column
-    }
-    var checkout_opened: CheckoutShown = start_checkout()
-    assert checkout_opened.page_count == 1
-    assert checkout_opened.arrangement == CheckoutLayout.single_column
-}
-```
-
 - A flag past its `expires:` date is an error naming its owner,
   `flag.expired`, and you can't decline it. `jadpo check` judges the date against today, and
   `jadpo build` against the commit's date, so rebuilding a merged
@@ -294,13 +335,43 @@ routes open to anyone. A refused request gets the built-in
 
 You change a limit with `rate_limit:`, on one route or on an API in
 `app.jadpo`, where it is the default for the API's routes. Here a public
-form allows five requests an hour from each address.
+form allows five requests a minute from each address. `rate_limit:` and
+`RateLimitKey` are built into Jadpo; the route, its types and its action are
+your app's, and are all shown below it.
+
+`domains/sales/routes/demo_requests.jadpo`:
+
+```jadpo check project=rate-limits file=domains/sales/routes/demo_requests.jadpo
+use sales/types { DemoForm, DemoReceived }
+use sales/actions { request_demo }
+
+/// Requests for a demo.
+routes DemoRequests {
+    prefix: /demo-requests
+
+    /// Asks for a demo, five times a minute from each address.
+    POST / {
+        authentication: RouteAuthentication.none
+        rate_limit: {
+            requests: 5
+            within: 1m
+            by: RateLimitKey.ip
+        }
+        input: DemoForm
+        output: DemoReceived
+        status: SuccessStatus.created
+        run: request_demo(input)
+    }
+}
+```
 
 ```jadpo check project=rate-limits file=app.jadpo hidden
 application {}
 ```
 
-```jadpo check project=rate-limits file=domains/sales/entities/demo_request.jadpo hidden
+`domains/sales/entities/demo_request.jadpo`, the record it keeps:
+
+```jadpo check project=rate-limits file=domains/sales/entities/demo_request.jadpo
 /// Someone asking to see the product.
 entity DemoRequest {
     id: Uuid
@@ -315,7 +386,9 @@ entity DemoRequest {
 }
 ```
 
-```jadpo check project=rate-limits file=domains/sales/types/demo_form.jadpo hidden
+`domains/sales/types/demo_form.jadpo`, what the route takes:
+
+```jadpo check project=rate-limits file=domains/sales/types/demo_form.jadpo
 use sales/entities { DemoRequest }
 
 /// What someone sends to ask for a demo.
@@ -324,7 +397,9 @@ type DemoForm = Input {
 }
 ```
 
-```jadpo check project=rate-limits file=domains/sales/types/demo_received.jadpo hidden
+`domains/sales/types/demo_received.jadpo`, what it answers:
+
+```jadpo check project=rate-limits file=domains/sales/types/demo_received.jadpo
 use sales/entities { DemoRequest }
 
 /// What someone gets back for asking.
@@ -333,7 +408,9 @@ type DemoReceived = Output {
 }
 ```
 
-```jadpo check project=rate-limits file=domains/sales/actions/request_demo.jadpo hidden
+`domains/sales/actions/request_demo.jadpo`, what it runs:
+
+```jadpo check project=rate-limits file=domains/sales/actions/request_demo.jadpo migrate=initial
 use sales/entities { DemoRequest }
 use sales/types { DemoForm, DemoReceived }
 
@@ -350,31 +427,9 @@ action request_demo(input: DemoForm) -> DemoReceived {
 }
 ```
 
-`domains/sales/routes/demo_requests.jadpo`:
-
-```jadpo check project=rate-limits file=domains/sales/routes/demo_requests.jadpo migrate=initial
-use sales/types { DemoForm, DemoReceived }
-use sales/actions { request_demo }
-
-/// Requests for a demo.
-routes DemoRequests {
-    prefix: /demo-requests
-
-    /// Asks for a demo, five times an hour from each address.
-    POST / {
-        authentication: RouteAuthentication.none
-        rate_limit: {
-            requests: 5
-            within: 1h
-            by: RateLimitKey.ip
-        }
-        input: DemoForm
-        output: DemoReceived
-        status: SuccessStatus.created
-        run: request_demo(input)
-    }
-}
-```
+This limit's window is a minute, which every target can count. A longer one,
+such as `within: 1h`, runs on the native target but not on Workers, whose store
+counts only 10 or 60 seconds ([Counting on Workers](#counting-on-workers)).
 
 `requests:` is a whole number of at least 1. `within:` is whole seconds
 from `1s` to `24h`; a longer allowance is a plan's limit, which is your
@@ -474,6 +529,8 @@ shows the store Workers uses.
 
 An edge deployable built for Workers counts its rate limits in
 Cloudflare's binding:
+
+`app.jadpo`:
 
 ```jadpo check project=rate-limits-on-workers file=app.jadpo
 application {
@@ -612,15 +669,20 @@ application {
 }
 ```
 
-`domains/bakery/entities/price_sheet.jadpo` keeps a file in that store:
+`sheets` is your name for the connection, and `Driver.disk` and its `path:` are
+built in.
+
+`domains/bakery/entities/price_sheet.jadpo` keeps a file in that store. `File`
+and `FileType` are built in:
 
 ```jadpo check project=files-put file=domains/bakery/entities/price_sheet.jadpo
-use bakery/types { SupplierName }
-
 /// A supplier's price sheet, kept as it was sent.
 entity PriceSheet {
     id: Uuid
-    supplier: SupplierName
+    supplier: Text {
+        min_length: 1
+        max_length: 80
+    }
     sheet: File {
         store: sheets
         max_size: 5mb
@@ -657,18 +719,12 @@ the same object again
 Bytes that are never attached to a record are deleted after a day.
 
 Here `sheets.put` keeps the bytes before the action reads or writes
-anything, and gives the `File` that the record keeps. A store with no room
-answers `storage_full`, which only a failure of kind `unavailable` can map.
+anything, and gives the `File` that the record keeps. An action's parameter is
+always a named type, so `SheetText` is one of your app's.
 
-```jadpo check project=files-put file=domains/bakery/types/supplier_name.jadpo hidden
-/// Who sent a price sheet.
-type SupplierName = Text {
-    min_length: 1
-    max_length: 80
-}
-```
+`domains/bakery/types/sheet_text.jadpo`:
 
-```jadpo check project=files-put file=domains/bakery/types/sheet_text.jadpo hidden
+```jadpo check project=files-put file=domains/bakery/types/sheet_text.jadpo
 /// A price sheet as a supplier sends it.
 type SheetText = Text {
     min_length: 1
@@ -676,7 +732,12 @@ type SheetText = Text {
 }
 ```
 
-```jadpo check project=files-put file=domains/bakery/failures/sheet_not_kept.jadpo hidden
+A store with no room answers `storage_full`, which only a failure of kind
+`unavailable` can map, and the action has to say which of your failures that is.
+
+`domains/bakery/failures/sheet_not_kept.jadpo`:
+
+```jadpo check project=files-put file=domains/bakery/failures/sheet_not_kept.jadpo
 /// The sheets store had no room for a sheet.
 type SheetNotKept = Failure {
     kind: FailureKind.unavailable
@@ -684,16 +745,20 @@ type SheetNotKept = Failure {
 }
 ```
 
-`domains/bakery/actions/keep_prices.jadpo`:
+`domains/bakery/actions/keep_prices.jadpo`. Its `use` lines import from
+your app's other files, `use app { sheets }` the connection in `app.jadpo`:
 
 ```jadpo check project=files-put file=domains/bakery/actions/keep_prices.jadpo migrate=initial
 use app { sheets }
 use bakery/entities { PriceSheet }
-use bakery/types { SheetText, SupplierName }
+use bakery/types { SheetText }
 use bakery/failures { SheetNotKept }
 
 /// Keeps a price sheet as it was sent.
-action keep_prices(supplier: SupplierName, sheet_text: SheetText) fails SheetNotKept -> PriceSheet {
+action keep_prices(
+    supplier: PriceSheet.supplier,
+    sheet_text: SheetText
+) fails SheetNotKept -> PriceSheet {
     var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {
         storage_full: SheetNotKept
     }
@@ -801,6 +866,8 @@ error. The build manifest records that the app then runs on one server,
 since a second server wouldn't see the files: each deployable that
 reaches a disk store lists those stores as its `one_server`
 ([The manifest](18-records-and-manifest.md#the-manifest)).
+
+`app.jadpo`:
 
 ```jadpo check project=files-disk-driver file=app.jadpo
 application {
@@ -963,9 +1030,103 @@ Both come when an app needs them.
 An entity keeps no history of its changes unless you ask. Give it an
 `audit:` section and it keeps a history of every change: who made it,
 when, through which action and request, and each changed field's value
-before and after. `retention:` says how long each entry is kept:
+before and after. `retention:` says how long each entry is kept. Here it is
+seven years, from a setting of your app.
 
-```jadpo check project=audit file=app.jadpo hidden
+`config.jadpo`:
+
+```jadpo check project=audit-first file=config.jadpo
+config {
+    audit_retention: Duration {
+        default: 2557d
+    }
+}
+```
+
+```jadpo check project=audit-first file=app.jadpo hidden
+application {}
+```
+
+`domains/billing/entities/invoice.jadpo`:
+
+```jadpo check project=audit-first file=domains/billing/entities/invoice.jadpo
+/// A bill, whose every change is kept for seven years.
+entity Invoice {
+    id: Uuid
+    number: InvoiceNumber
+
+    audit: {
+        retention: {
+            after: config.audit_retention
+        }
+    }
+}
+```
+
+`InvoiceNumber` is a standard type built into Jadpo, as `audit:` is. `Invoice`
+is your app's, and so is the action that issues one.
+
+`domains/billing/actions/issue_invoice.jadpo`:
+
+```jadpo check project=audit-first file=domains/billing/actions/issue_invoice.jadpo
+use billing/entities { Invoice }
+
+/// Issues an invoice.
+action issue_invoice(number: InvoiceNumber) -> Invoice {
+    return Invoice.create {
+        set: {
+            number: number
+        }
+    }
+}
+```
+
+Nothing else is needed: the action writes no entry itself. This test reads the
+entry back, with the `history` query Jadpo generates for the entity.
+
+`domains/billing/actions/issue_invoice.test.jadpo`:
+
+```jadpo check project=audit-first file=domains/billing/actions/issue_invoice.test.jadpo migrate=initial
+use billing/entities { Invoice }
+
+test "issuing an invoice leaves an entry in its history" {
+    var invoice: Invoice = issue_invoice("INV-1")
+    var page: Page<AuditEntry> = Invoice.history(invoice.id)
+    assert list.map(page.items, entry -> entry.change) == [AuditChange.created]
+}
+```
+
+- Each entry is written in the same transaction as the change, in the
+  same store, so a change can't happen without its entry. Entries are
+  only ever added: nothing in your code changes or removes one.
+- "Who" is the principal, the signed-in caller. For schedules and
+  subscribers it is the application, together with the trace of the
+  request that emitted the event, so a change made later is traced back
+  to the click that caused it.
+- Each changed field's value is kept as its canonical text, as
+  `text.from` gives it (`GBP 120.00`, `2026-10-25`, an enum's variant by
+  name), or as its JSON for a type with no single text form. A field no
+  request may touch, `FieldAccess.server_only`, is left out.
+- `retention:` is a `Duration` setting, as every period is
+  ([Where the periods come from](15-personal-data.md#where-the-periods-come-from)),
+  counted from when each entry was written, so it names no `since:`.
+  `audit: {}` keeps each entry until its record is erased.
+
+### Reading a history: `history`
+
+`Invoice.history(invoice_id)` is a generated query giving the record's
+history newest first, one page of 25 entries at a time. Its `next` is
+the cursor for the page after, which you pass back as `after:`.
+
+What a caller gets depends on what they may read. Here each invoice belongs to
+the clerk who issued it, and only that clerk may read its `discount`. `principal`
+and `authentication` in `app.jadpo` say who signs in
+([Sign-in and identity](08-identity.md)); the rest is the app's own, with
+`audit_retention` as above.
+
+`app.jadpo`:
+
+```jadpo check project=audit file=app.jadpo
 use billing/entities { Clerk }
 
 application {}
@@ -1010,7 +1171,10 @@ type HandleTaken = Failure {
 }
 ```
 
-```jadpo check project=audit file=domains/billing/entities/clerk.jadpo hidden
+`domains/billing/entities/clerk.jadpo`, with `Handle` a short `Text` of the
+app's:
+
+```jadpo check project=audit file=domains/billing/entities/clerk.jadpo
 use billing/types { Handle }
 
 /// Someone who keeps the books.
@@ -1027,8 +1191,10 @@ entity Clerk {
 }
 ```
 
+`domains/billing/entities/invoice.jadpo`, with `clerk_id`, `note` and `discount`
+new, and `InvoiceNote` another short `Text`:
+
 ```jadpo check project=audit file=domains/billing/entities/invoice.jadpo migrate=initial
-// domains/billing/entities/invoice.jadpo
 use billing/entities { Clerk }
 use billing/types { InvoiceNote }
 
@@ -1061,30 +1227,9 @@ entity Invoice {
 }
 ```
 
-- Each entry is written in the same transaction as the change, in the
-  same store, so a change can't happen without its entry. Entries are
-  only ever added: nothing in your code changes or removes one.
-- "Who" is the principal, the signed-in caller. For schedules and
-  subscribers it is the application, together with the trace of the
-  request that emitted the event, so a change made later is traced back
-  to the click that caused it.
-- Each changed field's value is kept as its canonical text, as
-  `text.from` gives it (`GBP 120.00`, `2026-10-25`, an enum's variant by
-  name), or as its JSON for a type with no single text form. A field no
-  request may touch, `FieldAccess.server_only`, is left out.
-- `retention:` is a `Duration` setting, as every period is
-  ([Where the periods come from](15-personal-data.md#where-the-periods-come-from)),
-  counted from when each entry was written, so it names no `since:`.
-  `audit: {}` keeps each entry until its record is erased.
-
-### Reading a history: `history`
-
-`Invoice.history(invoice_id)` is a generated query giving the record's
-history newest first, one page of 25 entries at a time. Its `next` is
-the cursor for the page after, which you pass back as `after:`:
+`domains/billing/actions/invoice_changes.jadpo`:
 
 ```jadpo check project=audit file=domains/billing/actions/invoice_changes.jadpo
-// domains/billing/actions/invoice_changes.jadpo
 use billing/entities { Invoice }
 
 /// The invoice's changes, newest first, as the caller may see them.
@@ -1118,9 +1263,11 @@ Each entry is an `AuditEntry`:
 | `fields` | Each changed field, an `AuditFieldChange`: its name, `field`, and its text `before` and `after`, `none` where it had no value |
 
 This test issues an invoice, notes a payment, and reads both changes
-back:
+back, through three ordinary actions of this app.
 
-```jadpo check project=audit file=domains/billing/actions/hire_clerk.jadpo hidden
+`domains/billing/actions/hire_clerk.jadpo`:
+
+```jadpo check project=audit file=domains/billing/actions/hire_clerk.jadpo
 use billing/entities { Clerk }
 use billing/types { Handle }
 use billing/failures { HandleTaken }
@@ -1138,7 +1285,9 @@ action hire_clerk(handle: Handle) fails HandleTaken -> Clerk {
 }
 ```
 
-```jadpo check project=audit file=domains/billing/actions/issue_invoice.jadpo hidden
+`domains/billing/actions/issue_invoice.jadpo`:
+
+```jadpo check project=audit file=domains/billing/actions/issue_invoice.jadpo
 use billing/entities { Invoice }
 
 /// Issues an invoice.
@@ -1154,7 +1303,9 @@ action issue_invoice(me: Principal.user, number: InvoiceNumber) -> Invoice {
 }
 ```
 
-```jadpo check project=audit file=domains/billing/actions/annotate_invoice.jadpo hidden
+`domains/billing/actions/annotate_invoice.jadpo`:
+
+```jadpo check project=audit file=domains/billing/actions/annotate_invoice.jadpo
 use billing/entities { Invoice, InvoiceNotFound }
 use billing/types { InvoiceNote }
 
@@ -1172,8 +1323,9 @@ action annotate_invoice(
 }
 ```
 
+`domains/billing/actions/invoice_changes.test.jadpo`:
+
 ```jadpo check project=audit file=domains/billing/actions/invoice_changes.test.jadpo
-// domains/billing/actions/invoice_changes.test.jadpo
 use billing/entities { Clerk, Invoice }
 use billing/actions { annotate_invoice, hire_clerk, issue_invoice }
 
@@ -1288,8 +1440,10 @@ no `telemetry:` section, nothing is sent. To send it, add one to
 `application { }`. It isn't a connection, because there is one protocol
 and no vendor-specific code: a vendor is an endpoint and a header. Its
 host is still listed in the network report
-([The network report](11-integrations.md#the-network-report)). Here
-telemetry goes to Honeycomb:
+([The network report](11-integrations.md#the-network-report)).
+
+Not built yet: `telemetry:` is `toolchain.not_built_yet` where it is written, so
+this is the design. Here telemetry goes to Honeycomb:
 
 ```jadpo fragment
 // app.jadpo
@@ -1369,7 +1523,10 @@ read these settings.
 
 You declare your own metrics in a domain's `monitoring.jadpo`
 ([Project layout](01-project-layout-and-modules.md#project-layout)) and
-record them in code:
+record them in code.
+
+Not built yet: `metric` and `telemetry.` come with the `telemetry:` section, so
+this is the design:
 
 ```jadpo fragment
 // domains/billing/monitoring.jadpo
@@ -1472,7 +1629,57 @@ and turned into rules, and doesn't yet raise an alert by itself.
 A domain's thresholds are its `thresholds { }`, in
 `domains/<domain>/monitoring.jadpo`. Each is `name: { }` giving one
 thing it watches and its limits, and its `///` line, what it protects,
-is the summary of the alerts made from it:
+is the summary of the alerts made from it. Here one threshold holds an action's
+p99 to 50 ms. `thresholds { }`, `watches:` and `p99:` are built into Jadpo;
+`greeting` is your name for the threshold, and `greet` an action of your app,
+imported by the `use` line.
+
+`domains/hello/monitoring.jadpo`:
+
+```jadpo check project=monitoring-first file=domains/hello/monitoring.jadpo
+use hello/actions { greet }
+
+thresholds {
+    /// Working out a greeting stays quick.
+    greeting: {
+        watches: greet
+        p99: 50ms
+    }
+}
+```
+
+```jadpo check project=monitoring-first file=app.jadpo hidden
+application {}
+```
+
+`domains/hello/types/greeting.jadpo`:
+
+```jadpo check project=monitoring-first file=domains/hello/types/greeting.jadpo
+/// What a visitor is told.
+type Greeting = Output {
+    salutation: Text
+}
+```
+
+`domains/hello/actions/greet.jadpo`:
+
+```jadpo check project=monitoring-first file=domains/hello/actions/greet.jadpo
+use hello/types { Greeting }
+
+/// Greets a visitor.
+action greet() -> Greeting {
+    return Greeting {
+        salutation: "Hello"
+    }
+}
+```
+
+A threshold can watch a route instead, and hold it to several limits at once.
+The same app, with a public route that runs `greet`. `policy.jadpo` lets anyone
+call the action, which reaches no entity to take its permission from
+([Policy](09-policy.md)).
+
+`domains/hello/monitoring.jadpo`, with `greeting_route` new:
 
 ```jadpo check project=monitoring-thresholds file=domains/hello/monitoring.jadpo
 use hello/actions { greet }
@@ -1481,7 +1688,7 @@ thresholds {
     /// A visitor is greeted quickly.
     greeting_route: {
         route: {
-            method: HttpMethod.post
+            method: HttpMethod.get
             path: "/hello"
         }
         duration: 800ms
@@ -1503,21 +1710,14 @@ thresholds {
 application {}
 ```
 
-```jadpo check project=monitoring-thresholds file=policy.jadpo hidden
+`policy.jadpo`:
+
+```jadpo check project=monitoring-thresholds file=policy.jadpo
 use hello
 
 policy {
     actions: {
         hello.greet: [Access.public]
-    }
-}
-```
-
-```jadpo check project=monitoring-thresholds file=domains/hello/types/visitor.jadpo hidden
-/// Who is calling.
-type Visitor = Input {
-    name: Text {
-        max_length: 40
     }
 }
 ```
@@ -1530,18 +1730,20 @@ type Greeting = Output {
 ```
 
 ```jadpo check project=monitoring-thresholds file=domains/hello/actions/greet.jadpo hidden
-use hello/types { Greeting, Visitor }
+use hello/types { Greeting }
 
-/// Greets a visitor by name.
-action greet(input: Visitor) -> Greeting {
+/// Greets a visitor.
+action greet() -> Greeting {
     return Greeting {
-        salutation: "Hello, {input.name}"
+        salutation: "Hello"
     }
 }
 ```
 
-```jadpo check project=monitoring-thresholds file=domains/hello/routes/hello.jadpo hidden
-use hello/types { Greeting, Visitor }
+`domains/hello/routes/hello.jadpo`:
+
+```jadpo check project=monitoring-thresholds file=domains/hello/routes/hello.jadpo
+use hello/types { Greeting }
 use hello/actions { greet }
 
 /// Greetings.
@@ -1549,11 +1751,10 @@ routes Hello {
     prefix: /hello
 
     /// Greets whoever calls it.
-    POST / {
+    GET / {
         authentication: RouteAuthentication.none
-        input: Visitor
         output: Greeting
-        run: greet(input)
+        run: greet()
     }
 }
 ```
@@ -1660,20 +1861,169 @@ and metrics for each flag value's path ([Path IDs](#path-ids)).
 
 Most apps send a handful of emails: confirm your address, an invoice, a
 welcome. Each is a type, `type X = EmailMessage`, whose fields are the
-values its text uses. It lives in its domain's `emails/` folder, beside
-its HTML and text templates. Its subject line is its entry in the
-domain's language files, with its fields as placeholders
-([Email subjects](10-configuration-and-time.md#email-subjects)).
+values its text uses. It lives in its domain's `emails/` folder, beside a
+template named after it, and an action sends it by emitting it.
 
-The templates' words come from the domain's translations
+Here is the smallest one: a plain-text welcome, in one language, sent when
+someone signs up. `EmailMessage`, `Email`, `Locale`, `Driver.smtp` and `emit` are
+built into Jadpo. Everything else is your app's, shown here, and each `use` line
+imports from another file of it.
+
+`domains/accounts/types/display_name.jadpo`:
+
+```jadpo check project=email-first file=domains/accounts/types/display_name.jadpo
+/// What someone is called.
+type DisplayName = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+The email's type, `domains/accounts/emails/welcome_email.jadpo`:
+
+```jadpo check project=email-first file=domains/accounts/emails/welcome_email.jadpo
+use accounts/types { DisplayName }
+
+/// Sent once a user has signed up.
+type WelcomeEmail = EmailMessage {
+    display_name: DisplayName
+}
+```
+
+Its text, `domains/accounts/emails/welcome_email.txt`:
+
+```jadpo check project=email-first file=domains/accounts/emails/welcome_email.txt
+Hello {{ display_name }}, thanks for signing up.
+```
+
+Its subject line is its entry in the domain's language file, with its fields as
+placeholders ([Email subjects](10-configuration-and-time.md#email-subjects)).
+
+`domains/accounts/translations/en_gb.jadpo`:
+
+```jadpo check project=email-first file=domains/accounts/translations/en_gb.jadpo
+translations {
+    welcome_email: "Welcome, {display_name}"
+}
+```
+
+The record the action keeps, `domains/accounts/entities/user.jadpo`:
+
+```jadpo check project=email-first file=domains/accounts/entities/user.jadpo
+use accounts/types { DisplayName }
+
+/// Someone with an account.
+entity User {
+    id: Uuid
+    email: Email
+    display_name: DisplayName
+    locale: Locale
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+The action, `domains/accounts/actions/sign_up.jadpo`, emits the email, which goes
+once the action commits ([Sending](#sending)):
+
+```jadpo check project=email-first file=domains/accounts/actions/sign_up.jadpo
+use accounts/entities { User }
+use accounts/types { DisplayName }
+use accounts/emails { WelcomeEmail }
+
+/// Signs someone up, and welcomes them once it is done.
+action sign_up(email: Email, display_name: DisplayName, chosen_locale: Locale) -> User {
+    var user: User = User.create {
+        set: {
+            email: email
+            display_name: display_name
+            locale: chosen_locale
+        }
+    }
+    emit WelcomeEmail {
+        to: user.email
+        locale: user.locale
+        display_name: user.display_name
+    }
+    return user
+}
+```
+
+`app.jadpo` says how mail leaves, here over SMTP, and which languages the app
+has:
+
+```jadpo check project=email-first file=app.jadpo
+application {
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: config.smtp_host
+        }
+    }
+    email: {
+        connection: mail
+        from: config.mail_sender
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+`config.jadpo`:
+
+```jadpo check project=email-first file=config.jadpo
+config {
+    mail_sender: Email {
+        default: "hello@notes.example"
+    }
+    smtp_host: Hostname
+}
+```
+
+A test catches the mail instead of sending it, and reads it from `email.sent`.
+
+`domains/accounts/actions/sign_up.test.jadpo`:
+
+```jadpo check project=email-first file=domains/accounts/actions/sign_up.test.jadpo migrate=initial
+use accounts/entities { User }
+
+test "signing up sends a welcome" {
+    var user: User = sign_up("ada@notes.example", "Ada", Locale.en_gb)
+    assert user.display_name == "Ada"
+    var sent: List<SentEmail> = email.sent
+    assert list.any(sent, item -> item.to == "ada@notes.example" and item.subject == "Welcome, Ada")
+}
+```
+
+### HTML, a link and translated words
+
+This adds three things to the email above: a `sign_in_link` field, an `.html`
+template beside the `.txt`, and words from the domain's translations
 ([Translations as messages](10-configuration-and-time.md#translations-as-messages)).
 A template calls `{{ translations.<domain>.<message>(...) }}`, which
 takes the email's locale, and the compiler checks every call and
 placeholder against the message types and the email's fields.
 
-Here is a welcome email, from its type to the action that sends it, with the
-app's settings and its `User` entity left out. The app sends mail over SMTP.
-The email's type, in `domains/accounts/emails/welcome_email.jadpo`:
+`DisplayName`, `User` and `app.jadpo` stay as they are. `config.jadpo` gains one
+setting, `app_url: Url`, for the link.
+
+`domains/accounts/emails/welcome_email.jadpo`, with `sign_in_link` new:
+
+```jadpo check project=email-welcome file=domains/accounts/emails/welcome_email.jadpo
+use accounts/types { DisplayName }
+
+/// Sent once a user has signed up.
+type WelcomeEmail = EmailMessage {
+    display_name: DisplayName
+    sign_in_link: Url
+}
+```
 
 ```jadpo check project=email-welcome file=app.jadpo hidden
 application {
@@ -1681,10 +2031,6 @@ application {
         mail: {
             driver: Driver.smtp
             host: config.smtp_host
-            credential: {
-                username: config.smtp_username
-                password: config.smtp_password
-            }
         }
     }
     email: {
@@ -1708,23 +2054,21 @@ config {
         default: "hello@notes.example"
     }
     smtp_host: Hostname
-    smtp_password: Text {
-        secret: true
-    }
-    smtp_username: Text
 }
 ```
 
 ```jadpo check project=email-welcome file=domains/accounts/types/display_name.jadpo hidden
+/// What someone is called.
 type DisplayName = Text {
     min_length: 1
     max_length: 80
 }
 ```
 
-```jadpo check project=email-welcome file=domains/accounts/entities/user.jadpo hidden migrate=initial
+```jadpo check project=email-welcome file=domains/accounts/entities/user.jadpo hidden
 use accounts/types { DisplayName }
 
+/// Someone with an account.
 entity User {
     id: Uuid
     email: Email
@@ -1738,18 +2082,9 @@ entity User {
 }
 ```
 
-```jadpo check project=email-welcome file=domains/accounts/emails/welcome_email.jadpo
-use accounts/types { DisplayName }
+Each thing a template says is one of the domain's messages, a type of your app.
 
-/// Sent once a user has signed up.
-type WelcomeEmail = EmailMessage {
-    display_name: DisplayName
-    sign_in_link: Url
-}
-```
-
-Its heading is one of the domain's messages, and the domain's language
-file words it. There, `welcome_email` is the email's subject line:
+`domains/accounts/translations/welcome_heading.jadpo`:
 
 ```jadpo check project=email-welcome file=domains/accounts/translations/welcome_heading.jadpo
 use accounts/types { DisplayName }
@@ -1760,10 +2095,17 @@ type WelcomeHeading = Message {
 }
 ```
 
-```jadpo check project=email-welcome file=domains/accounts/translations/sign_in.jadpo hidden
+`domains/accounts/translations/sign_in.jadpo`:
+
+```jadpo check project=email-welcome file=domains/accounts/translations/sign_in.jadpo
 /// The welcome email's link to sign in.
 type SignIn = Message {}
 ```
+
+The domain's language file words them, with `welcome_email` still the subject
+line.
+
+`domains/accounts/translations/en_gb.jadpo`:
 
 ```jadpo check project=email-welcome file=domains/accounts/translations/en_gb.jadpo
 translations {
@@ -1773,21 +2115,21 @@ translations {
 }
 ```
 
-The `.html` template, `domains/accounts/emails/welcome_email.html`, sits
-beside the type. Its `include` brings in a piece several emails share
-([Partials](#partials-pieces-several-emails-share)):
+`domains/accounts/emails/welcome_email.html`, beside the type:
 
 ```jadpo check project=email-welcome file=domains/accounts/emails/welcome_email.html
 <html dir="{{ locale.direction }}">
 <h1>{{ translations.accounts.welcome_heading(name: display_name) }}</h1>
-{{ include button(label: translations.accounts.sign_in(), url: sign_in_link) }}
+<a href="{{ sign_in_link }}">{{ translations.accounts.sign_in() }}</a>
 </html>
 ```
 
-```jadpo check project=email-welcome file=domains/accounts/emails/welcome_email.txt hidden
+`domains/accounts/emails/welcome_email.txt`, replaced:
+
+```jadpo check project=email-welcome file=domains/accounts/emails/welcome_email.txt
 {{ translations.accounts.welcome_heading(name: display_name) }}
 
-{{ include button(label: translations.accounts.sign_in(), url: sign_in_link) }}
+{{ translations.accounts.sign_in() }}: {{ sign_in_link }}
 ```
 
 ### Sending
@@ -1797,6 +2139,8 @@ is retried like any delivery
 ([Delivery: at least once, safe to repeat](12-jobs-and-events.md#delivery-at-least-once-safe-to-repeat)),
 so a sign-up that is rolled back never sends a welcome. Every
 `EmailMessage` has `to:` and `locale:`.
+
+`domains/accounts/actions/sign_up.jadpo`, with `sign_in_link` new:
 
 ```jadpo check project=email-welcome file=domains/accounts/actions/sign_up.jadpo
 use accounts/entities { User }
@@ -1841,9 +2185,11 @@ email's token and code (`sign_in_token`, `sign_in_code`). Only a test
 can read `email.sent` (`email.sent_context`). The mail is caught whole
 whichever connection `email:` names, a mail package's included.
 
-This test signs someone up and checks the welcome email:
+This test signs someone up and checks the welcome email.
 
-```jadpo check project=email-welcome file=domains/accounts/actions/sign_up.test.jadpo
+`domains/accounts/actions/sign_up.test.jadpo`:
+
+```jadpo check project=email-welcome file=domains/accounts/actions/sign_up.test.jadpo migrate=initial
 use accounts/entities { User }
 
 test "signing up welcomes the new user, with a link to sign in" {
@@ -1961,9 +2307,12 @@ other partials, but never lead back to themselves. A partial that
 doesn't exist, can't be reached, lacks the template it is included from,
 or is given the wrong fields is `email.partial_invalid`.
 
-Here is the button the welcome email includes:
+Here is a button for the welcome email above, whose other files stay as they
+are.
 
-```jadpo check project=email-welcome file=shared/emails/button.jadpo
+`shared/emails/button.jadpo`:
+
+```jadpo check project=email-button file=shared/emails/button.jadpo
 /// A link set as a button, in every email that asks the reader to act.
 type Button = EmailPartial {
     label: PresentationText
@@ -1971,12 +2320,99 @@ type Button = EmailPartial {
 }
 ```
 
-```jadpo check project=email-welcome file=shared/emails/button.html
+`shared/emails/button.html`:
+
+```jadpo check project=email-button file=shared/emails/button.html
 <a href="{{ url }}" style="display:inline-block;padding:12px 24px;background-color:#1f2937;color:#ffffff;text-decoration:none;">{{ label }}</a>
 ```
 
-```jadpo check project=email-welcome file=shared/emails/button.txt hidden
+`shared/emails/button.txt`:
+
+```jadpo check project=email-button file=shared/emails/button.txt
 {{ label }}: {{ url }}
+```
+
+`domains/accounts/emails/welcome_email.html`, with its link replaced by the
+button:
+
+```jadpo check project=email-button file=domains/accounts/emails/welcome_email.html
+<html dir="{{ locale.direction }}">
+<h1>{{ translations.accounts.welcome_heading(name: display_name) }}</h1>
+{{ include button(label: translations.accounts.sign_in(), url: sign_in_link) }}
+</html>
+```
+
+`domains/accounts/emails/welcome_email.txt`, the same:
+
+```jadpo check project=email-button file=domains/accounts/emails/welcome_email.txt
+{{ translations.accounts.welcome_heading(name: display_name) }}
+
+{{ include button(label: translations.accounts.sign_in(), url: sign_in_link) }}
+```
+
+```jadpo check project=email-button file=app.jadpo hidden
+application {
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: config.smtp_host
+        }
+    }
+    email: {
+        connection: mail
+        from: config.mail_sender
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=email-button file=config.jadpo hidden
+config {
+    mail_sender: Email {
+        default: "hello@notes.example"
+    }
+    smtp_host: Hostname
+}
+```
+
+```jadpo check project=email-button file=domains/accounts/types/display_name.jadpo hidden
+type DisplayName = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+```jadpo check project=email-button file=domains/accounts/emails/welcome_email.jadpo hidden
+use accounts/types { DisplayName }
+
+type WelcomeEmail = EmailMessage {
+    display_name: DisplayName
+    sign_in_link: Url
+}
+```
+
+```jadpo check project=email-button file=domains/accounts/translations/welcome_heading.jadpo hidden
+use accounts/types { DisplayName }
+
+type WelcomeHeading = Message {
+    name: DisplayName
+}
+```
+
+```jadpo check project=email-button file=domains/accounts/translations/sign_in.jadpo hidden
+type SignIn = Message {}
+```
+
+```jadpo check project=email-button file=domains/accounts/translations/en_gb.jadpo hidden
+translations {
+    sign_in: "Sign in"
+    welcome_email: "Welcome, {display_name}"
+    welcome_heading: "Welcome, {name}"
+}
 ```
 
 ### Attachments
@@ -2282,6 +2718,8 @@ locales {
 }
 ```
 
+`shared/emails/layout.html`:
+
 ```jadpo check project=email-layout file=shared/emails/layout.html
 <html dir="{{ locale.direction }}">
 <head><title>{{ subject }}</title></head>
@@ -2481,8 +2919,9 @@ template. The template follows the strict
 the locale it is given, and is wrapped in the optional
 `shared/documents/layout.html`.
 
-Here an invoice is rendered to a PDF by a subscriber, through Gotenberg,
-and kept as a file:
+Not built yet: `documents:` is `toolchain.not_built_yet` where it is written, so
+this is the design. Here an invoice is rendered to a PDF by a subscriber, through
+Gotenberg, and kept as a file:
 
 ```jadpo fragment
 // domains/billing/documents/invoice_document.jadpo
@@ -2531,8 +2970,7 @@ var file: File = attempt invoices.put(pdf, FileType.pdf)
   rendered HTML
   ([Provider calls and capabilities in tests](13-testing.md#provider-calls-and-capabilities-in-tests)).
 
-Until this is built, `documents:` is `toolchain.not_built_yet`. An app that
-must make a PDF today describes a rendering service as a package
+An app that must make a PDF today describes a rendering service as a package
 ([Call an outside API](../guides/06-call-an-outside-api.md)), calls it from an
 action, and keeps the bytes it answers with `put` ([Files](#files)).
 
@@ -2544,34 +2982,24 @@ action, and keeps the bytes it answers with `put` ([Files](#files)).
 Give an entity a `search:` section and people can search its records by
 words. The compiler generates the index, keeps it up to date and
 generates its migration, and a query finds records with `matches`. The
-search runs on PostgreSQL's full-text search, so you need nothing else.
+search runs on PostgreSQL's full-text search, so you need nothing else:
+`app.jadpo` names no connection for it.
 
-```jadpo check project=search file=app.jadpo hidden
-application {}
-```
+`search:`, `matches`, `SearchLanguage` and `SearchText` are built into Jadpo.
+`Todo`, `TodoView` and `find_todos` are your app's, shown here.
 
-```jadpo check project=search file=domains/planning/types/todo_title.jadpo hidden
-/// A todo's title.
-type TodoTitle = Text {
-    max_length: 200
-}
-```
-
-```jadpo check project=search file=domains/planning/types/todo_notes.jadpo hidden
-/// What a todo says beyond its title.
-type TodoNotes = Text {
-    max_length: 2000
-}
-```
+`domains/planning/entities/todo.jadpo`:
 
 ```jadpo check project=search file=domains/planning/entities/todo.jadpo
-use planning/types { TodoNotes, TodoTitle }
-
 /// Something to do.
 entity Todo {
     id: Uuid
-    title: TodoTitle
-    notes: TodoNotes?
+    title: Text {
+        max_length: 200
+    }
+    notes: Text? {
+        max_length: 2000
+    }
 
     search: {
         fields: [title, notes]
@@ -2580,7 +3008,9 @@ entity Todo {
 }
 ```
 
-```jadpo check project=search file=domains/planning/types/todo_view.jadpo hidden
+`domains/planning/types/todo_view.jadpo`, what a list shows of each:
+
+```jadpo check project=search file=domains/planning/types/todo_view.jadpo
 use planning/entities { Todo }
 
 /// A todo in a list.
@@ -2589,46 +3019,57 @@ type TodoView = Output {
 }
 ```
 
-```jadpo check project=search file=domains/planning/types/todo_search.jadpo
-/// What someone typed into the search box, and where its page starts.
-type TodoSearch = Input {
-    phrase: SearchText
-    page_size: PageSize {
-        default: 2
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-```
+`domains/planning/queries/find_todos.jadpo`:
 
-```jadpo check project=search file=domains/planning/queries/search_todos.jadpo migrate=initial
+```jadpo check project=search file=domains/planning/queries/find_todos.jadpo
 use planning/entities { Todo }
-use planning/types { TodoSearch, TodoView }
+use planning/types { TodoView }
 
 /// The todos whose words match a search, best first.
-query search_todos(asked: TodoSearch) -> Page<TodoView> {
+query find_todos(phrase: SearchText) -> List<TodoView> {
     from: Todo
-    where: Todo matches asked.phrase
-    page: {
-        size: asked.page_size
-        after: asked.after
-    }
+    where: Todo matches phrase
+    limit: 20
 }
 ```
 
-```jadpo check project=search file=domains/planning/actions/add_todo.jadpo hidden
+```jadpo check project=search file=app.jadpo hidden
+application {}
+```
+
+This test adds two todos with an action of the app, and finds one. "packing"
+finds "Pack" because the search reduces each word to its stem.
+
+`domains/planning/actions/add_todo.jadpo`:
+
+```jadpo check project=search file=domains/planning/actions/add_todo.jadpo
 use planning/entities { Todo }
-use planning/types { TodoNotes, TodoTitle }
 
 /// Adds a todo.
-action add_todo(title: TodoTitle, notes: TodoNotes?) -> Todo {
+action add_todo(title: Todo.title, notes: Todo.notes) -> Todo {
     return Todo.create {
         set: {
             title: title
             notes: notes
         }
     }
+}
+```
+
+`domains/planning/queries/find_todos.test.jadpo`:
+
+```jadpo check project=search file=domains/planning/queries/find_todos.test.jadpo
+use planning/entities { Todo }
+use planning/types { TodoView }
+use planning/actions { add_todo }
+
+test "a word finds the todos that hold it" {
+    var van_todo: Todo = add_todo("Pack the van", none)
+    var watering: Todo = add_todo("Water plants", none)
+    assert van_todo.title == "Pack the van"
+    assert watering.title == "Water plants"
+    var packing_todos: List<TodoView> = find_todos("packing")
+    assert list.map(packing_todos, item -> item.title) == ["Pack the van"]
 }
 ```
 
@@ -2670,8 +3111,48 @@ action add_todo(title: TodoTitle, notes: TodoNotes?) -> Todo {
   ([Special kinds of index](05-data.md#special-kinds-of-index)): one
   declaration, not an index plus hand-written conditions.
 
+### A page at a time
+
+A long list comes a page at a time: the query returns a `Page<TodoView>` and
+says where each page starts. `TodoSearch` is your app's, and `PageSize` and
+`PageCursor` are built in.
+
+`domains/planning/types/todo_search.jadpo`:
+
+```jadpo check project=search file=domains/planning/types/todo_search.jadpo
+/// What someone typed into the search box, and where its page starts.
+type TodoSearch = Input {
+    phrase: SearchText
+    page_size: PageSize {
+        default: 2
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+```
+
+`domains/planning/queries/search_todos.jadpo`:
+
+```jadpo check project=search file=domains/planning/queries/search_todos.jadpo migrate=initial
+use planning/entities { Todo }
+use planning/types { TodoSearch, TodoView }
+
+/// The todos whose words match a search, best first, a page at a time.
+query search_todos(asked: TodoSearch) -> Page<TodoView> {
+    from: Todo
+    where: Todo matches asked.phrase
+    page: {
+        size: asked.page_size
+        after: asked.after
+    }
+}
+```
+
 The test adds four todos and searches them a page of two at a time.
-"Pack books" matches in its title and its notes, so it comes first:
+"Pack books" matches in its title and its notes, so it comes first.
+
+`domains/planning/queries/search_todos.test.jadpo`:
 
 ```jadpo check project=search file=domains/planning/queries/search_todos.test.jadpo
 use planning/entities { Todo }
@@ -2874,6 +3355,8 @@ entity Member {
 }
 ```
 
+`domains/notes/entities/note.jadpo`:
+
 ```jadpo check project=search-policy file=domains/notes/entities/note.jadpo
 use notes/entities { Member }
 use notes/types { NoteText }
@@ -2906,6 +3389,8 @@ type NoteView = Output {
     pick: [Note.id, Note.body]
 }
 ```
+
+`domains/notes/queries/search_notes.jadpo`:
 
 ```jadpo check project=search-policy file=domains/notes/queries/search_notes.jadpo migrate=initial
 use notes/entities { Note }
@@ -2954,6 +3439,8 @@ action write_note(owner: Principal.user, body: NoteText) -> Note {
     }
 }
 ```
+
+`domains/notes/queries/search_notes.test.jadpo`:
 
 ```jadpo check project=search-policy file=domains/notes/queries/search_notes.test.jadpo
 use notes/entities { Member, Note }
@@ -3053,7 +3540,10 @@ checks the token it gives. `bot_check` is a capability with one
 operation, checking a token: pass or fail. A package fills it, such as
 Cloudflare Turnstile, hCaptcha or reCAPTCHA, and you name its connection
 in `application { }`. A route, or a generated feature, asks for the
-check with `bot_check: true`:
+check with `bot_check: true`.
+
+Not built yet: `bot_check:` is `toolchain.not_built_yet` where it is written, so
+this is the design:
 
 ```jadpo fragment
 // app.jadpo
@@ -3072,8 +3562,9 @@ application {
 // domains/sales/routes/demo_requests.jadpo
 POST / {
     authentication: RouteAuthentication.none
-    input: RequestDemo
-    status: SuccessStatus.no_content
+    input: DemoForm
+    output: DemoReceived
+    status: SuccessStatus.created
     run: request_demo(input)
     bot_check: true
 }
@@ -3098,8 +3589,7 @@ POST / {
 - `bot_check: true` with no `bot_check:` connection is a compile error
   naming the setting to add.
 
-Until this is built, `bot_check:` is `toolchain.not_built_yet`. An app that
-needs a check today takes the widget's token in the route's input, describes
+An app that needs a check today takes the widget's token in the route's input, describes
 the challenge service as a package
 ([Call an outside API](../guides/06-call-an-outside-api.md)), and calls it first
 in the action. Every public route already has a [rate limit](#rate-limits),
@@ -4040,6 +4530,8 @@ type SheetNotKept = Failure {
 }
 ```
 
+`domains/bakery/entities/price_sheet.jadpo`:
+
 ```jadpo check project=files-held file=domains/bakery/entities/price_sheet.jadpo
 use bakery/types { SupplierName }
 
@@ -4079,6 +4571,8 @@ action keep_prices(supplier: SupplierName, sheet_text: SheetText) fails SheetNot
     }
 }
 ```
+
+`domains/bakery/actions/keep_prices.test.jadpo`:
 
 ```jadpo check project=files-held file=domains/bakery/actions/keep_prices.test.jadpo expect=test.fault
 use bakery/entities { PriceSheet }
