@@ -31,11 +31,52 @@ folder ([Files and names](01-project-layout-and-modules.md#files-and-names)).
 You call it by name, as you call an action, the function that changes
 records ([Functions and actions](03-logic.md#functions-and-actions)).
 
-This query gives an owner's todos a page at a time, newest first. Its
-`filter` parameter is a `ListTodos`, an `Input` type a route fills from the
-request: an optional `status`, an optional `due_before`, a `page_size`
-that defaults to 25 and an optional `after`, the cursor the previous page
-returned:
+Here is the smallest one: an entity, and a query that reads its ten newest
+records.
+
+`domains/planning/entities/todo.jadpo`:
+
+```jadpo check project=named-first file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=named-first file=domains/planning/entities/todo.jadpo
+type TodoTitle = Text {
+    max_length: 200
+}
+
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+}
+```
+
+`domains/planning/queries/newest_todos.jadpo`:
+
+```jadpo check project=named-first file=domains/planning/queries/newest_todos.jadpo migrate=initial
+use planning/entities { Todo }
+
+/// The ten newest todos.
+query newest_todos() -> List<Todo> {
+    from: Todo
+    order: [Todo.created_at desc]
+    limit: 10
+}
+```
+
+`from:` names the entity, `order:` the order the records come back in and
+`limit:` the most it returns. The `use` line brings `Todo` in from the other
+file. `List`, `Instant`, `Text` and `Uuid` are built in, so they need none.
+
+The next query adds a condition and pages. It gives an owner's todos a page
+at a time, newest first, from a fuller `Todo` with an owner, a status and a
+due date. Its `filter` parameter is a `ListTodos`, an `Input` type a route
+fills from the request: an optional `status`, an optional `due_before`, a
+`page_size` that defaults to 25 and an optional `after`, the cursor the
+previous page returned:
 
 ```jadpo check project=named file=planning.jadpo hidden
 type UserName = Text {
@@ -126,9 +167,8 @@ query todos_for_owner(owner_id: User.id, filter: ListTodos) -> Page<TodoView> {
 }
 ```
 
-`from:` names the entity, `where:` the records it keeps, `order:` their
-order and `page:` how many come back at once and where the page starts.
-`where_present:` applies its condition only when the value on the right
+`where:` names the records it keeps, and `page:` says how many come back at
+once and where the page starts. `where_present:` applies its condition only when the value on the right
 is there: when the request leaves out `status`, every status comes back.
 The [Filters](#filters) and [Order and pages](#order-and-pages) topics
 cover each section in full.

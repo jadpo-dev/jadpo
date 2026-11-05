@@ -7,9 +7,9 @@ migration, using PostgreSQL's full-text search, so there is nothing else to
 run. Search results always pass policy, so nobody finds a record they couldn't
 read. This guide adds a search box's route to a book catalogue.
 
-You start from an app with a `Book` entity, its `BookView` output, and a
-`POST /books` route that adds a book.
-[Build an API](01-build-an-api.md) shows how to write those.
+You start from an app with a `Book` entity, shown below, and a `POST /books` route
+that adds a book through an action called `add_book`.
+[Build an API](01-build-an-api.md) shows how to write that route.
 
 ```jadpo check project=guide-search file=app.jadpo hidden
 application {}
@@ -22,15 +22,6 @@ use books/entities { Book }
 type NewBook = Input {
     title: Book.title
     author: Book.author
-}
-```
-
-```jadpo check project=guide-search file=domains/books/types/book_view.jadpo hidden
-use books/entities { Book }
-
-/// A book in a list.
-type BookView = Output {
-    pick: [Book.id, Book.title, Book.author]
 }
 ```
 
@@ -117,7 +108,8 @@ is no backfill to write or index to keep up to date.
 
 What someone types is a `SearchText`, a standard type holding 1 to 200
 characters with no line breaks. `PageSize` and `PageCursor` are the standard
-types for a page of results.
+types for a page of results. All three are built into Jadpo, so nothing imports
+them. `BookSearch` and `BookView` are yours.
 
 `domains/books/types/book_search.jadpo`:
 
@@ -131,6 +123,17 @@ type BookSearch = Input {
     after: PageCursor {
         optional: true
     }
+}
+```
+
+`domains/books/types/book_view.jadpo`:
+
+```jadpo check project=guide-search file=domains/books/types/book_view.jadpo
+use books/entities { Book }
+
+/// A book in a list.
+type BookView = Output {
+    pick: [Book.id, Book.title, Book.author]
 }
 ```
 

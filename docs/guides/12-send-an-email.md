@@ -8,26 +8,10 @@ against the type, and tests and `jadpo dev` catch the mail so nothing
 leaves your machine. This guide sends a new member of a book club a
 welcome email over SMTP.
 
-You start from an app with a `Member` entity and a `POST /members` route
-that runs an action called `join`.
-[Store and change a record](02-store-and-change-a-record.md) and
-[Build an API](01-build-an-api.md) show how to write those.
-
-```jadpo check project=guide-email file=domains/club/entities/member.jadpo hidden
-/// A member of the book club.
-entity Member {
-    id: Uuid
-    address: Email
-    name: Text {
-        min_length: 1
-        max_length: 80
-    }
-
-    policy: {
-        create: [Access.public]
-    }
-}
-```
+You start from an app with a `POST /members` route that runs an action called
+`join`, and the `NewMember` and `Joined` types it takes and answers with.
+[Build an API](01-build-an-api.md) shows how to write those. The first email needs
+none of them.
 
 ```jadpo check project=guide-email file=domains/club/types/new_member.jadpo hidden
 use club/entities { Member }
@@ -72,7 +56,8 @@ routes Members {
 Mail leaves through a connection, and `email:` names the one every email
 uses. Here that is the built-in SMTP driver, which talks to any mail
 server you name. A language is needed too, since each email is worded in
-one.
+one. `Driver.smtp`, `email:`, `locales` and `Locale` are built into Jadpo, and the
+name `mail` is yours.
 
 `app.jadpo`:
 
@@ -100,7 +85,122 @@ locales {
 }
 ```
 
+The `config.` values are settings, each declared in `config.jadpo`. `secret: true`
+keeps the password out of your code, and `jadpo dev` catches mail, so it never needs
+a real one.
+
 `config.jadpo`:
+
+```jadpo check project=guide-email file=config.jadpo
+config {
+    mail_sender: Email {
+        default: "club@club.example"
+    }
+    smtp_host: Hostname {
+        default: "mail.club.example"
+    }
+    smtp_password: Text {
+        secret: true
+    }
+    smtp_username: Text {
+        default: "club"
+    }
+}
+```
+
+## Send the smallest email
+
+An email is a type built on `EmailMessage`, in its domain's `emails/`
+folder. Its fields are the values its text uses. Every `EmailMessage` also has `to:`
+and `locale:`, which you don't declare.
+
+`domains/club/emails/welcome_email.jadpo`:
+
+```jadpo check project=guide-email file=domains/club/emails/welcome_email.jadpo
+/// Sent once someone has joined.
+type WelcomeEmail = EmailMessage {
+    name: Text
+}
+```
+
+An email's subject lives in its domain's language file, with one file for each
+language. The entry with the email's own name is its subject line, and its fields are
+the placeholders.
+
+`domains/club/translations/en_gb.jadpo`:
+
+```jadpo check project=guide-email file=domains/club/translations/en_gb.jadpo
+translations {
+    welcome_email: "Welcome to the club, {name}"
+}
+```
+
+The email's body is a template beside its type, with its name.
+
+`domains/club/emails/welcome_email.txt`:
+
+```jadpo check project=guide-email file=domains/club/emails/welcome_email.txt
+Welcome, {{ name }}
+
+See you at the next meeting.
+```
+
+An email goes out from an action that stores something, here a new member. `Member`
+is your entity, and `Email`, a field's type, is built into Jadpo.
+
+`domains/club/entities/member.jadpo`:
+
+```jadpo check project=guide-email file=domains/club/entities/member.jadpo
+/// A member of the book club.
+entity Member {
+    id: Uuid
+    address: Email
+    name: Text {
+        min_length: 1
+        max_length: 80
+    }
+
+    policy: {
+        create: [Access.public]
+    }
+}
+```
+
+`emit` sends an email. It joins the action's transaction, so the email goes
+only once the action has committed, and a failed send is retried on its
+own.
+
+`domains/club/actions/join.jadpo`:
+
+```jadpo check project=guide-email file=domains/club/actions/join.jadpo
+use club/entities { Member }
+use club/emails { WelcomeEmail }
+
+/// Adds a member, and welcomes them once that is done.
+action join(address: Member.address, name: Member.name) -> Member {
+    var member: Member = Member.create {
+        set: {
+            address: address
+            name: name
+        }
+    }
+    emit WelcomeEmail {
+        to: member.address
+        locale: Locale.en_gb
+        name: member.name
+    }
+    return member
+}
+```
+
+That is a working email. The rest of this guide gives it a link and an HTML version, and
+has a route send it.
+
+## Add a link and an HTML version
+
+A link to the club's page comes from a setting, and goes in a new field.
+
+`config.jadpo`, changed. `club_url` is new:
 
 ```jadpo check project=guide-email file=config.jadpo
 config {
@@ -122,13 +222,7 @@ config {
 }
 ```
 
-## Declare the email
-
-An email is a type built on `EmailMessage`, in its domain's `emails/`
-folder. Its fields are the values its text uses. Every `EmailMessage`
-also has `to:` and `locale:`, which you don't declare.
-
-`domains/club/emails/welcome_email.jadpo`:
+`domains/club/emails/welcome_email.jadpo`, changed. `club_link` is new:
 
 ```jadpo check project=guide-email file=domains/club/emails/welcome_email.jadpo
 /// Sent once someone has joined.
@@ -138,74 +232,41 @@ type WelcomeEmail = EmailMessage {
 }
 ```
 
-## Word it
-
-An email's words live in its domain's language file, so a second language
-needs no change to the templates. The entry with the email's own name is
-its subject line, and its fields are the placeholders.
-
-Each other piece of wording is a message, a type built on `Message` whose
-fields are its placeholders.
-
-`domains/club/translations/welcome_heading.jadpo`:
-
-```jadpo check project=guide-email file=domains/club/translations/welcome_heading.jadpo
-/// The heading of the welcome email.
-type WelcomeHeading = Message {
-    name: Text
-}
-```
-
-`domains/club/translations/next_meeting.jadpo`:
-
-```jadpo check project=guide-email file=domains/club/translations/next_meeting.jadpo
-/// The welcome email's link to the club's page.
-type NextMeeting = Message {}
-```
-
-`domains/club/translations/en_gb.jadpo`:
-
-```jadpo check project=guide-email file=domains/club/translations/en_gb.jadpo
-translations {
-    next_meeting: "See the next meeting"
-    welcome_email: "Welcome to the club, {name}"
-    welcome_heading: "Welcome, {name}"
-}
-```
-
-## Write the templates
-
-The templates sit beside the type and take its name. Write both an HTML
-one and a text one, because a mail with no plain-text part is one of the
-things `jadpo check` warns about. Inside `{{ }}` a template can use the
-email's fields, translations, `if` and `for`, and nothing else, and every
+Write an HTML template beside the text one, and keep both, because a mail with no
+plain-text part is one of the things `jadpo check` warns about. Inside `{{ }}` a template
+can use the email's fields, translations, `if` and `for`, and nothing else, and every
 value is escaped.
 
 `domains/club/emails/welcome_email.html`:
 
 ```jadpo check project=guide-email file=domains/club/emails/welcome_email.html
-<h1>{{ translations.club.welcome_heading(name: name) }}</h1>
-<p><a href="{{ club_link }}">{{ translations.club.next_meeting() }}</a></p>
+<h1>Welcome, {{ name }}</h1>
+<p><a href="{{ club_link }}">See the next meeting</a></p>
 ```
 
-`domains/club/emails/welcome_email.txt`:
+`domains/club/emails/welcome_email.txt`, changed:
 
 ```jadpo check project=guide-email file=domains/club/emails/welcome_email.txt
-{{ translations.club.welcome_heading(name: name) }}
+Welcome, {{ name }}
 
-{{ translations.club.next_meeting() }}: {{ club_link }}
+See the next meeting: {{ club_link }}
 ```
 
-A template that names a field or a message that doesn't exist is a compile
-error. So is a field no template or subject uses.
+A template that names a field that doesn't exist is a compile error. So is a field no
+template or subject uses.
 
-## Send it
+Text in a template is enough for one language. For a second, make each piece of it a
+message, a type built on `Message` in the domain's `translations/` folder, and call it
+from the template, as `{{ translations.club.welcome_heading(name: name) }}`.
+[Translate your app's text](19-translate-your-apps-text.md) declares a message, and
+[Email](../language/16-built-in-services.md#email) shows one in a template.
 
-`emit` sends an email. It joins the action's transaction, so the email goes
-only once the action has committed, and a failed send is retried on its
-own.
+## Send it from the route
 
-`domains/club/actions/join.jadpo`:
+`POST /members` gives `join` a `NewMember`, and sends back a `Joined`.
+
+`domains/club/actions/join.jadpo`, changed. It takes and answers with those types, and
+`club_link:` is new:
 
 ```jadpo check project=guide-email file=domains/club/actions/join.jadpo
 use club/entities { Member }
@@ -303,7 +364,7 @@ error: a new outside host the app can send data to needs a person: mail
   rule: acceptance.missing
   help: https://jadpo.dev/docs/errors/acceptance.missing
 
-check failed: 2 errors, 12 files
+check failed: 2 errors, 10 files
 ```
 
 `jadpo acceptance new` writes the file listing both, and a person writes

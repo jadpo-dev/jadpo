@@ -410,30 +410,31 @@ Not built yet: D1 itself. This is the rule its driver is built to.
 ## Entities and the `id`
 <!-- topic: entities-and-the-id -->
 
-An entity is a kind of stored record with a lasting identity. Each one is
-declared in its own file under its domain's `entities/` folder:
+An entity is a kind of stored record with a lasting identity, like a table
+with types. Each one is declared in its own file under its domain's
+`entities/` folder. A domain is one business area of your app, here
+`planning`.
 
-```jadpo check project=entities file=user.jadpo hidden
-entity User {
-    id: Uuid
-}
+`domains/planning/entities/project.jadpo`:
 
+```jadpo check project=entities file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=entities file=domains/planning/entities/project.jadpo migrate=initial
 type ProjectName = Text {
     max_length: 80
 }
-```
 
-```jadpo check project=entities file=project.jadpo
-// domains/planning/entities/project.jadpo
 /// A group of todos with a shared goal.
 entity Project {
     id: Uuid  // version 7, generated on create
-    owner_id: User.id {
-        on_delete: OnDelete.restricted
-    }
     name: ProjectName
 }
 ```
+
+`Text` and `Uuid` are built in. `Project` and `ProjectName` are yours, and a
+type only this file uses lives in this file.
 
 Every entity's identity is one field, `id`, based on `Uuid`. Jadpo
 generates it as a version 7 UUID when the record is created, or as the

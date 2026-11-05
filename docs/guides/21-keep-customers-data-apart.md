@@ -7,42 +7,16 @@ grant only ever applies inside companies where the caller has a membership, and 
 holds for every query and write in the app, with no filter for you to remember. This
 guide makes a work tracker where each company's projects and chores stay its own.
 
-You start from an app where people sign in as a `Member`, with an action called
-`register`, and with queries and output types for projects and chores.
+You start from an app where people sign in, with an action called `register` that
+stores a new `Member`, and with queries and output types for projects and chores.
 [Add sign-in](05-add-sign-in.md) and [Query records](03-query-records.md) show how to
-write those.
-
-```jadpo check project=guide-tenancy file=app.jadpo hidden
-use work/entities { Member }
-
-application {}
-
-principal {
-    user: {
-        subject: Member.handle
-    }
-}
-```
+write those. Everything else this page uses is shown.
 
 ```jadpo check project=guide-tenancy file=authentication.jadpo hidden
 authentication {
     browser_session: {
         cookie: "work_session"
     }
-}
-```
-
-```jadpo check project=guide-tenancy file=domains/work/types/handle.jadpo hidden
-type Handle = Text {
-    min_length: 3
-    max_length: 40
-}
-```
-
-```jadpo check project=guide-tenancy file=domains/work/types/label.jadpo hidden
-type Label = Text {
-    min_length: 1
-    max_length: 80
 }
 ```
 
@@ -171,7 +145,31 @@ error: `Note` doesn't belong to a `Company`
 ```
 
 `Member` is the other way out: its records belong to no company, so its `policy:` says
-`tenant: Tenancy.shared`. A person reads a note saying so when it goes in.
+`tenant: Tenancy.shared`. A person reads a note saying so when it goes in. It is who people
+sign in as, which `principal` says in `app.jadpo`, by the unique `handle` they sign in with.
+
+`app.jadpo`:
+
+```jadpo check project=guide-tenancy file=app.jadpo
+use work/entities { Member }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+```
+
+`domains/work/types/handle.jadpo`:
+
+```jadpo check project=guide-tenancy file=domains/work/types/handle.jadpo
+type Handle = Text {
+    min_length: 3
+    max_length: 40
+}
+```
 
 `domains/work/entities/member.jadpo`:
 
@@ -207,6 +205,17 @@ record's company.
 type CompanyRole = Enum {
     owner
     viewer
+}
+```
+
+`Label` is the short text a company, a project and a chore are each named with.
+
+`domains/work/types/label.jadpo`:
+
+```jadpo check project=guide-tenancy file=domains/work/types/label.jadpo
+type Label = Text {
+    min_length: 1
+    max_length: 80
 }
 ```
 
