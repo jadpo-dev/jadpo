@@ -1,4 +1,4 @@
-//! Area 19, "The standard types" (chunk 5.5r3), run: a `Hash`, an `Hmac`
+//! Area 19, "How standard types are named, and what is left out" (chunk 5.5r3), run: a `Hash`, an `Hmac`
 //! and an `EncryptedValue` are the bytes `hash.sha256`, `crypto.hmac` and
 //! `crypto.encrypt` give, written as their Base64, sent and read back as
 //! `Bytes` are, and compared in constant time; an `EncryptedValue` opens

@@ -709,7 +709,11 @@ fn dispatch(parsed: Parsed, env: &Environment) -> (Option<&'static str>, Reply) 
     // `jadpo package search <words>` takes as many words as it is given.
     let any_words =
         command.name == "package" && parsed.arguments.first().map(String::as_str) == Some("search");
-    if parsed.arguments.len() > command.arguments.len() && !any_words {
+    // `jadpo dev` answers a word it doesn't have itself, however many follow
+    // it: what would be kept of them here is no command.
+    let unknown_dev_word =
+        command.name == "dev" && parsed.arguments.first().map(String::as_str) != Some("token");
+    if parsed.arguments.len() > command.arguments.len() && !any_words && !unknown_dev_word {
         return (
             Some(command.name),
             Reply::failed(too_many(command, &parsed.arguments)),

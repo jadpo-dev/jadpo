@@ -1,5 +1,4 @@
-//! The names CLDR gives standard values for people (area 19, "Every
-//! standard type meets one contract"): a duration in its units, a weekday,
+//! The names CLDR gives standard values for people (area 19, "What every standard type can do"): a duration in its units, a weekday,
 //! a locale and a zone, a country, a language and a script, each in the
 //! reader's locale, as `text.format` writes them for the format keys that
 //! read them.

@@ -1,5 +1,5 @@
 //! Every standard type through storage, against live PostgreSQL (area 19,
-//! "Every standard type meets one contract"; chunk 5.5w): a project with an
+//! "What every standard type can do"; chunk 5.5w): a project with an
 //! entity holding each standard object and choice type stored in named
 //! columns, a `ZonedTime`, a range of each item, a quantity, a fixed
 //! currency and a fixed rate, made from each type's data entry, so a type

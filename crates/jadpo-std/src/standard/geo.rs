@@ -1,4 +1,4 @@
-//! The geospatial types (area 19, "The standard types" and "Geospatial
+//! The geospatial types (area 19, "How standard types are named, and what is left out" and "Geospatial
 //! types"): positions on Earth in WGS84 with `latitude`
 //! and `longitude` by name, never a pair; the geometries made of them, sent
 //! as GeoJSON (RFC 7946), whose `[longitude, latitude]` order exists only

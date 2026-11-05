@@ -83,9 +83,6 @@ topics = [
   "standard-type-encodings",
   "standard-type-clashes",
 ]
-details = [
-  "shared-vocabulary-types",
-]
 
 [[group.page.section.section]]
 id = "types-people-and-contact"
@@ -311,8 +308,6 @@ topics = [
 details = [
   "sql-forms",
   "coming-from-typescript",
-  "language-gaps-this-page-depends-on",
-  "scenario-applications",
 ]
 built = [
   "standard-library-built",
@@ -1092,7 +1087,6 @@ database = "The identity registry in `database/`, and the `.jadpo_record` files 
 personal-data-checks = "What the compiler refuses about personal data, such as a marked field nothing reads."
 building-a-type-from-other-types = "Most object types are slices of an entity or of another object, so you build them from it rather than repeat its fields."
 logic = "How you write what your app does: functions and actions, statements, operators, `match`, `attempt`, loops and generic code."
-language-gaps-this-page-depends-on = "Parts of the language that some standard operations rely on, and where each is described."
 reads-and-writes = "How a program reads and changes stored records: queries, filters, totals, related records, refused writes and all-or-nothing actions."
 personal-data = "Your app says which data is about a person, and Jadpo exports it, erases it and deletes it when its time is up."
 personal-data-export = "`User.export(user_id)` returns everything held about a person, as JSON, one list per entity."

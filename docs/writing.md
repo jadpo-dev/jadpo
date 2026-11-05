@@ -85,7 +85,9 @@ title. Design history and rationale belong in the design notes.
 A user page describes what works today, in the present tense. What isn't
 built goes in one section at the end, titled exactly `## Not built yet`,
 saying what to do instead. Nothing else on the page talks about build
-status.
+status, but for [a note beside an
+example](#a-pages-first-example-stands-alone) where a reader would
+otherwise expect a planned thing to work.
 
 > Bad: (first line of the page) Not built yet: `providers:` is
 > `toolchain.not_built_yet`.
@@ -123,6 +125,54 @@ Code in a user page is a `jadpo check` block, compiled and, when it has
 tests, run by the gate. A user page has no `fragment`. Show a command
 with the output it gives, copied from a real run. If you can't make an
 example compile, the feature isn't ready for a user page.
+
+### A page's first example stands alone
+
+A reader opens a page, often from a search, and reads its first example
+before anything else. That example must make sense without following a
+link, so it is the smallest thing that works, with all of it in front of
+them:
+
+- **Start with the simplest working use case.** Show what most apps want,
+  working: not an error, and not a rare option.
+- **Show or define every type and action it uses that isn't built in.**
+  Nothing it depends on is hidden, and nothing is only on another page. A
+  built-in type, such as `Bool` or `Email`, needs no definition.
+- **Show any configuration it needs.** If it can't compile without a
+  line in `app.jadpo`, `config.jadpo` or `policy.jadpo`, show that file. A
+  project's empty `application {}` doesn't count: every project has one.
+- **Make clear where each name comes from:** built into Jadpo, defined in
+  the example, imported from another file of your application, from a
+  package or a connection, or not built yet. Sometimes one sentence on what
+  an import is will do.
+- **Work on every target, or say which it doesn't.** A rate limit with a
+  one-hour window can't run on Workers, whose binding counts over 10 or 60
+  seconds, so a first example picks a window both run or says so.
+- **Go from basic to advanced.** The first example has no unrelated
+  concepts. The examples after it add one idea each.
+
+> Bad: a page on feature flags whose first example starts
+> `use ordering/types { CheckoutLayout }`, a type the reader never sees.
+>
+> Good: a page on feature flags whose first example declares one `Bool`
+> flag in `flags.jadpo`, and says that `flags { }` and `Bool` are built in
+> and the flag's name is yours.
+
+Every example still compiles, so an example never shows a planned feature.
+What isn't built goes in the status line at the top of a topic and the
+one note at the end of a page. A one-line note goes straight after an
+example only where a reader would otherwise expect a planned thing to
+work: "Signing in with Google isn't built yet, so this route uses magic
+links."
+
+A first example can take several files: a connection in `app.jadpo` and the
+action that uses it are one example, and all of it stands alone. It ends at
+the first file that does something, such as an action, a route or a test.
+
+This holds for a guide, a built-in service's home and the first topic with
+an example on any page of the reference. The Learn path is read in order,
+so its pages build on the ones before, and an error page's first example
+is the error.
 
 ### Put each file's path above its code
 
@@ -200,11 +250,13 @@ open. An error's `help:` line is its page's address on the site,
   the files the job adds or changes, and the files it starts from are
   `hidden` blocks, which the docs check compiles and the bundle leaves
   out; its first paragraph after the opening says in words what those
-  are. Guides don't depend on each other, so each says what it starts
-  from rather than "as the last guide did". The guides' index lists each
-  guide once, under a `##` heading naming a kind of job, with a line saying
-  what the reader ends with; the docs check fails a guide with no row. The
-  index's order is the bundle's.
+  are. Its first example [stands
+  alone](#a-pages-first-example-stands-alone), so it needs none of them;
+  later steps can. Guides don't depend on each other, so each says what it
+  starts from rather than "as the last guide did". The guides' index lists
+  each guide once, under a `##` heading naming a kind of job, with a line
+  saying what the reader ends with; the docs check fails a guide with no
+  row. The index's order is the bundle's.
 - **Primer** (`docs/primer.md`): the one page an agent reads before
   writing an app, 3,000 to 5,000 tokens.
 
@@ -222,6 +274,11 @@ standard is the topic "Routes: signed in by default" on the
 - **Say first what happens by default.** "Every route needs a signed-in
   caller unless it says otherwise. You don't write anything for that."
   The reader learns what they get for free before any option.
+- **The first example [stands
+  alone](#a-pages-first-example-stands-alone).** Where a page of the
+  reference first shows code, nothing it uses is hidden or only on another
+  topic. A topic that isn't built may show its design as a `fragment`, with
+  the generated line above it.
 - **One section per option**, as a `###` heading naming it: when to use
   it, then the example, then what it does. "Use it for routes people
   call before they have an account, such as a health check", then the
@@ -242,7 +299,9 @@ standard is the topic "Routes: signed in by default" on the
   is. Where the plain version would change what a rule means, keep the
   rule's wording.
 - **Build status** is in the page's "What is built" section, or one note
-  at the end of the topic. A topic wholly or partly unbuilt also opens with a
+  at the end of the topic, or [a note beside an
+  example](#a-pages-first-example-stands-alone) where a reader would
+  otherwise expect a planned thing to work. A topic wholly or partly unbuilt also opens with a
   status line, since an agent stops reading at the first thing that answers it.
   The bundle writes that line from the [reference's
   manifest](documentation.md#landing-pages-and-status-lines); never write it in
@@ -278,7 +337,10 @@ reads in this order:
    row on the landing page says the same.
 3. **The smallest thing that works**, each file under its path, with its test.
    A service that works shows an example the docs check compiles, never a
-   `fragment`, and shows only what is built.
+   `fragment`, and shows only what is built. This first example [stands
+   alone](#a-pages-first-example-stands-alone): every file it needs is on the
+   page, and it makes clear which names are Jadpo's, which are your
+   application's and which come from a package.
 4. **What most apps change next**, then the limits.
 5. **`### Not built yet`**, last, when the rest is design, saying what works
    today instead. A section someone may have linked keeps its heading beneath it,
@@ -438,10 +500,17 @@ user page that:
 
 - mentions an area or question by number;
 - talks about build status anywhere but a final `## Not built yet`
-  section;
+  section, or a paragraph of one sentence straight after an example;
 - uses spec vocabulary ("Decided.", "carried to");
 - links a file in this repository rather than a page of the docs;
 - holds a `fragment`, or an example that doesn't compile or whose tests
   fail, or a `sh run` block that doesn't print its output block.
+
+`python3 tools/docs/first_examples.py` reports each first example that
+doesn't [stand alone](#a-pages-first-example-stands-alone): it compiles the
+first example with only what a reader can see on that page, and lists what
+else it needed. The gate runs it as a report, and `--strict` makes it fail.
+It can't judge whether an example is the simplest one, whether the page says
+where each name comes from, or whether it runs on every target.
 
 The rest of this guide is for the writer and the reviewer.

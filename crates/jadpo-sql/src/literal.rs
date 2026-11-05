@@ -1,5 +1,4 @@
-//! A value written into a statement's text (area 19, "Every boundary
-//! through the contract"; chunk 5.5w3b), for the places a statement can't
+//! A value written into a statement's text (area 19, "How a standard value is sent, stored and shown"; chunk 5.5w3b), for the places a statement can't
 //! take a parameter: a partial index's predicate and a check constraint
 //! (DDL takes none), a migration's backfill (a `postgres.sql` file run as
 //! it is), and the identity statements whose parameters are fixed. Every

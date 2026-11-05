@@ -364,6 +364,11 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         Step('teaching examples: check, format and jadpo test', 'docs',
              [python, 'tools/docs/examples.py', '--export-corpus'], jadpo=True,
              postgres=full, env=no_postgres, show='skipped:'),
+        # Each page's first example stands alone (docs/writing.md), and its
+        # tests. A report until the pages are rewritten: `--strict` makes it fail.
+        Step('first examples stand alone (report only)', 'docs', [python, 'tools/docs/first_examples.py'], jadpo=True,
+             show=('first examples:', '  first example fails:')),
+        Step('first examples tests', 'docs', [python, 'tools/docs/first_examples_test.py'], jadpo=True),
         Step('focused TypeScript baseline types and Unicode contracts', 'lint', [python, 'benchmarks/harness/check_typescript.py']),
         Step('benchmark verifier contracts', 'lint', [python, '-m', 'unittest', 'discover', '-s', 'benchmarks/harness', '-p', 'test_*.py']),
         Step('agent-changes harness controls', 'lint', [python, '-m', 'unittest', 'discover', '-s', 'benchmarks/agent-changes', '-p', 'test_*.py']),

@@ -355,7 +355,7 @@ so a line's edge between them is just its two ends.
 `buffer` isn't an operation ([What geospatial leaves out, and what to use instead](#what-geospatial-leaves-out-and-what-to-use-instead)).
 Neither is the distance between a point and a line or polygon. It comes
 when one of the standard library's
-[scenario applications](19-standard-library.md#scenario-applications)
+[scenario applications](notes/19-standard-library.md#the-nine-scenario-applications)
 needs it.
 
 ## Predicates and shapes
@@ -536,7 +536,7 @@ its own: each of its polygons is valid, and they may overlap.
 
 A polygon read from GeoJSON or WKT that isn't valid is refused, `format`
 at the ring's place, as the standard library's other checks on reading
-are ([Every boundary through the contract](19-standard-library.md#every-boundary-through-the-contract)).
+are ([How a standard value is sent, stored and shown](19-standard-library.md#how-a-standard-value-is-sent-stored-and-shown)).
 A polygon built in code that isn't valid breaks a named rule,
 `rings_valid`, which you map like any rule across fields
 ([Rules across fields](02-values-and-types.md#rules-across-fields)).
@@ -1896,7 +1896,7 @@ what to use instead:
 | Straight edges on longitude and latitude (`geometry` columns) | Two edge meanings would split every operation in two; the standard library stores geometries as `geography` | Great circles ([Edges are great circles](#edges-are-great-circles)) |
 | Routing, travel times, geocoding | Network data and paid services | Provider packages ([Integrations](11-integrations.md)) |
 | Nearest first without a radius, farthest first, pages by distance | Disagree with `geo.distance` or can't use the index | A radius ([Nearest first inside a radius](#nearest-first-inside-a-radius)) |
-| Simplifying, unions, splitting at the antimeridian | None of the standard library's [scenario applications](19-standard-library.md#scenario-applications) needs them; each is a large algorithm | Later, when one does |
+| Simplifying, unions, splitting at the antimeridian | None of the standard library's [scenario applications](notes/19-standard-library.md#the-nine-scenario-applications) needs them; each is a large algorithm | Later, when one does |
 | `GeometryCollection`, and a `Feature` with no geometry | Rare, and each makes every consumer handle an extra case | A `MultiPolygon`, or the right geometry type |
 | Altitude in any operation | WGS84's operations are on the surface; height above the ellipsoid isn't height above the ground | Kept and stored, never measured |
 

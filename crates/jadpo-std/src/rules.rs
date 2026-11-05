@@ -98,7 +98,7 @@ pub enum RuleKey {
     /// its `invalid_day:` didn't say what to do instead.
     InvalidDay,
     /// Text `text.parse` reads isn't the type it was asked for at all
-    /// (area 19, "Every standard type meets one contract"), or text or
+    /// (area 19, "What every standard type can do"), or text or
     /// bytes an `encoding` or `json` operation decodes aren't that format
     /// at all (area 19, "Encodings" and "Data formats").
     Malformed,

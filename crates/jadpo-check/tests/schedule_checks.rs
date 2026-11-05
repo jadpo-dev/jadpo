@@ -315,6 +315,17 @@ fn a_schedule_trigger_is_the_servers_timer_or_an_external_tick() {
 }
 
 #[test]
+fn a_schedule_reaching_a_list_naming_only_people_is_refused() {
+    let people = TODO.replace("create: [Access.system]", "create: [Access.authenticated]");
+    assert_eq!(
+        problems(&[("domains/planning/entities/todo.jadpo", people.as_str())]),
+        [format!(
+            "{PATH} policy.system_grant_missing: `tidy_up` runs as the system, which `Todo`'s `create:` doesn't let in"
+        )]
+    );
+}
+
+#[test]
 fn a_schedule_reaching_what_no_list_grants_is_refused() {
     let none = TODO.replace("        create: [Access.system]\n", "");
     assert_eq!(

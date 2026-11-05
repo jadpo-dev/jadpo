@@ -935,7 +935,7 @@ A setting is the exception. It is read as source writes it, `5m`, and also
 as the canonical ISO 8601 text, `PT5M`, as `text.parse` reads it, so a
 value copied from a response or a log works as a setting too. Every
 boundary reads a standard type the same way
-([Every boundary through the contract](19-standard-library.md#every-boundary-through-the-contract)).
+([How a standard value is sent, stored and shown](19-standard-library.md#how-a-standard-value-is-sent-stored-and-shown)).
 
 ## The current time: `clock.now`
 <!-- topic: the-current-time-clock-now -->

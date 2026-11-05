@@ -71,49 +71,8 @@ Its fields are named, never positional:
 
 Their names are global, like `Int`, so you never import one. Their
 operations are grouped under a prefix such as `money.`, `units.` or
-`temporal.`. There are 259 standard types, each with its own
-[page](https://jadpo.dev/docs/types), and
-[The standard types](19-standard-library.md#the-standard-types) lists every
-one and every operation. The groups and their best-known types are:
-
-| Group | Headline types | Namespaces |
-|---|---|---|
-| Money and payments | `Money`, `Currency`, `ExchangeRate`, `Price`, `TaxRate`, `Discount`, `Iban`, `BankAccount`, `PaymentCardNumber` | `money` |
-| Time and calendar | `Instant`, `CalendarDate`, `ZonedTime`, `Duration`, `LocalTime`, `DateRange`, `RecurrenceRule`, `OpeningHours` | `temporal`, `range` |
-| Quantities and units | `Length`, `Mass`, `Temperature`, `Speed`, `Energy`, `DataSize`, `Percentage`, `Ratio`, `Range<T>` | `units`, `range` |
-| People and places | `PersonName`, `Username`, `Email`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Country`, `Language`, `Locale`, `Zone` | `locale`, `text` |
-| Web and network | `Url`, `Slug`, `DomainName`, `HttpStatus`, `IpAddress`, `Cidr`, `Cookie` | `web` |
-| Software | `SemanticVersion`, `GitRef`, `FilePath`, `TraceId`, `Ulid`, `IdempotencyKey` | `semver` |
-| Text and documents | `Markdown`, `Html`, `RichText`, `LocalisedText` | `markup`, `text` |
-| Media | `Colour`, `ImageDimensions`, `AspectRatio`, `FrameRate`, `VideoCodec`, `Timecode`, `ContentRating` | `colour`, `media` |
-| Security and secrets | `Password`, `PasswordHash`, `Hash`, `Hmac`, `Jwt`, `PublicKey`, `Certificate`, `ApiKey`, `SecretText`, `EncryptedValue` | `crypto`, `hash`, `random` |
-| Geospatial | `Point`, `Latitude`, `Polygon`, `Geometry`, `BoundingBox`, `Geohash` | `geo` ([Geospatial](20-geospatial.md)) |
-| AI | `TokenCount`, `TokenUsage`, `ChatMessage`, `ChatRole`, `Vector`, `Embedding` | `ai` ([AI](21-ai.md)) |
-| Codes and identifiers | `Sku`, `Ean13`, `Isbn`, `Barcode`, `TrackingNumber`, `Vin`, `VatNumber`, `NhsNumber`, `Icd10Code`, `IataAirport`, `FlightNumber`, `Orcid` | none beyond the contract below |
-
-Every standard type, by group. "(enum)" marks a fixed list of values,
-held as a built-in [enum](#enums):
-
-| Group | Types |
-|---|---|
-| People and contact (12) | `PersonName`, `GivenName`, `FamilyName`, `Username`, `Email`, `EmailWithName`, `PhoneNumber`, `PhoneExtension`, `PostalAddress`, `PostalCode`, `Uprn`, `Nationality` (enum) |
-| Places (10) | `Country` (enum), `CountrySubdivision` (enum), `Continent` (enum), `UnLocode`, `CallingCode`, `Language` (enum), `WritingScript` (enum), `TextDirection` (enum), `Locale` (enum), `Zone` (enum) |
-| Geospatial (19) | `Point`, `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash`, `Feature`, `FeatureCollection` |
-| Money and banking (25) | `Money`, `Currency` (enum), `ExchangeRate`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, `PaymentCardNumber`, `MaskedCardNumber`, `CardBrand` (enum), `CardBin`, `CardExpiry`, `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`, `UkAccountNumber`, `BankAccount`, `AbaRoutingNumber`, `Lei`, `Isin`, `InterestRateBasis` |
-| Tax and identity numbers (12) | `VatNumber`, `TaxId`, `UkUtr`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin`, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, `IdentityDocumentKind` (enum), `NhsNumber` |
-| Commerce and logistics (22) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ClothingSizeSystem` (enum), `ShoeSize`, `ShoeSizeSystem` (enum), `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` |
-| Time and calendar (19) | `Instant`, `CalendarDate`, `ZonedTime`, `Duration`, `Weekday` (enum), `LocalTime`, `LocalDateTime`, `Month` (enum), `YearMonth`, `Year`, `Quarter`, `IsoWeek`, `UtcOffset`, `DateRange`, `InstantRange`, `CalendarPeriod`, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` |
-| Physical quantities (17) | `Length`, `Area`, `Volume`, `Angle`, `Mass`, `Pressure`, `Energy`, `Power`, `Temperature`, `TemperatureDifference`, `Speed`, `Frequency`, `Voltage`, `Current`, `Illuminance`, `SoundLevel`, `Concentration` |
-| Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, `Range<T>`, `DataSize`, `Bitrate`, `Vector`, `Embedding` |
-| Health (10) | `BloodType` (enum), `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `RouteOfAdministration` (enum), `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` (enum) |
-| Media and visual (16) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating`, `ContentRatingScheme` (enum) |
-| Web and network (23) | `Url`, `UrlPath`, `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod` (enum), `HttpStatus`, `HttpHeaderName`, `FileType`, `UserAgent`, `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, `IpAddress`, `Cidr`, `NetworkPort`, `MacAddress`, `Imei`, `Emoji`, `PushToken` |
-| Software (19) | `SemanticVersion`, `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`, `SpanId`, `TraceParent`, `LogLevel` (enum), `FilePath`, `FileName`, `RegularExpression`, `ContainerImage`, `Digest`, `Uuid`, `Ulid`, `IdempotencyKey`, `Doi` |
-| Text formats (7) | `Markdown`, `Html`, `RichText`, `LocalisedText`, `RichTextBlock`, `RichTextSpan`, `RichTextMark` (enum) |
-| Security (20) | `Password`, `PasswordHash`, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, `PublicKey`, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue`, `PasswordCheck` (enum) |
-| Travel (6) | `IataAirport`, `IcaoAirport`, `IataAirline`, `FlightNumber`, `CabinClass` (enum), `BookingReference` |
-| Other with a published standard (10) | `UnNumber`, `Orcid`, `CefrLevel` (enum), `Mpan`, `Mprn`, `EpcRating` (enum), `Tenure` (enum), `LawfulBasis` (enum), `Jurisdiction`, `ModelId` |
-| AI (4) | `TokenCount`, `TokenUsage`, `ChatMessage`, `ChatRole` (enum) |
+`temporal.`. [Standard types](https://jadpo.dev/docs/types) lists every one, from
+A to Z and by group, each with its own page.
 
 The money types have a few rules of their own, because money is where
 mistakes cost most. `Money` holds a whole number of a currency's minor units,
@@ -162,7 +121,7 @@ end, each an `Instant`, is an `InstantRange`. When the copy is deliberate,
 you can [decline the error](01-project-layout-and-modules.md#declining-a-judgement-call)
 with a reason. A declaration with the same name
 as a standard type is `type.standard_clash`. Both are explained under
-[The standard types](19-standard-library.md#the-standard-types) and
+[Packages use the standard types](19-standard-library.md#packages-use-the-standard-types) and
 [A release that adds a standard type](19-standard-library.md#a-release-that-adds-a-standard-type).
 
 ### What the standard types do

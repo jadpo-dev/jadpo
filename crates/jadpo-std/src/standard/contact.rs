@@ -1,4 +1,4 @@
-//! People and contact (area 19, "The standard types"): the names, handles
+//! People and contact (area 19, "How standard types are named, and what is left out"): the names, handles
 //! and numbers held as text, each a pattern on the contract as the payment
 //! numbers are (chunk 5.5i), and the three objects, `PersonName`,
 //! `EmailWithName` and `PostalAddress`, whose parts code reads and which

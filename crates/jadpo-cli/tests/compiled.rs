@@ -710,6 +710,11 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             "a route sending raw bytes".into(),
             corpus_project(&crate::sends::files(), "compiled-sends").expect("it checks"),
         ),
+        (
+            "the system writing a server-only field".into(),
+            corpus_project(&crate::server_only_writes::files(), "compiled-server-only")
+                .expect("it checks"),
+        ),
     ]
 }
 
@@ -1079,6 +1084,10 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             "a route sending raw bytes",
             corpus_project(&crate::sends::files(), "workerd-sends"),
         ),
+        (
+            "the system writing a server-only field",
+            corpus_project(&crate::server_only_writes::files(), "workerd-server-only"),
+        ),
     ];
     let folders: Vec<PathBuf> = projects
         .iter()
@@ -1107,7 +1116,8 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             (3, 3),
             (3, 3),
             (1, 1),
-            (2, 2)
+            (2, 2),
+            (1, 1)
         ]
     );
     println!(
