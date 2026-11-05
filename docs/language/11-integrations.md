@@ -2447,6 +2447,16 @@ adding or changing other fields breaks nothing. A package input may take
 any of your app's object types, sent as JSON, such as Postmark's template
 variables or Stripe's metadata.
 
+A `File` is the store and key its bytes are under, so it doesn't cross to or
+from a provider, however deep a type holds it
+([What a `File` holds](16-built-in-services.md#what-a-file-holds)):
+
+- In an operation's `input:` or a webhook's `reply:` it is
+  `toolchain.not_built_yet`, since sending a file to a provider isn't built.
+  The provider would get the store and key and none of the bytes.
+- In an operation's `output:` or `wire_output:`, or a webhook's event, it is
+  `type.batch_input`, since a provider could name any file.
+
 ### Failures
 
 Map a package's failure at the call to give it your app's meaning. A
@@ -4759,8 +4769,9 @@ Each message becomes its event for your app's subscribers:
 
 `receiving:` takes `type_at:`, `id_at:` and `events:`. An event of your
 app's gives a `wire_name:`, and a package provides the capability in
-`provides/receiving.jadpo`. The details are under
-[How queues are received](#how-queues-are-received).
+`provides/receiving.jadpo`. An event a queue lists can't hold a `File`
+(`type.batch_input`), since a message could then name any file. The details
+are under [How queues are received](#how-queues-are-received).
 
 **Which queues are packages.** The usual rule decides: a service reached
 over an HTTP API is a package, and anything that needs its own protocol or
