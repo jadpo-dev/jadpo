@@ -217,6 +217,13 @@ fn hostile_input_is_survived() {
     // to light an error no edit makes (found by the coverage-guided fuzzer).
     inputs
         .push("use library\n\naction lend_book() -> Unit {\n!   library.borrow()\n}\n".to_string());
+    // `IS NULL` tight after a generic type's `>`: its edit wrote `>== none`,
+    // which read as `>=` and `=`, so the `<` never closed and its comma read
+    // as a member's (found by the seeded fuzz).
+    inputs.push(
+        "use bookclub/types { ClubMemberName, MeetingRatings, Stars }\n\n/// A book's ratings, once both halves of the meeting have rated it.\ntype RatingTally = Output {\n    raters: Int\n    who_rated: Set<ClubMemberName>\n    mean_stars: Decimal\n    fans: MeetingRatings\n    star_labels: Map<ClubMemberName, Text>IS NULL\n    leaver_rating: Stas?\n    kept_ratings: MeetingRatings\n}\n"
+            .to_string(),
+    );
     for input in inputs {
         check(&input);
     }

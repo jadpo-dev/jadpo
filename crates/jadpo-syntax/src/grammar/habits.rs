@@ -1163,7 +1163,16 @@ pub(super) fn infix(
                 habit,
                 (&written, jadpo),
                 (is_start, is_end),
-                vec![TextEdit::replace(is_start, is_end, jadpo)],
+                // Tight after a value, `==` would join what ends it: `>==`.
+                vec![TextEdit::replace(
+                    is_start,
+                    is_end,
+                    if p.prev_end() == is_start {
+                        format!(" {jadpo}")
+                    } else {
+                        jadpo.to_string()
+                    },
+                )],
                 true,
             );
             let m = lhs.precede(p);
