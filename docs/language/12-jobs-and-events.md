@@ -47,21 +47,64 @@ Use a schedule for work that should happen on a timer rather than when
 someone asks, such as sending reminders every 15 minutes or tidying up
 once a day. A schedule runs one action at a fixed interval. It has a
 name, an `every:` saying how often, and a `run:` that calls an action in
-the same domain with no arguments.
+the same domain with no arguments. This one notes every 15 minutes that
+the app is running:
 
-`domains/planning/schedules/chore_census.jadpo`:
+```jadpo check project=schedule-first file=app.jadpo hidden
+application {}
+```
 
-```jadpo fragment
-// domains/planning/schedules/chore_census.jadpo
-/// Queues a reminder for each overdue todo.
-schedule chore_census {
+`domains/ops/schedules/heartbeat_timer.jadpo`:
+
+```jadpo check project=schedule-first file=domains/ops/schedules/heartbeat_timer.jadpo
+use ops/actions { record_heartbeat }
+
+/// Notes every 15 minutes that the app is running.
+schedule heartbeat_timer {
     every: 15m
-    run: queue_chore_census()
+    run: record_heartbeat()
 }
 ```
 
-Here `queue_chore_census` runs every 15 minutes. You don't start it,
-and a restart or a deploy doesn't upset its timing.
+`domains/ops/actions/record_heartbeat.jadpo`:
+
+```jadpo check project=schedule-first file=domains/ops/actions/record_heartbeat.jadpo
+use ops/entities { Heartbeat }
+
+/// Writes one heartbeat.
+action record_heartbeat() -> Heartbeat {
+    return Heartbeat.create {
+        set: {}
+    }
+}
+```
+
+`domains/ops/entities/heartbeat.jadpo`:
+
+```jadpo check project=schedule-first file=domains/ops/entities/heartbeat.jadpo migrate=initial
+/// One note that the app was running.
+entity Heartbeat {
+    id: Uuid
+    beat_at: Instant {
+        generated: Generated.on_create
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+```
+
+Here `record_heartbeat` runs every 15 minutes. You don't start it, and a
+restart or a deploy doesn't upset its timing. It runs on a server of your
+own and on Workers, where `every:` can't be under a minute.
+
+`heartbeat_timer`, `record_heartbeat` and `Heartbeat` are your app's own,
+and each `use` line brings one in from its file. `schedule`, `Generated`
+and `Access` are built in. A schedule has no person behind it, so a
+record it writes must let `Access.system` in. Run `jadpo migrate new
+initial` to make the tables.
 
 ### `every:` and `run:`
 
@@ -402,6 +445,103 @@ an uploaded spreadsheet, writing a large export, or walking every record
 a query finds or every page of a provider's list. A batch runs in the
 background, a slice at a time. It keeps its place as it goes, so a crash
 or a deploy carries on where it stopped and nothing is done twice.
+
+The simplest batch walks every record a query finds. This one marks every
+item in a stocktake as seen, however many there are:
+
+```jadpo check project=batch-first file=app.jadpo hidden
+application {}
+```
+
+`domains/stock/actions/start_stocktake.jadpo`:
+
+```jadpo check project=batch-first file=domains/stock/actions/start_stocktake.jadpo
+use stock/types { ItemPage }
+use stock/actions { mark_seen }
+use stock/queries { all_items }
+
+/// Starts marking every item seen.
+action start_stocktake() -> BatchRun {
+    return batches.each(from: all_items(ItemPage {}), each: item -> mark_seen(item))
+}
+```
+
+`batches.each` runs `mark_seen` for each item `all_items` gives, a page
+at a time, each page in its own transaction. The batch starts once this
+action commits, and the `BatchRun` it returns names it, for
+[`batches.status`](#progress-cancelling-and-the-summary) to ask about later.
+
+`batches` and `BatchRun` are built into Jadpo. The rest are your app's own,
+in these files:
+
+`domains/stock/actions/mark_seen.jadpo`:
+
+```jadpo check project=batch-first file=domains/stock/actions/mark_seen.jadpo
+use stock/entities { Item }
+
+/// Marks one item seen.
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+```
+
+`domains/stock/queries/all_items.jadpo`:
+
+```jadpo check project=batch-first file=domains/stock/queries/all_items.jadpo
+use stock/entities { Item }
+use stock/types { ItemPage }
+
+/// Every item, a page at a time, in an order no change to an item moves.
+query all_items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.id asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+```
+
+`domains/stock/types/item_page.jadpo`:
+
+```jadpo check project=batch-first file=domains/stock/types/item_page.jadpo
+/// Where a batch has got to in the list of items.
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 50
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+```
+
+`domains/stock/entities/item.jadpo`:
+
+```jadpo check project=batch-first file=domains/stock/entities/item.jadpo migrate=initial
+/// One item in a stocktake.
+entity Item {
+    id: Uuid
+    seen: Bool
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+```
+
+`PageSize` and `PageCursor` are built in. A batch has no person behind it,
+so `Item` lets `Access.system` in, and a real app lists its people beside
+it. Run `jadpo migrate new initial` to make the tables.
+
+### Batches over files
 
 You start a batch with a helper: one for each file format and direction,
 and `batches.each` for work with no file. Every helper handles small and
@@ -1770,19 +1910,49 @@ to it later without the action that caused it waiting. You declare it as
 a type whose base is `Event`, named in the past tense, one per file in
 the domain's `events/` folder.
 
+```jadpo check project=todo-events file=app.jadpo hidden
+application {}
+```
+
 `domains/planning/events/todo_completed.jadpo`:
 
-```jadpo fragment
-// domains/planning/events/todo_completed.jadpo
+```jadpo check project=todo-events file=domains/planning/events/todo_completed.jadpo
+use planning/entities { Todo }
+
 /// A todo was marked complete.
-public type TodoCompleted = Event {
+type TodoCompleted = Event {
     todo_id: Todo.id
     completed_at: Instant
 }
 ```
 
-`TodoCompleted` says a todo was completed, which todo and when. Mark an
-event `public` when another domain subscribes to it.
+`TodoCompleted` says a todo was completed, which todo and when. `Event` and
+`Instant` are built in. `Todo` is your app's own entity, a kind of stored
+record, and the `use` line brings it in from its file:
+
+`domains/planning/entities/todo.jadpo`:
+
+```jadpo check project=todo-events file=domains/planning/entities/todo.jadpo
+/// Something to do.
+entity Todo {
+    id: Uuid
+    done: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.public]
+    }
+}
+```
+
+`Access.public` lets anyone in, which keeps this example short
+([Policy](09-policy.md)), and `jadpo migrate new initial` makes the tables.
+
+An action [emits](#emitting-an-event) the event, and a
+[subscriber](#subscribers) reacts to it, so the next two topics finish this
+example. `public type` instead of `type` lets another domain subscribe to it
+([Reacting in another domain](#reacting-in-another-domain)).
 
 ### What an event holds
 
@@ -1852,14 +2022,24 @@ field added (`.input_field_required`) or a rule tightened
 An action announces an event with `emit`, a statement written like
 `reject` ([Raising a failure](04-failures.md#raising-a-failure-reject)).
 The event reaches its subscribers only once the action's writes have
-committed.
+committed. This action emits the `TodoCompleted` from
+[Declaring an event](#declaring-an-event). `TodoNotFound` is the failure
+the compiler provides for a `Todo` that isn't there
+([The operations every entity gets](06-reads-and-writes.md#the-operations-every-entity-gets)):
 
 `domains/planning/actions/complete_todo.jadpo`:
 
-```jadpo fragment
-// domains/planning/actions/complete_todo.jadpo
+```jadpo check project=todo-events file=domains/planning/actions/complete_todo.jadpo
+use planning/entities { Todo, TodoNotFound }
+use planning/events { TodoCompleted }
+
+/// Marks a todo complete, and says so.
 action complete_todo(todo_id: Todo.id) fails TodoNotFound -> Todo {
-    var todo: Todo = attempt mark_complete(todo_id)
+    var todo: Todo = attempt Todo.update(todo_id) {
+        set: {
+            done: true
+        }
+    }
     emit TodoCompleted {
         todo_id: todo.id
         completed_at: clock.now
@@ -1922,17 +2102,61 @@ More than 1,000 events in one action, or an event whose JSON is over
 
 A subscriber reacts to an event: each time the event is committed, it
 runs an action. It names one event in `on:` and the action to run in
-`run:`. Inside `run:`, `event` is the event delivered.
+`run:`. Inside `run:`, `event` is the event delivered. This one keeps a note
+of each `TodoCompleted` from [Declaring an event](#declaring-an-event):
 
 `domains/planning/subscribers/update_statistics.jadpo`:
 
-```jadpo fragment
-// domains/planning/subscribers/update_statistics.jadpo
+```jadpo check project=todo-events file=domains/planning/subscribers/update_statistics.jadpo
+use planning/actions { note_todo }
+use planning/events { TodoCompleted }
+
+/// Counts each completed todo.
 subscriber update_statistics {
     on: TodoCompleted
-    run: count_completion(event)
+    run: note_todo(event)
 }
 ```
+
+`domains/planning/actions/note_todo.jadpo`:
+
+```jadpo check project=todo-events file=domains/planning/actions/note_todo.jadpo
+use planning/entities { TodoNote, TodoNotFound }
+use planning/events { TodoCompleted }
+
+/// Keeps a note of a completed todo.
+action note_todo(completed: TodoCompleted) fails TodoNotFound -> TodoNote {
+    return attempt TodoNote.create {
+        set: {
+            todo_id: completed.todo_id
+            completed_at: completed.completed_at
+        }
+    }
+}
+```
+
+`domains/planning/entities/todo_note.jadpo`:
+
+```jadpo check project=todo-events file=domains/planning/entities/todo_note.jadpo migrate=initial
+use planning/entities { Todo }
+
+/// A note that a todo was completed, kept for statistics.
+entity TodoNote {
+    id: Uuid
+    todo_id: Todo.id {
+        on_delete: OnDelete.cascade
+    }
+    completed_at: Instant
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+```
+
+A subscriber has no person behind it, so `TodoNote` and the `Todo` it
+refers to let `Access.system` in.
 
 ### What a subscriber holds
 
@@ -2110,7 +2334,94 @@ whether the record changed since it was read
 Every committed event reaches each of its subscribers at least once.
 A crash can deliver it again, so Jadpo makes a repeat harmless: database
 work happens once, and outside calls carry keys that let the provider
-ignore a repeat.
+ignore a repeat. You write nothing for this. Here an action places an order
+and emits `OrderPlaced`, and a subscriber packs the order:
+
+```jadpo check project=delivery-first file=app.jadpo hidden
+application {}
+```
+
+`domains/shop/subscribers/pack_placed_order.jadpo`:
+
+```jadpo check project=delivery-first file=domains/shop/subscribers/pack_placed_order.jadpo
+use shop/actions { pack_order }
+use shop/events { OrderPlaced }
+
+/// Packs each order placed.
+subscriber pack_placed_order {
+    on: OrderPlaced
+    run: pack_order(event.order_id)
+}
+```
+
+`domains/shop/actions/pack_order.jadpo`:
+
+```jadpo check project=delivery-first file=domains/shop/actions/pack_order.jadpo
+use shop/entities { Order, OrderNotFound }
+
+/// Marks an order packed. Running it twice changes nothing more.
+action pack_order(order_id: Order.id) fails OrderNotFound -> Order {
+    return attempt Order.update(order_id) {
+        set: {
+            packed: true
+        }
+    }
+}
+```
+
+`domains/shop/actions/place_order.jadpo`:
+
+```jadpo check project=delivery-first file=domains/shop/actions/place_order.jadpo
+use shop/entities { Order }
+use shop/events { OrderPlaced }
+
+/// Places an order, and says so.
+action place_order() -> Order {
+    var order: Order = Order.create {
+        set: {
+            packed: false
+        }
+    }
+    emit OrderPlaced {
+        order_id: order.id
+    }
+    return order
+}
+```
+
+`domains/shop/events/order_placed.jadpo`:
+
+```jadpo check project=delivery-first file=domains/shop/events/order_placed.jadpo
+use shop/entities { Order }
+
+/// An order was placed.
+type OrderPlaced = Event {
+    order_id: Order.id
+}
+```
+
+`domains/shop/entities/order.jadpo`:
+
+```jadpo check project=delivery-first file=domains/shop/entities/order.jadpo migrate=initial
+/// An order someone placed.
+entity Order {
+    id: Uuid
+    packed: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+```
+
+`subscriber`, `event`, `emit` and `Event` are built in, and every other name
+is declared here. `OrderNotFound` is the failure the compiler provides for
+an `Order` that isn't there. If the app crashes after `pack_order` commits,
+the delivery may start again, finds it was already handled and does
+nothing. If `pack_order` fails on the way, Jadpo decides whether to try
+again ([Retries and giving up](#retries-and-giving-up)).
 
 ### At least once
 

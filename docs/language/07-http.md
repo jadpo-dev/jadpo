@@ -10,38 +10,112 @@ checked-with: this checkout's jadpo on every gate run
 
 A Jadpo app answers HTTP requests with routes. A route says which method
 and URL it answers, what comes in, what goes out, and which action or query
-runs:
+runs. This route adds a todo:
 
-```jadpo fragment
-// domains/planning/routes/todos.jadpo
+```jadpo check project=http-first file=app.jadpo hidden
+application {}
+```
+
+`domains/todos/routes/todos.jadpo`:
+
+```jadpo check project=http-first file=domains/todos/routes/todos.jadpo
+use todos/types { NewTodo, TodoView }
+use todos/actions { add_todo }
+
+/// The todo list.
 routes Todos {
     prefix: /todos
 
+    /// Adds a todo.
     POST / {
-        input: CreateTodo
+        authentication: RouteAuthentication.none
+        input: NewTodo
         output: TodoView
-        status: SuccessStatus.created
-        run: create_todo(input, current_principal.user)
+        run: add_todo(input)
     }
 }
 ```
 
-This route answers `POST /todos`. Jadpo reads a `CreateTodo` from the
-JSON body and checks it, and `run:` gets it as `input`. `run:` calls the
-action `create_todo` for the signed-in user (`current_principal.user`, see
-[Who is calling](08-identity.md#who-is-calling-current_principal)). The
-action returns a `TodoView`, which must be the route's `output:`, and
-`status: SuccessStatus.created` makes the route answer 201 Created rather
-than 200.
+It answers `POST /todos`. Jadpo reads a `NewTodo` from the JSON body and
+checks it, and `run:` gets it as `input`. `run:` calls the action
+`add_todo`, which returns a `TodoView`, the route's `output:`. The route
+answers 200 with that value as JSON.
 
-A route holds no logic of its own. The work lives in
-[actions and queries](03-logic.md#functions-and-actions). When the action
-fails, the HTTP status comes from the failure's kind, a category such as
-`not_found` (404), never from the route ([Failure kinds](04-failures.md#failure-kinds)).
+`NewTodo`, `TodoView` and `add_todo` are your app's own. Each `use` line
+brings a name in from another file of your app, and these are the files:
+
+`domains/todos/types/new_todo.jadpo`:
+
+```jadpo check project=http-first file=domains/todos/types/new_todo.jadpo
+/// What a caller sends to add a todo.
+type NewTodo = Input {
+    title: Text
+}
+```
+
+`domains/todos/types/todo_view.jadpo`:
+
+```jadpo check project=http-first file=domains/todos/types/todo_view.jadpo
+/// A todo, as the app sends it back.
+type TodoView = Output {
+    title: Text
+    done: Bool
+}
+```
+
+`domains/todos/actions/add_todo.jadpo`:
+
+```jadpo check project=http-first file=domains/todos/actions/add_todo.jadpo
+use todos/types { NewTodo, TodoView }
+
+/// Builds the todo and sends it back. It stores nothing.
+action add_todo(input: NewTodo) -> TodoView {
+    return TodoView {
+        title: input.title
+        done: false
+    }
+}
+```
+
+`policy.jadpo`:
+
+```jadpo check project=http-first file=policy.jadpo
+use todos
+
+policy {
+    actions: {
+        todos.add_todo: [Access.public]
+    }
+}
+```
+
+Most actions take their permission from the stored records they reach
+([Policy](09-policy.md)). `add_todo` reaches none, so `policy.jadpo` says
+who may run it, and `Access.public` means anyone. `RouteAuthentication`,
+`Access`, `Text` and `Bool` are built into Jadpo, so they need no `use`
+line.
 
 Every route needs a signed-in caller unless an `authentication:` line in
-the route says otherwise
-([Routes: signed in by default](08-identity.md#routes-signed-in-by-default)).
+the route says otherwise, as this one does because the app has no sign-in
+yet ([Routes: signed in by default](08-identity.md#routes-signed-in-by-default)).
+
+Run `jadpo api update` once, which writes [the public API
+record](#the-public-api-record), then `jadpo dev`, and send it a todo:
+
+```sh
+curl -X POST http://localhost:3000/todos \
+  -H 'content-type: application/json' \
+  -d '{"title": "Buy milk"}'
+```
+
+```text
+{"title":"Buy milk","done":false}
+```
+
+A route holds no logic of its own. The work lives in
+[actions and queries](03-logic.md#functions-and-actions). When an action
+fails, the HTTP status comes from the failure's kind, a category such as
+`not_found` (404), never from the route ([Failure kinds](04-failures.md#failure-kinds)).
 
 The topics of this page cover:
 

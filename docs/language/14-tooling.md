@@ -1321,7 +1321,10 @@ code always looks the same, and a diff only ever shows real changes
 editor formats on save, and `jadpo fmt --check` fails when a file differs
 from what the formatter would write.
 
-```jadpo fragment
+Here is what it writes for two types, however they were typed. `Object`,
+`Bool` and `Int` are built in, and `Flags` and `Count` are declared here:
+
+```jadpo check project=formatter-first
 type Flags = Object {
     done: Bool
     pinned: Bool
@@ -2630,10 +2633,12 @@ services](16-built-in-services.md)).
 ## Declared deployables
 <!-- topic: declared-deployables -->
 
-An app can be built into several programs, for example a Worker that
-serves its public API and a server that runs its back office.
+An app can be built into several programs, for example one server that
+serves its public API and another that runs its back office.
 `application { deployables: { } }` in `app.jadpo` names each one, what it
 serves, what it runs and what it is built for:
+
+`app.jadpo`:
 
 ```jadpo check project=deployables file=app.jadpo
 application {
@@ -2645,20 +2650,11 @@ application {
             prefix: /backstage
         }
     }
-    connections: {
-        cache: {
-            driver: Driver.redis
-        }
-    }
-    rate_limits: {
-        store: cache
-    }
     deployables: {
-        decline rate_limits.counted_in_memory: "One instance of `web` is enough until Redis's driver comes"
         web: {
             serves: [main]
             runs: [Trigger.subscribers]
-            target: Target.wasm
+            target: Target.native
         }
         back_office: {
             serves: [backstage]
@@ -2669,26 +2665,25 @@ application {
 }
 ```
 
+`web`, `back_office` and `backstage` are names you choose, and `main` is
+the API every app has. `Trigger` and `Target` are built in.
+
 ```text
 $ jadpo build
-  worker    build/target/web/wrangler.json
-  module    build/target/web/web.wasm
-  size      8.1 MB, 2.9 MB gzipped
-  build     b_1c5e09d2a7f3
-  serves    main
-  runs      subscribers
-  calls     pdf 2 at once in each instance
-
   binary    build/target/back_office/back_office
-  build     b_e20fc10f5474
+  build     b_6c016d57e7c3
   serves    backstage
   runs      schedules
 
-  commit    8d113e6
-  settings  DATABASE_URL
+  binary    build/target/web/web
+  build     b_0e9644cb2148
+  serves    main
+  runs      subscribers
 
-✓ built  web and back_office · wasm and native in 61.3 s
-→ jadpo migrate apply  they start only once their database has every migration
+  commit    8d113e6
+
+✓ built  back_office and web · native in 61.3 s
+→ ./build/target/back_office/back_office  runs it, reading its settings from the environment
 ```
 
 ### `serves:`, the APIs it answers
@@ -2774,7 +2769,43 @@ rate limits, `rate_limits: { store: }` ([Rate
 limits](16-built-in-services.md#rate-limits); `rate_limits.store_required`).
 Until Redis's driver comes, a Redis store there would leave each instance
 counting in its own memory. That is a judgement call, which a `decline`
-line answers, as `web` above does (`rate_limits.counted_in_memory`).
+line answers (`rate_limits.counted_in_memory`). Here `web` is a Worker:
+
+`app.jadpo`:
+
+```jadpo check project=deployables-worker file=app.jadpo
+application {
+    apis: {
+        main: {
+            prefix: /
+        }
+        backstage: {
+            prefix: /backstage
+        }
+    }
+    connections: {
+        cache: {
+            driver: Driver.redis
+        }
+    }
+    rate_limits: {
+        store: cache
+    }
+    deployables: {
+        decline rate_limits.counted_in_memory: "One instance of `web` is enough until Redis's driver comes"
+        web: {
+            serves: [main]
+            runs: [Trigger.subscribers]
+            target: Target.wasm
+        }
+        back_office: {
+            serves: [backstage]
+            runs: [Trigger.schedules]
+            target: Target.native
+        }
+    }
+}
+```
 
 A deployable built for Workers is refused a `client_address:` source other
 than `cloudflare`, at its `source:` ([Client
