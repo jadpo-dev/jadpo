@@ -244,6 +244,20 @@ fn a_secret_a_file_bytes_or_a_second_conversation_is_no_placeholder() {
         with("    shown_note: Text?\n", "{shown_note}\n"),
         ["prompt.placeholder_type"]
     );
+    // A file is refused however deep: an object's placeholder is written
+    // as its JSON, which would hold the file's store and key.
+    assert_eq!(
+        with("    photo: File\n", "{photo}\n"),
+        ["prompt.placeholder_type"]
+    );
+    assert_eq!(
+        with("    photos: List<File>\n", "{photos}\n"),
+        ["prompt.placeholder_type"]
+    );
+    assert_eq!(
+        with("    summary: ExportSummary\n", "{summary}\n"),
+        ["prompt.placeholder_type"]
+    );
     // One conversation is the turns before the request, never written.
     assert_eq!(with("    history: List<ChatMessage>\n", ""), NONE);
     assert_eq!(
@@ -441,4 +455,31 @@ fn each_prompt_is_in_the_manifest_with_its_digest() {
 /// then its bytes).
 fn expected_digest() -> &'static str {
     "864ad76b"
+}
+
+/// An object's placeholder is written as its JSON, so a `File` it holds,
+/// however deep, would send the model's provider its store and key.
+#[test]
+fn a_prompt_holding_a_file_in_an_object_is_refused() {
+    const HOLDER: (&str, &str) = (
+        "domains/support/types/photo_holder.jadpo",
+        "/// A photo with its caption.\ntype PhotoHolder = Object {\n    caption: Text\n    photo: File\n}\n",
+    );
+    const OUTER: (&str, &str) = (
+        "domains/support/types/photo_album.jadpo",
+        "use support/types { PhotoHolder }\n\n/// Photos.\ntype PhotoAlbum = Object {\n    photos: List<PhotoHolder>\n}\n",
+    );
+    for field in ["PhotoHolder", "List<PhotoHolder>", "PhotoAlbum"] {
+        let prompt_type = format!(
+            "use support/types {{ {} }}\n\n/// Asks about a photo.\ntype AnswerQuestion = Prompt {{\n    question: {field}\n}}\n",
+            field.trim_start_matches("List<").trim_end_matches('>')
+        );
+        let text = "# Instructions\n\nAnswer.\n\n# Request\n\n{question}\n";
+        let found: Vec<String> = diagnostics(&prompt_type, Some(text), &[HOLDER, OUTER])
+            .iter()
+            .map(|d| d.rule.id.to_string())
+            .filter(|rule| !rule.starts_with("layout.") && rule != "import.unused")
+            .collect();
+        assert_eq!(found, ["prompt.placeholder_type"], "{field}");
+    }
 }

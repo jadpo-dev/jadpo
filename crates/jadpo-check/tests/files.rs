@@ -601,3 +601,228 @@ fn a_file_in_an_input_is_refused() {
         assert_eq!(found, ["type.batch_input"], "{what}");
     }
 }
+
+const ACME: &str = "shared/providers/acme/v1";
+
+/// The base project connected to a provider package with webhooks: `keys`
+/// are the `input:`, `output:` and other keys of its `uploads.create`,
+/// `event` what its `Asked` event holds, and `types` its `types/`, each a
+/// name and what its `Object` holds. Reports each problem as `rule: message`,
+/// but for what [`ids`] leaves out.
+fn through_acme(
+    keys: &str,
+    event: &str,
+    types: &[(&str, &str)],
+    more: &[(&str, &str)],
+) -> Vec<String> {
+    let app = "application {\n    connections: {\n        main: {\n            driver: Driver.postgres\n        }\n        sheets: {\n            driver: Driver.disk\n            path: \"/var/lib/pantry/sheets\"\n        }\n        acme: {\n            package: Acme.v1\n            domains: [pantry]\n            credential: config.acme_key\n            host: config.acme_host\n            webhooks: {\n                secret: config.acme_secret\n            }\n        }\n    }\n    events: {\n        store: main\n    }\n}\n";
+    let config = "config {\n    acme_host: Url\n    acme_key: Text {\n        secret: true\n    }\n    acme_secret: Text {\n        secret: true\n    }\n}\n";
+    let resource = format!(
+        "public resource uploads {{\n    create: {{\n        method: HttpMethod.post\n        path: \"/v1/uploads\"\n{keys}        changes: false\n        source: PackageSource.written\n    }}\n}}\n"
+    );
+    let asked = format!(
+        "/// Acme tells the app something.\npublic type Asked = Event {{\n    wire_name: \"asked\"\n    occurred_at: Instant\n{event}}}\n"
+    );
+    let mut owned: Vec<(String, String)> = vec![
+        ("app.jadpo".into(), app.into()),
+        ("config.jadpo".into(), config.into()),
+        (
+            format!("{ACME}/package.jadpo"),
+            "/// Acme.\npackage Acme.v1 {\n    licence: Licence.proprietary\n    jadpo: \"1.0\"\n}\n".into(),
+        ),
+        (
+            format!("{ACME}/provider.jadpo"),
+            "/// Acme's API.\nprovider {\n    protocol: Protocol.json_http\n    credential: CredentialScheme.bearer\n    webhooks: {\n        check: SignatureScheme.stripe\n        event_id: \"id\"\n        event_type: \"type\"\n        occurred_at: \"created\"\n    }\n}\n".into(),
+        ),
+        (format!("{ACME}/resources/uploads.jadpo"), resource),
+        (format!("{ACME}/events/asked.jadpo"), asked),
+    ];
+    for (name, holds) in types {
+        owned.push((
+            format!("{ACME}/types/{}.jadpo", name.to_lowercase()),
+            format!("/// {name}.\npublic type {name} = Object {{\n{holds}}}\n"),
+        ));
+    }
+    let mut files: Vec<(&str, &str)> = BASE.to_vec();
+    files.extend(
+        owned
+            .iter()
+            .map(|(path, text)| (path.as_str(), text.as_str())),
+    );
+    files.extend_from_slice(more);
+    support::problems(Layout::Project, &files)
+        .into_iter()
+        .filter(|problem| {
+            !["import.unused", "layout.unused_declaration"]
+                .iter()
+                .any(|rule| problem.contains(&format!(" {rule}:")))
+                && !problem.contains(" migration.")
+                && !problem.contains(" record.")
+        })
+        .map(|problem| {
+            problem
+                .split_once(' ')
+                .map_or(problem.clone(), |(_, rest)| rest.to_string())
+        })
+        .collect()
+}
+
+/// Each way a type's field may hold a `File`, as the field is declared.
+/// `Inner` is an `Object` holding one.
+const HOLDING: [(&str, &str); 6] = [
+    ("a field", "    sheet: File\n"),
+    ("an optional field", "    sheet: File?\n"),
+    ("a list", "    sheets: List<File>\n"),
+    ("a map's values", "    sheets: Map<Text, File>\n"),
+    ("an object it holds", "    inner: List<Inner>\n"),
+    ("an export's summary", "    summary: ExportSummary\n"),
+];
+
+const INNER: (&str, &str) = ("Inner", "    sheet: File\n");
+const PLAIN: (&str, &str) = ("Plain", "    name: Text\n");
+
+/// Sending a `File` to a provider isn't built: an operation's `input:` or
+/// a webhook's `reply:` would write its store and key, not its bytes, so
+/// holding one, however deep, is `toolchain.not_built_yet` (area 16, "What
+/// a `File` holds"; area 11, "Types").
+#[test]
+fn a_file_sent_to_a_provider_is_not_built_yet() {
+    const REFUSED: &str = "toolchain.not_built_yet:";
+    for (what, holds) in HOLDING {
+        let found = through_acme(
+            "        input: Sent\n        output: Plain\n",
+            "",
+            &[("Sent", holds), INNER, PLAIN],
+            &[],
+        );
+        assert_eq!(
+            found.iter().filter(|p| p.starts_with(REFUSED)).count(),
+            1,
+            "an operation's input, {what}: {found:?}"
+        );
+        assert_eq!(found.len(), 1, "an operation's input, {what}: {found:?}");
+        let found = through_acme(
+            "        input: Plain\n        output: Plain\n",
+            "    reply: Sent\n",
+            &[("Sent", holds), INNER, PLAIN],
+            &[],
+        );
+        // A connection that doesn't answer the event is reported beside it.
+        assert_eq!(
+            found.iter().filter(|p| p.starts_with(REFUSED)).count(),
+            1,
+            "a webhook's reply, {what}: {found:?}"
+        );
+        assert!(
+            !found.iter().any(|p| p.starts_with("type.batch_input:")),
+            "a webhook's reply is sent, not taken, {what}: {found:?}"
+        );
+    }
+    // What it says names the operation and the field.
+    let found = through_acme(
+        "        input: Sent\n        output: Plain\n",
+        "",
+        &[("Sent", "    sheet: File\n"), PLAIN],
+        &[],
+    );
+    assert_eq!(
+        found,
+        [
+            "toolchain.not_built_yet: `uploads.create`'s `input:` sends a `File`, in `Acme.Sent.sheet`, and sending one to a provider isn't built yet"
+        ]
+    );
+    // An input and a reply that leave the file out are like any other.
+    assert_eq!(
+        through_acme(
+            "        input: Plain\n        output: Plain\n",
+            "",
+            &[PLAIN],
+            &[],
+        ),
+        Vec::<String>::new()
+    );
+}
+
+/// A call to an operation refused for its `input:` reports the operation,
+/// and nothing more at the call that sends it.
+#[test]
+fn a_call_sending_a_file_is_reported_at_the_operation() {
+    let action = "use app { acme, sheets }\nuse pantry/failures { NoRoom }\nuse shared/providers/acme\n\naction send() fails NoRoom -> Unit {\n    var sheet: File = attempt sheets.put(encoding.to_utf8(\"a,b\"), FileType.csv) {\n        storage_full: NoRoom\n    }\n    var plain: Acme.Plain = acme.uploads.create(\n        Acme.Sent {\n            sheet: sheet\n        }\n    )\n    assert plain.name == \"sent\"\n}\n";
+    let found = through_acme(
+        "        input: Sent\n        output: Plain\n",
+        "",
+        &[("Sent", "    sheet: File\n"), PLAIN],
+        &[("domains/pantry/actions/send.jadpo", action)],
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        found[0].starts_with("toolchain.not_built_yet:"),
+        "{found:?}"
+    );
+}
+
+/// Only the runtime builds a `File`, so nothing from outside carries one:
+/// an operation's `output:` or `wire_output:` and a webhook event's fields,
+/// holding one however deep, are `type.batch_input`, since the provider
+/// could name any file's store and key (area 16, "What a `File` holds").
+#[test]
+fn a_file_taken_from_a_provider_is_refused() {
+    const REFUSED: &str = "type.batch_input:";
+    for (what, holds) in HOLDING {
+        let found = through_acme(
+            "        input: Plain\n        output: Answer\n",
+            "",
+            &[("Answer", holds), INNER, PLAIN],
+            &[],
+        );
+        assert_eq!(found.len(), 1, "an operation's output, {what}: {found:?}");
+        assert!(
+            found[0].starts_with(REFUSED),
+            "an output, {what}: {found:?}"
+        );
+        let found = through_acme(
+            "        input: Plain\n        output: Plain\n",
+            holds,
+            &[INNER, PLAIN],
+            &[],
+        );
+        assert_eq!(found.len(), 1, "a webhook's event, {what}: {found:?}");
+        assert!(found[0].starts_with(REFUSED), "an event, {what}: {found:?}");
+    }
+    // An output that is a list of what holds one, or a `File` itself.
+    for output in ["List<Inner>", "File"] {
+        let found = through_acme(
+            &format!("        input: Plain\n        output: {output}\n"),
+            "",
+            &[INNER, PLAIN],
+            &[],
+        );
+        assert_eq!(found.len(), 1, "`output: {output}`: {found:?}");
+        assert!(
+            found[0].starts_with(REFUSED),
+            "`output: {output}`: {found:?}"
+        );
+    }
+    // The answer read whole, before the package's own function sees it.
+    let decode = "public library wire {\n    /// Reads the answer.\n    function read(sent: Inner) -> Plain {\n        return Plain {\n            name: \"read\"\n        }\n    }\n}\n";
+    let found = through_acme(
+        "        input: Plain\n        output: Plain\n        wire_output: Inner\n        decode: wire.read\n",
+        "",
+        &[INNER, PLAIN],
+        &[("shared/providers/acme/v1/libraries/wire.jadpo", decode)],
+    );
+    assert_eq!(found.len(), 1, "`wire_output:`: {found:?}");
+    assert!(found[0].starts_with(REFUSED), "`wire_output:`: {found:?}");
+    // What it says names what comes in and where the file is.
+    assert_eq!(
+        through_acme(
+            "        input: Plain\n        output: Plain\n",
+            "    sheet: File\n",
+            &[PLAIN],
+            &[],
+        ),
+        [
+            "type.batch_input: `Asked` holds a `File`, in `Acme.Asked.sheet`, which nothing from outside carries"
+        ]
+    );
+}

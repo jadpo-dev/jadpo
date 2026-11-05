@@ -833,6 +833,13 @@ details = [
   "recordings",
 ]
 
+[[group.page]]
+title = "Running a service in a container"
+status = ["11-integrations: Services"]
+topics = [
+  "running-a-service-in-a-container",
+]
+
 [[group]]
 id = "configuration"
 title = "Configuration"

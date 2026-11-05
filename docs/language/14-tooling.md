@@ -2709,6 +2709,9 @@ subscribers, or a batch run in one that doesn't run schedules, waits for
 one that does. Every deployable's tick deletes what has expired, which
 any instance may.
 
+A package's `provider.jadpo` has a `runs:` of its own, for a container, which
+isn't built yet and [is a different thing](11-integrations.md#two-words-that-mean-two-things).
+
 ### `target:`, what it is built for
 
 `target:` is `Target.native`, a server, or `Target.wasm`, WebAssembly on
