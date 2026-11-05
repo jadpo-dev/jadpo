@@ -794,6 +794,11 @@ topics = [
 id = "using-packages"
 title = "Using packages"
 summary = "The kinds of package, where they come from, and what a package may do in your app."
+status = [
+  "11-integrations: Installing: `add` from a folder or git",
+  "11-integrations: The registry at jadpo.dev",
+]
+missing = "the public registry, so a package is added from a folder or a git tag, never by name"
 topics = [
   "kinds-of-package",
   "where-packages-live",
@@ -817,6 +822,11 @@ details = [
 id = "writing-and-publishing-packages"
 title = "Writing and publishing packages"
 summary = "The package format, and how you develop, verify and publish a package."
+status = [
+  "11-integrations: Starting a package",
+  "11-integrations: The registry at jadpo.dev",
+]
+missing = "the public registry, so `jadpo package publish` has nowhere to publish yet"
 topics = [
   "the-package-format",
   "developing-and-publishing-a-package",
@@ -1074,6 +1084,16 @@ monitoring-thresholds = ["16-built-in-services: Monitoring thresholds"]
 telemetry = ["16-built-in-services: The `telemetry:` section"]
 path-ids = ["16-built-in-services: Path IDs"]
 oauth-grants = ["11-integrations: OAuth grants"]
+where-packages-come-from = [
+  "11-integrations: Installing: `add` from a folder or git",
+  "11-integrations: The registry at jadpo.dev",
+  "11-integrations: Importers other than OpenAPI",
+]
+the-public-registry = ["11-integrations: The registry at jadpo.dev"]
+how-the-registry-commands-work = [
+  "11-integrations: The `jadpo` tool's side of the public registry",
+  "11-integrations: The registry at jadpo.dev",
+]
 watching-code-run-jadpo-watch = ["17-debugging-and-review: `jadpo traces`, `metrics`, `logs` and `watch`"]
 traces-metrics-and-logs-in-development = ["17-debugging-and-review: `jadpo traces`, `metrics`, `logs` and `watch`"]
 production-incidents-after-the-code-has-changed = ["17-debugging-and-review: Mapped `.jadpo` stacks"]

@@ -85,6 +85,35 @@ pub(crate) fn unreachable(reason: String) -> Diagnostic {
     )
 }
 
+/// `registry.unreachable` for a 404 or a 405 that isn't a failure of the
+/// protocol's, which a registry never answers: nothing is serving the protocol
+/// at `address`, so it isn't the network that needs looking at. A site's 405 is
+/// what a request that isn't a read gets where the site has no such route.
+fn nothing_served(address: &str, status: u16) -> Diagnostic {
+    if address == protocol::PUBLIC {
+        return Diagnostic::new(
+            &rule::REGISTRY_UNREACHABLE,
+            "The public registry isn't live yet".to_string(),
+        )
+        .reason(format!(
+            "`{address}` answered {status}: your connection works, and nothing is served there yet."
+        ))
+        .next_for(
+            "Use a folder or a git tag meanwhile: `jadpo package add <folder>` or `jadpo package add <repository>@v<version>`",
+            Decider::Human,
+        );
+    }
+    Diagnostic::new(
+        &rule::REGISTRY_UNREACHABLE,
+        format!("`{address}` isn't serving a registry"),
+    )
+    .reason(format!("It answered {status} without a failure of the registry protocol's, so something answers there, but not a registry."))
+    .next_for(
+        format!("Check `{VARIABLE}`, which names the registry this command asks"),
+        Decider::Human,
+    )
+}
+
 /// The registry this command talks to.
 pub(crate) struct Client {
     /// The protocol's address, ending `/registry/v1/`.
@@ -139,7 +168,10 @@ impl Client {
         };
         if answer.status != endpoint.status {
             return Err(failure_of(&answer).map_or_else(
-                || unread(format!("it answered {}", answer.status)),
+                || {
+                    self.nothing_served(answer.status)
+                        .unwrap_or_else(|| unread(format!("it answered {}", answer.status)))
+                },
                 Asked::Failure,
             ));
         }
@@ -160,13 +192,22 @@ impl Client {
         }
         Err(failure_of(&answer).map_or_else(
             || {
-                Asked::Unreachable(Box::new(unreachable(format!(
-                    "It answered {} to the archive `{digest}`.",
-                    answer.status
-                ))))
+                self.nothing_served(answer.status).unwrap_or_else(|| {
+                    Asked::Unreachable(Box::new(unreachable(format!(
+                        "It answered {} to the archive `{digest}`.",
+                        answer.status
+                    ))))
+                })
             },
             Asked::Failure,
         ))
+    }
+
+    /// What a status with no failure in it means, when it says no registry is
+    /// there at all.
+    fn nothing_served(&self, status: u16) -> Option<Asked> {
+        matches!(status, 404 | 405)
+            .then(|| Asked::Unreachable(Box::new(nothing_served(&self.address, status))))
     }
 }
 
@@ -1114,6 +1155,26 @@ mod tests {
     }
 
     const NOW: i64 = 1_793_000_000 / DAY * DAY;
+
+    /// The public registry's 404 says it isn't live, and sends the reader to
+    /// what works, rather than to a network that is fine.
+    #[test]
+    fn a_404_from_the_public_registry_says_it_isnt_live() {
+        let said = nothing_served(protocol::PUBLIC, 404);
+        assert_eq!(said.rule.id, rule::REGISTRY_UNREACHABLE.id);
+        assert_eq!(said.message, "The public registry isn't live yet");
+        assert!(
+            said.reason
+                .as_deref()
+                .unwrap_or("")
+                .contains("answered 404"),
+            "{:?}",
+            said.reason
+        );
+        let next = said.next.expect("a next step").text;
+        assert!(next.contains("`jadpo package add <folder>`"), "{next}");
+        assert!(!next.contains("Check your connection"), "{next}");
+    }
 
     #[test]
     fn a_time_is_read_as_the_protocol_writes_it() {

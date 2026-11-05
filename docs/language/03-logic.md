@@ -948,7 +948,7 @@ check failed: 1 error, 1 file
 
 An outside call is one that leaves your app: a provider operation (an
 outside service, reached through its package;
-[Integrations](11-integrations.md)), a package action, a file store's
+[External services](11-integrations.md)), a package action, a file store's
 `put` or `read`, or a `documents` render. Inside a loop's body, any of
 these is a compile error, in any action. A query inside a loop already is
 ([Reading in a loop](06-reads-and-writes.md#reading-in-a-loop)).

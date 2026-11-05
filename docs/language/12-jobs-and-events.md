@@ -604,7 +604,7 @@ each item, and a `finished:`, which receives the stored file.
 returning a `Page`, which the run walks a page at a time
 ([Order and pages](06-reads-and-writes.md#order-and-pages)), or a call to
 a provider's list operation, which it walks by `page.next`
-([Integrations](11-integrations.md)).
+([External services](11-integrations.md)).
 
 ### `each:` and `finished:`
 

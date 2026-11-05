@@ -36,7 +36,7 @@ capability the built-in services use, and the whole of its job:
 | Capability | The whole job | Filled by |
 |---|---|---|
 | `files` | Put, read, delete, signed links and upload slots, multipart ones included | The S3 driver (any S3-compatible service); the disk driver, native only |
-| `email` | Send a Jadpo-rendered `EmailMessage` after commit, attachments included | The SMTP driver; a mail package (Postmark, Amazon SES, Resend) |
+| `email` | Send a Jadpo-rendered `EmailMessage` after commit, attachments included | The SMTP driver; a mail package, such as Resend's |
 | `documents` | Turn the HTML Jadpo renders into a PDF | A container package (Gotenberg) or a hosted API's package (DocRaptor, PDFShift) |
 | `search` | Upsert, remove, and query by words with equality filters, returning ranked ids | PostgreSQL full-text search, built in; an engine's package |
 | `bot_check` | Check a token: pass or fail | A package (Turnstile, hCaptcha, reCAPTCHA) |
@@ -2212,8 +2212,9 @@ your app's and Jadpo's own ([Built-in emails](#built-in-emails)).
 - **SMTP** is a built-in driver, `driver: Driver.smtp`
   ([The SMTP driver](#the-smtp-driver)). On Cloudflare Workers it uses
   port 587, since Workers blocks port 25.
-- **A mail package**, such as Postmark, Amazon SES or Resend, is the
-  other way.
+- **A mail package** is the other way. Resend's is
+  [one of Jadpo's own](11-integrations.md#jadpos-own-packages), and for another
+  mail service you write one.
 
 The `EmailMessage` types, the translations and `emit` are the same
 whichever you choose, so changing provider changes only `app.jadpo`.
@@ -3647,7 +3648,7 @@ app's own data and packages, or they come later:
 |---|---|
 | Realtime subscriptions | Policy on a live stream of changes is a large design, so it comes later. Until then, clients poll with the revision header ([Write revisions](07-http.md#write-revisions)) |
 | Generated admin screens | Jadpo makes backends, not interfaces. Operators use `jadpo` commands ([The `jadpo` command](14-tooling.md#the-jadpo-command)); a screen can come later on the same operations |
-| Payments | Money moves at the provider, so an integration plus [webhooks](07-http.md#webhooks) ([Integrations](11-integrations.md)) is the right shape, and the compiler gains nothing more |
+| Payments | Money moves at the provider, so an integration plus [webhooks](07-http.md#webhooks) ([External services](11-integrations.md)) is the right shape, and the compiler gains nothing more |
 | Content management | Content is application data |
 | Product analytics | Events and metrics above feed whichever tool a team uses |
 | Quotas and plan limits | A plan's limits are application data, checked by an action; counting uses [counters](06-reads-and-writes.md#counters-and-other-one-step-updates) |
@@ -4081,7 +4082,8 @@ with `null`, which a provider needn't accept.
 
 ### Resend
 
-Resend is the second mail connection, in `packages/resend`. As Resend's
+Resend is the second mail connection, through
+[one of Jadpo's own packages](11-integrations.md#jadpos-own-packages). As Resend's
 documentation gives it (resend.com/docs, "Send Email" and "Errors"):
 
 - It sends with `POST /emails` and `Authorization: Bearer`, giving
