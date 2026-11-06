@@ -1374,3 +1374,200 @@ fn a_package_s_failure_arm_without_its_version_is_refused_once() {
         ]
     );
 }
+
+/// A mail provider written by hand, its public types and one it keeps to
+/// itself, in `folder`.
+fn mailer(folder: &str, provider: &str) -> Vec<(String, String)> {
+    vec![
+        (
+            format!("{folder}/package.jadpo"),
+            "/// Acme Mail.\npackage AcmeMail.v1 {\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}\n"
+                .to_string(),
+        ),
+        (format!("{folder}/provider.jadpo"), provider.to_string()),
+        (
+            format!("{folder}/types/outgoing_email.jadpo"),
+            "/// One email to send.
+public type OutgoingEmail = Object {
+    from: Text
+    to: List<Text>
+    cc: List<Text>?
+    subject: Text
+    html: Text {
+        personal: PersonalData.identifying
+    }
+    customer_email: Text
+    first_name: Text
+    surname: Text
+    full_name: Text
+    billing_phone: Text
+    name: Text
+    tag: Text
+}
+"
+            .to_string(),
+        ),
+        (
+            format!("{folder}/types/conversion.jadpo"),
+            "/// A rate between two currencies.
+public type Conversion = Object {
+    from: Text
+    to: Text
+    text: Text
+}
+"
+            .to_string(),
+        ),
+        (
+            format!("{folder}/types/kept.jadpo"),
+            "/// The provider's own shape, kept inside.
+type Kept = Object {
+    email: Text
+}
+"
+            .to_string(),
+        ),
+        (
+            format!("{folder}/types/chat.jadpo"),
+            "/// One message to a model.
+public type ChatTurn = Object {
+    role: Text
+    content: Text
+    model: Text
+    prompt: Text
+}
+"
+            .to_string(),
+        ),
+    ]
+}
+
+const MAIL_PROVIDER: &str = "/// Acme Mail's sending API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: \"https://api.acme-mail.example\"
+    }
+}
+";
+
+fn borrowed(files: &[(String, String)]) -> Vec<(&str, &str)> {
+    files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect()
+}
+
+/// `package.standard_candidate` reads a provider's text by its name (area
+/// 11, "Shape and name detection"): an email's sender and recipients,
+/// addresses, names and phone numbers may be standard types, and free
+/// text a person writes is marked `personal:`. A `to` that isn't an
+/// email's, a field already marked, a type kept inside and a name that
+/// says nothing aren't flagged.
+#[test]
+fn a_providers_text_named_like_personal_data_is_flagged() {
+    let files = mailer("shared/providers/acme_mail/v1", MAIL_PROVIDER);
+    let mut all = vec![APP];
+    all.extend(borrowed(&files));
+    let found: Vec<String> = problems(&all, &[])
+        .into_iter()
+        .filter(|p| p.contains("package.standard_candidate"))
+        .map(|p| p.split_once(": ").map(|(_, m)| m.to_string()).unwrap_or(p))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            "`ChatTurn.content` may hold personal data with no `personal:`",
+            "`ChatTurn.prompt` may hold personal data with no `personal:`",
+            "`OutgoingEmail.from` may be an `Email`",
+            "`OutgoingEmail.to` may be an `Email`",
+            "`OutgoingEmail.cc` may be an `Email`",
+            "`OutgoingEmail.subject` may hold personal data with no `personal:`",
+            "`OutgoingEmail.customer_email` may be an `Email`",
+            "`OutgoingEmail.first_name` may be a `GivenName`",
+            "`OutgoingEmail.surname` may be a `FamilyName`",
+            "`OutgoingEmail.full_name` may hold personal data with no `personal:`",
+            "`OutgoingEmail.billing_phone` may be a `PhoneNumber`",
+        ],
+        "{found:#?}"
+    );
+    // A list keeps its shape in the swap it suggests.
+    let db = Database::default();
+    let project = project_with_records(&db, Layout::Project, &all, &[]);
+    let cc = jadpo_check::check(&db, project)
+        .into_iter()
+        .find(|d| d.message == "`OutgoingEmail.cc` may be an `Email`")
+        .expect("the cc finding");
+    assert!(
+        cc.next
+            .as_ref()
+            .is_some_and(|next| next.text.contains("`cc: List<Email>?`")),
+        "{:?}",
+        cc.next
+    );
+}
+
+/// An installed package's files are held to its digest, so a release
+/// from before its text was read isn't refused in the app.
+#[test]
+fn an_installed_providers_text_is_left_to_its_publisher() {
+    let folder = "packages/acme_mail/v1";
+    let mut files = mailer(folder, MAIL_PROVIDER);
+    // A decline its publisher wrote is no one's to remove in the app.
+    files[2].1 = files[2].1.replace(
+        "    tag: Text\n",
+        "    decline package.standard_candidate: \"Checked by its publisher\"\n    tag: Text\n",
+    );
+    let held = borrowed(&files);
+    let lock = lock_for("AcmeMail.v1", folder, &held, &[]);
+    let mut all = vec![APP];
+    all.extend(held);
+    let found = problems(&all, &[("jadpo.lock", &lock)]);
+    assert!(
+        !found
+            .iter()
+            .any(|p| p.contains("package.standard_candidate") || p.contains("decline.unused")),
+        "{found:#?}"
+    );
+}
+
+/// A hand-written package lists its reviewed types in `provider { }`
+/// itself, each once and each its own; an imported one keeps the list in
+/// `imported:`.
+#[test]
+fn a_hand_written_provider_lists_what_it_reviewed() {
+    let check = |provider: &str| {
+        let files = mailer("shared/providers/acme_mail/v1", provider);
+        let mut all = vec![APP];
+        all.extend(borrowed(&files));
+        problems(&all, &[])
+            .into_iter()
+            .filter(|p| p.contains("package.provider_invalid"))
+            .collect::<Vec<_>>()
+    };
+    let with = |reviewed: &str| MAIL_PROVIDER.replace("\n}\n", &format!("\n    {reviewed}\n}}\n"));
+    assert_eq!(
+        check(&with("reviewed: [OutgoingEmail, Conversion]")),
+        Vec::<String>::new()
+    );
+    let found = check(&with("reviewed: [OutgoingEmial, Conversion, Conversion]"));
+    for expected in [
+        "`OutgoingEmial` in `reviewed:` isn't one of the package's types",
+        "`Conversion` is in `reviewed:` twice",
+    ] {
+        assert!(
+            found.iter().any(|p| p.contains(expected)),
+            "{expected}: {found:#?}"
+        );
+    }
+    let beside = with(
+        "imported: {\n        file: \"acme-mail.json\"\n        digest: \"sha256:4f1c\"\n    }\n    reviewed: [Conversion]",
+    );
+    let found = check(&beside);
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("`reviewed:` is beside `imported:`")),
+        "{found:#?}"
+    );
+}
