@@ -135,7 +135,7 @@ fn what_it_writes_passes_the_check_as_it_is() {
             "package-new-check-provider",
             "AcmeCouriers",
             "--provider",
-            &["compiles", "described", "recipes"][..],
+            &["compiles", "described", "reviewed", "recipes"][..],
         ),
     ] {
         let (_dir, root) = started(tag, code, kind);

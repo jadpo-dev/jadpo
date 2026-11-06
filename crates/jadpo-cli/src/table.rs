@@ -1177,6 +1177,7 @@ pub static COMMANDS: &[Command] = &[
             &rule::PUBLISH_PUBLISHER_MISSING,
             &rule::PUBLISH_REPOSITORY_REFUSED,
             &rule::PUBLISH_STALE_FILES,
+            &rule::PUBLISH_TYPE_UNREVIEWED,
             &rule::REGISTRY_UNREACHABLE,
             &rule::RECORD_EDITED,
             &rule::TEST_FAILED,

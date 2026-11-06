@@ -162,7 +162,7 @@ fn repository(name: &str, action: &str) -> tempdir::Dir {
     write(
         root,
         "provider.jadpo",
-        "/// The couriers' tracking API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.couriers.example\"\n        sandbox: \"https://sandbox.couriers.example\"\n    }\n    credential: CredentialScheme.bearer\n}\n",
+        "/// The couriers' tracking API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.couriers.example\"\n        sandbox: \"https://sandbox.couriers.example\"\n    }\n    credential: CredentialScheme.bearer\n    reviewed: [ParcelCode, TrackRequest, ParcelStatus]\n}\n",
     );
     write(
         root,
