@@ -1156,26 +1156,23 @@ they stop with [`registry.unreachable`](../errors/registry.unreachable.md).
 
 ### Jadpo's own packages
 
-Four packages are kept in Jadpo's repository: `Resend.v1`, which sends your
+Jadpo publishes four packages of its own: `Resend.v1`, which sends your
 app's email, `OpenAi.v1` and `Anthropic.v1`, which answer your app's
 [model calls](21-ai.md), and `AmazonSqs.v2012_11_05`, which receives from a
 queue. Jadpo has no package for Stripe, Twilio, GitHub or any other provider, so
 for those use the importer or write your own.
 
-They can't be installed from a git tag, because the repository isn't a package
-itself: only each folder in it is. So clone the repository at your release, the
-one `jadpo --version` prints, and add the package's folder. This does it from
-your project's folder, with `X.Y.Z` standing for that release:
+Each has a repository of its own under `jadpo-dev`, and installs from it at a release tag. This
+adds Resend's from your project's folder:
 
 ```sh
-git clone --depth 1 --branch vX.Y.Z https://github.com/jadpo-dev/jadpo ../jadpo-source
-jadpo package add ../jadpo-source/packages/resend
+jadpo package add https://github.com/jadpo-dev/package-resend@v1.0.0
 ```
 
 ```text
 Added Resend.v1 1.0.0
     folder   packages/resend/v1
-    source   path ../jadpo-source/packages/resend
+    source   git https://github.com/jadpo-dev/package-resend tag v1.0.0
     surface  matches its code
 
 package added: Resend.v1 1.0.0, 1 operation, 3 types, 5 failures
@@ -1183,9 +1180,11 @@ package added: Resend.v1 1.0.0, 1 operation, 3 types, 5 failures
 next: jadpo package show resend  shows what it offers
 ```
 
-`jadpo check` and `jadpo build` read only your app's copy, in
-`packages/resend/v1/`, so you can delete the clone. `jadpo package update resend`
-reads the folder again, so it needs the clone back in the same place.
+The others are `jadpo-dev/package-openai`, `jadpo-dev/package-anthropic` and
+`jadpo-dev/package-amazon-sqs`. A package installed from git has no verified publisher, so
+`jadpo check` asks for an acceptance of `PackageChange.git_source` until the registry publishes
+them as `@jadpo/resend`, `@jadpo/open-ai`, `@jadpo/anthropic` and `@jadpo/amazon-sqs`.
+`jadpo check` and `jadpo build` read only your app's copy, in `packages/resend/v1/`.
 
 Resend's package has no fixed host, so its connection gives one as well as its
 key, each from a setting:

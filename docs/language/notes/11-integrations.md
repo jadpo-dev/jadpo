@@ -515,7 +515,7 @@ kept moved here. Nothing in this list changed a rule.
   a webhook event reaching an app's subscriber, and
   `crates/jadpo-cli/tests/webhook_replies.rs` a reply and its repeat, both
   against live PostgreSQL. `crates/jadpo-cli/tests/receiving.rs` runs the
-  SQS package, which is in this repository at `packages/amazon_sqs`,
+  SQS package, which has its own repository, `jadpo-dev/package-amazon-sqs`,
   against a local fake of SQS's JSON API that checks each signature.
 - **One `connections:` block**, where each connection's use says which
   capability it serves, is question 20's decision.

@@ -169,7 +169,7 @@ fn jadpo(cwd: &Path, args: &[&str]) -> Output {
 
 /// The SQS package as this repository holds it.
 fn sqs_package() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/amazon_sqs")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/packages/amazon_sqs")
 }
 
 struct Loaded {

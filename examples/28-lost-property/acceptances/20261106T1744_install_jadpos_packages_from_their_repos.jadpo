@@ -1,0 +1,10 @@
+/// Jadpo's own OpenAI package moved out of this repository into jadpo-dev/package-openai, so this
+/// example installs it by git tag until jadpo.dev's registry, which verifies publishers, publishes
+/// it as @jadpo/open-ai. OpenAI's API has no call to erase what it was sent, so the descriptions of
+/// lost items it reads stay with OpenAI for as long as OpenAI keeps them.
+acceptance {
+    changes: {
+        OpenAi.v1: PackageChange.git_source
+        openai: ErasureNotPossible.data_stays
+    }
+}
