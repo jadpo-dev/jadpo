@@ -91,7 +91,9 @@ public type MessageParam = Object {
     role: Text {
         max_length: 20
     }
-    content: Text
+    content: Text {
+        personal: PersonalData.identifying
+    }
 }
 ```
 
@@ -105,7 +107,9 @@ public type MessageRequest = Object {
         min: 1
         max: 1000000
     }
-    system: Text
+    system: Text {
+        personal: PersonalData.identifying
+    }
     messages: List<MessageParam>
 }
 ```

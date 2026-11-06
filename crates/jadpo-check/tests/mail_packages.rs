@@ -59,7 +59,7 @@ fn package(mapping: &str) -> Vec<(String, String)> {
         ),
         (
             format!("{HOME}/types/outgoing_email.jadpo"),
-            "/// One email to send.\npublic type OutgoingEmail = Object {\n    from: Text\n    to: Text\n    subject: Text\n    html: Text?\n    text: Text?\n    stream: Text\n    attachments: List<OutgoingAttachment>\n}\n".to_string(),
+            "/// One email to send.\npublic type OutgoingEmail = Object {\n    from: Text {\n        personal: PersonalData.contact\n    }\n    to: Text {\n        personal: PersonalData.contact\n    }\n    subject: Text {\n        personal: PersonalData.identifying\n    }\n    html: Text? {\n        personal: PersonalData.identifying\n    }\n    text: Text? {\n        personal: PersonalData.identifying\n    }\n    stream: Text\n    attachments: List<OutgoingAttachment>\n}\n".to_string(),
         ),
         (
             format!("{HOME}/types/outgoing_attachment.jadpo"),

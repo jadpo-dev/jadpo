@@ -2,6 +2,7 @@
 /// refusal.
 public type ChatCompletionDelta = Object {
     role: Text?
+    decline package.standard_candidate: "What an app sends a model is checked where it is written, against `ai: { personal_data: }`, so this field adds no mark"
     content: Text?
     refusal: Text?
 }

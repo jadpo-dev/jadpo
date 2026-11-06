@@ -259,6 +259,21 @@ pub(crate) fn answer(
     }
     let mut problems = Vec::new();
     let mut unused = Vec::new();
+    // An installed package's files are held to its digest, so the app
+    // can't remove a decline there, and a rule a newer Jadpo leaves to the
+    // package's publisher (`package.standard_candidate` on its text) no
+    // longer fires there to use one.
+    let installed: Vec<&String> = project
+        .files(db)
+        .iter()
+        .filter(|file| {
+            jadpo_db::location(db, project, **file)
+                .ownership
+                .package()
+                .is_some_and(|home| home.installed)
+        })
+        .map(|file| file.path(db))
+        .collect();
     for (i, decline) in all.iter().enumerate() {
         if decline.rule.is_empty() {
             // A syntax error says so.
@@ -266,7 +281,7 @@ pub(crate) fn answer(
         }
         match jadpo_diag::find(&decline.rule) {
             Some(found) if found.declinable => {
-                if !used[i] {
+                if !used[i] && !installed.contains(&&decline.path) {
                     let text = texts.get(&decline.path).map_or("", String::as_str);
                     unused.push(unused_decline(decline, text));
                 }
