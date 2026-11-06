@@ -5,7 +5,7 @@ package AmazonSqs.v2012_11_05
     /// Amazon SQS: a queue's messages received as the app's events.
     file package.jadpo
     kind provider
-    version 0.3.0
+    version 1.0.0
     licence apache_2_0
     jadpo 1.0
 

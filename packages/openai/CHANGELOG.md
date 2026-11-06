@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.3.1
+## 1.0.0
 
-- no change to what it offers
+- first release
 
 Fills the `ai` capability through OpenAI's API: `ai.generate` as a Chat
 Completion in its strict structured-output mode, `ai.stream` as a streamed
