@@ -501,3 +501,18 @@ fn a_scripted_answer_sends_the_parts() {
         ("tested: 1 passed, 1 action test\n", 0)
     );
 }
+
+/// What the code sent a provider's fake, `.requests` (area 13, "What the
+/// code sent"), is decided but isn't built yet: it says so, rather than
+/// calling it something that is called and not a value.
+#[test]
+fn a_fakes_requests_say_they_arent_built_yet() {
+    let (out, code) = tested(
+        "fake-requests",
+        "use app { payments }\nuse shared/providers/tidepay\n\ntest \"a charge is asked for once\" {\n    var found: Tidepay.Charge = charge_of(\"ch_2\")\n    assert list.count(payments.charges.get.requests) == 1\n}\n",
+    );
+    assert_eq!(code, 1, "{out}");
+    assert!(out.contains("toolchain.not_built_yet"), "{out}");
+    assert!(out.contains("payments.charges.get.requests"), "{out}");
+    assert!(!out.contains("is called, not a value"), "{out}");
+}

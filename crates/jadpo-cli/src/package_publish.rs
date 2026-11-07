@@ -1,8 +1,9 @@
 //! `jadpo package publish [--dry-run]` (area 11, "Releasing" and "Developing
 //! for the registry"; chunk R5). It holds the package to the publishing bar
 //! here, then asks the registry to publish a repository at a tag, sending
-//! only those two, with no sign-in: nothing goes live without a releaser's
-//! passkey on jadpo.dev.
+//! those two and the publisher the package names, with no sign-in: nothing
+//! goes live without a releaser's passkey on the release's page, which it
+//! ends with.
 //!
 //! So that the bar is run on what will be published, the checkout has to be
 //! the tag's commit, unchanged, and that tag on `origin` the same commit.
@@ -17,15 +18,17 @@
 //! Registry's bar
 //! ✓ tests  3 tests
 //!
-//! ● release pending  Postcodes.v2 2.1.0 · a releaser confirms it with a passkey on jadpo.dev
+//! ✓ checked  Postcodes.v2 2.1.0 · not published yet
+//! → https://jadpo.dev/account/release?id=rel_7d2a  publish it there with your passkey
 //! ```
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use jadpo_diag::{Decider, Diagnostic, rule};
+use jadpo_registry::names::Handle;
 use jadpo_registry::protocol::{
-    BarRow, ReleaseRequest, ReleaseState, Request, StartRelease, StartedRelease,
+    BarRow, REPOSITORY_REFUSED, ReleaseRequest, ReleaseState, Request, StartRelease, StartedRelease,
 };
 use jadpo_term::{Block, Fact, Json, Outcome, Row, RowState, Screen};
 
@@ -89,14 +92,19 @@ pub(crate) fn publish(call: &Call) -> Reply {
         other => return other,
     }
     let client = Client::of(&call.environment);
+    // Who it is for goes with it, so the registry can refuse at once a
+    // repository that publisher doesn't release from.
     let started: StartedRelease = match client.ask(&Request::StartRelease(StartRelease {
         repository: repository.clone(),
         tag: tag.clone(),
         dry_run,
+        publisher: publisher
+            .as_deref()
+            .and_then(|publisher| Handle::parse(publisher).ok()),
     })) {
         Ok(started) => started,
-        Err(Asked::Failure(code)) if code == "repository_refused" => {
-            return repository_refused(&repository, "The registry refused it.".to_string());
+        Err(Asked::Failure(code, message)) if code == REPOSITORY_REFUSED.code => {
+            return registry_refused(&client, &repository, message);
         }
         Err(asked) => return asked.reply(),
     };
@@ -118,6 +126,7 @@ pub(crate) fn publish(call: &Call) -> Reply {
         }
         Err(asked) => return asked.reply(),
     };
+    let page = client.page(&format!("account/release?id={}", started.id));
     shown(
         &Asking {
             package: &package,
@@ -128,6 +137,7 @@ pub(crate) fn publish(call: &Call) -> Reply {
             dry_run,
         },
         &started.id,
+        page.as_deref(),
         &settled,
     )
 }
@@ -190,7 +200,7 @@ struct Asking<'a> {
 }
 
 /// What the registry said, on the screen.
-fn shown(asking: &Asking<'_>, id: &str, settled: &ReleaseRequest) -> Reply {
+fn shown(asking: &Asking<'_>, id: &str, page: Option<&str>, settled: &ReleaseRequest) -> Reply {
     let &Asking {
         package,
         version,
@@ -207,6 +217,7 @@ fn shown(asking: &Asking<'_>, id: &str, settled: &ReleaseRequest) -> Reply {
         ("tag", Json::from(tag)),
         ("dry_run", dry_run.into()),
         ("id", Json::from(id)),
+        ("page", page.map_or(Json::Null, Json::from)),
         ("state", Json::from(state_word(settled.state))),
         (
             "bar",
@@ -364,15 +375,17 @@ fn shown(asking: &Asking<'_>, id: &str, settled: &ReleaseRequest) -> Reply {
             ));
             Reply::screen(screen, data)
         }
+        // Checked, and waiting for a person of its publisher to publish it
+        // on its page, with their passkey.
         _ => {
             screen.push(Block::summary(
-                Outcome::Running,
-                "release pending",
-                [
-                    Fact::plain(release),
-                    Fact::plain("a releaser confirms it with a passkey on jadpo.dev"),
-                ],
+                Outcome::Success,
+                "checked",
+                [Fact::plain(release), Fact::plain("not published yet")],
             ));
+            if let Some(page) = page {
+                screen.push(Block::hint(page, "publish it there with your passkey"));
+            }
             Reply::screen(screen, data)
         }
     }
@@ -399,6 +412,31 @@ fn repository_refused(repository: &str, reason: String) -> Reply {
         ))
         .next_for(
             "Point `origin` at the repository's `https://` address: `git remote set-url origin https://<host>/<path>`",
+            Decider::Human,
+        ),
+    ))
+}
+
+/// `publish.repository_refused` when the registry refused the repository,
+/// saying why in its own words when it gave them: a repository its
+/// publisher doesn't release from, as well as one it can't fetch.
+fn registry_refused(client: &Client, repository: &str, message: Option<String>) -> Reply {
+    let Some(message) = message else {
+        return repository_refused(repository, "The registry refused it.".to_string());
+    };
+    let account = client
+        .page("account")
+        .unwrap_or_else(|| "the registry's site".to_string());
+    Reply::Failed(Box::new(
+        Diagnostic::new(
+            &rule::PUBLISH_REPOSITORY_REFUSED,
+            format!("The registry refused to publish from `{repository}`"),
+        )
+        .reason(message)
+        .next_for(
+            format!(
+                "Check `origin` is the package's own repository, or add its account to the publisher on {account}"
+            ),
             Decider::Human,
         ),
     ))

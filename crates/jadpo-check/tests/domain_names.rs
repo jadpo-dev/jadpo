@@ -362,3 +362,60 @@ fn promotion_to_shared_writes_a_registry_move_line() {
     );
     assert_eq!((registry[0].span.start, registry[0].span.end), (0, 0));
 }
+
+/// A package's names are always known through it (`Postcodes.Address`),
+/// so one it shares with a domain's private type contests nothing: the
+/// domain's type keeps its own name, and the stored JSON a field of it
+/// holds reads as it did before the package came, so the latest
+/// migration's snapshot still matches.
+#[test]
+fn a_package_sharing_a_private_types_name_leaves_its_stored_shape_alone() {
+    const STORED: &[(&str, &str)] = &[
+        (
+            "app.jadpo",
+            "application {\n    connections: {\n        main: {\n            driver: Driver.postgres\n            url: config.database_url\n        }\n    }\n}\n",
+        ),
+        (
+            "config.jadpo",
+            "config {\n    database_url: PostgresUrl\n}\n",
+        ),
+        (
+            "shared/types/label.jadpo",
+            "type Label = Text {\n    max_length: 200\n}\n",
+        ),
+        (
+            "domains/billing/types/address.jadpo",
+            "use shared/types { Label }\n\ntype Address = Object {\n    street: Label\n}\n",
+        ),
+        (
+            "domains/billing/entities/invoice.jadpo",
+            "use billing/types { Address }\n\nentity Invoice {\n    id: Uuid\n    sent_to: List<Address>\n\n    policy: {\n        read: [Access.system]\n    }\n}\n",
+        ),
+    ];
+    const PACKAGE: &[(&str, &str)] = &[
+        (
+            "packages/postcodes/v2/package.jadpo",
+            "/// UK postcodes.\npackage Postcodes.v2 {\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}\n",
+        ),
+        (
+            "packages/postcodes/v2/types/address.jadpo",
+            "/// An address with a postcode.\npublic type Address = Object {\n    postcode: Line\n}\n",
+        ),
+        (
+            "packages/postcodes/v2/types/line.jadpo",
+            "/// A line of an address.\npublic type Line = Text {\n    max_length: 80\n}\n",
+        ),
+    ];
+    let schema = |files: &[(&str, &str)]| {
+        let db = Database::default();
+        let project = support::project_with_records(&db, Layout::Project, files, &[]);
+        (**jadpo_check::data::schema(&db, project)).clone()
+    };
+    let before = schema(STORED);
+    let mut with_package = STORED.to_vec();
+    with_package.extend_from_slice(PACKAGE);
+    let after = schema(&with_package);
+    let invoice =
+        |schema: &jadpo_graph::schema::Schema| schema.stores["main"].tables["invoice"].clone();
+    assert_eq!(invoice(&after), invoice(&before));
+}

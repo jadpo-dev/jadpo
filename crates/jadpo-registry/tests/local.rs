@@ -350,6 +350,7 @@ fn a_release_request_is_followed_until_it_settles() {
             repository: "https://github.com/acme/postcodes".into(),
             tag: "v2.3.0".into(),
             dry_run: true,
+            publisher: None,
         }),
     );
     let state: ReleaseRequest = ask(
@@ -496,6 +497,7 @@ fn started_at(registry: &LocalRegistry, repository: &str) -> String {
             repository: repository.into(),
             tag: "v2.3.0".into(),
             dry_run: false,
+            publisher: None,
         }),
     );
     started.id
@@ -593,6 +595,37 @@ fn a_repository_s_release_can_t_name_another_publisher() {
     let row = row.expect("a failed row");
     assert!(row.contains("@mallory"), "{row}");
     assert!(row.contains("@acme"), "{row}");
+}
+
+/// Told who a release is for, the registry refuses at once a repository
+/// another publisher releases from, saying so, and starts nothing.
+#[test]
+fn a_repository_another_publisher_releases_from_is_refused_at_the_start() {
+    let registry = holding_acme();
+    let served = registry.serve().unwrap();
+    let start = |publisher: &str| jadpo_registry::protocol::StartRelease {
+        repository: "https://github.com/acme/postcodes".into(),
+        tag: "v2.3.0".into(),
+        dry_run: false,
+        publisher: Some(Handle::parse(publisher).unwrap()),
+    };
+    let answer = send(&served.url(), &Request::StartRelease(start("@mallory")));
+    assert_eq!(failure(&answer), (422, "repository_refused".to_string()));
+    let body: serde_json::Value = serde_json::from_slice(&answer.body).unwrap();
+    let message = body["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("@acme/postcodes") && message.contains("@mallory"),
+        "{message}"
+    );
+    assert!(registry.started().is_empty());
+
+    // Its own publisher's is started, and who it was for is kept.
+    let started: StartedRelease = ask(&served.url(), &Request::StartRelease(start("@acme")));
+    assert_eq!(started.id, "rel_0001");
+    assert_eq!(
+        registry.started_for(),
+        vec![Some(Handle::parse("@acme").unwrap())]
+    );
 }
 
 #[test]

@@ -1952,7 +1952,7 @@ A release is made from a tag in any public git repository reached over
 HTTPS. The registry never accepts an upload, and no publish token exists.
 
 1. `jadpo package publish` (or the jadpo.dev page) asks the registry to
-   publish a repository at a tag. It sends only those two, and needs no
+   publish a repository at a tag, naming its publisher too, and needs no
    sign-in, because nothing goes live without a releaser.
 2. The verifier resolves the tag to its commit, fetches that commit, and
    then, with no network, checks it: only Jadpo source and the package's
@@ -1961,8 +1961,8 @@ HTTPS. The registry never accepts an upload, and no publish token exists.
    and the whole publishing bar. Everything the registry shows about the
    release is worked out from that source, never from anything the
    publisher sends.
-3. **The release is pending until a releaser confirms it with a passkey**,
-   on a page showing its version, surface diff, changelog and facts.
+3. **Once checked, a releaser publishes it with a passkey**, on its page
+   showing its version, surface diff, changelog and facts.
 4. It goes live, its digest is added to the public log, and its pages are
    written.
 
@@ -2171,7 +2171,7 @@ it can send makes a release live.
 | `GET log/consistency?from=&to=` | The hashes that prove the log of size `to` extends the log of size `from` |
 | `GET search?q=&from=&to=&kind=` | Ranked results, the standard library's first, each naming a package and declaration, with why it matched |
 | `POST advisories/query` | Given installed packages and versions, the advisories against them, each naming its declarations, versions and the packages carrying copies |
-| `POST releases` | Given a repository, a tag and `dry_run`, starts a release (or a dry run) and answers its id |
+| `POST releases` | Given a repository, a tag, `dry_run` and optionally `publisher`, starts a release (or a dry run) and answers its id |
 | `GET releases/{id}` | Its state (`verifying`, `failed` with the bar's rows, `pending`, `cancelled`, `live`), with its facts and change record once checked |
 
 - **The log** is an append-only Merkle tree of releases, hashed as RFC
@@ -2202,8 +2202,10 @@ it can send makes a release live.
   `detail` and `why`.
 - **A release refused for its publisher** is `failed` with a bar row whose
   `check` is `publisher` and whose `detail` says why, which `jadpo package
-  publish` shows as `publish.publisher_mismatch`. `POST releases` sends no
-  publisher: the registry reads it from the release.
+  publish` shows as `publish.publisher_mismatch`. An optional `publisher`
+  on `POST releases` lets the registry refuse at once, as
+  `repository_refused`, a repository another publisher releases from
+  (recorded 2026-11-07).
 - **Its failures** are `package_not_found`, `release_not_found`,
   `archive_not_found` and `release_request_not_found` (404), `not_in_log`
   (404, also for a release logged after the size asked about),
@@ -2222,8 +2224,7 @@ it can send makes a release live.
   signed in, and nothing else but `openapi.json`; shapes are compared
   through any `$ref`, and what a Jadpo application adds that the table
   doesn't constrain (the runtime's shared failures, `x-jadpo-` keywords,
-  an `Idempotency-Key` header) is left alone. The registry application's
-  CI runs it against its own document.
+  an `Idempotency-Key` header) is left alone.
 
 ## The verifier
 <!-- topic: the-verifier -->
@@ -2243,7 +2244,11 @@ code runs and what can come back from it.
 - **`--serve`** answers the registry, reached over HTTPS with a credential
   the registry holds. Each request names a repository, a commit and the
   previous release's digest. It fetches over git with network to the git
-  host only, then verifies in a process with no network at all.
+  host only, then verifies in a process with no network at all. It never
+  follows a redirect: a repository whose address sends git elsewhere, as a
+  renamed or transferred repository's old address does, is
+  `repository_refused`, since the registry checks who a version comes from
+  by the address it was given.
 - It is reached from the registry as an ordinary connection to a
   provider package, so the registry needs no feature an app doesn't have.
   Verifying takes longer than a call may, so a verification is started and
@@ -2259,12 +2264,18 @@ code runs and what can come back from it.
 | `GET /v1/verifications/{id}/diff` | For a release that passed, what a model reads for what the facts can't show: `diff`, as `git diff` writes it against the previous release, `null` for a first release, and `truncated` |
 
 `result` has every field, `null` or empty where it has no value: `passed`,
-`package`, `version`, `bar`, `problems`, `surface`, `facts`, `change_record`,
-`fingerprints`, `previous`, `jadpo`, `checked_with`, `left_out`, and for a
+`package`, `version`, `bar`, `problems`, `surface`, `facts`, `descriptions`,
+`change_record`, `fingerprints`, `previous`, `jadpo`, `checked_with`,
+`left_out`, and for a
 release that passed its `digest` and `archive`: the tar archive of
 [`GET archives/{digest}`](#the-registry-protocol), in base64, which is how
 the registry comes to hold a release's files. A release whose whole answer
-wouldn't fit that 10 MiB fails too, rather than pass and never arrive. The
+wouldn't fit that 10 MiB fails too, rather than pass and never arrive.
+`descriptions` holds the package's description as `package` and each public
+declaration's as `declarations`, a list of `name` and `description` (`null`
+where it has none), so the registry shows them without reading them back
+out of `surface`; it is `null` until the package compiles (recorded
+2026-11-07). `jadpo package verify --json` gives the same. The
 source and the diff are asked for on their own, since neither would fit
 beside the archive; each is at most 8 MiB of its answer, past which
 `truncated` says some was left out. They are what the package's author wrote,
@@ -6301,8 +6312,11 @@ what `jadpo package check` and `jadpo package show` do.
 - **The version.** A release is a git tag `v<version>` whose committed
   `surface.jadpo_record` names the package. With none, the first release
   is the major version the label names (`v2` is 2.0.0, `v0` is 0.1.0, a
-  dated label such as `v2024_06_20` 1.0.0). When nothing in the package's
-  folder changed since the newest release, its version is that release's.
+  dated label such as `v2024_06_20` 1.0.0). Only the releases the checkout
+  grew from count, so a tag made later, on its branch or another, is never
+  what it is compared with. When nothing in the package's folder changed
+  since the newest of them, its version is that release's, and it is
+  checked against the release before it, as publishing checks it.
   Otherwise the surface is compared with that release's, entry by entry:
   a removed entry, or an entry whose facts changed (a new `fails`, a
   field retyped or added, a variant added, a licence changed, a host moved
@@ -6608,8 +6622,13 @@ can't be reached, or whose answer doesn't fit the protocol, is
 > ✓ compiles  no errors
 > ✓ tests     3 tests
 >
-> ● release pending  Postcodes.v2 2.1.0 · a releaser confirms it with a passkey on jadpo.dev
+> ✓ checked  Postcodes.v2 2.1.0 · not published yet
+> → https://jadpo.dev/account/release?id=rel_7d2a  publish it there with your passkey
 > ```
+>
+> The page is on the site the registry is served from: the registry's
+> address without `/registry/v1/`, so a stand-in named by `JADPO_REGISTRY`
+> gives its own site's page. `--json` gives it as `page`.
 >
 > **`preview [<folder>]`** serves one read-only page on this machine, on a port
 > the system picks, until it is stopped: the verdict, its facts, its changes

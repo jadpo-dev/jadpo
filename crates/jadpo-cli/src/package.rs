@@ -1248,6 +1248,28 @@ pub(crate) fn compile(folder: &Path, command: &str) -> Result<Compiled, Option<R
     })
 }
 
+/// The package's description and each public declaration's, as fields of
+/// their own (area 11, "The verifier"), so the registry needn't read them
+/// back out of the surface record; `null` until the package compiles.
+fn descriptions_json(surface: Option<&Surface>) -> Json {
+    let text = |description: &Option<String>| description.as_deref().map_or(Json::Null, Json::from);
+    match surface {
+        Some(surface) => Json::object([
+            ("package", text(&surface.description)),
+            (
+                "declarations",
+                Json::array(surface.declarations.iter().map(|declaration| {
+                    Json::object([
+                        ("name", Json::from(declaration.name.as_str())),
+                        ("description", text(&declaration.description)),
+                    ])
+                })),
+            ),
+        ]),
+        None => Json::Null,
+    }
+}
+
 /// Shows each problem at its place in the package's folder.
 pub(crate) fn in_package(compiled: &Compiled, diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
     diagnostics
@@ -1596,19 +1618,34 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         }
         previous = Some(*given);
     }
+    // Only the releases this checkout grew from count: a tag made later,
+    // on this branch or another, isn't what it is compared with.
+    if let Some(git) = &git {
+        releases.retain(|release| git.in_history(&release.tag));
+    }
+    // A checkout unchanged since a release is that release, checked as
+    // publishing and the verifier check it: against the release before.
     let unchanged = match (releases.first(), &git) {
         (Some(last), Some(git)) => git.unchanged_since(&last.tag),
         _ => false,
     };
-    if !verifying && !unchanged && compiled_cleanly && found.is_some() {
+    let tagged: Option<Release> = unchanged.then(|| releases.remove(0));
+    if !verifying && compiled_cleanly && found.is_some() {
         let last = releases.first().map(|last| Release {
             tag: last.tag.clone(),
             version: last.version.clone(),
             surface: last.surface.clone(),
         });
         let last = last.or_else(|| {
-            git.as_ref()
-                .and_then(|git| git.releases_of_code(&code).into_iter().next())
+            git.as_ref().and_then(|git| {
+                let before = tagged.as_ref().and_then(|tagged| semver(&tagged.tag));
+                git.releases_of_code(&code).into_iter().find(|release| {
+                    git.in_history(&release.tag)
+                        && before
+                            .as_ref()
+                            .is_none_or(|before| semver(&release.tag).as_ref() < Some(before))
+                })
+            })
         });
         if let (Some(git), Some(last)) = (&git, last) {
             let name = last.named();
@@ -1676,11 +1713,6 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         (Some(surface), true) => {
             let now = surface.text(None);
             let outcome = match releases.first() {
-                Some(last) if unchanged => Ok((
-                    last.version.clone(),
-                    format!("{}, released as {}", last.version, last.tag),
-                    None,
-                )),
                 Some(last) => {
                     publishing::version(label.as_str(), Some((&last.version, &last.surface)), &now)
                         .map(|bump| (bump.version.clone(), bump_words(&bump), Some(listing())))
@@ -1700,8 +1732,14 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
             };
             match outcome {
                 Ok((next, words, list)) => {
+                    let words = match &tagged {
+                        Some(tagged) if tagged.version == next => {
+                            format!("{next}, released as {}", tagged.tag)
+                        }
+                        _ => words,
+                    };
                     items.push(Item::passed("version", words));
-                    if list.is_some() && git.is_some() {
+                    if list.is_some() && git.is_some() && tagged.is_none() {
                         hint = Some(next.clone());
                     }
                     listed = list;
@@ -2075,6 +2113,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
                 },
             ),
             ("facts", facts_json),
+            ("descriptions", descriptions_json(found.as_ref())),
             ("change_record", record_json),
             (
                 "fingerprints",
@@ -2559,8 +2598,15 @@ fn examples_and_tests(
                 None => own.push(result),
             }
         }
+        // Every place a failure shows is the package's, not the scratch
+        // app's it ran in.
         for result in &mut own {
             result.test.file = compiled.relative(&result.test.file);
+            if let Some(failure) = &mut result.failure {
+                failure.map_paths(&|path| compiled.relative(path));
+                // `jadpo test` runs an app's tests; a package's run here.
+                failure.rerun = "jadpo package check".to_string();
+            }
         }
         // Every decoder over every recording, its own row (chunk 7.2d2).
         let recorded =
@@ -2945,6 +2991,16 @@ impl Git {
                 _ => false,
             }
         })
+    }
+
+    /// Whether the commit `tag` names is the checkout's or one it grew
+    /// from.
+    fn in_history(&self, tag: &str) -> bool {
+        Command::new("git")
+            .args(["merge-base", "--is-ancestor", tag, "HEAD"])
+            .current_dir(&self.folder)
+            .status()
+            .is_ok_and(|status| status.success())
     }
 
     /// Whether nothing in the package's folder changed since `tag`.

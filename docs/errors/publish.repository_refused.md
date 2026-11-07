@@ -28,7 +28,16 @@ error: The registry can't publish from `http://git.acme.example/postcodes.git`
 ```
 
 The same rule says when the repository has no `origin`, and when the
-registry refuses the address it was sent.
+registry refuses the address it was sent. Then the reason is the registry's
+own: here the repository is another publisher's.
+
+```text
+error: The registry refused to publish from `https://github.com/acme/postcodes`
+  reason: `https://github.com/acme/postcodes` releases `@acme-labs/postcodes`, which is `@acme-labs`'s, not `@acme`'s.
+  next: Check `origin` is the package's own repository, or add its account to the publisher on https://jadpo.dev/account (human)
+  rule: publish.repository_refused
+  help: https://jadpo.dev/docs/errors/publish.repository_refused
+```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop and ask you which fix you want, because the choice is yours to make: it decides where your package is public.
 
@@ -41,6 +50,18 @@ git remote set-url origin https://github.com/acme/postcodes
 ```
 
 The registry can then fetch the tag itself.
+
+**If the repository was renamed or moved to another account**, its old
+address redirects to the new one, and the registry never follows a
+redirect: it checks who a version comes from by the address it was sent,
+so a redirect could fetch another account's. Point `origin` at where the
+repository is now:
+
+```sh
+git remote set-url origin https://github.com/acme-labs/postcodes
+```
+
+The registry then fetches the tag from the repository's own address.
 
 **If the repository is private**, it can't go to the public registry. Install
 it from git instead, with your own access:

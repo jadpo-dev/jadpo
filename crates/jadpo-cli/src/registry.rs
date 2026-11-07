@@ -54,8 +54,9 @@ const LONGEST_ARCHIVE: usize = 2 * jadpo_verifier::files::SIZE_LIMIT as usize;
 
 /// Why a request got no answer of the kind it asks for.
 pub(crate) enum Asked {
-    /// A failure the table names, by its code.
-    Failure(String),
+    /// A failure the table names, by its code, with the registry's own
+    /// message saying why when it sent one.
+    Failure(String, Option<String>),
     /// Nothing that can be read: not reached, or not the protocol.
     Unreachable(Box<Diagnostic>),
 }
@@ -65,9 +66,10 @@ impl Asked {
     pub(crate) fn reply(self) -> Reply {
         match self {
             Asked::Unreachable(diagnostic) => Reply::Failed(diagnostic),
-            Asked::Failure(code) => {
-                Reply::Failed(Box::new(unreachable(format!("It answered `{code}`."))))
-            }
+            Asked::Failure(code, message) => Reply::Failed(Box::new(unreachable(match message {
+                Some(message) => format!("It answered `{code}`: {message}"),
+                None => format!("It answered `{code}`."),
+            }))),
         }
     }
 }
@@ -93,13 +95,13 @@ fn nothing_served(address: &str, status: u16) -> Diagnostic {
     if address == protocol::PUBLIC {
         return Diagnostic::new(
             &rule::REGISTRY_UNREACHABLE,
-            "The public registry isn't live yet".to_string(),
+            "The public registry isn't answering".to_string(),
         )
         .reason(format!(
-            "`{address}` answered {status}: your connection works, and nothing is served there yet."
+            "`{address}` answered {status}: your connection works, but jadpo.dev isn't serving the registry right now."
         ))
         .next_for(
-            "Use a folder or a git tag meanwhile: `jadpo package add <folder>` or `jadpo package add <repository>@v<version>`",
+            "Run the command again later, or use a folder or a git tag meanwhile: `jadpo package add <folder>` or `jadpo package add <repository>@v<version>`",
             Decider::Human,
         );
     }
@@ -128,6 +130,14 @@ impl Client {
                 .unwrap_or(protocol::PUBLIC)
                 .to_string(),
         }
+    }
+
+    /// The address of `path` on the site the registry serves its protocol
+    /// from: `https://jadpo.dev/account/release?id=rel_7d2a` for the public
+    /// registry, and the same page of a stand-in's site.
+    pub(crate) fn page(&self, path: &str) -> Option<String> {
+        let origin = self.address.strip_suffix(protocol::BASE)?;
+        Some(format!("{origin}/{path}"))
     }
 
     /// The URL of a request of the table.
@@ -167,13 +177,10 @@ impl Client {
             ))))
         };
         if answer.status != endpoint.status {
-            return Err(failure_of(&answer).map_or_else(
-                || {
-                    self.nothing_served(answer.status)
-                        .unwrap_or_else(|| unread(format!("it answered {}", answer.status)))
-                },
-                Asked::Failure,
-            ));
+            return Err(failure_of(&answer).unwrap_or_else(|| {
+                self.nothing_served(answer.status)
+                    .unwrap_or_else(|| unread(format!("it answered {}", answer.status)))
+            }));
         }
         let json: serde_json::Value =
             serde_json::from_slice(&answer.body).map_err(|error| unread(error.to_string()))?;
@@ -190,17 +197,14 @@ impl Client {
         if answer.status == 200 {
             return Ok(answer.body);
         }
-        Err(failure_of(&answer).map_or_else(
-            || {
-                self.nothing_served(answer.status).unwrap_or_else(|| {
-                    Asked::Unreachable(Box::new(unreachable(format!(
-                        "It answered {} to the archive `{digest}`.",
-                        answer.status
-                    ))))
-                })
-            },
-            Asked::Failure,
-        ))
+        Err(failure_of(&answer).unwrap_or_else(|| {
+            self.nothing_served(answer.status).unwrap_or_else(|| {
+                Asked::Unreachable(Box::new(unreachable(format!(
+                    "It answered {} to the archive `{digest}`.",
+                    answer.status
+                ))))
+            })
+        }))
     }
 
     /// What a status with no failure in it means, when it says no registry is
@@ -211,10 +215,16 @@ impl Client {
     }
 }
 
-/// The code in a failure envelope (area 4, "What the client sees").
-fn failure_of(answer: &download::Answer) -> Option<String> {
+/// The failure in a failure envelope (area 4, "What the client sees"): its
+/// code, and its message when it has one.
+fn failure_of(answer: &download::Answer) -> Option<Asked> {
     let json: serde_json::Value = serde_json::from_slice(&answer.body).ok()?;
-    json["error"]["code"].as_str().map(str::to_string)
+    let code = json["error"]["code"].as_str()?.to_string();
+    let message = json["error"]["message"]
+        .as_str()
+        .filter(|message| !message.trim().is_empty())
+        .map(str::to_string);
+    Some(Asked::Failure(code, message))
 }
 
 // --- the log ---------------------------------------------------------------
@@ -303,7 +313,7 @@ fn prove(root: &Path, client: &Client, entry: &LogEntry, command: &str) -> Resul
                     to: head.size,
                 })
                 .map_err(|asked| match asked {
-                    Asked::Failure(code) => {
+                    Asked::Failure(code, _) => {
                         refused(format!("It answered `{code}` when asked to prove its head extends the one this project saw."))
                     }
                     other => other.reply(),
@@ -321,7 +331,7 @@ fn prove(root: &Path, client: &Client, entry: &LogEntry, command: &str) -> Resul
             size: head.size,
         })
         .map_err(|asked| match asked {
-            Asked::Failure(code) => refused(format!(
+            Asked::Failure(code, _) => refused(format!(
                 "It answered `{code}` when asked to prove the release is in the log."
             )),
             other => other.reply(),
@@ -441,7 +451,7 @@ pub(crate) fn fetch(
             version: version.clone(),
         })
         .map_err(|asked| match asked {
-            Asked::Failure(code) if code == protocol::RELEASE_NOT_FOUND.code => {
+            Asked::Failure(code, _) if code == protocol::RELEASE_NOT_FOUND.code => {
                 no_release(name, &package, version)
             }
             other => other.reply(),
@@ -476,7 +486,7 @@ pub(crate) fn fetch(
     let bytes = client
         .archive(&release.digest)
         .map_err(|asked| match asked {
-            Asked::Failure(code) => {
+            Asked::Failure(code, _) => {
                 refused(format!("It answered `{code}` for the release's archive."))
             }
             other => other.reply(),
@@ -545,7 +555,7 @@ fn package_of(client: &Client, name: &ScopedName, written: &str) -> Result<Packa
             package: name.clone(),
         })
         .map_err(|asked| match asked {
-            Asked::Failure(code) if code == protocol::PACKAGE_NOT_FOUND.code => {
+            Asked::Failure(code, _) if code == protocol::PACKAGE_NOT_FOUND.code => {
                 if written.starts_with('@') {
                     not_in_registry(
                         format!("The registry has no package `{name}`"),
@@ -1156,13 +1166,13 @@ mod tests {
 
     const NOW: i64 = 1_793_000_000 / DAY * DAY;
 
-    /// The public registry's 404 says it isn't live, and sends the reader to
-    /// what works, rather than to a network that is fine.
+    /// The public registry's 404 says it isn't answering, and sends the reader
+    /// to what works, rather than to a network that is fine.
     #[test]
-    fn a_404_from_the_public_registry_says_it_isnt_live() {
+    fn a_404_from_the_public_registry_says_it_isnt_answering() {
         let said = nothing_served(protocol::PUBLIC, 404);
         assert_eq!(said.rule.id, rule::REGISTRY_UNREACHABLE.id);
-        assert_eq!(said.message, "The public registry isn't live yet");
+        assert_eq!(said.message, "The public registry isn't answering");
         assert!(
             said.reason
                 .as_deref()

@@ -571,6 +571,118 @@ Reads the outward code.
     );
 }
 
+/// A tagged commit is checked against the release before it, as
+/// `jadpo package publish` and the verifier check it, whichever tags came
+/// after: an older tag isn't compared with the newest.
+#[test]
+fn check_on_a_tagged_commit_compares_it_with_the_release_before() {
+    let (_dir, root) = repository("package-check-tagged");
+    plain(&root, &["package", "check"]);
+    let log = std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog");
+    write(
+        &root,
+        "CHANGELOG.md",
+        &format!("{log}\nReads UK postcodes as people type them.\n"),
+    );
+    assert_eq!(plain(&root, &["package", "check"]).code, 0);
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "first release"]);
+    git(&root, &["tag", "v2.0.0"]);
+    write(
+        &root,
+        "types/outward_code.jadpo",
+        "/// The first half of a postcode, such as \"SW1A\".
+public type OutwardCode = Text {
+    max_length: 4
+}
+",
+    );
+    plain(&root, &["package", "check"]);
+    let log = std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog");
+    write(
+        &root,
+        "CHANGELOG.md",
+        &log.replace(
+            "- added type `OutwardCode`\n",
+            "- added type `OutwardCode`\n\nReads the outward code.\n",
+        ),
+    );
+    assert_eq!(plain(&root, &["package", "check"]).code, 0);
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "outward codes"]);
+    git(&root, &["tag", "v2.1.0"]);
+
+    git(&root, &["checkout", "-q", "v2.0.0"]);
+    let older = plain(&root, &["package", "check"]);
+    assert_eq!(older.code, 0, "{}", older.stdout);
+    assert!(
+        older
+            .stdout
+            .contains("  version       passed                        2.0.0, released as v2.0.0\n"),
+        "{}",
+        older.stdout
+    );
+    assert!(!older.stdout.contains("next: git tag"), "{}", older.stdout);
+
+    git(&root, &["checkout", "-q", "v2.1.0"]);
+    let newest = plain(&root, &["package", "check"]);
+    assert_eq!(newest.code, 0, "{}", newest.stdout);
+    assert!(
+        newest
+            .stdout
+            .contains("  version       passed                        2.1.0, released as v2.1.0\n"),
+        "{}",
+        newest.stdout
+    );
+    // Its behaviour is held to the release before it, as publishing holds it.
+    assert!(
+        newest.stdout.contains("  behaviour     passed "),
+        "{}",
+        newest.stdout
+    );
+    assert!(
+        !newest.stdout.contains("next: git tag"),
+        "{}",
+        newest.stdout
+    );
+    // Neither checkout wrote anything.
+    git(&root, &["diff", "--quiet"]);
+}
+
+/// A failed test of the package's own is shown at its path in the
+/// package, never in the scratch app it ran in.
+#[test]
+fn a_failed_package_test_is_shown_at_its_path_in_the_package() {
+    let (_dir, root) = repository("package-check-failed-test");
+    write(
+        &root,
+        "libraries/uk.test.jadpo",
+        "test \"a postcode is read in upper case\" {
+    var postcode: UkPostcode = attempt uk.parse(\"sw1a 1aa\")
+    assert postcode == \"sw1a 1aa\"
+}
+",
+    );
+    let failed = plain(&root, &["package", "check"]);
+    assert_eq!(failed.code, 1, "{}", failed.stdout);
+    assert!(
+        failed.stdout.contains(" --> libraries/uk.test.jadpo:3\n"),
+        "{}",
+        failed.stdout
+    );
+    assert!(
+        failed.stdout.contains("  rerun: jadpo package check\n"),
+        "{}",
+        failed.stdout
+    );
+    assert!(
+        !failed.stdout.contains("shared/") && !failed.stderr.contains("shared/"),
+        "{}{}",
+        failed.stdout,
+        failed.stderr
+    );
+}
+
 #[test]
 fn check_runs_each_example_and_needs_one_for_every_function() {
     let (_dir, root) = repository("package-check-examples");
