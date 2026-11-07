@@ -1,7 +1,7 @@
 # `library.similar_exists`
 
 A declinable error: call the library function, or decline with a reason
-when the two differ on purpose ([Declining a judgement call](../language/01-project-layout-and-modules.md#declining-a-judgement-call)).
+when the two differ on purpose ([Keeping code as it is, with a reason](../language/01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 A function is like a library function
 when its parameter types, result, `fails` list and body are the same once
 each parameter and variable is renamed by its position: a copy, however it

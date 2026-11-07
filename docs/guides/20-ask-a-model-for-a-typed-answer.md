@@ -274,7 +274,7 @@ database, and `jadpo records update`.
 
 The connection can send data to a host your app couldn't reach before, so once your app has
 a commit to compare with, `jadpo check` asks a person to accept that.
-[Get a person's sign-off](09-get-a-sign-off.md) goes through the steps.
+[Approve a risky change](09-get-a-sign-off.md) goes through the steps.
 
 `acceptances/20261104T1143_ask_a_local_model.jadpo`:
 

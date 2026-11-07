@@ -642,7 +642,7 @@ is still written, as all the report holds.
 
 A decline is a line in your code that answers a judgement-call finding
 with a reason, `decline <rule>: "<reason>"` ([Declining a judgement
-call](01-project-layout-and-modules.md#declining-a-judgement-call)).
+call](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 
 `list` shows every decline with its rule, place and reason, as one list in
 file order. A reason too long for its row goes on the lines under it.
@@ -844,8 +844,7 @@ installs from the registry by its exact name, `@acme/postcodes`, from a
 folder, or from a git repository's tag, such as
 `github.com/acme/acme-pricing@v2.1.0` ([Where packages come
 from](11-integrations.md#where-packages-come-from)). A bare name means Jadpo's
-own package. The public registry isn't live yet, so a name stops with
-`registry.unreachable`: use a folder or a tag.
+own package: `jadpo package add resend` is `@jadpo/resend`.
 
 From the registry it takes the newest release that isn't yanked or a
 pre-release, or the one `--to <version>` names, once the registry's public log
@@ -962,6 +961,12 @@ A document that conforms is one line:
 ✓ Conforms to the registry protocol  build/openapi/main.json · 10 requests
 ```
 
+When its output isn't a terminal, as in CI, the line is plain text:
+
+```text
+Conforms to the registry protocol: build/openapi/main.json, 10 requests
+```
+
 One that differs is `protocol.mismatch` with each difference under its request,
 and exits 1; `--json` gives `document`, `conforms`, `requests` and
 `mismatches`, each with its `operation` and `problem`. A document it can't read
@@ -1060,6 +1065,12 @@ is `publish.publisher_mismatch` ([Names and
 publishers](11-integrations.md#names-and-publishers)). So does a package whose licence is `Licence.proprietary`
 (`publish.licence_proprietary`). `--dry-run` runs the
 verifier and publishes nothing.
+
+A release that passes is pending: it ends `release pending: <package>
+<version>, a releaser confirms it with a passkey on jadpo.dev`. It is listed
+under "Ready to publish" on your account page there, and goes live once you
+publish it with your passkey ([Publish a
+package](../guides/23-publish-a-package.md)).
 
 ### `jadpo package preview`
 
@@ -1671,7 +1682,7 @@ never behave differently.
   `decline.no_reason` asks for the reason until you write it. **"Remove
   decline"**, on a `decline` line, removes the line. Both work as
   `jadpo declines clear` does ([Declining a judgement
-  call](01-project-layout-and-modules.md#declining-a-judgement-call)).
+  call](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 - **"Swap for the standard ..."**, a quick fix on `type.standard_clash` and
   `type.standard_exists`, works as `jadpo fix <name> swap` does. Where the
   command stops, it is unavailable and shows the error it would add.
@@ -1763,7 +1774,7 @@ make the fix itself.
 
 There is no warning severity. Every finding is an error, and it stops
 `check` and the build until it is answered: fixed or, for the few rules
-that allow it, [declined](01-project-layout-and-modules.md#declining-a-judgement-call).
+that allow it, [declined](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason).
 
 - Paths are relative to the project.
 - The two impact lines appear only when they say something.
@@ -1882,7 +1893,7 @@ before it changes something shared, it asks what the change reaches.
   value](03-logic.md#two-constants-holding-one-value)). Both are errors
   you can decline, not warnings: make the fix, or write a
   `decline <rule>: "<reason>"` line above the declaration ([Declining a
-  judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
+  judgement call](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 - **The failure catalogue** (`build/catalogue/failures.md`): every failure
   with its code, kind, status and client fields.
 - **The schema and query reports** (`build/report/`): every table, column
@@ -2324,8 +2335,7 @@ This is the contract the real HQ implements unchanged: HTTPS and JSON,
 UTF-8, under a versioned path.
 
 - **Address.** `JADPO_SUGGEST_HQ` in the environment. There is no default
-  yet: the release that launches HQ, with the registry, sets the real
-  address as the default. `http://` is accepted only for a loopback host
+  yet: the release that launches HQ sets the real address as the default. `http://` is accepted only for a loopback host
   (`localhost`, `127.0.0.1`, `[::1]`), which is how the tests reach the
   fake. Anything else must be `https://`, through OpenSSL, with the
   platform's certificate store and the host name checked. Only the
@@ -2410,7 +2420,7 @@ snippets so it keeps catching what it got right. Where a pattern points at
 something the language lacks, it proposes a language feature for a person
 to decide on, and never builds one.
 
-Not built yet: Jadpo HQ itself, which comes later, with the registry.
+Not built yet: Jadpo HQ itself, which comes later.
 Sharing is built against a local fake of HQ that speaks the protocol
 above. `jadpo new` writes the project token; for a project without one,
 `share` writes it.
@@ -2441,22 +2451,32 @@ reviewer reads: what changed in routes, policy, failures and data, with
 each decision that needs a person first. It records nothing: the
 acceptance and the owner's approval of the pull request stay the decision.
 
-## Errors only the running app or a build raises
-<!-- topic: errors-only-the-running-app-or-a-build-raises -->
+## What the running app logs
+<!-- topic: what-the-running-app-logs (was errors-only-the-running-app-or-a-build-raises) -->
 
-The running app reports three events of its own, never compile errors:
+A running app never reports a compiler error. When something goes wrong while
+it runs, it writes a line to its log, and these three are the ones to watch
+for:
 
 - `runtime.unhandled_fault`: a defect or fault reached the boundary, and
   the client gets `internal_fault`;
 - `runtime.outcome_unknown`: a change may or may not have been saved;
-- `runtime.startup_failed`: the app couldn't start.
+- `runtime.startup_failed`: the app couldn't start, with every problem that
+  stopped it.
 
-[Logging](04-failures.md#logging) says what each logs.
+They are events in the log, not errors with a page of their own. Every error
+that `jadpo check`, `jadpo build` and the other commands report has its page,
+`https://jadpo.dev/docs/errors/<rule>`, which its `help:` line gives.
+[Logging](04-failures.md#logging) says what a failure logs, and [A native
+deployable](#a-native-deployable) what the program logs as it starts.
 
-`jadpo build` refuses features the compiler checks but can't generate
-yet, with `toolchain.target_*` errors. `jadpo check` reports the same
-errors, so a project that passes `check` also builds. [Sign-in and identity](08-identity.md)
-asks the same of a protected route in an app with no sign-in set up.
+`jadpo check` reports what a deployable's target can't run
+([`deployable.target_unsupported`](../errors/deployable.target_unsupported.md)),
+and a protected route in an app with no sign-in set up
+([Sign-in and identity](08-identity.md)), so a project that passes `check`
+builds. What only `jadpo build` meets is the machine it builds on: a Rust
+toolchain it can't fetch (`toolchain.fetch_failed`), or a compile that fails
+(`toolchain.build_failed`).
 
 ## A native deployable
 <!-- topic: a-native-deployable -->
@@ -3301,9 +3321,6 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `publish.stale_files` | `package verify` | A commit's `surface.jadpo_record` or changelog list isn't what the package's code gives ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.too_large` | `package verify` | A commit's release is past the size limit ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.type_unreviewed` | `package check`, `package verify` | A provider package's public type isn't in its `reviewed:` list ([Publishing errors](11-integrations.md#publishing-errors)) |
-| `runtime.outcome_unknown` | the running app | Generated runtime could not confirm whether an effect committed |
-| `runtime.startup_failed` | the running app | Generated runtime failed during startup; a deployable's log event, with every problem that stopped it ([A native deployable](#a-native-deployable)) |
-| `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |
 | `suggest.record_invalid` | `suggest` | A suggestions record `jadpo suggest` reads, `ignored_suggestions.jadpo_record` or `taught_suggestions.jadpo_record`, isn't as Jadpo writes it |
 | `suggest.share_failed` | `suggest share` | Jadpo HQ couldn't be reached, or refused what `jadpo suggest share` sent, so the entries wait to be shared again |
 | `test.failed` | `test`, `package check` | A test failed under `jadpo test`, or among a package's own tests under `jadpo package check` |
@@ -3323,11 +3340,6 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `toolchain.scaffold_read_failed` | `new`, `package new` | You ran `jadpo new` or `jadpo package new` on a path Jadpo can't look into, such as a folder you can't read or a path through a file |
 | `toolchain.scaffold_write_failed` | `new`, `package new` | You ran `jadpo new` or `jadpo package new`, and writing its files failed, usually because the folder they go in can't be written |
 | `toolchain.source_read_failed` | any command | A `.jadpo` file in the project couldn't be read, because it isn't UTF-8 text or you aren't allowed to read it |
-| `toolchain.target_auth_not_implemented` | `build` | Protected route `{route}` cannot be generated yet |
-| `toolchain.target_durable_workflow_not_implemented` | `build` | Durable workflow target execution is not implemented |
-| `toolchain.target_job_not_implemented` | `build` | Scheduled job `{name}` cannot execute yet |
-| `toolchain.target_liveness_not_local` | `build` | Authored liveness route is not dependency-free |
-| `toolchain.target_store_not_implemented` | `build` | Authority store target adapter is not implemented |
 | `translation.exchange_file_invalid` | `translations export`, `translations import` | A file given to `jadpo translations import` isn't XLIFF 2.x or JSON in the shape `export` writes, or can't be read as one |
 | `translation.exchange_unit_unknown` | `translations import` | A file given to `jadpo translations import` holds a unit of wording the project doesn't have |
 
@@ -3467,7 +3479,7 @@ Each row says what is built and what is specified but not built yet.
 | Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; the agent skill is built, but for the three parts [Tools for agents](#tools-for-agents) lists; `impact`, `domain` and `rename` are not built yet, nor is generated CI. |
 | Suggestions | Partly built: `jadpo suggest` with its six signal kinds and taught signals, the catalogue, accepted findings, `ignore`, `found`, `share`, `suggestions { }` and the committed taught record, `share` against a fake of Jadpo HQ. Not built yet: HQ itself, so a real `share` has nowhere to go. |
 | Review and sign-off | Built: `jadpo check` judging acceptances against the default branch at its merge base, `--before`, `jadpo acceptance new` ([Acceptances](18-records-and-manifest.md#acceptances)) and [`jadpo approval`](#jadpo-approval). |
-| Build-only errors | Built: `jadpo build` for the one deployable an app that declares none has and for declared deployables, with their `toolchain.target_*` errors; its `settings` line, and a Worker's `secrets: { required: [ ] }`, name every setting a deployable reads, its connections' included. |
+| Build-only errors | Built: `jadpo build` for the one deployable an app that declares none has and for declared deployables, what a target can't run reported by `jadpo check` as `deployable.target_unsupported`; its `settings` line, and a Worker's `secrets: { required: [ ] }`, name every setting a deployable reads, its connections' included. |
 
 ## Errors
 

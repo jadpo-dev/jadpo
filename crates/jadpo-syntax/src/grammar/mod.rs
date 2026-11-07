@@ -620,7 +620,7 @@ fn top_level_decl(p: &mut Parser<'_>) {
 }
 
 /// `decline` lines, then the item `item` parses, which they become the
-/// first children of (area 1, "Declining a judgement call").
+/// first children of (area 1, "Keeping code as it is, with a reason").
 fn declined(p: &mut Parser<'_>, item: impl FnOnce(&mut Parser<'_>)) {
     let slot = p.start();
     while p.at(DECLINE_KW) && p.nth(1) != COLON {

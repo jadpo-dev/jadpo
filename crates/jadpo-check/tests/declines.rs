@@ -1,4 +1,4 @@
-//! Area 1, "Declining a judgement call" (question 11, decided 2026-10-17,
+//! Area 1, "Keeping code as it is, with a reason" (question 11, decided 2026-10-17,
 //! chunk 5.4b): every finding is an error, and a declinable one is
 //! answered by a `decline <rule>: "<reason>"` line directly above the
 //! declaration it is on. A decline whose rule no longer fires there is

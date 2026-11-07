@@ -253,7 +253,7 @@ impl From<Vec<Json>> for Json {
 /// The document every `--json` command prints: `schemaVersion`, the
 /// canonical command name, whether it succeeded, its data, and its
 /// diagnostics. A command fails when it has any diagnostic: every finding
-/// is an error (area 1, "Declining a judgement call").
+/// is an error (area 1, "Keeping code as it is, with a reason").
 pub fn envelope(
     command: Option<&str>,
     data: Option<Json>,

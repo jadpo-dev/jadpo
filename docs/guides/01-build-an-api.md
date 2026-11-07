@@ -294,7 +294,7 @@ The app declares no API of its own, so it has one, called `main`.
 Run `jadpo api update` again after every change to a route or a type it
 uses, and commit the record with the code. A change that breaks
 clients, such as removing a field, also needs a person's sign-off;
-[Get a person's sign-off](09-get-a-sign-off.md) covers that.
+[Approve a risky change](09-get-a-sign-off.md) covers that.
 
 ## Call it
 

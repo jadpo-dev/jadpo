@@ -79,7 +79,7 @@ operations on it live in a package or on another page.
   standard type ([Packages use the standard types](../19-standard-library.md#packages-use-the-standard-types)).
   You can decline it with a reason. It is an error rather than a warning
   because Jadpo has no warnings
-  ([Declining a judgement call](../01-project-layout-and-modules.md#declining-a-judgement-call)).
+  ([Keeping code as it is, with a reason](../01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 
 ## Decisions
 

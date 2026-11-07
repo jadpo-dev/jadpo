@@ -691,7 +691,7 @@ read, lead the report this way.
    connection at a time, from the before side's. Beside them: what
    widens access with no grant changed, an output gaining a field or an
    action reading or writing another entity; every
-   [decline](01-project-layout-and-modules.md#declining-a-judgement-call)
+   [decline](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)
    the change adds or edits, with its reason; each prompt that changed; the
    imported types and the calls that ship unreviewed or unconfirmed
    ([Mapping imported types](11-integrations.md#mapping-imported-types-to-standard-types));

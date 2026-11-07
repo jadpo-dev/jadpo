@@ -33,8 +33,8 @@ use crate::request::Repository;
 use crate::sandbox::{Ended, Finished, Job, Limits, Sandbox, tool};
 
 /// What running a package's own checks may use: enough for any real
-/// package's tests on the machine `fly.toml` names, whose memory holds this
-/// and the temporary folder together.
+/// package's tests in the container the registry runs it in, whose memory
+/// holds this and the temporary folder together.
 pub const CHECKS: Limits = Limits {
     cpu_seconds: 300,
     wall: Duration::from_secs(600),

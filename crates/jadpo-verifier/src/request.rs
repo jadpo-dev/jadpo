@@ -142,7 +142,7 @@ pub fn public_address(addresses: &[IpAddr]) -> Option<IpAddr> {
 }
 
 /// Whether `address` is on the public internet: not this machine, a private
-/// network (Fly.io's own included), a cloud's metadata service or an address
+/// network, a cloud's metadata service or an address
 /// set aside for something else.
 pub fn is_public(address: IpAddr) -> bool {
     match address {

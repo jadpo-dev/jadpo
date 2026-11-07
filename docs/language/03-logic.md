@@ -436,7 +436,7 @@ the others are reported.
 A VAT rate and a fee can share a value by coincidence, so the error is a
 judgement call you can decline: a `decline constant.similar_exists:
 "<why>"` line above the constant answers it
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
+([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 
 The library catalogue, the list of shared code that `jadpo check` writes
 into `build/catalogue/` ([Tools](14-tooling.md)), lists each constant

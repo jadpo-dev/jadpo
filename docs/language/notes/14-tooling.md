@@ -15,7 +15,7 @@ what other areas carried here and where this page answers it.
 | Item | Area | Status |
 |---|---|---|
 | Formatter owns layout; promotion through the editor or `fmt --layout`; catalogue, impact, similar-helper check, domain commands | 1 | Formatting, Tools for agents; Decisions |
-| `runtime.unhandled_fault`, `runtime.outcome_unknown`, `runtime.startup_failed` | 4 | Errors only the running app or a build raises |
+| `runtime.unhandled_fault`, `runtime.outcome_unknown`, `runtime.startup_failed` | 4 | What the running app logs |
 | `migrate` and rename commands; `migration.*`, `index.*`, `cli.schema_*` errors; `toolchain.target_store_not_implemented` | 5 | Decisions; Command errors |
 | The query report (store or cache, row bound, query count, indexes) | 6 | The `build/` folder; Decisions |
 | `jadpo api update` and CI's record check; `toolchain.target_liveness_not_local` | 7 | Commands; Review and sign-off; Decisions |

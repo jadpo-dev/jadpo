@@ -10,8 +10,8 @@
 #
 # In a plain Docker container the sandbox needs `--security-opt
 # seccomp=unconfined --security-opt apparmor=unconfined --security-opt
-# systempaths=unconfined`, for its namespaces; Fly.io runs an image in a
-# virtual machine of its own, with no such filter.
+# systempaths=unconfined`, for its namespaces. The registry runs it on
+# Cloudflare Containers, where it starts as it is.
 FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
 
 RUN apt-get update \
