@@ -583,6 +583,55 @@ fn importing_again_keeps_corrections_and_adds_what_is_new() {
     assert_eq!(checked.code, 0, "{}", checked.stdout);
 }
 
+/// A type renamed in code stays renamed: importing again finds the one
+/// that matches member for member and writes `renamed:`, and the next
+/// import applies it (area 11, "An importer"; Richard, 2026-11-07).
+#[test]
+fn importing_again_keeps_a_rename() {
+    let dir = tempdir::Dir::new("import-rename");
+    let root = caller(&dir);
+    write(&root, "acme.json", COURIERS);
+    let first = jadpo(&root, &["package", "import", "openapi", "acme.json"]);
+    assert_eq!(first.code, 0, "{}", first.stdout);
+    let folder = "shared/providers/acme_couriers/v1";
+    // An agent calls `Booking` `CourierBooking` in code.
+    let old = format!("{folder}/types/booking.jadpo");
+    let text = read(&root, &old).replace("type Booking =", "type CourierBooking =");
+    std::fs::remove_file(root.join(&old)).expect("removed");
+    write(
+        &root,
+        &format!("{folder}/types/courier_booking.jadpo"),
+        &text,
+    );
+    let resource = format!("{folder}/resources/bookings.jadpo");
+    let named = read(&root, &resource)
+        .replace("output: Booking\n", "output: CourierBooking\n")
+        .replace("output: List<Booking>\n", "output: List<CourierBooking>\n");
+    write(&root, &resource, &named);
+    for again in 0..2 {
+        let imported = jadpo(&root, &["package", "import", "openapi", "acme.json"]);
+        assert_eq!(imported.code, 0, "{}", imported.stdout);
+        assert!(
+            !root.join(&old).exists(),
+            "import {again} brought `Booking` back"
+        );
+        let provider = read(&root, &format!("{folder}/provider.jadpo"));
+        assert!(
+            provider
+                .contains("        renamed: {\n            Booking: CourierBooking\n        }\n"),
+            "{provider}"
+        );
+        assert!(
+            read(&root, &resource).contains("output: CourierBooking\n"),
+            "{}",
+            read(&root, &resource)
+        );
+    }
+    jadpo(&root, &["records", "update"]);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+}
+
 #[test]
 fn what_the_importer_cant_read_is_refused() {
     let dir = tempdir::Dir::new("import-refused");

@@ -773,7 +773,7 @@ packages.
 | `erasure:` | The operation that deletes a person at the provider and the key it takes (`by:`) |
 | `max_concurrent:` | How many of its calls run at once per app instance |
 | `settings:` | Typed values the app gives on the connection (`message_stream:`) |
-| `imported:` | The description it was imported from, `file:`, that file's digest, `digest:`, and `reviewed:`, the package's types an agent has reviewed against the provider's documentation |
+| `imported:` | The description it was imported from, `file:`, that file's digest, `digest:`, `reviewed:`, the package's types an agent has reviewed against the provider's documentation, and `renamed:`, each name in the description that code calls by another |
 | `reviewed:` | In a package written by hand, which has no `imported:`, the package's types an agent has reviewed against the provider's documentation |
 
 **Where the API is comes from exactly one place:**
@@ -7016,6 +7016,14 @@ check.
   has it, so corrections survive, and what only the file has is kept and
   listed; only `imported:` is always the description's. A file that
   doesn't read is left alone and listed.
+- **A rename survives.** `imported:`'s `renamed: { Booking:
+  CourierBooking }` maps a type or failure's name in the description to
+  its name in code, and importing again writes it, and every name of it,
+  under the name in code instead of bringing the old one back. A type the
+  description adds whose file isn't there, matching a type of the folder
+  the description no longer has member for member and no other, is taken
+  as renamed: the importer writes its `renamed:` line and lists it to
+  check.
 - **The summary** says what was written where and counts what the package
   holds, lists a merge's changes, and groups what is left to check by
   what to do, each `(agent)`, with `--json` for agents.
@@ -7520,7 +7528,7 @@ still need a recording to confirm them.
   written by the agent like any source and kept in review's diff; each
   entry is one of the package's own types, in its `types/`, once
   (`package.provider_invalid`), and `imported:` holds only `file:`,
-  `digest:` and `reviewed:`. A package with no `imported:` was written by
+  `digest:`, `reviewed:` and `renamed:`. A package with no `imported:` was written by
   hand, and lists its reviewed types in `provider { }`'s own `reviewed:`;
   one beside `imported:` is `package.provider_invalid`, since the list
   belongs in it. Every type starts unreviewed, a Jadpo application's exact
