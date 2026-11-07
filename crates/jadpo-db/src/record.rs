@@ -282,6 +282,8 @@ pub const SURFACE: Kind = Kind {
         "host",
         "runs",
         "credential",
+        // A fixed header every request carries, `headers:` (area 11).
+        "header",
         "idempotency",
         "webhooks",
         "request",

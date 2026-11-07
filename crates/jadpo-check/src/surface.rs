@@ -392,13 +392,22 @@ impl Surface {
         out
     }
 
-    /// The record's text.
+    /// The record's text. It always reads back: the change record and the
+    /// version compare surfaces by reading them, and one they can't read
+    /// compares as nothing, so a fact this writes that the record's kind
+    /// doesn't list would let any change pass as a patch.
     pub fn text(&self, version: Option<&str>) -> String {
-        format::write(
+        let text = format::write(
             &format::SURFACE,
             format::SURFACE_FROM,
             &self.entries(version),
-        )
+        );
+        debug_assert_eq!(
+            format::read(&text, &format::SURFACE).err(),
+            None,
+            "the surface doesn't read back:\n{text}"
+        );
+        text
     }
 
     /// The public declaration the app writes as `name`.

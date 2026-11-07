@@ -306,6 +306,42 @@ fn a_new_host_is_recorded_and_a_new_minor_version_a_removed_one_breaks() {
 }
 
 #[test]
+fn a_provider_with_fixed_headers_still_has_its_changes_found() {
+    // Every fact a provider can declare, its fixed request headers among
+    // them, so the surface's reader knows each line its writer writes.
+    let headers = with(
+        &provider(),
+        "shared/providers/acme_pay/v1/provider.jadpo",
+        "/// Acme Pay's API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.acme-pay.example\"\n    }\n    credential: CredentialScheme.header\n    credential_header: \"x-api-key\"\n    headers: [\"acme-version: 2024-01-01\"]\n    idempotency: {\n        header: \"Idempotency-Key\"\n        window: 24h\n    }\n}\n",
+    );
+    let before = surface_text(&headers, PAY);
+    assert!(
+        before.contains("    header acme-version: 2024-01-01\n"),
+        "{before}"
+    );
+    let narrowed = with(
+        &headers,
+        "shared/providers/acme_pay/v1/types/customer_id.jadpo",
+        "/// Acme Pay's id for a customer.\npublic type CustomerId = Text {\n    max_length: 20\n}\n",
+    );
+    let now = surface_text(&narrowed, PAY);
+    let found = entries(&before, &now);
+    assert_eq!(
+        found,
+        [(
+            "CustomerId".to_string(),
+            Change::Retyped,
+            Some("max_length: 20, was max_length: 40".to_string())
+        )]
+    );
+    assert_eq!(
+        publishing::version("v1", Some(("1.0.0", &before)), &now).unwrap_err(),
+        [("changed".to_string(), "type CustomerId".to_string())],
+        "narrowing what a type accepts breaks"
+    );
+}
+
+#[test]
 fn personal_data_sent_somewhere_new_is_recorded_once_per_field_and_host() {
     let now = facts_of(&provider(), &[], PAY);
     let mut earlier = now.clone();
