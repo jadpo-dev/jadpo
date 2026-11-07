@@ -19,10 +19,11 @@
 //! never meet at a provider that keys by account.
 //!
 //! The driver ([`classify`]) reads what the provider answered: a `2xx`
-//! as sent, unless `failed_when:` says it is a failure; the provider's
-//! error code from `error_code:` for a refusal, which the call's site
-//! raises as the package failure with that code, or a fault where the
-//! operation declares none; a rejected credential as `misconfigured`; a
+//! as sent, unless `failed_when:` says it is a failure; a refusal as the
+//! operation's failure its status and its text at `error_code:` match,
+//! the most specific first (area 11, "How a provider's failures are
+//! read"; Richard, 2026-11-07), which the call's site raises, or a fault
+//! where none does; a rejected credential as `misconfigured`; a
 //! refusal that did nothing (`408`, `429`, the key still in use) as
 //! `unavailable`; a server's error as an answer that may have acted. The
 //! site decodes an answer from `output_at:` into the operation's output
@@ -51,8 +52,8 @@ use std::cell::RefCell;
 
 use jadpo_std::HttpMethod;
 use jadpo_std::provider::{
-    Address, CallSite, ConnectionPlan, CredentialScheme, CredentialSource, OperationPlan, PathPart,
-    Protocol, ProviderPlan, RETRY_BASE_MS,
+    Address, CallSite, ConnectionPlan, CredentialScheme, CredentialSource, FailureMatch,
+    OperationPlan, PathPart, Protocol, ProviderPlan, RETRY_BASE_MS, matched_failure,
 };
 use jadpo_std::subscriber::Repeat;
 use jadpo_std::types::FailurePlan;
@@ -75,6 +76,10 @@ pub struct Reading {
     pub failed_when: Option<(String, String)>,
     /// Where a failed answer's code is, dotted.
     pub error_code: Option<String>,
+    /// How the operation's failures are read from a refusal: each one's
+    /// code, the status it is refused with and the provider's own text for
+    /// it.
+    pub failures: Vec<FailureMatch>,
     pub in_use: Option<String>,
     pub reused: Option<String>,
     /// Whether the code is AWS's error type, `com.amazonaws.sqs#QueueDoesNotExist`,
@@ -196,14 +201,28 @@ pub fn classify(request: &Request, response: &Response) -> Answer {
         serde_json::from_str::<serde_json::Value>(&text).ok()
     };
     let reading = &request.reading;
-    let code = || {
+    // The provider's text at `error_code:`, as it wrote it.
+    let raw = || {
         let json = json.as_ref()?;
-        let at = at_path(json, reading.error_code.as_deref()?)?;
-        match at {
-            serde_json::Value::String(code) if reading.aws => Some(aws_code(code)),
+        match at_path(json, reading.error_code.as_deref()?)? {
             serde_json::Value::String(code) => Some(code.clone()),
             serde_json::Value::Number(code) => Some(code.to_string()),
             _ => None,
+        }
+    };
+    // The same text as a failure's code reads it.
+    let code = || {
+        let raw = raw()?;
+        Some(if reading.aws { aws_code(&raw) } else { raw })
+    };
+    // The operation's failure a refusal with `status` is, by its Jadpo
+    // code; else the provider's code, which the call's site faults on.
+    let failed = |status: u16| {
+        let raw = raw();
+        let code = code();
+        match matched_failure(&reading.failures, status, raw.as_deref(), code.as_deref()) {
+            Some(found) => Answer::Failed(found.to_string()),
+            None => Answer::Failed(code.unwrap_or_default()),
         }
     };
     match response.status {
@@ -212,7 +231,7 @@ pub fn classify(request: &Request, response: &Response) -> Answer {
                 let marked = serde_json::from_str::<serde_json::Value>(equals).ok();
                 let found = json.as_ref().and_then(|json| at_path(json, path));
                 if marked.is_some() && found == marked.as_ref() {
-                    return Answer::Failed(code().unwrap_or_default());
+                    return failed(response.status);
                 }
             }
             if json.is_none() {
@@ -240,8 +259,10 @@ pub fn classify(request: &Request, response: &Response) -> Answer {
         },
         400..=499 => match code() {
             Some(code) if reading.in_use.as_deref() == Some(code.as_str()) => Answer::Unavailable,
-            Some(code) => Answer::Failed(code),
-            None => Answer::Failed(String::new()),
+            // The key came with a different request: kept as the
+            // provider's code, which the step reads (chunk 7.5b).
+            Some(code) if reading.reused.as_deref() == Some(code.as_str()) => Answer::Failed(code),
+            _ => failed(response.status),
         },
         // A server's error may come after it acted.
         _ => Answer::Unknown,
@@ -1515,6 +1536,16 @@ fn request(
     let mut reading = Reading {
         failed_when: op.failed_when.clone(),
         error_code: plan.error_code.clone(),
+        failures: op
+            .failures
+            .iter()
+            .filter_map(|key| providers.failures.iter().find(|plan| plan.key == *key))
+            .map(|plan| FailureMatch {
+                code: plan.code.clone(),
+                status: plan.wire_status,
+                text: plan.wire_name.clone(),
+            })
+            .collect(),
         in_use: None,
         reused: None,
         aws: aws_json,
@@ -1884,6 +1915,7 @@ mod tests {
         let reading = Reading {
             failed_when: Some(("ok".into(), "false".into())),
             error_code: Some("error.code".into()),
+            failures: Vec::new(),
             in_use: Some("key_in_use".into()),
             reused: Some("key_reused".into()),
             aws: false,
@@ -1930,6 +1962,64 @@ mod tests {
             !shown.contains("secret") && !shown.contains("sk_live"),
             "{shown}"
         );
+    }
+
+    /// A refusal is read as the operation's failure its status and its
+    /// text at `error_code:` match, the most specific first: status and
+    /// text, then text, then status (area 11, "How a provider's failures
+    /// are read"; Richard, 2026-11-07).
+    #[test]
+    fn a_refusal_is_its_most_specific_failure() {
+        let failure = |code: &str, status: Option<u16>, text: Option<&str>| FailureMatch {
+            code: code.into(),
+            status,
+            text: text.map(str::to_string),
+        };
+        let reading = Reading {
+            error_code: Some("error".into()),
+            failures: vec![
+                failure("not_found", Some(404), None),
+                failure("postcode_not_found", Some(404), Some("Postcode not found")),
+                failure("invalid_postcode", None, Some("Invalid postcode")),
+                failure("limit_refused", None, None),
+            ],
+            ..Reading::default()
+        };
+        let sent = request(reading);
+        let refused = |status: u16, body: &str| classify(&sent, &answer(status, body));
+        // Its status and its text.
+        assert_eq!(
+            refused(404, r#"{"status": 404, "error": "Postcode not found"}"#),
+            Answer::Failed("postcode_not_found".into())
+        );
+        // Its text, at any status.
+        assert_eq!(
+            refused(404, r#"{"status": 404, "error": "Invalid postcode"}"#),
+            Answer::Failed("invalid_postcode".into())
+        );
+        assert_eq!(
+            refused(400, r#"{"status": 400, "error": "Invalid postcode"}"#),
+            Answer::Failed("invalid_postcode".into())
+        );
+        // A failure with neither is read by its code.
+        assert_eq!(
+            refused(400, r#"{"error": "limit_refused"}"#),
+            Answer::Failed("limit_refused".into())
+        );
+        // Its status alone: any other text, or none.
+        assert_eq!(
+            refused(404, r#"{"status": 404, "error": "Outcode not found"}"#),
+            Answer::Failed("not_found".into())
+        );
+        assert_eq!(refused(404, ""), Answer::Failed("not_found".into()));
+        // The text of a failure that also names a status is read only at
+        // that status; nothing else matches, so the provider's text is
+        // kept for the fault.
+        assert_eq!(
+            refused(400, r#"{"error": "Postcode not found"}"#),
+            Answer::Failed("Postcode not found".into())
+        );
+        assert_eq!(refused(400, "not json"), Answer::Failed(String::new()));
     }
 
     fn connection(credential: Option<CredentialPlan>) -> ConnectionPlan {

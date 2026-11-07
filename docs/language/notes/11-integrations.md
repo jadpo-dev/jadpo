@@ -417,6 +417,19 @@ Numbered as the questions they settled, which other pages cite.
     surface's changes under it (`added type OutwardCode`), and keeps the
     author's text beneath; the bar refuses a release whose section has no
     text of the author's.
+29. **A provider's failures by status and text** (Richard, 2026-11-07).
+    A provider package's failure may give `wire_status:`, the `4xx` its
+    provider refuses with, and `wire_name:`, the provider's own text at
+    `error_code:` exactly as written, kept apart from its Jadpo `code:`,
+    which stays lower_snake_case and is what an app maps and a test
+    scripts. A refusal is the operation's most specific failure: status and
+    text, then text (a failure's code where it gives neither), then status
+    alone. Found building postcodes.io's package, whose errors are a status
+    and a sentence (`{"status": 404, "error": "Postcode not found"}`), so it
+    could declare no failure and every refusal faulted. The keys follow
+    `wire_name:` on fields and events, the provider's spelling beside
+    Jadpo's name; `status:` was not used, because area 4 says a failure
+    never states its status, the one its kind gives the app's clients.
 
 Carried from other areas, and the runtime's own limits:
 

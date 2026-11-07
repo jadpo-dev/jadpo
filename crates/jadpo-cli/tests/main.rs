@@ -107,6 +107,7 @@ mod policy;
 mod pooled_statements;
 mod provider_calls;
 mod provider_fakes;
+mod provider_failures;
 mod provider_parts;
 mod provider_paths;
 mod provider_sign_in;

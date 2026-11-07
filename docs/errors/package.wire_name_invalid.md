@@ -1,9 +1,10 @@
 # `package.wire_name_invalid`
 
 > `wire_name:` gives a
-> provider package's field or enum variant its spelling on the wire, so it
-> is refused anywhere else, empty, repeating the name, or sending two
-> members of one type under one spelling.
+> provider package's field or enum variant its spelling on the wire, and
+> a provider package's failure the provider's own text for it, so it
+> is refused anywhere else, empty, repeating the name or code, or sending
+> two members of one type under one spelling.
 
 Only a provider package's types say how a provider spells a field; the
 app's own are sent as its contract writes them:
@@ -90,6 +91,52 @@ error: Webhook event `PaymentRefunded` doesn't give `wire_name:`
   |             ^^^^^^^^^^^^^^^ no `wire_name:`
   reason: `AcmePay.v1` declares `webhooks:`, so each event it declares gives the type its provider names it by, `wire_name:`, which the runtime matches a webhook's event type against.
   next: Add `wire_name:` with the provider's name for the event, such as `wire_name: "payment.succeeded"` (agent)
+  rule: package.wire_name_invalid
+  help: https://jadpo.dev/docs/errors/package.wire_name_invalid
+
+check failed: 1 error, 4 files
+```
+
+An app's own failure is known by its code alone; only a provider
+package's failure says how its provider writes it:
+
+```jadpo check project=e72f-failure-wire-name file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72f-failure-wire-name file=domains/addresses/types/postcode.jadpo hidden
+/// A postcode as someone typed it.
+type Postcode = Text {
+    max_length: 8
+}
+```
+
+```jadpo check project=e72f-failure-wire-name file=domains/addresses/actions/check_postcode.jadpo hidden
+use addresses/types { Postcode }
+use addresses/failures { PostcodeUnknown }
+
+/// Refuses every postcode, for now.
+action check_postcode(postcode: Postcode) fails PostcodeUnknown -> Postcode {
+    reject PostcodeUnknown
+}
+```
+
+```jadpo check project=e72f-failure-wire-name file=domains/addresses/failures/postcode_unknown.jadpo expect=package.wire_name_invalid
+/// No such postcode is in use.
+type PostcodeUnknown = Failure {
+    kind: FailureKind.not_found
+    wire_name: "Postcode not found"
+}
+```
+
+```text output
+error: `wire_name` is for a provider package's failures
+ --> domains/addresses/failures/postcode_unknown.jadpo:4:5
+  |
+4 |     wire_name: "Postcode not found"
+  |     ^^^^^^^^^ outside a provider package
+  reason: `wire_name:` gives a failure's code as a provider writes it, where that differs from its Jadpo code, so only a provider package's failures say it; an app's own failure is known by its code alone.
+  next: Remove `wire_name:` (agent)
   rule: package.wire_name_invalid
   help: https://jadpo.dev/docs/errors/package.wire_name_invalid
 

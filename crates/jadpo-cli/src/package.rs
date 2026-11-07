@@ -840,6 +840,8 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
             kind,
             code,
             message,
+            wire_status,
+            wire_name,
             fields: own,
         } => {
             if let Some(kind) = kind {
@@ -848,6 +850,16 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
             fields.push(("code".into(), code.clone()));
             if let Some(message) = message {
                 fields.push(("message".into(), message.clone()));
+            }
+            // How the provider answers it (area 11, "How a provider's
+            // failures are read"): its status, then its own text.
+            let answered: Vec<String> = wire_status
+                .map(|status| status.to_string())
+                .into_iter()
+                .chain(wire_name.iter().map(|text| jadpo_db::record::quote(text)))
+                .collect();
+            if !answered.is_empty() {
+                fields.push(("answered as".into(), answered.join(" ")));
             }
             if !own.is_empty() {
                 lists.push(Block::list(

@@ -173,7 +173,7 @@ const COURIERS: &str = r##"{
         "operationId": "createBooking",
         "summary": "Books a collection.",
         "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateBooking" } } } },
-        "responses": { "201": { "description": "made", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Booking" } } } } }
+        "responses": { "201": { "description": "made", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Booking" } } } }, "409": { "description": "" }, "5XX": { "description": "down" } }
       }
     },
     "/v1/bookings/{bookingId}": {
@@ -181,7 +181,7 @@ const COURIERS: &str = r##"{
         "tags": ["bookings"],
         "operationId": "getBooking",
         "parameters": [{ "name": "bookingId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
-        "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Booking" } } } } }
+        "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Booking" } } } }, "401": { "description": "No key" }, "404": { "description": "Booking not found" } }
       }
     },
     "/v1/bookings/{bookingId}/label": {
@@ -468,6 +468,19 @@ public type Booking = Object {
     ] {
         assert!(resource.contains(name), "{name} in {resource}");
     }
+    // Each documented refusal the driver reads as a failure is one failure
+    // per status, read by its status alone (area 11, "A provider's
+    // failures"); a rejected credential and a server's error aren't.
+    assert_eq!(
+        read(&root, &format!("{folder}/failures/not_found.jadpo")),
+        "/// The provider refused the call with a `404`.\npublic type NotFound = Failure {\n    kind: FailureKind.not_found\n    wire_status: 404\n}\n"
+    );
+    assert_eq!(
+        read(&root, &format!("{folder}/failures/conflict.jadpo")),
+        "/// The provider refused the call with a `409`.\npublic type Conflict = Failure {\n    kind: FailureKind.conflict\n    wire_status: 409\n}\n"
+    );
+    assert!(resource.contains("        failures: [NotFound]\n"), "{resource}");
+    assert!(resource.contains("        failures: [Conflict]\n"), "{resource}");
     // What isn't reached isn't imported.
     assert!(!root.join(format!("{folder}/types/unused.jadpo")).exists());
     let findings: Vec<String> = report["data"]["findings"]
@@ -497,6 +510,8 @@ public type Booking = Object {
         "bookings.create: Check against the provider's documentation that it changes something",
         "provider: Add `hosts: { sandbox: }`",
         "provider: Add the provider's failures and `error_code:`",
+        "bookings.get: Check what the provider sends with its `404` (\"Booking not found\"): give `NotFound` `wire_name:`",
+        "bookings.create: Check what the provider sends with its `409`: give `Conflict` `wire_name:`",
     ] {
         assert!(
             findings.iter().any(|finding| finding.starts_with(expected)),

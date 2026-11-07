@@ -154,6 +154,9 @@ pub struct FailureDecl {
     /// `FailureKind.<kind>`.
     pub kind: String,
     pub message: Option<String>,
+    /// The status the provider refuses with, from another provider's
+    /// documented answers (area 11, "How a provider's failures are read").
+    pub wire_status: Option<u16>,
 }
 
 /// Something the description leaves to check: where, and what to do.
@@ -372,6 +375,9 @@ fn failure_file(name: &str, failure: &FailureDecl) -> String {
     ));
     if let Some(message) = &failure.message {
         out.push_str(&format!("    message: {}\n", quote(message)));
+    }
+    if let Some(status) = failure.wire_status {
+        out.push_str(&format!("    wire_status: {status}\n"));
     }
     out.push_str("}\n");
     out

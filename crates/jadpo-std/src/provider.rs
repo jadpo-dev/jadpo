@@ -588,6 +588,63 @@ pub enum PathPart {
     Field(String),
 }
 
+/// Whether a provider's refusal with `status` can be one of an
+/// operation's failures (area 11, "How a provider's failures are read";
+/// Richard, 2026-11-07): a `4xx` the package driver doesn't read first, as
+/// a rejected credential (`401`, `403`) or a call that did nothing (`408`,
+/// `429`).
+pub fn is_failure_status(status: u16) -> bool {
+    (400..=499).contains(&status) && !matches!(status, 401 | 403 | 408 | 429)
+}
+
+/// How a provider answers one of an operation's failures (area 11, "How a
+/// provider's failures are read"; Richard, 2026-11-07): its Jadpo code, the
+/// status it refuses with (`wire_status:`) and its own text for it at
+/// `error_code:` (`wire_name:`). A failure that gives neither is read by its
+/// code.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct FailureMatch {
+    pub code: String,
+    pub status: Option<u16>,
+    pub text: Option<String>,
+}
+
+/// The code of the failure among `failures` that a refusal with `status`
+/// is, whose text at `error_code:` is `raw` as the provider wrote it and
+/// `code` as a failure's code reads it (the same text but for AWS's error
+/// types): the most specific first, a failure's status and text, then its
+/// text (its code, where it gives no `wire_name:` or status), then its
+/// status alone. `None` when none matches.
+pub fn matched_failure<'a>(
+    failures: &'a [FailureMatch],
+    status: u16,
+    raw: Option<&str>,
+    code: Option<&str>,
+) -> Option<&'a str> {
+    let both = failures.iter().find(|failure| {
+        failure.status == Some(status)
+            && failure.text.is_some()
+            && failure.text.as_deref() == raw
+    });
+    let text = || {
+        failures.iter().find(|failure| {
+            failure.status.is_none()
+                && match &failure.text {
+                    Some(text) => Some(text.as_str()) == raw,
+                    None => code.is_some_and(|code| code == failure.code),
+                }
+        })
+    };
+    let alone = || {
+        failures
+            .iter()
+            .find(|failure| failure.status == Some(status) && failure.text.is_none())
+    };
+    both.or_else(text)
+        .or_else(alone)
+        .map(|failure| failure.code.as_str())
+}
+
 /// An operation an application calls.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OperationPlan {

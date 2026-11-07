@@ -2,7 +2,9 @@
 //! `code`, `message`, `client` and `internal`; the kind is one an
 //! application may declare; the code is lower_snake_case and belongs to
 //! this failure alone; and a field is either sent to the client or kept
-//! for the log, never both. The fields themselves follow area 2's rules,
+//! for the log, never both. A provider package's failure may also say
+//! how its provider answers it, `wire_status:` and `wire_name:` (area 11,
+//! "How a provider's failures are read"; Richard, 2026-11-07). The fields themselves follow area 2's rules,
 //! checked with the other type declarations.
 
 use std::collections::BTreeMap;
@@ -12,7 +14,7 @@ use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::ast::{self, AstNode, Decl, MemberItem};
 
 use super::table::is_failure_decl;
-use super::{DECLARABLE_KINDS, MEMBERS, RUNTIME_CODES};
+use super::{DECLARABLE_KINDS, MEMBERS, RUNTIME_CODES, WIRE_MEMBERS};
 use crate::case::{is_lower_snake, to_snake};
 use crate::lookups::{FailureView, Lookup};
 use crate::std_lib::StdNames;
@@ -26,9 +28,11 @@ pub fn failure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
         return Vec::new();
     };
     let lookup = Lookup::for_file(db, project, file);
+    let home = jadpo_db::location(db, project, file).ownership.package();
     let mut checker = Checker {
         path: file.path(db),
         table: &lookup,
+        provider: home.is_some_and(|home| crate::connections::reach(db, project, home).is_some()),
         out: Vec::new(),
     };
     for (index, decl) in source.decls().enumerate() {
@@ -45,6 +49,9 @@ struct Checker<'a> {
     path: &'a str,
     /// The declared failures, read name by name and code by code.
     table: &'a Lookup<'a>,
+    /// Whether the file is a provider package's, whose failures may say
+    /// how the provider answers them.
+    provider: bool,
     out: Vec<Diagnostic>,
 }
 
@@ -102,7 +109,7 @@ impl Checker<'_> {
                 continue;
             };
             let key_span = self.span(&key_node);
-            if !MEMBERS.contains(&key.as_str()) {
+            if !MEMBERS.contains(&key.as_str()) && !WIRE_MEMBERS.contains(&key.as_str()) {
                 self.unknown_member(&key, key_span);
                 continue;
             }
@@ -129,6 +136,8 @@ impl Checker<'_> {
                     }
                 }
                 "message" => self.message(&member),
+                "wire_status" => self.wire_status(&member, key_span),
+                "wire_name" => self.wire_name(&name, &member, key_span),
                 _ => {
                     if member.block().is_some() && member.value().is_none() {
                         sections.push((key, member));
@@ -284,6 +293,99 @@ impl Checker<'_> {
                 .edit(span, format!("\"{suggestion}\""))
         });
         false
+    }
+
+    /// `wire_status:`: in a provider package, the status of a refusal the
+    /// package driver reads as one of the operation's failures.
+    fn wire_status(&mut self, member: &ast::Member, key_span: Span) {
+        let invalid = |message: String| Diagnostic::new(&rule::PACKAGE_WIRE_INVALID, message);
+        if !self.provider {
+            self.out.push(
+                invalid("`wire_status` is for a provider package's failures".to_string())
+                    .at(key_span, "outside a provider package")
+                    .reason("`wire_status:` is the HTTP status a provider refuses a call with, so only a provider package's failures say it; the status an app's own failure answers with comes from its kind.")
+                    .next("Remove `wire_status:`"),
+            );
+            return;
+        }
+        let Some(value) = member.value() else {
+            self.not_a_value("wire_status", member);
+            return;
+        };
+        let span = self.span(&value);
+        let status = match Const::from_expr(&value) {
+            Const::Number {
+                value,
+                decimal: false,
+            } => super::table::wire_status_of(value),
+            _ => None,
+        };
+        match status {
+            Some(status) if jadpo_std::provider::is_failure_status(status) => {}
+            Some(status) => self.out.push(
+                invalid(format!("A provider's `{status}` is never one of its failures"))
+                    .at(span, "not a refusal Jadpo reads as a failure")
+                    .reason(match status {
+                        401 | 403 => "A `401` or `403` is the credential refused, read as `misconfigured`, so no failure can be it.".to_string(),
+                        408 | 429 => "A `408` or `429` says the call did nothing and may be sent again, read as `unavailable`, so no failure can be it.".to_string(),
+                        _ => format!("A failure is a refusal, a `4xx`; a `{status}` is read before any failure is looked for."),
+                    })
+                    .next("Write the `4xx` status the provider refuses with, or remove `wire_status:`"),
+            ),
+            None => self.out.push(
+                invalid("`wire_status` takes an HTTP status".to_string())
+                    .at(span, "not a status")
+                    .reason("`wire_status:` is the HTTP status the provider refuses the call with, a whole number such as `404`.")
+                    .next("Write the status as a number, such as `wire_status: 404`"),
+            ),
+        }
+    }
+
+    /// `wire_name:`: in a provider package, the provider's own text for the
+    /// failure, as it writes it at `error_code:`.
+    fn wire_name(&mut self, name: &str, member: &ast::Member, key_span: Span) {
+        let invalid = |message: String| Diagnostic::new(&rule::PACKAGE_WIRE_NAME_INVALID, message);
+        if !self.provider {
+            self.out.push(
+                invalid("`wire_name` is for a provider package's failures".to_string())
+                    .at(key_span, "outside a provider package")
+                    .reason("`wire_name:` gives a failure's code as a provider writes it, where that differs from its Jadpo code, so only a provider package's failures say it; an app's own failure is known by its code alone.")
+                    .next("Remove `wire_name:`"),
+            );
+            return;
+        }
+        let Some(value) = member.value() else {
+            self.not_a_value("wire_name", member);
+            return;
+        };
+        let span = self.span(&value);
+        let code = self
+            .table
+            .failure_info(name)
+            .map_or_else(|| to_snake(name), |info| info.code.clone());
+        match Const::from_expr(&value) {
+            Const::Str(text) if text.is_empty() => self.out.push(
+                invalid(format!("`{name}`'s `wire_name` is empty"))
+                    .at(span, "no text")
+                    .reason("`wire_name:` is the provider's own code or message for the failure, exactly as it writes it where `error_code:` says.")
+                    .next("Write the provider's text, or remove `wire_name:`"),
+            ),
+            Const::Str(text) if text == code => self.out.push(
+                invalid(format!("`{name}`'s `wire_name` is its own code"))
+                    .at(span, "the same text")
+                    .reason(format!(
+                        "A failure is read by its code, `{code}`, unless the provider writes it differently; `wire_name:` is written only then."
+                    ))
+                    .next("Remove `wire_name:`"),
+            ),
+            Const::Str(_) => {}
+            other => self.out.push(
+                invalid("`wire_name` takes the provider's text in quotes".to_string())
+                    .at(span, format!("{} here", other.describe()))
+                    .reason("`wire_name:` is the provider's own code or message for the failure, in quotes, exactly as it writes it.")
+                    .next("Write the provider's text in quotes"),
+            ),
+        }
     }
 
     fn message(&mut self, member: &ast::Member) {

@@ -20,6 +20,12 @@ pub struct FailureInfo {
     /// lower_snake_case (question 1).
     pub code: String,
     pub explicit_code: bool,
+    /// A provider package's failure: the HTTP status the provider answers
+    /// it with, `wire_status:`, and the provider's own text for it, as
+    /// written at `error_code:`, `wire_name:` (area 11, "How a provider's
+    /// failures are read"; Richard, 2026-11-07).
+    pub wire_status: Option<u16>,
+    pub wire_name: Option<String>,
     /// The file it is declared in, and its position among that file's
     /// declarations.
     pub path: String,
@@ -52,6 +58,8 @@ pub fn failure_decls(db: &dyn Db, file: File) -> Vec<FailureInfo> {
             let name = decl.name().as_ref().and_then(tree::name_text)?;
             let mut kind = None;
             let mut code = None;
+            let mut wire_status = None;
+            let mut wire_name = None;
             for (key, member) in tree::members(decl.member_list()) {
                 let value = member
                     .value()
@@ -63,6 +71,14 @@ pub fn failure_decls(db: &dyn Db, file: File) -> Vec<FailureInfo> {
                         kind = Some(path[1].clone());
                     }
                     (Some("code"), Const::Str(text)) if code.is_none() => code = Some(text),
+                    (Some("wire_name"), Const::Str(text)) if wire_name.is_none() => {
+                        wire_name = Some(text);
+                    }
+                    (Some("wire_status"), Const::Number { value, decimal: false })
+                        if wire_status.is_none() =>
+                    {
+                        wire_status = wire_status_of(value);
+                    }
                     _ => {}
                 }
             }
@@ -71,11 +87,23 @@ pub fn failure_decls(db: &dyn Db, file: File) -> Vec<FailureInfo> {
                 code: code.unwrap_or_else(|| to_snake(&name)),
                 name,
                 kind,
+                wire_status,
+                wire_name,
                 path: path.clone(),
                 index: index as u32,
             })
         })
         .collect()
+}
+
+/// A written `wire_status:` as the status it names: a whole number a
+/// provider's refusal can be answered with (area 11, "How a provider's
+/// failures are read"); `None` for any other.
+pub fn wire_status_of(value: jadpo_std::Num) -> Option<u16> {
+    if value.scale != 0 || !(100..=599).contains(&value.mantissa) {
+        return None;
+    }
+    u16::try_from(value.mantissa).ok()
 }
 
 /// The project's failures.
@@ -121,6 +149,8 @@ pub fn provided_failures(db: &dyn Db, project: Project) -> Vec<FailureInfo> {
             kind: Some("not_found".to_string()),
             code: to_snake(&symbol.name),
             explicit_code: false,
+            wire_status: None,
+            wire_name: None,
             path: symbol.path.clone(),
             index: symbol.index,
         })

@@ -1364,6 +1364,16 @@ impl Reader<'_> {
                     continue;
                 }
                 let response = self.resolve(response).clone();
+                // Another provider's documented refusal, by its status
+                // alone (area 11, "How a provider's failures are read").
+                if !self.exact {
+                    if let Some(name) = self.refusal(status, &response, &at)
+                        && !failures.contains(&name)
+                    {
+                        failures.push(name);
+                    }
+                    continue;
+                }
                 let Some(schema) = response
                     .get("content")
                     .and_then(Value::as_object)
@@ -1405,6 +1415,53 @@ impl Reader<'_> {
         }
     }
 
+    /// The failure another provider's documented refusal with `status`
+    /// is, at operation `at`: one per status the package driver reads as
+    /// a failure, named and of the kind its status says, read by
+    /// `wire_status:` alone, with what the provider sends left to check.
+    fn refusal(&mut self, status: &str, response: &Value, at: &str) -> Option<String> {
+        let status: u16 = status.parse().ok()?;
+        if !jadpo_std::provider::is_failure_status(status) {
+            return None;
+        }
+        let (name, kind) = refusal_name(status);
+        let described = response
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|text| !text.is_empty());
+        self.find(
+            at.to_string(),
+            match described {
+                Some(text) => format!(
+                    "Check what the provider sends with its `{status}` ({text:?}): give `{name}` `wire_name:` and `error_code:` where its text tells refusals apart"
+                ),
+                None => format!(
+                    "Check what the provider sends with its `{status}`: give `{name}` `wire_name:` and `error_code:` where its text tells refusals apart"
+                ),
+            },
+        );
+        if !self.failures.contains_key(&name) {
+            if self.taken.contains(&name) {
+                self.find(
+                    name.clone(),
+                    format!("A type and the failure for a `{status}` share this name; rename one"),
+                );
+            }
+            self.taken.insert(name.clone());
+            self.failures.insert(
+                name.clone(),
+                FailureDecl {
+                    doc: Some(format!("The provider refused the call with a `{status}`.")),
+                    kind: kind.to_string(),
+                    message: None,
+                    wire_status: Some(status),
+                },
+            );
+        }
+        Some(name)
+    }
+
     /// The failure schema `schema` declares, by its `x-jadpo-failure`.
     fn failure(&mut self, schema: &str) -> Option<String> {
         let value = self.schema(schema)?.clone();
@@ -1434,6 +1491,7 @@ impl Reader<'_> {
                     doc: message.clone(),
                     kind: kind.to_string(),
                     message,
+                    wire_status: None,
                 },
             );
         }
@@ -1536,6 +1594,33 @@ impl Reader<'_> {
         }
         provider
     }
+}
+
+/// The failure a refusal with `status` is named, from its reason phrase
+/// (RFC 9110), and the kind its status says.
+fn refusal_name(status: u16) -> (String, &'static str) {
+    let (name, kind) = match status {
+        400 => ("BadRequest", "invalid_value"),
+        402 => ("PaymentRequired", "rejected"),
+        404 => ("NotFound", "not_found"),
+        405 => ("MethodNotAllowed", "rejected"),
+        406 => ("NotAcceptable", "rejected"),
+        409 => ("Conflict", "conflict"),
+        410 => ("Gone", "not_found"),
+        411 => ("LengthRequired", "invalid_value"),
+        412 => ("PreconditionFailed", "conflict"),
+        413 => ("ContentTooLarge", "invalid_value"),
+        414 => ("UriTooLong", "invalid_value"),
+        415 => ("UnsupportedMediaType", "invalid_value"),
+        416 => ("RangeNotSatisfiable", "invalid_value"),
+        422 => ("UnprocessableContent", "invalid_value"),
+        423 => ("Locked", "conflict"),
+        424 => ("FailedDependency", "conflict"),
+        428 => ("PreconditionRequired", "conflict"),
+        451 => ("UnavailableForLegalReasons", "rejected"),
+        _ => return (format!("Refused{status}"), "rejected"),
+    };
+    (name.to_string(), kind)
 }
 
 /// Whether a written type mentions type `name`: `List<Tag>` mentions
