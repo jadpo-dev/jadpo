@@ -106,6 +106,7 @@ mod personal_data_report;
 mod policy;
 mod pooled_statements;
 mod provider_calls;
+mod provider_failures;
 mod provider_fakes;
 mod provider_parts;
 mod provider_paths;

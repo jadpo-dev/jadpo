@@ -141,6 +141,11 @@ pub enum What {
         kind: Option<String>,
         code: String,
         message: Option<String>,
+        /// How a provider package's provider answers it: `wire_status:`
+        /// and `wire_name:` (area 11, "How a provider's failures are
+        /// read").
+        wire_status: Option<u16>,
+        wire_name: Option<String>,
         fields: Vec<(String, String)>,
     },
     /// A library package's public message, called as
@@ -305,6 +310,8 @@ impl Declaration {
                 kind,
                 code,
                 message,
+                wire_status,
+                wire_name,
                 fields,
             } => {
                 if let Some(kind) = kind {
@@ -313,6 +320,12 @@ impl Declaration {
                 out.push(line(format!("code {code}")));
                 if let Some(message) = message {
                     out.push(line(format!("message {}", format::quote(message))));
+                }
+                if let Some(status) = wire_status {
+                    out.push(line(format!("wire_status {status}")));
+                }
+                if let Some(text) = wire_name {
+                    out.push(line(format!("wire_name {}", format::quote(text))));
                 }
                 out.extend(fields.iter().map(|(n, t)| line(format!("{n}: {t}"))));
             }
@@ -545,6 +558,8 @@ pub fn surface(db: &dyn Db, project: Project, folder: &str) -> Option<Surface> {
                         kind: failure.kind.clone(),
                         code: failure.code.clone(),
                         message: failure.message.clone(),
+                        wire_status: failure.wire_status,
+                        wire_name: failure.wire_name.clone(),
                         fields: fields(graph, node),
                     }));
                     continue;

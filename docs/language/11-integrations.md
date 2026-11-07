@@ -856,7 +856,9 @@ values, `AcmeCouriers.Window.morning`.
 
 A failure's code, `slot_taken` from its name, is the provider's error
 code. Jadpo reads it from the place in the response that `error_code:`
-names.
+names. A failure can instead say the status its provider refuses with,
+`wire_status:`, and the provider's own text for it, `wire_name:`
+([A provider's failures](#a-providers-failures)).
 
 ### What is public
 
@@ -3409,7 +3411,7 @@ public resource tracking {
 | `decode:` and `encode:` | A field | A pure function pair from the package's own `libraries/`, for anything else; checked to round-trip at publish |
 | `wire_output:` and `decode:` | An operation | The response as sent, and a pure function turning it into `output:`; run over every recorded response at publish |
 | `output_at:` | An operation | The path of the real object inside an envelope |
-| `failed_when:` | An operation | A `200` answer that is really a failure, by a path and the value that marks it (`ok` is `false`); the failure's code is then read from `error_code:` |
+| `failed_when:` | An operation | A `200` answer that is really a failure, by a path and the value that marks it (`ok` is `false`); the failure is then read from `error_code:` as a refusal's is ([A provider's failures](#a-providers-failures)) |
 
 - **A field without `wire:` is written as Jadpo's contract writes it.**
   The contract is the one JSON form each standard type has at every
@@ -3930,6 +3932,204 @@ writes its type.
   alone; returning it, passing it on, or anything else uses it whole.
   Fields further in are decoded with the field that holds them. An
   answer decoded whole by an operation's `decode:` is read whole.
+
+## A provider's failures
+<!-- topic: a-providers-failures -->
+
+A provider package declares the failures its provider refuses a call
+with in `failures/`, and each operation lists the ones it can answer with
+in `failures:`. The runtime reads a refusal, a `4xx` the driver doesn't
+read as something else, as one of them. By default it reads the text at
+the provider's `error_code:` as the failure's code: `slot_taken` is
+`SlotTaken`.
+
+Many providers send no such code. postcodes.io answers a postcode it
+doesn't hold with `404` and a sentence, `{"status": 404, "error":
+"Postcode not found"}`. A failure then says how its provider answers it:
+
+| Written | Means |
+|---|---|
+| `wire_status: 404` | The HTTP status the provider refuses with: a `4xx` but `401`, `403`, `408` and `429`, which the driver reads first |
+| `wire_name: "Postcode not found"` | The provider's own text at `error_code:`, exactly as it writes it, where that isn't the failure's code |
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/failures/postcode_not_found.jadpo
+/// postcodes.io holds no such postcode.
+public type PostcodeNotFound = Failure {
+    kind: FailureKind.not_found
+    wire_status: 404
+    wire_name: "Postcode not found"
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/failures/invalid_postcode.jadpo
+/// The text isn't a postcode postcodes.io can read.
+public type InvalidPostcode = Failure {
+    kind: FailureKind.invalid_value
+    wire_name: "Invalid postcode"
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/failures/nothing_found.jadpo
+/// postcodes.io found nothing at that address.
+public type NothingFound = Failure {
+    kind: FailureKind.not_found
+    wire_status: 404
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/resources/postcodes.jadpo
+public resource postcodes {
+    get: {
+        method: HttpMethod.get
+        path: "/postcodes/{postcode}"
+        input: PostcodeLookup
+        output: PostcodeAnswer
+        changes: false
+        failures: [PostcodeNotFound, InvalidPostcode, NothingFound]
+        source: PackageSource.written
+    }
+}
+```
+
+A failure's code is still its Jadpo code, `postcode_not_found` from its
+name. An app maps it by that code and a test scripts it by that code;
+`wire_name:` is only how the provider writes it, as a field's
+`wire_name:` is its spelling on the wire.
+
+A refusal is the most specific failure of the operation that matches it:
+
+1. one whose `wire_status:` and `wire_name:` both match;
+2. one whose text matches, at any status: its `wire_name:`, or its code
+   when it gives neither key;
+3. one whose `wire_status:` matches and gives no `wire_name:`, whatever
+   the text, or with none.
+
+So `404 {"error": "Postcode not found"}` is `PostcodeNotFound`, an
+answer of `"Invalid postcode"` with any status is `InvalidPostcode`, and
+any other `404`, such as `"Outcode not found"`, is `NothingFound`. A refusal
+no failure matches is a fault naming the operation and the provider's
+code. Two failures of one operation read the same way are
+`package.operation_invalid`, since nothing would tell them apart.
+
+The app maps them at the call as any package failure:
+
+```jadpo check project=p72f-failures file=domains/addresses/actions/place_postcode.jadpo
+use app { postcodes }
+use addresses/failures { AddressUnknown, AddressUnreadable }
+use shared/providers/postcodes_io
+
+/// Where a postcode someone typed is.
+action place_postcode(
+    postcode: PostcodesIo.Postcode
+) fails AddressUnknown, AddressUnreadable -> PostcodesIo.PostcodeAnswer {
+    return attempt postcodes.postcodes.get(
+        PostcodesIo.PostcodeLookup {
+            postcode: postcode
+        }
+    ) {
+        postcode_not_found: AddressUnknown
+        invalid_postcode: AddressUnreadable
+        nothing_found: AddressUnknown
+    }
+}
+```
+
+```jadpo check project=p72f-failures file=domains/addresses/actions/place_postcode.test.jadpo
+use app { postcodes }
+use addresses/failures { AddressUnknown, AddressUnreadable }
+
+test "a postcode postcodes.io doesn't hold is unknown" {
+    fakes: {
+        postcodes.postcodes.get: [postcode_not_found]
+    }
+    assert place_postcode("ZZ1 1ZZ") fails AddressUnknown
+}
+
+test "a postcode it can't read is unreadable" {
+    fakes: {
+        postcodes.postcodes.get: [invalid_postcode]
+    }
+    assert place_postcode("SW1A") fails AddressUnreadable
+}
+```
+
+```jadpo check project=p72f-failures file=domains/addresses/failures/address_unknown.jadpo hidden
+/// No such postcode is in use.
+type AddressUnknown = Failure {
+    kind: FailureKind.not_found
+    message: "That postcode isn't in use."
+}
+```
+
+```jadpo check project=p72f-failures file=domains/addresses/failures/address_unreadable.jadpo hidden
+/// The text isn't a postcode.
+type AddressUnreadable = Failure {
+    kind: FailureKind.invalid_value
+    message: "That isn't a postcode."
+}
+```
+
+```jadpo check project=p72f-failures file=app.jadpo hidden
+application {
+    connections: {
+        postcodes: {
+            package: PostcodesIo.v1
+            domains: [addresses]
+            environment: config.postcodes_environment
+        }
+    }
+}
+```
+
+```jadpo check project=p72f-failures file=config.jadpo hidden
+config {
+    postcodes_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/package.jadpo hidden
+/// postcodes.io's UK postcode lookups.
+package PostcodesIo.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/provider.jadpo hidden
+/// postcodes.io's public API, which takes no credential.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.postcodes.io"
+        sandbox: "https://api.postcodes.io"
+    }
+    error_code: "error"
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/types/postcode.jadpo hidden
+/// A postcode as someone typed it.
+public type Postcode = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/types/postcode_lookup.jadpo hidden
+/// Which postcode to look up.
+public type PostcodeLookup = Object {
+    postcode: Postcode
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/types/postcode_answer.jadpo hidden
+/// A postcode postcodes.io holds.
+public type PostcodeAnswer = Object {
+    postcode: Postcode
+    parish: Text?
+}
+```
 
 ## What package code may do
 <!-- topic: what-package-code-may-do -->
@@ -6293,7 +6493,9 @@ what `jadpo package check` and `jadpo package show` do.
   method and path, then `input`, `output`, `output_at`, `changes`,
   `idempotent`, `fails`, `source` (`written` or `imported`, with its
   documentation page) and `confirmed` when `recordings/<resource>.<operation>.json`
-  exists. Names are written as the package writes them, bare.
+  exists; a failure's are `kind`, `code` and `message`, then
+  `wire_status` and `wire_name` (quoted) where it gives them. Names are
+  written as the package writes them, bare.
 - **Where surfaces live.** `jadpo package check` writes an installed
   package's, in its own repository, beside `package.jadpo`; in an app it
   is held by the package's digest, so `jadpo check` doesn't regenerate it
@@ -6965,8 +7167,16 @@ check.
   `2xx` answer's JSON body.
 - **What it can't know from another provider** is written the safe way
   and listed: `changes: true` for every method but `GET`, no
-  `idempotent:`, no failures, no `idempotency:` or `error_code:`, and no
-  sandbox host.
+  `idempotent:`, no `idempotency:` or `error_code:`, and no sandbox host.
+  Each documented refusal the driver reads as a failure, a `4xx` but
+  `401`, `403`, `408` and `429`, is one failure per status, named by its
+  reason phrase (`NotFound`, `Refused418` for one with none), of the kind
+  its status says (`400`, `413`, `415` and `422` `invalid_value`; `404`
+  and `410` `not_found`; `409`, `412` and `423` `conflict`; any other
+  `rejected`) and read by `wire_status:` alone, listed on each operation
+  that documents it. The provider's text for each refusal is left to
+  check, with the answer's description, since only its answers say what
+  it sends ([A provider's failures](#a-providers-failures)).
 - **Types.** The exact mappings of
   [Mapping imported types to standard types](#mapping-imported-types-to-standard-types)
   (`date-time` `Instant`, `date`
@@ -7035,7 +7245,9 @@ again, and how its answer is classified and read.
   would leave it, empty, `.` or `..`, is a fault, and nothing is sent);
   the rest is a `GET`'s or
   `DELETE`'s query (a list as the key repeated, `none` left out, an
-  object as its JSON) and every other method's JSON body.
+  object as its JSON) and every other method's JSON body, where a field
+  that is `none`, at any depth, is left out rather than sent as `null`,
+  which some providers refuse.
 - **Who calls.** Only an action, of a domain the connection's `domains:`
   lists (`connection.domain_not_listed` otherwise); never a function, and
   never a test, which reaches a provider through an action with the
@@ -7090,8 +7302,10 @@ again, and how its answer is classified and read.
   `failed_when:` marks it, then the code at `error_code:`; a redirect
   `misconfigured`, and a `401` or `403` as the credential's source says:
   `misconfigured` for a setting's, the connection's for every call; `408`, `429` or the package's `in_use:`
-  code `unavailable`; any other `4xx` the code at `error_code:`, a fault
-  when there is none; a `5xx`, no answer in time, a connection broken
+  code `unavailable`; any other `4xx` the operation's failure its status
+  and the text at `error_code:` match, the most specific first
+  ([A provider's failures](#a-providers-failures)), a fault when none
+  does; a `5xx`, no answer in time, a connection broken
   once the request had left, or an answer over 10 MiB as an answer that
   may have acted, which is `unavailable` for a keyed or safe call and
   `outcome_unknown` for an unkeyed one; a request that never left
@@ -7445,9 +7659,10 @@ how it is checked and how you make one.
   spellings and a map's keys, which say nothing about anyone; a field in
   a built-in encoding or with the package's own `decode:` and `encode:`,
   and the whole answer of an operation with `wire_output:`, which its
-  decoders exist to read, numbers with their digits as written; and a
-  value whose type's rules no generated value keeps (a pattern), which a
-  placeholder couldn't stand in for.
+  decoders exist to read, numbers with their digits as written; the
+  members a field's `wire_parts:` names, as sent for the same reason;
+  and a value whose type's rules no generated value keeps (a pattern),
+  which a placeholder couldn't stand in for.
 - **Filling a placeholder** gives a generated value of the type at its
   place, as the fake's generated default makes one: the
   invocation's clock, a fresh UUID. Members a hand-written recording adds
@@ -8199,6 +8414,7 @@ package's name, as its types are.
 | Lazy loading, the package cache and two versions side by side | Built. |
 | The OpenAPI importer, and the scoped review of an import's types | Built. |
 | Provider calls, decoding, `wire_parts:` and retries | Built. |
+| A provider's failures read by `wire_status:` and `wire_name:` ([A provider's failures](#a-providers-failures)) | Built. |
 | Walking a list operation's pages with `batches.each` ([Pages of results](#pages-of-results)) | Not built yet: a provider's list operation as `batches.each`'s `from:` is `toolchain.not_built_yet` where it is written ([Jobs and events](12-jobs-and-events.md#walking-records-or-a-providers-list-batcheseach)). |
 | No transaction open during a call, and several changing calls in one action | Built. |
 | Fakes, recordings and provider calls faked in development | Built. |

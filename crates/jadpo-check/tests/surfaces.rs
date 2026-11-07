@@ -606,3 +606,38 @@ fn a_breaking_change_is_refused_within_a_major_version() {
         Err(vec![("removed".to_string(), "type UkPostcode".to_string())])
     );
 }
+
+/// A provider package's failure that says how its provider answers it
+/// carries `wire_status` and `wire_name` on its surface, which reads back
+/// (area 11, "A provider's failures"; decided 2026-11-07).
+#[test]
+fn a_failures_status_and_text_are_on_its_surface() {
+    let mut files = couriers();
+    let slot = files
+        .iter_mut()
+        .find(|(path, _)| path.ends_with("failures/slot_taken.jadpo"))
+        .expect("the failure");
+    slot.1 = "/// The collection slot was taken first.
+public type SlotTaken = Failure {
+    kind: FailureKind.conflict
+    message: \"The collection slot is no longer available.\"
+    wire_status: 409
+    wire_name: \"Slot \\\"AM\\\" is taken\"
+}
+";
+    let text = surface_of(
+        &files,
+        &[],
+        "shared/providers/acme_couriers/v1",
+        Some("1.0.0"),
+    )
+    .expect("a surface");
+    assert!(
+        text.contains("    code slot_taken\n    message \"The collection slot is no longer available.\"\n    wire_status 409\n    wire_name \"Slot \\\"AM\\\" is taken\"\n"),
+        "{text}"
+    );
+    assert_eq!(
+        jadpo_db::record::read(&text, &jadpo_db::record::SURFACE).err(),
+        None
+    );
+}
