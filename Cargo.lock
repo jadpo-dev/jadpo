@@ -1963,6 +1963,7 @@ name = "jadpo-registry"
 version = "0.4.1"
 dependencies = [
  "jadpo-db",
+ "jadpo-std",
  "serde",
  "serde_json",
  "sha2",

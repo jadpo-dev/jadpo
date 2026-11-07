@@ -109,3 +109,25 @@ fn versions_order_by_precedence() {
         ]
     );
 }
+
+/// `names.registry_part` as compiled code calls it (area 19, "Registry
+/// names"): the page's test.
+#[test]
+fn registry_part_writes_a_name_in_code_as_the_registry_does() {
+    for (code, part) in [
+        ("AcmeCouriers", "acme-couriers"),
+        ("OpenAi", "open-ai"),
+        ("Postcodes", "postcodes"),
+    ] {
+        assert_eq!(
+            run(
+                Op::NamesRegistryPart,
+                &[Value::text(code)],
+                None,
+                &mut |_| None,
+            ),
+            Ok(Value::text(part)),
+            "{code}"
+        );
+    }
+}

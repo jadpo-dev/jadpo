@@ -289,7 +289,7 @@ full table under [All operations](#all-operations):
 | Colour | `colour.from_hsl`, `from_oklch`, `mix`, `with_lightness`, `contrast` (WCAG 2) | 5 |
 | Security | `crypto` as tabled below, with `sign`, `verify_signature`, `verify_jwt` and `verify_totp` | 10 |
 | Web | `web.with_query(url, entries)`, `web.resolve(base, relative)`, `web.cidr_contains(range, address)` | 3 |
-| Software | `semver.satisfies(version, range)` | 1 |
+| Software | `semver.satisfies(version, range)`, `names.registry_part(name)` | 2 |
 | Media | `media.fit(dimensions, within:)`, keeping the aspect ratio | 1 |
 | Postal codes | `postal.outward_code`, `inward_code`, `area`, `district`, `sub_district`, `sector` and `unit`: a UK postcode's parts by Royal Mail's format | 7 |
 | Text formats | `markup.to_html`, `rich_to_html`, `to_plain_text`; `text.pick` with fallback. `Html` is always safe: its construction sanitises | 4 |
@@ -9581,6 +9581,7 @@ test "a status's class is a comparison, and a problem is sent as RFC 9457 has it
 | `web.resolve(base, relative)` | `Url`: a `RelativeUrl` or `UrlPath` resolved against `base` by RFC 3986 | | none |
 | `web.cidr_contains(range, address)` | `Bool`: the `IpAddress` is inside the `Cidr` | | `x >>= a` |
 | `semver.satisfies(version, range)` | `Bool`: a `SemanticVersion` is inside a `VersionRange` | | none |
+| `names.registry_part(name)` | `Text`: a name in code as the registry writes it, `AcmeCouriers` as `acme-couriers` | | none |
 
 `web`'s operations never fail, because each takes values that were
 checked when they were built.
@@ -9595,7 +9596,8 @@ checked when they were built.
   PostgreSQL's `>>=` doesn't. So an IPv4-mapped IPv6 address isn't inside
   an IPv4 range.
 
-`semver.satisfies` is under [Software types](#software-types).
+`semver.satisfies` is under [Software types](#software-types), and
+`names.registry_part` under [Registry names](#registry-names).
 
 ### Which standard each type follows
 
@@ -9617,6 +9619,37 @@ Every `UrlPath` is a `RelativeUrl`, and every `DomainName` is a
 type UrlPath = RelativeUrl {}`), and a value of the first passes where the
 second is taken: `web.resolve`'s `relative` takes a path. It never works
 the other way round.
+
+### Registry names
+
+`names.registry_part(name)` gives a name in code as the public registry
+writes it, so an application that lists or links packages works the name
+out exactly as the registry does. It lower-cases the name and puts a `-`
+before each capital but the first: `AcmeCouriers` is `acme-couriers`,
+`OpenAi` is `open-ai`. It never fails, and changes nothing else, so
+whether the result is a name the registry takes (starting with a
+lower-case letter, then lower-case letters, digits and single `-`, at
+most 39 characters) is the registry's to say.
+
+```jadpo check project=registry-part
+type WrittenInCode = Text {
+    min_length: 1
+    max_length: 64
+}
+
+type ScopedPart = Text {}
+
+/// The part of a package's registry name its name in code gives.
+function scoped_part(code: WrittenInCode) -> ScopedPart {
+    return ScopedPart(names.registry_part(code))
+}
+
+test "a name in code is written as the registry writes it" {
+    assert scoped_part("AcmeCouriers") == "acme-couriers"
+    assert scoped_part("OpenAi") == "open-ai"
+    assert scoped_part("Postcodes") == "postcodes"
+}
+```
 
 ### Types held as text
 
