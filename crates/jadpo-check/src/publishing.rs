@@ -23,7 +23,7 @@ use crate::tree;
 
 /// Whether a finding of `rule` in a published package's own code is its
 /// publisher's to answer rather than a reason the package doesn't compile
-/// (area 11, "Installing safely"): a judgement call, answered by a fix or a
+/// (area 11, "How the package format is read"): a judgement call, answered by a fix or a
 /// decline, and the bar's own `publish.` rules. A newer Jadpo can add such a
 /// finding to a release that passed the bar when it was published; an app
 /// that installed it is told, and keeps working. A security rule's decline

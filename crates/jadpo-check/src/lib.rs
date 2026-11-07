@@ -139,7 +139,7 @@ pub struct Checked {
     /// publishing bar a newer Jadpo makes ([`publishing::publishers_to_answer`]),
     /// by its name in code with its version, `BritishGrid.v1`, with those
     /// findings: an alert about the package, which never refuses the app
-    /// (area 11, "Installing safely").
+    /// (area 11, "How the package format is read").
     pub publishers: Vec<(String, Vec<Diagnostic>)>,
 }
 

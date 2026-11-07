@@ -1625,7 +1625,7 @@ fn checked_installed(files: &[(&str, &str)]) -> (Vec<String>, Vec<(String, Vec<S
 
 /// A newer Jadpo's publishing-bar finding in an installed package's own
 /// code is its publisher's to answer: the app is told and keeps working.
-/// A real error still refuses (area 11, "Installing safely").
+/// A real error still refuses (area 11, "How the package format is read").
 #[test]
 fn an_installed_packages_publishing_bar_finding_is_left_to_its_publisher() {
     let files: Vec<(&str, &str)> = with(&[SAVE])

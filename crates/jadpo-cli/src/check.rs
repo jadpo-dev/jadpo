@@ -250,7 +250,7 @@ pub(crate) fn reported(
 }
 
 /// Each installed package whose own code holds a finding a newer Jadpo
-/// makes of the publishing bar (area 11, "Installing safely"): an alert
+/// makes of the publishing bar (area 11, "How the package format is read"): an alert
 /// about the package, before the summary, never an error of the app's.
 pub(crate) fn publisher_alerts(publishers: &[Publishers]) -> Option<Block> {
     (!publishers.is_empty()).then(|| {

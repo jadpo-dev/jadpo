@@ -114,7 +114,7 @@ next: jadpo package show postcodes  shows what it offers
 
 /// A newer Jadpo's publishing-bar finding in a released package's own code
 /// is an alert about the package, for its publisher: `add` and `check` go
-/// on (area 11, "Installing safely").
+/// on (area 11, "How the package format is read").
 #[test]
 fn a_finding_for_the_packages_publisher_is_an_alert_not_a_refusal() {
     let (_dir, package, app) = workspace("install-publishers");

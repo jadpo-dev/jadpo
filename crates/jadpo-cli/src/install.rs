@@ -250,7 +250,7 @@ struct Verified {
     facts: Option<jadpo_check::release::Facts>,
     /// Findings of the publishing bar in its code, which a newer Jadpo
     /// makes and its publisher answers: an alert, never a refusal (area
-    /// 11, "Installing safely").
+    /// 11, "How the package format is read").
     publishers: Vec<Diagnostic>,
 }
 

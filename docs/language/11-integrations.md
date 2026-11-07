@@ -1448,25 +1448,6 @@ the sandbox for each one (see "Tests and fakes").
   `jadpo package add` and `update` regenerate the surface from the
   package's code and refuse one that differs from its committed
   `surface.jadpo_record`.
-- **A newer Jadpo never breaks an app over a package's own code.** A
-  release passed the publishing bar when it was published, and a later
-  Jadpo can find more in it: a judgement call (a declinable rule, such as
-  `package.standard_candidate`, `type.standard_exists` or
-  `constant.similar_exists`) or one of the bar's own `publish.` rules. In
-  an installed package's files such a finding is its publisher's to
-  answer, so `jadpo check`, `add` and `update` show it as an alert about
-  the package and go on, and `--json` lists it under `package_alerts`:
-
-  ```text
-  ▲ alert  `Postcodes.v2` has 1 finding for its publisher, not this app:
-    `constant.similar_exists`
-  ```
-
-  Anything else is a package that doesn't compile, and still refuses: a
-  security rule, whose decline a person accepts, too. The registry's
-  compatibility runs tell the publisher
-  ([Compatibility with Jadpo releases](#compatibility-with-jadpo-releases)).
-  The app's own integration is the app's code, so its findings are errors.
 - **The lock** records each package's version, digest and source:
   `registry`, `git` (the repository, the tag and the tag's commit), `path`
   (a folder, relative to your project) or `link`
@@ -1843,9 +1824,8 @@ description of every public message.
 > `publish.type_unreviewed` (under "The scoped review and unconfirmed
 > operations"); item 4's tests are the package's own
 > `.test.jadpo` files; item 5 works out the version from the surface at
-> the last tag, or at the release `--previous` names when the registry
-> never released that tag (`--previous none` for a first release), and
-> refuses a breaking change (`publish.breaking_change`);
+> the last tag (or the release `--previous` names) and refuses a breaking
+> change (`publish.breaking_change`);
 > item 7 is the index's own check and the `licence` row: `check` passes
 > `Licence.proprietary`, because a private package's CI runs it before a tag, and
 > `verify` and `publish` refuse it (`publish.licence_proprietary`). Item 8 is the
@@ -6259,6 +6239,13 @@ it when you write a package by hand or a check refuses one.
   folder in byte order, as Go's `dirhash` does; every file in the folder
   counts, hidden ones left out, so a changed, added or removed file is
   `package.digest_mismatch`.
+- **A newer Jadpo's findings in a package's own code.** In an
+  installed package's files, a judgement call (a declinable rule, such as
+  `package.standard_candidate`) or a `publish.` rule is its publisher's to
+  answer: `jadpo check`, `add` and `update` show it as an `alert` about the
+  package and go on, and `--json` lists it under `package_alerts`. Any
+  other error, a security rule's included, still refuses. The app's own
+  integration's findings are errors.
 - **What isn't compiled.** An installed package's tests (run when it is
   published, not in the app's `jadpo test`), its `recipes/` and `sample/`
   are read only for its digest. The app's own integration's tests run with
