@@ -219,8 +219,9 @@ it doesn't reach is only listed.
 ## Remove it
 
 `jadpo package remove` takes out a package your app no longer uses. It is
-refused while your code still has `use packages/<name>`
-([`install.in_use`](../errors/install.in_use.md)):
+refused while your code still has `use packages/<name>`. Take out a
+connection that names the package first, since `jadpo check` fails on one
+whose package is gone:
 
 ```sh
 jadpo package remove resend

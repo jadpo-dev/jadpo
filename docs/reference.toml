@@ -831,6 +831,7 @@ topics = [
   "the-package-format",
   "developing-and-publishing-a-package",
   "the-public-registry",
+  "the-registry-protocol",
   "the-verifier",
 ]
 details = [

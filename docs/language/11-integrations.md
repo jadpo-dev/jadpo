@@ -2142,7 +2142,18 @@ would change.
 - The verifier checks with the Jadpo release the package declares and the
   newest, so a local pass with either is a pass at the registry.
 
-### The registry protocol
+### Not built yet
+
+The registry at jadpo.dev publishes, installs, searches by words and yanks.
+These parts of this topic aren't built there yet: search by meaning, the
+written account and the review of each release's diff, urgent releases and the
+advisories they publish, compatibility runs, refusing a tag that moves,
+organisations with several members and their releasers, automatic release,
+successors and reports. Accounts are open to a short list of people for now;
+anyone can search and install.
+
+## The registry protocol
+<!-- topic: the-registry-protocol -->
 
 The protocol is what the `jadpo` tool and the registry application are each
 built against. It is served at `https://jadpo.dev/registry/v1/` as JSON,
@@ -2213,13 +2224,6 @@ it can send makes a release live.
   doesn't constrain (the runtime's shared failures, `x-jadpo-` keywords,
   an `Idempotency-Key` header) is left alone. The registry application's
   CI runs it against its own document.
-
-### Not built yet
-
-At jadpo.dev: search by meaning, the written account and diff review, urgent
-releases and advisories, compatibility runs, refusing a moved tag,
-organisations, automatic release, successors and reports. Accounts are open to
-a short list of people for now.
 
 ## The verifier
 <!-- topic: the-verifier -->

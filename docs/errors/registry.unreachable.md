@@ -51,8 +51,13 @@ error: `http://127.0.0.1:8765/registry/v1/` isn't serving a registry
 
 ## How to fix it
 
-**If the network is down**, fix that and run the command again. The command
-then reads the registry as it would have, and nothing was changed in the
+**If the network is down**, fix that, then run the same command again:
+
+```sh
+jadpo package add @acme/postcodes
+```
+
+It then reads the registry as it would have, and nothing was changed in the
 meantime.
 
 **If `JADPO_REGISTRY` is set**, it has to name a running registry and end in
@@ -62,6 +67,9 @@ meantime.
 env | grep JADPO_REGISTRY
 unset JADPO_REGISTRY
 ```
+
+The command then asks the registry the variable names, or jadpo.dev's once it
+is unset.
 
 **If the registry itself can't be reached**, install the package from its
 folder or from a git tag instead, when you have one:
