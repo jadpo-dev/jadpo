@@ -105,6 +105,13 @@ coordinates
 # messages about it say (area 6, chunk 5.5u8)
 layer
 
+# A UK postcode's parts, the `postal` operations' names and their
+# parameter (area 19, "A UK postcode's parts")
+district
+inward
+postcode
+sector
+
 # `colour`'s parameters and the media types' names and parts (chunk 5.5p)
 hue
 saturation
