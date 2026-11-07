@@ -91,6 +91,8 @@ fn condition_clause(keys: &[String]) -> String {
         "What the text or bytes hold is only known when the program runs, and they may not be the encoding at all, which fails `malformed`".to_string()
     } else if keys.iter().any(|key| key == "same_point") {
         "Two equal points have no direction between them, and whether these two are equal is only known when the program runs, which fails `same_point`".to_string()
+    } else if keys.iter().any(|key| key == "not_uk_format") {
+        "Only a postcode in Royal Mail's format has these parts, and nothing proves this one is, as a postcode written out in it would; one that isn't fails `not_uk_format`".to_string()
     } else if keys.iter().any(|key| key == "out_of_range") {
         "There is no logarithm of a value at or below `0`, and nothing proves this one above `0`, as a literal above `0` or a type whose `min` is above `0` would".to_string()
     } else {
@@ -107,7 +109,11 @@ fn condition_clause(keys: &[String]) -> String {
 /// gives (area 19, "Encodings" and "Data formats").
 fn settle_by(keys: &[String]) -> String {
     if keys.iter().any(|key| {
-        key == "malformed" || key == "mismatch" || key == "invalid_signature" || key == "same_point"
+        key == "malformed"
+            || key == "mismatch"
+            || key == "invalid_signature"
+            || key == "same_point"
+            || key == "not_uk_format"
     }) {
         String::new()
     } else if keys.iter().any(|key| key == "out_of_range") {

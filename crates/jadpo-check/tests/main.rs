@@ -92,6 +92,7 @@ mod percentages;
 mod personal_reach;
 mod persons;
 mod policy;
+mod postal;
 mod project;
 mod prompt_policy;
 mod prompts;

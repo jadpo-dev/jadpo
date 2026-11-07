@@ -55,6 +55,7 @@ pub mod media;
 pub mod money;
 pub mod ops;
 pub mod order;
+pub mod postal;
 pub mod present;
 pub mod prompt;
 pub mod public_key;
@@ -303,6 +304,24 @@ pub fn run(
         (Op::WebResolve, [base, relative]) => web::resolve(base, relative),
         (Op::WebWithQuery, [url, entries]) => web::with_query(url, entries),
         (Op::WebCidrContains | Op::WebResolve | Op::WebWithQuery, _) => Err(Fault::Shape),
+        // A UK postcode's parts (area 19, "A UK postcode's parts").
+        (Op::PostalArea, [postcode]) => postal::area(postcode),
+        (Op::PostalDistrict, [postcode]) => postal::district(postcode),
+        (Op::PostalInwardCode, [postcode]) => postal::inward_code(postcode),
+        (Op::PostalOutwardCode, [postcode]) => postal::outward_code(postcode),
+        (Op::PostalSector, [postcode]) => postal::sector(postcode),
+        (Op::PostalSubDistrict, [postcode]) => postal::sub_district(postcode),
+        (Op::PostalUnit, [postcode]) => postal::unit(postcode),
+        (
+            Op::PostalArea
+            | Op::PostalDistrict
+            | Op::PostalInwardCode
+            | Op::PostalOutwardCode
+            | Op::PostalSector
+            | Op::PostalSubDistrict
+            | Op::PostalUnit,
+            _,
+        ) => Err(Fault::Shape),
         // `semver`'s operation (area 19, "Web and software").
         (Op::SemverSatisfies, [version, range]) => semver::satisfies(version, range),
         (Op::SemverSatisfies, _) => Err(Fault::Shape),
@@ -1062,6 +1081,13 @@ mod tests {
                     };
                     vec![size(4000, 3000), size(320, 320)]
                 }
+                Op::PostalArea
+                | Op::PostalDistrict
+                | Op::PostalInwardCode
+                | Op::PostalOutwardCode
+                | Op::PostalSector
+                | Op::PostalSubDistrict
+                | Op::PostalUnit => vec![Value::text("SW1A 1AA")],
                 Op::SemverSatisfies => vec![
                     semver::read_version("1.2.3").expect("a version"),
                     Value::text("^1.0.0"),

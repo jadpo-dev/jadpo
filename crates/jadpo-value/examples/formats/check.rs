@@ -5,7 +5,8 @@
 //! standards' known answers: XChaCha20-Poly1305's draft, RFC 4231's
 //! HMAC-SHA-256, RFC 8032's Ed25519 and OpenSSL's Argon2id, and a JWT
 //! `verify_jwt` checks (chunk 5.5r), and RFC 7515's RS256 and ES256 tokens
-//! (chunk 5.5r4). Shared by this example, which the gate runs
+//! (chunk 5.5r4); and a UK postcode's parts by Royal Mail's format.
+//! Shared by this example, which the gate runs
 //! under WebAssembly, and the native test
 //! (crates/jadpo-runtime/tests/formats.rs), so both targets are held to
 //! the same bytes, each call made as both executors make it: through
@@ -420,7 +421,249 @@ pub fn mismatches() -> (Vec<String>, usize) {
         &format!("{:?}", Err::<Value, _>(Unread::Malformed)),
     );
     crypto_checks(&mut expect);
+    postal_checks(&mut expect);
     (wrong, count)
+}
+
+/// A UK postcode's parts (area 19, "A UK postcode's parts"): each
+/// operation, the postcode and the part it gives, `None` for no
+/// sub-district, in Royal Mail's format with and without its space.
+const POSTCODE_PARTS: &[(Op, &str, Option<&str>)] = &[
+    (Op::PostalOutwardCode, "L27 8XY", Some("L27")),
+    (Op::PostalOutwardCode, "NR10 3EZ", Some("NR10")),
+    (Op::PostalOutwardCode, "RG4 5AY", Some("RG4")),
+    (Op::PostalOutwardCode, "NE69 7AW", Some("NE69")),
+    (Op::PostalOutwardCode, "SE23 2NF", Some("SE23")),
+    (Op::PostalOutwardCode, "BT35 8GE", Some("BT35")),
+    (Op::PostalOutwardCode, "L278XY", Some("L27")),
+    (Op::PostalOutwardCode, "NR103EZ", Some("NR10")),
+    (Op::PostalOutwardCode, "RG45AY", Some("RG4")),
+    (Op::PostalOutwardCode, "NE697AW", Some("NE69")),
+    (Op::PostalOutwardCode, "SE232NF", Some("SE23")),
+    (Op::PostalOutwardCode, "BT358GE", Some("BT35")),
+    (Op::PostalOutwardCode, "AA9A 9AA", Some("AA9A")),
+    (Op::PostalOutwardCode, "A9A 9AA", Some("A9A")),
+    (Op::PostalOutwardCode, "A9 9AA", Some("A9")),
+    (Op::PostalOutwardCode, "A99 9AA", Some("A99")),
+    (Op::PostalOutwardCode, "AA9 9AA", Some("AA9")),
+    (Op::PostalOutwardCode, "AA99 9AA", Some("AA99")),
+    (Op::PostalOutwardCode, "AA9A9AA", Some("AA9A")),
+    (Op::PostalOutwardCode, "A9A9AA", Some("A9A")),
+    (Op::PostalOutwardCode, "A99AA", Some("A9")),
+    (Op::PostalOutwardCode, "A999AA", Some("A99")),
+    (Op::PostalOutwardCode, "AA99AA", Some("AA9")),
+    (Op::PostalOutwardCode, "AA999AA", Some("AA99")),
+    (Op::PostalInwardCode, "L27 8XY", Some("8XY")),
+    (Op::PostalInwardCode, "NR10 3EZ", Some("3EZ")),
+    (Op::PostalInwardCode, "RG4 5AY", Some("5AY")),
+    (Op::PostalInwardCode, "NE69 7AW", Some("7AW")),
+    (Op::PostalInwardCode, "SE23 2NF", Some("2NF")),
+    (Op::PostalInwardCode, "BT35 8GE", Some("8GE")),
+    (Op::PostalInwardCode, "L278XY", Some("8XY")),
+    (Op::PostalInwardCode, "NR103EZ", Some("3EZ")),
+    (Op::PostalInwardCode, "RG45AY", Some("5AY")),
+    (Op::PostalInwardCode, "NE697AW", Some("7AW")),
+    (Op::PostalInwardCode, "SE232NF", Some("2NF")),
+    (Op::PostalInwardCode, "BT358GE", Some("8GE")),
+    (Op::PostalInwardCode, "AA9A 9AA", Some("9AA")),
+    (Op::PostalInwardCode, "A9A 9AA", Some("9AA")),
+    (Op::PostalInwardCode, "A9 9AA", Some("9AA")),
+    (Op::PostalInwardCode, "A99 9AA", Some("9AA")),
+    (Op::PostalInwardCode, "AA9 9AA", Some("9AA")),
+    (Op::PostalInwardCode, "AA99 9AA", Some("9AA")),
+    (Op::PostalInwardCode, "AA9A9AA", Some("9AA")),
+    (Op::PostalInwardCode, "A9A9AA", Some("9AA")),
+    (Op::PostalInwardCode, "A99AA", Some("9AA")),
+    (Op::PostalInwardCode, "A999AA", Some("9AA")),
+    (Op::PostalInwardCode, "AA99AA", Some("9AA")),
+    (Op::PostalInwardCode, "AA999AA", Some("9AA")),
+    (Op::PostalArea, "L27 8XY", Some("L")),
+    (Op::PostalArea, "NR10 3EZ", Some("NR")),
+    (Op::PostalArea, "RG4 5AY", Some("RG")),
+    (Op::PostalArea, "NE69 7AW", Some("NE")),
+    (Op::PostalArea, "SE23 2NF", Some("SE")),
+    (Op::PostalArea, "BT35 8GE", Some("BT")),
+    (Op::PostalArea, "L278XY", Some("L")),
+    (Op::PostalArea, "NR103EZ", Some("NR")),
+    (Op::PostalArea, "RG45AY", Some("RG")),
+    (Op::PostalArea, "NE697AW", Some("NE")),
+    (Op::PostalArea, "SE232NF", Some("SE")),
+    (Op::PostalArea, "BT358GE", Some("BT")),
+    (Op::PostalArea, "AA9A 9AA", Some("AA")),
+    (Op::PostalArea, "A9A 9AA", Some("A")),
+    (Op::PostalArea, "A9 9AA", Some("A")),
+    (Op::PostalArea, "A99 9AA", Some("A")),
+    (Op::PostalArea, "AA9 9AA", Some("AA")),
+    (Op::PostalArea, "AA99 9AA", Some("AA")),
+    (Op::PostalArea, "AA9A9AA", Some("AA")),
+    (Op::PostalArea, "A9A9AA", Some("A")),
+    (Op::PostalArea, "A99AA", Some("A")),
+    (Op::PostalArea, "A999AA", Some("A")),
+    (Op::PostalArea, "AA99AA", Some("AA")),
+    (Op::PostalArea, "AA999AA", Some("AA")),
+    (Op::PostalDistrict, "L27 8XY", Some("L27")),
+    (Op::PostalDistrict, "NR10 3EZ", Some("NR10")),
+    (Op::PostalDistrict, "RG4 5AY", Some("RG4")),
+    (Op::PostalDistrict, "NE69 7AW", Some("NE69")),
+    (Op::PostalDistrict, "SE23 2NF", Some("SE23")),
+    (Op::PostalDistrict, "BT35 8GE", Some("BT35")),
+    (Op::PostalDistrict, "L278XY", Some("L27")),
+    (Op::PostalDistrict, "NR103EZ", Some("NR10")),
+    (Op::PostalDistrict, "RG45AY", Some("RG4")),
+    (Op::PostalDistrict, "NE697AW", Some("NE69")),
+    (Op::PostalDistrict, "SE232NF", Some("SE23")),
+    (Op::PostalDistrict, "BT358GE", Some("BT35")),
+    (Op::PostalDistrict, "EC1A 1BB", Some("EC1")),
+    (Op::PostalDistrict, "W1A0AX", Some("W1")),
+    (Op::PostalDistrict, "NW1W1AA", Some("NW1")),
+    (Op::PostalDistrict, "N1C 0AB", Some("N1")),
+    (Op::PostalDistrict, "AA9A 9AA", Some("AA9")),
+    (Op::PostalDistrict, "A9A 9AA", Some("A9")),
+    (Op::PostalDistrict, "A9 9AA", Some("A9")),
+    (Op::PostalDistrict, "A99 9AA", Some("A99")),
+    (Op::PostalDistrict, "AA9 9AA", Some("AA9")),
+    (Op::PostalDistrict, "AA99 9AA", Some("AA99")),
+    (Op::PostalDistrict, "AA9A9AA", Some("AA9")),
+    (Op::PostalDistrict, "A9A9AA", Some("A9")),
+    (Op::PostalDistrict, "A99AA", Some("A9")),
+    (Op::PostalDistrict, "A999AA", Some("A99")),
+    (Op::PostalDistrict, "AA99AA", Some("AA9")),
+    (Op::PostalDistrict, "AA999AA", Some("AA99")),
+    (Op::PostalSubDistrict, "L27 8XY", None),
+    (Op::PostalSubDistrict, "NR10 3EZ", None),
+    (Op::PostalSubDistrict, "RG4 5AY", None),
+    (Op::PostalSubDistrict, "NE69 7AW", None),
+    (Op::PostalSubDistrict, "SE23 2NF", None),
+    (Op::PostalSubDistrict, "BT35 8GE", None),
+    (Op::PostalSubDistrict, "L278XY", None),
+    (Op::PostalSubDistrict, "NR103EZ", None),
+    (Op::PostalSubDistrict, "RG45AY", None),
+    (Op::PostalSubDistrict, "NE697AW", None),
+    (Op::PostalSubDistrict, "SE232NF", None),
+    (Op::PostalSubDistrict, "BT358GE", None),
+    (Op::PostalSubDistrict, "EC1A 1BB", Some("EC1A")),
+    (Op::PostalSubDistrict, "W1A0AX", Some("W1A")),
+    (Op::PostalSubDistrict, "NW1W1AA", Some("NW1W")),
+    (Op::PostalSubDistrict, "N1C 0AB", Some("N1C")),
+    (Op::PostalSubDistrict, "AA9A 9AA", Some("AA9A")),
+    (Op::PostalSubDistrict, "A9A 9AA", Some("A9A")),
+    (Op::PostalSubDistrict, "A9 9AA", None),
+    (Op::PostalSubDistrict, "A99 9AA", None),
+    (Op::PostalSubDistrict, "AA9 9AA", None),
+    (Op::PostalSubDistrict, "AA99 9AA", None),
+    (Op::PostalSector, "L27 8XY", Some("L27 8")),
+    (Op::PostalSector, "NR10 3EZ", Some("NR10 3")),
+    (Op::PostalSector, "RG4 5AY", Some("RG4 5")),
+    (Op::PostalSector, "NE69 7AW", Some("NE69 7")),
+    (Op::PostalSector, "SE23 2NF", Some("SE23 2")),
+    (Op::PostalSector, "BT35 8GE", Some("BT35 8")),
+    (Op::PostalSector, "L278XY", Some("L27 8")),
+    (Op::PostalSector, "NR103EZ", Some("NR10 3")),
+    (Op::PostalSector, "RG45AY", Some("RG4 5")),
+    (Op::PostalSector, "NE697AW", Some("NE69 7")),
+    (Op::PostalSector, "SE232NF", Some("SE23 2")),
+    (Op::PostalSector, "BT358GE", Some("BT35 8")),
+    (Op::PostalSector, "AA9A 9AA", Some("AA9A 9")),
+    (Op::PostalSector, "A9A 9AA", Some("A9A 9")),
+    (Op::PostalSector, "A9 9AA", Some("A9 9")),
+    (Op::PostalSector, "A99 9AA", Some("A99 9")),
+    (Op::PostalSector, "AA9 9AA", Some("AA9 9")),
+    (Op::PostalSector, "AA99 9AA", Some("AA99 9")),
+    (Op::PostalSector, "AA9A9AA", Some("AA9A 9")),
+    (Op::PostalSector, "A9A9AA", Some("A9A 9")),
+    (Op::PostalSector, "A99AA", Some("A9 9")),
+    (Op::PostalSector, "A999AA", Some("A99 9")),
+    (Op::PostalSector, "AA99AA", Some("AA9 9")),
+    (Op::PostalSector, "AA999AA", Some("AA99 9")),
+    (Op::PostalUnit, "L27 8XY", Some("XY")),
+    (Op::PostalUnit, "NR10 3EZ", Some("EZ")),
+    (Op::PostalUnit, "RG4 5AY", Some("AY")),
+    (Op::PostalUnit, "NE69 7AW", Some("AW")),
+    (Op::PostalUnit, "SE23 2NF", Some("NF")),
+    (Op::PostalUnit, "BT35 8GE", Some("GE")),
+    (Op::PostalUnit, "L278XY", Some("XY")),
+    (Op::PostalUnit, "NR103EZ", Some("EZ")),
+    (Op::PostalUnit, "RG45AY", Some("AY")),
+    (Op::PostalUnit, "NE697AW", Some("AW")),
+    (Op::PostalUnit, "SE232NF", Some("NF")),
+    (Op::PostalUnit, "BT358GE", Some("GE")),
+    (Op::PostalUnit, "AA9A 9AA", Some("AA")),
+    (Op::PostalUnit, "A9A 9AA", Some("AA")),
+    (Op::PostalUnit, "A9 9AA", Some("AA")),
+    (Op::PostalUnit, "A99 9AA", Some("AA")),
+    (Op::PostalUnit, "AA9 9AA", Some("AA")),
+    (Op::PostalUnit, "AA99 9AA", Some("AA")),
+    (Op::PostalUnit, "AA9A9AA", Some("AA")),
+    (Op::PostalUnit, "A9A9AA", Some("AA")),
+    (Op::PostalUnit, "A99AA", Some("AA")),
+    (Op::PostalUnit, "A999AA", Some("AA")),
+    (Op::PostalUnit, "AA99AA", Some("AA")),
+    (Op::PostalUnit, "AA999AA", Some("AA")),
+    (Op::PostalArea, "MA1 1AA", Some("MA")),
+    (Op::PostalOutwardCode, "SW1A   1AA", Some("SW1A")),
+];
+
+/// Postal codes not in Royal Mail's format, which every `postal`
+/// operation fails `not_uk_format` on: shapes that aren't a postcode,
+/// another country's codes, `GIR 0AA`, a `BFPO` number, a hyphen or a
+/// space inside the outward code, and a `0` or a `1` typed for a letter.
+const NOT_POSTCODES: &[&str] = &[
+    "12FSSD",
+    "1A1 1AA",
+    "EH1 JS",
+    "EH1JS",
+    "EH 1JS",
+    "75004",
+    "22162-1010",
+    "GIR 0AA",
+    "BFPO 61",
+    "SW1A-1AA",
+    "SW 1A1AA",
+    "SW1A 2A0",
+    "SWIA 2AA",
+    "SW1A 1AAA",
+    "SW1A 1A",
+];
+
+/// Every `postal` operation.
+const POSTAL: [Op; 7] = [
+    Op::PostalArea,
+    Op::PostalDistrict,
+    Op::PostalInwardCode,
+    Op::PostalOutwardCode,
+    Op::PostalSector,
+    Op::PostalSubDistrict,
+    Op::PostalUnit,
+];
+
+/// A UK postcode's parts (area 19), each through `jadpo_value::run` as
+/// both executors call it: the part each postcode gives, and
+/// `not_uk_format` from every operation for each code not in Royal
+/// Mail's format.
+fn postal_checks(expect: &mut impl FnMut(String, String, &str)) {
+    let call = |op: Op, postcode: &str| run(op, &[Value::text(postcode)], None, &mut |_| None);
+    for (op, postcode, part) in POSTCODE_PARTS {
+        let got = match call(*op, postcode) {
+            Ok(Value::Text(text)) => text.to_string(),
+            Ok(Value::None) => "none".to_string(),
+            other => format!("{other:?}"),
+        };
+        expect(
+            format!("{op:?} of {postcode:?}"),
+            got,
+            part.unwrap_or("none"),
+        );
+    }
+    let refused = format!("{:?}", Err::<Value, _>(Fault::Broke(RuleKey::NotUkFormat)));
+    for postcode in NOT_POSTCODES {
+        for op in POSTAL {
+            expect(
+                format!("{op:?} of {postcode:?}"),
+                format!("{:?}", call(op, postcode)),
+                &refused,
+            );
+        }
+    }
 }
 
 /// draft-irtf-cfrg-xchacha-03, appendix A.3.1: the key (as an
