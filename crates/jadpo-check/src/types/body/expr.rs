@@ -594,6 +594,23 @@ impl Body<'_> {
         let Some(mut receiver) = self.read(&first) else {
             if !self.is_qualifier(&head) {
                 self.unknown_value(&first);
+            } else if self.symbols.is_connection(&head)
+                && rest.len() >= 2
+                && rest.last().is_some_and(|last| text(last) == "requests")
+            {
+                // What a test's code sent a provider's fake (area 13, "What
+                // the code sent") is decided, and not built yet.
+                let written = tree::written(expr.syntax());
+                let span = self.span(expr);
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TOOLCHAIN_NOT_BUILT_YET,
+                        format!("`{written}` isn't built yet"),
+                    )
+                    .at(span, "what the code sent")
+                    .reason("A provider's fake will list what the code sent each operation as `.requests`, which isn't built yet; only the `ai` fake's `ai.<prompt>.requests` is.")
+                    .next("Assert on what the code returns from the answers `fakes:` scripts until `.requests` is built"),
+                );
             } else {
                 let written = tree::written(expr.syntax());
                 let span = self.span(expr);
