@@ -376,10 +376,16 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
     }
     // A private name declared in more than one scope is known to the
     // checker's tables by its domain and name, so each domain's reads its
-    // own (area 1, "Files and names").
+    // own (area 1, "Files and names"). A package's names are always known
+    // through it, so they contest none of the app's: a domain's type keeps
+    // its name, and the stored JSON its fields hold reads the same, when
+    // a package with a name of its own comes.
     for (name, found) in table.declarations.iter_mut() {
-        let scopes: BTreeSet<Option<&String>> =
-            found.iter().map(|symbol| symbol.scope.as_ref()).collect();
+        let scopes: BTreeSet<Option<&String>> = found
+            .iter()
+            .filter(|symbol| symbol.ownership.package().is_none())
+            .map(|symbol| symbol.scope.as_ref())
+            .collect();
         let contested = scopes.len() > 1;
         for symbol in found.iter_mut() {
             symbol.canonical = match &symbol.scope {
