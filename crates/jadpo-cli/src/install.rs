@@ -95,7 +95,10 @@ fn write_lock(root: &Path, lines: &[Locked], command: &str) -> Result<(), Reply>
 fn find<'a>(lines: &'a [Locked], wanted: &str, command: &str) -> Result<&'a Locked, Reply> {
     let matches = |line: &Locked| {
         let (code, _) = line.package.rsplit_once('.').unwrap_or((&line.package, ""));
-        wanted == line.package || wanted == code || wanted == jadpo_db::to_snake(code)
+        wanted == line.package
+            || wanted == code
+            || wanted == jadpo_db::to_snake(code)
+            || registry_name_is(line, wanted)
     };
     let found: Vec<&Locked> = lines.iter().filter(|line| matches(line)).collect();
     if let [line] = found.as_slice() {
@@ -150,6 +153,19 @@ fn find<'a>(lines: &'a [Locked], wanted: &str, command: &str) -> Result<&'a Lock
             ),
         }
     }))
+}
+
+/// Whether `wanted` is the registry name `line` was installed by: its
+/// scoped name, `@acme/postcodes`, or for Jadpo's own the bare one `add`
+/// takes, `postcodes` for `@jadpo/postcodes` (Richard, 2026-11-07).
+pub(crate) fn registry_name_is(line: &Locked, wanted: &str) -> bool {
+    let Source::Registry { name, .. } = &line.source else {
+        return false;
+    };
+    name == wanted
+        || name
+            .strip_prefix("@jadpo/")
+            .is_some_and(|bare| bare == wanted)
 }
 
 /// The folder's name of `Name.vN`: `postcodes`.
@@ -916,8 +932,13 @@ pub fn add(call: &Call) -> Reply {
     ))];
     facts.extend(counts(&verified.surface));
     screen.push(Block::summary(Outcome::Success, "package added", facts));
+    // Named as it was added: from the registry, by its registry name,
+    // which `show` takes too (Richard, 2026-11-07).
+    let shown = from_registry
+        .as_ref()
+        .map_or(name, |fetched| fetched.name.to_string());
     screen.push(Block::hint(
-        format!("jadpo package show {name}"),
+        format!("jadpo package show {shown}"),
         "shows what it offers",
     ));
     let mut data = vec![

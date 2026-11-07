@@ -885,7 +885,10 @@ the app's code has `use packages/<name>` (`install.in_use`).
 ### `jadpo package show`
 
 Prints a package's description, licence, version, kind and public
-surface, or one declaration with its file. `packages` is a synonym ([A package's surface](11-integrations.md#a-packages-surface)).
+surface, or one declaration with its file. It takes the package's folder
+name, its name in code, or, for one from the registry, the registry name
+`jadpo package add` took (`@acme/postcodes`), which `add`'s hint names.
+`packages` is a synonym ([A package's surface](11-integrations.md#a-packages-surface)).
 
 The description is in bold. The package's facts follow: its version and
 source from its lock line, or "the app's own". Then come [what a release

@@ -292,7 +292,13 @@ fn show(call: &Call) -> Reply {
     };
     let all: Vec<&jadpo_db::PackageHome> = homes
         .values()
-        .filter(|home| *wanted == home.name || *wanted == home.code || *wanted == home.versioned())
+        .filter(|home| {
+            *wanted == home.name
+                || *wanted == home.code
+                || *wanted == home.versioned()
+                || lock_line(&loaded, &home.versioned())
+                    .is_some_and(|line| crate::install::registry_name_is(&line, wanted))
+        })
         .collect();
     if let [first, .., last] = all.as_slice() {
         // Two versions side by side (chunk 7.1c2): each is its own package.

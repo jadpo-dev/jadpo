@@ -6336,7 +6336,11 @@ what `jadpo package check` and `jadpo package show` do.
   convert at the edge, in the package.
 - **`jadpo package show`** finds a package by its folder's name
   (`postcodes`), its name in code (`Postcodes`) or with its version
-  (`Postcodes.v2`), and a declaration by the name the app writes after
+  (`Postcodes.v2`), and one installed from the registry by its registry
+  name too (`@acme/postcodes`, or `postcodes` for Jadpo's own
+  `@jadpo/postcodes`), as `update` and `remove` do. `add` from the
+  registry ends with that name in its hint, so the hint and the command
+  agree (Richard, 2026-11-07). It finds a declaration by the name the app writes after
   the package's (`uk.parse`, `UkPostcode`, `bookings.create`). An
   installed package's version and source come from its lock line; the
   app's own integration's source is "the app's own". Lists cut a long
@@ -6509,7 +6513,7 @@ can't be reached, or whose answer doesn't fit the protocol, is
 >
 > ✓ package added  Postcodes.v2 2.1.0 · 1 function · 3 types · 1 failure
 >
-> → jadpo package show postcodes  shows what it offers
+> → jadpo package show @acme/postcodes  shows what it offers
 > ```
 >
 > The lock's line is `package Postcodes.v2 version 2.1.0 registry
