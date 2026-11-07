@@ -851,8 +851,7 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
             if let Some(message) = message {
                 fields.push(("message".into(), message.clone()));
             }
-            // How the provider answers it (area 11, "How a provider's
-            // failures are read"): its status, then its own text.
+            // How the provider answers it (area 11, "A provider's failures"): its status, then its own text.
             let answered: Vec<String> = wire_status
                 .map(|status| status.to_string())
                 .into_iter()

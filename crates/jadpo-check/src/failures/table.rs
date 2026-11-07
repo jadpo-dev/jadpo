@@ -22,8 +22,8 @@ pub struct FailureInfo {
     pub explicit_code: bool,
     /// A provider package's failure: the HTTP status the provider answers
     /// it with, `wire_status:`, and the provider's own text for it, as
-    /// written at `error_code:`, `wire_name:` (area 11, "How a provider's
-    /// failures are read"; Richard, 2026-11-07).
+    /// written at `error_code:`, `wire_name:` (area 11, "A provider's
+    /// failures"; decided 2026-11-07).
     pub wire_status: Option<u16>,
     pub wire_name: Option<String>,
     /// The file it is declared in, and its position among that file's
@@ -74,9 +74,13 @@ pub fn failure_decls(db: &dyn Db, file: File) -> Vec<FailureInfo> {
                     (Some("wire_name"), Const::Str(text)) if wire_name.is_none() => {
                         wire_name = Some(text);
                     }
-                    (Some("wire_status"), Const::Number { value, decimal: false })
-                        if wire_status.is_none() =>
-                    {
+                    (
+                        Some("wire_status"),
+                        Const::Number {
+                            value,
+                            decimal: false,
+                        },
+                    ) if wire_status.is_none() => {
                         wire_status = wire_status_of(value);
                     }
                     _ => {}
@@ -97,8 +101,8 @@ pub fn failure_decls(db: &dyn Db, file: File) -> Vec<FailureInfo> {
 }
 
 /// A written `wire_status:` as the status it names: a whole number a
-/// provider's refusal can be answered with (area 11, "How a provider's
-/// failures are read"); `None` for any other.
+/// provider's refusal can be answered with (area 11, "A provider's
+/// failures"); `None` for any other.
 pub fn wire_status_of(value: jadpo_std::Num) -> Option<u16> {
     if value.scale != 0 || !(100..=599).contains(&value.mantissa) {
         return None;

@@ -4,7 +4,7 @@
 //! this failure alone; and a field is either sent to the client or kept
 //! for the log, never both. A provider package's failure may also say
 //! how its provider answers it, `wire_status:` and `wire_name:` (area 11,
-//! "How a provider's failures are read"; Richard, 2026-11-07). The fields themselves follow area 2's rules,
+//! "A provider's failures"; decided 2026-11-07). The fields themselves follow area 2's rules,
 //! checked with the other type declarations.
 
 use std::collections::BTreeMap;

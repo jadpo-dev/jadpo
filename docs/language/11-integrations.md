@@ -3945,8 +3945,7 @@ the provider's `error_code:` as the failure's code: `slot_taken` is
 
 Many providers send no such code. postcodes.io answers a postcode it
 doesn't hold with `404` and a sentence, `{"status": 404, "error":
-"Postcode not found"}`. A failure then says how its provider answers it
-(Richard, 2026-11-07):
+"Postcode not found"}`. A failure then says how its provider answers it:
 
 | Written | Means |
 |---|---|
@@ -3970,9 +3969,9 @@ public type InvalidPostcode = Failure {
 }
 ```
 
-```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/failures/not_found.jadpo
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/failures/nothing_found.jadpo
 /// postcodes.io found nothing at that address.
-public type NotFound = Failure {
+public type NothingFound = Failure {
     kind: FailureKind.not_found
     wire_status: 404
 }
@@ -3986,7 +3985,7 @@ public resource postcodes {
         input: PostcodeLookup
         output: PostcodeAnswer
         changes: false
-        failures: [PostcodeNotFound, InvalidPostcode, NotFound]
+        failures: [PostcodeNotFound, InvalidPostcode, NothingFound]
         source: PackageSource.written
     }
 }
@@ -4007,20 +4006,20 @@ A refusal is the most specific failure of the operation that matches it:
 
 So `404 {"error": "Postcode not found"}` is `PostcodeNotFound`, an
 answer of `"Invalid postcode"` with any status is `InvalidPostcode`, and
-any other `404`, such as `"Outcode not found"`, is `NotFound`. A refusal
+any other `404`, such as `"Outcode not found"`, is `NothingFound`. A refusal
 no failure matches is a fault naming the operation and the provider's
 code. Two failures of one operation read the same way are
 `package.operation_invalid`, since nothing would tell them apart.
 
 The app maps them at the call as any package failure:
 
-```jadpo check project=p72f-failures file=domains/addresses/actions/look_up.jadpo
+```jadpo check project=p72f-failures file=domains/addresses/actions/place_postcode.jadpo
 use app { postcodes }
 use addresses/failures { AddressUnknown, AddressUnreadable }
 use shared/providers/postcodes_io
 
 /// Where a postcode someone typed is.
-action look_up(
+action place_postcode(
     postcode: PostcodesIo.Postcode
 ) fails AddressUnknown, AddressUnreadable -> PostcodesIo.PostcodeAnswer {
     return attempt postcodes.postcodes.get(
@@ -4030,12 +4029,12 @@ action look_up(
     ) {
         postcode_not_found: AddressUnknown
         invalid_postcode: AddressUnreadable
-        not_found: AddressUnknown
+        nothing_found: AddressUnknown
     }
 }
 ```
 
-```jadpo check project=p72f-failures file=domains/addresses/actions/look_up.test.jadpo
+```jadpo check project=p72f-failures file=domains/addresses/actions/place_postcode.test.jadpo
 use app { postcodes }
 use addresses/failures { AddressUnknown, AddressUnreadable }
 
@@ -4043,14 +4042,14 @@ test "a postcode postcodes.io doesn't hold is unknown" {
     fakes: {
         postcodes.postcodes.get: [postcode_not_found]
     }
-    assert look_up("ZZ1 1ZZ") fails AddressUnknown
+    assert place_postcode("ZZ1 1ZZ") fails AddressUnknown
 }
 
 test "a postcode it can't read is unreadable" {
     fakes: {
         postcodes.postcodes.get: [invalid_postcode]
     }
-    assert look_up("SW1A") fails AddressUnreadable
+    assert place_postcode("SW1A") fails AddressUnreadable
 }
 ```
 
@@ -4128,7 +4127,7 @@ public type PostcodeLookup = Object {
 /// A postcode postcodes.io holds.
 public type PostcodeAnswer = Object {
     postcode: Postcode
-    country: Text
+    parish: Text?
 }
 ```
 

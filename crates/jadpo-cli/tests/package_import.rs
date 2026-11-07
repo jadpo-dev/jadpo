@@ -479,8 +479,14 @@ public type Booking = Object {
         read(&root, &format!("{folder}/failures/conflict.jadpo")),
         "/// The provider refused the call with a `409`.\npublic type Conflict = Failure {\n    kind: FailureKind.conflict\n    wire_status: 409\n}\n"
     );
-    assert!(resource.contains("        failures: [NotFound]\n"), "{resource}");
-    assert!(resource.contains("        failures: [Conflict]\n"), "{resource}");
+    assert!(
+        resource.contains("        failures: [NotFound]\n"),
+        "{resource}"
+    );
+    assert!(
+        resource.contains("        failures: [Conflict]\n"),
+        "{resource}"
+    );
     // What isn't reached isn't imported.
     assert!(!root.join(format!("{folder}/types/unused.jadpo")).exists());
     let findings: Vec<String> = report["data"]["findings"]

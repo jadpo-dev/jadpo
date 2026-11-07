@@ -114,9 +114,9 @@ public type Outcode = Object {
 }
 ```
 
-```jadpo check project=e72f-failures-alike file=shared/providers/postcodes_io/v1/failures/not_found.jadpo
+```jadpo check project=e72f-failures-alike file=shared/providers/postcodes_io/v1/failures/nothing_found.jadpo
 /// postcodes.io found nothing at that address.
-public type NotFound = Failure {
+public type NothingFound = Failure {
     kind: FailureKind.not_found
     wire_status: 404
 }
@@ -138,20 +138,20 @@ public resource outcodes {
         input: OutcodeLookup
         output: Outcode
         changes: false
-        failures: [NotFound, OutcodeNotFound]
+        failures: [NothingFound, OutcodeNotFound]
         source: PackageSource.written
     }
 }
 ```
 
 ```text output
-error: `OutcodeNotFound` and `NotFound` are read from the same refusal
- --> shared/providers/postcodes_io/v1/resources/outcodes.jadpo:8:30
+error: `OutcodeNotFound` and `NothingFound` are read from the same refusal
+ --> shared/providers/postcodes_io/v1/resources/outcodes.jadpo:8:34
   |
-8 |         failures: [NotFound, OutcodeNotFound]
-  |                              ^^^^^^^^^^^^^^^ read the same way
+8 |         failures: [NothingFound, OutcodeNotFound]
+  |                                  ^^^^^^^^^^^^^^^ read the same way
   reason: `outcodes.get`'s failures are told apart by what the provider answers: both are any `404`. Two read the same way leave the runtime no way to say which one came.
-  next: Give `OutcodeNotFound` or `NotFound` its own `wire_status:` or `wire_name:`, or list only one (agent)
+  next: Give `OutcodeNotFound` or `NothingFound` its own `wire_status:` or `wire_name:`, or list only one (agent)
   rule: package.operation_invalid
   help: https://jadpo.dev/docs/errors/package.operation_invalid
 

@@ -609,7 +609,7 @@ fn a_breaking_change_is_refused_within_a_major_version() {
 
 /// A provider package's failure that says how its provider answers it
 /// carries `wire_status` and `wire_name` on its surface, which reads back
-/// (area 11, "A provider's failures"; Richard, 2026-11-07).
+/// (area 11, "A provider's failures"; decided 2026-11-07).
 #[test]
 fn a_failures_status_and_text_are_on_its_surface() {
     let mut files = couriers();
@@ -625,8 +625,13 @@ public type SlotTaken = Failure {
     wire_name: \"Slot \\\"AM\\\" is taken\"
 }
 ";
-    let text = surface_of(&files, &[], "shared/providers/acme_couriers/v1", Some("1.0.0"))
-        .expect("a surface");
+    let text = surface_of(
+        &files,
+        &[],
+        "shared/providers/acme_couriers/v1",
+        Some("1.0.0"),
+    )
+    .expect("a surface");
     assert!(
         text.contains("    code slot_taken\n    message \"The collection slot is no longer available.\"\n    wire_status 409\n    wire_name \"Slot \\\"AM\\\" is taken\"\n"),
         "{text}"

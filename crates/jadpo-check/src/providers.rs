@@ -1080,7 +1080,7 @@ impl Reader<'_> {
         };
         let mut found = Vec::new();
         // How each failure listed so far is read from a refusal, and the
-        // one it came from (area 11, "How a provider's failures are read").
+        // one it came from (area 11, "A provider's failures").
         let mut read_as: Vec<(Reads, String)> = Vec::new();
         for entry in list.exprs() {
             let written = tree::written(entry.syntax());
@@ -1144,8 +1144,8 @@ impl Reader<'_> {
     }
 }
 
-/// How a refusal is read as one failure (area 11, "How a provider's
-/// failures are read"; Richard, 2026-11-07): by its status and its text,
+/// How a refusal is read as one failure (area 11, "A provider's
+/// failures"; decided 2026-11-07): by its status and its text,
 /// by its text alone (its code, when it gives neither), or by its status
 /// alone.
 #[derive(Clone, Debug, PartialEq, Eq)]

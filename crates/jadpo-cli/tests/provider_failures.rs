@@ -1,5 +1,5 @@
 //! A provider's failures read by status and text (area 11, "A provider's
-//! failures"; Richard, 2026-11-07), and a JSON body that leaves out an
+//! failures"; decided 2026-11-07), and a JSON body that leaves out an
 //! optional field that is `none` (area 11, "How provider calls are made"),
 //! both found building postcodes.io's package: its refusals are a status
 //! and a sentence, `{"status": 404, "error": "Postcode not found"}`, and
@@ -136,7 +136,10 @@ fn program(root: &Path, sandbox: &str) -> Program {
 }
 
 fn root(name: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("jadpo-provider-failures-{name}-{}", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "jadpo-provider-failures-{name}-{}",
+        std::process::id()
+    ))
 }
 
 fn host() -> Faked<MemoryHost> {
@@ -173,7 +176,12 @@ fn a_refusal_is_read_by_its_status_and_its_text() {
     provider.answer(400, r#"{"status": 400, "error": "Postcode not found"}"#);
     let mut outcomes = Vec::new();
     for postcode in ["ZZ1 1ZZ", "SW1A", "SW1A", "ZZ1", "ZZ1 1ZZ"] {
-        outcomes.push(run(&runtime, &program, "look_up", vec![Value::text(postcode)]));
+        outcomes.push(run(
+            &runtime,
+            &program,
+            "look_up",
+            vec![Value::text(postcode)],
+        ));
     }
     let failed = |outcome: &Outcome| match outcome {
         Outcome::Failed(failure) => (
@@ -216,12 +224,7 @@ fn a_body_leaves_out_what_is_none() {
     let program = program(&root("body"), &provider.url);
     let runtime = Runtime::new().expect("a runtime");
     provider.answer(200, r#"{"status": 200}"#);
-    let outcome = run(
-        &runtime,
-        &program,
-        "near",
-        Vec::new(),
-    );
+    let outcome = run(&runtime, &program, "near", Vec::new());
     assert!(matches!(outcome, Outcome::Value(_)), "{outcome:?}");
     let sent = provider.requests();
     assert_eq!(sent.len(), 1);

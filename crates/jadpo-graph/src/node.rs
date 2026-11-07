@@ -111,8 +111,8 @@ pub struct FailureDetail {
     pub status: Option<u16>,
     pub message: Option<String>,
     /// A provider package's failure: the status its provider refuses with,
-    /// `wire_status:`, and its own text for it, `wire_name:` (area 11, "How
-    /// a provider's failures are read"; Richard, 2026-11-07).
+    /// `wire_status:`, and its own text for it, `wire_name:` (area 11, "A
+    /// provider's failures"; decided 2026-11-07).
     pub wire_status: Option<u16>,
     pub wire_name: Option<String>,
 }

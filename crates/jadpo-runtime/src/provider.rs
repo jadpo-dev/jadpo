@@ -21,8 +21,7 @@
 //! The driver ([`classify`]) reads what the provider answered: a `2xx`
 //! as sent, unless `failed_when:` says it is a failure; a refusal as the
 //! operation's failure its status and its text at `error_code:` match,
-//! the most specific first (area 11, "How a provider's failures are
-//! read"; Richard, 2026-11-07), which the call's site raises, or a fault
+//! the most specific first (area 11, "A provider's failures"; decided 2026-11-07), which the call's site raises, or a fault
 //! where none does; a rejected credential as `misconfigured`; a
 //! refusal that did nothing (`408`, `429`, the key still in use) as
 //! `unavailable`; a server's error as an answer that may have acted. The
@@ -1966,8 +1965,7 @@ mod tests {
 
     /// A refusal is read as the operation's failure its status and its
     /// text at `error_code:` match, the most specific first: status and
-    /// text, then text, then status (area 11, "How a provider's failures
-    /// are read"; Richard, 2026-11-07).
+    /// text, then text, then status (area 11, "A provider's failures"; decided 2026-11-07).
     #[test]
     fn a_refusal_is_its_most_specific_failure() {
         let failure = |code: &str, status: Option<u16>, text: Option<&str>| FailureMatch {

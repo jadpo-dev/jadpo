@@ -1365,7 +1365,7 @@ impl Reader<'_> {
                 }
                 let response = self.resolve(response).clone();
                 // Another provider's documented refusal, by its status
-                // alone (area 11, "How a provider's failures are read").
+                // alone (area 11, "A provider's failures").
                 if !self.exact {
                     if let Some(name) = self.refusal(status, &response, &at)
                         && !failures.contains(&name)

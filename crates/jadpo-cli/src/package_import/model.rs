@@ -155,7 +155,7 @@ pub struct FailureDecl {
     pub kind: String,
     pub message: Option<String>,
     /// The status the provider refuses with, from another provider's
-    /// documented answers (area 11, "How a provider's failures are read").
+    /// documented answers (area 11, "A provider's failures").
     pub wire_status: Option<u16>,
 }
 
