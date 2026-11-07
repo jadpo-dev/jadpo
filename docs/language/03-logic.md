@@ -395,21 +395,21 @@ function holdback(per_pack: Stock) -> Stock {
 A library's own functions and constants read its constants by name alone,
 as they call its functions. That holds in a library package too, an object
 constant may be built from the library's other constants, and a field of
-one is read through its name, `extent.east` (Richard, 2026-11-07):
+one is read through its name, `grid_reach.eastward`:
 
 ```jadpo check project=constants-package file=app.jadpo hidden
 application {}
 ```
 
-```jadpo check project=constants-package file=shared/providers/grid/v1/package.jadpo
+```jadpo check project=constants-package file=shared/providers/grid_squares/v1/package.jadpo
 /// Grid squares and how far the grid reaches.
-package Grid.v1 {
+package GridSquares.v1 {
     licence: Licence.mit
     jadpo: "1.0"
 }
 ```
 
-```jadpo check project=constants-package file=shared/providers/grid/v1/types/grid_distance.jadpo
+```jadpo check project=constants-package file=shared/providers/grid_squares/v1/types/grid_distance.jadpo
 /// A distance on the grid, in metres.
 public type GridDistance = Decimal {
     scale: 2
@@ -417,42 +417,42 @@ public type GridDistance = Decimal {
 }
 ```
 
-```jadpo check project=constants-package file=shared/providers/grid/v1/types/extent.jadpo
+```jadpo check project=constants-package file=shared/providers/grid_squares/v1/types/grid_reach.jadpo
 /// How far the grid reaches east and north.
-public type Extent = Object {
-    east: GridDistance
-    north: GridDistance
+public type GridReach = Object {
+    eastward: GridDistance
+    northward: GridDistance
 }
 ```
 
-```jadpo check project=constants-package file=shared/providers/grid/v1/libraries/grids.jadpo
+```jadpo check project=constants-package file=shared/providers/grid_squares/v1/libraries/grids.jadpo
 /// The grid's sizes.
 public library grids {
     /// The side of one square.
-    constant side: GridDistance = 100.00
+    constant square_side: GridDistance = 100.00
 
     /// How far the grid reaches: ten squares each way.
-    constant extent: Extent = Extent {
-        east: GridDistance(side * 10)
-        north: GridDistance(side * 10)
+    constant grid_reach: GridReach = GridReach {
+        eastward: GridDistance(square_side * 10)
+        northward: GridDistance(square_side * 10)
     }
 
     /// The side of one square.
-    function square() -> GridDistance {
-        return side
+    function square_size() -> GridDistance {
+        return square_side
     }
 
     /// How far east the grid reaches.
-    function east() -> GridDistance {
-        return extent.east
+    function furthest_east() -> GridDistance {
+        return grid_reach.eastward
     }
 }
 ```
 
-```jadpo check project=constants-package file=shared/providers/grid/v1/libraries/grids.test.jadpo
+```jadpo check project=constants-package file=shared/providers/grid_squares/v1/libraries/grids.test.jadpo
 test "the grid reads its constants" {
-    assert grids.square() == 100.00
-    assert grids.east() == 1000.00
+    assert grids.square_size() == 100.00
+    assert grids.furthest_east() == 1000.00
 }
 ```
 

@@ -996,7 +996,7 @@ and publishing a package](11-integrations.md#developing-and-publishing-a-package
   release before. A version no tag the checkout grew from holds is
   `cli.package_arguments`. `check` stays offline, so a package's CI gets the
   same answer with or without a network, and the flag says what only the
-  registry knows (Richard, 2026-11-07).
+  registry knows.
 - A `recipes` row compiles each recipe in the one domain of the package's
   `sample/` app (`publish.sample_missing` without one).
 - A `publisher` row shows who `package.jadpo` names, and says `left out` when

@@ -2305,7 +2305,7 @@ needs for itself, hidden files and folders and a root `README`, `LICENSE`,
 `LICENCE`, `COPYING` or `NOTICE`, is left out instead: it isn't in the
 archive or the digest, and `left_out` lists it. A `NOTICE` is the file
 Apache-2.0 asks a work to carry beside its licence, so a release may hold
-one as it holds a `LICENSE` (Richard, 2026-11-07). `jadpo package verify <folder>` has the
+one as it holds a `LICENSE`. `jadpo package verify <folder>` has the
 same `files` row, so a local pass is a pass here.
 
 **Where its code runs.** Each pass runs in a sandbox of its own, sharing
@@ -6342,7 +6342,7 @@ what `jadpo package check` and `jadpo package show` do.
   name too (`@acme/postcodes`, or `postcodes` for Jadpo's own
   `@jadpo/postcodes`), as `update` and `remove` do. `add` from the
   registry ends with that name in its hint, so the hint and the command
-  agree (Richard, 2026-11-07). It finds a declaration by the name the app writes after
+  agree. It finds a declaration by the name the app writes after
   the package's (`uk.parse`, `UkPostcode`, `bookings.create`). An
   installed package's version and source come from its lock line; the
   app's own integration's source is "the app's own". Lists cut a long
