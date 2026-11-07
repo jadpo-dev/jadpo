@@ -1,0 +1,6 @@
+/// UK postcodes: reading them as people type them, and the words to show
+/// beside them.
+package Postcodes.v2 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}

@@ -1,6 +1,6 @@
 # `constant.similar_exists`
 
-A declinable error (area 1, [Declining a judgement call](../language/01-project-layout-and-modules.md#declining-a-judgement-call)):
+A declinable error (area 1, [Keeping code as it is, with a reason](../language/01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)):
 read the constant it names instead, or decline with a reason when the two
 share a value by coincidence.
 

@@ -772,7 +772,7 @@ standard type. It does this in a package's public types (the ones
 `surface.jadpo_record` lists) and in your app's own code alike, because
 an app's `Location { lat, lng }` reaches its API and its tables exactly
 as a package's would. You can
-[decline](01-project-layout-and-modules.md#declining-a-judgement-call) it,
+[decline](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason) it,
 so a type with a genuinely different meaning is kept, with a reason on
 its declaration.
 
@@ -3957,7 +3957,7 @@ Making a quantity always names a unit. There are four ways:
 A bare number where a quantity is expected is a compile error,
 `type.unit_required`, whose fix asks for the unit (`5km`, or
 `units.of(5, LengthUnit.kilometre)`). It can never be declined
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)):
+([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)):
 a number without its unit is the mistake the type exists to prevent.
 
 A suffix that names no unit, or misses one only by case (`5mw`, between

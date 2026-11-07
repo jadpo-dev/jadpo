@@ -1,0 +1,5 @@
+/// A UK postcode in standard form, such as "SW1A 1AA".
+public type UkPostcode = Text {
+    min_length: 5
+    max_length: 8
+}

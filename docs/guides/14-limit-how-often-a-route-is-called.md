@@ -250,7 +250,13 @@ Where the counts are kept decides how exact they are:
 - **On Cloudflare Workers** a Worker's instances share no memory, so a deployable
   must name a store, Cloudflare's rate-limiting binding.
   [Deploy to Cloudflare Workers](11-deploy-to-workers.md) sets it up. Its counts
-  are per Cloudflare location, and rough.
+  are kept in each Cloudflare location and shared only after a delay, so it is
+  approximate: a client gets well past a small limit, such as 10 a minute,
+  before its first 429. It stops a flood, not one request too many.
+
+A count that must hold exactly, such as free trials per account, is your app's
+own data: keep it in a record in your database, where a transaction keeps it
+exact, and refuse the request in your action when it is used up.
 
 ## Read more
 

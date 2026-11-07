@@ -51,7 +51,7 @@ it in `app.jadpo`.
 | The golden rule | A package can do nothing the app cannot, and the app can do everything a package can |
 | The format | `package.jadpo` (`licence:`, `jadpo:`), an optional `provider.jadpo`, folders laid out as `shared/` is, `public` as the API |
 | Where packages live | Installed in `packages/<name>/<version>/`, committed, digest-checked, read-only; the app's own in `shared/providers/` |
-| [Where they come from](#where-packages-come-from) ▲ partly | A folder, a git tag, the OpenAPI importer, or written by hand from the docs. The public registry isn't live yet |
+| [Where they come from](#where-packages-come-from) ▲ partly | The registry at jadpo.dev by name, a folder, a git tag, the OpenAPI importer, or written by hand from the docs |
 | The surface | `surface.jadpo_record`, generated and readable, pointing at each file; `jadpo package show` |
 | Connecting | `connections:` in `app.jadpo`; built-in drivers are configured there, never packaged |
 | Calling | `couriers.bookings.create(request)` and package actions such as `stripe.start_subscription(...)`, from actions only, failures mapped at the call |
@@ -879,6 +879,12 @@ names.
 - **A package's resources and actions share the connection's namespace**
   (`stripe.customers`, `stripe.start_subscription`), so a clash between
   them is an error in the package.
+- **Names that differ only in case clash.** Each name becomes a file name,
+  and a public type `DueDate` and a function `due_date` both become
+  `due_date.jadpo`, so a search for one finds the other. That is
+  [`naming.folded_collision`](../errors/naming.folded_collision.md), as in an
+  app; rename one of them. A type beside the function or action in its own
+  file, such as an input named after its action, is allowed.
 - **Package events are public or not.** The app may subscribe to a
   `public` event; one without `public` reaches only the package's own
   subscribers, so a raw webhook a package enriches can stay internal while
@@ -1145,23 +1151,26 @@ held, the app words each under a key that carries the version,
 ## Where packages come from
 <!-- topic: where-packages-come-from -->
 
-A package reaches your app in one of four ways. The first two install it in
+A package reaches your app in one of five ways. The first three install it in
 `packages/`, and the last two make it your app's own, in `shared/providers/`:
 
 | Where it comes from | What you do | Use it for |
 |---|---|---|
-| A folder | `jadpo package add ../postcodes` | A package you have on your machine, such as [one of Jadpo's own](#jadpos-own-packages) |
+| The registry at jadpo.dev | `jadpo package add @jadpo/resend` | A public package, such as [one of Jadpo's own](#jadpos-own-packages) ([The registry](#the-registry)) |
+| A folder | `jadpo package add ../postcodes` | A package you have on your machine |
 | A git tag | `jadpo package add github.com/acme/postcodes@v2.1.0` | A package in a repository of its own, with `package.jadpo` at the repository's root ([Private packages come from git](#private-packages-come-from-git)) |
 | An OpenAPI document | `jadpo package import openapi orders.json --as Orders.v1` | An API that publishes one ([An importer](#an-importer)) |
 | By hand | Write the files in `shared/providers/<name>/<version>/` | An API that publishes only HTML docs ([Written by hand](#written-by-hand-when-there-is-no-specification)) |
 
-A folder or a tag is read once, when the package is added or updated. The
-package is then pinned in `jadpo.lock` with its source and digest, and your app
-holds its own copy to commit.
+The registry, a folder or a tag is read once, when the package is added or
+updated. The package is then pinned in `jadpo.lock` with its source and digest,
+and your app holds its own copy to commit.
 
-A name on its own doesn't install anything yet. `jadpo package add stripe` and
-`jadpo package add @jadpo/resend` ask the public registry, which isn't live, so
-they stop with [`registry.unreachable`](../errors/registry.unreachable.md).
+A name starting `@` is the registry's: `@jadpo/resend` is the package `resend`
+published by `@jadpo`. A name with no publisher, such as `jadpo package add
+resend`, means Jadpo's own, `@jadpo/resend`. A name the registry doesn't have
+is [`install.not_in_registry`](../errors/install.not_in_registry.md), and
+nothing is installed.
 
 ### Jadpo's own packages
 
@@ -1171,29 +1180,48 @@ app's email, `OpenAi.v1` and `Anthropic.v1`, which answer your app's
 queue. Jadpo has no package for Stripe, Twilio, GitHub or any other provider, so
 for those use the importer or write your own.
 
-Each has a repository of its own under `jadpo-dev`, and installs from it at a release tag. This
-adds Resend's from your project's folder:
+They are published on the registry as `@jadpo/resend`, `@jadpo/open-ai`,
+`@jadpo/anthropic` and `@jadpo/amazon-sqs`, each from a repository of its own:
+[jadpo-dev/package-resend](https://github.com/jadpo-dev/package-resend),
+[package-openai](https://github.com/jadpo-dev/package-openai),
+[package-anthropic](https://github.com/jadpo-dev/package-anthropic) and
+[package-amazon-sqs](https://github.com/jadpo-dev/package-amazon-sqs). The
+registry name comes from the name in code, so `OpenAi` is `open-ai`. This adds
+Resend's, run in your project's folder. The output is copied from a real run:
 
 ```sh
-jadpo package add https://github.com/jadpo-dev/package-resend@v1.0.0
+jadpo package add @jadpo/resend
 ```
 
 ```text
 Added Resend.v1 1.0.0
-    folder   packages/resend/v1
-    source   git https://github.com/jadpo-dev/package-resend tag v1.0.0
-    surface  matches its code
+    folder     packages/resend/v1
+    source     registry @jadpo/resend
+    publisher  @jadpo, official
+    age        first released 2026-11-06, today
+    log        entry 1 of 2
+    surface    matches its code
+
+Facts
+  kind: provider
+  publisher: @jadpo
+  hosts: the address its connection gives
+  changes: emails.send
+  erasure: not declared
+  storable: none
+  failures: emails.send: InvalidAttachment, InvalidParameter, MissingRequiredField, MissingRequiredParameter, ValidationError
+  contract: 0 of 1 operation confirmed
 
 package added: Resend.v1 1.0.0, 1 operation, 3 types, 5 failures
 
 next: jadpo package show resend  shows what it offers
 ```
 
-The others are `jadpo-dev/package-openai`, `jadpo-dev/package-anthropic` and
-`jadpo-dev/package-amazon-sqs`. A package installed from git has no verified publisher, so
-`jadpo check` asks for an acceptance of `PackageChange.git_source` until the registry publishes
-them as `@jadpo/resend`, `@jadpo/open-ai`, `@jadpo/anthropic` and `@jadpo/amazon-sqs`.
-`jadpo check` and `jadpo build` read only your app's copy, in `packages/resend/v1/`.
+`official` says the publisher is Jadpo's own. A package from the registry
+carries its verified publisher, so it needs no acceptance of
+`PackageChange.git_source`, as one installed from a git repository does
+([Installing safely](#installing-safely)). `jadpo check` and `jadpo build` read
+only your app's copy, in `packages/resend/v1/`, and never go online.
 
 Resend's package has no fixed host, so its connection gives one as well as its
 key, each from a setting:
@@ -1228,9 +1256,12 @@ config {
 
 ### The registry
 
-The registry at jadpo.dev isn't live yet. When it is, it holds public Jadpo
-packages of both kinds, as Jadpo source with no native code and no install
-script. Nothing in a package runs when it is installed, and its code runs only
+The registry at jadpo.dev holds public Jadpo packages of both kinds, as Jadpo
+source with no native code and no install script. Find one with `jadpo package
+search <words>`, or on [jadpo.dev/packages](https://jadpo.dev/packages), and
+install it with `jadpo package add @<publisher>/<name>`
+([Use a package from the registry](../guides/22-use-a-package-from-the-registry.md)
+goes through it). Nothing in a package runs when it is installed, and its code runs only
 when started ([What package code may do](#what-package-code-may-do)). A
 malicious package could still name the wrong host or mark an unsafe call
 idempotent, so hosts, services and every package change appear in the approval
@@ -1537,7 +1568,7 @@ the sandbox for each one (see "Tests and fakes").
 > → jadpo check  checks the app against 2.1.0
 > ```
 
-Not built yet: the public registry; importers other than `openapi`;
+Not built yet: importers other than `openapi`;
 adding another Jadpo app's OpenAPI document with `jadpo package add`;
 writing an operation's output type from the sandbox's answer when it has
 none; and a HAR capture's operations.
@@ -1547,9 +1578,9 @@ step it used, so an agent never improvises where to look: the registry, the
 official package first; the provider's published specification, given a URL or
 found in its known places; an importer, from the official SDK's type definitions,
 a Postman collection or a HAR capture; then written from the provider's
-documentation by an agent. Today a name asks only the registry. Until it is
-live, use a folder, a git tag, `jadpo package import openapi` or write the package
-by hand, as the table at the top of this topic shows.
+documentation by an agent. Today a name asks only the registry. For a provider
+the registry doesn't have, use `jadpo package import openapi` or write the
+package by hand, as the table at the top of this topic shows.
 
 ## A package's surface
 <!-- topic: the-surface -->
@@ -1698,6 +1729,8 @@ diffs the same two files.
 ## Developing and publishing a package
 <!-- topic: developing-and-publishing-a-package -->
 
+[Publish a package](../guides/23-publish-a-package.md) does the whole job, start to finish.
+
 A package lives in its own repository. To start one, run
 `jadpo package new <Name> --library` or `--provider`. It writes the
 package format, plus `recipes/`, a `sample/` app that the recipes and
@@ -1734,9 +1767,22 @@ are committed into apps, so a registry's caching would add nothing.
 
 ### Public packages
 
-Public packages go to the registry with `jadpo package publish`, from a
-tag ([Releasing](#releasing)). The registry isn't live yet, so to share a package
-today, give people its repository and a tag.
+Public packages go to the registry from a tag in a public git repository
+([Releasing](#releasing)). Before the first release, sign in on jadpo.dev,
+choose your publisher name, the `@name` your packages are published under, and
+add the user or organisation that holds your repositories on GitHub or another
+git host, then add a passkey. Each release is then:
+
+1. `jadpo package check`, then commit what it writes.
+2. `git tag v<version>` and `git push origin v<version>`.
+3. `jadpo package publish`, which asks the registry to fetch, build and test
+   that tag, and waits for the answer.
+4. On your account page on jadpo.dev, the version is listed under "Ready to
+   publish". Open it and publish it with your passkey. Anyone can install it
+   from then on.
+
+[Publish a package](../guides/23-publish-a-package.md) goes through it from an
+empty folder.
 
 > `jadpo package link <folder>` writes `package
 > Postcodes.v2 link ../postcodes` in the lock and keeps the line it
@@ -2197,9 +2243,13 @@ it can send makes a release live.
 
 ### Not built yet
 
-The registry isn't live, so commands that ask it stop with
-[`registry.unreachable`](../errors/registry.unreachable.md). Until it is, use a
-folder or a git tag ([Where packages come from](#where-packages-come-from)).
+The registry at jadpo.dev publishes, installs, searches by words and yanks
+today. These parts of this page aren't built there yet: search by meaning, the
+written account and the review of each release's diff, urgent releases and the
+advisories they publish, compatibility runs, refusing a tag that moves,
+organisations with several members and their releasers, automatic release,
+successors and reports. Accounts are open to a short list of people for now;
+anyone can search and install.
 
 ## The verifier
 <!-- topic: the-verifier -->
@@ -2296,8 +2346,8 @@ verifier's own work, from the commit's files.
 
 **Reaching a repository.** A repository is an `https://` address at a host
 name, on the default port, with no credential. Every address the host has
-must be public: this machine, private networks, Fly.io's own and a cloud's
-metadata service are refused, and `git` is handed the address that was
+must be public: this machine, private networks and a cloud's metadata service
+are refused, and `git` is handed the address that was
 checked, so a name that changes afterwards reaches nothing else. It follows
 no redirect and runs no hook, filter or submodule, and a commit is read from
 the object store, never checked out. A previous release comes from the
@@ -2318,7 +2368,16 @@ least 32 characters, and serves only on Linux with
 in its sandbox has no network before it listens, and otherwise refuses with
 [`cli.verifier_start_failed`](../errors/cli.verifier_start_failed.md). It
 speaks HTTP on `127.0.0.1:8080` unless told otherwise: HTTPS is what stands in
-front of it, Fly.io's edge in `deploy/verifier/fly.toml`.
+front of it. `--registry` names the registry it fetches previous releases from,
+`https://jadpo.dev/registry/v1/` unless told otherwise.
+
+**Where the registry runs it.** jadpo.dev runs the image on Cloudflare
+Containers, behind a small Worker at `verifier.jadpo.dev` that holds the
+credential and ends HTTPS. A container sleeps when nothing has asked it anything
+for a while, and a verification lives in its memory. The registry asks after a
+running verification each minute, which keeps the container awake until the
+verification ends; a finished verification is gone once the container sleeps,
+and the registry has kept its result by then.
 
 ## Connecting in `app.jadpo`
 <!-- topic: connecting-in-app-jadpo -->
@@ -6427,9 +6486,9 @@ registry](#installing-and-updating-from-the-registry), [Yanks, takedowns and
 advisories](#yanks-takedowns-and-advisories), [Search](#search) and
 [Developing for the registry](#developing-for-the-registry): what each
 command does and shows. The registry is `https://jadpo.dev/registry/v1/`;
-`JADPO_REGISTRY` names a stand-in, over HTTPS or on this machine. The public
-registry isn't live yet, so what this shows happens only against a stand-in:
-there, the commands stop with
+`JADPO_REGISTRY` names a stand-in, over HTTPS or on this machine, such as
+`https://staging.jadpo.dev/registry/v1/` or a local registry. A registry that
+can't be reached, or whose answer doesn't fit the protocol, is
 [`registry.unreachable`](../errors/registry.unreachable.md).
 
 > **`add` and `update` take a release in this order**, and stop at the first
@@ -7040,7 +7099,7 @@ again, and how its answer is classified and read.
   `misconfigured` for a setting's, the connection's for every call; `408`, `429` or the package's `in_use:`
   code `unavailable`; any other `4xx` the code at `error_code:`, a fault
   when there is none; a `5xx`, no answer in time, a connection broken
-  once the request had left, or an answer over 10 MB as an answer that
+  once the request had left, or an answer over 10 MiB as an answer that
   may have acted, which is `unavailable` for a keyed or safe call and
   `outcome_unknown` for an unkeyed one; a request that never left
   `unavailable`. `reused:` is a code like any other, so a key sent with a
@@ -8156,13 +8215,13 @@ package's name, as its types are.
 | Services (`runs:`) | Not built yet, nor is `jadpo services`. |
 | OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written, and `jadpo dev grants add` isn't a command yet. |
 | A release's facts and change record in `jadpo package check` and `show`, the previous release's examples and tests run against the new code, and `jadpo package verify` with the fingerprints ([How they are worked out](#how-a-releases-facts-change-record-and-fingerprints-are-worked-out)) | Built. |
-| [The verifier](#the-verifier): `jadpo package verify --serve`, its sandbox, the check of a commit's files and size, its container image and Fly.io configuration | Built. Not deployed yet: its image is published, and it runs on Fly.io, once a maintainer has switched them on. |
+| [The verifier](#the-verifier): `jadpo package verify --serve`, its sandbox, the check of a commit's files and size, and its container image | Built, and running for the registry on Cloudflare Containers. |
 | Publisher trust for third-party git packages | Built: a package from a git repository under none of `packages:`'s `own_sources:` needs an [acceptance](18-records-and-manifest.md#acceptances), as does adding or widening an entry; an entry is `package.own_source_invalid` unless it is a host and a path ending in `/`. |
 | The registry protocol: its requests and answers, the log and its proofs, a local registry and the conformance test | Built (`jadpo-registry`). |
-| The `jadpo` tool's side of the public registry: `add` and `update` checked against the log, `search`, `audit`, `publish` and `preview` ([How the registry commands work](#how-the-registry-commands-work)) | Built, against the local registry. |
-| A package's publisher ([Names and publishers](#names-and-publishers)): `publisher:` in the index, on its surface and in its facts, the bar's `publisher` row, `jadpo package publish` and `verify --publisher`, the verifier's request and the local registry's check of a release | Built, against the local registry. |
+| The `jadpo` tool's side of the public registry: `add` and `update` checked against the log, `search`, `audit`, `publish` and `preview` ([How the registry commands work](#how-the-registry-commands-work)) | Built. |
+| A package's publisher ([Names and publishers](#names-and-publishers)): `publisher:` in the index, on its surface and in its facts, the bar's `publisher` row, `jadpo package publish` and `verify --publisher`, the verifier's request and the registry's check of a release | Built. |
 | [Starting a package](#developing-and-publishing-a-package): `jadpo package new`, and the bar's `licence` row refusing `Licence.proprietary` for `verify` and `publish` | Built. |
-| The registry at jadpo.dev: publishing, search, advisories and compatibility runs | Not built yet: `jadpo package add <name>`, `search` and `publish` stop with `registry.unreachable`. |
+| The registry at jadpo.dev: publishing, installing by name, search, yanks, advisories and compatibility runs | Partly built: publishing from a tag, confirming a release with a passkey, installing and updating by name with the log's proofs, search by words, and yanks and takedowns. Not built yet: search by meaning, the written account and the review of each release's diff, urgent releases and advisories, compatibility runs, refusing a tag that moves, organisations with several members, automatic release, successors and reports. Accounts are open to a short list of people for now; anyone can search and install. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
 | Erasure at providers | Partly built: the package's and the connection's `erasure:` are read and checked, and a connection that can't erase what it receives needs an `ErasureNotPossible` acceptance ([Erasure at providers](15-personal-data.md#erasure-at-providers)). Not built yet: calling the provider. |

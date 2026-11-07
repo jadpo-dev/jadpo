@@ -579,6 +579,17 @@ driver comes a Redis store counts in each instance's memory
 on Workers is in practice per 10 seconds or per minute. The default limits
 are all per minute, so only a limit you write yourself can raise this.
 
+A limit counted in the binding is approximate. Cloudflare keeps a count in
+each of its locations and shares it only after a delay, so a client gets well
+past the number you wrote before the first 429, and at small numbers, such as 10
+a minute, a limit barely holds ([What the binding
+promises](#what-the-binding-promises)). It guards against a flood of requests,
+not an exact count. Jadpo has no
+exact store on Workers: a counter in a Durable Object isn't built, and Redis's
+driver isn't either. A limit that must hold exactly, such as a number of free
+trials or of jobs waiting, is your app's own data: count it in a record in your
+database, where a transaction keeps the count exact.
+
 The binding says only whether a request is within the limit, so a
 refused client is told to try again after the window's whole length. If
 the Worker hasn't got a binding, or the binding throws or doesn't answer
@@ -2120,8 +2131,8 @@ your app's and Jadpo's own ([Built-in emails](#built-in-emails)).
   ([The SMTP driver](#the-smtp-driver)). On Cloudflare Workers it uses
   port 587, since Workers blocks port 25.
 - **A mail package** is the other way. Resend's is
-  [one of Jadpo's own](11-integrations.md#jadpos-own-packages), and for another
-  mail service you write one.
+  [one of Jadpo's own](11-integrations.md#jadpos-own-packages), installed with
+  `jadpo package add @jadpo/resend`, and for another mail service you write one.
 
 The `EmailMessage` types, the translations and `emit` are the same
 whichever you choose, so changing provider changes only `app.jadpo`.
@@ -2174,7 +2185,7 @@ Templates are strict. Each of these is a compile error:
 A field that no template reads, and no wording of the subject writes, is
 `email.field_unused`. It is a judgement call, so a `decline` line above
 the field answers it
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
+([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 
 ### What a template writes out
 
@@ -2344,7 +2355,7 @@ absolute HTTPS, link shorteners, a subject in capitals, and more than
 102 KB, where Gmail clips a mail. `jadpo check` reports templates that would fail as
 [`email.health_problem`](../errors/email.health_problem.md), an error
 you can decline
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
+([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 When SpamAssassin is installed, its open rules are added
 ([SpamAssassin in the health score](#spamassassin-in-the-health-score)).
 `jadpo email check-domain` compares the sending domain's SPF, DKIM and
@@ -3644,7 +3655,8 @@ terms. A limit on Workers is only as strong as this:
 - **Approximate.** Each check reads a count kept where the Worker runs, and
   counts update in the background, so requests pass the limit, as the table
   shows. It isn't an accounting system. Cloudflare's own answer for a strict
-  limit is a limiter on a Durable Object, which Jadpo doesn't build.
+  limit is a limiter on a Durable Object, which Jadpo doesn't build, so a limit
+  that must hold is kept in your app's data, in its database.
 - **An address can be many people.** Cloudflare warns against keying a limit
   on an address, since many users can share one on mobile networks. Prefer
   `RateLimitKey.caller` where callers sign in, and don't set a limit by
@@ -3797,7 +3809,7 @@ partial's type:
 What a template writes from its fields is scored once it is rendered,
 in the dev inbox. One `decline` above the type answers every finding
 there, as a decline covers its rule on its declaration
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
+([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 
 ### `jadpo email check-domain`
 

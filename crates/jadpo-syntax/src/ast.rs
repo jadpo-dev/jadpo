@@ -91,7 +91,7 @@ pub fn doc_comments(node: &SyntaxNode) -> Vec<SyntaxToken> {
 }
 
 /// The `decline` lines written directly above a declaration or member
-/// (area 1, "Declining a judgement call"): its first children.
+/// (area 1, "Keeping code as it is, with a reason"): its first children.
 pub fn declines(node: &SyntaxNode) -> impl Iterator<Item = Decline> + use<> {
     node.children()
         .take_while(|child| child.kind() == SyntaxKind::DECLINE)

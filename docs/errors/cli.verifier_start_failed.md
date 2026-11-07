@@ -43,10 +43,12 @@ what the verifier trusts.
 ## How to fix it
 
 **If the credential is missing**, set it to the secret the registry holds, at
-least 32 characters:
+least 32 characters, such as one `openssl rand -hex 32` prints. On Cloudflare,
+where the registry runs the verifier, it is the Worker's secret, and Wrangler
+asks for its value rather than taking it on the command line:
 
 ```sh
-fly secrets set JADPO_VERIFIER_TOKEN="$(openssl rand -hex 32)"
+npx wrangler secret put JADPO_VERIFIER_TOKEN
 ```
 
 The verifier then starts and answers only a caller that sends the same

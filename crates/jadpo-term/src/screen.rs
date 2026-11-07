@@ -1243,7 +1243,7 @@ fn broken(text: &str) -> impl Iterator<Item = &str> {
 
 /// The headline: symbol and `error` in the failure colour and bold, two
 /// spaces, the subject in bold. Plain output reads `error: subject`. Every
-/// finding is an error (area 1, "Declining a judgement call"), so there is
+/// finding is an error (area 1, "Keeping code as it is, with a reason"), so there is
 /// no other word.
 pub(crate) fn headline(subject: &str, style: &Style) -> Line {
     if rich(style) {

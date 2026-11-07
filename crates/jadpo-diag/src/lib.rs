@@ -12,7 +12,7 @@ use std::fmt;
 
 pub use suggest::nearest;
 
-/// Whether a rule can be declined (area 1, "Declining a judgement call"):
+/// Whether a rule can be declined (area 1, "Keeping code as it is, with a reason"):
 /// every finding is an error, and a judgement call may be answered by a
 /// `decline <rule>: "<reason>"` line above the declaration instead of a fix.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

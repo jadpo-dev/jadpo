@@ -47,6 +47,15 @@ Other companies' APIs, in both directions.
 | [Call an outside API](06-call-an-outside-api.md) | a typed description of another service, called through a connection and faked in tests |
 | [Receive a webhook](17-receive-a-webhook.md) | a sender described as a package, its signed requests checked and de-duplicated, and a subscriber keeping each event |
 
+## Packages
+
+Code other people publish, and publishing your own.
+
+| Guide | You end with |
+|---|---|
+| [Use a package from the registry](22-use-a-package-from-the-registry.md) | a package found by what it does, installed by name with its publisher and facts shown, then updated, audited and removed |
+| [Publish a package](23-publish-a-package.md) | a library package that passes the publishing bar, tagged in its repository and published on jadpo.dev with your passkey |
+
 ## Shipping
 
 Checking a change and putting it live.
@@ -54,6 +63,6 @@ Checking a change and putting it live.
 | Guide | You end with |
 |---|---|
 | [Write tests](08-write-tests.md) | action and route tests, fixtures, a fixed clock and tests signed in as someone |
-| [Get a person's sign-off](09-get-a-sign-off.md) | an acceptance for a change that could break someone, with a person's reason |
-| [Deploy natively](10-deploy-natively.md) | the app built into one program, running against a real database |
+| [Approve a risky change](09-get-a-sign-off.md) | an acceptance for a change that could break someone, with a person's reason |
+| [Deploy to your own server](10-deploy-natively.md) | the app built into one program, running against a real database |
 | [Deploy to Cloudflare Workers](11-deploy-to-workers.md) | the app built as a Worker, reaching its database through Hyperdrive |

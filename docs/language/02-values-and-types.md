@@ -133,7 +133,7 @@ of them:
 A type that copies a standard type under another name is the error
 `type.standard_exists`. For example, a `Booking` with only a start and an
 end, each an `Instant`, is an `InstantRange`. When the copy is deliberate,
-you can [decline the error](01-project-layout-and-modules.md#declining-a-judgement-call)
+you can [decline the error](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)
 with a reason. A declaration with the same name
 as a standard type is `type.standard_clash`. Both are explained under
 [Packages use the standard types](19-standard-library.md#packages-use-the-standard-types) and
@@ -478,7 +478,7 @@ type ParcelWeight = Mass {
 
 A name can be a unit by chance: the `Knots` scouts tie are no speed. The
 rule is a judgement call, so you can decline it on the type with a reason
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)):
+([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)):
 
 ```jadpo check project=scout-knots
 /// Knots the scouts can tie.

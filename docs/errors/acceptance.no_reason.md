@@ -100,4 +100,4 @@ Until the change is undone, `jadpo check` fails with
 - [Acceptances](../language/18-records-and-manifest.md#acceptances)
 - [`jadpo acceptance new`](../language/14-tooling.md#jadpo-acceptance-new)
 - [Review and sign-off](../language/14-tooling.md#review-and-sign-off)
-- [Get a person's sign-off](../guides/09-get-a-sign-off.md)
+- [Approve a risky change](../guides/09-get-a-sign-off.md)

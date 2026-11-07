@@ -1,0 +1,4 @@
+/// A postcode as someone typed it.
+public type EnteredPostcode = Text {
+    max_length: 20
+}

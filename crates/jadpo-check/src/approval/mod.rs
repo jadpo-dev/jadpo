@@ -1154,7 +1154,7 @@ fn decline_subject(decline: &crate::declines::Decline) -> String {
 }
 
 /// Every decline this change adds or edits, with its reason, so declining
-/// by reflex shows in review (area 1, "Declining a judgement call").
+/// by reflex shows in review (area 1, "Keeping code as it is, with a reason").
 fn declines(db: &dyn Db, project: Project, before: &Value) -> Section {
     let mut section = Section::new("declines", "Declines");
     let was: BTreeMap<(&str, &str), &str> = before

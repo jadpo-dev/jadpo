@@ -247,7 +247,7 @@ webhooks  /webhooks
 
 The connection can reach Acme Pay's hosts, so data your app holds can now leave
 for them. Once your app has a commit to compare with, `jadpo check` asks a person
-to accept that. [Get a person's sign-off](09-get-a-sign-off.md) goes through the
+to accept that. [Approve a risky change](09-get-a-sign-off.md) goes through the
 steps.
 
 `acceptances/20261104T1133_payments_from_acme_pay.jadpo`:

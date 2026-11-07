@@ -2007,7 +2007,7 @@ reading:
   once, so a write in it comes before a call after the loop or in its next
   turn.
 - **Not declinable.** The order is never a judgement call
-  ([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)):
+  ([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)):
   run as written, the call would be refused.
 
 A bakery keeps the price sheet a supplier sends again, marking it

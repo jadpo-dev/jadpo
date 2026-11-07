@@ -145,4 +145,4 @@ back.
 - [The public API record](../language/07-http.md#the-public-api-record)
 - [Review and sign-off](../language/14-tooling.md#review-and-sign-off)
 - [`jadpo acceptance new`](../language/14-tooling.md#jadpo-acceptance-new)
-- [Get a person's sign-off](../guides/09-get-a-sign-off.md)
+- [Approve a risky change](../guides/09-get-a-sign-off.md)

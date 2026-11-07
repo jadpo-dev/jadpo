@@ -256,7 +256,8 @@ sandbox is bubblewrap under `prlimit`, started as programs, since the
 workspace forbids `unsafe`; a Mac's `sandbox-exec` lets a contributor run the
 same isolation tests, and is never served with. No seccomp filter is set:
 what limits a package's code that got out of the interpreter is the
-namespaces, and the machine Fly.io gives the verifier alone. CI's `tests`
+namespaces, and the container Cloudflare runs the verifier in, which holds
+nothing else. CI's `tests`
 job installs bubblewrap and sets `JADPO_REQUIRE_SANDBOX`, so those tests can't
 silently skip, and `.github/workflows/verifier-image.yml` starts the image
 and uses it before anything is published (`deploy/verifier/smoke.py`).

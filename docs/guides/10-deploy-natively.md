@@ -1,4 +1,4 @@
-# Deploy natively
+# Deploy to your own server
 <!-- topic: guide-deploy-natively -->
 
 `jadpo build` turns your app into one program, with nothing else to

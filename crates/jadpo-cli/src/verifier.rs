@@ -27,7 +27,8 @@ use crate::run::{Call, Reply, Session, finish};
 pub const TOKEN: &str = "JADPO_VERIFIER_TOKEN";
 
 /// Where it listens unless told otherwise: this machine alone, since HTTPS
-/// comes from what stands in front of it (`fly.toml`).
+/// comes from what stands in front of it (the registry's Worker, on
+/// Cloudflare).
 const LISTEN: &str = "127.0.0.1:8080";
 
 /// The registry that keeps previous releases' archives.

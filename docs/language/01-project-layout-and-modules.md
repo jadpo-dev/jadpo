@@ -135,7 +135,7 @@ Comments in other languages' styles, `#` and `/* */`, are
 `syntax.comment_style`. Its edit rewrites them with `//`, or with `///` for
 a `/** */` comment.
 
-## Declining a judgement call
+## Keeping code as it is, with a reason
 <!-- topic: declining-a-judgement-call -->
 
 Most rules report plain mistakes, and only a fix answers them. A few rules

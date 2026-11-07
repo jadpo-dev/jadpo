@@ -3317,7 +3317,7 @@ A field that no wording in a language uses is `translation.field_unused`.
 One variant leaving a field out is normal. Jadpo has no warnings, so this
 is an error, but a judgement call: a person can answer it by writing
 `decline translation.field_unused: "<reason>"` above the member
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
+([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 That is right for a language that needs no such word.
 
 ### Locales in progress
