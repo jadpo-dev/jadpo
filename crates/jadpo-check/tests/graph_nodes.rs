@@ -252,7 +252,7 @@ fn packages_their_operations_mappings_and_lock_entries_are_nodes() {
             version, source, ..
         } => {
             assert_eq!(version.as_deref(), Some("1.0.0"));
-            assert_eq!(source, "path");
+            assert_eq!(source, "git");
         }
         other => panic!("{other:?}"),
     }
