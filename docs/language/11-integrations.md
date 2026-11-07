@@ -1933,12 +1933,8 @@ A release is made from a tag in any public git repository reached over
 HTTPS. The registry never accepts an upload, and no publish token exists.
 
 1. `jadpo package publish` (or the jadpo.dev page) asks the registry to
-   publish a repository at a tag. It sends those two and the publisher its
-   `package.jadpo` names, so the registry can refuse at once a repository
-   that publisher doesn't release from, and needs no sign-in, because
-   nothing goes live without a releaser. The publisher it sends decides
-   nothing else: the registry reads who the release is from out of the
-   release itself.
+   publish a repository at a tag, naming its publisher too, and needs no
+   sign-in, because nothing goes live without a releaser.
 2. The verifier resolves the tag to its commit, fetches that commit, and
    then, with no network, checks it: only Jadpo source and the package's
    text files (`package.jadpo`, `provider.jadpo`, `GUIDE.md`,
@@ -1946,10 +1942,8 @@ HTTPS. The registry never accepts an upload, and no publish token exists.
    and the whole publishing bar. Everything the registry shows about the
    release is worked out from that source, never from anything the
    publisher sends.
-3. **The release is checked, and waits until a releaser publishes it with
-   a passkey**, on its page, which shows its version, surface diff,
-   changelog and facts. `jadpo package publish` ends with that page's
-   address.
+3. **Once checked, a releaser publishes it with a passkey**, on its page
+   showing its version, surface diff, changelog and facts.
 4. It goes live, its digest is added to the public log, and its pages are
    written.
 
@@ -2178,14 +2172,10 @@ it can send makes a release live.
   `detail` and `why`.
 - **A release refused for its publisher** is `failed` with a bar row whose
   `check` is `publisher` and whose `detail` says why, which `jadpo package
-  publish` shows as `publish.publisher_mismatch`. `POST releases` may send
-  `publisher`, the handle the package at the tag names (`jadpo package
-  publish` always does): a registry that knows the repository is another
-  publisher's refuses it at once as `repository_refused`, its `message`
-  saying why, and `jadpo package publish` shows that message as the
-  reason. It is optional, so a client that leaves it out still works, and
-  the registry still reads the publisher from the release (recorded
-  2026-11-07).
+  publish` shows as `publish.publisher_mismatch`. An optional `publisher`
+  on `POST releases` lets the registry refuse at once, as
+  `repository_refused`, a repository another publisher releases from
+  (recorded 2026-11-07).
 - **Its failures** are `package_not_found`, `release_not_found`,
   `archive_not_found` and `release_request_not_found` (404), `not_in_log`
   (404, also for a release logged after the size asked about),
@@ -2204,8 +2194,7 @@ it can send makes a release live.
   signed in, and nothing else but `openapi.json`; shapes are compared
   through any `$ref`, and what a Jadpo application adds that the table
   doesn't constrain (the runtime's shared failures, `x-jadpo-` keywords,
-  an `Idempotency-Key` header) is left alone. The registry application's
-  CI runs it against its own document.
+  an `Idempotency-Key` header) is left alone.
 
 ### Not built yet
 

@@ -61,6 +61,8 @@ repository is now:
 git remote set-url origin https://github.com/acme-labs/postcodes
 ```
 
+The registry then fetches the tag from the repository's own address.
+
 **If the repository is private**, it can't go to the public registry. Install
 it from git instead, with your own access:
 
