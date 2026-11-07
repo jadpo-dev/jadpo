@@ -571,6 +571,68 @@ Reads the outward code.
     );
 }
 
+/// The registry counts what it released, and a tag can name a release it
+/// never took, such as one the verifier refused: `--previous` says which
+/// release the registry holds, `none` for a first release (area 14, Richard,
+/// 2026-11-07).
+#[test]
+fn check_compares_with_the_release_previous_names() {
+    let (_dir, root) = repository("package-check-previous");
+    plain(&root, &["package", "check"]);
+    write(
+        &root,
+        "CHANGELOG.md",
+        "# Changelog\n\n## 2.0.0\n\n- first release\n\nReads UK postcodes as people type them.\n",
+    );
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "first release"]);
+    git(&root, &["tag", "v2.0.0"]);
+    write(
+        &root,
+        "types/outward_code.jadpo",
+        "/// The first half of a postcode, such as \"SW1A\".
+public type OutwardCode = Text {
+    max_length: 4
+}
+",
+    );
+    // The registry refused 2.0.0, so this is still the first release.
+    let first = plain(&root, &["package", "check", "--previous", "none"]);
+    assert_eq!(first.code, 0, "{}{}", first.stdout, first.stderr);
+    assert!(
+        first
+            .stdout
+            .contains("  version       passed                        2.0.0, the first release\n"),
+        "{}",
+        first.stdout
+    );
+    assert!(!first.stdout.contains("Changes since"), "{}", first.stdout);
+    assert_eq!(
+        std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog"),
+        "# Changelog\n\n## 2.0.0\n\n- first release\n\nReads UK postcodes as people type them.\n"
+    );
+    // Naming the tag's release is what check does without the flag.
+    let named = plain(&root, &["package", "check", "--previous", "2.0.0"]);
+    assert!(
+        named
+            .stdout
+            .contains("  version       passed                        2.1.0, 1 added since 2.0.0\n"),
+        "{}",
+        named.stdout
+    );
+    // A release no tag holds is refused, naming the ones there are.
+    let missing = plain(&root, &["package", "check", "--previous", "1.4.0"]);
+    assert_eq!(missing.code, 2, "{}{}", missing.stdout, missing.stderr);
+    assert!(
+        missing
+            .stderr
+            .starts_with("error: No tag holds release 1.4.0 of `Postcodes`\n"),
+        "{}",
+        missing.stderr
+    );
+    assert!(missing.stderr.contains("v2.0.0"), "{}", missing.stderr);
+}
+
 /// A tagged commit is checked against the release before it, as
 /// `jadpo package publish` and the verifier check it, whichever tags came
 /// after: an older tag isn't compared with the newest.

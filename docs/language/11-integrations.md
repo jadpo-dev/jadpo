@@ -1824,7 +1824,9 @@ description of every public message.
 > `publish.type_unreviewed` (under "The scoped review and unconfirmed
 > operations"); item 4's tests are the package's own
 > `.test.jadpo` files; item 5 works out the version from the surface at
-> the last tag and refuses a breaking change (`publish.breaking_change`);
+> the last tag, or at the release `--previous` names when the registry
+> never released that tag (`--previous none` for a first release), and
+> refuses a breaking change (`publish.breaking_change`);
 > item 7 is the index's own check and the `licence` row: `check` passes
 > `Licence.proprietary`, because a private package's CI runs it before a tag, and
 > `verify` and `publish` refuse it (`publish.licence_proprietary`). Item 8 is the

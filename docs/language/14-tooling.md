@@ -988,7 +988,15 @@ and publishing a package](11-integrations.md#developing-and-publishing-a-package
 - The new version's section of `CHANGELOG.md` is written, and needs your
   reason for the release (`publish.changelog_missing`).
 - The version is worked out from the surface at the last `v<version>` tag,
-  and a breaking change is refused (`publish.breaking_change`).
+  and a breaking change is refused (`publish.breaking_change`). The
+  registry counts the releases it published, and a tag can name one it never
+  took, such as a release its verifier refused: `--previous <version>`
+  compares with that tagged release instead, and `--previous none` checks a
+  first release whatever the tags say, as `verify --previous` names the
+  release before. A version no tag the checkout grew from holds is
+  `cli.package_arguments`. `check` stays offline, so a package's CI gets the
+  same answer with or without a network, and the flag says what only the
+  registry knows (Richard, 2026-11-07).
 - A `recipes` row compiles each recipe in the one domain of the package's
   `sample/` app (`publish.sample_missing` without one).
 - A `publisher` row shows who `package.jadpo` names, and says `left out` when
