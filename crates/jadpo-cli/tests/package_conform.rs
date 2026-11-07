@@ -39,7 +39,7 @@ fn jadpo(cwd: &Path, args: &[&str]) -> Output {
 /// A first-party package as this repository holds it.
 fn package(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../packages")
+        .join("tests/fixtures/packages")
         .join(name)
 }
 

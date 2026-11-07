@@ -808,7 +808,7 @@ const RESEND_CONFIG: &str = r#"config {
 
 /// The Resend package as this repository holds it.
 fn resend_package() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/resend")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/packages/resend")
 }
 
 /// The project sending through Resend, with the package installed as an
