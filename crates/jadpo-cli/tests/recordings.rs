@@ -398,6 +398,17 @@ fn jadpo_package_record_keeps_the_sandboxs_answer() {
         fs::read_to_string(root.join(file)).expect("the recording"),
         recording("booked", "PM")
     );
+    // When it was made, which the package's facts give as its last
+    // contract run (Richard, 2026-11-07).
+    let when = fs::read_to_string(
+        root.join("shared/providers/acme_couriers/v1/recordings/recorded.jadpo_record"),
+    )
+    .expect("when it was recorded");
+    assert!(
+        when.lines()
+            .any(|line| line.starts_with("recorded bookings.create 20") && line.ends_with('Z')),
+        "{when}"
+    );
     assert_eq!(
         recorded.stdout,
         format!(

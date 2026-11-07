@@ -6378,9 +6378,11 @@ bar, and what `jadpo package verify --json` writes.
 > an enum. `standard_candidates` are `package.standard_candidate`'s
 > findings on the package's types, which a package that compiles has
 > declined, each with the standard type it may be, or `personal:` for free
-> text left unmarked. `last_contract_run` and the Jadpo releases it works with are
-> the registry's to add, so `verify` writes `null` for the first and leaves
-> out the second.
+> text left unmarked. `last_contract_run` is when the newest recording was
+> made, from the `recorded` lines `jadpo package record` keeps in
+> `recordings/recorded.jadpo_record`, and `null` with none. The Jadpo
+> releases it works with are the registry's to add, so `verify` leaves
+> them out.
 >
 > **The change record.** It compares the surface with the last release's:
 > a new entry is `added`, one gone `removed`, a new `fails` line
