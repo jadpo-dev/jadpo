@@ -2300,8 +2300,10 @@ symbolic link or a submodule refuses the commit
 ([`publish.file_not_allowed`](../errors/publish.file_not_allowed.md),
 [`publish.too_large`](../errors/publish.too_large.md)). What a repository
 needs for itself, hidden files and folders and a root `README`, `LICENSE`,
-`LICENCE` or `COPYING`, is left out instead: it isn't in the archive or the
-digest, and `left_out` lists it. `jadpo package verify <folder>` has the
+`LICENCE`, `COPYING` or `NOTICE`, is left out instead: it isn't in the
+archive or the digest, and `left_out` lists it. A `NOTICE` is the file
+Apache-2.0 asks a work to carry beside its licence, so a release may hold
+one as it holds a `LICENSE` (Richard, 2026-11-07). `jadpo package verify <folder>` has the
 same `files` row, so a local pass is a pass here.
 
 **Where its code runs.** Each pass runs in a sandbox of its own, sharing

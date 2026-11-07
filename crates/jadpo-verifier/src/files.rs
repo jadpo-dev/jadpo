@@ -4,7 +4,7 @@
 //! written anywhere.
 //!
 //! What a repository needs for itself (`.gitignore`, `.github/`, a README, a
-//! licence file) is left out of the release instead: nobody who installs the
+//! licence file, a `NOTICE`) is left out of the release instead: nobody who installs the
 //! package receives it, and it isn't in the digest.
 
 use std::path::Path;
@@ -75,11 +75,15 @@ pub fn judge(path: &str) -> Judged {
     }
 }
 
-/// A file every repository may carry beside its package.
+/// A file every repository may carry beside its package: a `NOTICE` too,
+/// which Apache-2.0 asks for beside its licence (Richard, 2026-11-07).
 fn is_repository_file(name: &str) -> bool {
     let stem = name.split_once('.').map_or(name, |(stem, _)| stem);
     let stem = stem.to_ascii_uppercase();
-    matches!(stem.as_str(), "README" | "LICENSE" | "LICENCE" | "COPYING")
+    matches!(
+        stem.as_str(),
+        "README" | "LICENSE" | "LICENCE" | "COPYING" | "NOTICE"
+    )
 }
 
 /// What a whole tree comes to.
