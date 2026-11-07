@@ -95,13 +95,13 @@ fn nothing_served(address: &str, status: u16) -> Diagnostic {
     if address == protocol::PUBLIC {
         return Diagnostic::new(
             &rule::REGISTRY_UNREACHABLE,
-            "The public registry isn't live yet".to_string(),
+            "The public registry isn't answering".to_string(),
         )
         .reason(format!(
-            "`{address}` answered {status}: your connection works, and nothing is served there yet."
+            "`{address}` answered {status}: your connection works, but jadpo.dev isn't serving the registry right now."
         ))
         .next_for(
-            "Use a folder or a git tag meanwhile: `jadpo package add <folder>` or `jadpo package add <repository>@v<version>`",
+            "Run the command again later, or use a folder or a git tag meanwhile: `jadpo package add <folder>` or `jadpo package add <repository>@v<version>`",
             Decider::Human,
         );
     }
@@ -1166,13 +1166,13 @@ mod tests {
 
     const NOW: i64 = 1_793_000_000 / DAY * DAY;
 
-    /// The public registry's 404 says it isn't live, and sends the reader to
-    /// what works, rather than to a network that is fine.
+    /// The public registry's 404 says it isn't answering, and sends the reader
+    /// to what works, rather than to a network that is fine.
     #[test]
-    fn a_404_from_the_public_registry_says_it_isnt_live() {
+    fn a_404_from_the_public_registry_says_it_isnt_answering() {
         let said = nothing_served(protocol::PUBLIC, 404);
         assert_eq!(said.rule.id, rule::REGISTRY_UNREACHABLE.id);
-        assert_eq!(said.message, "The public registry isn't live yet");
+        assert_eq!(said.message, "The public registry isn't answering");
         assert!(
             said.reason
                 .as_deref()
