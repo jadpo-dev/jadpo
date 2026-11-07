@@ -1332,7 +1332,7 @@ and no purge is listed in the report as "kept until erased".
 - **Marked fields nothing reads.** A personal field that no query, output
   or action reads is an error, because you are holding data you don't use
   (data minimisation, Article 5). You can
-  [decline](01-project-layout-and-modules.md#declining-a-judgement-call)
+  [decline](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)
   it, with a reason, because a field kept for a legal reason may be read
   only by export.
 - **Erasure is complete.** Every reference into a person's records has an

@@ -374,7 +374,7 @@ check failed: 2 errors, 10 files
 `jadpo acceptance new` writes the file listing both, and a person writes
 the reason on the `///` line above it. An agent stops there and hands over,
 because the reason has to come from you.
-[Get a person's sign-off](09-get-a-sign-off.md) goes through it step by
+[Approve a risky change](09-get-a-sign-off.md) goes through it step by
 step.
 
 ```sh
@@ -514,8 +514,8 @@ Jadpo's own emails, such as the sign-in email, get the same wrapper.
 ## Send through a provider
 
 `app.jadpo` is the only file that knows how mail leaves. To send through
-Resend, [install Jadpo's Resend package](../language/11-integrations.md#jadpos-own-packages)
-and replace the `mail` connection with one that names it, and the email's type,
+Resend, install [Jadpo's Resend package](../language/11-integrations.md#jadpos-own-packages)
+with `jadpo package add @jadpo/resend` and replace the `mail` connection with one that names it, and the email's type,
 templates and `emit` stay as they are. Jadpo has no package for other mail
 services, so for one of those use its SMTP server, or write a package for its
 API. A package that declares an `erasure:` call, on a connection that

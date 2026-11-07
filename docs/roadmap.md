@@ -467,10 +467,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
 - [x] **R4 The registry protocol and a local registry**: area 11, "The registry protocol"; compiler/runtime §2.1, `jadpo-registry`.
 - [x] **R5 The registry commands**: area 11, "How the registry commands work"; area 14, the package commands; compiler/runtime §2.1, "The registry commands"; the pages of `install.not_in_registry`, `install.not_proved`, `install.yanked`, `package.advisory`, `publish.failed`, `publish.not_at_tag`, `publish.repository_refused` and `registry.unreachable`.
 - [x] **R6 The verifier**: area 11, "The verifier" and "Publishing errors"; area 14, "`jadpo package verify`"; compiler/runtime §2.1, `jadpo-verifier`; `deploy/verifier/`; `.github/workflows/verifier-image.yml`; documentation, "Versions and releases".
-- [ ] **R6b The verifier deployed** **needs a maintainer**: the Fly.io
-  account and the steps in [documentation](documentation.md#versions-and-releases):
-  the repository variable `JADPO_VERIFIER_IMAGE` set to `on`, the app and its
-  credential on Fly.io, then the image deployed. Before R7 can reach it.
+- [x] **R6b The verifier deployed**: on Cloudflare Containers, from the jadpo.dev repository's `verifier/`; documentation, "Versions and releases"; area 11, "The verifier".
 - [x] **G1 Reserved words as names**: area 2, "Names from reserved words"; area 1, "Reserved words"; `docs/errors/syntax.expected_name.md`, `docs/errors/type.reserved_variant_name.md`.
 - [x] **G2 A `GET` that runs a read-only action**: area 7, "A `GET` that runs an action"; area 3, "Functions and actions"; `docs/errors/route.run_kind.md`; compiler/runtime, "An action on a `GET`".
 - [x] **G3 A route that sends raw bytes**: area 7, "Sending raw bytes", "Answers that never change" and "The public API record"; area 18, "Acceptances"; `docs/errors/route.sends_invalid.md`, `docs/errors/route.cache_invalid.md`; compiler/runtime, "A route that sends raw bytes".

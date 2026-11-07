@@ -1,5 +1,5 @@
 //! "Decline with a reason" and "Remove decline" (area 14, "Editor
-//! support"; area 1, "Declining a judgement call", chunk 5.4b): quick
+//! support"; area 1, "Keeping code as it is, with a reason", chunk 5.4b): quick
 //! fixes that write and remove `decline` lines through the code `jadpo
 //! declines clear` runs (`jadpo_check::declines`), so the editor and the
 //! command agree on what a decline is and where it goes.

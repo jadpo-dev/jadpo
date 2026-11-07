@@ -1734,6 +1734,13 @@ POST /auth/magic-link
   account. The email is sent after the request commits when an account
   has the address, or when you declare `on_first_sign_in:`. Otherwise
   nothing is sent.
+- With `on_first_sign_in:`, every address that asks is sent a sign-in email,
+  since your action decides whether to take someone on only once they
+  confirm. An address your action refuses learns so only then, as
+  `sign_in_refused`. So an app that limits who may sign up still emails a
+  stranger who asks. To email no one without an account, leave
+  `on_first_sign_in:` out and create accounts some other way, such as from
+  an invitation.
 - Sends to one address are limited, counted the same whether or not an
   account has it: one every `resend_after:`, and `codes_per_hour:` an
   hour. Over either limit the answer is the built-in `rate_limited` (429,

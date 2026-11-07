@@ -491,11 +491,14 @@ needs, or use a local clone with a file-reading coding agent.
   - The verifier's container image (`deploy/verifier/`) is built and tested
     on each release, and pushed to `ghcr.io/jadpo-dev/verifier` while the
     repository variable `JADPO_VERIFIER_IMAGE` is `on`, with the workflow's
-    own token. It reaches the registry from Fly.io, which a maintainer sets
-    up once: `fly apps create jadpo-verifier`, `fly secrets set
-    JADPO_VERIFIER_TOKEN=...` with the credential the registry also holds,
-    and `fly deploy --config deploy/verifier/fly.toml --image
-    ghcr.io/jadpo-dev/verifier:<version>` for each release.
+    own token. The registry runs the verifier on Cloudflare Containers, from
+    the jadpo.dev repository: its CI builds the image from
+    `deploy/verifier/Dockerfile` with the newest release's own `jadpo`, checked
+    against its attestation, and deploys it behind a small Worker at
+    `verifier.jadpo.dev`, whose secret `JADPO_VERIFIER_TOKEN` is the credential
+    the registry also holds. A container sleeps when nothing asks it anything,
+    and the registry's polling, once a minute while a verification runs, keeps
+    it awake until the verification ends.
 
 ## Installing
 

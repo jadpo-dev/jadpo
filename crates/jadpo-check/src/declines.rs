@@ -1,4 +1,4 @@
-//! Declining a judgement call (area 1, "Declining a judgement call";
+//! Keeping code as it is, with a reason (area 1, "Keeping code as it is, with a reason";
 //! question 11 there, decided 2026-10-17). Every finding is an error, and a
 //! declinable one may be answered by a `decline <rule>: "<reason>"` line
 //! directly above the declaration or member it is on, instead of a fix.

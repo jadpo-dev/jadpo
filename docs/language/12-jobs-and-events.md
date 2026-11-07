@@ -726,7 +726,7 @@ query by a field no update changes, such as `id`, or a creation time
 followed by `id`. A `from:` ordered by a field that can be updated is
 [`type.batch_order_updatable`](../errors/type.batch_order_updatable.md).
 It is an error you may decline when you know the order is safe
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
+([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 
 ### Batches instead of chained events
 

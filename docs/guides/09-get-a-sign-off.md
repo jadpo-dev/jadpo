@@ -1,4 +1,4 @@
-# Get a person's sign-off
+# Approve a risky change
 <!-- topic: guide-get-a-sign-off -->
 
 Some changes can hurt someone outside the code: removing a field a

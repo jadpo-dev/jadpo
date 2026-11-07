@@ -1,5 +1,5 @@
 //! `jadpo declines list` and `jadpo declines clear` (area 14; area 1,
-//! "Declining a judgement call", question 11, chunk 5.4b): show every
+//! "Keeping code as it is, with a reason", question 11, chunk 5.4b): show every
 //! `decline` line with its rule, place and reason, and remove them so each
 //! finding comes back to be fixed or declined again. Both read and write
 //! the lines through `jadpo_check::declines`, the code the editor's

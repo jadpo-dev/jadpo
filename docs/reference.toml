@@ -319,7 +319,7 @@ title = "Data"
 summary = "What an app stores and how it reads and writes it: entities, migrations, queries, personal data and location."
 
 [[group.page]]
-title = "Entities, stores and migrations"
+title = "Entities, the databases that hold them, and migrations"
 topics = [
   "data",
   "entities-and-the-id",
@@ -784,7 +784,7 @@ details = [
 ]
 
 [[group.page]]
-title = "Capabilities"
+title = "Email, files and other jobs a provider does for Jadpo"
 topics = [
   "capabilities",
   "built-in-service-capabilities",
@@ -798,7 +798,7 @@ status = [
   "11-integrations: Installing: `add` from a folder or git",
   "11-integrations: The registry at jadpo.dev",
 ]
-missing = "the public registry, so a package is added from a folder or a git tag, never by name"
+missing = "the registry's search by meaning, advisories and compatibility runs"
 topics = [
   "kinds-of-package",
   "where-packages-live",
@@ -826,11 +826,12 @@ status = [
   "11-integrations: Starting a package",
   "11-integrations: The registry at jadpo.dev",
 ]
-missing = "the public registry, so `jadpo package publish` has nowhere to publish yet"
+missing = "the registry's organisations, automatic release, urgent releases and compatibility runs"
 topics = [
   "the-package-format",
   "developing-and-publishing-a-package",
   "the-public-registry",
+  "the-registry-protocol",
   "the-verifier",
 ]
 details = [
@@ -998,7 +999,7 @@ topics = [
 ]
 
 [[group.page]]
-title = "Suggestions"
+title = "Finding code a standard type could replace"
 topics = [
   "suggestions",
   "signals",
@@ -1039,7 +1040,7 @@ built = [
 ]
 
 [[group.page]]
-title = "Review and records"
+title = "Reviewing a change, and the files Jadpo commits"
 topics = [
   "records-and-manifest",
   "reviewing-a-change",
@@ -1065,7 +1066,7 @@ href = "/docs/errors"
 topics = [
   "error-messages",
   "declining-a-judgement-call",
-  "errors-only-the-running-app-or-a-build-raises",
+  "what-the-running-app-logs",
   "command-line-errors",
   "command-errors",
   "database-command-errors",

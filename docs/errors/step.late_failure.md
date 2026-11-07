@@ -275,4 +275,4 @@ undo the call as another changing call in a `match` arm.
 - [The late-failure warning](../language/12-jobs-and-events.md#the-late-failure-warning)
 - [Ending for good after a step took effect](../language/12-jobs-and-events.md#ending-for-good-after-a-step-took-effect)
 - [Retries and giving up](../language/12-jobs-and-events.md#retries-and-giving-up)
-- [Declining a judgement call](../language/01-project-layout-and-modules.md#declining-a-judgement-call)
+- [Keeping code as it is, with a reason](../language/01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)
