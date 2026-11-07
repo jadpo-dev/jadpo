@@ -207,15 +207,23 @@ jadpo check
 ```
 
 ```text output
+To review
+  Go through each type against the provider's documentation, then add it to
+  `reviewed:` in its package's `provider.jadpo` (agent)
+    AcmeCouriers.v1  Booking, CreateBooking; 0 of 2 reviewed
+
 Not yet confirmed
   Record each with `jadpo package record`, which checks a sandbox answer
   against its types (agent)
     couriers.bookings.create
 
-checked: 1 unconfirmed, 8 files
+checked: 2 to review, 1 unconfirmed, 8 files
 ```
 
-The check passes. "Not yet confirmed" means no real answer from the courier
+The check passes. "To review" asks your agent to go through each type the
+call reaches against the courier's documentation, then list it in
+`reviewed:` in `provider.jadpo`; publishing the package needs every public
+type listed. "Not yet confirmed" means no real answer from the courier
 has been checked against the types you wrote, so they are only as right as what
 you read. It doesn't fail the check, and `jadpo approval` shows a person what
 ships unconfirmed. To confirm the call, put a sandbox key in `.env.local` and run `jadpo package record
@@ -766,6 +774,7 @@ packages.
 | `max_concurrent:` | How many of its calls run at once per app instance |
 | `settings:` | Typed values the app gives on the connection (`message_stream:`) |
 | `imported:` | The description it was imported from, `file:`, that file's digest, `digest:`, and `reviewed:`, the package's types an agent has reviewed against the provider's documentation |
+| `reviewed:` | In a package written by hand, which has no `imported:`, the package's types an agent has reviewed against the provider's documentation |
 
 **Where the API is comes from exactly one place:**
 
@@ -1265,6 +1274,8 @@ format an importer produces. Nothing else changes: the same compiler
 checks, the same fakes, the same review. A package needs only the
 operations the app uses, so it can start with one operation and grow.
 
+Its reviewed types are listed in `provider { }`'s own `reviewed:`.
+
 ### Mapping imported types to standard types
 
 An imported description says little about what a field *is*: OpenAPI's
@@ -1302,7 +1313,7 @@ silently:
    Each imported type starts unreviewed; the agent marks it reviewed when it
    has gone through it; `jadpo check` lists reviewed and outstanding types
    for the operations the app calls, and `jadpo approval` shows a person
-   any type shipped unreviewed.
+   any type shipped unreviewed. Publishing needs every public type reviewed.
 5. **Confirmation by real responses.** An operation the app calls stays
    unconfirmed until `jadpo package record` has checked a sandbox response
    against it ("Provenance and confirmation", below).
@@ -1332,7 +1343,7 @@ importer merges rather than overwrites.
 > $ jadpo check
 > To review
 >   Go through each type against the provider's documentation, then add it to
->   `reviewed:` in `imported:` in its package's `provider.jadpo` (agent)
+>   `reviewed:` in its package's `provider.jadpo` (agent)
 >     Tidepay.v2024_06_20  Charge, ChargesGetChargesInput, Shop; 0 of 3 reviewed
 >
 > Not yet confirmed
@@ -1768,7 +1779,9 @@ package unless:
    the author writes only why;
 7. it declares a licence from the fixed list (not `.proprietary`, for the
    public registry) and the lowest Jadpo version it needs;
-8. it names its publisher.
+8. it names its publisher;
+9. for a provider package, an agent has reviewed every public type against
+   the provider's documentation.
 
 The bar applies only to what is published: the app's own integrations and
 libraries skip it. Examples are part of the bar because they must run,
@@ -1786,8 +1799,12 @@ description of every public message.
 > scratch app (the golden rule) and shows each problem at its place in the
 > package's folder. Item 1 is the check itself, `type.standard_exists` on
 > the package's public types among it
-> ([Standard library](19-standard-library.md)); item 2 is
-> `publish.description_missing`; item 4's tests are the package's own
+> ([Standard library](19-standard-library.md)), and for a provider
+> `package.standard_candidate` on its public objects; item 2 is
+> `publish.description_missing`; item 9 is the `reviewed` row, after
+> `described`, and each public type missing from `reviewed:` is
+> `publish.type_unreviewed` (under "The scoped review and unconfirmed
+> operations"); item 4's tests are the package's own
 > `.test.jadpo` files; item 5 works out the version from the surface at
 > the last tag and refuses a breaking change (`publish.breaking_change`);
 > item 7 is the index's own check and the `licence` row: `check` passes
@@ -6300,7 +6317,8 @@ bar, and what `jadpo package verify --json` writes.
 > package, and of a provider's only the plain values, never an object or
 > an enum. `standard_candidates` are `package.standard_candidate`'s
 > findings on the package's types, which a package that compiles has
-> declined. `last_contract_run` and the Jadpo releases it works with are
+> declined, each with the standard type it may be, or `personal:` for free
+> text left unmarked. `last_contract_run` and the Jadpo releases it works with are
 > the registry's to add, so `verify` writes `null` for the first and leaves
 > out the second.
 >
@@ -7280,6 +7298,35 @@ fields the importer asks you to check. Layers 4 and 5 are under
   reason; so is a latitude beside a longitude that isn't mapped. A number
   named like a time that is text (`"2026-10-20"`) isn't flagged: the page
   names whole numbers, and a format says when text is a time.
+- **Text that is personal data.** `Text` in a provider package's public
+  object, or a list of it, is flagged by its name, since only the names
+  say what it is:
+  - in an email's object, one with a `subject`, `cc` or `bcc`, a `to`,
+    `from`, `cc`, `bcc` or `reply_to` may be an `Email`, or an
+    `EmailWithName` where the provider shows a name with the address,
+    which then needs `decode:` and `encode:` when the provider sends both
+    as one text (`Mary Somerville <mary@example.com>`);
+  - text named like an email address (`email`, `email_address`, or
+    ending `_email`) may be an `Email`; like a first name (`first_name`,
+    `given_name`, `forename`) a `GivenName`; like a surname (`last_name`,
+    `family_name`, `surname`) a `FamilyName`; like a phone number
+    (`phone`, `phone_number`, `telephone`, `msisdn`, or ending `_phone`)
+    a `PhoneNumber`; those names may also end the field's own
+    (`customer_email`, `billing_phone`);
+  - free text may hold anything a person writes, so it is marked
+    `personal:` with the category it may hold: an email's `subject`,
+    `html`, `text` or `body`, a message's `content` or `text` beside its
+    `role`, a prompt's `prompt`, `system` or `instructions` beside its
+    `model`, and a whole name as one text (`full_name`), which no standard
+    type holds, since a `PersonName` keeps its parts apart.
+
+  A field already marked `personal:`, of another type, or that says how it
+  is sent is never one, and a `to` or `from` in an object that isn't an
+  email's, such as a currency conversion's, isn't flagged. Each is
+  declinable as the numbers are. An installed package's text is its
+  publisher's to check, so it isn't flagged in an app that installed it,
+  and a decline in its files is never called unused there. Swapping or marking it lets the package's
+  facts list what it sends as personal data.
 - **Fakes.** A generated default answer writes a field's parts as their
   members, and a `Money` as the contract sends one, a whole number of
   minor units in the currency its type fixes or `GBP`.
@@ -7406,10 +7453,11 @@ still need a recording to confirm them.
   written by the agent like any source and kept in review's diff; each
   entry is one of the package's own types, in its `types/`, once
   (`package.provider_invalid`), and `imported:` holds only `file:`,
-  `digest:` and `reviewed:`. A package with no `imported:` was written,
-  not imported, and has no types to review. Every imported type starts
-  unreviewed, a Jadpo application's exact import included: the page makes
-  no exception.
+  `digest:` and `reviewed:`. A package with no `imported:` was written by
+  hand, and lists its reviewed types in `provider { }`'s own `reviewed:`;
+  one beside `imported:` is `package.provider_invalid`, since the list
+  belongs in it. Every type starts unreviewed, a Jadpo application's exact
+  import included: the page makes no exception.
 - **What is in scope.** The package's own types each called operation's
   `input:`, `output:` and `wire_output:` reach, through fields, list,
   set and map items, `?`, payload variants and the type a refinement is
@@ -7423,9 +7471,10 @@ still need a recording to confirm them.
   was reviewed and recorded by its publisher, its files held to its
   digest, and its surface already says which operations are `confirmed`,
   so listing its calls would name a step the app can't take.
-- **Not a finding.** A type to review and a call to confirm stop nothing:
-  the page lets an unreviewed type ship, for `jadpo approval` to show, and
-  allows unconfirmed operations in every build. `jadpo check` shows both
+- **Not a finding in an app.** A type to review and a call to confirm stop
+  nothing in an app's own integration: the page lets an unreviewed type
+  ship, for `jadpo approval` to show, and allows unconfirmed operations in
+  every build. `jadpo check` shows both
   only once it passes, after the errors would be, and counts them, muted,
   in its footer; while it has errors those come first.
 - **Recorded for `jadpo approval`.** `jadpo check` writes
@@ -7433,6 +7482,12 @@ still need a recording to confirm them.
   cleanly and the app has an integration of its own: per package, each
   call and whether a recording confirms it, and each type in scope and
   whether it is reviewed, rows in name order for small diffs.
+- **Required to publish.** The publishing bar's `reviewed` row holds a
+  provider package to every one of its public types, since any of them
+  reaches an app that installs it, whatever that app calls. Each public
+  type not in `reviewed:` is `publish.type_unreviewed`, and the row fails;
+  `--json` gives the row's detail whole, naming each type and the step,
+  for the registry's page of a refused release. A library has no row.
 - **Importing again.** `reviewed:` is kept, as the agent's correction, but
   a type the description adds a member to is new to review: it leaves
   the list, and the summary shows it under "To review again". A type
@@ -8357,6 +8412,7 @@ public type SlotTaken = Failure {
 > never does, since the app's own integrations skip the bar.
 
 - [`publish.description_missing`](../errors/publish.description_missing.md)
+- [`publish.type_unreviewed`](../errors/publish.type_unreviewed.md)
 - [`publish.breaking_change`](../errors/publish.breaking_change.md)
 - [`publish.example_missing`](../errors/publish.example_missing.md)
 - [`publish.example_failed`](../errors/publish.example_failed.md)

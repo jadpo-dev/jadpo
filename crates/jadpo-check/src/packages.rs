@@ -71,7 +71,7 @@ pub const PROPRIETARY: &str = "proprietary";
 
 /// The keys `provider.jadpo`'s `provider { }` may hold (area 11, "How the
 /// API is reached").
-pub const PROVIDER_KEYS: [&str; 17] = [
+pub const PROVIDER_KEYS: [&str; 18] = [
     "protocol",
     "hosts",
     "runs",
@@ -85,6 +85,7 @@ pub const PROVIDER_KEYS: [&str; 17] = [
     "max_concurrent",
     "settings",
     "imported",
+    "reviewed",
     "description",
     "aws",
     "credential_header",
@@ -741,6 +742,20 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
             "headers" => headers(&path, &member, out),
             "imported" => {
                 crate::review::imported_problems(db, project, &home.folder, &path, &member, out);
+            }
+            "reviewed" => {
+                let imported = tree::members(decl.member_list())
+                    .iter()
+                    .any(|(name, _)| tree::name_text(name).as_deref() == Some("imported"));
+                crate::review::reviewed_problems(
+                    db,
+                    project,
+                    &home.folder,
+                    &path,
+                    &member,
+                    imported,
+                    out,
+                );
             }
             _ => {}
         }

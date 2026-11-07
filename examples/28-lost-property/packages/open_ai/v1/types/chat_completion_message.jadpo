@@ -3,5 +3,6 @@ public type ChatCompletionMessage = Object {
     role: Text {
         max_length: 20
     }
+    decline package.standard_candidate: "What an app sends a model is checked where it is written, against `ai: { personal_data: }`, so this field adds no mark"
     content: Text
 }

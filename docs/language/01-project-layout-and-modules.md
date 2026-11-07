@@ -212,7 +212,7 @@ the action" in place of "above it".
 | [`constant.similar_exists`](../errors/constant.similar_exists.md) | [Logic](03-logic.md) | Another constant of the same type holds the same value |
 | [`policy.call_ungranted`](../errors/policy.call_ungranted.md) | [Policy](09-policy.md) | A listed action calls one that refuses some of the people its line lets in |
 | `translation.field_unused` | [Translations as messages](10-configuration-and-time.md#translations-as-messages) | No wording in a language uses one of a message's fields |
-| `package.standard_candidate` | [External services](11-integrations.md) | A provider field looks like a standard type the package doesn't use |
+| `package.standard_candidate` | [External services](11-integrations.md) | A provider field looks like a standard type the package doesn't use, or like personal data it doesn't mark |
 | [`type.batch_order_updatable`](../errors/type.batch_order_updatable.md) | [Background work](12-jobs-and-events.md) | A batch walks a query ordered by a field an update can change |
 | [`step.late_failure`](../errors/step.late_failure.md) | [Background work](12-jobs-and-events.md) | An action can fail for good after a changing call took effect |
 | `email.field_unused` | [Built-in services](16-built-in-services.md) | An email's field is written by no template and no subject |

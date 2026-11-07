@@ -69,11 +69,21 @@ public resource transmissions {
 ```jadpo check project=e-email-attachment-limit file=shared/providers/postbox/v1/types/outgoing_email.jadpo hidden
 /// One email to send.
 public type OutgoingEmail = Object {
-    from: Text
-    to: Text
-    subject: Text
-    html: Text?
-    text: Text?
+    from: Text {
+        personal: PersonalData.contact
+    }
+    to: Text {
+        personal: PersonalData.contact
+    }
+    subject: Text {
+        personal: PersonalData.identifying
+    }
+    html: Text? {
+        personal: PersonalData.identifying
+    }
+    text: Text? {
+        personal: PersonalData.identifying
+    }
     attachments: List<OutgoingAttachment>
 }
 ```

@@ -803,8 +803,10 @@ a small example of each kind of file to replace, and the `CHANGELOG.md` and
 `surface.jadpo_record` of its first release, so it passes `jadpo package check`
 as written and that command has nothing to change. A library starts with the
 `starter` library, a recipe and a test. A provider starts with the `account`
-resource, a recipe and hosts ending `.example`, and no recording, so its contract
-says nothing is confirmed until `jadpo package record` has called the API.
+resource, its two types listed in `reviewed:`, a recipe and hosts ending
+`.example`, and no recording, so its contract says nothing is confirmed until
+`jadpo package record` has called the API. A type you add goes in `reviewed:`
+once you have gone through it against the API's documentation.
 `.gitignore` and `.gitattributes` sit beside them, and git isn't run: making the
 repository is yours.
 
@@ -3296,6 +3298,7 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `publish.sample_missing` | `package check` | Package's recipes have no sample app with one domain to compile in ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.stale_files` | `package verify` | A commit's `surface.jadpo_record` or changelog list isn't what the package's code gives ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.too_large` | `package verify` | A commit's release is past the size limit ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.type_unreviewed` | `package check`, `package verify` | A provider package's public type isn't in its `reviewed:` list ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `runtime.outcome_unknown` | the running app | Generated runtime could not confirm whether an effect committed |
 | `runtime.startup_failed` | the running app | Generated runtime failed during startup; a deployable's log event, with every problem that stopped it ([A native deployable](#a-native-deployable)) |
 | `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |

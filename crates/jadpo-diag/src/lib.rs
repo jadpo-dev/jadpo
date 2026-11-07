@@ -707,7 +707,7 @@ rules! {
     PACKAGE_RESERVED_NAME: "package.reserved_name", area 11, Error, Agent,
         "App's own integration takes a provider's reserved name";
     PACKAGE_STANDARD_CANDIDATE: "package.standard_candidate", area 11, Declinable, Agent,
-        "Provider field looks like a standard type the package doesn't use";
+        "Provider field looks like a standard type the package doesn't use, or like personal data it doesn't mark";
     PACKAGE_VERSION_NEEDED: "package.version_needed", area 11, Error, Agent,
         "Your code names something through a package that the app holds in two versions, without saying which version it means";
     PACKAGE_VERSION_UNNEEDED: "package.version_unneeded", area 11, Error, Agent,
@@ -810,6 +810,8 @@ rules! {
         "A commit's `surface.jadpo_record` or changelog list isn't what the package's code gives";
     PUBLISH_TOO_LARGE: "publish.too_large", area 14, Error, Human,
         "A commit's release is past the size limit";
+    PUBLISH_TYPE_UNREVIEWED: "publish.type_unreviewed", area 14, Error, Agent,
+        "A provider package's public type isn't in its `reviewed:` list";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "Aggregate is given the wrong arguments";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,

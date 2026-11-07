@@ -39,6 +39,7 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
         failure: false,
         sent: false,
         provider,
+        installed: home.is_some_and(|home| home.installed),
         packaged: home.is_some(),
     };
     for decl in source.decls() {
@@ -82,6 +83,9 @@ pub(super) struct Decls<'a> {
     /// Whether the file is in a provider package, whose fields and
     /// variants may give `wire_name:` (area 11).
     pub provider: bool,
+    /// Whether that package is installed in `packages/`, held to its
+    /// digest, rather than the app's own or the one being published.
+    pub installed: bool,
     /// Whether the file is in a package, whose types' fields may be marked
     /// `personal:` (area 15; chunk V5).
     pub packaged: bool,
@@ -496,7 +500,7 @@ impl Decls<'_> {
                 if *base == FieldsBase::Object {
                     self.standard_exists(decl, &shape.name);
                     if self.provider {
-                        self.standard_candidates(decl, &shape.name);
+                        self.standard_candidates(decl, &shape.name, lines);
                     }
                 }
             }
@@ -716,10 +720,14 @@ impl Decls<'_> {
     /// like a standard type the package doesn't use. A whole number named
     /// like a time may be an `Instant` sent as seconds; one named like an
     /// amount beside a currency, `Money` in minor units; a latitude beside
-    /// a longitude, a `Point`. The package says how each is sent once it is
-    /// swapped, so a field that says so already is never one. An object
-    /// that is a standard type whole is `type.standard_exists` instead.
-    fn standard_candidates(&mut self, decl: &ast::TypeDecl, name: &str) {
+    /// a longitude, a `Point`. Text named like an email address, a person's
+    /// name or a phone number may be the standard type that holds it, and
+    /// free text a person writes is marked `personal:` ([`text_candidate`]),
+    /// so the package's facts count what it sends. The package says how each
+    /// is sent once it is swapped, so a field that says so already is never
+    /// one, nor one marked `personal:`. An object that is a standard type
+    /// whole is `type.standard_exists` instead.
+    fn standard_candidates(&mut self, decl: &ast::TypeDecl, name: &str, lines: &[Line]) {
         use jadpo_std::provider::{
             amount_like, currency_named, latitude_named, longitude_named, time_named,
         };
@@ -760,6 +768,21 @@ impl Decls<'_> {
                 && longitude_named(&field.name)
                 && built_on(field, &[Prim::Int, Prim::Decimal])
         });
+        // The fields already marked `personal:`, which say what they hold.
+        let marked: Vec<&str> = lines
+            .iter()
+            .filter_map(|line| match line {
+                Line::Field { name, settings, .. }
+                    if settings
+                        .iter()
+                        .any(|(key, _)| key == crate::ai_personal::PERSONAL) =>
+                {
+                    Some(name.as_str())
+                }
+                _ => None,
+            })
+            .collect();
+        let siblings: Vec<&str> = fields.iter().map(|field| field.name.as_str()).collect();
         let mut found: Vec<Diagnostic> = Vec::new();
         for field in fields.iter().filter(|field| plain(field)) {
             let Some(span) = spans.get(&field.name).cloned() else {
@@ -768,6 +791,18 @@ impl Decls<'_> {
             let at = format!("{name}.{}", field.name);
             let own = &field.name;
             let wire = spelled(field);
+            // An installed package's text was checked when it was
+            // published, and the app can't change its files, so a release
+            // from before text was read isn't refused in every app that
+            // installed it.
+            if !self.installed
+                && !marked.contains(&own.as_str())
+                && free_text(self.table, &field.declared)
+                && let Some(candidate) = jadpo_std::provider::text_candidate(own, &siblings)
+            {
+                found.push(text_candidate(&at, own, &field.declared, candidate, span));
+                continue;
+            }
             if built_on(field, &[Prim::Int]) && time_named(own) {
                 found.push(
                     Diagnostic::new(
@@ -3335,6 +3370,117 @@ pub(crate) struct MatchedField {
 
 /// Whether `ty` is an enum without data, as a currency held as a
 /// project's own enum is (area 19).
+/// Whether `ty` is text with no meaning of its own, `?` or a list of it
+/// included: `Text`, or a type the package builds on it, never a standard
+/// type, which says what it holds.
+fn free_text(table: &dyn TypeView, ty: &Ty) -> bool {
+    let mut current = ty.clone();
+    for _ in 0..8 {
+        current = match current {
+            Ty::Prim(Prim::Text) => return true,
+            Ty::Nullable(inner) | Ty::List(inner) => *inner,
+            Ty::Named(name) if jadpo_std::standard_type(&name).is_none() => {
+                match table.def(&name) {
+                    Some(Def::Scalar { parent, .. }) => parent.clone(),
+                    _ => return false,
+                }
+            }
+            _ => return false,
+        };
+    }
+    false
+}
+
+/// `ty` written with its text swapped for the standard type `standard`:
+/// `Text?` as `Email?`, `List<Text>` as `List<Email>`.
+fn swapped(ty: &Ty, standard: &str) -> String {
+    match ty {
+        Ty::Nullable(inner) => format!("{}?", swapped(inner, standard)),
+        Ty::List(inner) => format!("List<{}>", swapped(inner, standard)),
+        _ => standard.to_string(),
+    }
+}
+
+/// `package.standard_candidate` on a provider's text (area 11, "Mapping
+/// imported types to standard types"): text named like an email address,
+/// a person's name or a phone number may be the standard type that holds
+/// it, which is personal data; free text a person writes says so with
+/// `personal:`. The finding names the field first and what it may be last,
+/// as the release's facts read it.
+fn text_candidate(
+    at: &str,
+    own: &str,
+    declared: &Ty,
+    candidate: jadpo_std::provider::TextCandidate,
+    span: Span,
+) -> Diagnostic {
+    use jadpo_std::provider::TextCandidate;
+    let uses = "A package's public types use the standard types, so an app gives one checked as what it is, and the package's facts count it as the personal data it is.";
+    let standard = |standard: &str, label: &str, what: &str| {
+        Diagnostic::new(
+            &rule::PACKAGE_STANDARD_CANDIDATE,
+            format!("`{at}` may be {} `{standard}`", indefinite(standard)),
+        )
+        .at(span.clone(), label.to_string())
+        .reason(format!(
+            "`{own}` is text named like {what}, which is personal data. {uses}"
+        ))
+        .next(format!(
+            "Check the provider's documentation, then make it `{own}: {}`",
+            swapped(declared, standard)
+        ))
+    };
+    let marked = |label: &str, reason: String| {
+        Diagnostic::new(
+            &rule::PACKAGE_STANDARD_CANDIDATE,
+            format!("`{at}` may hold personal data with no `personal:`"),
+        )
+        .at(span.clone(), label.to_string())
+        .reason(reason)
+        .next("Check what the provider is sent here, then add `personal:` with the category it may hold, such as `personal: PersonalData.identifying`")
+    };
+    match candidate {
+        TextCandidate::Mailbox => Diagnostic::new(
+            &rule::PACKAGE_STANDARD_CANDIDATE,
+            format!("`{at}` may be an `Email`"),
+        )
+        .at(span, "text naming who an email is from or to")
+        .reason(format!(
+            "`{own}` is text beside an email's subject or copies, so it names who the email is from or to: an email address, which is personal data. {uses}"
+        ))
+        .next(format!(
+            "Check the provider's documentation, then make it `{own}: {}`, or `{}` where the provider shows a name with the address, with `decode:` and `encode:` if it sends both as one text (`Mary Somerville <mary@example.com>`)",
+            swapped(declared, "Email"),
+            swapped(declared, "EmailWithName"),
+        )),
+        TextCandidate::Email => standard("Email", "text named like an email address", "an email address"),
+        TextCandidate::GivenName => standard("GivenName", "text named like a first name", "a person's first name"),
+        TextCandidate::FamilyName => standard("FamilyName", "text named like a surname", "a person's surname"),
+        TextCandidate::Phone => standard("PhoneNumber", "text named like a phone number", "a phone number"),
+        TextCandidate::WholeName => marked(
+            "text named like a person's whole name",
+            format!(
+                "`{own}` is text named like a person's whole name, which is personal data. No standard type holds a whole name as one text, since a `PersonName` keeps its parts apart, so the field says what it holds with `personal:`, and the package's facts count it."
+            ),
+        ),
+        TextCandidate::FreeText(what) => marked(
+            "free text a person may write",
+            format!(
+                "`{own}` is free text, {what}, which can hold anything a person writes, names and addresses among it. The package's facts count the personal data it sends from what its fields say they hold, so free text says so with `personal:`."
+            ),
+        ),
+    }
+}
+
+/// `a` or `an` before a standard type's name.
+fn indefinite(name: &str) -> &'static str {
+    if name.starts_with(['A', 'E', 'I', 'O', 'U']) {
+        "an"
+    } else {
+        "a"
+    }
+}
+
 fn is_enum(table: &dyn TypeView, ty: &Ty) -> bool {
     match table.structure(ty) {
         Ty::Named(name) => matches!(

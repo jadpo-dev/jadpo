@@ -972,6 +972,9 @@ struct Item {
     detail: String,
     /// A skipped row that won't be checked: nothing is owed, only said.
     left_out: bool,
+    /// What `--json` says instead of `detail`, which the screen keeps
+    /// short: the registry's page of a refused release shows it whole.
+    whole: Option<String>,
 }
 
 impl Item {
@@ -981,6 +984,7 @@ impl Item {
             state: RowState::Done,
             detail: detail.into(),
             left_out: false,
+            whole: None,
         }
     }
 
@@ -990,6 +994,7 @@ impl Item {
             state: RowState::Failed,
             detail: detail.into(),
             left_out: false,
+            whole: None,
         }
     }
 
@@ -999,6 +1004,7 @@ impl Item {
             state: RowState::Skipped,
             detail: detail.into(),
             left_out: false,
+            whole: None,
         }
     }
 
@@ -1006,6 +1012,13 @@ impl Item {
         Item {
             left_out: true,
             ..Item::later(name, detail)
+        }
+    }
+
+    fn whole(self, detail: impl Into<String>) -> Item {
+        Item {
+            whole: Some(detail.into()),
+            ..self
         }
     }
 
@@ -1457,6 +1470,37 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         )
     });
     diagnostics.extend(in_package(&compiled, described));
+    // A provider package's public types, each gone through against the
+    // provider's documentation (area 11, "The scoped review and
+    // unconfirmed operations"): what the names `package.standard_candidate`
+    // reads can't tell. The row names the types and the step, for the
+    // registry's page of a refused release; each type's finding is below.
+    if let Some(review) = jadpo_check::review::public_review(db, project, &mount) {
+        items.push(match review.unreviewed.as_slice() {
+            [] if review.public == 0 => Item::passed("reviewed", "no public types"),
+            [] => Item::passed("reviewed", "every public type"),
+            names => {
+                let listed: Vec<String> = names.iter().map(|name| format!("`{name}`")).collect();
+                let (them, verb) = if names.len() == 1 {
+                    ("it", "isn't")
+                } else {
+                    ("each", "aren't")
+                };
+                Item::failed("reviewed", format!("{} not in `reviewed:`", names.len())).whole(
+                    format!(
+                        "{} {verb} reviewed: go through {them} against the provider's documentation, then add it to `reviewed:` {}",
+                        and_list(&listed),
+                        if review.imported {
+                            "in `imported:` in `provider.jadpo`"
+                        } else {
+                            "in `provider.jadpo`"
+                        },
+                    ),
+                )
+            }
+        });
+        diagnostics.extend(in_package(&compiled, review.problems));
+    }
     // A library package's translations: every language it ships is whole
     // (area 10, "Jadpo's and packages' text").
     let (worded, unworded) = jadpo_check::translations::packages::publishing(db, project, &mount);
@@ -2003,7 +2047,10 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
                     RowState::Skipped => "not_checked",
                 }),
             ),
-            ("detail", Json::from(item.detail.as_str())),
+            (
+                "detail",
+                Json::from(item.whole.as_deref().unwrap_or(item.detail.as_str())),
+            ),
         ])
     }));
     let facts_json = facts
