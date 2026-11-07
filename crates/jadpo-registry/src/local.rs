@@ -114,7 +114,9 @@ struct State {
     /// package's, with their written accounts.
     standard: Vec<(String, String)>,
     accounts: Vec<(ScopedName, String, String)>,
-    requests: Vec<(ReleaseRequest, String, String, bool)>,
+    /// Each release started, with its repository, tag, whether it was a
+    /// dry run and the publisher the client said it was for.
+    requests: Vec<(ReleaseRequest, String, String, bool, Option<Handle>)>,
 }
 
 /// A registry in memory, shared by every clone and server of it.
@@ -298,7 +300,16 @@ impl LocalRegistry {
         self.state()
             .requests
             .iter()
-            .map(|(_, repository, tag, dry_run)| (repository.clone(), tag.clone(), *dry_run))
+            .map(|(_, repository, tag, dry_run, _)| (repository.clone(), tag.clone(), *dry_run))
+            .collect()
+    }
+
+    /// The publisher each release started was said to be for.
+    pub fn started_for(&self) -> Vec<Option<Handle>> {
+        self.state()
+            .requests
+            .iter()
+            .map(|(.., publisher)| publisher.clone())
             .collect()
     }
 
@@ -541,6 +552,27 @@ impl LocalRegistry {
                 if !start.repository.starts_with("https://") {
                     return failure(REPOSITORY_REFUSED);
                 }
+                // A release from a repository another publisher releases
+                // from is refused at once, before any check, when the
+                // client says whose it is.
+                if let Some(publisher) = &start.publisher
+                    && let Some(earlier) = state.releases.values().find(|release| {
+                        release.repository == start.repository
+                            && release.package.handle() != *publisher
+                    })
+                {
+                    return envelope(
+                        REPOSITORY_REFUSED.status,
+                        REPOSITORY_REFUSED.code,
+                        &format!(
+                            "`{}` releases `{}`, which is `{}`'s, not `{publisher}`'s.",
+                            start.repository,
+                            earlier.package,
+                            earlier.package.handle()
+                        ),
+                        None,
+                    );
+                }
                 let id = format!("rel_{:04}", state.requests.len() + 1);
                 state.requests.push((
                     ReleaseRequest {
@@ -553,6 +585,7 @@ impl LocalRegistry {
                     start.repository.clone(),
                     start.tag.clone(),
                     start.dry_run,
+                    start.publisher.clone(),
                 ));
                 json(202, &StartedRelease { id })
             }

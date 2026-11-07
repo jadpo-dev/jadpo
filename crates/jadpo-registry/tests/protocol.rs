@@ -52,6 +52,7 @@ fn requests() -> Vec<Request> {
             repository: "https://github.com/acme/postcodes".into(),
             tag: "v2.1.0".into(),
             dry_run: true,
+            publisher: Some(jadpo_registry::names::Handle::parse("@acme").unwrap()),
         }),
         Request::ReleaseRequest {
             id: "rel_01".into(),

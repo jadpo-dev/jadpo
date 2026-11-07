@@ -1068,11 +1068,18 @@ fn publish_asks_for_a_repository_at_a_tag_and_a_person_confirms_it() {
             false
         )]
     );
+    // It ends at the page where it is published, on the site whose
+    // registry it asked.
+    let page = format!(
+        "{}account/release?id=rel_0001",
+        world.url.strip_suffix("registry/v1/").expect("a registry")
+    );
     for line in [
         "Postcodes.v2 2.0.0",
         "https://git.example/acme/postcodes",
         "v2.0.0",
-        "a releaser confirms it with a passkey",
+        "checked: Postcodes.v2 2.0.0, not published yet\n",
+        &format!("next: {page}  publish it there with your passkey\n"),
     ] {
         assert!(
             published.stdout.contains(line),
@@ -1177,10 +1184,51 @@ fn publish_goes_through_the_registrys_check_of_its_publisher() {
         published.stdout
     );
     assert!(
-        published.stdout.contains("release pending"),
+        published.stdout.contains("checked: Postcodes.v2 2.0.0"),
         "{}",
         published.stdout
     );
+    // It said who the release is for when it asked.
+    assert_eq!(
+        world.registry.started_for(),
+        vec![Some(Handle::parse("@acme").expect("a handle"))]
+    );
+}
+
+/// A repository another publisher releases from is refused when publishing
+/// starts, before any check, in the registry's own words.
+#[test]
+fn publish_shows_the_registrys_own_reason_for_refusing_a_repository() {
+    let world = ready("registry-publisher-elsewhere");
+    push_tag(&world.package);
+    world.registry.publisher("@other", false, false);
+    let mut seeded = ReleaseSeed::new(
+        name("@other/postcodes"),
+        version("1.0.0"),
+        snapshot(&world.package),
+    );
+    seeded.surface =
+        std::fs::read_to_string(world.package.join("surface.jadpo_record")).expect("surface");
+    world.registry.release(seeded);
+    world.registry.repository_of(
+        &name("@other/postcodes"),
+        "https://git.example/acme/postcodes",
+    );
+    let refused = with(&world.url, &world.package, &["package", "publish"]);
+    let shown = format!("{}{}", refused.stdout, refused.stderr);
+    assert_eq!(refused.code, 1, "{shown}");
+    assert!(
+        shown.contains("rule: publish.repository_refused\n"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains(
+            "reason: `https://git.example/acme/postcodes` releases `@other/postcodes`, which is `@other`'s, not `@acme`'s.\n"
+        ),
+        "{shown}"
+    );
+    assert!(!shown.contains("reached over HTTPS"), "{shown}");
+    assert!(world.registry.started().is_empty());
 }
 
 #[test]

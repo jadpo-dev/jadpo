@@ -669,6 +669,12 @@ pub struct StartRelease {
     pub repository: String,
     pub tag: String,
     pub dry_run: bool,
+    /// Who the package at the tag names as its publisher, so the registry
+    /// can refuse at once a release from a repository that publisher
+    /// doesn't release from. Optional: a registry reads the publisher from
+    /// the release either way, and a client may leave it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publisher: Option<Handle>,
 }
 
 /// `POST releases`'s answer.

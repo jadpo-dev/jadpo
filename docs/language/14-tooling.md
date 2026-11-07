@@ -1046,8 +1046,10 @@ is listed, and the command passes. It is the one check that goes online
 ### `jadpo package publish`
 
 Asks the registry to release the package in this repository from its tag,
-sending only the repository and the tag, with no sign-in: a releaser confirms
-it with a passkey on jadpo.dev ([Releasing](11-integrations.md#releasing)). The
+sending the repository, the tag and the publisher `package.jadpo` names, with
+no sign-in. Once the registry has checked it, the command ends with the
+release's page on jadpo.dev, where a releaser publishes it with a passkey
+([Releasing](11-integrations.md#releasing)). The
 tag has to be pushed and the checkout that commit, unchanged
 (`publish.not_at_tag`), and the repository reached over HTTPS
 (`publish.repository_refused`). It holds the package to the bar here first, then

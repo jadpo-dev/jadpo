@@ -1933,8 +1933,12 @@ A release is made from a tag in any public git repository reached over
 HTTPS. The registry never accepts an upload, and no publish token exists.
 
 1. `jadpo package publish` (or the jadpo.dev page) asks the registry to
-   publish a repository at a tag. It sends only those two, and needs no
-   sign-in, because nothing goes live without a releaser.
+   publish a repository at a tag. It sends those two and the publisher its
+   `package.jadpo` names, so the registry can refuse at once a repository
+   that publisher doesn't release from, and needs no sign-in, because
+   nothing goes live without a releaser. The publisher it sends decides
+   nothing else: the registry reads who the release is from out of the
+   release itself.
 2. The verifier resolves the tag to its commit, fetches that commit, and
    then, with no network, checks it: only Jadpo source and the package's
    text files (`package.jadpo`, `provider.jadpo`, `GUIDE.md`,
@@ -1942,8 +1946,10 @@ HTTPS. The registry never accepts an upload, and no publish token exists.
    and the whole publishing bar. Everything the registry shows about the
    release is worked out from that source, never from anything the
    publisher sends.
-3. **The release is pending until a releaser confirms it with a passkey**,
-   on a page showing its version, surface diff, changelog and facts.
+3. **The release is checked, and waits until a releaser publishes it with
+   a passkey**, on its page, which shows its version, surface diff,
+   changelog and facts. `jadpo package publish` ends with that page's
+   address.
 4. It goes live, its digest is added to the public log, and its pages are
    written.
 
@@ -2141,7 +2147,7 @@ it can send makes a release live.
 | `GET log/consistency?from=&to=` | The hashes that prove the log of size `to` extends the log of size `from` |
 | `GET search?q=&from=&to=&kind=` | Ranked results, the standard library's first, each naming a package and declaration, with why it matched |
 | `POST advisories/query` | Given installed packages and versions, the advisories against them, each naming its declarations, versions and the packages carrying copies |
-| `POST releases` | Given a repository, a tag and `dry_run`, starts a release (or a dry run) and answers its id |
+| `POST releases` | Given a repository, a tag, `dry_run` and optionally `publisher`, starts a release (or a dry run) and answers its id |
 | `GET releases/{id}` | Its state (`verifying`, `failed` with the bar's rows, `pending`, `cancelled`, `live`), with its facts and change record once checked |
 
 - **The log** is an append-only Merkle tree of releases, hashed as RFC
@@ -2172,8 +2178,14 @@ it can send makes a release live.
   `detail` and `why`.
 - **A release refused for its publisher** is `failed` with a bar row whose
   `check` is `publisher` and whose `detail` says why, which `jadpo package
-  publish` shows as `publish.publisher_mismatch`. `POST releases` sends no
-  publisher: the registry reads it from the release.
+  publish` shows as `publish.publisher_mismatch`. `POST releases` may send
+  `publisher`, the handle the package at the tag names (`jadpo package
+  publish` always does): a registry that knows the repository is another
+  publisher's refuses it at once as `repository_refused`, its `message`
+  saying why, and `jadpo package publish` shows that message as the
+  reason. It is optional, so a client that leaves it out still works, and
+  the registry still reads the publisher from the release (recorded
+  2026-11-07).
 - **Its failures** are `package_not_found`, `release_not_found`,
   `archive_not_found` and `release_request_not_found` (404), `not_in_log`
   (404, also for a release logged after the size asked about),
@@ -6582,8 +6594,13 @@ there, the commands stop with
 > ✓ compiles  no errors
 > ✓ tests     3 tests
 >
-> ● release pending  Postcodes.v2 2.1.0 · a releaser confirms it with a passkey on jadpo.dev
+> ✓ checked  Postcodes.v2 2.1.0 · not published yet
+> → https://jadpo.dev/account/release?id=rel_7d2a  publish it there with your passkey
 > ```
+>
+> The page is on the site the registry is served from: the registry's
+> address without `/registry/v1/`, so a stand-in named by `JADPO_REGISTRY`
+> gives its own site's page. `--json` gives it as `page`.
 >
 > **`preview [<folder>]`** serves one read-only page on this machine, on a port
 > the system picks, until it is stopped: the verdict, its facts, its changes

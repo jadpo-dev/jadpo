@@ -28,7 +28,16 @@ error: The registry can't publish from `http://git.acme.example/postcodes.git`
 ```
 
 The same rule says when the repository has no `origin`, and when the
-registry refuses the address it was sent.
+registry refuses the address it was sent. Then the reason is the registry's
+own: here the repository is another publisher's.
+
+```text
+error: The registry refused to publish from `https://github.com/acme/postcodes`
+  reason: `https://github.com/acme/postcodes` releases `@acme-labs/postcodes`, which is `@acme-labs`'s, not `@acme`'s.
+  next: Check `origin` is the package's own repository, or add its account to the publisher on https://jadpo.dev/account (human)
+  rule: publish.repository_refused
+  help: https://jadpo.dev/docs/errors/publish.repository_refused
+```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop and ask you which fix you want, because the choice is yours to make: it decides where your package is public.
 
