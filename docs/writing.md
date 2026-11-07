@@ -273,6 +273,29 @@ open. An error's `help:` line is its page's address on the site,
 Each user page declares its topic ID on the line after its `#` heading,
 as area pages do.
 
+## How release notes read
+
+Each release has a page of notes in `docs/releases/`, named by its version
+(`0.4.0.md`), which the site shows at `/changelog`. They are for someone
+deciding whether to upgrade and what it will take, so they lead with what
+breaks:
+
+1. `# Jadpo X.Y.Z`, then `Released D Month YYYY.`, then a paragraph saying
+   what the release is about, in a sentence or two.
+2. **`## Before you upgrade`**: each change that refuses code the release
+   before accepted, as a bold line saying what is refused, then what to do,
+   with the rule's name. Left out when there are none.
+3. **`## New`**: each new thing, as a bold line naming it, then what it does
+   for you.
+4. **`## Fixed`**: each fix, as what works now, and what happened before
+   where that helps.
+
+Notes are written from what changed, not copied from commit subjects, and
+follow the rest of this guide; they name releases, which no other page does.
+The docs check fails a release that has no notes, so the release pull request
+gets its notes before it merges, and a file that doesn't open with the heading
+and the date.
+
 ## How a reference topic reads
 
 Area pages keep every rule, limit and edge case. Each `##` topic on them

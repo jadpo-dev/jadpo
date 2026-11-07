@@ -1753,6 +1753,11 @@ def summary_of(markdown, fallback):
 # written, and where the bundle holds it.
 SKILL = Path('docs/agent-skill/SKILL.md')
 SKILL_IN_BUNDLE = Path('skills/jadpo/SKILL.md')
+# Each release's notes (docs/writing.md, "How release notes read"), which the
+# bundle carries byte for byte, outside index.json.
+RELEASES = Path('docs/releases')
+RELEASES_IN_BUNDLE = Path('releases')
+RELEASE_MANIFEST = Path('.release-please-manifest.json')
 
 # What `--json` gives, as every command page says it
 # (docs/cli-design-language.md, "Plain and `--json`").
@@ -2295,6 +2300,9 @@ class Bundle:
         if skill.exists():
             (out / SKILL_IN_BUNDLE).parent.mkdir(parents=True, exist_ok=True)
             (out / SKILL_IN_BUNDLE).write_bytes(skill.read_bytes())
+        for notes in sorted((self.root / RELEASES).glob('*.md')):
+            (out / RELEASES_IN_BUNDLE).mkdir(parents=True, exist_ok=True)
+            (out / RELEASES_IN_BUNDLE / notes.name).write_bytes(notes.read_bytes())
         return built
 
 
@@ -2492,6 +2500,39 @@ def check_skill(root=ROOT):
     return problems
 
 
+MONTHS = ('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
+          'October', 'November', 'December')
+RELEASED = re.compile(rf'Released ([1-9]|[12][0-9]|3[01]) ({"|".join(MONTHS)}) (20[0-9][0-9])\.')
+
+
+def check_releases(root=ROOT):
+    """Problems with the release notes (docs/writing.md, "How release notes
+    read"): one file per release, `X.Y.Z.md`, opening `# Jadpo X.Y.Z` and then
+    `Released D Month YYYY.`, and one for the version Jadpo is at, so a release
+    can't go out without its notes."""
+    problems, found = [], set()
+    for path in sorted((root / RELEASES).glob('*')):
+        name = path.relative_to(root)
+        version = re.fullmatch(r'(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)\.md', path.name)
+        if not version:
+            problems.append(f'{name}: a release\'s notes are named by its version, such as 1.2.0.md')
+            continue
+        found.add(version.group(1))
+        lines = path.read_text().split('\n')
+        if lines[0] != f'# Jadpo {version.group(1)}':
+            problems.append(f'{name}: the first line is `# Jadpo {version.group(1)}`')
+        dated = next((line for line in lines[1:] if line.strip()), '')
+        if not RELEASED.fullmatch(dated):
+            problems.append(f'{name}: the line after the heading is the date, such as `Released 7 November 2026.`')
+    manifest = root / RELEASE_MANIFEST
+    if manifest.exists():
+        current = json.loads(manifest.read_text()).get('.')
+        if current and current not in found:
+            problems.append(f'{RELEASES}/{current}.md is missing: write the notes for {current} before it is released '
+                            f'(docs/writing.md, "How release notes read")')
+    return problems
+
+
 # The most standard types a table on a page may name before it is a list of
 # them. The largest table that isn't one names 33.
 MOST_TYPES_IN_A_TABLE = 40
@@ -2596,7 +2637,9 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), 
     problems += check_help_lines(files, catalogue, root)
     version = re.fullmatch(r'(\d+)\.(\d+)\.\d+\S*', (help_data or {}).get('version', ''))
     if version:
-        problems += check_release_line(files, f'{version.group(1)}.{version.group(2)}', version.group(0), root)
+        # Release notes name releases: that is what they are for.
+        dated = [path for path in files if (root / RELEASES) not in path.parents]
+        problems += check_release_line(dated, f'{version.group(1)}.{version.group(2)}', version.group(0), root)
     return problems
 
 
@@ -3096,7 +3139,7 @@ def main():
         print(f'  FAIL {problem}')
     if compile_examples:
         print(f'{len(type_pages)} standard type page(s); every example compiled and run')
-    for problem in check_skill():
+    for problem in check_skill() + check_releases():
         failed = True
         print(f'  FAIL {problem}')
     primer = Primer(PRIMER, catalogue) if PRIMER.exists() else None
