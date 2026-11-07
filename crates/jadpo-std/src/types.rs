@@ -155,6 +155,13 @@ pub struct FailurePlan {
     /// In the order the failure declares them, across its `client` and
     /// `internal` blocks.
     pub fields: Vec<FieldPlan>,
+    /// A provider package's failure: the status its provider refuses with,
+    /// `wire_status:`, and its own text for it, `wire_name:` (area 11, "A
+    /// provider's failures"; decided 2026-11-07).
+    #[serde(default)]
+    pub wire_status: Option<u16>,
+    #[serde(default)]
+    pub wire_name: Option<String>,
 }
 
 impl FailurePlan {

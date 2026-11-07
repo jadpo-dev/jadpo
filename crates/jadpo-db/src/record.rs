@@ -303,6 +303,9 @@ pub const SURFACE: Kind = Kind {
         "variant",
         "code",
         "message",
+        // How a provider package's failure is answered (area 11, "A provider's failures").
+        "wire_status",
+        "wire_name",
         "calls",
         "operation",
         "every",

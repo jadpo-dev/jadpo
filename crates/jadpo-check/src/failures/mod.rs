@@ -39,3 +39,7 @@ pub const RUNTIME_CODES: [&str; 8] = [
 
 /// The members a failure's block may hold.
 pub const MEMBERS: [&str; 5] = ["kind", "code", "message", "client", "internal"];
+
+/// The members a provider package's failure may hold besides: how its
+/// provider answers it (area 11, "A provider's failures").
+pub const WIRE_MEMBERS: [&str; 2] = ["wire_status", "wire_name"];

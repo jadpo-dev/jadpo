@@ -301,7 +301,8 @@ fn a_missing_part_is_named() {
     );
 }
 
-/// A value is sent as its parts, the shared currency once.
+/// A value is sent as its parts, the shared currency once, and a field
+/// that is `none` sends none of its members.
 #[test]
 fn a_standard_type_is_written_as_its_parts() {
     let provider = FakeProvider::start();
@@ -322,9 +323,7 @@ fn a_standard_type_is_written_as_its_parts() {
             "id": "new",
             "amount": 1050,
             "amount_refunded": 0,
-            "currency": "GBP",
-            "lat": null,
-            "lng": null
+            "currency": "GBP"
         })
     );
     // Two amounts that share the provider's one currency member can't be
