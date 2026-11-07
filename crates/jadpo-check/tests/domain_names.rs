@@ -415,8 +415,7 @@ fn a_package_sharing_a_private_types_name_leaves_its_stored_shape_alone() {
     let mut with_package = STORED.to_vec();
     with_package.extend_from_slice(PACKAGE);
     let after = schema(&with_package);
-    let invoice = |schema: &jadpo_graph::schema::Schema| {
-        schema.stores["main"].tables["invoice"].clone()
-    };
+    let invoice =
+        |schema: &jadpo_graph::schema::Schema| schema.stores["main"].tables["invoice"].clone();
     assert_eq!(invoice(&after), invoice(&before));
 }

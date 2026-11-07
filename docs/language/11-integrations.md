@@ -2251,12 +2251,18 @@ code runs and what can come back from it.
 | `GET /v1/verifications/{id}/diff` | For a release that passed, what a model reads for what the facts can't show: `diff`, as `git diff` writes it against the previous release, `null` for a first release, and `truncated` |
 
 `result` has every field, `null` or empty where it has no value: `passed`,
-`package`, `version`, `bar`, `problems`, `surface`, `facts`, `change_record`,
-`fingerprints`, `previous`, `jadpo`, `checked_with`, `left_out`, and for a
+`package`, `version`, `bar`, `problems`, `surface`, `facts`, `descriptions`,
+`change_record`, `fingerprints`, `previous`, `jadpo`, `checked_with`,
+`left_out`, and for a
 release that passed its `digest` and `archive`: the tar archive of
 [`GET archives/{digest}`](#the-registry-protocol), in base64, which is how
 the registry comes to hold a release's files. A release whose whole answer
-wouldn't fit that 10 MiB fails too, rather than pass and never arrive. The
+wouldn't fit that 10 MiB fails too, rather than pass and never arrive.
+`descriptions` holds the package's description as `package` and each public
+declaration's as `declarations`, a list of `name` and `description` (`null`
+where it has none), so the registry shows them without reading them back
+out of `surface`; it is `null` until the package compiles (recorded
+2026-11-07). `jadpo package verify --json` gives the same. The
 source and the diff are asked for on their own, since neither would fit
 beside the archive; each is at most 8 MiB of its answer, past which
 `truncated` says some was left out. They are what the package's author wrote,

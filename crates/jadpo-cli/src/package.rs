@@ -1248,6 +1248,28 @@ pub(crate) fn compile(folder: &Path, command: &str) -> Result<Compiled, Option<R
     })
 }
 
+/// The package's description and each public declaration's, as fields of
+/// their own (area 11, "The verifier"), so the registry needn't read them
+/// back out of the surface record; `null` until the package compiles.
+fn descriptions_json(surface: Option<&Surface>) -> Json {
+    let text = |description: &Option<String>| description.as_deref().map_or(Json::Null, Json::from);
+    match surface {
+        Some(surface) => Json::object([
+            ("package", text(&surface.description)),
+            (
+                "declarations",
+                Json::array(surface.declarations.iter().map(|declaration| {
+                    Json::object([
+                        ("name", Json::from(declaration.name.as_str())),
+                        ("description", text(&declaration.description)),
+                    ])
+                })),
+            ),
+        ]),
+        None => Json::Null,
+    }
+}
+
 /// Shows each problem at its place in the package's folder.
 pub(crate) fn in_package(compiled: &Compiled, diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
     diagnostics
@@ -2091,6 +2113,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
                 },
             ),
             ("facts", facts_json),
+            ("descriptions", descriptions_json(found.as_ref())),
             ("change_record", record_json),
             (
                 "fingerprints",

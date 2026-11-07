@@ -126,6 +126,10 @@ fn a_first_release_verifies_from_its_commit_with_no_network() {
     assert_eq!(answer["package"], "Postcodes.v2");
     assert_eq!(answer["version"], "2.0.0");
     assert_eq!(answer["facts"]["kind"], "library", "{answer}");
+    assert_eq!(
+        answer["descriptions"]["package"], "UK postcodes: reading and normalising them.",
+        "{answer}"
+    );
     assert_eq!(answer["jadpo"], env!("CARGO_PKG_VERSION"));
     assert_eq!(row(&answer, "tests")["state"], "passed");
     assert_eq!(row(&answer, "examples")["state"], "passed");
@@ -362,6 +366,24 @@ fn no_run_runs_none_of_the_packages_code() {
     assert_eq!(data["facts"]["kind"], "library");
     assert!(!data["fingerprints"].as_array().expect("a list").is_empty());
     assert_eq!(data["jadpo_declared"], "1.0");
+    // Descriptions come as fields of their own, never read back out of the
+    // surface record.
+    assert_eq!(
+        data["descriptions"]["package"],
+        "UK postcodes: reading and normalising them."
+    );
+    let parse = data["descriptions"]["declarations"]
+        .as_array()
+        .expect("a list")
+        .iter()
+        .find(|entry| entry["name"] == "uk.parse")
+        .expect("uk.parse");
+    assert!(
+        parse["description"]
+            .as_str()
+            .is_some_and(|text| text.starts_with("Reads a UK postcode")),
+        "{parse}"
+    );
 }
 
 fn serve_output(env: jadpo_term::Environment, args: &[&str]) -> jadpo_cli::Output {
