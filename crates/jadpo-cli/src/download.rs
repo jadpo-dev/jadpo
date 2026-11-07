@@ -353,7 +353,13 @@ fn exchange<S: Read + Write>(
             Some(length) => (length - read).min(buffer.len() as u64) as usize,
             None => buffer.len(),
         };
-        let got = reader.read(&mut buffer[..want])?;
+        // A signal can interrupt a read without ending the download, as
+        // `read_exact` and `read_line` already allow for.
+        let got = match reader.read(&mut buffer[..want]) {
+            Ok(got) => got,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
         if got == 0 {
             return Ok(match length {
                 Some(length) => Err(format!(
@@ -370,6 +376,64 @@ fn exchange<S: Read + Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An answer whose body read is interrupted once by a signal.
+    struct Interrupted {
+        answer: std::io::Cursor<Vec<u8>>,
+        interrupt_at: u64,
+        interrupted: bool,
+    }
+
+    impl Read for Interrupted {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            if !self.interrupted && self.answer.position() >= self.interrupt_at {
+                self.interrupted = true;
+                return Err(std::io::Error::from(std::io::ErrorKind::Interrupted));
+            }
+            let room = (self.interrupt_at.saturating_sub(self.answer.position()) as usize)
+                .max(if self.interrupted { buffer.len() } else { 1 })
+                .min(buffer.len());
+            self.answer.read(&mut buffer[..room])
+        }
+    }
+
+    impl Write for Interrupted {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_read_a_signal_interrupts_carries_on() {
+        let body = vec![7u8; 200_000];
+        let mut answer =
+            format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len()).into_bytes();
+        let head = answer.len() as u64;
+        answer.extend_from_slice(&body);
+        let stream = Interrupted {
+            answer: std::io::Cursor::new(answer),
+            interrupt_at: head + 100_000,
+            interrupted: false,
+        };
+        let mut got = Vec::new();
+        let outcome = exchange(
+            stream,
+            b"GET / HTTP/1.1\r\n\r\n",
+            false,
+            "here",
+            &mut |_| {},
+            &mut |bytes| {
+                got.extend_from_slice(bytes);
+                Ok(())
+            },
+        )
+        .expect("an interrupted read isn't a broken download");
+        assert_eq!(outcome, Ok(None));
+        assert_eq!(got, body);
+    }
 
     #[test]
     fn an_address_is_https_or_on_this_machine() {
