@@ -7660,9 +7660,10 @@ how it is checked and how you make one.
   spellings and a map's keys, which say nothing about anyone; a field in
   a built-in encoding or with the package's own `decode:` and `encode:`,
   and the whole answer of an operation with `wire_output:`, which its
-  decoders exist to read, numbers with their digits as written; and a
-  value whose type's rules no generated value keeps (a pattern), which a
-  placeholder couldn't stand in for.
+  decoders exist to read, numbers with their digits as written; the
+  members a field's `wire_parts:` names, as sent for the same reason;
+  and a value whose type's rules no generated value keeps (a pattern),
+  which a placeholder couldn't stand in for.
 - **Filling a placeholder** gives a generated value of the type at its
   place, as the fake's generated default makes one: the
   invocation's clock, a fresh UUID. Members a hand-written recording adds
