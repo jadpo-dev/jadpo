@@ -2575,8 +2575,15 @@ fn examples_and_tests(
                 None => own.push(result),
             }
         }
+        // Every place a failure shows is the package's, not the scratch
+        // app's it ran in.
         for result in &mut own {
             result.test.file = compiled.relative(&result.test.file);
+            if let Some(failure) = &mut result.failure {
+                failure.map_paths(&|path| compiled.relative(path));
+                // `jadpo test` runs an app's tests; a package's run here.
+                failure.rerun = "jadpo package check".to_string();
+            }
         }
         // Every decoder over every recording, its own row (chunk 7.2d2).
         let recorded =

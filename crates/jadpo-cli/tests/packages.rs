@@ -649,6 +649,40 @@ public type OutwardCode = Text {
     git(&root, &["diff", "--quiet"]);
 }
 
+/// A failed test of the package's own is shown at its path in the
+/// package, never in the scratch app it ran in.
+#[test]
+fn a_failed_package_test_is_shown_at_its_path_in_the_package() {
+    let (_dir, root) = repository("package-check-failed-test");
+    write(
+        &root,
+        "libraries/uk.test.jadpo",
+        "test \"a postcode is read in upper case\" {
+    var postcode: UkPostcode = attempt uk.parse(\"sw1a 1aa\")
+    assert postcode == \"sw1a 1aa\"
+}
+",
+    );
+    let failed = plain(&root, &["package", "check"]);
+    assert_eq!(failed.code, 1, "{}", failed.stdout);
+    assert!(
+        failed.stdout.contains(" --> libraries/uk.test.jadpo:3\n"),
+        "{}",
+        failed.stdout
+    );
+    assert!(
+        failed.stdout.contains("  rerun: jadpo package check\n"),
+        "{}",
+        failed.stdout
+    );
+    assert!(
+        !failed.stdout.contains("shared/") && !failed.stderr.contains("shared/"),
+        "{}{}",
+        failed.stdout,
+        failed.stderr
+    );
+}
+
 #[test]
 fn check_runs_each_example_and_needs_one_for_every_function() {
     let (_dir, root) = repository("package-check-examples");
