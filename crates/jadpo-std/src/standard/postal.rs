@@ -77,6 +77,68 @@ pub fn from_written(raw: &str, country: &str) -> Option<String> {
     }
 }
 
+/// A UK postcode's parts by Royal Mail's format (area 19, "A UK postcode's
+/// parts"), each in capitals: `SW1A 1AA` is outward code `SW1A`, inward
+/// code `1AA`, area `SW`, district `SW1`, sub-district `SW1A`, sector
+/// `SW1A 1` and unit `AA`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UkParts {
+    pub outward_code: String,
+    pub inward_code: String,
+    pub area: String,
+    pub district: String,
+    /// The outward code where it ends in a letter after one digit
+    /// (`SW1A`, `W1A`), and `None` where it doesn't (`M2`, `NR10`).
+    pub sub_district: Option<String>,
+    pub sector: String,
+    pub unit: String,
+}
+
+/// `text`'s parts, if it is in Royal Mail's format: an outward code of one
+/// or two letters, a digit and maybe a letter or a digit, then any white
+/// space, none included, then an inward code of a digit and two letters,
+/// in either case. The letters aren't checked against Royal Mail's areas,
+/// so `AA9A 9AA` has parts as a real postcode does; `GIR 0AA` and `BFPO`
+/// numbers, outside the format, have none. The inward code is always the
+/// last three characters.
+pub fn uk_parts(text: &str) -> Option<UkParts> {
+    let text = text.to_ascii_uppercase();
+    let at = text.len().checked_sub(3)?;
+    let (head, inward) = (text.get(..at)?, text.get(at..)?);
+    let [digit, first, second] = inward.as_bytes() else {
+        return None;
+    };
+    if !(digit.is_ascii_digit() && first.is_ascii_uppercase() && second.is_ascii_uppercase()) {
+        return None;
+    }
+    let outward = head.trim_end_matches(char::is_whitespace);
+    let letters = outward.bytes().take_while(u8::is_ascii_uppercase).count();
+    if !(1..=2).contains(&letters) {
+        return None;
+    }
+    // A letter after the one digit marks a sub-district, `SW1A` of `SW1`.
+    let sub_district = match outward.as_bytes().get(letters..)? {
+        [digit] if digit.is_ascii_digit() => false,
+        [digit, last] if digit.is_ascii_digit() && last.is_ascii_digit() => false,
+        [digit, last] if digit.is_ascii_digit() && last.is_ascii_uppercase() => true,
+        _ => return None,
+    };
+    let district = if sub_district {
+        outward.get(..outward.len() - 1)?
+    } else {
+        outward
+    };
+    Some(UkParts {
+        outward_code: outward.to_string(),
+        inward_code: inward.to_string(),
+        area: outward.get(..letters)?.to_string(),
+        district: district.to_string(),
+        sub_district: sub_district.then(|| outward.to_string()),
+        sector: format!("{outward} {}", inward.get(..1)?),
+        unit: inward.get(1..)?.to_string(),
+    })
+}
+
 /// A postal code: text any country's could be, checked by its country's
 /// pattern where the country is known. Personal data (`contact`), as an
 /// address is.

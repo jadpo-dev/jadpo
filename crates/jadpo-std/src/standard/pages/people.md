@@ -165,6 +165,9 @@ PostalCode("SW1A 1AA")
 - Built on its own, it knows no country, so it checks only the general form:
   capital letters, digits, spaces and `-`, up to 12 of them. Upper-case what a
   person types before you build one.
+- A UK postcode's parts come from the `postal` operations: `postal.district`
+  gives `SW1` for `SW1A 1AA`, and `postal.sector` gives `SW1A 1`. Each fails
+  with `not_uk_format` for a code not in Royal Mail's format.
 
 # Uprn
 
