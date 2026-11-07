@@ -7246,7 +7246,9 @@ again, and how its answer is classified and read.
   would leave it, empty, `.` or `..`, is a fault, and nothing is sent);
   the rest is a `GET`'s or
   `DELETE`'s query (a list as the key repeated, `none` left out, an
-  object as its JSON) and every other method's JSON body.
+  object as its JSON) and every other method's JSON body, where a field
+  that is `none`, at any depth, is left out rather than sent as `null`,
+  which some providers refuse.
 - **Who calls.** Only an action, of a domain the connection's `domains:`
   lists (`connection.domain_not_listed` otherwise); never a function, and
   never a test, which reaches a provider through an action with the

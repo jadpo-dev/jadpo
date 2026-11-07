@@ -207,3 +207,28 @@ fn a_refusal_is_read_by_its_status_and_its_text() {
         other => panic!("{other:?}"),
     }
 }
+
+/// An optional field that is `none` is left out of a JSON body, at any
+/// depth, rather than sent as `null`.
+#[test]
+fn a_body_leaves_out_what_is_none() {
+    let provider = FakeProvider::start();
+    let program = program(&root("body"), &provider.url);
+    let runtime = Runtime::new().expect("a runtime");
+    provider.answer(200, r#"{"status": 200}"#);
+    let outcome = run(
+        &runtime,
+        &program,
+        "near",
+        Vec::new(),
+    );
+    assert!(matches!(outcome, Outcome::Value(_)), "{outcome:?}");
+    let sent = provider.requests();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(
+        sent[0].json(),
+        serde_json::json!({
+            "geolocations": [{"square": "TQ3080", "limit": 5}]
+        })
+    );
+}
