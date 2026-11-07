@@ -6268,8 +6268,11 @@ what `jadpo package check` and `jadpo package show` do.
 - **The version.** A release is a git tag `v<version>` whose committed
   `surface.jadpo_record` names the package. With none, the first release
   is the major version the label names (`v2` is 2.0.0, `v0` is 0.1.0, a
-  dated label such as `v2024_06_20` 1.0.0). When nothing in the package's
-  folder changed since the newest release, its version is that release's.
+  dated label such as `v2024_06_20` 1.0.0). Only the releases the checkout
+  grew from count, so a tag made later, on its branch or another, is never
+  what it is compared with. When nothing in the package's folder changed
+  since the newest of them, its version is that release's, and it is
+  checked against the release before it, as publishing checks it.
   Otherwise the surface is compared with that release's, entry by entry:
   a removed entry, or an entry whose facts changed (a new `fails`, a
   field retyped or added, a variant added, a licence changed, a host moved
