@@ -19,6 +19,15 @@ impl Dir {
             "jadpo-verifier-test-{name}-{}-{n}",
             std::process::id()
         ));
+        Dir::at(path)
+    }
+
+    /// The folder at `path`, made empty: one a stopped run left there, under
+    /// a process id used again, holds a repository already committed.
+    pub fn at(path: PathBuf) -> Dir {
+        if path.exists() {
+            std::fs::remove_dir_all(&path).expect("an earlier run's folder removed");
+        }
         std::fs::create_dir_all(&path).expect("a folder");
         Dir(path.canonicalize().expect("a real path"))
     }
@@ -48,10 +57,32 @@ pub fn sandbox() -> Option<Sandbox> {
     }
 }
 
+/// Runs git in `root` as the tests need it, whoever runs them: no global or
+/// system configuration (signing, hooks, a commit template), and none of a
+/// calling git's own variables, such as a hook's `GIT_DIR`.
 pub fn git(root: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
+    let mut command = Command::new("git");
+    for (name, _) in std::env::vars_os() {
+        if name.to_string_lossy().starts_with("GIT_") {
+            command.env_remove(name);
+        }
+    }
+    let output = command
         .current_dir(root)
-        .args(["-c", "user.name=T", "-c", "user.email=t@example.com"])
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .args([
+            "-c",
+            "user.name=T",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "tag.gpgsign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+        ])
         .args(args)
         .output()
         .expect("git");
@@ -89,4 +120,26 @@ pub fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
     std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("a script");
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("runnable");
     path
+}
+
+/// A run that was stopped leaves its folders behind, and a later run whose
+/// process has the same id is given the same names: each test's folder
+/// starts empty all the same, so its repository's first commit has
+/// something to commit.
+#[test]
+fn a_folder_left_by_an_earlier_run_starts_empty() {
+    let left = Dir::new("left-behind");
+    let path = left.path().to_path_buf();
+    let committed = repository(&path, &[("package.jadpo", "package Postcodes.v2 {}\n")]);
+    std::mem::forget(left);
+    let again = Dir::at(path.clone());
+    assert_eq!(
+        std::fs::read_dir(again.path()).expect("a folder").count(),
+        0
+    );
+    let commit = repository(
+        again.path(),
+        &[("package.jadpo", "package Postcodes.v2 {}\n")],
+    );
+    assert_eq!(commit.len(), committed.len());
 }
