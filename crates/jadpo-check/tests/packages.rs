@@ -1571,3 +1571,129 @@ fn a_hand_written_provider_lists_what_it_reviewed() {
         "{found:#?}"
     );
 }
+
+/// The package's library with two constants of one type holding one value,
+/// a judgement call a newer Jadpo might raise in a published release.
+const ALIKE: (&str, &str) = (
+    "packages/postcodes/v2/libraries/uk.jadpo",
+    "/// Reading UK postcodes.
+public library uk {
+    /// The shortest postcode.
+    constant shortest: WrittenPostcode = \"W1 1AA\"
+
+    /// The shortest postcode, again.
+    constant also_shortest: WrittenPostcode = \"W1 1AA\"
+
+    /// Reads a UK postcode as it is written.
+    function parse(written: WrittenPostcode) fails InvalidPostcode -> UkPostcode {
+        if (written == shortest or written == also_shortest) {
+            return attempt UkPostcode(written) {
+                invalid: InvalidPostcode
+            }
+        }
+        return attempt UkPostcode(written) {
+            invalid: InvalidPostcode
+        }
+    }
+}
+",
+);
+
+/// The rules of the files given, as `path rule` lines, set apart or not.
+fn checked_installed(files: &[(&str, &str)]) -> (Vec<String>, Vec<(String, Vec<String>)>) {
+    let lock = lock_for("Postcodes.v2", "packages/postcodes/v2", files, &[GUIDE]);
+    let db = Database::default();
+    let records = [GUIDE, ("jadpo.lock", lock.as_str())];
+    let project = project_with_records(&db, Layout::Project, files, &records);
+    let line = |d: &jadpo_diag::Diagnostic| {
+        let path = d
+            .primary
+            .as_ref()
+            .map_or("", |label| label.span.path.as_str());
+        format!("{path} {}", d.rule.id)
+    };
+    let checked = jadpo_check::checked(&db, project);
+    (
+        checked.problems.iter().map(line).collect(),
+        checked
+            .publishers
+            .iter()
+            .map(|(package, found)| (package.clone(), found.iter().map(line).collect()))
+            .collect(),
+    )
+}
+
+/// A newer Jadpo's publishing-bar finding in an installed package's own
+/// code is its publisher's to answer: the app is told and keeps working.
+/// A real error still refuses (area 11, "Installing safely").
+#[test]
+fn an_installed_packages_publishing_bar_finding_is_left_to_its_publisher() {
+    let files: Vec<(&str, &str)> = with(&[SAVE])
+        .into_iter()
+        .map(|file| if file.0 == UK.0 { ALIKE } else { file })
+        .collect();
+    let (problems, publishers) = checked_installed(&files);
+    assert_eq!(problems, Vec::<String>::new());
+    assert_eq!(
+        publishers,
+        [(
+            "Postcodes.v2".to_string(),
+            vec!["packages/postcodes/v2/libraries/uk.jadpo constant.similar_exists".to_string()]
+        )]
+    );
+    // An error that isn't a judgement call is a package that doesn't
+    // compile, and refuses the app as before.
+    let broken = ALIKE.1.replace(
+        "return attempt UkPostcode(written) {\n                invalid",
+        "return attempt UkPostcode(also) {\n                invalid",
+    );
+    let files: Vec<(&str, &str)> = files
+        .into_iter()
+        .map(|file| {
+            if file.0 == UK.0 {
+                (UK.0, broken.as_str())
+            } else {
+                file
+            }
+        })
+        .collect();
+    let (problems, _) = checked_installed(&files);
+    assert!(
+        problems
+            .iter()
+            .any(|line| line.starts_with("packages/postcodes/v2/libraries/uk.jadpo ")),
+        "{problems:?}"
+    );
+}
+
+/// The app's own integration is the app's code: its findings are errors.
+#[test]
+fn the_apps_own_integrations_publishing_bar_finding_is_an_error() {
+    let own: Vec<(String, String)> = with(&[])
+        .into_iter()
+        .map(|(path, text)| {
+            let path = path.replace("packages/postcodes", "shared/providers/postcodes");
+            let text = if path.ends_with("libraries/uk.jadpo") {
+                ALIKE.1
+            } else {
+                text
+            };
+            (path, text.to_string())
+        })
+        .chain([(
+            SAVE.0.to_string(),
+            SAVE.1
+                .replace("use packages/postcodes", "use shared/providers/postcodes"),
+        )])
+        .collect();
+    let own: Vec<(&str, &str)> = own.iter().map(|(p, t)| (p.as_str(), t.as_str())).collect();
+    let found = problems(&own, &[]);
+    assert_eq!(
+        found
+            .iter()
+            .filter(|line| line.contains("constant.similar_exists"))
+            .count(),
+        1,
+        "{found:?}"
+    );
+}

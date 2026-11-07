@@ -248,6 +248,31 @@ struct Verified {
     surface_text: String,
     /// What a release shows of it, worked out from its code.
     facts: Option<jadpo_check::release::Facts>,
+    /// Findings of the publishing bar in its code, which a newer Jadpo
+    /// makes and its publisher answers: an alert, never a refusal (area
+    /// 11, "Installing safely").
+    publishers: Vec<Diagnostic>,
+}
+
+impl Verified {
+    /// The alert its publisher's findings make, before the summary.
+    fn alert(&self, screen: &mut Screen) {
+        if !self.publishers.is_empty() {
+            screen.push(Block::Alerts(vec![crate::check::publisher_alert(
+                &self.package,
+                &self.publishers,
+            )]));
+        }
+    }
+
+    /// Its publisher's findings as `--json` gives them.
+    fn alerts_json(&self) -> Json {
+        crate::check::publishers_json(&if self.publishers.is_empty() {
+            Vec::new()
+        } else {
+            vec![(self.package.clone(), self.publishers.clone())]
+        })
+    }
 }
 
 /// The version a committed surface names in its package entry.
@@ -284,9 +309,18 @@ fn verify(folder: &Path, tag: Option<&str>, shown: &str, command: &str) -> Resul
             )));
         }
     };
-    if !compiled.problems.is_empty() {
-        return Err(does_not_compile(&compiled, shown, command));
+    // A finding a newer Jadpo makes of the publishing bar is the
+    // publisher's to answer; anything else means the package doesn't
+    // compile.
+    let (publishers, refusing): (Vec<Diagnostic>, Vec<Diagnostic>) = compiled
+        .problems
+        .iter()
+        .cloned()
+        .partition(|d| publishing::publishers_to_answer(d.rule));
+    if !refusing.is_empty() {
+        return Err(does_not_compile(&compiled, refusing, shown, command));
     }
+    let publishers = in_package(&compiled, publishers);
     let package = compiled.package.clone();
     let mismatch = |reason: String| {
         Reply::failed(
@@ -375,6 +409,7 @@ fn verify(folder: &Path, tag: Option<&str>, shown: &str, command: &str) -> Resul
     );
     Ok(Verified {
         facts,
+        publishers,
         package,
         version,
         files,
@@ -386,8 +421,13 @@ fn verify(folder: &Path, tag: Option<&str>, shown: &str, command: &str) -> Resul
 
 /// A package that doesn't compile: its problems in its folder, as the
 /// reader knows it.
-fn does_not_compile(compiled: &Compiled, shown: &str, command: &str) -> Reply {
-    let diagnostics: Vec<Diagnostic> = in_package(compiled, compiled.problems.clone())
+fn does_not_compile(
+    compiled: &Compiled,
+    problems: Vec<Diagnostic>,
+    shown: &str,
+    command: &str,
+) -> Reply {
+    let diagnostics: Vec<Diagnostic> = in_package(compiled, problems)
         .into_iter()
         .map(|mut d| {
             for label in d.primary.iter_mut().chain(d.secondary.iter_mut()) {
@@ -931,6 +971,7 @@ pub fn add(call: &Call) -> Reply {
         verified.package, verified.version
     ))];
     facts.extend(counts(&verified.surface));
+    verified.alert(&mut screen);
     screen.push(Block::summary(Outcome::Success, "package added", facts));
     // Named as it was added: from the registry, by its registry name,
     // which `show` takes too (Richard, 2026-11-07).
@@ -947,6 +988,7 @@ pub fn add(call: &Call) -> Reply {
         ("folder", Json::from(folder.as_str())),
         ("source", Json::from(source_words(&source).as_str())),
         ("digest", Json::from(verified.digest.as_str())),
+        ("package_alerts", verified.alerts_json()),
     ];
     if let Some(fetched) = &from_registry {
         let publisher = &fetched.package.publisher;
@@ -1311,6 +1353,7 @@ pub fn update(call: &Call) -> Reply {
             }
         )));
     }
+    verified.alert(&mut screen);
     screen.push(Block::summary(
         Outcome::Success,
         if again {
