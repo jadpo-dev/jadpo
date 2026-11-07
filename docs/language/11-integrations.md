@@ -1180,45 +1180,21 @@ app's email, `OpenAi.v1` and `Anthropic.v1`, which answer your app's
 queue. Jadpo has no package for Stripe, Twilio, GitHub or any other provider, so
 for those use the importer or write your own.
 
-They are published on the registry as `@jadpo/resend`, `@jadpo/open-ai`,
-`@jadpo/anthropic` and `@jadpo/amazon-sqs`, each from a repository of its own:
-[jadpo-dev/package-resend](https://github.com/jadpo-dev/package-resend),
-[package-openai](https://github.com/jadpo-dev/package-openai),
-[package-anthropic](https://github.com/jadpo-dev/package-anthropic) and
-[package-amazon-sqs](https://github.com/jadpo-dev/package-amazon-sqs). The
-registry name comes from the name in code, so `OpenAi` is `open-ai`. This adds
-Resend's, run in your project's folder. The output is copied from a real run:
+They are on the registry as `@jadpo/resend`, `@jadpo/open-ai`,
+`@jadpo/anthropic` and `@jadpo/amazon-sqs`, each published from its own
+repository under [jadpo-dev](https://github.com/jadpo-dev). This adds Resend's,
+run in your project's folder:
 
 ```sh
 jadpo package add @jadpo/resend
 ```
 
-```text
-Added Resend.v1 1.0.0
-    folder     packages/resend/v1
-    source     registry @jadpo/resend
-    publisher  @jadpo, official
-    age        first released 2026-11-06, today
-    log        entry 1 of 2
-    surface    matches its code
+[Use a package from the registry](../guides/22-use-a-package-from-the-registry.md)
+shows what it prints: the publisher, `@jadpo, official`, the package's age and
+its facts.
 
-Facts
-  kind: provider
-  publisher: @jadpo
-  hosts: the address its connection gives
-  changes: emails.send
-  erasure: not declared
-  storable: none
-  failures: emails.send: InvalidAttachment, InvalidParameter, MissingRequiredField, MissingRequiredParameter, ValidationError
-  contract: 0 of 1 operation confirmed
-
-package added: Resend.v1 1.0.0, 1 operation, 3 types, 5 failures
-
-next: jadpo package show resend  shows what it offers
-```
-
-`official` says the publisher is Jadpo's own. A package from the registry
-carries its verified publisher, so it needs no acceptance of
+A package from the registry carries its verified publisher, so it needs no
+acceptance of
 `PackageChange.git_source`, as one installed from a git repository does
 ([Installing safely](#installing-safely)). `jadpo check` and `jadpo build` read
 only your app's copy, in `packages/resend/v1/`, and never go online.
@@ -1258,10 +1234,7 @@ config {
 
 The registry at jadpo.dev holds public Jadpo packages of both kinds, as Jadpo
 source with no native code and no install script. Find one with `jadpo package
-search <words>`, or on [jadpo.dev/packages](https://jadpo.dev/packages), and
-install it with `jadpo package add @<publisher>/<name>`
-([Use a package from the registry](../guides/22-use-a-package-from-the-registry.md)
-goes through it). Nothing in a package runs when it is installed, and its code runs only
+search <words>`, or on [jadpo.dev/packages](https://jadpo.dev/packages). Nothing in a package runs when it is installed, and its code runs only
 when started ([What package code may do](#what-package-code-may-do)). A
 malicious package could still name the wrong host or mark an unsafe call
 idempotent, so hosts, services and every package change appear in the approval
@@ -2243,13 +2216,10 @@ it can send makes a release live.
 
 ### Not built yet
 
-The registry at jadpo.dev publishes, installs, searches by words and yanks
-today. These parts of this page aren't built there yet: search by meaning, the
-written account and the review of each release's diff, urgent releases and the
-advisories they publish, compatibility runs, refusing a tag that moves,
-organisations with several members and their releasers, automatic release,
-successors and reports. Accounts are open to a short list of people for now;
-anyone can search and install.
+At jadpo.dev: search by meaning, the written account and diff review, urgent
+releases and advisories, compatibility runs, refusing a moved tag,
+organisations, automatic release, successors and reports. Accounts are open to
+a short list of people for now.
 
 ## The verifier
 <!-- topic: the-verifier -->

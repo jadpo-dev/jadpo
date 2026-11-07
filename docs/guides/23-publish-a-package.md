@@ -19,11 +19,11 @@ repository on GitHub or another git host to push to. `@acme` and
 name. `--library` makes a package of types and functions, and `--publisher`
 names who publishes it:
 
-```sh run
+```sh
 jadpo package new Tidying --library --publisher @acme
 ```
 
-```text output
+```text
 Created tidying
     package    Tidying.v1, library
     publisher  @acme

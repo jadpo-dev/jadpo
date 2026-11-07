@@ -162,7 +162,7 @@ What you write next depends on the kind of package:
 
 - **A provider package**, such as Resend's, is reached through a connection
   in `app.jadpo` that names it, with its credential from a setting
-  ([Connecting in `app.jadpo`](../language/11-integrations.md#connecting-in-app-jadpo)).
+  ([Connecting in `app.jadpo`](../language/11-integrations.md#connecting-in-appjadpo)).
   Resend's fills the `email` capability, so `email:` names that connection
   and your emails send through it
   ([Jadpo's own packages](../language/11-integrations.md#jadpos-own-packages)
