@@ -625,6 +625,24 @@ types = "Money"
             (root / docs.SKILL).unlink()
             self.assertIn('is missing', docs.check_skill(root)[0])
 
+    def test_release_notes_go_in_byte_for_byte_and_are_checked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root)
+            (root / docs.RELEASES).mkdir(parents=True)
+            notes = '# Jadpo 1.2.0\n\nReleased 7 November 2026.\n\nAdded in Jadpo 1.2.0.\n'
+            (root / docs.RELEASES / '1.2.0.md').write_text(notes)
+            (root / docs.RELEASE_MANIFEST).write_text('{".":"1.2.0"}\n')
+            docs.Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': []}, root).write(root / 'bundle')
+            self.assertEqual((root / 'bundle' / docs.RELEASES_IN_BUNDLE / '1.2.0.md').read_text(), notes)
+            self.assertEqual(docs.check_releases(root), [])
+            (root / docs.RELEASE_MANIFEST).write_text('{".":"1.3.0"}\n')
+            self.assertIn('1.3.0.md is missing', docs.check_releases(root)[0])
+            (root / docs.RELEASES / '1.3.0.md').write_text('# Jadpo 1.3\n\nReleased soon.\n')
+            (root / docs.RELEASES / 'notes.md').write_text('# Notes\n')
+            problems = docs.check_releases(root)
+            self.assertEqual(len(problems), 3, problems)
+
     def test_a_code_fence_keeps_only_its_language(self):
         one = AREA_ONE.replace('### Later', '```text output\nchecked\n```\n\n````markdown\n```jadpo check project=q\n```\n````\n\n### Later')
         _, files, _ = self.build(one=one)

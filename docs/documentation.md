@@ -117,7 +117,12 @@ bundle/
   commands/jadpo-<command>.md  generated from jadpo help --json
   landings/<id>.md             one per node of the manifest with no page of its own
   skills/jadpo/SKILL.md        the agent skill, outside index.json
+  releases/<X.Y.Z>.md          each release's notes, outside index.json
 ```
+
+The release notes are `docs/releases/`, copied byte for byte. The site shows
+them at `/changelog`, newest first, reading each file's `# Jadpo X.Y.Z` heading
+and its `Released D Month YYYY.` line.
 
 `index.json` is `{ "version": "<jadpo's version>", "pages": [...] }`, in
 the order above: the primer, the Learn path in reading order, the
