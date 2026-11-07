@@ -4,11 +4,13 @@
 //! was checked to have: the name is looked up here, every address it has
 //! must be public, and `git` is handed that address, so a name that changes
 //! between the check and the connection (DNS rebinding) reaches nothing
-//! else. Redirects aren't followed, nothing else is configured for it, no
-//! hook, filter or submodule can run, and the fetched objects are read with
-//! `ls-tree` and `cat-file` in a sandbox with no network at all. A commit is
-//! never checked out, so `.gitattributes` and paths git would write are
-//! never acted on.
+//! else. A redirect isn't followed but refused, as a repository that moved
+//! (a renamed or transferred repository's old address), so a version never
+//! comes from an address the registry didn't check. Nothing else is
+//! configured for it, no hook, filter or submodule can run, and the fetched
+//! objects are read with `ls-tree` and `cat-file` in a sandbox with no
+//! network at all. A commit is never checked out, so `.gitattributes` and
+//! paths git would write are never acted on.
 
 use std::ffi::OsString;
 use std::net::{IpAddr, ToSocketAddrs};
@@ -224,6 +226,27 @@ fn job(tmp: &Path, limits: Limits, args: &[&str], reach: Option<&Reach>) -> Resu
     })
 }
 
+/// Why a `git` that reached `url` failed: refused when the host sent it
+/// to another address, which [`CONFIG`] never follows, else `why`.
+///
+/// A host sends a repository's old address on to its new one when it is
+/// renamed or moved to another account, as GitHub does. The registry
+/// checks who a version comes from by the address it was given, so a
+/// version fetched from wherever that address now points could be another
+/// account's: it is refused, never followed.
+fn failed(done: &Finished, url: &str, why: &str) -> GitError {
+    let said = String::from_utf8_lossy(&done.stderr);
+    let redirected = ["301", "302", "303", "307", "308"]
+        .iter()
+        .any(|code| said.contains(&format!("returned error: {code}")));
+    if redirected {
+        return GitError::Refused(format!(
+            "`{url}` redirects to another address, as a host does for a repository renamed or moved to another account, and a redirect is never followed: publish from the repository's own address"
+        ));
+    }
+    GitError::Failed(why.to_string())
+}
+
 fn run(sandbox: &Sandbox, job: &Job) -> Result<Finished, GitError> {
     sandbox
         .run(job)
@@ -249,7 +272,11 @@ pub fn resolve_tag(
     )?;
     let done = run(sandbox, &job)?;
     if done.ended != Ended::Exited(0) {
-        return Err(GitError::Failed("the repository couldn't be read".into()));
+        return Err(failed(
+            &done,
+            repository.url(),
+            "the repository couldn't be read",
+        ));
     }
     let text = String::from_utf8_lossy(&done.stdout);
     let mut found = None;
@@ -311,8 +338,10 @@ pub fn fetch(
     fetching.writable = vec![into.to_path_buf()];
     let done = run(sandbox, &fetching)?;
     if done.ended != Ended::Exited(0) {
-        return Err(GitError::Failed(
-            "the repository couldn't be fetched at that commit".into(),
+        return Err(failed(
+            &done,
+            repository.url(),
+            "the repository couldn't be fetched at that commit",
         ));
     }
     // The name asked for has to be a commit, not any other kind of object.
@@ -451,4 +480,94 @@ pub fn read(
         at = end + 1;
     }
     Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+
+    /// A host that answers every request by sending it to another
+    /// address, as GitHub does for a repository renamed or moved to
+    /// another account.
+    fn moved() -> (String, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+        let port = listener.local_addr().expect("an address").port();
+        let serving = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut asked = [0u8; 4096];
+                let _ = stream.read(&mut asked);
+                let _ = stream.write_all(
+                    format!(
+                        "HTTP/1.1 301 Moved Permanently\r\nLocation: http://127.0.0.1:{port}/someone-else/postcodes.git/info/refs?service=git-upload-pack\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                    .as_bytes(),
+                );
+            }
+        });
+        (
+            format!("http://127.0.0.1:{port}/acme/postcodes.git"),
+            serving,
+        )
+    }
+
+    #[test]
+    fn git_is_never_told_to_follow_a_redirect() {
+        assert!(CONFIG.contains(&"http.followRedirects=false"));
+    }
+
+    /// The registry checks the address it was given; a redirect would
+    /// fetch a version from wherever the old address now points.
+    #[test]
+    fn a_repository_that_redirects_is_refused_as_moved() {
+        let Some(program) = tool("git") else { return };
+        let (url, serving) = moved();
+        let mut command = std::process::Command::new(program);
+        for setting in CONFIG {
+            command.args(["-c", setting]);
+        }
+        let output = command
+            .args(["-c", "protocol.http.allow=always", "ls-remote", "--", &url])
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()
+            .expect("git runs");
+        serving.join().expect("served");
+        assert!(!output.status.success());
+        let finished = Finished {
+            ended: Ended::Exited(output.status.code().unwrap_or(1)),
+            stdout: output.stdout,
+            stderr: output.stderr,
+        };
+        match failed(&finished, &url, "the repository couldn't be read") {
+            GitError::Refused(why) => assert!(why.contains("redirects"), "{why}"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn only_a_redirect_reads_as_moved() {
+        let said = |stderr: &str| Finished {
+            ended: Ended::Exited(128),
+            stdout: Vec::new(),
+            stderr: stderr.as_bytes().to_vec(),
+        };
+        for code in [301, 302, 303, 307, 308] {
+            let stderr = format!(
+                "fatal: unable to access 'https://github.com/acme/postcodes/': The requested URL returned error: {code}\n"
+            );
+            assert!(
+                matches!(failed(&said(&stderr), "u", "w"), GitError::Refused(_)),
+                "{code}"
+            );
+        }
+        let missing = "fatal: unable to access 'https://github.com/acme/postcodes/': The requested URL returned error: 404\n";
+        assert_eq!(
+            failed(&said(missing), "u", "the repository couldn't be read"),
+            GitError::Failed("the repository couldn't be read".to_string())
+        );
+    }
 }

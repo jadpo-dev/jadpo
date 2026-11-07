@@ -2219,7 +2219,11 @@ code runs and what can come back from it.
 - **`--serve`** answers the registry, reached over HTTPS with a credential
   the registry holds. Each request names a repository, a commit and the
   previous release's digest. It fetches over git with network to the git
-  host only, then verifies in a process with no network at all.
+  host only, then verifies in a process with no network at all. It never
+  follows a redirect: a repository whose address sends git elsewhere, as a
+  renamed or transferred repository's old address does, is
+  `repository_refused`, since the registry checks who a version comes from
+  by the address it was given.
 - It is reached from the registry as an ordinary connection to a
   provider package, so the registry needs no feature an app doesn't have.
   Verifying takes longer than a call may, so a verification is started and

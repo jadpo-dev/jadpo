@@ -42,6 +42,16 @@ git remote set-url origin https://github.com/acme/postcodes
 
 The registry can then fetch the tag itself.
 
+**If the repository was renamed or moved to another account**, its old
+address redirects to the new one, and the registry never follows a
+redirect: it checks who a version comes from by the address it was sent,
+so a redirect could fetch another account's. Point `origin` at where the
+repository is now:
+
+```sh
+git remote set-url origin https://github.com/acme-labs/postcodes
+```
+
 **If the repository is private**, it can't go to the public registry. Install
 it from git instead, with your own access:
 
