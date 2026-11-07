@@ -128,6 +128,7 @@ operations on it live in a package or on another page.
 | `TokenUsage` keeps no total | Its `input`, `output` and optional `cached`; the total is `input + output`, worked out where needed, and a `total` member is refused |
 | Generated scopes narrow `OAuthScope` | Area 9's enum of an application's declared scopes narrows the standard `OAuthScope` to them, a closed subset, rather than reusing the name |
 | A key's `key_ops` | Read and held as `Set<Text>`, not refused: RFC 7517 §4.3 allows it and WebCrypto always writes it. A key whose `key_ops` leaves out `"verify"` checks no signature (Richard, 2026-10-30) |
+| A UK postcode's parts | In the standard library, not a package: seven `postal` operations on a `PostalCode`, one per part as `money.minor` and `money.currency` are, each giving `Text` (`sub_district` `Text?`) and failing `not_uk_postcode` outside Royal Mail's format, since a `PostalCode` holds no country; a postcode written out in the format needs no arm. The format's shape only, not Royal Mail's list of areas, which `text.parse` with `country:` keeps; `GIR 0AA` and `BFPO` numbers have no parts; no `0`/`O` or `1`/`I` correction, which would widen what `text.parse` accepts (Richard, 2026-11-07) |
 
 ## The opening topics to SQL forms
 

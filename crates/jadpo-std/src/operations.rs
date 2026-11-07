@@ -291,6 +291,13 @@ pub enum Op {
     MoneyOf,
     MoneySplit,
     MoneySum,
+    PostalArea,
+    PostalDistrict,
+    PostalInwardCode,
+    PostalOutwardCode,
+    PostalSector,
+    PostalSubDistrict,
+    PostalUnit,
     RandomCode,
     RandomInteger,
     RandomSample,
@@ -935,6 +942,34 @@ const fn web(
 }
 
 const URL: Kind = Kind::Builtin(Builtin::Url);
+
+/// A postal code not in Royal Mail's format (area 19, "A UK postcode's
+/// parts"): settled only by proof, a postcode written out in it.
+const ON_NOT_UK_POSTCODE: Condition = Condition {
+    key: RuleKey::NotUkPostcode,
+    option: None,
+};
+
+/// The one parameter of each `postal` operation.
+const POSTCODE: &[Param] = &[param("postcode", Kind::Std("PostalCode"))];
+
+/// A `postal` operation (area 19, "A UK postcode's parts"): one part of a
+/// `PostalCode` by Royal Mail's format, as text, each one function in
+/// `jadpo-value`'s `postal` module over
+/// `jadpo_std::standard::postal::uk_parts`. Each fails `not_uk_postcode`
+/// on a postal code not in that format.
+const fn postal(op: Op, name: &'static str, rust: &'static str) -> Operation {
+    Operation {
+        op,
+        namespace: "postal",
+        name,
+        params: POSTCODE,
+        result: TEXT,
+        at_least: None,
+        conditions: &[ON_NOT_UK_POSTCODE],
+        rust,
+    }
+}
 
 /// `semver`'s operation (area 19, "Web and software", chunk 5.5n2), one
 /// function in `jadpo-value`'s `semver` module over
@@ -2189,6 +2224,23 @@ pub const OPERATIONS: &[Operation] = &[
             "money::sum",
         )
     },
+    // A UK postcode's parts (area 19, "A UK postcode's parts"), by Royal
+    // Mail's format; `sub_district` is `none` where there isn't one.
+    postal(Op::PostalArea, "area", "postal::area"),
+    postal(Op::PostalDistrict, "district", "postal::district"),
+    postal(Op::PostalInwardCode, "inward_code", "postal::inward_code"),
+    postal(
+        Op::PostalOutwardCode,
+        "outward_code",
+        "postal::outward_code",
+    ),
+    postal(Op::PostalSector, "sector", "postal::sector"),
+    postal(
+        Op::PostalSubDistrict,
+        "sub_district",
+        "postal::sub_district",
+    ),
+    postal(Op::PostalUnit, "unit", "postal::unit"),
     // Randomness (area 19, "Randomness"): each reads the
     // generator, the operating system's outside tests and one seeded per
     // test in them, so it is called only in actions, as `clock.now` is
@@ -2970,6 +3022,9 @@ mod tests {
                     // What text or bytes decode to is known only when the
                     // program runs, so only an `attempt` settles it.
                     None if condition.key.only_when_run() => true,
+                    // A postcode's format, by a postcode written out in it
+                    // (area 19, "A UK postcode's parts").
+                    None if condition.key == RuleKey::NotUkPostcode => true,
                     // A discount's amount off is in a currency only the
                     // running program knows, as is the price's (chunk
                     // 5.5i3).

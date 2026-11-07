@@ -31,6 +31,7 @@ never `count(items)`.
 | `integer` | Operations on values built on `Int` | 5 (1 from Logic) | This page and [Logic](03-logic.md) |
 | `decimal` | Operations on values built on `Decimal` | 13 (1 from Logic) | This page and [Logic](03-logic.md) |
 | `money` | `Money`, its rates and discounts | 10 | This page |
+| `postal` | A UK postcode's parts | 7 | This page |
 | `units` | Physical quantities, `DataSize` and `Bitrate` | 3 | This page |
 | `text` | Operations on text, and the contract's `parse`, `format` and `from` for every type | 21 | This page |
 | `bytes` | Joining bytes | 1 | This page |
@@ -50,9 +51,9 @@ never `count(items)`.
 | `media` | Fitting dimensions | 1 | This page |
 | `markup` | Markdown and HTML, made safe | 3 | This page |
 
-There are 171 operations in all: 28 defined on the Values and types,
+There are 178 operations in all: 28 defined on the Values and types,
 Logic, and Dates and times pages, 8 file helpers defined with
-[batches](12-jobs-and-events.md#batches), and 135
+[batches](12-jobs-and-events.md#batches), and 142
 defined here. Operators are counted apart, in
 [the standard operator table](#the-standard-operator-table). Operations
 on geometry and AI are counted on the [Geospatial](20-geospatial.md) and
@@ -290,10 +291,11 @@ full table under [All operations](#all-operations):
 | Web | `web.with_query(url, entries)`, `web.resolve(base, relative)`, `web.cidr_contains(range, address)` | 3 |
 | Software | `semver.satisfies(version, range)` | 1 |
 | Media | `media.fit(dimensions, within:)`, keeping the aspect ratio | 1 |
+| Postal codes | `postal.outward_code`, `inward_code`, `area`, `district`, `sub_district`, `sector` and `unit`: a UK postcode's parts by Royal Mail's format | 7 |
 | Text formats | `markup.to_html`, `rich_to_html`, `to_plain_text`; `text.pick` with fallback. `Html` is always safe: its construction sanitises | 4 |
 | Geometry | `geo.distance`, `length`, `bearing`, `area`, `intersects`, `contains`, `within`, `centroid`, `bounding_box`, the constructions and WKT's two | [Geospatial](20-geospatial.md) |
 | AI (`Vector`, `Embedding`, `ChatMessage`) | `ai.generate`, `stream`, `embed`, `embed_all`, `distance` | [AI](21-ai.md) |
-| People, places, identity numbers, commerce codes, health, travel, other | Baseline only: each identifier's check digit or pattern is its construction | |
+| Other people and places types, identity numbers, commerce codes, health, travel, other | Baseline only: each identifier's check digit or pattern is its construction | |
 
 ### Rules across a type's parts
 
@@ -1144,6 +1146,7 @@ and isn't repeated.
 | Media | `media` | 1 |
 | Web and software | `web`, `semver` | 4 |
 | Groups with the baseline only | | 0 |
+| A UK postcode's parts | `postal` | 7 |
 | Locale | `locale` | 1 ([Locales](10-configuration-and-time.md#locales)) |
 
 ## The standard operator table
@@ -10983,6 +10986,241 @@ compiling where a literal writes both the postal code and the country
 built with `attempt`. JSON, in a request or through `json.read`, breaks
 the rule by name at the address's path. Stored addresses are read as
 they were written.
+
+### A UK postcode's parts
+
+A UK postcode is made of parts that sorting, delivery and statistics use
+on their own. `SW1A 1AA` is the outward code `SW1A` and the inward code
+`1AA`; its area is `SW`, its district `SW1`, its sub-district `SW1A`, its
+sector `SW1A 1` and its unit `AA`. The seven `postal` operations each give
+one part, by Royal Mail's postcode format. They are in the standard
+library rather than a package (Richard, 2026-11-07).
+
+Here a courier reads the postcode on a label, sends the parcel to the
+depot for its district, and puts it on the round for its sector:
+
+```jadpo check project=uk-postcode-parts
+type LabelText = Text {}
+
+type NotAUkPostcode = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A depot's code: one depot serves each postcode district.
+type DepotCode = Text {}
+
+/// A driver's round: one round covers each postcode sector.
+type RoundCode = Text {}
+
+/// The postcode a sender wrote on a label, in any case, with or without
+/// its space.
+function label_postcode(raw: LabelText) fails NotAUkPostcode -> PostalCode {
+    var postcode: PostalCode = attempt text.parse(raw, as: PostalCode, country: Country.gb) {
+        malformed: NotAUkPostcode
+    }
+    return postcode
+}
+
+/// The depot a parcel goes to: its postcode's district, `SW1` for
+/// `SW1A 1AA`.
+function depot_for(postcode: PostalCode) fails NotAUkPostcode -> DepotCode {
+    var district: Text = attempt postal.district(postcode) {
+        not_uk_postcode: NotAUkPostcode
+    }
+    return DepotCode(district)
+}
+
+/// The round a parcel goes on: its postcode's sector, `SW1A 1` for
+/// `SW1A 1AA`.
+function round_for(postcode: PostalCode) fails NotAUkPostcode -> RoundCode {
+    var sector: Text = attempt postal.sector(postcode) {
+        not_uk_postcode: NotAUkPostcode
+    }
+    return RoundCode(sector)
+}
+```
+
+```jadpo check project=uk-postcode-parts file=main.test.jadpo
+test "a parcel goes to its district's depot and its sector's round" {
+    var palace: PostalCode = attempt label_postcode("sw1a1aa")
+    var depot: DepotCode = attempt depot_for(palace)
+    assert depot == "SW1"
+    var round: RoundCode = attempt round_for(palace)
+    assert round == "SW1A 1"
+    var norwich: PostalCode = attempt label_postcode("NR10 3EZ")
+    var norwich_depot: DepotCode = attempt depot_for(norwich)
+    assert norwich_depot == "NR10"
+}
+
+test "a postcode written out has its parts with no arm" {
+    assert postal.outward_code("SW1A 1AA") == "SW1A"
+    assert postal.inward_code("SW1A 1AA") == "1AA"
+    assert postal.area("SW1A 1AA") == "SW"
+    assert postal.district("SW1A 1AA") == "SW1"
+    assert postal.sub_district("SW1A 1AA") == "SW1A"
+    assert postal.sub_district("M2 5BQ") == none
+    assert postal.sector("SW1A 1AA") == "SW1A 1"
+    assert postal.unit("SW1A 1AA") == "AA"
+}
+
+test "only a postcode in Royal Mail's format has these parts" {
+    assert depot_for(PostalCode("75004")) fails NotAUkPostcode
+    assert depot_for(PostalCode("GIR 0AA")) fails NotAUkPostcode
+    assert round_for(PostalCode("BFPO 61")) fails NotAUkPostcode
+    assert label_postcode("SW1A 2A0") fails NotAUkPostcode
+}
+```
+
+```jadpo check project=uk-postcode-parts file=tests/royal_mail_format.test.jadpo hidden
+test "each part of each shape of postcode" {
+    assert postal.outward_code("L27 8XY") == "L27"
+    assert postal.inward_code("L27 8XY") == "8XY"
+    assert postal.area("L27 8XY") == "L"
+    assert postal.district("L27 8XY") == "L27"
+    assert postal.sub_district("L27 8XY") == none
+    assert postal.sector("L27 8XY") == "L27 8"
+    assert postal.unit("L27 8XY") == "XY"
+    assert postal.outward_code("NR10 3EZ") == "NR10"
+    assert postal.inward_code("NR10 3EZ") == "3EZ"
+    assert postal.area("NR10 3EZ") == "NR"
+    assert postal.district("NR10 3EZ") == "NR10"
+    assert postal.sub_district("NR10 3EZ") == none
+    assert postal.sector("NR10 3EZ") == "NR10 3"
+    assert postal.unit("NR10 3EZ") == "EZ"
+    assert postal.outward_code("RG4 5AY") == "RG4"
+    assert postal.area("RG4 5AY") == "RG"
+    assert postal.sector("RG4 5AY") == "RG4 5"
+    assert postal.outward_code("NE69 7AW") == "NE69"
+    assert postal.sector("NE69 7AW") == "NE69 7"
+    assert postal.outward_code("SE23 2NF") == "SE23"
+    assert postal.unit("SE23 2NF") == "NF"
+    assert postal.outward_code("BT35 8GE") == "BT35"
+    assert postal.area("BT35 8GE") == "BT"
+    assert postal.district("BT35 8GE") == "BT35"
+    assert postal.sub_district("BT35 8GE") == none
+    assert postal.sector("BT35 8GE") == "BT35 8"
+}
+
+test "a postcode with no space has the same parts" {
+    assert postal.outward_code("L278XY") == "L27"
+    assert postal.inward_code("L278XY") == "8XY"
+    assert postal.sector("L278XY") == "L27 8"
+    assert postal.outward_code("NR103EZ") == "NR10"
+    assert postal.district("NR103EZ") == "NR10"
+    assert postal.outward_code("RG45AY") == "RG4"
+    assert postal.unit("RG45AY") == "AY"
+    assert postal.outward_code("NE697AW") == "NE69"
+    assert postal.outward_code("SE232NF") == "SE23"
+    assert postal.sector("BT358GE") == "BT35 8"
+    assert postal.sub_district("BT358GE") == none
+    assert postal.outward_code("SW1A   1AA") == "SW1A"
+}
+
+test "a sub-district is an outward code ending in a letter after one digit" {
+    assert postal.district("EC1A 1BB") == "EC1"
+    assert postal.sub_district("EC1A 1BB") == "EC1A"
+    assert postal.district("W1A0AX") == "W1"
+    assert postal.sub_district("W1A0AX") == "W1A"
+    assert postal.district("NW1W1AA") == "NW1"
+    assert postal.sub_district("NW1W1AA") == "NW1W"
+    assert postal.district("N1C 0AB") == "N1"
+    assert postal.sub_district("N1C 0AB") == "N1C"
+}
+
+test "every shape of outward code, whatever its letters" {
+    assert postal.outward_code("AA9A 9AA") == "AA9A"
+    assert postal.area("AA9A 9AA") == "AA"
+    assert postal.district("AA9A 9AA") == "AA9"
+    assert postal.sub_district("AA9A 9AA") == "AA9A"
+    assert postal.sector("AA9A 9AA") == "AA9A 9"
+    assert postal.outward_code("A9A 9AA") == "A9A"
+    assert postal.area("A9A 9AA") == "A"
+    assert postal.district("A9A 9AA") == "A9"
+    assert postal.sub_district("A9A 9AA") == "A9A"
+    assert postal.outward_code("A9 9AA") == "A9"
+    assert postal.district("A9 9AA") == "A9"
+    assert postal.sub_district("A9 9AA") == none
+    assert postal.outward_code("A99 9AA") == "A99"
+    assert postal.district("A99 9AA") == "A99"
+    assert postal.sub_district("A99 9AA") == none
+    assert postal.outward_code("AA9 9AA") == "AA9"
+    assert postal.sub_district("AA9 9AA") == none
+    assert postal.outward_code("AA99 9AA") == "AA99"
+    assert postal.district("AA99 9AA") == "AA99"
+    assert postal.sub_district("AA99 9AA") == none
+    assert postal.outward_code("AA9A9AA") == "AA9A"
+    assert postal.outward_code("A9A9AA") == "A9A"
+    assert postal.outward_code("A99AA") == "A9"
+    assert postal.sector("A99AA") == "A9 9"
+    assert postal.outward_code("A999AA") == "A99"
+    assert postal.sector("A999AA") == "A99 9"
+    assert postal.outward_code("AA99AA") == "AA9"
+    assert postal.outward_code("AA999AA") == "AA99"
+    assert postal.unit("AA999AA") == "AA"
+    assert postal.area("MA1 1AA") == "MA"
+    assert label_postcode("MA1 1AA") fails NotAUkPostcode
+}
+
+test "text not in the format has no parts" {
+    assert depot_for(PostalCode("12FSSD")) fails NotAUkPostcode
+    assert depot_for(PostalCode("1A1 1AA")) fails NotAUkPostcode
+    assert depot_for(PostalCode("EH1 JS")) fails NotAUkPostcode
+    assert depot_for(PostalCode("EH1JS")) fails NotAUkPostcode
+    assert depot_for(PostalCode("EH 1JS")) fails NotAUkPostcode
+    assert depot_for(PostalCode("SW 1A1AA")) fails NotAUkPostcode
+    assert depot_for(PostalCode("SW1A-1AA")) fails NotAUkPostcode
+    assert round_for(PostalCode("SWIA 2AA")) fails NotAUkPostcode
+    assert round_for(PostalCode("22162-1010")) fails NotAUkPostcode
+}
+
+test "a label is read in Royal Mail's own spacing" {
+    var liverpool: PostalCode = attempt label_postcode("L278XY")
+    assert liverpool == PostalCode("L27 8XY")
+    var norwich: PostalCode = attempt label_postcode("NR103EZ")
+    assert norwich == PostalCode("NR10 3EZ")
+    var lerwick: PostalCode = attempt label_postcode("ZE10AA")
+    assert lerwick == PostalCode("ZE1 0AA")
+    var morpeth: PostalCode = attempt label_postcode("NE697AW")
+    assert morpeth == PostalCode("NE69 7AW")
+    var forest_hill: PostalCode = attempt label_postcode("SE232NF")
+    assert forest_hill == PostalCode("SE23 2NF")
+    assert label_postcode("Definitely wrong") fails NotAUkPostcode
+}
+```
+
+| Operation | Gives | Fails | SQL form |
+|---|---|---|---|
+| `postal.outward_code(postcode)` | `Text`, the outward code: `SW1A` in `SW1A 1AA` | `not_uk_postcode` | none |
+| `postal.inward_code(postcode)` | `Text`, the inward code, its last three characters: `1AA` | `not_uk_postcode` | none |
+| `postal.area(postcode)` | `Text`, the letters it starts with: `SW` | `not_uk_postcode` | none |
+| `postal.district(postcode)` | `Text`, the outward code without a sub-district's letter: `SW1` | `not_uk_postcode` | none |
+| `postal.sub_district(postcode)` | `Text?`, the outward code where it ends in a letter after one digit, `SW1A`; `none` where it doesn't, as in `M2 5BQ` | `not_uk_postcode` | none |
+| `postal.sector(postcode)` | `Text`, the outward code, a space and the inward code's digit: `SW1A 1` | `not_uk_postcode` | none |
+| `postal.unit(postcode)` | `Text`, the inward code's two letters: `AA` | `not_uk_postcode` | none |
+
+**Royal Mail's format** is an outward code then an inward code. The
+outward code is one or two letters, a digit, and maybe a letter or a
+digit: `A9`, `A99`, `A9A`, `AA9`, `AA99` or `AA9A`. The inward code is a
+digit and two letters. Any number of spaces may come between them, none
+included, so `PostalCode("SW1A1AA")` has the same parts as `SW1A 1AA`.
+Each part is in capitals, as a `PostalCode` is.
+
+**A postal code not in that format fails `not_uk_postcode`.** That is
+another country's code, `75004`, and the two kinds of UK code outside the
+format, `GIR 0AA` and `BFPO` numbers. A `PostalCode` doesn't hold its
+country, so the format is what tells. A call needs no arm for it when its
+postcode is written out in the format, as `money.of` needs none for
+`too_many_places` when its currency and amount are written out.
+
+**The letters aren't checked against Royal Mail's areas.** `MA1 1AA` has
+parts, `MA`, `MA1` and so on, though no area is `MA`. Whether a code is a
+real UK postcode is `text.parse` with `country: Country.gb`, which reads
+it against libaddressinput's pattern of areas and refuses `MA1 1AA`.
+
+**Nothing is corrected.** A `0` typed for an `O`, or a `1` for an `I`, is
+read as it is written, so `SW1A 2A0` has no parts and `text.parse`
+refuses it. Correcting them would make `text.parse` take text it refuses
+now, and some could be read two ways, which it refuses.
 
 ### UN/LOCODEs
 

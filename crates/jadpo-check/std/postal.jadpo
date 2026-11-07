@@ -1,0 +1,38 @@
+// The `postal` namespace (area 19, "A UK postcode's parts"). Each
+// operation is listed, typed, in `jadpo-std`'s operation table, which
+// names the Rust function in `jadpo-value` that runs it; a test holds
+// these stubs to that table.
+//
+// Each takes a UK postcode apart by Royal Mail's format: an outward code
+// of one or two letters, a digit and maybe a letter or a digit, then an
+// inward code of a digit and two letters, with or without a space between.
+// Each fails with `not_uk_postcode` for a postal code not in that format,
+// another country's or `GIR 0AA` or a `BFPO` number, unless the postcode
+// is written out in it.
+
+public library postal {
+    /// The letters `postcode` starts with: `SW` in `SW1A 1AA`, `M` in
+    /// `M2 5BQ`.
+    function area(postcode: PostalCode) -> Text {}
+
+    /// The outward code without a sub-district's letter: `SW1` in
+    /// `SW1A 1AA`, `NR10` in `NR10 3EZ`.
+    function district(postcode: PostalCode) -> Text {}
+
+    /// The inward code, the last three characters: `1AA` in `SW1A 1AA`.
+    function inward_code(postcode: PostalCode) -> Text {}
+
+    /// The outward code, before the inward code: `SW1A` in `SW1A 1AA`.
+    function outward_code(postcode: PostalCode) -> Text {}
+
+    /// The outward code, a space and the inward code's digit: `SW1A 1`
+    /// in `SW1A 1AA`.
+    function sector(postcode: PostalCode) -> Text {}
+
+    /// The outward code where it ends in a letter after one digit, `SW1A`
+    /// in `SW1A 1AA`; `none` where it doesn't, as in `M2 5BQ`.
+    function sub_district(postcode: PostalCode) -> Text? {}
+
+    /// The inward code's two letters: `AA` in `SW1A 1AA`.
+    function unit(postcode: PostalCode) -> Text {}
+}

@@ -144,6 +144,11 @@ pub enum RuleKey {
     /// `geo.bearing`'s two points are the same place, which has no
     /// direction to itself (area 20, "Operations").
     SamePoint,
+    /// A postal code a `postal` operation takes apart isn't in Royal
+    /// Mail's format, an outward code and an inward code (area 19, "A UK
+    /// postcode's parts"): another country's, or `GIR 0AA` or a `BFPO`
+    /// number.
+    NotUkPostcode,
     /// A store a file is put in has no room for it (area 16, "Files";
     /// chunk 6.4b): `store.put`'s own condition.
     StorageFull,
@@ -189,7 +194,7 @@ impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 33] = [
+    pub const ALL: [RuleKey; 34] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -218,6 +223,7 @@ impl RuleKey {
         RuleKey::WrongAudience,
         RuleKey::WrongIssuer,
         RuleKey::SamePoint,
+        RuleKey::NotUkPostcode,
         RuleKey::StorageFull,
         RuleKey::Refused,
         RuleKey::TimedOut,
@@ -256,6 +262,7 @@ impl RuleKey {
             RuleKey::WrongAudience => "wrong_audience",
             RuleKey::WrongIssuer => "wrong_issuer",
             RuleKey::SamePoint => "same_point",
+            RuleKey::NotUkPostcode => "not_uk_postcode",
             RuleKey::StorageFull => "storage_full",
             RuleKey::Refused => "refused",
             RuleKey::TimedOut => "timed_out",

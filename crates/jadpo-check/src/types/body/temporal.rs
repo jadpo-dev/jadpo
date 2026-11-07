@@ -639,6 +639,18 @@ impl Body<'_> {
                     jadpo_std::RuleKey::CurrencyMismatch | jadpo_std::RuleKey::TooManyPlaces => {
                         self.money_condition_settled(table, call, condition.key, &given)
                     }
+                    // A `postal` operation's (area 19, "A UK postcode's
+                    // parts"): settled by a postcode written out in Royal
+                    // Mail's format.
+                    jadpo_std::RuleKey::NotUkPostcode => {
+                        given(0).and_then(ast::Arg::expr).is_some_and(|postcode| {
+                            matches!(
+                                super::super::rules::Const::from_expr(&postcode),
+                                super::super::rules::Const::Str(text)
+                                    if jadpo_std::standard::postal::uk_parts(&text).is_some()
+                            )
+                        })
+                    }
                     _ => table
                         .params
                         .iter()
