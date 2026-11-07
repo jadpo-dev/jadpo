@@ -977,7 +977,7 @@ imported: 1 operation, 3 types, 4 to check
         checked.stdout,
         "To review
   Go through each type against the provider's documentation, then add it to
-  `reviewed:` in `imported:` in its package's `provider.jadpo` (agent)
+  `reviewed:` in its package's `provider.jadpo` (agent)
     Tidepay.v2024_06_20  Charge, ChargesGetChargesInput, Shop; 0 of 3 reviewed
 
 Not yet confirmed

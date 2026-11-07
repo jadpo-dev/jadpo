@@ -109,11 +109,11 @@ pub(crate) fn desk(name: &str, sandbox: &str, schema: &str, development: &str) -
     for (file, text) in [
         (
             "chat_turn",
-            "/// One message of a conversation.\npublic type ChatTurn = Object {\n    role: Text {\n        max_length: 20\n    }\n    content: Text {\n        max_length: 100000\n    }\n}\n",
+            "/// One message of a conversation.\npublic type ChatTurn = Object {\n    role: Text {\n        max_length: 20\n    }\n    content: Text {\n        max_length: 100000\n        personal: PersonalData.identifying\n    }\n}\n",
         ),
         (
             "chat_request",
-            "/// What asking a model takes.\npublic type ChatRequest = Object {\n    model: Text {\n        max_length: 100\n    }\n    instructions: Text {\n        max_length: 100000\n        wire_name: \"system\"\n    }\n    messages: List<ChatTurn>\n    max_tokens: Int {\n        min: 1\n        max: 1000000\n    }\n}\n",
+            "/// What asking a model takes.\npublic type ChatRequest = Object {\n    model: Text {\n        max_length: 100\n    }\n    instructions: Text {\n        max_length: 100000\n        wire_name: \"system\"\n        personal: PersonalData.identifying\n    }\n    messages: List<ChatTurn>\n    max_tokens: Int {\n        min: 1\n        max: 1000000\n    }\n}\n",
         ),
         (
             "chat_reply",

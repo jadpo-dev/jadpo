@@ -59,7 +59,7 @@ const PAY: &[(&str, &str)] = &[
     ),
     (
         "provider.jadpo",
-        "/// Acme Pay's payments API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.acme-pay.example\"\n    }\n    credential: CredentialScheme.bearer\n}\n",
+        "/// Acme Pay's payments API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.acme-pay.example\"\n    }\n    credential: CredentialScheme.bearer\n    reviewed: [CustomerId, CustomerRequest, CustomerReply]\n}\n",
     ),
     (
         "types/customer_id.jadpo",
@@ -281,7 +281,7 @@ fn a_new_host_and_personal_data_sent_there_are_in_the_record() {
     write(
         &root,
         "provider.jadpo",
-        "/// Acme Pay's payments API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.acme-pay.example\"\n        sandbox: \"https://sandbox.acme-pay.example\"\n    }\n    credential: CredentialScheme.bearer\n}\n",
+        "/// Acme Pay's payments API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.acme-pay.example\"\n        sandbox: \"https://sandbox.acme-pay.example\"\n    }\n    credential: CredentialScheme.bearer\n    reviewed: [CustomerId, CustomerRequest, CustomerReply]\n}\n",
     );
     let checked = plain(&root, &["package", "check"]);
     assert!(
