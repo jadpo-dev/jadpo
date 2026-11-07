@@ -1,5 +1,5 @@
 //! Area 19, "A UK postcode's parts", checked: each `postal` operation
-//! takes a `PostalCode` and fails with `not_uk_postcode` unless its
+//! takes a `PostalCode` and fails with `not_uk_format` unless its
 //! `attempt` maps it, or its postcode is written out in Royal Mail's
 //! format; `sub_district` may be `none`.
 
@@ -36,11 +36,11 @@ fn every_part_checks_with_its_arm() {
         "unit",
     ] {
         let source = format!(
-            "function part(postcode: PostalCode) fails NotAUkPostcode -> DistrictCode {{\n    var part: Text = attempt postal.{name}(postcode) {{\n        not_uk_postcode: NotAUkPostcode\n    }}\n    return DistrictCode(part)\n}}\n"
+            "function part(postcode: PostalCode) fails NotAUkPostcode -> DistrictCode {{\n    var part: Text = attempt postal.{name}(postcode) {{\n        not_uk_format: NotAUkPostcode\n    }}\n    return DistrictCode(part)\n}}\n"
         );
         assert_eq!(check(&source, false), NONE, "{name}");
     }
-    let sub_district = "type Divided = Bool {}\n\nfunction divided(postcode: PostalCode) fails NotAUkPostcode -> Divided {\n    var part: Text? = attempt postal.sub_district(postcode) {\n        not_uk_postcode: NotAUkPostcode\n    }\n    return Divided(part != none)\n}\n";
+    let sub_district = "type Divided = Bool {}\n\nfunction divided(postcode: PostalCode) fails NotAUkPostcode -> Divided {\n    var part: Text? = attempt postal.sub_district(postcode) {\n        not_uk_format: NotAUkPostcode\n    }\n    return Divided(part != none)\n}\n";
     assert_eq!(check(sub_district, false), NONE);
 }
 

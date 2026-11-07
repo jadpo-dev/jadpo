@@ -604,7 +604,7 @@ const POSTCODE_PARTS: &[(Op, &str, Option<&str>)] = &[
 ];
 
 /// Postal codes not in Royal Mail's format, which every `postal`
-/// operation fails `not_uk_postcode` on: shapes that aren't a postcode,
+/// operation fails `not_uk_format` on: shapes that aren't a postcode,
 /// another country's codes, `GIR 0AA`, a `BFPO` number, a hyphen or a
 /// space inside the outward code, and a `0` or a `1` typed for a letter.
 const NOT_POSTCODES: &[&str] = &[
@@ -638,7 +638,7 @@ const POSTAL: [Op; 7] = [
 
 /// A UK postcode's parts (area 19), each through `jadpo_value::run` as
 /// both executors call it: the part each postcode gives, and
-/// `not_uk_postcode` from every operation for each code not in Royal
+/// `not_uk_format` from every operation for each code not in Royal
 /// Mail's format.
 fn postal_checks(expect: &mut impl FnMut(String, String, &str)) {
     let call = |op: Op, postcode: &str| run(op, &[Value::text(postcode)], None, &mut |_| None);
@@ -654,10 +654,7 @@ fn postal_checks(expect: &mut impl FnMut(String, String, &str)) {
             part.unwrap_or("none"),
         );
     }
-    let refused = format!(
-        "{:?}",
-        Err::<Value, _>(Fault::Broke(RuleKey::NotUkPostcode))
-    );
+    let refused = format!("{:?}", Err::<Value, _>(Fault::Broke(RuleKey::NotUkFormat)));
     for postcode in NOT_POSTCODES {
         for op in POSTAL {
             expect(

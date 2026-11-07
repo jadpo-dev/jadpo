@@ -6,7 +6,7 @@
 // Each takes a UK postcode apart by Royal Mail's format: an outward code
 // of one or two letters, a digit and maybe a letter or a digit, then an
 // inward code of a digit and two letters, with or without a space between.
-// Each fails with `not_uk_postcode` for a postal code not in that format,
+// Each fails with `not_uk_format` for a postal code not in that format,
 // another country's or `GIR 0AA` or a `BFPO` number, unless the postcode
 // is written out in it.
 

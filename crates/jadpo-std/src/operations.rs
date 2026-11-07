@@ -945,8 +945,8 @@ const URL: Kind = Kind::Builtin(Builtin::Url);
 
 /// A postal code not in Royal Mail's format (area 19, "A UK postcode's
 /// parts"): settled only by proof, a postcode written out in it.
-const ON_NOT_UK_POSTCODE: Condition = Condition {
-    key: RuleKey::NotUkPostcode,
+const ON_NOT_UK_FORMAT: Condition = Condition {
+    key: RuleKey::NotUkFormat,
     option: None,
 };
 
@@ -956,7 +956,7 @@ const POSTCODE: &[Param] = &[param("postcode", Kind::Std("PostalCode"))];
 /// A `postal` operation (area 19, "A UK postcode's parts"): one part of a
 /// `PostalCode` by Royal Mail's format, as text, each one function in
 /// `jadpo-value`'s `postal` module over
-/// `jadpo_std::standard::postal::uk_parts`. Each fails `not_uk_postcode`
+/// `jadpo_std::standard::postal::uk_parts`. Each fails `not_uk_format`
 /// on a postal code not in that format.
 const fn postal(op: Op, name: &'static str, rust: &'static str) -> Operation {
     Operation {
@@ -966,7 +966,7 @@ const fn postal(op: Op, name: &'static str, rust: &'static str) -> Operation {
         params: POSTCODE,
         result: TEXT,
         at_least: None,
-        conditions: &[ON_NOT_UK_POSTCODE],
+        conditions: &[ON_NOT_UK_FORMAT],
         rust,
     }
 }
@@ -3024,7 +3024,7 @@ mod tests {
                     None if condition.key.only_when_run() => true,
                     // A postcode's format, by a postcode written out in it
                     // (area 19, "A UK postcode's parts").
-                    None if condition.key == RuleKey::NotUkPostcode => true,
+                    None if condition.key == RuleKey::NotUkFormat => true,
                     // A discount's amount off is in a currency only the
                     // running program knows, as is the price's (chunk
                     // 5.5i3).

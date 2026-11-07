@@ -642,7 +642,7 @@ impl Body<'_> {
                     // A `postal` operation's (area 19, "A UK postcode's
                     // parts"): settled by a postcode written out in Royal
                     // Mail's format.
-                    jadpo_std::RuleKey::NotUkPostcode => {
+                    jadpo_std::RuleKey::NotUkFormat => {
                         given(0).and_then(ast::Arg::expr).is_some_and(|postcode| {
                             matches!(
                                 super::super::rules::Const::from_expr(&postcode),

@@ -2,19 +2,19 @@
 //! operation, one part of a `PostalCode` by Royal Mail's format, through
 //! `jadpo_std::standard::postal::uk_parts`, the one reading the checker's
 //! proof uses too. A postal code not in the format fails
-//! `not_uk_postcode`.
+//! `not_uk_format`.
 
 use jadpo_std::RuleKey;
 use jadpo_std::standard::postal::{UkParts, uk_parts};
 
 use crate::{Fault, Value};
 
-/// `postcode`'s parts, or `not_uk_postcode`.
+/// `postcode`'s parts, or `not_uk_format`.
 fn parts(postcode: &Value) -> Result<UkParts, Fault> {
     let Value::Text(text) = postcode else {
         return Err(Fault::Shape);
     };
-    uk_parts(text).ok_or(Fault::Broke(RuleKey::NotUkPostcode))
+    uk_parts(text).ok_or(Fault::Broke(RuleKey::NotUkFormat))
 }
 
 /// `postal.area(postcode)`.

@@ -105,45 +105,37 @@ pub fn uk_parts(text: &str) -> Option<UkParts> {
     let text = text.to_ascii_uppercase();
     let at = text.len().checked_sub(3)?;
     let (head, inward) = (text.get(..at)?, text.get(at..)?);
-    let inward_bytes = inward.as_bytes();
-    if !(inward_bytes[0].is_ascii_digit()
-        && inward_bytes[1].is_ascii_uppercase()
-        && inward_bytes[2].is_ascii_uppercase())
-    {
+    let [digit, first, second] = inward.as_bytes() else {
+        return None;
+    };
+    if !(digit.is_ascii_digit() && first.is_ascii_uppercase() && second.is_ascii_uppercase()) {
         return None;
     }
     let outward = head.trim_end_matches(char::is_whitespace);
-    let bytes = outward.as_bytes();
-    let letters = bytes.iter().take_while(|b| b.is_ascii_uppercase()).count();
+    let letters = outward.bytes().take_while(u8::is_ascii_uppercase).count();
     if !(1..=2).contains(&letters) {
         return None;
     }
-    let rest = &bytes[letters..];
-    let shaped = match rest {
-        [digit] => digit.is_ascii_digit(),
-        [digit, last] => {
-            digit.is_ascii_digit() && (last.is_ascii_digit() || last.is_ascii_uppercase())
-        }
-        _ => false,
-    };
-    if !shaped {
-        return None;
-    }
     // A letter after the one digit marks a sub-district, `SW1A` of `SW1`.
-    let sub_district = rest.len() == 2 && rest[1].is_ascii_uppercase();
+    let sub_district = match outward.as_bytes().get(letters..)? {
+        [digit] if digit.is_ascii_digit() => false,
+        [digit, last] if digit.is_ascii_digit() && last.is_ascii_digit() => false,
+        [digit, last] if digit.is_ascii_digit() && last.is_ascii_uppercase() => true,
+        _ => return None,
+    };
     let district = if sub_district {
-        &outward[..outward.len() - 1]
+        outward.get(..outward.len() - 1)?
     } else {
         outward
     };
     Some(UkParts {
         outward_code: outward.to_string(),
         inward_code: inward.to_string(),
-        area: outward[..letters].to_string(),
+        area: outward.get(..letters)?.to_string(),
         district: district.to_string(),
         sub_district: sub_district.then(|| outward.to_string()),
-        sector: format!("{outward} {}", &inward[..1]),
-        unit: inward[1..].to_string(),
+        sector: format!("{outward} {}", inward.get(..1)?),
+        unit: inward.get(1..)?.to_string(),
     })
 }
 

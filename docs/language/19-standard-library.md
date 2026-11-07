@@ -10993,16 +10993,14 @@ A UK postcode is made of parts that sorting, delivery and statistics use
 on their own. `SW1A 1AA` is the outward code `SW1A` and the inward code
 `1AA`; its area is `SW`, its district `SW1`, its sub-district `SW1A`, its
 sector `SW1A 1` and its unit `AA`. The seven `postal` operations each give
-one part, by Royal Mail's postcode format. They are in the standard
-library rather than a package (Richard, 2026-11-07).
-
+one part, by Royal Mail's postcode format.
 Here a courier reads the postcode on a label, sends the parcel to the
 depot for its district, and puts it on the round for its sector:
 
 ```jadpo check project=uk-postcode-parts
 type LabelText = Text {}
 
-type NotAUkPostcode = Failure {
+type NotAPostcode = Failure {
     kind: FailureKind.invalid_value
 }
 
@@ -11014,27 +11012,27 @@ type RoundCode = Text {}
 
 /// The postcode a sender wrote on a label, in any case, with or without
 /// its space.
-function label_postcode(raw: LabelText) fails NotAUkPostcode -> PostalCode {
+function label_postcode(raw: LabelText) fails NotAPostcode -> PostalCode {
     var postcode: PostalCode = attempt text.parse(raw, as: PostalCode, country: Country.gb) {
-        malformed: NotAUkPostcode
+        malformed: NotAPostcode
     }
     return postcode
 }
 
 /// The depot a parcel goes to: its postcode's district, `SW1` for
 /// `SW1A 1AA`.
-function depot_for(postcode: PostalCode) fails NotAUkPostcode -> DepotCode {
+function depot_for(postcode: PostalCode) fails NotAPostcode -> DepotCode {
     var district: Text = attempt postal.district(postcode) {
-        not_uk_postcode: NotAUkPostcode
+        not_uk_format: NotAPostcode
     }
     return DepotCode(district)
 }
 
 /// The round a parcel goes on: its postcode's sector, `SW1A 1` for
 /// `SW1A 1AA`.
-function round_for(postcode: PostalCode) fails NotAUkPostcode -> RoundCode {
+function driver_round_for(postcode: PostalCode) fails NotAPostcode -> RoundCode {
     var sector: Text = attempt postal.sector(postcode) {
-        not_uk_postcode: NotAUkPostcode
+        not_uk_format: NotAPostcode
     }
     return RoundCode(sector)
 }
@@ -11042,11 +11040,11 @@ function round_for(postcode: PostalCode) fails NotAUkPostcode -> RoundCode {
 
 ```jadpo check project=uk-postcode-parts file=main.test.jadpo
 test "a parcel goes to its district's depot and its sector's round" {
-    var palace: PostalCode = attempt label_postcode("sw1a1aa")
-    var depot: DepotCode = attempt depot_for(palace)
+    var labelled: PostalCode = attempt label_postcode("sw1a1aa")
+    var depot: DepotCode = attempt depot_for(labelled)
     assert depot == "SW1"
-    var round: RoundCode = attempt round_for(palace)
-    assert round == "SW1A 1"
+    var sorted_round: RoundCode = attempt driver_round_for(labelled)
+    assert sorted_round == "SW1A 1"
     var norwich: PostalCode = attempt label_postcode("NR10 3EZ")
     var norwich_depot: DepotCode = attempt depot_for(norwich)
     assert norwich_depot == "NR10"
@@ -11064,10 +11062,10 @@ test "a postcode written out has its parts with no arm" {
 }
 
 test "only a postcode in Royal Mail's format has these parts" {
-    assert depot_for(PostalCode("75004")) fails NotAUkPostcode
-    assert depot_for(PostalCode("GIR 0AA")) fails NotAUkPostcode
-    assert round_for(PostalCode("BFPO 61")) fails NotAUkPostcode
-    assert label_postcode("SW1A 2A0") fails NotAUkPostcode
+    assert depot_for(PostalCode("75004")) fails NotAPostcode
+    assert depot_for(PostalCode("GIR 0AA")) fails NotAPostcode
+    assert driver_round_for(PostalCode("BFPO 61")) fails NotAPostcode
+    assert label_postcode("SW1A 2A0") fails NotAPostcode
 }
 ```
 
@@ -11158,19 +11156,19 @@ test "every shape of outward code, whatever its letters" {
     assert postal.outward_code("AA999AA") == "AA99"
     assert postal.unit("AA999AA") == "AA"
     assert postal.area("MA1 1AA") == "MA"
-    assert label_postcode("MA1 1AA") fails NotAUkPostcode
+    assert label_postcode("MA1 1AA") fails NotAPostcode
 }
 
 test "text not in the format has no parts" {
-    assert depot_for(PostalCode("12FSSD")) fails NotAUkPostcode
-    assert depot_for(PostalCode("1A1 1AA")) fails NotAUkPostcode
-    assert depot_for(PostalCode("EH1 JS")) fails NotAUkPostcode
-    assert depot_for(PostalCode("EH1JS")) fails NotAUkPostcode
-    assert depot_for(PostalCode("EH 1JS")) fails NotAUkPostcode
-    assert depot_for(PostalCode("SW 1A1AA")) fails NotAUkPostcode
-    assert depot_for(PostalCode("SW1A-1AA")) fails NotAUkPostcode
-    assert round_for(PostalCode("SWIA 2AA")) fails NotAUkPostcode
-    assert round_for(PostalCode("22162-1010")) fails NotAUkPostcode
+    assert depot_for(PostalCode("12FSSD")) fails NotAPostcode
+    assert depot_for(PostalCode("1A1 1AA")) fails NotAPostcode
+    assert depot_for(PostalCode("EH1 JS")) fails NotAPostcode
+    assert depot_for(PostalCode("EH1JS")) fails NotAPostcode
+    assert depot_for(PostalCode("EH 1JS")) fails NotAPostcode
+    assert depot_for(PostalCode("SW 1A1AA")) fails NotAPostcode
+    assert depot_for(PostalCode("SW1A-1AA")) fails NotAPostcode
+    assert driver_round_for(PostalCode("SWIA 2AA")) fails NotAPostcode
+    assert driver_round_for(PostalCode("22162-1010")) fails NotAPostcode
 }
 
 test "a label is read in Royal Mail's own spacing" {
@@ -11184,19 +11182,19 @@ test "a label is read in Royal Mail's own spacing" {
     assert morpeth == PostalCode("NE69 7AW")
     var forest_hill: PostalCode = attempt label_postcode("SE232NF")
     assert forest_hill == PostalCode("SE23 2NF")
-    assert label_postcode("Definitely wrong") fails NotAUkPostcode
+    assert label_postcode("Definitely wrong") fails NotAPostcode
 }
 ```
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `postal.outward_code(postcode)` | `Text`, the outward code: `SW1A` in `SW1A 1AA` | `not_uk_postcode` | none |
-| `postal.inward_code(postcode)` | `Text`, the inward code, its last three characters: `1AA` | `not_uk_postcode` | none |
-| `postal.area(postcode)` | `Text`, the letters it starts with: `SW` | `not_uk_postcode` | none |
-| `postal.district(postcode)` | `Text`, the outward code without a sub-district's letter: `SW1` | `not_uk_postcode` | none |
-| `postal.sub_district(postcode)` | `Text?`, the outward code where it ends in a letter after one digit, `SW1A`; `none` where it doesn't, as in `M2 5BQ` | `not_uk_postcode` | none |
-| `postal.sector(postcode)` | `Text`, the outward code, a space and the inward code's digit: `SW1A 1` | `not_uk_postcode` | none |
-| `postal.unit(postcode)` | `Text`, the inward code's two letters: `AA` | `not_uk_postcode` | none |
+| `postal.outward_code(postcode)` | `Text`, the outward code: `SW1A` in `SW1A 1AA` | `not_uk_format` | none |
+| `postal.inward_code(postcode)` | `Text`, the inward code, its last three characters: `1AA` | `not_uk_format` | none |
+| `postal.area(postcode)` | `Text`, the letters it starts with: `SW` | `not_uk_format` | none |
+| `postal.district(postcode)` | `Text`, the outward code without a sub-district's letter: `SW1` | `not_uk_format` | none |
+| `postal.sub_district(postcode)` | `Text?`, the outward code where it ends in a letter after one digit, `SW1A`; `none` where it doesn't, as in `M2 5BQ` | `not_uk_format` | none |
+| `postal.sector(postcode)` | `Text`, the outward code, a space and the inward code's digit: `SW1A 1` | `not_uk_format` | none |
+| `postal.unit(postcode)` | `Text`, the inward code's two letters: `AA` | `not_uk_format` | none |
 
 **Royal Mail's format** is an outward code then an inward code. The
 outward code is one or two letters, a digit, and maybe a letter or a
@@ -11205,7 +11203,7 @@ digit and two letters. Any number of spaces may come between them, none
 included, so `PostalCode("SW1A1AA")` has the same parts as `SW1A 1AA`.
 Each part is in capitals, as a `PostalCode` is.
 
-**A postal code not in that format fails `not_uk_postcode`.** That is
+**A postal code not in that format fails `not_uk_format`.** That is
 another country's code, `75004`, and the two kinds of UK code outside the
 format, `GIR 0AA` and `BFPO` numbers. A `PostalCode` doesn't hold its
 country, so the format is what tells. A call needs no arm for it when its

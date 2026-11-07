@@ -148,7 +148,7 @@ pub enum RuleKey {
     /// Mail's format, an outward code and an inward code (area 19, "A UK
     /// postcode's parts"): another country's, or `GIR 0AA` or a `BFPO`
     /// number.
-    NotUkPostcode,
+    NotUkFormat,
     /// A store a file is put in has no room for it (area 16, "Files";
     /// chunk 6.4b): `store.put`'s own condition.
     StorageFull,
@@ -223,7 +223,7 @@ impl RuleKey {
         RuleKey::WrongAudience,
         RuleKey::WrongIssuer,
         RuleKey::SamePoint,
-        RuleKey::NotUkPostcode,
+        RuleKey::NotUkFormat,
         RuleKey::StorageFull,
         RuleKey::Refused,
         RuleKey::TimedOut,
@@ -262,7 +262,7 @@ impl RuleKey {
             RuleKey::WrongAudience => "wrong_audience",
             RuleKey::WrongIssuer => "wrong_issuer",
             RuleKey::SamePoint => "same_point",
-            RuleKey::NotUkPostcode => "not_uk_postcode",
+            RuleKey::NotUkFormat => "not_uk_format",
             RuleKey::StorageFull => "storage_full",
             RuleKey::Refused => "refused",
             RuleKey::TimedOut => "timed_out",
