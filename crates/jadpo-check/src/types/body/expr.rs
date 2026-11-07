@@ -591,7 +591,14 @@ impl Body<'_> {
         {
             return ty;
         }
-        let Some(mut receiver) = self.read(&first) else {
+        // A field of an object constant read bare: `extent.east` (area 3;
+        // Richard, 2026-11-07).
+        let receiver = match self.read(&first) {
+            Some(ty) => Some(ty),
+            None if !self.is_qualifier(&head) => self.bare_constant(&head, first.syntax()),
+            None => None,
+        };
+        let Some(mut receiver) = receiver else {
             if !self.is_qualifier(&head) {
                 self.unknown_value(&first);
             } else if self.symbols.is_connection(&head)
@@ -2105,14 +2112,7 @@ impl Body<'_> {
         }
         match self.read(name) {
             Some(ty) => ty,
-            // A library's functions and constants read its constants
-            // bare, as they call its functions.
-            None if let Some(library) = self.library.clone()
-                && let Some(ty) = self.constant_read(Some(&library), &written, name.syntax()) =>
-            {
-                ty
-            }
-            None if let Some(ty) = self.constant_read(None, &written, name.syntax()) => ty,
+            None if let Some(ty) = self.bare_constant(&written, name.syntax()) => ty,
             None => {
                 // `null`, `nil` and `undefined` from other languages.
                 if let Some(problem) = crate::foreign_value(&written, self.span(name)) {
@@ -2124,6 +2124,22 @@ impl Body<'_> {
                 Ty::Error
             }
         }
+    }
+
+    /// A constant read by its name alone (area 3): a library's functions
+    /// and constants read its constants bare, as they call its functions,
+    /// and any code reads one beside it.
+    pub(super) fn bare_constant(
+        &mut self,
+        name: &str,
+        node: &jadpo_syntax::SyntaxNode,
+    ) -> Option<Ty> {
+        if let Some(library) = self.library.clone()
+            && let Some(ty) = self.constant_read(Some(&library), name, node)
+        {
+            return Some(ty);
+        }
+        self.constant_read(None, name, node)
     }
 
     /// A constant's value (area 3): `name` beside its declaration, or
