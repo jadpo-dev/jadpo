@@ -886,6 +886,8 @@ COMMAND_LINE = 'cli.'
 # 'type.se' stays out, for type.secret_exposed; its page isn't brought to
 # the format yet.
 BROUGHT_TO_FORMAT = ('type.a', 'type.b', 'type.c', 'type.d', 'type.e',
+                     'type.f', 'type.g', 'type.h', 'type.i', 'type.j', 'type.k',
+                     'type.l', 'type.m', 'type.n',
                      'type.o', 'type.p', 'type.r', 'type.set', 'type.si', 'type.st', 'type.su',
                      'type.t', 'type.u', 'type.v')
 # The command that checks source; a rule it raises is shown by a check
