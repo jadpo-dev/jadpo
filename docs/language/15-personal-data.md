@@ -1168,12 +1168,12 @@ type EmailTaken = Failure {
 }
 ```
 
-```jadpo check project=other-stores file=domains/club/actions/join.jadpo hidden
+```jadpo check project=other-stores file=domains/club/actions/enrol.jadpo hidden
 use club/entities { Member }
 use club/failures { EmailTaken }
 
 /// Adds a member.
-action join(email: Member.email) fails EmailTaken -> Member {
+action enrol(email: Member.email) fails EmailTaken -> Member {
     return attempt Member.create {
         set: {
             email: email
@@ -1202,14 +1202,14 @@ action file_ticket(member: Member, title: OldTicket.title) -> OldTicket {
 ```jadpo check project=other-stores file=domains/club/actions/close_account.test.jadpo
 // domains/club/actions/close_account.test.jadpo
 use club/entities { Member, MemberNotFound, OldTicket, OldTicketNotFound }
-use club/actions { file_ticket, join }
+use club/actions { enrol, file_ticket }
 
 test "closing an account reaches the archive" {
-    var ada: Member = attempt join("ada@example.com")
-    var ticket: OldTicket = file_ticket(ada, "The heating")
+    var ada: Member = attempt enrol("ada@example.com")
+    var old_ticket: OldTicket = file_ticket(ada, "The heating")
     attempt close_account(ada.id)
     assert Member.get(ada.id) fails MemberNotFound
-    assert OldTicket.get(ticket.id) fails OldTicketNotFound
+    assert OldTicket.get(old_ticket.id) fails OldTicketNotFound
 }
 ```
 
@@ -1228,7 +1228,7 @@ through its own integration:
 /// A note that someone has gone, kept without saying who they were.
 entity Farewell {
     id: Uuid
-    who: Uuid
+    departed: Uuid
     at: Instant
 
     policy: {
@@ -1246,7 +1246,7 @@ use club/entities { Farewell }
 action note_farewell(event: PersonErased) -> Farewell {
     return Farewell.create {
         set: {
-            who: event.id
+            departed: event.id
             at: event.erased_at
         }
     }

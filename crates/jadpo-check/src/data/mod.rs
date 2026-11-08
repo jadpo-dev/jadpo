@@ -781,9 +781,9 @@ pub fn data_clean(db: &dyn Db, project: Project) -> bool {
         .all(|name| entity_clean(db, project, Name::new(db, name.clone())));
     let links = entity_links(db, project);
     entities
-        && links
-            .values()
-            .all(|links| links.across.is_empty() && links.cycles.is_empty())
+        && links.values().all(|links| {
+            links.across.is_empty() && links.cycles.is_empty() && links.saying_nothing.is_empty()
+        })
         && queries::queries_clean(db, project)
 }
 

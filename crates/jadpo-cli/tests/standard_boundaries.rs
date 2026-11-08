@@ -761,6 +761,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "writes `now` into a stamped field",
     ),
     (
+        "crates/jadpo-runtime/src/erasure.rs",
+        "builds and reads `PersonErased`'s value, whose payload only the runtime reads",
+    ),
+    (
         "crates/jadpo-runtime/src/purge.rs",
         "compares a purge's cutoff with `now`",
     ),

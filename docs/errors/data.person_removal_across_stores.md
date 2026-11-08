@@ -168,11 +168,6 @@ entity User {
     }
     deleted_at: Instant?
 
-    policy: {
-        read: [Access.public]
-        delete: [Access.public]
-    }
-
     lifecycle: {
         visible: deleted_at == none
         transitions: {
@@ -183,6 +178,11 @@ entity User {
                 }
             }
         }
+    }
+
+    policy: {
+        read: [Access.public]
+        delete: [Access.public]
     }
 
     person: true
