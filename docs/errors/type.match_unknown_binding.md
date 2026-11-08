@@ -1,6 +1,6 @@
 # `type.match_unknown_binding`
 
-A `match` arm names data in brackets, as in `PaymentOutcome.pending(waiting)`, for a variant that carries none.
+A `match` arm puts a name in brackets after a variant that carries no data for it to name.
 
 ## Why Jadpo refuses it
 

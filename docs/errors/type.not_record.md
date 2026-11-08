@@ -1,6 +1,6 @@
 # `type.not_record`
 
-Braces build a value of a type that has no fields, as in `ProductName {}`, or of one only the runtime builds, or `include` or `pick` copies from a type with no fields.
+Braces build a value of a type that has no fields, such as one built on `Text`, or of one only the runtime builds, or `include` or `pick` copies from a type with no fields.
 
 ## Why Jadpo refuses it
 

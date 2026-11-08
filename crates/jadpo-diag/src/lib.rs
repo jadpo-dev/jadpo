@@ -1469,7 +1469,7 @@ rules! {
     TYPE_MATCH_SOME_NON_OPTIONAL: "type.match_some_non_optional", area 3, Error, Agent,
         "A `match` uses `some(...)` or `none` on a value whose type says it is never `none`";
     TYPE_MATCH_UNKNOWN_BINDING: "type.match_unknown_binding", area 3, Error, Agent,
-        "A `match` arm names data in brackets, as in `PaymentOutcome.pending(waiting)`, for a variant that carries none";
+        "A `match` arm puts a name in brackets after a variant that carries no data for it to name";
     TYPE_MATCH_UNKNOWN_VARIANT: "type.match_unknown_variant", area 3, Error, Agent,
         "A `match` arm names a variant that the enum doesn't declare";
     TYPE_MATCH_UNREACHABLE_PATTERN: "type.match_unreachable_pattern", area 3, Error, Agent,
@@ -1495,7 +1495,7 @@ rules! {
     TYPE_NOT_A_VALUE: "type.not_a_value", area 3, Error, Agent,
         "A type, function or other declaration is named where a value is read, as in `var placed: Placed = Placed`";
     TYPE_NOT_RECORD: "type.not_record", area 2, Error, Agent,
-        "Braces build a value of a type that has no fields, as in `ProductName {}`, or of one only the runtime builds, or `include` or `pick` copies from a type with no fields";
+        "Braces build a value of a type that has no fields, such as one built on `Text`, or of one only the runtime builds, or `include` or `pick` copies from a type with no fields";
     TYPE_NULLABLE_SELECTION: "type.nullable_selection", area 2, Error, Agent,
         "Code reads a field from a value that may be `none`, before a `match` has found it";
     TYPE_OPTIONAL_OUTSIDE_INPUT: "type.optional_outside_input", area 2, Error, Agent,
