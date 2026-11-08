@@ -355,11 +355,11 @@ type Quantity = Int {
 }
 ```
 
-```jadpo check project=shop file=shared/libraries/quantities.jadpo hidden
+```jadpo check project=shop file=shared/libraries/tallies.jadpo hidden
 use shared/types { Quantity }
 
-library quantities {
-    /// The larger of two quantities.
+library tallies {
+    /// The larger of two tallies.
     function larger(first: Quantity, second: Quantity) -> Quantity {
         if (first > second) {
             return first
@@ -372,11 +372,10 @@ library quantities {
 ```jadpo check project=shop file=domains/ordering/types/new_order.jadpo hidden
 use shared/types { Quantity }
 
-/// What a customer asks for, and the least each pack holds.
+/// What a customer asks for, and how many a box holds.
 type NewOrder = Input {
     asked: Quantity
-    pack: Quantity
-    minimum: Quantity
+    per_box: Quantity
 }
 ```
 
@@ -387,24 +386,23 @@ use ordering/types { NewOrder }
 /// What an order sends, with what was asked for.
 type OrderTotal = Output {
     include: [NewOrder]
-    pack: Quantity
+    per_box: Quantity
     sent: Quantity
 }
 ```
 
 ```jadpo check project=shop file=domains/ordering/actions/place_order.jadpo hidden
-use shared/libraries { quantities }
 use shared/types { Quantity }
+use shared/libraries { tallies }
 use ordering/types { NewOrder, OrderTotal }
 
-/// Sends at least a pack, and never less than the minimum.
+/// Sends at least a box, and a box holds one at least.
 action place_order(input: NewOrder) -> OrderTotal {
-    var pack: Quantity = quantities.larger(input.pack, input.minimum)
+    var per_box: Quantity = tallies.larger(input.per_box, 1)
     return OrderTotal {
         asked: input.asked
-        pack: pack
-        minimum: input.minimum
-        sent: quantities.larger(input.asked, pack)
+        per_box: per_box
+        sent: tallies.larger(input.asked, per_box)
     }
 }
 ```
@@ -412,23 +410,24 @@ action place_order(input: NewOrder) -> OrderTotal {
 ```jadpo check project=shop file=domains/ordering/actions/place_order.test.jadpo hidden
 use ordering/types { NewOrder, OrderTotal }
 
-test "an order sends at least a pack" {
-    var total: OrderTotal = place_order(NewOrder {
-        asked: 2
-        pack: 6
-        minimum: 1
-    })
+test "an order sends at least a box" {
+    var total: OrderTotal = place_order(
+        NewOrder {
+            asked: 2
+            per_box: 6
+        }
+    )
     assert total.sent == 6
 }
 ```
 
 ```jadpo check project=shop file=domains/ordering/actions/send_invoices.jadpo hidden
-use shared/libraries { quantities }
 use shared/types { Quantity }
+use shared/libraries { tallies }
 
 /// Counts the night's invoices, one at least.
 action send_invoices() -> Quantity {
-    return quantities.larger(0, 1)
+    return tallies.larger(0, 1)
 }
 ```
 
@@ -442,13 +441,13 @@ schedule nightly_invoices {
 }
 ```
 
-```jadpo check project=shop file=domains/ordering/routes/orders.jadpo hidden
+```jadpo check project=shop file=domains/ordering/routes/basket.jadpo hidden
 use ordering/types { NewOrder, OrderTotal }
 use ordering/actions { place_order }
 
-/// Orders.
-routes Orders {
-    prefix: /orders
+/// Basket.
+routes Basket {
+    prefix: /basket
 
     /// Prices an order, for anyone.
     POST / {
@@ -479,13 +478,13 @@ type RefundView = Output {
 ```
 
 ```jadpo check project=shop file=domains/payments/actions/refund.jadpo hidden
-use shared/libraries { quantities }
+use shared/libraries { tallies }
 use payments/types { RefundRequest, RefundView }
 
 /// Refunds the items sent back, one at least.
 action refund(input: RefundRequest) -> RefundView {
     return RefundView {
-        paid_for: quantities.larger(input.returned, 1)
+        paid_for: tallies.larger(input.returned, 1)
     }
 }
 ```
@@ -494,9 +493,11 @@ action refund(input: RefundRequest) -> RefundView {
 use payments/types { RefundRequest, RefundView }
 
 test "a refund pays for at least one item" {
-    var sent: RefundView = refund(RefundRequest {
-        returned: 0
-    })
+    var sent: RefundView = refund(
+        RefundRequest {
+            returned: 0
+        }
+    )
     assert sent.paid_for == 1
 }
 ```
@@ -528,10 +529,10 @@ ordering
   type NewOrder                 domains/ordering/types/new_order.jadpo:4
   type OrderTotal               domains/ordering/types/order_total.jadpo:5
   action place_order            domains/ordering/actions/place_order.jadpo:6
-    calls    quantities.larger
+    calls    tallies.larger
   action send_invoices          domains/ordering/actions/send_invoices.jadpo:5
-    calls    quantities.larger
-  route POST /orders            domains/ordering/routes/orders.jadpo:9
+    calls    tallies.larger
+  route POST /basket            domains/ordering/routes/basket.jadpo:9
     runs     place_order
   schedule nightly_invoices     domains/ordering/schedules/nightly_invoices.jadpo:4
     runs     send_invoices
@@ -540,13 +541,13 @@ payments
   type RefundRequest            domains/payments/types/refund_request.jadpo:4
   type RefundView               domains/payments/types/refund_view.jadpo:4
   action refund                 domains/payments/actions/refund.jadpo:5
-    calls    quantities.larger
+    calls    tallies.larger
   route POST /payments/refunds  domains/payments/routes/payments.jadpo:9
     runs     refund
 
 shared
   type Quantity                 shared/types/quantity.jadpo:2
-  function quantities.larger    shared/libraries/quantities.jadpo:5
+  function tallies.larger       shared/libraries/tallies.jadpo:5
 
 12 declarations: 2 domains, 2 tests
 ```
@@ -569,16 +570,15 @@ type OrderTotal
   about: What an order sends, with what was asked for.
   base: Output
   fields: asked  from NewOrder.asked
-          pack: Quantity  written, replaces NewOrder.pack
-          minimum  from NewOrder.minimum
+          per_box: Quantity  written, replaces NewOrder.per_box
           sent: Quantity  written
   uses: NewOrder
-  used by: place_order, POST /orders
+  used by: place_order, POST /basket
 ```
 
 With `--json` it prints the node as the manifest has it, and its fields'
 nodes. A name is a declaration's as code writes it: `place_order`,
-`quantities.larger`, `NewOrder.pack`, `"POST /orders"`, or its whole key,
+`tallies.larger`, `NewOrder.per_box`, `"POST /basket"`, or its whole key,
 `"type ordering.OrderTotal"`. When two domains each keep a private one of
 that name, it is named with its domain, `ordering.at_least_one`. A name
 the project doesn't have is `cli.inspect_arguments`, with the nearest.
@@ -599,14 +599,14 @@ through a route; and whether it is public. Run it before changing or
 removing anything shared or public.
 
 ```sh run project=shop
-jadpo impact quantities.larger
+jadpo impact tallies.larger
 ```
 
 ```text output
-function quantities.larger
-  at: shared/libraries/quantities.jadpo:5
+function tallies.larger
+  at: shared/libraries/tallies.jadpo:5
   callers: ordering (3 calls), payments (1 call)
-  triggers: POST /orders, POST /payments/refunds, schedule nightly_invoices
+  triggers: POST /basket, POST /payments/refunds, schedule nightly_invoices
   tests: domains/ordering/actions/place_order.test.jadpo
          domains/payments/actions/refund.test.jadpo
   public: no

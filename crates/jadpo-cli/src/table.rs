@@ -832,7 +832,7 @@ pub static COMMANDS: &[Command] = &[
             },
             Example {
                 description: "Print one node as data",
-                command: "jadpo inspect place_order --json",
+                command: "jadpo inspect greet --json",
             },
         ],
         arguments_rule: &rule::CLI_INSPECT_ARGUMENTS,

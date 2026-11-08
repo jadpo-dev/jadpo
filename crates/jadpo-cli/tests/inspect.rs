@@ -24,36 +24,36 @@ const SHOP: &[(&str, &str)] = &[
         "/// How many of one item.\ntype Quantity = Int {\n    min: 0\n    max: 1000\n}\n",
     ),
     (
-        "shared/libraries/quantities.jadpo",
-        "use shared/types { Quantity }\n\nlibrary quantities {\n    /// The larger of two quantities.\n    function larger(first: Quantity, second: Quantity) -> Quantity {\n        if (first > second) {\n            return first\n        }\n        return second\n    }\n}\n",
+        "shared/libraries/tallies.jadpo",
+        "use shared/types { Quantity }\n\nlibrary tallies {\n    /// The larger of two tallies.\n    function larger(first: Quantity, second: Quantity) -> Quantity {\n        if (first > second) {\n            return first\n        }\n        return second\n    }\n}\n",
     ),
     (
         "domains/ordering/types/new_order.jadpo",
-        "use shared/types { Quantity }\n\n/// What a customer asks for, and the least each pack holds.\ntype NewOrder = Input {\n    asked: Quantity\n    pack: Quantity\n    minimum: Quantity\n}\n",
+        "use shared/types { Quantity }\n\n/// What a customer asks for, and how many a box holds.\ntype NewOrder = Input {\n    asked: Quantity\n    per_box: Quantity\n}\n",
     ),
     (
         "domains/ordering/types/order_total.jadpo",
-        "use shared/types { Quantity }\nuse ordering/types { NewOrder }\n\n/// What an order sends, with what was asked for.\ntype OrderTotal = Output {\n    include: [NewOrder]\n    pack: Quantity\n    sent: Quantity\n}\n",
+        "use shared/types { Quantity }\nuse ordering/types { NewOrder }\n\n/// What an order sends, with what was asked for.\ntype OrderTotal = Output {\n    include: [NewOrder]\n    per_box: Quantity\n    sent: Quantity\n}\n",
     ),
     (
         "domains/ordering/actions/place_order.jadpo",
-        "use shared/libraries { quantities }\nuse shared/types { Quantity }\nuse ordering/types { NewOrder, OrderTotal }\n\n/// Sends at least a pack, and never less than the minimum.\naction place_order(input: NewOrder) -> OrderTotal {\n    var pack: Quantity = quantities.larger(input.pack, input.minimum)\n    return OrderTotal {\n        asked: input.asked\n        pack: pack\n        minimum: input.minimum\n        sent: quantities.larger(input.asked, pack)\n    }\n}\n",
+        "use shared/types { Quantity }\nuse shared/libraries { tallies }\nuse ordering/types { NewOrder, OrderTotal }\n\n/// Sends at least a box, and a box holds one at least.\naction place_order(input: NewOrder) -> OrderTotal {\n    var per_box: Quantity = tallies.larger(input.per_box, 1)\n    return OrderTotal {\n        asked: input.asked\n        per_box: per_box\n        sent: tallies.larger(input.asked, per_box)\n    }\n}\n",
     ),
     (
         "domains/ordering/actions/place_order.test.jadpo",
-        "use ordering/types { NewOrder, OrderTotal }\n\ntest \"an order sends at least a pack\" {\n    var total: OrderTotal = place_order(NewOrder {\n        asked: 2\n        pack: 6\n        minimum: 1\n    })\n    assert total.sent == 6\n}\n",
+        "use ordering/types { NewOrder, OrderTotal }\n\ntest \"an order sends at least a box\" {\n    var total: OrderTotal = place_order(\n        NewOrder {\n            asked: 2\n            per_box: 6\n        }\n    )\n    assert total.sent == 6\n}\n",
     ),
     (
         "domains/ordering/actions/send_invoices.jadpo",
-        "use shared/libraries { quantities }\nuse shared/types { Quantity }\n\n/// Counts the night's invoices, one at least.\naction send_invoices() -> Quantity {\n    return quantities.larger(0, 1)\n}\n",
+        "use shared/types { Quantity }\nuse shared/libraries { tallies }\n\n/// Counts the night's invoices, one at least.\naction send_invoices() -> Quantity {\n    return tallies.larger(0, 1)\n}\n",
     ),
     (
         "domains/ordering/schedules/nightly_invoices.jadpo",
         "use ordering/actions { send_invoices }\n\n/// Sends the day's invoices each night.\nschedule nightly_invoices {\n    every: 1d\n    run: send_invoices()\n}\n",
     ),
     (
-        "domains/ordering/routes/orders.jadpo",
-        "use ordering/types { NewOrder, OrderTotal }\nuse ordering/actions { place_order }\n\n/// Orders.\nroutes Orders {\n    prefix: /orders\n\n    /// Prices an order, for anyone.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: NewOrder\n        output: OrderTotal\n        run: place_order(input)\n    }\n}\n",
+        "domains/ordering/routes/basket.jadpo",
+        "use ordering/types { NewOrder, OrderTotal }\nuse ordering/actions { place_order }\n\n/// Basket.\nroutes Basket {\n    prefix: /basket\n\n    /// Prices an order, for anyone.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: NewOrder\n        output: OrderTotal\n        run: place_order(input)\n    }\n}\n",
     ),
     (
         "domains/payments/types/refund_request.jadpo",
@@ -65,11 +65,11 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "domains/payments/actions/refund.jadpo",
-        "use shared/libraries { quantities }\nuse payments/types { RefundRequest, RefundView }\n\n/// Refunds the items sent back, one at least.\naction refund(input: RefundRequest) -> RefundView {\n    return RefundView {\n        paid_for: quantities.larger(input.returned, 1)\n    }\n}\n",
+        "use shared/libraries { tallies }\nuse payments/types { RefundRequest, RefundView }\n\n/// Refunds the items sent back, one at least.\naction refund(input: RefundRequest) -> RefundView {\n    return RefundView {\n        paid_for: tallies.larger(input.returned, 1)\n    }\n}\n",
     ),
     (
         "domains/payments/actions/refund.test.jadpo",
-        "use payments/types { RefundRequest, RefundView }\n\ntest \"a refund pays for at least one item\" {\n    var sent: RefundView = refund(RefundRequest {\n        returned: 0\n    })\n    assert sent.paid_for == 1\n}\n",
+        "use payments/types { RefundRequest, RefundView }\n\ntest \"a refund pays for at least one item\" {\n    var sent: RefundView = refund(\n        RefundRequest {\n            returned: 0\n        }\n    )\n    assert sent.paid_for == 1\n}\n",
     ),
     (
         "domains/payments/routes/payments.jadpo",
@@ -119,21 +119,21 @@ fn json(output: &Output) -> serde_json::Value {
 #[test]
 fn impact_lists_the_calling_domains_the_entry_points_and_the_tests() {
     let root = shop("impact");
-    let output = jadpo(&root, &["impact", "quantities.larger"]);
+    let output = jadpo(&root, &["impact", "tallies.larger"]);
     assert_eq!(output.code, 0, "{}", output.stdout);
     assert_eq!(
         output.stdout,
-        "function quantities.larger\n  at: shared/libraries/quantities.jadpo:5\n  callers: ordering (3 calls), payments (1 call)\n  triggers: POST /orders, POST /payments/refunds, schedule nightly_invoices\n  tests: domains/ordering/actions/place_order.test.jadpo\n         domains/payments/actions/refund.test.jadpo\n  public: no\n"
+        "function tallies.larger\n  at: shared/libraries/tallies.jadpo:5\n  callers: ordering (3 calls), payments (1 call)\n  triggers: POST /basket, POST /payments/refunds, schedule nightly_invoices\n  tests: domains/ordering/actions/place_order.test.jadpo\n         domains/payments/actions/refund.test.jadpo\n  public: no\n"
     );
 }
 
 #[test]
 fn impact_as_json_names_each_user_entry_point_and_test() {
     let root = shop("impact-json");
-    let document = json(&jadpo(&root, &["impact", "quantities.larger", "--json"]));
+    let document = json(&jadpo(&root, &["impact", "tallies.larger", "--json"]));
     assert_eq!(document["ok"], true);
     let data = &document["data"];
-    assert_eq!(data["id"], "function quantities.larger");
+    assert_eq!(data["id"], "function tallies.larger");
     assert_eq!(data["public"], false);
     let users: Vec<(String, i64)> = data["users"]
         .as_array()
@@ -163,7 +163,7 @@ fn impact_as_json_names_each_user_entry_point_and_test() {
     assert_eq!(
         entries,
         [
-            "route POST /orders",
+            "route POST /basket",
             "route POST /payments/refunds",
             "schedule nightly_invoices"
         ]
@@ -174,10 +174,10 @@ fn impact_as_json_names_each_user_entry_point_and_test() {
 #[test]
 fn impact_of_a_type_or_a_field_counts_what_uses_it() {
     let root = shop("impact-field");
-    let output = jadpo(&root, &["impact", "NewOrder.pack"]);
+    let output = jadpo(&root, &["impact", "NewOrder.per_box"]);
     assert_eq!(output.code, 0, "{}", output.stdout);
     assert!(
-        output.stdout.starts_with("field NewOrder.pack\n"),
+        output.stdout.starts_with("field NewOrder.per_box\n"),
         "{}",
         output.stdout
     );
@@ -187,7 +187,7 @@ fn impact_of_a_type_or_a_field_counts_what_uses_it() {
         output.stdout
     );
     assert!(
-        output.stdout.contains("  triggers: POST /orders\n"),
+        output.stdout.contains("  triggers: POST /basket\n"),
         "a change to a field reaches what uses its type: {}",
         output.stdout
     );
@@ -211,7 +211,7 @@ fn impact_of_a_type_or_a_field_counts_what_uses_it() {
 #[test]
 fn impact_of_a_library_is_its_functions() {
     let root = shop("impact-library");
-    let output = jadpo(&root, &["impact", "quantities"]);
+    let output = jadpo(&root, &["impact", "tallies"]);
     assert!(
         output
             .stdout
@@ -232,10 +232,10 @@ fn inspect_prints_the_project_map() {
   type NewOrder                 domains/ordering/types/new_order.jadpo:4
   type OrderTotal               domains/ordering/types/order_total.jadpo:5
   action place_order            domains/ordering/actions/place_order.jadpo:6
-    calls    quantities.larger
+    calls    tallies.larger
   action send_invoices          domains/ordering/actions/send_invoices.jadpo:5
-    calls    quantities.larger
-  route POST /orders            domains/ordering/routes/orders.jadpo:9
+    calls    tallies.larger
+  route POST /basket            domains/ordering/routes/basket.jadpo:9
     runs     place_order
   schedule nightly_invoices     domains/ordering/schedules/nightly_invoices.jadpo:4
     runs     send_invoices
@@ -244,13 +244,13 @@ payments
   type RefundRequest            domains/payments/types/refund_request.jadpo:4
   type RefundView               domains/payments/types/refund_view.jadpo:4
   action refund                 domains/payments/actions/refund.jadpo:5
-    calls    quantities.larger
+    calls    tallies.larger
   route POST /payments/refunds  domains/payments/routes/payments.jadpo:9
     runs     refund
 
 shared
   type Quantity                 shared/types/quantity.jadpo:2
-  function quantities.larger    shared/libraries/quantities.jadpo:5
+  function tallies.larger       shared/libraries/tallies.jadpo:5
 
 12 declarations: 2 domains, 2 tests
 "
@@ -267,8 +267,8 @@ fn inspect_as_json_is_the_manifest() {
     assert!(
         nodes
             .iter()
-            .any(|node| node["id"] == "function quantities.larger"
-                && node["file"] == "shared/libraries/quantities.jadpo")
+            .any(|node| node["id"] == "function tallies.larger"
+                && node["file"] == "shared/libraries/tallies.jadpo")
     );
     // The command writes nothing: the manifest is `jadpo check`'s.
     let checked = jadpo(&root, &["check", "--json"]);
@@ -292,11 +292,10 @@ fn inspect_shows_a_built_types_final_fields_and_where_each_came_from() {
   about: What an order sends, with what was asked for.
   base: Output
   fields: asked  from NewOrder.asked
-          pack: Quantity  written, replaces NewOrder.pack
-          minimum  from NewOrder.minimum
+          per_box: Quantity  written, replaces NewOrder.per_box
           sent: Quantity  written
   uses: NewOrder
-  used by: place_order, POST /orders
+  used by: place_order, POST /basket
 "
     );
 }
@@ -309,22 +308,22 @@ fn inspect_shows_one_node_and_its_edges() {
         output.stdout,
         "action place_order
   at: domains/ordering/actions/place_order.jadpo:6
-  about: Sends at least a pack, and never less than the minimum.
+  about: Sends at least a box, and a box holds one at least.
   type: (input: NewOrder) -> OrderTotal
-  calls: quantities.larger
+  calls: tallies.larger
   uses: Quantity, NewOrder, OrderTotal
-  run by: POST /orders
+  run by: POST /basket
 "
     );
-    let output = jadpo(&root, &["inspect", "quantities"]);
+    let output = jadpo(&root, &["inspect", "tallies"]);
     assert!(
-        output.stdout.contains("  members: quantities.larger\n"),
+        output.stdout.contains("  members: tallies.larger\n"),
         "{}",
         output.stdout
     );
-    let route = jadpo(&root, &["inspect", "POST /orders"]);
+    let route = jadpo(&root, &["inspect", "POST /basket"]);
     assert!(
-        route.stdout.starts_with("route POST /orders\n"),
+        route.stdout.starts_with("route POST /basket\n"),
         "{}",
         route.stdout
     );
@@ -363,14 +362,9 @@ fn inspect_a_name_as_json_is_its_manifest_node_and_fields() {
                 None
             ),
             (
-                "OrderTotal.pack",
+                "OrderTotal.per_box",
                 None,
-                Some("field ordering.NewOrder.pack")
-            ),
-            (
-                "OrderTotal.minimum",
-                Some("field ordering.NewOrder.minimum"),
-                None
+                Some("field ordering.NewOrder.per_box")
             ),
             ("OrderTotal.sent", None, None),
         ]
@@ -380,13 +374,13 @@ fn inspect_a_name_as_json_is_its_manifest_node_and_fields() {
 #[test]
 fn a_name_the_project_doesnt_declare_is_refused_with_the_nearest() {
     let root = shop("unknown");
-    let output = jadpo(&root, &["impact", "quantities.larg"]);
+    let output = jadpo(&root, &["impact", "tallies.larg"]);
     assert_eq!(output.code, 2);
     assert_eq!(
         output.stderr,
-        "error: `quantities.larg` isn't a declaration
-  reason: This project declares nothing called `quantities.larg`. Did you mean `quantities.larger`?
-  next: Run `jadpo impact quantities.larger` (agent)
+        "error: `tallies.larg` isn't a declaration
+  reason: This project declares nothing called `tallies.larg`. Did you mean `tallies.larger`?
+  next: Run `jadpo impact tallies.larger` (agent)
   rule: cli.impact_arguments
   help: https://jadpo.dev/docs/errors/cli.impact_arguments
 "
@@ -418,16 +412,16 @@ fn two_domains_private_helpers_of_one_name_are_named_with_their_domain() {
             let text = match path {
                 "domains/ordering/actions/send_invoices.jadpo" => format!(
                     "{}{helper}",
-                    text.replace("quantities.larger(0, 1)", "at_least_one(0)")
-                        .replace("use shared/libraries { quantities }\n", "")
+                    text.replace("tallies.larger(0, 1)", "at_least_one(0)")
+                        .replace("use shared/libraries { tallies }\n", "")
                 ),
                 "domains/payments/actions/refund.jadpo" => format!(
                     "use shared/types {{ Quantity }}\n{}{helper}",
                     text.replace(
-                        "quantities.larger(input.returned, 1)",
+                        "tallies.larger(input.returned, 1)",
                         "at_least_one(input.returned)"
                     )
-                    .replace("use shared/libraries { quantities }\n", "")
+                    .replace("use shared/libraries { tallies }\n", "")
                 ),
                 _ => text.to_string(),
             };
@@ -477,7 +471,7 @@ fn a_project_with_errors_shows_them_and_nothing_else() {
     ));
     let root = project("errors", &files);
     for command in ["inspect", "impact"] {
-        let output = jadpo(&root, &[command, "quantities.larger"]);
+        let output = jadpo(&root, &[command, "tallies.larger"]);
         assert_eq!(output.code, 1, "{}", output.stdout);
         assert!(
             output.stdout.contains(&format!("{command} stopped: ")),
@@ -491,9 +485,9 @@ fn a_project_with_errors_shows_them_and_nothing_else() {
 #[test]
 fn tab_completes_the_projects_declarations() {
     let root = shop("complete");
-    let output = jadpo(&root, &["__complete", "--", "impact", "quant"]);
+    let output = jadpo(&root, &["__complete", "--", "impact", "tall"]);
     assert!(
-        output.stdout.contains("quantities.larger"),
+        output.stdout.contains("tallies.larger"),
         "{}",
         output.stdout
     );
