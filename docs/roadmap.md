@@ -534,6 +534,25 @@ After the registry is live, in order:
   "`jadpo suggest`". The service `jadpo suggest share` sends to, built against
   the protocol its local fake speaks today.
 
+## Reviewing a change
+
+What shows a developer why Jadpo is worth trying, so it comes ahead of the
+work below (Richard, 2026-11-08).
+
+- [ ] **U1 The review web view** **needs a maintainer**: Richard plans it and
+  its design first (2026-11-08), then `opus · high`: area 17, "Reviewing a change"
+  and "The web view". A static page in `build/review/` written by `jadpo
+  approval`, from the report's JSON: the change at a high level in the
+  report's order, the graph of the change as a flow chart, each path opened
+  to see what surrounds it, what the change newly reaches, and links from
+  every line to its source. No accounts and no approvals; acceptances stay
+  files. Done when a change to the
+  golden todo opens as this page and CI can publish it beside the pull
+  request.
+- [ ] **U2 What changed between an agent's revisions** `opus · high` after
+  U1: area 17, "The web view". The differences between an agent's successive
+  revisions of a change, added to the page.
+
 ## After the first build, in order
 
 1. [x] **F1 Units and money in plain numbers**: area 2, "Units and money
@@ -879,8 +898,7 @@ After the registry is live, in order:
      "Budgets" and "Streams, embeddings and the OpenAI and Anthropic
      packages". `keep_content:`, kept in encrypted fields, and an `embed:`
      with a `batch:` below 100, split across requests.
-9. Product work: the developer console and MCP, the graph review UI
-   (Revset-inspired), acting as an OAuth
+9. Product work: the developer console and MCP, acting as an OAuth
    provider, D1 (area 5, "Actions on D1", with `jadpo sql` for SQLite) and
    row-level security (opt-in, design notes for area 6). The console holds
    telemetry, the schedules' timeline and the dev inbox's page, and `jadpo
