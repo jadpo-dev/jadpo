@@ -735,6 +735,21 @@ sent and whether it counts only as what a provider's answer may hold. A row a
 stronger one of the same exit and holder covers is dropped
 (`exits::strongest`).
 
+**Export** (area 15, "Export"). `jadpo_plan::export` writes one
+`ExportPlan` per person entity, read rather than deleted from the same
+`Erasure`s: `jadpo_sql::statement::export_records` reuses erasure's walk,
+each `ExportPart` reading one entity's records in one store (the person
+store first, a kept entity's records by its references, not another
+person's own), with `exported_fields`, those with a JSON form, so a
+credential never reaches it. It runs through `StoreOp::Export` on both
+executors: `jadpo_runtime::export` asks the person's record under `read`
+policy first, then reads each part with `read::read_detached`, a
+read-only transaction of its own per store, and writes the JSON document
+with each field's own codec. `erasure.export_unbuilt` refuses it where it
+is written (`Body::export`) while a `File` field has no link to give. The
+runtime's check after a test (`test_run`'s `export_after_erasure`) asks an
+export of everyone the test erased, once deliveries are done.
+
 **Erasure at providers** (area 15; chunk V6). `provider_erasure::declared`
 reads each package's `erasure:` and `key_problems` each connection's `key:`
 against the data model, so a connection is let off only by what can be carried

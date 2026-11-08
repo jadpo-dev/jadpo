@@ -36,6 +36,9 @@ pub(crate) const ENTITY_OPERATIONS: [&str; 4] = ["get", "create", "update", "del
 /// A person entity's generated erasure, `User.erase(user_id)` (area 15,
 /// "Erasure"; chunk P3).
 pub(crate) const ERASE: &str = "erase";
+/// A person entity's generated export, `User.export(user_id)` (area 15,
+/// "Export").
+pub(crate) const EXPORT: &str = "export";
 
 /// What a type position accepts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1174,31 +1177,18 @@ impl Names<'_> {
         let mut operations: Vec<String> =
             ENTITY_OPERATIONS.iter().map(|op| op.to_string()).collect();
         operations.extend(symbol.transitions.iter().cloned());
-        // A person's erasure (area 15, "Erasure"; chunk P3): whether the
-        // entity is a person is the body's to check, with its data model.
-        // An audited entity's history (area 16; chunk B11): whether the
-        // entity keeps one is the body's to check, with its data model.
-        if operations.contains(&name) || name == ERASE || name == jadpo_std::audit::HISTORY {
+        // A person's erasure and export (area 15): whether the entity is a
+        // person is the body's to check, with its data model. An audited
+        // entity's history (area 16; chunk B11): whether the entity keeps
+        // one is the body's to check, with its data model.
+        if operations.contains(&name)
+            || name == ERASE
+            || name == EXPORT
+            || name == jadpo_std::audit::HISTORY
+        {
             return;
         }
         let span = self.span(operation);
-        // A person's export (area 15), decided and not built: refused as
-        // such, so no app takes it for an operation that doesn't exist and
-        // writes its own in its place unseen.
-        if let Some((what, instead)) = unbuilt_person_operation(&name) {
-            out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("`{entity}.{name}` isn't built yet"),
-                )
-                .at(span, "decided, not built")
-                .reason(format!(
-                    "{what} is the operation area 15 generates for an entity marked `person: true`, and it isn't built yet."
-                ))
-                .next(instead),
-            );
-            return;
-        }
         let near = nearest(&name, operations.iter().map(String::as_str)).map(str::to_string);
         let listed: Vec<String> = operations.iter().map(|op| format!("`{op}`")).collect();
         let problem = Diagnostic::new(
@@ -2195,17 +2185,4 @@ fn version_unneeded(code: &str, member: Option<&str>, span: Span) -> Diagnostic 
     ))
     .next(format!("Write `{bare}`"))
     .edit(span, "")
-}
-
-/// A person entity's generated operation that isn't built yet (area 15):
-/// what it does, and what an app does for now. `erase` is built (chunk
-/// P3).
-fn unbuilt_person_operation(name: &str) -> Option<(&'static str, &'static str)> {
-    match name {
-        "export" => Some((
-            "Exporting everything held about a person",
-            "Read the person's records with queries of your own for now",
-        )),
-        _ => None,
-    }
 }

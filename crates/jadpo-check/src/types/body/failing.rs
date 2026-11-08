@@ -244,8 +244,8 @@ impl Body<'_> {
             return Fallible::Unknown;
         }
         // A history's page is empty for a record that isn't there or the
-        // caller may not read (area 16; chunk B11).
-        if operation == jadpo_std::audit::HISTORY {
+        // caller may not read (area 16; chunk B11), and so is an export.
+        if operation == jadpo_std::audit::HISTORY || operation == crate::resolve::EXPORT {
             return Fallible::Never;
         }
         let missing = format!("{entity}NotFound");

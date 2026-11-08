@@ -65,7 +65,7 @@ use jadpo_std::http::PrincipalKind;
 use jadpo_std::{Erasure as Outcome, OnDelete};
 
 use crate::data::{DataModel, EntityModel, FieldModel, data_model, entity_read};
-use crate::lookups::Name;
+use crate::lookups::{Lookup, Name};
 
 /// What erasing one record of a person entity does in its store.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -90,6 +90,10 @@ pub struct Erasure {
     /// What it would reach that isn't built yet, each as the end of a
     /// sentence saying why: what refuses `User.erase` where it is called.
     pub unbuilt: Vec<String>,
+    /// What keeps `export` from being carried out in full, as the start of
+    /// a sentence saying which `File` field needs a link: what refuses it
+    /// where it is called.
+    pub export_unbuilt: Vec<String>,
     /// What it does in each store, by the store's name: the person's own
     /// and each other store with a record that refers to the person (chunk
     /// P4c). The fields above cover every store, for the checks; these
@@ -248,6 +252,7 @@ pub fn erasures(db: &dyn Db, project: Project) -> Arc<Erasures> {
         .map(|person| {
             let mut erasure = erasure_of(model, &person.name, None, &marked);
             erasure.reach = reach_of(model, &person.name);
+            erasure.export_unbuilt = export_unbuilt(model, &erasure, &person.name);
             erasure.stores = stores_of(model, person)
                 .into_iter()
                 .map(|store| {
@@ -259,6 +264,66 @@ pub fn erasures(db: &dyn Db, project: Project) -> Arc<Erasures> {
         })
         .collect();
     Arc::new(Erasures { people })
+}
+
+/// Each `File` field among what an export of `person` reads: the fields of
+/// the entities erasure reaches, and of the records that keep a reference
+/// to one that aren't another person's own.
+fn export_unbuilt(model: &DataModel, erasure: &Erasure, person: &str) -> Vec<String> {
+    exported_entities(model, erasure)
+        .into_iter()
+        .flat_map(|entity| {
+            entity
+                .fields
+                .iter()
+                .filter(|field| field.file.is_some())
+                .map(|field| {
+                    format!(
+                        "`{}.{}` is among what an export of a `{person}` holds",
+                        entity.name, field.name
+                    )
+                })
+        })
+        .collect()
+}
+
+/// Each entity an export reads records of: those erasure deletes, and
+/// each it keeps because they refer to one it deletes, but another person's
+/// own record, which holds that person's data and not this one's (area 15,
+/// "Export").
+pub fn exported_entities<'m>(model: &'m DataModel, erasure: &Erasure) -> Vec<&'m EntityModel> {
+    erasure
+        .deleted
+        .iter()
+        .filter_map(|name| model.entity(name))
+        .chain(
+            erasure
+                .kept
+                .iter()
+                .filter_map(|kept| model.entity(&kept.entity))
+                .filter(|entity| !entity.person),
+        )
+        .collect()
+}
+
+/// The fields of `entity` an export reads and writes out: every field with
+/// a JSON form, which leaves out a password's hash, a secret, a key and a
+/// sign-in code or token as any response does, the credentials area 15 names.
+pub fn exported_fields<'m>(lookup: &Lookup<'_>, entity: &'m EntityModel) -> Vec<&'m FieldModel> {
+    entity
+        .fields
+        .iter()
+        .filter(|field| {
+            let mut seen = BTreeSet::new();
+            crate::types::json_form::no_json_form(
+                lookup,
+                &field.ty,
+                &mut seen,
+                crate::types::json_form::JsonUse::Write,
+            )
+            .is_none()
+        })
+        .collect()
 }
 
 /// The person's store and each other holding a record that refers to one.

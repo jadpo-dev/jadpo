@@ -308,7 +308,7 @@ impl Body<'_> {
                 ok = false;
                 self.request_problem(
                     span.clone(),
-                    &format!("`{}` takes `input:`, a `{ty}`", route.label()),
+                    &format!("`{}` takes an `input:` of type `{ty}`", route.label()),
                 );
             }
             (None, Some(value)) => {

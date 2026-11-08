@@ -247,6 +247,9 @@ pub struct Ctx<'p> {
     /// request's client address is chosen and its purges' periods. `None`
     /// until the runtime gives it ([`Ctx::of`], [`Ctx::start`]).
     started: Option<std::rc::Rc<crate::Started>>,
+    /// Each person an erasure erased, by entity and `id`, for the export
+    /// the runtime asks after a test (area 15, "Export").
+    erased: Vec<(String, String)>,
     /// What background work carries while it runs.
     background: Background,
     /// What it reaches outside itself, through its host.
@@ -364,6 +367,7 @@ impl<'p> Ctx<'p> {
             flag_state: None,
             flag_values: Vec::new(),
             signed_in: Vec::new(),
+            erased: Vec::new(),
             started: None,
             background: Background::default(),
             capabilities: Capabilities::new(host, env.seed),
@@ -1428,6 +1432,19 @@ impl<'p> Ctx<'p> {
     /// wherever a setting is read (chunk 7.9e): its own, a test's
     /// `config:` (area 13), else the one its program started with. `None`
     /// when neither gives one, and for a secret, which code never reads.
+    /// Notes that the person of `entity` with `id` was erased (area 15).
+    pub(crate) fn note_erased(&mut self, entity: &str, id: &str) {
+        self.erased.push((entity.to_string(), id.to_string()));
+    }
+
+    /// Who this run has erased so far, each once.
+    pub(crate) fn take_erased(&mut self) -> Vec<(String, String)> {
+        let mut seen = std::mem::take(&mut self.erased);
+        seen.sort();
+        seen.dedup();
+        seen
+    }
+
     pub fn setting(&self, at: u32) -> Option<&Value> {
         self.settings
             .iter()

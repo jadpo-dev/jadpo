@@ -918,8 +918,8 @@ pub fn audit_purge(entity: &str, cutoff: &str, batch: u32) -> String {
 }
 
 /// The `id`s of the records of the entity numbered `entity` that a
-/// person's erasure deletes.
-fn erased(entity: usize) -> String {
+/// person's erasure deletes, or an export reaches.
+pub fn erased(entity: usize) -> String {
     format!(
         "SELECT {} FROM {} WHERE {} = {entity}",
         ident("id"),
@@ -939,6 +939,103 @@ pub enum EraseRoot<'a> {
     /// parameter: the erasure in a store whose records refer to them.
     /// `tables[0]` names nothing.
     Given(&'a str),
+}
+
+/// The common table expression `"erased"`, `("entity", "id")`: the person
+/// `root` names and every record `follows` leads to from one already found,
+/// each tagged with its entity's number in `tables`, each once. What an
+/// erasure deletes, and what an export of the same person reads.
+fn walk(root: EraseRoot<'_>, tables: &[&str], follows: &[Followed<'_>]) -> String {
+    let base = match root {
+        EraseRoot::Found(person) => {
+            let mut base = format!(
+                "  SELECT 0, {}.{}\n  FROM {}",
+                ident(tables[0]),
+                ident("id"),
+                ident(tables[0])
+            );
+            where_clause(&mut base, person, "  ");
+            base
+        }
+        EraseRoot::Given(id) => format!("  SELECT 0, {id}::uuid"),
+    };
+    let found = if follows.is_empty() {
+        base
+    } else {
+        let edges: Vec<String> = follows
+            .iter()
+            .enumerate()
+            .map(|(i, follow)| {
+                let alias = ident(&format!("edge{}", i + 1));
+                format!(
+                    "SELECT {} AS \"parent\", {alias}.{} AS \"parent_id\", {} AS \"entity\", {alias}.\"id\" AS \"id\" FROM {} AS {alias}",
+                    follow.from,
+                    ident(follow.column),
+                    follow.to,
+                    ident(follow.table)
+                )
+            })
+            .collect();
+        format!(
+            "{base}\n  UNION\n  SELECT \"edge\".\"entity\", \"edge\".\"id\"\n  FROM \"erased\"\n  JOIN (\n    {}\n  ) AS \"edge\" ON \"edge\".\"parent\" = \"erased\".\"entity\" AND \"edge\".\"parent_id\" = \"erased\".\"id\"",
+            edges.join("\n    UNION ALL\n    ")
+        )
+    };
+    format!(
+        "{} ({}, {}) AS (\n{found}\n)",
+        ident("erased"),
+        ident("entity"),
+        ident("id")
+    )
+}
+
+/// `columns` of the records of `table` a person's export holds: those
+/// `conditions` pick among [`erased`]'s `"entity"`-numbered `"id"`s, the
+/// walk from `root` over `follows` being the one erasure takes, every
+/// record of theirs, hidden or not (area 15, "Export").
+pub fn export_records<S: AsRef<str>>(
+    root: EraseRoot<'_>,
+    tables: &[&str],
+    follows: &[Followed<'_>],
+    columns: &[S],
+    table: &str,
+    conditions: &[String],
+) -> String {
+    let mut sql = format!(
+        "WITH RECURSIVE {}\nSELECT {}\nFROM {}",
+        walk(root, tables, follows),
+        idents(columns),
+        ident(table)
+    );
+    where_clause(&mut sql, conditions, "");
+    sql.push_str(&format!("\nORDER BY {}", ident("id")));
+    sql
+}
+
+/// `column` is among the `id`s the walk found of the entity numbered
+/// `entity`.
+pub fn found_in(column: &str, entity: usize) -> String {
+    format!("{} IN ({})", ident(column), erased(entity))
+}
+
+/// One condition out of `found`: any of them, and with `unerased` that the
+/// record hasn't been erased and kept, a person's whose time is noted in
+/// that column.
+pub fn export_pick(found: &[String], unerased: Option<&str>) -> String {
+    let any = if let [one] = found {
+        one.clone()
+    } else {
+        format!("({})", found.join(" OR "))
+    };
+    match unerased {
+        Some(column) => format!("{any}\n  AND {} IS NULL", ident(column)),
+        None => any,
+    }
+}
+
+/// `column` holds nothing: a person who hasn't been erased and kept.
+pub fn is_null(column: &str) -> String {
+    format!("{} IS NULL", ident(column))
 }
 
 /// What [`erase`] writes.
@@ -992,47 +1089,7 @@ pub fn erase(erasure: Erase<'_>) -> String {
         people,
         keys,
     } = erasure;
-    let base = match root {
-        EraseRoot::Found(person) => {
-            let mut base = format!(
-                "  SELECT 0, {}.{}\n  FROM {}",
-                ident(tables[0]),
-                ident("id"),
-                ident(tables[0])
-            );
-            where_clause(&mut base, person, "  ");
-            base
-        }
-        EraseRoot::Given(id) => format!("  SELECT 0, {id}::uuid"),
-    };
-    let found = if follows.is_empty() {
-        base
-    } else {
-        let edges: Vec<String> = follows
-            .iter()
-            .enumerate()
-            .map(|(i, follow)| {
-                let alias = ident(&format!("edge{}", i + 1));
-                format!(
-                    "SELECT {} AS \"parent\", {alias}.{} AS \"parent_id\", {} AS \"entity\", {alias}.\"id\" AS \"id\" FROM {} AS {alias}",
-                    follow.from,
-                    ident(follow.column),
-                    follow.to,
-                    ident(follow.table)
-                )
-            })
-            .collect();
-        format!(
-            "{base}\n  UNION\n  SELECT \"edge\".\"entity\", \"edge\".\"id\"\n  FROM \"erased\"\n  JOIN (\n    {}\n  ) AS \"edge\" ON \"edge\".\"parent\" = \"erased\".\"entity\" AND \"edge\".\"parent_id\" = \"erased\".\"id\"",
-            edges.join("\n    UNION ALL\n    ")
-        )
-    };
-    let mut parts = vec![format!(
-        "{} ({}, {}) AS (\n{found}\n)",
-        ident("erased"),
-        ident("entity"),
-        ident("id")
-    )];
+    let mut parts = vec![walk(root, tables, follows)];
     for (i, keep) in keeps.iter().enumerate() {
         let matched =
             |column: &str, entity: usize| format!("{} IN ({})", ident(column), erased(entity));

@@ -735,7 +735,9 @@ impl Part<'_> {
             .calls()
             .filter_map(|(_, callee)| match callee {
                 jadpo_graph::body::Callee::Entity { entity, operation }
-                    if operation == "get" || operation == jadpo_std::audit::HISTORY =>
+                    if operation == "get"
+                        || operation == jadpo_std::audit::HISTORY
+                        || operation == crate::resolve::EXPORT =>
                 {
                     Some(entity.clone())
                 }

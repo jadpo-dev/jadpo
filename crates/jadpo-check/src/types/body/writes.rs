@@ -743,6 +743,117 @@ impl Body<'_> {
         Ty::Prim(Prim::Unit)
     }
 
+    /// `Person.export(person_id)` (area 15, "Export"): reads everything
+    /// held about the person and gives a `PersonalDataExport`. It takes
+    /// the person's `id` and no block, needs read access to the person's
+    /// record as policy sees it, and can't fail: a caller who may not read
+    /// it, like someone not there, gets an empty export, as a history is an
+    /// empty page. An export reaching what isn't built yet is refused here,
+    /// so none is ever partial. Its type.
+    pub(super) fn export(
+        &mut self,
+        entity: &str,
+        call: &ast::CallExpr,
+        block: Option<ast::MemberList>,
+        head_span: Span,
+    ) -> Ty {
+        let written = format!("{entity}.export");
+        self.read_in_loop(head_span.clone(), &written);
+        let person = self
+            .writes
+            .write_rules(entity)
+            .is_some_and(|rules| rules.person);
+        if !person {
+            self.args_only(call);
+            self.walk(|walk| walk.member_values(block));
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_UNKNOWN_CALLEE,
+                    format!("`{entity}` has no operation `export`"),
+                )
+                .at(head_span, "not a person")
+                .reason(format!(
+                    "`export` is the operation generated for an entity marked `person: true`: it reads everything held about the person. `{entity}` isn't a person, so it has `get`, `create`, `update` and `delete`, with one more for each transition its lifecycle names."
+                ))
+                .next(format!(
+                    "Read the record with `{entity}.get`, or mark `{entity}` `person: true` if each record is a person"
+                )),
+            );
+            return Ty::Error;
+        }
+        let id = Ty::Field(entity.to_string(), vec!["id".to_string()]);
+        let args = Self::arguments(call);
+        match args.as_slice() {
+            [arg] => {
+                if let Some(value) = arg.expr() {
+                    self.erase_target(entity, &written, &id, &value);
+                }
+            }
+            _ => {
+                self.args_only(call);
+                let snake = crate::case::to_snake(entity);
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_ARGUMENT_COUNT,
+                        format!("`{written}` takes one argument, and {} given", args.len()),
+                    )
+                    .at(self.span(call), "one argument")
+                    .reason(format!(
+                        "`{written}` reads everything held about the person with the `{entity}.id` it is given."
+                    ))
+                    .next(format!("Call `{written}({snake}_id)`")),
+                );
+            }
+        }
+        // `export` takes no block: nothing it does is written at the call.
+        for item in block.iter().flat_map(|list| list.member_items()) {
+            let MemberItem::Member(member) = item else {
+                continue;
+            };
+            let Some(key) = member.member_key() else {
+                continue;
+            };
+            let word = tree::written(key.syntax());
+            let span = self.span(&key);
+            let removal = crate::tree::removal(self.path, &member);
+            self.walk(|walk| walk.member(&member));
+            self.out.push(
+                Diagnostic::new(
+                    &rule::DATA_WRITE_SECTION_UNEXPECTED,
+                    format!("`{written}` takes no `{word}:`"),
+                )
+                .at(span, "not a section here")
+                .reason(format!(
+                    "What `{written}` holds is worked out from the references that link each record to the person, so it takes no block."
+                ))
+                .next(format!("Remove `{word}: ...`"))
+                .edit(removal, ""),
+            );
+        }
+        // What isn't built yet, refused where the export is written.
+        let unbuilt = self
+            .writes
+            .erasure(entity)
+            .and_then(|erasure| erasure.export_unbuilt.first().cloned());
+        if let Some(first) = unbuilt {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!("Exporting a `{entity}` here isn't built yet"),
+                )
+                .at(head_span.clone(), "decided, not built")
+                .reason(format!(
+                    "{first}, and a `File` field is exported as a link, which comes with downloads: accepted, the export would leave out a file of theirs."
+                ))
+                .next(format!("Read the `{entity}`'s records with queries of your own for now")),
+            );
+        }
+        Ty::Opaque(
+            jadpo_std::erasure::PERSONAL_DATA_EXPORT.to_string(),
+            Vec::new(),
+        )
+    }
+
     /// The person an erasure erases: their `id`. A record loaded earlier
     /// is passed by its `id`, so the call says which person whatever was
     /// read.

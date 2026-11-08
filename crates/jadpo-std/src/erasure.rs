@@ -30,9 +30,77 @@ pub const EVENT_FIELDS: [(&str, Part); 3] = [
     ("erased_at", Part::Of(Builtin::Instant)),
 ];
 
-/// The fields of `PersonErased`, which only the runtime builds.
+/// The value `User.export(id)` gives (area 15, "Export"), which only the
+/// runtime builds.
+pub const PERSONAL_DATA_EXPORT: &str = "PersonalDataExport";
+
+/// `PersonalDataExport`'s fields: the whole export as one JSON document,
+/// and how many records it holds, none for someone with nothing held about
+/// them or a caller who may not read their record.
+pub const EXPORT_FIELDS: [(&str, Part); 2] = [
+    ("json", Part::Of(Builtin::Text)),
+    ("records", Part::Of(Builtin::Int)),
+];
+
+/// The fields of `PersonErased` and `PersonalDataExport`, which only the
+/// runtime builds.
 pub fn object_fields(name: &str) -> Option<&'static [(&'static str, Part)]> {
-    (name == PERSON_ERASED).then_some(&EVENT_FIELDS[..])
+    match name {
+        PERSON_ERASED => Some(&EVENT_FIELDS[..]),
+        PERSONAL_DATA_EXPORT => Some(&EXPORT_FIELDS[..]),
+        _ => None,
+    }
+}
+
+/// A person entity's `export` (area 15, "Export"): whether the caller may
+/// read the person's record, and then what is read of each kind of data.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct ExportPlan {
+    /// The person's own entity, as the export names it.
+    pub entity: String,
+    /// The person's `id` when the caller may read their record: nothing
+    /// when policy refuses it, or the person isn't there or was erased.
+    pub access: crate::read::ReadPlan,
+    /// What it reads: one entity's records in one store each, the person's
+    /// own first.
+    pub parts: Vec<ExportPart>,
+    /// What it says of each entity it reads, in the same order.
+    pub kinds: Vec<ExportKind>,
+}
+
+/// One entity's records in an export.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct ExportPart {
+    /// The entity, as the export names its list.
+    pub entity: String,
+    /// Every record of it the person holds, each as the entity's fields
+    /// that are exported.
+    pub read: crate::read::ReadPlan,
+    /// Each exported field by its name, with its number in the plan's JSON
+    /// table: what its value is written with, in the API's form.
+    pub fields: Vec<(String, u32)>,
+}
+
+/// How long one kind of data is kept and who receives it (area 15,
+/// "Export").
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct ExportKind {
+    pub entity: String,
+    /// Its `retention:` and its fields', empty when kept until erased.
+    pub retention: Vec<ExportRetention>,
+    /// The connections its personal data leaves through, by name.
+    pub recipients: Vec<String>,
+}
+
+/// One `retention:` an export reports.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct ExportRetention {
+    /// The field it clears, or none when it deletes the record.
+    pub field: Option<String>,
+    /// The `Duration` setting its period is read from, by its number.
+    pub setting: u32,
+    /// The `Instant` field it counts from.
+    pub since: String,
 }
 
 /// How many times a generated subscriber is tried: enough that

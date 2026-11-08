@@ -160,6 +160,7 @@ pub(crate) fn emit(
     }
     let started = ctx.started();
     for person in erased_people(people, rows) {
+        ctx.note_erased(person.entity, &person.id);
         let subscribers = started
             .erasure()
             .person(person.entity)

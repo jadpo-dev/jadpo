@@ -1489,6 +1489,10 @@ impl Emitter<'_> {
                     Some(Decoded::History(Some(history))) => {
                         (quote!(rt::history), *history, Some(None))
                     }
+                    // A person's export (area 15).
+                    Some(Decoded::Export(Some(export))) => {
+                        (quote!(rt::export), *export, Some(None))
+                    }
                     // Something a later area builds, named as the
                     // interpreter names it.
                     _ => {

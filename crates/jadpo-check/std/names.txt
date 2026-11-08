@@ -32,8 +32,9 @@
 # `AuditEntry` and `AuditFieldChange` are what an audited entity's
 # `history` gives, and `AuditEntryRecorded` the event each entry is also
 # emitted as (area 16), their fields in `jadpo-std`'s `audit`.
-# `PersonErased` is the event an erasure emits (area 15), its fields in
-# `jadpo-std`'s `erasure`.
+# `PersonErased` is the event an erasure emits and `PersonalDataExport`
+# what a person's export gives (area 15), their fields in `jadpo-std`'s
+# `erasure`.
 [types]
 Page Nearest
 File FileContents Principal Response Access AiStream
@@ -46,7 +47,7 @@ Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 FieldAccess OnDelete Generated FieldChange EntityChange
 ApiChange PersonalData Erasure SearchLanguage RateLimitKey
 AuditEntry AuditFieldChange AuditEntryRecorded AuditChange AuditBy
-PersonErased
+PersonErased PersonalDataExport
 
 # Standard-library namespaces and the operations the pages name so far,
 # always called through the namespace (area 10); none waits for a stub
