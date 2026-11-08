@@ -421,7 +421,10 @@ class Page:
         while not lines[j].startswith('```'):
             j += 1
         attrs.setdefault('project', f'run-{len(self.runs) + 1}')
-        block = {'line': i, 'end': j, 'attrs': attrs, 'source': '\n'.join(lines[i + 1:j]) + '\n'}
+        # A file its lines write names the running line as a check block
+        # does: `jadpo: "X.Y"`.
+        block = {'line': i, 'end': j, 'attrs': attrs,
+                 'source': with_release_line('\n'.join(lines[i + 1:j]) + '\n')}
         k = j + 1
         while k < len(lines) and not lines[k].strip():
             k += 1
@@ -881,12 +884,6 @@ COMMAND_LINE = 'cli.'
 # The command that checks source; a rule it raises is shown by a check
 # block, not a command's run.
 CHECK_COMMAND = 'check'
-# Command errors whose pages are still a copied transcript, brought to the
-# format by roadmap chunk D13b3c, which empties this.
-FORMAT_WAITS = frozenset({
-    'install.in_use', 'publish.changelog_missing', 'publish.description_missing',
-    'publish.example_failed', 'publish.example_missing',
-})
 
 
 def command_errors(catalogue, commands):
@@ -905,8 +902,7 @@ def error_format_scope(catalogue, root=ROOT, commands=()):
     error page reads", gives them: those the primer, the Learn path, the
     guides or a teaching example's README names, those whose next step a
     person decides, the command line's own (`cli.*`), and every other rule
-    only a command raises, but for FORMAT_WAITS. Every other page follows
-    once D13c is built."""
+    only a command raises. Every other page follows once D13c is built."""
     named = set()
     for path in [root / 'docs/primer.md', *sorted((root / 'docs/learn').glob('*.md')),
                  *sorted((root / 'docs/guides').glob('*.md'))]:
@@ -916,7 +912,7 @@ def error_format_scope(catalogue, root=ROOT, commands=()):
         named |= set(EXAMPLE_RULE.findall(path.read_text()))
     named |= {rule for rule, entry in catalogue.items()
               if entry.get('decides') == 'human' or rule.startswith(COMMAND_LINE)}
-    named |= command_errors(catalogue, commands) - FORMAT_WAITS
+    named |= command_errors(catalogue, commands)
     return named & catalogue.keys()
 
 

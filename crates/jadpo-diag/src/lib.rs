@@ -611,7 +611,7 @@ rules! {
     INSTALL_FETCH_FAILED: "install.fetch_failed", area 14, Error, Human,
         "Installing a package couldn't read its git repository, or found no release there at the tag you gave";
     INSTALL_IN_USE: "install.in_use", area 14, Error, Agent,
-        "Package to remove is still used by the app";
+        "A package `jadpo package remove` was asked to remove is still brought in by the app's code";
     INSTALL_LINK_REFUSED: "install.link_refused", area 14, Error, Agent,
         "Linked package in a CI or production build";
     INSTALL_NOT_IN_REGISTRY: "install.not_in_registry", area 14, Error, Human,
@@ -783,13 +783,13 @@ rules! {
     PUBLISH_BREAKING_CHANGE: "publish.breaking_change", area 14, Error, Human,
         "A package's new version changes or removes something its last release offered, within the same major version";
     PUBLISH_CHANGELOG_MISSING: "publish.changelog_missing", area 14, Error, Agent,
-        "Package's changelog doesn't say why its new version is released";
+        "The new version's section of a package's `CHANGELOG.md` doesn't say why it is released";
     PUBLISH_DESCRIPTION_MISSING: "publish.description_missing", area 14, Error, Agent,
-        "Package's public declaration has no description";
+        "A public type, failure, library or library function of a package has no `///` description";
     PUBLISH_EXAMPLE_FAILED: "publish.example_failed", area 14, Error, Agent,
-        "Example in a package's description doesn't compile or doesn't hold";
+        "An example in a package's `///` description doesn't compile, or doesn't hold when it runs as a test";
     PUBLISH_EXAMPLE_MISSING: "publish.example_missing", area 14, Error, Agent,
-        "Package's function has no example, or a failure it raises is shown by none";
+        "A function of a package's public library has no example in its description, or can fail in a way no example or test shows";
     PUBLISH_FAILED: "publish.failed", area 14, Error, Agent,
         "The registry's verifier refused the release";
     PUBLISH_FILE_NOT_ALLOWED: "publish.file_not_allowed", area 14, Error, Agent,

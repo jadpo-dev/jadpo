@@ -220,7 +220,8 @@ checks it on any line. Where a page must show the line or the release
 of the reader's `jadpo`, as `jadpo new` and `jadpo --version` print
 them, it writes `X.Y` for the line and `X.Y.Z` for the release: the
 docs check prints them that way in a command's output, and compiles a
-`check` block's `jadpo: "X.Y"` as the running line. A page about other
+`check` block's `jadpo: "X.Y"`, or one a `sh run` block's lines write,
+as the running line. A page about other
 lines uses lines no release has: `0.0` for an earlier one, `99.0` for a
 later one. The docs check fails a Markdown file that writes the running
 `jadpo`'s line as `jadpo: "…"`, as `jadpo new`'s status line, or its
