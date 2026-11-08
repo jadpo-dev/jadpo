@@ -966,7 +966,7 @@ file.
 The standard library's namespaces are `list`, `set`, `map`, `range`,
 `integer`, `decimal`, `money`, `units`, `text`, `markup`, `bytes`, `hash`,
 `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`, `json_lines`,
-`temporal`, `locale`, `colour`, `media`, `web`, `semver`, `geo` and `ai`
+`temporal`, `locale`, `colour`, `media`, `web`, `semver`, `names`, `geo` and `ai`
 ([Standard library](19-standard-library.md)). Each is reserved by
 `semantic.standard_namespace_reserved`, so nothing in a project can take
 its name. Fields and named arguments keep every word: `note.text` and

@@ -8,7 +8,7 @@ HTTP promises that a `GET` only reads, so a browser, a cache or a client
 library may send one again without asking. Jadpo keeps that promise by what
 a route runs. A query can only read, so a `GET` can run one. An action can
 write, so a `GET` runs one only when the compiler can prove it writes
-nothing, emits nothing and makes no changing call, itself and through every
+nothing, emits no email and makes no changing call, itself and through every
 action it calls. `POST`, `PUT`, `PATCH` and `DELETE` run an action, which owns
 the writes and the transaction, and never a query.
 
@@ -77,7 +77,7 @@ error: `GET /memos` runs action `add_memo`, which writes with `Note.create`
    |                      ----------- here
 41 |         run: add_memo(input)
    |              ^^^^^^^^ not read-only
-  reason: A `GET` is safe to repeat, so it runs a named query, or an action the graph proves writes nothing, emits nothing and makes no changing call; `add_memo` writes with `Note.create`.
+  reason: A `GET` is safe to repeat, so it runs a named query, or an action the graph proves writes nothing, emits no email and makes no changing call; `add_memo` writes with `Note.create`.
   next: Answer `/memos` with another method, or leave `Note.create` out of what `add_memo` does (agent)
   rule: route.run_kind
   help: https://jadpo.dev/docs/errors/route.run_kind

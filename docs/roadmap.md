@@ -407,6 +407,19 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **D17o First examples stand alone**: [writing guide](writing.md), "A page's first example stands alone"; `tools/docs/first_examples.py`, run `--strict` by the gate.
 - [x] **D17n Review**: [writing guide](writing.md), "A page's first example stands alone", "The release line" and "How a built-in service's page reads".
 
+What publishing the first packages found (Richard, 2026-11-07):
+
+- [ ] **A27 Fakes' `.requests`** `opus · high`: area 13, "What the code
+  sent: `.requests`". `Integration.operation.requests` is a list typed as the
+  operation's input, `List<CreateBooking>`, so a test reads a sent field as
+  any other value; it is kept where the call is made, in the order sent,
+  each request as the package encoded it before it went out, and a field the
+  input marks `secret` or a credential reads as redacted, never its value.
+  The `ai` fake's `ai.<prompt>.requests` is the model to follow. Done when
+  area 13's example asserting on `ReminderMail.send_overdue_reminder.requests`
+  runs interpreted and compiled, and `toolchain.not_built_yet` no longer
+  names `.requests`.
+
 Not scheduled: a way to write a query the language can't express. Richard
 will work through it and other solutions later; don't design or build one
 until then.

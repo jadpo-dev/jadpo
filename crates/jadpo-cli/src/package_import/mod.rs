@@ -154,10 +154,23 @@ pub(crate) fn import(call: &Call) -> Reply {
     // The types an agent has reviewed are kept (chunk 7.2e2), less any
     // the description adds to, which is new to review.
     let provider_path = root.join(&folder).join(jadpo_db::PROVIDER_FILE);
-    let reviewed = std::fs::read_to_string(&provider_path)
-        .map(|text| merge::reviewed_in(&text))
+    let provider_text = std::fs::read_to_string(&provider_path).ok();
+    let reviewed = provider_text
+        .as_deref()
+        .map(merge::reviewed_in)
         .unwrap_or_default();
     package.provider.reviewed = reviewed.clone();
+    // A name code knows by another stays renamed (Richard, 2026-11-07).
+    for (from, to) in provider_text
+        .as_deref()
+        .map(merge::renamed_in)
+        .unwrap_or_default()
+    {
+        if package.rename(&from, &to) {
+            package.provider.renamed.push((from, to));
+        }
+    }
+    renamed_by_shape(&root, &folder, &mut package);
     let mut planned = plan(&root, &folder, package.files());
     let added_to: Vec<String> = planned
         .iter()
@@ -235,6 +248,63 @@ pub(crate) fn import(call: &Call) -> Reply {
         &findings,
         review.as_ref(),
     )
+}
+
+/// Each type the description adds whose file isn't there, matched to a
+/// type of the folder the description no longer has whose members are the
+/// same, one to one: a type renamed in code, which an import would
+/// otherwise bring back under its old name. Each match is renamed in the
+/// package and written in `renamed:`, and said as a finding.
+fn renamed_by_shape(root: &Path, folder: &str, package: &mut model::Package) {
+    let types = root.join(folder).join("types");
+    let Ok(entries) = std::fs::read_dir(&types) else {
+        return;
+    };
+    let mut orphans: Vec<(String, Vec<String>)> = Vec::new();
+    for entry in entries.filter_map(Result::ok) {
+        let Ok(text) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        for (name, members) in merge::type_members(&text) {
+            if !package.types.contains_key(&name) && !members.is_empty() {
+                orphans.push((name, members));
+            }
+        }
+    }
+    let fresh: Vec<(String, Vec<String>)> = package
+        .types
+        .keys()
+        .filter(|name| !types.join(format!("{}.jadpo", model::snake(name))).exists())
+        .filter_map(|name| Some((name.clone(), package.members_of(name)?)))
+        .filter(|(_, members)| !members.is_empty())
+        .collect();
+    for (name, members) in fresh {
+        let alike: Vec<&(String, Vec<String>)> = orphans
+            .iter()
+            .filter(|(_, theirs)| *theirs == members)
+            .collect();
+        let rivals = package
+            .types
+            .keys()
+            .filter(|other| package.members_of(other).as_ref() == Some(&members))
+            .count();
+        if let [(code, _)] = alike.as_slice()
+            && rivals == 1
+        {
+            let code = code.clone();
+            if package.rename(&name, &code) {
+                package.findings.push(model::Finding {
+                    at: code.clone(),
+                    next: format!(
+                        "The description's `{name}` matches `{code}` member for member, so `renamed:` in `provider.jadpo` keeps it `{code}`: check it is the same type"
+                    ),
+                });
+                package.provider.renamed.push((name, code));
+            }
+        }
+    }
+    package.provider.renamed.sort();
+    package.provider.renamed.dedup();
 }
 
 /// One file of the package as an import would leave it.

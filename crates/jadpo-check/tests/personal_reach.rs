@@ -171,7 +171,7 @@ fn a_marked_field_is_followed_through_the_body() {
         "    var name: AcmePay.Words = user.display_name\n",
         "    var name: AcmePay.Words = wording.shout(user.display_name)\n",
         "    var name: AcmePay.Words = AcmePay.Words(text.trim(user.display_name))\n",
-        "    var names: List<Text> = [text.trim(user.display_name)]\n    var name: AcmePay.Words = AcmePay.Words(text.join(names, \"\"))\n",
+        "    var name_list: List<Text> = [text.trim(user.display_name)]\n    var name: AcmePay.Words = AcmePay.Words(text.join(name_list, \"\"))\n",
     ] {
         let body = send(&format!("{before}{}", create("name")));
         assert_eq!(

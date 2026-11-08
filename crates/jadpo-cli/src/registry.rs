@@ -1106,7 +1106,7 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
 }
 
 /// The ISO date of a time in seconds.
-fn day_from(seconds: i64) -> Option<String> {
+pub(crate) fn day_from(seconds: i64) -> Option<String> {
     let z = seconds.div_euclid(DAY) + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);

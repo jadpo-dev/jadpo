@@ -294,11 +294,39 @@ fn a_write_through_calls_names_each_call_and_where_it_is() {
     );
 }
 
+/// An event is kept in a transaction of its own, so a `GET` may emit one
+/// and a subscriber count the read (area 7; Richard, 2026-11-07).
 #[test]
-fn an_emit_is_named_through_calls_too() {
-    refused(
-        "    emit ShelfSeen {\n        note: \"seen\"\n    }\n",
-        "which emits `ShelfSeen`",
+fn an_event_may_be_emitted() {
+    proved("    emit ShelfSeen {\n        note: \"seen\"\n    }\n");
+}
+
+/// An email is sent, so emitting one is still no read.
+#[test]
+fn an_emails_emit_is_named() {
+    let mut files = with_keep(&keep(
+        "    emit ShelfNoteEmail {\n        to: \"keeper@example.com\"\n        locale: Locale.en_gb\n        note: \"seen\"\n    }\n",
+    ));
+    files.push((
+        "domains/shop/emails/shelf_note_email.jadpo".to_string(),
+        "use shop/types { Note }\n\n/// A shelf's note, sent to its keeper.\ntype ShelfNoteEmail = EmailMessage {\n    note: Note\n}\n".to_string(),
+    ));
+    for file in &mut files {
+        if file.0 == "domains/shop/actions/keep.jadpo" {
+            file.1 = file.1.replace(
+                "use shop/events { ShelfSeen }\n",
+                "use shop/emails { ShelfNoteEmail }\nuse shop/events { ShelfSeen }\n",
+            );
+        }
+    }
+    let found: Vec<String> = problems(&files)
+        .into_iter()
+        .filter(|problem| problem.contains(" route.run_kind:"))
+        .collect();
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert!(
+        found[0].contains("which emits `ShelfNoteEmail`"),
+        "{found:#?}"
     );
 }
 
