@@ -1041,6 +1041,8 @@ impl Types {
             status: detail.status,
             message: detail.message.clone(),
             fields: self.fields(key, 0),
+            wire_status: detail.wire_status,
+            wire_name: detail.wire_name.clone(),
         })
     }
 }
