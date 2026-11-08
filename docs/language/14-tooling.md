@@ -2055,8 +2055,7 @@ The server offers what the compiler knows and nothing else: suggestions
 written by a model belong to your agent, never to `jadpo lsp`. VS Code
 asks for completion as you type a word, a `.`, a `:` or a digit.
 
-Not built yet: publishing the extension, which is switched off until the
-Marketplace and Open VSX are set up; and rename in the editor. It goes through the same code as
+Not built yet: rename in the editor. It goes through the same code as
 `jadpo rename`, so an entity field renamed in the editor keeps its
 stored data, and it waits for that command and the identity registry it
 writes ([Entities, stores and migrations](05-data.md), [Stable
