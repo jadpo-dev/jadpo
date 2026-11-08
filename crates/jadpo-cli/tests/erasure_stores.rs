@@ -1493,6 +1493,7 @@ fn jadpo_dev_replays_the_log_as_it_starts() {
         erasures: {
             driver: Driver.disk
             path: \"/var/lib/desk/erasures\"
+            free_space_floor: 0%
         }
     }
     privacy: {
