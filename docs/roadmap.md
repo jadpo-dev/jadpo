@@ -155,7 +155,10 @@ a finished chunk is in git history.
   origin with a bad one; the module's 8 MiB stack within an isolate's memory,
   from Cloudflare's logs; a message sent to the dead-letter queue parked
   (`jadpo deliveries`); why two deployables with one `namespace_id` didn't
-  share their counts.
+  share their counts; a Hyperdrive configuration's caching (area 5,
+  "PostgreSQL through Hyperdrive"); and the rate-limit binding's windows, the
+  Wrangler entries and what its documentation says of locations and accuracy
+  (area 16, "What the binding promises").
 
 - [x] **8.3 Performance spike**: §2.11.
 
@@ -494,11 +497,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
 - [x] **G5 Small gaps the registry found**: area 7, "Serving the document"; area 14, "`jadpo package protocol`"; area 19, "Bytes"; area 2, "A record names its type alone"; `docs/errors/api.route_needs_sign_in.md`, `docs/errors/protocol.mismatch.md`, `docs/errors/protocol.unreadable.md`, `docs/errors/type.record_type_arguments.md`.
 - [x] **G6 A package names its publisher**: area 11, "The index: `package.jadpo`", "Names and publishers", "Releasing" and "The verifier"; area 14, `jadpo package verify`; compiler/runtime §2.1, "A package's publisher"; `docs/errors/publish.publisher_missing.md`, `docs/errors/publish.publisher_mismatch.md`.
 - [x] **G7 `jadpo package new` and the licence bar**: area 14, `jadpo package new`, `jadpo package check` and `jadpo package verify`; area 11, "Developing and publishing a package" and "What publishing requires"; the design notes' "A new package and the licence bar"; `docs/errors/publish.licence_proprietary.md`.
-- [ ] **R7 The registry application** **needs a maintainer** to start the
-  jadpo.dev session, after R1, R4, R6, R6b, 8.2n and G1 to G7: built against the
-  protocol and passing R4's conformance test. Until the S3 driver its archives
-  are kept in PostgreSQL, and its database must offer pgvector 0.8. Word search
-  is `search:` with `matches`.
+- [x] **R7 The registry application**: `registry/` in jadpo-website, its `docs/registry/plan.md` and `tasks.md`, live since 2026-11-06; R4's conformance test in its `.github/workflows/registry.yml`.
 
 After the registry is live, in order:
 
@@ -510,7 +509,30 @@ After the registry is live, in order:
 - Then, each with its own chunk below: signed log heads (keys held as data
   and `crypto.sign`, P9 under item 3), the S3 driver for the registry's archives
   (B7, under item 4), the search capability (item 8), and GitHub sign-in for
-  jadpo.dev accounts (`Driver.github`; Google works now, through A7b).
+  jadpo.dev accounts (`Driver.github`, N1 under item 15; Google works now,
+  through A7b).
+- [ ] **R10 What the registry asks of `jadpo`** `opus · high`: jadpo-website's
+  `docs/registry/plan.md`, "Asks for Jadpo"; area 11, "The verifier" and
+  "What publishing requires". A verifier image for pre-releases, with what
+  `jadpo fix` would change in its result, so compatibility runs cover
+  pre-releases; `facts.last_contract_run` filled from a package's newest
+  recording, which REG-36 waits on; a release allowed its `NOTICE` file; an
+  `EmailMessage` with no subject refused by `jadpo check` rather than failing
+  at run time; `imported:` keeping a `renamed:` map that reimporting applies;
+  a contract run's undecodable shape reported to the registry (the protocol's
+  endpoint and the runtime's send); and signed log heads, with keys held as
+  data and `crypto.sign`. Done when each has its test and the registry's list
+  no longer names it.
+- [ ] **R11 What the registry application has left** **needs a maintainer**
+  to start the jadpo.dev session, after R10: area 14, "Suggestions" and "The
+  suggestions report"; `docs/registry/tasks.md`. `POST fingerprints/query`
+  served, so `jadpo suggest`'s scan stops saying `registry not reached`;
+  REG-35 (publishers verified by a domain they prove, shown by `jadpo package
+  add`); REG-36 (the last contract run on a package's page). Sign-up beyond
+  the short list waits on terms and a privacy notice.
+- [ ] **R12 Jadpo HQ** **needs a maintainer**: area 14, "HQ's agent" and
+  "`jadpo suggest`". The service `jadpo suggest share` sends to, built against
+  the protocol its local fake speaks today.
 
 ## After the first build, in order
 
@@ -594,8 +616,11 @@ After the registry is live, in order:
      values, as a long-kept log event; and an audited entity's marked
      field kept in its history as that hash, lifting B11's
      `toolchain.not_built_yet` (area 16, "What the audit trail doesn't
-     keep yet"). Done when log and access-record tests show both on both
-     executors.
+     keep yet"). The hosts' `failure.rejected` event is built here, since
+     no failure is logged yet (area 4, "Logging"), and with the access
+     records a field of a sensitive category becomes searchable (area
+     16, "Search and personal data"). Done when log and access-record
+     tests show both on both executors.
    - [ ] **P8 The personal-data report** `opus · high` after V5 and P7:
      area 15, "The personal-data report", "Where data is stored", "What
      this does not cover" and "What the compiler checks" (a marked field
@@ -730,24 +755,143 @@ After the registry is live, in order:
    - [x] **B13 Monitoring thresholds**: area 16, "Writing a threshold",
      "Setting and changing them" and "Monitoring thresholds: checked and
      generated", and Decisions; area 18, "Acceptances" (`ThresholdChange`).
-5. Debugging and review (area 17): `why`, timelines, `test new --from`,
-   `call`.
+   - [ ] **B14 Where else a `File` goes** `opus · high` after B4 and B5:
+     area 16, "What a `File` holds", "Attachments", "`store.read(file)`"
+     and "Deleting and erasing"; area 11, "Types". A `File` in an
+     operation's `input:` or a webhook's `reply:`, sent as its bytes;
+     several attachments from one field (`List<File>`, `Set<File>`, a
+     `Map`) and a `FileContents` on an email; fields naming one store of
+     files in entities of two databases. Done when each runs on both
+     executors in place of its `toolchain.not_built_yet`.
+   - [ ] **B15 Flags and erasure** `opus · high` after P4c: area 16, "The
+     log", "Removing" and "What is built". A user's erasure reaching their
+     `id` in `jadpo_flags` and `jadpo_flag_changes`, and those tables
+     dropped once the last flag goes. Named tenants wait on tenancy being
+     settled for flags (L3). Done when an erased person leaves no row in
+     either table, on both executors.
+   - [ ] **B16 What the audit trail doesn't keep yet** `opus · xhigh`
+     after P7: area 16, "What the audit trail doesn't keep yet"; area 15,
+     "What is built". A `File` field, a field with its own `retention:`, a
+     person's record removed other than by erasure, a `delete` whose
+     cascade changes an audited record, and an erasure that keeps an
+     audited record. The pages don't yet say how each is kept or removed,
+     so **needs a maintainer** for that decision first; P7 lifts only the
+     marked-field case.
+   - [ ] **B17 Rate limits in the documents** `opus · high`: area 16, "What
+     is built"; area 7, "The `x-jadpo` fields". A generated route's own
+     limits in OpenAPI's `x-jadpo-rate-limit` and `jadpo routes`, and the
+     `RateLimit` headers on a magic-link refusal. Redis's store is Q8;
+     turning a limit off is L3.
+5. Debugging and review (area 17): `why` for anything but a schedule,
+   `jadpo trace` and the timelines (the trace `--keep-failed` keeps, each
+   step's state, an email's link to its trace), `test new --from` and
+   `--from-event`, `call`, mapped `.jadpo` stacks and `jadpo incident`.
+   - [ ] **E1 Path IDs, coverage and replay** `opus · xhigh` after item 5's
+     trace: area 16, "`path`" and "Setting and changing them"; area 17,
+     "Replaying a production request". `path` and `path_key` on requests,
+     `jadpo path`, path coverage in `jadpo test`, production counts and
+     query cost in review, metrics for each flag value's path, and
+     `jadpo replay`. Done when a request's number draws its route on both
+     executors and a replay gives the same results.
 6. Records and acceptances: moved to "Approvals" (2026-10-31).
 7. Tooling completeness (area 14): interactive tests, `rename` (refusing a
    name already in use, 2026-10-16), full completion.
+   - [ ] **T1 `jadpo rename`** `opus · xhigh`: area 14, "Commands for
+     looking into and changing code"; area 18, "Stable identity"; area 5,
+     "Migrations". Renames a declaration or field everywhere, keeps its
+     stored data by writing the identity registry, and refuses a name in
+     use; `jadpo migrate new` stops refusing a rename. D8b follows. Done
+     when renaming a stored field keeps its rows on both executors.
+   - [ ] **T2 `jadpo domain`** `opus · high` after T1: area 14, "Tools for
+     agents"; area 1, "Domains"; area 18, "Keys" and "Acceptances". `rename`,
+     `split` and `merge`, moving files and every call, so a domain renamed
+     no longer reads as one created. Designed with the design skills
+     first. Done when each passes on a two-domain app with no diff from
+     the moved code's behaviour.
+   - [ ] **T3 `jadpo test --interactive` and `--affected`** `opus · high`:
+     area 13, "In the editor" and "What is built"; area 14, "`jadpo test`".
+     The keyboard view, its `enter`, `a` and `f` keys under `--watch`, and
+     the tests a change reaches against the merge-base with `main`.
+     Designed with the design skills first.
+   - [ ] **T4 The schema and query reports** `opus · high`: area 14, "The
+     `build/` folder"; area 16, "Setting and changing them". Those two
+     reports, `diagnostics/`, `inventory/`, `audit/` and `compatibility/`,
+     `jadpo sql --explain`, and a threshold's starting values from the query
+     report. Designed with the design skills first.
+   - [ ] **T5 The agent skill's last three parts** `opus · high` after A17:
+     area 14, "Tools for agents". Reading the catalogues and running `jadpo
+     impact` first, the parallel-workspace routine, and the rule for a fixed
+     value. Generated CI also belongs here, once a page says what generates it
+     (L3).
+   - [ ] **T6 Small promises from the pages** `opus · high`: area 7, "What
+     is built"; area 10, "Where translations live"; area 1, "What is built";
+     area 14, "`jadpo migrate`". `jadpo build` writing
+     `<api>.failures.<locale>.json`; `layout.promotion_required` covering
+     messages; `layout.asset_unreferenced`; and `jadpo migrate new` asking for
+     a missing purpose, which comes with prompts.
+   - [ ] **T7 Records in the editor** `opus · high`: area 18, "Records in
+     git and in your editor" and "What is built". `jadpo check` building
+     the base commit, as `jadpo approval` does, to tell a careful hand edit of
+     a view from a stale one; the record language's grammar; `jadpo lsp`
+     serving records.
 8. Packages and capabilities after the first build (decided 2026-10-16):
    services run by Jadpo (`runs:`, Docker or Podman hidden behind
-   `jadpo services`); the `documents` capability; OAuth grants per owner;
-   search, `bot_check` and `scanning` capabilities;
+   `jadpo services`, and `jadpo dev` starting them); the `documents`
+   capability, with its `Document` base and `documents/` folder; OAuth grants
+   per owner (`grants:`, `on_behalf_of:`, `OAuthGrant`, `jadpo dev grants add`
+   and grants as test fixtures); search (an engine's `store:` and `jadpo
+   search reindex`), `bot_check` and `scanning` capabilities, with image
+   variants, each with its fake;
    telemetry's `telemetry:` section, custom metrics and the local
    `jadpo traces`, `metrics` and `logs`; `jadpo watch`; a service's new or
    changed container image and its `outbound:` grants, each with a
    `PackageChange` acceptance; packages from other Jadpo
-   apps and the cross-app break check; choosing a provider when deploying,
+   apps (`jadpo package add` from a folder or a URL) and the cross-app break
+   check; choosing a provider when deploying,
    when an app other people run needs it.
+   - [ ] **C1 Publishing events outward and outgoing webhooks** `opus ·
+     xhigh`: area 12, "Where events travel" and "Running background work";
+     area 16, "Outgoing webhooks" and "Sending audit entries elsewhere";
+     area 7, "The `x-jadpo` fields". `publishing:`, its capability, and
+     `x-jadpo-events`. Done when a chosen public event reaches a subscriber
+     outside the app on both executors, signed and retried.
+   - [ ] **K1 Importers other than OpenAPI** `opus · high`, when first
+     needed: area 11, "An importer" and "Installing safely"; area 14,
+     "Commands for packages". `smithy`, `postman`, `har` (a capture's
+     operations) and `dts`.
+   - [ ] **K2 What else a provider call can be** `opus · high`: area 11,
+     "How provider calls are made", "How connections to packages are read"
+     and "How webhooks are received". Protocols other than `json_http` and
+     `aws_json`, credential schemes other than the four built, a setting's
+     placeholder in a host (`{project_ref}`), defaults for package settings,
+     and a field read by `decode:` or `encode:` on a webhook's event.
+     Twilio's XML waits on an XML byte format (L2).
+   - [ ] **K3 `AnyObject`** `opus · high`: area 2, "Other built-in types";
+     area 11, "Types". A package input taking any of the app's object types as
+     JSON, as Postmark's template variables and Stripe's metadata need.
+   - [ ] **K4 Capability mappings and conformance suites** `opus · high`:
+     area 11, "How a package provides a capability", "Proving a package
+     works" and "Mistakes not reported yet"; area 21, "The conformance
+     suite"; area 14, "Commands for packages". Mappings other than
+     `receiving`'s and `email`'s; `jadpo package conform` for each capability
+     but `ai`, and for fixed `hosts:`; a passing run pinned to the package's
+     digest and shown on its listing; the scheduled CI run and the contract
+     run.
+   - [ ] **K5 Types from recordings and recipes' tests** `opus · high`:
+     area 11, "Recordings", "Recipes" and "Installing safely". An operation's
+     output type written from a recorded or sandbox answer, and a recipe's
+     tests run in `sample/`.
+   - [ ] **K6 What's left of `ai`** `opus · high` after P9: area 21,
+     "Budgets" and "Streams, embeddings and the OpenAI and Anthropic
+     packages". `keep_content:`, kept in encrypted fields, and an `embed:`
+     with a `batch:` below 100, split across requests.
 9. Product work: the developer console and MCP, the graph review UI
    (Revset-inspired), acting as an OAuth
-   provider, D1 and row-level security.
+   provider, D1 (area 5, "Actions on D1", with `jadpo sql` for SQLite) and
+   row-level security (opt-in, design notes for area 6). The console holds
+   telemetry, the schedules' timeline and the dev inbox's page, and `jadpo
+   mcp` an agent's proposed thresholds (area 16, "Setting and changing
+   them").
 10. A versioned application contract for frontend clients: a public contract
    derived by the compiler, client consumption declarations and generated
    TypeScript bindings (a React example first); presentation stays in
@@ -755,6 +899,123 @@ After the registry is live, in order:
 11. `jadpo docs` or `jadpo mcp` serving the bundle offline
    ([documentation](documentation.md), "Not decided yet").
 12. [ ] **D18 Areas by name** `opus · medium`: command and error pages and CLI strings saying "Area 14" or "(area 12)" name the area instead, as the [writing guide](writing.md)'s "Link by name, never by number" says.
+
+13. Data and queries (areas 5, 6, 19 and 20), added by the audit of
+    2026-11-08. Each keeps every test passing on both executors.
+    - [ ] **Q1 Comparing standard types, money and held values in a query**
+      `opus · xhigh`: area 5, "A stored value is checked when it is read"
+      and "Migrating structured values"; area 6, "Operations in conditions";
+      area 19, "SQL literals" and "Money in a translated message". Comparing and
+      ordering by a standard type held in named columns, a standard collection,
+      an amount of money or a range, and a condition on a field kept as JSON.
+    - [ ] **Q2 Unique rules, indexes and one-step updates over held values**
+      `opus · xhigh` after Q1: area 5, "Migrating structured values" and "Special
+      kinds of index"; area 19, "Money in a translated message". A `unique:` or
+      index over a structured value, a one-step update working one out, other
+      index kinds than geographic and HNSW.
+    - [ ] **Q3 What `jadpo migrate new` still refuses** `opus · high`: area 5,
+      "A stored value is checked when it is read", "Migrations" and "Batches,
+      locks and resuming". A new `pattern:` on a stored field; column type
+      changes other than widening; a computed backfill for a field that allows
+      less; a backfill filling a value held in several columns or reading one held so
+      or as JSON; a backfill of a new required money field; and `CHECK`
+      constraints holding fields' rules.
+    - [ ] **Q4 A `geo.` condition in an include or an aggregate** `opus ·
+      high`: area 20, "What is built"; area 6, "The aggregates".
+    - [ ] **Q5 Reading a second store** `opus · xhigh`: area 6, "One store per
+      action". Reads of another store outside the action's transaction, in place of
+      `toolchain.not_built_yet`.
+    - [ ] **Q6 A database only when something needs one** `opus · high`, with
+      the first feature that can run without one: area 5, "Stores".
+    - [ ] **Q7 A standard type swapped under stored data** `opus · high` after T1:
+      area 19, "Reference lists ship with Jadpo" and "Names each release adds";
+      area 18, "Acceptances". The data migration and acceptances for a
+      `type.standard_exists` or `type.standard_clash` swap of a type already
+      stored or on the wire.
+    - [ ] **Q8 The Redis driver** `opus · xhigh`: area 11, "No presets, no
+      dependencies"; area 16, "Where the counts are kept: `rate_limits: { store: }`" and "A
+      Redis store on Workers". `Driver.redis` natively and on Workers, and
+      rate limits counted there rather than in each server's memory.
+    - [ ] **Q9 Caches** `opus · xhigh` after Q8: area 5, "Caches"; area 6,
+      "Where a read comes from"; area 7, "Write revisions"; area 13, "What is
+      built"; area 11, "Targets". An entity's `caches:`, a query's `cache:`, the
+      `cache` capability, the `Jadpo-Revision` header, an in-memory cache checked
+      against its target, caches in tests and erasure reaching a cache.
+      Clearing only the entries a change affects isn't designed (L3).
+    - [ ] **Q10 Entities and geometries in Redis** `opus · xhigh` after Q9: area 5,
+      "Entities in Redis"; area 6, "Reading and writing entities in Redis"; area
+      20, "What is built".
+14. Background work and tests (areas 12 and 13), added by the audit of
+    2026-11-08.
+    - [ ] **J1 `jadpo batches`** `opus · high`: area 14, "Commands for
+      services, calls, email and stored data" and "`jadpo runs unfinished`";
+      area 12, "What `batches.status` shows". `list`, `show` and
+      `cancel`, and `jadpo deliveries` listing batch runs. Designed with the
+      design skills first.
+    - [ ] **J2 Batches over more** `opus · high`: area 12, "Walking records
+      or a provider's list: `batches.each`", "How a run is kept" and "How a
+      file's run is kept"; area 11, "Pages of results". A provider's list operation as
+      `from:`, walked by `page.next`; a page type above 1,000 items split into
+      batches; `batches.status` and `batches.cancel` with runs in no store or
+      several; a file's run with several databases and none written.
+    - [ ] **J3 Delivery and operator gaps** `opus · high`: area 12, "Retries and
+      giving up", "Watching schedules" and "Running background work". `Retry-After`
+      between a delivery's attempts, names for instances, and
+      `cli.signal_handler_failed`.
+    - [ ] **W1 Data builders and `assert emitted`** `opus · high`: area 13,
+      "Data builders" and "What is built". Builders' valid defaults, the
+      named object a fixture returns with them, and `assert emitted`.
+    - [ ] **W2 Generated tests** `opus · xhigh`: area 13, "In the editor" and
+      "What is built". Every route refusing bad input with `{ field, rule }`, each
+      declared failure's envelope and the rest of that list, generated, run with
+      the project's and shown under the route they test. Area 15's after-`erase`
+      test is P5's.
+    - [ ] **W3 What a failed test reports** `opus · high` after item 5's trace:
+      area 13, "What a failed test reports". The trace, fakes, kept database and
+      clock in the report.
+15. Sign-in and scopes (areas 8, 9 and 19), added by the audit of
+    2026-11-08.
+    - [ ] **N1 GitHub, Apple and token subjects** `opus · high`: area 8,
+      "Providers", "In `jadpo dev`" and "External tokens in tests and `jadpo dev`";
+      area 11, "No presets, no dependencies". `Driver.github` and
+      `Driver.apple`, the first for jadpo.dev's accounts, and a principal `subject:`
+      made of several columns or a structured value with `external_token`.
+    - [ ] **N2 Scopes** `opus · xhigh`: area 8, "What is built"; area 9,
+      "What is built"; area 19, "The token types"; area 11, "Mistakes not
+      reported yet". Scope declarations, `scopes:` and policy's restrictions
+      with `oauth_token` and `external_token`, `OAuthScope` narrowing, and an
+      operation whose scope a grant doesn't request.
+16. What waits on someone else, added by the audit of 2026-11-08. These
+    can't start until what each names has happened.
+    - [ ] **L1 Lists that need a licence** **needs a maintainer**: area 19,
+      "What is built". The UK modulus check in `BankAccount`, on Vocalink's
+      permission to ship its tables; checking `UnLocode`, `IataAirport`,
+      `IcaoAirport`, `IataAirline` and `Icd10Code` against their lists, on
+      licences that allow shipping them.
+    - [ ] **L2 When an application needs it** `opus · high`: area 19, "`json_lines`",
+      "Storing an event", "Age ratings", "Sizes" and "Barcodes, amounts and
+      ratings"; area 11, "Webhooks that need a reply", "How a package provides a
+      capability" and "Queues"; area 21, "A package filling `ai`"; area 16, "`jadpo
+      email check-domain`" and "The score's checks". Legacy encodings; a calendar
+      file's writer; more age-rating bodies, size systems and symbologies; an
+      XML byte format; two kinds of mail through two connections; Kafka as a
+      built-in driver; Gemini's envelope; a provider's own DNS records; the
+      unsubscribe check, with bulk mail.
+    - [ ] **L3 Language questions the pages leave open** **needs a maintainer**:
+      each needs a decision, recorded on its area page, before it can be built.
+      A map literal with entries and a rule on an entity (area 2); clearing only
+      the cache entries a change affects (area 5); a one-step update that refuses when
+      the stored value would break a rule (notes for area 6); `If-Match` and
+      `ETag`, and a stream failing after its headers (notes for areas 4
+      and 7); totals kept on an entity (notes for area 6); what generates a
+      project's CI (area 14); flags for named tenants (area 16); turning a
+      rate limit off, which has no syntax (area 16); realtime subscriptions
+      and generated admin screens (area 16); whether a package may read the
+      app's `shared/`, whether the registry marks and caches a provider's own
+      package, and what `jadpo packages outdated` does (notes for area 11);
+      and, from the registry's asks, personal-data labels on every field a
+      package sends, a way for a `GET` to count what it serves, and
+      `names.registry_part`.
 
 ## How we work
 
