@@ -193,6 +193,10 @@ POSTGRES = [
     # actions, policy for a call with a caller, a seed that stops, and a
     # database not on this machine refused (area 5, "Seeds"; chunk A5).
     ('live PostgreSQL: seeds', [('jadpo-cli', 'seeds')], []),
+    # What a project keeps if it leaves Jadpo (docs/leaving-jadpo.md): the
+    # golden todo's migrations applied by `psql` alone, adding tables and
+    # nothing that runs, and a seed's records read back by `psql`.
+    ('live PostgreSQL: tables readable without Jadpo', [('jadpo-cli', 'leaving')], []),
     # Signing in through a provider: the routes on a deployable's host,
     # Google a stand-in on its outbound seam (chunk A7b), and `jadpo dev`'s
     # account-chooser page in the provider's place, end to end (area 8,
@@ -516,6 +520,12 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
                            [python, 'tools/release/rehearsal.py'], alone=True, show=True))
         checks.append(Step('a deployable built without testing', 'tests',
                            [python, 'tools/checks/deployable.py'], lane='cargo'))
+        # Every OpenAPI document the golden todo and the teaching examples
+        # write is valid OpenAPI 3.1, by the specification's own schema
+        # (docs/leaving-jadpo.md), with the validator pinned in
+        # tools/fixtures/openapi/, which it installs there the first time.
+        checks.append(Step('OpenAPI documents are valid OpenAPI 3.1', 'tests',
+                           [python, 'tools/checks/openapi_valid.py'], jadpo=True))
         checks.append(Step('golden todo: all 44 workerd cases', 'wasm32',
                            [python, 'benchmarks/contract/run.py', '--targets', 'workerd'],
                            jadpo=True, postgres=True, lane='cargo', env=dict(TEST_RELEASE_PROFILE), show=True))
