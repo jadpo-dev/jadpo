@@ -176,7 +176,7 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
 fn a_feature_collection_is_built_and_read_by_its_fields() {
     assert_eq!(rules(LAYER), NONE);
     let read = format!(
-        "{LAYER}/// The first patch's name on the map.\nfunction names(layer: FeatureCollection<Polygon, PatchProperties>) -> List<PatchName> {{\n    return list.map(layer.features, feature -> feature.properties.name)\n}}\n\n/// Every outline on the map.\nfunction outlines(layer: FeatureCollection<Polygon, PatchProperties>) -> List<Polygon> {{\n    return list.map(layer.features, feature -> feature.geometry)\n}}\n"
+        "{LAYER}/// The first patch's name on the map.\nfunction name_list(layer: FeatureCollection<Polygon, PatchProperties>) -> List<PatchName> {{\n    return list.map(layer.features, feature -> feature.properties.name)\n}}\n\n/// Every outline on the map.\nfunction outlines(layer: FeatureCollection<Polygon, PatchProperties>) -> List<Polygon> {{\n    return list.map(layer.features, feature -> feature.geometry)\n}}\n"
     );
     assert_eq!(rules(&read), NONE);
     // A feature built where its type is known, and one whose geometry is
