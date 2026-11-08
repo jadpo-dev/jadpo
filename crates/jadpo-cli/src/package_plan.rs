@@ -22,13 +22,16 @@
 //!     surface  matches its code
 //!
 //! Change record, 2.0.0 to 2.1.0
-//!   ~ retyped  type UkPostcode  max_length: 7, was max_length: 8
+//!   ~ retyped  type UkPostcode  min_length: 6, was min_length: 5
 //!     actions  save_address, tidy_all
 //!     routes   POST /addresses
 //!     jobs     schedule nightly_tidy
 //!     stored   Address.postcode
 //!
-//! ✓ upgrade planned  Postcodes.v2 2.1.0 · 1 reaches the app · 1 migration change
+//! Migration that would follow
+//!   ~ field `Address.postcode` changed  needs a decision: refit
+//!
+//! ✓ upgrade planned  1 reaches the app · 1 schema change
 //!
 //! → jadpo package update postcodes  takes 2.1.0
 //! ```

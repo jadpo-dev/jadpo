@@ -283,7 +283,7 @@ fn on_a_terminal(cwd: &Path, args: &[&str]) -> (String, u8) {
     (strip_ansi(&output.stdout), output.code)
 }
 
-/// The page's example (area 14, "`jadpo package update` and `remove`").
+/// The page's example (area 11, "How packages are installed and linked").
 const PAGE: &str = "✓ Planned Postcodes.v2 from 2.0.0 to 2.1.0, nothing changed
     folder   packages/postcodes/v2
     source   path ../postcodes

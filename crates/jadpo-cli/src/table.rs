@@ -1147,7 +1147,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--plan",
                 value: None,
-                description: "For update: show what it would reach, changing nothing",
+                description: "For update: show its reach, change nothing",
                 values: &[],
             },
         ],

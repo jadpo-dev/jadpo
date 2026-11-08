@@ -899,7 +899,8 @@ in plain words. `jadpo package update <name> --plan` is the upgrade plan
 [External services](11-integrations.md) refers to: the same review before
 anything is installed, beside what each change record entry reaches in the
 app and the compile errors and migration that would follow
-([Tools](14-tooling.md#jadpo-package-update-and-remove)).
+([How packages are installed and
+linked](11-integrations.md#how-packages-are-installed-and-linked)).
 
 ## Production builds
 <!-- topic: production-builds -->
