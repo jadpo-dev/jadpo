@@ -820,6 +820,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "docs/language/10-configuration-and-time.md translation-messages",
         "docs/language/12-jobs-and-events.md several-steps",
         "docs/language/13-testing.md fakes-in-tests",
+        "docs/language/13-testing.md overdue-reminders",
         "docs/language/15-personal-data.md erasure",
         "docs/language/15-personal-data.md kept-record",
         "docs/language/21-ai.md ai-embed",

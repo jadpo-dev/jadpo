@@ -556,17 +556,188 @@ A schedule is work Jadpo runs on a timetable, such as sending reminders
 every hour ([Schedules](12-jobs-and-events.md#schedules)). A schedule test
 runs one with `.run()`, once, at the test's clock:
 
-```jadpo fragment
-// domains/planning/schedules/overdue_reminders.test.jadpo
+```jadpo check project=overdue-reminders file=app.jadpo hidden
+application {
+    connections: {
+        reminder_mail: {
+            package: ReminderMail.v1
+            domains: [planning]
+            environment: config.reminder_mail_environment
+        }
+    }
+}
+```
+
+```jadpo check project=overdue-reminders file=config.jadpo hidden
+config {
+    reminder_mail_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+```jadpo check project=overdue-reminders file=shared/providers/reminder_mail/v1/package.jadpo hidden
+/// An outside email service's reminders.
+package ReminderMail.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=overdue-reminders file=shared/providers/reminder_mail/v1/provider.jadpo hidden
+/// An outside email service.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.reminder-mail.example"
+        sandbox: "https://sandbox.reminder-mail.example"
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=overdue-reminders file=shared/providers/reminder_mail/v1/resources/reminders.jadpo hidden
+public resource reminders {
+    send_overdue_reminder: {
+        method: HttpMethod.post
+        path: "/v1/reminders"
+        input: ReminderMessage
+        output: ReminderReceipt
+        changes: true
+        idempotent: true
+        source: PackageSource.written
+        docs: "https://docs.reminder-mail.example/reminders"
+    }
+}
+```
+
+```jadpo check project=overdue-reminders file=shared/providers/reminder_mail/v1/types/reminder_message.jadpo hidden
+/// One reminder, addressed to whoever owns the todo.
+public type ReminderMessage = Object {
+    to: Email
+    todo_title: Text {
+        max_length: 200
+    }
+}
+```
+
+```jadpo check project=overdue-reminders file=shared/providers/reminder_mail/v1/types/reminder_receipt.jadpo hidden
+/// The service's receipt for a reminder.
+public type ReminderReceipt = Object {
+    accepted_at: Instant
+}
+```
+
+```jadpo check project=overdue-reminders file=domains/planning/entities/todo.jadpo migrate=initial hidden
+use planning/types { DueTime }
+
+/// A task with a due date.
+entity Todo {
+    id: Uuid
+    title: Text {
+        max_length: 200
+    }
+    owner: Email
+    due_at: DueTime
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+```
+
+```jadpo check project=overdue-reminders file=domains/planning/actions/remind_overdue.jadpo hidden
+use app { reminder_mail }
+use planning/queries { overdue_todos }
+use planning/types { DueTime }
+use shared/providers/reminder_mail
+
+/// Sends the reminder for the todo longest overdue, if one is.
+action remind_overdue() -> ReminderMail.ReminderReceipt? {
+    match list.first(overdue_todos(DueTime(clock.now))) {
+        some(todo) -> {
+            return reminder_mail.reminders.send_overdue_reminder(
+                ReminderMail.ReminderMessage {
+                    to: todo.owner
+                    todo_title: todo.title
+                }
+            )
+        }
+        none -> {
+            return none
+        }
+    }
+}
+```
+
+```jadpo check project=overdue-reminders file=domains/planning/queries/overdue_todos.jadpo hidden
+use planning/entities { Todo }
+use planning/types { DueTime }
+
+/// Todos past `now`.
+query overdue_todos(now: DueTime) -> List<Todo> {
+    from: Todo
+    where: Todo.due_at < now
+    order: [Todo.id asc]
+    limit: 100
+}
+```
+
+```jadpo check project=overdue-reminders file=domains/planning/types/due_time.jadpo hidden
+/// When a todo counts as overdue from.
+type DueTime = Instant {}
+```
+
+```jadpo check project=overdue-reminders file=domains/planning/schedules/overdue_reminders.jadpo hidden
+use planning/actions { remind_overdue }
+
+/// Reminds owners of overdue todos every hour.
+schedule overdue_reminders {
+    every: 1h
+    run: remind_overdue()
+}
+```
+
+```jadpo check project=overdue-reminders file=domains/planning/fixtures/one_overdue_todo.jadpo hidden
+use planning/entities { Todo }
+
+/// One todo already past its due time.
+fixture one_overdue_todo() {
+    var todo: Todo = Todo.create {
+        set: {
+            title: "Buy milk"
+            owner: "alice@example.test"
+            due_at: "2026-01-15T11:00:00Z"
+        }
+    }
+    assert todo.title == "Buy milk"
+}
+```
+
+`domains/planning/schedules/overdue_reminders.test.jadpo`:
+
+```jadpo check project=overdue-reminders file=domains/planning/schedules/overdue_reminders.test.jadpo
+use app { reminder_mail }
+use planning/fixtures { one_overdue_todo }
+use shared/providers/reminder_mail
+
 test "an overdue todo gets one reminder" {
     clock: "2026-01-15T12:00:00Z"
     fakes: {
-        ReminderMail.send_overdue_reminder: [ReminderReceipt { accepted_at: "2026-01-15T12:00:00Z" }]
+        reminder_mail.reminders.send_overdue_reminder: [
+            ReminderMail.ReminderReceipt {
+                accepted_at: "2026-01-15T12:00:00Z"
+            }
+        ]
     }
 
     one_overdue_todo()
     overdue_reminders.run()
-    assert list.count(ReminderMail.send_overdue_reminder.requests) == 1
+    var sent: List<ReminderMail.ReminderMessage> = reminder_mail.reminders.send_overdue_reminder.requests
+    assert list.count(sent) == 1
+    assert list.map(sent, message -> message.to) == ["alice@example.test"]
+    assert list.map(sent, message -> message.todo_title) == ["Buy milk"]
 }
 ```
 
@@ -942,29 +1113,58 @@ default, unless the test's `fakes:` scripts it.
 
 A script lists the responses an operation gives, in order. Each is a value
 of the operation's output type, or one of the provider conditions the
-integration maps, such as `rate_limited`
+integration maps, such as `unavailable`
 ([Calling](11-integrations.md#calling)). The response still goes through
 the integration's real code: input checks, retries, time limits and
 failure mapping. So a test proves how your code handles each outcome.
 
 ```jadpo fragment
-test "a rate-limited reminder is retried" {
+test "a reminder the service couldn't take is retried" {
     fakes: {
-        ReminderMail.send_overdue_reminder: [rate_limited, ReminderReceipt { accepted_at: "2026-01-15T12:00:00Z" }]
+        reminder_mail.reminders.send_overdue_reminder: [unavailable, ReminderMail.ReminderReceipt { accepted_at: "2026-01-15T12:00:00Z" }]
     }
     ...
-    var sent: List<ReminderMessage> = ReminderMail.send_overdue_reminder.requests
+    var sent: List<ReminderMail.ReminderMessage> = reminder_mail.reminders.send_overdue_reminder.requests
     assert list.count(sent) == 2
 }
 ```
 
-Here the first send is rate-limited and the retry is accepted, so the code
+Here the first send did nothing and the retry is accepted, so the code
 sent two requests.
 
 ### What the code sent: `.requests`
 
-`Integration.operation.requests` lists what the code sent, as typed
-values with secrets left out.
+`<connection>.<resource>.<operation>.requests` lists what the code sent
+that operation, in the order it sent it. It is typed as the operation's
+input, `List<AcmeCouriers.CreateBooking>` here, so a test reads a sent
+field as it reads any other value:
+
+```jadpo fragment
+var sent: List<AcmeCouriers.CreateBooking> = couriers.bookings.create.requests
+assert list.count(sent) == 1
+assert list.map(sent, booking -> booking.postcode) == ["N1 9GU"]
+```
+
+- **Each request is what the package encoded before it went out**, so an
+  input that doesn't encode, which never leaves, isn't listed. Each
+  connection keeps its own list, for the operation as the code called it
+  through that connection.
+- **Each send is one request.** A send a provider answered `unavailable`,
+  which did nothing, is sent again and listed again. The same request sent
+  again under a key the provider keeps, as a crash's rerun or a retry after
+  `lost` sends it, is the one request and is listed once, so a crash
+  doesn't change what the test reads.
+- **A secret reads as redacted, never as its value.** A field of the input
+  typed as a secret value, such as `ApiKey`, shows as `<redacted ApiKey>`
+  and equals nothing the code holds. The connection's credential isn't part
+  of a request a test can read. A prompt's fields, kept by the `ai` fake,
+  are read from `ai.<prompt>.requests` ([Testing AI calls](21-ai.md#testing-ai-calls)).
+- **A test reads it, and nothing else does.** Anywhere else it is
+  `semantic.not_callable`; an operation its connection doesn't have is
+  `semantic.unknown_name`.
+
+An operation with no `input:` lists one `Unit` for each send, which
+`list.count` counts.
 
 ### What can't be faked
 
@@ -1118,6 +1318,7 @@ test "the courier's reference is kept" {
     }
     var booking: AcmeCouriers.Booking = attempt book("N1 9GU")
     assert booking.id == "b-17"
+    assert list.map(couriers.bookings.create.requests, sent -> sent.postcode) == ["N1 9GU"]
 }
 
 test "a taken slot is the app's own failure" {
@@ -1304,7 +1505,6 @@ on.
 
 These parts of fakes aren't built yet:
 
-- `.requests`, apart from the `ai` fake's `ai.<prompt>.requests`.
 - The capabilities' fakes, apart from `email.sent` and the `ai`
   capability's: its fake, `fakes: { ai.<prompt>: }`,
   `ai.<prompt>.requests`, `recorded("<name>")`, the fake's embeddings and
@@ -1507,7 +1707,7 @@ without rerunning it, the same standard as the application's own
 versioned JSON with `--json`:
 
 ```text
-FAIL  a rate-limited reminder is retried
+FAIL  a reminder the service couldn't take is retried
       domains/planning/schedules/overdue_reminders.test.jadpo:31
 
   assert list.count(sent) == 2
@@ -1943,7 +2143,7 @@ Not built yet: caches, which need the Redis driver.
 | Batches | Built: a batch run a step starts, or a delivery or an item starts in turn, runs to its end before the test's next statement, drawn among the deliveries a batch at a time, at the test's clock, two items a batch with a fresh runner claiming each, as after a restart. An item that fails is the run's problem, and a `finished:` that fails leaves the run `failed`, which `batches.status` reads; the test goes on. A run whose batch couldn't commit, such as one whose item's call a fake answers `unavailable`, gives its runner's lease back and waits, as for the tick, until the next `clock.advance`, of any length ("Batches"). |
 | Clock | Built: a test's clock starts at its `clock:`, or at 2000-01-01T00:00:00Z without one, and `clock.advance(...)` moves it on for the calls after it; only a test moves it (`type.test_clock_context`, a fixture and a seed included), and a move backwards is the fault `clock_backward`. |
 | Configuration | Built: `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
-| Integration fakes | Partly built: for provider packages, every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Package fakes keep keys, and a test that reaches an action with several changing calls runs again with a crash at each step boundary ("Provider calls and capabilities in tests"). `email.sent` ([Email](16-built-in-services.md#email)): every email a test sends is caught, rendered whole, a mail package's included, and read as a `List<SentEmail>`. Not built yet: `.requests` (built for the `ai` fake, `ai.<prompt>.requests`), the capability fakes but `ai`'s, grants, documents and `fixture_file`. |
+| Integration fakes | Partly built: for provider packages, every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Package fakes keep keys, and a test that reaches an action with several changing calls runs again with a crash at each step boundary ("Provider calls and capabilities in tests"). `email.sent` ([Email](16-built-in-services.md#email)): every email a test sends is caught, rendered whole, a mail package's included, and read as a `List<SentEmail>`. `.requests` lists what the code sent an operation, typed as its input, with secrets redacted, as the `ai` fake's `ai.<prompt>.requests` does. Not built yet: the capability fakes but `ai`'s, grants, documents and `fixture_file`. |
 | Database | Built: `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
 | Caller | Built: `Principal.user(user)` and `Principal.service(service)` in tests, fixtures and seeds; a call passing a caller runs as that caller, one passing none runs without policy. |
 | Placement | Built: a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. |

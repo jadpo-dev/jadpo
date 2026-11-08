@@ -268,3 +268,121 @@ fn every_scripted_answer_is_checked_against_the_package() {
         plain.stdout
     );
 }
+
+/// `.requests` lists what the code sent, in order and typed as the
+/// operation's input, so a test reads a sent field as any other value;
+/// an operation it never called lists nothing.
+#[test]
+fn a_fakes_requests_are_typed_as_what_was_sent() {
+    let root = desk(
+        "requests",
+        "use app { couriers }\nuse shared/providers/acme_couriers\n\ntest \"both bookings are kept in order\" {\n    fakes: {\n        couriers.bookings.create: [\n            AcmeCouriers.Booking {\n                id: \"b-1\"\n                collect_at: \"2026-10-20T09:00:00Z\"\n                windows: []\n                note: none\n            },\n            AcmeCouriers.Booking {\n                id: \"b-2\"\n                collect_at: \"2026-10-20T09:00:00Z\"\n                windows: []\n                note: none\n            }\n        ]\n    }\n    var first: AcmeCouriers.Booking = attempt book(\"N1 9GU\")\n    var second: AcmeCouriers.Booking = attempt book(\"E2 8AA\")\n    assert first.id != second.id\n    var sent: List<AcmeCouriers.CreateBooking> = couriers.bookings.create.requests\n    assert list.count(sent) == 2\n    assert list.first(sent) == AcmeCouriers.CreateBooking {\n        postcode: \"N1 9GU\"\n    }\n    assert list.map(sent, booking -> booking.postcode) == [\"N1 9GU\", \"E2 8AA\"]\n}\n\ntest \"nothing sent lists nothing\" {\n    assert list.count(couriers.bookings.create.requests) == 0\n}\n",
+    );
+    let output = jadpo(&root, &["test", ".", "--seed", "1"]);
+    assert_eq!(
+        (output.stdout.as_str(), output.code),
+        ("tested: 2 passed, 1 pure test, 1 action test\n", 0),
+        "{}\n{}",
+        output.stdout,
+        output.stderr
+    );
+}
+
+/// A retry is another request: an answer that said it did nothing leaves
+/// no key to repeat under, so the code sent it twice (area 13, "Scripting
+/// answers").
+#[test]
+fn a_send_that_did_nothing_and_went_again_is_listed_twice() {
+    let root = desk(
+        "requests-retried",
+        "use app { couriers }\nuse shared/providers/acme_couriers\n\ntest \"the retried booking was sent twice\" {\n    fakes: {\n        couriers.bookings.create: [\n            unavailable,\n            AcmeCouriers.Booking {\n                id: \"b-1\"\n                collect_at: \"2026-10-20T09:00:00Z\"\n                windows: []\n                note: none\n            }\n        ]\n    }\n    var booking: AcmeCouriers.Booking = attempt book(\"N1 9GU\")\n    assert booking.id == \"b-1\"\n    assert list.count(couriers.bookings.create.requests) == 2\n}\n",
+    );
+    let output = jadpo(&root, &["test", ".", "--seed", "1"]);
+    assert_eq!(
+        (output.stdout.as_str(), output.code),
+        ("tested: 1 passed, 1 action test\n", 0),
+        "{}\n{}",
+        output.stdout,
+        output.stderr
+    );
+}
+
+/// A field the input marks secret reads as redacted, never its value: a
+/// test can't confirm what was sent for it, and no report shows it.
+#[test]
+fn a_secret_field_of_a_request_reads_as_redacted() {
+    let root = desk(
+        "requests-secret",
+        "use app { couriers }\nuse shared/providers/acme_couriers\nuse shipping/actions { sign }\n\ntest \"the signing key is never read back\" {\n    var booking: AcmeCouriers.Booking = sign(\"N1 9GU\", \"sk_live_abcdef\")\n    assert booking.id == \"example\"\n    var sent: List<AcmeCouriers.SignedBooking> = couriers.bookings.sign.requests\n    assert list.map(sent, signed -> signed.postcode) == [\"N1 9GU\"]\n    assert list.all(sent, signed -> signed.signing_key != \"sk_live_abcdef\")\n}\n\ntest \"a failing assertion shows it redacted\" {\n    var kept: AcmeCouriers.Booking = sign(\"N1 9GU\", \"sk_live_abcdef\")\n    assert kept.id == \"example\"\n    assert couriers.bookings.sign.requests == []\n}\n",
+    );
+    write(
+        &root,
+        "shared/providers/acme_couriers/v1/resources/bookings.jadpo",
+        "public resource bookings {\n    create: {\n        method: HttpMethod.post\n        path: \"/v1/bookings\"\n        input: CreateBooking\n        output: Booking\n        output_at: \"data\"\n        changes: true\n        idempotent: true\n        failures: [SlotTaken]\n        source: PackageSource.written\n        docs: \"https://docs.acme-couriers.example/bookings\"\n    }\n    sign: {\n        method: HttpMethod.post\n        path: \"/v1/bookings/signed\"\n        input: SignedBooking\n        output: Booking\n        output_at: \"data\"\n        changes: true\n        idempotent: true\n        source: PackageSource.written\n        docs: \"https://docs.acme-couriers.example/bookings\"\n    }\n}\n",
+    );
+    write(
+        &root,
+        "shared/providers/acme_couriers/v1/types/signed_booking.jadpo",
+        "/// A booking signed with the customer's key.\npublic type SignedBooking = Object {\n    postcode: Postcode\n    signing_key: ApiKey\n}\n",
+    );
+    write(
+        &root,
+        "domains/shipping/actions/sign.jadpo",
+        "use app { couriers }\nuse shared/providers/acme_couriers\n\n/// Books a signed collection.\naction sign(postcode: AcmeCouriers.Postcode, signing_key: ApiKey) -> AcmeCouriers.Booking {\n    return couriers.bookings.sign(AcmeCouriers.SignedBooking {\n        postcode: postcode\n        signing_key: signing_key\n    })\n}\n",
+    );
+    let output = jadpo(&root, &["test", ".", "--seed", "1"]);
+    assert_eq!(output.code, 1, "{}\n{}", output.stdout, output.stderr);
+    assert!(
+        output.stdout.contains("1 failed") && output.stdout.contains("1 passed"),
+        "{}",
+        output.stdout
+    );
+    assert!(
+        !output.stdout.contains("sk_live") && output.stdout.contains("<redacted ApiKey>"),
+        "{}",
+        output.stdout
+    );
+    assert!(!output.stderr.contains("sk_live"), "{}", output.stderr);
+}
+
+/// Read anywhere but a test, `.requests` is refused, as `ai.<prompt>`'s
+/// is, and what it names is checked against the package; its type is the
+/// operation's input.
+#[test]
+fn a_fakes_requests_are_checked_against_the_package() {
+    let root = desk(
+        "requests-invalid",
+        "use app { couriers }\nuse shared/providers/acme_couriers\n\ntest \"the wrong names\" {\n    assert list.count(couriers.bookings.cancel.requests) == 0\n    assert list.count(couriers.bookings.create.requests.requests) == 0\n    var sent: List<AcmeCouriers.Booking> = couriers.bookings.create.requests\n    assert list.count(sent) == 0\n}\n",
+    );
+    write(
+        &root,
+        "domains/shipping/actions/sent.jadpo",
+        "use app { couriers }\nuse shared/providers/acme_couriers\n\n/// Not something an action can read.\naction sent() -> List<AcmeCouriers.CreateBooking> {\n    return couriers.bookings.create.requests\n}\n",
+    );
+    jadpo(&root, &["records", "update"]);
+    let output = jadpo(&root, &["check", ".", "--json"]);
+    assert_eq!(output.code, 1, "{}", output.stdout);
+    let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
+    let mut problems: Vec<String> = document["diagnostics"]
+        .as_array()
+        .expect("diagnostics")
+        .iter()
+        .map(|diagnostic| {
+            format!(
+                "{}: {}",
+                diagnostic["rule"].as_str().unwrap_or_default(),
+                diagnostic["message"].as_str().unwrap_or_default()
+            )
+        })
+        .collect();
+    problems.sort();
+    assert_eq!(
+        problems,
+        [
+            "semantic.not_callable: Only a test reads `couriers.bookings.create.requests`".to_string(),
+            "semantic.unknown_name: `couriers.bookings.create.requests.requests` isn't a provider operation".to_string(),
+            "semantic.unknown_name: `couriers` has no operation `bookings.cancel`".to_string(),
+            "type.mismatch: `List<AcmeCouriers.CreateBooking>` can't be used where `List<AcmeCouriers.Booking>` is required".to_string(),
+        ]
+    );
+}

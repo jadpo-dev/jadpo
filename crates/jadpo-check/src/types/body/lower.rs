@@ -1394,6 +1394,17 @@ impl Lower<'_> {
                 fallible: typed::Fallible::Never,
             };
         }
+        // What a test's code sent a provider (area 13).
+        if let Some((connection, operation)) = self.facts.operation_requests.get(&key) {
+            return typed::Expr::Call {
+                callee: Callee::OperationRequests {
+                    connection: connection.clone(),
+                    operation: operation.clone(),
+                },
+                args: Vec::new(),
+                fallible: typed::Fallible::Never,
+            };
+        }
         typed::Expr::Unchecked
     }
 

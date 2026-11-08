@@ -420,16 +420,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 
 What publishing the first packages found (Richard, 2026-11-07):
 
-- [ ] **A27 Fakes' `.requests`** `opus · high`: area 13, "What the code
-  sent: `.requests`". `Integration.operation.requests` is a list typed as the
-  operation's input, `List<CreateBooking>`, so a test reads a sent field as
-  any other value; it is kept where the call is made, in the order sent,
-  each request as the package encoded it before it went out, and a field the
-  input marks `secret` or a credential reads as redacted, never its value.
-  The `ai` fake's `ai.<prompt>.requests` is the model to follow. Done when
-  area 13's example asserting on `ReminderMail.send_overdue_reminder.requests`
-  runs interpreted and compiled, and `toolchain.not_built_yet` no longer
-  names `.requests`.
+- [x] **A27 Fakes' `.requests`**: docs/language/13-testing.md, "What the code sent: `.requests`"; docs/language/notes/13-testing.md, "`.requests` (chunk A27)".
 
 Not scheduled: a way to write a query the language can't express. Richard
 will work through it and other solutions later; don't design or build one

@@ -988,6 +988,7 @@ impl Decoder<'_> {
                 | Callee::Fake { .. }
                 | Callee::AiFake { .. }
                 | Callee::AiRequests { .. }
+                | Callee::OperationRequests { .. }
                 | Callee::AdvanceClock
                 | Callee::Translation(_)
                 | Callee::Escape
