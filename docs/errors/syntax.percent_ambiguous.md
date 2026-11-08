@@ -1,9 +1,17 @@
 # `syntax.percent_ambiguous`
 
-A number touching `%` is a percentage, `20%`, and the remainder (area 3)
-is written with spaces, `20 % 3`, as the formatter writes every binary
-operator. With a number or a name touching the `%` on both sides, either
-could be meant, so neither is guessed.
+A number, `%` and a value touch with no spaces, so the `%` could mean a percentage or a remainder.
+
+## Why Jadpo refuses it
+
+A number touching `%` is a percentage, `20%`, and the remainder is written
+with spaces, `20 % 3`, as the formatter writes every binary operator. With
+a number or a name touching the `%` on both sides, either could be meant, and
+the two give very different answers, so Jadpo doesn't guess.
+
+## What it looks like
+
+main.jadpo:
 
 ```jadpo check project=e-percent-ambiguous expect=syntax.percent_ambiguous
 type BoxCount = Int {}
@@ -28,31 +36,82 @@ error: `20%3` could be `20% 3` or `20 % 3`
 check failed: 1 error, 1 file
 ```
 
-Adding a percentage to money doesn't compile either, by area 3's
-`type.arithmetic_operand`, since it could mean the price raised by a
-fifth or a fifth of something else; the fix writes both:
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
 
-```jadpo check project=e-money-plus-percentage expect=type.arithmetic_operand
+A name after the `%` is the same error:
+
+main.jadpo:
+
+```jadpo check project=e-percent-ambiguous-name expect=syntax.percent_ambiguous
 type CakePrice = Money {
     currency: Currency.gbp
 }
 
-/// A cake's price with VAT added.
-function with_vat(price: CakePrice) -> CakePrice {
-    return CakePrice(price + 20%)
+/// A fifth of a cake's price.
+function fifth_of(rate: CakePrice) -> CakePrice {
+    return CakePrice(20%rate)
 }
 ```
 
 ```text output
-error: `CakePrice` and a percentage can't be added: it could mean two things
+error: `20%rate` could be `20% rate` or `20 % rate`
  --> main.jadpo:7:22
   |
-7 |     return CakePrice(price + 20%)
-  |                      ^^^^^^^^^^^ an amount and a percentage
-  reason: `price + 20%` could mean the amount raised by 20% of itself, or 20% of some other amount; the standard operator table refuses it rather than guess. A percentage scales money by `*`.
-  next: Write `price * 120%`, or `price + price * 20%`, whichever is meant (agent)
-  rule: type.arithmetic_operand
-  help: https://jadpo.dev/docs/errors/type.arithmetic_operand
+7 |     return CakePrice(20%rate)
+  |                      ^^^^^^^ a percentage or a remainder
+  reason: A number touching `%` is a percentage, `20%`, and the remainder is written with spaces, `20 % rate`, as the formatter writes every binary operator; with `rate` touching the `%` too, either could be meant.
+  next: Write `20 % rate` for the remainder, or put the percentage `20%` apart from what follows it (agent)
+  rule: syntax.percent_ambiguous
+  help: https://jadpo.dev/docs/errors/syntax.percent_ambiguous
 
 check failed: 1 error, 1 file
 ```
+
+## How to fix it
+
+**If you meant the remainder**, put spaces around the `%`:
+
+```jadpo fragment
+function twenty_in_threes() -> BoxCount {
+    return BoxCount(20 % 3)
+}
+```
+
+```jadpo check project=e-percent-ambiguous-fix-1 hidden
+type BoxCount = Int {}
+
+/// The cakes left over when twenty are packed in boxes of three.
+function twenty_in_threes() -> BoxCount {
+    return BoxCount(20 % 3)
+}
+```
+
+`twenty_in_threes` now gives the remainder, `2`.
+
+**If you meant a percentage**, write the percentage apart from what it
+scales, with `*`:
+
+```jadpo fragment
+function fifth_of(rate: CakePrice) -> CakePrice {
+    return CakePrice(rate * 20%)
+}
+```
+
+```jadpo check project=e-percent-ambiguous-fix-2 hidden
+type CakePrice = Money {
+    currency: Currency.gbp
+}
+
+/// A fifth of a cake's price.
+function fifth_of(rate: CakePrice) -> CakePrice {
+    return CakePrice(rate * 20%)
+}
+```
+
+`fifth_of` now gives 20% of the price.
+
+## Related
+
+- [Percentages](../language/19-standard-library.md#percentages)
+- [Expressions and operators](../language/03-logic.md#expressions-and-operators)
