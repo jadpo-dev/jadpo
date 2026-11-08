@@ -194,6 +194,13 @@ pub fn package(call: &Call) -> Reply {
             ));
         }
     }
+    if call.flag("--plan") && action != Some("update") {
+        return Reply::failed(arguments(
+            "`--plan` goes with `jadpo package update`".to_string(),
+            "It shows what an update would reach in the app and changes nothing, which only `update` does.".to_string(),
+            "Run `jadpo package update <name> --plan`".to_string(),
+        ));
+    }
     if call.flag("--dry-run") && action != Some("publish") {
         return Reply::failed(arguments(
             "`--dry-run` goes with `jadpo package publish`".to_string(),

@@ -502,10 +502,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
 After the registry is live, in order:
 
 - [x] **R8 `jadpo suggest` points at the registry**: area 14, "Signals", "Functions that already exist" and "The suggestions report"; area 11, "The registry protocol"; compiler/runtime, "Suggestions from the registry".
-- [ ] **R9 Blast radius in an update** `opus · high`: `jadpo package update
-  --plan` follows each change record entry through the app's graph to
-  the actions, routes, jobs and stored fields it reaches, with the
-  compile errors and migrations that would follow; after V4.
+- [x] **R9 Blast radius in an update**: area 14, "`jadpo package update` and `remove`" (`--plan`); area 11, "How packages are installed and linked"; area 18, "Package upgrades"; area 14's notes, "`jadpo package update --plan`".
 - Then, each with its own chunk below: signed log heads (keys held as data
   and `crypto.sign`, P9 under item 3), the S3 driver for the registry's archives
   (B7, under item 4), the search capability (item 8), and GitHub sign-in for
