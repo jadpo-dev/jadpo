@@ -795,6 +795,26 @@ fn check_runs_each_example_and_needs_one_for_every_function() {
         "{}",
         unshown.stdout
     );
+
+    // A function with no example, whose failure nothing shows either, is
+    // two errors but counted once in the row, so its detail fits beside it.
+    write(&root, "libraries/uk.jadpo", UK);
+    let neither = plain(&root, &["package", "check"]);
+    assert_eq!(neither.code, 1, "{}", neither.stdout);
+    assert!(
+        neither.stdout.contains(
+            "error: `uk.parse` can fail with `InvalidPostcode`, which no example or test shows\n"
+        ),
+        "{}",
+        neither.stdout
+    );
+    assert!(
+        neither
+            .stdout
+            .contains("  examples      failed                        1 function has no example\n"),
+        "{}",
+        neither.stdout
+    );
 }
 
 #[test]

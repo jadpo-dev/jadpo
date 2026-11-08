@@ -2434,10 +2434,10 @@ fn examples_and_tests(
             continue;
         };
         let span = name_span(declaration, sources);
-        if !found
+        let has_example = found
             .iter()
-            .any(|(_, example)| example.declaration == declaration.name)
-        {
+            .any(|(_, example)| example.declaration == declaration.name);
+        if !has_example {
             without += 1;
             problems.push(
                 Diagnostic::new(
@@ -2454,7 +2454,11 @@ fn examples_and_tests(
         }
         for failure in fails {
             if !publishing::shows_failure(&texts, &declaration.name, failure) {
-                unshown += 1;
+                // The bar's row counts a function with no example once, so
+                // its detail fits beside it; each failure is still an error.
+                if has_example {
+                    unshown += 1;
+                }
                 problems.push(
                     Diagnostic::new(
                         &rule::PUBLISH_EXAMPLE_MISSING,

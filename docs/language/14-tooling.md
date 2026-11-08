@@ -3246,7 +3246,7 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `index.recommendation_field_missing` | `schema index-accept` | Recommended field no longer exists |
 | `index.recommendation_unknown` | `schema index-accept` | Index recommendation is not current |
 | `install.fetch_failed` | `package add`, `update` | Installing a package couldn't read its git repository, or found no release there at the tag you gave ([Installing errors](11-integrations.md#installing-errors)) |
-| `install.in_use` | `package remove` | Package to remove is still used by the app ([Installing errors](11-integrations.md#installing-errors)) |
+| `install.in_use` | `package remove` | A package `jadpo package remove` was asked to remove is still brought in by the app's code ([Installing errors](11-integrations.md#installing-errors)) |
 | `install.link_refused` | `check`, `test` in CI | Linked package in a CI or production build ([Installing errors](11-integrations.md#installing-errors)) |
 | `install.surface_mismatch` | `package add`, `update` | The package you are installing has code that offers something different from its committed `surface.jadpo_record` ([Installing errors](11-integrations.md#installing-errors)) |
 | `lsp.content_length_missing` | `lsp` | Language-server message has no Content-Length header |
@@ -3309,10 +3309,10 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `migration.sql_type_unsupported` | `schema` | Field type has no migration SQL mapping |
 | `publish.behaviour_changed` | `package check`, `package verify` | An example or test of a package's last release fails against its new version, and the change isn't marked a fix ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.breaking_change` | `package check` | A package's new version changes or removes something its last release offered, within the same major version ([Publishing errors](11-integrations.md#publishing-errors)) |
-| `publish.changelog_missing` | `package check` | Package's changelog doesn't say why its new version is released ([Publishing errors](11-integrations.md#publishing-errors)) |
-| `publish.description_missing` | `package check` | Package's public declaration has no description ([Publishing errors](11-integrations.md#publishing-errors)) |
-| `publish.example_failed` | `package check` | Example in a package's description doesn't compile or doesn't hold ([Publishing errors](11-integrations.md#publishing-errors)) |
-| `publish.example_missing` | `package check` | Package's function has no example, or a failure it raises is shown by none ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.changelog_missing` | `package check` | The new version's section of a package's `CHANGELOG.md` doesn't say why it is released ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.description_missing` | `package check` | A public type, failure, library or library function of a package has no `///` description ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.example_failed` | `package check` | An example in a package's `///` description doesn't compile, or doesn't hold when it runs as a test ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.example_missing` | `package check` | A function of a package's public library has no example in its description, or can fail in a way no example or test shows ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.file_not_allowed` | `package verify` | A commit holds a file a release can't: anything but Jadpo source and the package's text files ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.licence_proprietary` | `package verify`, `package publish` | A package's licence is `Licence.proprietary`, which the public registry refuses ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.publisher_mismatch` | `package verify`, `package publish` | A release names another publisher than the one asked to publish it ([Publishing errors](11-integrations.md#publishing-errors)) |
