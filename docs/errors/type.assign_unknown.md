@@ -1,5 +1,18 @@
 # `type.assign_unknown`
 
+An assignment gives a new value to a name that isn't declared in the block it is in or one around it.
+
+## Why Jadpo refuses it
+
+A variable is declared once, with `var` or `var mut` and its type, and
+`name = value` only changes one declared earlier. Jadpo never declares a
+variable for you on its first assignment, so a misspelt name can't
+quietly become a new variable, and every variable says its type.
+
+## What it looks like
+
+main.jadpo:
+
 ```jadpo check project=e-assign-unknown expect=type.assign_unknown
 type Count = Int {}
 
@@ -22,3 +35,33 @@ error: `running` isn't declared
 
 check failed: 1 error, 1 file
 ```
+
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+## How to fix it
+
+**If the line meant to name a new value**, declare it with `var` and its
+type:
+
+```jadpo fragment
+    var running: Count = count
+    return running
+```
+
+```jadpo check project=e-assign-unknown-fix hidden
+type Count = Int {}
+
+function total(count: Count) -> Count {
+    var running: Count = count
+    return running
+}
+```
+
+`running` is declared where it is first given a value. A value it is
+given again later needs `var mut` instead of `var`.
+
+## Related
+
+- [Variables](../language/03-logic.md#variables)
+- [Values never change](../language/02-values-and-types.md#values-never-change)
