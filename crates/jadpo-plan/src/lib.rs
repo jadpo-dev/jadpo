@@ -314,7 +314,7 @@ fn events_plan(
     // subscriber that applies an erasure there, and the one that keeps its
     // entry in the log: each tried for as long as a request may take, then
     // left for an operator (area 15; chunk P4c).
-    let erasure = writes::erasure_plan(db, project);
+    let erasure = writes::erasure_plan(db, project, numbering);
     let generated = erasure
         .people
         .iter()
@@ -333,6 +333,15 @@ fn events_plan(
                 jadpo_std::erasure::LOG_SUBSCRIBER.to_string(),
                 format!("log erasures in {}", log.connection()),
                 Target::ErasureLog(log.clone()),
+            )
+        }))
+        .chain(erasure.providers.iter().map(|provider| {
+            (
+                jadpo_std::erasure::provider_subscriber(&provider.connection),
+                format!("ask {} to erase", provider.connection),
+                Target::ErasureAt {
+                    connection: provider.connection.clone(),
+                },
             )
         }));
     for (key, name, target) in generated {

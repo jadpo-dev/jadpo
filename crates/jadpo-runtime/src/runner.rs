@@ -787,6 +787,21 @@ async fn attempt(
                 )),
             }
         }
+        // A person's erasure asked of a provider, after the main commit
+        // (area 15, "Erasure at providers"), settled as any delivery is.
+        Target::ErasureAt { connection } => {
+            let asking = crate::erasure::at_provider(executor, ctx, connection, &delivery);
+            match within {
+                Some(stop) => match race(asking, stop).await {
+                    First::Left(outcome) => Ok(outcome),
+                    First::Right(()) => Err(Cut::ShuttingDown),
+                },
+                None => match race(asking, budget.cut()).await {
+                    First::Left(outcome) => Ok(outcome),
+                    First::Right(cut) => Err(cut),
+                },
+            }
+        }
         // A file held by no record (area 16, "Deleting and erasing";
         // chunk B3): its bytes deleted under its key, which a repeat sends
         // again safely, then recorded gone, so none may hold it again.

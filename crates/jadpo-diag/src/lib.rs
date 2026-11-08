@@ -1009,93 +1009,93 @@ rules! {
     SEED_UNAVAILABLE: "seed.unavailable", area 14, Error, Human,
         "The database a seed runs against couldn't be reached, so nothing was run";
     SEMANTIC_AI_BUDGET_MISSING: "semantic.ai_budget_missing", area 21, Error, Agent,
-        "Application's `ai:` sets no daily limit";
+        "An application's `ai:` settings don't give a daily limit on tokens";
     SEMANTIC_AI_DIMENSIONS_MISMATCH: "semantic.ai_dimensions_mismatch", area 21, Error, Agent,
-        "Vector type an embedding is asked for as has a length other than `embedding_dimensions:`";
+        "The vector type an embedding is asked for has a different length from the model's embeddings, or `ai:` doesn't say how long those are";
     SEMANTIC_AI_FIELD_REFUSED: "semantic.ai_field_refused", area 21, Error, Agent,
         "A value from a field marked `to_models: false`, which must never be sent to a model, reaches a prompt or text sent for an embedding";
     SEMANTIC_AI_FIELD_UNMARKED: "semantic.ai_field_unmarked", area 21, Error, Agent,
         "Code stores a value from a field marked as personal data, or `to_models: false`, in a field that doesn't carry the same marks";
     SEMANTIC_AI_MODEL_LITERAL: "semantic.ai_model_literal", area 21, Error, Agent,
-        "A `ModelId` is written out anywhere but a setting's `default:`";
+        "A model's name is written out in code instead of coming from a `ModelId` setting";
     SEMANTIC_AI_OUTPUT_TYPE: "semantic.ai_output_type", area 21, Error, Agent,
-        "Type a model is asked to answer as is one no model's answer can be";
+        "The type a model is asked to answer as holds something a model's answer can't be";
     SEMANTIC_AI_PERSONAL_DATA_NOT_ALLOWED: "semantic.ai_personal_data_not_allowed", area 21, Error, Human,
         "Your code sends a model personal data of a kind, such as health records, that the app's `ai:` settings don't allow it to send";
     SEMANTIC_APPLICATION_SECTION_UNKNOWN: "semantic.application_section_unknown", area 1, Error, Agent,
-        "Application has a section Jadpo does not know";
+        "An `application { }` block has a section Jadpo doesn't know";
     SEMANTIC_AUTH_METHOD_DUPLICATE: "semantic.auth_method_duplicate", area 8, Error, Agent,
-        "Sign-in method is declared twice";
+        "A way of signing in is declared twice in `authentication { }` or `sign_in:`";
     SEMANTIC_AUTH_METHOD_UNKNOWN: "semantic.auth_method_unknown", area 8, Error, Agent,
-        "Sign-in method is not one the language has";
+        "An `authentication { }` or `sign_in:` block names a way of signing in the language doesn't have";
     SEMANTIC_AUTH_NOT_SET_UP: "semantic.auth_not_set_up", area 8, Error, Human,
         "A route needs a signed-in caller, but the app declares no way for anyone to sign in";
     SEMANTIC_AUTH_PRINCIPAL_REQUIRED: "semantic.auth_principal_required", area 8, Error, Agent,
-        "Sign-in method has no principal variant to sign in";
+        "A sign-in method signs in a kind of caller the principal doesn't declare";
     SEMANTIC_AUTH_SETTING_INVALID: "semantic.auth_setting_invalid", area 8, Error, Agent,
-        "Sign-in setting has a value it can't take";
+        "A sign-in setting has a value it can't take";
     SEMANTIC_AUTH_SETTING_REQUIRED: "semantic.auth_setting_required", area 8, Error, Agent,
-        "Sign-in method is missing a setting it needs";
+        "A way of signing in is missing a setting it needs, or code relies on one the app hasn't set up";
     SEMANTIC_AUTH_SETTING_UNKNOWN: "semantic.auth_setting_unknown", area 8, Error, Agent,
-        "Sign-in setting is not one the method takes";
+        "A sign-in method has a setting it doesn't take";
     SEMANTIC_DUPLICATE_DECLARATION: "semantic.duplicate_declaration", area 1, Error, Agent,
-        "Name is declared more than once";
+        "A name, or a test's sentence, is already taken where it is declared";
     SEMANTIC_FAKE_INVALID: "semantic.fake_invalid", area 13, Error, Agent,
-        "Test's fakes script something no provider operation answers";
+        "A test's `fakes:` scripts an operation or an answer that the app's connections and prompts don't have";
     SEMANTIC_MISSING_RETURN: "semantic.missing_return", area 3, Error, Agent,
-        "Callable can end without returning its result";
+        "A function, action or query can end without giving its result, or a `return` gives no value";
     SEMANTIC_MULTIPLE_APPLICATIONS: "semantic.multiple_applications", area 8, Error, Agent,
-        "Project declares more than one application";
+        "A project declares more than one `application { }`";
     SEMANTIC_MULTIPLE_AUTHENTICATION: "semantic.multiple_authentication", area 8, Error, Agent,
-        "Project declares more than one authentication block";
+        "A project declares more than one `authentication { }`";
     SEMANTIC_MULTIPLE_LOCALE_DECLARATIONS: "semantic.multiple_locale_declarations", area 10, Error, Agent,
-        "Locales are declared more than once";
+        "A project declares more than one `locales { }`";
     SEMANTIC_MULTIPLE_PRINCIPALS: "semantic.multiple_principals", area 8, Error, Agent,
-        "Project declares more than one principal";
+        "A project declares more than one `principal { }`";
     SEMANTIC_MULTIPLE_SUGGESTIONS: "semantic.multiple_suggestions", area 14, Error, Agent,
-        "Suggestions settings are declared more than once";
+        "A project declares more than one `suggestions { }`";
     SEMANTIC_NAME_CASE: "semantic.name_case", area 1, Error, Agent,
-        "Name has the wrong case for its kind";
+        "A name has the wrong case for what it names";
     SEMANTIC_NOT_CALLABLE: "semantic.not_callable", area 1, Error, Agent,
-        "Name cannot be called";
+        "Code calls something that can't be called, or can't be called from where it is";
     SEMANTIC_OWN_DOMAIN_QUALIFICATION: "semantic.own_domain_qualification", area 1, Error, Agent,
-        "Own-domain call is qualified";
+        "Code calls an action or a query in its own domain through the domain's name";
     SEMANTIC_PRINCIPAL_VARIANT_DUPLICATE: "semantic.principal_variant_duplicate", area 8, Error, Agent,
-        "Principal declares a variant twice";
+        "A principal declares `user:` or `service:` twice";
     SEMANTIC_PRINCIPAL_VARIANT_INVALID: "semantic.principal_variant_invalid", area 8, Error, Agent,
-        "Principal variant is not a subject and an optional active condition";
+        "A principal's `user:` or `service:` isn't a `subject:` and an optional `active:` condition";
     SEMANTIC_PRINCIPAL_VARIANT_REQUIRED: "semantic.principal_variant_required", area 8, Error, Agent,
-        "Principal declares neither a user nor a service";
+        "A principal declares neither `user:` nor `service:`";
     SEMANTIC_PRINCIPAL_VARIANT_UNKNOWN: "semantic.principal_variant_unknown", area 8, Error, Agent,
-        "Principal variant is not user or service";
+        "A principal declares a kind of caller other than `user:` or `service:`";
     SEMANTIC_REQUEST_INVALID: "semantic.request_invalid", area 13, Error, Agent,
-        "Route test request doesn't fit its route";
+        "A route test's `request { }` doesn't fit its route, or something only a route test uses appears elsewhere";
     SEMANTIC_REQUEST_ITEM_DUPLICATE: "semantic.request_item_duplicate", area 13, Error, Agent,
         "A route test's `request { }` gives an item, or a placeholder in `params:`, twice";
     SEMANTIC_REQUEST_ROUTE_UNKNOWN: "semantic.request_route_unknown", area 13, Error, Agent,
         "A route test's `request { }` names a method and path that no route in the app answers";
     SEMANTIC_REVOCATION_DELAY_INVALID: "semantic.revocation_delay_invalid", area 8, Error, Agent,
-        "Revocation delay is not a positive duration";
+        "An application's `revocation_delay:` isn't a duration above zero";
     SEMANTIC_STANDARD_NAMESPACE_RESERVED: "semantic.standard_namespace_reserved", area 1, Error, Agent,
-        "Name belongs to a standard-library namespace";
+        "A declaration, domain, library or variable takes the name of a standard-library namespace";
     SEMANTIC_STANDARD_OPERATION_MOVED: "semantic.standard_operation_moved", area 19, Error, Agent,
-        "Standard-library operation has moved to another name";
+        "Code calls a standard-library operation by a name it has moved from";
     SEMANTIC_STANDARD_OPERATION_QUALIFICATION: "semantic.standard_operation_qualification", area 1, Error, Agent,
-        "Standard-library operation is called without its namespace";
+        "A standard-library operation is called without its namespace";
     SEMANTIC_TEST_SETTING_DUPLICATE: "semantic.test_setting_duplicate", area 13, Error, Agent,
         "A test gives one of its settings, `clock:`, `config:`, `fakes:` or `flags:`, twice";
     SEMANTIC_UNKNOWN_CALLEE: "semantic.unknown_callee", area 1, Error, Agent,
-        "Called name is not declared";
+        "A call names something the code can't reach by that name";
     SEMANTIC_UNKNOWN_NAME: "semantic.unknown_name", area 1, Error, Agent,
         "The code uses a name that nothing in the project or the standard library declares";
     SEMANTIC_UNREACHABLE_CODE: "semantic.unreachable_code", area 3, Error, Agent,
-        "Code can never run";
+        "Code comes after a statement that always leaves, so it can never run";
     SEMANTIC_UNUSED_RESULT: "semantic.unused_result", area 3, Error, Agent,
-        "Value is computed and thrown away";
+        "A value is computed and thrown away";
     SEMANTIC_UNUSED_VARIABLE: "semantic.unused_variable", area 3, Error, Agent,
         "A variable is given a value that nothing ever reads";
     SEMANTIC_WRONG_NAME_KIND: "semantic.wrong_name_kind", area 1, Error, Agent,
-        "Name is the wrong kind of declaration here";
+        "A name is used as a type or a failure, and it is something else";
     STEP_CONTEXT: "step.context", area 12, Error, Human,
         "An action makes several changing calls from somewhere a retry can't carry on where it stopped, such as a route whose API doesn't require `Idempotency-Key`";
     STEP_ENCRYPTION_KEY_REQUIRED: "step.encryption_key_required", area 12, Error, Human,

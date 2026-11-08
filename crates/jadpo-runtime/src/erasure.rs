@@ -25,8 +25,8 @@
 use std::rc::Rc;
 
 use jadpo_std::erasure::{
-    ErasureLog, ErasurePlan, LogEntry, PERSON_ERASED, PERSON_ERASED_KEY, REPLAY_PAGE, StoreErasure,
-    log_key, log_key_parts,
+    ErasureLog, ErasurePlan, LogEntry, PAYLOAD_KEYS, PERSON_ERASED, PERSON_ERASED_KEY, REPLAY_PAGE,
+    StoreErasure, log_key, log_key_parts,
 };
 use jadpo_std::files::{LIST, PUT, READ};
 use jadpo_std::subscriber::Repeat;
@@ -46,11 +46,26 @@ pub const LOG_PAGE: &str = "SELECT \"entity\", \"person_id\", \"erased_at\" FROM
 
 /// `PersonErased` for the person of the entity called `entity`, as it is
 /// delivered and kept: its value and its payload, the runtime's own JSON.
-fn event(entity: &str, id: &str, at: i64, subscribers: Vec<String>) -> Event {
+/// Their keys at providers, `keys`, go only in the payload, so no subscriber
+/// of the app can read one: the generated ones read it there.
+fn event(
+    entity: &str,
+    id: &str,
+    at: i64,
+    keys: Option<serde_json::Value>,
+    subscribers: Vec<String>,
+) -> Event {
+    let mut payload = serde_json::json!({ "entity": entity, "id": id, "erased_at": at });
+    if let Some(keys) = keys
+        && !keys.as_object().is_some_and(serde_json::Map::is_empty)
+        && let Some(object) = payload.as_object_mut()
+    {
+        object.insert(PAYLOAD_KEYS.to_string(), keys);
+    }
     Event {
         key: PERSON_ERASED_KEY.to_string(),
         value: value(entity, id, at),
-        payload: serde_json::json!({ "entity": entity, "id": id, "erased_at": at }).to_string(),
+        payload: payload.to_string(),
         subscribers,
     }
 }
@@ -99,15 +114,32 @@ fn parts(event: &Value) -> Option<(String, Value, i64)> {
     }
 }
 
-/// The person each row of an erasure's statement names: their entity's name
-/// and their `id` in its text form.
-fn erased_people<'p>(people: &'p [(i32, String)], rows: &[Row]) -> Vec<(&'p str, String)> {
+/// One person a row of an erasure's statement names.
+struct ErasedPerson<'p> {
+    /// Their entity's name.
+    entity: &'p str,
+    /// Their `id` in its text form.
+    id: String,
+    /// Their keys at providers, by connection, when they have any.
+    keys: Option<serde_json::Value>,
+}
+
+/// The person each row of an erasure's statement names.
+fn erased_people<'p>(people: &'p [(i32, String)], rows: &[Row]) -> Vec<ErasedPerson<'p>> {
     rows.iter()
         .filter_map(|row| match (row.first(), row.get(1)) {
-            (Some(SqlValue::Int4(place)), Some(SqlValue::Uuid(id))) => people
-                .iter()
-                .find(|(at, _)| at == place)
-                .map(|(_, name)| (name.as_str(), uuid_text(id))),
+            (Some(SqlValue::Int4(place)), Some(SqlValue::Uuid(id))) => {
+                let entity = people.iter().find(|(at, _)| at == place)?.1.as_str();
+                let keys = match row.get(2) {
+                    Some(SqlValue::Text(keys)) => serde_json::from_str(keys).ok(),
+                    _ => None,
+                };
+                Some(ErasedPerson {
+                    entity,
+                    id: uuid_text(id),
+                    keys,
+                })
+            }
             _ => None,
         })
         .collect()
@@ -127,22 +159,28 @@ pub(crate) fn emit(
         return Ok(());
     }
     let started = ctx.started();
-    for (entity, id) in erased_people(people, rows) {
-        ctx.erasing(entity, &id);
+    for person in erased_people(people, rows) {
+        ctx.erasing(person.entity, &person.id);
         let subscribers = started
             .erasure()
-            .person(entity)
+            .person(person.entity)
             .map(|person| person.subscribers.clone())
             .unwrap_or_default();
         if subscribers.is_empty() {
             continue;
         }
-        ctx.emit(event(entity, &id, now, subscribers))
-            .map_err(|refused| match refused {
-                crate::EmitRefused::OutsideAction => "an erasure outside an action",
-                crate::EmitRefused::TooMany => "more than 1,000 people erased by one action",
-                crate::EmitRefused::TooLarge => "a `PersonErased` event past 64 KB",
-            })?;
+        ctx.emit(event(
+            person.entity,
+            &person.id,
+            now,
+            person.keys,
+            subscribers,
+        ))
+        .map_err(|refused| match refused {
+            crate::EmitRefused::OutsideAction => "an erasure outside an action",
+            crate::EmitRefused::TooMany => "more than 1,000 people erased by one action",
+            crate::EmitRefused::TooLarge => "a `PersonErased` event past 64 KB",
+        })?;
     }
     Ok(())
 }
@@ -189,10 +227,17 @@ async fn apply(
         let rows = transaction.query(&part.sql, &params).await?;
         let mut events: Vec<Event> = erased_people(&part.people, &rows)
             .into_iter()
-            .filter_map(|(entity, id)| {
-                let person = plan.person(entity)?;
-                (!person.subscribers.is_empty())
-                    .then(|| event(entity, &id, at, person.subscribers.clone()))
+            .filter_map(|erased| {
+                let person = plan.person(erased.entity)?;
+                (!person.subscribers.is_empty()).then(|| {
+                    event(
+                        erased.entity,
+                        &erased.id,
+                        at,
+                        erased.keys,
+                        person.subscribers.clone(),
+                    )
+                })
             })
             .collect();
         if keeps_files {
@@ -304,6 +349,103 @@ pub(crate) async fn apply_delivery(ctx: &mut Ctx<'_>, store: &str, delivery: &De
         Err(StoreError::Fault(why)) => {
             Outcome::Fault(ctx.fault(crate::FaultKind::Store(why), crate::Frame::ENTRY))
         }
+        Err(_) => Outcome::Failed(Box::new(crate::unavailable())),
+    }
+}
+
+/// The JSON of `$2`'s key in `PersonErased` `$1`'s payload, when it has one.
+pub(crate) const KEY_IN_OUTBOX: &str =
+    "SELECT (\"payload\"->'keys'->$2::text)::text FROM \"jadpo_outbox\" WHERE \"id\" = $1";
+
+/// Takes `$2`'s key out of `PersonErased` `$1`'s payload, once delivered.
+pub(crate) const CLEAR_KEY: &str = "UPDATE \"jadpo_outbox\" SET \"payload\" = \"payload\" #- ARRAY['keys', $2::text] WHERE \"id\" = $1";
+
+/// The generated subscriber `erasure at <connection>` (area 15, "Erasure at
+/// providers"): the provider asked to erase the person whose key
+/// `delivery`'s outbox row holds, the key taken out once it confirms, and how
+/// it ended as any subscriber's outcome is settled. A person with no key
+/// there, or one delivered already, has nothing to ask, and a provider
+/// answering that it doesn't know the person has confirmed: a retry after a
+/// lost answer finds them gone.
+pub(crate) async fn at_provider(
+    executor: &dyn crate::Executor,
+    ctx: &mut Ctx<'_>,
+    connection: &str,
+    delivery: &Delivery,
+) -> Outcome {
+    let defect = |ctx: &mut Ctx<'_>, what: &str| {
+        Outcome::Fault(ctx.fault(crate::FaultKind::Defect(what.into()), crate::Frame::ENTRY))
+    };
+    let started = ctx.started();
+    let Some(provider) = started.erasure().provider(connection).cloned() else {
+        return Outcome::Value(Value::Unit);
+    };
+    let Some(database) = ctx.host().database(&delivery.store) else {
+        return Outcome::Failed(Box::new(crate::unavailable()));
+    };
+    let outbox_id = SqlValue::Uuid(delivery.outbox);
+    let name = SqlValue::Text(connection.to_string());
+    let read = database
+        .query_once(KEY_IN_OUTBOX, &[outbox_id.clone(), name.clone()])
+        .await;
+    let key: serde_json::Value = match read
+        .as_deref()
+        .map(|rows| rows.first().and_then(|row| row.first()))
+    {
+        Ok(Some(SqlValue::Text(text))) => match serde_json::from_str(text) {
+            Ok(key) => key,
+            Err(_) => return defect(ctx, "a key in the outbox that isn't JSON"),
+        },
+        Ok(_) => return Outcome::Value(Value::Unit),
+        Err(_) => return Outcome::Failed(Box::new(crate::unavailable())),
+    };
+    let program = executor.plan();
+    let Some(providers) = program.providers else {
+        return defect(ctx, "a provider's erasure in a build with no providers");
+    };
+    let Some((_, op)) = providers.numbered(program.connections, provider.called) else {
+        return defect(ctx, "a provider's erasure this build doesn't have");
+    };
+    let Some(number) = op.input else {
+        return defect(ctx, "a provider's erasure that takes no input");
+    };
+    let written = match &provider.field {
+        Some(field) => serde_json::json!({ field.as_str(): key }),
+        None => key,
+    };
+    let Some((json, numbers)) = jadpo_value::json::parse(written.to_string().as_bytes()) else {
+        return defect(ctx, "a provider's erasure whose input isn't JSON");
+    };
+    let input = match crate::webhooks::read(program.json, number, &json, &numbers) {
+        Ok(input) => input,
+        Err(_) => return defect(ctx, "a person's key the provider's operation doesn't read"),
+    };
+    let input = crate::email::left_out_when_none(input);
+    // The runtime's own call, made outside any action: it takes the key its
+    // delivery's id gives every attempt, so a retry is the one request.
+    ctx.allow_standalone_calls();
+    let site = crate::provider::whole_site(provider.called);
+    let calling = crate::provider::Calling {
+        plan: program,
+        site: crate::provider::Site {
+            call: &site,
+            functions: &crate::receiving::NoFunctions,
+            at: 0,
+        },
+    };
+    let done = crate::provider::call(ctx, calling, Some(input)).await;
+    match done {
+        crate::provider::Done::Value(_) => {}
+        crate::provider::Done::Failed(failure) if failure.kind.as_deref() == Some("not_found") => {}
+        crate::provider::Done::Failed(failure) => return Outcome::Failed(failure),
+        crate::provider::Done::Fault(kind) => {
+            return Outcome::Fault(ctx.fault(kind, crate::Frame::ENTRY));
+        }
+    }
+    match database.query_once(CLEAR_KEY, &[outbox_id, name]).await {
+        Ok(_) => Outcome::Value(Value::Unit),
+        // The provider has it, and the key is still here: trying again asks
+        // again, which it answers as before, and takes the key.
         Err(_) => Outcome::Failed(Box::new(crate::unavailable())),
     }
 }

@@ -36,6 +36,9 @@ pub struct Declared {
     pub by: Ty,
     /// `CustomerId`, as the package writes it.
     pub by_written: String,
+    /// The field of its input the key is, by its spelling on the wire;
+    /// `None` when the key is its whole input.
+    pub field: Option<String>,
 }
 
 /// Every package's `erasure:`, by its folder, and their problems.
@@ -190,8 +193,10 @@ fn read(
         );
         return None;
     }
-    if let Some(reason) = fills_input(db, project, ownership, operation, &resolved) {
-        out.push(
+    let field = match key_field(db, project, ownership, operation, &resolved) {
+        Ok(field) => field,
+        Err(reason) => {
+            out.push(
             problem(
                 format!("`erasure:` can't call `{call}` with only a `{by_written}`"),
                 by_span,
@@ -204,29 +209,32 @@ fn read(
                 "Give `{call}`'s input one field of type `{by_written}`, and make any other it has optional"
             )),
         );
-        return None;
-    }
+            return None;
+        }
+    };
     Some(Declared {
         call,
         by: resolved,
         by_written,
+        field,
     })
 }
 
-/// Why `operation` can't be called with only a key of type `by`, when it
-/// can't.
-fn fills_input(
+/// The field of `operation`'s input a key of type `by` goes in, by its
+/// spelling on the wire, or `None` when the key is the whole input; why it
+/// can't be called with only that key, when it can't.
+fn key_field(
     db: &dyn Db,
     project: Project,
     ownership: &Ownership,
     operation: &crate::providers::Operation,
     by: &Ty,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     let Some((input, written)) = &operation.input else {
-        return Some("it has no `input:`".to_string());
+        return Err("it has no `input:`".to_string());
     };
     let Ty::Named(name) = input else {
-        return None;
+        return Ok(None);
     };
     let table = type_table(db, project);
     let Some(Def::Fields {
@@ -235,7 +243,7 @@ fn fills_input(
         ..
     }) = table.def(name)
     else {
-        return None;
+        return Ok(None);
     };
     let lookup = Lookup::within(db, project, ownership);
     let holding: Vec<&str> = fields
@@ -244,17 +252,81 @@ fn fills_input(
         .map(|field| field.name.as_str())
         .collect();
     let [key] = holding.as_slice() else {
-        return Some(format!(
+        return Err(format!(
             "its input, `{written}`, has {} fields of that type, and must have one",
             holding.len()
         ));
     };
-    fields
-        .iter()
-        .find(|field| {
-            field.name != *key && !field.optional && !matches!(field.declared, Ty::Nullable(_))
+    if let Some(other) = fields.iter().find(|field| {
+        field.name != *key && !field.optional && !matches!(field.declared, Ty::Nullable(_))
+    }) {
+        return Err(format!(
+            "its input, `{written}`, needs `{}` too",
+            other.name
+        ));
+    }
+    Ok(fields.iter().find(|field| field.name == *key).map(|field| {
+        field
+            .wire_name
+            .clone()
+            .unwrap_or_else(|| field.name.clone())
+    }))
+}
+
+/// A connection's way of erasing someone at its provider (area 15,
+/// "Erasure at providers"): its package's declared call and the connection's
+/// key, as the compiler plans it.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ProviderKey {
+    pub connection: String,
+    /// The person entity the key is a field of.
+    pub entity: String,
+    pub field: String,
+    /// `customers.delete`.
+    pub call: String,
+    /// The field of its input the key is, by its spelling on the wire.
+    pub input_field: Option<String>,
+}
+
+/// Each connection whose provider can erase a person, with what it takes: a
+/// key the checks found valid on a package that declares `erasure:`.
+pub fn provider_keys(db: &dyn Db, project: Project) -> Vec<ProviderKey> {
+    let declarations = declared(db, project);
+    let mut out = Vec::new();
+    for connection in &crate::connections::package_connections(db, project).connections {
+        let (Some(key), Some(declared)) = (
+            &connection.erasure_key,
+            declarations.of.get(&connection.folder),
+        ) else {
+            continue;
+        };
+        out.push(ProviderKey {
+            connection: connection.name.clone(),
+            entity: key.entity.clone(),
+            field: key.field.clone(),
+            call: declared.call.clone(),
+            input_field: declared.field.clone(),
+        });
+    }
+    out
+}
+
+/// The key, `User.stripe_customer_id`, of each connection whose key is
+/// itself personal data: marked `personal:`, or of a standard type that is.
+pub fn personal_keys(db: &dyn Db, project: Project) -> Vec<(String, String)> {
+    let lookup = Lookup::new(db, project);
+    let marks = crate::ai_personal::marks(db, project);
+    provider_keys(db, project)
+        .into_iter()
+        .filter(|key| {
+            let Some(field) = lookup.field(&key.entity, std::slice::from_ref(&key.field)) else {
+                return false;
+            };
+            marks.mark(&key.entity, &key.field).is_some()
+                || !crate::ai_personal::standard_personal(&lookup, &field.declared).is_empty()
         })
-        .map(|other| format!("its input, `{written}`, needs `{}` too", other.name))
+        .map(|key| (key.connection, format!("{}.{}", key.entity, key.field)))
+        .collect()
 }
 
 /// Whether a field declared `declared` holds a value of type `wanted`,
@@ -323,6 +395,25 @@ pub fn key_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             continue;
         };
+        // The statement that erases the person copies the key out of their
+        // record, and only the application can open a sealed value.
+        let model = crate::data::data_model(db, project);
+        if model
+            .entity(&key.entity)
+            .and_then(|entity| entity.fields.iter().find(|held| held.name == key.field))
+            .is_some_and(|held| held.sealed.is_some())
+        {
+            out.push(crate::data::sealed::used(
+                &key.entity,
+                &key.field,
+                "An erasure's copy of the key",
+                Span::new(key.at.0.clone(), key.at.1, key.at.2),
+                format!(
+                    "Remove `encrypted: true` from `{shown}`, or name a field that isn't encrypted"
+                ),
+            ));
+            continue;
+        }
         let Some(erasure) = declarations.of.get(&connection.folder) else {
             continue;
         };

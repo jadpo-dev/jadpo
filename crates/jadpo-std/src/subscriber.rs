@@ -120,6 +120,7 @@ impl SubscriberPlan {
             Target::ErasureLog(crate::erasure::ErasureLog::Files { connection }) => {
                 vec![connection.clone()]
             }
+            Target::ErasureAt { connection } => vec![connection.clone()],
             Target::ErasureLog(crate::erasure::ErasureLog::Database { .. })
             | Target::ErasureIn { .. }
             | Target::Elsewhere => Vec::new(),
@@ -189,6 +190,13 @@ pub enum Target {
     /// [`crate::erasure::PERSON_ERASED`], and a repeat keeps the entry as
     /// it is.
     ErasureLog(crate::erasure::ErasureLog),
+    /// A person's erasure asked of the provider `connection` reaches, after
+    /// the main commit (area 15, "Erasure at providers"): the event is
+    /// [`crate::erasure::PERSON_ERASED`], its key in the outbox row's
+    /// payload, and its delivery calls
+    /// [`crate::erasure::ProviderErasure`]'s operation, retried until the
+    /// provider confirms.
+    ErasureAt { connection: String },
     /// Delivered by another deployable, one that runs the app's
     /// subscribers (area 14, "Declared deployables"; roadmap chunk
     /// 8.1o3): a deployable that doesn't run them still lists each, so an

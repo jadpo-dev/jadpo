@@ -516,7 +516,7 @@ pub async fn send_package(
 
 /// `value` with every field that is `none`, in it or in the records it
 /// holds, marked left out, so the provider's input never writes it.
-fn left_out_when_none(value: Value) -> Value {
+pub(crate) fn left_out_when_none(value: Value) -> Value {
     match value {
         Value::Record(record) => {
             let mut record = (*record).clone();

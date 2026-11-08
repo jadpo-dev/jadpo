@@ -771,6 +771,17 @@ on your machine or CI publishes beside the pull request. It holds no
 accounts and records no approvals. Acceptances stay files, reviewed on the
 git host like any other change.
 
+It opens on the decisions that need a person, each with its state and the
+command that writes its acceptance, then follows the report's order. A
+button copies the selected nodes' keys and your request for a coding agent,
+and nothing written in the change, since descriptions and code are written
+by whoever opened the pull request.
+
+`jadpo review <pr>` fetches a pull request into a worktree of its own, runs
+the report and opens this page. The base branch's `jadpo` release produces
+the report, because a pull request can change which release its project
+names, and the page says when it does.
+
 ## What the graph and production evidence add
 <!-- topic: what-the-graph-and-production-evidence-add -->
 

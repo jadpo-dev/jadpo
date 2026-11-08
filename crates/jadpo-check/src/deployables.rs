@@ -713,6 +713,9 @@ pub enum Via {
     /// It keeps or replays the erasure log there, the connection `privacy:
     /// { erasure_log: }` names (area 15; chunk P4c).
     ErasureLog,
+    /// It asks that provider to erase people (area 15, "Erasure at
+    /// providers").
+    ErasureAt,
 }
 
 impl Via {
@@ -727,6 +730,7 @@ impl Via {
             Via::Batches => "in the batch runs it carries on".to_string(),
             Via::RateLimits => "by counting its routes' rate limits there".to_string(),
             Via::ErasureLog => "by keeping the erasure log there".to_string(),
+            Via::ErasureAt => "by asking its provider to erase people".to_string(),
         }
     }
 }
@@ -898,6 +902,11 @@ fn reach(
             && let Some(email) = crate::emails::written_connection(db, project)
         {
             connection(&mut out, &email, Via::Email);
+        }
+        // A delivery of `PersonErased` asks each provider that can erase
+        // someone to (area 15, "Erasure at providers").
+        for key in crate::provider_erasure::provider_keys(db, project) {
+            connection(&mut out, &key.connection, Via::ErasureAt);
         }
     }
     roots.extend(named_by_the_runtime(db, project, deployable));
