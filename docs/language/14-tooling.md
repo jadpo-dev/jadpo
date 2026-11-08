@@ -966,13 +966,13 @@ an `http://` address on this machine. It needs no project.
 A document that conforms is one line:
 
 ```text
-✓ Conforms to the registry protocol  build/openapi/main.json · 10 requests
+✓ Conforms to the registry protocol  build/openapi/main.json · 11 requests
 ```
 
 When its output isn't a terminal, as in CI, the line is plain text:
 
 ```text
-Conforms to the registry protocol: build/openapi/main.json, 10 requests
+Conforms to the registry protocol: build/openapi/main.json, 11 requests
 ```
 
 One that differs is `protocol.mismatch` with each difference under its request,
@@ -2024,7 +2024,7 @@ no `name` finding: it is `type.unit_as_number`, a `jadpo check` error
 ([Units and money in plain numbers](02-values-and-types.md#units-and-money-in-plain-numbers)),
 declined or not.
 
-### Functions that already exist
+## Functions that already exist
 <!-- topic: functions-that-already-exist -->
 
 Two signals read whole functions: a copy of one a package publishes, and
