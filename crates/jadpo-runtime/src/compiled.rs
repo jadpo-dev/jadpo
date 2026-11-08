@@ -1105,6 +1105,15 @@ pub async fn history(cx: &mut Ctx<'_>, p: &Program, n: u32, args: &[Value], at: 
     }
 }
 
+/// A person's `export` `n` with `args`, the person's `id`, from site `at`
+/// (area 15, "Export").
+pub async fn export(cx: &mut Ctx<'_>, p: &Program, n: u32, args: &[Value], at: u32) -> Ran {
+    match p.process.plan.sites.exports.get(n as usize) {
+        Some(export) => store(cx, p, StoreOp::Export(export), args, at).await,
+        None => Err(defect(cx, "an export with no plan", at)),
+    }
+}
+
 /// Write `n` with its inputs, `args`, from site `at`: a refusal its site's
 /// `conflict:` maps is [`Stop::Refused`], for the site to raise its arm's
 /// failure.

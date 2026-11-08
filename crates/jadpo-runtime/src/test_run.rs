@@ -164,6 +164,7 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
         }
     }
     let outcome = executor.run(&mut ctx, once.callable, Vec::new()).await;
+    let outcome = export_after_erasure(&mut ctx, plan, once.order, outcome).await;
     if let Some(record) = &once.record {
         record.push(Entry::Outcome(crate::record::outcome(
             &outcome,
@@ -186,6 +187,47 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
         usage,
         effects: fake.effects(),
     }
+}
+
+/// The check generated for each person a test erases (area 15, "Export"):
+/// once its erasure's deliveries are done, an export of them must hold
+/// nothing. A test that passed but left records behind is a fault, naming
+/// the person's entity, never the data.
+async fn export_after_erasure(
+    ctx: &mut Ctx<'_>,
+    plan: Plan<'_>,
+    order: Option<u64>,
+    outcome: Outcome,
+) -> Outcome {
+    if order.is_none() || !matches!(outcome, Outcome::Value(_)) || ctx.undelivered().is_some() {
+        return outcome;
+    }
+    for (entity, id) in ctx.take_erased() {
+        let Some(export) = plan.exports.iter().find(|export| export.entity == entity) else {
+            continue;
+        };
+        match crate::export::records_held(ctx, export, plan.json, &id).await {
+            Ok(0) => {}
+            Ok(records) => {
+                return Outcome::Fault(Box::new(Fault {
+                    kind: FaultKind::Defect(format!(
+                        "after `{entity}.erase`, `{entity}.export` still holds {records} record(s)"
+                    )),
+                    frames: Vec::new(),
+                }));
+            }
+            Err(crate::read::Interrupt::Fault(fault)) => return Outcome::Fault(fault),
+            Err(_) => {
+                return Outcome::Fault(Box::new(Fault {
+                    kind: FaultKind::Defect(format!(
+                        "reading `{entity}.export` after `{entity}.erase` failed"
+                    )),
+                    frames: Vec::new(),
+                }));
+            }
+        }
+    }
+    outcome
 }
 
 /// How a run went whose wait nothing would end, so its executor gave up:

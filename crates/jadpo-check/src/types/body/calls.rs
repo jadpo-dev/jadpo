@@ -343,6 +343,16 @@ impl Body<'_> {
                     let ty = self.erase(&head, call, block, span);
                     return (ty, CallKind::Effect(written), reach);
                 }
+                // A person's export (area 15, "Export"), unless an entity
+                // that is no person names a transition `export`.
+                if rest[0] == crate::resolve::EXPORT
+                    && !self.writes.write_rules(&head).is_some_and(|rules| {
+                        !rules.person && rules.transition(crate::resolve::EXPORT).is_some()
+                    })
+                {
+                    let ty = self.export(&head, call, block, span);
+                    return (ty, CallKind::Effect(written), reach);
+                }
                 let op = match rest[0].as_str() {
                     "update" => Some(jadpo_std::write::WriteOp::Update),
                     "delete" => Some(jadpo_std::write::WriteOp::Delete),

@@ -106,6 +106,7 @@ mod package_upgrades;
 mod packages;
 mod passkey_tokens;
 mod passkeys;
+mod personal_data_export;
 mod personal_data_report;
 mod policy;
 mod pooled_statements;

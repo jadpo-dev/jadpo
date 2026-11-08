@@ -225,6 +225,63 @@ pub(crate) async fn read_as(
     })
 }
 
+/// A read that isn't part of the running action's transaction: one
+/// read-only transaction of its own on `plan`'s store, as a person's export
+/// reads every store they hold records in (area 15, "Export").
+pub(crate) async fn read_detached(
+    ctx: &mut Ctx<'_>,
+    plan: &ReadPlan,
+    json: JsonCodecs<'_>,
+    args: &[Value],
+    site: u32,
+) -> Result<Found, Interrupt> {
+    let now = ctx.now();
+    let loaded = RefCell::new(Vec::new());
+    let started = ctx.started();
+    let env = Env {
+        args,
+        json,
+        ring: started.field_ring(),
+        now,
+        size: 0,
+        cursor: Vec::new(),
+        keys: None,
+        callers: callers(ctx),
+        unpoliced: ctx.unpoliced(),
+        fetch: Cell::new(0),
+        loaded: Some(&loaded),
+    };
+    let host = ctx.host();
+    let Some(database) = host.database(&plan.store) else {
+        return Err(refused(ctx, StoreError::Unavailable, site));
+    };
+    let mut transaction = match database
+        .begin_read_only(crate::Isolation::RepeatableRead)
+        .await
+    {
+        Ok(transaction) => transaction,
+        Err(error) => return Err(refused(ctx, error, site)),
+    };
+    let result = run_read(&mut *transaction, plan, &env).await;
+    let _ = transaction.rollback().await;
+    let (_, values, hidden) = match result {
+        Ok(found) => found,
+        Err(Problem::Store(error)) => return Err(refused(ctx, error, site)),
+        Err(Problem::Defect(what)) => return Err(defect(ctx, &what, site)),
+        Err(Problem::Refused) => {
+            return Err(Interrupt::Failed(ctx.fail(not_permitted(), site)));
+        }
+    };
+    Ok(match plan.cardinality {
+        Cardinality::One => match values.into_iter().next() {
+            Some(value) => Found::Value(value),
+            None => Found::Missing(hidden),
+        },
+        Cardinality::Optional => Found::Value(values.into_iter().next().unwrap_or(Value::None)),
+        _ => Found::Value(Value::list(values)),
+    })
+}
+
 /// How many records the page-giving read `plan` finds given `args`, past
 /// any page's limit and from its start (chunk 6.4b3): its statement, as
 /// its first page runs it, counted, its limit given as `NULL`, which

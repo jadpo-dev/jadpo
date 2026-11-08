@@ -377,18 +377,53 @@ fn an_events_marked_field_needs_no_person() {
     );
 }
 
-/// Erasure is built (chunk P3, `tests/erasure.rs`); export isn't yet.
+/// A person's `export` (area 15, "Export"): only on a person, with one `id`.
 #[test]
-fn export_is_not_built_yet() {
+fn a_person_can_be_exported() {
     let source = format!(
         "{USER}
-action forget(user_id: User.id) -> Unit {{
-    User.export(user_id)
+action export_user(user_id: User.id) -> PersonalDataExport {{
+    return User.export(user_id)
+}}
+"
+    );
+    assert_eq!(problems(&source), NONE);
+}
+
+#[test]
+fn only_a_person_can_be_exported() {
+    let source = format!(
+        "{USER}
+entity Tag {{
+    id: Uuid
+    policy: {{
+        create: [Access.public]
+        read: [Access.public]
+    }}
+}}
+
+action export_tag(tag_id: Tag.id) -> PersonalDataExport {{
+    return Tag.export(tag_id)
 }}
 "
     );
     assert_eq!(
         problems(&source),
-        ["main.jadpo toolchain.not_built_yet: `User.export` isn't built yet"]
+        ["main.jadpo semantic.unknown_callee: `Tag` has no operation `export`"]
+    );
+}
+
+#[test]
+fn export_takes_one_id_and_no_block() {
+    let source = format!(
+        "{USER}
+action export_user(user_id: User.id) -> PersonalDataExport {{
+    return User.export(user_id, user_id)
+}}
+"
+    );
+    assert_eq!(
+        problems(&source),
+        ["main.jadpo type.argument_count: `User.export` takes one argument, and 2 given"]
     );
 }

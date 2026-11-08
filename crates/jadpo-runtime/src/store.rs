@@ -33,6 +33,8 @@ pub enum StoreOp<'a> {
     Write(&'a WritePlan),
     /// An audited entity's `history` (area 16; chunk B11).
     History(&'a jadpo_std::audit::HistoryPlan),
+    /// A person's `export` (area 15, "Export").
+    Export(&'a jadpo_std::erasure::ExportPlan),
 }
 
 /// How a store operation ended.
@@ -69,7 +71,7 @@ pub async fn store(
 ) -> Stored {
     // Its span (chunk 10.3c), at its site in the frame on top.
     let kind = match op {
-        StoreOp::Read(_) | StoreOp::History(_) => crate::spans::Kind::Read,
+        StoreOp::Read(_) | StoreOp::History(_) | StoreOp::Export(_) => crate::spans::Kind::Read,
         StoreOp::Write(_) => crate::spans::Kind::Write,
     };
     let frame = ctx.span_frame(site);
@@ -96,6 +98,13 @@ fn rows(op: StoreOp<'_>, value: &Value) -> u64 {
         StoreOp::Write(_) => 1,
         StoreOp::History(_) => match value {
             Value::Record(record) => record.get("items").map_or(0, count),
+            _ => 0,
+        },
+        StoreOp::Export(_) => match value {
+            Value::Record(record) => match record.get("records") {
+                Some(Value::Int(records)) => u64::try_from(*records).unwrap_or(0),
+                _ => 0,
+            },
             _ => 0,
         },
         StoreOp::Read(plan) => match plan.cardinality {
@@ -210,6 +219,10 @@ async fn run(
     }
     match op {
         StoreOp::History(plan) => match crate::audit::history(ctx, plan, args, site).await {
+            Ok(value) => Stored::Value(value),
+            Err(stop) => interrupted(stop),
+        },
+        StoreOp::Export(plan) => match crate::export::export(ctx, plan, json, args, site).await {
             Ok(value) => Stored::Value(value),
             Err(stop) => interrupted(stop),
         },
