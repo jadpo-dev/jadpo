@@ -157,7 +157,9 @@ def suggestions(name: str, copy: Path) -> list[str]:
     ignore` keeps in the example's `ignored_suggestions.jadpo_record`. It
     runs after `jadpo fmt --check`, so its formatting first changes
     nothing, and in the copy, so its notes in `.jadpo/` never land."""
-    code, out = jadpo(['suggest', '--json'], cwd=copy)
+    # Offline: what a registry publishes changes from day to day, and the
+    # gate's answer mustn't (roadmap R8).
+    code, out = jadpo(['suggest', '--json'], cwd=copy, env={'JADPO_SUGGEST_REGISTRY': 'off'})
     try:
         document = json.loads(out)
     except ValueError:

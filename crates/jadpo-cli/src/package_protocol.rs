@@ -9,7 +9,7 @@
 //! "Calm by default"):
 //!
 //! ```text
-//! ✓ Conforms to the registry protocol  build/openapi/main.json · 10 requests
+//! ✓ Conforms to the registry protocol  build/openapi/main.json · 11 requests
 //! ```
 //!
 //! One that differs is one error, then each difference under the request

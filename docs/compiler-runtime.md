@@ -970,6 +970,16 @@ uses and raises from the app's own code, and `type_shape` reduces a type as a
 fingerprint does. Tests run them against `jadpo-registry`'s local registry, and
 a stand-in in front of it that changes its answers.
 
+**Suggestions from the registry** (chunk R8, area 14, "Functions that
+already exist") are `jadpo_check::suggest::functions`: `own_functions`
+works out each own function's and action's source fingerprint with
+`release::digest_of`, as `verify` does, and `prefixes` gives what is sent.
+`jadpo-cli`'s `suggestions` asks `POST fingerprints/query` through
+`registry::Client::ask_if_served`, a thousand prefixes a request, and hands
+the answer to `suggest::scan`; the `function` signal reads `OPERATIONS`.
+Tests run against the local registry, which answers each prefix's bucket
+from `LocalRegistry::fingerprint`.
+
 **A package's publisher** (chunk G6, area 11, "Names and publishers") is read
 by `jadpo_check::packages`, kept on the `Surface` (one line of its text, loose
 to the version) and carried by `release::Facts`. `package::bar` adds the

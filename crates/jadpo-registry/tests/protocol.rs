@@ -4,7 +4,8 @@
 
 use jadpo_registry::names::{Digest, ScopedName, Version};
 use jadpo_registry::protocol::{
-    AdvisoryQuery, BASE, ENDPOINTS, Installed, Method, PackageKind, Request, StartRelease,
+    AdvisoryQuery, BASE, ENDPOINTS, FingerprintQuery, Installed, MOST_PREFIXES, Method,
+    PackageKind, Request, StartRelease,
 };
 use jadpo_registry::shape::{Shape, check_value};
 
@@ -47,6 +48,9 @@ fn requests() -> Vec<Request> {
                 package,
                 version: Version::parse("2.1.0").unwrap(),
             }],
+        }),
+        Request::QueryFingerprints(FingerprintQuery {
+            prefixes: vec!["3fa9c".into(), "00e1b".into()],
         }),
         Request::StartRelease(StartRelease {
             repository: "https://github.com/acme/postcodes".into(),
@@ -150,6 +154,27 @@ fn a_request_off_the_table_is_refused() {
         .is_err()
     );
     assert!(Request::parse(Method::Post, "/registry/v1/releases", b"not json").is_err());
+    // A prefix is five lower-case hex digits, never a whole fingerprint,
+    // and one request sends at most a thousand.
+    for body in [
+        r#"{"prefixes":["3FA9C"]}"#.to_string(),
+        r#"{"prefixes":["3fa9"]}"#.to_string(),
+        format!(r#"{{"prefixes":["{}"]}}"#, "a".repeat(64)),
+        format!(
+            r#"{{"prefixes":[{}]}}"#,
+            vec!["\"3fa9c\""; MOST_PREFIXES + 1].join(",")
+        ),
+    ] {
+        assert!(
+            Request::parse(
+                Method::Post,
+                "/registry/v1/fingerprints/query",
+                body.as_bytes()
+            )
+            .is_err(),
+            "{body}"
+        );
+    }
     assert!(
         Request::parse(
             Method::Post,

@@ -408,9 +408,10 @@ changes meaning; additions keep the number. Manifests are never stored,
 so no tool ever reads an old format. `jadpo help --json` documents the
 schema, with every node and edge kind and whether it is built yet.
 
-**Its size doesn't matter**, because it is never shipped. Once
-`jadpo inspect <name> --json` is built, an agent will ask for one node
-rather than reading the whole file.
+**Its size doesn't matter**, because it is never shipped. An agent asks
+`jadpo inspect <name> --json` for one node rather than reading the whole
+file, and `jadpo inspect --json` prints all of it
+([`jadpo inspect`](14-tooling.md#jadpo-inspect)).
 
 ### What a node holds
 
@@ -944,7 +945,7 @@ Every command takes `--json`, and `jadpo help --json` describes them all
 | Upgrade a package | `jadpo package update <name>` | Fix compile errors, then as above |
 | Explain a production event | `jadpo incident <event>` | `jadpo test new --from-event` |
 
-Not built yet: `jadpo rename`, `jadpo inspect`, `jadpo incident` and
+Not built yet: `jadpo rename`, `jadpo incident` and
 `jadpo test new --from-event`.
 
 ## Examples: an API change, a package upgrade and an incident
@@ -1057,7 +1058,8 @@ that the path number can't be decoded.
 | Lock and package surfaces | Built. The lock is a ledger read and checked like the others, and `jadpo check` holds each installed package to its line and digest ([External services](11-integrations.md) gives the digest), and its `jadpo version` pin to the line `app.jadpo` names. `jadpo toolchain pin` and `unpin` write the pin, and the package commands and `jadpo records update` keep it. `jadpo package add`, `update`, `remove`, `link` and `unlink` write it, each line through the ledger's writer, sorted; `git` lines record the repository as written, the tag and the tag's commit, `path` lines a folder relative to the root, and a `link` line replaces the package's line while the replaced one waits in `.jadpo/links` (git-ignored, in the lock's own format) for `unlink`. Two versions of one package are locked side by side, each on its own line, and `update` names the version while two are held. A package surface is `record surface 1`, a view written by `jadpo package check` in a package's own repository, verified at install against its package's code, and read by `jadpo package show`; installed, a surface is held by its package's digest rather than regenerated, so `jadpo records` doesn't list it, and an own integration's is written to `build/providers/` ([External services](11-integrations.md)). `jadpo package update` prints the surface's changes, each entry the app uses marked `used by the app`, and this page's review under `Needs a person`, the same list `jadpo check` asks an acceptance for; a package installed from git needs `PackageChange.git_source`. |
 | Build stamp | Built for native and Workers deployables: `jadpo build` writes the build id (`b_` and twelve hex digits of a SHA-256 over the deployable's program digest, the compiler, the target and `jadpo.lock`), the commit, whether the tree was modified, the compiler, the deployable and the target into the binary or module as a constant, and every event it logs carries them ([A native deployable](14-tooling.md#a-native-deployable), [A Workers deployable](14-tooling.md#a-workers-deployable)). `jadpo check` writes the manifest's `source` (`commit`, left out when git doesn't track the project, and `modified`) and `deployables`, each deployable's target, build id and the disk stores that keep it on one server (`one_server`), which digests a declared deployable's declaration too, so two deployables of one app never share one ([Declared deployables](14-tooling.md#declared-deployables)); a project with errors has none. |
 | Approval | Built: `jadpo approval` builds the before side, keeps its manifest and writes [the report](17-debugging-and-review.md#reviewing-a-change) to `build/review/`. |
-| Package upgrade plans, `jadpo incident`, `jadpo inspect` and `jadpo test new --from-event` | Not built yet. |
+| `jadpo inspect` | Built: the manifest from the graph `jadpo check` builds, or one node and its fields ([Tools](14-tooling.md#jadpo-inspect)). |
+| Package upgrade plans, `jadpo incident` and `jadpo test new --from-event` | Not built yet. |
 
 ## Errors
 

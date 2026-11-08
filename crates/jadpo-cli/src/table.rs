@@ -88,6 +88,8 @@ pub enum Values {
     Deployable,
     /// The name of one of the project's feature flags (chunk B10).
     Flag,
+    /// The name of one of the project's declarations (chunk A17).
+    Declaration,
     /// A delivery's or schedule run's id, which nothing completes: they
     /// are in a database, not the project (chunk 6.12).
     Id,
@@ -803,6 +805,64 @@ pub static COMMANDS: &[Command] = &[
         arguments_rule: &rule::CLI_ROUTES_ARGUMENTS,
         raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
         run: commands::routes,
+    },
+    Command {
+        name: "inspect",
+        synonyms: &[],
+        group: "Look things up",
+        summary: "Print the project map, or one node",
+        description: "Print the project map (areas 14 and 18): each domain's declarations, where each \
+                      is written, and what each calls, runs and raises, then a count. Given a name, \
+                      print that one node: where it is, its description, its signature, a type's \
+                      final fields with where each came from, and its edges both ways. --json \
+                      prints the manifest, or the one node and its fields as the manifest has them. \
+                      A name is a declaration's as code writes it, its domain first when two \
+                      domains share it. The project must check without errors first.",
+        arguments: &[Argument {
+            name: "name",
+            description: "A declaration's name",
+            required: false,
+            values: Values::Declaration,
+        }],
+        flags: &[],
+        examples: &[
+            Example {
+                description: "Print the project map",
+                command: "jadpo inspect",
+            },
+            Example {
+                description: "Print one node as data",
+                command: "jadpo inspect greet --json",
+            },
+        ],
+        arguments_rule: &rule::CLI_INSPECT_ARGUMENTS,
+        raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        run: commands::inspect,
+    },
+    Command {
+        name: "impact",
+        synonyms: &[],
+        group: "Look things up",
+        summary: "List what a change to a name reaches",
+        description: "List what a change to one declaration reaches (areas 1 and 14): the domains \
+                      that call it, with how many calls each makes, or that use it; the routes, \
+                      schedules and subscribers it reaches through them; the test files that reach \
+                      it; and whether it is public. Run it before changing or removing anything \
+                      shared or public. The project must check without errors first.",
+        arguments: &[Argument {
+            name: "name",
+            description: "A declaration's name",
+            required: true,
+            values: Values::Declaration,
+        }],
+        flags: &[],
+        examples: &[Example {
+            description: "See what changing a shared library function reaches",
+            command: "jadpo impact rounding.half_even",
+        }],
+        arguments_rule: &rule::CLI_IMPACT_ARGUMENTS,
+        raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        run: commands::impact,
     },
     Command {
         name: "ai",

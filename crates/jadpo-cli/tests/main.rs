@@ -73,6 +73,7 @@ mod geo_layers;
 mod geo_queries;
 mod geography;
 mod http;
+mod inspect;
 mod installing;
 mod json_columns;
 mod json_migrations;

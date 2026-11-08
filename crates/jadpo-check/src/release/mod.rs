@@ -16,5 +16,6 @@ pub use facts::{
     Facts, FailureFact, HostFact, PersonalDataFact, RECORDED, StandardCandidate, facts,
     named_holder, newest_recording,
 };
+pub(crate) use fingerprints::digest_of;
 pub use fingerprints::{Fingerprint, Shape, fingerprints, type_names, type_shape};
 pub use reach::reached;
