@@ -1509,95 +1509,95 @@ rules! {
     TYPE_NULLABLE_SELECTION: "type.nullable_selection", area 2, Error, Agent,
         "Code reads a field from a value that may be `none`, before a `match` has found it";
     TYPE_OPTIONAL_OUTSIDE_INPUT: "type.optional_outside_input", area 2, Error, Agent,
-        "Optional or default field outside an Input";
+        "A field has `optional:` or `default:` in a type that isn't an `Input`";
     TYPE_ORDERING_OPERAND: "type.ordering_operand", area 3, Error, Agent,
         "A comparison such as `<` or `>` is used on a value that has no order, such as text or a value that may be `none`";
     TYPE_PASSWORD_HASH_EXPOSED: "type.password_hash_exposed", area 19, Error, Agent,
-        "Password hash is sent, read from a request or put in a failure";
+        "An `Output`, a request's `Input` or a failure's fields hold a `PasswordHash`, which never leaves the server";
     TYPE_PRESENTATION_TEXT_PERSISTENCE: "type.presentation_text_persistence", area 10, Error, Agent,
-        "Formatted text is stored";
+        "An entity's field holds `PresentationText`, text already formatted for one reader";
     TYPE_PRIMITIVE_SIGNATURE: "type.primitive_signature", area 2, Error, Agent,
-        "Signature uses a built-in type directly";
+        "A function, an action, a query or a constant uses a built-in type such as `Text` directly, where it needs a named type";
     TYPE_PRINCIPAL_ACTIVE_INVALID: "type.principal_active_invalid", area 8, Error, Agent,
-        "Principal's active condition is not a test of the record's own fields";
+        "The `active:` of `principal { }` is something other than a condition on the entity's own fields, such as a field on its own";
     TYPE_PRINCIPAL_SUBJECT_INVALID: "type.principal_subject_invalid", area 8, Error, Agent,
-        "Principal's subject is not a field of a stored entity";
+        "The `subject:` of `principal { }` isn't written as a field of a stored entity, `<Entity>.<field>`";
     TYPE_PRINCIPAL_SUBJECT_NOT_UNIQUE: "type.principal_subject_not_unique", area 8, Error, Agent,
-        "Principal's subject field is not unique";
+        "The `subject:` of `principal { }` names a field without `unique: true`, so it could find more than one record";
     TYPE_RANDOM_CONTEXT: "type.random_context", area 19, Error, Agent,
-        "Randomness is read outside an action";
+        "A function, an inline function or a constant calls `random`, or an operation that needs random bytes such as `crypto.encrypt`, which only an action, a test or a fixture may do";
     TYPE_RECORD_TYPE_ARGUMENTS: "type.record_type_arguments", area 2, Error, Agent,
         "A record names its type with type arguments, which come from its place or its values";
     TYPE_REDUNDANT_NULLABILITY: "type.redundant_nullability", area 2, Error, Agent,
-        "Type is already nullable";
+        "A `?` is added to a type that already allows `none`";
     TYPE_RESERVED_FIELD_NAME: "type.reserved_field_name", area 2, Error, Agent,
-        "Field uses a reserved name";
+        "A field has a name kept for something else, such as `optional`, which builds a type's fields";
     TYPE_RESERVED_VARIANT_NAME: "type.reserved_variant_name", area 19, Error, Agent,
-        "Variant is called `all`, which lists an enum's variants";
+        "An enum declares a variant called `all`, `true`, `false` or `none`, which already mean something else";
     TYPE_RULE_NAME_TAKEN: "type.rule_name_taken", area 2, Error, Agent,
-        "Rule is named like a field, another rule or `invalid`";
+        "A `rule` has the name of a field or another rule of its type, or is called `invalid`";
     TYPE_RULE_NOT_CONDITION: "type.rule_not_condition", area 2, Error, Agent,
-        "Rule's condition isn't a `Bool`";
+        "A `rule`'s condition is something other than a `Bool`, such as a number";
     TYPE_RULE_OUTSIDE_FIELDS: "type.rule_outside_fields", area 2, Error, Agent,
-        "Rule reads something besides its type's fields";
+        "A `rule` reads something other than its type's own fields, such as a function of your app, a constant, a setting or the clock";
     TYPE_RULE_OUTSIDE_OBJECT: "type.rule_outside_object", area 2, Error, Agent,
-        "Rule is written outside an object type";
+        "A `rule` is written in a type other than an `Object`, an `Input` or an `Output`, such as one built on `Int`";
     TYPE_SECRET_EXPOSED: "type.secret_exposed", area 19, Error, Agent,
         "Secret value is sent, stored, logged or read as text";
     TYPE_SETTING_VALUE: "type.setting_value", area 2, Error, Agent,
-        "Setting has the wrong kind of value";
+        "A setting is given the wrong kind of value, such as a bare `email` where `TextFormat.email` belongs";
     TYPE_SIBLING_MISMATCH: "type.sibling_mismatch", area 2, Error, Agent,
-        "Field type is used for a sibling field type";
+        "A value of one declaration's field type is used where another declaration's field type is required, such as one entity's `id` for another's";
     TYPE_STANDARD_CLASH: "type.standard_clash", area 19, Error, Agent,
-        "Declaration has a standard type's name";
+        "A declaration has the name of a standard type, usually one a Jadpo release added after you named your own";
     TYPE_STANDARD_EXISTS: "type.standard_exists", area 19, Declinable, Agent,
         "You declared a type with the same fields as a standard type, such as a start and an end, under a name of your own";
     TYPE_SUGGESTIONS_VALUE_INVALID: "type.suggestions_value_invalid", area 14, Error, Agent,
-        "Suggestions setting has a value it can't take";
+        "A setting of `suggestions { }` has a value it can't take, such as a `project_token:` that isn't 32 hex digits";
     TYPE_TEMPORAL_CLOCK_INVALID: "type.temporal_clock_invalid", area 10, Error, Agent,
-        "Clock time is not written `HH:MM`";
+        "A clock time written as text isn't in the form `HH:MM` or `HH:MM:SS`, such as one with a single-digit hour";
     TYPE_TEMPORAL_FORMAT_COMPONENT_DUPLICATE: "type.temporal_format_component_duplicate", area 10, Error, Agent,
-        "Format component is given twice";
+        "A `TimeFormat` gives the same part twice, such as two `day:` lines";
     TYPE_TEMPORAL_FORMAT_COMPONENT_INVALID: "type.temporal_format_component_invalid", area 10, Error, Agent,
-        "Format component takes no such style";
+        "A part of a `TimeFormat` has a style it doesn't take, such as `day: ComponentStyle.long`";
     TYPE_TEMPORAL_FORMAT_COMPONENTS_EMPTY: "type.temporal_format_components_empty", area 10, Error, Agent,
-        "Declared format shows nothing";
+        "A declared `TimeFormat` lists no parts to show";
     TYPE_TEMPORAL_FORMAT_INVALID: "type.temporal_format_invalid", area 10, Error, Agent,
-        "Format is not a written-out time format";
+        "A `format:` is missing or isn't a built-in `TimeFormat` or the name of a declared one, or a format is used as a type or a value";
     TYPE_TEMPORAL_FORMAT_PART_MISSING: "type.temporal_format_part_missing", area 19, Error, Agent,
-        "Format shows a part a local time doesn't have";
+        "Your code formats a `LocalTime` or a `LocalDateTime` with a format that shows a part it doesn't have, such as a date or a zone";
     TYPE_TEMPORAL_FORMAT_REQUIRES_TIME: "type.temporal_format_requires_time", area 10, Error, Agent,
         "Your code formats a date with a format that also shows a clock time, and a date has no time to show";
     TYPE_TEMPORAL_LOCALES_REQUIRED: "type.temporal_locales_required", area 10, Error, Agent,
-        "Formatting needs declared locales";
+        "Your code formats text for people, chooses a locale from a request or sorts by a locale, and the app declares no `locales { }`";
     TYPE_TEMPORAL_OPTION_UNUSED: "type.temporal_option_unused", area 10, Error, Agent,
-        "Option means nothing for this value";
+        "An operation is given an option that means nothing for its value, such as `dst:` on a date";
     TYPE_TEMPORAL_ZONE_REQUIRED: "type.temporal_zone_required", area 10, Error, Agent,
         "Your code formats an `Instant` for people to read without saying which time zone to show it in";
     TYPE_TEST_CLOCK_CONTEXT: "type.test_clock_context", area 13, Error, Agent,
-        "The clock is moved outside a test";
+        "Code outside a test calls `clock.advance`, which only a test may do";
     TYPE_TYPE_ARGUMENT_COUNT: "type.type_argument_count", area 2, Error, Agent,
-        "Type has the wrong number of type arguments";
+        "A type is given more or fewer type arguments than it takes, such as two for a `List`";
     TYPE_UNARY_OPERAND: "type.unary_operand", area 3, Error, Agent,
-        "Operator cannot be used with this value";
+        "A `not` or a minus sign is given a value it can't work on, such as `not` on text";
     TYPE_UNIT_AS_NUMBER: "type.unit_as_number", area 2, Declinable, Agent,
         "You declared a type named for a unit, such as `Grams`, `Pence` or `Percent`, on a plain number";
     TYPE_UNIT_REQUIRED: "type.unit_required", area 19, Error, Agent,
         "A plain number is given where a physical quantity, such as a length or a mass, needs its unit";
     TYPE_UNIT_UNKNOWN: "type.unit_unknown", area 19, Error, Agent,
-        "Number is written with a suffix that is no unit";
+        "A number is written with a suffix that is no unit, often a unit in the wrong case";
     TYPE_UNKNOWN_ENUM_VARIANT: "type.unknown_enum_variant", area 2, Error, Agent,
         "The code names a variant that the enum doesn't have, often a misspelling of one it does";
     TYPE_UNKNOWN_FIELD: "type.unknown_field", area 2, Error, Agent,
-        "Type has no such field";
+        "Code names a field its type doesn't declare, often a misspelling of one it does";
     TYPE_UNKNOWN_SETTING: "type.unknown_setting", area 2, Error, Agent,
-        "Setting is not one Jadpo knows";
+        "A block holds a setting it doesn't have, often a misspelling of one it does, such as `maxlength` for `max_length`";
     TYPE_UNKNOWN_VALUE: "type.unknown_value", area 3, Error, Agent,
-        "Name is not defined in this scope";
+        "Code reads a name that isn't defined where it is used, often a misspelling of one that is";
     TYPE_UNKNOWN_VARIANT_FIELD: "type.unknown_variant_field", area 2, Error, Agent,
-        "Variant has no such field";
+        "An enum variant's value is built with a field the variant doesn't declare";
     TYPE_VARIANT_RETIRED: "type.variant_retired", area 19, Declinable, Agent,
-        "Code writes a retired code";
+        "Code writes a retired code of a closed list, one its authority no longer issues, such as `Country.yu`";
     VISIBILITY_PRIVATE_CROSS_DOMAIN: "visibility.private_cross_domain", area 1, Error, Human,
         "Code in one domain uses an action, type or other declaration that another domain keeps private, because it isn't marked `public`";
     VISIBILITY_PUBLIC_NOT_ALLOWED: "visibility.public_not_allowed", area 1, Error, Agent,

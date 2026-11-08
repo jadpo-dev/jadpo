@@ -279,7 +279,7 @@ D1 first: the site starts once D1 has merged.
   once all are.
 - [x] **D13c1 `type.a*` to `type.e*`**: [writing guide](writing.md), "How an error page reads"; `tools/docs/language_docs.py`, `error_format_scope` and `BROUGHT_TO_FORMAT`; the catalogue summaries in `crates/jadpo-diag`; the pages of `type.a*` to `type.e*`.
 - [x] **D13c2 `type.f*` to `type.n*`**: [writing guide](writing.md), "How an error page reads"; `tools/docs/language_docs.py`, `BROUGHT_TO_FORMAT`; the catalogue summaries in `crates/jadpo-diag`; the pages of `type.f*` to `type.n*`.
-- [ ] **D13c3 `type.o*` to `type.v*`** `opus · high`: 37 pages.
+- [x] **D13c3 `type.o*` to `type.v*`**: the pages of `type.o*` to `type.v*` in `docs/errors/`, but `type.secret_exposed`; their catalogue summaries in `crates/jadpo-diag`; `BROUGHT_TO_FORMAT` in `tools/docs/language_docs.py`.
 - [ ] **D13c4 `syntax.a*` to `syntax.l*`** `opus · high`: 27 pages.
 - [ ] **D13c5 `syntax.m*` to `syntax.v*`** `opus · high`: 28 pages.
 - [ ] **D13c6 `data.*`** `opus · high`: 40 pages.

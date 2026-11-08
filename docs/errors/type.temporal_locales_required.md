@@ -1,6 +1,16 @@
 # `type.temporal_locales_required`
 
-A project that formats text for people declares the locales it supports:
+Your code formats text for people, chooses a locale from a request or sorts by a locale, and the app declares no `locales { }`.
+
+## Why Jadpo refuses it
+
+Text for a person is written in one of the locales the app supports. With
+none declared there is nothing to check `locale:` against, and nothing for
+a request with no usable `Accept-Language` header to fall back to.
+
+## What it looks like
+
+domains/shop/actions/show_placed.jadpo:
 
 ```jadpo check project=e-locales-required file=app.jadpo hidden
 application {}
@@ -48,8 +58,13 @@ error: `text.format` needs the application's locales
 check failed: 1 error, 4 files
 ```
 
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
 The same rule covers choosing a locale from a request, since there is
 nothing to choose among and nothing to fall back to:
+
+domains/shop/actions/locale_for_reader.jadpo:
 
 ```jadpo check project=e-locales-required-choose file=app.jadpo hidden
 application {}
@@ -88,6 +103,8 @@ check failed: 1 error, 3 files
 And sorting by a locale's alphabet, since a deployable carries collation
 for the declared locales only:
 
+domains/shop/actions/in_name_order.jadpo:
+
 ```jadpo check project=e-locales-required-sort file=app.jadpo hidden
 application {}
 ```
@@ -122,3 +139,54 @@ error: `list.sort_by` needs the application's locales
 
 check failed: 1 error, 3 files
 ```
+
+## How to fix it
+
+**If the app shows text to people**, declare its locales in `app.jadpo`,
+which becomes:
+
+```jadpo check project=e-locales-required-fix file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-locales-required-fix file=domains/shop/types/ordered_at.jadpo hidden
+/// When an order was placed.
+type OrderedAt = Instant {}
+```
+
+```jadpo check project=e-locales-required-fix file=domains/shop/types/placed_text.jadpo hidden
+/// An order's placing, shown to its customer.
+type PlacedText = Output {
+    placed: PresentationText
+}
+```
+
+```jadpo check project=e-locales-required-fix file=domains/shop/actions/show_placed.jadpo hidden
+use shop/types { OrderedAt, PlacedText }
+
+/// The placing, in the customer's language.
+action show_placed(ordered_at: OrderedAt, reader_locale: Locale) -> PlacedText {
+    return PlacedText {
+        placed: text.format(
+            ordered_at,
+            zone: Zone.utc,
+            locale: reader_locale,
+            format: TimeFormat.date_long
+        )
+    }
+}
+```
+
+The app now supports `en_gb`, which is also the locale a request falls
+back to, and code that names any other locale is refused.
+
+## Related
+
+- [Locales](../language/10-configuration-and-time.md#locales)
+- [`zone:` and `locale:`](../language/10-configuration-and-time.md#zone-and-locale)
+- [Choosing a locale from a request](../language/10-configuration-and-time.md#choosing-a-locale-from-a-request)
