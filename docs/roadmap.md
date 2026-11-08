@@ -274,7 +274,7 @@ D1 first: the site starts once D1 has merged.
   Split by size (2026-11-08) into D13c1 to D13c15 below, taken in order,
   each widening `error_format_scope` to the rules it finished; tick it
   once all are.
-- [ ] **D13c1 `type.a*` to `type.e*`** `opus · high`: the 30 pages of those rules not yet in the format.
+- [x] **D13c1 `type.a*` to `type.e*`**: [writing guide](writing.md), "How an error page reads"; `tools/docs/language_docs.py`, `error_format_scope` and `BROUGHT_TO_FORMAT`; the catalogue summaries in `crates/jadpo-diag`; the pages of `type.a*` to `type.e*`.
 - [ ] **D13c2 `type.f*` to `type.n*`** `opus · high`: 31 pages.
 - [ ] **D13c3 `type.o*` to `type.v*`** `opus · high`: 37 pages.
 - [ ] **D13c4 `syntax.a*` to `syntax.l*`** `opus · high`: 27 pages.
