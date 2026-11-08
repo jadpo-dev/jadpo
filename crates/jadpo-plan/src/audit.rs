@@ -159,6 +159,7 @@ pub(crate) fn histories(
         action: None,
         json,
         sign_in: Default::default(),
+        provider_keys: Default::default(),
         retired: Default::default(),
     };
     let mut out: Vec<(Key, HistoryPlan)> = model

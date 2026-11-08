@@ -698,6 +698,14 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
                 .expect("it checks"),
         ),
         (
+            "an erasure at providers".into(),
+            corpus_project(
+                &crate::erasure_providers::files(),
+                "compiled-erasure-providers",
+            )
+            .expect("it checks"),
+        ),
+        (
             "an erasure logged in a store of files".into(),
             corpus_project(
                 &crate::erasure_stores::files_with_log("scans"),

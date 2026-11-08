@@ -2608,7 +2608,8 @@ to them, whose statement starts from the `id` as a parameter
 (`EraseRoot::Given`) and whose first table names nothing, each with `present`,
 which of an array of `id`s that store holds anything of; and the log. Each
 such store has a generated subscriber, `erasure in <store>`
-(`Target::ErasureIn`), and the log one, `erasure log` (`Target::ErasureLog`),
+(`Target::ErasureIn`), the log one, `erasure log` (`Target::ErasureLog`), each
+connection with a key one, `erasure at <connection>` (`Target::ErasureAt`),
 tried for a month (`jadpo_std::erasure::{ATTEMPTS, WITHIN_MS}`), then `failed`,
 so `jadpo deliveries` shows them as any other. `erasure::apply_delivery` runs
 the statement in a transaction of its own at repeatable read, at the time the

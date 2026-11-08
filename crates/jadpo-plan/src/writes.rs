@@ -69,6 +69,9 @@ struct EraseParts<'m> {
     /// The numbers in `tables` of the entities that are people, the
     /// person's own only in their own store, and each one's name.
     people: Vec<(usize, &'m str)>,
+    /// Each of `people` with keys at providers: each connection's name and
+    /// the column holding the key.
+    keys: Vec<(usize, Vec<(&'m str, &'m str)>)>,
 }
 
 impl EraseParts<'_> {
@@ -83,6 +86,7 @@ impl EraseParts<'_> {
             audited: &self.audited,
             own: &self.own,
             people: &people,
+            keys: &self.keys,
         })
     }
 
@@ -105,6 +109,7 @@ fn erase_parts<'m>(
     (store, part): (&str, &jadpo_check::erasure::Erasure),
     writing: &mut Writing,
     own: bool,
+    provider_keys: &'m [jadpo_check::provider_erasure::ProviderKey],
 ) -> Option<EraseParts<'m>> {
     let retired_in = |table: &str| {
         retired
@@ -247,13 +252,24 @@ fn erase_parts<'m>(
             set,
         });
     }
-    let people = deleted
+    let people: Vec<(usize, &str)> = deleted
         .iter()
         .enumerate()
         .skip(here)
         .filter(|(_, entity)| entity.person)
         .map(|(at, entity)| (at, entity.name.as_str()))
         .collect();
+    let mut keys = Vec::new();
+    for (at, name) in &people {
+        let mut held = Vec::new();
+        for key in provider_keys.iter().filter(|key| key.entity == *name) {
+            let column = field(deleted.get(*at)?, &key.field)?.born.as_str();
+            held.push((key.connection.as_str(), column));
+        }
+        if !held.is_empty() {
+            keys.push((*at, held));
+        }
+    }
     Some(EraseParts {
         tables: deleted.iter().map(|entity| entity.table.as_str()).collect(),
         follows,
@@ -262,6 +278,7 @@ fn erase_parts<'m>(
         audited,
         own: kept_people,
         people,
+        keys,
     })
 }
 
@@ -274,8 +291,11 @@ fn erase_parts<'m>(
 pub(crate) fn erasure_plan(
     db: &dyn jadpo_db::Db,
     project: jadpo_db::Project,
+    numbering: &crate::providers::Numbering,
 ) -> jadpo_std::erasure::ErasurePlan {
-    use jadpo_std::erasure::{ErasureLog, ErasurePlan, LOG_SUBSCRIBER, PersonPlan, StoreErasure};
+    use jadpo_std::erasure::{
+        ErasureLog, ErasurePlan, LOG_SUBSCRIBER, PersonPlan, ProviderErasure, StoreErasure,
+    };
     let model = jadpo_check::data::data_model(db, project);
     let erasures = jadpo_check::erasure::erasures(db, project);
     let sign_in = crate::purge::sign_in_state(db, project);
@@ -294,6 +314,7 @@ pub(crate) fn erasure_plan(
             });
     let apps: Vec<String> =
         crate::audit::subscribers_of(db, project, jadpo_std::erasure::PERSON_ERASED_KEY);
+    let provider_keys = jadpo_check::provider_erasure::provider_keys(db, project);
     let part_of = |person: &EntityModel,
                    part: &jadpo_check::erasure::Erasure,
                    store: &str|
@@ -301,7 +322,15 @@ pub(crate) fn erasure_plan(
         let own = person.store.as_deref() == Some(store);
         let mut writing = Writing::default();
         let id = writing.param(WriteSource::Input(0), SqlType::Uuid);
-        let parts = erase_parts(model, &sign_in, &retired, (store, part), &mut writing, own)?;
+        let parts = erase_parts(
+            model,
+            &sign_in,
+            &retired,
+            (store, part),
+            &mut writing,
+            own,
+            &provider_keys,
+        )?;
         let sql = if own {
             let by_id = text::equal("id", &id);
             parts.statement(text::EraseRoot::Found(std::slice::from_ref(&by_id)))
@@ -365,6 +394,12 @@ pub(crate) fn erasure_plan(
                 .iter()
                 .map(|part| jadpo_std::erasure::store_subscriber(&part.store)),
         );
+        subscribers.extend(
+            provider_keys
+                .iter()
+                .filter(|key| key.entity == person.name)
+                .map(|key| jadpo_std::erasure::provider_subscriber(&key.connection)),
+        );
         if log.is_some() {
             subscribers.push(LOG_SUBSCRIBER.to_string());
         }
@@ -377,7 +412,22 @@ pub(crate) fn erasure_plan(
             elsewhere,
         });
     }
-    ErasurePlan { people, log }
+    let providers = provider_keys
+        .iter()
+        .map(|key| ProviderErasure {
+            connection: key.connection.clone(),
+            operation: key.call.clone(),
+            called: numbering
+                .number(&key.connection, &key.call)
+                .unwrap_or(u32::MAX),
+            field: key.input_field.clone(),
+        })
+        .collect();
+    ErasurePlan {
+        people,
+        log,
+        providers,
+    }
 }
 
 /// One write's statement as it is built.
@@ -1179,6 +1229,7 @@ impl Planner<'_> {
             (&store, here),
             &mut writing,
             true,
+            &self.provider_keys,
         )?;
         let by_id = text::equal("id", &id);
         let granted = self.policy(&mut writing, person, Effect::Delete, &Row::Table)?;
@@ -1567,6 +1618,7 @@ pub(crate) fn plans(
         json,
         sign_in: crate::purge::sign_in_state(db, project),
         retired: retired_columns(db, project),
+        provider_keys: jadpo_check::provider_erasure::provider_keys(db, project),
     };
     let mut out = Vec::new();
     let mut at = HashMap::new();

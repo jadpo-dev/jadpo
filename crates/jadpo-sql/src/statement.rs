@@ -1051,6 +1051,10 @@ pub struct Erase<'a> {
     /// The numbers in `tables` of the entities that are people, whose
     /// records it returns.
     pub people: &'a [usize],
+    /// For each of `people` with keys at providers: its number and, for
+    /// each connection that names one on it, the connection's name and the
+    /// column holding the key (area 15, "Erasure at providers").
+    pub keys: &'a [(usize, Vec<(&'a str, &'a str)>)],
 }
 
 /// One person's erasure in one store (area 15, "Erasure"; chunks P3 and
@@ -1070,7 +1074,9 @@ pub struct Erase<'a> {
 /// refers to a deleted record. It returns a row for each person it erased
 /// here, whose first column is their entity's number and whose second is
 /// their `id`; none when the person isn't there or policy refuses the
-/// caller, or, in another store, when no other person was reached.
+/// caller, or, in another store, when no other person was reached. With
+/// `keys`, a third column is their keys at providers, the JSON object of
+/// the ones they have, read as their record was before it changed.
 pub fn erase(erasure: Erase<'_>) -> String {
     let Erase {
         root,
@@ -1081,6 +1087,7 @@ pub fn erase(erasure: Erase<'_>) -> String {
         audited,
         own,
         people,
+        keys,
     } = erasure;
     let mut parts = vec![walk(root, tables, follows)];
     for (i, keep) in keeps.iter().enumerate() {
@@ -1261,7 +1268,41 @@ pub fn erase(erasure: Erase<'_>) -> String {
     }
     let rows: Vec<String> = people
         .iter()
-        .map(|entity| format!("SELECT {entity}, {} FROM {}", ident("id"), part(*entity)))
+        .map(|entity| {
+            let from = part(*entity);
+            let column = if keys.is_empty() {
+                String::new()
+            } else {
+                match keys.iter().find(|(at, _)| at == entity) {
+                    Some((_, held)) => {
+                        // Every part of the statement sees the same
+                        // snapshot, so this reads the record as it was.
+                        let pairs: Vec<String> = held
+                            .iter()
+                            .map(|(connection, column)| {
+                                format!(
+                                    "'{}', {}.{}",
+                                    connection.replace('\'', "''"),
+                                    ident("key"),
+                                    ident(column)
+                                )
+                            })
+                            .collect();
+                        format!(
+                            ", (SELECT jsonb_strip_nulls(jsonb_build_object({}))::text FROM {} AS {} WHERE {}.{} = {from}.{})",
+                            pairs.join(", "),
+                            ident(tables[*entity]),
+                            ident("key"),
+                            ident("key"),
+                            ident("id"),
+                            ident("id")
+                        )
+                    }
+                    None => ", NULL::text".to_string(),
+                }
+            };
+            format!("SELECT {entity}, {}{column} FROM {from}", ident("id"))
+        })
         .collect();
     format!(
         "WITH{} {}\n{}",

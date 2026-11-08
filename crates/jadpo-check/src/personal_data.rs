@@ -182,7 +182,7 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
     let mut markdown = String::from(
         "# Personal data\n\n\
          Where the app's personal data goes: each connection a field marked `personal:`, or a value of a standard type that is personal data, is sent through, and the hosts that connection reaches. A value counts as sent when it may be in what goes out, may have decided it, or was sent to a provider whose answer it may be in. Each connection says whether it erases its copy when a person is erased. Written by `jadpo check`.\n\n\
-         Not listed yet: what each store and cache keeps, who may read it and how long it is kept. Jadpo doesn't call a provider's `erasure:` yet.\n\n",
+         Not listed yet: what each store and cache keeps, who may read it and how long it is kept.\n\n",
     );
     if by_connection.is_empty() {
         markdown.push_str("No personal data leaves through a connection.\n");
@@ -277,11 +277,37 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
         connection.set("sent", fields);
         connections.push(connection);
     }
+    // A key that is itself personal data, copied into the outbox as the
+    // person is erased (area 15, "Erasure at providers").
+    let waiting = crate::provider_erasure::personal_keys(db, project);
+    if !waiting.is_empty() {
+        markdown.push_str(
+            "## Keys waiting in the outbox\n\nEach of these is personal data, kept only in the outbox from the erasure until its provider confirms it.\n\n| Connection | Key |\n|---|---|\n",
+        );
+        for (connection, key) in &waiting {
+            markdown.push_str(&format!("| `{connection}` | `{key}` |\n"));
+        }
+        markdown.push('\n');
+    }
     while markdown.ends_with("\n\n") {
         markdown.pop();
     }
     let mut json = Value::object();
     json.set("connections", connections);
+    if !waiting.is_empty() {
+        json.set(
+            "keys_in_outbox",
+            waiting
+                .iter()
+                .map(|(connection, key)| {
+                    let mut entry = Value::object();
+                    entry.set("connection", connection.as_str());
+                    entry.set("key", key.as_str());
+                    entry
+                })
+                .collect::<Vec<_>>(),
+        );
+    }
     Report { markdown, json }
 }
 
