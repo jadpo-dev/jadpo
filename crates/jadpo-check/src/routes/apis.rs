@@ -5,8 +5,8 @@
 //! writes (`idempotency: Idempotency.required`) and list the sign-in
 //! methods it accepts (`authentication: [AuthenticationMethod.browser_session]`,
 //! area 8), and serves its OpenAPI document at `<prefix>/openapi.json`
-//! unless it says `serve_openapi: false`; its rate limits come with area
-//! 16.
+//! unless it says `serve_openapi: false`, and may give its routes a rate
+//! limit of their own (`rate_limit:`, area 16).
 
 use std::collections::BTreeMap;
 
@@ -37,12 +37,16 @@ pub struct Api {
     pub prefix: Vec<String>,
     /// Whether its writes need an `Idempotency-Key`.
     pub idempotency: Idempotency,
-    /// The sign-in methods it accepts, in written order; empty when it
-    /// names none, and accepts every declared method.
-    pub methods: Vec<AuthenticationMethod>,
+    /// The sign-in methods its `authentication:` lists, in written order:
+    /// `None` when it has no such line, and accepts every declared method;
+    /// `Some` of an empty list for `authentication: []`, which accepts none.
+    pub methods: Option<Vec<AuthenticationMethod>>,
     /// Whether it serves its OpenAPI document at `<prefix>/openapi.json`
     /// (area 7, "OpenAPI"): unless `serve_openapi: false`.
     pub serve_openapi: bool,
+    /// The limit its routes that write none count in place of the default
+    /// limits (`rate_limit:`, area 16, "Rate limits"), sharing one count.
+    pub rate_limit: Option<super::limit::Limit>,
 }
 
 impl Api {
@@ -63,6 +67,9 @@ pub struct Apis {
     pub apis: Vec<Api>,
     /// Whether `app.jadpo` declares them, rather than `main` being implied.
     pub declared: bool,
+    /// Each limit an API writes and where its `within:` is, for what the
+    /// store can count.
+    pub limits: Vec<(super::limit::Limit, Span)>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -105,6 +112,7 @@ pub fn api_table(db: &dyn Db, project: Project) -> Apis {
                         idempotency,
                         methods,
                         serve_openapi,
+                        rate_limit,
                     }) = read_api(
                         db,
                         project,
@@ -124,7 +132,9 @@ pub fn api_table(db: &dyn Db, project: Project) -> Apis {
                             idempotency,
                             methods,
                             serve_openapi,
+                            rate_limit: rate_limit.as_ref().map(|(limit, _)| *limit),
                         };
+                        out.limits.extend(rate_limit);
                         if let Some(other) = overlap {
                             out.problems.push(
                                 Diagnostic::new(
@@ -149,8 +159,9 @@ pub fn api_table(db: &dyn Db, project: Project) -> Apis {
             name: MAIN.to_string(),
             prefix: Vec::new(),
             idempotency: Idempotency::Optional,
-            methods: Vec::new(),
+            methods: None,
             serve_openapi: true,
+            rate_limit: None,
         }]
     };
     out
@@ -165,8 +176,9 @@ pub fn api_problems(db: &dyn Db, project: Project) -> &[Diagnostic] {
 struct Read {
     prefix: Vec<String>,
     idempotency: Idempotency,
-    methods: Vec<AuthenticationMethod>,
+    methods: Option<Vec<AuthenticationMethod>>,
     serve_openapi: bool,
+    rate_limit: Option<(super::limit::Limit, Span)>,
 }
 
 fn read_api(
@@ -180,39 +192,42 @@ fn read_api(
 ) -> Option<Read> {
     let mut prefix = None;
     let mut idempotency = Idempotency::Optional;
-    let mut methods = Vec::new();
+    let mut methods = None;
     let mut serve_openapi = true;
+    let mut rate_limit = None;
     for (key, member) in tree::members(list) {
         let Some(setting) = tree::name_text(&key) else {
             continue;
         };
         let key_span = node_span(path, key.syntax());
         match setting.as_str() {
-            "prefix" => match member.value() {
-                Some(Expr::RoutePathExpr(written)) => {
-                    let segments: Vec<String> = written
-                        .route_path()
-                        .iter()
-                        .flat_map(|path| path.route_segments())
-                        .filter_map(|segment| {
-                            segment
-                                .path_segment_token()
-                                .map(|token| token.text().to_string())
-                                .filter(|text| !text.is_empty())
-                        })
-                        .collect();
-                    prefix = Some(segments);
-                }
-                _ => {
-                    out.push(
+            "prefix" => {
+                match member.value() {
+                    Some(Expr::RoutePathExpr(written)) => {
+                        let segments: Vec<String> = written
+                            .route_path()
+                            .iter()
+                            .flat_map(|path| path.route_segments())
+                            .filter_map(|segment| {
+                                segment
+                                    .path_segment_token()
+                                    .map(|token| token.text().to_string())
+                                    .filter(|text| !text.is_empty())
+                            })
+                            .collect();
+                        prefix = Some(segments);
+                    }
+                    _ => {
+                        out.push(
                         Diagnostic::new(&rule::API_PREFIX_REQUIRED, format!("API `{api}`'s prefix isn't a path"))
                             .at(key_span, "not a path")
                             .reason("An API's prefix is the path its routes start with: `prefix: /admin`.")
                             .next("Write the prefix as a path starting with `/`"),
                     );
-                    return None;
+                        return None;
+                    }
                 }
-            },
+            }
             "idempotency" => match read_idempotency(member.value().as_ref()) {
                 Ok(read) => idempotency = read,
                 Err(written) => {
@@ -232,7 +247,7 @@ fn read_api(
                 }
             },
             "authentication" => {
-                methods = read_methods(db, project, path, api, &member, out);
+                methods = Some(read_methods(db, project, path, api, &member, out));
             }
             "serve_openapi" => {
                 let value = member.value();
@@ -244,8 +259,10 @@ fn read_api(
                     "true" => serve_openapi = true,
                     "false" => serve_openapi = false,
                     _ => {
-                        let span = value
-                            .map_or_else(|| key_span.clone(), |value| node_span(path, value.syntax()));
+                        let span = value.map_or_else(
+                            || key_span.clone(),
+                            |value| node_span(path, value.syntax()),
+                        );
                         out.push(
                             Diagnostic::new(
                                 &rule::API_SERVE_OPENAPI_INVALID,
@@ -259,15 +276,7 @@ fn read_api(
                     }
                 }
             }
-            "rate_limit" => out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("An API's `{setting}:` isn't built yet"),
-                )
-                .at(key_span, "decided, not built")
-                .reason("An API's own `rate_limit:` comes with the rest of area 16's rate limits; every API already has the default limits.")
-                .next(format!("Leave `{setting}:` out for now")),
-            ),
+            "rate_limit" => rate_limit = super::limit::read(path, &member, out),
             other => {
                 let near = nearest(other, API_SETTINGS.iter().copied());
                 let mut problem = Diagnostic::new(
@@ -276,7 +285,7 @@ fn read_api(
                 )
                 .at(key_span.clone(), "unknown setting")
                 .reason(format!(
-                    "An API in `apis:` holds its `prefix:`, `idempotency:`, `authentication:` and `serve_openapi:`, and later its `rate_limit:`.{}",
+                    "An API in `apis:` holds its `prefix:`, `idempotency:`, `authentication:`, `serve_openapi:` and `rate_limit:`.{}",
                     near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
                 ));
                 problem = match near {
@@ -302,6 +311,7 @@ fn read_api(
         idempotency,
         methods,
         serve_openapi,
+        rate_limit,
     })
 }
 
@@ -414,15 +424,18 @@ fn read_idempotency(value: Option<&Expr>) -> Result<Idempotency, String> {
 }
 
 /// The sign-in methods API `api` accepts (area 8): its own
-/// `authentication:` list, or every method `authentication.jadpo`
-/// declares when it names none.
+/// `authentication:` list, which `[]` leaves empty, or every method
+/// `authentication.jadpo` declares when it has no such line.
 pub fn accepted_methods(
     db: &dyn Db,
     project: Project,
     api: &str,
 ) -> Vec<jadpo_std::AuthenticationMethod> {
     match api_table(db, project).get(api) {
-        Some(declared) if !declared.methods.is_empty() => declared.methods.clone(),
+        Some(Api {
+            methods: Some(listed),
+            ..
+        }) => listed.clone(),
         _ => crate::identity::identity(db, project)
             .methods
             .iter()

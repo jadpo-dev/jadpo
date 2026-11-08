@@ -16,6 +16,7 @@ use super::http::{jadpo, tempdir, write};
 
 pub(super) const INDEX: &str = "/// UK postcodes: reading and normalising them.
 package Postcodes.v2 {
+    publisher: \"@acme\"
     licence: Licence.mit
     jadpo: \"1.0\"
 }
@@ -121,6 +122,7 @@ fn show_prints_a_packages_description_and_public_surface() {
   kind: library
   version: 2.1.0
   source: path ../postcodes
+  publisher: @acme
   licence: mit
   jadpo: 1.0
   folder: packages/postcodes/v2
@@ -128,6 +130,7 @@ fn show_prints_a_packages_description_and_public_surface() {
 
 Facts
   kind: library, pure
+  publisher: @acme
   storable: UkPostcode, WrittenPostcode
   failures: uk.parse: InvalidPostcode
 
@@ -267,6 +270,7 @@ fn show_works_for_the_apps_own_integration() {
   package: Postcodes.v2
   kind: library
   source: the app's own
+  publisher: @acme
   licence: mit
   jadpo: 1.0
   folder: shared/providers/postcodes/v2
@@ -321,15 +325,6 @@ fn show_names_what_it_cant_find() {
             .starts_with("error: `jadpo package show` needs a package\n"),
         "{}",
         none.stderr
-    );
-    let later = jadpo(&root, &["package", "new", "Postcodes"]);
-    assert_eq!(later.code, 1);
-    assert!(
-        later
-            .stderr
-            .starts_with("error: `jadpo package new` isn't built yet\n"),
-        "{}",
-        later.stderr
     );
 }
 
@@ -404,6 +399,7 @@ fn check_runs_the_publishing_bar_and_writes_the_surface() {
 
 Facts
   kind: library, pure
+  publisher: @acme
   storable: UkPostcode, WrittenPostcode
   failures: uk.parse: InvalidPostcode
 
@@ -414,11 +410,12 @@ Publishing bar
   tests         passed                        1 test
   version       passed                        2.0.0, the first release
   changelog     failed                        2.0.0 doesn't say why
+  publisher     passed                        @acme
   licence       passed                        mit, from Jadpo 1.0
 
 Wrote surface.jadpo_record and CHANGELOG.md
 
-package check failed: 1 failed, 6 passed
+package check failed: 1 failed, 7 passed
 "
     );
     let surface = std::fs::read_to_string(root.join("surface.jadpo_record")).expect("surface");
@@ -450,6 +447,7 @@ package Postcodes.v2
         second.stdout,
         "Facts
   kind: library, pure
+  publisher: @acme
   storable: UkPostcode, WrittenPostcode
   failures: uk.parse: InvalidPostcode
 
@@ -460,9 +458,10 @@ Publishing bar
   tests         passed                        1 test
   version       passed                        2.0.0, the first release
   changelog     passed                        2.0.0 says why
+  publisher     passed                        @acme
   licence       passed                        mit, from Jadpo 1.0
 
-package check passed: Postcodes.v2 2.0.0, 7 passed
+package check passed: Postcodes.v2 2.0.0, 8 passed
 
 next: git tag v2.0.0  tags the release once surface.jadpo_record is committed
 "
@@ -569,6 +568,180 @@ Reads the outward code.
 ## 2.0.0
 "
             )
+    );
+}
+
+/// The registry counts what it released, and a tag can name a release it
+/// never took, such as one the verifier refused: `--previous` says which
+/// release the registry holds, `none` for a first release (area 14, Richard,
+/// 2026-11-07).
+#[test]
+fn check_compares_with_the_release_previous_names() {
+    let (_dir, root) = repository("package-check-previous");
+    plain(&root, &["package", "check"]);
+    write(
+        &root,
+        "CHANGELOG.md",
+        "# Changelog\n\n## 2.0.0\n\n- first release\n\nReads UK postcodes as people type them.\n",
+    );
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "first release"]);
+    git(&root, &["tag", "v2.0.0"]);
+    write(
+        &root,
+        "types/outward_code.jadpo",
+        "/// The first half of a postcode, such as \"SW1A\".
+public type OutwardCode = Text {
+    max_length: 4
+}
+",
+    );
+    // The registry refused 2.0.0, so this is still the first release.
+    let first = plain(&root, &["package", "check", "--previous", "none"]);
+    assert_eq!(first.code, 0, "{}{}", first.stdout, first.stderr);
+    assert!(
+        first
+            .stdout
+            .contains("  version       passed                        2.0.0, the first release\n"),
+        "{}",
+        first.stdout
+    );
+    assert!(!first.stdout.contains("Changes since"), "{}", first.stdout);
+    assert_eq!(
+        std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog"),
+        "# Changelog\n\n## 2.0.0\n\n- first release\n\nReads UK postcodes as people type them.\n"
+    );
+    // Naming the tag's release is what check does without the flag.
+    let named = plain(&root, &["package", "check", "--previous", "2.0.0"]);
+    assert!(
+        named
+            .stdout
+            .contains("  version       passed                        2.1.0, 1 added since 2.0.0\n"),
+        "{}",
+        named.stdout
+    );
+    // A release no tag holds is refused, naming the ones there are.
+    let missing = plain(&root, &["package", "check", "--previous", "1.4.0"]);
+    assert_eq!(missing.code, 2, "{}{}", missing.stdout, missing.stderr);
+    assert!(
+        missing
+            .stderr
+            .starts_with("error: No tag holds release 1.4.0 of `Postcodes`\n"),
+        "{}",
+        missing.stderr
+    );
+    assert!(missing.stderr.contains("v2.0.0"), "{}", missing.stderr);
+}
+
+/// A tagged commit is checked against the release before it, as
+/// `jadpo package publish` and the verifier check it, whichever tags came
+/// after: an older tag isn't compared with the newest.
+#[test]
+fn check_on_a_tagged_commit_compares_it_with_the_release_before() {
+    let (_dir, root) = repository("package-check-tagged");
+    plain(&root, &["package", "check"]);
+    let log = std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog");
+    write(
+        &root,
+        "CHANGELOG.md",
+        &format!("{log}\nReads UK postcodes as people type them.\n"),
+    );
+    assert_eq!(plain(&root, &["package", "check"]).code, 0);
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "first release"]);
+    git(&root, &["tag", "v2.0.0"]);
+    write(
+        &root,
+        "types/outward_code.jadpo",
+        "/// The first half of a postcode, such as \"SW1A\".
+public type OutwardCode = Text {
+    max_length: 4
+}
+",
+    );
+    plain(&root, &["package", "check"]);
+    let log = std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog");
+    write(
+        &root,
+        "CHANGELOG.md",
+        &log.replace(
+            "- added type `OutwardCode`\n",
+            "- added type `OutwardCode`\n\nReads the outward code.\n",
+        ),
+    );
+    assert_eq!(plain(&root, &["package", "check"]).code, 0);
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "outward codes"]);
+    git(&root, &["tag", "v2.1.0"]);
+
+    git(&root, &["checkout", "-q", "v2.0.0"]);
+    let older = plain(&root, &["package", "check"]);
+    assert_eq!(older.code, 0, "{}", older.stdout);
+    assert!(
+        older
+            .stdout
+            .contains("  version       passed                        2.0.0, released as v2.0.0\n"),
+        "{}",
+        older.stdout
+    );
+    assert!(!older.stdout.contains("next: git tag"), "{}", older.stdout);
+
+    git(&root, &["checkout", "-q", "v2.1.0"]);
+    let newest = plain(&root, &["package", "check"]);
+    assert_eq!(newest.code, 0, "{}", newest.stdout);
+    assert!(
+        newest
+            .stdout
+            .contains("  version       passed                        2.1.0, released as v2.1.0\n"),
+        "{}",
+        newest.stdout
+    );
+    // Its behaviour is held to the release before it, as publishing holds it.
+    assert!(
+        newest.stdout.contains("  behaviour     passed "),
+        "{}",
+        newest.stdout
+    );
+    assert!(
+        !newest.stdout.contains("next: git tag"),
+        "{}",
+        newest.stdout
+    );
+    // Neither checkout wrote anything.
+    git(&root, &["diff", "--quiet"]);
+}
+
+/// A failed test of the package's own is shown at its path in the
+/// package, never in the scratch app it ran in.
+#[test]
+fn a_failed_package_test_is_shown_at_its_path_in_the_package() {
+    let (_dir, root) = repository("package-check-failed-test");
+    write(
+        &root,
+        "libraries/uk.test.jadpo",
+        "test \"a postcode is read in upper case\" {
+    var postcode: UkPostcode = attempt uk.parse(\"sw1a 1aa\")
+    assert postcode == \"sw1a 1aa\"
+}
+",
+    );
+    let failed = plain(&root, &["package", "check"]);
+    assert_eq!(failed.code, 1, "{}", failed.stdout);
+    assert!(
+        failed.stdout.contains(" --> libraries/uk.test.jadpo:3\n"),
+        "{}",
+        failed.stdout
+    );
+    assert!(
+        failed.stdout.contains("  rerun: jadpo package check\n"),
+        "{}",
+        failed.stdout
+    );
+    assert!(
+        !failed.stdout.contains("shared/") && !failed.stderr.contains("shared/"),
+        "{}{}",
+        failed.stdout,
+        failed.stderr
     );
 }
 
@@ -683,6 +856,26 @@ fn check_runs_each_example_and_needs_one_for_every_function() {
             .contains("  examples      failed                        1 failure not shown\n"),
         "{}",
         unshown.stdout
+    );
+
+    // A function with no example, whose failure nothing shows either, is
+    // two errors but counted once in the row, so its detail fits beside it.
+    write(&root, "libraries/uk.jadpo", UK);
+    let neither = plain(&root, &["package", "check"]);
+    assert_eq!(neither.code, 1, "{}", neither.stdout);
+    assert!(
+        neither.stdout.contains(
+            "error: `uk.parse` can fail with `InvalidPostcode`, which no example or test shows\n"
+        ),
+        "{}",
+        neither.stdout
+    );
+    assert!(
+        neither
+            .stdout
+            .contains("  examples      failed                        1 function has no example\n"),
+        "{}",
+        neither.stdout
     );
 }
 
@@ -805,7 +998,7 @@ public type GeoPoint = Object {
     assert!(
         failed
             .stdout
-            .ends_with("package check failed: 2 failed, 1 passed, 4 not checked yet\n"),
+            .ends_with("package check failed: 2 failed, 2 passed, 4 not checked yet\n"),
         "{}",
         failed.stdout
     );

@@ -1,5 +1,5 @@
 //! The one harness every standard type runs through, in the checker (area
-//! 19, "Every standard type meets one contract"): each type's
+//! 19, "What every standard type can do"): each type's
 //! stub declaration agrees with its data entry in `jadpo-std`, and the
 //! contract's calls and `<` accept a value of the type exactly as its entry
 //! says. `jadpo-runtime`'s `standard_types` tests are the runtime's half,
@@ -642,7 +642,6 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
                 // A part that may be `none` is `null` too (chunk 5.5l).
                 if let Holds::Object(parts) = entry.holds {
                     for (field, part) in parts {
-                        let field = jadpo_std::standard::wire_name(name, field);
                         let schema = properties.get(field).expect("a property");
                         assert_eq!(
                             schema.get("anyOf").is_some(),

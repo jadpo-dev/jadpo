@@ -1,0 +1,6 @@
+use shared/providers/{snake}
+
+/// Tidies what someone typed.
+action tidy_entered_text(entered: {name}.EnteredText) fails {name}.NothingEntered -> {name}.TidyText {
+    return attempt {name}.starter.tidied(entered)
+}

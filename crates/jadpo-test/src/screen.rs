@@ -36,9 +36,15 @@ fn count(n: usize, one: &str, many: &str) -> String {
 pub fn screen(run: &Run) -> Screen {
     let mut screen = Screen::new();
     let root = run.root.as_deref();
-    for result in &run.results {
+    let repeats = run.fault_repeats();
+    for (result, repeat) in run.results.iter().zip(repeats) {
         if let Some(failure) = &result.failure {
-            screen.push(Block::report(report(&result.test, failure, root)));
+            screen.push(Block::report(report(
+                &result.test,
+                failure,
+                root,
+                repeat.is_some(),
+            )));
         }
     }
     // What passed but should change: a recording of an older prompt.
@@ -121,7 +127,7 @@ fn footer(run: &Run) -> Block {
     }
 }
 
-fn report(test: &Test, failure: &TestFailure, root: Option<&str>) -> Report {
+fn report(test: &Test, failure: &TestFailure, root: Option<&str>, repeat: bool) -> Report {
     let mut groups = Vec::new();
     // The crash the run was made with, first, since everything after
     // happened because of it (chunk 7.5d).
@@ -174,7 +180,7 @@ fn report(test: &Test, failure: &TestFailure, root: Option<&str>) -> Report {
             items.extend(failure_items(info, root));
             groups.push(items);
         }
-        Detail::Fault(info) => groups.push(fault_items(info, root)),
+        Detail::Fault(info) => groups.push(fault_items(info, root, repeat)),
         Detail::Fake(info) => groups.push(vec![
             Item::Field(Field::new("fake", vec![Text::Prose(info.subject())])),
             Item::Field(Field::new("reason", vec![Text::Prose(info.reason())])),
@@ -406,12 +412,21 @@ fn failure_items(info: &FailureInfo, root: Option<&str>) -> Vec<Item> {
     items
 }
 
-fn fault_items(info: &FaultInfo, root: Option<&str>) -> Vec<Item> {
+/// A fault's lines; `repeat`, one an earlier report here says the same of,
+/// points back rather than saying why and what next again (chunk A14).
+fn fault_items(info: &FaultInfo, root: Option<&str>, repeat: bool) -> Vec<Item> {
     let mut items = vec![Item::Field(Field::new(
         "fault",
         vec![Text::Prose(info.subject.clone())],
     ))];
     at(&mut items, &info.at, root);
+    if repeat {
+        items.push(Item::Field(Field::new(
+            "reason",
+            vec![Text::Prose("As the first fault above".to_string())],
+        )));
+        return items;
+    }
     if let Some(reason) = &info.reason {
         items.push(Item::Field(Field::new(
             "reason",

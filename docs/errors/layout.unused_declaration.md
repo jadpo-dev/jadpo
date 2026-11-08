@@ -17,7 +17,7 @@ error: `DueWindow` isn't used
 1 | type DueWindow = Int {
   |      ^^^^^^^^^ nothing uses this
   reason: A shared type exists to be used by several files; one that nothing uses is dead code. Tests don't count as users.
-  next: Remove `DueWindow` (agent)
+  next: Use `DueWindow`, or remove it if nothing will (agent)
   rule: layout.unused_declaration
   help: https://jadpo.dev/docs/errors/layout.unused_declaration
 
@@ -63,7 +63,7 @@ error: `top_shelf` isn't used by `set_oven`
 11 | function top_shelf() -> Shelf {
    |          ^^^^^^^^^ `set_oven` doesn't use this
   reason: Everything in a file besides the declaration it is named after is there for that declaration, used by it directly or through one another; anything else is dead code. Tests don't count as users.
-  next: Remove `top_shelf` (agent)
+  next: Use `top_shelf` in `set_oven`, or remove it if nothing will (agent)
   rule: layout.unused_declaration
   help: https://jadpo.dev/docs/errors/layout.unused_declaration
 
@@ -75,5 +75,27 @@ The file's test calls `top_shelf`, which doesn't count:
 ```jadpo check project=e-unused-beside file=domains/kitchen/actions/set_oven.test.jadpo
 test "the top shelf is turned down" {
     assert set_oven(top_shelf()) == 190
+}
+```
+
+A type written ahead of what will use it is refused the same way. Write it
+and its first user as one change, then check:
+
+```jadpo check project=e-unused-staged file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-unused-staged file=domains/planning/types/due_window.jadpo
+type DueWindow = Int {
+    min: 1
+}
+```
+
+```jadpo check project=e-unused-staged file=domains/planning/actions/next_due.jadpo
+use planning/types { DueWindow }
+
+/// The window a reminder waits, as it was asked for.
+action next_due(days: DueWindow) -> DueWindow {
+    return days
 }
 ```

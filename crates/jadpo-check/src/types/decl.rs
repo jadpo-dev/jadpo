@@ -37,7 +37,9 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
         out: Vec::new(),
         headers: Vec::new(),
         failure: false,
+        sent: false,
         provider,
+        installed: home.is_some_and(|home| home.installed),
         packaged: home.is_some(),
     };
     for decl in source.decls() {
@@ -76,9 +78,14 @@ pub(super) struct Decls<'a> {
     /// Whether the fields being checked are a failure's (area 8: a caller
     /// is never put in one).
     pub failure: bool,
+    /// Inside a failure's `client:`, whose fields its answer sends.
+    pub sent: bool,
     /// Whether the file is in a provider package, whose fields and
     /// variants may give `wire_name:` (area 11).
     pub provider: bool,
+    /// Whether that package is installed in `packages/`, held to its
+    /// digest, rather than the app's own or the one being published.
+    pub installed: bool,
     /// Whether the file is in a package, whose types' fields may be marked
     /// `personal:` (area 15; chunk V5).
     pub packaged: bool,
@@ -478,9 +485,14 @@ impl Decls<'_> {
                     }
                     let block = section.block();
                     let lines = shape::lines(block.clone(), FieldsBase::Object);
+                    // A failure's `client:` fields are sent in its answer,
+                    // as a route's output is; its `internal:` ones stay on
+                    // the server.
+                    self.sent = tree::name_text(&key).as_deref() == Some("client");
                     self.failure = true;
                     self.lines(block, FieldsBase::Object, &shape.name, &lines);
                     self.failure = false;
+                    self.sent = false;
                 }
             }
             ShapeKind::Fields { base, lines } => {
@@ -488,7 +500,7 @@ impl Decls<'_> {
                 if *base == FieldsBase::Object {
                     self.standard_exists(decl, &shape.name);
                     if self.provider {
-                        self.standard_candidates(decl, &shape.name);
+                        self.standard_candidates(decl, &shape.name, lines);
                     }
                 }
             }
@@ -708,10 +720,14 @@ impl Decls<'_> {
     /// like a standard type the package doesn't use. A whole number named
     /// like a time may be an `Instant` sent as seconds; one named like an
     /// amount beside a currency, `Money` in minor units; a latitude beside
-    /// a longitude, a `Point`. The package says how each is sent once it is
-    /// swapped, so a field that says so already is never one. An object
-    /// that is a standard type whole is `type.standard_exists` instead.
-    fn standard_candidates(&mut self, decl: &ast::TypeDecl, name: &str) {
+    /// a longitude, a `Point`. Text named like an email address, a person's
+    /// name or a phone number may be the standard type that holds it, and
+    /// free text a person writes is marked `personal:` ([`text_candidate`]),
+    /// so the package's facts count what it sends. The package says how each
+    /// is sent once it is swapped, so a field that says so already is never
+    /// one, nor one marked `personal:`. An object that is a standard type
+    /// whole is `type.standard_exists` instead.
+    fn standard_candidates(&mut self, decl: &ast::TypeDecl, name: &str, lines: &[Line]) {
         use jadpo_std::provider::{
             amount_like, currency_named, latitude_named, longitude_named, time_named,
         };
@@ -752,6 +768,21 @@ impl Decls<'_> {
                 && longitude_named(&field.name)
                 && built_on(field, &[Prim::Int, Prim::Decimal])
         });
+        // The fields already marked `personal:`, which say what they hold.
+        let marked: Vec<&str> = lines
+            .iter()
+            .filter_map(|line| match line {
+                Line::Field { name, settings, .. }
+                    if settings
+                        .iter()
+                        .any(|(key, _)| key == crate::ai_personal::PERSONAL) =>
+                {
+                    Some(name.as_str())
+                }
+                _ => None,
+            })
+            .collect();
+        let siblings: Vec<&str> = fields.iter().map(|field| field.name.as_str()).collect();
         let mut found: Vec<Diagnostic> = Vec::new();
         for field in fields.iter().filter(|field| plain(field)) {
             let Some(span) = spans.get(&field.name).cloned() else {
@@ -760,6 +791,18 @@ impl Decls<'_> {
             let at = format!("{name}.{}", field.name);
             let own = &field.name;
             let wire = spelled(field);
+            // An installed package's text was checked when it was
+            // published, and the app can't change its files, so a release
+            // from before text was read isn't refused in every app that
+            // installed it.
+            if !self.installed
+                && !marked.contains(&own.as_str())
+                && free_text(self.table, &field.declared)
+                && let Some(candidate) = jadpo_std::provider::text_candidate(own, &siblings)
+            {
+                found.push(text_candidate(&at, own, &field.declared, candidate, span));
+                continue;
+            }
             if built_on(field, &[Prim::Int]) && time_named(own) {
                 found.push(
                     Diagnostic::new(
@@ -881,6 +924,19 @@ impl Decls<'_> {
                     .next("Rename the variant"),
                 );
             }
+            if jadpo_syntax::VALUE_WORDS.contains(&text.as_str()) {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_RESERVED_VARIANT_NAME,
+                        format!("`{text}` can't be a variant of `{host}`"),
+                    )
+                    .at(span.clone(), "reserved")
+                    .reason(format!(
+                        "`{text}` is a value in its own right, and `{host}.{text}` beside it would read as that value, which it isn't."
+                    ))
+                    .next("Rename the variant"),
+                );
+            }
             seen.insert(text.clone(), span.clone());
             // A variant's spelling on the wire (area 11): `after_noon: {
             // wire_name: "after-noon" }`, never one another variant is
@@ -962,20 +1018,6 @@ impl Decls<'_> {
             };
             match line {
                 Line::Field { name, ty, .. } => {
-                    if jadpo_syntax::RESERVED_NAMES.contains(&name.as_str())
-                        && let Some(key) = member.member_key()
-                    {
-                        let span = self.span(key.syntax());
-                        self.out.push(
-                            Diagnostic::new(
-                                &rule::SYNTAX_EXPECTED_NAME,
-                                format!("`{name}` is a reserved word"),
-                            )
-                            .at(span, "can't be a name")
-                            .reason("Control-flow and declaration words are reserved, so they can't name a declaration, field, parameter or variable.")
-                            .next(format!("Choose another name than `{name}`")),
-                        );
-                    }
                     let Some(value) = member.value() else {
                         continue;
                     };
@@ -1005,6 +1047,27 @@ impl Decls<'_> {
                         let span = self.span(value.syntax());
                         self.out
                             .push(batch_input(&format!("`{host}.{name}`"), batch, span));
+                        continue;
+                    }
+                    // A `File` goes out as a signed link, which comes with
+                    // downloads (area 16, "Downloading").
+                    if self.sent && held_file(self.table, &declared, &mut Vec::new()).is_some() {
+                        let span = self.span(value.syntax());
+                        self.out.push(file_sent(
+                            &format!("`{host}`'s `client:`"),
+                            &format!("{host}.{name}"),
+                            span,
+                        ));
+                        continue;
+                    }
+                    if self.sent && held_contents(self.table, &declared, &mut Vec::new()).is_some()
+                    {
+                        let span = self.span(value.syntax());
+                        self.out.push(contents_sent(
+                            &format!("`{host}`'s `client:`"),
+                            &format!("{host}.{name}"),
+                            span,
+                        ));
                         continue;
                     }
                     // A secret value never leaves the server, nor is kept
@@ -2929,8 +2992,8 @@ pub(crate) fn holds_password_hash(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<
     }
 }
 
-/// The batch type (area 12, "Batches: work over many items") a type is,
-/// or holds, however deep: in a list, a map or an option, built on one,
+/// The batch type (area 12, "Batches: work over many items") or `File`
+/// (area 16, "What a `File` holds") a type is, or holds, however deep: in a list, a map or an option, built on one,
 /// in a field of an object or a variant's data, or a field type naming a
 /// field that holds one (`Sweep.run`). An input holding one is reported at
 /// its own declaration, so it isn't followed again.
@@ -2942,6 +3005,7 @@ pub(crate) fn holds_batch(
     match ty {
         Ty::Opaque(name, args) => jadpo_std::batch::OBJECTS
             .into_iter()
+            .chain([jadpo_std::files::FILE, jadpo_std::files::FILE_CONTENTS])
             .find(|batch| batch == name)
             .or_else(|| args.iter().find_map(|arg| holds_batch(table, arg, seen))),
         Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => holds_batch(table, inner, seen),
@@ -2982,6 +3046,185 @@ pub(crate) fn holds_batch(
     }
 }
 
+/// Where a `File` is in what a value of `ty` holds, however deep, as what
+/// to name in a diagnostic: the field that holds it (`Sheet.file`, or the
+/// `Object`'s own field an `Output` holds), or `ty` itself when it is one.
+/// An `ExportSummary` holds the file it wrote (area 2).
+pub(crate) fn held_file(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> Option<String> {
+    held_where(table, ty, seen, &|name| {
+        name == jadpo_std::files::FILE
+            || jadpo_std::batch::object_fields(name).is_some_and(|fields| {
+                fields.iter().any(|(_, part)| {
+                    matches!(part, jadpo_std::batch::Part::Kept(jadpo_std::files::FILE))
+                })
+            })
+    })
+}
+
+/// As [`held_file`], for a file's bytes: `FileContents`, however deep.
+pub(crate) fn held_contents(
+    table: &dyn TypeView,
+    ty: &Ty,
+    seen: &mut Vec<String>,
+) -> Option<String> {
+    held_where(table, ty, seen, &|name| {
+        name == jadpo_std::files::FILE_CONTENTS
+    })
+}
+
+/// As [`held_file`], for a `BatchRun`, however deep.
+pub(crate) fn held_run(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> Option<String> {
+    held_where(table, ty, seen, &|name| name == jadpo_std::batch::BATCH_RUN)
+}
+
+/// Where a built-in type `wanted` accepts is in what a value of `ty` holds,
+/// however deep, as [`held_file`] names it.
+fn held_where(
+    table: &dyn TypeView,
+    ty: &Ty,
+    seen: &mut Vec<String>,
+    wanted: &dyn Fn(&str) -> bool,
+) -> Option<String> {
+    let in_field = |host: &str, field: &super::table::FieldDef, seen: &mut Vec<String>| {
+        held_where(table, &field.declared, seen, wanted).map(|held| {
+            if is_file_name(&held) {
+                format!("{host}.{}", field.name)
+            } else {
+                held
+            }
+        })
+    };
+    match ty {
+        Ty::Opaque(name, args) => {
+            if wanted(name) {
+                return Some(name.clone());
+            }
+            args.iter()
+                .find_map(|arg| held_where(table, arg, seen, wanted))
+        }
+        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => {
+            held_where(table, inner, seen, wanted)
+        }
+        Ty::Map(key, value) => {
+            held_where(table, key, seen, wanted).or_else(|| held_where(table, value, seen, wanted))
+        }
+        Ty::Field(host, path) => {
+            let at = format!("{host}.{}", path.join("."));
+            if seen.contains(&at) {
+                return None;
+            }
+            seen.push(at);
+            let declared = table.field(host, path)?.declared.clone();
+            held_where(table, &declared, seen, wanted)
+        }
+        Ty::Named(name) => {
+            if seen.contains(name) {
+                return None;
+            }
+            seen.push(name.clone());
+            match table.def(name) {
+                Some(super::table::Def::Scalar { parent, .. }) => {
+                    held_where(table, parent, seen, wanted)
+                }
+                Some(super::table::Def::Fields { fields, .. }) => {
+                    fields.iter().find_map(|field| in_field(name, field, seen))
+                }
+                Some(super::table::Def::Enum { variants }) => variants
+                    .iter()
+                    .flat_map(|variant| variant.fields.iter().flatten())
+                    .find_map(|field| in_field(name, field, seen)),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Whether [`held_file`]'s answer is still the file's own type, so the
+/// field holding it hasn't been named yet.
+fn is_file_name(held: &str) -> bool {
+    !held.contains('.')
+}
+
+/// `toolchain.not_built_yet`: `held`, in an answer a route sends, at
+/// `span`: its `output:`, or a failure's `client:` field.
+pub(crate) fn file_sent(what: &str, held: &str, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TOOLCHAIN_NOT_BUILT_YET,
+        format!("{what} sends a `File`, in `{held}`, and sending one isn't built yet"),
+    )
+    .at(span, "decided, not built")
+    .reason("A route sends a `File` as a signed link, which comes with downloads. Until they are built, the answer would hold the store and key the file is kept under, and the API's OpenAPI document couldn't describe it.")
+    .next(format!(
+        "Leave `{held}` out of what the route sends, and send the fields a client needs"
+    ))
+}
+
+/// `toolchain.not_built_yet`: `held`, in what `what` sends a provider, at
+/// `span`: an operation's `input:`, or a webhook's `reply:`.
+pub(crate) fn file_sent_to_provider(what: &str, held: &str, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TOOLCHAIN_NOT_BUILT_YET,
+        format!("{what} sends a `File`, in `{held}`, and sending one to a provider isn't built yet"),
+    )
+    .at(span, "not built yet")
+    .reason("A `File` is the store and key its bytes are kept under, not the bytes. Until sending a file to a provider is built, the provider would be told where the file is kept and be given none of it.")
+    .next(format!(
+        "Leave `{held}` out of what is sent, and send the fields the provider needs"
+    ))
+}
+
+/// `type.batch_input`: `what`, read from outside the app, at `span`, holds
+/// a `File`, in `held`: an operation's `output:` or `wire_output:`, a
+/// webhook's event, or a queue's. `held` is `File` when `what` is one.
+pub(crate) fn file_taken(what: &str, held: &str, span: Span) -> Diagnostic {
+    let place = if held == jadpo_std::files::FILE {
+        ",".to_string()
+    } else {
+        format!(", in `{held}`,")
+    };
+    Diagnostic::new(
+        &rule::TYPE_BATCH_INPUT,
+        format!("{what} holds a `File`{place} which nothing from outside carries"),
+    )
+    .at(span, "a `File`")
+    .reason("Only the runtime builds a `File`, from the bytes it kept. A `File` is the store and key those bytes are under, so an answer or a message that held one could name another person's file, which the application would then read, attach or delete.")
+    .next("Declare what is really sent, such as an id or a link, and keep the bytes with `put`")
+}
+
+/// `toolchain.not_built_yet`: `held`, a file's bytes, in an answer a route
+/// sends, at `span`: its `output:`, or a failure's `client:` field.
+pub(crate) fn contents_sent(what: &str, held: &str, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TOOLCHAIN_NOT_BUILT_YET,
+        format!("{what} sends a file's bytes, in `{held}`, and sending them isn't built yet"),
+    )
+    .at(span, "decided, not built")
+    .reason("A route sends a file as a signed link, which comes with downloads. Until they are built, the answer would hold the whole file as Base64 in its JSON, which nothing has decided a client gets.")
+    .next(format!(
+        "Leave `{held}` out of the answer, and send the fields the client needs"
+    ))
+}
+
+/// `type.batch_input`: `what`, read from outside the app, at `span`, holds
+/// a file's bytes, in `held`: an operation's `output:` or `wire_output:`, a
+/// webhook's event, or a queue's. `held` is `FileContents` when `what` is
+/// one. Nothing decodes one, so reading it would always fail.
+pub(crate) fn contents_taken(what: &str, held: &str, span: Span) -> Diagnostic {
+    let place = if held == jadpo_std::files::FILE_CONTENTS {
+        ",".to_string()
+    } else {
+        format!(", in `{held}`,")
+    };
+    Diagnostic::new(
+        &rule::TYPE_BATCH_INPUT,
+        format!("{what} holds a `FileContents`{place} which nothing from outside carries"),
+    )
+    .at(span, "a `FileContents`")
+    .reason("Only `store.read` builds a `FileContents`, from the bytes a store kept, so no answer or message can be read as one, and reading it would always fail.")
+    .next("Declare the bytes as `Bytes`, and keep them with `put`")
+}
+
 /// `type.batch_input`: `what`, an `Input`'s field or a route's
 /// placeholder, at `span`, holds the batch type `batch`, which only the
 /// runtime builds (area 2), so a request that named one could read or
@@ -2992,7 +3235,15 @@ pub(crate) fn batch_input(what: &str, batch: &str, span: Span) -> Diagnostic {
         format!("{what} holds a `{batch}`, which no request carries"),
     )
     .at(span, format!("a `{batch}`"));
-    if batch == jadpo_std::batch::BATCH_RUN {
+    if batch == jadpo_std::files::FILE {
+        problem
+            .reason("Only the runtime builds a `File`, from the bytes it kept. A `File` is the store and key those bytes are under, so a request that sent one could name another person's file, which the application would then read, attach or delete.")
+            .next("Take the `id` of the record that keeps the file, and read the `File` from its field")
+    } else if batch == jadpo_std::files::FILE_CONTENTS {
+        problem
+            .reason("Only `store.read` builds a `FileContents`, from the bytes a store kept, so no request can be read as one, and every request to this route would be refused.")
+            .next("Take the bytes as `Bytes`, and keep them with `put`")
+    } else if batch == jadpo_std::batch::BATCH_RUN {
         problem
             .reason("Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.")
             .next("Take the `id` of the record that keeps the run, and read the `BatchRun` from its field")
@@ -3119,6 +3370,117 @@ pub(crate) struct MatchedField {
 
 /// Whether `ty` is an enum without data, as a currency held as a
 /// project's own enum is (area 19).
+/// Whether `ty` is text with no meaning of its own, `?` or a list of it
+/// included: `Text`, or a type the package builds on it, never a standard
+/// type, which says what it holds.
+fn free_text(table: &dyn TypeView, ty: &Ty) -> bool {
+    let mut current = ty.clone();
+    for _ in 0..8 {
+        current = match current {
+            Ty::Prim(Prim::Text) => return true,
+            Ty::Nullable(inner) | Ty::List(inner) => *inner,
+            Ty::Named(name) if jadpo_std::standard_type(&name).is_none() => {
+                match table.def(&name) {
+                    Some(Def::Scalar { parent, .. }) => parent.clone(),
+                    _ => return false,
+                }
+            }
+            _ => return false,
+        };
+    }
+    false
+}
+
+/// `ty` written with its text swapped for the standard type `standard`:
+/// `Text?` as `Email?`, `List<Text>` as `List<Email>`.
+fn swapped(ty: &Ty, standard: &str) -> String {
+    match ty {
+        Ty::Nullable(inner) => format!("{}?", swapped(inner, standard)),
+        Ty::List(inner) => format!("List<{}>", swapped(inner, standard)),
+        _ => standard.to_string(),
+    }
+}
+
+/// `package.standard_candidate` on a provider's text (area 11, "Mapping
+/// imported types to standard types"): text named like an email address,
+/// a person's name or a phone number may be the standard type that holds
+/// it, which is personal data; free text a person writes says so with
+/// `personal:`. The finding names the field first and what it may be last,
+/// as the release's facts read it.
+fn text_candidate(
+    at: &str,
+    own: &str,
+    declared: &Ty,
+    candidate: jadpo_std::provider::TextCandidate,
+    span: Span,
+) -> Diagnostic {
+    use jadpo_std::provider::TextCandidate;
+    let uses = "A package's public types use the standard types, so an app gives one checked as what it is, and the package's facts count it as the personal data it is.";
+    let standard = |standard: &str, label: &str, what: &str| {
+        Diagnostic::new(
+            &rule::PACKAGE_STANDARD_CANDIDATE,
+            format!("`{at}` may be {} `{standard}`", indefinite(standard)),
+        )
+        .at(span.clone(), label.to_string())
+        .reason(format!(
+            "`{own}` is text named like {what}, which is personal data. {uses}"
+        ))
+        .next(format!(
+            "Check the provider's documentation, then make it `{own}: {}`",
+            swapped(declared, standard)
+        ))
+    };
+    let marked = |label: &str, reason: String| {
+        Diagnostic::new(
+            &rule::PACKAGE_STANDARD_CANDIDATE,
+            format!("`{at}` may hold personal data with no `personal:`"),
+        )
+        .at(span.clone(), label.to_string())
+        .reason(reason)
+        .next("Check what the provider is sent here, then add `personal:` with the category it may hold, such as `personal: PersonalData.identifying`")
+    };
+    match candidate {
+        TextCandidate::Mailbox => Diagnostic::new(
+            &rule::PACKAGE_STANDARD_CANDIDATE,
+            format!("`{at}` may be an `Email`"),
+        )
+        .at(span, "text naming who an email is from or to")
+        .reason(format!(
+            "`{own}` is text beside an email's subject or copies, so it names who the email is from or to: an email address, which is personal data. {uses}"
+        ))
+        .next(format!(
+            "Check the provider's documentation, then make it `{own}: {}`, or `{}` where the provider shows a name with the address, with `decode:` and `encode:` if it sends both as one text (`Mary Somerville <mary@example.com>`)",
+            swapped(declared, "Email"),
+            swapped(declared, "EmailWithName"),
+        )),
+        TextCandidate::Email => standard("Email", "text named like an email address", "an email address"),
+        TextCandidate::GivenName => standard("GivenName", "text named like a first name", "a person's first name"),
+        TextCandidate::FamilyName => standard("FamilyName", "text named like a surname", "a person's surname"),
+        TextCandidate::Phone => standard("PhoneNumber", "text named like a phone number", "a phone number"),
+        TextCandidate::WholeName => marked(
+            "text named like a person's whole name",
+            format!(
+                "`{own}` is text named like a person's whole name, which is personal data. No standard type holds a whole name as one text, since a `PersonName` keeps its parts apart, so the field says what it holds with `personal:`, and the package's facts count it."
+            ),
+        ),
+        TextCandidate::FreeText(what) => marked(
+            "free text a person may write",
+            format!(
+                "`{own}` is free text, {what}, which can hold anything a person writes, names and addresses among it. The package's facts count the personal data it sends from what its fields say they hold, so free text says so with `personal:`."
+            ),
+        ),
+    }
+}
+
+/// `a` or `an` before a standard type's name.
+fn indefinite(name: &str) -> &'static str {
+    if name.starts_with(['A', 'E', 'I', 'O', 'U']) {
+        "an"
+    } else {
+        "a"
+    }
+}
+
 fn is_enum(table: &dyn TypeView, ty: &Ty) -> bool {
     match table.structure(ty) {
         Ty::Named(name) => matches!(

@@ -66,6 +66,18 @@ impl ScopedName {
         })
     }
 
+    /// The name a package has under `handle`, from its name in code, which
+    /// is all a release says of it: `AcmeCouriers` is `acme-couriers`. `None`
+    /// when that is no name, such as one past [`LONGEST_PART`].
+    pub fn of_code(handle: &Handle, code: &str) -> Option<Self> {
+        // The one rule `names.registry_part` follows too (area 19).
+        let part = jadpo_std::names::registry_part(code);
+        is_part(&part).then(|| Self {
+            publisher: handle.as_str().trim_start_matches('@').to_string(),
+            name: part,
+        })
+    }
+
     /// The publisher, without its `@`: `acme`.
     pub fn publisher(&self) -> &str {
         &self.publisher

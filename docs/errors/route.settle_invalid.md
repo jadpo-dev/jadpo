@@ -1,8 +1,8 @@
 # `route.settle_invalid`
 
 `settle:` holds `answer:`, a named query given `result` or its fields,
-and `within:`, shorter than the route's deadline, on a route that runs
-an action and answers `.ok` or `.created`:
+and `within:`, shorter than the route's deadline, on a route of a method
+other than `GET` that runs an action and answers `.ok` or `.created`:
 
 ```jadpo check project=e-settle-invalid expect=route.settle_invalid
 type Memo = Text {

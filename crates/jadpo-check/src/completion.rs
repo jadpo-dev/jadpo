@@ -1035,6 +1035,12 @@ impl Place<'_> {
                         None if condition.key.only_when_run() || namespace == "geo" => {
                             format!("`{}`", condition.key.word())
                         }
+                        // A postcode written out in Royal Mail's format
+                        // can't fail (area 19, "A UK postcode's parts").
+                        None if namespace == "postal" => format!(
+                            "`{}` unless the postcode is written out in Royal Mail's format",
+                            condition.key.word()
+                        ),
                         None => format!(
                             "`{}` unless its value is proved above 0",
                             condition.key.word()

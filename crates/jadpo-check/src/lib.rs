@@ -48,6 +48,7 @@ pub mod mail_health;
 mod naming;
 mod not_type;
 mod not_value;
+pub mod own_sources;
 pub mod package_code;
 pub mod packages;
 pub mod personal_data;
@@ -57,6 +58,7 @@ pub mod policy;
 pub mod polls;
 pub mod prompt_recordings;
 pub mod prompts;
+pub mod provider_erasure;
 pub mod providers;
 pub mod publishing;
 pub mod rate_limits;
@@ -125,6 +127,59 @@ pub fn standard_stubs() -> std::collections::BTreeMap<String, StandardStub> {
 /// whose `application { jadpo: }` needs a newer Jadpo gets that error alone
 /// ([`jadpo_version`]).
 pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    checked(db, project).problems
+}
+
+/// A project's check: its problems, and set apart from them what is left
+/// to an installed package's publisher.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Checked {
+    /// Every problem, in a stable order ([`check`]).
+    pub problems: Vec<Diagnostic>,
+    /// Each installed package whose own code holds a finding of the
+    /// publishing bar a newer Jadpo makes ([`publishing::publishers_to_answer`]),
+    /// by its name in code with its version, `BritishGrid.v1`, with those
+    /// findings: an alert about the package, which never refuses the app
+    /// (area 11, "How the package format is read").
+    pub publishers: Vec<(String, Vec<Diagnostic>)>,
+}
+
+/// [`check`], with an installed package's publishing-bar findings set
+/// apart from the problems.
+pub fn checked(db: &dyn Db, project: Project) -> Checked {
+    let all = every_problem(db, project);
+    let installed: std::collections::BTreeMap<&str, String> = project
+        .files(db)
+        .iter()
+        .filter_map(|file| {
+            let home = jadpo_db::location(db, project, *file)
+                .ownership
+                .package()
+                .filter(|home| home.installed)?
+                .versioned();
+            Some((file.path(db).as_str(), home))
+        })
+        .collect();
+    let mut out = Checked::default();
+    for diagnostic in all {
+        let package = diagnostic
+            .primary
+            .as_ref()
+            .and_then(|label| installed.get(label.span.path.as_str()))
+            .filter(|_| publishing::publishers_to_answer(diagnostic.rule));
+        match package {
+            Some(package) => match out.publishers.iter_mut().find(|(name, _)| name == package) {
+                Some((_, findings)) => findings.push(diagnostic),
+                None => out.publishers.push((package.clone(), vec![diagnostic])),
+            },
+            None => out.problems.push(diagnostic),
+        }
+    }
+    out.publishers.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     // A project needing a newer Jadpo is refused with that alone: what a
     // later version added would only read as mistakes here.
     let version = jadpo_version::version_problems(db, project);
@@ -233,6 +288,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .cloned(),
             );
             out.extend(types::step_problems(db, project, file).iter().cloned());
+            out.extend(types::read_only_problems(db, project, file).iter().cloned());
             out.extend(types::store_problems(db, project, file).iter().cloned());
             out.extend(
                 types::batch_store_problems(db, project, file)
@@ -302,6 +358,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .cloned(),
             );
             out.extend(
+                policy::flow::cached_personal_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
                 policy::flow::subscriber_store_problems(db, project, file)
                     .iter()
                     .cloned(),
@@ -317,6 +378,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(version.iter().cloned());
         out.extend(config::connection_problems(db, project).iter().cloned());
         out.extend(application::section_problems(db, project).iter().cloned());
+        out.extend(own_sources::problems(db, project).iter().cloned());
         out.extend(config::test_value_problems(db, project).iter().cloned());
         out.extend(identity::identity_problems(db, project).iter().cloned());
         out.extend(identity::sign_in_problems(db, project).iter().cloned());
@@ -364,6 +426,13 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(acceptances::problems(db, project).iter().cloned());
         out.extend(packages::package_problems(db, project).iter().cloned());
         out.extend(providers::operation_problems(db, project).iter().cloned());
+        out.extend(
+            provider_erasure::declared(db, project)
+                .problems
+                .iter()
+                .cloned(),
+        );
+        out.extend(provider_erasure::key_problems(db, project));
         out.extend(
             connections::connection_problems(db, project)
                 .iter()

@@ -4,13 +4,15 @@
 An API in Jadpo is a set of routes, each saying what it takes in, what
 it sends back and what it runs, and Jadpo does the rest. It checks every
 request against the input type, turns failures into HTTP errors, keeps
-a committed record of the API and writes an OpenAPI document for it. This guide adds two routes to a book catalogue: one that adds a
-book and one that reads it back.
+a committed record of the API and writes an OpenAPI document for it. This guide
+starts with the smallest route there is, then adds two to a book catalogue: one that
+adds a book and one that reads it back.
 
-You start from an app with a `Book` entity, an action `add_book` that
+For those two you start from an app with a `Book` entity, an action `add_book` that
 stores one, and a query `book_by_id` that reads one.
 [Store and change a record](02-store-and-change-a-record.md) and
-[Query records](03-query-records.md) show how to write those.
+[Query records](03-query-records.md) show how to write those. The first route needs
+none of them.
 
 ```jadpo check project=guide-api file=app.jadpo hidden
 application {}
@@ -72,12 +74,81 @@ query book_by_id(book_id: Book.id) fails BookNotFound -> BookView {
 }
 ```
 
+## Start with one route
+
+A route says what it sends back and what it runs. It goes in a route group, in a
+domain's `routes/` folder, and the group's `prefix:` starts every path in it.
+
+`domains/books/routes/greetings.jadpo`:
+
+```jadpo check project=guide-api file=domains/books/routes/greetings.jadpo
+use books/types { Greeting }
+use books/actions { greet }
+
+/// The catalogue's front door.
+routes Greetings {
+    prefix: /greetings
+
+    /// Says hello.
+    GET / {
+        authentication: RouteAuthentication.none
+        output: Greeting
+        run: greet()
+    }
+}
+```
+
+Every route needs a signed-in caller unless it says otherwise, and
+`authentication: RouteAuthentication.none`, built into Jadpo, lets anyone call this
+one. `Greeting` and `greet` are yours, in the files below.
+
+What the route sends back is a type built on `Output`, which lists its fields.
+
+`domains/books/types/greeting.jadpo`:
+
+```jadpo check project=guide-api file=domains/books/types/greeting.jadpo
+/// What the catalogue says to anyone who asks.
+type Greeting = Output {
+    message: Text
+}
+```
+
+What it runs is an action.
+
+`domains/books/actions/greet.jadpo`:
+
+```jadpo check project=guide-api file=domains/books/actions/greet.jadpo
+use books/types { Greeting }
+
+/// Says hello.
+action greet() -> Greeting {
+    return Greeting {
+        message: "Welcome to the catalogue"
+    }
+}
+```
+
+An action takes its permission from the stored records it touches. This one touches
+none, so one line of `policy.jadpo`, at the root of the project, says who may run it.
+
+`policy.jadpo`:
+
+```jadpo check project=guide-api file=policy.jadpo
+use books
+
+policy {
+    actions: {
+        books.greet: [Access.public]
+    }
+}
+```
+
 ## Say what comes in and what goes out
 
-A route's input is a type built on `Input`, and its output a type built
-on `Output`. Each lists its fields; a field can take its type, rules
-included, from an entity's field, so an input refuses the same values
-the database would.
+A book's routes take data in as well. A route's input is a type built on `Input`, and
+its output a type built on `Output`. Each lists its fields; a field can take its type,
+rules included, from an entity's field, so an input refuses the same values the
+database would.
 
 `domains/books/types/new_book.jadpo`:
 
@@ -106,9 +177,6 @@ type BookView = Output {
 field you add to `Book` later stays private until you pick it.
 
 ## Add the routes
-
-Routes live in a route group, in a domain's `routes/` folder. The
-group's `prefix:` starts every path in it.
 
 `domains/books/routes/books.jadpo`:
 
@@ -149,8 +217,7 @@ routes Books {
   that isn't a valid id is a `422` too.
 - `run:` names the action or query the route runs, with the values it
   passes.
-- Every route needs a signed-in caller unless it says otherwise.
-  `authentication: RouteAuthentication.none` lets anyone call these two;
+- `authentication: RouteAuthentication.none` lets anyone call these two;
   [Add sign-in](05-add-sign-in.md) takes it away again.
 
 `book_by_id` can fail with `BookNotFound`, the failure Jadpo declares
@@ -171,7 +238,7 @@ jadpo api update
 
 ```text
 Wrote api/main.jadpo_record
-    version  9c0c5d256937
+    version  030840e864d3
 
 next: git diff api/  shows what changed for the API's clients
 ```
@@ -195,6 +262,11 @@ GET /books/{book_id: Uuid}
     status 200
     fails book_not_found
 
+GET /greetings
+    authentication none
+    output Greeting
+    status 200
+
 GET /openapi.json
     generated openapi
     authentication none
@@ -205,6 +277,9 @@ output BookView
     author: Text { min_length: 1, max_length: 100 }
     id: Uuid
     title: Text { min_length: 1, max_length: 200 }
+
+output Greeting
+    message: Text
 
 input NewBook
     author: Text { min_length: 1, max_length: 100 }
@@ -219,7 +294,7 @@ The app declares no API of its own, so it has one, called `main`.
 Run `jadpo api update` again after every change to a route or a type it
 uses, and commit the record with the code. A change that breaks
 clients, such as removing a field, also needs a person's sign-off;
-[Get a person's sign-off](09-get-a-sign-off.md) covers that.
+[Approve a risky change](09-get-a-sign-off.md) covers that.
 
 ## Call it
 
@@ -230,12 +305,22 @@ jadpo dev
 ```text
 jadpo dev, started 10:46:31
 listening on http://localhost:3000
-    routes    3 routes
+    routes    4 routes
     database  disposable PostgreSQL, gone when dev stops
 serving: saves reload, press ctrl-c to quit
 ```
 
-In another terminal, add a book:
+In another terminal, call the first route:
+
+```sh
+curl http://localhost:3000/greetings
+```
+
+```text
+{"message":"Welcome to the catalogue"}
+```
+
+Add a book:
 
 ```sh
 curl -i -X POST http://localhost:3000/books \

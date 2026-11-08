@@ -1,5 +1,5 @@
 //! How a standard object or choice is laid out in its named columns (area
-//! 19, "Every standard type meets one contract"; chunk 5.5w). An entry
+//! 19, "What every standard type can do"; chunk 5.5w). An entry
 //! names its columns ([`super::Storage::Columns`]); this module says, from
 //! its parts alone, what each column holds, so one codec
 //! (`jadpo-value`'s `standard::to_parts` and `from_parts`) reads and
@@ -269,7 +269,7 @@ pub fn layout(entry: &StandardType) -> Option<Vec<Laid>> {
 /// known while compiling (a literal, an enum value) both are, so one
 /// function, [`bind`], makes what a column is given from either, and a
 /// literal the compiler writes into a statement is the value the runtime
-/// binds (area 19, "Every boundary through the contract"; chunk 5.5w3b).
+/// binds (area 19, "How a standard value is sent, stored and shown"; chunk 5.5w3b).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Stored<'a> {
     None,

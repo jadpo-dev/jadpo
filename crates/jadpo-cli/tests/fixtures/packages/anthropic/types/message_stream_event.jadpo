@@ -1,0 +1,12 @@
+/// One event of a streamed message, a server-sent event's data: its type
+/// (`message_start`, `content_block_start`, `content_block_delta`,
+/// `content_block_stop`, `message_delta`, `message_stop`, `ping`), the
+/// block it adds to, and what it adds.
+public type MessageStreamEvent = Object {
+    type: Text
+    index: Int? {
+        min: 0
+        max: 1000000
+    }
+    delta: MessageStreamDelta?
+}

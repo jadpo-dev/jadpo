@@ -10,7 +10,9 @@ that refer to what it deletes, never past a record it keeps. Here a
 `personal:`, but it isn't a person and refers to no one. A passenger who
 asked to be forgotten would stay in every report they made. Taking
 `personal:` off would silence the error and leave the data where nothing
-erases it.
+erases it. An `Email`, a `PhoneNumber` or a `PersonName` with no `personal:`
+isn't refused here, since a business holds its own address, number and manager's
+name too, so mark a person's, as this one is, to have erasure's reach checked.
 
 Jadpo won't choose for you: who the data is about, and so what erasing
 them reaches, is a decision about your users.

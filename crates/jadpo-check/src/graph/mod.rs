@@ -114,6 +114,9 @@ pub fn library_function_key(registry: &Registry, library: &str, function: &str) 
 pub fn constant_key(symbols: &dyn NameView, library: Option<&str>, name: &str) -> Option<Key> {
     match library {
         Some(library) => {
+            // A package's library is known through its package, as its node
+            // is: `grids` read bare in `Grid.v1` is `Grid.grids`.
+            let library = &symbols.canonical(library);
             let born = symbols.registry().born(Kind::Library, library, None);
             Some(symbols.registry().key(
                 Kind::Constant,

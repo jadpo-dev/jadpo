@@ -93,7 +93,7 @@ error: `keep_price_sheet` can fail for good at `reject ShopClosed`, after `sheet
 14 |         reject ShopClosed
    |         ^^^^^^^^^^^^^^^^^ can fail with `ShopClosed`
   reason: Once a changing call has taken effect, a failure that ends `keep_price_sheet` for good rolls back its writes but not what `sheets.put` did, and a retry fails the same way; a failure of kind `unavailable` or `rate_limited` is retried instead, and one handled with `match` doesn't end it.
-  next: Check the condition before `sheets.put`, record what happened and finish in a subscriber of an event `keep_price_sheet` emits, or undo `sheets.put` as another step in a `match` arm, or write `decline step.late_failure: "<why>"` above it if this is deliberate (agent)
+  next: Check the condition before `sheets.put`, record what happened and finish in a subscriber of an event `keep_price_sheet` emits, or undo `sheets.put` as another step in a `match` arm, or write `decline step.late_failure: "<why>"` above the action if this is deliberate (agent)
   rule: step.late_failure
   help: https://jadpo.dev/docs/errors/step.late_failure
 
@@ -275,4 +275,4 @@ undo the call as another changing call in a `match` arm.
 - [The late-failure warning](../language/12-jobs-and-events.md#the-late-failure-warning)
 - [Ending for good after a step took effect](../language/12-jobs-and-events.md#ending-for-good-after-a-step-took-effect)
 - [Retries and giving up](../language/12-jobs-and-events.md#retries-and-giving-up)
-- [Declining a judgement call](../language/01-project-layout-and-modules.md#declining-a-judgement-call)
+- [Keeping code as it is, with a reason](../language/01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)

@@ -55,6 +55,7 @@ pub mod media;
 pub mod money;
 pub mod ops;
 pub mod order;
+pub mod postal;
 pub mod present;
 pub mod prompt;
 pub mod public_key;
@@ -303,6 +304,29 @@ pub fn run(
         (Op::WebResolve, [base, relative]) => web::resolve(base, relative),
         (Op::WebWithQuery, [url, entries]) => web::with_query(url, entries),
         (Op::WebCidrContains | Op::WebResolve | Op::WebWithQuery, _) => Err(Fault::Shape),
+        // A UK postcode's parts (area 19, "A UK postcode's parts").
+        (Op::PostalArea, [postcode]) => postal::area(postcode),
+        (Op::PostalDistrict, [postcode]) => postal::district(postcode),
+        (Op::PostalInwardCode, [postcode]) => postal::inward_code(postcode),
+        (Op::PostalOutwardCode, [postcode]) => postal::outward_code(postcode),
+        (Op::PostalSector, [postcode]) => postal::sector(postcode),
+        (Op::PostalSubDistrict, [postcode]) => postal::sub_district(postcode),
+        (Op::PostalUnit, [postcode]) => postal::unit(postcode),
+        (
+            Op::PostalArea
+            | Op::PostalDistrict
+            | Op::PostalInwardCode
+            | Op::PostalOutwardCode
+            | Op::PostalSector
+            | Op::PostalSubDistrict
+            | Op::PostalUnit,
+            _,
+        ) => Err(Fault::Shape),
+        // `names`' operation (area 19, "Registry names").
+        (Op::NamesRegistryPart, [Value::Text(name)]) => {
+            Ok(Value::text(&jadpo_std::names::registry_part(name)))
+        }
+        (Op::NamesRegistryPart, _) => Err(Fault::Shape),
         // `semver`'s operation (area 19, "Web and software").
         (Op::SemverSatisfies, [version, range]) => semver::satisfies(version, range),
         (Op::SemverSatisfies, _) => Err(Fault::Shape),
@@ -411,6 +435,11 @@ pub fn run(
             standard::parse_in(raw, ty, form, country)
         }
         (Op::TextFormat | Op::TextFrom | Op::TextParse, _) => Err(Fault::Shape),
+        // Joining bytes (area 19, "Bytes"): `first`'s, then `second`'s.
+        (Op::BytesConcat, [Value::Bytes(first), Value::Bytes(second)]) => {
+            Ok(bytes_value(&[&first[..], &second[..]].concat()))
+        }
+        (Op::BytesConcat, _) => Err(Fault::Shape),
         // The encodings (area 19, "Encodings"): decoding fails `malformed`.
         (Op::EncodingToBase64, [Value::Bytes(bytes)]) => {
             Ok(Value::text(&encoding::to_base64(bytes)))
@@ -904,6 +933,7 @@ mod tests {
                 | Op::CryptoVerifyJwt
                 | Op::CryptoVerifyPassword
                 | Op::CryptoVerifySignature => continue,
+                Op::BytesConcat => vec![bytes.clone(), bytes.clone()],
                 Op::EncodingToBase64
                 | Op::EncodingToBase64url
                 | Op::EncodingToHex
@@ -1056,6 +1086,14 @@ mod tests {
                     };
                     vec![size(4000, 3000), size(320, 320)]
                 }
+                Op::PostalArea
+                | Op::PostalDistrict
+                | Op::PostalInwardCode
+                | Op::PostalOutwardCode
+                | Op::PostalSector
+                | Op::PostalSubDistrict
+                | Op::PostalUnit => vec![Value::text("SW1A 1AA")],
+                Op::NamesRegistryPart => vec![Value::text("AcmeCouriers")],
                 Op::SemverSatisfies => vec![
                     semver::read_version("1.2.3").expect("a version"),
                     Value::text("^1.0.0"),

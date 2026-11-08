@@ -24,3 +24,8 @@ tap = "jadpo-dev/homebrew-tap"
 publish-jobs = ["homebrew", "npm"]
 # Each archive gets a GitHub artifact attestation as it is built.
 github-attestations = true
+
+# GitHub stopped offering dist's default Apple Silicon runner
+# (`macos-14-arm64`), which cancelled the v0.4.0 release.
+[dist.github-custom-runners]
+aarch64-apple-darwin = "macos-15"

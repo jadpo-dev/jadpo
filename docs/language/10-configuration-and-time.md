@@ -1,17 +1,20 @@
 ---
-title: Configuration and time
+title: Configuration
 area: 10
 status: decided
 checked-with: this checkout's jadpo on every gate run
 ---
 
-# Configuration and time
-<!-- topic: configuration-and-time -->
+# Configuration
+<!-- topic: configuration (was configuration-and-time) -->
 
-This page covers the values your app reads from its environment, such as a
-database address or an API key, and everything to do with time: the current
-time, dates and time zones, and showing dates, times and other text to
-people in their own language.
+Configuration is the values your app reads from its environment, such as a
+database address or an API key, and the languages it speaks: its locales,
+and its text translated for the people reading it.
+
+Dates and times are in the reference under Values and types. Start at
+[Time types](#time-types) for the current time, dates and time zones, and
+showing them to people.
 
 Two rules run through the page:
 
@@ -112,7 +115,7 @@ letter, and no two settings read the same variable. A `SigningKey` or an
 Because the name comes from the field, renaming a field renames its
 variable, and a deployment that still sets the old name breaks. So a
 changed variable name is shown for review like any other change to the
-app's contract ([Records and manifest](18-records-and-manifest.md)).
+app's contract ([Review and records](18-records-and-manifest.md)).
 
 ### What a setting can hold
 
@@ -209,8 +212,8 @@ There are three kinds of value, from fixed to changing while the app runs:
 When a fixed value needs to differ per deployment, a tool makes the change
 for you: `jadpo config move <constant>` on the command line, or "Make this
 a setting" in the editor on the constant's declaration or any read of it.
-Both run the same code, as the editor's rename runs `jadpo rename`
-([Editor support](14-tooling.md#editor-support)). The move is offered,
+Both run the same code, as the editor's rename will run `jadpo rename` once
+both are built ([Editor support](14-tooling.md#editor-support)). The move is offered,
 never required, so `jadpo fmt --layout`, which makes only the moves an
 error asks for, doesn't make it. In one step it:
 
@@ -746,7 +749,8 @@ On Workers there is no connection address to fall back to. Cloudflare sets
 caller sent. So `cloudflare` is the only source accepted there, and it is
 what a Workers deployable uses when there is no `client_address:`. An
 address Cloudflare didn't give is unknown there, and requests with no known
-address share one allowance.
+address share one allowance. Asked with a `CF-Connecting-IP` of its own, Cloudflare answered 403 without
+reaching the Worker (measured once, from one location (London, LHR), on 2026-11-04), so a client can't choose its address that way.
 
 Any other source is refused when the project is built for Workers. `jadpo
 check` refuses it for each deployable with `target: Target.wasm`
@@ -844,6 +848,9 @@ test "time literals are checked while compiling and compare as time" {
 }
 ```
 
+`Instant` and `CalendarDate` are built in. `DueAt` and `InvoiceDate` are
+your own types, defined in the example.
+
 ### Precision and range
 
 An `Instant` keeps milliseconds, the precision JavaScript clients, SQLite
@@ -931,7 +938,7 @@ A setting is the exception. It is read as source writes it, `5m`, and also
 as the canonical ISO 8601 text, `PT5M`, as `text.parse` reads it, so a
 value copied from a response or a log works as a setting too. Every
 boundary reads a standard type the same way
-([Every boundary through the contract](19-standard-library.md#every-boundary-through-the-contract)).
+([How a standard value is sent, stored and shown](19-standard-library.md#how-a-standard-value-is-sent-stored-and-shown)).
 
 ## The current time: `clock.now`
 <!-- topic: the-current-time-clock-now -->
@@ -1921,6 +1928,8 @@ header and the same `locales { }`:
 
 ## Translations as messages
 <!-- topic: translations-as-messages -->
+
+[Translate your app's text](../guides/19-translate-your-apps-text.md) does the whole job, start to finish.
 
 Text your server writes for people, such as emails, generated pages and a
 failure's text for client apps, is translated in Jadpo itself. Each message
@@ -2939,7 +2948,7 @@ any package failure ([Calling](11-integrations.md#calling)).
 
 A package that changes a message's or a failure's fields makes a breaking
 change to its surface, the list of what it offers
-([The surface](11-integrations.md#the-surface)). So your app's rewording
+([A package's surface](11-integrations.md#a-packages-surface)). So your app's rewording
 fails to compile until you update it.
 
 A package that changes its own wording marks your app's rewording stale,
@@ -3308,7 +3317,7 @@ A field that no wording in a language uses is `translation.field_unused`.
 One variant leaving a field out is normal. Jadpo has no warnings, so this
 is an error, but a judgement call: a person can answer it by writing
 `decline translation.field_unused: "<reason>"` above the member
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
+([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 That is right for a language that needs no such word.
 
 ### Locales in progress

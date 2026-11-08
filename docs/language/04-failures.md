@@ -35,12 +35,79 @@ declare:
 <!-- topic: declaring-a-failure -->
 
 A failure is a way an action or query can fail that its caller is
-expected to handle, such as a todo that doesn't exist. You declare it as a
-type whose base is `Failure`, written `type TodoNotFound = Failure { ... }`.
-The base gives the type its settings: `kind`, `message`, `client`,
-`internal` and, rarely, `code`. Here are two failures, with the `Todo` and
-`Product` entities (stored records) and the `Quantity` type they refer to
-declared elsewhere:
+expected to handle, such as stock running out. You declare it as a type
+whose base is `Failure`, and raise it with `reject`. Save this as
+`main.jadpo` and run `jadpo test main.jadpo`:
+
+```jadpo check project=declaring-first
+/// There isn't enough stock to fill the order.
+type OutOfStock = Failure {
+    kind: FailureKind.conflict
+    message: "There isn't enough stock."
+}
+
+type Stock = Int {
+    min: 0
+}
+
+/// The stock left once one item is sold.
+function after_sale(stock: Stock) fails OutOfStock -> Stock {
+    if (stock == 0) {
+        reject OutOfStock
+    }
+    return Stock(stock - 1)
+}
+
+test "the last one sells, and then there are none" {
+    var left: Stock = attempt after_sale(1)
+    assert left == 0
+    assert after_sale(0) fails OutOfStock
+}
+```
+
+`Failure`, `FailureKind` and `Int` are built in. `OutOfStock`, `Stock` and
+`after_sale` are defined here. `fails OutOfStock` says the function can fail
+this way, and `reject` raises the failure.
+
+The `///` line above `OutOfStock` is a documentation comment. It is
+optional, and becomes the failure's description in generated documentation
+and OpenAPI.
+
+The base, `Failure`, gives the type its settings: `kind`, `message`,
+`client`, `internal` and, rarely, `code`.
+
+### `kind:`, which sets the status
+
+`kind:` names one of the [failure kinds](#failure-kinds), the categories a failure falls
+into, such as `not_found` or `conflict`. The kind sets the HTTP status a
+client gets, and how background work, such as a
+[job or an event subscriber](12-jobs-and-events.md), treats the failure. A failure never states a status itself.
+
+### The code clients see
+
+A failure's public code is its name in lower_snake_case: `TodoNotFound`
+is `todo_not_found`. Clients rely on it, so it stays the same. Write
+`code: "todo_missing"` only to keep a code clients already use after you
+rename the failure.
+
+### `message:`
+
+`message:` is fixed text that is safe to show anyone. It can't include
+values. Leave it out and the client gets the generic message Jadpo keeps
+for the failure's kind.
+
+### `client:` and `internal:` fields
+
+A failure can carry values that say what went wrong, such as which
+product ran out. These are its fields, and they go in one of two blocks:
+
+- `client: { }` holds the fields sent to the caller.
+- `internal: { }` holds the fields that never leave the server. They are
+  for your logs and traces.
+
+Here are two failures with fields. `Todo` and `Product` are entities, kinds
+of stored record, declared with `Quantity` in another file of the app. A
+field typed `Todo.id` has the type of `Todo`'s `id` field.
 
 ```jadpo check project=declaring file=types.jadpo hidden
 type Quantity = Int {
@@ -80,39 +147,6 @@ type QuantityUnavailable = Failure {
 }
 ```
 
-The `///` line above `TodoNotFound` is a documentation comment. It is
-optional, and becomes the failure's description in generated documentation
-and OpenAPI. A field typed `Todo.id` has the type of `Todo`'s `id` field.
-
-### `kind:`, which sets the status
-
-`kind:` names one of the [kinds](#kinds), the categories a failure falls
-into, such as `not_found` or `conflict`. The kind sets the HTTP status a
-client gets, and how background work, such as a
-[job or an event subscriber](12-jobs-and-events.md), treats the failure. A failure never states a status itself.
-
-### The code clients see
-
-A failure's public code is its name in lower_snake_case: `TodoNotFound`
-is `todo_not_found`. Clients rely on it, so it stays the same. Write
-`code: "todo_missing"` only to keep a code clients already use after you
-rename the failure.
-
-### `message:`
-
-`message:` is fixed text that is safe to show anyone. It can't include
-values. Leave it out and the client gets the generic message Jadpo keeps
-for the failure's kind.
-
-### `client:` and `internal:` fields
-
-A failure can carry values that say what went wrong, such as which
-product ran out. These are its fields, and they go in one of two blocks:
-
-- `client: { }` holds the fields sent to the caller.
-- `internal: { }` holds the fields that never leave the server. They are
-  for your logs and traces.
-
 A field name can't be in both. A failure has no fields outside these two
 blocks. The caller gets a JSON body with `code`, `message`, `request_id`
 and, when the failure has `client` fields, those fields under `details`
@@ -138,8 +172,8 @@ domain handles the failure, for example in a
 [`match`](#handling-a-failure-in-match), write `public` before the
 declaration: `public type QuantityUnavailable = Failure { ... }`.
 
-## Kinds
-<!-- topic: kinds -->
+## Failure kinds
+<!-- topic: failure-kinds (was kinds) -->
 
 Every failure has a kind, which decides the HTTP status a client gets and
 what the failure means. A kind is a `FailureKind` value, written
@@ -153,7 +187,7 @@ itself, and declaring one of those is the error
 |---|---:|---|---|
 | `invalid_request` | 400 | The request could not be read (bad JSON, wrong shape) | runtime |
 | `invalid_value` | 422 | A well-formed value breaks a rule | you; the runtime for request input |
-| `unauthenticated` | 401 | No valid identity | runtime ([Identity](08-identity.md)) |
+| `unauthenticated` | 401 | No valid identity | runtime ([Sign-in and identity](08-identity.md)) |
 | `not_permitted` | 403 | The caller is known but may not do this | you; [policy](09-policy.md) |
 | `not_visible` | 404 | Hidden from this caller | policy only ([Concealing records](#concealing-records)) |
 | `not_found` | 404 | The record does not exist | you |
@@ -629,6 +663,7 @@ with `internal_fault`, undo its writes, and log which one happened:
   "classification": "int_overflow",
   "operation": "action:price_line",
   "site": "domains/ordering/actions/price_line.jadpo:4",
+  "cause": null,
   "request_id": "req_0b1e…"
 }
 ```
@@ -649,8 +684,8 @@ app. The client gets the same `500 internal_fault` as for any defect, and
 nothing about Jadpo, the version or the cause is in the response. The
 operator's `operation.failed` line adds `bug_in_jadpo: true` and `report`,
 the address of the issue form, beside the build's version, the
-`request_id` and the `.jadpo` frames. It never holds a request body, a
-header or a setting value. A fault that is your own code's, such as an
+`request_id`, the `.jadpo` frames and `cause`, what went wrong in a few words.
+It never holds a request body, a header or a setting value. A fault that is your own code's, such as an
 overflow, has `bug_in_jadpo: false` and `report: null`.
 
 The `jadpo` command, `jadpo dev` and `jadpo test` aren't deployed apps. A

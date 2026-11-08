@@ -963,7 +963,7 @@ pub const FLAGS: SystemTable = SystemTable {
 };
 
 /// Each change `jadpo flags set` and `reset` made to a flag (area 16,
-/// "Flags: changed, listed and removed"; chunk B10), in `flags: { store:
+/// "Flag rules: changing, listing, removing"; chunk B10), in `flags: { store:
 /// }`, written by the statement that makes the change: when, the flag,
 /// `set` or `reset`, its state before and after as JSON (`value`, `users`
 /// and `shares`, as `jadpo_flags` holds them, `null` for no row), and who

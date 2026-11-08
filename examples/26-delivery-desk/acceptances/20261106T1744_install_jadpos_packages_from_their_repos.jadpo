@@ -1,0 +1,9 @@
+/// Jadpo's own Resend and Amazon SQS packages moved out of this repository into their own,
+/// jadpo-dev/package-resend and jadpo-dev/package-amazon-sqs, so this example installs them by
+/// git tag until jadpo.dev's registry, which verifies publishers, publishes them as @jadpo/….
+acceptance {
+    changes: {
+        AmazonSqs.v2012_11_05: PackageChange.git_source
+        Resend.v1: PackageChange.git_source
+    }
+}

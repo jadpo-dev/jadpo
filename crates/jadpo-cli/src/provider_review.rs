@@ -20,7 +20,7 @@ use jadpo_term::{Block, Fact, Json};
 use crate::package_import::{WIDTH, wrap};
 
 /// What the agent does with a type to review, as `jadpo check` says it.
-const REVIEW: &str = "Go through each type against the provider's documentation, then add it to `reviewed:` in `imported:` in its package's `provider.jadpo` (agent)";
+const REVIEW: &str = "Go through each type against the provider's documentation, then add it to `reviewed:` in its package's `provider.jadpo` (agent)";
 
 /// What the agent does with an unconfirmed call.
 const CONFIRM: &str = "Record each with `jadpo package record`, which checks a sandbox answer against its types (agent)";

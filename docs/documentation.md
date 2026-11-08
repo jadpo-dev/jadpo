@@ -45,10 +45,11 @@ area page lists it under `## Errors`.
 | Guides: their index, then one page per common job, each its own project | `docs/guides/README.md`, `docs/guides/NN-*.md` |
 | How user pages are written | `docs/writing.md` |
 | The language, by topic | the area pages, `docs/language/NN-*.md` |
+| How the reference is grouped for a reader | `docs/reference.toml`, under [The reference's manifest](#the-references-manifest) |
 | One page per compiler error | `docs/errors/<rule.id>.md` (examples), with the rule's summary from the compiler's catalogue (`jadpo help --json`) |
 | Why the language is the way it is | each area's design notes, `docs/language/notes/NN-*.md`, kept apart from what an app author reads |
 | Commands | generated from `jadpo help --json` |
-| Standard types | generated from the compiler's contract data (`jadpo help --json`'s `types` and `operations`) and each type's golden file |
+| Standard types | each type's own words in `crates/jadpo-std/src/standard/pages/`, with its shape, JSON, storage and operations from the compiler's data and its golden file, rendered by the compiler (`jadpo help <Type>`, `jadpo help types --json`) |
 | Teaching projects | `examples/` |
 | The agent skill: how a coding agent writes Jadpo apps | `docs/agent-skill/SKILL.md` |
 
@@ -93,7 +94,9 @@ or old ID that isn't kebab case or is used twice, an ID line anywhere else,
 and a topic over 3,000 words as the bundle gives it, which is split. It
 also fails an area page that names an area or a question by number, as
 in "(area 8)", "area 8's" or "question 2", outside code. The design notes
-are exempt, since that is where question numbers belong.
+are exempt, since that is where question numbers belong. A new topic also
+adds its line to [the reference's manifest](#the-references-manifest), and the
+check says so until it does.
 
 ## The bundle
 
@@ -104,6 +107,7 @@ pages.
 ```text
 bundle/
   index.json                   one entry per page
+  nav.json                     how the reference is grouped, as a tree
   primer.md
   learn/<id>.md                the Learn path: the outline, then each page
   guides/<id>.md               the guides: their index, then each guide
@@ -111,22 +115,35 @@ bundle/
   types/<id>.md                the standard types: their index, then one per type
   errors/<rule.id>.md          one per catalogue rule, example or not
   commands/jadpo-<command>.md  generated from jadpo help --json
+  landings/<id>.md             one per node of the manifest with no page of its own
   skills/jadpo/SKILL.md        the agent skill, outside index.json
+  releases/<X.Y.Z>.md          each release's notes, outside index.json
 ```
+
+The release notes are `docs/releases/`, copied byte for byte. The site shows
+them at `/changelog`, newest first, reading each file's `# Jadpo X.Y.Z` heading
+and its `Released D Month YYYY.` line.
 
 `index.json` is `{ "version": "<jadpo's version>", "pages": [...] }`, in
 the order above: the primer, the Learn path in reading order, the
 guides in their index's order, topics in the areas' order, the standard
-types' index then each type in its group's order, errors, commands. Each
+types' index then each type from A to Z, errors, commands, landing pages. Each
 entry has `id`, `kind`
-(`primer`, `learn`, `guide`, `topic`, `type`, `error`, `command`), `title`, a one-line
-`summary` (a page's first sentence, a rule's catalogue summary, a
-command's own), `tokens` (an estimate: a quarter of the page's
+(`primer`, `learn`, `guide`, `topic`, `type`, `error`, `command`, `landing`), `title`, a one-line
+`summary` (a page's first sentence, or the manifest's line for it, a rule's
+catalogue summary, a command's own), `tokens` (an estimate: a quarter of the page's
 characters), `hash` (`sha256:` and the hex digest of the page's
 markdown), the `area` it comes from (`null` for the primer, the Learn
-path and the guides, 14 for a command, and for a standard type the area
-its description cites, 19 for most), and the IDs it `links` to. A renamed topic's
+path, the guides and a landing page, 14 for a command, and for a standard type
+the area its description cites, 19 for most), and the IDs its own text `links`
+to: a topic's contents and status line, which the manifest writes, don't count,
+and a landing page's rows do. A renamed topic's
 entry also has `aliases`, its old IDs; no other entry has the field. A
+page the [reference's manifest](#the-references-manifest) places (a topic, a
+standard type, a command) also has its `group` and its `page`, each a title,
+`page` being `null` directly under a group, and its `status`; no other entry
+has those, but for a guide's `group`, the heading it sits under on the guides'
+index. A
 page's path follows
 from its kind and ID. `learn` and `guide` pages are the user layer, and `topic`
 pages the reference; each area's "What is built" topic is titled
@@ -140,13 +157,21 @@ language (`jadpo`, `text`), the docs check's attributes after it
 shows the fence as it is, and its relative links are by ID (`passkeys.md`,
 `../errors/failure.kind_required.md`), keeping an anchor within the page;
 a link to anything else, design notes included, names the file on GitHub's
-`main`. An error page leads with its rule's summary, area and who usually
+`main`. The docs check holds every relative link to a page in the bundle and
+its anchor to a heading of that page; a link into a section no page keeps,
+such as `## Errors`, goes to the page. The site's build fails on any internal
+link that doesn't resolve, so a broken link stops a build on either side. An error page leads with its rule's summary, area and who usually
 decides the next step, and leaves out the page's first sentence when it is
 that summary; a command's page is its usage, arguments, flags,
 examples, the flags every command takes and what `--json` gives (the
 same on each page), and errors. The primer is `docs/primer.md` with its hidden blocks
 left out; the docs check compiles its every example, refuses a `fragment`
-in it and keeps it to 3,000 to 5,000 tokens, its words times 1.3. A
+in it and keeps it to 3,000 to 5,000 tokens, its words times 1.3. What
+a release ships isn't prose on these pages: `tools/docs/agent_guidance.py`
+writes the primer's `## Not built yet` from the areas' "What is built"
+tables, and the first Learn page's `## Install it` from
+`dist-workspace.toml`, and the gate fails when they are stale or when
+another line of either says how to get `jadpo` by hand. A
 Learn page shows only the files it adds or changes; the docs check
 compiles and tests its project as the pages before it built it, less
 what its front matter `removes:`, making the migrations and the API
@@ -156,53 +181,179 @@ The primer, the Learn path and the guides also keep the
 [writing guide](writing.md)'s mechanical rules.
 
 A standard type's page is generated on every docs build, so it lists
-exactly what is built. Its facts come from `jadpo help --json`: each
-type's entry under `types` (its group, its stub's description, what it
-holds, its fields or variants, its rules across parts, whether it has a
-text form, its JSON and storage, the options `text.format` takes,
-whether it is ordered, the release that added it, and its examples), the
-operations that take or give one under `operations`, and the forms its
-examples take from its golden file in
-`crates/jadpo-interp/tests/goldens/standard/`, which the golden test holds
-to the codecs. The page is titled with the type's name and has, in
-order: what it is, its group (linking the index), whether it is ordered,
-any personal data category and the release; `## Make one`, how to build
-one, `text.parse` with text it refuses, the operations that give one and
-its rules; `## Fields` or `## Variants`; `## Text, JSON and storage`,
-each example's text and JSON and the columns it is stored in; `## Shown
-to people`, the options `text.format` takes and each example as `en_gb`
-shows it; and `## Operations`, each with its signature and description,
-then the contract's own. The index lists every type by group, each with
-the first sentence of what it is, and links [the standard
-types](language/19-standard-library.md#the-standard-types) for the
-explanation. The groups are the compiler's
-(`crates/jadpo-std/src/standard/groups.rs`); the docs check fails the
-Standard library page's table of types by group where it lists another
-group, or a type under a group the compiler doesn't give it.
+exactly what is built. The compiler renders it, and `jadpo help <Type>` prints
+the same page offline, so the two can't differ (`crates/jadpo-cli/src/type_page.rs`).
+What a person wrote is in `crates/jadpo-std/src/standard/pages/`, one file for
+each type group: what it is, when to use it and what to use instead, a working
+example, and what is good to know. The rest comes from the compiler: each
+type's entry under `jadpo help --json`'s `types` (its group, what it holds, its
+fields or variants with which are required, its rules across parts, its text
+form, its JSON and storage, the options `text.format` takes, whether `<` takes
+it, the release that added it), the operations that take or give one under
+`operations`, and each form its examples take from its golden file in
+`crates/jadpo-interp/tests/goldens/standard/`, which the golden test holds to
+the codecs. Its parts are in the order [the writing
+guide](writing.md#how-a-standard-types-page-reads) sets. A test in `jadpo-std`
+fails when a type has no entry, and the docs check compiles and runs every
+example with `jadpo test`, and fails a page using a word the writing guide
+rules out.
+
+The index lists every type from A to Z, with its group as a column and the
+line saying what it is, since a reader looks for a name. It is the only list
+of the types: `jadpo help types` is the same list, and with `--json` each
+type's page, which the bundle publishes. The groups are the compiler's
+(`crates/jadpo-std/src/standard/groups.rs`), and each has a landing page holding
+its types. A type's `links` in `index.json` hold that page too, so its page can
+point to its group. Every type's name in the guides, the Learn path, the primer,
+[How standard types are named, and what is left
+out](language/19-standard-library.md#how-standard-types-are-named-and-what-is-left-out)
+and [Built-in types](language/02-values-and-types.md#built-in-types) links its
+page in the bundle.
+
+No page lists the types by hand. The docs check fails a table headed by group
+and types, a table naming more than 40 of them, and a page saying how many there
+are (`hand_type_table_problems`). The one exception is the record of which
+release added each, `| Release | Standard types it adds |`, which a compiler test
+reads.
 
 `python3 tools/docs/language_docs.py --bundle <dir>` builds it; the gate builds
 it into `build/docs-bundle/`, and on `main` CI keeps that folder as the
 `docs-bundle` artifact. A release attaches the bundle to its GitHub
 Release.
 
+## The reference's manifest
+
+The area pages are the language's order, which is how the people changing it
+read it. A reader looks by subject, so `docs/reference.toml` says how the
+reference is grouped: ten groups, each with its pages and sections, placing
+every topic exactly once. Text stays on its area page, and files, area numbers
+and `area` in the index don't change. A topic's title is its heading's, so a
+page has one name wherever it shows.
+
+A node (a group, a page or a section) has a `title`, and any of these:
+
+| Key | What it does |
+|---|---|
+| `id` | Its landing page. A topic of that ID is placed by it. An ID no page has is a landing page the bundle makes, which needs a `summary`, and it can't be a renamed topic's old ID, which already redirects |
+| `summary` | One line on the node; without it, its landing's or its first topic's |
+| `topics` | Its topics in reading order |
+| `details` | Its exact rules and internals, listed after its usage |
+| `built` | Its "What is built" topics, which stay out of the sidebar |
+| `types` | One of the compiler's groups of standard types, listed after its topics |
+| `commands` | The commands it lists, by name, after its topics. A command is in one place, the heading it is most used under, whichever other topics mention it |
+| `status` | The "What is built" rows it reports, each `<area file>: <the start of the row's first cell>` |
+| `missing` | What a partly built node lacks, in a short phrase |
+| `status_column` | The word for its rows, on the one landing whose table has a column for each row's status |
+| `href` | Only for a page the site writes itself: `/docs/errors` |
+
+`[topic_summary]` gives a topic the line its first sentence doesn't manage, and
+every list of pages shows it. `[topic_status]` gives a topic rows of its own, in
+the same form. A status is
+never written here: it comes from the first words of the row, `built`, `partly
+built` or `not built`, several rows saying `partly built` unless they agree. A
+topic's status is its own rows'. Without any, a node not built passes that on to
+everything under it, and otherwise its status goes on its landing or its first
+topic only, since the rest of a partly built page may be wholly built.
+
+The docs check fails a topic in no place or in two, an ID no topic has (saying
+the new ID when a renamed topic's old one is named), a status row that is gone
+or matches two, a row whose status starts with anything else, a partly built
+node with no `missing`, a "What is built" topic outside `built` or anything else
+in it, a compiler group of types in no place or two, a command in no place or
+two, a key nothing reads, and a node placing nothing.
+
+### Landing pages and status lines
+
+The bundle writes these from the tree below, so a page's contents can't drift
+from the sidebar, and nothing goes into a topic's source.
+
+A node's page is its `id`'s, or without one its first topic. Under that page's
+intro, before its first `##`, is a table of what the node holds: its topics and
+its pages or sections, each with its summary, and a line linking its "What is
+built". A status shows as `▲ partly` or `○ not built` beside the name, or in a
+column with what's missing on a node with `status_column`. A group's row for a
+page with sections of its own also links those. A node's `details` come last, in
+a `## Details` block. A group of types has `## Topics` and `## Types`, the types'
+index adds `## By group` and `## About standard types` above `## A to Z`, and
+Commands has a `##` for each of its sections with its commands under it.
+
+A page not wholly built opens with one line straight under its title, in its
+Markdown as on the site, and a page wholly built has none:
+
+```markdown
+**Partly built.** Missing: uploads, downloads and the S3 driver. See [What is built](built-in-services-built.md).
+
+**Not built.** This page is the design; Jadpo doesn't do this yet. See [What is built](built-in-services-built.md).
+```
+
+`missing` goes on the page that opens the node. Elsewhere on a partly built node
+a page with rows of its own says "Some of this isn't built yet."
+
+The docs check fails a node with no page, a node's page not linking something
+directly in the node (`landing_problems`), a page not wholly built without its
+line straight under its title, and a line on a page wholly built
+(`status_line_problems`). A summary is always of what a person wrote, never of
+what the bundle added.
+
+`nav.json` is the manifest worked out, so the site reads neither the manifest
+nor the tables:
+
+```json
+{
+  "version": "<jadpo's version>",
+  "groups": [
+    {
+      "id": "built-in-services",
+      "title": "Built-in services",
+      "summary": "…",
+      "href": "/docs/built-in-services",
+      "status": null,
+      "missing": null,
+      "status_column": "Service",
+      "topics": [],
+      "details": [],
+      "built": [
+        { "id": "built-in-services-built", "kind": "topic", "title": "…", "summary": "…",
+          "href": "/docs/built-in-services-built", "status": null }
+      ],
+      "children": []
+    }
+  ]
+}
+```
+
+Every node has those keys, `children` holding its pages or sections in the same
+shape, to any depth; `topics`, `details` and `built` hold entries in the shape
+shown. A `kind` is `topic`, `type` or `command`. A node's `id` is `null` when it
+has no landing of its own. `href` is always a page that exists: its landing, or
+without one its first entry. A node's own landing topic isn't in its `topics`.
+`missing` is `null` unless `status` is `partly built`, and `status_column` is
+`null` unless the manifest gives it.
+
+A bundle from before this has no `nav.json`, no `landings/`, no status lines and
+no `group`, `page` or `status`.
+
 ## What the site serves
 
 | Path | What |
 |---|---|
-| `/llms.txt` | A short index: what Jadpo is, the primer's URL, how to find a page by ID or by rule, the version |
+| `/llms.txt` | A short index: what Jadpo is, the primer's URL, the guides, the reference's groups, how to find a page by rule, the version |
 | `/docs/primer`, `/docs/primer.md` | The primer, as HTML and as markdown |
 | `/learn`, `/learn/<id>`, `.md` | The Learn path: the outline, then each page, with previous and next in the index's order |
 | `/guides`, `/guides/<id>`, `.md` | The guides: their index, then each guide |
-| `/docs/<id>`, `/docs/<id>.md` | A topic |
+| `/docs/<id>`, `/docs/<id>.md` | A topic, a command or a landing page |
 | `/docs/<old-id>`, `.md` | A permanent redirect to the topic whose `aliases` hold it |
 | `/docs/types`, `/docs/types/<id>`, `.md` | The standard types: their index, then each type |
 | `/docs/errors/<rule.id>`, `.md` | An error's page; reached from a compiler error, not listed in navigation |
-| `/docs/index.json` | The bundle's index |
+| `/docs/index.json` | The bundle's index, for tools |
 | `/.well-known/agent-skills/jadpo/SKILL.md`, `/.well-known/agent-skills/index.json` | The agent skill, and the index that lists it |
-| `/v/<version>/…` | The same paths for one release; immutable, cached for good |
+| `/v/<version>/…` | The same paths for one release, its links staying under `/v/<version>/`; immutable, cached for good |
 | `/…` without `/v/` | The latest release; short cache, `ETag` from the page's hash |
 
-The markdown copy is the bundle's file served as `text/markdown`. There is
+The markdown copy is the bundle's file served as `text/markdown`, with its
+relative links written as the site's addresses (`/docs/passkeys.md`), as the
+HTML's are, so each resolves from where the copy is served. A page's `hash`
+is of the bundle's file. There is
 no single file of all the docs: no agent can use a million tokens. A
 newcomer is sent to the Learn path first; the area pages are the
 reference, in the areas' order. The guides come from the bundle too,
@@ -213,16 +364,16 @@ as pages of kind `guide`, so the site keeps no task list of its own.
 `docs/agent-skill/SKILL.md` is a skill in the standard `SKILL.md` format,
 for a coding agent that writes Jadpo apps (it does not cover changing
 Jadpo). Its front matter has a `name`, `jadpo`, and a one-line
-`description`; its body tells the agent to read the primer first, find
-pages through `index.json` or `llms.txt`, run `jadpo check --json` and
-`jadpo test --json`, read the error document and what `(agent)` and
+`description`; its body tells the agent to read the primer and `llms.txt`
+first, find pages through a guide or a group of the reference, run
+`jadpo check --json` and `jadpo test --json`, read the error document and what `(agent)` and
 `(human)` mean, and report a bug in Jadpo through the user, as "Using
 Jadpo" in `AGENTS.md` says. It is versioned with the language: a release's
 bundle holds the skill of that release. Its links are full URLs, because
 the bundle's text is served as it is.
 
-The bundle holds it at `skills/jadpo/SKILL.md`, a byte-for-byte copy and
-no entry in `index.json`. The site serves that file as it is (the
+The bundle holds it at `skills/jadpo/SKILL.md`, a byte-for-byte copy with
+no entry in the bundle's index. The site serves that file as it is (the
 `ETag` from its hash) at `/.well-known/agent-skills/jadpo/SKILL.md`, and
 builds `/.well-known/agent-skills/index.json` from the front matter: for
 each skill its `name`, `description`, `type` (`skill-md`), `url` and
@@ -233,17 +384,29 @@ serves the release's own copy. The site's `llms.txt` links the skill.
 
 1. A project made by `jadpo new` holds a short `AGENTS.md`: what Jadpo
    is, the version the app declares in `app.jadpo`, where the docs are, a
-   working method, the closest example for each feature and what isn't
-   built yet ([`jadpo new`](language/14-tooling.md#jadpo-new)). Agents
+   working method, the closest example for each feature at that `jadpo`'s
+   own release and what isn't built yet
+   ([`jadpo new`](language/14-tooling.md#jadpo-new)). Agents
    load that file on their own.
-2. The agent reads the primer once per session; it is the same every time,
-   so prompt caching keeps it cheap.
-3. For a task it reads `index.json` (or `llms.txt`), picks the topics by
-   title and summary, and fetches only their `.md`.
+2. The agent reads the primer and `llms.txt` once per session. They are the
+   same every time, so prompt caching keeps them cheap.
+3. For a task it follows the guide for that job, if there is one. Otherwise
+   it opens the page of the task's group in `llms.txt`, which lists what is
+   in the group, and fetches only the topics it needs.
 4. A compiler error names its rule; the agent reads that rule's page only if
    the error's own reason and fix are not enough.
-5. It reads the version its app declares, under `/v/<version>/`, and skips
-   pages whose hash it already has.
+5. It reads the version its app declares, under `/v/<version>/`.
+
+An agent's first read stays small: the primer and `llms.txt` together are at
+most 9,000 tokens, a quarter of their characters as the bundle's index counts
+them. The docs check holds the primer and this repository's `llms.txt` to that,
+and the site's build holds the `llms.txt` it writes. Each counts the primer as
+it serves it.
+
+`index.json` is for tools, and an agent never reads it whole: it is about 190,000
+tokens. The docs check fails anything that tells an agent what to read and sends
+it to the whole file, and the site's build does the same for its own pages. 0.1's
+and 0.2's released `AGENTS.md` files still name the file, so it stays served.
 
 `llms.txt` in this repository links the raw files on GitHub, for an agent
 working from a checkout; some agents cannot fetch from GitHub, which is
@@ -330,6 +493,17 @@ needs, or use a local clone with a file-reading coding agent.
     stores, which needs no token: the Marketplace publisher `jadpo` has a
     trusted publishing policy for `vscode-extension.yml`, and the Open VSX
     namespace `jadpo` a trusted publisher for it.
+  - The verifier's container image (`deploy/verifier/`) is built and tested
+    on each release, and pushed to `ghcr.io/jadpo-dev/verifier` while the
+    repository variable `JADPO_VERIFIER_IMAGE` is `on`, with the workflow's
+    own token. The registry runs the verifier on Cloudflare Containers, from
+    the jadpo.dev repository: its CI builds the image from
+    `deploy/verifier/Dockerfile` with the newest release's own `jadpo`, checked
+    against its attestation, and deploys it behind a small Worker at
+    `verifier.jadpo.dev`, whose secret `JADPO_VERIFIER_TOKEN` is the credential
+    the registry also holds. A container sleeps when nothing asks it anything,
+    and the registry's polling, once a minute while a verification runs, keeps
+    it awake until the verification ends.
 
 ## Installing
 

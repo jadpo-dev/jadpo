@@ -1170,10 +1170,7 @@ pub fn set(args: &SetArgs, env: &Environment) -> u8 {
             format!("`{}` isn't a setting", args.field),
         ));
     };
-    let paint = |token: Token, text: &str| match err_style.color {
-        Some(depth) => format!("{}{text}\x1b[0m", token.sgr(depth, err_style.theme)),
-        None => text.to_string(),
-    };
+    let paint = |token: Token, text: &str| token.painted(text, &err_style);
     let question = format!("Enter {}", field.variable);
     let hint = if field.secret { "hidden" } else { "visible" };
     let mut err = std::io::stderr();

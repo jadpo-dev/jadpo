@@ -58,22 +58,13 @@ use crate::run::{Call, Reply};
 
 // --- verify ----------------------------------------------------------------
 
-/// `jadpo package verify <folder> [--previous <folder>]`.
+/// `jadpo package verify <folder> [--previous <folder>] [--publisher <handle>]`.
 pub(crate) fn verify(call: &Call) -> Reply {
     if call.flag("--serve") {
-        return Reply::failed(
-            Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                "`jadpo package verify --serve` isn't built yet",
-            )
-            .reason(
-                "Area 11 decides it, and it comes with the verifier the registry reaches over HTTPS.",
-            )
-            .next("Run `jadpo package verify <folder> --previous <folder> --json` meanwhile"),
-        );
+        return crate::verifier::reply(call);
     }
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
-    let usage = "Run `jadpo package verify <folder> [--previous <folder>]`";
+    let usage = "Run `jadpo package verify <folder> [--previous <folder>] [--publisher <handle>]`";
     let Some(folder) = call.arguments.get(1) else {
         return Reply::failed(arguments(
             "`jadpo package verify` needs a package's folder".to_string(),
@@ -96,7 +87,75 @@ pub(crate) fn verify(call: &Call) -> Reply {
             Err(reply) => return reply,
         },
     };
-    package::bar(call, &cwd.join(folder), Mode::Verify { previous })
+    let publisher = call.value("--publisher").map(str::to_string);
+    if let Some(handle) = &publisher
+        && !jadpo_check::packages::is_publisher_handle(handle)
+    {
+        return Reply::failed(arguments(
+            format!("`{handle}` isn't a publisher's handle"),
+            "A handle is `@` and lower-case letters and digits, starting with a letter, with single `-`s between them.".to_string(),
+            usage.to_string(),
+        ));
+    }
+    package::bar(
+        call,
+        &cwd.join(folder),
+        Mode::Verify {
+            previous,
+            run: !call.flag("--no-run"),
+            publisher,
+        },
+    )
+}
+
+/// The bar's `files` row for a folder as it stands: its detail, as `Err`
+/// when it fails, with what it refuses.
+pub(crate) fn files_row(
+    folder: &Path,
+) -> std::io::Result<(Result<String, String>, Vec<Diagnostic>)> {
+    use jadpo_verifier::files;
+    let judged = files::judge_folder(folder)?;
+    let mut problems = Vec::new();
+    for (path, why) in &judged.refused {
+        problems.push(
+            Diagnostic::new(
+                &rule::PUBLISH_FILE_NOT_ALLOWED,
+                format!("`{path}` can't be in a release"),
+            )
+            .reason(format!(
+                "A release holds only Jadpo source and the package's text files, and {why}."
+            ))
+            .next(format!(
+                "Remove `{path}` from the commit, or keep it in a hidden folder such as `.github/`, which isn't part of a release"
+            )),
+        );
+    }
+    if judged.refused.is_empty() && judged.too_large() {
+        problems.push(
+            Diagnostic::new(
+                &rule::PUBLISH_TOO_LARGE,
+                format!(
+                    "The release holds {} files, past what one may",
+                    judged.release.len()
+                ),
+            )
+            .reason(format!(
+                "A release's archive comes to at most {} MB and {} files, since the registry has to receive it whole in one answer; this one's comes to {:.2} MB.",
+                files::SIZE_LIMIT / 1_000_000,
+                files::COUNT_LIMIT,
+                judged.size as f64 / 1_000_000.0,
+            ))
+            .next_for(
+                "Split the package, or remove recordings it doesn't need",
+                jadpo_diag::Decider::Human,
+            ),
+        );
+    }
+    let row = match judged.problem() {
+        Some(problem) => Err(problem),
+        None => Ok(judged.summary()),
+    };
+    Ok((row, problems))
 }
 
 /// The folder given as the previous release: its name and the version its
@@ -587,6 +646,9 @@ pub(crate) fn facts_block(facts: &Facts) -> Block {
             facts.kind.to_string()
         },
     )];
+    if let Some(publisher) = &facts.publisher {
+        fields.push(("publisher".to_string(), publisher.clone()));
+    }
     if facts.kind == "provider" {
         // A host on a line of its own, so it copies whole.
         let hosts: Vec<&str> = facts.hosts.iter().map(|host| host.host.as_str()).collect();
@@ -679,6 +741,10 @@ pub(crate) fn facts_json(facts: &Facts) -> Json {
         |items: &[String]| Json::array(items.iter().map(|item| Json::from(item.as_str())));
     Json::object([
         ("kind", Json::from(facts.kind)),
+        (
+            "publisher",
+            facts.publisher.as_deref().map_or(Json::Null, Json::from),
+        ),
         ("pure", facts.pure.into()),
         (
             "hosts",
@@ -714,8 +780,15 @@ pub(crate) fn facts_json(facts: &Facts) -> Json {
             })),
         ),
         ("confirmed_operations", strings(&facts.confirmed_operations)),
-        // The registry's scheduled runs: nothing a commit can say.
-        ("last_contract_run", Json::Null),
+        // The newest recording `jadpo package record` made (Richard,
+        // 2026-11-07).
+        (
+            "last_contract_run",
+            facts
+                .last_contract_run
+                .as_deref()
+                .map_or(Json::Null, Json::from),
+        ),
         (
             "standard_candidates",
             Json::array(facts.standard_candidates.iter().map(|fact| {

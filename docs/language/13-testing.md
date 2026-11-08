@@ -64,55 +64,55 @@ close to their code, and scenarios can't depend on a domain's internals.
 
 A test is a sentence that names it, then a body of ordinary code. In the
 body, `assert` fails the test when its condition is false. Here a test
-checks a function that says whether a todo is overdue:
+checks an action that says whether a todo is overdue:
 
 ```jadpo check project=writing-a-test file=app.jadpo hidden
 application {}
 ```
 
-```jadpo check project=writing-a-test file=domains/planning/types/due_at.jadpo hidden
-type DueAt = Instant {}
-```
+`domains/planning/actions/is_overdue.test.jadpo`:
 
-```jadpo check project=writing-a-test file=domains/planning/types/overdue.jadpo hidden
-type Overdue = Bool {}
-```
-
-```jadpo check project=writing-a-test file=domains/planning/libraries/due_dates.jadpo hidden
-use planning/types { DueAt, Overdue }
-
-library due_dates {
-    /// Whether a todo due at `due` is overdue at `now`.
-    function is_overdue(due: DueAt, now: DueAt) -> Overdue {
-        return Overdue(due < now)
-    }
-}
-```
-
-```jadpo check project=writing-a-test file=domains/planning/actions/remind_if_overdue.jadpo hidden
-use planning/types { DueAt, Overdue }
-use planning/libraries { due_dates }
-
-action remind_if_overdue(due: DueAt, now: DueAt) -> Overdue {
-    return due_dates.is_overdue(due, now)
-}
-```
-
-```jadpo check project=writing-a-test file=domains/planning/libraries/due_dates.test.jadpo
-// domains/planning/libraries/due_dates.test.jadpo
+```jadpo check project=writing-a-test file=domains/planning/actions/is_overdue.test.jadpo
 use planning/types { DueAt }
 
 test "a todo due yesterday is overdue" {
     var due: DueAt = "2026-01-14T12:00:00Z"
     var now: DueAt = "2026-01-15T12:00:00Z"
-    assert due_dates.is_overdue(due, now)
+    assert is_overdue(due, now)
 }
 ```
 
-`due_dates` is a library in the `planning` domain, and `is_overdue` is one
-of its functions. `DueAt` is the domain's type for a due date, an
-`Instant`. The test sits beside the library's file, so it calls the
-library without importing it.
+The test sits beside the action's file, so it calls `is_overdue` without
+importing it. `test` and `assert` are built in. `DueAt` and `Overdue` are
+your app's own types, each brought in by a `use` line from its file, and
+here is everything the test uses:
+
+`domains/planning/actions/is_overdue.jadpo`:
+
+```jadpo check project=writing-a-test file=domains/planning/actions/is_overdue.jadpo
+use planning/types { DueAt, Overdue }
+
+/// Whether a todo due at `due` is overdue at `now`.
+action is_overdue(due: DueAt, now: DueAt) -> Overdue {
+    return Overdue(due < now)
+}
+```
+
+`domains/planning/types/due_at.jadpo`:
+
+```jadpo check project=writing-a-test file=domains/planning/types/due_at.jadpo
+/// When a todo is due.
+type DueAt = Instant {}
+```
+
+`domains/planning/types/overdue.jadpo`:
+
+```jadpo check project=writing-a-test file=domains/planning/types/overdue.jadpo
+/// Whether a todo is past its due time.
+type Overdue = Bool {}
+```
+
+`jadpo test` runs it.
 
 ### The sentence names the test
 
@@ -265,7 +265,7 @@ test as `test.fault`, with its frames.
 
 In this example the route lets anyone call it, so the test signs no one
 in. `add_memo` reaches no entity, so the root `policy { }` says who may
-call it ([Actions](09-policy.md#actions)):
+call it ([Permissions on actions](09-policy.md#permissions-on-actions)):
 
 ```jadpo check project=route-test
 type Memo = Text {
@@ -588,7 +588,7 @@ run.
 record and takes no lease, as the tick does: a schedule test proves what
 one run does, and the compiler's own live tests prove the tick's records.
 What the run emits is delivered once it comes back, as any step's is
-([Caches and events](#caches-and-events)).
+([Events and caches in tests](#events-and-caches-in-tests)).
 
 A test that runs a schedule is a schedule test, whatever it calls to set
 up its data, a `request` included. `--kind schedule` runs only those.
@@ -778,8 +778,7 @@ A call with a caller, outside a request, runs as someone signed in by
 magic link with one factor too, so a role that needs a way in is tested
 through a route.
 
-A caller signs in once in a test, as a browser keeps its cookie (Richard,
-2026-10-31). The first request `as:` a person signs them in, and each
+A caller signs in once in a test, as a browser keeps its cookie. The first request `as:` a person signs them in, and each
 later request by the same caller with the same `sign_in:` and
 `strength:` sends that session again. So the session behaves as a real
 one does across the test:
@@ -935,7 +934,7 @@ reads. A name in a test's `config:` that is no field is
 
 A test never reaches a real provider, the outside service an integration
 talks to. Each provider is described to your app by a package
-([Integrations](11-integrations.md)). Every provider call a test reaches
+([External services](11-integrations.md)). Every provider call a test reaches
 answers through its package's fake, with the operation's generated
 default, unless the test's `fakes:` scripts it.
 
@@ -1174,7 +1173,7 @@ A scripted answer is a value of the clean output type or one of the
 operation's provider failures. The test never writes the wire shape: the
 fake encodes the value and decodes it, as "Values a fake answers with"
 says. `jadpo calls script` sets the same answers by hand in
-`jadpo dev` ([Debugging and review](17-debugging-and-review.md)).
+`jadpo dev` ([Debugging](17-debugging-and-review.md)).
 
 #### Several changing calls
 
@@ -1271,11 +1270,11 @@ names ([Search](16-built-in-services.md#search)).
 #### OAuth grants
 
 An OAuth grant lets the app call another service on a user's behalf
-([Acting for each user: OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)).
+([OAuth grants](11-integrations.md#oauth-grants)).
 A test declares its grants at the top, beside `fakes:`, as
 `grants: { calendar: [alice] }`: the connection's name, and the fixtures
-whose records own a grant, as `jadpo dev grants add` makes them in
-development. A call on behalf of an owner with no grant fails
+whose records own a grant, as `jadpo dev grants add`, not built yet, will
+make them in development. A call on behalf of an owner with no grant fails
 `grant_missing`, and a script can answer `grant_revoked`.
 
 #### Files
@@ -1290,7 +1289,7 @@ and a test turns it into a stored `File` with
 #### Batches
 
 A batch run works through many items, such as the rows of a file, a few
-at a time ([Batches: work over many items](12-jobs-and-events.md#batches-work-over-many-items)).
+at a time ([Batches](12-jobs-and-events.md#batches)).
 In a test, batches run to the end within the test, after the action that
 started them commits, like events. `jadpo test` runs them in batches of
 two items and simulates a restart between every batch, so every import or
@@ -1318,7 +1317,7 @@ package's fake, a test's `fakes:` scripting an operation's answers in
 order, each a value of its output type, one of its failures by its code,
 or a condition, and batch runs going to their end within the test, two
 items a batch with a restart between batches. Why fakes work this way is in the
-[Integrations design notes](notes/11-integrations.md).
+[External services design notes](notes/11-integrations.md).
 
 ## Shared test data: fixtures
 <!-- topic: shared-test-data-fixtures -->
@@ -1535,7 +1534,7 @@ FAIL  a rate-limited reminder is retried
 - **For `assert … fails X`:** the failure that happened instead, with its
   internal fields, or the value the call returned.
 - **What ran:** the test's trace in short
-  ([Debugging and review](17-debugging-and-review.md)): actions, queries,
+  ([Debugging](17-debugging-and-review.md)): actions, queries,
   writes, events delivered or pending, retries, and provider calls with
   what was sent and answered.
 - **How to reproduce it:** the clock, the order seed, configuration
@@ -1551,15 +1550,20 @@ FAIL  a rate-limited reminder is retried
 #### As JSON
 
 `jadpo test --json` prints one document in the envelope every command
-shares (`schemaVersion` 2, `command`, `ok`, `data`, `diagnostics`), and
-`jadpo help --json` describes every field under `testReport`. `data` holds the order `seed`; `root`, the project folder as
+shares (`schemaVersion` 3, `command`, `ok`, `durationMs`, `data`,
+`diagnostics`), and `jadpo help --json` describes every field under
+`testReport`. `data` holds the order `seed`; `root`, the project folder as
 seen from where the command ran (`"."` from inside it), which every path is
-relative to; the `selection`; the `counts`; and the `tests` in the order
-they ran. A failed test's `failure` has its `code` and `help`, its
+relative to; the `selection`, what was asked for; the `counts`; and the
+`tests` that failed, in the order they ran, since one that passed is counted
+rather than listed. A failed test's `failure` has its `code` and `help`, its
 `location` in the test, one of `assertion`, `failure` or `fault`, for
 `test.subscriber_failed` the `delivery` it happened in (its `event`,
-`subscriber`, `attempt` and `attempts`, `null` otherwise), and the
-`rerun` command, which works from where the command ran. Part of the
+`subscriber`, `attempt` and `attempts`), and the `rerun` command, which
+works from where the command ran. A fault with the same kind, reason and
+next step as an earlier test's has `sameAs`, that test's `order`, in place
+of its `reason`, `next` and `stack`. `--full` lists every test, gives each
+fault whole, and keeps the fields that are `null` or empty. Part of the
 document for the `test.fault` example under [Errors](#errors):
 
 ```json
@@ -1580,7 +1584,8 @@ document for the `test.fault` example under [Errors](#errors):
 
 Every location, a test's, a failure's `at`, a stack frame's and a
 diagnostic's, has the one shape `path`, `start`, `end`, `line`, `column`,
-`endLine`, `endColumn`, `label`. A stack frame is `{ location, callable,
+`endLine`, `endColumn`, `label`, with an empty `label` left out unless
+`--full` is given. A stack frame is `{ location, callable,
 repeats }`, a recursion counted once. A project with errors runs nothing:
 `data` is `{ ran: false, root, fileCount, errors, warnings }` and the errors
 are the diagnostics. `--failed` with nothing to rerun gives `{ selection,
@@ -1590,9 +1595,18 @@ line, its `data` with a `watch` object (`event`, `changed`, `reached`,
 `failing`, `files`, `fixed`).
 
 ## Running tests
-<!-- topic: running-tests -->
+<!-- topic: running-tests (was running-tests-from-the-command-line) -->
 
-`jadpo test` runs every test in the project. To run fewer, name them:
+`jadpo test` runs every test in the project, and owns everything a run
+needs, so nothing about it appears in your source. It starts a disposable
+local PostgreSQL, from the PostgreSQL programs installed on your machine, or
+uses `JADPO_TEST_DATABASE_URL` in CI. It builds one template database from
+the migrations and copies it for each test, so tests run in parallel
+([The test database](#the-test-database)). `--keep-failed` keeps a failed
+test's database. The report lists each failed test with the failure it got
+and the one it expected.
+
+To run fewer, name them:
 
 - `jadpo test <file>` runs one file;
 - `jadpo test <file>:<line>` runs the test at that line;
@@ -1607,8 +1621,8 @@ a focused test is never committed by accident.
 ### Watch mode: `--watch`
 
 `jadpo test --watch` reruns, on every save, the tests the change reaches.
-It finds them with the compiler's own dependency graph, as `--affected`
-does ([Tooling](14-tooling.md)).
+It finds them with the compiler's own dependency graph
+([`jadpo test`](14-tooling.md#jadpo-test)).
 
 ### Interactive mode: `--interactive`
 
@@ -1632,6 +1646,15 @@ it, through the language server.
 Interactive mode isn't built yet: `--interactive` says
 `toolchain.not_built_yet`. Use the flags above, or `--watch`, for now.
 
+Not built yet: `--affected`, which runs the tests a change reaches. Nor are
+the tests the compiler is to generate from facts it already has, run with
+your tests and shown in the report under the route they test:
+
+- every route refuses bad input with `{ field, rule }` details;
+- every declared failure reaches the client in the right envelope and
+  status;
+- no output has a field its type doesn't declare.
+
 ## The test database
 <!-- topic: the-test-database -->
 
@@ -1649,6 +1672,15 @@ PostgreSQL, unless the application declares otherwise
 the PostgreSQL tools on your machine. To use a server of your own, in CI
 for example, name it in `JADPO_TEST_DATABASE_URL`.
 
+When the tests need a database and there is none to be had, because
+PostgreSQL isn't installed, can't start (a sandbox with no shared memory,
+say) or the named server can't be used, no test runs. The run ends in one
+error, [`test.database_unavailable`](../errors/test.database_unavailable.md),
+marked `(human)`, with the line that says why; `--full` shows all PostgreSQL
+said. Nothing in the project is wrong, so no test is reported as failing and
+the last run's failures stay what `--failed` reruns. Tests that need no
+database still run under `jadpo test --kind pure`.
+
 ### A copy for each test
 
 `jadpo test` builds one template database from the migrations, and copies
@@ -1664,11 +1696,11 @@ as in production.
 
 ### Keeping a failed test's database: `--keep-failed`
 
-`--keep-failed` keeps a failed test's database, named in the report, and
-its trace. `jadpo trace` and the developer console can then inspect
-exactly what it did.
+`--keep-failed` keeps a failed test's database, named in the report. Not
+built yet: its trace, with `jadpo trace` and the developer console to
+inspect exactly what it did.
 
-## Caches and events
+## Events and caches in tests
 <!-- topic: caches-and-events -->
 
 An event is a fact an action records, such as "an order was placed",
@@ -1904,7 +1936,7 @@ Not built yet: caches, which need the Redis driver.
 | Pure and action tests | Built: `jadpo test` runs `test "…" { }` and `assert` in the interpreter, for tests that call functions and actions. Each test gets its own environment (its seed and clock, its database and fakes), tests run on a thread per core, and the results are reported in the order seed's order. Each action or fixture a test calls commits on its own, through the runtime's action boundary; an action it calls joins its transaction. |
 | Kind of test | Built: the kind comes from what a test calls (an action, query or fixture makes it an action test, a `request` a route test, a schedule's `.run()` a schedule test), and the footer and `--json` count each kind. |
 | Schedule tests | Built: `schedule.run()` in a test runs the schedule once at the test's clock, its action called as the system with no tenant, with its own database like an action test; `--kind schedule` runs only these; anywhere but a test it is `semantic.not_callable`. |
-| Route tests | Built: `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token, and a service through a real service key; `sign_in:` and `strength:` record how the user signed in, by magic link with one factor when left out; a caller signs in once per test, and its later requests signed in the same way send the same session or key. Every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). An optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. A streaming route's `Response` has `pieces` in place of `output`, its events read to the last. |
+| Route tests | Built: `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token, and a service through a real service key; `sign_in:` and `strength:` record how the user signed in, by magic link with one factor when left out; a caller signs in once per test, and its later requests signed in the same way send the same session or key. Every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). An optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. A streaming route's `Response` has `pieces` in place of `output`, its events read to the last. A route with `sends:` has the body in its `Output`'s field. |
 | Assertion messages | Partly built: a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). Not built yet: the trace, fakes, kept database and clock in the report. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Built: `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
 | Events | Built: what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good, or stops as `diverged`, ends the test as `test.subscriber_failed` ("Caches and events"). |
@@ -1918,10 +1950,12 @@ Not built yet: caches, which need the Redis driver.
 | Watch mode | Partly built: `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run, or says `errors fixed` when no test reaches it; a removed file is a change like any other. Run from outside the project, its paths start with the project as typed. It ends when nothing reads its output any more, as when piped into `head`. A save shows its results in about 0.1 s on a 230-file project, and the gate fails above 1.25 s. The keys in the interactive screen (`enter`, `a`, `f`) wait for `--interactive`, which says `toolchain.not_built_yet`; ctrl-c quits. |
 | Fixtures | Built: a fixture is checked like an action and called by name from tests, fixtures and seeds; an action calling one is `semantic.not_callable`. A `public` fixture is called through its domain from other domains' tests, fixtures and seeds and from root `tests/`; a private one from there is `visibility.private_cross_domain`. Seeds are checked like tests and run with `jadpo seed` ([Seeds](05-data.md#seeds)). |
 | Data builders, `assert emitted` | Not built yet. |
+| The trace `--keep-failed` keeps, for `jadpo trace` | Not built yet: it comes with [Debugging and review](17-debugging-and-review.md). |
 | Interactive mode | Not built yet: `jadpo test --interactive` says `toolchain.not_built_yet`. |
+| Generated tests | Not built yet: `jadpo test` runs only the tests a project declares. |
 | Caches in tests | Not built yet: caches need the Redis driver. |
 | Golden application contract | Built: the shared black-box harness in `benchmarks/contract/` executes all 44 versioned application cases interpreted, on generated native code and on compiled workerd, with real credential verification, raw invalid inputs, physical SQL observation, persisted-state assertions, controlled clocks and provider faults. These checks supplement authored Jadpo tests; they add no application-facing test controls. Full-gate ownership is interpreted and native in `compiled`, workerd in `wasm32`, and verifier negative controls in `lint`. |
-| `test.no_tests` | Built: raised by `jadpo test` only ([Tooling](14-tooling.md)), when the project has no tests or a file, line, name, kind or `--failed` picks none. |
+| `test.no_tests` | Built: raised by `jadpo test` only ([Tools](14-tooling.md)), when the project has no tests or a file, line, name, kind or `--failed` picks none. |
 
 ## Errors
 

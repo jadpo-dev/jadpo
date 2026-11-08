@@ -51,6 +51,17 @@ fn verb(effect: &str) -> &str {
     }
 }
 
+/// What several effects let a caller do: `create`, `create and change`,
+/// `create, change and delete`.
+pub fn verbs(effects: &[&str]) -> String {
+    let words: Vec<&str> = effects.iter().map(|effect| verb(effect)).collect();
+    match words.as_slice() {
+        [] => String::new(),
+        [one] => (*one).to_string(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
 /// A listed action's or query's line that lets `who` in.
 pub fn can_run(subject: &str, who: &[String]) -> String {
     format!("{} can now run `{subject}`", callers(who))
@@ -101,6 +112,10 @@ pub fn said(family: &Family, subject: &str, change: &str) -> String {
         "ApiChange.output_field_retyped" => {
             format!("clients can now get other values in `{subject}`")
         }
+        "ApiChange.media_type_changed" => {
+            let (api, route) = route(subject);
+            format!("`{route}` in API `{api}` now sends another kind of body")
+        }
         "ApiChange.failure_changed" => {
             format!("failure `{subject}` is gone, or answers with another status")
         }
@@ -139,6 +154,10 @@ pub fn said(family: &Family, subject: &str, change: &str) -> String {
         }
         "PolicyChange.listing_removed" => format!(
             "`{subject}` is no longer listed under `actions:`, so its entities' grants decide who can run it"
+        ),
+        "PolicyChange.own_source_added" => format!(
+            "packages from repositories under `{}` now install without a person's acceptance",
+            subject.trim_matches('"')
         ),
         "NetworkChange.host_added" => {
             format!("connection `{subject}` can now reach a host it couldn't")

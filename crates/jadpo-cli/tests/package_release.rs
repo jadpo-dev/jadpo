@@ -22,7 +22,7 @@ fn json(cwd: &Path, args: &[&str]) -> (serde_json::Value, serde_json::Value, u8)
 }
 
 /// The package's first release, tagged.
-fn released(name: &str) -> (tempdir::Dir, std::path::PathBuf) {
+pub(super) fn released(name: &str) -> (tempdir::Dir, std::path::PathBuf) {
     let (dir, root) = repository(name);
     plain(&root, &["package", "check"]);
     let log = std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog");
@@ -55,11 +55,11 @@ public type OutwardCode = Text {
 const PAY: &[(&str, &str)] = &[
     (
         "package.jadpo",
-        "/// Acme Pay's payments API.\npackage AcmePay.v1 {\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}\n",
+        "/// Acme Pay's payments API.\npackage AcmePay.v1 {\n    publisher: \"@acme\"\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}\n",
     ),
     (
         "provider.jadpo",
-        "/// Acme Pay's payments API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.acme-pay.example\"\n    }\n    credential: CredentialScheme.bearer\n}\n",
+        "/// Acme Pay's payments API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.acme-pay.example\"\n    }\n    credential: CredentialScheme.bearer\n    reviewed: [CustomerId, CustomerRequest, CustomerReply]\n}\n",
     ),
     (
         "types/customer_id.jadpo",
@@ -104,6 +104,7 @@ fn check_prints_a_librarys_facts_above_the_bar() {
         checked.stdout.contains(
             "Facts
   kind: library, pure
+  publisher: @acme
   storable: UkPostcode, WrittenPostcode
   failures: uk.parse: InvalidPostcode
 
@@ -128,6 +129,7 @@ fn check_prints_a_providers_facts_and_what_it_sends() {
         checked.stdout.contains(
             "Facts
   kind: provider
+  publisher: @acme
   hosts: https://api.acme-pay.example
   changes: customers.create
   erasure: not declared
@@ -198,6 +200,7 @@ fn show_gives_the_same_facts() {
         shown.stdout.contains(
             "Facts
   kind: library, pure
+  publisher: @acme
   storable: UkPostcode, WrittenPostcode
   failures: uk.parse: InvalidPostcode
 "
@@ -278,7 +281,7 @@ fn a_new_host_and_personal_data_sent_there_are_in_the_record() {
     write(
         &root,
         "provider.jadpo",
-        "/// Acme Pay's payments API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.acme-pay.example\"\n        sandbox: \"https://sandbox.acme-pay.example\"\n    }\n    credential: CredentialScheme.bearer\n}\n",
+        "/// Acme Pay's payments API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.acme-pay.example\"\n        sandbox: \"https://sandbox.acme-pay.example\"\n    }\n    credential: CredentialScheme.bearer\n    reviewed: [CustomerId, CustomerRequest, CustomerReply]\n}\n",
     );
     let checked = plain(&root, &["package", "check"]);
     assert!(
@@ -540,7 +543,7 @@ fn a_new_major_versions_first_release_shows_what_it_broke() {
 /// The package as a commit carries it, with `surface.jadpo_record` and its
 /// changelog written, in a folder of its own, and its first release beside
 /// it.
-fn two_releases(name: &str) -> (tempdir::Dir, std::path::PathBuf, std::path::PathBuf) {
+pub(super) fn two_releases(name: &str) -> (tempdir::Dir, std::path::PathBuf, std::path::PathBuf) {
     let (dir, root) = released(name);
     let first = dir.path().join("first");
     copy(&root, &first);
@@ -604,6 +607,7 @@ fn verify_writes_everything_a_release_shows() {
     assert_eq!(
         rows,
         [
+            "files",
             "compiles",
             "described",
             "examples",
@@ -612,6 +616,7 @@ fn verify_writes_everything_a_release_shows() {
             "version",
             "changelog",
             "surface",
+            "publisher",
             "licence"
         ]
     );
@@ -672,7 +677,7 @@ fn verify_prints_the_same_screen_and_writes_nothing() {
     assert!(
         verified
             .stdout
-            .ends_with("package verify passed: Postcodes.v2 2.1.0, 9 passed, 5 fingerprints\n"),
+            .ends_with("package verify passed: Postcodes.v2 2.1.0, 11 passed, 5 fingerprints\n"),
         "{}",
         verified.stdout
     );
@@ -802,15 +807,6 @@ fn verify_says_what_it_needs() {
         "{}",
         none.stderr
     );
-    let serve = plain(dir.path(), &["package", "verify", "--serve"]);
-    assert_eq!(serve.code, 1, "{}", serve.stderr);
-    assert!(
-        serve
-            .stderr
-            .contains("`jadpo package verify --serve` isn't built yet"),
-        "{}",
-        serve.stderr
-    );
     // Another package's release can't stand in as the one before it, which
     // would pass as a new major version.
     let (other, root) = released("release-verify-other");
@@ -855,5 +851,269 @@ fn verify_says_what_it_needs() {
         refused.stderr.contains("isn't a released package"),
         "{}",
         refused.stderr
+    );
+}
+
+// --- publisher: ------------------------------------------------------------
+
+/// A first release, tagged, whose index names no publisher.
+fn released_with_no_publisher(name: &str) -> (tempdir::Dir, std::path::PathBuf) {
+    let (dir, root) = repository(name);
+    write(
+        &root,
+        "package.jadpo",
+        &super::packages::INDEX.replace("    publisher: \"@acme\"\n", ""),
+    );
+    plain(&root, &["package", "check"]);
+    let log = std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog");
+    write(
+        &root,
+        "CHANGELOG.md",
+        &format!("{log}\nReads UK postcodes as people type them.\n"),
+    );
+    (dir, root)
+}
+
+fn publisher_row(data: &serde_json::Value) -> serde_json::Value {
+    data["bar"]
+        .as_array()
+        .expect("the bar")
+        .iter()
+        .find(|row| row["item"] == "publisher")
+        .expect("a publisher row")
+        .clone()
+}
+
+#[test]
+fn a_release_shows_the_publisher_its_index_names() {
+    let (_dir, root) = repository("release-publisher-named");
+    let (data, document, _) = json(&root, &["package", "check"]);
+    assert_eq!(data["facts"]["publisher"], "@acme", "{document}");
+    check_value(&Shape::Named("Facts"), &data["facts"]).expect("the protocol's facts");
+    assert_eq!(publisher_row(&data)["state"], "passed");
+    assert_eq!(publisher_row(&data)["detail"], "@acme");
+    let surface = std::fs::read_to_string(root.join("surface.jadpo_record")).expect("surface");
+    assert!(surface.contains("publisher @acme\n"), "{surface}");
+    let shown = plain(&root, &["package", "check"]);
+    assert!(
+        shown.stdout.contains("publisher: @acme\n"),
+        "{}",
+        shown.stdout
+    );
+}
+
+#[test]
+fn a_package_only_used_by_path_or_git_may_leave_out_its_publisher() {
+    let (_dir, root) = released_with_no_publisher("release-publisher-left-out");
+    let checked = plain(&root, &["package", "check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    assert!(checked.stdout.contains("publisher"), "{}", checked.stdout);
+    assert!(checked.stdout.contains("left out"), "{}", checked.stdout);
+    assert!(
+        checked.stdout.contains("publishing needs it"),
+        "{}",
+        checked.stdout
+    );
+    assert!(
+        !checked.stdout.contains("not checked yet"),
+        "{}",
+        checked.stdout
+    );
+    let (data, _, code) = json(&root, &["package", "check"]);
+    assert_eq!(code, 0);
+    assert_eq!(data["facts"]["publisher"], serde_json::Value::Null);
+    assert_eq!(publisher_row(&data)["state"], "left_out");
+    check_value(&Shape::Named("Facts"), &data["facts"]).expect("the protocol's facts");
+}
+
+#[test]
+fn the_registrys_bar_refuses_a_package_with_no_publisher() {
+    let (dir, root) = released_with_no_publisher("release-publisher-missing");
+    plain(&root, &["package", "check"]);
+    let shown = root.to_str().expect("a path");
+    for args in [
+        &["package", "verify", shown][..],
+        &["package", "verify", shown, "--no-run"][..],
+    ] {
+        let (data, document, code) = json(dir.path(), args);
+        assert_eq!(code, 1, "{document}");
+        assert_eq!(data["passed"], false, "{document}");
+        assert_eq!(publisher_row(&data)["state"], "failed", "{document}");
+    }
+    let refused = plain(dir.path(), &["package", "verify", shown]);
+    assert!(
+        refused.stdout.contains("rule: publish.publisher_missing\n"),
+        "{}",
+        refused.stdout
+    );
+}
+
+/// A package ready to release, proprietary as a company's private one is.
+fn released_as_proprietary(name: &str) -> (tempdir::Dir, std::path::PathBuf) {
+    let (dir, root) = repository(name);
+    write(
+        &root,
+        "package.jadpo",
+        &super::packages::INDEX.replace("Licence.mit", "Licence.proprietary"),
+    );
+    plain(&root, &["package", "check"]);
+    let log = std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog");
+    write(
+        &root,
+        "CHANGELOG.md",
+        &format!("{log}\nReads UK postcodes as people type them.\n"),
+    );
+    (dir, root)
+}
+
+/// The bar's `licence` row, from a command's `--json`.
+fn licence_row(data: &serde_json::Value) -> serde_json::Value {
+    data["bar"]
+        .as_array()
+        .and_then(|bar| bar.iter().find(|row| row["item"] == "licence"))
+        .cloned()
+        .unwrap_or_else(|| panic!("a licence row: {data}"))
+}
+
+#[test]
+fn a_private_packages_check_allows_a_proprietary_licence() {
+    let (dir, root) = released_as_proprietary("release-proprietary-check");
+    let shown = root.to_str().expect("a path");
+    let (data, document, code) = json(dir.path(), &["package", "check", shown]);
+    assert_eq!(code, 0, "{document}");
+    let row = licence_row(&data);
+    assert_eq!(row["state"], "passed", "{document}");
+    // It passes, and says what it will meet at the registry.
+    assert_eq!(
+        row["detail"], "proprietary, registry refuses it",
+        "{document}"
+    );
+    // Short enough to be shown: a row's last column fits or isn't.
+    let checked = plain(&root, &["package", "check"]);
+    assert!(
+        checked
+            .stdout
+            .contains("proprietary, registry refuses it\n"),
+        "{}",
+        checked.stdout
+    );
+}
+
+#[test]
+fn the_registrys_bar_refuses_a_proprietary_licence() {
+    let (dir, root) = released_as_proprietary("release-proprietary-verify");
+    plain(&root, &["package", "check"]);
+    let shown = root.to_str().expect("a path");
+    for args in [
+        &["package", "verify", shown][..],
+        &["package", "verify", shown, "--no-run"][..],
+    ] {
+        let (data, document, code) = json(dir.path(), args);
+        assert_eq!(code, 1, "{document}");
+        assert_eq!(data["passed"], false, "{document}");
+        let row = licence_row(&data);
+        assert_eq!(row["state"], "failed", "{document}");
+        assert_eq!(row["detail"], "proprietary", "{document}");
+    }
+    let refused = plain(dir.path(), &["package", "verify", shown]);
+    assert_eq!(refused.code, 1, "{}", refused.stdout);
+    assert!(
+        refused.stdout.starts_with(
+            "error: `Postcodes.v2` is proprietary, and the public registry carries only open licences\n"
+        ),
+        "{}",
+        refused.stdout
+    );
+    assert!(
+        refused
+            .stdout
+            .contains("rule: publish.licence_proprietary\n"),
+        "{}",
+        refused.stdout
+    );
+}
+
+#[test]
+fn verify_holds_a_release_to_the_publisher_asked_for() {
+    let (dir, root) = released("release-publisher-asked");
+    let shown = root.to_str().expect("a path");
+    let (data, document, code) = json(
+        dir.path(),
+        &["package", "verify", shown, "--publisher", "@acme"],
+    );
+    assert_eq!(code, 0, "{document}");
+    assert_eq!(publisher_row(&data)["state"], "passed");
+
+    let (data, document, code) = json(
+        dir.path(),
+        &[
+            "package",
+            "verify",
+            shown,
+            "--no-run",
+            "--publisher",
+            "@other",
+        ],
+    );
+    assert_eq!(code, 1, "{document}");
+    assert_eq!(publisher_row(&data)["state"], "failed", "{document}");
+    let refused = plain(
+        dir.path(),
+        &["package", "verify", shown, "--publisher", "@other"],
+    );
+    assert!(
+        refused
+            .stdout
+            .contains("rule: publish.publisher_mismatch\n"),
+        "{}",
+        refused.stdout
+    );
+    assert!(
+        refused
+            .stdout
+            .contains("`package.jadpo` names `@acme`, and this release was asked for `@other`"),
+        "{}",
+        refused.stdout
+    );
+
+    let badly = plain(
+        dir.path(),
+        &["package", "verify", shown, "--publisher", "acme"],
+    );
+    assert_eq!(badly.code, 2, "{}", badly.stderr);
+    assert!(
+        badly.stderr.contains("`acme` isn't a publisher's handle"),
+        "{}",
+        badly.stderr
+    );
+    let elsewhere = plain(&root, &["package", "check", "--publisher", "@acme"]);
+    assert_eq!(elsewhere.code, 2, "{}", elsewhere.stderr);
+    assert!(
+        elsewhere
+            .stderr
+            .contains("`--publisher` goes with `verify`"),
+        "{}",
+        elsewhere.stderr
+    );
+}
+
+#[test]
+fn a_publisher_is_no_part_of_a_packages_version() {
+    let (_dir, root) = released("release-publisher-version");
+    write(
+        &root,
+        "package.jadpo",
+        &super::packages::INDEX.replace("@acme", "@acme-labs"),
+    );
+    let checked = plain(&root, &["package", "check"]);
+    assert!(
+        !checked.stdout.contains("rule: publish.breaking_change"),
+        "{}",
+        checked.stdout
+    );
+    assert!(
+        !checked.stdout.contains("changed package"),
+        "{}",
+        checked.stdout
     );
 }

@@ -41,6 +41,35 @@ check failed: 1 error, 1 file
 `(agent)` at the end of the `next:` line means your coding agent can make
 the fix itself.
 
+Where an object is required, the error shows its shape and the value
+written out. A text goes in the one field the object must have, as an edit
+your coding agent can apply, and a standard type's page is one command away:
+
+```jadpo check project=e-mismatch-object expect=type.mismatch
+function author() -> PersonName {
+    return "Frank Herbert"
+}
+```
+
+```text output
+error: `"Frank Herbert"` can't be used where `PersonName` is required
+ --> main.jadpo:2:12
+  |
+2 |     return "Frank Herbert"
+  |            ^^^^^^^^^^^^^^^ the wrong kind of value
+  reason: This is text, and `PersonName` is an object: `PersonName { given: GivenName, family: FamilyName? }`.
+  next: Write `PersonName { given: "Frank Herbert" }`, and see `jadpo help PersonName` for the type (agent)
+  rule: type.mismatch
+  help: https://jadpo.dev/docs/errors/type.mismatch
+
+check failed: 1 error, 1 file
+```
+
+A second error with the same reason keeps its place and its own edit, and
+its `reason:` says `` As the first `type.mismatch` above ``. `jadpo check
+--full` writes every reason out, and `--json` gives the place of the first in
+`sameAs`.
+
 ## How to fix it
 
 **If the value should become the required type**, convert it with that

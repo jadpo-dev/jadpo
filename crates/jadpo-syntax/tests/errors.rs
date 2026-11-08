@@ -104,12 +104,213 @@ fn expected_name() {
     assert_eq!(covered, ":");
 }
 
+/// Every reserved word (area 1, "Reserved words").
+const RESERVED_WORDS: [&str; 39] = [
+    "action",
+    "and",
+    "assert",
+    "attempt",
+    "constant",
+    "decline",
+    "else",
+    "emit",
+    "entity",
+    "fails",
+    "false",
+    "fixture",
+    "for",
+    "function",
+    "if",
+    "in",
+    "library",
+    "match",
+    "mut",
+    "none",
+    "not",
+    "or",
+    "package",
+    "propagate",
+    "provide",
+    "public",
+    "query",
+    "reject",
+    "resource",
+    "return",
+    "routes",
+    "schedule",
+    "seed",
+    "subscriber",
+    "test",
+    "true",
+    "type",
+    "use",
+    "var",
+];
+
+fn no_errors(text: &str) {
+    let parse = parse_file(text);
+    assert!(
+        parse.errors().is_empty(),
+        "{text}\n{:#?}",
+        parse
+            .errors()
+            .iter()
+            .map(|e| (&e.message, e.rule.id, e.start))
+            .collect::<Vec<_>>()
+    );
+    // The tree holds every byte, whatever the word was read as.
+    assert_eq!(parse.syntax().text().to_string(), text);
+}
+
 #[test]
-fn reserved_word_as_a_name() {
-    let (error, covered) = one_error("type Pair = Object {\n    match: Count\n}\n");
-    assert_eq!(error.rule.id, "syntax.expected_name");
-    assert_eq!(error.message, "`match` is a reserved word");
-    assert_eq!(covered, "match");
+fn a_reserved_word_names_a_field_in_a_type_or_entity() {
+    for word in RESERVED_WORDS {
+        for body in ["Object", "Input", "Output", "Failure", "Event"] {
+            no_errors(&format!(
+                "type Thing = {body} {{\n    first: Text\n    {word}: Text\n    last: Text\n}}\n"
+            ));
+        }
+        no_errors(&format!(
+            "entity Thing {{\n    id: Uuid\n    {word}: Text {{\n        max_length: 9\n    }}\n}}\n"
+        ));
+        // Its block, and members sharing a line.
+        no_errors(&format!(
+            "type Thing = Object {{\n    {word}: Text {{\n        max_length: 9\n    }}\n}}\n"
+        ));
+        no_errors(&format!("type Thing = Object {{ a: Text {word}: Text }}\n"));
+        no_errors(&format!(
+            "type Thing = Object {{ a: Text? {word}: Text }}\n"
+        ));
+    }
+}
+
+#[test]
+fn a_reserved_word_names_a_variant() {
+    for word in RESERVED_WORDS {
+        no_errors(&format!(
+            "type Kind = Enum {{\n    first\n    {word}\n    last\n}}\n"
+        ));
+        no_errors(&format!("type Kind = Enum {{\n    {word}\n}}\n"));
+        no_errors(&format!("type Kind = Enum {{ {word} }}\n"));
+        no_errors(&format!(
+            "type Kind = Enum {{\n    {word}: {{\n        {word}: Text\n    }}\n    last\n}}\n"
+        ));
+    }
+}
+
+#[test]
+fn a_reserved_word_is_read_and_built_as_a_field() {
+    for word in RESERVED_WORDS {
+        no_errors(&format!(
+            "function f(thing: Thing) -> Text {{\n    return thing.{word}\n}}\n"
+        ));
+        no_errors(&format!(
+            "function f(text: Text) -> Thing {{\n    return Thing {{\n        {word}: text\n    }}\n}}\n"
+        ));
+        no_errors(&format!(
+            "function f(a: Text, b: Text) -> Thing {{\n    return Thing {{ a: a {word}: b }}\n}}\n"
+        ));
+        no_errors(&format!("type View = Output {{\n    a: Thing.{word}\n}}\n"));
+        // A variant, built and matched.
+        no_errors(&format!(
+            "function f(kind: Kind) -> Bool {{\n    return match kind {{\n        Kind.{word} -> true\n        Kind.{word}(x) -> x.{word}\n        _ -> Kind.{word} == kind\n    }}\n}}\n"
+        ));
+        // A query's result fields, and the field it filters and orders by.
+        no_errors(&format!(
+            "query q(a: Text) -> List<View> {{\n    from: Thing\n    where: Thing.{word} == a\n    group: {{\n        {word}: Thing.{word}\n    }}\n    aggregate: {{\n        {word}: count()\n    }}\n    order: [Thing.{word} asc]\n}}\n"
+        ));
+    }
+}
+
+#[test]
+fn a_reserved_word_is_a_field_as_a_whole_list_item() {
+    for word in RESERVED_WORDS {
+        if ["true", "false", "none"].contains(&word) {
+            continue;
+        }
+        no_errors(&format!(
+            "entity Thing {{\n    id: Uuid\n    {word}: Text\n    unique: {{\n        both: [id, {word}]\n    }}\n    policy: {{\n        read: [{word}]\n    }}\n}}\n"
+        ));
+        no_errors(&format!(
+            "query q() -> List<V> {{\n    from: T\n    order: [{word} desc, id asc]\n}}\n"
+        ));
+    }
+}
+
+#[test]
+fn a_reserved_word_never_names_anything_else() {
+    for (text, word) in [
+        (
+            "function f(match: Count) -> Count {\n    return 1\n}\n",
+            "match",
+        ),
+        ("function match() -> Count {\n    return 1\n}\n", "match"),
+        ("type match = Object {}\n", "match"),
+        ("entity package {\n    id: Uuid\n}\n", "package"),
+        (
+            "function f() -> Count {\n    var type: Count = 1\n    return 1\n}\n",
+            "type",
+        ),
+        // A query's or a declaration's own settings.
+        ("query q() -> List<View> {\n    type: Thing\n}\n", "type"),
+        ("schedule s {\n    if: true\n}\n", "if"),
+        // Block settings inside a type's body.
+        (
+            "entity Thing {\n    id: Uuid\n    unique: {\n        type: [Thing.id]\n    }\n}\n",
+            "type",
+        ),
+    ] {
+        let (error, covered) = one_error(text);
+        assert_eq!(error.rule.id, "syntax.expected_name", "{text}");
+        assert_eq!(
+            error.message,
+            format!("`{word}` is a reserved word"),
+            "{text}"
+        );
+        assert_eq!(covered, word, "{text}");
+    }
+}
+
+#[test]
+fn a_reserved_word_is_never_read_as_a_value_on_its_own() {
+    for (text, covered_word) in [
+        // A rule names its fields alone, so it can't read this one.
+        (
+            "type T = Object {\n    type: Text\n    a: Text\n    rule r: type == a\n}\n",
+            "type",
+        ),
+        (
+            "type T = Object {\n    package: Text\n    a: Text\n    rule r: a == public\n}\n",
+            "public",
+        ),
+        ("function f() -> Text {\n    return type\n}\n", "type"),
+    ] {
+        let (error, covered) = one_error(text);
+        assert_eq!(error.rule.id, "syntax.expected_name", "{text}");
+        assert_eq!(
+            error.message,
+            format!("`{covered_word}` is a reserved word"),
+            "{text}"
+        );
+        assert!(
+            error.reason.contains(&format!("`thing.{covered_word}`")),
+            "{text}"
+        );
+        assert_eq!(covered, covered_word, "{text}");
+    }
+}
+
+#[test]
+fn a_type_body_still_ends_at_the_next_declaration() {
+    // No `}`: the next declaration isn't read as a field or variant, since
+    // only `word:` and a word alone on its line name one.
+    for text in [
+        "type Kind = Enum {\n    a\n\ntype Other = Object {}\n",
+        "type T = Object {\n    a: Text\n\nfunction f() -> Text {\n    return \"a\"\n}\n",
+    ] {
+        let (error, _) = one_error(text);
+        assert_eq!(error.rule.id, "syntax.unexpected_token", "{text}");
+    }
 }
 
 #[test]
@@ -594,4 +795,141 @@ fn a_block_stops_at_its_first_expected_name() {
     let (error, covered) = one_error("type Pair = Object {\n    : Int\n    : Text\n    : Int\n}\n");
     assert_eq!(error.rule.id, "syntax.expected_name");
     assert_eq!(covered, ":");
+}
+
+#[test]
+fn a_nullable_type_before_a_member_on_its_line_is_not_a_ternary() {
+    // Two members may share a line until the formatter parts them, so the
+    // `?` of a type's field is that type's, whatever comes after it.
+    for value in [
+        "Text? b: Text",
+        "Text?    b: List<Tag>",
+        "Text ? b : Text",
+        "Order.id? b: Text",
+        "billing.Invoice? b: Text",
+        "List<Tag>? b: Text",
+        "Text?? b: Text",
+        "Text? b.c: Text",
+        "Text?? ",
+    ] {
+        let text = format!("type E = Object {{\n    a: {value}\n}}\n");
+        let parse = parse_file(&text);
+        assert!(parse.errors().is_empty(), "{text}\n{:#?}", parse.errors());
+    }
+    let nested = parse_file("type E = Object {\n    a: Inner { b: Text? c: Text }\n}\n");
+    assert!(nested.errors().is_empty(), "{:#?}", nested.errors());
+}
+
+#[test]
+fn a_ternary_in_a_value_is_still_a_ternary() {
+    // A lower-case name is a value (area 1), and a type is never followed
+    // by a value on its line, so these are choices from another language.
+    for text in [
+        "function f() -> T {\n    return big ? a : b\n}\n",
+        "function f() -> T {\n    return Big ? a : b\n}\n",
+        "function f() -> T {\n    return g(c: big ? a : b)\n}\n",
+        "function f() -> T {\n    return Foo { c: big ? a : b }\n}\n",
+        "function f() -> T {\n    return Foo { c: Big ? 1 : 2 }\n}\n",
+        "type E = Object {\n    c: big ? a : b\n}\n",
+    ] {
+        let (error, covered) = one_error(text);
+        assert_eq!(error.rule.id, "syntax.ternary_operator", "{text}");
+        assert_eq!(covered, "?", "{text}");
+    }
+}
+
+#[test]
+fn a_ternary_stops_at_a_comma_on_its_line() {
+    // `b, c: d` is no `? :`: the `:` belongs to the member after the comma.
+    let parse = parse_file("type E = Object {\n    a: Text? b, c: d\n}\n");
+    assert_eq!(parse.errors().len(), 1, "{:#?}", parse.errors());
+    assert_eq!(parse.errors()[0].rule.id, "syntax.unexpected_token");
+}
+
+#[test]
+fn a_comma_between_members_on_a_line_parts_them() {
+    // Each member is on its own line, so the edit puts it there: a `?` at
+    // the end of one member never meets the next one's key.
+    let text = "type E = Object {\n    a: text?,    b: Text\n}\n";
+    let (error, covered) = one_error(text);
+    assert_eq!(error.rule.id, "syntax.member_comma");
+    assert_eq!(covered, ",");
+    assert_eq!(
+        fixed_by_edits(text, &error),
+        "type E = Object {\n    a: text?\n    b: Text\n}\n"
+    );
+    let text = "type E = Object { a: x,b: y }\n";
+    let (error, _) = one_error(text);
+    assert_eq!(
+        fixed_by_edits(text, &error),
+        "type E = Object { a: x\n    b: y }\n"
+    );
+    let text = "type E = Object {\n    a: x ,  /* why */ b: y\n}\n";
+    let parse = parse_file(text);
+    let edit = &parse.errors()[0].edits[0];
+    assert_eq!(&text[edit.start as usize..edit.end as usize], " ,  ");
+}
+
+#[test]
+fn a_null_test_tight_after_a_generic_type_keeps_its_comma_in_the_type() {
+    let text = "type E = Object {\n    a: Map<K, V>IS NULL\n}\n";
+    let (error, covered) = one_error(text);
+    assert_eq!(error.rule.id, "syntax.equality_operator");
+    assert_eq!(covered, "IS NULL");
+    assert_eq!(
+        fixed_by_edits(text, &error),
+        "type E = Object {\n    a: Map<K, V> == none\n}\n"
+    );
+    // Written directly, `>==` closes the type: no comma to complain about.
+    let parse = parse_file("type E = Object {\n    a: Map<K, V>== none\n}\n");
+    assert!(parse.errors().is_empty(), "{:#?}", parse.errors());
+    // `>=` still compares, in an argument list as much as anywhere.
+    let parse =
+        parse_file("function f(a: Int, b: Int) -> Flag {\n    return g(a < b, b >= a)\n}\n");
+    assert!(parse.errors().is_empty(), "{:#?}", parse.errors());
+}
+
+#[test]
+fn a_run_of_semicolons_is_one_error_with_one_edit() {
+    // One error a line would take one `;` a round.
+    let text = "type A = Int {}\n;;;; ;;\n";
+    let (error, covered) = one_error(text);
+    assert_eq!(error.rule.id, "syntax.semicolon");
+    assert_eq!(covered, ";;;; ;;");
+    assert!(error.clean);
+    assert_eq!(fixed_by_edits(text, &error), "type A = Int {}\n\n");
+    let text = "function f() -> Unit {\n    a();;; b()\n}\n";
+    let (error, _) = one_error(text);
+    assert!(error.clean);
+    assert_eq!(
+        fixed_by_edits(text, &error),
+        "function f() -> Unit {\n    a()\n    b()\n}\n"
+    );
+}
+
+#[test]
+fn a_reserved_word_hidden_behind_a_clean_habit_is_not_checkable() {
+    // One error a line shows the habit first, and the word only once its
+    // edit is made, so the file can't be promised to come out clean: it
+    // can only be checked reading the word as the name it stands for.
+    for line in [
+        "!library.borrow()",
+        "!   library.borrow()",
+        "a && library.borrow()",
+        "a || library.borrow()",
+        "a === library.borrow()",
+        "a != library.borrow()",
+        "a AND library.borrow()",
+        "a OR library.borrow()",
+        "NOT library.borrow()",
+        "var x = library.borrow();",
+    ] {
+        let text = format!("action f() -> Unit {{\n    {line}\n}}\n");
+        let parse = parse_file(&text);
+        assert!(parse.has_errors(), "{text}");
+        assert!(!parse.checkable(), "{text}\n{:#?}", parse.errors());
+    }
+    let hidden = parse_file("action f() -> Unit {\n    !library.borrow()\n}\n");
+    assert!(hidden.checkable_reading_names(), "{:#?}", hidden.errors());
+    assert_eq!(hidden.errors()[0].rule.id, "syntax.logical_operator");
 }

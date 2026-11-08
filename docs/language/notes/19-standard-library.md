@@ -10,7 +10,7 @@ Why [Standard library](../19-standard-library.md) is the way it is: the decision
 ## Consistency with the rest of the language
 
 - **Area 1:** `list`, `set`, `map`, `range`, `text`, `markup`, `money`,
-  `units`, `hash`, `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`,
+  `units`, `bytes`, `hash`, `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`,
   `json_lines`, `colour`, `media`, `web`, `semver`, `geo`, `ai` and
   `locale` are reserved namespaces; fields and named arguments keep every
   word (`note.text`, `set:`). It is `units` rather than `quantity`, since
@@ -42,10 +42,50 @@ Why [Standard library](../19-standard-library.md) is the way it is: the decision
   `currency_mismatch`, `too_many_places`), a `sort_by` key limited to
   ordered kinds, actions-only operations, and a SQL form per operation.
 
+## Shared vocabulary types
+
+Some types are needed by nearly every package and app, and each would
+otherwise invent its own. Geospatial libraries disagree on whether a
+point is `[lat, lng]` or `[lng, lat]`, and payment libraries on whether
+ten pounds is `10.00`, `"10.00"` or `1000`. When the language owns the
+type, every package and every app uses the same one, and that whole class
+of bug goes away. So the standard library defines a type wherever two
+packages would otherwise each define their own, even when the heavy
+operations on it live in a package or on another page.
+
+- **Each one is defined once.** It has one construction that validates
+  it, one shape on the wire and one shape in storage. Nothing else may
+  give it a second.
+- **Ambiguity is designed out.** Fields are named, never positional:
+  `Point { latitude: ...  longitude: ... }`, never a pair. An axis order
+  appears only in a conversion whose name says it: `geo.from_lng_lat(list)`,
+  `geo.from_lat_lng(list)`, `geo.from_geojson`.
+- **The types are global names.** Every standard type is a global name,
+  as `Email` and `Instant` are, so you write `PostalAddress`, never
+  something like `geo.Point`. Only the functions live in namespaces
+  (`geo.`, `money.`, `list.`).
+- **Your app names its own types for their purpose.** Don't declare your
+  own `Address`. Name a type for what it is for and what it holds:
+  `DeliveryStop { address: PostalAddress }`, `BillingContact`.
+- **A standard type's name can't be reused.** Declaring a type with a
+  standard type's name is the error `type.standard_clash`
+  ([A release that adds a standard type](../19-standard-library.md#a-release-that-adds-a-standard-type)),
+  as reusing any built-in name is an error
+  ([Values and types](../02-values-and-types.md)). So the shape check only
+  has to catch equivalents under other names.
+- **Packages and apps use them.** When a package's public types, or your
+  app's own code, declare their own equivalent of a standard type, the
+  compiler reports the error `type.standard_exists`, pointing at the
+  standard type ([Packages use the standard types](../19-standard-library.md#packages-use-the-standard-types)).
+  You can decline it with a reason. It is an error rather than a warning
+  because Jadpo has no warnings
+  ([Keeping code as it is, with a reason](../01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
+
 ## Decisions
 
 | Topic | Decision |
 |---|---|
+| `names.registry_part` | Decided 2026-11-07 (Richard): a name in code as the registry writes it, by the registry's own rule (`ScopedName::of_code` calls the same function), so an app and the registry never disagree; `names` is reserved as every standard namespace is, so a variable, parameter or function called `names` is now `semantic.standard_namespace_reserved` (the error pages' and the compiler's own tests that used one were renamed). Recommended, for Richard to confirm: it gives `Text` and never fails, as `text.slug` doesn't, rather than refusing a result the registry wouldn't take, since which names the registry takes is its own check and an app comparing names needs the part either way |
 | Shared vocabulary types | The standard library defines a type wherever two packages would otherwise each invent their own, even when the heavy operations live in a package or another area; each has one construction that validates, one wire shape and one storage shape; positional pairs are designed out by named fields, and an axis order exists only in a conversion that names it (`geo.from_lng_lat`) |
 | Standard types are global, in one flat set | Every standard type is a global name, with no split between core types and types inside namespaces; functions stay in namespaces. Apps name their own types for purpose and shape (`DeliveryStop { address: PostalAddress }`, `BillingContact`), never re-declaring a standard one |
 | The standard types | 247 adopted types in 18 groups (table under "The standard types"), and the parts and kinds they name; units folded into their quantity type, roles into the general type, duplicates merged, formats and application entities out; country-specific identifiers are global types; gender and sex at birth stay out; a quantity is stored in its SI base unit, with the unit chosen at construction and display |
@@ -74,7 +114,7 @@ Why [Standard library](../19-standard-library.md) is the way it is: the decision
 | JSON in memory | `json.read(text, as:)` and `json.write(value)`, one name per direction beside the batch forms; `mismatch` carries the first problem's path and rule; no dynamic JSON value; CSV file-only |
 | Data formats | The `csv`, `tsv`, `json_lines` and `json` file operations work through batches (area 12) and are tabled on this page, one shape per namespace with the in-memory `json` forms |
 | Validating mid-program | Construction is the way, nothing new for values or records; rules across an object's fields are area 2's |
-| Closed value sets are enums | A closed, authority-published, rarely changing list is a built-in enum (those marked "(enum)", `CountrySubdivision` included); large or fast-changing lists stay text with a `pattern:`; variants are the code in lower case with `_` (`Country.gb`), a reserved word or `all` taking a trailing `_`; text becomes an enum at a boundary and by `text.parse` mid-program, ignoring case; other code systems through `form: CodeForm.alpha3`; `text.format` gives the CLDR name and `.all` lists every variant of an enum without data; no matching of names; retired codes stay readable, and writing one is the declinable error `type.variant_retired` |
+| Closed value sets are enums | A closed, authority-published, rarely changing list is a built-in enum (those marked "(enum)", `CountrySubdivision` included); large or fast-changing lists stay text with a `pattern:`; variants are the code in lower case with `_` (`Country.gb`), `all` taking a trailing `_`, as `true`, `false` or `none` would (area 2, "Names from reserved words"); text becomes an enum at a boundary and by `text.parse` mid-program, ignoring case; other code systems through `form: CodeForm.alpha3`; `text.format` gives the CLDR name and `.all` lists every variant of an enum without data; no matching of names; retired codes stay readable, and writing one is the declinable error `type.variant_retired` |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens |
 | A digest is `Bytes` | `hash.sha256` gives `Bytes`, written as text by `encoding` |
 | `crypto` | Ten operations with no algorithm choices: XChaCha20-Poly1305 with a required `context:`, Argon2id with `PasswordCheck.correct_outdated`, HMAC-SHA-256 checked in constant time, Ed25519, JWT and TOTP checks; keys are opaque settings written `key: config.<name>`, a compiler-owned place; `crypto.public_key` gives a `PrivateKey` setting's public half |
@@ -89,6 +129,7 @@ Why [Standard library](../19-standard-library.md) is the way it is: the decision
 | `TokenUsage` keeps no total | Its `input`, `output` and optional `cached`; the total is `input + output`, worked out where needed, and a `total` member is refused |
 | Generated scopes narrow `OAuthScope` | Area 9's enum of an application's declared scopes narrows the standard `OAuthScope` to them, a closed subset, rather than reusing the name |
 | A key's `key_ops` | Read and held as `Set<Text>`, not refused: RFC 7517 §4.3 allows it and WebCrypto always writes it. A key whose `key_ops` leaves out `"verify"` checks no signature (Richard, 2026-10-30) |
+| A UK postcode's parts | In the standard library, not a package: seven `postal` operations on a `PostalCode`, one per part as `money.minor` and `money.currency` are, each giving `Text` (`sub_district` `Text?`) and failing `not_uk_format` outside Royal Mail's format, since a `PostalCode` holds no country; a postcode written out in the format needs no arm. The format's shape only, not Royal Mail's list of areas, which `text.parse` with `country:` keeps; `GIR 0AA` and `BFPO` numbers have no parts; no `0`/`O` or `1`/`I` correction, which would widen what `text.parse` accepts (Richard, 2026-11-07) |
 
 ## The opening topics to SQL forms
 
@@ -459,10 +500,9 @@ decodes them in the provider package that knows the format.
 
 ## Scenario coverage
 
-The nine scenario applications on the
-[area page](../19-standard-library.md#scenario-applications) were used to
-find what the standard library needs. The coverage matrix follows; each
-gap is fixed on the area page or left out with a reason.
+Nine scenario applications, listed below the matrix, were used to find what
+the standard library needs. The coverage matrix follows; each gap is fixed
+on the area page or left out with a reason.
 
 ● covered on this page or by another area; ◐ waits on keys held as data
 ("Language gaps"), not built yet; blank: not needed.
@@ -499,8 +539,127 @@ queries and keys held as data, the language changes below; geospatial
 and AI, areas 20 and 21. Left out with a reason: bits (device packages),
 TOTP (a package), calendar files (a package).
 
+### The nine scenario applications
+
+Nine kinds of application Jadpo is meant for, what each does, and the
+operations it uses. Use these tables to find the operation for a job;
+each operation is described in its section of the
+[area page](../19-standard-library.md), or on the page linked beside it.
+
+**1. Online shop**
+
+| Does | Needs |
+|---|---|
+| Basket total and a 10% discount | `money.sum`, `total * 90%` |
+| Discount spread across the lines for the receipt | `money.allocate` |
+| Product page address from its title | `text.slug` |
+| Order reference read out on the phone | `random.code` |
+| Products by price, highest first | `list.sort_by`, `list.reverse`; `order:` in a query |
+| Product feed for a marketplace | `csv.write` |
+| Image cache key | `hash.sha256`, `encoding.to_hex` |
+
+**2. Appointment bookings**
+
+| Does | Needs |
+|---|---|
+| Slots in the clinic's zone | `temporal.resolve`, `temporal.day_bounds` |
+| Free slots: all slots without booked ones | `set.difference` |
+| Earliest free slot | `list.min_by` |
+| Cancel link in the confirmation email | `random.token`, `encoding.to_url_component` |
+| Reminder a day before | `temporal.add_days` |
+| A booking ends after it starts | A rule across fields ([Rules across fields](../02-values-and-types.md#rules-across-fields)) |
+| Calendar invite file | `.ics` package |
+
+**3. Delivery and logistics**
+
+| Does | Needs |
+|---|---|
+| Driver's next stop and the rest | `list.first`, `list.drop_first` |
+| Estimated arrival | `Instant + Duration` ([Arithmetic and comparison](../10-configuration-and-time.md#arithmetic-and-comparison)) |
+| Is the address inside the zone, distance to depot | [Geospatial](../20-geospatial.md) |
+| Tracking code | `random.code` |
+| Carrier manifest import | `csv.read` |
+| Proof-of-delivery photo fingerprint | `hash.sha256` |
+| Parcels by weight band | `list.group_by` |
+
+**4. Property listings**
+
+| Does | Needs |
+|---|---|
+| Asking price shown in the visitor's locale | `text.format` |
+| Price per square metre | `price / units.in(floor_area, AreaUnit.square_metre, ...)`: `Money` by a `Decimal` |
+| Listing address | `text.slug` |
+| Description preview | `text.trim`, `text.keep_first` |
+| Features filter | `set.contains`, `set.intersection` |
+| Map search in the visible area | [Geospatial](../20-geospatial.md) |
+| Portal feed import | `json.read` as a batch |
+
+**5. SaaS with subscriptions and billing**
+
+| Does | Needs |
+|---|---|
+| Plan prices per customer's currency | `Money` with a currency known while running |
+| Proration for a mid-month change | `price * (days_left / days_in_month)`, the type's rounding |
+| Invoice total of lines | `money.sum` |
+| Signed webhooks to customers | `crypto.hmac`, `json.write` |
+| Customers' third-party tokens kept safe | `crypto.encrypt`, encrypted fields |
+| Features per plan | `set.contains` |
+| Usage per day | `map.get`, `map.with`; monthly totals by an aggregate query ([Counts, sums and groups](../06-reads-and-writes.md#counts-sums-and-groups)) |
+
+**6. CMS with CSV imports and exports**
+
+| Does | Needs |
+|---|---|
+| Import articles from a spreadsheet | `csv.read`, construction per row |
+| Export for editors | `csv.write` with `CsvFormat.spreadsheet` |
+| Tags typed by hand, tidied | `text.trim`, `text.lower`, `set.with` |
+| Excerpt and word count | `text.keep_first`, `text.split`, `list.filter`, `list.count` |
+| Articles in a locale's alphabetical order | `list.sort_by` with `locale:` |
+| Rich text kept safe | `Html`, made safe by its construction |
+
+**7. IoT telemetry**
+
+| Does | Needs |
+|---|---|
+| Readings arriving in bulk | `json_lines.read` |
+| Average, spread and extremes per window | `list.sum`, `decimal.divide`, `decimal.sqrt`, `list.min_by`, `list.max_by` |
+| Drop repeated messages | `set.contains`, `list.distinct` |
+| Latest reading per device | `list.group_by`, `list.last` |
+| Hourly charts over months | Aggregate queries ([Counts, sums and groups](../06-reads-and-writes.md#counts-sums-and-groups)) |
+| Each device signs its messages with its own key | `crypto.new_key`, and `crypto.sign` with a key-type field as its `key:` ([A key is never a value](../19-standard-library.md#a-key-is-never-a-value)) |
+| Bit-packed payloads | The device's provider package ([Logic and bits](../19-standard-library.md#logic-and-bits)) |
+
+**8. Internal admin tool**
+
+| Does | Needs |
+|---|---|
+| Bulk actions on selected records | `Set<Uuid>`, `set.difference` |
+| Email shown masked | `text.keep_first`, `text.keep_last` |
+| Export of a filtered list | `csv.write` |
+| A record's raw JSON for support | `json.write` |
+| Counts by status | Aggregate queries ([Counts, sums and groups](../06-reads-and-writes.md#counts-sums-and-groups)) |
+| Roles | `set.contains` |
+| Two-factor codes | TOTP package; passkeys or a provider ([Ways to sign in](../08-identity.md#ways-to-sign-in)) |
+
+**9. Support assistant with retrieval (AI)**
+
+| Does | Needs |
+|---|---|
+| Embed help articles and find the closest | `Vector`, pgvector query ([Embeddings and search](../21-ai.md#embeddings-and-search)) |
+| Answer as a typed reply with sources | `ai.generate(..., as:)` ([Typed output](../21-ai.md#typed-output)) |
+| Show the answer as it is written | `ai.stream` ([Streaming from a model](../21-ai.md#streaming-from-a-model)) |
+| Keep within a monthly budget | AI limits ([Budgets](../21-ai.md#budgets)) |
+| Strip personal data before sending | `text.replace`; the [personal-data report](../15-personal-data.md#the-personal-data-report) |
+| Chunk articles into passages | `text.split`, `list.keep_first` |
+
 ## Language gaps this page depends on
 
+Some operations on the [area page](../19-standard-library.md) rely on parts of
+the language that other pages describe: `for` over a set, `[]` as an empty map, inline functions
+of two values, maths on `Decimal`, secrets used only as a `crypto` key,
+`random`, `locale:` on sorting and case, `text.format` and `text.parse`,
+aggregate queries, rules across fields, normalised text, and `Money`. The table
+below lists each one, the page it lives on and the operations it makes possible.
 
 Nothing is left out because the language can't do it: each gap is
 either left out by design (with its reason, above and in the next table)

@@ -24,7 +24,8 @@
 //!   one renamed `<Name>Type` where it would take a built-in type's name;
 //!   an object inside one is a type of its own, `<Parent><Field>`. A field
 //!   or variant is `lower_snake_case`; where that isn't the provider's own
-//!   name, or a reserved word had to be avoided, it is listed.
+//!   name, or a variant had to avoid a word that can't name one, it is
+//!   listed.
 //! - **Area 11's exact mappings** (its first layer): `date-time` is
 //!   `Instant`, `date` `CalendarDate`, `email` `Email`, `uri` `Url`, `uuid`
 //!   `Uuid`, `ipv4` and `ipv6` `IpAddress`, `byte` `Bytes`, `duration`
@@ -358,8 +359,8 @@ fn whole(read: &Read) -> String {
     format!("{}_{}", read.method, segments.join("_"))
 }
 
-/// `name` made a Jadpo name: a reserved word, or one that doesn't start
-/// with a letter, gets `_value` or `n_`.
+/// `name` made an operation's name: one that can't be, or doesn't start with
+/// a letter, gets `_value` or `n_`.
 fn safe_name(name: &str) -> String {
     let name = if name.is_empty() {
         "value".to_string()
@@ -368,11 +369,19 @@ fn safe_name(name: &str) -> String {
     } else {
         name.to_string()
     };
-    if fits_as_field(&name) {
+    if fits_as_operation(&name) {
         name
     } else {
         format!("{name}_value")
     }
+}
+
+/// Whether `name` reads as an operation's name, which a reserved word never
+/// does: it is a resource's setting, and only a type's body lets one name a
+/// field.
+fn fits_as_operation(name: &str) -> bool {
+    let text = format!("resource R {{\n    {name}: {{}}\n}}\n");
+    !jadpo_syntax::parse_file(&text).has_errors()
 }
 
 /// Whether `name` reads as a field's name.
@@ -382,10 +391,13 @@ fn fits_as_field(name: &str) -> bool {
 }
 
 /// Whether `name` reads as a variant's name; `all` is the enum's own list
-/// (area 19, "Closed value sets are enums").
+/// (area 19, "Closed value sets are enums"), and `true`, `false` and `none`
+/// are values (area 2, "Enums").
 fn fits_as_variant(name: &str) -> bool {
     let text = format!("type T = Enum {{\n    {name}\n}}\n");
-    name != "all" && !jadpo_syntax::parse_file(&text).has_errors()
+    name != "all"
+        && !jadpo_syntax::VALUE_WORDS.contains(&name)
+        && !jadpo_syntax::parse_file(&text).has_errors()
 }
 
 /// A type's name that would take a built-in or standard type's.
@@ -1352,6 +1364,16 @@ impl Reader<'_> {
                     continue;
                 }
                 let response = self.resolve(response).clone();
+                // Another provider's documented refusal, by its status
+                // alone (area 11, "A provider's failures").
+                if !self.exact {
+                    if let Some(name) = self.refusal(status, &response, &at)
+                        && !failures.contains(&name)
+                    {
+                        failures.push(name);
+                    }
+                    continue;
+                }
                 let Some(schema) = response
                     .get("content")
                     .and_then(Value::as_object)
@@ -1393,6 +1415,53 @@ impl Reader<'_> {
         }
     }
 
+    /// The failure another provider's documented refusal with `status`
+    /// is, at operation `at`: one per status the package driver reads as
+    /// a failure, named and of the kind its status says, read by
+    /// `wire_status:` alone, with what the provider sends left to check.
+    fn refusal(&mut self, status: &str, response: &Value, at: &str) -> Option<String> {
+        let status: u16 = status.parse().ok()?;
+        if !jadpo_std::provider::is_failure_status(status) {
+            return None;
+        }
+        let (name, kind) = refusal_name(status);
+        let described = response
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|text| !text.is_empty());
+        self.find(
+            at.to_string(),
+            match described {
+                Some(text) => format!(
+                    "Check what the provider sends with its `{status}` ({text:?}): give `{name}` `wire_name:` and `error_code:` where its text tells refusals apart"
+                ),
+                None => format!(
+                    "Check what the provider sends with its `{status}`: give `{name}` `wire_name:` and `error_code:` where its text tells refusals apart"
+                ),
+            },
+        );
+        if !self.failures.contains_key(&name) {
+            if self.taken.contains(&name) {
+                self.find(
+                    name.clone(),
+                    format!("A type and the failure for a `{status}` share this name; rename one"),
+                );
+            }
+            self.taken.insert(name.clone());
+            self.failures.insert(
+                name.clone(),
+                FailureDecl {
+                    doc: Some(format!("The provider refused the call with a `{status}`.")),
+                    kind: kind.to_string(),
+                    message: None,
+                    wire_status: Some(status),
+                },
+            );
+        }
+        Some(name)
+    }
+
     /// The failure schema `schema` declares, by its `x-jadpo-failure`.
     fn failure(&mut self, schema: &str) -> Option<String> {
         let value = self.schema(schema)?.clone();
@@ -1422,6 +1491,7 @@ impl Reader<'_> {
                     doc: message.clone(),
                     kind: kind.to_string(),
                     message,
+                    wire_status: None,
                 },
             );
         }
@@ -1524,6 +1594,33 @@ impl Reader<'_> {
         }
         provider
     }
+}
+
+/// The failure a refusal with `status` is named, from its reason phrase
+/// (RFC 9110), and the kind its status says.
+fn refusal_name(status: u16) -> (String, &'static str) {
+    let (name, kind) = match status {
+        400 => ("BadRequest", "invalid_value"),
+        402 => ("PaymentRequired", "rejected"),
+        404 => ("NotFound", "not_found"),
+        405 => ("MethodNotAllowed", "rejected"),
+        406 => ("NotAcceptable", "rejected"),
+        409 => ("Conflict", "conflict"),
+        410 => ("Gone", "not_found"),
+        411 => ("LengthRequired", "invalid_value"),
+        412 => ("PreconditionFailed", "conflict"),
+        413 => ("ContentTooLarge", "invalid_value"),
+        414 => ("UriTooLong", "invalid_value"),
+        415 => ("UnsupportedMediaType", "invalid_value"),
+        416 => ("RangeNotSatisfiable", "invalid_value"),
+        422 => ("UnprocessableContent", "invalid_value"),
+        423 => ("Locked", "conflict"),
+        424 => ("FailedDependency", "conflict"),
+        428 => ("PreconditionRequired", "conflict"),
+        451 => ("UnavailableForLegalReasons", "rejected"),
+        _ => return (format!("Refused{status}"), "rejected"),
+    };
+    (name.to_string(), kind)
 }
 
 /// Whether a written type mentions type `name`: `List<Tag>` mentions

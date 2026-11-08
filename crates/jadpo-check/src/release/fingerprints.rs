@@ -166,6 +166,51 @@ pub fn fingerprints(db: &dyn Db, project: Project, folder: &str) -> Vec<Fingerpr
         .collect()
 }
 
+/// Each type the project declares, by the names it can be written with: its
+/// whole name and its last part.
+fn named_types(graph: &Graph) -> BTreeMap<String, Key> {
+    let mut types = BTreeMap::new();
+    for node in graph.nodes() {
+        if node.kind == Kind::Type {
+            let last = node.name.rsplit('.').next().unwrap_or(&node.name);
+            types
+                .entry(last.to_string())
+                .or_insert_with(|| node.key.clone());
+            types.insert(node.name.clone(), node.key.clone());
+        }
+    }
+    types
+}
+
+/// The names a type in the project can be written with, for saying which
+/// one was meant.
+pub fn type_names(db: &dyn Db, project: Project) -> Vec<String> {
+    named_types(crate::graph::graph(db, project))
+        .into_keys()
+        .collect()
+}
+
+/// A type written in the project, reduced to standard types and their
+/// constraints as a fingerprint's are: what `jadpo package search --from`
+/// and `--to` send, so names and source stay on this machine. `None` when
+/// the project has no such type.
+pub fn type_shape(db: &dyn Db, project: Project, written: &str) -> Option<String> {
+    let graph = crate::graph::graph(db, project);
+    let types = named_types(graph);
+    let inner = written
+        .trim_end_matches('?')
+        .trim_start_matches("List<")
+        .trim_start_matches("Set<")
+        .trim_end_matches('>');
+    types.contains_key(inner).then(|| {
+        Reducer {
+            graph,
+            types: &types,
+        }
+        .written(written)
+    })
+}
+
 impl Shape {
     fn new(
         inputs: Vec<String>,

@@ -1,5 +1,6 @@
 /// Amazon SQS: a queue's messages received as the app's events.
 package AmazonSqs.v2012_11_05 {
+    publisher: "@jadpo"
     licence: Licence.apache_2_0
     jadpo: "1.0"
 }

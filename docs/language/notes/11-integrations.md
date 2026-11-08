@@ -136,7 +136,7 @@ Numbered as the questions they settled, which other pages cite.
    safe to repeat, only where its key survives a retry (subscribers, and
    routes whose API requires `Idempotency-Key`), recorded step by step and
    replayed on a rerun; a changing call with no key stays the only one in
-   its action ("Several changing calls in one action").
+   its action ("Several changing calls through a package").
 8. **Retry settings.** `timeout:` (default 3s) and `retry: { attempts:
    within: }` (default 3 within 30s), the same words as area 12's
    subscriber retry, with exponential backoff and full jitter fixed;
@@ -246,11 +246,66 @@ Numbered as the questions they settled, which other pages cite.
     so a fix would otherwise never reach them. The verifier is the `jadpo`
     tool in a container, reached as a provider, so the registry is an
     ordinary Jadpo application.
+    Where the pages left the commands open (chunk R5): `add` takes the newest
+    release at once, since the page gives the wait to `update` and a new
+    dependency is read by a person, and `--to` works there too so an older
+    major can be added; a bare name is `@jadpo/<name>` or nothing, never the
+    first match. `update` follows a package's `successor`, with its wait
+    counted from each release's own time there, and ignores an urgent mark
+    under a new publisher, so a package hijacked by succession can't mark
+    itself past the wait. `audit` fails only on what the app reaches, because
+    a CI step that fails on code the app can't run gets switched off; an app
+    with errors counts everything as reached. `publish` needs the checkout
+    at the tag's commit, unchanged, so the bar it runs here is on what the
+    registry fetches. A dry run has no state of its own in the protocol, so
+    it passes in any state but `failed` or `cancelled`. `JADPO_REGISTRY`
+    names a stand-in as `JADPO_RUST_DIST_SERVER` does; it isn't a private
+    registry, which stays ruled out.
+    Where the pages left a package's publisher open (chunk G6): the key is
+    `publisher: "@acme"`, text as `jadpo:` is. A package with none is
+    fine for `jadpo package check`, which says `left out` and passes, because a
+    private package's CI runs it before a tag; `verify` and `publish` refuse it.
+    That is the line between "only used by path or from git" and "published"
+    (Richard, 2026-11-04). `POST releases` still sends only a repository and a
+    tag, because nothing a publisher sends may disagree with the source: the
+    publisher is read from the release. "The one asked" is then what the
+    registry already holds, the package a repository releases or the name a
+    release would take, and on jadpo.dev the publisher a signed-in member asks
+    as, which it passes the verifier as `publisher`. Comparing with the previous
+    tag was rejected: a fork's history holds the original's tags, and a fork
+    naming its own handle has to pass. A package moves repository by its owner's
+    passkey, since refusing a release from elsewhere is what stops a fork, and a
+    package that genuinely moved needs a way on. The registry's own part of a
+    name comes from the name in code, the only thing a release says of it.
+    A new package and the licence bar (chunk G7): `jadpo package new` writes
+    `Licence.proprietary`, and has no flag for another, because a licence gives
+    people rights and a tool that chose `mit` would give them on the author's
+    behalf; the same keeps a new package from being published before someone has
+    looked at it, since `verify` and `publish` refuse it. Its folder is the name
+    as the registry writes it, so the repository and the registry's name agree.
+    It runs no git, as `jadpo new` runs none. `<Name>` takes no version, since
+    the pages give `<Name>` and a dated API version is one edit to the index.
+    `CHANGELOG.md` is written with a first reason, since the command has to pass
+    `check` as written; `GUIDE.md` says to replace it. The licence is refused as
+    the publisher is, by the bar in `verify`, so `publish`, the verifier and
+    `preview` all hold to it, and `check` passes it for a private package's CI.
     Your own company's git repositories are listed in `packages:`'s
     `own_sources:` (Richard, 2026-10-31), so they install without
     `PackageChange.git_source`; adding one is itself a `PolicyChange`,
     because a list an agent could extend freely would let any repository
-    in.
+    in. Matching fails closed, since a wrong "yes" lets a stranger's code
+    in and a wrong "no" costs one acceptance: by a host's name (no case)
+    and whole path parts (exact case, as many servers tell them apart),
+    strictly below the entry; a port is part of the server; only
+    `https://`, `ssh://` with no account or `git`, `git@host:` and a bare
+    address count, and any other account, an escape or a `..` makes an
+    address under nothing. An entry below one already there lets nothing
+    new in, so it needs no acceptance, and narrowing is the same. A
+    package moved to another repository is new code from someone new, so
+    it needs `PackageChange.git_source` unless the new one is under an
+    entry; and a before side with no `jadpo.lock` or no
+    `access.jadpo_record` had no packages or no list, so its first of
+    either needs a person like any other (2026-11-01).
 16. **Package names** are UpperCamelCase with the package's own version
     label: `Stripe.v2024_06_20`, `AcmeCouriers.v1`, `Postcodes.v2`. Types,
     failures and events are named through the package without the version
@@ -344,8 +399,9 @@ Numbered as the questions they settled, which other pages cite.
     the writes, so a write refused afterwards for good (a unique rule, a
     restricted reference) would roll back the database's only record of a
     change the provider kept. `jadpo check` warns at every point after the
-    first changing step that can end the action for good ("The warning",
-    under "Several changing calls in one action"), for single calls too.
+    first changing step that can end the action for good ("Ending for good
+    after a step took effect", under "Several changing calls in one action"
+    in Background work), for single calls too.
     The run ends with its record kept, so an operator can retry once the
     cause is fixed, replaying every answer without contacting the
     provider.
@@ -361,6 +417,19 @@ Numbered as the questions they settled, which other pages cite.
     surface's changes under it (`added type OutwardCode`), and keeps the
     author's text beneath; the bar refuses a release whose section has no
     text of the author's.
+29. **A provider's failures by status and text** (Richard, 2026-11-07).
+    A provider package's failure may give `wire_status:`, the `4xx` its
+    provider refuses with, and `wire_name:`, the provider's own text at
+    `error_code:` exactly as written, kept apart from its Jadpo `code:`,
+    which stays lower_snake_case and is what an app maps and a test
+    scripts. A refusal is the operation's most specific failure: status and
+    text, then text (a failure's code where it gives neither), then status
+    alone. Found building postcodes.io's package, whose errors are a status
+    and a sentence (`{"status": 404, "error": "Postcode not found"}`), so it
+    could declare no failure and every refusal faulted. The keys follow
+    `wire_name:` on fields and events, the provider's spelling beside
+    Jadpo's name; `status:` was not used, because area 4 says a failure
+    never states its status, the one its kind gives the app's clients.
 
 Carried from other areas, and the runtime's own limits:
 
@@ -373,6 +442,11 @@ Carried from other areas, and the runtime's own limits:
 | Calling providers | From area 9: whoever may run the action may call; there is no separate grant |
 | Third-party services | From area 8: the language owns a feature rather than relying on a third-party service where it reasonably can |
 | SMTP to this machine | The SMTP driver speaks to a server on this machine (`localhost`, `127.0.0.1`, `::1`) without `STARTTLS`, whether it offers it or not, as PostgreSQL's driver does, since a stock Postfix offers it with a self-signed certificate. A server elsewhere is upgraded and its certificate checked, and port 465 speaks TLS from the start |
+| A package's publishing-bar findings in an app | Decided 2026-11-07 (Richard): a finding a newer Jadpo makes in an installed package's own code that is the publisher's to answer, a judgement call (a declinable, non-security rule) or a `publish.` rule, is an alert about the package in `jadpo check`, `add` and `update`, never an error refusing the app; anything else still refuses, as a package that doesn't compile. A stricter Jadpo must not break apps that use packages already published, and the registry's compatibility runs tell the owner. The alert's files aren't cached as checked, so it keeps being shown |
+| A package's last contract run | Decided 2026-11-07 (Richard): the verifier's `facts.last_contract_run` is the date of the package's newest recording, as `jadpo package record` made it. Recommended, for Richard to confirm, since a recording carries no date and the verifier fetches one commit with no history: `jadpo package record` writes `recorded <resource>.<operation> <instant>` lines in `recordings/recorded.jadpo_record`, one per operation, and the facts take the newest. A date inside each recording's JSON was rejected, because a decoder reading the whole answer would read it too |
+| Re-import keeps renames | Decided 2026-11-07 (Richard): `provider.jadpo`'s `imported:` takes `renamed: { <name in the description>: <name in code> }`, and importing again applies it rather than bringing the old name back; a type the description adds whose file is missing, matching an orphaned type member for member and nothing else, is written as a rename by the importer itself. Matching is by member names only and only one to one, and failures aren't matched, since every failure has the same keys |
+| A `NOTICE` in a release | Decided 2026-11-07 (Richard): a repository's root `NOTICE`, which Apache-2.0 asks a work to carry beside its licence, is a repository's own file as `LICENSE` is: allowed, and left out of the archive and the digest |
+| Naming a package from the registry | Decided 2026-11-07 (Richard): `jadpo package add` from the registry ends with `jadpo package show <registry name>`, the name as it was typed, and `show`, `update` and `remove` take that name (and a bare one for Jadpo's own) beside the folder's and the code's, so the hint and the command agree |
 | Addresses the runtime reaches | Plain HTTP's "this machine" is the host read as an address (`127.0.0.0/8`, `::1`) or `localhost`, never a name's first label; the runtime's own fetches judge an IPv4 address inside NAT64's `64:ff9b::/96`, 6to4's `2002::/16` or Teredo's `2001::/32` (its server's and its client's) as itself, and refuse site-local `fec0::/10`, NAT64's local-use `64:ff9b:1::/48` and the rest of `2001::/23` |
 
 ## Moved from the area page
@@ -459,7 +533,7 @@ kept moved here. Nothing in this list changed a rule.
   a webhook event reaching an app's subscriber, and
   `crates/jadpo-cli/tests/webhook_replies.rs` a reply and its repeat, both
   against live PostgreSQL. `crates/jadpo-cli/tests/receiving.rs` runs the
-  SQS package, which is in this repository at `packages/amazon_sqs`,
+  SQS package, which has its own repository, `jadpo-dev/package-amazon-sqs`,
   against a local fake of SQS's JSON API that checks each signature.
 - **One `connections:` block**, where each connection's use says which
   capability it serves, is question 20's decision.
@@ -531,3 +605,38 @@ kept moved here. Nothing in this list changed a rule.
 - **"Errors still to build"** is now the "Mistakes not reported yet"
   section of the area page's "What is built", and its topic ID,
   `errors-still-to-build`, an old ID of `external-services-built`.
+
+## The verifier
+
+Decided while building it (chunk R6), on recommendations Richard authorised:
+
+- **A verification is started and asked after,** since a connection's call
+  has seconds and a run has minutes.
+- **The tag is resolved by the verifier** (`POST /v1/resolve`): the registry
+  is a Worker and can't run git, and "a tag that moves" needs asking again.
+- **The answer carries the archive.** The registry can't fetch the commit, and
+  it has to come to hold what it serves.
+- **7 MB of archive and 10,000 files** is the size limit. The registry is a
+  Jadpo application and receives the archive in base64 in a provider's answer,
+  capped at 10 MiB (`MOST_ANSWER`): tested, 7,000,000 bytes was stored and
+  served, and 7,900,000 answered 503 and was never stored, so a release past it
+  would pass verification and never go live. Raising it later, with S3 or a
+  larger cap, breaks nobody.
+- **The source and the diff come on their own requests,** since the registry
+  writes a package's account from them and neither fits beside the archive.
+  Base64 and tar aren't things a Jadpo application can read.
+- **A repository's own files are left out, not refused.** Read literally,
+  "only Jadpo source and text files" would refuse every repository with a
+  `.gitignore` or a `LICENSE`. Leaving them out keeps the guarantee, since no
+  one receives them and they aren't in the digest.
+- **Two runs rather than one.** A single process running the package's code
+  could write any report it liked, were the interpreter ever got out of. A
+  report from a process that ran none of it costs a second compile.
+- **The previous release comes from the registry by digest,** not from its
+  repository: the digest proves it, and a repository can change.
+- **HTTPS ends at Fly's edge,** rather than the process holding a certificate.
+- **Bubblewrap rather than our own namespace code,** since the workspace
+  forbids `unsafe` and it is far better reviewed.
+- **No seccomp filter yet.** Worth adding if a package's code is ever found to
+  have left the interpreter: the namespaces and Fly's per-app machine are what
+  hold today.

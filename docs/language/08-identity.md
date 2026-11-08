@@ -1,11 +1,11 @@
 ---
-title: Identity
+title: Sign-in and identity
 area: 8
 status: decided
 checked-with: this checkout's jadpo on every gate run
 ---
 
-# Identity
+# Sign-in and identity
 <!-- topic: identity -->
 
 Identity is how Jadpo knows who is calling. You say which of your stored
@@ -46,38 +46,67 @@ no password sign-in.
 The principal is whoever is calling, once Jadpo has checked them: either a
 **user** (a person) or a **service** (another system, such as a partner's
 server). You declare it once in `app.jadpo`, with no name. It says which
-stored record each kind of caller is, and when that record may still sign
-in:
+stored record each kind of caller is. Here a signed-in person is a `User`,
+found by their email address:
 
-```jadpo fragment
-// app.jadpo
+`app.jadpo`:
+
+```jadpo check project=principal-first file=app.jadpo
+use accounts/entities { User }
+
+application {}
+
 principal {
     user: {
-        subject: User.authentication_subject
-        active: User.status == UserStatus.active
-    }
-    service: {
-        subject: Service.name
-        active: Service.status == ServiceStatus.active
+        subject: User.email
     }
 }
 ```
 
+`domains/accounts/entities/user.jadpo`:
+
+```jadpo check project=principal-first file=domains/accounts/entities/user.jadpo migrate=initial
+/// A person with an account.
+entity User {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [id]
+    }
+}
+```
+
+`principal { }` is built into Jadpo, as are `Uuid`, `Email` and `Access`.
+`User` is your app's own [entity](05-data.md#entities-and-the-id), a kind of
+stored record, and the `use` line brings it into `app.jadpo` from its file.
+`create: [Access.system]` lets only Jadpo itself create a user, the first
+time someone signs in, and `read: [id]` lets each user read only their own
+record.
+
+This says who a person is. `authentication { }` says how they get in
+([Ways to sign in](#ways-to-sign-in)).
+
 ### `subject:`
 
 Jadpo needs to know which record a signed-in caller is. `subject:` names
-the field it finds them by, such as `User.authentication_subject` or
-`User.email`. The field must be unique. When your app has tenants (many
+the field it finds them by, such as `User.email` or
+`User.authentication_subject`. The field must be unique. When your app has tenants (many
 organisations sharing one app, see [Tenancy](09-policy.md#tenancy)), it
 must be a field every tenant shares, so one person is one record. Jadpo
 looks the caller up by this field whenever it needs their current record.
 
 ### `active:`
 
-`active:` is a condition on the same entity, written with its fields as a
-query's `where:` is. A caller whose record doesn't meet it is refused with
-`user_disabled` or `service_disabled` (see [Failures](#failures)).
-Leave it out and every record counts as active.
+`active:` says when a record may still sign in. It is a condition on the
+same entity, written with its fields as a query's `where:` is, such as
+`active: User.status == UserStatus.active`. A caller whose record doesn't
+meet it is refused with `user_disabled` or `service_disabled` (see
+[Sign-in failures](#sign-in-failures)). Leave it out and every record counts
+as active.
 
 ### What code reads from the caller
 
@@ -92,10 +121,87 @@ A role, a tenant or an email address isn't on the principal. Code that
 needs one reads it from the entity, which is where [Policy](09-policy.md)
 reads it too.
 
-### Users only
+### Services
 
-`service:` is optional. Most apps only have users, and leave it out. An
-app needs at least one of `user:` and `service:`.
+`service:` is optional, and most apps only have users. An app needs at
+least one of `user:` and `service:`. An app that other systems call says
+which record each of those is, beside its users:
+
+`app.jadpo`:
+
+```jadpo check project=principal-service file=app.jadpo
+use accounts/entities { Service, User }
+use accounts/types { ServiceStatus, UserStatus }
+
+application {}
+
+principal {
+    user: {
+        subject: User.email
+        active: User.status == UserStatus.active
+    }
+    service: {
+        subject: Service.name
+        active: Service.status == ServiceStatus.active
+    }
+}
+```
+
+```jadpo check project=principal-service file=domains/accounts/types/user_status.jadpo hidden
+/// Whether a person may still sign in.
+type UserStatus = Enum {
+    active
+    disabled
+}
+```
+
+```jadpo check project=principal-service file=domains/accounts/types/service_status.jadpo hidden
+/// Whether another system may still call in.
+type ServiceStatus = Enum {
+    active
+    disabled
+}
+```
+
+```jadpo check project=principal-service file=domains/accounts/entities/user.jadpo hidden
+use accounts/types { UserStatus }
+
+/// A person with an account.
+entity User {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+    status: UserStatus
+
+    policy: {
+        create: [Access.system]
+        read: [id]
+    }
+}
+```
+
+```jadpo check project=principal-service file=domains/accounts/entities/service.jadpo hidden migrate=initial
+use accounts/types { ServiceStatus }
+
+/// Another system that calls this app.
+entity Service {
+    id: Uuid
+    name: Text {
+        unique: true
+        max_length: 100
+    }
+    status: ServiceStatus
+
+    policy: {
+        create: [Access.system]
+        read: [id]
+    }
+}
+```
+
+`User` and `Service` are entities with a `status` field, and `UserStatus`
+and `ServiceStatus` are enums of your app's.
 
 ## The application and revocation
 <!-- topic: the-application-and-revocation -->
@@ -871,7 +977,7 @@ sent ([Starting and ending a session](#starting-and-ending-a-session)).
 ### Providers
 
 Each sign-in provider is a connection in `app.jadpo`'s `connections:`
-([Integrations](11-integrations.md)), and `providers: [...]` names those
+([External services](11-integrations.md)), and `providers: [...]` names those
 connections, as `email:` names its connection. Google, Microsoft and
 other OpenID Connect providers are each `driver: Driver.oidc`, and the
 provider's discovery document gives the rest. GitHub and Apple aren't
@@ -1628,6 +1734,13 @@ POST /auth/magic-link
   account. The email is sent after the request commits when an account
   has the address, or when you declare `on_first_sign_in:`. Otherwise
   nothing is sent.
+- With `on_first_sign_in:`, every address that asks is sent a sign-in email,
+  since your action decides whether to take someone on only once they
+  confirm. An address your action refuses learns so only then, as
+  `sign_in_refused`. So an app that limits who may sign up still emails a
+  stranger who asks. To email no one without an account, leave
+  `on_first_sign_in:` out and create accounts some other way, such as from
+  an invitation.
 - Sends to one address are limited, counted the same whether or not an
   account has it: one every `resend_after:`, and `codes_per_hour:` an
   hour. Over either limit the answer is the built-in `rate_limited` (429,
@@ -2154,7 +2267,7 @@ public fixture member_called(address: Email) -> Principal.user {
 ```
 
 A route test drives the generated routes with `test_passkeys`
-([In development and tests](#in-development-and-tests)). Ada adds a passkey
+([Sign-in in development and tests](#sign-in-in-development-and-tests)). Ada adds a passkey
 and signs in with it:
 
 ```jadpo check project=passkeys file=tests/passkeys.test.jadpo
@@ -2666,8 +2779,8 @@ itself, such as someone accepting an invitation it sent, its action calls
 `sessions.issue_token(user_id)` for an API token. See
 [Starting and ending a session](#starting-and-ending-a-session).
 
-## Events
-<!-- topic: events -->
+## Sign-in events
+<!-- topic: sign-in-events (was events) -->
 
 Every sign-in publishes a built-in event, which your monitoring and your
 app's own [subscribers](12-jobs-and-events.md#subscribers) can use:
@@ -2689,7 +2802,7 @@ provider, its connection's name.
 No event carries an address, a link, a code, a challenge, or a passkey's
 credential ID or key.
 
-## In development and tests
+## Sign-in in development and tests
 <!-- topic: in-development-and-tests -->
 
 ### Magic links in `jadpo dev`
@@ -3109,7 +3222,7 @@ The route is written as [HTTP](07-http.md) describes.
 - An action that only needs policy's checks takes no caller.
   [Policy](09-policy.md) reads the caller from the request itself.
 - A schedule or a subscriber has no caller, so an action it runs can't ask
-  for one ([Jobs and events](12-jobs-and-events.md)).
+  for one ([Background work](12-jobs-and-events.md)).
 - A caller can never be returned to a client, read from request input or
   put in a failure's fields (`type.auth_principal_*`), however deeply a
   field holds it: in a list, a map or an option, or in an object's field
@@ -3555,11 +3668,14 @@ apis: {
 
 Here a browser session or an API token works on any route under `/`, and
 only a service key works under `/partners`. A route can narrow its API's
-list but never add to it. An app with a single API accepts every method.
+list but never add to it. An API with no `authentication:` line accepts every
+method the application declares, and one that says `authentication: []`
+accepts none: every route in it is open to anyone, and says so
+([Serving the document](07-http.md#serving-the-document)).
 
 Webhooks from a provider such as Stripe aren't routes you write, so there's
 nothing here to set. Jadpo generates them, checks each one's signature and
-passes it to your app as an event ([Integrations](11-integrations.md)).
+passes it to your app as an event ([External services](11-integrations.md)).
 
 ## Service credentials
 <!-- topic: service-credentials -->
@@ -3655,7 +3771,7 @@ and the response of the route that ran the action sets its cookie.
 - A session or token past its end, which a lookup ignores, and a service
   key past its expiry, are deleted on the tick, Jadpo's regular background
   sweep, in the store each is kept in
-  ([Jobs and events](12-jobs-and-events.md)).
+  ([Background work](12-jobs-and-events.md)).
 - Only an action calls them (`type.auth_sessions_context`). A test reaches
   them through the route, or calls the action, which keeps the session
   without a response to set it on.
@@ -4769,84 +4885,7 @@ test "a partner's keys are listed to the partner and its owner" {
 }
 ```
 
-## Acting for a user at another service: OAuth grants
-<!-- topic: acting-for-a-user-at-another-service-oauth-grants -->
-
-Signing in proves to your app who a person is. An OAuth grant goes the
-other way: your app acts at another service, such as a user's Google
-Calendar, an organisation's Xero or a Slack workspace, with that owner's
-consent. It isn't a way to sign in. Your app acting as an OAuth provider,
-for other apps to sign in with, is a third, separate thing.
-
-The connection and its calls are in
-[Integrations](11-integrations.md#acting-for-each-user-oauth-grants). This
-topic covers what touches identity. A connection's credential is an
-`OAuthGrant`:
-
-```text
-// app.jadpo
-calendar: {
-    package: GoogleCalendar.v3
-    domains: [scheduling]
-    credential: OAuthGrant {
-        owner: User
-        client_id: config.google_client_id
-        client_secret: config.google_client_secret
-        scopes: [...]
-        return_to: "/settings/integrations"
-    }
-}
-```
-
-- **A grant is owned by one of the app's records**: `owner:` is the
-  principal's user entity or any other entity (`Organisation`). The grant
-  belongs to that record, not to a session, so it outlives every session
-  and is used from subscribers and schedules, which run with no caller.
-- **Connecting is endpoints, not pages.** `POST /connections/<name>/start`
-  is a generated route that needs a signed-in caller (`authentication:
-  RouteAuthentication.none` is not available on it) and answers with the
-  provider's consent address. It keeps the `state` on the server against
-  the caller's browser session or API token. The provider sends the browser
-  back to the generated `GET /connections/<name>/callback`, which finds the
-  `state` (a consent can complete only once, for the caller who started
-  it), exchanges the code with PKCE, stores the grant and redirects to the
-  frontend's `return_to`, a path on the app's own site, with success or
-  failure. The callback needs no cookie, so your own API-token clients
-  connect exactly as browsers do. Both appear in `jadpo routes`, OpenAPI
-  and the API record, marked generated
-  ([Generated routes](07-http.md#generated-routes)).
-- **Who may connect for an owner is [Policy](09-policy.md)'s.** Connecting
-  and disconnecting need the `update` grant on the owner's record. So a
-  user connects their own account, and an organisation's grant needs
-  whatever lets the caller update the organisation. There is no new kind
-  of permission for it. The start route checks it before answering.
-- **Grants are held by Jadpo**, like sessions, in a `jadpo_grants`
-  system table in the owner entity's store, so grants need a database.
-  Their tokens are encrypted with `application { grants: { encryption_key:
-  config.grant_encryption_key } }`, a `SigningKey` setting. It rotates as
-  a `signing_key:` does: the current value encrypts, and its `_PREVIOUS`
-  value is still read ([Signing keys](10-configuration-and-time.md#signing-keys)).
-  Code can never read the tokens, and Jadpo refreshes them before they
-  expire. `encryption_key:` is one of the places in `application { }` a
-  secret may be read ([Secrets](10-configuration-and-time.md#secrets)).
-- **Every call names whose grant it uses**, `on_behalf_of: owner_id`, an id
-  of the owner's entity that the action has loaded or been given.
-  `grant_missing` and `grant_revoked` are failures your app maps to its
-  own ([Integrations](11-integrations.md)).
-  The caller of the route need not be the owner: a scheduled job acting for
-  an organisation names the organisation.
-- **Disconnecting** is the generated `POST /connections/<name>/disconnect`
-  and its operation, revoking at the provider when the package declares
-  how. Erasing a person or a record ([Personal data](15-personal-data.md))
-  deletes and revokes its grants. A revoked grant gives the `GrantRevoked`
-  event, so your app can ask the owner to reconnect.
-- **In development and tests**, `jadpo dev grants add <connection> --owner
-  <id>` makes a fake grant, and tests declare grants as fixtures.
-
-Not built yet: OAuth grants, their routes and `on_behalf_of:`. Acting as
-an OAuth provider isn't built either.
-
-## Failures
+## Sign-in failures
 <!-- topic: identity-failures -->
 
 Jadpo raises the sign-in failures itself. You never declare them or list
@@ -4898,7 +4937,7 @@ A feature not built yet is `toolchain.not_built_yet` where it is written.
 | Everything else on this page | Built. |
 | `Driver.github`, `Driver.apple` and `oauth_provider:` | Not built yet. |
 | Scope declarations and policy's scope restrictions | Not built yet. As [Policy](09-policy.md) specifies, an external method narrows scopes only when it declares the scopes it reads; undeclared provider scope or profile claims never replace application authority. |
-| OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([Integrations](11-integrations.md)) | Not built yet. |
+| OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([OAuth grants](11-integrations.md#oauth-grants)) | Not built yet. |
 
 ## Errors
 

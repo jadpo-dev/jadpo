@@ -142,10 +142,7 @@ pub fn frame(
     progress: Option<(u64, u64)>,
     elapsed: Duration,
 ) -> String {
-    let paint = |token: Token, text: &str| match style.color {
-        Some(depth) => format!("\x1b[{}m{text}\x1b[0m", token.sgr(depth, style.theme)),
-        None => text.to_string(),
-    };
+    let paint = |token: Token, text: &str| token.painted(text, style);
     let mut line = format!("{} {words}", paint(Token::Accent, symbol));
     if let Some((done, total)) = progress.filter(|(_, total)| *total > 0) {
         let filled = (done.min(total) * BAR / total) as usize;

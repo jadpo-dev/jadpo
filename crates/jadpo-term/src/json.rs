@@ -9,7 +9,7 @@ use jadpo_diag::{Diagnostic, Label, Span};
 use crate::sources::{Position, Sources};
 
 /// Raised when a document's shape changes in a way readers must notice.
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Json {
@@ -33,6 +33,54 @@ impl Json {
 
     pub fn array<T: Into<Json>>(items: impl IntoIterator<Item = T>) -> Json {
         Json::Array(items.into_iter().map(Into::into).collect())
+    }
+
+    /// This value with what says nothing left out, at every depth, for the
+    /// short form of a report (chunk A14): `null`, an empty list or object,
+    /// and a location's empty `label`. `--full` keeps them.
+    pub fn pruned(self) -> Json {
+        match self {
+            Json::Object(entries) => Json::Object(
+                entries
+                    .into_iter()
+                    .map(|(key, value)| (key, value.pruned()))
+                    .filter(|(key, value)| {
+                        !value.is_empty_value() && !(key == "label" && value.is_empty_text())
+                    })
+                    .collect(),
+            ),
+            Json::Array(items) => Json::Array(items.into_iter().map(Json::pruned).collect()),
+            scalar => scalar,
+        }
+    }
+
+    fn is_empty_value(&self) -> bool {
+        match self {
+            Json::Null => true,
+            Json::Array(items) => items.is_empty(),
+            Json::Object(entries) => entries.is_empty(),
+            _ => false,
+        }
+    }
+
+    fn is_empty_text(&self) -> bool {
+        matches!(self, Json::Str(text) if text.is_empty())
+    }
+
+    /// `key` added, as an object's field just after `after`; other values
+    /// are returned as they are.
+    pub fn with_field_after(self, after: &str, key: &str, value: Json) -> Json {
+        match self {
+            Json::Object(mut entries) => {
+                let at = entries
+                    .iter()
+                    .position(|(name, _)| name == after)
+                    .map_or(entries.len(), |at| at + 1);
+                entries.insert(at, (key.to_string(), value));
+                Json::Object(entries)
+            }
+            other => other,
+        }
     }
 
     /// The document as printed: indented, newline-terminated.
@@ -205,7 +253,7 @@ impl From<Vec<Json>> for Json {
 /// The document every `--json` command prints: `schemaVersion`, the
 /// canonical command name, whether it succeeded, its data, and its
 /// diagnostics. A command fails when it has any diagnostic: every finding
-/// is an error (area 1, "Declining a judgement call").
+/// is an error (area 1, "Keeping code as it is, with a reason").
 pub fn envelope(
     command: Option<&str>,
     data: Option<Json>,
@@ -229,6 +277,46 @@ pub fn envelope(
     ])
 }
 
+/// [`envelope`] in its short form (chunk A14), what `--json` prints without
+/// `--full`: each diagnostic with what says nothing left out, and `severity`,
+/// which is always `error`, and `declinable` when it is false.
+pub fn short_envelope(
+    command: Option<&str>,
+    data: Option<Json>,
+    diagnostics: &[Diagnostic],
+    sources: &dyn Sources,
+) -> Json {
+    let ok = diagnostics.is_empty();
+    Json::object([
+        ("schemaVersion", Json::Int(SCHEMA_VERSION)),
+        ("command", command.into()),
+        ("ok", ok.into()),
+        ("data", data.unwrap_or(Json::Null)),
+        (
+            "diagnostics",
+            Json::array(
+                diagnostics
+                    .iter()
+                    .map(|diagnostic| short_diagnostic(diagnostic_json(diagnostic, sources))),
+            ),
+        ),
+    ])
+}
+
+fn short_diagnostic(diagnostic: Json) -> Json {
+    match diagnostic.pruned() {
+        Json::Object(entries) => Json::Object(
+            entries
+                .into_iter()
+                .filter(|(key, value)| {
+                    key != "severity" && !(key == "declinable" && *value == Json::Bool(false))
+                })
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
 /// One diagnostic as data, with line and column beside byte offsets.
 pub fn diagnostic_json(diagnostic: &Diagnostic, sources: &dyn Sources) -> Json {
     let next = diagnostic.next.as_ref().map(|next| {
@@ -245,7 +333,7 @@ pub fn diagnostic_json(diagnostic: &Diagnostic, sources: &dyn Sources) -> Json {
             ),
         ])
     });
-    Json::object([
+    let mut entries = vec![
         ("rule", diagnostic.rule.id.into()),
         ("severity", "error".into()),
         ("declinable", diagnostic.rule.declinable.into()),
@@ -276,8 +364,13 @@ pub fn diagnostic_json(diagnostic: &Diagnostic, sources: &dyn Sources) -> Json {
             })),
         ),
         ("impact", diagnostic.impact.as_ref().into()),
-        ("help", diagnostic.help().into()),
-    ])
+    ];
+    // A repeat points at the first that says the same (chunk A14).
+    match diagnostic.repeat_of {
+        Some(first) => entries.push(("sameAs", first.into())),
+        None => entries.push(("help", diagnostic.help().into())),
+    }
+    Json::object(entries)
 }
 
 fn label_json(label: &Label, sources: &dyn Sources) -> Json {

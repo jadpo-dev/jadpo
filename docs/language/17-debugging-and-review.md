@@ -1,12 +1,12 @@
 ---
-title: Debugging and review
+title: Debugging
 area: 17
 status: decided
 checked-with: this checkout's jadpo on every gate run
 rules: []
 ---
 
-# Debugging and review
+# Debugging
 <!-- topic: debugging-and-review -->
 
 Jadpo code is written mainly by coding agents and read by people, so two
@@ -46,6 +46,108 @@ because the console worked it out.
 Most of this isn't built yet; [What is built](#what-is-built) says which
 parts are.
 
+### A request in `jadpo dev`
+
+`jadpo dev` runs your app and prints one line for each request, with its
+request id, its status and how long it took, so it is where most debugging
+starts. Here is a small app with one route, which stores nothing and which
+anyone may call:
+
+```jadpo check project=debugging-first file=app.jadpo hidden
+application {}
+```
+
+`domains/todos/routes/todos.jadpo`:
+
+```jadpo check project=debugging-first file=domains/todos/routes/todos.jadpo
+use todos/types { NewTodo, TodoView }
+use todos/actions { add_todo }
+
+/// The todo list.
+routes Todos {
+    prefix: /todos
+
+    /// Adds a todo.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: NewTodo
+        output: TodoView
+        run: add_todo(input)
+    }
+}
+```
+
+`domains/todos/types/new_todo.jadpo`:
+
+```jadpo check project=debugging-first file=domains/todos/types/new_todo.jadpo
+/// What a caller sends to add a todo.
+type NewTodo = Input {
+    title: Text
+}
+```
+
+`domains/todos/types/todo_view.jadpo`:
+
+```jadpo check project=debugging-first file=domains/todos/types/todo_view.jadpo
+/// A todo, as the app sends it back.
+type TodoView = Output {
+    title: Text
+    done: Bool
+}
+```
+
+`domains/todos/actions/add_todo.jadpo`:
+
+```jadpo check project=debugging-first file=domains/todos/actions/add_todo.jadpo
+use todos/types { NewTodo, TodoView }
+
+/// Builds the todo and sends it back. It stores nothing.
+action add_todo(input: NewTodo) -> TodoView {
+    return TodoView {
+        title: input.title
+        done: false
+    }
+}
+```
+
+`policy.jadpo`:
+
+```jadpo check project=debugging-first file=policy.jadpo
+use todos
+
+policy {
+    actions: {
+        todos.add_todo: [Access.public]
+    }
+}
+```
+
+`RouteAuthentication`, `Access`, `Text` and `Bool` are built into Jadpo, and
+every other name is declared here. Run `jadpo api update` once, then
+`jadpo dev`, and send it two requests:
+
+```sh
+curl -X POST http://localhost:3000/todos \
+  -H 'content-type: application/json' -d '{"title": "Buy milk"}'
+curl -X POST http://localhost:3000/todos \
+  -H 'content-type: application/json' -d '{"title": 5}'
+```
+
+```text
+$ jadpo dev
+jadpo dev, started 02:47:52
+listening on http://localhost:3000
+    routes  2 routes
+serving: saves reload, press ctrl-c to quit
+req_4035  POST /todos                        200   6 ms   127.0.0.1
+req_beb8  POST /todos                        422 invalid_input   0 ms   127.0.0.1
+```
+
+The second title isn't text, so the app refused it with a 422 and said why.
+Its line shows the start of the request's id, which the caller also has in
+the `x-request-id` header and an error's `request_id`, so a report from a
+caller leads to the line.
+
 ## Errors point at the `.jadpo` line
 <!-- topic: errors-point-at-the-jadpo-line -->
 
@@ -57,7 +159,7 @@ logged, the runtime uses that map to rewrite it, on the native target and
 on WebAssembly alike. A fault reads:
 
 ```text
-{"event":"operation.failed","classification":"int_overflow",
+{"event":"operation.failed","classification":"int_overflow","cause":null,
  "request_id":"req_0b1e…","build":"src_2c78570a2841d2f7",
  "stack":[
    "domains/ordering/actions/price_line.jadpo:4  action price_line",
@@ -173,8 +275,8 @@ database. For production, it reads a log event you exported, as
 <!-- topic: the-request-timeline-in-jadpo-dev -->
 
 `jadpo dev` records every request it serves and prints one line for each,
-with its request id. `jadpo trace <request id>` shows that request's whole
-timeline: the route, the caller, the actions and queries with their SQL,
+with its request id. Not built yet: `jadpo trace <request id>`, which shows
+that request's whole timeline: the route, the caller, the actions and queries with their SQL,
 rows and timings, the writes, the events emitted, the subscribers run, the
 calls to outside services, and the outcome. It is like a development log
 that also gives each query's source line. It is built from the spans, the
@@ -234,8 +336,8 @@ answered, replayed or in doubt
 ## Watching code run: `jadpo watch`
 <!-- topic: watching-code-run-jadpo-watch -->
 
-Your agent can wait for one part of the code to run and then see its
-inputs and outputs, without reading whole logs.
+Not built yet. Your agent will be able to wait for one part of the code to
+run and then see its inputs and outputs, without reading whole logs.
 
 ```text
 jadpo watch action shipping.book_collection --once --json
@@ -338,12 +440,13 @@ In production, only the spans are kept, with no values
 
 ### Fake OAuth grants
 
-`jadpo dev grants add <connection> --owner <id>` makes a fake OAuth grant,
-the permission a person gives your app to act for them at a provider, for
-that owner
-([Acting for each user: OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)).
+`jadpo dev grants add <connection> --owner <id>`, not built yet, is to make
+a fake OAuth grant, the permission a person gives your app to act for them
+at a provider, for that owner
+([OAuth grants](11-integrations.md#oauth-grants)). `jadpo dev` refuses it
+today, as it does any flag it doesn't have (`cli.unknown_flag`).
 
-> **Built**, except `jadpo trace`, `jadpo watch call` and the request
+> **Built**, except `jadpo dev grants add`, `jadpo trace`, `jadpo watch call` and the request
 > timelines. `jadpo dev` logs each provider call as it ends in
 > `build/dev/calls.jsonl`, and logs an answer from a recording as
 > `recording`. `jadpo calls` reads that file. Here is the plain list after
@@ -400,8 +503,9 @@ that owner
 
 In development, your app's telemetry, its traces, metrics and logs, stays
 on your machine ([Telemetry](16-built-in-services.md#telemetry)).
-`jadpo dev --export-telemetry` sends it on to a collector. You read it from
-the command line, as you read the call log:
+`jadpo dev --export-telemetry` sends it on to a collector. You will read it
+from the command line, as you read the call log, though none of these
+commands is built yet:
 
 | Command | Shows |
 |---|---|
@@ -414,9 +518,7 @@ failure and slowness (`--slower-than 200ms`). `--follow` keeps printing
 as new entries arrive, and `--json` gives the output as data. The
 developer console will show the same data.
 
-These commands' screens follow the
-[CLI design language](../cli-design-language.md), as the screens of
-`jadpo watch` and `jadpo calls` do.
+These commands' screens look like those of `jadpo watch` and `jadpo calls`.
 
 ## Capturing a failing request as a test
 <!-- topic: capturing-a-failing-request-as-a-test -->
@@ -470,8 +572,8 @@ yourself.
 ## Running a query or action: `jadpo call`
 <!-- topic: running-a-query-or-action-jadpo-call -->
 
-Where Rails has an interactive `rails console`, Jadpo has a one-shot
-command. `jadpo call` runs one query or action against your local database
+Not built yet. Where Rails has an interactive `rails console`, Jadpo has a
+one-shot command. `jadpo call` runs one query or action against your local database
 as a caller you name, with JSON in and out, so your agent can script it.
 
 ```text
@@ -533,7 +635,8 @@ and time spent, and a request you select lights up its path.
 
 ### The MCP server
 
-`jadpo mcp` gives an agent the same evidence as read-only tools: `trace`,
+`jadpo mcp`, not built yet, gives an agent the same evidence as read-only
+tools: `trace`,
 `why`, `incident`, `impact`, `sql`, `routes`, the reports and the graph.
 It is for agents with no shell, mostly investigating production from a
 chat or a hosted tool.
@@ -541,7 +644,7 @@ chat or a hosted tool.
 It can't write data, retry deliveries or edit code; a person or an agent
 runs commands for those, deliberately. It is generated from the same
 command reference as `jadpo`, so the two always match. It is protected by
-your app's own OAuth ([Identity](08-identity.md)).
+your app's own OAuth ([Sign-in and identity](08-identity.md)).
 
 ### Production monitoring
 
@@ -555,6 +658,12 @@ When an agent hands you a change, you should see it in the order it
 matters. `jadpo approval --before <ref>` writes a report in that order, as
 Markdown and JSON in `build/review/`, and a static web view of the same
 report:
+
+What [a first record holds](18-records-and-manifest.md#what-a-first-record-holds)
+that a person decides comes before all of it, under "Decisions compared with
+nothing": each thing `jadpo check` couldn't compare, in plain words, with where
+it shows. A project's first public write, and the first personal data anyone may
+read, lead the report this way.
 
 1. **Decisions that need a person.** Each change that needs an acceptance,
    a file in `acceptances/` in which a person accepts it
@@ -578,10 +687,11 @@ report:
    [permissions report](09-policy.md#the-permissions-report), as
    `access.jadpo_record` holds it, and the
    [personal-data report](15-personal-data.md#the-personal-data-report). A
-   record's changes are shown as a diff of its entries. Beside them: what
+   record's changes are shown as a diff of its entries, and the report's a
+   connection at a time, from the before side's. Beside them: what
    widens access with no grant changed, an output gaining a field or an
    action reading or writing another entity; every
-   [decline](01-project-layout-and-modules.md#declining-a-judgement-call)
+   [decline](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)
    the change adds or edits, with its reason; each prompt that changed; the
    imported types and the calls that ship unreviewed or unconfirmed
    ([Mapping imported types](11-integrations.md#mapping-imported-types-to-standard-types));
@@ -623,7 +733,11 @@ what changed can only be worked out from a source that reads
 doesn't know, or nothing to compare with is
 [`cli.approval_arguments`](../errors/cli.approval_arguments.md); a base the
 clone doesn't hold is
-[`acceptance.base_missing`](../errors/acceptance.base_missing.md).
+[`acceptance.base_missing`](../errors/acceptance.base_missing.md). With nothing
+to compare with but something
+[a first record holds](18-records-and-manifest.md#what-a-first-record-holds),
+the report is written and holds that alone, saying why: there is no before side
+to take a difference of. `before.not_judged_because` in the JSON says the same.
 
 ### Packages and services that need a person
 
@@ -696,8 +810,8 @@ returned for a failing request:
   ([Marking personal fields](15-personal-data.md#marking-personal-fields));
 - the recordings expire, as logs do.
 
-`jadpo replay` then runs that request on your machine and gets the same
-results. It extends `test new --from` from `jadpo dev` to production.
+`jadpo replay`, not built yet, then runs that request on your machine and
+gets the same results. It extends `test new --from` from `jadpo dev` to production.
 
 ### Query cost of a change
 
@@ -731,7 +845,7 @@ paste it into a test.
 
 A report is read by people and agents and never read back in as data, so
 it isn't one of the boundaries a standard type is encoded across
-([Every boundary through the contract](19-standard-library.md#every-boundary-through-the-contract)).
+([How a standard value is sent, stored and shown](19-standard-library.md#how-a-standard-value-is-sent-stored-and-shown)).
 Still, no standard type loses its currency, unit or precision in one. A
 personal value in a report follows the rules for
 [personal data](15-personal-data.md).
@@ -742,9 +856,10 @@ personal value in a report follows the rules for
 | Feature | Status |
 |---|---|
 | `jadpo calls`, `calls show` and `calls script` | Built. |
-| Each step a request's action reached, as a trace line in `jadpo dev` | Built. Until the timelines are built, each step is a line under its request's line in `jadpo dev`, and a delivery whose action reached steps gets a line of its own ([design notes for jobs and events](notes/12-jobs-and-events.md)). |
+| Each step a request's action reached, as a trace line in `jadpo dev` | Built: each step is a line under its request's line in `jadpo dev`, and a delivery whose action reached steps gets a line of its own. |
 | `jadpo why <schedule>` | Built: it answers why a schedule didn't run ([Watching schedules](12-jobs-and-events.md#watching-schedules)). |
-| `jadpo approval` | Built: the report in `build/review/` in [this page's order](#reviewing-a-change), the before side built from git and its manifest kept in `build/before/<commit>/`. The personal-data report's difference comes with connections in that report, and a package's service and a bot check with those features. |
-| Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines, `test new --from` and `call` | Not built yet: these come first ([the roadmap](../roadmap.md)). |
-| The developer console, MCP and the review web view | Not built yet: they come after those, as product work. |
-| `jadpo traces`, `metrics`, `logs` and `watch`; path coverage, production counts in review, replay and query cost | Not built yet. |
+| `jadpo approval` | Partly built: the report in `build/review/` in [this page's order](#reviewing-a-change), the before side built from git and its manifest kept in `build/before/<commit>/`, and the personal-data report's difference, a connection at a time. Not built yet: the rest of that difference, which comes with the rest of that report, and a package's service and a bot check, which come with those features. |
+| Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines and `jadpo trace`, `test new --from` and `call` | Not built yet. |
+| `jadpo dev grants add` | Not built yet. |
+| The developer console, MCP (`jadpo mcp`) and the review web view | Not built yet: they come after those, as product work. |
+| `jadpo traces`, `metrics`, `logs` and `watch`; path coverage, production counts in review, `jadpo replay` and query cost | Not built yet. |

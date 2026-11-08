@@ -1,6 +1,6 @@
 # `toolchain.scaffold_destination_exists`
 
-You ran `jadpo new` with the name of a file that already exists.
+You ran `jadpo new` or `jadpo package new` with the name of a file that already exists.
 
 ## Why Jadpo refuses it
 

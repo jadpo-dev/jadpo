@@ -425,7 +425,7 @@ rule, so a new decline of it also needs a person's acceptance:
 ## Related
 
 - [A call the listing doesn't cover](../language/09-policy.md#a-call-the-listing-doesnt-cover)
-- [Actions](../language/09-policy.md#actions)
+- [Permissions on actions](../language/09-policy.md#permissions-on-actions)
 - [Lines that depend on a record](../language/09-policy.md#lines-that-depend-on-a-record)
 - [Writing a decline](../language/01-project-layout-and-modules.md#writing-a-decline)
 - [Acceptances](../language/18-records-and-manifest.md#acceptances)

@@ -32,10 +32,12 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use jadpo_check::acceptances::upgrades;
 use jadpo_check::publishing;
 use jadpo_check::surface::Surface;
 use jadpo_db::{Locked, Source};
 use jadpo_diag::{Diagnostic, nearest, rule};
+use jadpo_registry::names::ScopedName;
 use jadpo_term::{Block, ChangeMark, Fact, Json, Outcome, Screen};
 
 use crate::fmt::project_needed;
@@ -43,6 +45,7 @@ use crate::package::{
     Compiled, Git, Scratch, and_list, arguments, compile, in_package, index_name, plural, semver,
     write_failed,
 };
+use crate::registry;
 use crate::run::{Call, Reply};
 
 /// Where `link` keeps each lock line it replaced, for `unlink`.
@@ -50,7 +53,7 @@ const LINKS: &str = ".jadpo/links";
 
 // --- the project and its lock ----------------------------------------------
 
-fn root_of(call: &Call, command: &str) -> Result<PathBuf, Reply> {
+pub(crate) fn root_of(call: &Call, command: &str) -> Result<PathBuf, Reply> {
     let cwd = cwd(call);
     jadpo_db::find_root(&cwd).ok_or_else(|| project_needed(command))
 }
@@ -60,7 +63,7 @@ fn cwd(call: &Call) -> PathBuf {
 }
 
 /// The lock's lines; none when the project has no lock yet.
-fn read_lock(root: &Path) -> Result<Vec<Locked>, Reply> {
+pub(crate) fn read_lock(root: &Path) -> Result<Vec<Locked>, Reply> {
     let Ok(text) = std::fs::read_to_string(root.join(jadpo_db::LOCK)) else {
         return Ok(Vec::new());
     };
@@ -92,7 +95,10 @@ fn write_lock(root: &Path, lines: &[Locked], command: &str) -> Result<(), Reply>
 fn find<'a>(lines: &'a [Locked], wanted: &str, command: &str) -> Result<&'a Locked, Reply> {
     let matches = |line: &Locked| {
         let (code, _) = line.package.rsplit_once('.').unwrap_or((&line.package, ""));
-        wanted == line.package || wanted == code || wanted == jadpo_db::to_snake(code)
+        wanted == line.package
+            || wanted == code
+            || wanted == jadpo_db::to_snake(code)
+            || registry_name_is(line, wanted)
     };
     let found: Vec<&Locked> = lines.iter().filter(|line| matches(line)).collect();
     if let [line] = found.as_slice() {
@@ -149,8 +155,21 @@ fn find<'a>(lines: &'a [Locked], wanted: &str, command: &str) -> Result<&'a Lock
     }))
 }
 
+/// Whether `wanted` is the registry name `line` was installed by: its
+/// scoped name, `@acme/postcodes`, or for Jadpo's own the bare one `add`
+/// takes, `postcodes` for `@jadpo/postcodes` (Richard, 2026-11-07).
+pub(crate) fn registry_name_is(line: &Locked, wanted: &str) -> bool {
+    let Source::Registry { name, .. } = &line.source else {
+        return false;
+    };
+    name == wanted
+        || name
+            .strip_prefix("@jadpo/")
+            .is_some_and(|bare| bare == wanted)
+}
+
 /// The folder's name of `Name.vN`: `postcodes`.
-fn folder_name(package: &str) -> String {
+pub(crate) fn folder_name(package: &str) -> String {
     let (code, _) = package.rsplit_once('.').unwrap_or((package, ""));
     jadpo_db::to_snake(code)
 }
@@ -227,12 +246,46 @@ struct Verified {
     surface: Surface,
     /// Its committed `surface.jadpo_record`.
     surface_text: String,
+    /// What a release shows of it, worked out from its code.
+    facts: Option<jadpo_check::release::Facts>,
+    /// Findings of the publishing bar in its code, which a newer Jadpo
+    /// makes and its publisher answers: an alert, never a refusal (area
+    /// 11, "How the package format is read").
+    publishers: Vec<Diagnostic>,
+}
+
+impl Verified {
+    /// The alert its publisher's findings make, before the summary.
+    fn alert(&self, screen: &mut Screen) {
+        if !self.publishers.is_empty() {
+            screen.push(Block::Alerts(vec![crate::check::publisher_alert(
+                &self.package,
+                &self.publishers,
+            )]));
+        }
+    }
+
+    /// Its publisher's findings as `--json` gives them.
+    fn alerts_json(&self) -> Json {
+        crate::check::publishers_json(&if self.publishers.is_empty() {
+            Vec::new()
+        } else {
+            vec![(self.package.clone(), self.publishers.clone())]
+        })
+    }
 }
 
 /// The version a committed surface names in its package entry.
 pub(crate) fn surface_version(text: &str) -> Option<String> {
     text.lines()
         .find_map(|line| line.strip_prefix("    version "))
+        .map(str::to_string)
+}
+
+/// The publisher a surface's text names.
+pub(crate) fn surface_publisher(text: &str) -> Option<String> {
+    text.lines()
+        .find_map(|line| line.strip_prefix("    publisher "))
         .map(str::to_string)
 }
 
@@ -256,9 +309,18 @@ fn verify(folder: &Path, tag: Option<&str>, shown: &str, command: &str) -> Resul
             )));
         }
     };
-    if !compiled.problems.is_empty() {
-        return Err(does_not_compile(&compiled, shown, command));
+    // A finding a newer Jadpo makes of the publishing bar is the
+    // publisher's to answer; anything else means the package doesn't
+    // compile.
+    let (publishers, refusing): (Vec<Diagnostic>, Vec<Diagnostic>) = compiled
+        .problems
+        .iter()
+        .cloned()
+        .partition(|d| publishing::publishers_to_answer(d.rule));
+    if !refusing.is_empty() {
+        return Err(does_not_compile(&compiled, refusing, shown, command));
     }
+    let publishers = in_package(&compiled, publishers);
     let package = compiled.package.clone();
     let mismatch = |reason: String| {
         Reply::failed(
@@ -340,7 +402,14 @@ fn verify(folder: &Path, tag: Option<&str>, shown: &str, command: &str) -> Resul
         .map(|(path, bytes)| (path.as_str(), bytes.as_slice()))
         .collect();
     let digest = jadpo_db::package_digest(&borrowed);
+    let facts = jadpo_check::release::facts(
+        &compiled.loaded.db,
+        compiled.loaded.project,
+        &compiled.mount,
+    );
     Ok(Verified {
+        facts,
+        publishers,
         package,
         version,
         files,
@@ -352,8 +421,13 @@ fn verify(folder: &Path, tag: Option<&str>, shown: &str, command: &str) -> Resul
 
 /// A package that doesn't compile: its problems in its folder, as the
 /// reader knows it.
-fn does_not_compile(compiled: &Compiled, shown: &str, command: &str) -> Reply {
-    let diagnostics: Vec<Diagnostic> = in_package(compiled, compiled.problems.clone())
+fn does_not_compile(
+    compiled: &Compiled,
+    problems: Vec<Diagnostic>,
+    shown: &str,
+    command: &str,
+) -> Reply {
+    let diagnostics: Vec<Diagnostic> = in_package(compiled, problems)
         .into_iter()
         .map(|mut d| {
             for label in d.primary.iter_mut().chain(d.secondary.iter_mut()) {
@@ -465,7 +539,7 @@ fn source_words(source: &Source) -> String {
         Source::Git {
             repository, tag, ..
         } => format!("git {repository} tag {tag}"),
-        Source::Registry { .. } => "the registry".to_string(),
+        Source::Registry { name, .. } => format!("registry {name}"),
         Source::Link { path } => format!("a link to {path}"),
     }
 }
@@ -544,7 +618,7 @@ fn no_release(message: String, reason: String) -> Reply {
 }
 
 /// What `git <args>` prints, or what it said when it failed.
-fn run_git(folder: Option<&Path>, args: &[&str]) -> Result<String, String> {
+pub(crate) fn run_git(folder: Option<&Path>, args: &[&str]) -> Result<String, String> {
     let mut command = Command::new("git");
     command
         .args(["-c", "advice.detachedHead=false"])
@@ -591,7 +665,7 @@ fn clone(repository: &Repository) -> Result<Scratch, Reply> {
 }
 
 /// The commit a tag names in a clone.
-fn tag_commit(clone: &Path, tag: &str) -> Option<String> {
+pub(crate) fn tag_commit(clone: &Path, tag: &str) -> Option<String> {
     run_git(
         Some(clone),
         &[
@@ -618,6 +692,7 @@ fn checkout(clone: &Path, commit: &str, repository: &str) -> Result<(), Reply> {
 enum Wanted {
     Path(PathBuf),
     Git { repository: String, tag: String },
+    Registry(ScopedName),
 }
 
 pub fn add(call: &Call) -> Reply {
@@ -628,9 +703,9 @@ pub fn add(call: &Call) -> Reply {
     let Some(written) = call.arguments.get(1) else {
         return Reply::failed(arguments(
             "`jadpo package add` needs a package".to_string(),
-            "A package is added from its folder, or from a git repository at a release tag."
+            "A package is added by its registry name, from its folder, or from a git repository at a release tag."
                 .to_string(),
-            "Run `jadpo package add <folder>` or `jadpo package add <repository>@v<version>`"
+            "Run `jadpo package add @<publisher>/<name>`, `jadpo package add <folder>` or `jadpo package add <repository>@v<version>`"
                 .to_string(),
         ));
     };
@@ -645,7 +720,22 @@ pub fn add(call: &Call) -> Reply {
         ));
     }
     let cwd = cwd(call);
+    if call.value("--to").is_some() && !written.starts_with('@') {
+        let folder = cwd.join(written);
+        if folder.join(jadpo_db::PACKAGE_INDEX).is_file() || written.contains('/') {
+            return Reply::failed(arguments(
+                format!("`--to` doesn't go with `{written}`"),
+                "`--to` names a release of a package in the registry; a folder holds one version, and a repository's is its tag.".to_string(),
+                format!("Run `jadpo package add {written}`"),
+            ));
+        }
+    }
     let wanted = match written.rsplit_once('@') {
+        _ if written.starts_with('@') => match registry::name_to_add(written) {
+            Some(Ok(name)) => Wanted::Registry(name),
+            Some(Err(reply)) => return reply,
+            None => unreachable!("a name starting `@` is the registry's"),
+        },
         Some((repository, tag)) if !repository.is_empty() && semver(tag).is_some() => Wanted::Git {
             repository: repository.to_string(),
             tag: tag.to_string(),
@@ -665,17 +755,11 @@ pub fn add(call: &Call) -> Reply {
                     ))
                     .next("Add a package's own folder, or a git repository at a release tag, meanwhile"),
                 );
-            } else if !written.contains(['/', '\\', '.']) {
-                return Reply::failed(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        "Installing from the registry isn't built yet",
-                    )
-                    .reason(format!(
-                        "`{written}` names a package in the registry, which comes after the first build (area 11, \"Where packages come from\")."
-                    ))
-                    .next("Add the package from its folder, or from its git repository at a release tag: `<repository>@v<version>`"),
-                );
+            } else if let Some(name) = registry::name_to_add(written) {
+                match name {
+                    Ok(name) => Wanted::Registry(name),
+                    Err(reply) => return reply,
+                }
             } else {
                 return Reply::failed(arguments(
                     format!("`{written}` isn't a package's folder or a git repository"),
@@ -693,7 +777,38 @@ pub fn add(call: &Call) -> Reply {
         Err(reply) => return reply,
     };
     // Fetch and verify.
+    let mut from_registry: Option<registry::Fetched> = None;
     let (verified, source, _clone) = match &wanted {
+        Wanted::Registry(name) => {
+            let fetched = match registry::for_add(call, &root, name, written) {
+                Ok(fetched) => fetched,
+                Err(reply) => return reply,
+            };
+            let verified = match verify(
+                &fetched.folder,
+                Some(&fetched.tag()),
+                written,
+                "package add",
+            ) {
+                Ok(verified) => verified,
+                Err(reply) => return reply,
+            };
+            if let Err(reply) = fetched.holds(
+                &verified.package,
+                &verified.version,
+                &verified.digest,
+                &verified.surface_text,
+            ) {
+                return reply;
+            }
+            let source = Source::Registry {
+                version: verified.version.clone(),
+                name: name.to_string(),
+                digest: verified.digest.clone(),
+            };
+            from_registry = Some(fetched);
+            (verified, source, None)
+        }
         Wanted::Path(folder) => {
             let locked = relative(&root, folder);
             if locked.contains(char::is_whitespace) {
@@ -833,35 +948,74 @@ pub fn add(call: &Call) -> Reply {
         };
     }
     let name = folder_name(&verified.package);
+    let mut rows = vec![
+        ("folder".to_string(), folder.clone()),
+        ("source".to_string(), source_words(&source)),
+    ];
+    if let Some(fetched) = &from_registry {
+        rows.extend(registry::origin_rows(fetched, registry::now_seconds()));
+    }
+    rows.push(("surface".to_string(), "matches its code".to_string()));
     let mut screen = Screen::new().with(Block::Status {
         outcome: Outcome::Success,
         text: format!("Added {} {}", verified.package, verified.version),
-        rows: vec![
-            ("folder".to_string(), folder.clone()),
-            ("source".to_string(), source_words(&source)),
-            ("surface".to_string(), "matches its code".to_string()),
-        ],
+        rows,
     });
+    if from_registry.is_some()
+        && let Some(facts) = &verified.facts
+    {
+        screen.push(crate::package_release::facts_block(facts));
+    }
     let mut facts = vec![Fact::plain(format!(
         "{} {}",
         verified.package, verified.version
     ))];
     facts.extend(counts(&verified.surface));
+    verified.alert(&mut screen);
     screen.push(Block::summary(Outcome::Success, "package added", facts));
+    // Named as it was added: from the registry, by its registry name,
+    // which `show` takes too (Richard, 2026-11-07).
+    let shown = from_registry
+        .as_ref()
+        .map_or(name, |fetched| fetched.name.to_string());
     screen.push(Block::hint(
-        format!("jadpo package show {name}"),
+        format!("jadpo package show {shown}"),
         "shows what it offers",
     ));
-    Reply::screen(
-        screen,
-        Json::object([
-            ("package", Json::from(verified.package.as_str())),
-            ("version", Json::from(verified.version.as_str())),
-            ("folder", Json::from(folder.as_str())),
-            ("source", Json::from(source_words(&source).as_str())),
-            ("digest", Json::from(verified.digest.as_str())),
-        ]),
-    )
+    let mut data = vec![
+        ("package", Json::from(verified.package.as_str())),
+        ("version", Json::from(verified.version.as_str())),
+        ("folder", Json::from(folder.as_str())),
+        ("source", Json::from(source_words(&source).as_str())),
+        ("digest", Json::from(verified.digest.as_str())),
+        ("package_alerts", verified.alerts_json()),
+    ];
+    if let Some(fetched) = &from_registry {
+        let publisher = &fetched.package.publisher;
+        data.extend([
+            ("publisher", Json::from(publisher.handle.as_str())),
+            ("verified", publisher.verified.into()),
+            ("official", publisher.official.into()),
+            (
+                "first_released",
+                fetched
+                    .package
+                    .releases
+                    .first()
+                    .map_or(Json::Null, |first| Json::from(first.released_at.as_str())),
+            ),
+            ("log_index", Json::from(fetched.logged.index as i64)),
+            ("log_entries", Json::from(fetched.logged.size as i64)),
+            (
+                "facts",
+                verified
+                    .facts
+                    .as_ref()
+                    .map_or(Json::Null, crate::package_release::facts_json),
+            ),
+        ]);
+    }
+    Reply::screen(screen, Json::object(data))
 }
 
 // --- update ----------------------------------------------------------------
@@ -887,6 +1041,16 @@ pub fn update(call: &Call) -> Reply {
         Err(reply) => return reply,
     };
     let name = folder_name(&line.package);
+    if call.value("--to").is_some() && !matches!(line.source, Source::Registry { .. }) {
+        return Reply::failed(arguments(
+            format!(
+                "`{}` came from a folder or git, not the registry",
+                line.package
+            ),
+            "`--to` names a release of a package in the registry.".to_string(),
+            format!("Run `jadpo package update {name}`"),
+        ));
+    }
     let folder = jadpo_db::package_folder(&line.package);
     let before = std::fs::read_to_string(root.join(&folder).join(jadpo_db::record::SURFACE_FILE))
         .unwrap_or_default();
@@ -894,6 +1058,7 @@ pub fn update(call: &Call) -> Reply {
     // installed again from its source, even at the same release.
     let intact = digest_of_source(&line.source)
         .is_none_or(|digest| folder_digest(&root.join(&folder)).as_deref() == Some(digest));
+    let mut registry_notes: Option<registry::Notes> = None;
     let (verified, source, _clone) = match &line.source {
         Source::Link { path } => {
             return Reply::failed(arguments(
@@ -903,18 +1068,43 @@ pub fn update(call: &Call) -> Reply {
                 format!("Run `jadpo package unlink {name}` first"),
             ));
         }
-        Source::Registry { .. } => {
-            return Reply::failed(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    "Updating from the registry isn't built yet",
-                )
-                .reason(format!(
-                    "`{}` came from the registry, which comes after the first build.",
-                    line.package
-                ))
-                .next("Leave it as it is meanwhile"),
-            );
+        Source::Registry { name, version, .. } => {
+            let update = match registry::for_update(call, &root, name, version, !intact) {
+                Ok(update) => update,
+                Err(reply) => return reply,
+            };
+            let (fetched, notes) = match update {
+                registry::Update::UpToDate {
+                    name,
+                    waiting,
+                    moved,
+                } => return up_to_date_in_registry(&line, &name, &waiting, moved.as_ref()),
+                registry::Update::Take(taking) => *taking,
+            };
+            let verified = match verify(
+                &fetched.folder,
+                Some(&fetched.tag()),
+                name,
+                "package update",
+            ) {
+                Ok(verified) => verified,
+                Err(reply) => return reply,
+            };
+            if let Err(reply) = fetched.holds(
+                &verified.package,
+                &verified.version,
+                &verified.digest,
+                &verified.surface_text,
+            ) {
+                return reply;
+            }
+            let source = Source::Registry {
+                version: verified.version.clone(),
+                name: fetched.name.to_string(),
+                digest: verified.digest.clone(),
+            };
+            registry_notes = Some(notes);
+            (verified, source, None)
         }
         Source::Path { path, digest, .. } => {
             let from = root.join(path);
@@ -1013,6 +1203,7 @@ pub fn update(call: &Call) -> Reply {
             ),
         ));
     }
+    let was = review_side(&root);
     if let Err(reply) = install(&root, &verified, "package update") {
         return reply;
     }
@@ -1024,29 +1215,44 @@ pub fn update(call: &Call) -> Reply {
         return reply;
     }
     // Area 18's review of the change: what the app uses and a person
-    // decides.
-    let used = used_names(&root, &line.package, held_beside(&lines, &line.package));
+    // decides, the same list `jadpo check` then asks an acceptance for.
+    let used = was.used(&line.package);
+    let review = upgrades::review(&was, &review_side(&root));
     let changes = publishing::changes(&before, &verified.surface_text);
+    let in_use = |heading: &str| {
+        heading
+            .split_once(' ')
+            .is_some_and(|(_, name)| used.contains(name))
+    };
     let mut rows: Vec<(ChangeMark, Vec<String>)> = Vec::new();
-    let mut decide = 0;
     for (word, heading) in &changes {
         let mark = match word.as_str() {
             "added" => ChangeMark::Added,
             "removed" => ChangeMark::Removed,
             _ => ChangeMark::Changed,
         };
-        let declaration = heading.split_once(' ').map_or(heading.as_str(), |(_, n)| n);
-        let in_use = used.iter().any(|name| name == declaration);
         let mut columns = vec![heading.clone()];
-        if in_use {
+        if in_use(heading) {
             columns.push("used by the app".to_string());
-            if mark != ChangeMark::Added {
-                decide += 1;
-                columns.push("needs a person".to_string());
-            }
         }
         rows.push((mark, columns));
     }
+    let decide = review.len();
+    let needs: Vec<(ChangeMark, Vec<String>)> = review
+        .iter()
+        .map(|finding| {
+            let mark = match finding.mark() {
+                '+' => ChangeMark::Added,
+                '-' => ChangeMark::Removed,
+                _ => ChangeMark::Changed,
+            };
+            let mut columns = vec![finding.through.clone(), finding.what.clone()];
+            if !finding.detail.is_empty() {
+                columns.push(finding.detail.clone());
+            }
+            (mark, columns)
+        })
+        .collect();
     let old_version = version_of(&line.source).unwrap_or("").to_string();
     // The release the lock already names, put back over a changed copy.
     let again = !intact && digest_of_source(&line.source) == Some(verified.digest.as_str());
@@ -1063,17 +1269,65 @@ pub fn update(call: &Call) -> Reply {
                 line.package, verified.version
             )
         },
-        rows: vec![
-            ("folder".to_string(), folder.clone()),
-            ("source".to_string(), source_words(&source)),
-            ("surface".to_string(), "matches its code".to_string()),
-        ],
+        rows: {
+            let mut status = vec![
+                ("folder".to_string(), folder.clone()),
+                ("source".to_string(), source_words(&source)),
+            ];
+            if let Some(notes) = &registry_notes {
+                if !notes.released.is_empty() {
+                    status.push(("released".to_string(), notes.released.clone()));
+                }
+                if let Some(urgent) = &notes.urgent {
+                    status.push(("urgent".to_string(), urgent.clone()));
+                }
+            }
+            status.push(("surface".to_string(), "matches its code".to_string()));
+            status
+        },
     });
+    if registry_notes.is_some()
+        && let Some(facts) = &verified.facts
+    {
+        screen.push(crate::package_release::facts_block(facts));
+    }
+    if let Some((was, now)) = registry_notes
+        .as_ref()
+        .and_then(|notes| notes.moved.as_ref())
+    {
+        screen.push(Block::Changes {
+            note: None,
+            groups: vec![(
+                format!("New publisher since {old_version}"),
+                vec![(
+                    ChangeMark::Changed,
+                    vec!["publisher".to_string(), format!("{now}, was {was}")],
+                )],
+            )],
+        });
+    }
     if !rows.is_empty() {
         screen.push(Block::Changes {
             note: None,
             groups: vec![(format!("Changes since {old_version}"), rows)],
         });
+    }
+    if !needs.is_empty() {
+        screen.push(Block::Changes {
+            note: None,
+            groups: vec![("Needs a person".to_string(), needs)],
+        });
+    }
+    if let Some(notes) = &registry_notes {
+        if !notes.record.is_empty() {
+            screen.push(registry::record_block(
+                format!("Change record, {} to {}", notes.from, notes.to),
+                &notes.record,
+            ));
+        }
+        if !notes.waiting.is_empty() {
+            screen.push(registry::waiting_block(&notes.waiting));
+        }
     }
     let mut facts = vec![Fact::plain(format!(
         "{} {}",
@@ -1099,6 +1353,7 @@ pub fn update(call: &Call) -> Reply {
             }
         )));
     }
+    verified.alert(&mut screen);
     screen.push(Block::summary(
         Outcome::Success,
         if again {
@@ -1108,30 +1363,176 @@ pub fn update(call: &Call) -> Reply {
         },
         facts,
     ));
-    screen.push(Block::hint(
-        "jadpo check",
-        format!("checks the app against {}", verified.version),
+    screen.push(if decide > 0 {
+        Block::hint(
+            format!("jadpo acceptance new upgrade_{name}"),
+            "writes these up for a person's reason",
+        )
+    } else {
+        Block::hint(
+            "jadpo check",
+            format!("checks the app against {}", verified.version),
+        )
+    });
+    let mut data = vec![
+        ("package", Json::from(line.package.as_str())),
+        ("from", Json::from(old_version.as_str())),
+        ("version", Json::from(verified.version.as_str())),
+        ("source", Json::from(source_words(&source).as_str())),
+        (
+            "changes",
+            Json::array(changes.iter().map(|(word, heading)| {
+                Json::object([
+                    ("change", Json::from(word.as_str())),
+                    ("entry", Json::from(heading.as_str())),
+                    ("used", in_use(heading).into()),
+                ])
+            })),
+        ),
+        (
+            "review",
+            Json::array(review.iter().map(|finding| {
+                Json::object([
+                    ("subject", Json::from(finding.subject.as_str())),
+                    ("change", Json::from(finding.change.as_str())),
+                    ("through", Json::from(finding.through.as_str())),
+                    ("said", Json::from(finding.said.as_str())),
+                ])
+            })),
+        ),
+    ];
+    if let Some(notes) = &registry_notes {
+        data.extend([
+            (
+                "facts",
+                verified
+                    .facts
+                    .as_ref()
+                    .map_or(Json::Null, crate::package_release::facts_json),
+            ),
+            (
+                "urgent",
+                notes.urgent.as_deref().map_or(Json::Null, Json::from),
+            ),
+            (
+                "publisher_was",
+                notes
+                    .moved
+                    .as_ref()
+                    .map_or(Json::Null, |(was, _)| Json::from(was.as_str())),
+            ),
+            ("waiting", waiting_json(&notes.waiting)),
+            (
+                "change_record",
+                Json::array(notes.record.iter().map(|entry| {
+                    Json::object([
+                        ("declaration", Json::from(entry.declaration.as_str())),
+                        ("kind", Json::from(entry.kind.as_str())),
+                        ("change", Json::from(change_name(entry.change))),
+                        (
+                            "detail",
+                            entry.detail.as_deref().map_or(Json::Null, Json::from),
+                        ),
+                        ("why", entry.why.as_deref().map_or(Json::Null, Json::from)),
+                    ])
+                })),
+            ),
+        ]);
+    }
+    Reply::screen(screen, Json::object(data))
+}
+
+fn change_name(change: jadpo_registry::protocol::Change) -> &'static str {
+    use jadpo_registry::protocol::Change;
+    match change {
+        Change::Added => "added",
+        Change::Removed => "removed",
+        Change::Retyped => "retyped",
+        Change::NewFailure => "new_failure",
+        Change::NewHost => "new_host",
+        Change::PersonalDataSent => "personal_data_sent",
+        Change::BehaviourChanged => "behaviour_changed",
+    }
+}
+
+fn waiting_json(waiting: &[registry::Waiting]) -> Json {
+    Json::array(waiting.iter().map(|entry| {
+        Json::object([
+            ("version", Json::from(entry.version.as_str())),
+            ("why", Json::from(entry.why.as_str())),
+        ])
+    }))
+}
+
+/// A package from the registry with nothing to take yet, and what is on its
+/// way.
+fn up_to_date_in_registry(
+    line: &Locked,
+    name: &ScopedName,
+    waiting: &[registry::Waiting],
+    moved: Option<&(String, String)>,
+) -> Reply {
+    let version = version_of(&line.source).unwrap_or("").to_string();
+    let mut screen = Screen::new();
+    if let Some((was, now)) = moved {
+        screen.push(Block::Status {
+            outcome: Outcome::Success,
+            text: format!("{} moved to {name}", line.package),
+            rows: vec![("publisher".to_string(), format!("{now}, was {was}"))],
+        });
+    }
+    if !waiting.is_empty() {
+        screen.push(registry::waiting_block(waiting));
+    }
+    let mut facts = vec![
+        Fact::plain(version.clone()),
+        Fact::plain(source_words(&line.source)),
+    ];
+    if !waiting.is_empty() {
+        facts.push(Fact::plain(format!("{} newer", waiting.len())));
+    }
+    screen.push(Block::summary(
+        Outcome::Success,
+        format!("{} is up to date", line.package),
+        facts,
     ));
+    if let Some(next) = waiting.iter().rev().find(|entry| entry.same_major) {
+        screen.push(Block::hint(
+            format!(
+                "jadpo package update {} --to {}",
+                folder_name(&line.package),
+                next.version
+            ),
+            "takes it now, after showing its facts",
+        ));
+    }
     Reply::screen(
         screen,
         Json::object([
             ("package", Json::from(line.package.as_str())),
-            ("from", Json::from(old_version.as_str())),
-            ("version", Json::from(verified.version.as_str())),
-            ("source", Json::from(source_words(&source).as_str())),
+            ("version", Json::from(version.as_str())),
+            ("updated", false.into()),
+            ("registry", Json::from(name.to_string().as_str())),
+            ("waiting", waiting_json(waiting)),
             (
-                "changes",
-                Json::array(changes.iter().map(|(word, heading)| {
-                    let declaration = heading.split_once(' ').map_or(heading.as_str(), |(_, n)| n);
-                    Json::object([
-                        ("change", Json::from(word.as_str())),
-                        ("entry", Json::from(heading.as_str())),
-                        ("used", used.iter().any(|name| name == declaration).into()),
-                    ])
-                })),
+                "publisher_was",
+                moved.map_or(Json::Null, |(was, _)| Json::from(was.as_str())),
             ),
         ]),
     )
+}
+
+/// What an upgrade's review reads of the project as it stands.
+fn review_side(root: &Path) -> upgrades::Side {
+    let files: Vec<(String, String)> = jadpo_db::files_under(root, true)
+        .into_iter()
+        .filter(|path| upgrades::read_for_a_review(path))
+        .filter_map(|path| {
+            let text = std::fs::read_to_string(root.join(&path)).ok()?;
+            Some((path, text))
+        })
+        .collect();
+    upgrades::Side::read(files.iter().map(|(p, t)| (p.as_str(), t.as_str())))
 }
 
 /// The digest the lock gives a package's source.
@@ -1146,7 +1547,7 @@ fn digest_of_source(source: &Source) -> Option<&str> {
 
 /// The digest of an installed package's folder as it is now, as
 /// `jadpo check` works it out; `None` when it can't be read.
-fn folder_digest(folder: &Path) -> Option<String> {
+pub(crate) fn folder_digest(folder: &Path) -> Option<String> {
     let mut files = Vec::new();
     for path in jadpo_db::package_files(folder) {
         let relative = path
@@ -1222,40 +1623,6 @@ fn writes_word(text: &str, word: &str) -> bool {
         let after = text[at + word.len()..].chars().next();
         !before.is_some_and(|c| part(c) || c == '.') && !after.is_some_and(part)
     })
-}
-
-/// The package's names the app writes, after its name: `uk.parse`,
-/// `UkPostcode`; after its name and version, `Postcodes.v3.uk.parse`,
-/// while another version is held beside it (chunk 7.1c2).
-fn used_names(root: &Path, package: &str, beside: bool) -> Vec<String> {
-    let (code, _) = package.rsplit_once('.').unwrap_or((package, ""));
-    let lead = if beside {
-        format!("{package}.")
-    } else {
-        format!("{code}.")
-    };
-    let mut out: Vec<String> = Vec::new();
-    for (_, text) in app_sources(root) {
-        for (at, _) in text.match_indices(&lead) {
-            if text[..at]
-                .chars()
-                .next_back()
-                .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '.')
-            {
-                continue;
-            }
-            let rest = &text[at + lead.len()..];
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '.')
-                .collect();
-            let name = name.trim_end_matches('.').to_string();
-            if !name.is_empty() && !out.contains(&name) {
-                out.push(name);
-            }
-        }
-    }
-    out
 }
 
 // --- remove ----------------------------------------------------------------

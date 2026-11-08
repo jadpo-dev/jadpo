@@ -2,6 +2,10 @@
 //! "Comparing two builds"; chunk V2): the difference between the before
 //! side's manifest and today's, explained in the order it matters.
 //!
+//! First, what a first record holds that a person decides
+//! ([`acceptances::first`]): compared with nothing, it is led with, and with
+//! no before side at all it is the whole report ([`first_report`]).
+//!
 //! 1. Each change that needs a person, in plain words, with whether an
 //!    acceptance this change adds lists it, and the path that makes it
 //!    true ([`paths`]).
@@ -10,7 +14,8 @@
 //! 3. The other behaviour: the API record, the schema and migrations,
 //!    failures, events and subscribers, integrations, who can do what
 //!    (the permissions report's difference, as `access.jadpo_record`
-//!    holds it) and wording not yet accepted.
+//!    holds it), the personal-data report's difference and wording not yet
+//!    accepted.
 //! 4. The source, by declaration rather than by file.
 //!
 //! `jadpo approval` builds the before side, caches its manifest, and
@@ -26,6 +31,7 @@ use jadpo_db::record::{self as format, Kind as RecordKind};
 use jadpo_db::{Before, Db, Project};
 use jadpo_graph::json::Value;
 
+use crate::acceptances::first::Notice;
 use crate::acceptances::{self, Need, access, files, network};
 pub use paths::{Paths, Reachable, Step};
 use view::{Node, View};
@@ -251,6 +257,11 @@ pub struct Report {
     /// How many errors the before side has with this compiler: a graph
     /// built with errors leaves out what couldn't be resolved.
     pub base_errors: i64,
+    /// What a first record holds that a person decides, which leads.
+    pub notice_list: Vec<Notice>,
+    /// Why there is no before side, when there is none: the report then
+    /// holds [`Self::notice_list`] alone.
+    pub not_compared: Option<String>,
     pub decisions: Vec<Decision>,
     /// The records the before side doesn't have, whose changes are
     /// compared with nothing (area 18, "Comparing two builds").
@@ -303,6 +314,7 @@ pub fn report(
     base: Base,
     before: &Value,
     before_declines: &Value,
+    before_personal: &Value,
     after: &Value,
 ) -> Report {
     let was = View::of(before);
@@ -366,6 +378,7 @@ pub fn report(
             section.lines = new_reach(&was, &now);
             section
         },
+        personal_data(db, project, before_personal),
         declines(db, project, before_declines),
         prompts(&was, &now),
         wording(db, project),
@@ -373,6 +386,8 @@ pub fn report(
     Report {
         base,
         base_errors: was.errors,
+        notice_list: acceptances::first::notice_list(db, project).clone(),
+        not_compared: None,
         decisions,
         not_judged: acceptances::introduced(db, project)
             .into_iter()
@@ -381,6 +396,26 @@ pub fn report(
         reachable: paths::newly_reachable(&was, &now),
         other,
         source: source(&was, &now),
+    }
+}
+
+/// The report with no before side, `reason` saying why: what a first record
+/// holds that a person decides, since there is nothing to take a difference
+/// of.
+pub fn first_report(db: &dyn Db, project: Project, reason: &str) -> Report {
+    Report {
+        base: Base {
+            described: format!("nothing: {reason}"),
+            commit: String::new(),
+        },
+        base_errors: 0,
+        notice_list: acceptances::first::notice_list(db, project).clone(),
+        not_compared: Some(reason.to_string()),
+        decisions: Vec::new(),
+        not_judged: Vec::new(),
+        reachable: Vec::new(),
+        other: Vec::new(),
+        source: Vec::new(),
     }
 }
 
@@ -1050,6 +1085,65 @@ pub fn declines_json(db: &dyn Db, project: Project) -> Value {
     out
 }
 
+/// The before side's personal-data report, for [`report`]: its JSON twin,
+/// or how many errors kept it from being worked out, as `jadpo check` writes
+/// no report for a project with errors.
+pub fn personal_json(db: &dyn Db, project: Project, errors: usize) -> Value {
+    if errors == 0 {
+        return crate::personal_data::report(db, project).json;
+    }
+    let mut out = Value::object();
+    out.set("errors", errors as i64);
+    out
+}
+
+/// Where the personal-data report is, as the review names it.
+const PERSONAL_REPORT: &str = "build/report/personal-data.md";
+
+/// The personal-data report's difference, a connection at a time (area 15,
+/// "The personal-data report"): what starts reaching whom, and whether its
+/// copy is erased, read from both sides' JSON twins.
+fn personal_data(db: &dyn Db, project: Project, before: &Value) -> Section {
+    let mut section = Section::new("personal_data", "Personal data");
+    if before.get("errors").is_some() {
+        section.note = Some(format!(
+            "The before side has errors, so it has no report to compare with. Today's is `{PERSONAL_REPORT}`."
+        ));
+        return section;
+    }
+    let was = crate::personal_data::entries(before);
+    let now = crate::personal_data::entries(&crate::personal_data::report(db, project).json);
+    let headings: BTreeSet<&String> = was.keys().chain(now.keys()).collect();
+    for heading in headings {
+        let (before, after) = (was.get(heading), now.get(heading));
+        let mut lines: Vec<(Mark, String)> = Vec::new();
+        for line in before.into_iter().flatten() {
+            if !after.is_some_and(|after| after.contains(line)) {
+                lines.push((Mark::Removed, line.clone()));
+            }
+        }
+        for line in after.into_iter().flatten() {
+            if !before.is_some_and(|before| before.contains(line)) {
+                lines.push((Mark::Added, line.clone()));
+            }
+        }
+        if lines.is_empty() {
+            continue;
+        }
+        section.entries.push(EntryDiff {
+            record: PERSONAL_REPORT.to_string(),
+            heading: heading.clone(),
+            mark: match (before, after) {
+                (None, _) => Mark::Added,
+                (_, None) => Mark::Removed,
+                _ => Mark::Changed,
+            },
+            lines,
+        });
+    }
+    section
+}
+
 /// What a decline stands above, with its domain, or its file when it
 /// names nothing.
 fn decline_subject(decline: &crate::declines::Decline) -> String {
@@ -1060,7 +1154,7 @@ fn decline_subject(decline: &crate::declines::Decline) -> String {
 }
 
 /// Every decline this change adds or edits, with its reason, so declining
-/// by reflex shows in review (area 1, "Declining a judgement call").
+/// by reflex shows in review (area 1, "Keeping code as it is, with a reason").
 fn declines(db: &dyn Db, project: Project, before: &Value) -> Section {
     let mut section = Section::new("declines", "Declines");
     let was: BTreeMap<(&str, &str), &str> = before
@@ -1257,7 +1351,29 @@ fn json(report: &Report) -> Value {
             .map(|path| Value::from(path.as_str()))
             .collect::<Vec<_>>(),
     );
+    if let Some(reason) = &report.not_compared {
+        before.set("not_judged_because", reason.as_str());
+    }
     out.set("before", before);
+    out.set(
+        "notice_list",
+        report
+            .notice_list
+            .iter()
+            .map(|notice| {
+                let mut entry = Value::object();
+                entry.set("subject", notice.subject.as_str());
+                entry.set("kind", notice.kind.as_str());
+                entry.set("said", notice.said.as_str());
+                entry.set("decides", "human");
+                entry.set("file", notice.path.as_str());
+                if let Some(line) = notice.line {
+                    entry.set("line", line);
+                }
+                entry
+            })
+            .collect::<Vec<_>>(),
+    );
     out.set(
         "decisions",
         report

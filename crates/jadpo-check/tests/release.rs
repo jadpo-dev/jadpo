@@ -178,6 +178,32 @@ fn a_providers_facts_cover_what_its_code_can_do_public_or_not() {
     assert_eq!(facts.standard_candidates.len(), 1);
     assert_eq!(facts.standard_candidates[0].declaration, "Customer.created");
     assert_eq!(facts.standard_candidates[0].standard, "Instant");
+    assert_eq!(facts.last_contract_run, None);
+}
+
+/// The last contract run is the newest recording `jadpo package record`
+/// made, from its `recordings/recorded.jadpo_record` (area 11, "What a
+/// release shows"; Richard, 2026-11-07).
+#[test]
+fn the_last_contract_run_is_the_newest_recording() {
+    let facts = facts_of(
+        &provider(),
+        &[
+            (
+                "shared/providers/acme_pay/v1/recordings/customers.get.json",
+                "{}\n",
+            ),
+            (
+                "shared/providers/acme_pay/v1/recordings/recorded.jadpo_record",
+                "// Written by `jadpo package record`: when each recording was made.\nrecord recordings 1\n\nrecorded customers.create 2026-10-30T09:15:00Z\nrecorded customers.get 2026-11-02T17:40:12Z\n",
+            ),
+        ],
+        PAY,
+    );
+    assert_eq!(
+        facts.last_contract_run.as_deref(),
+        Some("2026-11-02T17:40:12Z")
+    );
 }
 
 #[test]
@@ -303,6 +329,42 @@ fn a_new_host_is_recorded_and_a_new_minor_version_a_removed_one_breaks() {
     );
     let bump = publishing::version("v1", Some(("1.0.0", &earlier)), &before).expect("allowed");
     assert_eq!(bump.version, "1.1.0");
+}
+
+#[test]
+fn a_provider_with_fixed_headers_still_has_its_changes_found() {
+    // Every fact a provider can declare, its fixed request headers among
+    // them, so the surface's reader knows each line its writer writes.
+    let headers = with(
+        &provider(),
+        "shared/providers/acme_pay/v1/provider.jadpo",
+        "/// Acme Pay's API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.acme-pay.example\"\n    }\n    credential: CredentialScheme.header\n    credential_header: \"x-api-key\"\n    headers: [\"acme-version: 2024-01-01\"]\n    idempotency: {\n        header: \"Idempotency-Key\"\n        window: 24h\n    }\n}\n",
+    );
+    let before = surface_text(&headers, PAY);
+    assert!(
+        before.contains("    header acme-version: 2024-01-01\n"),
+        "{before}"
+    );
+    let narrowed = with(
+        &headers,
+        "shared/providers/acme_pay/v1/types/customer_id.jadpo",
+        "/// Acme Pay's id for a customer.\npublic type CustomerId = Text {\n    max_length: 20\n}\n",
+    );
+    let now = surface_text(&narrowed, PAY);
+    let found = entries(&before, &now);
+    assert_eq!(
+        found,
+        [(
+            "CustomerId".to_string(),
+            Change::Retyped,
+            Some("max_length: 20, was max_length: 40".to_string())
+        )]
+    );
+    assert_eq!(
+        publishing::version("v1", Some(("1.0.0", &before)), &now).unwrap_err(),
+        [("changed".to_string(), "type CustomerId".to_string())],
+        "narrowing what a type accepts breaks"
+    );
 }
 
 #[test]

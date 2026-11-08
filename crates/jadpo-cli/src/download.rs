@@ -89,6 +89,8 @@ impl Url {
 pub(crate) struct Started {
     /// Its `Content-Length`, when it gives one.
     pub(crate) length: Option<u64>,
+    /// Its status: 200, unless the request takes any ([`send`]).
+    pub(crate) status: u16,
 }
 
 /// Fetches `url`, giving `started` the answer's length once its head has
@@ -100,9 +102,14 @@ pub(crate) fn get(
     each: &mut dyn FnMut(&[u8]) -> std::io::Result<()>,
 ) -> Result<(), String> {
     let mut url = url.to_string();
+    let plain = Ask {
+        method: "GET",
+        body: None,
+        any_status: false,
+    };
     for _ in 0..=REDIRECTS {
         let parsed = Url::parse(&url)?;
-        match once(&parsed, started, each)? {
+        match once(&parsed, &plain, started, each)? {
             None => return Ok(()),
             Some(location) => {
                 url = if location.starts_with('/') {
@@ -130,10 +137,79 @@ pub(crate) fn get_all(url: &str, most: usize) -> Result<Vec<u8>, String> {
     Ok(body)
 }
 
+/// An answer read whole: its status and body.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Answer {
+    pub(crate) status: u16,
+    pub(crate) body: Vec<u8>,
+}
+
+/// Sends one request and reads its answer, whatever its status, refusing
+/// more than `most` bytes; a redirect is followed only by a `GET`, and
+/// the same rules as [`get`]'s hold for every address it leads to. The
+/// registry's failures come back in a status other than 200, with a body
+/// worth reading.
+pub(crate) fn send(
+    method: &str,
+    url: &str,
+    body: Option<&[u8]>,
+    most: usize,
+) -> Result<Answer, String> {
+    let ask = Ask {
+        method,
+        body,
+        any_status: true,
+    };
+    let mut url = url.to_string();
+    for _ in 0..=REDIRECTS {
+        let parsed = Url::parse(&url)?;
+        let mut status = 0;
+        let mut read = Vec::new();
+        let moved = once(
+            &parsed,
+            &ask,
+            &mut |started| status = started.status,
+            &mut |piece| {
+                if read.len() + piece.len() > most {
+                    return Err(std::io::Error::other("the answer is too long"));
+                }
+                read.extend_from_slice(piece);
+                Ok(())
+            },
+        )?;
+        match moved {
+            None => {
+                return Ok(Answer { status, body: read });
+            }
+            Some(_) if method != "GET" => {
+                return Err(format!("`{}` redirected a {method}.", parsed.host));
+            }
+            Some(location) => {
+                url = if location.starts_with('/') {
+                    let scheme = if parsed.secure { "https" } else { "http" };
+                    format!("{scheme}://{}:{}{location}", parsed.host, parsed.port)
+                } else {
+                    location
+                };
+            }
+        }
+    }
+    Err(format!("`{url}` redirects more than {REDIRECTS} times."))
+}
+
+/// What one request asks, and whether a status other than 200 is an answer
+/// rather than a failure.
+struct Ask<'a> {
+    method: &'a str,
+    body: Option<&'a [u8]>,
+    any_status: bool,
+}
+
 /// One request: `Some` with where a redirect points, else the body handed
 /// on.
 fn once(
     url: &Url,
+    ask: &Ask<'_>,
     started: &mut dyn FnMut(Started),
     each: &mut dyn FnMut(&[u8]) -> std::io::Result<()>,
 ) -> Result<Option<String>, String> {
@@ -158,10 +234,23 @@ fn once(
         .set_read_timeout(Some(STALLED))
         .and_then(|()| stream.set_write_timeout(Some(STALLED)))
         .map_err(|error| error.to_string())?;
-    let request = format!(
-        "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: jadpo\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n",
-        url.path, url.host
-    );
+    let mut request = format!(
+        "{} {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: jadpo\r\nAccept-Encoding: identity\r\nConnection: close\r\n",
+        ask.method, url.path, url.host
+    )
+    .into_bytes();
+    if let Some(body) = ask.body {
+        request.extend_from_slice(
+            format!(
+                "Content-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+                body.len()
+            )
+            .as_bytes(),
+        );
+        request.extend_from_slice(body);
+    } else {
+        request.extend_from_slice(b"\r\n");
+    }
     let broke = |error: std::io::Error| format!("The download from {named} broke off: {error}.");
     if url.secure {
         let config = jadpo_host_native::tls::config().map_err(|error| error.to_string())?;
@@ -170,7 +259,7 @@ fn once(
         let connection = rustls::ClientConnection::new(config, name)
             .map_err(|error| format!("No secure connection to {named}: {error}."))?;
         let tls = rustls::StreamOwned::new(connection, stream);
-        exchange(tls, &request, &named, started, each).map_err(|error| {
+        exchange(tls, &request, ask.any_status, &named, started, each).map_err(|error| {
             if error.kind() == std::io::ErrorKind::InvalidData {
                 format!("No secure connection to {named}: {error}.")
             } else {
@@ -178,18 +267,19 @@ fn once(
             }
         })?
     } else {
-        exchange(stream, &request, &named, started, each).map_err(broke)?
+        exchange(stream, &request, ask.any_status, &named, started, each).map_err(broke)?
     }
 }
 
 fn exchange<S: Read + Write>(
     mut stream: S,
-    request: &str,
+    request: &[u8],
+    any_status: bool,
     named: &str,
     started: &mut dyn FnMut(Started),
     each: &mut dyn FnMut(&[u8]) -> std::io::Result<()>,
 ) -> std::io::Result<Result<Option<String>, String>> {
-    stream.write_all(request.as_bytes())?;
+    stream.write_all(request)?;
     stream.flush()?;
     let mut reader = BufReader::new(stream);
     let mut status = String::new();
@@ -224,14 +314,17 @@ fn exchange<S: Read + Write>(
             None => Err(format!("{named} redirected without saying where.")),
         });
     }
-    if code != 200 {
+    if code == 0 || (code != 200 && !any_status) {
         return Ok(Err(match code {
             0 => format!("{named}'s answer isn't HTTP."),
             404 => format!("{named} has no such file (404)."),
             code => format!("{named} answered {code}."),
         }));
     }
-    started(Started { length });
+    started(Started {
+        length,
+        status: code,
+    });
     let mut buffer = vec![0; 1 << 16];
     let mut read = 0u64;
     if chunked {
@@ -260,7 +353,13 @@ fn exchange<S: Read + Write>(
             Some(length) => (length - read).min(buffer.len() as u64) as usize,
             None => buffer.len(),
         };
-        let got = reader.read(&mut buffer[..want])?;
+        // A signal can interrupt a read without ending the download, as
+        // `read_exact` and `read_line` already allow for.
+        let got = match reader.read(&mut buffer[..want]) {
+            Ok(got) => got,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
         if got == 0 {
             return Ok(match length {
                 Some(length) => Err(format!(
@@ -277,6 +376,64 @@ fn exchange<S: Read + Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An answer whose body read is interrupted once by a signal.
+    struct Interrupted {
+        answer: std::io::Cursor<Vec<u8>>,
+        interrupt_at: u64,
+        interrupted: bool,
+    }
+
+    impl Read for Interrupted {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            if !self.interrupted && self.answer.position() >= self.interrupt_at {
+                self.interrupted = true;
+                return Err(std::io::Error::from(std::io::ErrorKind::Interrupted));
+            }
+            let room = (self.interrupt_at.saturating_sub(self.answer.position()) as usize)
+                .max(if self.interrupted { buffer.len() } else { 1 })
+                .min(buffer.len());
+            self.answer.read(&mut buffer[..room])
+        }
+    }
+
+    impl Write for Interrupted {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_read_a_signal_interrupts_carries_on() {
+        let body = vec![7u8; 200_000];
+        let mut answer =
+            format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len()).into_bytes();
+        let head = answer.len() as u64;
+        answer.extend_from_slice(&body);
+        let stream = Interrupted {
+            answer: std::io::Cursor::new(answer),
+            interrupt_at: head + 100_000,
+            interrupted: false,
+        };
+        let mut got = Vec::new();
+        let outcome = exchange(
+            stream,
+            b"GET / HTTP/1.1\r\n\r\n",
+            false,
+            "here",
+            &mut |_| {},
+            &mut |bytes| {
+                got.extend_from_slice(bytes);
+                Ok(())
+            },
+        )
+        .expect("an interrupted read isn't a broken download");
+        assert_eq!(outcome, Ok(None));
+        assert_eq!(got, body);
+    }
 
     #[test]
     fn an_address_is_https_or_on_this_machine() {

@@ -76,6 +76,29 @@ impl FaultKind {
         matches!(self, FaultKind::Defect(_))
     }
 
+    /// What it says went wrong, for the operator's log: a reason the
+    /// runtime or a driver wrote, which names a setting, a field or a
+    /// statement's problem and never a value. A fault with no more to say
+    /// than its classification has none.
+    pub fn cause(&self) -> Option<&str> {
+        match self {
+            FaultKind::NotBuiltYet(why)
+            | FaultKind::Defect(why)
+            | FaultKind::Store(why)
+            | FaultKind::Provider(why)
+            | FaultKind::CallInTransaction(why)
+            | FaultKind::Diverged(why)
+            | FaultKind::FileRefused { why, .. } => Some(why),
+            FaultKind::IntOverflow
+            | FaultKind::DecimalOverflow
+            | FaultKind::TimeRange
+            | FaultKind::ClockBackward
+            | FaultKind::RecursionLimit
+            | FaultKind::DeadlineExceeded
+            | FaultKind::Crashed => None,
+        }
+    }
+
     /// The classification its log event names (area 4, question 9; area
     /// 17): `int_overflow`, `recursion_limit`, and `internal_fault` for any
     /// other defect.

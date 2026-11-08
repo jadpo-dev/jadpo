@@ -1,11 +1,11 @@
 ---
-title: Records and manifest
+title: Review and records
 area: 18
 status: decided
 checked-with: this checkout's jadpo on every gate run
 ---
 
-# Records and manifest
+# Review and records
 <!-- topic: records-and-manifest -->
 
 Besides your running app, the compiler writes two kinds of file, and it
@@ -28,12 +28,12 @@ it.
 |---|---|---|---|---|---|
 | API record | Each API's routes, fields and failure codes | `api/<api>.jadpo_record` | Yes | `jadpo api update` | `check`, reviewers, client teams |
 | Event record | Each domain's events, the fields they carry and the types those name ([The event record](12-jobs-and-events.md#the-event-record)) | `domains/<domain>/events/events.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
-| Access record | Who can do what: each entity's and field's grants, where records belong, the actions and queries listed separately, the security rules declined and the sign-in settings that have a limit ([Acceptances](#acceptances)) | `access.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
+| Access record | Who can do what: each entity's and field's grants, where records belong, the actions and queries listed separately, the security rules declined, the sign-in settings that have a limit and your company's own git locations ([Acceptances](#acceptances)) | `access.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
 | Network record | Every outside host the app can reach, by connection ([The network report](11-integrations.md#the-network-report)) | `network.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
 | Migrations | Each step of the database, with a snapshot of the whole schema | `database/migrations/` | Yes | `jadpo migrate new` | `migrate apply`, `check` |
-| Identity registry | What each renamed thing was born as | `database/identities.jadpo_record` | Yes | `jadpo rename`, `jadpo domain …`, `jadpo fmt --layout` | the compiler, `migrate`, `incident` |
+| Identity registry | What each renamed thing was born as | `database/identities.jadpo_record` | Yes | `jadpo fmt --layout`, and `jadpo rename` and `jadpo domain …`, not built yet | the compiler, `migrate`, `incident` |
 | Translation sources | For each locale and message, a hash of the default wording it was translated from, and each acceptance ([Translations as messages](10-configuration-and-time.md#translations-as-messages)) | `translations/sources.jadpo_record` in each translations folder | Yes | `jadpo translations update`, `import`, `accept` | `check`, `translations missing`, `approval` |
-| Package surface | An installed package's public surface, each entry pointing at its file ([Integrations](11-integrations.md)) | `packages/<name>/<version>/surface.jadpo_record` | Yes, with the package | `jadpo package check`; verified by `jadpo package add` and `update` | `check`, `package show`, reviewers, the registry |
+| Package surface | An installed package's public surface, each entry pointing at its file ([External services](11-integrations.md)) | `packages/<name>/<version>/surface.jadpo_record` | Yes, with the package | `jadpo package check`; verified by `jadpo package add` and `update` | `check`, `package show`, reviewers, the registry |
 | Lock | Each installed package's version, digest and source: `registry`, `git` (repository, tag and commit), `path` or `link`; and the Jadpo release the project runs with, when it is pinned | `jadpo.lock` | Yes | `jadpo package add`, `update`, `remove`, `link`, `unlink`; `jadpo toolchain pin`, `unpin` | `check`, `build`, and every command, to choose the Jadpo that runs it |
 | Suggestions kept quiet and taught | The suggestions a team ignored, and the patterns it taught `jadpo suggest` ([Suggestions](14-tooling.md#suggestions)) | `ignored_suggestions.jadpo_record`, `taught_suggestions.jadpo_record` | Yes | `jadpo suggest ignore`, `jadpo suggest found` | `suggest` |
 | Acceptances | A person's decision to allow listed changes | `acceptances/` | Yes | drafted by `jadpo acceptance new`; the reason by a person | `check`, `approval` |
@@ -143,7 +143,7 @@ in the manifest.
 upgrade is an ordinary diff. Each is checked against its digest in the
 lock and is read-only, but only its `surface.jadpo_record` is a record.
 Your app's own integrations, in `shared/providers/`, are source, written
-like any other code ([Integrations](11-integrations.md)).
+like any other code ([External services](11-integrations.md)).
 
 ### Checking a record
 
@@ -180,8 +180,9 @@ write needs the base commit's build too.
 **`jadpo records update` brings every record up to date at once.** It
 writes each view from the source, rewrites each ledger, and moves a
 record under its old name. It is the command an error's `next:` line
-names for a ledger, because a ledger's own commands (`jadpo rename`,
-`jadpo translations update`, `jadpo suggest ignore`) need arguments.
+names for a ledger, because a ledger's own commands (`jadpo rename`, not
+built yet, `jadpo translations update`, `jadpo suggest ignore`) need
+arguments.
 
 **Old names are moved, not read forever.** `api/<api>.api` and
 `database/identities.json` are `record.out_of_date` ("the record's old
@@ -369,7 +370,7 @@ are decoded against, and each deployable's build id.
 {
   "format": 2,
   "source": { "commit": "8d113e6", "modified": false },
-  "compiler": "0.4.0",
+  "compiler": "X.Y.Z",
   "deployables": { "api": { "target": "wasm", "build": "b_9a1f03c6d2e4" } },
   "nodes": [
     {
@@ -407,9 +408,9 @@ changes meaning; additions keep the number. Manifests are never stored,
 so no tool ever reads an old format. `jadpo help --json` documents the
 schema, with every node and edge kind and whether it is built yet.
 
-**Its size doesn't matter**, because it is never shipped. An agent asks
-for one node with `jadpo inspect <name> --json` rather than reading the
-whole file.
+**Its size doesn't matter**, because it is never shipped. Once
+`jadpo inspect <name> --json` is built, an agent will ask for one node
+rather than reading the whole file.
 
 ### What a node holds
 
@@ -435,7 +436,7 @@ wouldn't see their files
 
 Other parts of the language add their own nodes:
 
-- **Integrations, identity, configuration, jobs and events** add a node
+- **External services, identity, configuration, jobs and events** add a node
   for each connection, package, resource, operation, capability mapping,
   host and lock line, each kind of caller, sign-in method, way of signing
   in and route the runtime answers itself, each setting, the locale set,
@@ -466,9 +467,9 @@ since, mapping its name now to its born name, and nothing else: a line
 for every declaration would grow with every new action. Children follow
 their parent, so renaming a domain or an entity is one line.
 
-Three things write the registry: `jadpo rename`, the `jadpo domain`
-commands, and promoting a function or type declared in a domain to
-`shared/`.
+Three things write the registry: `jadpo rename` and the `jadpo domain`
+commands, neither built yet, and promoting a function or type declared in a
+domain to `shared/`.
 
 ```text
 // Generated by Jadpo from renames and moves; update it with `jadpo rename`, `jadpo domain` or `jadpo fmt --layout`, never by hand.
@@ -487,8 +488,8 @@ subscriber send_reminder -> notify_owner
 - **Physical names never change.** The table stays `todo` and the column
   `priority`. Migration snapshots hold the whole schema with physical
   names, so a rename made by hand shows as a removal and an addition, and
-  `jadpo migrate new` refuses it, pointing you to `jadpo rename`
-  ([Tooling](14-tooling.md)).
+  `jadpo migrate new` refuses it, pointing you to `jadpo rename`, not built
+  yet ([Tools](14-tooling.md)).
 - **Inside a callable**, branches and fault sites are numbered afresh in
   each build. Only declarations and fields need to be recognised across
   builds.
@@ -518,7 +519,7 @@ registry line, `type billing.Address -> Address`, which
 `jadpo fmt --layout` writes. The key stays `type billing.Address`, and the
 move reads as a move, not as a removal and an addition. That is why the
 registry's header names `jadpo fmt --layout` beside `jadpo rename` and
-`jadpo domain`.
+`jadpo domain`, which aren't built yet.
 
 A field's, variant's or rule's line gives only its own new name
 (`field Todo.priority -> importance`), read back through its owner's
@@ -576,18 +577,98 @@ costs one build per base commit.
   nothing, and `check` names it on the same line. So that an app's first
   outside host is still compared, an app with a `connections:` block keeps
   `network.jadpo_record` even while it reaches no host, with its header
-  alone (2026-10-30); and a before side with no network record whose
+  alone; and a before side with no network record whose
   `app.jadpo` has no `connections:` block reached no outside host, so its
   record is read as empty and the change that adds the block and a host
-  needs `NetworkChange.host_added`. Only a before side with the block and
-  no record, a project from before the record, is compared with nothing
-  (2026-10-31). A base commit the clone doesn't hold, as in a
+  needs `NetworkChange.host_added`. In the same way a before side with no
+  `jadpo.lock` had no packages, and one with no `access.jadpo_record` no
+  `own_sources:`, so the first package from git and the first entry are
+  still compared. Only a before side with the block and
+  no record, a project from before the record, is compared with nothing.
+  A base commit the clone doesn't hold, as in a
   depth-1 checkout, is
   [`acceptance.base_missing`](../errors/acceptance.base_missing.md),
-  naming `git fetch` (Richard, 2026-10-30).
+  naming `git fetch`.
   A migration that removes data is judged all the same: with no before
   side, it needs an acceptance with a reason anywhere in the project
   ([`migration.drop_not_accepted`](../errors/migration.drop_not_accepted.md)).
+  What the first record holds that a person decides is said all the same
+  ([What a first record holds](#what-a-first-record-holds)).
+
+### What a first record holds
+
+A first commit has nothing to compare with, so what would need a person on any
+later change passes unseen. The first of all is a new project's public create,
+update or delete, and personal data anyone may read. So `jadpo check` says what such a first record holds, marked
+`(human)`, and [the approval report](17-debugging-and-review.md#reviewing-a-change)
+leads with it. It is a notice and not an error, and `check` still passes: it is
+a decision, not a vulnerability, since an app may mean it.
+
+```text
+$ jadpo check
+1 decision compared with nothing
+◆ anyone can create and change `lending.Book` records, with no sign-in  not compared
+    access.jadpo_record:12
+
+◆ decision  nothing compares this, so a person reads it before it goes in
+  next      A person decides whether the app means it. This passes either way,
+            and it is compared as usual once a commit holds it. (human)
+
+  before    none, so acceptances aren't judged: no commit yet
+
+checked: 14 files
+```
+
+It is said while there is no before side (no commit yet, the first commit
+itself, a project new since its base) and, for what a record holds, while the
+before side has no such record, as when `access.jadpo_record` arrives with this
+change. Outside git nothing is being reviewed, so nothing is said, as with
+`before none`. It is said only once `check` otherwise passes, since an agent's
+errors come first, and `--json` gives each in `notice_list`: its `subject`, its
+`kind`, what it `said`, `decides: human`, and its `file` and `line`. Once a
+commit holds it, it goes: from then on it is compared.
+
+| Said | Kind | Goes once |
+|---|---|---|
+| A create, update or delete anyone may make, or an action listed for anyone that creates, changes or deletes records, itself or through what it calls | `public_write` | A commit holds it |
+| [Personal data](15-personal-data.md#marking-personal-fields) anyone may read, with no sign-in: a field marked `personal:`, or of a standard type that is personal data such as an `Email`, on an entity whose `read:` lists `Access.public`, unless its own `policy:` keeps it from them | `public_read` | A commit holds it |
+| A connection that receives personal data and can't erase it ([Erasure at providers](15-personal-data.md#erasure-at-providers)) | `ErasureNotPossible.data_stays` | An acceptance lists it with a reason: the next change is refused until one does, since this kind says how things stand |
+| A security rule declined | `PolicyChange.<rule>_declined` | A commit holds it |
+| A sign-in setting past its limit | `PolicyChange.sign_in_loosened` | A commit holds it |
+| An entity shared by every tenant | `PolicyChange.shared_entity_added` | A commit holds it |
+| An own source in `packages:` | `PolicyChange.own_source_added` | A commit holds it |
+| A third party's package from git | `PackageChange.git_source` | A commit holds it |
+| A connection reaching a host someone else runs: not the app's own database or cache, which every app has | `NetworkChange.host_added` | A commit holds it |
+
+A public write has no acceptance to write, since a new entity's grants need
+none. So its notice is for the first record holding one, however old the
+record: the change that adds the first entity anyone may write to says so, and
+a later one is the diff's to show. A public read of personal data goes the same
+way:
+
+```text
+◆ anyone can read `shop.Customer.email`, personal data, with no sign-in  not compared
+    access.jadpo_record:7
+```
+
+It is the grant that is said, whether or not a route reads it yet, since
+[a public read](09-policy.md#anyone-signed-in-or-anyone) needs both and a route
+added later is nothing new to anyone reading the record. Each field is named,
+and which are personal data is what the
+[report](15-personal-data.md#where-personal-data-goes) counts today. A widening
+that lets anyone in is judged as
+ever, as a decision rather than a notice. A reason already in the project for
+one of the kinds in the table says it was decided, so it isn't said again.
+
+The other kinds have no such gap. Removing or changing something (`ApiChange`,
+`ThresholdChange`, an upgrade's `PackageChange`, `PolicyChange.route_public`,
+`.confirmation_removed`, `.restriction_removed`, `.tenancy_loosened` and
+`.listing_removed`) has nothing to remove or change in a first commit, and
+`DataChange` is judged even so. The first grants, roles, listed actions and
+domains (`PolicyChange.widened`, `.role_requirements_changed`,
+`.listing_added`, `DomainChange.created`) are what a project is made of, so
+listing them would list the whole project; a public write, and a public read of
+personal data, are the ones among them that are said.
 
 `jadpo check` reads the before side's records and acceptances from git,
 and the names of its domains, and compares them with the records today's
@@ -604,21 +685,30 @@ errors it has.
 Some changes can break someone else, such as removing a field clients
 read. `jadpo check` fails on them until a person accepts them. An
 acceptance is one file per **decision**, listing every change it allows,
-with the reason in a `///` line. Each entry is `subject: Kind.change`,
-with the subject and the change copied from the compiler's message. A
-subject is a dotted name, or, for a route, its API, method and path in
-quotes, since a route has no name (Richard, 2026-10-30):
+with the reason in a `///` line. This one allows removing the `priority`
+field from what API `main` sends as a `TodoView`:
 
-```jadpo fragment
-// acceptances/20261020T1400_remove_todo_priority.jadpo
+```jadpo check project=acceptance-first file=app.jadpo hidden
+application {}
+```
+
+`acceptances/20261020T1400_remove_todo_priority.jadpo`:
+
+```jadpo check project=acceptance-first file=acceptances/20261020T1400_remove_todo_priority.jadpo
 /// Priority was never shown by any client; the mobile app stopped sending it in 3.2.
 acceptance {
     changes: {
-        main.TodoSummary.priority: ApiChange.output_field_removed
         main.TodoView.priority: ApiChange.output_field_removed
     }
 }
 ```
+
+`acceptance`, `changes:` and `ApiChange` are built in. The rest of the entry
+comes from the compiler: each entry is `subject: Kind.change`, with the
+subject and the change copied from its message. A subject is a dotted name,
+or, for a route, its API, method and path in quotes, since a route has no
+name. You don't need to type one, since `jadpo acceptance new` drafts the
+file (below).
 
 - **It counts only in the change that adds it.** Acceptances already on
   the before side are history, and editing one is an error
@@ -645,7 +735,7 @@ acceptance {
 
 | Needs a person | Kind | Where it is described |
 |---|---|---|
-| A route removed, a required input field added, a rule tightened, an output field removed or retyped, a failure code changed | `ApiChange` | [The public API record](07-http.md#the-public-api-record) |
+| A route removed, a required input field added, a rule tightened, an output field removed or retyped, a body sent as another media type, a failure code changed | `ApiChange` | [The public API record](07-http.md#the-public-api-record) |
 | An event removed, or an event's field removed, retyped, newly required or its rule tightened | `ApiChange` | [The event record](12-jobs-and-events.md#the-event-record) |
 | A column or table dropped, an entity removed, an entity moved to another store | `DataChange` | [Removing data](05-data.md#removing-data) |
 | Any widening of who can do what, however it arises | `PolicyChange` | [Policy](09-policy.md) |
@@ -653,13 +743,13 @@ acceptance {
 | Any change to how a role must be signed in to, tighter or looser, or a role's line added or removed | `PolicyChange` | [Roles that need a way in](09-policy.md#roles-that-need-a-way-in) |
 | A git location added to, or widened in, `packages:`'s `own_sources:` | `PolicyChange` | [Installing safely](11-integrations.md#installing-safely) |
 | A domain created or renamed | `DomainChange` | [Domains](01-project-layout-and-modules.md#domains) |
-| A risky package change ([Package upgrades](#package-upgrades)) | `PackageChange` | [Integrations](11-integrations.md) |
-| A package's service: a new or changed container image, before it runs | `PackageChange` | [Integrations](11-integrations.md) |
-| Installing a third party's package from git rather than the registry (an unverified publisher) | `PackageChange` | [Integrations](11-integrations.md) |
-| A connection that receives personal data but can't erase it, with the reason the data stays | `ErasureNotPossible` | [Integrations](11-integrations.md), [Erasure](15-personal-data.md#erasure) |
-| A threshold raised or removed | `ThresholdChange` | [Monitoring thresholds](16-built-in-services.md#monitoring-thresholds) |
+| A risky package change ([Package upgrades](#package-upgrades)) | `PackageChange` | [External services](11-integrations.md) |
+| A package's service: a new or changed container image, before it runs | `PackageChange` | [External services](11-integrations.md) |
+| Installing a third party's package from git rather than the registry (an unverified publisher) | `PackageChange` | [External services](11-integrations.md) |
+| A connection that receives personal data but can't erase it, with the reason the data stays | `ErasureNotPossible` | [External services](11-integrations.md), [Erasure](15-personal-data.md#erasure) |
+| A threshold raised or removed | `ThresholdChange` | [Monitoring](16-built-in-services.md#monitoring) |
 | Declining an error the compiler's catalogue marks as a security rule, such as `policy.call_ungranted` | `PolicyChange` | [Writing a decline](01-project-layout-and-modules.md#writing-a-decline) |
-| A new outside host the app can send data to: a provider's host, a connection's `host:`, an `outbound:` grant or an email relay | `NetworkChange` | [Integrations](11-integrations.md) |
+| A new outside host the app can send data to: a provider's host, a connection's `host:`, an `outbound:` grant or an email relay | `NetworkChange` | [External services](11-integrations.md) |
 
 Changes that only add need no acceptance: a new route, even one anyone
 may call, a new optional input field, a new output field, tightened
@@ -675,6 +765,7 @@ Each change the compiler reports, and the subject it names:
 | `ApiChange.rule_tightened` | `main.CreateTodo.title` | A field clients send allows fewer values: a bound raised or lowered, a rule added, a type changed, `none` no longer allowed, or a field that could be left out no longer can; an enum variant gone from what clients send |
 | `ApiChange.output_field_removed` | `main.TodoView.priority` | A field clients read is gone, from its type or from the type a route now answers with |
 | `ApiChange.output_field_retyped` | `main.TodoView.priority` | A field clients read allows more or other values |
+| `ApiChange.media_type_changed` | `"main GET /deeds/{deed_ref: Text}"` | A route's `sends` line in the API record is new, gone or names another media type ([Sending raw bytes](07-http.md#sending-raw-bytes)) |
 | `ApiChange.failure_changed` | `main.todo_locked` | A failure code is gone, or its status changed |
 | `ApiChange.event_removed` | `planning.TodoCompleted` | An event is gone from its domain's event record |
 | `PolicyChange.route_public` | `"main GET /books"` | A route that needed a signed-in caller is open to anyone |
@@ -688,14 +779,23 @@ Each change the compiler reports, and the subject it names:
 | `PolicyChange.call_ungranted_declined` | `lending.borrow` | A new `decline policy.call_ungranted:`, on the declaration it sits above |
 | `PolicyChange.sign_in_loosened` | `magic_link.expires_after` | A setting past its limit and looser than before |
 | `PolicyChange.role_requirements_changed` | `desk.StaffRole.admin` | A role's `requires:` line changed, tighter or looser, or a role's line added or removed |
-| `PolicyChange.own_source_added` | `"github.com/acme/"` | An entry in `packages:`'s `own_sources:` that wasn't there, or one that now covers more |
+| `PolicyChange.own_source_added` | `"github.com/acme/"` | An entry in `packages:`'s `own_sources:` that wasn't there, or one that now covers more; not one below an entry already there, which lets nothing new in |
 | `DomainChange.created` | `billing` | A folder under `domains/` that wasn't there |
 | `NetworkChange.host_added` | `couriers` | A connection reaches a host it didn't, a new connection's included; one entry covers every new host of the connection |
-| `PackageChange.git_source` | `AcmeCouriers.v1` | A package locked from git that wasn't, from a repository under none of `packages:`'s `own_sources:` |
+| `PackageChange.git_source` | `AcmeCouriers.v1` | A package locked from git that wasn't, or locked from another repository than it was, from a repository under none of `packages:`'s `own_sources:` |
 | `DataChange.column_dropped` | `Todo.legacy_flag` | A migration this change adds drops a retired column, by the field's born name, as `changes.jadpo` names it |
 | `DataChange.table_dropped` | `Todo` | A migration this change adds drops a retired table, by its entity's born name |
 | `DataChange.entity_removed` | `Todo` | A migration this change adds retires an entity's table, since the entity is gone |
 | `DataChange.entity_moved` | `Todo` | A migration this change adds gives an entity a table in another store, leaving its records behind |
+| `PackageChange.operation_removed` | `AcmeCouriers.bookings.get` | An operation, action or library function the app used is gone ([Package upgrades](#package-upgrades)) |
+| `PackageChange.declaration_removed` | `Postcodes.UkPostcode` | A type, failure or message the app wrote is gone |
+| `PackageChange.operation_changed` | `AcmeCouriers.bookings.get` | A used operation's request, input, output or what it changes, or a used function's or action's signature, is different |
+| `PackageChange.field_removed` | `AcmeCouriers.Booking.driver_phone` | A field or enum variant of a type the app uses is gone |
+| `PackageChange.field_retyped` | `AcmeCouriers.Booking.weight`, or `Postcodes.UkPostcode` | A field of a type the app uses has another type or rules; or a used refined type's base or rules, or a used failure's code or kind, changed |
+| `PackageChange.failure_added` | `AcmeCouriers.bookings.create.address_unverifiable` | A used operation, action or function can fail in a new way, named by the failure's code |
+| `PackageChange.host_changed` | `AcmeCouriers.host` | A connected provider package's `hosts:` changed; one entry covers them all |
+| `PackageChange.credential_changed` | `AcmeCouriers.credential` | A connected provider package's credential scheme changed |
+| `ErasureNotPossible.data_stays` | `couriers` | A connection receives personal data and can't erase it ([Erasure at providers](15-personal-data.md#erasure-at-providers)), with no acceptance on the before side listing it |
 | `ThresholdChange.raised` | `planning.todo_list.p95`, `planning.todo_list.within` | A threshold's limit is higher than the same-named threshold's on the before side, or its `within:` longer |
 | `ThresholdChange.removed` | `planning.todo_list.p95`, or `planning.todo_list` | A limit is gone from a threshold; or the threshold is gone, or watches something else |
 | `ThresholdChange.lowered` | `uploads.free_space_floor` | A disk store's `free_space_floor:` is lower than it was |
@@ -771,15 +871,31 @@ listed as removed and added.
 - **Doesn't need a person:** new operations or optional fields,
   documentation, and changes to operations your app never calls.
 - **Shown, and needing a person as a new host:** a new `outbound:` grant
-  to a service, and a new connection's hosts, each a `NetworkChange`
-  (Richard, 2026-10-30).
+  to a service, and a new connection's hosts, each a `NetworkChange`.
 - **A package from git** needs a person (`PackageChange.git_source`)
   unless its repository is under one of `packages:`'s `own_sources:`
   ([Installing safely](11-integrations.md#installing-safely)).
 
-`jadpo package update <name>` prints this part of the review. It is the
-same output as the upgrade plan [Integrations](11-integrations.md)
-refers to, not a separate format.
+**What counts as used** is read on the before side, since the agent has
+usually fixed the compile error by the time `jadpo check` is judged: the
+app's code, outside tests and comments, writing a name through the package
+(`Postcodes.uk.parse`) or through a connection to it
+(`couriers.bookings.get`), and the types and failures those reach through
+their inputs, outputs and fields. A connection the code never writes, or
+that `application { }` names elsewhere (`email: { connection: mail }`),
+serves the app through a capability, so all its operations count as used.
+A provider's hosts and credential scheme count once a connection reaches
+the package. A package removed altogether isn't an upgrade.
+
+Each change has its entry in [Acceptances](#acceptances), its subject
+without the version. A new required input field, a new enum variant, a
+failure no longer listed and a changed failure message need nobody: the
+compiler stops what they would break, or nothing relied on them.
+
+`jadpo package update <name>` prints this part of the review, and the
+[approval report](17-debugging-and-review.md#reviewing-a-change) says each
+in plain words. It is the same output as the upgrade plan
+[External services](11-integrations.md) refers to, not a separate format.
 
 ## Production builds
 <!-- topic: production-builds -->
@@ -792,7 +908,7 @@ events already show `.jadpo` frames
 ([Errors point at the `.jadpo` line](17-debugging-and-review.md#errors-point-at-the-jadpo-line)).
 
 - **The manifest is rebuilt, not shipped.** Builds are deterministic
-  ([Tooling](14-tooling.md)), so `jadpo incident` builds the event's
+  ([Tools](14-tooling.md)), so `jadpo incident` builds the event's
   commit, checks that the build id matches, and caches the result.
   Nothing is uploaded or archived. `jadpo` fetches and runs the exact
   compiler version the stamp names, as `rustup` installs a pinned
@@ -823,9 +939,13 @@ Every command takes `--json`, and `jadpo help --json` describes them all
 | Rename anything | `jadpo rename <old> <new>` | The registry gains one line |
 | What did my change do? | `jadpo approval --json` | Decisions first |
 | A change needs a person | `jadpo acceptance new <purpose>` | Stop and hand over |
+| A check passes with a `notice_list` | Tell a person what each says | They decide whether the app means it ([What a first record holds](#what-a-first-record-holds)) |
 | Look something up | `jadpo inspect <name> --json` | One node from the manifest |
 | Upgrade a package | `jadpo package update <name>` | Fix compile errors, then as above |
 | Explain a production event | `jadpo incident <event>` | `jadpo test new --from-event` |
+
+Not built yet: `jadpo rename`, `jadpo inspect`, `jadpo incident` and
+`jadpo test new --from-event`.
 
 ## Examples: an API change, a package upgrade and an incident
 <!-- topic: records-worked-examples (was three-journeys) -->
@@ -866,17 +986,36 @@ the default branch the acceptance is now history.
 ### A provider package upgrade
 
 ```text
-$ jadpo package update couriers
-couriers  AcmeCouriers.v1 → v2   jadpo.lock updated
-  bookings.create   new failure  address_unverifiable           needs a person
-  bookings.get      field removed  Booking.driver_phone         needs a person
-  host              api.acme.example → api.eu.acme.example      needs a person
+$ jadpo package update acme_couriers
+✓ Updated AcmeCouriers.v2 from 2.3.0 to 2.4.0
+    folder   packages/acme_couriers/v2
+    source   git github.com/acme/couriers tag v2.4.0
+    surface  matches its code
+
+Changes since 2.3.0
+  ~ operation bookings.create  used by the app
+  ~ type Booking               used by the app
+  ~ provider
+
+Needs a person
+  + bookings.create  new failure    address_unverifiable
+  - bookings.get     field removed  Booking.driver_phone
+  ~ host             changed        https://api.acme.example → https://api.eu.acme.example
+
+✓ package updated  AcmeCouriers.v2 2.4.0 · 3 changed · 3 need a person
+
+→ jadpo acceptance new upgrade_acme_couriers  writes these up for a person's reason
 ```
 
 The removed field is also a compile error in `delivery_view`, which the
 agent fixes first. The agent then runs
-`jadpo acceptance new upgrade_couriers_v2` and hands over. A person
+`jadpo acceptance new upgrade_acme_couriers` and hands over. A person
 writes one reason covering all three changes, and the owner approves.
+
+A new major version is a new package beside the old one ([External services](11-integrations.md)),
+so `update` refuses it: the agent adds it, moves the calls across and removes
+the old one, and `jadpo check` compares what the app used of the old
+version with the new one in the same way.
 
 ### A production incident traced to source
 
@@ -906,19 +1045,19 @@ that the path number can't be decoded.
 
 | Feature | Status |
 |---|---|
-| Manifest | Built: `jadpo check` writes `build/manifest.json` at `format` 2, with nodes for [project layout and modules](01-project-layout-and-modules.md), [values and types](02-values-and-types.md), [logic](03-logic.md) and [failures](04-failures.md) and their `calls`, `uses` and `raises` edges, policy's grants, field restrictions, tenancies and listed actions with `grants` and `scopes` edges, prompts, and the connections, packages, operations, hosts, lock lines, principals, sign-in, generated routes, settings, locale set, rate limits, schedules and subscribers of [Identity](08-identity.md), [Configuration and time](10-configuration-and-time.md), [Integrations](11-integrations.md) and [Jobs and events](12-jobs-and-events.md), and the build stamp, a `person` node for each [person entity](15-personal-data.md#the-person), listing the references its records belong through and the fields erasure keeps of their record, and a `retention` node for each [retention](15-personal-data.md#retention), under its field or entity, with its period and `since:` field. The graph's diff classifies their changes as [Package upgrades](#package-upgrades) and the [acceptances](#acceptances) table say (`PackageChange`, `PolicyChange`). Each threshold is a `threshold` node with what it watches and its limits, and each disk store's floor one too ([Monitoring thresholds: checked and generated](16-built-in-services.md#monitoring-thresholds-checked-and-generated)). Caches, OAuth scopes and personal fields join as their parts of the language are built. |
+| Manifest | Built: `jadpo check` writes `build/manifest.json` at `format` 2, with nodes for [project layout and modules](01-project-layout-and-modules.md), [values and types](02-values-and-types.md), [logic](03-logic.md) and [failures](04-failures.md) and their `calls`, `uses` and `raises` edges, policy's grants, field restrictions, tenancies and listed actions with `grants` and `scopes` edges, prompts, and the connections, packages, operations, hosts, lock lines, principals, sign-in, generated routes, settings, locale set, rate limits, schedules and subscribers of [Sign-in and identity](08-identity.md), [Configuration](10-configuration-and-time.md), [External services](11-integrations.md) and [Background work](12-jobs-and-events.md), and the build stamp, a `person` node for each [person entity](15-personal-data.md#the-person), listing the references its records belong through and the fields erasure keeps of their record, and a `retention` node for each [retention](15-personal-data.md#retention), under its field or entity, with its period and `since:` field. The graph's diff classifies their changes as [Package upgrades](#package-upgrades) and the [acceptances](#acceptances) table say (`PackageChange`, `PolicyChange`). Each threshold is a `threshold` node with what it watches and its limits, and each disk store's floor one too ([What Jadpo generates from thresholds](16-built-in-services.md#what-jadpo-generates-from-thresholds)). Caches, OAuth scopes and personal fields join as their parts of the language are built. |
 | Views of it | Partly built: the library and failure catalogues are built, one OpenAPI document per API in `build/openapi/`, and the monitoring rules in `build/monitoring/`; the other reports come with their parts of the language. |
 | Migrations | Built: `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
-| Stable identity | Built: a key is the kind and the born name, a function or type declared in a domain carries its domain, and a test's key is the file it sits beside and its sentence. The registry is read once `jadpo rename` writes it ([Tooling](14-tooling.md)). |
+| Stable identity | Built: a key is the kind and the born name, a function or type declared in a domain carries its domain, and a test's key is the file it sits beside and its sentence. `jadpo check` reads the registry and promotion with `jadpo fmt --layout` writes it; `jadpo rename` and the `jadpo domain` commands, which write it too, have rows of their own ([Tools](14-tooling.md)). |
 | API record | Built: `jadpo api update` writes `api/<api>.jadpo_record` for each API with routes, `jadpo check` fails with `record.out_of_date` while one disagrees with the routes, naming what changed, and a breaking change needs an [acceptance](#acceptances). |
 | `.jadpo_record` files | Partly built: every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, `jadpo records` and `jadpo records update`, and the `.gitattributes` lines `jadpo new` writes. Not built yet: telling a careful hand edit of a view from a stale one, which needs `jadpo check` to build the base as `jadpo approval` does; the editor grammar and `jadpo lsp` serving records. |
 | Event records | Built: one view per domain with events, `domains/<domain>/events/events.jadpo_record`, written by `jadpo records update` and checked as the API record is; what [The event record](12-jobs-and-events.md#the-event-record) records, and its breaking changes need an [acceptance](#acceptances). |
 | Access and network records | Built: `access.jadpo_record` and `network.jadpo_record` at the root, written by `jadpo records update` and checked as the API record is ([Acceptances](#acceptances)). |
-| Acceptances | Built: `jadpo acceptance new <purpose>`, the before side read from git (`--before` on `jadpo check`), matching, the `///` reason and history, for `ApiChange` (the API and event records), `PolicyChange` (widenings, routes made public, security declines, sign-in settings past their limit), `DomainChange.created`, `NetworkChange.host_added`, `PackageChange.git_source`, `ThresholdChange` (each domain's `monitoring.jadpo` and `app.jadpo`'s disk floors read from git) and `DataChange` (read from the migrations a change adds, [Removing data](05-data.md#removing-data)). The kinds for features not built yet come with them: `ErasureNotPossible` with personal data, the other `PackageChange`s with package upgrade plans and services. A domain renamed shows as one created until `jadpo domain rename` writes the registry ([the roadmap](../roadmap.md)). |
-| Lock and package surfaces | Built. The lock is a ledger read and checked like the others, and `jadpo check` holds each installed package to its line and digest ([Integrations](11-integrations.md) gives the digest), and its `jadpo version` pin to the line `app.jadpo` names. `jadpo toolchain pin` and `unpin` write the pin, and the package commands and `jadpo records update` keep it. `jadpo package add`, `update`, `remove`, `link` and `unlink` write it, each line through the ledger's writer, sorted; `git` lines record the repository as written, the tag and the tag's commit, `path` lines a folder relative to the root, and a `link` line replaces the package's line while the replaced one waits in `.jadpo/links` (git-ignored, in the lock's own format) for `unlink`. Two versions of one package are locked side by side, each on its own line, and `update` names the version while two are held. A package surface is `record surface 1`, a view written by `jadpo package check` in a package's own repository, verified at install against its package's code, and read by `jadpo package show`; installed, a surface is held by its package's digest rather than regenerated, so `jadpo records` doesn't list it, and an own integration's is written to `build/providers/` ([Integrations](11-integrations.md)). `jadpo package update` prints this page's review of the surface's changes, each entry marked `used by the app` and `needs a person`; the acceptance it calls for comes with package upgrade plans, and a package installed from git needs `PackageChange.git_source`. |
+| Acceptances | Partly built: `jadpo acceptance new <purpose>`, the before side read from git (`--before` on `jadpo check`), matching, the `///` reason and history, for `ApiChange` (the API and event records), `PolicyChange` (widenings, routes made public, security declines, sign-in settings past their limit), `DomainChange.created`, `NetworkChange.host_added`, `PackageChange.git_source`, an upgrade's `PackageChange`s ([Package upgrades](#package-upgrades)), `ThresholdChange` (each domain's `monitoring.jadpo` and `app.jadpo`'s disk floors read from git) and `DataChange` (read from the migrations a change adds, [Removing data](05-data.md#removing-data)). And `ErasureNotPossible`, which says how things stand rather than what changed, read from [where personal data goes](15-personal-data.md#where-personal-data-goes). Not built yet: `PackageChange.service_image`, which comes with services; and a domain renamed, which shows as one created until `jadpo domain rename` writes the registry. |
+| Lock and package surfaces | Built. The lock is a ledger read and checked like the others, and `jadpo check` holds each installed package to its line and digest ([External services](11-integrations.md) gives the digest), and its `jadpo version` pin to the line `app.jadpo` names. `jadpo toolchain pin` and `unpin` write the pin, and the package commands and `jadpo records update` keep it. `jadpo package add`, `update`, `remove`, `link` and `unlink` write it, each line through the ledger's writer, sorted; `git` lines record the repository as written, the tag and the tag's commit, `path` lines a folder relative to the root, and a `link` line replaces the package's line while the replaced one waits in `.jadpo/links` (git-ignored, in the lock's own format) for `unlink`. Two versions of one package are locked side by side, each on its own line, and `update` names the version while two are held. A package surface is `record surface 1`, a view written by `jadpo package check` in a package's own repository, verified at install against its package's code, and read by `jadpo package show`; installed, a surface is held by its package's digest rather than regenerated, so `jadpo records` doesn't list it, and an own integration's is written to `build/providers/` ([External services](11-integrations.md)). `jadpo package update` prints the surface's changes, each entry the app uses marked `used by the app`, and this page's review under `Needs a person`, the same list `jadpo check` asks an acceptance for; a package installed from git needs `PackageChange.git_source`. |
 | Build stamp | Built for native and Workers deployables: `jadpo build` writes the build id (`b_` and twelve hex digits of a SHA-256 over the deployable's program digest, the compiler, the target and `jadpo.lock`), the commit, whether the tree was modified, the compiler, the deployable and the target into the binary or module as a constant, and every event it logs carries them ([A native deployable](14-tooling.md#a-native-deployable), [A Workers deployable](14-tooling.md#a-workers-deployable)). `jadpo check` writes the manifest's `source` (`commit`, left out when git doesn't track the project, and `modified`) and `deployables`, each deployable's target, build id and the disk stores that keep it on one server (`one_server`), which digests a declared deployable's declaration too, so two deployables of one app never share one ([Declared deployables](14-tooling.md#declared-deployables)); a project with errors has none. |
 | Approval | Built: `jadpo approval` builds the before side, keeps its manifest and writes [the report](17-debugging-and-review.md#reviewing-a-change) to `build/review/`. |
-| Package upgrade plans, `jadpo incident` | Not built yet; see [the roadmap](../roadmap.md). |
+| Package upgrade plans, `jadpo incident`, `jadpo inspect` and `jadpo test new --from-event` | Not built yet. |
 
 ## Errors
 

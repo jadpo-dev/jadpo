@@ -1,6 +1,7 @@
 //! `jadpo routes` (area 7, "Route URL shown"): every route with its full method
 //! and path, what it runs, its authentication and where it is written,
-//! grouped by API. Authentication is `required` for a route that needs a
+//! grouped by API, and what each route written is limited to (area 16,
+//! "Rate limits"). Authentication is `required` for a route that needs a
 //! signed-in caller, `none` for one anyone may call and `fresh` for one
 //! that reads the caller's record now (area 8).
 //!
@@ -21,7 +22,8 @@
 
 use std::path::PathBuf;
 
-use jadpo_check::routes::{Groups, api_table, groups};
+use jadpo_check::routes::limit::{self, Limit};
+use jadpo_check::routes::{Apis, Groups, api_table, groups};
 use jadpo_term::{Block, Fact, Json, Outcome, Screen};
 
 use crate::fmt::project_not_found;
@@ -47,7 +49,7 @@ pub fn routes(call: &Call) -> Reply {
     let apis = api_table(db, project);
     let groups: &Groups = groups(db, project);
     let graph = jadpo_check::graph::graph(db, project);
-    let mut lines = listing(groups, graph);
+    let mut lines = listing(apis, groups, graph);
     // The passkey routes, in the first API that accepts browser sessions
     // (area 8, "Passkeys").
     if let Some(passkey) = jadpo_check::identity::identity(db, project).passkeys() {
@@ -72,6 +74,7 @@ pub fn routes(call: &Call) -> Reply {
                         jadpo_std::http::Authentication::Fresh => "fresh",
                         jadpo_std::http::Authentication::Required => "required",
                     },
+                    limit: None,
                     file: String::new(),
                     line: 0,
                     place: "generated".to_string(),
@@ -101,6 +104,7 @@ pub fn routes(call: &Call) -> Reply {
                 path,
                 runs: format!("generated {}", step.label()),
                 authentication: "none",
+                limit: None,
                 file: String::new(),
                 line: 0,
                 place: "generated".to_string(),
@@ -124,6 +128,7 @@ pub fn routes(call: &Call) -> Reply {
                     path,
                     runs: format!("generated {}", step.label()),
                     authentication: "none",
+                    limit: None,
                     file: String::new(),
                     line: 0,
                     place: "generated".to_string(),
@@ -142,6 +147,7 @@ pub fn routes(call: &Call) -> Reply {
                     path: format!("/{}", jadpo_std::http::EXCHANGE_PATH.join("/")),
                     runs: "generated exchange".to_string(),
                     authentication: "required",
+                    limit: None,
                     file: String::new(),
                     line: 0,
                     place: "generated".to_string(),
@@ -164,6 +170,7 @@ pub fn routes(call: &Call) -> Reply {
                 } else {
                     "none"
                 },
+                limit: None,
                 file: String::new(),
                 line: 0,
                 place: "generated".to_string(),
@@ -186,6 +193,7 @@ pub fn routes(call: &Call) -> Reply {
                 } else {
                     "none"
                 },
+                limit: None,
                 file: String::new(),
                 line: 0,
                 place: "generated".to_string(),
@@ -204,6 +212,7 @@ pub fn routes(call: &Call) -> Reply {
             path: route.path(),
             runs: "generated webhook".to_string(),
             authentication: "signature",
+            limit: None,
             file: String::new(),
             line: 0,
             place: "generated".to_string(),
@@ -238,12 +247,28 @@ pub fn routes(call: &Call) -> Reply {
                 .map(|r| r.authentication.len())
                 .max()
                 .unwrap_or(0),
+            rows.iter()
+                .map(|r| {
+                    r.limit
+                        .as_ref()
+                        .map_or(0, |limit| limit::words(limit).len())
+                })
+                .max()
+                .unwrap_or(0),
         ];
         let shown = rows
             .iter()
             .map(|r| {
+                let limited = r.limit.as_ref().map_or_else(String::new, limit::words);
+                // A block of generated routes has no limits to show, so no
+                // column for them.
+                let limited = if widths[4] == 0 {
+                    String::new()
+                } else {
+                    format!("{limited:w4$}  ", w4 = widths[4])
+                };
                 format!(
-                    "{:w0$}  {:w1$}  {:w2$}  {:w3$}  {}",
+                    "{:w0$}  {:w1$}  {:w2$}  {:w3$}  {limited}{}",
                     r.method,
                     r.path,
                     r.runs,
@@ -268,6 +293,16 @@ pub fn routes(call: &Call) -> Reply {
                 ("path", Json::from(r.path.as_str())),
                 ("runs", Json::from(r.runs.as_str())),
                 ("authentication", Json::from(r.authentication)),
+                (
+                    "rate_limit",
+                    r.limit.as_ref().map_or(Json::Null, |limit| {
+                        Json::object([
+                            ("requests", Json::from(limit.limit.requests as usize)),
+                            ("within", Json::from(limit::within(limit.limit))),
+                            ("by", Json::from(limit.by.name())),
+                        ])
+                    }),
+                ),
                 ("file", Json::from(r.file.as_str())),
                 ("line", Json::from(r.line as usize)),
                 ("generated", Json::from(r.file.is_empty())),
@@ -300,12 +335,15 @@ struct Line {
     path: String,
     runs: String,
     authentication: &'static str,
+    /// What a route written is limited to; `None` for one the runtime
+    /// answers, which keeps its own limits.
+    limit: Option<Limit>,
     file: String,
     line: u32,
     place: String,
 }
 
-fn listing(groups: &Groups, graph: &jadpo_graph::Graph) -> Vec<Line> {
+fn listing(apis: &Apis, groups: &Groups, graph: &jadpo_graph::Graph) -> Vec<Line> {
     let mut out: Vec<Line> = groups
         .routes()
         .map(|(group, route)| {
@@ -327,6 +365,7 @@ fn listing(groups: &Groups, graph: &jadpo_graph::Graph) -> Vec<Line> {
                     jadpo_std::http::Authentication::Public => "none",
                     jadpo_std::http::Authentication::Fresh => "fresh",
                 },
+                limit: Some(limit::shown(apis, group, route)),
                 file: group.path.clone(),
                 line,
                 place: format!("{}:{line}", group.path),
@@ -346,6 +385,7 @@ fn listing(groups: &Groups, graph: &jadpo_graph::Graph) -> Vec<Line> {
                 jadpo_std::http::Authentication::Fresh => "fresh",
                 _ => "required",
             },
+            limit: None,
             file: String::new(),
             line: 0,
             place: "generated".to_string(),

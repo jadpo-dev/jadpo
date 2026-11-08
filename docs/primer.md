@@ -2,8 +2,7 @@
 
 Read this once before you write a Jadpo app. It shows how a project is
 laid out, the syntax, and the parts nearly every app uses, and it ends
-with a small app you can run on your own machine. Every example on this
-page is compiled and tested, so you can copy it.
+with a small app you can run. Every example here is compiled and tested.
 
 ## What Jadpo is
 
@@ -35,19 +34,20 @@ compiler catches most of them and shows you the Jadpo way:
 
 ## The commands
 
-Everything goes through one command, `jadpo`. Run it anywhere inside
+Everything goes through one command, `jadpo`
+([install it](learn/01-setting-up.md#install-it)). Run it anywhere inside
 your project: it finds the project by looking upwards for `app.jadpo`.
 
 | Command | What it does |
 |---|---|
 | `jadpo new <name>` | Starts a project in a new folder, with a starter route and its test |
-| `jadpo check` | Checks the whole project. It's quick, because it builds nothing |
+| `jadpo check` | Checks the whole project quickly, building nothing |
 | `jadpo fmt` | Formats your files, and adds, removes and sorts their `use` lines |
 | `jadpo test` | Runs the tests. Tests that use the database need PostgreSQL installed |
 | `jadpo migrate new <purpose>` | Writes the next database migration from your entities |
 | `jadpo api update` | Updates the committed record of your API after you change a route |
 | `jadpo dev` | Runs the app on `http://127.0.0.1:3000` and reloads it when you save |
-| `jadpo help <command>` | Explains a command |
+| `jadpo help <name>` | Explains a command, a rule or a standard type |
 
 ## Reading an error
 
@@ -200,10 +200,10 @@ function sticker(parcel: Parcel) -> Label {
 Representation is not meaning. A tool's name and a person's email are both
 text, but they are different types, and the compiler never converts
 between them silently. The built-in representations are `Bool`, `Int`,
-`Decimal`, `Text`, `Bytes` and `Uuid`. About 250 standard types cover the
-rest (`Email`, `Money`, `Instant`, `Duration`, `Url`, `PostalAddress` and
-more), so look in the [standard library](language/19-standard-library.md)
-before inventing one.
+`Decimal`, `Text`, `Bytes` and `Uuid`. About 260 standard types cover the
+rest (`Email`, `Money`, `Instant`, `PostalAddress` and more), so look in
+[their A-to-Z list](https://jadpo.dev/docs/types) before inventing one.
+`jadpo help Money` prints one's shape and an example.
 
 ```jadpo check project=tool-share file=domains/lending/types/tool_name.jadpo
 /// What a tool is called, as its owner wrote it.
@@ -455,9 +455,11 @@ No outside call may sit inside a `for`.
 ## Routes
 
 A route group is a thin door: method, path, input, output and the one
-action or query it runs. `GET` and `DELETE` read their input from the
-query string, the other methods from the JSON body. `output:` must be
-exactly what the route runs returns. A failure's kind sets the status.
+action or query it runs. A `GET` runs a query, or an action the compiler
+proves only reads; every other method runs an action. `GET` and `DELETE` read
+their input from the query string, the other methods from the JSON body.
+`output:` must be exactly what the route runs returns. A failure's kind sets
+the status.
 
 ```jadpo check project=tool-share file=domains/lending/routes/tools.jadpo
 use lending/entities { Tool }
@@ -766,10 +768,9 @@ Read only what a task needs.
   [`migrations`](language/05-data.md#migrations) and
   [`kinds-of-test`](language/13-testing.md#kinds-of-test). The IDs never
   change.
-- **The index.** The docs are published with `index.json`, one entry per
-  page with its `id`, `kind`, `title`, a one-line `summary` and its
-  `tokens`. Read it, pick pages by title and summary, and fetch only
-  those.
+- **Finding a topic.** The site's `llms.txt` lists the guides and the
+  reference's groups. Open the guide or the group's page for your task,
+  and fetch only the topic it leads to.
 - **Outside services.** Packages, providers, connections, drivers and
   capabilities are explained together in
   [`how-integrations-fit-together`](language/11-integrations.md#how-packages-connections-capabilities-and-services-fit-together).
@@ -797,9 +798,8 @@ Read only what a task needs.
 ## Not built yet
 
 A feature that isn't built is the error `toolchain.not_built_yet` where
-you use it. Not built yet, among others: seeds and `jadpo seed`; `jadpo rename`; entities and
-caches in Redis; failure logging; sign-in with OAuth providers, and OAuth
-grants; token scopes; most of personal data, and of the debugging and
-review tools; data builders and `assert emitted` in tests; flags and
-documents; and installers, so `jadpo` is built from its
-source with `cargo build --release -p jadpo-cli`.
+you use it. Not built yet, among others: `jadpo rename`; entities and
+caches in Redis; failure logging; sign-in with GitHub, Apple or your own
+OAuth provider; OAuth grants; token scopes; most of personal data; the
+developer console and MCP; data builders and `assert emitted` in tests;
+and documents. Each area's `What is built` topic has the rest.

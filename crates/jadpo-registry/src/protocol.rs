@@ -12,7 +12,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::log::{Hash, LogEntry};
-use crate::names::{Digest, NameError, ScopedName, Version};
+use crate::names::{Digest, Handle, NameError, ScopedName, Version};
 use crate::shape::{Shape, check_value};
 
 /// Where the protocol is served, below the registry's origin.
@@ -501,6 +501,9 @@ pub struct StandardCandidate {
 #[serde(deny_unknown_fields)]
 pub struct Facts {
     pub kind: PackageKind,
+    /// Who publishes it, as its `package.jadpo` names them: `null` for a
+    /// package that names none, which the publishing bar refuses.
+    pub publisher: Option<Handle>,
     pub pure: bool,
     pub hosts: Vec<HostFact>,
     /// The operations that change something at the provider.
@@ -666,6 +669,12 @@ pub struct StartRelease {
     pub repository: String,
     pub tag: String,
     pub dry_run: bool,
+    /// Who the package at the tag names as its publisher, so the registry
+    /// can refuse at once a release from a repository that publisher
+    /// doesn't release from. Optional: a registry reads the publisher from
+    /// the release either way, and a client may leave it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publisher: Option<Handle>,
 }
 
 /// `POST releases`'s answer.

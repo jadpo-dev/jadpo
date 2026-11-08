@@ -107,5 +107,5 @@ status of its kind, `conflict`.
 
 - [When a write is refused](../language/06-reads-and-writes.md#when-a-write-is-refused)
 - [A write that breaks a unique rule: `conflict:`](../language/04-failures.md#a-write-that-breaks-a-unique-rule-conflict)
-- [Kinds](../language/04-failures.md#kinds)
+- [Failure kinds](../language/04-failures.md#failure-kinds)
 - [`data.conflict_cannot_break`](../errors/data.conflict_cannot_break.md)

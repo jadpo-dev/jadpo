@@ -329,6 +329,19 @@ impl Body<'_> {
                     "Collections keep their element type, so a `{actual}` is never a `{expected}`, even where each element would widen."
                 ))
                 .next(format!("Build a `{expected}` here"))
+        } else if let Some(object) = literal::object_wanted(self.table, expected) {
+            // An object: its shape, and the value written out (chunk A14).
+            problem
+                .reason(format!(
+                    "`{actual}` is {} and `{expected}` is an object: `{}`.",
+                    literal::what(self.table, actual),
+                    object.shape
+                ))
+                .next(format!(
+                    "Write `{}`{}",
+                    object.skeleton(),
+                    literal::help_for(object.standard.as_deref())
+                ))
         } else {
             problem
                 .reason(format!(
@@ -336,7 +349,10 @@ impl Body<'_> {
                     literal::what(self.table, actual),
                     literal::what(self.table, expected)
                 ))
-                .next(format!("Use a `{expected}` value here"))
+                .next(format!(
+                    "Use a `{expected}` value here{}",
+                    literal::help_for(literal::standard_behind(self.table, expected).as_deref())
+                ))
         };
         self.out.push(problem);
     }
@@ -575,9 +591,33 @@ impl Body<'_> {
         {
             return ty;
         }
-        let Some(mut receiver) = self.read(&first) else {
+        // A field of an object constant read bare: `extent.east` (area 3;
+        // Richard, 2026-11-07).
+        let receiver = match self.read(&first) {
+            Some(ty) => Some(ty),
+            None if !self.is_qualifier(&head) => self.bare_constant(&head, first.syntax()),
+            None => None,
+        };
+        let Some(mut receiver) = receiver else {
             if !self.is_qualifier(&head) {
                 self.unknown_value(&first);
+            } else if self.symbols.is_connection(&head)
+                && rest.len() >= 2
+                && rest.last().is_some_and(|last| text(last) == "requests")
+            {
+                // What a test's code sent a provider's fake (area 13, "What
+                // the code sent") is decided, and not built yet.
+                let written = tree::written(expr.syntax());
+                let span = self.span(expr);
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TOOLCHAIN_NOT_BUILT_YET,
+                        format!("`{written}` isn't built yet"),
+                    )
+                    .at(span, "what the code sent")
+                    .reason("A provider's fake will list what the code sent each operation as `.requests`, which isn't built yet; only the `ai` fake's `ai.<prompt>.requests` is.")
+                    .next("Assert on what the code returns from the answers `fakes:` scripts until `.requests` is built"),
+                );
             } else {
                 let written = tree::written(expr.syntax());
                 let span = self.span(expr);
@@ -1142,6 +1182,40 @@ impl Body<'_> {
         if let Some(ty) = self.caller_field(receiver, name, node) {
             return ty;
         }
+        // A program reads none of a stored file's parts, nor of its bytes
+        // (area 16, "What a `File` holds"), nor of a test's passkey device
+        // (area 8), nor of a built-in type no program's value ever has.
+        if let Ty::Opaque(held, args) = &through
+            && args.is_empty()
+            && let Some(uses) = match held.as_str() {
+                jadpo_std::files::FILE | jadpo_std::files::FILE_CONTENTS => Some(
+                    " A `File` is kept in a field, read with `store.read` and sent as an email's attachment; `FileContents` is passed on.",
+                ),
+                jadpo_std::http::TEST_PASSKEY => Some(
+                    " A `TestPasskey` is a test's device, given to `test_passkeys.sign_in` and `test_passkeys.confirm`.",
+                ),
+                "ApiChange" | "CredentialScheme" | "PackageSource" | "Page" | "PersonalData"
+                | "Protocol" => Some(""),
+                _ => None,
+            }
+        {
+            let value = node
+                .expr()
+                .map(|e| tree::written(e.syntax()))
+                .unwrap_or_default();
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_FIELD_ON_NON_RECORD,
+                    format!("`{held}` has no fields"),
+                )
+                .at(span, "no such field")
+                .reason(format!(
+                    "`{value}` is a `{held}`, and a program reads none of what it holds.{uses}"
+                ))
+                .next(format!("Use `{value}` itself")),
+            );
+            return Ty::Error;
+        }
         // A type a later area defines has fields this check doesn't know yet.
         if receiver.has_error() || matches!(receiver.strip_nullable(), Ty::Opaque(..) | Ty::Var(_))
         {
@@ -1259,6 +1333,12 @@ impl Body<'_> {
             self.walk(|walk| walk.member_values(record.member_list()));
             return Ty::Error;
         };
+        // `Feature<Point, Pin> { ... }`: a record names its type alone.
+        if let Expr::GenericExpr(generic) = &head {
+            self.walk(|walk| walk.member_values(record.member_list()));
+            self.record_type_arguments(&head, generic);
+            return Ty::Error;
+        }
         // `Todo.update(todo) { ... }`: an update with its block, written
         // without `attempt` (area 6).
         if let Expr::CallExpr(call) = &head
@@ -1648,6 +1728,32 @@ impl Body<'_> {
         );
     }
 
+    /// `type.record_type_arguments`: a record's type arguments come from
+    /// the type its place expects or its values (area 2, "A record names its type alone"),
+    /// so a head that also writes them is refused where it is written,
+    /// rather than compiling to something that can't run.
+    fn record_type_arguments(&mut self, head: &Expr, generic: &ast::GenericExpr) {
+        let written = head.syntax().text().to_string();
+        let span = self.span(head);
+        let Some(name) = generic.expr().map(|name| tree::written(name.syntax())) else {
+            return;
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_RECORD_TYPE_ARGUMENTS,
+                format!("`{written}` is written `{name} {{ ... }}`"),
+            )
+            .at(span.clone(), "type arguments on a record")
+            .reason(format!(
+                "A record names its type alone. Its type arguments come from the type its place expects, or else from its values, so there is one way to write a `{name}`."
+            ))
+            .next(format!(
+                "Write `{name} {{ ... }}`, with `{written}` on the `var` or the return type if its values don't say"
+            ))
+            .edit(span, name),
+        );
+    }
+
     pub(super) fn not_record(&mut self, record: &ast::RecordExpr, written: &str, kind: &str) {
         let span = self.span(record);
         let (reason, next) = match kind {
@@ -2006,14 +2112,7 @@ impl Body<'_> {
         }
         match self.read(name) {
             Some(ty) => ty,
-            // A library's functions and constants read its constants
-            // bare, as they call its functions.
-            None if let Some(library) = self.library.clone()
-                && let Some(ty) = self.constant_read(Some(&library), &written, name.syntax()) =>
-            {
-                ty
-            }
-            None if let Some(ty) = self.constant_read(None, &written, name.syntax()) => ty,
+            None if let Some(ty) = self.bare_constant(&written, name.syntax()) => ty,
             None => {
                 // `null`, `nil` and `undefined` from other languages.
                 if let Some(problem) = crate::foreign_value(&written, self.span(name)) {
@@ -2025,6 +2124,22 @@ impl Body<'_> {
                 Ty::Error
             }
         }
+    }
+
+    /// A constant read by its name alone (area 3): a library's functions
+    /// and constants read its constants bare, as they call its functions,
+    /// and any code reads one beside it.
+    pub(super) fn bare_constant(
+        &mut self,
+        name: &str,
+        node: &jadpo_syntax::SyntaxNode,
+    ) -> Option<Ty> {
+        if let Some(library) = self.library.clone()
+            && let Some(ty) = self.constant_read(Some(&library), name, node)
+        {
+            return Some(ty);
+        }
+        self.constant_read(None, name, node)
     }
 
     /// A constant's value (area 3): `name` beside its declaration, or

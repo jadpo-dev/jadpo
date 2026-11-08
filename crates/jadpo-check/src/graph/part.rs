@@ -904,6 +904,8 @@ impl Part<'_> {
             let kind = info.and_then(|info| info.kind.clone());
             FailureDetail {
                 status: kind.as_deref().and_then(status_of),
+                wire_status: info.and_then(|info| info.wire_status),
+                wire_name: info.and_then(|info| info.wire_name.clone()),
                 kind,
                 code: info.map_or_else(|| crate::case::to_snake(&name), |info| info.code.clone()),
                 message: tree::members(decl.member_list())
@@ -1070,6 +1072,8 @@ impl Part<'_> {
                 kind: Some(kind),
                 code: crate::case::to_snake(&name),
                 message: None,
+                wire_status: None,
+                wire_name: None,
             }),
         };
         self.out.nodes.push(node);

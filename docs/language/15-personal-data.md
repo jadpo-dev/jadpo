@@ -44,7 +44,7 @@ is the one fact Jadpo asks you to write down.
 
 | Capability | What you write | What the compiler does | Built yet |
 |---|---|---|---|
-| Marking | `personal:` on a field | Hashes it in logs, lists it in the report | Partly: read for the AI check and the report's connections, and checked that erasure can find it; nothing hashes it |
+| Marking | `personal:` on a field; nothing on an `Email`, a `PhoneNumber`, a name or a `PostalAddress`, which are personal data already | Hashes it in logs, lists it in the report | Partly: read for the AI check and the report's connections, and checked that erasure can find it; nothing hashes it |
 | The person | `person: true` on an entity | Finds every record that belongs to them | Yes |
 | Erasure | `erase:` on references it can't work out, and where its log is kept | Generates `User.erase(id)` across every store and cache | Partly: in every store, with `PersonErased` and the erasure log; caches and providers aren't built yet |
 | Export | nothing | Generates `User.export(id)` | No: `toolchain.not_built_yet` |
@@ -56,23 +56,37 @@ is the one fact Jadpo asks you to write down.
 
 A field that identifies or describes a person says so in its block, with
 `personal:` and one category from a fixed list. The category decides how
-carefully the compiler treats the value. Here a user's email is contact
-data and their display name identifies them:
+carefully the compiler treats the value. Here a user's display name
+identifies them, and their email address is contact data without saying so
+([Contact details and names need no mark](#contact-details-and-names-need-no-mark)).
 
-```jadpo fragment
-// domains/accounts/entities/user.jadpo
+`domains/accounts/entities/user.jadpo`:
+
+```jadpo check project=marking file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=marking file=domains/accounts/entities/user.jadpo migrate=initial
+type DisplayName = Text {
+    max_length: 80
+}
+
 entity User {
     id: Uuid
     email: Email {
         unique: true
-        personal: PersonalData.contact
     }
     display_name: DisplayName {
         personal: PersonalData.identifying
     }
-    ...
+
+    person: true
 }
 ```
+
+`Email` and `PersonalData` are built in. `DisplayName` and `User` are defined
+here. `person: true` says each `User` record is a person, so erasure can find
+the marked field ([The person](#the-person)).
 
 Every marked field needs a category: there is no bare `personal: true`, and
 you can't add categories of your own. These are the fourteen:
@@ -120,9 +134,109 @@ app's own object, input or output carries no mark
 (`type.unknown_setting`): it holds what a marked field gave it, and
 Jadpo follows the value back to that field.
 
+### Contact details and names need no mark
+
+These standard types are personal data without a `personal:`, on a field of the
+type or of one built on it, and so is a value of one wherever it goes:
+
+| Type | Counts as |
+|---|---|
+| `Email`, `EmailWithName` | `PersonalData.contact` |
+| `PhoneNumber` | `PersonalData.contact` |
+| `PostalAddress` | `PersonalData.contact` |
+| `PersonName`, `GivenName`, `FamilyName` | `PersonalData.identifying` |
+
+- It is hashed in logs, and [the report](#where-personal-data-goes) lists each
+  connection it reaches, the address an email is sent to among them. A
+  connection that can't erase it needs
+  [an acceptance](#erasure-at-providers).
+- A model is sent one only where `ai: { personal_data: { allowed: } }` lists its
+  category
+  ([Personal data sent to a model](21-ai.md#personal-data-sent-to-a-model)),
+  [a public cache](07-http.md#answers-that-never-change) can't keep one, and an
+  [audited entity](16-built-in-services.md#audit-trail) can't hold one yet.
+- Erasure clears it as it clears a marked field, so on a record erasure keeps
+  it is optional, or says `erase: Erasure.retained` on a person's own record
+  ([Erasure](#erasure)).
+- [The first record](18-records-and-manifest.md#what-a-first-record-holds) that
+  lets anyone read one, with no sign-in, says so to a person.
+
+Here an order is kept when its buyer is erased, and what it was sent to goes:
+
+```jadpo check project=contact-details-cleared
+entity User {
+    id: Uuid
+    email: Email
+
+    person: true
+}
+
+entity Order {
+    id: Uuid
+    buyer_id: User.id? {
+        on_delete: OnDelete.cleared
+    }
+    recipient: PersonName?
+    ship_to: PostalAddress?
+    delivery_phone: PhoneNumber?
+}
+```
+
+Written `delivery_phone: PhoneNumber`, it couldn't be cleared
+([`data.erase_field_required`](../errors/data.erase_field_required.md)):
+
+```jadpo check project=contact-details-not-optional expect=data.erase_field_required
+entity User {
+    id: Uuid
+    email: Email
+
+    person: true
+}
+
+entity Order {
+    id: Uuid
+    buyer_id: User.id? {
+        on_delete: OnDelete.cleared
+    }
+    delivery_phone: PhoneNumber
+}
+```
+
+```text output
+error: Erasing a `User` can't clear `Order.delivery_phone`
+ --> main.jadpo:13:5
+   |
+10 |     buyer_id: User.id? {
+   |     -------- keeps the record without the person
+13 |     delivery_phone: PhoneNumber
+   |     ^^^^^^^^^^^^^^ personal data that can't be `none`
+  reason: `buyer_id` is `OnDelete.cleared`, which means `Erasure.anonymised`: erasing a `User` keeps each order that refers to them, clearing the reference and every marked field. `delivery_phone` is a phone number, which counts as `PersonalData.contact`, and only an optional field (`PhoneNumber?`) can be cleared.
+  next: Make `delivery_phone` `PhoneNumber?`, or say `erase: Erasure.deleted` on `buyer_id` to delete the order instead (human)
+  rule: data.erase_field_required
+  help: https://jadpo.dev/docs/errors/data.erase_field_required
+
+check failed: 1 error, 1 file
+```
+
+The other standard types that are personal data, such as a `PostalCode` or a
+`Username`, are hashed, listed and checked the same way, and erasure clears
+them only when marked.
+
+A business's own address, phone number or manager's name is one of these too,
+and there is no mark that says one isn't personal data. Nothing here stops one
+being kept: an entity erasing a person never reaches may hold it, as a shop may
+hold its own phone number
+([What the compiler checks](#what-the-compiler-checks)). It is listed as any
+other is, a person reads the notice and goes on, and a connection it reaches
+takes a one-line acceptance. On a record erasure keeps it is cleared like a
+person's, so a shop's number belongs on the shop, not copied onto each order. A
+category written on one, `personal: PersonalData.contact` or any other, is read
+as on any field.
+
 ### Marked fields in logs
 
-A marked field is written to logs as a keyed hash, whatever its type. So a
+A marked field is written to logs as a keyed hash, whatever its type, and so
+is an `Email` or another standard type that is personal data with no mark. So a
 marked `date_of_birth: CalendarDate` is hashed, though
 [logs](04-failures.md#logging) otherwise show dates and numbers as
 values, and so is a marked field in a failure's context. The marking, not
@@ -133,7 +247,7 @@ The hash covers the UTF-8 bytes of the value's canonical text, as
 A type with no single text form, such as a `PostalAddress`, is hashed from
 its JSON as `json.write` writes it. So one value hashes the same in every
 log and on both executors, because every boundary goes through
-[the standard types' contract](19-standard-library.md#every-standard-type-meets-one-contract).
+[the standard types' contract](19-standard-library.md#what-every-standard-type-can-do).
 
 ### Sensitive fields
 
@@ -245,7 +359,10 @@ and the compiler refuses an erasure it can't complete.
 | `Erasure.retained` | Kept as it is until its own retention ends; only the reference is cleared | the reference nullable, and `retention:` on the entity |
 
 A marked field is one with a `personal:` setting, which says it holds
-personal data ([Marking personal fields](#marking-personal-fields)). A
+personal data, or one typed `Email`, `EmailWithName`, `PhoneNumber`,
+`PersonName`, `GivenName`, `FamilyName` or `PostalAddress`, which holds it
+without saying so
+([Contact details and names need no mark](#contact-details-and-names-need-no-mark)). A
 record that belongs to someone else too keeps its marked fields until
 the last of its people is erased
 ([Records that belong to several people](#records-that-belong-to-several-people)). A
@@ -1159,7 +1276,7 @@ A subscriber to it in an app with no person is
   ([Audit trail](16-built-in-services.md#audit-trail)).
 - **OAuth grants**, the permissions a person gave your app to act for them
   at a provider, are deleted with the person or record that owns them
-  ([OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)).
+  ([OAuth grants](11-integrations.md#oauth-grants)).
   They are revoked at the provider where its package declares how.
 - **Other companies.** Data already sent to a provider, such as an email
   or payment provider, is outside your database. Providers that can erase
@@ -1204,7 +1321,8 @@ refuses with its own failure before it calls `User.erase`. Restricting use
 of someone's data while a complaint is open (Article 18) works the same
 way.
 
-### Erasure at providers
+## Erasure at providers
+<!-- topic: erasure-at-providers -->
 
 When your app sends a person's data to another company, such as a payment
 provider, erasing the person also asks that provider to erase them. Two
@@ -1250,17 +1368,44 @@ are erased the same way.
   [built-in emails](16-built-in-services.md#built-in-emails), goes only
   once every provider has confirmed. A delivery that gives up is parked
   for an operator and shown in the privacy request's state and in
-  `jadpo privacy requests`. It is never left quietly incomplete.
+  `jadpo privacy requests`, which isn't built yet. It is never left
+  quietly incomplete.
 - **A copied key that is itself personal data**, such as an email address
   used as the provider's key, stays only in the outbox until it is
   delivered. The personal-data report lists it there.
 - **A connection that receives personal data but can't erase it** is a
   compile error. That is a connection whose package declares no
-  `erasure:`, or which names no key. An
+  `erasure:`, or which names no key, or reached with a driver rather than a
+  package; or one whose key is on one person entity while it also receives
+  the data of another. An
   [acceptance](18-records-and-manifest.md#acceptances), a committed file
   in which a person states why the data stays there (tax records at an
   accounting provider, say), allows it, and the report lists the
-  connection and the reason.
+  connection and the reason:
+
+  ```jadpo fragment
+  /// Acme Books must keep invoices for seven years for tax.
+  acceptance {
+      changes: {
+          accounting: ErasureNotPossible.data_stays
+      }
+  }
+  ```
+
+  It holds for as long as the connection keeps data, so a project that
+  already sends some needs it as soon as a change is judged, and later
+  changes need no other. Taking it away takes away what it allowed. It
+  covers the connection: a new field sent there later needs no other
+  acceptance, and shows in the approval review's difference of the report.
+  A store of files on the server's own disk is no other company, so it
+  needs none: a file goes with the records that hold it.
+- **The declarations are checked**, since each lets a connection off that
+  acceptance. `call:` is an operation of the package that changes something
+  and takes only the key: one field of its input of the type `by:` names,
+  any other optional
+  ([`package.provider_invalid`](../errors/package.provider_invalid.md)).
+  `key:` is a field of a `person: true` entity, of that type
+  ([`connection.value_invalid`](../errors/connection.value_invalid.md)).
 - **Anything else** your app sends data to, such as a CRM it calls
   through its own integration, can be erased by your own
   [`PersonErased`](#who-was-erased-personerased) subscribers.
@@ -1461,7 +1606,7 @@ and no purge is listed in the report as "kept until erased".
 - **Marked fields nothing reads.** A personal field that no query, output
   or action reads is an error, because you are holding data you don't use
   (data minimisation, Article 5). You can
-  [decline](01-project-layout-and-modules.md#declining-a-judgement-call)
+  [decline](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)
   it, with a reason, because a field kept for a legal reason may be read
   only by export.
 - **Erasure is complete.** Every reference into a person's records has an
@@ -1498,11 +1643,30 @@ and no purge is listed in the report as "kept until erased".
   or to mark the entity `person: true`. A field is marked here only by
   its `personal:`: a
   standard type that is personal data whatever holds it, such as a
-  `PhoneNumber`, is hashed in logs and its reads recorded, but a shop's
-  own phone number doesn't make the shop a person. With the completeness
-  check above, every stored copy of personal data can be reached.
+  `PhoneNumber`, an `Email` or a `PersonName`, is hashed in logs and its reads
+  recorded, but a shop's own phone number, address or manager's name doesn't
+  make the shop a person. With
+  the completeness check above, every stored copy of what is marked can be
+  reached.
+- **What leaves can be erased.** A connection that receives personal data
+  and can't erase it needs a person's acceptance
+  ([Erasure at providers](#erasure-at-providers),
+  [`acceptance.missing`](../errors/acceptance.missing.md)). A project's first
+  commit has nothing to compare with, so there it is a notice for a person,
+  and the next change is refused until one accepts it
+  ([What a first record holds](18-records-and-manifest.md#what-a-first-record-holds)).
 - **Sensitive fields stay out of caches.** A cache on an entity that holds
   one leaves those fields out.
+- **A public cache keeps no personal data.** A route saying `cache: immutable`
+  can't give a marked field, sensitive or not, or a standard type that is
+  personal data, such as `PhoneNumber` or `Email`, marked or not, directly or through what it
+  calls ([`route.cache_invalid`](../errors/route.cache_invalid.md)), since no
+  erasure reaches a copy a CDN holds. It counts what
+  [the report](#where-personal-data-goes) counts.
+- **A person decides what anyone may read.** Personal data on an entity whose
+  `read:` lists `Access.public` has nothing to compare with in a project's first
+  record, so it is a notice for a person, and `check` still passes
+  ([What a first record holds](18-records-and-manifest.md#what-a-first-record-holds)).
 - **Retention can be carried out.** A field's retention clears a field
   that can be `none` and that no lifecycle owns or reads, an entity's
   deletes records nothing `restricted` holds, and every period is a
@@ -1578,8 +1742,8 @@ files, which the email lists.
 ### Deadlines and events
 
 Every request is a record with its one-month legal deadline.
-`jadpo privacy requests` and the console list them, and one nearing its
-deadline raises an alert.
+`jadpo privacy requests` and the console, neither built yet, list them,
+and one nearing its deadline raises an alert.
 
 Each step emits an event: `PrivacyRequestReceived`, `PrivacyExportReady`
 (with the download link), `PrivacyErasureScheduled`,
@@ -1650,7 +1814,7 @@ store with the configuration setting that says where it is.
 <!-- topic: the-personal-data-report -->
 
 `jadpo check` writes `build/report/personal-data.md` and a `.json` twin,
-in the same form as its other reports ([The report](14-tooling.md#the-report)).
+in the same form as its other reports ([The suggestions report](14-tooling.md#the-suggestions-report)).
 For each person entity it lists:
 
 - every marked field, with its category, entity, store and caches;
@@ -1719,11 +1883,18 @@ tell, it counts as reaching:
   nothing follows that code.
 - A provider's answer may hold anything its call was sent, in any part. So
   an id a provider made counts as the name it was made from when it is sent
-  on to another connection. This is for the report alone: storing that id or
-  sending it to a model doesn't need the name's marks.
+  on to another connection, and its row says "may be in a provider's answer"
+  rather than "sent". This is for the report and
+  [the acceptance](#erasure-at-providers) alone: storing that id or sending it
+  to a model doesn't need the name's marks.
 
 Stores and caches aren't in this list. What each keeps comes with the rest
 of the report.
+
+Each connection says what becomes of its copy when a person is erased: the
+provider's call and the field holding its key, the app's own store, or kept,
+with why and an acceptance's reason. Jadpo doesn't call a provider's
+`erasure:` yet, and the report says so.
 
 `jadpo package check` shows the same for a package, whoever calls it: what
 each of its operations sends, from its input's type and what its actions and
@@ -1938,19 +2109,22 @@ This is not legal advice. A privacy professional reviews the report.
 | `person: true` | Built: an entity marked `person: true` is a person, and every record that refers to one directly belongs to them. The build's manifest shows each person under its entity as a `person` node, listing the references its records belong through (`through`) and the fields erasure keeps of their record (`retained`). |
 | `retention:` on a field or an entity | Partly built. Built: the entity's hourly purge schedule clears a nullable field's value, or deletes the record with what cascades from it and the sign-in state of everyone it deletes who signs in, cascades included, at the first run once `since:` is longer ago than `after:`, a `Duration` setting; a `File`'s bytes go once no record holds it ([Files](16-built-in-services.md#deleting-and-erasing)); each problem under [Retention](#retention) is an error where it is written. The graph holds a `retention` node for each, under its field or entity, with its period and `since:`. Not built yet: `retention:` on an event's or an email's field, `toolchain.not_built_yet` where it is written. |
 | `erase:` on a reference or the person's own field | Built: each problem under [Erasure](#erasure) and "Erasure is complete" is an error where it is written, and a reference to a person from another store, which says `erase:` and no `on_delete:` ([Records in another store](#records-in-another-store)). |
-| `include_erased:` on a query | Built: it finds the people erasure keeps a record of too, and is held to what they keep. The [report](#the-personal-data-report) that lists these queries isn't built yet. |
+| `include_erased:` on a query | Built: it finds the people erasure keeps a record of too, and is held to what they keep. |
 | `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. A record that belongs to several people keeps its marked fields until the last of them is erased, and another person's own record loses only the reference ([Records that belong to several people](#records-that-belong-to-several-people)). The person's own record stays field by field, hidden, where one of their fields says so ([The person's own record](#the-persons-own-record)). The bytes of each `File` it deletes or clears go once it commits ([Files](16-built-in-services.md#deleting-and-erasing)), and an audited record it deletes takes its history with it. Records in another store go by a generated subscriber once it commits, retried and shown ([Records in another store](#records-in-another-store)); it emits [`PersonErased`](#who-was-erased-personerased) in its transaction; and each person erased has an entry in the log, replayed at every start, on `jadpo dev`, a native deployable and a Worker ([What erasure doesn't rewrite](#what-erasure-doesnt-rewrite)). Not built yet: one that would keep an audited record, whose history still refers to the person ([Audit trail](16-built-in-services.md#audit-trail)), `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial; and providers' erasure, which nothing calls. |
 | `User.export(id)` | Not built yet: it is `toolchain.not_built_yet` where it is called. |
-| `privacy:` in `application { }` | Partly built: `erasure_log: { store: }`. Everything else in it is `toolchain.not_built_yet` where it is written. |
+| `privacy:` in `application { }` | Partly built: `erasure_log: { store: }`. Everything else in it is `toolchain.not_built_yet` where it is written. Nor is `jadpo privacy requests`, which lists the requests it starts. |
 | Encrypted fields | Built: `encrypted: true`, key-type, `TotpSecret` and `SecretText` fields, sealed on write and opened on read, interpreted, compiled and on Workers; each refusal above; rotation through `_PREVIOUS`, with `field_encryption.reseal` and `jadpo config rotation`. |
-| The personal-data report | Partly built: `jadpo check` writes `build/report/personal-data.md` and `.json`, for a project with no errors, listing [where personal data goes](#where-personal-data-goes), and `jadpo package check` shows the same for a package. Not built yet: the rest of its list, each person entity's fields, category, store and readers, retention, what erasure does, keys in the outbox, step records and OAuth grants; whether a connection can erase its copy, and the acceptance for one that can't; and its diff in the approval review. |
-| Everything else on this page | Not built yet: it is on [the roadmap](../roadmap.md). |
+| The personal-data report | Partly built: `jadpo check` writes `build/report/personal-data.md` and `.json`, for a project with no errors, listing [where personal data goes](#where-personal-data-goes), and `jadpo package check` shows the same for a package. Each connection says whether its copy is erased or kept for an accepted reason, and the approval review shows its difference from the before side's, a connection at a time. Not built yet: the rest of its list, each person entity's fields, category, store and readers, the queries that say `include_erased: true`, retention, what erasure does, keys in the outbox, step records and OAuth grants. |
+| `erasure:` on a package and on a connection | Partly built. Built: each is read and checked, and a connection that receives personal data and can't erase it needs an `ErasureNotPossible` acceptance ([Erasure at providers](#erasure-at-providers)). Not built yet: calling the package's `erasure:`, so a connection that declares one is not yet asked to erase anyone. |
+| Everything else on this page | Not built yet. |
 
 ## Errors
 
 Every error this page's checks produce, with an example that triggers
 it and the compiler's real output from `jadpo check`.
 
+- [`acceptance.missing`](../errors/acceptance.missing.md)
+- [`connection.value_invalid`](../errors/connection.value_invalid.md)
 - [`data.encrypted_field_invalid`](../errors/data.encrypted_field_invalid.md)
 - [`data.encrypted_field_used`](../errors/data.encrypted_field_used.md)
 - [`data.erase_field_required`](../errors/data.erase_field_required.md)
@@ -1970,5 +2144,6 @@ it and the compiler's real output from `jadpo check`.
 - [`data.retention_lifecycle_field`](../errors/data.retention_lifecycle_field.md)
 - [`data.retention_period`](../errors/data.retention_period.md)
 - [`data.retention_since`](../errors/data.retention_since.md)
+- [`package.provider_invalid`](../errors/package.provider_invalid.md)
 - [`query.include_erased_reads`](../errors/query.include_erased_reads.md)
 - [`query.include_erased_unused`](../errors/query.include_erased_unused.md)

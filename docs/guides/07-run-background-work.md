@@ -9,31 +9,24 @@ runs an action for each one, retried until it succeeds. This guide
 reminds borrowers two days before a book is due back, using all three,
 and tests the whole run.
 
-You start from an app with a `loans` domain, holding a `Loan` entity
-with a `due_at` and a `reminded_at`, a `Reminder` entity that records
-each reminder, and the type a batch uses to page through loans.
+You start from an app with a `loans` domain, holding a `Reminder` entity
+that records each reminder.
 [Store and change a record](02-store-and-change-a-record.md) shows how
 to write entities.
 
-```jadpo check project=guide-background-work file=app.jadpo hidden
-application {}
-```
+Every action and query takes named types, so each value says what it means.
+`DueTime` is the name this app gives to the `Instant` a loan is due back, and
+`Instant` is built into Jadpo.
 
-```jadpo check project=guide-background-work file=domains/loans/types/due_time.jadpo hidden
+`domains/loans/types/due_time.jadpo`:
+
+```jadpo check project=guide-background-work file=domains/loans/types/due_time.jadpo
 /// When a loan is due back.
 type DueTime = Instant {}
 ```
 
-```jadpo check project=guide-background-work file=domains/loans/types/loan_page.jadpo hidden
-/// Where a batch has got to in a list of loans.
-type LoanPage = Input {
-    page_size: PageSize {
-        default: 50
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
+```jadpo check project=guide-background-work file=app.jadpo hidden
+application {}
 ```
 
 `domains/loans/entities/loan.jadpo`:
@@ -89,7 +82,24 @@ its people beside it.
 ## Find the loans a page at a time
 
 The query a batch walks is an ordinary query giving a `Page`, in an
-order no change to a loan moves, so a run meets each loan once:
+order no change to a loan moves, so a run meets each loan once. It takes an
+`Input` type saying where the batch has got to. `PageSize` and `PageCursor`
+are standard types, built into Jadpo, for how many records a page holds and
+where the next one starts.
+
+`domains/loans/types/loan_page.jadpo`:
+
+```jadpo check project=guide-background-work file=domains/loans/types/loan_page.jadpo
+/// Where a batch has got to in a list of loans.
+type LoanPage = Input {
+    page_size: PageSize {
+        default: 50
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+```
 
 `domains/loans/queries/loans_due.jadpo`:
 
@@ -358,11 +368,11 @@ see [Deploy to Cloudflare Workers](11-deploy-to-workers.md).
 
 [Schedules](../language/12-jobs-and-events.md#schedules),
 [Batch work keeps its progress](../language/12-jobs-and-events.md#batch-work-keeps-its-progress),
-[Batches: work over many items](../language/12-jobs-and-events.md#batches-work-over-many-items),
+[Batches](../language/12-jobs-and-events.md#batches),
 [Declaring an event](../language/12-jobs-and-events.md#declaring-an-event),
 [Emitting an event](../language/12-jobs-and-events.md#emitting-an-event),
 [Subscribers](../language/12-jobs-and-events.md#subscribers),
 [Delivery: at least once, safe to repeat](../language/12-jobs-and-events.md#delivery-at-least-once-safe-to-repeat),
 [Retries and giving up](../language/12-jobs-and-events.md#retries-and-giving-up),
 [What an operator sees](../language/12-jobs-and-events.md#what-an-operator-sees) and
-[Background work](../language/09-policy.md#background-work).
+[Policy and background work](../language/09-policy.md#policy-and-background-work).

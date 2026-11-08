@@ -79,6 +79,7 @@ impl ReleaseSeed {
             surface: String::new(),
             facts: Facts {
                 kind: PackageKind::Provider,
+                publisher: Some(package.handle()),
                 pure: false,
                 hosts: Vec::new(),
                 changing_calls: Vec::new(),
@@ -113,7 +114,9 @@ struct State {
     /// package's, with their written accounts.
     standard: Vec<(String, String)>,
     accounts: Vec<(ScopedName, String, String)>,
-    requests: Vec<(ReleaseRequest, String, String, bool)>,
+    /// Each release started, with its repository, tag, whether it was a
+    /// dry run and the publisher the client said it was for.
+    requests: Vec<(ReleaseRequest, String, String, bool, Option<Handle>)>,
 }
 
 /// A registry in memory, shared by every clone and server of it.
@@ -297,7 +300,16 @@ impl LocalRegistry {
         self.state()
             .requests
             .iter()
-            .map(|(_, repository, tag, dry_run)| (repository.clone(), tag.clone(), *dry_run))
+            .map(|(_, repository, tag, dry_run, _)| (repository.clone(), tag.clone(), *dry_run))
+            .collect()
+    }
+
+    /// The publisher each release started was said to be for.
+    pub fn started_for(&self) -> Vec<Option<Handle>> {
+        self.state()
+            .requests
+            .iter()
+            .map(|(.., publisher)| publisher.clone())
             .collect()
     }
 
@@ -320,6 +332,75 @@ impl LocalRegistry {
                 detail,
             })
             .collect();
+    }
+
+    /// A started release as the verifier answered it, which `settle` leaves
+    /// out: holds it to its publisher (area 11, "Releasing") and moves it to
+    /// `pending`, or to `failed` with the bar's `publisher` row when it isn't
+    /// that publisher's to release. `code_name` is its name in code.
+    pub fn checked(
+        &self,
+        id: &str,
+        code_name: &str,
+        facts: Facts,
+        bar: Vec<(String, bool, String)>,
+    ) {
+        let mut guard = self.state();
+        let repository = guard
+            .requests
+            .iter()
+            .find(|(request, ..)| request.id == id)
+            .map(|(_, repository, ..)| repository.clone())
+            .expect("a release the registry started");
+        let refused = refusal(&guard, &repository, code_name, facts.publisher.as_ref());
+        let failed = refused.is_some() || bar.iter().any(|(_, passed, _)| !passed);
+        let mut rows: Vec<BarRow> = bar
+            .into_iter()
+            .map(|(check, passed, detail)| BarRow {
+                check,
+                passed,
+                detail,
+            })
+            .collect();
+        rows.push(match refused {
+            Some(detail) => BarRow {
+                check: "publisher".into(),
+                passed: false,
+                detail,
+            },
+            None => BarRow {
+                check: "publisher".into(),
+                passed: true,
+                detail: facts
+                    .publisher
+                    .as_ref()
+                    .map_or_else(String::new, ToString::to_string),
+            },
+        });
+        let request = guard
+            .requests
+            .iter_mut()
+            .find(|(request, ..)| request.id == id)
+            .map(|(request, ..)| request)
+            .expect("a release the registry started");
+        request.state = if failed {
+            ReleaseState::Failed
+        } else {
+            ReleaseState::Pending
+        };
+        request.bar = rows;
+        request.facts = Some(facts);
+        request.change_record = Some(Vec::new());
+    }
+
+    /// Says `package`'s releases come from `repository`.
+    pub fn repository_of(&self, package: &ScopedName, repository: &str) {
+        let mut state = self.state();
+        for ((held, _), release) in &mut state.releases {
+            if held == package {
+                release.repository = repository.to_string();
+            }
+        }
     }
 
     /// The head of the registry's log.
@@ -471,6 +552,27 @@ impl LocalRegistry {
                 if !start.repository.starts_with("https://") {
                     return failure(REPOSITORY_REFUSED);
                 }
+                // A release from a repository another publisher releases
+                // from is refused at once, before any check, when the
+                // client says whose it is.
+                if let Some(publisher) = &start.publisher
+                    && let Some(earlier) = state.releases.values().find(|release| {
+                        release.repository == start.repository
+                            && release.package.handle() != *publisher
+                    })
+                {
+                    return envelope(
+                        REPOSITORY_REFUSED.status,
+                        REPOSITORY_REFUSED.code,
+                        &format!(
+                            "`{}` releases `{}`, which is `{}`'s, not `{publisher}`'s.",
+                            start.repository,
+                            earlier.package,
+                            earlier.package.handle()
+                        ),
+                        None,
+                    );
+                }
                 let id = format!("rel_{:04}", state.requests.len() + 1);
                 state.requests.push((
                     ReleaseRequest {
@@ -483,6 +585,7 @@ impl LocalRegistry {
                     start.repository.clone(),
                     start.tag.clone(),
                     start.dry_run,
+                    start.publisher.clone(),
                 ));
                 json(202, &StartedRelease { id })
             }
@@ -494,6 +597,43 @@ impl LocalRegistry {
             }
         }
     }
+}
+
+/// Why a release from `repository`, naming `publisher`, isn't that
+/// publisher's to release: it names none, its repository's earlier releases
+/// are someone else's, or the name it would take is released from elsewhere.
+fn refusal(
+    state: &State,
+    repository: &str,
+    code_name: &str,
+    publisher: Option<&Handle>,
+) -> Option<String> {
+    let Some(publisher) = publisher else {
+        return Some("its `package.jadpo` names no publisher".to_string());
+    };
+    if let Some(earlier) = state
+        .releases
+        .values()
+        .find(|release| release.repository == repository)
+        .filter(|release| release.package.handle() != *publisher)
+    {
+        return Some(format!(
+            "it names `{publisher}`, and `{repository}` releases `{}`, which is `{}`'s",
+            earlier.package,
+            earlier.package.handle()
+        ));
+    }
+    let name = ScopedName::of_code(publisher, code_name)?;
+    state
+        .releases
+        .values()
+        .find(|release| release.package == name && release.repository != repository)
+        .map(|release| {
+            format!(
+                "`{name}` is released from `{}`, and this is `{repository}`",
+                release.repository
+            )
+        })
 }
 
 fn json(status: u16, value: &impl Serialize) -> Fetched {

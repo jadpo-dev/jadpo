@@ -1,0 +1,5 @@
+// A library package carries its own words, as a domain does: its
+// messages, its failures' wording and a file per language it ships.
+
+/// Shown under a postcode field.
+public type PostcodeHint = Message {}

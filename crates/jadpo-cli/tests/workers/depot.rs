@@ -78,7 +78,8 @@ fn depot() -> PathBuf {
         }
     }
     if !root.join("jadpo.lock").exists() {
-        let package = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/amazon_sqs");
+        let package =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/packages/amazon_sqs");
         jadpo(
             &root,
             &["package", "add", package.to_str().expect("a path")],

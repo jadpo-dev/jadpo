@@ -6,7 +6,7 @@ explain each part.
 
 ## What it teaches
 
-1. **The project root.** `app.jadpo` marks where a project starts, and every project has the same shape. See `app.jadpo` and [area 1, Decided layout](../../docs/language/01-project-layout-and-modules.md#decided-layout).
+1. **The project root.** `app.jadpo` marks where a project starts, and every project has the same shape. See `app.jadpo` and [area 1, The layout in detail](../../docs/language/01-project-layout-and-modules.md#the-layout-in-detail).
 2. **Domains and files.** Everything besides `app.jadpo` lives in a domain: a business area, named by its folder under `domains/`, one action per file in `actions/`, named after it. See `domains/baking/actions/count_rolls.jadpo` and [area 1, Files and names](../../docs/language/01-project-layout-and-modules.md#files-and-names).
 3. **Imports.** A file opens with `use` lines saying where each name it uses but doesn't declare lives: `use baking/types { RollCount }` is `domains/baking/types/roll_count.jadpo`. Built-in types need none. Same file; [area 1, Imports](../../docs/language/01-project-layout-and-modules.md#imports).
 4. **Named types.** `RollCount` and `TrayCount` are whole numbers with a meaning and rules. `TrayCount` lives beside its one user; `RollCount`, which two files use, has a file of its own in `types/`. See `domains/baking/types/roll_count.jadpo` and [area 2, Named types](../../docs/language/02-values-and-types.md#named-types).

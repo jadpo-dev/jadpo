@@ -1,0 +1,20 @@
+/// One email to send: who it is from and to, its subject, its HTML and
+/// its text, and the files sent with it.
+public type SendEmailRequest = Object {
+    from: Text {
+        personal: PersonalData.contact
+    }
+    to: Text {
+        personal: PersonalData.contact
+    }
+    subject: Text {
+        personal: PersonalData.identifying
+    }
+    html: Text? {
+        personal: PersonalData.identifying
+    }
+    text: Text? {
+        personal: PersonalData.identifying
+    }
+    attachments: List<EmailAttachment>
+}

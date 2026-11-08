@@ -12,13 +12,22 @@
 //! With no before side (not a git repository, no default branch, a
 //! project new since its base), nothing is compared or judged, and `jadpo
 //! check` says so in one line (Richard, 2026-10-30); only a migration that
-//! removes data is still held to an acceptance ([`data::unaccepted`]).
+//! removes data is still held to an acceptance ([`data::unaccepted`]). What
+//! such a first record holds that a person decides is a notice, not a need
+//! ([`first`]).
+//!
+//! One kind isn't a change: a connection that receives personal data and
+//! can't erase it needs a person for as long as that is so (chunk V6). So it
+//! is a need until an acceptance lists it, on the before side as well as
+//! added, and that acceptance goes on allowing it while it is kept.
 
 pub mod access;
 pub mod compare;
 pub mod data;
 pub mod files;
+pub mod first;
 pub mod network;
+pub mod upgrades;
 pub mod words;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -40,22 +49,75 @@ pub fn needs(db: &dyn Db, project: Project) -> Vec<Need> {
     let mut out = Vec::new();
     api_needs(db, project, before, &mut out);
     event_needs(db, project, before, &mut out);
-    if let (Some(was), Some(now)) = (before.text(access::PATH), access::record_text(db, project)) {
-        compare::access_needs(access::PATH, was, now.as_deref().unwrap_or(""), &mut out);
+    if let Some(now) = access::record_text(db, project) {
+        let now = now.as_deref().unwrap_or("");
+        let was = before.text(access::PATH);
+        if let Some(was) = was {
+            compare::access_needs(access::PATH, was, now, &mut out);
+        }
+        compare::own_source_needs(access::PATH, was.unwrap_or(""), now, &mut out);
     }
     if let (Some(was), Some(now)) = (network_before(before), network::record_text(db, project)) {
         compare::network(network::PATH, was, now.as_deref().unwrap_or(""), &mut out);
     }
-    if let Some(was) = before.text(jadpo_db::LOCK) {
-        let now = written(db, project, jadpo_db::LOCK).unwrap_or_default();
-        compare::lock(jadpo_db::LOCK, was, &now, &mut out);
+    let now = written(db, project, jadpo_db::LOCK).unwrap_or_default();
+    let own = &crate::own_sources::own_sources(db, project).entries;
+    compare::lock(
+        jadpo_db::LOCK,
+        before.text(jadpo_db::LOCK).unwrap_or(""),
+        &now,
+        own,
+        &mut out,
+    );
+    if let Some(was) = before.text(jadpo_db::LOCK)
+        && was != now
+    {
+        upgrade_needs(db, project, before, &mut out);
     }
     compare::domains(&before.domains, &domains(db, project), &mut out);
     data::needs(db, project, before, &mut out);
     threshold_needs(db, project, before, &mut out);
+    erasure_needs(db, project, before, &mut out);
     out.sort();
     out.dedup_by(|a, b| a.subject == b.subject && a.change == b.change);
     out
+}
+
+/// What an upgrade changed of what the app uses (area 18, "Package
+/// upgrades"; chunk V4), read only when the lock moved: `jadpo check` reads
+/// the before side's sources and surfaces then.
+fn upgrade_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut Vec<Need>) {
+    let was = upgrades::Side::read(
+        before
+            .files
+            .iter()
+            .map(|(path, text)| (path.as_str(), text.as_str())),
+    );
+    let sources = project
+        .files(db)
+        .iter()
+        .map(|file| (file.path(db).as_str(), file.text(db).as_str()));
+    let surfaces = project.records(db).iter().filter_map(|record| {
+        let text = record.text.as_ref().ok()?;
+        Some((record.path.as_str(), text.as_str()))
+    });
+    let now = upgrades::Side::read(sources.chain(surfaces));
+    for finding in upgrades::review(&was, &now) {
+        let path = format!(
+            "{}/{}",
+            jadpo_db::package_folder(&finding.package),
+            format::SURFACE_FILE
+        );
+        out.push(Need {
+            subject: finding.subject,
+            change: finding.change,
+            family: Family::Lock,
+            path,
+            heading: finding.heading,
+            said: finding.said,
+            who: Vec::new(),
+        });
+    }
 }
 
 /// The network record on the before side. A before side with none whose
@@ -211,6 +273,42 @@ fn threshold_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut
                 subject,
                 change: thresholds::LOWERED.to_string(),
                 family: Family::Thresholds,
+                path: jadpo_db::PROJECT_FILE.to_string(),
+                heading: None,
+                who: Vec::new(),
+            });
+        }
+    }
+}
+
+/// Each connection that keeps personal data after a person is erased, with
+/// no acceptance the before side holds and the project still has saying why.
+fn erasure_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut Vec<Need>) {
+    use crate::provider_erasure::{self, DATA_STAYS};
+    if !provider_erasure::clean(db, project) {
+        return;
+    }
+    let history: Vec<files::Acceptance> = files::acceptances(db, project)
+        .into_iter()
+        .filter(|acceptance| {
+            before.text(&acceptance.path).is_some()
+                && acceptance.reason.is_some()
+                && acceptance.problems.is_empty()
+        })
+        .collect();
+    for unerased in provider_erasure::unerased(db, project) {
+        let accepted = history.iter().any(|acceptance| {
+            acceptance
+                .entries
+                .iter()
+                .any(|entry| entry.subject == unerased.connection && entry.change == DATA_STAYS)
+        });
+        if !accepted {
+            out.push(Need {
+                said: unerased.said(),
+                subject: unerased.connection.clone(),
+                change: DATA_STAYS.to_string(),
+                family: Family::Erasure,
                 path: jadpo_db::PROJECT_FILE.to_string(),
                 heading: None,
                 who: Vec::new(),
@@ -385,6 +483,10 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
             "retyping an event's field can break its subscribers",
             "Subscribers read what an event carries, and events in the outbox were written with the old type.",
         ),
+        "ApiChange.media_type_changed" => (
+            "changing what a route sends can break clients",
+            "Clients read its body as the media type it had.",
+        ),
         "ApiChange.failure_changed" => (
             "changing a failure code can break clients",
             "Clients that handle the failure by its code or status no longer recognise it.",
@@ -433,6 +535,10 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
             "changing how a role must be signed in to needs a person",
             "Who keeps the role, and where their access is revoked, follows from it, whether it is tighter or looser.",
         ),
+        "PolicyChange.own_source_added" => (
+            "a new own source lets its repositories in without a person",
+            "A package from a repository under it installs without `PackageChange.git_source`, and an agent could use that to let in a stranger's code.",
+        ),
         "NetworkChange.host_added" => (
             "a new outside host the app can send data to needs a person",
             "Data the app holds can now leave for a host it couldn't reach before.",
@@ -440,6 +546,42 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
         "PackageChange.git_source" => (
             "a package installed from git has no verified publisher",
             "Nothing verifies who published a package from git, as the registry does.",
+        ),
+        crate::provider_erasure::DATA_STAYS => (
+            "a connection that can't erase the personal data it receives needs a person",
+            "Erasing a person asks each provider that holds their data to erase it, and this one can't be asked.",
+        ),
+        "PackageChange.operation_removed" => (
+            "an upgrade removes an operation the app uses",
+            "The app called it, and the package no longer has it.",
+        ),
+        "PackageChange.declaration_removed" => (
+            "an upgrade removes a declaration the app uses",
+            "The app wrote its name, and the package no longer has it.",
+        ),
+        "PackageChange.operation_changed" => (
+            "an upgrade changes an operation the app uses",
+            "What it sends, what it answers or how it is asked for is no longer what the app was written against.",
+        ),
+        "PackageChange.field_removed" => (
+            "an upgrade removes a field the app uses",
+            "An operation or declaration the app uses reaches it, so what the app sends or reads no longer has it.",
+        ),
+        "PackageChange.field_retyped" => (
+            "an upgrade retypes a field the app uses",
+            "An operation or declaration the app uses reaches it, so it now holds other values.",
+        ),
+        "PackageChange.failure_added" => (
+            "a new failure on an operation the app uses needs a person",
+            "The provider can now answer in a way the app was never written to handle.",
+        ),
+        "PackageChange.host_changed" => (
+            "an upgrade changes the hosts a provider package reaches",
+            "The app's data and credential go wherever the package says, and that has moved.",
+        ),
+        "PackageChange.credential_changed" => (
+            "an upgrade changes a provider's credential scheme",
+            "The app's secret is now sent another way, and may need replacing.",
         ),
         "ThresholdChange.raised" => (
             "raising a threshold can silence its alert",
@@ -519,8 +661,28 @@ fn missing_acceptance(
             .unwrap_or_else(|| place(db, project, path, needs[0].heading.as_deref())),
         Family::Data => data::span(db, project, needs[0]),
         Family::Thresholds => threshold_span(db, project, needs[0]),
+        Family::Erasure => crate::provider_erasure::connection_span(db, project, &needs[0].subject)
+            .unwrap_or_else(|| crate::tree::file_span(path)),
         _ => place(db, project, path, needs[0].heading.as_deref()),
     };
+    if *family == Family::Erasure {
+        let said: Vec<String> = needs.iter().map(|need| need.said.clone()).collect();
+        return Diagnostic::new(
+            &rule::ACCEPTANCE_MISSING,
+            format!("{what}: {}", subjects.join(", ")),
+        )
+        .at(span, change)
+        .reason(format!(
+            "{why} Here: {}. So a person says why the data stays: no acceptance lists {}.",
+            said.join("; "),
+            if subjects.len() == 1 {
+                format!("`{}: {change}`", subjects[0])
+            } else {
+                format!("these as `{change}`")
+            }
+        ))
+        .next("Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or a person accepts it: `jadpo acceptance new <purpose>` writes the draft for them");
+    }
     Diagnostic::new(
         &rule::ACCEPTANCE_MISSING,
         format!("{what}: {}", subjects.join(", ")),

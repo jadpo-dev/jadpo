@@ -167,6 +167,7 @@ Rust 1.88 or later).
 | `jadpo-lsp` | Language server | |
 | `jadpo-cldr` | The CLDR data a deployable carries: ICU4X's compiled data baked again for the app's supported locales | |
 | `jadpo-registry` | The registry protocol (area 11): its table, requests and answers, the RFC 6962 log and its proofs, release archives, a local registry served on this machine and the conformance test of a served OpenAPI document | |
+| `jadpo-verifier` | The registry's verifier (area 11): which of a commit's files a release may hold, fetching one commit with `git` at a checked address, the sandbox, the two runs of `jadpo package verify` and the service that answers the registry | |
 | `jadpo-cli` | The `jadpo` binary: commands, help, completion | |
 
 **`jadpo-std`** decides once what both sides need: what a valid value is
@@ -241,11 +242,25 @@ whole geometry; storage itself binds a geometry without asking, because the
 checker and every reader refuse such a mix (area 20, "Altitudes are all or
 nothing").
 
-**`jadpo-term`, `jadpo-test`, `jadpo-lsp`, `jadpo-cldr`, `jadpo-registry`
-and `jadpo-cli`** are tooling: the CLI design language's screens, the test
-runner (§2.5, §2.7), the language server, the locale data `jadpo build`
-exports for a deployable (§2.6, "The locale data a deployable carries"),
-the registry protocol, and the binary that nothing depends on.
+**`jadpo-term`, `jadpo-test`, `jadpo-lsp`, `jadpo-cldr`, `jadpo-registry`,
+`jadpo-verifier` and `jadpo-cli`** are tooling: the CLI design language's
+screens, the test runner (§2.5, §2.7), the language server, the locale data
+`jadpo build` exports for a deployable (§2.6, "The locale data a deployable
+carries"), the registry protocol, the verifier, and the binary that nothing
+depends on.
+
+**`jadpo-verifier`** runs nothing of a package itself and links no compiler:
+it starts `jadpo` in a sandbox and reads what comes back, so a bug a
+package's code can reach is in a process that has nothing to take. The
+sandbox is bubblewrap under `prlimit`, started as programs, since the
+workspace forbids `unsafe`; a Mac's `sandbox-exec` lets a contributor run the
+same isolation tests, and is never served with. No seccomp filter is set:
+what limits a package's code that got out of the interpreter is the
+namespaces, and the container Cloudflare runs the verifier in, which holds
+nothing else. CI's `tests`
+job installs bubblewrap and sets `JADPO_REQUIRE_SANDBOX`, so those tests can't
+silently skip, and `.github/workflows/verifier-image.yml` starts the image
+and uses it before anything is published (`deploy/verifier/smoke.py`).
 
 **`jadpo-registry`** is what the `jadpo` tool and the registry
 application at jadpo.dev are each built against (area 11, "The registry
@@ -267,12 +282,11 @@ lock's. The local registry serves the table from memory over plain HTTP
 on `127.0.0.1` (`local::LocalRegistry::serve`), with its own log, for
 the `jadpo` tool's tests; its client, `http::fetch`, reaches only this
 machine. The registry application is built in another repository, so its
-CI runs the conformance test from a checkout of this one at the Jadpo
-release it targets, against its own served document:
-`JADPO_REGISTRY_OPENAPI=http://127.0.0.1:<port>/registry/v1/openapi.json
-cargo test -p jadpo-registry --test integration conformance::` (a file
-path works too); a Rust caller can use `conformance::check` as a git
-dependency.
+CI runs the conformance test with the `jadpo` release it targets, against
+its own document, and needs no Rust: `jadpo package protocol
+build/openapi/main.json`, or the address it is served at. That command reads
+an `https://` address through the tool's own download path, since `http::fetch`
+stays on this machine.
 
 **Dependency direction.** Compiler crates never depend on runtime crates,
 except `jadpo-interp`, which links the runtime it shares with compiled
@@ -526,8 +540,10 @@ the rule, primary and secondary spans, reason, next step with optional
 edits, and who decides (`agent` or `human`). `jadpo-term` renders it rich
 or plain per the design language, writing control characters and
 bidirectional overrides from source as `\u{...}` so they can't restyle the
-terminal or reorder code; `--json` carries `schemaVersion`,
-project-relative paths, and line and column beside byte offsets. The
+terminal or reorder code; `--json` carries `schemaVersion`, `durationMs`,
+project-relative paths, and line and column beside byte offsets, short
+unless `--full` asks for everything
+([design language](cli-design-language.md#repeats-and---full)). The
 catalogue is part of `jadpo help --json`, which the docs check reads.
 *Rejected:* a `build.rs` scan of emitter strings, which lets codes drift.
 
@@ -708,11 +724,27 @@ same bare name.
 
 `personal_data::report` writes the report from `sent`, naming each holder as
 it is declared; the CLI writes it only for a project with no errors and
-removes an old one otherwise. V6 reads `sent` for the connections it asks an
-`ErasureNotPossible` of, and P8 adds its sections to `report` and its JSON
+removes an old one otherwise. P8 adds its sections to `report` and its JSON
 beside `connections`. Marks and exits aren't graph nodes yet: the report is
-worked out from the analysis directly until the approval review needs a diff,
-which reads the JSON twin as it does the other reports.
+worked out from the analysis directly, and the approval review compares the
+JSON twins (`personal_data::entries`), the before side's kept beside its
+manifest in `build/before/<commit>/`.
+
+`exits::How` keeps, with each row, whether the holder only decided what was
+sent and whether it counts only as what a provider's answer may hold. A row a
+stronger one of the same exit and holder covers is dropped
+(`exits::strongest`).
+
+**Erasure at providers** (area 15; chunk V6). `provider_erasure::declared`
+reads each package's `erasure:` and `key_problems` each connection's `key:`
+against the data model, so a connection is let off only by what can be carried
+out. `of_connection` says what becomes of what `sent` takes through a
+connection, and `unerased` lists those whose copy stays, which
+`acceptances::needs` turns into `ErasureNotPossible.data_stays` unless an
+acceptance on the before side, still in the project, lists it with a reason.
+So unlike every other kind it reads no record: it says how things stand, and a
+body with errors (`provider_erasure::clean`) leaves it unjudged, since nothing
+can say what such a body sends.
 
 **Retention** (area 15). An entity's `retention:` and each field's are
 read by `data::retention::read` once the entity's fields and lifecycle
@@ -879,19 +911,46 @@ and `.failure_added` for an operation something other than a test calls,
 `.host_changed` for a host's address changed or one added to a connection
 the app already had, `.service_image` for a service's image new or
 changed, `.credential_changed` for a connection's credential scheme, and
-`.git_source` for a package locked from git; `PolicyChange.principal_added`,
+`.git_source` for a package newly locked from a git repository whose lock
+entry names no own source; `PolicyChange.principal_added`,
 `.principal_changed`, `.sign_in_method_added` and `.sign_in_added`. A new
 connection's hosts are `NetworkChange.host_added` (area 18, 2026-10-30),
-which the record comparison below gives. Every git package needs a
-person, since telling the app's own company's repository from a third
-party's needs a setting the pages don't decide; this is the conservative
-reading of area 11's "Publisher trust". This graph diff runs in tests.
+and an entry of `packages:`'s `own_sources:` added or widened is
+`PolicyChange.own_source_added`, which the record comparison below gives.
+A lock entry's `own_source` (`ownSource` in the manifest) is the entry its
+repository is under, read by `jadpo_check::own_sources`, which fails
+closed: by exact host and whole path parts, with an address it can't tell
+apart from someone else's under nothing (area 11, "Installing safely").
+This graph diff runs in tests.
+
+**Contact details and names need no mark** (chunks A20 and A21, area 15). `Email` is in
+`contact::PERSONAL`, and `ai_personal::builtin_category` reads a built-in type's
+category where `deep` and `shallow` walk, so every check that follows a standard
+type that is personal data follows it. `ai_personal::counts_as_marked` is what
+erasure adds to `personal:` for what it clears, the types in
+`ai_personal::CLEARED_WITH_NO_MARK`, and `counted_as_marked` says what one is in a
+refusal; `persons::personal_problems` still reads only `personal:`. `personal_data::sent` names a standard type with a field of
+that type at the same exit, through `Holding::of_types`.
+
+**What a first record holds** (chunk A15, area 18). `acceptances::first::notice_list`
+runs the record comparisons against an empty before side while nothing compares
+them, keeping the kinds that are a decision even as a project's first, adds each
+public write read from today's access record (an action's through
+`policy::reach::writes`, which follows its calls), each entity whose personal data
+anyone may read (`first::public_reads`, chunk A20, by `compare::public_reads` and
+`ai_personal::field_holding`) and each connection
+`provider_erasure::unerased` lists, and drops what is judged anyway or a reasoned
+acceptance names. `jadpo check` shows them through `check::notice_blocks` once it
+otherwise passes, with `notice_list` in its `--json`, and `approval::Report` leads
+with them; `approval::first_report` is the report of them alone when there is no
+before side to build.
 
 **The approval report** (chunk V2, areas 17 and 18) builds the base: `jadpo
 approval` reads the commit through `git cat-file --batch` into an in-memory
 file set (`jadpo_db::FileSet`, loaded by `load_files`, §2.2, "Loading"),
-checks it with the same compiler and keeps its manifest and its declines in
-`build/before/<commit>/`, used again while this compiler wrote them.
+checks it with the same compiler and keeps its manifest, its declines and its
+personal-data report in `build/before/<commit>/`, used again while this
+compiler wrote them.
 `jadpo_check::approval` then reads both sides as manifests, the graph's
 canonical JSON, rather than as `Graph`s, since a kept manifest is all the
 before side has: it compares their nodes and edges for the source, the
@@ -900,6 +959,28 @@ newly reachable callables and the other behaviour, and walks today's edges
 decisions themselves are `acceptances::needs`, the same list `check` judges,
 each carrying its plain words and the callers it lets in from where its
 record is read.
+
+**The registry commands** (chunk R5, area 11, "How the registry commands
+work") are `jadpo-cli`'s `registry` (asking the protocol over `download`,
+each answer held to the table's shapes; the log check; which release `update`
+takes), `install` (where a release from the registry joins `add` and `update`
+at the same `verify`), `package_search`, `package_audit`, `package_publish` and
+`package_preview`. `jadpo_check::release::reached` follows the graph's calls,
+uses and raises from the app's own code, and `type_shape` reduces a type as a
+fingerprint does. Tests run them against `jadpo-registry`'s local registry, and
+a stand-in in front of it that changes its answers.
+
+**A package's publisher** (chunk G6, area 11, "Names and publishers") is read
+by `jadpo_check::packages`, kept on the `Surface` (one line of its text, loose
+to the version) and carried by `release::Facts`. `package::bar` adds the
+`publisher` row: `check` leaves a package with none alone, and `verify` refuses
+it, or one naming another handle than `--publisher`. `jadpo-verifier` passes a
+request's `publisher` to both of its runs of `verify`, never to the run with the
+release a package declares, which may not know the flag. `LocalRegistry::checked`
+is the registry's own check, which R7 builds in the application: a repository's
+earlier releases, and where the name it would take is released from.
+`package_publish` shows that row as `publish.publisher_mismatch`, and
+`registry::holds` compares the scope of the name asked for with the surface.
 
 **What a release shows** (chunk R3, area 11) is worked out by
 `jadpo_check::release`, not held in the graph, since it describes a package's
@@ -944,10 +1025,17 @@ git ignores, such as a test's under `target/`, isn't looked for.
 today's source writes, entry by entry: the API and event records for
 `ApiChange` (each type's fields as sent, read or both, by what reaches
 them from a route's input, output or failures), `access.jadpo_record`
-for `PolicyChange`, `network.jadpo_record` for `NetworkChange`,
-`jadpo.lock` for `PackageChange.git_source`, the domain folders for
-`DomainChange.created`. Each acceptance a change adds is matched against
-that list; one the before side has is history, compared byte for byte.
+for `PolicyChange` (its `own_source` lines read as empty when the before
+side has no record), `network.jadpo_record` for `NetworkChange`,
+`jadpo.lock` for `PackageChange.git_source` (read as empty when the before
+side has none), the domain folders for
+`DomainChange.created`. When the lock moved, the before side also reads the
+app's source and the installed surfaces, and `acceptances::upgrades`
+compares what the app wrote there with the packages now, matched with the
+version ignored, for an upgrade's `PackageChange`s; `jadpo package update`
+prints the same review from the tree. Each acceptance a change adds is
+matched against that list; one the before side has is history, compared
+byte for byte.
 The acceptance rules don't stop `jadpo test` or `jadpo dev`, as records
 out of date don't.
 
@@ -2006,7 +2094,7 @@ step the executor calls `jadpo_runtime::test_steps::after_step`, which
 draws each delivery due in the outbox at the test's clock from all those
 due, delivers it as the runner does, and ends the test with the failure
 of one that failed for good, `Ctx::undelivered` naming it for the
-report's `test.subscriber_failed` (area 13, "Caches and events"). A batch
+report's `test.subscriber_failed` (area 13, "Events and caches in tests"). A batch
 run the step, a delivery or an item starts is drawn among the
 deliveries, a batch at a time (`batches::run_a_batch`): each by a fresh
 runner, which claims the run, reads its saved values again and gives its
@@ -3096,6 +3184,37 @@ field a row and `fields` in its JSON, and `graph::policy_nodes` adds
 `grant`, `field_restriction`, `tenancy` and `action_exception` nodes with
 `grants` and `scopes` edges.
 
+**A route that sends raw bytes** (area 7, "Sending raw bytes" and "Answers that
+never change"; chunk G3). `routes::Reader::sends` and `cache` read the two items
+into `RoutePlan::sends` and `immutable`, and `RoutePlan::output` stays the
+`Output`'s codec. `http::answer` is the one place a success is made, for either
+executor, so both hosts and both executors send it alike: `sent_raw` takes the
+field, and sets `Content-Length` itself because a `HEAD` clears the body after
+that. Compiled code gets no writer for the route. A route test wraps the body in
+the field's JSON and reads it through the codec. `idempotency::store_params`
+keeps a body whose type isn't JSON as base64 with its type, since a kept
+response is a JSON column. `policy::flow::cached_personal_problems` reports a
+marked field in a kept answer once the routes are read, for the reason the
+proof below does, walking in the mode that follows values to a model.
+
+**An action on a `GET`** (area 7, "A `GET` that runs an action"; chunk G2).
+`routes::Reader::run` lets a `GET` name an action, and
+`types::read_only_problems` reports `route.run_kind` once the routes are read,
+so the proof never sits inside `routes::groups`, which a route test's body
+reads. `not_read_only` walks the graph from the action: `outside::does` says
+what a site writes and which actions it joins, `steps::Calls` says whether an
+outside call changes anything, and `emit` is read off the statement, an
+email's counting and an event's not, over every site of a body, so a write on
+one way through or in an inline function counts.
+It keeps positions only in `own_changes`, which nothing but this check reads.
+At run time `Ctx::read_only` marks the next boundary. It begins with
+`Database::begin_read_only` (`BEGIN ... READ ONLY` on PostgreSQL, an ordinary
+`begin_at` on a store with no such mode), `Boundary::transaction` refuses
+`writes`, and a provider's changing call and a store's `put` are faults. `seal`
+keeps the events it emitted in a transaction of their own, begun at the
+boundary's isolation in the outbox's store, once the body has succeeded. A `GET`'s query and listing run the same way, and a
+`HEAD` drops the stream as it drops the body.
+
 **Listing tokens and keys from a `GET`** (area 8). A
 route's `Run` has a `generated` field: `sessions.tokens` or the service
 entity's `keys`, which no declaration holds, so it has no `Runs` edge. The
@@ -3218,7 +3337,13 @@ counting only while that can't be reached, which is the one reading both
 give: the plan's route table carries the store
 `rate_limits:` names (`RateLimitStore`, with a binding for each limit
 on Cloudflare's), the Workers host counts in it, and `jadpo check`
-refuses a Workers deployable that serves an API without one. Round trips: the sign-in lookup, an idempotency key's claim (one
+refuses a Workers deployable that serves an API without one. A route's or an
+API's own `rate_limit:` reaches the runtime on its `RoutePlan`
+(`RouteRateLimit`, its count's key starting with the route's key or `api
+<name>`), counted in place of the defaults through the same capability; the
+store's bindings are numbered from every limit the app writes, and the
+in-memory table drops the counter whose window ends soonest whatever its
+length. Round trips: the sign-in lookup, an idempotency key's claim (one
 `INSERT ... ON CONFLICT` that also gives back what the key is kept with)
 and its release, the response a failed action keeps, and `SELECT 1` each
 run as one statement on their own (`Database::query_once`, autocommit),
@@ -3369,8 +3494,8 @@ the tenant's id), which actions emit through what they call
 keeps its outbox (`outbox_store`: the store it writes, else
 `events: { store: }`, else `event.store_required`; nothing defaults to a
 store called `main`, §2.10); a subscriber whose
-action reaches a grant naming `Access.public` but not `Access.system`
-is `policy.system_grant_missing` (`policy::reach::public_only`). The
+action reaches a list that doesn't name `Access.system` is
+`policy.system_grant_missing` (`policy::reach::system_refused`). The
 plan holds the subscriber table (`jadpo_std::subscriber::EventsPlan`,
 `Plan::events`) and each emitting action's `CallablePlan::outbox`. The
 interpreter's `emit` writes the event's payload through the JSON table
@@ -3629,8 +3754,8 @@ document (record, graph node, OpenAPI operation and `routes` listing from
 `served::flags_served`), planned as `Run::Flags` of the `client: true`
 flags' numbers and answered by the HTTP component through `Ctx::flag`.
 
-**Monitoring thresholds** (area 16, "Monitoring thresholds: checked and
-generated"). `jadpo_check::thresholds` reads each domain's `thresholds {
+**Monitoring thresholds** (area 16, "What Jadpo generates from
+thresholds"). `jadpo_check::thresholds` reads each domain's `thresholds {
 }` twice: `written` as text alone, which the before side's monitoring
 files from git are read with too, and `thresholds` against the project,
 resolving each subject to its node's key. The acceptances compare the
@@ -4387,11 +4512,26 @@ it is stated where the binding is written. The driver keeps no
 session state: statements unnamed (`query_typed`), each transaction's
 level in its own `BEGIN`, held by a live test that finds a reused
 connection at the server's level with no prepared statement after a
-repeatable read transaction; a column of an extension's type (pgvector's
-`vector`, PostGIS's `geography`) is the one exception, tokio-postgres
-describing it once per connection through a named statement, which
-Hyperdrive documents keeping for the client that prepared it; this is
-not yet checked on a real account. Proved under workerd (`crates/jadpo-host-workers/tests/workerd.rs`):
+repeatable read transaction. A column of an extension's type (pgvector's
+`vector`, PostGIS's `geography`) would make tokio-postgres describe the type
+through a named statement, a `Parse` and later a `Bind`, and it has no way to
+be told a type or to skip that; through Hyperdrive to Neon, `vector` answered
+`internal_fault` in 8 of 12 runs of 2026-11-04, and against a stand-in pooler
+that moves between statements (`crates/jadpo-cli/tests/pooled_statements.rs`,
+which deallocates each time the connection goes idle) it fails with `26000`,
+`prepared statement "s0" does not exist`. So `postgres::extension_types`'s
+`Described`, in the connection's stream (`Counted`), marks such a column in
+each `RowDescription` as the built-in `unknown`, with its real number in the
+column's table number, tokio-postgres then looks nothing up, and the driver
+asks for the types' names itself in one unnamed statement (`names_of`, kept
+for the store's life) and reads those columns by name. The test holds that no
+statement is named. That this ends the failures on Hyperdrive itself awaits a
+redeploy (the roadmap's 8.2n). *Rejected:* a patched copy of tokio-postgres,
+which every deployable's workspace would have to carry and follow upstream;
+casting such columns in the generated SQL, at each of the runtime's and the
+compiler's many `SELECT`s and `RETURNING`s; and describing a type inside a
+transaction, which holds the two messages to one server connection but leaves
+the statement behind on it for the next client. Proved under workerd (`crates/jadpo-host-workers/tests/workerd.rs`):
 a Hyperdrive binding read as its address, its host the pooler and
 `connect()` to it reaching the binding's service in a later request; a
 store reaching a scripted PostgreSQL elsewhere over TLS through
@@ -4449,7 +4589,9 @@ away ends the request, and Workers ends its `fetch()` to the model with
 it: workerd finds the client gone when it next sends it a piece, rather
 than calling the source's `cancel`, which, when a platform does call it,
 stops the read in hand and drops the stream, aborting that `fetch()`
-itself; when Cloudflare's edge finds a client gone is not yet checked.
+itself. On Cloudflare's edge, with a stand-in model on another Worker, 4 pieces
+came over 2.98 seconds, and a client leaving after 2 of 25 ended the model's
+call with its next piece (2026-11-04, from LHR).
 Proved under workerd (`crates/jadpo-cli/tests/workers/newsroom.rs`) by a news desk
 of its own whose model is a server the test starts: a draft's first piece
 reaching the client before the model writes the rest, a client that goes
@@ -4531,6 +4673,10 @@ and workerd, which queues nothing, never shows it; a promise of the
 waiting call's settled from the giving invocation, which the decision
 rules out; and a slot taken back after its call's own timeout, which
 would cut short a call legitimately slow before its request went out.
+On Cloudflare's edge, without the runtime's counting (a plain Worker), eight
+`fetch()`es at once, each held 3 seconds for its head, arrived at 0, 0, 0, 0, 0,
+0, 3 and 3 seconds, so its limit is what the runtime assumes (2026-11-04, from
+LHR).
 
 **Cloudflare Queues' consumer** (area 11; area 14, "A Workers deployable"). The generated crate exports
 `queue` beside `fetch` and `scheduled`, and the shim hands it the batch,
@@ -5309,9 +5455,11 @@ never called, so the workspace builds, lints and tests as one.
   (`jadpo_runtime::public_address`, the native guard's check, in the
   runtime so both ask one question) nor to `localhost`, follows no
   redirect and reads at most the bytes asked for. A name isn't looked up
-  first, since a Worker has no resolver; whether Cloudflare's network
-  reaches a private address a name resolves to is not yet checked on a
-  real deploy.
+  first, since a Worker has no resolver; on Cloudflare's network each name
+  tried that resolves to a private address (`10.0.0.1.nip.io`,
+  `192.168.1.1.nip.io`, `172.16.0.1.nip.io`, `127.0.0.1.nip.io`,
+  `169.254.169.254.nip.io`, `localtest.me`) answered 530, error 1016, over both
+  schemes, not reaching it (2026-11-04, from LHR).
 
 Every Workers test runs on this machine under the pinned workerd, with
 no Cloudflare account and no network past the machine; only a real

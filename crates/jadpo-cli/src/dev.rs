@@ -369,10 +369,7 @@ impl Out<'_> {
     }
 
     fn paint(&self, token: Token, text: &str) -> String {
-        match self.style.color {
-            Some(depth) => format!("{}{text}\x1b[0m", token.sgr(depth, self.style.theme)),
-            None => text.to_string(),
-        }
+        token.painted(text, &self.style)
     }
 
     fn event(&mut self, event: &Event) {

@@ -176,7 +176,9 @@ impl EntityPolicy {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FieldPolicy {
     pub field: String,
-    /// `FieldAccess.server_only`: no client may read or write it.
+    /// `FieldAccess.server_only`: no request may read or write it; the system
+    /// may write it, where the record's own list lets the system in (area 12,
+    /// "Runs as the system").
     pub server_only: bool,
     /// Each effect it narrows (`create`, `read`, `update`), as written and
     /// resolved; an effect left out follows the record's list.
@@ -192,7 +194,11 @@ impl FieldPolicy {
     /// when it follows the record's list.
     pub fn grants(&self, effect: Effect) -> Option<&[Grant]> {
         if self.server_only {
-            return (effect != Effect::Delete).then_some(&[]);
+            return match effect {
+                Effect::Create | Effect::Update => Some(&[Grant::System]),
+                Effect::Read => Some(&[]),
+                Effect::Delete => None,
+            };
         }
         self.lists.get(&effect).map(|list| list.grants.as_slice())
     }

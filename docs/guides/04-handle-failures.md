@@ -7,40 +7,12 @@ There are no exceptions to forget. This guide refuses to lend a book
 that is already out, shows the client a `409`, and lets one caller turn
 the failure into an ordinary answer.
 
-You start from an app with a `Book` entity that has an `on_loan` field,
-a `LoanView` output type, and a fixture that stores a book for tests;
-[Store and change a record](02-store-and-change-a-record.md) and
-[Write tests](08-write-tests.md) show how to write those.
+You start from an app with a fixture, `shelved_book`, that stores a book for
+tests. [Write tests](08-write-tests.md) shows how to write one. Everything else
+is shown below.
 
 ```jadpo check project=guide-failures file=app.jadpo hidden
 application {}
-```
-
-```jadpo check project=guide-failures file=domains/books/entities/book.jadpo hidden
-/// A book the library lends.
-entity Book {
-    id: Uuid
-    title: Text {
-        min_length: 1
-        max_length: 200
-    }
-    on_loan: Bool
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public]
-        update: [Access.public]
-    }
-}
-```
-
-```jadpo check project=guide-failures file=domains/books/types/loan_view.jadpo hidden
-use books/entities { Book }
-
-/// A book's loan, as the API sends it.
-type LoanView = Output {
-    pick: [Book.id, Book.on_loan]
-}
 ```
 
 ```jadpo check project=guide-failures file=domains/books/fixtures/shelved_book.jadpo hidden
@@ -95,6 +67,41 @@ in, or a `500` for a bug.
 
 ## Raise it, and say that you can
 
+The action needs a book to lend, and something to answer with. `Book` is a
+stored record with an `on_loan` field, and `LoanView` is what the API sends back.
+Both are yours.
+
+`domains/books/entities/book.jadpo`:
+
+```jadpo check project=guide-failures file=domains/books/entities/book.jadpo
+/// A book the library lends.
+entity Book {
+    id: Uuid
+    title: Text {
+        min_length: 1
+        max_length: 200
+    }
+    on_loan: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+```
+
+`domains/books/types/loan_view.jadpo`:
+
+```jadpo check project=guide-failures file=domains/books/types/loan_view.jadpo
+use books/entities { Book }
+
+/// A book's loan, as the API sends it.
+type LoanView = Output {
+    pick: [Book.id, Book.on_loan]
+}
+```
+
 `reject` ends the action with a failure. `fails` lists every failure
 that can leave it, before the result type:
 
@@ -123,8 +130,8 @@ action lend_book(book_id: Book.id) fails BookNotFound, BookOnLoan -> LoanView {
 }
 ```
 
-`Book.get` can fail with `BookNotFound`, and `attempt` passes that on,
-so it is in the list too. The compiler checks the list both ways: a
+`Book.get` can fail with `BookNotFound`, the failure Jadpo declares for every
+entity, and `attempt` passes that on, so it is in the list too. The compiler checks the list both ways: a
 failure that can leave but isn't listed is an error, and so is one that
 is listed but can never happen.
 
@@ -273,7 +280,7 @@ A failure can also carry fields: `client:` ones the caller sees under
 ## Read more
 
 [Declaring a failure](../language/04-failures.md#declaring-a-failure),
-[Kinds](../language/04-failures.md#kinds),
+[Failure kinds](../language/04-failures.md#failure-kinds),
 [What the client sees](../language/04-failures.md#what-the-client-sees),
 [Saying what can fail](../language/04-failures.md#saying-what-can-fail-fails),
 [Passing a failure on](../language/04-failures.md#passing-a-failure-on-attempt),

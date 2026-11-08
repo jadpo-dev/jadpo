@@ -1,14 +1,15 @@
-# Deploy natively
+# Deploy to your own server
 <!-- topic: guide-deploy-natively -->
 
 `jadpo build` turns your app into one program, with nothing else to
 install beside it, that you run on any Linux or macOS server with a
-PostgreSQL database. This guide builds the book catalogue from
-[Build an API](01-build-an-api.md), applies its migrations to a real
-database and runs it.
+PostgreSQL database. This guide builds a book catalogue, applies its
+migrations to a real database and runs it.
 
 You need PostgreSQL that the server can reach, and `jadpo` on the
-machine you build on. You start from the catalogue's code:
+machine you build on. You start from an app with a `Book` entity and routes
+that add a book and read one back.
+[Build an API](01-build-an-api.md) shows how to write those.
 
 ```jadpo check project=guide-native file=domains/books/entities/book.jadpo hidden
 /// A book the library lends.
@@ -218,7 +219,7 @@ its migrations.
 ```
 
 ```text
-{"address":"0.0.0.0:8080","build":"b_bd8f8b62b3ed","commit":null,"compiler":"0.1.0","deployable":"app","event":"runtime.started","modified":true,"target":"native","trigger":"native","unbuilt":[],"workers":10}
+{"address":"0.0.0.0:8080","build":"b_bd8f8b62b3ed","commit":null,"compiler":"X.Y.Z","deployable":"app","event":"runtime.started","modified":true,"target":"native","trigger":"native","unbuilt":[],"workers":10}
 ```
 
 It writes one line of JSON for each thing worth logging, and listens on
@@ -227,7 +228,7 @@ needs and doesn't have stops it at once, naming the setting but never
 printing a value:
 
 ```text
-{"build":"b_bd8f8b62b3ed","commit":null,"compiler":"0.1.0","deployable":"app","event":"runtime.startup_failed","modified":true,"problems":[{"message":"`DATABASE_URL` isn't set: `database_url` is required, so the app can't start without it.","problem":"setting_missing","setting":"database_url","variable":"DATABASE_URL"}],"target":"native"}
+{"build":"b_bd8f8b62b3ed","commit":null,"compiler":"X.Y.Z","deployable":"app","event":"runtime.startup_failed","modified":true,"problems":[{"message":"`DATABASE_URL` isn't set: `database_url` is required, so the app can't start without it.","problem":"setting_missing","setting":"database_url","variable":"DATABASE_URL"}],"target":"native"}
 ```
 
 Every deployed app answers a health check, for your load balancer or

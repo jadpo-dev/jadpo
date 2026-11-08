@@ -137,4 +137,4 @@ clients of the query get polygons where they used to expect points.
 ## Related
 
 - [A query giving a map layer](../language/06-reads-and-writes.md#a-query-giving-a-map-layer)
-- [Storage](../language/20-geospatial.md#storage)
+- [Storing geometries](../language/20-geospatial.md#storing-geometries)

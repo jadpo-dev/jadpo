@@ -153,6 +153,79 @@ pub fn reviewed_in(text: &str) -> Vec<String> {
     out
 }
 
+/// What `provider.jadpo`'s `imported:` lists as `renamed:`, each name in
+/// the description with the name code knows it by, in the order written
+/// (area 11, "An importer"; Richard, 2026-11-07); none when the file
+/// doesn't read.
+pub fn renamed_in(text: &str) -> Vec<(String, String)> {
+    let parse = jadpo_syntax::parse_file(text);
+    let Some(file) = ast::SourceFile::cast(parse.syntax()) else {
+        return Vec::new();
+    };
+    let named = |list: Option<ast::MemberList>, wanted: &str| {
+        list?.member_items().find_map(|item| match item {
+            MemberItem::Member(member)
+                if member
+                    .member_key()
+                    .is_some_and(|key| key.syntax().text().to_string().trim() == wanted) =>
+            {
+                Some(member)
+            }
+            _ => None,
+        })
+    };
+    let mut out = Vec::new();
+    for decl in file.decls() {
+        let Decl::SingletonDecl(decl) = decl else {
+            continue;
+        };
+        if !decl
+            .keyword()
+            .is_some_and(|keyword| keyword.text() == "provider")
+        {
+            continue;
+        }
+        let Some(renamed) = named(decl.member_list(), "imported")
+            .and_then(|imported| named(imported.block(), "renamed"))
+        else {
+            continue;
+        };
+        for item in renamed.block().iter().flat_map(|list| list.member_items()) {
+            let MemberItem::Member(member) = item else {
+                continue;
+            };
+            let from = member
+                .member_key()
+                .map(|key| key.syntax().text().to_string().trim().to_string());
+            let to = member
+                .value()
+                .map(|value| value.syntax().text().to_string().trim().to_string());
+            if let (Some(from), Some(to)) = (from, to)
+                && !from.is_empty()
+                && !to.is_empty()
+            {
+                out.push((from, to));
+            }
+        }
+    }
+    out
+}
+
+/// Each type `text` declares with its members' names, sorted: what an
+/// orphaned declaration is matched to a new one by.
+pub fn type_members(text: &str) -> Vec<(String, Vec<String>)> {
+    declarations(text)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|declared| {
+            let name = declared.key.strip_prefix("type ")?.to_string();
+            let mut members: Vec<String> = declared.members.into_iter().map(|m| m.key).collect();
+            members.sort();
+            Some((name, members))
+        })
+        .collect()
+}
+
 /// A member's own text, without what comes before it.
 fn imported_text(text: &str, member: &Member) -> String {
     text[member.range.0..member.range.1].to_string()

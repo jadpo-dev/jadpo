@@ -197,6 +197,24 @@ impl Erasures {
             })
     }
 
+    /// The person entities whose erasure can find the records of `entity`,
+    /// by name: [`Self::reaches`], person by person.
+    pub fn finding(&self, entity: &EntityModel) -> Vec<&str> {
+        self.people
+            .iter()
+            .filter(|(_, erasure)| {
+                erasure.reach.contains(&entity.name)
+                    || entity.fields.iter().any(|field| {
+                        field
+                            .reference
+                            .as_ref()
+                            .is_some_and(|reference| erasure.reach.contains(&reference.target))
+                    })
+            })
+            .map(|(person, _)| person.as_str())
+            .collect()
+    }
+
     /// Whether an erasure deletes records of the entity called `name`, or
     /// would once each `restricted` reference that doesn't say has answered.
     fn finds(&self, name: &str) -> bool {
@@ -212,11 +230,16 @@ impl Erasures {
 pub fn erasures(db: &dyn Db, project: Project) -> Arc<Erasures> {
     let model = data_model(db, project);
     let marks = crate::ai_personal::marks(db, project);
+    let lookup = crate::lookups::Lookup::new(db, project);
     let marked = |entity: &str, field: &str| {
         marks
             .fields
             .get(&(entity.to_string(), field.to_string()))
             .is_some_and(|mark| mark.category.is_some())
+            || model
+                .entity(entity)
+                .and_then(|entity| entity.fields.iter().find(|held| held.name == field))
+                .is_some_and(|held| crate::ai_personal::counts_as_marked(&lookup, &held.ty))
     };
     let people = model
         .entities
@@ -453,6 +476,7 @@ pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
     let path = file.path(db);
     let erasures = erasures(db, project);
     let marks = crate::ai_personal::marks(db, project);
+    let lookup = crate::lookups::Lookup::for_file(db, project, file);
     let mut out = Vec::new();
     let mut seen = BTreeSet::new();
     for item in &item_tree(db, file).items {
@@ -466,11 +490,28 @@ pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
         if entity.path != *path {
             continue;
         }
-        let marked = |field: &str| {
+        let written_mark = |field: &str| {
             marks
                 .fields
                 .get(&(entity.name.clone(), field.to_string()))
                 .is_some_and(|mark| mark.category.is_some())
+        };
+        let marked = |field: &str| {
+            written_mark(field)
+                || entity
+                    .fields
+                    .iter()
+                    .find(|held| held.name == field)
+                    .is_some_and(|held| crate::ai_personal::counts_as_marked(&lookup, &held.ty))
+        };
+        let how = |field: &str| {
+            entity
+                .fields
+                .iter()
+                .find(|held| held.name == field)
+                .filter(|_| !written_mark(field))
+                .and_then(|held| crate::ai_personal::counted_as_marked(&lookup, &held.ty))
+                .unwrap_or_else(|| "is marked `personal:`".to_string())
         };
         let identity = crate::identity::identity(db, project);
         let subject = |field: &str| {
@@ -484,6 +525,7 @@ pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
             &read.spans,
             erasures,
             &marked,
+            &how,
             &subject,
         ));
         out.extend(removal_problems(db, project, entity, &read.spans));
@@ -561,6 +603,7 @@ pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
                                 at,
                                 field_span,
                                 written.is_some(),
+                                &how(&other.name),
                             ));
                         }
                     }
@@ -681,6 +724,7 @@ fn own_record_problems(
     spans: &crate::data::EntitySpans,
     erasures: &Erasures,
     marked: &dyn Fn(&str) -> bool,
+    how: &dyn Fn(&str) -> String,
     subject: &dyn Fn(&str) -> bool,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
@@ -822,7 +866,8 @@ fn own_record_problems(
             .at(span.clone(), "personal data that can't be `none`")
             .also(at.clone(), "keeps the record without the person")
             .reason(format!(
-                "`Erasure.retained` on `{first_name}` keeps each {one}'s record when they are erased, clearing every other marked field. `{field_name}` is marked `personal:`, and only an optional field (`{ty}?`) can be cleared{}.",
+                "`Erasure.retained` on `{first_name}` keeps each {one}'s record when they are erased, clearing every other marked field. `{field_name}` {}, and only an optional field (`{ty}?`) can be cleared{}.",
+                how(field_name),
                 if subject(field_name) {
                     format!(", which what a {one} signs in with can't be")
                 } else {
@@ -925,7 +970,8 @@ fn reference_required(
 }
 
 /// `data.erase_field_required`: a marked field of a record erasure
-/// anonymises that can't be `none`.
+/// anonymises that can't be `none`. `how` says what makes it personal data.
+#[allow(clippy::too_many_arguments)]
 fn marked_required(
     entity: &EntityModel,
     reference: &FieldModel,
@@ -934,6 +980,7 @@ fn marked_required(
     at: &Span,
     reference_at: &Span,
     written: bool,
+    how: &str,
 ) -> Diagnostic {
     let (name, field_name) = (&entity.name, &field.name);
     let ty = field.ty.strip_nullable();
@@ -953,7 +1000,7 @@ fn marked_required(
     .at(at.clone(), "personal data that can't be `none`")
     .also(reference_at.clone(), "keeps the record without the person")
     .reason(format!(
-        "{why}: erasing a `{person}` keeps each {one} that refers to them, clearing the reference and every marked field. `{field_name}` is marked `personal:`, and only an optional field (`{ty}?`) can be cleared."
+        "{why}: erasing a `{person}` keeps each {one} that refers to them, clearing the reference and every marked field. `{field_name}` {how}, and only an optional field (`{ty}?`) can be cleared."
     ))
     .next(format!(
         "Make `{field_name}` `{ty}?`, or say `erase: Erasure.deleted` on `{}` to delete the {one} instead",

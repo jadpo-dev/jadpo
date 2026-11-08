@@ -221,6 +221,22 @@ impl Transaction for Tx {
 }
 
 impl Database for Store {
+    fn begin_read_only(
+        &self,
+        _isolation: Isolation,
+    ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+        self.line("begin read only");
+        let store = self.clone();
+        Box::pin(async move {
+            Ok(Box::new(Tx {
+                store,
+                pending: Vec::new(),
+                ended: false,
+                wrote: false,
+            }) as Box<dyn Transaction>)
+        })
+    }
+
     fn begin_at(
         &self,
         _isolation: Isolation,
@@ -272,6 +288,10 @@ struct Fake {
     /// Counts requests against one a minute, whatever the runtime's
     /// default, when given.
     limits: Option<crate::RateLimits>,
+    /// Counts requests against the limit asked about, not one a minute.
+    as_asked: bool,
+    /// What each request was counted as, and against which limit.
+    asked: std::cell::RefCell<Vec<(String, jadpo_std::http::RateLimit)>>,
     /// A monotonic clock that moves only when the test moves it.
     still: Option<Cell<u64>>,
     /// No wall clock: `now_ms` gives nothing.
@@ -319,17 +339,18 @@ impl Host for Fake {
     fn rate_limit<'a>(
         &'a self,
         key: &'a str,
-        _limit: jadpo_std::http::RateLimit,
+        limit: jadpo_std::http::RateLimit,
         now: i64,
     ) -> LocalFuture<'a, crate::Allowed> {
+        self.asked.borrow_mut().push((key.to_string(), limit));
         let one = jadpo_std::http::RateLimit {
             requests: 1,
             window_ms: 60_000,
         };
-        let allowed = self
-            .limits
-            .as_ref()
-            .map_or(crate::Allowed::Yes, |limits| limits.allow(key, one, now));
+        let counted = if self.as_asked { limit } else { one };
+        let allowed = self.limits.as_ref().map_or(crate::Allowed::Yes, |limits| {
+            limits.allow(key, counted, now)
+        });
         Box::pin(async move { allowed })
     }
 }
@@ -348,6 +369,13 @@ enum Ends {
     /// Writes, writes down whether the system runs it, as policy would
     /// bind it (`system true` or `system false`), and emits `type Done`.
     Emits,
+    /// Only reads.
+    Reads,
+    /// Reads, then asks to write, reporting a store's refusal as a fault,
+    /// as a real write does.
+    AsksToWrite,
+    /// Reads, then emits `type Done`.
+    OnlyEmits,
 }
 
 /// Runs the one action: it writes, then ends as `ends` says.
@@ -373,11 +401,34 @@ impl<'p> ActionBody<'p> for Body {
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         let ends = self.0;
         Box::pin(async move {
-            if let Ok(transaction) = ctx.transaction("main").await {
+            if matches!(ends, Ends::Reads | Ends::AsksToWrite | Ends::OnlyEmits) {
+                if let Ok(transaction) = ctx.read_transaction("main").await {
+                    let _ = transaction.query("read", &[]).await;
+                }
+            } else if let Ok(transaction) = ctx.transaction("main").await {
                 let _ = transaction.execute("write", &[]).await;
             }
             match ends {
-                Ends::Writes => Outcome::Value(Value::Unit),
+                Ends::Writes | Ends::Reads => Outcome::Value(Value::Unit),
+                Ends::AsksToWrite => match ctx.transaction("main").await {
+                    Ok(transaction) => {
+                        let _ = transaction.execute("write", &[]).await;
+                        Outcome::Value(Value::Unit)
+                    }
+                    Err(StoreError::Fault(reason)) => Outcome::Fault(
+                        ctx.fault(crate::FaultKind::Defect(reason), crate::Frame::ENTRY),
+                    ),
+                    Err(_) => Outcome::Failed(Box::new(crate::unavailable())),
+                },
+                Ends::OnlyEmits => {
+                    let _ = ctx.emit(crate::Event {
+                        key: "type Done".into(),
+                        value: Value::Unit,
+                        payload: "null".into(),
+                        subscribers: vec!["subscriber s".into()],
+                    });
+                    Outcome::Value(Value::Unit)
+                }
                 Ends::NotFound => {
                     let mut failure = Failure::new("type Gone", "Gone", "gone");
                     failure.kind = Some("not_found".into());
@@ -463,16 +514,37 @@ fn table(keys: Option<&str>, required: bool) -> RouteTable {
             run: Run::Action(0),
             settle: None,
             stream: false,
+            sends: None,
+            immutable: false,
             keys: keys.map(str::to_string),
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Public,
             caller: None,
             confirm: false,
+            rate_limit: None,
             file: "domains/widgets/routes/widgets.jadpo".into(),
             line: 1,
         }],
         stores: vec!["main".into()],
         ..RouteTable::default()
+    }
+}
+
+/// `GET /widgets/{name}`, running the one action and answering 204 (area
+/// 7, "What a route runs"; chunk G2).
+fn get_table() -> RouteTable {
+    let mut table = table(None, false);
+    let route = &mut table.routes[0];
+    route.key = "route GET /widgets".into();
+    route.method = HttpMethod::Get;
+    table
+}
+
+fn get(method: &str, name: &str) -> Request {
+    Request {
+        method: method.into(),
+        path: format!("/widgets/{name}"),
+        ..Request::default()
     }
 }
 
@@ -925,6 +997,61 @@ fn an_api_can_require_the_key_and_a_bad_key_is_refused() {
 }
 
 #[test]
+fn what_a_get_runs_reads_in_a_transaction_the_store_keeps_from_writing() {
+    let table = get_table();
+    let program = Program::new(Ends::Reads);
+    let host = Fake::default();
+    let answered = send(&table, &program, &host, &get("GET", "a"), NOW);
+    assert_eq!(answered.status, 204, "{:?}", host.store.lines());
+    assert_eq!(host.store.lines(), ["begin read only", "read", "commit"]);
+    // A `HEAD` is answered as the `GET` is, with no body.
+    let host = Fake::default();
+    let answered = send(&table, &program, &host, &get("HEAD", "a"), NOW);
+    assert_eq!(answered.status, 204);
+    assert!(answered.body.is_empty());
+    assert_eq!(host.store.lines(), ["begin read only", "read", "commit"]);
+}
+
+#[test]
+fn another_method_begins_an_ordinary_transaction() {
+    let table = table(None, false);
+    let program = Program::new(Ends::Reads);
+    let host = Fake::default();
+    send(&table, &program, &host, &post(None, "a"), NOW);
+    assert_eq!(host.store.lines(), ["begin", "read", "commit"]);
+}
+
+#[test]
+fn what_a_get_runs_never_writes_even_if_the_proof_were_wrong() {
+    let table = get_table();
+    let program = Program::new(Ends::AsksToWrite);
+    let host = Fake::default();
+    let answered = send(&table, &program, &host, &get("GET", "a"), NOW);
+    assert_eq!(answered.status, 500, "{:?}", host.store.lines());
+    assert_eq!(code(&answered), Some("internal_fault"));
+    assert_eq!(host.store.lines(), ["begin read only", "read", "rollback"]);
+}
+
+/// What a `GET` runs may emit an event, so a subscriber can count a read
+/// (area 7; Richard, 2026-11-07): its reads stay `READ ONLY`, and the
+/// event is kept in a transaction of its own before the read commits.
+#[test]
+fn what_a_get_runs_keeps_its_events_in_a_transaction_of_their_own() {
+    let table = get_table();
+    let program = Program::new(Ends::OnlyEmits);
+    let host = Fake::default();
+    let answered = send(&table, &program, &host, &get("GET", "a"), NOW);
+    assert_eq!(answered.status, 204, "{:?}", host.store.lines());
+    let lines = host.store.lines();
+    assert_eq!(lines[..3], ["begin read only", "read", "begin"]);
+    assert!(
+        lines[3].starts_with("INSERT INTO \"jadpo_outbox\""),
+        "{lines:?}"
+    );
+    assert_eq!(lines[lines.len() - 2..], ["commit", "commit"]);
+}
+
+#[test]
 fn an_action_that_writes_no_store_keeps_no_key() {
     let table = table(None, false);
     let program = Program::new(Ends::Writes);
@@ -1143,6 +1270,175 @@ fn two_clients_behind_a_proxy_are_counted_apart() {
     let second = send(&table, &program, &host, &behind("198.51.100.50"), NOW);
     assert_eq!((second.status, code(&second)), (429, Some("rate_limited")));
     assert_eq!(program.runs.get(), 3);
+}
+
+/// A limit of `requests` a minute of a route's own, by `by`.
+fn own_limit(requests: u32, by: jadpo_std::RateLimitKey) -> jadpo_std::http::RouteRateLimit {
+    jadpo_std::http::RouteRateLimit {
+        limit: jadpo_std::http::RateLimit {
+            requests,
+            window_ms: 60_000,
+        },
+        by,
+        counted: "route POST /widgets".to_string(),
+    }
+}
+
+fn counting_as_asked() -> Fake {
+    Fake {
+        limits: Some(crate::RateLimits::new(1 << 20)),
+        as_asked: true,
+        ..Fake::default()
+    }
+}
+
+fn from(address: &str) -> Request {
+    let mut request = post(None, "a");
+    request.address = Some(address.into());
+    request
+}
+
+/// What each request was counted as (area 16, "Rate limits"; chunk G4).
+fn counted_as(host: &Fake) -> Vec<String> {
+    host.asked
+        .borrow()
+        .iter()
+        .map(|(key, limit)| format!("{key} {}/{}", limit.requests, limit.window_ms))
+        .collect()
+}
+
+/// A route's limit stands in for the default ones: it counts alone, each
+/// address on its own, and a request to it uses nothing of the address's
+/// default allowance. A client sees it in the headers.
+#[test]
+fn a_routes_own_limit_stands_in_for_the_defaults() {
+    let mut table = table(Some("main"), false);
+    table.routes[0].rate_limit = Some(own_limit(2, jadpo_std::RateLimitKey::Ip));
+    let program = Program::new(Ends::Writes);
+    let host = counting_as_asked();
+    for _ in 0..2 {
+        assert_eq!(
+            send(&table, &program, &host, &from("10.0.0.1"), NOW).status,
+            204
+        );
+    }
+    let refused = send(&table, &program, &host, &from("10.0.0.1"), NOW + 1_000);
+    assert_eq!(
+        (refused.status, code(&refused)),
+        (429, Some("rate_limited"))
+    );
+    assert_eq!(program.runs.get(), 2, "the refused request never ran");
+    let header = |name: &str| {
+        refused
+            .headers
+            .iter()
+            .find(|(header, _)| header == name)
+            .map(|(_, value)| value.as_str())
+    };
+    assert_eq!(header("retry-after"), Some("59"));
+    assert_eq!(header("ratelimit-policy"), Some("\"default\";q=2;w=60"));
+    assert_eq!(header("ratelimit"), Some("\"default\";r=0;t=59"));
+    assert_eq!(
+        send(&table, &program, &host, &from("10.0.0.2"), NOW).status,
+        204
+    );
+    let asked = counted_as(&host);
+    assert_eq!(
+        asked,
+        [
+            "route POST /widgets address 10.0.0.1 2/60000",
+            "route POST /widgets address 10.0.0.1 2/60000",
+            "route POST /widgets address 10.0.0.1 2/60000",
+            "route POST /widgets address 10.0.0.2 2/60000",
+        ]
+    );
+}
+
+/// A limit can loosen the default as well as tighten it: more than 120 a
+/// minute go through on a route that says so.
+#[test]
+fn a_routes_own_limit_can_be_above_the_default() {
+    let mut table = table(None, false);
+    table.routes[0].rate_limit = Some(own_limit(150, jadpo_std::RateLimitKey::Caller));
+    let program = Program::new(Ends::Writes);
+    let host = counting_as_asked();
+    for _ in 0..150 {
+        assert_eq!(
+            send(&table, &program, &host, &from("10.0.0.1"), NOW).status,
+            204
+        );
+    }
+    assert_eq!(
+        send(&table, &program, &host, &from("10.0.0.1"), NOW).status,
+        429
+    );
+}
+
+/// Every request a default limit refuses says what limit it was over too.
+#[test]
+fn a_request_over_a_default_limit_is_told_the_limit() {
+    let table = table(None, false);
+    let program = Program::new(Ends::Writes);
+    let host = counting_as_asked();
+    for _ in 0..120 {
+        assert_eq!(
+            send(&table, &program, &host, &from("10.0.0.1"), NOW).status,
+            204
+        );
+    }
+    let refused = send(&table, &program, &host, &from("10.0.0.1"), NOW);
+    assert_eq!(refused.status, 429);
+    assert!(
+        refused.headers.contains(&(
+            "ratelimit-policy".to_string(),
+            "\"default\";q=120;w=60".to_string()
+        )),
+        "{:?}",
+        refused.headers
+    );
+}
+
+/// A request with a credential to a route anyone may call runs as no one,
+/// so it counts once, by its address, whichever key the limit counts by.
+#[test]
+fn a_credential_on_a_limited_route_anyone_may_call_counts_once() {
+    for by in [jadpo_std::RateLimitKey::Caller, jadpo_std::RateLimitKey::Ip] {
+        let mut table = table(Some("main"), false);
+        table.routes[0].rate_limit = Some(own_limit(5, by));
+        let program = Program::new(Ends::Writes);
+        let host = counting_as_asked();
+        let mut junk = from("10.0.0.1");
+        junk.headers.push(("Authorization".into(), "junk".into()));
+        assert_eq!(send(&table, &program, &host, &junk, NOW).status, 204);
+        assert_eq!(
+            counted_as(&host),
+            ["route POST /widgets address 10.0.0.1 5/60000"],
+            "{by:?}"
+        );
+    }
+}
+
+/// A route's limit never widens what a credential that doesn't sign in may
+/// try: refused, it counts against the address's default allowance too, or
+/// a generous limit would be an open door for guessing.
+#[test]
+fn a_refused_credential_counts_against_the_default_whatever_the_route_says() {
+    let mut table = table(Some("main"), false);
+    table.routes[0].rate_limit = Some(own_limit(1000, jadpo_std::RateLimitKey::Ip));
+    table.routes[0].authentication = jadpo_std::http::Authentication::Required;
+    let program = Program::new(Ends::Writes);
+    let host = counting_as_asked();
+    let mut junk = from("10.0.0.1");
+    junk.headers.push(("Authorization".into(), "junk".into()));
+    let refused = send(&table, &program, &host, &junk, NOW);
+    assert_eq!(refused.status, 401);
+    assert_eq!(
+        counted_as(&host),
+        [
+            "route POST /widgets address 10.0.0.1 1000/60000",
+            "address 10.0.0.1 120/60000",
+        ]
+    );
 }
 
 #[test]

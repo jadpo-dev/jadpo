@@ -211,7 +211,7 @@ fn jadpo_test_decodes_every_recording() {
         "decoded",
         &[("bookings.create.json", recording("booked", "PM"))],
     );
-    let ran = jadpo(&root, &["test", "--json", "--seed", "1"]);
+    let ran = jadpo(&root, &["test", "--json", "--full", "--seed", "1"]);
     assert_eq!(ran.code, 0, "{}{}", ran.stdout, ran.stderr);
     let tests = tests_of(&ran);
     assert_eq!(tests.len(), 1, "{tests:?}");
@@ -254,7 +254,7 @@ fn a_recording_its_decoders_refuse_fails_the_run() {
         ran.stdout,
         "FAIL  bookings.create's recording decodes\n --> shared/providers/acme_couriers/v1/recordings/bookings.create.json:1\n\n  decode: `bookings.create`'s recording doesn't decode: `variant` on `status`\n  reason: Every decoder decodes every recorded answer: the operation's output type, or a decoder of its own, refuses what the provider sent here, so a real answer like it would fault the call.\n  next: Correct the type or its decoder against the recording and the provider's documentation (agent)\n\n  rule: test.recording_undecodable\n  rerun: jadpo test shared/providers/acme_couriers/v1/recordings/bookings.create.json:1 --seed 1\n\ntest failed: 1 failed, 1 recording test\n"
     );
-    let json = jadpo(&root, &["test", "--json", "--seed", "1"]);
+    let json = jadpo(&root, &["test", "--json", "--full", "--seed", "1"]);
     let tests = tests_of(&json);
     assert_eq!(tests[0]["failure"]["code"], "test.recording_undecodable");
     assert_eq!(tests[0]["failure"]["recording"]["field"], "status");
@@ -267,7 +267,7 @@ fn a_recording_its_decoders_refuse_fails_the_run() {
         "round-trip",
         &[("bookings.create.json", recording("booked", "EVE"))],
     );
-    let ran = jadpo(&root, &["test", "--json", "--seed", "1"]);
+    let ran = jadpo(&root, &["test", "--json", "--full", "--seed", "1"]);
     assert_eq!(ran.code, 1, "{}{}", ran.stdout, ran.stderr);
     let tests = tests_of(&ran);
     assert_eq!(tests[0]["failure"]["code"], "test.round_trip_failed");
@@ -278,7 +278,7 @@ fn a_recording_its_decoders_refuse_fails_the_run() {
         "no-operation",
         &[("bookings.cancel.json", recording("booked", "PM"))],
     );
-    let ran = jadpo(&root, &["test", "--json", "--seed", "1"]);
+    let ran = jadpo(&root, &["test", "--json", "--full", "--seed", "1"]);
     let tests = tests_of(&ran);
     assert_eq!(tests[0]["failure"]["code"], "test.recording_undecodable");
     assert_eq!(
@@ -398,6 +398,17 @@ fn jadpo_package_record_keeps_the_sandboxs_answer() {
         fs::read_to_string(root.join(file)).expect("the recording"),
         recording("booked", "PM")
     );
+    // When it was made, which the package's facts give as its last
+    // contract run (Richard, 2026-11-07).
+    let when = fs::read_to_string(
+        root.join("shared/providers/acme_couriers/v1/recordings/recorded.jadpo_record"),
+    )
+    .expect("when it was recorded");
+    assert!(
+        when.lines()
+            .any(|line| line.starts_with("recorded bookings.create 20") && line.ends_with('Z')),
+        "{when}"
+    );
     assert_eq!(
         recorded.stdout,
         format!(
@@ -499,6 +510,46 @@ fn jadpo_package_record_refuses_live_and_missing_credentials() {
     );
     assert!(sandbox.requests().is_empty());
     assert!(!root.join(PACKAGE).join("recordings").exists());
+}
+
+/// A field the provider sends as its standard type's parts, a `Point` by
+/// `latitude` and `longitude`, has no member of its own: its recording
+/// keeps each part's member as sent, so the recording decodes, an
+/// optional point as the point it was and a required one at all.
+#[test]
+fn jadpo_package_record_keeps_a_fields_parts() {
+    let sandbox = FakeProvider::start();
+    let root = desk_at("record-parts", &sandbox.url, &[]);
+    write(
+        &root,
+        &format!("{PACKAGE}/types/booking.jadpo"),
+        "/// A booked collection.\npublic type Booking = Object {\n    id: Text {\n        max_length: 40\n    }\n    collect_at: Instant {\n        wire_name: \"collectAt\"\n    }\n    status: Status\n    window: SlotWindow {\n        decode: slots.parse_window\n        encode: slots.format_window\n    }\n    depot: Point {\n        wire_parts: {\n            latitude: \"depot_lat\"\n            longitude: \"depot_lng\"\n        }\n    }\n    pickup: Point? {\n        wire_parts: {\n            latitude: \"lat\"\n            longitude: \"lng\"\n        }\n    }\n}\n",
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    write(&root, ".env.local", "COURIERS_API_KEY=sk_test_481\n");
+    sandbox.answer(
+        200,
+        r#"{"data": {"id": "bk_481", "collectAt": "2026-10-21T09:00:00Z", "status": "booked", "window": "PM", "depot_lat": 51.5, "depot_lng": -0.125, "lat": 51.503541, "lng": -0.12767}}"#,
+    );
+    let recorded = record(&root, &[]);
+    assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
+    let kept = fs::read_to_string(root.join(format!("{PACKAGE}/recordings/bookings.create.json")))
+        .expect("the recording");
+    for member in [
+        "\"depot_lat\": 51.5,",
+        "\"depot_lng\": -0.125,",
+        "\"lat\": 51.503541,",
+        "\"lng\": -0.12767,",
+    ] {
+        assert!(kept.contains(member), "{member} in {kept}");
+    }
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(
+        tested.stdout, "tested: 1 passed, 1 recording test\n",
+        "{}",
+        tested.stderr
+    );
 }
 
 /// An answer the operation's types refuse, or a refusal, is recorded as

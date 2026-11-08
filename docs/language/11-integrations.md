@@ -8,43 +8,58 @@ checked-with: this checkout's jadpo on every gate run
 # External services
 <!-- topic: external-services -->
 
+[Call an outside API](../guides/06-call-an-outside-api.md) does the whole job, start to finish.
+
 An external service is another company's API, such as Stripe, a courier
 or another Jadpo app, that your actions call. You call it like an SDK:
 `couriers.bookings.create(request)`. Jadpo makes the HTTP request, adds the
 secret, picks the host, retries and reads the response. Your code never
 builds a URL, sets a header or sees a raw response.
 
-Each API is described once, in a **provider package**: Jadpo source that
-lists the API's operations, types, failures and webhook events. It also
-says which calls change something, which take an idempotency key (a value
-that lets the provider spot a repeated request), how values are written on
-the wire, how errors and pages of results come back and how webhooks are
-signed. Your app connects to the package in `app.jadpo`, and then calls
-its operations.
+### What a typical app needs
 
-The other kind of package, a **library package**, holds types, failures
-and pure functions that several apps share, such as a postcode parser.
+Take a shop. This is what it needs from outside its own code, and what you
+write for each:
 
-The next topic says how packages, providers, connections, drivers,
-capabilities, built-in services and the services Jadpo runs fit together,
-and where each runs.
+| It needs | You write |
+|---|---|
+| A database | One connection in `app.jadpo`, to PostgreSQL |
+| To send email | A connection to a mail server or a mail service such as Resend, and a type for each email |
+| To keep uploaded files | A connection to one server's disk, and a `File` field. Storing files in S3 isn't built yet |
+| To call a company's API, such as a courier's | A *provider package*, which describes that API; a connection to it; a call in an action |
+| To hear back from that company | A webhook secret on that connection, and a subscriber |
+| To share pure helpers between apps, such as a postcode parser | A *library package*, which needs no connection |
+| Feature flags, an audit trail, search | Nothing from outside: they are [built in](16-built-in-services.md), and keep their data in your database |
+
+None of this uses Docker or Podman. Running a service such as Gotenberg in
+a container beside your app is planned and isn't built yet:
+[Running a service in a container](#running-a-service-in-a-container).
+
+A provider package is Jadpo source that lists an API's operations, types,
+failures and webhook events. It also says which calls change something,
+which take an idempotency key (a value that lets the provider spot a
+repeated request), how values are written on the wire, how errors and pages
+of results come back and how webhooks are signed. You write each API's
+package once, or install one someone has written, and your app connects to
+it in `app.jadpo`.
 
 | Topic | In short |
 |---|---|
-| How the pieces fit | Package, provider, connection, driver, capability, built-in service and service run by Jadpo: what each is, where it runs, what is built; Docker or Podman only for a service run by Jadpo |
+| How the pieces fit | One API called, start to finish; then what each word means, where each thing runs and what is built |
+| [Running a service in a container](#running-a-service-in-a-container) ○ not built | A provider that is a container image Jadpo starts, through Docker or Podman |
 | Kinds of package | Library (types, failures, pure functions) and provider (one API); the kind follows from what is inside |
 | The golden rule | A package can do nothing the app cannot, and the app can do everything a package can |
 | The format | `package.jadpo` (`licence:`, `jadpo:`), an optional `provider.jadpo`, folders laid out as `shared/` is, `public` as the API |
 | Where packages live | Installed in `packages/<name>/<version>/`, committed, digest-checked, read-only; the app's own in `shared/providers/` |
-| Where they come from | Jadpo's registry, a git repository, an importer, another Jadpo app's OpenAPI, or written by an agent from the docs |
+| [Where they come from](#where-packages-come-from) ▲ partly | The registry at jadpo.dev by name, a folder, a git tag, the OpenAPI importer, or written by hand from the docs |
 | The surface | `surface.jadpo_record`, generated and readable, pointing at each file; `jadpo package show` |
 | Connecting | `connections:` in `app.jadpo`; built-in drivers are configured there, never packaged |
 | Calling | `couriers.bookings.create(request)` and package actions such as `stripe.start_subscription(...)`, from actions only, failures mapped at the call |
 | Decoding | The package declares how values are written on the wire; the runtime decodes; the app translates |
-| Package code | No state; package actions call only their own API; events only about the outside world; polls; services |
+| Package code | No state; package actions call only their own API; events only about the outside world; polls |
 | Several calls in order | Each step recorded before it is sent, replayed on a rerun, stopped as `diverged` on any difference |
 | Receiving | Webhooks, replies, handshakes and queues, each arriving as an event |
-| Acting for each user | OAuth grants owned by one of the app's records; `on_behalf_of:` on every call |
+| [Acting for each user](#oauth-grants) ○ not built | OAuth grants owned by one of the app's records; `on_behalf_of:` on every call |
 | Capabilities | Only jobs Jadpo itself does, each whole (email, files, search and the rest); the provider chosen in `app.jadpo` |
 | Development | Provider calls faked by default, let through to the sandbox by name, every call logged |
 | Tests | A generated fake per package; scheduled contract runs against the sandbox |
@@ -52,123 +67,177 @@ and where each runs.
 ## How packages, connections, capabilities and services fit together
 <!-- topic: how-integrations-fit-together -->
 
-Seven terms name the ways an app reaches past its own code: package,
-provider, connection, driver, capability, built-in service and service
-run by Jadpo. This topic says what each one is and where it runs. The
-topics it links hold the rules.
+Here is an app calling one outside API, with nothing left out: it books a
+collection with a courier. Acme Couriers publishes no package, so the app
+describes its API itself, in `shared/providers/`. With an installed package,
+`jadpo package add` brings these package files and you write only the
+connection, the setting and the action.
 
-Most apps use only two of them. A *connection* in `app.jadpo` opens a
-database or a provider's API, and your actions call through it. You
-don't need Docker or Podman for any of this: only a service run by Jadpo
-uses a container.
+The connection goes in `app.jadpo`. `connections:` and its keys are built
+in, `couriers` is your name for it, `AcmeCouriers.v1` is the package below,
+and `shipping` is the domain whose actions may call it.
 
-### What each one is
-
-| Term | What it is | Declared in | Runs |
-|---|---|---|---|
-| **Package** | Jadpo source shared between apps, laid out as `shared/` is. A *library package* holds types, failures and pure functions (`Postcodes.uk.parse`); a *provider package* describes one outside API: its operations, types, failures, webhook events and how it is reached ([Kinds of package](#kinds-of-package), [The package format](#the-package-format)) | `packages/<name>/<version>/` when installed; the app's own in `shared/providers/` | Compiled into the app and run in its process. A package is never a process, a container or native code of its own |
-| **Provider** | The outside API a provider package describes: Stripe, a courier, another Jadpo app, Gotenberg. The package's `provider.jadpo` says how it is reached | Nowhere in the app: it is the other end of the call | Wherever its owner runs it: on the internet (`hosts:`), at an address a setting gives (`host:` on the connection), or in a container Jadpo starts (`runs:`) |
-| **Connection** | One named entry in `connections:` in `app.jadpo`: a built-in driver (`driver: Driver.x`) or a provider package (`package: X.vN`), with its settings, its credential and the domains whose actions may call it. One connection is one resource: a database, a bucket, one account at a provider ([Connecting in `app.jadpo`](#connecting-in-appjadpo)) | `app.jadpo`, its values read from `config.jadpo` settings | Opened by the runtime, inside the app |
-| **Driver** | Native code in Jadpo's runtime that speaks one protocol: PostgreSQL, SMTP, the disk, Cloudflare Queues, OpenAI-compatible model servers; Redis, S3 and OpenID Connect to come. Drivers arrive only with a Jadpo release, never in a package ([No presets, no dependencies](#no-presets-no-dependencies)) | `driver:` on a connection | Inside the app, talking to a server the operator runs |
-| **Capability** | A job Jadpo itself does, with one API in app code whatever fills it: `database`, `cache`, `files`, `email`, `search`, `documents`, `ai` and the rest. One connection fills it: a driver, or a provider package whose `provides/<capability>.jadpo` maps the job onto its operations ([Capabilities](#capabilities)) | Chosen in `app.jadpo`: `email: { connection: mail }`, `store: sheets` on a `File` field | Wherever the connection that fills it runs |
-| **Built-in service** | A backend feature Jadpo provides, so the app installs nothing: feature flags, rate limits, files, email, audit, telemetry, search, documents, bot protection ([Built-in services](16-built-in-services.md)). Email, files, search and documents do their outside work through a capability; flags, rate limits and audit keep their state in the app's own stores | Where [Built-in services](16-built-in-services.md) says: `flags.jadpo`, `rate_limit:`, `type X = EmailMessage`, `File` fields | Inside the app's runtime. It is a feature, not a process or a container |
-| **Service run by Jadpo** | A provider whose API is a stateless container image, declared by `runs:` in its package's `provider.jadpo` (Gotenberg turning HTML into PDFs, ClamAV scanning uploads). Jadpo starts and supervises the container through Docker or Podman and hands its connection the address ([Services](#services)) | `runs:` in the package, named by a connection | A container beside the app on the same machine |
-
-Two words mean two things each:
-
-- **"Service".** A built-in service is part of Jadpo's runtime, inside
-  the app's process; a service run by Jadpo is a container beside it. No
-  built-in service starts a container; one can use a service run by Jadpo
-  through its capability, as documents can use Gotenberg.
-- **`runs:`.** In a package's `provider.jadpo` it declares a container;
-  on a deployable in `app.jadpo` it lists the background work that
-  deployable runs, `runs: [Trigger.schedules]`
-  ([Declared deployables](14-tooling.md#declared-deployables)).
-
-### How they relate
-
-```text
-the app's process: jadpo dev's interpreter, or a native or Workers deployable
-│
-├── domain code ── calls ──► library package             pure functions, in process
-│
-├── domain code ── calls ──► connection: provider package ── HTTPS ──► provider's API
-│                                                    on the internet (hosts:), at host:,
-│                                                    or in a container Jadpo runs (runs:)
-│
-└── built-in services: flags, rate limits, email, files, search, documents, ...
-       │ outside work goes through a capability
-       └──► capability: email, files, database, documents, ai, ...
-              filled by one connection, either
-              ├── a built-in driver ──────────── its protocol ──► a server the operator runs:
-              │                                                  PostgreSQL, SMTP, S3
-              └── a provider package's provides/ ── HTTPS ──────► provider's API:
-                                                                 Resend, Postmark, Gotenberg
-```
-
-- **Code calls a provider's operations only through a connection**, from
-  an action in a domain the connection lists: `couriers.bookings.create(...)`
-  ([Calling](#calling)).
-- **Code never names what fills a capability.** It writes an
-  `EmailMessage` type or a `File` field, and `app.jadpo` picks the
-  connection, so changing provider changes `app.jadpo` and its settings,
-  never domain code.
-- **One provider package can be both.** Postmark fills `email` through
-  `provides/email.jadpo`, and the domains its connection lists call its
-  own operations (hosted templates, suppression lists) as any provider's.
-- **Packages fill capabilities and never invent them**, never bring a
-  driver and never depend on another package.
-- **Anything that keeps data is the operator's.** PostgreSQL, Redis, an
-  S3 bucket and an SMTP server are reached through a driver at the
-  address a setting gives; Jadpo never runs them. A service run by Jadpo
-  holds no data, and each app instance runs its own copy.
-
-### Where each runs
-
-| | `jadpo dev` | `jadpo test` | Native deployable | Workers deployable |
-|---|---|---|---|---|
-| Library package | In process | In process | Compiled in | Compiled in |
-| Provider package's calls | Faked by default, from its recordings or generated answers; operations named in `development: { sandbox: }` go to the sandbox, never live ([Provider calls in development](#provider-calls-in-development)) | Always faked; a test scripts answers with `fakes:` ([Tests and fakes](#tests-and-fakes)) | HTTPS to the live or sandbox host the connection's `environment:` picks, or to its `host:` | The same, through the Worker's `fetch` |
-| Database, `Driver.postgres` | The address its setting gives, else a disposable PostgreSQL started from the machine's PostgreSQL tools | A copy per test on a disposable PostgreSQL, or on `JADPO_TEST_DATABASE_URL`'s server | The operator's PostgreSQL | The operator's PostgreSQL, through Hyperdrive |
-| Email, by SMTP or a mail package | Caught in the dev inbox | Caught in `email.sent` | The SMTP server, or the mail package's API | The same; SMTP on port 587 only |
-| Files | The disk driver, in `.jadpo/files/` | An in-memory store | The disk (one server) or S3 | S3, R2 included |
-| Service run by Jadpo, `runs:` | Started as a container by `jadpo dev` | Never started: the package's fake answers | A container beside the app: `jadpo build` writes the configuration that runs it (Compose first), then the deployable supervises it itself | None: Workers runs no containers, so the connection gives `host:` where the service is hosted elsewhere |
-
-`jadpo check` refuses a deployable whose target can't run a connection
-it reaches, naming what to use instead: on Workers the disk, a service
-run by Jadpo without `host:`, and SMTP on port 25
-([Capabilities](#capabilities), "Targets").
-
-### How Docker fits
-
-- **An app needs no Docker or Podman** to be checked, tested, run in
-  `jadpo dev` or built. Nothing above but a service run by Jadpo uses a
-  container: the disposable PostgreSQL comes from the machine's own
-  PostgreSQL tools, a native deployable is one binary
-  ([A native deployable](14-tooling.md#a-native-deployable)) and a
-  Workers deployable is a Worker. Neither is an image.
-- **Docker or Podman comes in only for a service run by Jadpo.** Jadpo
-  talks to whichever engine the machine has, through the
-  Docker-compatible API both serve. It creates each container itself. A
-  container has no outbound network until its connection grants it, is
-  never privileged and can't reach the host's disk. A new or changed image
-  runs only once a person accepts it in the approval report.
-  `jadpo services` lists, starts and stops each one and shows its logs
-  ([Tooling](14-tooling.md)). You never write a Dockerfile or a Compose
-  file, and an app with no such connection never needs an engine
-  ([Services](#services)).
-- **The operator's infrastructure is their own.** They may run
-  PostgreSQL or an SMTP server in Docker, or anywhere else; the app sees
-  only the address its setting gives.
-
-### In an app
-
-One app with each kind of connection: a database on the PostgreSQL
-driver, mail on the SMTP driver filling the `email` capability, and the
-app's own provider package for a courier, which the `shipping` domain
-calls:
+`app.jadpo`:
 
 ```jadpo check project=pieces-fit file=app.jadpo
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+        }
+    }
+}
+```
+
+The secret and which of the courier's hosts to use are settings.
+`ProviderEnvironment` is built in, and is `.sandbox` or `.live`.
+
+`config.jadpo`:
+
+```jadpo check project=pieces-fit file=config.jadpo
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+The package names itself and says how the API is reached.
+
+`shared/providers/acme_couriers/v1/package.jadpo`:
+
+```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/package.jadpo
+/// Acme Couriers' booking API, written from its documentation.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+`licence:` is required, and `Licence.proprietary` suits a package only your
+app uses. `jadpo:` is also required: it is the lowest Jadpo version the
+package says it needs, a major and minor number as text. Jadpo checks only that
+form and compares the number with nothing yet, so `"1.0"` passes on every
+release, even one before 1.0.
+
+`shared/providers/acme_couriers/v1/provider.jadpo`:
+
+```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/provider.jadpo
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+A *resource* is a group of the API's operations. This one has one operation,
+which takes a `CreateBooking` and answers with a `Booking`, two types the
+package declares. `changes: true` says the call changes something at the
+courier. `idempotent: true` says the call is safe to send again, here because
+repeating it books one collection, so Jadpo may retry it. `source:
+PackageSource.written` tells whoever reviews the package that a person wrote
+this operation from the courier's documentation, rather than importing it
+([Provenance and confirmation](#provenance-and-confirmation)).
+
+`shared/providers/acme_couriers/v1/resources/bookings.jadpo`:
+
+```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/resources/bookings.jadpo
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        changes: true
+        idempotent: true
+        source: PackageSource.written
+    }
+}
+```
+
+`shared/providers/acme_couriers/v1/types/create_booking.jadpo`:
+
+```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/types/create_booking.jadpo
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Text
+}
+```
+
+`shared/providers/acme_couriers/v1/types/booking.jadpo`:
+
+```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/types/booking.jadpo
+/// A booked collection.
+public type Booking = Object {
+    id: Text
+}
+```
+
+The action calls the operation through the connection. `use app` brings in
+the connection, and `use shared/providers/acme_couriers` brings in the
+package, whose public names are written `AcmeCouriers.<name>`.
+
+`domains/shipping/actions/book.jadpo`:
+
+```jadpo check project=pieces-fit file=domains/shipping/actions/book.jadpo
+use app { couriers }
+use shared/providers/acme_couriers
+
+/// Books a collection with the courier, through its connection.
+action book(request: AcmeCouriers.CreateBooking) -> AcmeCouriers.Booking {
+    return couriers.bookings.create(request)
+}
+```
+
+Run `jadpo records update` once, which writes down the hosts the app can reach,
+then check the project:
+
+```sh run project=pieces-fit
+jadpo check
+```
+
+```text output
+To review
+  Go through each type against the provider's documentation, then add it to
+  `reviewed:` in its package's `provider.jadpo` (agent)
+    AcmeCouriers.v1  Booking, CreateBooking; 0 of 2 reviewed
+
+Not yet confirmed
+  Record each with `jadpo package record`, which checks a sandbox answer
+  against its types (agent)
+    couriers.bookings.create
+
+checked: 2 to review, 1 unconfirmed, 8 files
+```
+
+The check passes. "To review" asks your agent to go through each type the
+call reaches against the courier's documentation, then list it in
+`reviewed:` in `provider.jadpo`; publishing the package needs every public
+type listed. "Not yet confirmed" means no real answer from the courier
+has been checked against the types you wrote, so they are only as right as what
+you read. It doesn't fail the check, and `jadpo approval` shows a person what
+ships unconfirmed. To confirm the call, put a sandbox key in `.env.local` and run `jadpo package record
+couriers bookings.create --input '{"postcode": "M1 1AA"}'`, which calls the
+sandbox once, checks the answer and keeps it as a recording in the package
+([Provenance and confirmation](#provenance-and-confirmation)).
+
+A database and mail are connections too. They use a *driver* built into Jadpo,
+so there is no package to write. `email:` says which connection sends the
+app's email, whichever provider it is, which makes email a *capability*.
+
+`app.jadpo`:
+
+```jadpo check project=pieces-fit-drivers file=app.jadpo
 application {
     connections: {
         main: {
@@ -183,12 +252,6 @@ application {
                 password: config.smtp_password
             }
         }
-        couriers: {
-            package: AcmeCouriers.v1
-            domains: [shipping]
-            credential: config.couriers_api_key
-            environment: config.couriers_environment
-        }
     }
     email: {
         connection: mail
@@ -197,14 +260,10 @@ application {
 }
 ```
 
-```jadpo check project=pieces-fit file=config.jadpo hidden
+`config.jadpo`:
+
+```jadpo check project=pieces-fit-drivers file=config.jadpo
 config {
-    couriers_api_key: Text {
-        secret: true
-    }
-    couriers_environment: ProviderEnvironment {
-        default: ProviderEnvironment.sandbox
-    }
     database_url: PostgresUrl
     mail_sender: Email
     smtp_host: Hostname
@@ -215,100 +274,117 @@ config {
 }
 ```
 
-```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/package.jadpo hidden
-/// Acme Couriers' booking API.
-package AcmeCouriers.v1 {
-    licence: Licence.proprietary
-    jadpo: "1.0"
-}
+### What each one is
+
+| Term | What it is | Declared in | Runs |
+|---|---|---|---|
+| **Package** | Jadpo source shared between apps, laid out as `shared/` is. A *library package* holds types, failures and pure functions (`Postcodes.uk.parse`); a *provider package* describes one outside API: its operations, types, failures, webhook events and how it is reached ([Kinds of package](#kinds-of-package), [The package format](#the-package-format)) | `packages/<name>/<version>/` when installed; the app's own in `shared/providers/` | Compiled into the app and run in its process. A package is never a process, a container or native code of its own |
+| **Provider** | The outside API a provider package describes: Stripe, a courier, another Jadpo app. The package's `provider.jadpo` says how it is reached | Nowhere in the app: it is the other end of the call | Wherever its owner runs it: on the internet (`hosts:`), or at an address a setting gives (`host:` on the connection) |
+| **Connection** | One named entry in `connections:` in `app.jadpo`: a built-in driver (`driver: Driver.x`) or a provider package (`package: X.vN`), with its settings, its credential and the domains whose actions may call it. One connection is one resource: a database, a store of files, one account at a provider ([Connecting in `app.jadpo`](#connecting-in-appjadpo)) | `app.jadpo`, its values read from `config.jadpo` settings | Opened by the runtime, inside the app |
+| **Driver** | Native code in Jadpo's runtime that speaks one protocol: PostgreSQL, SMTP, the disk, Cloudflare Queues, OpenAI-compatible model servers, OpenID Connect. Redis and S3 aren't built yet. Drivers arrive only with a Jadpo release, never in a package ([No presets, no dependencies](#no-presets-no-dependencies)) | `driver:` on a connection | Inside the app, talking to a server the operator runs |
+| **Capability** | A job Jadpo itself does, with one API in app code whatever fills it: `database`, `email`, `files`, `ai` and the rest. One connection fills it: a driver, or a provider package whose `provides/<capability>.jadpo` maps the job onto its operations ([Capabilities](#capabilities)) | Chosen in `app.jadpo`: `email: { connection: mail }`, `store: sheets` on a `File` field | Wherever the connection that fills it runs |
+| **Built-in service** | A backend feature Jadpo provides, so the app installs nothing: feature flags, rate limits, files, email, audit, search ([Built-in services](16-built-in-services.md)). Email, files and search do their outside work through a capability; flags, rate limits and audit keep their state in the app's own stores | Where [Built-in services](16-built-in-services.md) says: `flags.jadpo`, `rate_limit:`, `type X = EmailMessage`, `File` fields | Inside the app's runtime. It is a feature, not a process or a container |
+
+A *service run by Jadpo* is a seventh term, for a thing that isn't built yet:
+[Running a service in a container](#running-a-service-in-a-container).
+
+### Two words that mean two things
+
+**`runs:`** is one key with two jobs, depending on where it is written:
+
+| Written on | It says | Looks like | Built |
+|---|---|---|---|
+| A deployable, in `app.jadpo` | Which background work that deployable runs ([`runs:`](14-tooling.md#runs-the-background-work-it-runs)) | `runs: [Trigger.schedules]` | Yes |
+| A provider, in a package's `provider.jadpo` | The container Jadpo starts for that provider ([Running a service in a container](#running-a-service-in-a-container)) | `runs: { image: "…" port: 3000 }` | Not yet |
+
+**"Service"** has two meanings too. A *built-in service*, such as feature
+flags, is part of Jadpo's runtime, inside the app's process. A *service run
+by Jadpo* would be a container beside it, and isn't built yet.
+
+### How they relate
+
+```text
+the app's process: jadpo dev's interpreter, or a native or Workers deployable
+│
+├── domain code ── calls ──► library package             pure functions, in process
+│
+├── domain code ── calls ──► connection: provider package ── HTTPS ──► provider's API
+│                                                    on the internet (hosts:), or at host:
+│
+└── built-in services: flags, rate limits, email, files, search, ...
+       │ outside work goes through a capability
+       └──► capability: email, files, database, ai, ...
+              filled by one connection, either
+              ├── a built-in driver ──────────── its protocol ──► a server the operator runs:
+              │                                                  PostgreSQL, SMTP
+              └── a provider package's provides/ ── HTTPS ──────► provider's API:
+                                                                 Resend
 ```
 
-```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/provider.jadpo hidden
-/// Acme Couriers' booking API.
-provider {
-    protocol: Protocol.json_http
-    hosts: {
-        live: "https://api.acme-couriers.example"
-        sandbox: "https://sandbox.acme-couriers.example"
-    }
-    credential: CredentialScheme.bearer
-    error_code: "error.code"
-}
-```
+- **Code calls a provider's operations only through a connection**, from
+  an action in a domain the connection lists: `couriers.bookings.create(...)`
+  ([Calling](#calling)).
+- **Code never names what fills a capability.** It writes an
+  `EmailMessage` type or a `File` field, and `app.jadpo` picks the
+  connection, so changing provider changes `app.jadpo` and its settings,
+  never domain code.
+- **One provider package can be both.** Resend's fills `email` through
+  `provides/email.jadpo`, and the domains its connection lists can call its
+  own operation, `emails.send`, as any provider's.
+- **Packages fill capabilities and never invent them**, never bring a
+  driver and never depend on another package.
+- **Anything that keeps data is the operator's.** PostgreSQL and an SMTP
+  server are reached through a driver at the address a setting gives; Jadpo
+  never runs them. The operator may run them in Docker or anywhere else, and
+  the app sees only the address.
 
-```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
-public resource bookings {
-    create: {
-        method: HttpMethod.post
-        path: "/v1/bookings"
-        input: CreateBooking
-        output: Booking
-        changes: true
-        idempotent: true
-        failures: [SlotTaken]
-        source: PackageSource.written
-    }
-}
-```
+### Where each runs
 
-```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/types/postcode.jadpo hidden
-/// Where a collection is.
-public type Postcode = Text {
-    max_length: 8
-}
-```
+| | `jadpo dev` | `jadpo test` | Native deployable | Workers deployable |
+|---|---|---|---|---|
+| Library package | In process | In process | Compiled in | Compiled in |
+| Provider package's calls | Faked by default, from its recordings or generated answers; operations named in `development: { sandbox: }` go to the sandbox, never live ([Provider calls in development](#provider-calls-in-development)) | Always faked; a test scripts answers with `fakes:` ([Tests and fakes](#tests-and-fakes)) | HTTPS to the live or sandbox host the connection's `environment:` picks, or to its `host:` | The same, through the Worker's `fetch` |
+| Database, `Driver.postgres` | The address its setting gives, else a disposable PostgreSQL started from the machine's PostgreSQL tools | A copy per test on a disposable PostgreSQL, or on `JADPO_TEST_DATABASE_URL`'s server | The operator's PostgreSQL | The operator's PostgreSQL, through Hyperdrive |
+| Email, by SMTP or a mail package | Caught in the dev inbox | Caught in `email.sent` | The SMTP server, or the mail package's API | The same; SMTP on port 587 only |
+| Files | The disk driver, in `.jadpo/files/` | An in-memory store | The disk driver, on one server | None yet: Workers has no disk, and the S3 driver isn't built |
 
-```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
-/// What booking a collection takes.
-public type CreateBooking = Object {
-    postcode: Postcode
-}
-```
+`jadpo check` refuses a deployable whose target can't run a connection
+it reaches, naming what to use instead: on Workers the disk and SMTP on
+port 25 ([Capabilities](#capabilities), "Targets").
 
-```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
-/// A booked collection.
-public type Booking = Object {
-    id: Text
-}
-```
+**An app needs no Docker or Podman** to be checked, tested, run in
+`jadpo dev` or built. The disposable PostgreSQL comes from the machine's own
+PostgreSQL tools, a native deployable is one binary
+([A native deployable](14-tooling.md#a-native-deployable)) and a Workers
+deployable is a Worker. Neither is an image.
 
-```jadpo check project=pieces-fit file=shared/providers/acme_couriers/v1/failures/slot_taken.jadpo hidden
-/// The slot went before the booking arrived.
-public type SlotTaken = Failure {
-    kind: FailureKind.conflict
-    message: "That slot is taken."
-}
-```
+### What is built of these
 
-```jadpo check project=pieces-fit file=domains/shipping/failures/slot_gone.jadpo hidden
-/// The slot the customer chose has gone.
-type SlotGone = Failure {
-    kind: FailureKind.conflict
-    message: "That slot has gone; choose another."
-}
-```
+Of what this page describes, these aren't built yet: running a service in a
+container; the Redis and S3 drivers; OAuth grants; the `cache`, `publishing`,
+`documents`, `bot_check` and `scanning` capabilities; an outside engine for
+`search`; the hosted registry; importers other than `openapi`; and choosing
+a provider when deploying.
 
-```jadpo check project=pieces-fit file=domains/shipping/actions/book.jadpo
-use app { couriers }
-use shipping/failures { SlotGone }
-use shared/providers/acme_couriers
+Of the built-in services, flags, rate limits, files, audit and search are
+partly built, email is built, and documents, bot protection and the
+`telemetry:` section aren't built yet. Each page's "What is built" table is
+the record: this page's [What is built](#what-is-built) and
+[Built-in services'](16-built-in-services.md#what-is-built).
 
-/// Books a collection with the courier, through its connection.
-action book(postcode: AcmeCouriers.Postcode) fails SlotGone -> AcmeCouriers.Booking {
-    return attempt couriers.bookings.create(
-        AcmeCouriers.CreateBooking {
-            postcode: postcode
-        }
-    ) {
-        slot_taken: SlotGone
-    }
-}
-```
+## Running a service in a container
+<!-- topic: running-a-service-in-a-container -->
 
-A service run by Jadpo: Gotenberg's package declares its container, and a
-connection to it fills the `documents` capability. In `jadpo dev` and a
-native deployable, Jadpo starts the container. On Workers the connection
-would give `host:` instead:
+A provider's API can be a stateless container image that Jadpo starts beside
+your app, such as Gotenberg turning HTML into PDFs or ClamAV scanning uploads.
+This is called a *service run by Jadpo*, and it isn't built yet. Its package
+declares the image with `runs:`, and Jadpo starts and supervises the container
+through Docker or Podman and hands the connection the address. This `runs:`
+isn't the one on a deployable, which
+[lists its background work](14-tooling.md#runs-the-background-work-it-runs).
+
+Here is the design for Gotenberg's package and a connection to it, which fills
+the `documents` capability. It doesn't compile today:
 
 ```jadpo fragment
 // packages/gotenberg/v8/provider.jadpo
@@ -337,26 +413,80 @@ application {
 }
 ```
 
-### What is built of these
+| `jadpo dev` | `jadpo test` | Native deployable | Workers deployable |
+|---|---|---|---|
+| Started as a container by `jadpo dev` | Never started: the package's fake answers | A container beside the app: `jadpo build` writes the configuration that runs it (Compose first), then the deployable supervises it itself | None: Workers runs no containers, so the connection gives `host:` where the service is hosted elsewhere |
 
-Built: library and provider packages, installed from a folder or git
-and locked; connections and the network report; provider calls with
-decoding, retries and idempotency keys; fakes in development and tests,
-recordings and sandbox calls; webhooks, queues, polls and package
-actions; the drivers for PostgreSQL, SMTP, the disk (in `jadpo dev` and
-tests), Cloudflare Queues and OpenAI-compatible servers; the `database`,
-`email` (SMTP, Resend and other mail packages), `receiving`,
-`schedules` and `ai` capabilities; and the built-in services email,
-rate limits and the first part of files.
+No built-in service starts a container, but one could use a service run by
+Jadpo through its capability, as documents would use Gotenberg.
 
-Not built yet: **services run by Jadpo** (`runs:`, `jadpo services`,
-and with them every use of Docker or Podman); the Redis and S3 drivers
-and a deployable's disk; OpenID Connect sign-in providers and OAuth
-grants; the `cache`, `publishing`, `search`, `documents`, `bot_check`
-and `scanning` capabilities; the built-in services flags, audit,
-telemetry's section, search, documents and bot protection; the hosted
-registry; importers other than `openapi`; and choosing a provider when
-deploying. Each page's "What is built" table is the record.
+### Services
+
+- **Only stateless services.** A service holds no data and has no volume,
+  and each app instance runs its own copy, so many servers need nothing
+  shared. Anything that holds data (PostgreSQL, Redis) is infrastructure
+  the operator provides and the app reaches through a driver connection.
+- **A service never starts until approved.** Installing shows the image, its
+  digest and the hosts it asks for; the app names it on a connection, and a
+  new or changed image needs a person's acceptance in the approval report
+  before it runs, so an upgrade cannot swap in a different image unseen. The
+  image's digest is written in the package source, which the package's own
+  digest pins; an own integration in `shared/providers/` has no lock entry,
+  and its image is listed the same way.
+- **Outbound network needs the app's permission.** A package only asks
+  (`asks:`); the service gets none of those hosts until the connection
+  grants them (`outbound: [...]`), and a new grant is a new outside host,
+  which needs a person's acceptance (`NetworkChange.host_added`). Until
+  then `jadpo check` names the hosts asked for and the line that grants
+  them.
+- **Three settings Jadpo always applies** when it creates a container: no
+  outbound network unless granted, never privileged, and no access to the
+  host's disk. Jadpo creates the containers itself, so there is no
+  configuration to audit.
+- **Reaching a service.** A package says only the port its service listens
+  on inside its container, so two packages can both use 3000. Jadpo gives
+  each app a private network that only it and its services are on, and
+  hands each connection the address: the service's name on that network
+  when the app runs in a container, or a loopback port the engine picked
+  when it runs as a plain process. Nobody writes an address.
+- **Jadpo is a client, never a container runtime.** It talks to whatever
+  engine the machine has through the Docker-compatible API, which Docker and
+  Podman both serve, and leaves pulling, isolation and restart policies to
+  it. An app with no service never needs an engine; when one is needed and
+  none is found, `jadpo dev` and the deployable say so and how to install
+  one.
+- **Docker stays behind the scenes.** `jadpo services`
+  lists each service (package, image, state, health, CPU and memory,
+  restarts, uptime); `jadpo services start`, `stop` and `restart <name>`,
+  `logs <name>` (`--follow`, `--since`) and `shell <name>` (development
+  only) manage them, each with `--json`. In production the commands talk to the running app,
+  which supervises its services. A service's output joins the app's
+  OpenTelemetry logs under its name, and a call to it appears in the
+  request's trace as a provider call. You never write a Dockerfile or a
+  Compose file.
+- **Where services run.** `jadpo dev` starts the declared services, and
+  tests keep using fakes. `jadpo build` writes the configuration that runs
+  each one beside the app, Compose first. The native deployable supervises
+  its services itself. On Workers, which runs no containers, a service is
+  hosted elsewhere and the connection gives `host:`.
+
+### Not built yet
+
+Jadpo starts no containers yet, and `jadpo services` isn't a command. Until it
+does, run the container yourself, with Docker, Podman or Compose, and connect
+to it as you would to any API at an address you know:
+
+1. Start the image yourself, with its port open on the machine your app runs
+   on, and keep it running and up to date yourself.
+2. Describe its API in `shared/providers/`, with neither `hosts:` nor `runs:`
+   in `provider.jadpo`.
+3. Give the connection `host:`, read from a `Url` setting such as
+   `http://localhost:3000` ([Connecting in `app.jadpo`](#connecting-in-appjadpo)).
+
+Calls go over HTTPS, or plain HTTP only to the machine the app is on. So on
+Workers, or when the container is on another machine, it needs an HTTPS
+address. Your actions call its operations through the connection: the
+`documents` capability isn't built either.
 
 ## Kinds of package
 <!-- topic: kinds-of-package -->
@@ -371,6 +501,59 @@ in the same format:
 
 A *resource* is a group of an API's operations, such as Stripe's
 `payment_intents`. A *library* is a named group of pure functions.
+
+Here is a whole library package and an action that uses it. It is the app's
+own, so it sits in `shared/providers/`. A library package needs no connection:
+any domain brings it in with a `use` line, and its public names are then
+written `Postcodes.<name>`. `text.upper` and `text.trim` are built in.
+
+```jadpo check project=kinds-library file=app.jadpo hidden
+application {}
+```
+
+`shared/providers/postcodes/v2/package.jadpo`:
+
+```jadpo check project=kinds-library file=shared/providers/postcodes/v2/package.jadpo
+/// UK postcodes: tidying them as people write them.
+package Postcodes.v2 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}
+```
+
+`shared/providers/postcodes/v2/types/postcode.jadpo`:
+
+```jadpo check project=kinds-library file=shared/providers/postcodes/v2/types/postcode.jadpo
+/// A UK postcode.
+public type Postcode = Text {}
+```
+
+`shared/providers/postcodes/v2/libraries/uk.jadpo`:
+
+```jadpo check project=kinds-library file=shared/providers/postcodes/v2/libraries/uk.jadpo
+/// Tidying UK postcodes.
+public library uk {
+    /// A postcode in capitals, with the spaces around it left out.
+    function tidy(postcode: Postcode) -> Postcode {
+        return Postcode(text.upper(text.trim(postcode)))
+    }
+}
+```
+
+`domains/addresses/actions/tidy_postcode.jadpo`:
+
+```jadpo check project=kinds-library file=domains/addresses/actions/tidy_postcode.jadpo
+use shared/providers/postcodes
+
+/// Tidies a customer's postcode.
+action tidy_postcode(postcode: Postcodes.Postcode) -> Postcodes.Postcode {
+    return Postcodes.uk.tidy(postcode)
+}
+```
+
+A provider package is called through a connection instead:
+[How the pieces fit](#how-packages-connections-capabilities-and-services-fit-together)
+has a whole one.
 
 ### Which kind a package is
 
@@ -421,8 +604,8 @@ packages.
 package can.** A package is a folder of an app's own code, published.
 
 - Your app's own integrations in `shared/providers/` use the whole package
-  format: `provider.jadpo`, `resources/`, `events/`, decoding, `provides/`
-  and `runs:`. Its own types, failures, libraries, emails and translations
+  format: `provider.jadpo`, `resources/`, `events/`, decoding and
+  `provides/`. Its own types, failures, libraries, emails and translations
   live in `shared/` and its domains.
 - The compiler treats `packages/` and `shared/providers/` alike. They
   differ only in where the code came from: the lock entry, the digest
@@ -436,7 +619,51 @@ package can.** A package is a folder of an app's own code, published.
 A package is laid out as `shared/` is, so one set of rules covers the app
 and every package, and the compiler checks a package as it checks
 `shared/`.
-A library package:
+
+Here is the smallest useful package: its index, one type, one library and a
+test beside it. An app holds its own package like this in
+`shared/providers/postcodes/v2/`. Published, the same files are a repository
+of their own, and an app that installs it finds them in
+`packages/postcodes/v2/`. `text.upper` and `text.trim` are built in.
+
+`shared/providers/postcodes/v2/package.jadpo`:
+
+```jadpo check project=format-smallest file=shared/providers/postcodes/v2/package.jadpo
+/// UK postcodes: tidying them as people write them.
+package Postcodes.v2 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}
+```
+
+`shared/providers/postcodes/v2/types/postcode.jadpo`:
+
+```jadpo check project=format-smallest file=shared/providers/postcodes/v2/types/postcode.jadpo
+/// A UK postcode.
+public type Postcode = Text {}
+```
+
+`shared/providers/postcodes/v2/libraries/uk.jadpo`:
+
+```jadpo check project=format-smallest file=shared/providers/postcodes/v2/libraries/uk.jadpo
+/// Tidying UK postcodes.
+public library uk {
+    /// A postcode in capitals, with the spaces around it left out.
+    function tidy(postcode: Postcode) -> Postcode {
+        return Postcode(text.upper(text.trim(postcode)))
+    }
+}
+```
+
+`shared/providers/postcodes/v2/libraries/uk.test.jadpo`:
+
+```jadpo check project=format-smallest file=shared/providers/postcodes/v2/libraries/uk.test.jadpo
+test "a postcode is tidied" {
+    assert uk.tidy(" sw1a 1aa ") == "SW1A 1AA"
+}
+```
+
+A library package in full:
 
 ```text
 postcodes/v2/
@@ -455,7 +682,7 @@ A provider package adds `provider.jadpo` and the folders an API needs:
 
 ```text
 stripe/v2024_06_20/
-    package.jadpo                          the same two keys as every package
+    package.jadpo                          the same keys as every package
     provider.jadpo                         how the API is reached and called
     resources/payment_intents.jadpo        imported, corrections merged in
     types/payment_intent.jadpo             imported
@@ -492,19 +719,28 @@ stripe/v2024_06_20/
 ### The index: `package.jadpo`
 
 Every package's index has the same form: `package Name.vN { }`, a `///`
-description above it, and two keys. `licence:` names its licence, and
-`jadpo:` the lowest Jadpo version it needs.
+description above it, and its keys. `licence:` names its licence, `jadpo:`
+the lowest Jadpo version it says it needs, and `publisher:` who publishes it in
+the registry, as a handle: `publisher: "@acme"` for `@acme/postcodes`. Nothing
+compares `jadpo:` with the running Jadpo yet ([How the package format is
+read](#how-the-package-format-is-read)).
+
+A package only used by path or from git may leave `publisher:` out, since
+nothing is published and no one is named. The publishing bar asks for it
+([What publishing requires](#what-publishing-requires)).
 
 The licence is one of `Licence.mit`, `.apache_2_0`, `.bsd_2_clause`,
 `.bsd_3_clause`, `.isc`, `.mpl_2_0`, `.unlicense` and `.proprietary`.
 Only a package installed from git may be `.proprietary`; the public
-registry refuses it. There is no `requires:`, because packages have no
+registry refuses it
+([`publish.licence_proprietary`](../errors/publish.licence_proprietary.md)). There is no `requires:`, because packages have no
 dependencies, and no list of files.
 
 ```jadpo fragment
 // packages/postcodes/v2/package.jadpo
 /// UK postcodes: parsing, normalising and checking the outward code.
 package Postcodes.v2 {
+    publisher: "@acme"
     licence: Licence.mit
     jadpo: "1.0"
 }
@@ -525,7 +761,7 @@ packages.
 |---|---|
 | `protocol:` | How bodies are sent: `Protocol.json_http`, `.form_http`, `.multipart_http`, `.aws_json`. Required |
 | `hosts:` | `live:` and `sandbox:`; the same host twice when the sandbox is a test credential; a host may hold one placeholder filled from a setting (`"https://{project_ref}.supabase.co"`) |
-| `runs:` | A container Jadpo runs instead of a fixed host: `image:` pinned by digest, `port:` it listens on inside the container, `asks:` the outbound hosts it needs (see "Services") |
+| `runs:` | Not built yet: a container Jadpo runs instead of a fixed host: `image:` pinned by digest, `port:` it listens on inside the container, `asks:` the outbound hosts it needs ([Services](#services)). It isn't the `runs:` on a deployable |
 | `credential:` | The scheme (`CredentialScheme.bearer`, a named header, basic, AWS signing), which decides the shape of credential the app gives |
 | `credential_header:` | For `CredentialScheme.header`, the named header the credential goes in alone (`"x-api-key"`); required for it and only for it |
 | `headers:` | The fixed headers every request carries, each `"Name: value"` (`["anthropic-version: 2023-06-01"]`), never one the driver writes itself |
@@ -537,12 +773,13 @@ packages.
 | `erasure:` | The operation that deletes a person at the provider and the key it takes (`by:`) |
 | `max_concurrent:` | How many of its calls run at once per app instance |
 | `settings:` | Typed values the app gives on the connection (`message_stream:`) |
-| `imported:` | The description it was imported from, `file:`, that file's digest, `digest:`, and `reviewed:`, the package's types an agent has reviewed against the provider's documentation |
+| `imported:` | The description it was imported from, `file:`, that file's digest, `digest:`, `reviewed:`, the package's types an agent has reviewed against the provider's documentation, and `renamed:`, each name in the description that code calls by another |
+| `reviewed:` | In a package written by hand, which has no `imported:`, the package's types an agent has reviewed against the provider's documentation |
 
 **Where the API is comes from exactly one place:**
 
 - `hosts:` when it is on the internet;
-- `runs:` when Jadpo runs it;
+- `runs:` when Jadpo runs it, which isn't built yet;
 - neither, when the app gives `host:` on the connection: another Jadpo
   app, a self-hosted product, or a service on Workers.
 
@@ -619,7 +856,9 @@ values, `AcmeCouriers.Window.morning`.
 
 A failure's code, `slot_taken` from its name, is the provider's error
 code. Jadpo reads it from the place in the response that `error_code:`
-names.
+names. A failure can instead say the status its provider refuses with,
+`wire_status:`, and the provider's own text for it, `wire_name:`
+([A provider's failures](#a-providers-failures)).
 
 ### What is public
 
@@ -642,6 +881,12 @@ names.
 - **A package's resources and actions share the connection's namespace**
   (`stripe.customers`, `stripe.start_subscription`), so a clash between
   them is an error in the package.
+- **Names that differ only in case clash.** Each name becomes a file name,
+  and a public type `DueDate` and a function `due_date` both become
+  `due_date.jadpo`, so a search for one finds the other. That is
+  [`naming.folded_collision`](../errors/naming.folded_collision.md), as in an
+  app; rename one of them. A type beside the function or action in its own
+  file, such as an input named after its action, is allowed.
 - **Package events are public or not.** The app may subscribe to a
   `public` event; one without `public` reaches only the package's own
   subscribers, so a raw webhook a package enriches can stay internal while
@@ -652,11 +897,11 @@ names.
 
 **Built-in drivers are configured in `app.jadpo`, never packaged.** A
 driver is native code in Jadpo's runtime that speaks one protocol.
-PostgreSQL, Redis, S3, SMTP and OpenID Connect are drivers. A vendor that
-speaks one of them is that driver with the vendor's settings: Cloudflare
-R2 is `driver: Driver.s3` with its host and `region: "auto"`, Neon is the
-PostgreSQL driver with its pooling mode, and Gmail is the SMTP driver
-with its host and port. A vendor with storage and an API is a driver
+PostgreSQL, SMTP and OpenID Connect are drivers, and Redis and S3 will be. A
+vendor that speaks one of them is that driver with the vendor's settings: Neon
+is the PostgreSQL driver with its pooling mode, Gmail is the SMTP driver with
+its host and port, and Cloudflare R2 will be `driver: Driver.s3` with its host
+and `region: "auto"`. A vendor with storage and an API is a driver
 connection plus a package. A driver for one vendor comes in a Jadpo
 release only where a flow needs native code.
 
@@ -673,6 +918,8 @@ avatars: {
     }
 }
 ```
+
+`Driver.s3` isn't built yet, so this is its design and doesn't compile today.
 
 - **Each driver's page lists the settings for common services**, so an
   agent looks them up rather than guessing: R2, Backblaze B2,
@@ -879,12 +1126,15 @@ held, the app words each under a key that carries the version,
 
 ### Names
 
-- **Provider brand names are reserved.** Jadpo ships the list of curated
-  provider names, and an app's own integration cannot take one, so `Stripe`
-  in code always means the official package.
+- **Some provider brand names are reserved.** `Stripe`, `Twilio` and `GitHub`
+  are kept for official packages, none of which exists yet. An app's own
+  integration can't take one (`package.reserved_name`), so `Stripe` in code
+  can only ever mean the official package. Name yours something else, such as
+  `StripeApi.v1`.
 - **Two packages never share a name in code.** Installing a registry package
   whose name one of the app's own integrations or libraries already uses
-  stops and asks for the app's own to be renamed first (`jadpo rename`).
+  stops and asks for the app's own to be renamed first (by hand, since
+  `jadpo rename` isn't built yet).
 - **A package's name can't clash with any other name.** Domain, library
   and standard-library names are unique among themselves, and a package's
   name joins them. Installing a package refuses one whose name the app
@@ -896,8 +1146,6 @@ held, the app words each under a key that carries the version,
   code name can't be installed in the same app. `jadpo package add` takes
   the scoped name, and the lock's `registry` source records it
   ([The registry protocol](#the-registry-protocol)).
-- Creating an integration checks the registry and warns when the name is
-  taken.
 - A package is named in UpperCamelCase with its own version label, such
   as `Stripe.v2024_06_20` or `Postcodes.v2`. Its folder is the name in
   lower_snake_case with the version below it.
@@ -905,36 +1153,95 @@ held, the app words each under a key that carries the version,
 ## Where packages come from
 <!-- topic: where-packages-come-from -->
 
-`jadpo package add <name>` looks for a package in a fixed order and
-records which step it used, so an agent never improvises where to look:
+A package reaches your app in one of five ways. The first three install it in
+`packages/`, and the last two make it your app's own, in `shared/providers/`:
 
-1. **The registry**, the official package first.
-2. **The provider's published specification** (OpenAPI, Smithy, GraphQL),
-   given a URL or found in its known places, imported once.
-3. **An importer** from the official SDK's type definitions, a Postman
-   collection or a HAR capture.
-4. **Written from the provider's documentation** by an agent.
+| Where it comes from | What you do | Use it for |
+|---|---|---|
+| The registry at jadpo.dev | `jadpo package add @jadpo/resend` | A public package, such as [one of Jadpo's own](#jadpos-own-packages) ([The registry](#the-registry)) |
+| A folder | `jadpo package add ../postcodes` | A package you have on your machine |
+| A git tag | `jadpo package add github.com/acme/postcodes@v2.1.0` | A package in a repository of its own, with `package.jadpo` at the repository's root ([Private packages come from git](#private-packages-come-from-git)) |
+| An OpenAPI document | `jadpo package import openapi orders.json --as Orders.v1` | An API that publishes one ([An importer](#an-importer)) |
+| By hand | Write the files in `shared/providers/<name>/<version>/` | An API that publishes only HTML docs ([Written by hand](#written-by-hand-when-there-is-no-specification)) |
 
-It also takes a git repository (`jadpo package add
-github.com/acme/acme-pricing@v2.1.0`, below) and another Jadpo app's
-OpenAPI document (`jadpo package add ../orders`, see
-[Packages from other Jadpo apps](#packages-from-other-jadpo-apps)). Each
-source is read once, when the package is added or updated. Then it is
-pinned in `jadpo.lock` with its source and digest.
+The registry, a folder or a tag is read once, when the package is added or
+updated. The package is then pinned in `jadpo.lock` with its source and digest,
+and your app holds its own copy to commit.
+
+A name starting `@` is the registry's: `@jadpo/resend` is the package `resend`
+published by `@jadpo`. A name with no publisher, such as `jadpo package add
+resend`, means Jadpo's own, `@jadpo/resend`. A name the registry doesn't have
+is [`install.not_in_registry`](../errors/install.not_in_registry.md), and
+nothing is installed.
+
+### Jadpo's own packages
+
+Jadpo publishes four packages of its own: `Resend.v1`, which sends your
+app's email, `OpenAi.v1` and `Anthropic.v1`, which answer your app's
+[model calls](21-ai.md), and `AmazonSqs.v2012_11_05`, which receives from a
+queue. Jadpo has no package for Stripe, Twilio, GitHub or any other provider, so
+for those use the importer or write your own.
+
+They are on the registry as `@jadpo/resend`, `@jadpo/open-ai`,
+`@jadpo/anthropic` and `@jadpo/amazon-sqs`, each published from its own
+repository under [jadpo-dev](https://github.com/jadpo-dev). This adds Resend's,
+run in your project's folder:
+
+```sh
+jadpo package add @jadpo/resend
+```
+
+[Use a package from the registry](../guides/22-use-a-package-from-the-registry.md)
+shows what it prints: the publisher, `@jadpo, official`, the package's age and
+its facts.
+
+A package from the registry carries its verified publisher, so it needs no
+acceptance of
+`PackageChange.git_source`, as one installed from a git repository does
+([Installing safely](#installing-safely)). `jadpo check` and `jadpo build` read
+only your app's copy, in `packages/resend/v1/`, and never go online.
+
+Resend's package has no fixed host, so its connection gives one as well as its
+key, each from a setting:
+
+```jadpo fragment
+// app.jadpo
+application {
+    connections: {
+        mail: {
+            package: Resend.v1
+            credential: config.resend_api_key
+            host: config.resend_address
+        }
+    }
+    email: {
+        connection: mail
+        from: config.mail_sender
+    }
+}
+
+// config.jadpo
+config {
+    mail_sender: Email
+    resend_address: Url {
+        default: "https://api.resend.com"
+    }
+    resend_api_key: Text {
+        secret: true
+    }
+}
+```
 
 ### The registry
 
-The registry at jadpo.dev holds public Jadpo packages of both kinds, as
-Jadpo source with no native code and no install script; nothing in a
-package runs when it is installed, and its code runs only when started
-([What package code may do](#what-package-code-may-do)). A malicious
-package could still name the wrong host or mark an unsafe call
-idempotent, so hosts, services and every package change appear in the
-approval report, the summary a person signs off before a release. How it
-works is in [The public registry](#the-public-registry).
-
-A few curated packages, Stripe, Twilio and GitHub, imported from their
-published OpenAPI, live in the Jadpo repository until then.
+The registry at jadpo.dev holds public Jadpo packages of both kinds, as Jadpo
+source with no native code and no install script. Find one with `jadpo package
+search <words>`, or on [jadpo.dev/packages](https://jadpo.dev/packages). Nothing in a package runs when it is installed, and its code runs only
+when started ([What package code may do](#what-package-code-may-do)). A
+malicious package could still name the wrong host or mark an unsafe call
+idempotent, so hosts, services and every package change appear in the approval
+report, the summary a person signs off before a release. How it works is in
+[The public registry](#the-public-registry).
 
 ### An importer
 
@@ -949,6 +1256,8 @@ the app's own integration once, offline, in
 | `postman` | A provider's published Postman collection | Operations and example bodies; types inferred from examples |
 | `har` | A browser or proxy capture of real traffic | Operations and real responses; values stripped, shapes kept |
 | `dts` | The provider's official TypeScript SDK (`.d.ts` files) | Exact types and SDK method names; no HTTP method or path, so the agent adds those from the docs |
+
+Only `openapi` works today. The others stop with `toolchain.not_built_yet`.
 
 `openapi` reads a local file: `jadpo package import openapi
 ../orders/build/openapi/main.json`, with `--as Orders.v1` to name the
@@ -969,6 +1278,8 @@ an agent writes the package files directly from the docs, in exactly the
 format an importer produces. Nothing else changes: the same compiler
 checks, the same fakes, the same review. A package needs only the
 operations the app uses, so it can start with one operation and grow.
+
+Its reviewed types are listed in `provider { }`'s own `reviewed:`.
 
 ### Mapping imported types to standard types
 
@@ -1007,7 +1318,7 @@ silently:
    Each imported type starts unreviewed; the agent marks it reviewed when it
    has gone through it; `jadpo check` lists reviewed and outstanding types
    for the operations the app calls, and `jadpo approval` shows a person
-   any type shipped unreviewed.
+   any type shipped unreviewed. Publishing needs every public type reviewed.
 5. **Confirmation by real responses.** An operation the app calls stays
    unconfirmed until `jadpo package record` has checked a sandbox response
    against it ("Provenance and confirmation", below).
@@ -1037,7 +1348,7 @@ importer merges rather than overwrites.
 > $ jadpo check
 > To review
 >   Go through each type against the provider's documentation, then add it to
->   `reviewed:` in `imported:` in its package's `provider.jadpo` (agent)
+>   `reviewed:` in its package's `provider.jadpo` (agent)
 >     Tidepay.v2024_06_20  Charge, ChargesGetChargesInput, Shop; 0 of 3 reviewed
 >
 > Not yet confirmed
@@ -1141,7 +1452,7 @@ the sandbox for each one (see "Tests and fakes").
   `surface.jadpo_record`.
 - **The lock** records each package's version, digest and source:
   `registry`, `git` (the repository, the tag and the tag's commit), `path`
-  (a folder in the same repository, such as another Jadpo app) or `link`
+  (a folder, relative to your project) or `link`
   (a live checkout during development, below). A public package can never
   stand in for a git one. `jadpo check` and `jadpo build` read the lock and
   the committed folders only.
@@ -1164,9 +1475,31 @@ the sandbox for each one (see "Tests and fakes").
   `PackageChange.git_source`; everything else about it is reviewed as for
   any package. Adding an entry, or widening one, is a decision:
   `"github.com/acme/": PolicyChange.own_source_added`, so an agent can't
-  let a stranger's repository in. Removing one needs nothing. The list is
-  kept in `access.jadpo_record` as `own_source` lines, which gives the
-  check its before side (Richard, 2026-10-31).
+  let a stranger's repository in. Removing one needs nothing, nor does
+  narrowing one, or adding one below an entry already there, since no new
+  repository gets in. The list is kept in `access.jadpo_record` as
+  `own_source` lines, which gives the check its before side.
+
+  A repository is under an entry by its host and its whole path parts,
+  never by how its text starts, and an address that can't be told apart
+  from someone else's is under nothing, which only costs a person's
+  acceptance:
+
+  | Against `github.com/acme/` | Under it? | Why |
+  |---|---|---|
+  | `github.com/acme/postcodes`, `github.com/acme/tools/postcodes` | Yes | Below the entry |
+  | `github.com/acme/postcodes.git`, `https://github.com/acme/postcodes`, `ssh://git@github.com/acme/postcodes`, `git@github.com:acme/postcodes.git` | Yes | The same repository, as git reads it |
+  | `GitHub.com/acme/postcodes` | Yes | A host's name has no case |
+  | `github.com/Acme/postcodes` | No | A path keeps its case, since many servers tell the two apart |
+  | `github.com/acme-evil/postcodes`, `github.com/acme` | No | Whole path parts only, and strictly below the entry |
+  | `github.com:8443/acme/postcodes` | No | Another server. An entry can name a port: `git.acme.example:8443/platform/` |
+  | `github.com@evil.example/acme/postcodes`, `https://token@github.com/acme/postcodes` | No | An account in the address, other than ssh's `git` |
+  | `github.com/acme/../evil/postcodes`, `github.com/acme/%2e%2e/evil/postcodes` | No | Nothing is resolved or unescaped |
+  | `http://github.com/acme/postcodes`, `git://…`, `file://…` | No | They prove nothing about who answers |
+
+  An entry itself is refused unless it is a lower-case host and a path
+  ending in `/`, `package.own_source_invalid`: `github.com/` alone would
+  let in every repository on the host.
 - **Prose is unverified wherever it comes from**, such as `///`
   descriptions and `GUIDE.md`. Nothing safety-relevant relies on it.
 
@@ -1178,7 +1511,7 @@ the sandbox for each one (see "Tests and fakes").
 > and only then is it copied into `packages/<name>/<version>/` and locked
 > with its version, digest and source. `update` moves one to its newest
 > release and shows what changed for review
-> ([Records and manifest](18-records-and-manifest.md)). `remove` takes out
+> ([Review and records](18-records-and-manifest.md)). `remove` takes out
 > one the app no longer uses (`install.in_use`), and `link` and `unlink`
 > are under [Developing and publishing a package](#developing-and-publishing-a-package).
 > The choices are in "How packages are installed and linked" below.
@@ -1210,12 +1543,21 @@ the sandbox for each one (see "Tests and fakes").
 > → jadpo check  checks the app against 2.1.0
 > ```
 
-Not built yet: the hosted registry; importers other than `openapi`;
+Not built yet: importers other than `openapi`;
 adding another Jadpo app's OpenAPI document with `jadpo package add`;
-`packages:`'s `own_sources:`; writing an operation's output type from
-the sandbox's answer when it has none; and a HAR capture's operations.
+writing an operation's output type from the sandbox's answer when it has
+none; and a HAR capture's operations.
 
-## The surface
+`jadpo package add <name>` is designed to look in a fixed order and record which
+step it used, so an agent never improvises where to look: the registry, the
+official package first; the provider's published specification, given a URL or
+found in its known places; an importer, from the official SDK's type definitions,
+a Postman collection or a HAR capture; then written from the provider's
+documentation by an agent. Today a name asks only the registry. For a provider
+the registry doesn't have, use `jadpo package import openapi` or write the
+package by hand, as the table at the top of this topic shows.
+
+## A package's surface
 <!-- topic: the-surface -->
 
 A package's surface is everything it offers an app, in one file you can
@@ -1240,7 +1582,7 @@ compiler works it out from the package's code and writes it to
 The surface is plain text in the format of
 [the public API record](07-http.md#the-public-api-record), not JSON. Like
 every `.jadpo_record` file, it starts with a line saying what wrote it
-([Records and manifest](18-records-and-manifest.md)). Installed packages
+([Review and records](18-records-and-manifest.md)). Installed packages
 are committed, so every upgrade's pull request carries the surface diff,
 and a reviewer reads "removed `bookings.cancel`, new failure
 `PostcodeNotServed`" in plain text.
@@ -1362,10 +1704,15 @@ diffs the same two files.
 ## Developing and publishing a package
 <!-- topic: developing-and-publishing-a-package -->
 
+[Publish a package](../guides/23-publish-a-package.md) does the whole job, start to finish.
+
 A package lives in its own repository. To start one, run
 `jadpo package new <Name> --library` or `--provider`. It writes the
 package format, plus `recipes/`, a `sample/` app that the recipes and
-tests run against, and `GUIDE.md`.
+tests run against, and `GUIDE.md`, with a small example of each to replace
+([`jadpo package new`](14-tooling.md#jadpo-package-new)). It passes `jadpo
+package check` as written. Its licence is `Licence.proprietary` until you
+choose another, and its publisher is whoever you name with `--publisher`.
 
 ### Developing it
 
@@ -1395,8 +1742,22 @@ are committed into apps, so a registry's caching would add nothing.
 
 ### Public packages
 
-Public packages go to the registry with `jadpo package publish`, from a
-tag ([Releasing](#releasing)).
+Public packages go to the registry from a tag in a public git repository
+([Releasing](#releasing)). Before the first release, sign in on jadpo.dev,
+choose your publisher name, the `@name` your packages are published under, and
+add the user or organisation that holds your repositories on GitHub or another
+git host, then add a passkey. Each release is then:
+
+1. `jadpo package check`, then commit what it writes.
+2. `git tag v<version>` and `git push origin v<version>`.
+3. `jadpo package publish`, which asks the registry to fetch, build and test
+   that tag, and waits for the answer.
+4. On your account page on jadpo.dev, the version is listed under "Ready to
+   publish". Open it and publish it with your passkey. Anyone can install it
+   from then on.
+
+[Publish a package](../guides/23-publish-a-package.md) goes through it from an
+empty folder.
 
 > `jadpo package link <folder>` writes `package
 > Postcodes.v2 link ../postcodes` in the lock and keeps the line it
@@ -1437,7 +1798,10 @@ package unless:
 6. its changelog's list of changes is generated from the surface diff, and
    the author writes only why;
 7. it declares a licence from the fixed list (not `.proprietary`, for the
-   public registry) and the lowest Jadpo version it needs.
+   public registry) and the lowest Jadpo version it needs;
+8. it names its publisher;
+9. for a provider package, an agent has reviewed every public type against
+   the provider's documentation.
 
 The bar applies only to what is published: the app's own integrations and
 libraries skip it. Examples are part of the bar because they must run,
@@ -1445,7 +1809,7 @@ which the compiler can check.
 
 A library package also ships complete wording in its own default locale,
 with a `///` description on every public message
-([Configuration and time](10-configuration-and-time.md)). The bar's
+([Packages' text in an app](10-configuration-and-time.md#packages-text-in-an-app)). The bar's
 `wording` row, shown when the package carries translations, holds every
 language the package ships to completeness, and item 2 asks for the
 description of every public message.
@@ -1455,11 +1819,22 @@ description of every public message.
 > scratch app (the golden rule) and shows each problem at its place in the
 > package's folder. Item 1 is the check itself, `type.standard_exists` on
 > the package's public types among it
-> ([Standard library](19-standard-library.md)); item 2 is
-> `publish.description_missing`; item 4's tests are the package's own
+> ([Standard library](19-standard-library.md)), and for a provider
+> `package.standard_candidate` on its public objects; item 2 is
+> `publish.description_missing`; item 9 is the `reviewed` row, after
+> `described`, and each public type missing from `reviewed:` is
+> `publish.type_unreviewed` (under "The scoped review and unconfirmed
+> operations"); item 4's tests are the package's own
 > `.test.jadpo` files; item 5 works out the version from the surface at
-> the last tag and refuses a breaking change (`publish.breaking_change`);
-> item 7 is the index's own check. Item 4's decoders are the `decoders`
+> the last tag (or the release `--previous` names) and refuses a breaking
+> change (`publish.breaking_change`);
+> item 7 is the index's own check and the `licence` row: `check` passes
+> `Licence.proprietary`, because a private package's CI runs it before a tag, and
+> `verify` and `publish` refuse it (`publish.licence_proprietary`). Item 8 is the
+> `publisher` row: `check` says
+> `left out` and passes, because a private package's CI runs it before a tag,
+> and `verify` and `publish` refuse the package
+> (`publish.publisher_missing`). Item 4's decoders are the `decoders`
 > row, every decoder over every recording with each field's `decode:` and
 > `encode:` round-tripping ("Recording errors"), and its recipes the
 > `recipes` row (under "Recipes"). The surface is written whenever the
@@ -1478,9 +1853,10 @@ description of every public message.
 > ```text
 > $ jadpo package check
 > Facts
->   kind      library, pure
->   storable  OutwardCode, UkPostcode, WrittenPostcode
->   failures  uk.tidy: InvalidPostcode
+>   kind       library, pure
+>   publisher  @acme
+>   storable   OutwardCode, UkPostcode, WrittenPostcode
+>   failures   uk.tidy: InvalidPostcode
 >
 > Changes since 2.0.0
 >   + added  type OutwardCode
@@ -1493,11 +1869,12 @@ description of every public message.
 > ✓ behaviour     passed                        all 5 from 2.0.0 hold
 > ✓ version       passed                        2.1.0, 1 added since 2.0.0
 > ✓ changelog     passed                        2.1.0 says why
+> ✓ publisher     passed                        @acme
 > ✓ licence       passed                        mit, from Jadpo 1.0
 >
 > ✓ Wrote surface.jadpo_record and CHANGELOG.md
 >
-> ✓ package check passed  Postcodes.v2 2.1.0 · 8 passed
+> ✓ package check passed  Postcodes.v2 2.1.0 · 9 passed
 >
 > → git tag v2.1.0  tags the release once surface.jadpo_record is committed
 > ```
@@ -1535,11 +1912,10 @@ description of every public message.
 ## The public registry
 <!-- topic: the-public-registry -->
 
-The registry at jadpo.dev holds public Jadpo packages of both kinds. It is
-itself a Jadpo application, deployed to Cloudflare Workers, and calls one
+The registry at jadpo.dev holds public Jadpo packages of both kinds. It is a
+Jadpo application, deployed to Cloudflare Workers, and calls one
 service that isn't Jadpo code: the verifier, the `jadpo` tool in a
-container, which compiles and checks what is published. Private packages
-still come from git ([Private packages come from git](#private-packages-come-from-git)).
+container, which compiles and checks what is published.
 
 Four things the language already does make most attacks on package
 registries impossible here: nothing in a package runs at install or build,
@@ -1552,8 +1928,14 @@ values or sends data to a host it may already reach.
 
 - **A package's registry name is `@publisher/name`**, such as
   `@acme/postcodes`; Jadpo's official packages are `@jadpo/…`. In code it
-  keeps its own name and version label (`Postcodes.v2`). `package.jadpo`
-  names its publisher, so a fork can't be published as the original.
+  keeps its own name and version label (`Postcodes.v2`), and the registry's
+  own part comes from that: `AcmeCouriers` under `@acme` is
+  `@acme/acme-couriers`.
+- **`package.jadpo` names its publisher**, so a fork can't be published as
+  the original. A release goes under the publisher it names, and only their
+  releasers can confirm it; a fork names its own handle and is its own package.
+  A package only used by path or from git may leave the key out, and the
+  publishing bar refuses one with none.
 - **A name is never reused**, after a yank, a takedown or a publisher
   leaving. A name close to a popular one under another publisher, or to a
   reserved brand, needs Jadpo's approval.
@@ -1573,7 +1955,7 @@ A release is made from a tag in any public git repository reached over
 HTTPS. The registry never accepts an upload, and no publish token exists.
 
 1. `jadpo package publish` (or the jadpo.dev page) asks the registry to
-   publish a repository at a tag. It sends only those two, and needs no
+   publish a repository at a tag, naming its publisher too, and needs no
    sign-in, because nothing goes live without a releaser.
 2. The verifier resolves the tag to its commit, fetches that commit, and
    then, with no network, checks it: only Jadpo source and the package's
@@ -1582,11 +1964,23 @@ HTTPS. The registry never accepts an upload, and no publish token exists.
    and the whole publishing bar. Everything the registry shows about the
    release is worked out from that source, never from anything the
    publisher sends.
-3. **The release is pending until a releaser confirms it with a passkey**,
-   on a page showing its version, surface diff, changelog and facts.
+3. **Once checked, a releaser publishes it with a passkey**, on its page
+   showing its version, surface diff, changelog and facts.
 4. It goes live, its digest is added to the public log, and its pages are
    written.
 
+- **A release is refused when it isn't its publisher's to make**
+  ([`publish.publisher_mismatch`](../errors/publish.publisher_mismatch.md)).
+  The registry reads the publisher from the release's facts, and fails it with
+  the bar's `publisher` row when the repository's earlier releases are another
+  publisher's, or when the name it would take is released from another
+  repository, as a fork still naming the original is. When it knows who the
+  release is for (a repository it holds, or the publisher a signed-in member
+  asks as on jadpo.dev) it also tells the verifier, which fails the release
+  itself when `package.jadpo` names anyone else. A new name from a new
+  repository has no one to compare with: it waits for a releaser of the
+  publisher it names, which a stranger can't be. An owner moves a package to
+  another repository on its page, with a passkey.
 - **Routine releases may release themselves.** A package can opt into
   automatic release 24 hours after a release goes pending, unless a member
   cancels it; every member is told when it goes pending. Only a release
@@ -1615,6 +2009,7 @@ The verifier works out a release's **facts** from the compiled graph:
 | Fact | From |
 |---|---|
 | Kind, and whether it is pure | The package's folders and what its code does |
+| Who publishes it | `publisher:` in `package.jadpo` |
 | Each host, and the operations that reach it | `provider.jadpo` and each operation |
 | Which calls change something at the provider | Each operation |
 | Which personal data reaches which host | `personal:` marking followed to each operation that sends it ([Personal data](15-personal-data.md)) |
@@ -1684,20 +2079,29 @@ The rules in [Installing safely](#installing-safely) all apply.
 
 - **`jadpo package add @acme/postcodes` installs that exact name or
   stops.** It never picks a near match, and it shows the publisher,
-  whether they are verified, the package's age and its facts.
+  whether they are verified, the package's age and its facts. It takes the
+  newest release that isn't yanked or a pre-release, at once, or the one
+  `--to` names. A bare `jadpo package add postcodes` means Jadpo's own,
+  `@jadpo/postcodes`, or nothing (`install.not_in_registry`).
 - **Every digest is checked against the public log**, so the registry
   can't give one app different code from another.
 - **Releases are available as soon as they are live.** `jadpo package
-  update <name>` with no version takes the newest release at least three
-  days old, and names the newer ones it skipped. `--to <version>` takes
-  that release at once, after showing its facts.
+  update <name>` with no version takes the newest release of its major
+  version at least three days old, and names the newer ones it skipped.
+  `--to <version>` takes that release at once, after showing its facts.
+  The wait is the client's, so CI and a laptop agree on it.
 - **Urgent releases skip the wait.** A releaser marks a release urgent, with
   a reason and a passkey, even under automatic release. The registry
   publishes an advisory against the versions it fixes, and `update` takes
-  it at once and says why. The urgent mark is shown on the release.
+  it at once and says why. The urgent mark is shown on the release. Under a
+  new publisher an urgent mark doesn't skip the wait, since a mark that
+  publisher made can't be what lets its first release through.
 - **Before an update** the review ([Package upgrades](18-records-and-manifest.md#package-upgrades))
   also shows a new publisher or owner since the installed version, and the
-  change record.
+  change record. A package handed to another publisher goes on under its
+  own name there (`successor` in the protocol), and `update` follows it:
+  each of its releases has its own time, so the three days start again, and
+  the lock's `registry` line moves to the new name.
 - **An app can always fix a package itself**: an installed package is in
   the format of the app's own integrations, so it can be copied into
   `shared/providers/` and changed there.
@@ -1712,7 +2116,8 @@ The rules in [Installing safely](#installing-safely) all apply.
   2.0.0 to 2.1.2), not just a package. `jadpo package audit` lists the
   advisories against the app's packages and says whether the app reaches
   each affected declaration. It is the one check that goes online; `jadpo
-  check` and `build` never do. Run it in CI.
+  check` and `build` never do. Run it in CI: an advisory the app reaches
+  fails it (`package.advisory`), and one it doesn't is only listed.
 - **Copies are tracked.** Packages copy code instead of depending on each
   other, so the verifier fingerprints every public declaration's
   normalised source. An advisory also names the packages carrying a copy,
@@ -1721,26 +2126,37 @@ The rules in [Installing safely](#installing-safely) all apply.
 ### Compatibility with Jadpo releases
 
 Every package is compiled and tested against each Jadpo pre-release, so a
-release that would break the ecosystem is caught before it ships, and again
-when it ships. A package's page lists the Jadpo releases it works with,
-with nothing for its author to keep up. The lowest Jadpo version its
+release that would break the ecosystem is caught before and when it ships. A package's page lists the Jadpo releases it works with,
+with nothing for its author to do. The lowest Jadpo version its
 `package.jadpo` declares is checked against that list. When a release
 breaks a package, its publisher is told the errors and what `jadpo fix`
 would change.
 
 ### Developing for the registry
 
-Publishing should hold no surprises:
-
 - `jadpo package check` prints the facts, the version the surface diff
   gives and the change record, exactly as the registry will show them.
 - `jadpo package preview` serves the package's registry page locally.
 - `jadpo package publish --dry-run` runs the verifier on the pushed tag's
-  commit and publishes nothing.
+  commit and publishes nothing. Like `publish`, it first holds the package
+  to the bar here, and needs the checkout to be the tag's commit, unchanged,
+  with the same tag on `origin` (`publish.not_at_tag`), so the bar runs on
+  what the registry will fetch.
 - The verifier checks with the Jadpo release the package declares and the
   newest, so a local pass with either is a pass at the registry.
 
-### The registry protocol
+### Not built yet
+
+The registry at jadpo.dev publishes, installs, searches by words and yanks.
+These parts of this topic aren't built there yet: search by meaning, the
+written account and the review of each release's diff, urgent releases and the
+advisories they publish, compatibility runs, refusing a tag that moves,
+organisations with several members and their releasers, automatic release,
+successors and reports. Accounts are open to a short list of people for now;
+anyone can search and install.
+
+## The registry protocol
+<!-- topic: the-registry-protocol -->
 
 The protocol is what the `jadpo` tool and the registry application are each
 built against. It is served at `https://jadpo.dev/registry/v1/` as JSON,
@@ -1758,7 +2174,7 @@ it can send makes a release live.
 | `GET log/consistency?from=&to=` | The hashes that prove the log of size `to` extends the log of size `from` |
 | `GET search?q=&from=&to=&kind=` | Ranked results, the standard library's first, each naming a package and declaration, with why it matched |
 | `POST advisories/query` | Given installed packages and versions, the advisories against them, each naming its declarations, versions and the packages carrying copies |
-| `POST releases` | Given a repository, a tag and `dry_run`, starts a release (or a dry run) and answers its id |
+| `POST releases` | Given a repository, a tag, `dry_run` and optionally `publisher`, starts a release (or a dry run) and answers its id |
 | `GET releases/{id}` | Its state (`verifying`, `failed` with the bar's rows, `pending`, `cancelled`, `live`), with its facts and change record once checked |
 
 - **The log** is an append-only Merkle tree of releases, hashed as RFC
@@ -1781,10 +2197,18 @@ it can send makes a release live.
   numbers. A release's facts are the table in [What a release
   shows](#what-a-release-shows), less the Jadpo releases it works with,
   which are the release's own field since they grow after it is checked.
+  `publisher` is the handle `package.jadpo` names, `null` where it names none,
+  which only a release that failed can have.
   A change record's entry is its `declaration`, its `kind` (`function`,
   `type`, `provider`), `change` (`added`, `removed`, `retyped`,
   `new_failure`, `new_host`, `personal_data_sent`, `behaviour_changed`),
   `detail` and `why`.
+- **A release refused for its publisher** is `failed` with a bar row whose
+  `check` is `publisher` and whose `detail` says why, which `jadpo package
+  publish` shows as `publish.publisher_mismatch`. An optional `publisher`
+  on `POST releases` lets the registry refuse at once, as
+  `repository_refused`, a repository another publisher releases from
+  (recorded 2026-11-07).
 - **Its failures** are `package_not_found`, `release_not_found`,
   `archive_not_found` and `release_request_not_found` (404), `not_in_log`
   (404, also for a release logged after the size asked about),
@@ -1795,33 +2219,155 @@ it can send makes a release live.
   `package Postcodes.v2 version 2.1.0 registry @acme/postcodes digest
   sha256:…`.
 - **The registry application's served OpenAPI is checked against this
-  table** by a conformance test in the `jadpo` repository, run against a
+  table** by a conformance test, `jadpo package protocol <document>`
+  ([Tooling](14-tooling.md#jadpo-package-protocol)), also run against a
   local registry built from the same table, so neither side drifts. Every
   row must be served below `/registry/v1/` with its placeholders, query
   members, body, status, answer and failures, open to a caller who hasn't
   signed in, and nothing else but `openapi.json`; shapes are compared
   through any `$ref`, and what a Jadpo application adds that the table
   doesn't constrain (the runtime's shared failures, `x-jadpo-` keywords,
-  an `Idempotency-Key` header) is left alone. The registry application's
-  CI runs it with `JADPO_REGISTRY_OPENAPI` set to its served document
-  ([compiler/runtime §2.1](../compiler-runtime.md#21-workspace-and-crates)).
+  an `Idempotency-Key` header) is left alone.
 
-### The verifier
+## The verifier
+<!-- topic: the-verifier -->
 
 The verifier is `jadpo package verify`, the same tool authors run, in a
-container image published with each Jadpo release.
+container image published with each Jadpo release. A package's tests and
+examples are code from anyone, so the verifier is built around where that
+code runs and what can come back from it.
 
 - **`jadpo package verify <folder> --previous <folder> --json`** runs the
   publishing bar and writes everything a release shows: the bar's rows,
   surface, facts, change record, the fingerprints of every public function
   and declaration, the previous release's examples and tests run against
-  the new code, and the Jadpo release it was checked with.
-- **`--serve`** answers the registry over HTTPS with a credential the
-  registry holds. Each request names a repository, a commit and the
+  the new code, and the Jadpo release it was checked with. `--publisher
+  <handle>` says who it is being released for, and the bar's `publisher` row
+  fails when `package.jadpo` names anyone else.
+- **`--serve`** answers the registry, reached over HTTPS with a credential
+  the registry holds. Each request names a repository, a commit and the
   previous release's digest. It fetches over git with network to the git
-  host only, then verifies in a process with no network at all.
+  host only, then verifies in a process with no network at all. It never
+  follows a redirect: a repository whose address sends git elsewhere, as a
+  renamed or transferred repository's old address does, is
+  `repository_refused`, since the registry checks who a version comes from
+  by the address it was given.
 - It is reached from the registry as an ordinary connection to a
   provider package, so the registry needs no feature an app doesn't have.
+  Verifying takes longer than a call may, so a verification is started and
+  asked after.
+
+| Request | Answers |
+|---|---|
+| `GET /health` | `{ "status": "ok" }`, the only answer with no credential |
+| `POST /v1/resolve` | Given `repository` and `tag`, the `commit` it points at, for a tag being published and to tell when one moved |
+| `POST /v1/verifications` | Given `repository`, `commit`, `previous_digest` (`null` for a first release) and `publisher` (the handle it is being released for; absent or `null` when that isn't known), starts one and answers 202 with its `id`. The same four name the same one |
+| `GET /v1/verifications/{id}` | Its `state` (`verifying`, `checked`, `could_not_check`), its `result` once checked and its `failure`'s `code` and `message` if it couldn't be |
+| `GET /v1/verifications/{id}/source` | For a release that passed, what a model reads to write [its account](#what-a-release-shows): `files`, each with its `path` and `text`, and `truncated` |
+| `GET /v1/verifications/{id}/diff` | For a release that passed, what a model reads for what the facts can't show: `diff`, as `git diff` writes it against the previous release, `null` for a first release, and `truncated` |
+
+`result` has every field, `null` or empty where it has no value: `passed`,
+`package`, `version`, `bar`, `problems`, `surface`, `facts`, `descriptions`,
+`change_record`, `fingerprints`, `previous`, `jadpo`, `checked_with`,
+`left_out`, and for a
+release that passed its `digest` and `archive`: the tar archive of
+[`GET archives/{digest}`](#the-registry-protocol), in base64, which is how
+the registry comes to hold a release's files. A release whose whole answer
+wouldn't fit that 10 MiB fails too, rather than pass and never arrive.
+`descriptions` holds the package's description as `package` and each public
+declaration's as `declarations`, a list of `name` and `description` (`null`
+where it has none), so the registry shows them without reading them back
+out of `surface`; it is `null` until the package compiles (recorded
+2026-11-07). `jadpo package verify --json` gives the same. The
+source and the diff are asked for on their own, since neither would fit
+beside the archive; each is at most 8 MiB of its answer, past which
+`truncated` says some was left out. They are what the package's author wrote,
+so a model reads them as data. `could_not_check` says nothing
+of the release and can be asked for again: `repository_refused`,
+`commit_not_fetched`, `previous_not_found`, `previous_digest_mismatch` or
+`verifier_failed`. Its other failures, in the [failure
+envelope](07-http.md), are `unauthorized` (401), `repository_refused`,
+`commit_refused`, `tag_refused`, `digest_refused`, `publisher_refused` and
+`invalid_body` (422),
+`tag_not_found` and `verification_not_found` (404), `repository_unreachable`
+(502) and `verifier_busy` (503, when 16 are waiting).
+
+**What a commit may hold** is decided from its tree's listing, before any of
+it is written anywhere. A release holds `.jadpo` source, `.jadpo_record`
+records, `GUIDE.md` and `CHANGELOG.md` at its root, `.json` files under a
+`recordings/` folder and a `jadpo.lock` in a folder such as `sample/`, all of
+them text, whose archive comes to at most 7 MB and 10,000 files, since the
+registry, a Jadpo application, receives it in base64 in an answer of at most
+10 MiB. Any other file, a
+symbolic link or a submodule refuses the commit
+([`publish.file_not_allowed`](../errors/publish.file_not_allowed.md),
+[`publish.too_large`](../errors/publish.too_large.md)). What a repository
+needs for itself, hidden files and folders and a root `README`, `LICENSE`,
+`LICENCE`, `COPYING` or `NOTICE`, is left out instead: it isn't in the
+archive or the digest, and `left_out` lists it. A `NOTICE` is the file
+Apache-2.0 asks a work to carry beside its licence, so a release may hold
+one as it holds a `LICENSE`. `jadpo package verify <folder>` has the
+same `files` row, so a local pass is a pass here.
+
+**Where its code runs.** Each pass runs in a sandbox of its own, sharing
+nothing with another pass or another verification:
+
+| | |
+|---|---|
+| Network | None: a network namespace of its own |
+| The machine | Nothing but the system's programs, read-only, and the release's folders, read-only |
+| Its own files | A temporary folder of at most 512 MB, in memory, gone when it ends |
+| The verifier | None of its variables, the credential included, and no sight of its process |
+| Limits | 300 seconds of CPU, 600 seconds, 3 GB of memory, 256 MB in one file, 4,096 processes, 1,024 open files, 32 MB of output |
+
+One verification runs at a time, so one package can't take another's time or
+memory. A run stopped at a limit fails the release with the bar's `limits`
+row.
+
+**What it can't choose.** `jadpo package verify` runs twice: first with
+`--no-run`, which runs none of the package's code and gives the surface,
+facts, fingerprints, version and the change record from its source; then
+whole, for what running shows, the examples, tests, recipes, decoders and the
+previous release's. A row the first decided is taken from the first, and
+if the second says anything else about what the first decided, the release
+fails with the bar's `agreement` row, so code that took over its own process
+still can't change what the release shows. The digest and archive are the
+verifier's own work, from the commit's files.
+
+**Reaching a repository.** A repository is an `https://` address at a host
+name, on the default port, with no credential. Every address the host has
+must be public: this machine, private networks and a cloud's metadata service
+are refused, and `git` is handed the address that was
+checked, so a name that changes afterwards reaches nothing else. It follows
+no redirect and runs no hook, filter or submodule, and a commit is read from
+the object store, never checked out. A previous release comes from the
+registry's `GET archives/{digest}` and is used only once its files have that
+digest.
+
+**Which Jadpo.** It checks with the release its image carries, which is the
+newest once deployed. When the package's `jadpo:` names another line, it also
+runs the bar with that line's newest release, fetched and checked as a
+project's own `jadpo` is, as the bar's `declared jadpo` row and an entry in
+`checked_with`. A release too old to have `verify` can't say, and the row
+says so. What a release shows always comes from the newest.
+
+**Running it.** `jadpo package verify --serve [--listen <address>]
+[--registry <url>]` needs the credential in `JADPO_VERIFIER_TOKEN`, of at
+least 32 characters, and serves only on Linux with
+[bubblewrap](https://github.com/containers/bubblewrap); it confirms a program
+in its sandbox has no network before it listens, and otherwise refuses with
+[`cli.verifier_start_failed`](../errors/cli.verifier_start_failed.md). It
+speaks HTTP on `127.0.0.1:8080` unless told otherwise: HTTPS is what stands in
+front of it. `--registry` names the registry it fetches previous releases from,
+`https://jadpo.dev/registry/v1/` unless told otherwise.
+
+**Where the registry runs it.** jadpo.dev runs the image on Cloudflare
+Containers, behind a small Worker at `verifier.jadpo.dev` that holds the
+credential and ends HTTPS. A container sleeps when nothing has asked it anything
+for a while, and a verification lives in its memory. The registry asks after a
+running verification each minute, which keeps the container awake until the
+verification ends; a finished verification is gone once the container sleeps,
+and the registry has kept its result by then.
 
 ## Connecting in `app.jadpo`
 <!-- topic: connecting-in-app-jadpo -->
@@ -1833,6 +2379,116 @@ or a package (`package: X.vN`), with the typed settings that driver or
 package declares. A connection to a package also names the domains whose
 actions may call it, the credential from `config.jadpo`, and which of the
 package's hosts to use.
+
+Here is one connection to a provider's API, with everything it needs. Acme
+Couriers publishes no package, so the app describes its API itself in
+`shared/providers/`. `package:` names that package, by its name and version.
+`couriers` is your name for the connection, and `shipping` is one of your
+domains.
+
+`app.jadpo`:
+
+```jadpo check project=connecting-one file=app.jadpo
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+        }
+    }
+}
+```
+
+`config.jadpo`:
+
+```jadpo check project=connecting-one file=config.jadpo
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+`shared/providers/acme_couriers/v1/package.jadpo`:
+
+```jadpo check project=connecting-one file=shared/providers/acme_couriers/v1/package.jadpo
+/// Acme Couriers' booking API, written from its documentation.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+`shared/providers/acme_couriers/v1/provider.jadpo`:
+
+```jadpo check project=connecting-one file=shared/providers/acme_couriers/v1/provider.jadpo
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+`shared/providers/acme_couriers/v1/resources/bookings.jadpo`:
+
+```jadpo check project=connecting-one file=shared/providers/acme_couriers/v1/resources/bookings.jadpo
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        changes: true
+        idempotent: true
+        source: PackageSource.written
+    }
+}
+```
+
+`shared/providers/acme_couriers/v1/types/create_booking.jadpo`:
+
+```jadpo check project=connecting-one file=shared/providers/acme_couriers/v1/types/create_booking.jadpo
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Text
+}
+```
+
+`shared/providers/acme_couriers/v1/types/booking.jadpo`:
+
+```jadpo check project=connecting-one file=shared/providers/acme_couriers/v1/types/booking.jadpo
+/// A booked collection.
+public type Booking = Object {
+    id: Text
+}
+```
+
+An action in `shipping` calls it. `use app` brings in the connection, and
+`use shared/providers/acme_couriers` brings in the package's names.
+
+`domains/shipping/actions/book.jadpo`:
+
+```jadpo check project=connecting-one file=domains/shipping/actions/book.jadpo
+use app { couriers }
+use shared/providers/acme_couriers
+
+/// Books a collection with the courier, through its connection.
+action book(request: AcmeCouriers.CreateBooking) -> AcmeCouriers.Booking {
+    return couriers.bookings.create(request)
+}
+```
+
+A fuller `connections:` block uses more of the keys, which the list after it
+explains. `Stripe` and `ExchangeRates` stand for packages an app has installed:
 
 ```jadpo fragment
 // app.jadpo
@@ -1872,11 +2528,6 @@ application {
                 latest: 6h
             }
         }
-        pdfs: {
-            package: Gotenberg.v8
-            domains: [billing]
-            outbound: ["fonts.googleapis.com"]
-        }
     }
 }
 ```
@@ -1887,7 +2538,7 @@ application {
   `.live`, which picks between the package's hosts. Calls are HTTPS only,
   and redirects and proxies are always refused.
 - **The credential** is a `secret: true` setting
-  ([Configuration and time](10-configuration-and-time.md)). The package
+  ([Secrets](10-configuration-and-time.md#secrets)). The package
   says how it is sent, and code can never read it. For a provider that
   acts for each user, the credential is an `OAuthGrant` instead.
 - **`host:`** gives the address of a package with no fixed host: another
@@ -1897,10 +2548,12 @@ application {
   `max_concurrent:` may lower the package's limit on calls at once.
 - **`webhooks:`** gives the webhook secret and, for webhooks that need a
   reply, `replies:` (see "Receiving from outside", further down this page).
-- **`polls:`** changes a poll's interval, **`outbound:`** grants a service
-  the hosts its package asks for, **`erasure:`** names the field holding
-  the person's key at this provider, and **`development:`** lists what
-  reaches the sandbox in `jadpo dev`. Each has its own section below.
+- **`polls:`** changes a poll's interval, **`erasure:`** names the field
+  holding the person's key at this provider, and **`development:`** lists
+  what reaches the sandbox in `jadpo dev`. Each has its own section below.
+- **`outbound:`**, which isn't built yet, grants a
+  [service run by Jadpo](#running-a-service-in-a-container) the hosts its
+  package asks for.
 - **A package's own `settings:`** are given by name, such as
   `message_stream: "outbound"`.
 
@@ -2258,9 +2911,39 @@ var postcode: Postcodes.UkPostcode = attempt Postcodes.uk.parse(input.postcode) 
 The types come from the package, and your app writes none. The checker
 compares what you send with what the operation takes. At runtime a
 response is checked only for the fields your code reads, so a provider
-adding or changing other fields breaks nothing. A package input may take
-any of your app's object types, sent as JSON, such as Postmark's template
-variables or Stripe's metadata.
+adding or changing other fields breaks nothing.
+
+An operation's input holds the package's own types and the built-in ones, so
+passing your app's own object is `type.mismatch`. A field taking any of your
+app's object types, sent as JSON, as Postmark's template variables or Stripe's
+metadata need, is `AnyObject`
+([Other built-in types](02-values-and-types.md#other-built-in-types)), which
+isn't built, so writing it is `semantic.unknown_name`.
+
+A `File` is the store and key its bytes are under, so it doesn't cross to or
+from a provider, however deep a type holds it
+([What a `File` holds](16-built-in-services.md#what-a-file-holds)):
+
+- In an operation's `input:` or a webhook's `reply:` it is
+  `toolchain.not_built_yet`, since sending a file to a provider isn't built.
+  The provider would get the store and key and none of the bytes.
+- In an operation's `output:` or `wire_output:`, or a webhook's event, it is
+  `type.batch_input`, since a provider could name any file.
+
+A file's bytes do go out: an operation's `input:` may hold the `FileContents`
+`store.read` gives, sent as its Base64. It doesn't come back, so an `output:`,
+a `wire_output:` or a webhook's event holding one is `type.batch_input`
+([`store.read(file)`](16-built-in-services.md#storereadfile)).
+
+A `File` is the store and key its bytes are under, so it doesn't cross to or
+from a provider, however deep a type holds it
+([What a `File` holds](16-built-in-services.md#what-a-file-holds)):
+
+- In an operation's `input:` or a webhook's `reply:` it is
+  `toolchain.not_built_yet`, since sending a file to a provider isn't built.
+  The provider would get the store and key and none of the bytes.
+- In an operation's `output:` or `wire_output:`, or a webhook's event, it is
+  `type.batch_input`, since a provider could name any file.
 
 ### Failures
 
@@ -2341,7 +3024,7 @@ A list operation returns a `Page<T>`
 provider pages, and `page.next` asks for the next page. Work over many
 pages uses `batches.each(from:, each:, finished:, key:)`, which pages
 through in the background and resumes where it stopped
-([Batches: work over many items](12-jobs-and-events.md#batches-work-over-many-items)).
+([Batches](12-jobs-and-events.md#batches)).
 
 ### Calls and writes
 
@@ -2356,7 +3039,7 @@ checks the row is unchanged
 A changing call with no idempotency key must be the only changing call
 in its action.
 Several keyed calls follow
-[Several changing calls in one action](#several-changing-calls-in-one-action).
+[Several changing calls through a package](#several-changing-calls-through-a-package).
 Work that must follow a write emits an event
 ([Emitting an event](12-jobs-and-events.md#emitting-an-event)).
 
@@ -2731,7 +3414,7 @@ public resource tracking {
 | `decode:` and `encode:` | A field | A pure function pair from the package's own `libraries/`, for anything else; checked to round-trip at publish |
 | `wire_output:` and `decode:` | An operation | The response as sent, and a pure function turning it into `output:`; run over every recorded response at publish |
 | `output_at:` | An operation | The path of the real object inside an envelope |
-| `failed_when:` | An operation | A `200` answer that is really a failure, by a path and the value that marks it (`ok` is `false`); the failure's code is then read from `error_code:` |
+| `failed_when:` | An operation | A `200` answer that is really a failure, by a path and the value that marks it (`ok` is `false`); the failure is then read from `error_code:` as a refusal's is ([A provider's failures](#a-providers-failures)) |
 
 - **A field without `wire:` is written as Jadpo's contract writes it.**
   The contract is the one JSON form each standard type has at every
@@ -3253,6 +3936,204 @@ writes its type.
   Fields further in are decoded with the field that holds them. An
   answer decoded whole by an operation's `decode:` is read whole.
 
+## A provider's failures
+<!-- topic: a-providers-failures -->
+
+A provider package declares the failures its provider refuses a call
+with in `failures/`, and each operation lists the ones it can answer with
+in `failures:`. The runtime reads a refusal, a `4xx` the driver doesn't
+read as something else, as one of them. By default it reads the text at
+the provider's `error_code:` as the failure's code: `slot_taken` is
+`SlotTaken`.
+
+Many providers send no such code. postcodes.io answers a postcode it
+doesn't hold with `404` and a sentence, `{"status": 404, "error":
+"Postcode not found"}`. A failure then says how its provider answers it:
+
+| Written | Means |
+|---|---|
+| `wire_status: 404` | The HTTP status the provider refuses with: a `4xx` but `401`, `403`, `408` and `429`, which the driver reads first |
+| `wire_name: "Postcode not found"` | The provider's own text at `error_code:`, exactly as it writes it, where that isn't the failure's code |
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/failures/postcode_not_found.jadpo
+/// postcodes.io holds no such postcode.
+public type PostcodeNotFound = Failure {
+    kind: FailureKind.not_found
+    wire_status: 404
+    wire_name: "Postcode not found"
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/failures/invalid_postcode.jadpo
+/// The text isn't a postcode postcodes.io can read.
+public type InvalidPostcode = Failure {
+    kind: FailureKind.invalid_value
+    wire_name: "Invalid postcode"
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/failures/nothing_found.jadpo
+/// postcodes.io found nothing at that address.
+public type NothingFound = Failure {
+    kind: FailureKind.not_found
+    wire_status: 404
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/resources/postcodes.jadpo
+public resource postcodes {
+    get: {
+        method: HttpMethod.get
+        path: "/postcodes/{postcode}"
+        input: PostcodeLookup
+        output: PostcodeAnswer
+        changes: false
+        failures: [PostcodeNotFound, InvalidPostcode, NothingFound]
+        source: PackageSource.written
+    }
+}
+```
+
+A failure's code is still its Jadpo code, `postcode_not_found` from its
+name. An app maps it by that code and a test scripts it by that code;
+`wire_name:` is only how the provider writes it, as a field's
+`wire_name:` is its spelling on the wire.
+
+A refusal is the most specific failure of the operation that matches it:
+
+1. one whose `wire_status:` and `wire_name:` both match;
+2. one whose text matches, at any status: its `wire_name:`, or its code
+   when it gives neither key;
+3. one whose `wire_status:` matches and gives no `wire_name:`, whatever
+   the text, or with none.
+
+So `404 {"error": "Postcode not found"}` is `PostcodeNotFound`, an
+answer of `"Invalid postcode"` with any status is `InvalidPostcode`, and
+any other `404`, such as `"Outcode not found"`, is `NothingFound`. A refusal
+no failure matches is a fault naming the operation and the provider's
+code. Two failures of one operation read the same way are
+`package.operation_invalid`, since nothing would tell them apart.
+
+The app maps them at the call as any package failure:
+
+```jadpo check project=p72f-failures file=domains/addresses/actions/place_postcode.jadpo
+use app { postcodes }
+use addresses/failures { AddressUnknown, AddressUnreadable }
+use shared/providers/postcodes_io
+
+/// Where a postcode someone typed is.
+action place_postcode(
+    postcode: PostcodesIo.Postcode
+) fails AddressUnknown, AddressUnreadable -> PostcodesIo.PostcodeAnswer {
+    return attempt postcodes.postcodes.get(
+        PostcodesIo.PostcodeLookup {
+            postcode: postcode
+        }
+    ) {
+        postcode_not_found: AddressUnknown
+        invalid_postcode: AddressUnreadable
+        nothing_found: AddressUnknown
+    }
+}
+```
+
+```jadpo check project=p72f-failures file=domains/addresses/actions/place_postcode.test.jadpo
+use app { postcodes }
+use addresses/failures { AddressUnknown, AddressUnreadable }
+
+test "a postcode postcodes.io doesn't hold is unknown" {
+    fakes: {
+        postcodes.postcodes.get: [postcode_not_found]
+    }
+    assert place_postcode("ZZ1 1ZZ") fails AddressUnknown
+}
+
+test "a postcode it can't read is unreadable" {
+    fakes: {
+        postcodes.postcodes.get: [invalid_postcode]
+    }
+    assert place_postcode("SW1A") fails AddressUnreadable
+}
+```
+
+```jadpo check project=p72f-failures file=domains/addresses/failures/address_unknown.jadpo hidden
+/// No such postcode is in use.
+type AddressUnknown = Failure {
+    kind: FailureKind.not_found
+    message: "That postcode isn't in use."
+}
+```
+
+```jadpo check project=p72f-failures file=domains/addresses/failures/address_unreadable.jadpo hidden
+/// The text isn't a postcode.
+type AddressUnreadable = Failure {
+    kind: FailureKind.invalid_value
+    message: "That isn't a postcode."
+}
+```
+
+```jadpo check project=p72f-failures file=app.jadpo hidden
+application {
+    connections: {
+        postcodes: {
+            package: PostcodesIo.v1
+            domains: [addresses]
+            environment: config.postcodes_environment
+        }
+    }
+}
+```
+
+```jadpo check project=p72f-failures file=config.jadpo hidden
+config {
+    postcodes_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/package.jadpo hidden
+/// postcodes.io's UK postcode lookups.
+package PostcodesIo.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/provider.jadpo hidden
+/// postcodes.io's public API, which takes no credential.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.postcodes.io"
+        sandbox: "https://api.postcodes.io"
+    }
+    error_code: "error"
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/types/postcode.jadpo hidden
+/// A postcode as someone typed it.
+public type Postcode = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/types/postcode_lookup.jadpo hidden
+/// Which postcode to look up.
+public type PostcodeLookup = Object {
+    postcode: Postcode
+}
+```
+
+```jadpo check project=p72f-failures file=shared/providers/postcodes_io/v1/types/postcode_answer.jadpo hidden
+/// A postcode postcodes.io holds.
+public type PostcodeAnswer = Object {
+    postcode: Postcode
+    parish: Text?
+}
+```
+
 ## What package code may do
 <!-- topic: what-package-code-may-do -->
 
@@ -3270,7 +4151,7 @@ written once and tested, without reaching into the apps that install it.
   email, call any other connection, or read configuration or secrets. The
   app calls one as `connection.action(input)` inside its own action. One
   with several changing calls follows
-  [Several changing calls in one action](#several-changing-calls-in-one-action).
+  [Several changing calls through a package](#several-changing-calls-through-a-package).
   Inside a package, operations are named without the connection:
   `customers.create`.
 - **Package subscribers on its own webhooks.** A package may subscribe to
@@ -3284,6 +4165,9 @@ written once and tested, without reaching into the apps that install it.
   Package events travel through the app's outbox like any other.
 - **Package code runs only when started**: by the app calling it, or by
   the outside world through a webhook or a poll the app subscribes to.
+
+A package's API can also be a container Jadpo runs, which isn't built yet:
+[Running a service in a container](#running-a-service-in-a-container).
 
 In this sketch, Stripe's package holds an action that makes several calls
 in the order Stripe requires. Its subscriber `renewal` hears the raw
@@ -3315,14 +4199,14 @@ Here a package's action calls its own operations, one of which the
 package keeps to itself, and passes each answer to the next. The app calls
 the action through its connection and maps its failure at the call. A
 package action's changing calls are steps of the action that calls it
-([Several changing calls in one action](#several-changing-calls-in-one-action)).
+([Several changing calls through a package](#several-changing-calls-through-a-package)).
 The choices are in "Package actions and recipes", further down this page.
 
 The card can be declined after the customer was created. So the
 package's surface lists `after_effect DeclinedCard` for
 `start_subscription`, and the app's call of it gets the warning
 `step.late_failure`: a point that can end `subscribe` for good once
-something took effect ([Jobs and events](12-jobs-and-events.md)). Here
+something took effect ([Background work](12-jobs-and-events.md)). Here
 the empty customer left behind is harmless, so the warning is declined
 with that reason.
 
@@ -3875,72 +4759,6 @@ subscriber the poll never runs. Under `max_concurrent: 1` a call waits for
 the connection's slot, and a delivery that would call through it waits in
 the outbox.
 
-### Services
-
-A package's own API may be a container Jadpo runs, declared with `runs:`.
-The package's actions call it. A service can't call another package or
-connection.
-
-```jadpo fragment
-// packages/gotenberg/v8/provider.jadpo
-/// Gotenberg's HTTP API, run by Jadpo as a container beside the app.
-provider {
-    protocol: Protocol.multipart_http
-    runs: {
-        image: "gotenberg/gotenberg:8@sha256:…"
-        port: 3000
-        asks: ["fonts.googleapis.com"]
-    }
-}
-```
-
-- **Only stateless services.** A service holds no data and has no volume,
-  and each app instance runs its own copy, so many servers need nothing
-  shared. Anything that holds data (PostgreSQL, Redis) is infrastructure
-  the operator provides and the app reaches through a driver connection.
-- **A service never starts until approved.** Installing shows the image, its
-  digest and the hosts it asks for; the app names it on a connection, and a
-  new or changed image needs a person's acceptance in the approval report
-  before it runs, so an upgrade cannot swap in a different image unseen. The
-  image's digest is written in the package source, which the package's own
-  digest pins; an own integration in `shared/providers/` has no lock entry,
-  and its image is listed the same way.
-- **Outbound network needs the app's permission.** A package only asks
-  (`asks:`); the service gets none of those hosts until the connection
-  grants them (`outbound: [...]`), and a new grant is a new outside host,
-  which needs a person's acceptance (`NetworkChange.host_added`). Until
-  then `jadpo check` names the hosts asked for and the line that grants
-  them.
-- **Three settings Jadpo always applies** when it creates a container: no
-  outbound network unless granted, never privileged, and no access to the
-  host's disk. Jadpo creates the containers itself, so there is no
-  configuration to audit.
-- **Reaching a service.** A package says only the port its service listens
-  on inside its container, so two packages can both use 3000. Jadpo gives
-  each app a private network that only it and its services are on, and
-  hands each connection the address: the service's name on that network
-  when the app runs in a container, or a loopback port the engine picked
-  when it runs as a plain process. Nobody writes an address.
-- **Jadpo is a client, never a container runtime.** It talks to whatever
-  engine the machine has through the Docker-compatible API, which Docker and
-  Podman both serve, and leaves pulling, isolation and restart policies to
-  it. An app with no service never needs an engine; when one is needed and
-  none is found, `jadpo dev` and the deployable say so and how to install
-  one.
-- **Docker stays behind the scenes.** `jadpo services` lists each service
-  (package, image, state, health, CPU and memory, restarts, uptime);
-  `jadpo services start`, `stop` and `restart <name>`, `logs <name>`
-  (`--follow`, `--since`) and `shell <name>` (development only) manage them,
-  each with `--json`. In production the commands talk to the running app,
-  which supervises its services. A service's output joins the app's
-  OpenTelemetry logs under its name, and a call to it appears in the
-  request's trace as a provider call.
-- **Where services run.** `jadpo dev` starts the declared services, and
-  tests keep using fakes. `jadpo build` writes the configuration that runs
-  each one beside the app, Compose first. The native deployable supervises
-  its services itself. On Workers, which runs no containers, a service is
-  hosted elsewhere and the connection gives `host:`.
-
 ### Recipes
 
 A package may ship `recipes/`: complete wiring examples (schedules, actions,
@@ -3960,7 +4778,7 @@ listed in the surface. Library packages may ship recipes too.
 Not built yet: services run by Jadpo (`runs:`), and running a recipe's
 tests in `sample/`.
 
-## Several changing calls in one action
+## Several changing calls through a package
 <!-- topic: several-changing-provider-calls -->
 
 Some jobs need several calls that each change something at a provider,
@@ -3970,9 +4788,11 @@ records each step before it is sent, replays the recorded answers on a
 rerun, and stops the action as `diverged` if anything differs.
 
 These rules apply to an app's action and to the package actions it
-calls, which count as one sequence. "Several changing calls in one
-action" in [Jobs and events](12-jobs-and-events.md) describes the same
-rules from the side of the event delivery that runs the action.
+calls, which count as one sequence.
+[Several changing calls in one action](12-jobs-and-events.md#several-changing-calls-in-one-action)
+says where such an action may run, what's allowed in it, and when it's
+warned; this topic adds what a package and its provider bring, and how a
+record ends.
 
 - **Words.** A *step* is one outside call made by an action from its first
   changing call on, numbered along the path the action runs, package
@@ -3985,13 +4805,6 @@ rules from the side of the event delivery that runs the action.
   is safe to repeat as it is (a `PUT` that replaces, a `DELETE`). A changing call with
   neither stays the only changing call in its action. A package action over
   the limit cannot be published.
-- **Where.** Only in actions run from subscribers, or from routes whose API
-  requires `Idempotency-Key`. Reaching such an action from a schedule, or
-  from a route whose API does not require the key, is a compile error naming
-  the two fixes: require the key, or answer 202 and do the steps in a
-  subscriber.
-- **No outside call inside `for`** in such an action, so the compiler knows
-  every path's length; batch work stays one event per item.
 - **The record.** Before a step is sent the runtime records its position,
   operation, a fingerprint of its request (over the typed value, not the
   bytes) and the time sent; when the answer comes, success or failure, it
@@ -4011,7 +4824,7 @@ rules from the side of the event delivery that runs the action.
   commit ([Reads and writes](06-reads-and-writes.md)). A resumed action
   writes timestamps from when it began, which is also when the provider
   acted. Before the first changing step a rerun takes a fresh time.
-  [Configuration and time](10-configuration-and-time.md) holds the same.
+  [The current time: `clock.now`](10-configuration-and-time.md#the-current-time-clocknow) holds the same.
 - **Keys and windows.** Each step's key is derived as "Calling" says, the
   step number and key generation included. A keyed step in doubt inside its
   provider's `window:` (less a margin, the smaller of a tenth of the window
@@ -4035,20 +4848,10 @@ rules from the side of the event delivery that runs the action.
   step. The provider's "key in use" answer means wait: retried within the
   call's budget, then retry-later, never a failure. The provider's
   "different request" answer is `diverged`, never `misconfigured`.
-- **Transactions.** Database writes still come after the last call, with
-  no transaction open during calls
-  ([Outside calls hold no transaction](06-reads-and-writes.md#outside-calls-hold-no-transaction)).
-  Record writes are the runtime's own, each in a short transaction.
-- **The warning.** After the first changing step, every point that can end
-  the action for good (a step's failure, a write that can be refused,
-  `reject`, a called action's failure) is warned unless handled with
-  `match`, naming three fixes: check the condition before the first step;
-  record the answers and finish in a subscriber of an event the write emits;
-  undo as another step. A package's surface lists which of its failures
-  follow an effect, so the warning reaches through package actions. It
-  holds for single calls too.
 - **Undo is code.** There is no built-in compensation. An undo is a step
-  like any other: it needs a key, gets the same warning, and a failure
+  like any other: it needs a key, gets the same
+  [warning](12-jobs-and-events.md#ending-for-good-after-a-step-took-effect),
+  and a failure
   mapped as "already undone" (Stripe's `resource_missing` on a delete)
   counts as handled.
 - **Ending.** The record is removed in the action's commit transaction,
@@ -4060,12 +4863,9 @@ rules from the side of the event delivery that runs the action.
   (end the action as failed, keeping the list of effects for tidying up by
   hand). It is kept at most 30 days, after which the answers are dropped
   and the step list stays.
-- **Where records live.** In the store the action writes, beside the
-  outbox; an action that writes no store needs `events: { store: }`, or it
-  is a compile error.
 - **Personal data.** Requests are kept only as fingerprints. Answers are
   encrypted with `application { steps: { encryption_key: } }`
-  ([Jobs and events](12-jobs-and-events.md)). Nothing links them to a person, so the
+  ([Background work](12-jobs-and-events.md)). Nothing links them to a person, so the
   personal-data report lists "provider answers for unfinished actions, at
   most 30 days", as it does for logs. A metric and a no-setup alert watch
   the number of unfinished records and the age of the oldest.
@@ -4078,8 +4878,9 @@ rules from the side of the event delivery that runs the action.
   are not changes to the shape.
 - **Run limits.** A run cut off with a record (a Workers limit, a deploy, a
   crash) resumes; only its step in doubt follows the window rule. The
-  deadline warning sums the timeout times the attempts of every step on the
-  longest path, against the route's deadline.
+  deadline warning sums the timeout times the attempts of every outside call
+  on the longest path, a provider's operation and an `ai` call alike, against
+  the route's `deadline:`. A single call is checked the same way.
 - **Tests and tools.** Fakes keep keys as the provider does (the same key
   and request return the first answer; a different request returns the
   package's mismatch answer) and gain two scripted answers, `lost` (the
@@ -4087,9 +4888,9 @@ rules from the side of the event delivery that runs the action.
   reruns every test that reaches a multi-step action with a crash at each
   step boundary (before sending, after sending but before recording, after
   recording) and checks that the end state and the fake's effects match the
-  run without one; this is on by default. `jadpo dev`, `jadpo watch` and
+  run without one; this is on by default. `jadpo dev` and
   `jadpo deliveries show` list each step as sent (with its key), answered,
-  replayed or in doubt.
+  replayed or in doubt, and `jadpo watch` will once it is built.
 
 ```text
 $ jadpo deliveries show d_7Q2
@@ -4127,26 +4928,13 @@ and an operation's `changes:` marks a step. The provider call records,
 replays and keys each step through the capability seam, whose exchange
 writes a step before it is sent.
 
-The warning counts each point that can end the action for good after its
-first changing call as one finding for the action, which you can
-decline, unless it is handled with `match`. Those points are an `attempt`
-passing on a failure that isn't `unavailable` or `rate_limited`,
-`reject`, and `propagate`. A package's action lists on its surface which
-failures can follow its own changing call (`after_effect`), and the app's
-call of it is the point.
-
-Each route's action sums the `timeout:` times the attempts of every
-outside call on its longest path, a provider's operation and an `ai` call
-alike, against the route's `deadline:`. A single call is checked the same
-way.
-
 ### Where else this is covered
 
 - What an operator sees, and the metric and the alert on unfinished
   records: "What an operator sees" and "Several changing calls in one
-  action" in [Jobs and events](12-jobs-and-events.md). Each step's state
+  action" in [Background work](12-jobs-and-events.md). Each step's state
   shows under its request's or delivery's line in `jadpo dev`.
-- `jadpo runs unfinished --build`: [Tooling](14-tooling.md).
+- `jadpo runs unfinished --build`: [Tools](14-tooling.md).
 - The fakes and crash points: "Provider calls and capabilities in tests"
   in [Testing](13-testing.md).
 - The choices behind these rules:
@@ -4164,6 +4952,8 @@ route for either.
 
 ### Webhooks as events
 
+[Receive a webhook](../guides/17-receive-a-webhook.md) does the whole job, start to finish.
+
 A webhook is a request a provider such as Stripe sends your app when
 something happens there, such as a payment going through. The package
 declares the provider's events and how it signs them, so your app only
@@ -4180,15 +4970,155 @@ gives the connection a webhook secret. With a secret set, Jadpo:
    commits. The package marks whether each event is public, which decides
    whether your app's subscribers hear it.
 
-A subscriber then takes the event as it takes one of your own:
+Here is all of it for Acme Pay, a payments provider with no published package,
+so the app describes it itself in `shared/providers/`. Each payment Acme Pay
+announces becomes a `Payment` record.
 
-```jadpo fragment
-// domains/payments/subscribers/payment_succeeded.jadpo
-subscriber payment_succeeded {
-    on: Stripe.PaymentIntentSucceeded
-    run: mark_order_paid(event)
+The connection gets `webhooks: { secret: }`. Its name, `payments`, gives the
+route `POST /webhooks/payments`.
+
+`app.jadpo`:
+
+```jadpo check project=e77-webhooks file=app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+        payments: {
+            package: AcmePay.v1
+            domains: [till]
+            credential: config.acme_pay_key
+            environment: config.acme_pay_environment
+            webhooks: {
+                secret: config.acme_pay_webhook_secret
+            }
+        }
+    }
 }
 ```
+
+`config.jadpo`:
+
+```jadpo check project=e77-webhooks file=config.jadpo
+config {
+    acme_pay_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+    acme_pay_key: Text {
+        secret: true
+    }
+    acme_pay_webhook_secret: Text {
+        secret: true
+    }
+    database_url: PostgresUrl
+}
+```
+
+The package names itself, and `webhooks:` says how Acme Pay signs what it sends
+and where in the body each event's id, type and time are.
+
+`shared/providers/acme_pay/v1/package.jadpo`:
+
+```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/package.jadpo
+/// Acme Pay's payments API.
+package AcmePay.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+`shared/providers/acme_pay/v1/provider.jadpo`:
+
+```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/provider.jadpo
+/// Acme Pay's API, which signs its webhooks as Stripe does.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-pay.example"
+        sandbox: "https://sandbox.acme-pay.example"
+    }
+    credential: CredentialScheme.bearer
+    webhooks: {
+        check: SignatureScheme.stripe
+        event_id: "id"
+        event_type: "type"
+        occurred_at: "created"
+    }
+}
+```
+
+Each kind of event is a type in the package's `events/` folder. `wire_name:` is
+the name Acme Pay gives it, `occurred_at` is read from the place `webhooks:`
+names, and `public` lets your app's subscribers hear it.
+
+`shared/providers/acme_pay/v1/events/payment_succeeded.jadpo`:
+
+```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/events/payment_succeeded.jadpo
+/// A payment was taken.
+public type PaymentSucceeded = Event {
+    wire_name: "payment.succeeded"
+    occurred_at: Instant
+    pence: Int {
+        min: 0
+    }
+}
+```
+
+The rest is your app's own: an entity, an action and a subscriber. A subscriber
+runs as the system caller, so the entity's `create:` names `Access.system`.
+
+`domains/till/entities/payment.jadpo`:
+
+```jadpo check project=e77-webhooks file=domains/till/entities/payment.jadpo migrate=initial
+/// A payment Acme Pay took.
+entity Payment {
+    id: Uuid
+    pence: Int
+    paid_at: Instant
+
+    policy: {
+        create: [Access.system]
+        read: [Access.public]
+    }
+}
+```
+
+`domains/till/actions/keep_payment.jadpo`:
+
+```jadpo check project=e77-webhooks file=domains/till/actions/keep_payment.jadpo
+use till/entities { Payment }
+use shared/providers/acme_pay
+
+/// Keeps a payment Acme Pay says it took.
+action keep_payment(event: AcmePay.PaymentSucceeded) -> Payment {
+    return Payment.create {
+        set: {
+            pence: event.pence
+            paid_at: event.occurred_at
+        }
+    }
+}
+```
+
+`domains/till/subscribers/payment_succeeded.jadpo`:
+
+```jadpo check project=e77-webhooks file=domains/till/subscribers/payment_succeeded.jadpo
+use till/actions { keep_payment }
+use shared/providers/acme_pay
+
+/// Keeps each payment Acme Pay announces.
+subscriber payment_succeeded {
+    on: AcmePay.PaymentSucceeded
+    run: keep_payment(event)
+}
+```
+
+`jadpo routes` lists the route as `generated webhook`, with `signature` as its
+authentication. The body's `pence` becomes the event's field, and its `id`,
+`type` and `created` are read from the places `webhooks:` names. Every other
+member of the body is left out, as it is from a provider's answer to a call.
 
 The signature schemes are built in:
 
@@ -4217,69 +5147,6 @@ runtime answers the generated route and keeps the events in the outbox for
 your subscribers. The details are under
 [How webhooks are received](#how-webhooks-are-received) and
 [Webhook replies, handshakes and further signature schemes](#webhook-replies-handshakes-and-further-signature-schemes).
-
-Here is a package for Acme Pay, which signs its webhooks as Stripe does,
-with one event:
-
-```jadpo check project=e77-webhooks file=app.jadpo hidden
-application {}
-```
-
-```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/package.jadpo hidden
-/// Acme Pay's payments API.
-package AcmePay.v1 {
-    licence: Licence.proprietary
-    jadpo: "1.0"
-}
-```
-
-```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/provider.jadpo
-/// Acme Pay's API, which signs its webhooks as Stripe does.
-provider {
-    protocol: Protocol.json_http
-    hosts: {
-        live: "https://api.acme-pay.example"
-        sandbox: "https://sandbox.acme-pay.example"
-    }
-    credential: CredentialScheme.bearer
-    webhooks: {
-        check: SignatureScheme.stripe
-        event_id: "id"
-        event_type: "type"
-        occurred_at: "created"
-    }
-}
-```
-
-```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/types/payment_id.jadpo hidden
-/// Acme Pay's reference for a payment.
-public type PaymentId = Text {
-    max_length: 40
-}
-```
-
-```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/events/payment_succeeded.jadpo
-/// A payment was taken.
-public type PaymentSucceeded = Event {
-    wire_name: "payment.succeeded"
-    occurred_at: Instant
-    payment_id: PaymentId {
-        wire_name: "paymentId"
-    }
-    pence: Int {
-        min: 0
-    }
-}
-```
-
-A connection to it with
-`webhooks: { secret: config.payments_webhook_secret }` gets the route
-`POST /webhooks/payments`. `jadpo routes` lists it as `generated webhook`,
-with `signature` as its authentication. A subscriber takes its events with
-`on: AcmePay.PaymentSucceeded`. The body's `paymentId` and `pence` become
-the event's fields, and its `id`, `type` and `created` are read from the
-places `webhooks:` names. Every other member of the body is left out, as
-it is from a provider's answer to a call.
 
 ### Webhooks that need a reply
 
@@ -4602,8 +5469,9 @@ Each message becomes its event for your app's subscribers:
 
 `receiving:` takes `type_at:`, `id_at:` and `events:`. An event of your
 app's gives a `wire_name:`, and a package provides the capability in
-`provides/receiving.jadpo`. The details are under
-[How queues are received](#how-queues-are-received).
+`provides/receiving.jadpo`. An event a queue lists can't hold a `File`
+(`type.batch_input`), since a message could then name any file. The details
+are under [How queues are received](#how-queues-are-received).
 
 **Which queues are packages.** The usual rule decides: a service reached
 over an HTTP API is a package, and anything that needs its own protocol or
@@ -4628,13 +5496,18 @@ agreement with is a `Service`, calling an ordinary route with a service
 key ([Service credentials](08-identity.md#service-credentials)).
 
 
-## Acting for each user: OAuth grants
-<!-- topic: acting-for-each-user-oauth-grants -->
+## OAuth grants
+<!-- topic: oauth-grants (was acting-for-each-user-oauth-grants, acting-for-a-user-at-another-service-oauth-grants) -->
 
 Use a grant when your app acts at another service for each of its users
 or organisations: a user's Google Calendar, an organisation's Xero, a
 Slack workspace install. Each owner connects their own account, and your
 app calls the service with that owner's permission.
+
+Signing in proves to your app who a person is. A grant goes the other way:
+your app acts at another service, with that owner's consent. It isn't a way
+to sign in. Your app acting as an OAuth provider, for other apps to sign in
+with, is a third, separate thing.
 
 ```jadpo fragment
 // app.jadpo
@@ -4661,43 +5534,54 @@ attempt calendar.events.insert(event, on_behalf_of: booking.organiser_id) {
 
 A connection's credential may be a grant owned by one of the app's
 records. The owner is `User` or any entity, such as `Organisation`. The
-provider's OAuth facts (its authorize, token and revoke addresses) are
-`oauth:` in the package's `provider.jadpo`, and each operation declares
-the scope it needs (`scope: "calendar.events"`). Nothing is specific to
-one provider, and the connection's name is the app's.
+grant belongs to that record, not to a session, so it outlives every
+session and is used from subscribers and schedules, which run with no
+caller. The provider's OAuth facts (its authorize, token and revoke
+addresses) are `oauth:` in the package's `provider.jadpo`, and each
+operation declares the scope it needs (`scope: "calendar.events"`).
+Nothing is specific to one provider, and the connection's name is the
+app's.
 
 ### Connecting
 
 Connecting is two generated endpoints, not pages:
 
 1. `POST /connections/<name>/start`, called by the signed-in caller,
-   returns the provider's consent address. It stores the OAuth `state` on
-   the server, against the caller's session or API token.
+   returns the provider's consent address. It needs a signed-in caller, so
+   `authentication: RouteAuthentication.none` isn't available on it. It
+   stores the OAuth `state` on the server, against the caller's browser
+   session or API token.
 2. The provider sends the person back to the generated
-   `GET /connections/<name>/callback`. It finds the `state`, exchanges the
+   `GET /connections/<name>/callback`. It finds the `state`, so a consent
+   can complete only once, for the caller who started it. It exchanges the
    code with PKCE, stores the grant, and redirects to the frontend's
-   `return_to` with success or failure.
+   `return_to`, a path on the app's own site, with success or failure.
 
 The callback needs no cookie, so the app's own API-token clients connect
-the same way.
-[Acting for a user at another service: OAuth grants](08-identity.md#acting-for-a-user-at-another-service-oauth-grants)
-covers how this touches sign-in.
+the same way as browsers. Both routes appear in `jadpo routes`, OpenAPI and
+the API record, marked generated
+([Generated routes](07-http.md#generated-routes)).
 
 ### Where grants are kept
 
 The runtime holds grants, as it holds sessions, in a `jadpo_grants`
 system table in the owner entity's store, so grants need a database.
 Their tokens are encrypted with
-`application { grants: { encryption_key: config.grant_encryption_key } }`.
-That key is a secret, read and rotated as signing keys are, with its
-previous key kept ([Signing keys](10-configuration-and-time.md#signing-keys)).
-No code can read a grant.
+`application { grants: { encryption_key: config.grant_encryption_key } }`,
+a `SigningKey` setting. That key is a secret, rotated as a `signing_key:`
+is: the current value encrypts, and its `_PREVIOUS` value is still read
+([Signing keys](10-configuration-and-time.md#signing-keys)).
+`encryption_key:` is one of the places in `application { }` a secret may be
+read ([Secrets](10-configuration-and-time.md#secrets)). No code can read a
+grant.
 
 ### Calling with a grant
 
-Every call names whose grant it uses: `on_behalf_of: owner_id`.
-`grant_missing` and `grant_revoked` are failures the app maps, as the
-example maps both to `CalendarNotConnected`.
+Every call names whose grant it uses: `on_behalf_of: owner_id`, an id of the
+owner's entity that the action has loaded or been given. The caller of the
+route need not be the owner: a scheduled job acting for an organisation
+names the organisation. `grant_missing` and `grant_revoked` are failures the
+app maps, as the example maps both to `CalendarNotConnected`.
 
 Tokens are refreshed for you: renewed before they expire, once when
 several calls race, and a rotated refresh token kept. A revoked grant
@@ -4710,8 +5594,10 @@ connection doesn't request is an error.
 ### Who may connect
 
 [Policy](09-policy.md) decides who may connect for an owner. Connecting
-and disconnecting need the `update` grant on the owner's record, so
-grants bring in no new kind of permission.
+and disconnecting need the `update` grant on the owner's record. So a user
+connects their own account, and an organisation's grant needs whatever lets
+the caller update the organisation. Grants bring in no new kind of
+permission, and the start route checks this before it answers.
 
 ### Disconnecting
 
@@ -4722,8 +5608,8 @@ deletes and revokes its grants.
 
 ### In development and tests
 
-Calls are faked by default. `jadpo dev grants add <connection> --owner <id>`
-makes a fake grant, and tests declare grants as fixtures.
+Calls are faked by default. `jadpo dev grants add <connection> --owner <id>`,
+not built yet, makes a fake grant, and tests declare grants as fixtures.
 
 ### Later
 
@@ -4731,7 +5617,9 @@ Each of these comes when an app needs it: several accounts per owner,
 scopes added after connecting, provider notifications per grant, and
 GitHub App installation tokens (a credential scheme in the runtime).
 
-> OAuth grants aren't built yet ([What is built](#what-is-built)).
+> OAuth grants, their routes, `on_behalf_of:` and `jadpo dev grants add` aren't
+> built yet, and nor is acting as an OAuth provider
+> ([What is built](#what-is-built)).
 
 ## Packages from other Jadpo apps
 <!-- topic: packages-from-other-jadpo-apps -->
@@ -4755,16 +5643,17 @@ from its plain OpenAPI. There is one importer and one package format.
 
 ### Getting the package
 
-- **In one repository**, `jadpo package add ../orders` reads the other
-  app's generated OpenAPI.
+- **In one repository**, `jadpo package import openapi
+  ../orders/build/openapi/main.json --as Orders.v1` reads the other app's
+  generated OpenAPI.
 - **Across repositories**, the other app's package comes from git, like
   any private package.
-- **For another company's public API**,
-  `jadpo package add https://api.orders.example/v1` fetches the document
-  it serves.
+- **For another company's public API**, download the document it serves and
+  import that the same way.
 
-Each is read once, when the package is added or updated, then pinned in
-the lock with its source and digest.
+`jadpo package add ../orders` and `jadpo package add
+https://api.orders.example/v1`, which would do these in one step, aren't built
+yet.
 
 ### Connecting to it
 
@@ -4808,6 +5697,117 @@ sending email, done through a connection you choose. Your code uses the
 capability's one API, never the provider's, so changing provider changes
 `app.jadpo` and never your domain code.
 
+Email is one. `email:` in `app.jadpo` names the connection that sends it, here
+the SMTP driver built into Jadpo, and `events:` names the database that holds an
+email until it has gone. Your code declares a type built on the built-in
+`EmailMessage` and emits it, and never names the mail server.
+
+`app.jadpo`:
+
+```jadpo check project=capabilities-email file=app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+        mail: {
+            driver: Driver.smtp
+            host: config.smtp_host
+            credential: {
+                username: config.smtp_username
+                password: config.smtp_password
+            }
+        }
+    }
+    events: {
+        store: main
+    }
+    email: {
+        connection: mail
+        from: config.mail_sender
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+`config.jadpo`:
+
+```jadpo check project=capabilities-email file=config.jadpo
+config {
+    database_url: PostgresUrl
+    mail_sender: Email
+    smtp_host: Hostname
+    smtp_password: Text {
+        secret: true
+    }
+    smtp_username: Text
+}
+```
+
+`domains/shop/types/customer_name.jadpo`:
+
+```jadpo check project=capabilities-email file=domains/shop/types/customer_name.jadpo
+/// A customer's name.
+type CustomerName = Text {
+    max_length: 100
+}
+```
+
+`domains/shop/emails/welcome_email.jadpo`:
+
+```jadpo check project=capabilities-email file=domains/shop/emails/welcome_email.jadpo
+use shop/types { CustomerName }
+
+/// Sent to welcome a new customer.
+type WelcomeEmail = EmailMessage {
+    name: CustomerName
+}
+```
+
+Its templates sit beside it and take its name, and its entry in the language
+file is its subject line.
+
+`domains/shop/emails/welcome_email.html`:
+
+```jadpo check project=capabilities-email file=domains/shop/emails/welcome_email.html
+<p>Welcome, {{ name }}.</p>
+```
+
+`domains/shop/emails/welcome_email.txt`:
+
+```jadpo check project=capabilities-email file=domains/shop/emails/welcome_email.txt
+Welcome, {{ name }}.
+```
+
+`domains/shop/translations/en_gb.jadpo`:
+
+```jadpo check project=capabilities-email file=domains/shop/translations/en_gb.jadpo
+translations {
+    welcome_email: "Welcome, {name}"
+}
+```
+
+`domains/shop/actions/welcome.jadpo`:
+
+```jadpo check project=capabilities-email file=domains/shop/actions/welcome.jadpo
+use shop/types { CustomerName }
+use shop/emails { WelcomeEmail }
+
+/// Welcomes a new customer by email.
+action welcome(address: Email, name: CustomerName) {
+    emit WelcomeEmail {
+        to: address
+        locale: Locale.en_gb
+        name: name
+    }
+}
+```
+
 A capability exists only for a job Jadpo performs itself, and it covers
 that job whole. Jadpo owns the list. Every connection that fills a
 capability does all of it, so there are no optional parts and partial
@@ -4815,9 +5815,9 @@ support can't arise.
 
 | Capability | Code uses | Built-in drivers | Packages |
 |---|---|---|---|
-| `database` | Entities ([Data](05-data.md)) | PostgreSQL; D1 later | No |
+| `database` | Entities ([Entities, stores and migrations](05-data.md)) | PostgreSQL; D1 later | No |
 | `cache` | `caches:` ([Caches](05-data.md#caches)) | Redis (Upstash, Valkey and ElastiCache through it, on Workers too); in memory, a warning in production and an error on Workers | No |
-| `files` | `File` fields, `store.read` and `store.put` ([Files](16-built-in-services.md#files)) | S3 (R2, B2, MinIO and the rest through its settings); disk, native only, one server | Only one that does the whole job |
+| `files` | `File` fields, `store.read` and `store.put` ([Files](16-built-in-services.md#files)) | Disk, native only, one server; S3 (R2, B2, MinIO and the rest through its settings), not built yet | Only one that does the whole job |
 | `email` | `type X = EmailMessage`, emitted, and Jadpo's own emails ([Email](16-built-in-services.md#email)) | SMTP; the local inbox | Yes |
 | `publishing` | Chosen public events sent outward after commit; outgoing webhooks | The local log; outgoing webhooks | Yes |
 | `receiving` | Queue messages arriving as events | Cloudflare Queues on Workers; Kafka later | Yes (SQS, Pub/Sub pull) |
@@ -4827,6 +5827,10 @@ support can't arise.
 | `documents` | `type X = Document` rendered to HTML or PDF ([Documents](16-built-in-services.md#documents)) | None: tests fake it | Yes (Gotenberg as a service, DocRaptor, PDFShift) |
 | `scanning` | Uploads scanned before they can be attached ([Built-in services](16-built-in-services.md)) | None | Yes (a ClamAV service, a scanning API); built when an app needs it |
 | `ai` | Prompts and `ai.generate`, embeddings ([AI](21-ai.md)) | OpenAI-compatible servers, for local models | Yes (`provides/ai.jadpo`: Anthropic, OpenAI and the rest) |
+
+This table is the whole design. Built so far: `database` on PostgreSQL, `email`,
+`receiving`, `schedules`, `ai`, `files` on the disk and `search` on PostgreSQL.
+The others aren't built yet ([What is built](#what-is-built)).
 
 Some things are not capabilities:
 
@@ -4857,6 +5861,10 @@ a queue, not one vendor account, as Cloudflare's own bindings are.
 
 Using a connection for a capability its package doesn't provide is a
 compile error.
+
+The same email through a mail package changes only `app.jadpo` and its settings.
+Jadpo's only mail package is Resend's, so this one, for Postmark, is a package
+you would write yourself:
 
 ```jadpo fragment
 // app.jadpo
@@ -4992,8 +6000,9 @@ error, unless an acceptance ([Acceptances](18-records-and-manifest.md#acceptance
 is listed in the personal-data report. The app may add its own
 `PersonErased` subscribers.
 
-> Erasure at providers isn't built yet: it comes with
-> [Personal data](15-personal-data.md).
+> Calling the provider isn't built yet: it comes with
+> [Personal data](15-personal-data.md). Both declarations are read and
+> checked, and the acceptance is built.
 
 ### Proving a package works
 
@@ -5042,8 +6051,8 @@ Each driver and package says which targets it runs on, and `jadpo check`
 refuses a deployable that uses one elsewhere, naming what to use instead.
 
 - A package that calls an HTTP API runs on every target.
-- A service (`runs:`) runs only beside a native deployable, so on Workers
-  its connection gives `host:`.
+- A service run by Jadpo, once built, runs only beside a native deployable, so
+  on Workers its connection gives `host:`.
 - Cloudflare Workers can open TCP sockets but block port 25, so SMTP
   works there only on port 587.
 - Workers has no timer of its own, so its schedule tick is Cloudflare
@@ -5054,16 +6063,14 @@ refuses a deployable that uses one elsewhere, naming what to use instead.
 A deployable ([Declared deployables](14-tooling.md#declared-deployables))
 that declares a target is refused each connection it reaches whose driver
 that target can't run, with `deployable.target_unsupported` naming what
-to use instead. On Workers that is the disk, a service Jadpo runs without
-`host:`, and SMTP on port 25. Natively it is a Cloudflare queue, which a
+to use instead. On Workers that is the disk and SMTP on port 25. Natively it is a Cloudflare queue, which a
 deployable reaches when it runs `Trigger.subscribers`, where the queues
 `receiving:` reads are received.
 
 What a deployable reaches is followed from the routes of the APIs it
 serves and the background work it runs, through everything they call. An
 app that declares no deployables, and a deployable with no `target:`,
-have no target, so nothing is refused for them
-([Tooling's design notes](notes/14-tooling.md)).
+have no target, so nothing is refused for them.
 
 > An in-memory cache is checked against the target once caches are built.
 
@@ -5271,7 +6278,7 @@ source (`recording`, `generated`, `scripted` or `sandbox`), attempts,
 duration and request id. Read it with `jadpo calls` (`--connection`,
 `--operation`, `--request`), `jadpo calls show <id>`, `jadpo trace` and
 `--json`. Calls are kept with the last 500 timelines in `build/dev/`,
-never committed. [Debugging and review](17-debugging-and-review.md)
+never committed. [Debugging](17-debugging-and-review.md)
 otherwise hashes the text it shows; call payloads in development are the
 one exception. Production keeps telemetry spans with no values
 ([Telemetry](16-built-in-services.md#telemetry)).
@@ -5297,7 +6304,7 @@ How each part works is under
 > `jadpo trace` and the timelines aren't built yet. The call log keeps
 > the last 500 calls.
 
-## Compile time
+## What a provider description costs your build
 <!-- topic: compile-time -->
 
 A provider's description doesn't slow your build, however large it is,
@@ -5347,7 +6354,7 @@ The compiler checks every scripted response against the package's types,
 so a fake can't return a shape the provider never would. Tests script the
 clean type, never the shape on the wire. Fakes keep idempotency keys as
 the provider does, and accept `lost` and `in_use` as scripted answers
-([Several changing calls in one action](#several-changing-calls-in-one-action)).
+([Several changing calls through a package](#several-changing-calls-through-a-package)).
 Grants are declared as fixtures.
 
 `jadpo test --kind contract` runs the same cases against the provider's
@@ -5396,9 +6403,7 @@ it when you write a package by hand or a check refuses one.
   built-ins: not the app's `shared/`, domains, connections or other
   packages, since an installed package is published apart from any app and
   the app's own integration is written so that it could be. Its files need
-  no `use` lines. It doesn't read the app's `shared/`; whether it should
-  is an open question in the design notes, and allowing it later breaks
-  no package.
+  no `use` lines. It doesn't read the app's `shared/`.
 - **Bringing a package in.** `use packages/<name>` for an installed one and
   `use shared/providers/<name>` for the app's own bring the whole package
   in, as `use <domain>` does; there is no `{ ... }` form, since its names
@@ -5415,6 +6420,10 @@ it when you write a package by hand or a check refuses one.
 - **The index.** A `///` description is required, as are `licence:` and
   `jadpo:`; `jadpo:` is a major and minor number as text, compared with
   nothing until Jadpo has a language version to compare it with.
+  `publisher:` may be left out, and is otherwise text holding a handle, `@`
+  and one part of a scoped name; anything else, like any other key, is
+  `package.index_invalid`. It is on the surface as `publisher @acme` and no
+  part of the version: a release that only changes it needs no new major.
   `Licence.proprietary` is refused for an installed package whose lock line
   isn't a `git` source; the app's own integrations may use it.
 - **`provider.jadpo`.** Its top-level keys are checked, with `hosts:`'
@@ -5430,13 +6439,20 @@ it when you write a package by hand or a check refuses one.
   folder in byte order, as Go's `dirhash` does; every file in the folder
   counts, hidden ones left out, so a changed, added or removed file is
   `package.digest_mismatch`.
+- **A newer Jadpo's findings in a package's own code.** In an
+  installed package's files, a judgement call (a declinable rule, such as
+  `package.standard_candidate`) or a `publish.` rule is its publisher's to
+  answer: `jadpo check`, `add` and `update` show it as an `alert` about the
+  package and go on, and `--json` lists it under `package_alerts`. Any
+  other error, a security rule's included, still refuses. The app's own
+  integration's findings are errors.
 - **What isn't compiled.** An installed package's tests (run when it is
   published, not in the app's `jadpo test`), its `recipes/` and `sample/`
   are read only for its digest. The app's own integration's tests run with
   the app's.
-- **Reserved names.** `Stripe`, `Twilio` and `GitHub`, the curated packages
-  this page names, compared by folder without underscores; only the app's
-  own integration is refused one.
+- **Reserved names.** `Stripe`, `Twilio` and `GitHub`, kept for official
+  packages, compared by folder without underscores; only the app's own
+  integration is refused one.
 - **A name the app uses.** A package's folder name may not be a domain's or
   a library's, its name in code may not be a declaration's, and an
   installed package and the app's own integration never share a name
@@ -5453,7 +6469,7 @@ it when you write a package by hand or a check refuses one.
 ## How the surface and the publishing bar work
 <!-- topic: how-the-surface-and-the-publishing-bar-work -->
 
-This is the detail behind [The surface](#the-surface) and
+This is the detail behind [A package's surface](#a-packages-surface) and
 [Developing and publishing a package](#developing-and-publishing-a-package):
 what a package's surface record holds, how its version is worked out, and
 what `jadpo package check` and `jadpo package show` do.
@@ -5487,7 +6503,9 @@ what `jadpo package check` and `jadpo package show` do.
   method and path, then `input`, `output`, `output_at`, `changes`,
   `idempotent`, `fails`, `source` (`written` or `imported`, with its
   documentation page) and `confirmed` when `recordings/<resource>.<operation>.json`
-  exists. Names are written as the package writes them, bare.
+  exists; a failure's are `kind`, `code` and `message`, then
+  `wire_status` and `wire_name` (quoted) where it gives them. Names are
+  written as the package writes them, bare.
 - **Where surfaces live.** `jadpo package check` writes an installed
   package's, in its own repository, beside `package.jadpo`; in an app it
   is held by the package's digest, so `jadpo check` doesn't regenerate it
@@ -5497,8 +6515,8 @@ what `jadpo package check` and `jadpo package show` do.
   `build/providers/<name>/<version>/surface.jadpo_record`.
 - **`jadpo package check`** takes the package's folder, by default the one
   it runs in, which must hold `package.jadpo`. It copies the package into a
-  scratch app as its own integration (the golden rule), so the curated
-  packages' reserved names are allowed there, and shows every path
+  scratch app as its own integration (the golden rule), so a package may take
+  a reserved name there, and shows every path
   relative to the package's folder. Its bar is a row per item, each passed,
   failed or not checked yet; the surface is written when the package
   compiles and its version is allowed, even while another item fails, so
@@ -5506,8 +6524,11 @@ what `jadpo package check` and `jadpo package show` do.
 - **The version.** A release is a git tag `v<version>` whose committed
   `surface.jadpo_record` names the package. With none, the first release
   is the major version the label names (`v2` is 2.0.0, `v0` is 0.1.0, a
-  dated label such as `v2024_06_20` 1.0.0). When nothing in the package's
-  folder changed since the newest release, its version is that release's.
+  dated label such as `v2024_06_20` 1.0.0). Only the releases the checkout
+  grew from count, so a tag made later, on its branch or another, is never
+  what it is compared with. When nothing in the package's folder changed
+  since the newest of them, its version is that release's, and it is
+  checked against the release before it, as publishing checks it.
   Otherwise the surface is compared with that release's, entry by entry:
   a removed entry, or an entry whose facts changed (a new `fails`, a
   field retyped or added, a variant added, a licence changed, a host moved
@@ -5525,7 +6546,11 @@ what `jadpo package check` and `jadpo package show` do.
   convert at the edge, in the package.
 - **`jadpo package show`** finds a package by its folder's name
   (`postcodes`), its name in code (`Postcodes`) or with its version
-  (`Postcodes.v2`), and a declaration by the name the app writes after
+  (`Postcodes.v2`), and one installed from the registry by its registry
+  name too (`@acme/postcodes`, or `postcodes` for Jadpo's own
+  `@jadpo/postcodes`), as `update` and `remove` do. `add` from the
+  registry ends with that name in its hint, so the hint and the command
+  agree. It finds a declaration by the name the app writes after
   the package's (`uk.parse`, `UkPostcode`, `bookings.create`). An
   installed package's version and source come from its lock line; the
   app's own integration's source is "the app's own". Lists cut a long
@@ -5533,8 +6558,6 @@ what `jadpo package check` and `jadpo package show` do.
 
 > Polls and capability mappings aren't in the surface yet, and settings,
 > webhooks, polls and erasure aren't in the provider's entry yet.
-> `jadpo package new` and `publish` aren't built yet: they say
-> `toolchain.not_built_yet`.
 
 ## How a release's facts, change record and fingerprints are worked out
 <!-- topic: how-a-releases-facts-change-record-and-fingerprints-are-worked-out -->
@@ -5556,9 +6579,12 @@ bar, and what `jadpo package verify --json` writes.
 > package, and of a provider's only the plain values, never an object or
 > an enum. `standard_candidates` are `package.standard_candidate`'s
 > findings on the package's types, which a package that compiles has
-> declined. `last_contract_run` and the Jadpo releases it works with are
-> the registry's to add, so `verify` writes `null` for the first and leaves
-> out the second.
+> declined, each with the standard type it may be, or `personal:` for free
+> text left unmarked. `last_contract_run` is when the newest recording was
+> made, from the `recorded` lines `jadpo package record` keeps in
+> `recordings/recorded.jadpo_record`, and `null` with none. The Jadpo
+> releases it works with are the registry's to add, so `verify` leaves
+> them out.
 >
 > **The change record.** It compares the surface with the last release's:
 > a new entry is `added`, one gone `removed`, a new `fails` line
@@ -5658,6 +6684,185 @@ bar, and what `jadpo package verify --json` writes.
 > same block, and `--json` holds every fact whole, with each host's
 > operations.
 
+## How the registry commands work
+<!-- topic: how-the-registry-commands-work -->
+
+This is the detail behind [Installing and updating from the
+registry](#installing-and-updating-from-the-registry), [Yanks, takedowns and
+advisories](#yanks-takedowns-and-advisories), [Search](#search) and
+[Developing for the registry](#developing-for-the-registry): what each
+command does and shows. The registry is `https://jadpo.dev/registry/v1/`;
+`JADPO_REGISTRY` names a stand-in, over HTTPS or on this machine, such as
+`https://staging.jadpo.dev/registry/v1/` or a local registry. A registry that
+can't be reached, or whose answer doesn't fit the protocol, is
+[`registry.unreachable`](../errors/registry.unreachable.md).
+
+> **`add` and `update` take a release in this order**, and stop at the first
+> that fails (`install.not_proved`), leaving the lock and `packages/` as they
+> were: the release's details; the log's head, which has to extend the last
+> one kept in `.jadpo/registry_head`, by `log/consistency`; `log/proof` at
+> that head; the head kept; the archive, whose files have to have the digest
+> the log holds; then the checks for a package from anywhere, compiling it
+> and comparing its surface with its code; and lastly that the files are what
+> the registry said: its name in code, its publisher (the scope of the name
+> asked for), its version, its digest and the surface it shows. The facts on the screen are worked out from those files,
+> not taken from the registry.
+>
+> ```text
+> $ jadpo package add @acme/postcodes
+> ✓ Added Postcodes.v2 2.1.0
+>     folder     packages/postcodes/v2
+>     source     registry @acme/postcodes
+>     publisher  @acme, verified
+>     age        first released 2026-08-14, 81 days ago
+>     log        entry 412 of 1024
+>     surface    matches its code
+>
+> Facts
+>   kind      library, pure
+>   storable  OutwardCode, UkPostcode, WrittenPostcode
+>   failures  uk.tidy: InvalidPostcode
+>
+> ✓ package added  Postcodes.v2 2.1.0 · 1 function · 3 types · 1 failure
+>
+> → jadpo package show @acme/postcodes  shows what it offers
+> ```
+>
+> The lock's line is `package Postcodes.v2 version 2.1.0 registry
+> @acme/postcodes digest sha256:…`. A yanked release is `install.yanked`, even
+> named with `--to`; a pre-release is taken only when named.
+>
+> **`update`** chooses among the installed major version's releases that
+> aren't yanked or pre-releases: the newest at least three days old or marked
+> urgent. A time that can't be read, or one still to come, is never old enough.
+> It never goes down, and a new major is named and left, since it is a new
+> package beside the old (`jadpo package add`). What it leaves is listed:
+>
+> ```text
+> $ jadpo package update postcodes
+> Newer, not taken
+>   2.2.0  1 day old, taken from 2026-11-05
+>   3.0.0  a new major, added beside this one with `jadpo package add`
+>
+> ✓ Postcodes.v2 is up to date  2.1.0 · registry @acme/postcodes · 2 newer
+>
+> → jadpo package update postcodes --to 2.2.0  takes it now, after showing its facts
+> ```
+>
+> When it takes one, it shows when that was released, the facts, a new
+> publisher, the surface's changes and every change record entry since the
+> installed version. An urgent release says why, from the advisory against
+> what is installed:
+>
+> ```text
+> $ jadpo package update postcodes
+> ✓ Updated Postcodes.v2 from 2.0.0 to 2.0.1
+>     folder    packages/postcodes/v2
+>     source    registry @acme/postcodes
+>     released  2026-11-03, today
+>     urgent    ADV-7: Reads the wrong outward code.
+>     surface   matches its code
+>
+> Facts
+>   kind      library, pure
+>   storable  UkPostcode, WrittenPostcode
+>   failures  uk.tidy: InvalidPostcode
+>
+> Change record, 2.0.0 to 2.0.1
+>   ~ behaviour changed  uk.parse  a fix: it read the wrong outward code
+>
+> ✓ package updated  Postcodes.v2 2.0.1
+>
+> → jadpo check  checks the app against 2.0.1
+> ```
+>
+> **`search <words>`** sends the words, and `--kind`. `--from` and `--to` read
+> a standard type as it is, or a type of the app in this folder, whose shape is
+> what goes: `Text { max_length: 12 }`, never a name or source of the app's.
+> Results keep the registry's order, the standard library's first:
+>
+> ```text
+> $ jadpo package search uk postcode
+> Standard library
+>   text.upper                Its account mentions postcode.
+>
+> Packages
+>   @acme/postcodes uk.parse  Its account mentions uk, postcode.
+>
+> ✓ 2 found  1 in the standard library · 1 in a package
+>
+> → jadpo package add @acme/postcodes  installs the first package found
+> ```
+>
+> **`audit`** asks about the lock's `registry` lines and sends nothing when
+> there are none, and the others are counted as not checked. A declaration is
+> reached when the graph's calls, uses and raises lead to it from anything of
+> the app's own, tests left out. An app with errors has holes in its graph, so
+> every advisory against it counts as reached.
+>
+> ```text
+> $ jadpo package audit
+> error: `Postcodes.uk.parse` has an advisory: ADV-7
+>   reason: Reads the wrong outward code. It is against 2.0.0 to 2.1.2, and the app has 2.0.0 and reaches it.
+>   next: Run `jadpo package update postcodes`, or give `--to` a release that fixes it (human)
+>   rule: package.advisory
+>
+> Not reached
+>   ADV-9  Postcodes.OutwardCode, 2.0.0 to 2.1.2: Too short for some codes.
+>
+> ✗ advisories the app reaches  1 reached · 1 not reached · 1 package
+>
+> → jadpo package update postcodes  takes a release that fixes it
+> ```
+>
+> **`publish [--dry-run]`** runs in the package's own repository, with the
+> package at its root. The tag is `v` and the version its committed surface
+> says, and the repository is `origin`'s address, an ssh one as the same
+> repository's `https://` address. It stops with `publish.not_at_tag` unless
+> the checkout is that tag's commit, unchanged, and `origin` has the tag at the
+> same commit, then runs the bar as `verify` does against the tag before, then
+> asks the registry and waits up to 20 minutes for its verifier. A dry run
+> passes in any state but `failed` or `cancelled`, and nothing it does is
+> published. A package with no publisher stops at the bar, having asked
+> nothing (`publish.publisher_missing`). A failed `publisher` row, or facts
+> naming another publisher than the checkout does, is
+> `publish.publisher_mismatch` rather than `publish.failed`.
+>
+> ```text
+> $ jadpo package publish
+> ✓ Asked the registry to release Postcodes.v2 2.1.0
+>     publisher   @acme
+>     repository  https://github.com/acme/postcodes
+>     tag         v2.1.0
+>     state       pending
+>
+> Registry's bar
+> ✓ compiles  no errors
+> ✓ tests     3 tests
+>
+> ✓ checked  Postcodes.v2 2.1.0 · not published yet
+> → https://jadpo.dev/account/release?id=rel_7d2a  publish it there with your passkey
+> ```
+>
+> The page is on the site the registry is served from: the registry's
+> address without `/registry/v1/`, so a stand-in named by `JADPO_REGISTRY`
+> gives its own site's page. `--json` gives it as `page`.
+>
+> **`preview [<folder>]`** serves one read-only page on this machine, on a port
+> the system picks, until it is stopped: the verdict, its facts, its changes
+> since the last tag, the publishing bar, its surface, changelog and guide, by
+> the same run of the bar as `verify`, which writes nothing. It runs the bar
+> again only when the package's files have changed. What only the registry can
+> add, the written account, whether its publisher is verified, the Jadpo releases it works with and
+> the last contract run, is named and not imitated.
+>
+> ```text
+> $ jadpo package preview
+> jadpo package preview  Postcodes.v2 · nothing is published · ctrl-c stops it
+>
+>   page  http://127.0.0.1:50321/
+> ```
+
 ## How packages are installed and linked
 <!-- topic: how-packages-are-installed-and-linked -->
 
@@ -5701,9 +6906,9 @@ each refuses.
   It prints the review
   [Package upgrades](18-records-and-manifest.md#package-upgrades)
   describes: each surface entry added, changed or removed, `used by the
-  app` when the app's code writes its name through the package
-  (`Postcodes.uk.tidy`), and `needs a person` for a changed or removed
-  one the app uses. A linked package is unlinked first. An installed
+  app` when the app's code writes it or reaches it, through the package
+  (`Postcodes.uk.tidy`) or a connection to it, and under `Needs a person`
+  each change an acceptance must list. A linked package is unlinked first. An installed
   folder changed by hand (`package.digest_mismatch`) is installed again
   from its source, at the release the lock names when there is none
   newer, so `update` is also how a changed package is put back.
@@ -5726,7 +6931,7 @@ each refuses.
   empty, as CI services set it and as `jadpo suggest share` and the
   terminal's animation already read it; there `jadpo check` and `jadpo
   test` refuse each link (`install.link_refused`).
-  [Tooling](14-tooling.md) names no release or production profile, and
+  [Tools](14-tooling.md) names no release or production profile, and
   every production build goes through `jadpo build`, which refuses a link
   whatever the environment.
 - **`unlink <name>`.** Puts back the line `link` kept; with none (a
@@ -5753,11 +6958,10 @@ each refuses.
   section has no text of the author's fails the bar
   (`publish.changelog_missing`); an already released one passes.
 
-> Not built yet: adding another Jadpo app's folder, or a package by bare
-> name from the registry, says `toolchain.not_built_yet`. Accepting an
-> update's changes waits for package upgrade plans
-> ([Package upgrades](18-records-and-manifest.md#package-upgrades)).
-> Outside CI, `jadpo build` still builds against a link.
+> A registry name or a bare one goes to the registry ([How the registry
+> commands work](#how-the-registry-commands-work)). Not built yet: adding
+> another Jadpo app's folder says `toolchain.not_built_yet`. Outside CI,
+> `jadpo build` still builds against a link.
 
 ## How connections to packages are read
 <!-- topic: how-connections-to-packages-are-read -->
@@ -5891,7 +7095,7 @@ the app doesn't use.
   brings in every version held there; there is no `use` line per version.
 - **The lock and connections.** Each version has its own line, as
   `Postcodes.v2` and `Postcodes.v3`, sorted by name, then major version
-  ([Records and manifest](18-records-and-manifest.md)). A connection names
+  ([Review and records](18-records-and-manifest.md)). A connection names
   one version in `package:`, so two versions of a provider are two
   connections.
 - **The commands.** A package's folder or code name (`postcodes`,
@@ -5979,8 +7183,16 @@ check.
   `2xx` answer's JSON body.
 - **What it can't know from another provider** is written the safe way
   and listed: `changes: true` for every method but `GET`, no
-  `idempotent:`, no failures, no `idempotency:` or `error_code:`, and no
-  sandbox host.
+  `idempotent:`, no `idempotency:` or `error_code:`, and no sandbox host.
+  Each documented refusal the driver reads as a failure, a `4xx` but
+  `401`, `403`, `408` and `429`, is one failure per status, named by its
+  reason phrase (`NotFound`, `Refused418` for one with none), of the kind
+  its status says (`400`, `413`, `415` and `422` `invalid_value`; `404`
+  and `410` `not_found`; `409`, `412` and `423` `conflict`; any other
+  `rejected`) and read by `wire_status:` alone, listed on each operation
+  that documents it. The provider's text for each refusal is left to
+  check, with the answer's description, since only its answers say what
+  it sends ([A provider's failures](#a-providers-failures)).
 - **Types.** The exact mappings of
   [Mapping imported types to standard types](#mapping-imported-types-to-standard-types)
   (`date-time` `Instant`, `date`
@@ -6014,13 +7226,21 @@ check.
   has it, so corrections survive, and what only the file has is kept and
   listed; only `imported:` is always the description's. A file that
   doesn't read is left alone and listed.
+- **A rename survives.** `imported:`'s `renamed: { Booking:
+  CourierBooking }` maps a type or failure's name in the description to
+  its name in code, and importing again writes it, and every name of it,
+  under the name in code instead of bringing the old one back. A type the
+  description adds whose file isn't there, matching a type of the folder
+  the description no longer has member for member and no other, is taken
+  as renamed: the importer writes its `renamed:` line and lists it to
+  check.
 - **The summary** says what was written where and counts what the package
   holds, lists a merge's changes, and groups what is left to check by
   what to do, each `(agent)`, with `--json` for agents.
 - **Field and variant names on the wire.** A field or variant is the
   provider's name in `lower_snake_case`; where that differs (`collectAt`,
-  `after-noon`, or `type` written `type_value` to avoid a reserved word),
-  the importer writes the provider's spelling as the field's or variant's
+  `after-noon`, or a variant `none` written `none_value`, which no variant
+  can be called), the importer writes the provider's spelling as the field's or variant's
   `wire_name:` ([Decoding](#decoding)).
 
 > Importing Smithy, Postman, HAR and `.d.ts` isn't built yet: each is
@@ -6049,7 +7269,9 @@ again, and how its answer is classified and read.
   would leave it, empty, `.` or `..`, is a fault, and nothing is sent);
   the rest is a `GET`'s or
   `DELETE`'s query (a list as the key repeated, `none` left out, an
-  object as its JSON) and every other method's JSON body.
+  object as its JSON) and every other method's JSON body, where a field
+  that is `none`, at any depth, is left out rather than sent as `null`,
+  which some providers refuse.
 - **Who calls.** Only an action, of a domain the connection's `domains:`
   lists (`connection.domain_not_listed` otherwise); never a function, and
   never a test, which reaches a provider through an action with the
@@ -6069,7 +7291,7 @@ again, and how its answer is classified and read.
   any other change is unkeyed, so one whose outcome is unknown is parked
   rather than sent again.
 - **The key**, as
-  [Several changing calls in one action](#several-changing-calls-in-one-action)
+  [Several changing calls through a package](#several-changing-calls-through-a-package)
   uses it, is `jd1_` and 32 characters of RFC 4648
   base32 in lower case, the first 160 bits of a SHA-256 over the parts,
   each given by its length so two sets of parts never run together, and
@@ -6104,9 +7326,11 @@ again, and how its answer is classified and read.
   `failed_when:` marks it, then the code at `error_code:`; a redirect
   `misconfigured`, and a `401` or `403` as the credential's source says:
   `misconfigured` for a setting's, the connection's for every call; `408`, `429` or the package's `in_use:`
-  code `unavailable`; any other `4xx` the code at `error_code:`, a fault
-  when there is none; a `5xx`, no answer in time, a connection broken
-  once the request had left, or an answer over 10 MB as an answer that
+  code `unavailable`; any other `4xx` the operation's failure its status
+  and the text at `error_code:` match, the most specific first
+  ([A provider's failures](#a-providers-failures)), a fault when none
+  does; a `5xx`, no answer in time, a connection broken
+  once the request had left, or an answer over 10 MiB as an answer that
   may have acted, which is `unavailable` for a keyed or safe call and
   `outcome_unknown` for an unkeyed one; a request that never left
   `unavailable`. `reused:` is a code like any other, so a key sent with a
@@ -6149,7 +7373,7 @@ package's own decoders, which fields are decoded, and how `retry:` and
   `unix_milliseconds` (an `Instant` as a whole number), `iso_8601` (an
   `Instant` with any offset from UTC, which the contract refuses, since it
   writes only `Z`), `day_month_year` (a `CalendarDate`, the encoding
-  [Jobs and events](12-jobs-and-events.md) and the
+  [Background work](12-jobs-and-events.md) and the
   [Standard library](19-standard-library.md) name for file rows, here
   built for providers), `text` (an `Int` or a `Decimal` as text),
   `comma_separated` (a list of single values), `base64` (`Text` as the
@@ -6363,6 +7587,35 @@ fields the importer asks you to check. Layers 4 and 5 are under
   reason; so is a latitude beside a longitude that isn't mapped. A number
   named like a time that is text (`"2026-10-20"`) isn't flagged: the page
   names whole numbers, and a format says when text is a time.
+- **Text that is personal data.** `Text` in a provider package's public
+  object, or a list of it, is flagged by its name, since only the names
+  say what it is:
+  - in an email's object, one with a `subject`, `cc` or `bcc`, a `to`,
+    `from`, `cc`, `bcc` or `reply_to` may be an `Email`, or an
+    `EmailWithName` where the provider shows a name with the address,
+    which then needs `decode:` and `encode:` when the provider sends both
+    as one text (`Mary Somerville <mary@example.com>`);
+  - text named like an email address (`email`, `email_address`, or
+    ending `_email`) may be an `Email`; like a first name (`first_name`,
+    `given_name`, `forename`) a `GivenName`; like a surname (`last_name`,
+    `family_name`, `surname`) a `FamilyName`; like a phone number
+    (`phone`, `phone_number`, `telephone`, `msisdn`, or ending `_phone`)
+    a `PhoneNumber`; those names may also end the field's own
+    (`customer_email`, `billing_phone`);
+  - free text may hold anything a person writes, so it is marked
+    `personal:` with the category it may hold: an email's `subject`,
+    `html`, `text` or `body`, a message's `content` or `text` beside its
+    `role`, a prompt's `prompt`, `system` or `instructions` beside its
+    `model`, and a whole name as one text (`full_name`), which no standard
+    type holds, since a `PersonName` keeps its parts apart.
+
+  A field already marked `personal:`, of another type, or that says how it
+  is sent is never one, and a `to` or `from` in an object that isn't an
+  email's, such as a currency conversion's, isn't flagged. Each is
+  declinable as the numbers are. An installed package's text is its
+  publisher's to check, so it isn't flagged in an app that installed it,
+  and a decline in its files is never called unused there. Swapping or marking it lets the package's
+  facts list what it sends as personal data.
 - **Fakes.** A generated default answer writes a field's parts as their
   members, and a `Money` as the contract sends one, a whole number of
   minor units in the currency its type fixes or `GBP`.
@@ -6430,9 +7683,10 @@ how it is checked and how you make one.
   spellings and a map's keys, which say nothing about anyone; a field in
   a built-in encoding or with the package's own `decode:` and `encode:`,
   and the whole answer of an operation with `wire_output:`, which its
-  decoders exist to read, numbers with their digits as written; and a
-  value whose type's rules no generated value keeps (a pattern), which a
-  placeholder couldn't stand in for.
+  decoders exist to read, numbers with their digits as written; the
+  members a field's `wire_parts:` names, as sent for the same reason;
+  and a value whose type's rules no generated value keeps (a pattern),
+  which a placeholder couldn't stand in for.
 - **Filling a placeholder** gives a generated value of the type at its
   place, as the fake's generated default makes one: the
   invocation's clock, a fresh UUID. Members a hand-written recording adds
@@ -6467,7 +7721,7 @@ how it is checked and how you make one.
   whose credential, environment or address nothing sets (the stand-in
   `jadpo dev` gives it would reach nobody), and one with no address. A
   keyed operation takes a key derived as any call's
-  ([Several changing calls in one action](#several-changing-calls-in-one-action)),
+  ([Several changing calls through a package](#several-changing-calls-through-a-package)),
   from a scope of its own and this run's randomness, so recording again
   is a new request. A refusal, no answer, or an answer that doesn't
   again leaves the file as it was.
@@ -6489,10 +7743,11 @@ still need a recording to confirm them.
   written by the agent like any source and kept in review's diff; each
   entry is one of the package's own types, in its `types/`, once
   (`package.provider_invalid`), and `imported:` holds only `file:`,
-  `digest:` and `reviewed:`. A package with no `imported:` was written,
-  not imported, and has no types to review. Every imported type starts
-  unreviewed, a Jadpo application's exact import included: the page makes
-  no exception.
+  `digest:`, `reviewed:` and `renamed:`. A package with no `imported:` was written by
+  hand, and lists its reviewed types in `provider { }`'s own `reviewed:`;
+  one beside `imported:` is `package.provider_invalid`, since the list
+  belongs in it. Every type starts unreviewed, a Jadpo application's exact
+  import included: the page makes no exception.
 - **What is in scope.** The package's own types each called operation's
   `input:`, `output:` and `wire_output:` reach, through fields, list,
   set and map items, `?`, payload variants and the type a refinement is
@@ -6506,9 +7761,10 @@ still need a recording to confirm them.
   was reviewed and recorded by its publisher, its files held to its
   digest, and its surface already says which operations are `confirmed`,
   so listing its calls would name a step the app can't take.
-- **Not a finding.** A type to review and a call to confirm stop nothing:
-  the page lets an unreviewed type ship, for `jadpo approval` to show, and
-  allows unconfirmed operations in every build. `jadpo check` shows both
+- **Not a finding in an app.** A type to review and a call to confirm stop
+  nothing in an app's own integration: the page lets an unreviewed type
+  ship, for `jadpo approval` to show, and allows unconfirmed operations in
+  every build. `jadpo check` shows both
   only once it passes, after the errors would be, and counts them, muted,
   in its footer; while it has errors those come first.
 - **Recorded for `jadpo approval`.** `jadpo check` writes
@@ -6516,6 +7772,12 @@ still need a recording to confirm them.
   cleanly and the app has an integration of its own: per package, each
   call and whether a recording confirms it, and each type in scope and
   whether it is reviewed, rows in name order for small diffs.
+- **Required to publish.** The publishing bar's `reviewed` row holds a
+  provider package to every one of its public types, since any of them
+  reaches an app that installs it, whatever that app calls. Each public
+  type not in `reviewed:` is `publish.type_unreviewed`, and the row fails;
+  `--json` gives the row's detail whole, naming each type and the step,
+  for the registry's page of a refused release. A library has no row.
 - **Importing again.** `reviewed:` is kept, as the agent's correction, but
   a type the description adds a member to is new to review: it leaves
   the list, and the summary shows it under "To review again". A type
@@ -6659,7 +7921,9 @@ connections: {
   tick keeps a fetched one ("How queues are received"), and answered in the
   batch's order: acknowledged once its event and id commit, as a repeat,
   or once parked; retried when the store can't take it now, after 10
-  seconds doubled for each earlier attempt, at most an hour. The host
+  seconds doubled for each earlier attempt, at most an hour; Cloudflare kept
+  to that, the gaps between retries measuring 10.9, 20.9 and 40.7 seconds
+  (measured once, from one location (London, LHR), on 2026-11-04). The host
   answers each message on its own, never the batch whole, then runs the
   kept events' deliveries after answering, in `waitUntil` and handed on
   past its 30 seconds. Each batch with a message retried logs
@@ -6890,8 +8154,9 @@ kept and limited.
   reply follows the action's commit rather than joining it, since the
   action may write another store: if that statement fails, a retry after
   the claim lapses runs the action again.
-- **What a reply may show.** What only `Access.public` lets the reply
-  action in to is `policy.system_grant_missing` at its `replies:` entry.
+- **What a reply may show.** What the reply action reaches whose list
+  doesn't name `Access.system` is `policy.system_grant_missing` at its
+  `replies:` entry.
   The reply goes back to whoever sent the webhook, so each field it
   carries, or that decided it, is one anyone at all may read
   (`policy.output_field_unproved`), a record the action created holding
@@ -7173,23 +8438,26 @@ package's name, as its types are.
 | Lazy loading, the package cache and two versions side by side | Built. |
 | The OpenAPI importer, and the scoped review of an import's types | Built. |
 | Provider calls, decoding, `wire_parts:` and retries | Built. |
+| A provider's failures read by `wire_status:` and `wire_name:` ([A provider's failures](#a-providers-failures)) | Built. |
 | Walking a list operation's pages with `batches.each` ([Pages of results](#pages-of-results)) | Not built yet: a provider's list operation as `batches.each`'s `from:` is `toolchain.not_built_yet` where it is written ([Jobs and events](12-jobs-and-events.md#walking-records-or-a-providers-list-batcheseach)). |
 | No transaction open during a call, and several changing calls in one action | Built. |
 | Fakes, recordings and provider calls faked in development | Built. |
 | The `email` capability with SMTP and Resend | Built. |
 | Package actions, subscribers, recipes and polls | Built. |
 | Webhooks as events, replies, handshakes, queues through a package and the Cloudflare Queues driver | Built. |
-| Services (`runs:`) | Not built yet. |
-| OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written. |
-| A release's facts and change record in `jadpo package check` and `show`, the previous release's examples and tests run against the new code, and `jadpo package verify` with the fingerprints ([How they are worked out](#how-a-releases-facts-change-record-and-fingerprints-are-worked-out)) | Built. Not built yet: `--serve`, and the check of a fetched commit's files and size, which come with [the verifier](#the-verifier) over HTTPS. |
-| Publisher trust for third-party git packages | Built: every package from git needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: `packages:`'s `own_sources:`, which lets your own company's repositories in without one. |
+| Services (`runs:`) | Not built yet, nor is `jadpo services`. |
+| OAuth grants | Not built yet: the application's `grants:` is `toolchain.not_built_yet` where it is written, and `jadpo dev grants add` isn't a command yet. |
+| A release's facts and change record in `jadpo package check` and `show`, the previous release's examples and tests run against the new code, and `jadpo package verify` with the fingerprints ([How they are worked out](#how-a-releases-facts-change-record-and-fingerprints-are-worked-out)) | Built. |
+| [The verifier](#the-verifier): `jadpo package verify --serve`, its sandbox, the check of a commit's files and size, and its container image | Built, and running for the registry on Cloudflare Containers. |
+| Publisher trust for third-party git packages | Built: a package from a git repository under none of `packages:`'s `own_sources:` needs an [acceptance](18-records-and-manifest.md#acceptances), as does adding or widening an entry; an entry is `package.own_source_invalid` unless it is a host and a path ending in `/`. |
 | The registry protocol: its requests and answers, the log and its proofs, a local registry and the conformance test | Built (`jadpo-registry`). |
-| The public registry: publishing, search, advisories and compatibility runs | Not built yet. |
+| The `jadpo` tool's side of the public registry: `add` and `update` checked against the log, `search`, `audit`, `publish` and `preview` ([How the registry commands work](#how-the-registry-commands-work)) | Built. |
+| A package's publisher ([Names and publishers](#names-and-publishers)): `publisher:` in the index, on its surface and in its facts, the bar's `publisher` row, `jadpo package publish` and `verify --publisher`, the verifier's request and the registry's check of a release | Built. |
+| [Starting a package](#developing-and-publishing-a-package): `jadpo package new`, and the bar's `licence` row refusing `Licence.proprietary` for `verify` and `publish` | Built. |
+| The registry at jadpo.dev: publishing, installing by name, search, yanks, advisories and compatibility runs | Partly built: publishing from a tag, confirming a release with a passkey, installing and updating by name with the log's proofs, search by words, and yanks and takedowns. Not built yet: search by meaning, the written account and the review of each release's diff, urgent releases and advisories, compatibility runs, refusing a tag that moves, organisations with several members, automatic release, successors and reports. Accounts are open to a short list of people for now; anyone can search and install. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
-| Erasure at providers | Not built yet: it comes with [Personal data](15-personal-data.md). |
-
-[The roadmap](../roadmap.md) says when each comes.
+| Erasure at providers | Partly built: the package's and the connection's `erasure:` are read and checked, and a connection that can't erase what it receives needs an `ErasureNotPossible` acceptance ([Erasure at providers](15-personal-data.md#erasure-at-providers)). Not built yet: calling the provider. |
 
 ### Mistakes not reported yet
 
@@ -7197,7 +8465,6 @@ These mistakes are specified but not reported yet:
 
 | Mistake | Reported by |
 |---|---|
-| A connection that receives personal data, with no `erasure:` and no acceptance | `jadpo check` |
 | An operation whose scope the grant does not request; a call to a grant connection without `on_behalf_of:` | `jadpo check` |
 | A service image not yet accepted; an `asks:` host not granted by `outbound:` | `jadpo check`, naming the line that grants it |
 | A capability's connection whose package does not provide it, or a function call or expression in a `provide` mapping, for a capability other than `receiving` and `email` | `jadpo check` |
@@ -7215,7 +8482,7 @@ keys under "Connection errors". The rule that nothing public reaches
 something private is `visibility.public_reaches_private`
 ([Project layout and modules](01-project-layout-and-modules.md)), and
 several changing calls in the wrong place are the `step.` errors of
-[Jobs and events](12-jobs-and-events.md) and `effect.call_in_loop`
+[Background work](12-jobs-and-events.md) and `effect.call_in_loop`
 ([Logic](03-logic.md)).
 
 ## Errors
@@ -7392,6 +8659,7 @@ public type SlotTaken = Failure {
 - [`package.not_installed`](../errors/package.not_installed.md)
 - [`package.digest_mismatch`](../errors/package.digest_mismatch.md)
 - [`package.licence_not_allowed`](../errors/package.licence_not_allowed.md)
+- [`package.own_source_invalid`](../errors/package.own_source_invalid.md)
 - [`package.version_needed`](../errors/package.version_needed.md)
 - [`package.version_unneeded`](../errors/package.version_unneeded.md)
 - [`package.operation_invalid`](../errors/package.operation_invalid.md)
@@ -7435,6 +8703,7 @@ public type SlotTaken = Failure {
 > never does, since the app's own integrations skip the bar.
 
 - [`publish.description_missing`](../errors/publish.description_missing.md)
+- [`publish.type_unreviewed`](../errors/publish.type_unreviewed.md)
 - [`publish.breaking_change`](../errors/publish.breaking_change.md)
 - [`publish.example_missing`](../errors/publish.example_missing.md)
 - [`publish.example_failed`](../errors/publish.example_failed.md)
@@ -7442,6 +8711,11 @@ public type SlotTaken = Failure {
 - [`publish.changelog_missing`](../errors/publish.changelog_missing.md)
 - [`publish.behaviour_changed`](../errors/publish.behaviour_changed.md)
 - [`publish.stale_files`](../errors/publish.stale_files.md)
+- [`publish.file_not_allowed`](../errors/publish.file_not_allowed.md)
+- [`publish.too_large`](../errors/publish.too_large.md)
+- [`publish.publisher_missing`](../errors/publish.publisher_missing.md)
+- [`publish.publisher_mismatch`](../errors/publish.publisher_mismatch.md)
+- [`publish.licence_proprietary`](../errors/publish.licence_proprietary.md)
 
 
 ### Connection errors

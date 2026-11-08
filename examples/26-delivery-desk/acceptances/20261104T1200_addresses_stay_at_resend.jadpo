@@ -1,0 +1,6 @@
+/// The Resend package declares no call to erase an address, so what the desk has sent stays until Resend lets it go.
+acceptance {
+    changes: {
+        mail: ErasureNotPossible.data_stays
+    }
+}

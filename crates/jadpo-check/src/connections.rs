@@ -106,6 +106,9 @@ pub struct Reach {
     /// `max_concurrent:`, how many of its calls go out at once per app
     /// instance, when it is a whole number of at least 1 (chunk 7.6c).
     pub max_concurrent: Option<u32>,
+    /// Whether it gives `erasure:` (chunk V6);
+    /// [`crate::provider_erasure`] reads and checks it.
+    pub erasure: bool,
 }
 
 /// A provider's `aws:` (chunk 7.7c), as written; [`crate::packages`]
@@ -212,6 +215,9 @@ pub struct PackageConnection {
     /// `polls: { <name>: <interval> }` (chunk 7.6c): each of its package's
     /// polls called at another interval, in milliseconds.
     pub polls: Vec<(String, u64)>,
+    /// `erasure: { key: }` (chunk V6): the field holding a person's key at
+    /// the provider, as written; [`crate::provider_erasure`] checks it.
+    pub erasure_key: Option<ErasureKey>,
     /// `max_concurrent:`, lowering its package's (chunk 7.6c).
     pub max_concurrent: Option<u32>,
     pub reach: Reach,
@@ -251,6 +257,15 @@ impl WrittenReply {
 pub struct PackageConnections {
     pub connections: Vec<PackageConnection>,
     pub problems: Vec<Diagnostic>,
+}
+
+/// The field a connection's `erasure:` names.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ErasureKey {
+    pub entity: String,
+    pub field: String,
+    /// Where it is written: a path and its span.
+    pub at: (String, u32, u32),
 }
 
 /// Every connection to a package, read and checked.
@@ -567,6 +582,7 @@ pub fn reach(db: &dyn Db, project: Project, home: &PackageHome) -> Option<Reach>
                 );
             }
             Some("max_concurrent") => reach.max_concurrent = whole(&member),
+            Some("erasure") => reach.erasure = true,
             Some("aws") => {
                 let mut aws = AwsReach::default();
                 for (key, inner) in tree::members(member.block()) {
@@ -866,6 +882,7 @@ impl Reader<'_> {
             key_id: None,
             settings: Vec::new(),
             polls: Vec::new(),
+            erasure_key: None,
             max_concurrent: None,
             reach: reach.clone(),
         };
@@ -893,6 +910,19 @@ impl Reader<'_> {
                             .next("Remove `polls:`"),
                     ),
                 },
+                "erasure" => {
+                    if reach.erasure {
+                        read.erasure_key = self.erasure(member, out);
+                    } else {
+                        out.push(
+                            self.not_taken(key_span, "erasure", &package)
+                                .reason(format!(
+                                    "A connection's `erasure:` names the key for the operation its package's `erasure:` declares, and `{package}`'s `provider.jadpo` declares none."
+                                ))
+                                .next("Remove `erasure:`, or declare the call that erases a person in the package's `provider.jadpo`"),
+                        );
+                    }
+                }
                 "webhooks" => match &reach.webhooks {
                     Some(_) => {
                         (read.webhook_secret, read.webhook_replies) = self.webhooks(member, out);
@@ -1703,6 +1733,68 @@ impl Reader<'_> {
             );
         }
         given
+    }
+
+    /// `erasure: { key: User.stripe_customer_id }` (chunk V6): an entity
+    /// and its field, whichever [`crate::provider_erasure`] says they are.
+    fn erasure(&self, member: &ast::Member, out: &mut Vec<Diagnostic>) -> Option<ErasureKey> {
+        let invalid = |span: Span, message: String, label: &str| {
+            Diagnostic::new(&rule::CONNECTION_VALUE_INVALID, message)
+                .at(span, label)
+                .reason("`erasure:` names the field of the person's record holding what the provider knows them by, `key:`.")
+                .next("Write `erasure: { key: <Person>.<field> }`")
+        };
+        let mut key = None;
+        for (name, inner) in tree::members(member.block()) {
+            if name_text(&name).as_deref() == Some("key") {
+                key = inner.value();
+            } else {
+                out.push(invalid(
+                    node_span(self.path, name.syntax()),
+                    format!(
+                        "`{}`'s `erasure:` has no key `{}:`",
+                        self.connection,
+                        name_text(&name).unwrap_or_default()
+                    ),
+                    "not one of its keys",
+                ));
+            }
+        }
+        let Some(key) = key else {
+            out.push(invalid(
+                node_span(self.path, member.syntax()),
+                format!("`{}`'s `erasure:` needs `key:`", self.connection),
+                "no `key:`",
+            ));
+            return None;
+        };
+        let at = node_span(self.path, key.syntax());
+        let written = tree::written(key.syntax());
+        match written.rsplit_once('.') {
+            Some((entity, field)) if !entity.is_empty() && !field.is_empty() => {
+                let range = key.syntax().text_range();
+                Some(ErasureKey {
+                    entity: entity.to_string(),
+                    field: field.to_string(),
+                    at: (
+                        self.path.to_string(),
+                        range.start().into(),
+                        range.end().into(),
+                    ),
+                })
+            }
+            _ => {
+                out.push(invalid(
+                    at,
+                    format!(
+                        "`{}`'s `erasure:` key isn't a field: `{written}`",
+                        self.connection
+                    ),
+                    "not `<Person>.<field>`",
+                ));
+                None
+            }
+        }
     }
 
     /// `polls: { latest: 6h }` (chunk 7.6c): each one of the package's

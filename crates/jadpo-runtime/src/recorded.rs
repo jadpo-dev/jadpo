@@ -411,6 +411,17 @@ fn placeholders(codecs: &Codecs<'_>, id: CodecId, json: &J, making: &mut Making<
             };
             let mut out = serde_json::Map::new();
             for (slot, field) in fields.iter().enumerate() {
+                // A field sent as its standard type's parts has no member
+                // of its own: each part's member is kept as sent, as a
+                // field in a built-in encoding is (chunk 7.2e).
+                if let Some(parts) = sent_as_parts(codecs, *field) {
+                    for (_, at) in parts {
+                        if let Some(value) = members.get(at) {
+                            out.insert(at.clone(), value.clone());
+                        }
+                    }
+                    continue;
+                }
                 let Some(name) = shape.json_name(slot) else {
                     continue;
                 };
@@ -437,6 +448,14 @@ fn placeholders(codecs: &Codecs<'_>, id: CodecId, json: &J, making: &mut Making<
                 && let Some(shape) = codecs.shapes.get(shape.0 as usize)
             {
                 for (slot, field) in fields.iter().enumerate() {
+                    if let Some(parts) = sent_as_parts(codecs, *field) {
+                        for (_, at) in parts {
+                            if let Some(value) = members.get(at) {
+                                out.insert(at.clone(), value.clone());
+                            }
+                        }
+                        continue;
+                    }
                     if let Some(name) = shape.json_name(slot)
                         && let Some(value) = members.get(name)
                     {
@@ -479,6 +498,18 @@ fn placeholders(codecs: &Codecs<'_>, id: CodecId, json: &J, making: &mut Making<
         // As sent: a field the provider encodes its own way, which its
         // decoders read, and anything else.
         _ => json.clone(),
+    }
+}
+
+/// The parts field codec `id` is sent as, each its part and the member
+/// it is spelled as, when it gives `wire_parts:` (chunk 7.2e).
+fn sent_as_parts<'c>(codecs: &'c Codecs<'_>, id: CodecId) -> Option<&'c [(String, String)]> {
+    match codecs.codecs.get(id.0 as usize)? {
+        Codec::Wired {
+            coding: WireCoding::Parts { parts, .. },
+            ..
+        } => Some(parts.as_slice()),
+        _ => None,
     }
 }
 

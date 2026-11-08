@@ -10,7 +10,8 @@ formatted unless the rule is a syntax or import error (`jadpo fmt` fixes
 imports), and be followed by a
 ```text output block holding the exact plain output, which `--bless`
 rewrites. A project with an `app.jadpo` block is checked as a project, with
-the layout rules on; one without is checked as loose files.
+the layout rules on; one without is checked as loose files. A project with a
+`new` block starts from what `jadpo new` writes.
 
 A `check` project that declares tests is also run (docs/compiler-runtime.md
 §2.7): without `expect=`, `jadpo test --json` must pass; with
@@ -55,10 +56,10 @@ once it has one at all. On areas
 compiler can check.
 
 The bundle also holds a page per standard type and their index
-(TypeReference), rendered from `jadpo help --json`'s `types` and
-`operations` and each type's golden file, so the reference lists exactly
-what the compiler builds; the Standard library page's table of types by
-group must agree with the compiler's groups (type_table_problems).
+(TypeReference), which the compiler renders (`jadpo help types --json`), the
+same pages `jadpo help <Type>` prints; every example is compiled and run
+(type_example_problems), and no page lists them by hand
+(hand_type_table_problems).
 
 The Learn path (docs/learn/) is checked the same way, each page's
 project built on the pages before it (LearnPage). The guides
@@ -76,7 +77,14 @@ names no area or question by number (numbered_references): on areas 1 to
 NUMBERED_FAILS_THROUGH, which is every area, that fails. Every relative
 link in the repository's Markdown and llms.txt resolves, to a file and, for
 Markdown, a heading GitHub gives that anchor; every area-page anchor the
-compiler prints (`help_at`) names a heading of that page.
+compiler prints (`help_at`) names a heading of that page. Every link on a
+page the bundle builds reaches a page in the bundle, its anchor a heading of
+that page (bundle_link_problems). index.json's kinds keep to the paths
+docs/documentation.md gives them (site_path_problems), and what an agent is
+told to read first names those paths, never a whole area page
+(agent_reading_problems). Each node of the reference's manifest has a page that
+links everything directly in it (landing_problems), and a page not wholly built
+says so straight under its title (status_line_problems).
 """
 
 import argparse
@@ -87,6 +95,7 @@ import json
 import os
 import re
 import select
+import shutil
 import signal
 import subprocess
 import sys
@@ -96,6 +105,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
+
+import agent_guidance
+import reference_manifest
+import reference_pages
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / 'docs/language'
@@ -200,11 +213,27 @@ def running_release():
 def release_shapes(line, release):
     """Where the running line or release shows, as (pattern, how a page
     writes it): `jadpo:` in `app.jadpo` and a code frame quoting it,
-    `jadpo new`'s status line, and `jadpo --version`."""
+    `jadpo new`'s status line, `jadpo --version`, and a deployable's log
+    line."""
     line, release = re.escape(line), re.escape(release)
     return [(re.compile(rf'jadpo: "{line}"'), LINE_WRITTEN),
             (re.compile(rf'^(\s*)jadpo  {line}$', re.MULTILINE), rf'\1jadpo  {LINE_SHOWN}'),
-            (re.compile(rf'^jadpo {release}$', re.MULTILINE), f'jadpo {RELEASE_SHOWN}')]
+            (re.compile(rf'^jadpo {release}$', re.MULTILINE), f'jadpo {RELEASE_SHOWN}'),
+            (re.compile(rf'"compiler":"{release}"'), f'"compiler":"{RELEASE_SHOWN}"')]
+
+
+# Where a page names a release, whichever it is: the compiler's in a log line
+# or a manifest, and a sentence saying which release something came in. Each
+# goes out of date as the version moves on, and none is the running release
+# for long. Other versions on a page are a package's, a format's or the
+# compiler's own output, and stay.
+A_RELEASE = r'\d+\.\d+\.\d+[^\s",:;)]*'
+ANY_RELEASE_SHAPES = [
+    (re.compile(rf'"compiler":(\s*)"{A_RELEASE}"'), rf'"compiler":\1"{RELEASE_SHOWN}"'),
+    (re.compile(rf'\b(built) (?:in|since) (?:Jadpo |release )*v?{A_RELEASE}', re.IGNORECASE), r'\1'),
+    (re.compile(rf'\b(added|shipped|available|introduced) (?:in|since) (?:Jadpo |release )+v?{A_RELEASE}',
+                re.IGNORECASE), r'\1'),
+]
 
 
 def with_release_line(source):
@@ -226,8 +255,10 @@ def normalised(text):
 
 def check_release_line(files, line, release, root=ROOT):
     """No Markdown file writes the running line or release where a page
-    shows one (docs/writing.md, "The release line"): each would stop
-    checking, or go out of date, when the version moves on."""
+    shows one, nor any release in a log line, a manifest or a sentence
+    saying which release something came in (docs/writing.md, "The release
+    line"): each would stop checking, or go out of date, when the version
+    moves on."""
     problems = []
     for path in files:
         for number, text in enumerate(path.read_text().split('\n'), 1):
@@ -235,6 +266,10 @@ def check_release_line(files, line, release, root=ROOT):
                 if pattern.search(text):
                     problems.append(f'{path.relative_to(root)}:{number}: names this jadpo\'s release, {release}; '
                                     f'write `{pattern.sub(shown, text).strip()}` (docs/writing.md, "The release line")')
+            for pattern, shown in ANY_RELEASE_SHAPES:
+                for found in pattern.finditer(text):
+                    problems.append(f'{path.relative_to(root)}:{number}: names a release, `{found.group(0)}`; '
+                                    f'write `{found.expand(shown)}` (docs/writing.md, "The release line")')
     return problems
 
 
@@ -285,7 +320,12 @@ def load_help():
     code, out = jadpo(['help', '--json'])
     if code:
         sys.exit(f'jadpo help --json failed:\n{out}')
-    return json.loads(out)['data']
+    data = json.loads(out)['data']
+    code, out = jadpo(['help', 'types', '--json'])
+    if code:
+        sys.exit(f'jadpo help types --json failed:\n{out}')
+    data['type_pages'] = json.loads(out)['data']
+    return data
 
 
 def load_catalogue():
@@ -381,7 +421,10 @@ class Page:
         while not lines[j].startswith('```'):
             j += 1
         attrs.setdefault('project', f'run-{len(self.runs) + 1}')
-        block = {'line': i, 'end': j, 'attrs': attrs, 'source': '\n'.join(lines[i + 1:j]) + '\n'}
+        # A file its lines write names the running line as a check block
+        # does: `jadpo: "X.Y"`.
+        block = {'line': i, 'end': j, 'attrs': attrs,
+                 'source': with_release_line('\n'.join(lines[i + 1:j]) + '\n')}
         k = j + 1
         while k < len(lines) and not lines[k].strip():
             k += 1
@@ -512,7 +555,7 @@ class Page:
                     # are the project's own.
                     if expected.startswith('test.'):
                         test_code, test_out = jadpo(['test', '.', '--seed', TEST_SEED], cwd=tmp)
-                    test_json_code, test_json = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=tmp)
+                    test_json_code, test_json = jadpo(['test', '.', '--json', '--full', '--seed', TEST_SEED], cwd=tmp)
             out = normalised(out.replace(tmp + '/', '').replace(tmp, '.'))
             if test_out is not None:
                 test_out = normalised(test_out)
@@ -838,15 +881,12 @@ CHECK_SUMMARIES = True
 # The prefix of the rules about the command line itself: its commands,
 # flags and arguments.
 COMMAND_LINE = 'cli.'
+# The beginnings of the rule names whose pages D13c has brought to the
+# format (docs/roadmap.md, D13c1 to D13c15); each part adds its own.
+BROUGHT_TO_FORMAT = ('type.a', 'type.b', 'type.c', 'type.d', 'type.e')
 # The command that checks source; a rule it raises is shown by a check
 # block, not a command's run.
 CHECK_COMMAND = 'check'
-# Command errors whose pages are still a copied transcript, brought to the
-# format by roadmap chunk D13b3c, which empties this.
-FORMAT_WAITS = frozenset({
-    'install.in_use', 'publish.changelog_missing', 'publish.description_missing',
-    'publish.example_failed', 'publish.example_missing',
-})
 
 
 def command_errors(catalogue, commands):
@@ -865,8 +905,8 @@ def error_format_scope(catalogue, root=ROOT, commands=()):
     error page reads", gives them: those the primer, the Learn path, the
     guides or a teaching example's README names, those whose next step a
     person decides, the command line's own (`cli.*`), and every other rule
-    only a command raises, but for FORMAT_WAITS. Every other page follows
-    once D13c is built."""
+    only a command raises, and those D13c has brought to the format
+    (BROUGHT_TO_FORMAT). Every other page follows once D13c is built."""
     named = set()
     for path in [root / 'docs/primer.md', *sorted((root / 'docs/learn').glob('*.md')),
                  *sorted((root / 'docs/guides').glob('*.md'))]:
@@ -876,7 +916,8 @@ def error_format_scope(catalogue, root=ROOT, commands=()):
         named |= set(EXAMPLE_RULE.findall(path.read_text()))
     named |= {rule for rule, entry in catalogue.items()
               if entry.get('decides') == 'human' or rule.startswith(COMMAND_LINE)}
-    named |= command_errors(catalogue, commands) - FORMAT_WAITS
+    named |= command_errors(catalogue, commands)
+    named |= {rule for rule in catalogue if rule.startswith(BROUGHT_TO_FORMAT)}
     return named & catalogue.keys()
 
 
@@ -1095,8 +1136,12 @@ def server_binary():
 def write_project(root, name, blocks):
     """Writes a project's blocks into `root`, in order, making each
     `migrate=` block's migration once the blocks up to it are written;
-    problems found doing it."""
+    problems found doing it. A project with a `new` block starts from what
+    `jadpo new` writes (docs/writing.md, "A page's first example stands
+    alone"), so what it builds on can't drift from the real thing."""
     problems, steps = [], 0
+    if any(block['attrs'].get('new') for block in blocks):
+        problems += write_scaffold(root, name)
     for block in blocks:
         target = root / block['attrs']['file']
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -1109,6 +1154,16 @@ def write_project(root, name, blocks):
             if migrated:
                 problems.append(f'{name}: jadpo migrate new {purpose} failed:\n{said}')
     return problems
+
+
+def write_scaffold(root, name):
+    """What `jadpo new` writes, into `root`; problems found doing it."""
+    with tempfile.TemporaryDirectory() as tmp:
+        code, said = jadpo(['new', 'project'], cwd=tmp)
+        if code:
+            return [f'{name}: jadpo new failed:\n{said}']
+        shutil.copytree(Path(tmp) / 'project', root, dirs_exist_ok=True)
+    return []
 
 
 def run_commands(block, project, home, database=None):
@@ -1308,12 +1363,54 @@ class GuidePage(LearnPage):
     migrations and the records as a reader's commands do, as a Learn
     page's does."""
 
+    # The `##` heading it sits under on the index; none on the index itself.
+    group = None
+
+
+GUIDE_ROW = re.compile(r'\|\s*\[[^\]]*\]\(([0-9][0-9]-[^)#/]+\.md)\)\s*\|')
+
+
+def guide_index(path):
+    """Each guide on the index, in order: its file, and the `##` heading it sits under."""
+    rows, group = [], None
+    for line in path.read_text().splitlines():
+        row = GUIDE_ROW.match(line)
+        if line.startswith('## '):
+            group = line[3:].strip()
+        elif row:
+            rows.append((row.group(1), group))
+    return rows
+
 
 def load_guides(catalogue, root=ROOT):
-    """The guides in order, their index first."""
+    """The guides in order, their index first, then the guides as the index
+    lists them, each knowing its heading there."""
     guides = root / 'docs/guides'
-    paths = ([guides / 'README.md'] if (guides / 'README.md').exists() else []) + sorted(guides.glob('[0-9][0-9]-*.md'))
-    return [GuidePage(path, catalogue, root=root) for path in paths]
+    index = guides / 'README.md'
+    rows = guide_index(index) if index.exists() else []
+    place = {name: at for at, (name, _) in reversed(list(enumerate(rows)))}
+    numbered = sorted(guides.glob('[0-9][0-9]-*.md'), key=lambda path: (place.get(path.name, len(rows)), path.name))
+    pages = [GuidePage(path, catalogue, root=root) for path in ([index] if index.exists() else []) + numbered]
+    group_of = dict(rows)
+    for page in pages:
+        page.group = group_of.get(page.path.name)
+    return pages
+
+
+def guide_index_problems(guides):
+    """The index against the guides: each guide has one row, under a heading."""
+    if not guides or guides[0].path.name != 'README.md':
+        return []
+    index, others = guides[0], guides[1:]
+    rows = guide_index(index.path)
+    names = [name for name, _ in rows]
+    problems = [f'{index.path.name} lists {name} twice: a guide has one place on the index'
+                for name in dict.fromkeys(names) if names.count(name) > 1]
+    problems += [f'{index.path.name} lists {name} under no heading: a guide sits under one'
+                 for name, group in rows if group is None]
+    problems += [f'{index.path.name} has no row for {page.path.name}: every guide has one'
+                 for page in others if page.path.name not in names]
+    return problems
 
 
 # What docs/writing.md says a user page never does, outside code.
@@ -1322,16 +1419,47 @@ BUILD_STATUS = re.compile(r"\b(?:not built yet|isn't built|aren't built|not yet 
                           re.IGNORECASE)
 SPEC_WORDS = re.compile(r'^Decided\.|\bcarried to\b')
 NOT_BUILT = '## Not built yet'
+# How many source lines a note beside an example may wrap over.
+NOTE_LINES = 2
 REPOSITORY_URL = re.compile(r'^https://github\.com/jadpo-dev/jadpo/(?:blob|tree)/')
+
+
+def notes_beside_examples(lines):
+    """The lines of each note beside an example (docs/writing.md, "A page's first
+    example stands alone"): a paragraph of one sentence, at most NOTE_LINES long,
+    straight after a code block the reader sees."""
+    notes, i = set(), 0
+    while i < len(lines):
+        match = FENCE.match(lines[i])
+        if not match or not lines[i].startswith('```'):
+            i += 1
+            continue
+        hidden = parse_attrs(match.group(2)).get('hidden')
+        i += 1
+        while i < len(lines) and not lines[i].startswith('```'):
+            i += 1
+        i += 1
+        start = i
+        while start < len(lines) and not lines[start].strip():
+            start += 1
+        end = start
+        while end < len(lines) and lines[end].strip():
+            end += 1
+        paragraph = ' '.join(lines[start:end])
+        if (not hidden and start > i - 1 and 0 < end - start <= NOTE_LINES and not paragraph.startswith(('```', '#'))
+                and not SENTENCE_BREAK.search(paragraph)):
+            notes.update(range(start, end))
+    return notes
 
 
 def user_page_problems(page, root=ROOT):
     """Problems with a user page (the primer, the Learn path, a guide) against the
     mechanical rules of docs/writing.md: no area or question by number, build
-    status only in a final `## Not built yet` section, no spec vocabulary,
-    no `fragment`, and links only to pages of the docs."""
+    status only in a final `## Not built yet` section or a note beside an example,
+    no spec vocabulary, no `fragment`, and links only to pages of the docs."""
     problems = []
     lines = page.body.split('\n')
+    beside = notes_beside_examples(lines)
     sections = [i for i, line, fenced in body_lines(lines) if not fenced and line.startswith('## ')]
     note = next((i for i in sections if lines[i].strip() == NOT_BUILT), None)
     if note is not None and note != sections[-1]:
@@ -1343,7 +1471,7 @@ def user_page_problems(page, root=ROOT):
         where = f'line {i + page.offset + 1}'
         for match in NUMBERED.finditer(prose):
             problems.append(f'{where}: "{match.group(0)}": link the topic by its title instead')
-        if BUILD_STATUS.search(prose) and (note is None or i < note):
+        if BUILD_STATUS.search(prose) and (note is None or i < note) and i not in beside:
             problems.append(f'{where}: build status belongs in the final `{NOT_BUILT}` section')
         if SPEC_WORDS.search(prose):
             problems.append(f'{where}: spec vocabulary ("Decided.", "carried to") belongs on area pages')
@@ -1433,17 +1561,36 @@ def anchors_of(text):
     return found | set(re.findall(r'<a (?:id|name)="([^"]+)"', text))
 
 
+def prose_blocks(text):
+    """`text` as (first line's index, its lines joined, whether it is prose):
+    a fence's line or a blank line on its own, and each run of lines between
+    them, which is as far as a link wrapped over lines can reach."""
+    run, start = [], 0
+    for i, line, fenced in body_lines(text.split('\n')):
+        if fenced or not line.strip():
+            if run:
+                yield start, '\n'.join(run), True
+                run = []
+            yield i, line, False
+        else:
+            if not run:
+                start = i
+            run.append(line)
+    if run:
+        yield start, '\n'.join(run), True
+
+
 def map_links(text, change):
     """`text` with each link's target outside code passed through
     `change(target)`; returns the new text."""
     out = []
-    for _, line, fenced in body_lines(text.split('\n')):
-        if fenced:
-            out.append(line)
+    for _, block, prose in prose_blocks(text):
+        if not prose:
+            out.append(block)
             continue
-        spans = code_spans(line)
+        spans = code_spans(block)
         out.append(LINK.sub(lambda m: m.group(0) if in_code(m.start(), spans)
-                            else f'[{m.group(1)}]({change(m.group(2))})', line))
+                            else f'[{m.group(1)}]({change(m.group(2))})', block))
     return '\n'.join(out)
 
 
@@ -1456,14 +1603,14 @@ def in_code(at, spans):
 
 
 def links_in(text):
-    """(line number, target) of each link outside code; a link's text may
-    hold code."""
-    for i, line, fenced in body_lines(text.split('\n')):
-        if not fenced:
-            spans = code_spans(line)
-            for m in LINK.finditer(line):
+    """(line number, target) of each link outside code, the line its text
+    starts on; a link's text may hold code and wrap over lines."""
+    for start, block, prose in prose_blocks(text):
+        if prose:
+            spans = code_spans(block)
+            for m in LINK.finditer(block):
                 if not in_code(m.start(), spans):
-                    yield i + 1, m.group(2)
+                    yield start + block.count('\n', 0, m.start()) + 1, m.group(2)
 
 
 def markdown_files(root=ROOT):
@@ -1607,6 +1754,11 @@ def summary_of(markdown, fallback):
 # written, and where the bundle holds it.
 SKILL = Path('docs/agent-skill/SKILL.md')
 SKILL_IN_BUNDLE = Path('skills/jadpo/SKILL.md')
+# Each release's notes (docs/writing.md, "How release notes read"), which the
+# bundle carries byte for byte, outside index.json.
+RELEASES = Path('docs/releases')
+RELEASES_IN_BUNDLE = Path('releases')
+RELEASE_MANIFEST = Path('.release-please-manifest.json')
 
 # What `--json` gives, as every command page says it
 # (docs/cli-design-language.md, "Plain and `--json`").
@@ -1620,22 +1772,10 @@ JSON_OUTPUT = (
 
 
 # The standard type reference (docs/documentation.md, "Standard types"):
-# a page per standard type, rendered from `jadpo help --json`'s `types` and
-# `operations`, which are the compiler's own contract data, and from each
-# type's golden file, which pins every form its examples take.
-GOLDENS = Path('crates/jadpo-interp/tests/goldens/standard')
 # A standard type's page ID is this and its name in kebab case; their index
 # is TYPES_INDEX.
 TYPE_PREFIX = 'type-'
 TYPES_INDEX = 'types'
-# The area page topics a type's page links: the contract every type keeps,
-# and the list it explains.
-CONTRACT_TOPIC = 'every-standard-type-meets-one-contract'
-STANDARD_TYPES_TOPIC = 'the-standard-types'
-# An enum with more variants than this lists them in a paragraph, not a
-# table, and one with more than VARIANTS_LISTED names only a few.
-VARIANTS_IN_TABLE = 40
-VARIANTS_LISTED = 500
 # The area a type's description cites first: `(area 19, ISO 13616)`.
 CITED_AREA = re.compile(r'\(area (\d+)')
 
@@ -1647,410 +1787,139 @@ def type_id(name):
     return TYPE_PREFIX + words.lower()
 
 
-def without_area_numbers(text):
-    """A stub's description as a reader sees it: the area it cites by
-    number left out, the standard it names kept, `(ISO 13616)`."""
-    text = re.sub(r';\s*area \d+, "[^"]*"', '', text)
-    text = re.sub(r'\s*\(area \d+(?:\'s [^)]*)?\)', '', text)
-    text = re.sub(r'\s*\(area \d+, "[^"]*"\)', '', text)
-    return re.sub(r'\(area \d+, ', '(', text)
-
-
-def read_golden(path):
-    """A standard type's golden file: its columns, each (suffix, type,
-    comment), the suffix '' for a type stored in one column, and each
-    example's forms, its text ('none' where it has none), its JSON and each
-    column's value as SQL, by suffix."""
-    lines = path.read_text().split('\n')
-    columns, examples = [], []
-    for line in lines[1:]:
-        if line.startswith('column '):
-            rest, _, comment = line[len('column '):].partition(' -- ')
-            columns.append((rest, comment or None))
-        elif line.startswith('example '):
-            examples.append({'example': line[len('example '):], 'text': None, 'json': None, 'stored': []})
-        elif examples and line.startswith('text '):
-            examples[-1]['text'] = line[len('text '):]
-        elif examples and line.startswith('json '):
-            examples[-1]['json'] = line[len('json '):]
-        elif examples and line.startswith('stored '):
-            examples[-1]['stored'].append(line[len('stored '):])
-    # One column is the field's own, unsuffixed; several each have one.
-    single = len(columns) == 1
-    named = []
-    for rest, comment in columns:
-        suffix, ty = ('', rest) if single else rest.split(' ', 1)
-        named.append((suffix, ty, comment))
-    for example in examples:
-        stored = example['stored']
-        if stored == ['never']:
-            example['stored'] = []
-        elif single:
-            example['stored'] = [('', stored[0])] if stored else []
-        else:
-            example['stored'] = [tuple(value.split(' ', 1)) for value in stored]
-    return {'columns': named, 'examples': examples}
-
-
-def cell(text):
-    """`text` as code in a table's cell; text with a line break or a tab
-    as a JSON string, `"two\\nlines"`, so the cell stays one line."""
-    if re.search(r'[\x00-\x1f]', text):
-        text = json.dumps(text, ensure_ascii=False)
-    text = text.replace('|', '\\|')
-    fence = '``' if '`' in text else '`'
-    pad = ' ' if fence == '``' else ''
-    return f'{fence}{pad}{text}{pad}{fence}' if text else '`""`'
-
-
-def code(text):
-    return cell(text).replace('\\|', '|')
-
-
-def joined(items, last='and'):
-    items = list(items)
-    if len(items) <= 1:
-        return ''.join(items)
-    return ', '.join(items[:-1]) + f' {last} ' + items[-1]
-
-
-def first_sentence(text):
-    return re.split(r'(?<=[.!?])\s+(?=[A-Z`*])', text)[0] if text else ''
+def type_page_links(markdown):
+    """The IDs a generated page links: each `name.md` its links name."""
+    return {m.group(1) for m in re.finditer(r'\]\((?:[^)\s]*/)?([^)/\s#]+)\.md(?:#[^)\s]*)?\)', markdown)}
 
 
 class TypeReference:
-    """The standard type pages (docs/documentation.md, "Standard types"):
-    one per entry of `jadpo help --json`'s `types`, in its groups' order,
-    and their index."""
+    """The standard type pages and their index (docs/documentation.md,
+    "Standard types"): the compiler renders them, as `jadpo help <Type>`
+    prints them, and `jadpo help types --json` gives each one."""
 
     def __init__(self, help_data, root=ROOT):
         self.root = root
-        self.types = list(help_data.get('types', []))
-        self.operations = {op['name']: op for op in help_data.get('operations', [])}
-        self.by_name = {entry['name']: entry for entry in self.types}
-        self.groups = []
-        for entry in self.types:
-            if entry.get('group') not in self.groups:
-                self.groups.append(entry.get('group'))
+        pages = help_data.get('type_pages') or {}
+        self.index = pages.get('index', '')
+        self.pages = list(pages.get('types', []))
+        self.area_of = {entry['name']: self.area(entry) for entry in help_data.get('types', [])}
         self.problems = []
-
-    def in_order(self):
-        """The types in their groups' order, as `jadpo help --json` gives
-        them."""
-        return self.types
-
-    def summary(self, entry):
-        text = without_area_numbers(entry.get('summary') or '')
-        if re.search(r'\barea \d+|\bquestion \d+', text):
-            self.problems.append(f'{entry["name"]}: its description in std/standard.jadpo names an area or question '
-                                 f'by number in a way the type reference can\'t leave out')
-        return text
+        for entry in self.pages:
+            if entry['id'] != type_id(entry['name']):
+                self.problems.append(f'{entry["name"]}: the compiler gives it the page {entry["id"]}, '
+                                     f'not {type_id(entry["name"])}')
 
     def area(self, entry):
         cited = CITED_AREA.search(entry.get('summary') or '')
         return int(cited.group(1)) if cited else 19
 
-    def golden(self, entry):
-        path = self.root / GOLDENS / f'{entry["name"]}.golden'
-        if not path.exists():
-            self.problems.append(f'{entry["name"]} has no golden file, {GOLDENS / (entry["name"] + ".golden")}')
-            return {'columns': [], 'examples': []}
-        return read_golden(path)
-
-    def type_link(self, written, linked):
-        """A type as written, `List<Money>?`, with each standard type in it
-        linking its page."""
-        def one(match):
-            name = match.group(0)
-            if name in self.by_name:
-                linked.add(type_id(name))
-                return f'[`{name}`]({type_id(name)}.md)'
-            return f'`{name}`'
-        parts = re.split(r'([A-Za-z][A-Za-z0-9_.]*)', written)
-        out = []
-        for part in parts:
-            if re.fullmatch(r'[A-Za-z][A-Za-z0-9_.]*', part or ''):
-                out.append(re.sub(r'.+', one, part))
-            elif part:
-                out.append(f'`{part}`')
-        return ''.join(out).replace('``', '')
-
-    def written_name(self, entry):
-        """The type as a program names it: `Range<CalendarDate>` for `Range`,
-        with the type its examples hold."""
-        if entry['holds'] == 'range' and entry.get('examples', {}).get('of'):
-            return f'{entry["name"]}<{entry["examples"]["of"]}>'
-        return entry['name']
-
-    def signature(self, name):
-        operation = self.operations.get(name, {})
-        params = ', '.join(f'{p["name"]}: {p["type"]}{"?" if p.get("optional") else ""}'
-                           for p in operation.get('params', []))
-        return f'{name}({params}) -> {operation.get("result", "")}'
-
-    def make_one(self, entry):
-        name, holds = entry['name'], entry['holds']
-        valid = entry.get('examples', {}).get('valid', [])
-        out = []
-        fields = [f['name'] for f in entry.get('fields', []) if not f.get('optional')] or \
-                 [f['name'] for f in entry.get('fields', [])]
-        if holds == 'text' and entry.get('text') == 'secret':
-            out.append('It comes from outside your code, a secret value that never appears in it.')
-        elif holds == 'text':
-            sample = valid[0]['text'] if valid else 'raw'
-            out.append(f'Build one from its text, `{name}("{sample}")`, which checks it: text that isn\'t '
-                       f'one breaks `format`.')
-        elif holds == 'whole':
-            sample = valid[0]['text'] if valid else entry.get('min')
-            out.append(f'Build one from a whole number from {entry.get("min")} to {entry.get("max")}, '
-                       f'`{name}({sample})`; a number outside them breaks `min` or `max`.')
-        elif holds == 'bounded':
-            base = entry.get('base')
-            out.append(f'It is a `{base}` with bounds of its own: build one as you build a `{base}`, '
-                       f'and a value outside its bounds breaks `min` or `max`.')
-        elif holds == 'enum':
-            variants = entry.get('variants', [])
-            if variants:
-                out.append(f'Pick one of its variants, `{name}.{variants[0]["name"]}`.')
-        elif holds == 'choice':
-            variants = entry.get('variants', [])
-            if variants:
-                first = variants[0]
-                given = '  '.join(f'{f["name"]}: ...' for f in first.get('fields', []))
-                out.append(f'Pick one of its variants and give its fields, '
-                           f'`{name}.{first["name"]} {{ {given} }}`.' if given else
-                           f'Pick one of its variants, `{name}.{first["name"]}`.')
-        elif holds in ('object', 'range', 'feature', 'featureCollection'):
-            shown = self.written_name(entry)
-            given = '  '.join(f'{field}: ...' for field in fields[:3])
-            out.append(f'Build one from its fields, `{shown} {{ {given} }}`.')
-        elif holds == 'list':
-            item = (entry.get('arguments') or ['its item'])[0]
-            out.append(f'It is a list of `{item}`: build one from a list of them, as you build a named list '
-                       f'type of your own.')
-        elif holds == 'map':
-            key, value = (entry.get('arguments') or ['K', 'V'])[:2]
-            out.append(f'It maps `{key}` to `{value}`: build one from a map of them, as you build a named map '
-                       f'type of your own.')
-        elif holds == 'bytes':
-            out.append(f'Build one from `Bytes`, `{name}(bytes)`, which checks them: bytes that aren\'t one '
-                       f'break `format`.')
-        if entry.get('text') in ('canonical', 'secret'):
-            # A few short ones: a long token says little in a sentence.
-            malformed = [m for m in entry.get('examples', {}).get('malformed', []) if len(m) <= 40][:3]
-            such = f', such as {joined((code(m) for m in malformed), "or")}' if malformed else ''
-            out.append(f'`text.parse(raw, as: {self.written_name(entry)})` reads one from its text; text that '
-                       f'isn\'t one at all fails `malformed`{such}.')
-        gives = [op['name'] for op in entry.get('operations', []) if op.get('gives')]
-        if gives:
-            out.append(f'{"This operation gives" if len(gives) == 1 else "These operations give"} one: '
-                       f'{joined(f"`{g}`" for g in gives)}.')
-        rules = entry.get('rules', [])
-        text = '\n\n'.join(out)
-        if rules:
-            text += ('\n\nIts parts keep these rules; a value that breaks one fails with the rule\'s name:\n\n' +
-                     '\n'.join(f'- `{r["name"]}`: `{r["written"]}`' for r in rules))
-        return text
-
-    def members(self, entry, linked):
-        """Its fields, or its variants, as a section."""
-        out = []
-        if entry.get('fields'):
-            out += ['## Fields', '', '| Field | Type |', '|---|---|']
-            for field in entry['fields']:
-                ty = field['type'] + ('?' if field.get('optional') else '')
-                out.append(f'| `{field["name"]}` | {self.type_link(ty, linked)} |')
-            out.append('')
-        variants = entry.get('variants', [])
-        if entry['holds'] == 'choice' and variants:
-            out += ['## Variants', '', '| Variant | Fields |', '|---|---|']
-            for variant in variants:
-                given = ', '.join(f'`{f["name"]}`: {self.type_link(f["type"] + ("?" if f.get("optional") else ""), linked)}'
-                                  for f in variant.get('fields', [])) or 'none'
-                out.append(f'| `{variant["name"]}` | {given} |')
-            out.append('')
-        elif entry['holds'] == 'enum' and variants:
-            same = all(v['name'] == v['code'] for v in variants)
-            out += ['## Variants', '']
-            if same:
-                out += [f'{len(variants)} variants, each written as its own name: '
-                        f'{", ".join(f"`{v["name"]}`" for v in variants)}.', '']
-            elif len(variants) <= VARIANTS_IN_TABLE:
-                out += ['| Variant | Written |', '|---|---|']
-                out += [f'| `{v["name"]}` | {cell(v["code"])} |' for v in variants]
-                out.append('')
-            elif all(v['name'] == re.sub(r'[^a-z0-9]+', '_', v['code'].lower()).strip('_') for v in variants):
-                sample = variants[0]
-                out.append(f'{len(variants)} variants. Each is its code in lower case, with `_` for every other '
-                           f'character: `{entry["name"]}.{sample["name"]}` is written {code(sample["code"])}.')
-                if len(variants) <= VARIANTS_LISTED:
-                    out[-1] += f' The codes: {", ".join(code(v["code"]) for v in variants)}.'
-                else:
-                    out[-1] += (f' The first {VARIANTS_IN_TABLE}: '
-                                f'{", ".join(code(v["code"]) for v in variants[:VARIANTS_IN_TABLE])}.')
-                out.append('')
-            else:
-                shown = variants if len(variants) <= VARIANTS_LISTED else variants[:VARIANTS_IN_TABLE]
-                more = '' if shown is variants else f' The first {len(shown)}:'
-                out += [f'{len(variants)} variants, each with the code its text is written in.{more} '
-                        f'{", ".join(f"`{v["name"]}` ({code(v["code"])})" for v in shown)}.', '']
-        return out
-
-    def forms(self, entry, golden):
-        """How its values are written, sent and stored, from its golden
-        file."""
-        name = entry['name']
-        examples = golden['examples']
-        out = ['## Text, JSON and storage', '']
-        if entry.get('text') == 'secret':
-            out += [f'`text.parse` reads one from its text, as it is typed. Nothing writes it: `text.from` and '
-                    f'`text.format` don\'t take it, JSON writes it as {code(examples[0]["json"]) if examples else "redacted"}, '
-                    f'and it is never stored.', '']
-            return out
-        if entry.get('text') == 'canonical':
-            out += [f'`text.from` writes its canonical text, the one form `text.parse` reads back. JSON sends '
-                    f'{self.json_words(entry)}.', '']
-            out += ['| Text | JSON |', '|---|---|']
-            out += [f'| {cell(e["text"])} | {cell(e["json"])} |' for e in examples]
-        else:
-            out += [f'It has no single text form, so `text.from` and `text.parse` don\'t take it. JSON sends '
-                    f'{self.json_words(entry)}.', '']
-            out += ['| JSON |', '|---|']
-            out += [f'| {cell(e["json"])} |' for e in examples]
-        out.append('')
-        columns = golden['columns']
-        # The middle example: the first is often an edge, such as zero.
-        first = examples[len(examples) // 2] if examples else None
-        written = (first['text'] if first and first['text'] != 'none' else first['json']) if first else ''
-        if not columns:
-            out += ['It is never stored.', '']
-        elif len(columns) == 1:
-            _, ty, comment = columns[0]
-            what = f', holding the {comment[0].lower() + comment[1:]}' if comment else ''
-            out.append(f'It is stored in one column named for the field, of type `{ty}`{what}.')
-            if first and first['stored']:
-                out[-1] += f' {code(written)} is stored as {code(first["stored"][0][1])}.'
-            out.append('')
-        else:
-            out += [f'It is stored in {len(columns)} columns, each named for the field, `_` and its suffix. '
-                    f'This is {code(written)}:', '']
-            values = dict(first['stored']) if first else {}
-            out += ['| Column | Type | Holds |', '|---|---|---|']
-            for suffix, ty, _ in columns:
-                out.append(f'| `<field>_{suffix}` | `{ty}` | {cell(values.get(suffix, ""))} |')
-            out.append('')
-        return out
-
-    def json_words(self, entry):
-        return {
-            'text': 'its canonical text as a string',
-            'object': 'an object of its parts',
-            'tagged': 'an object of its variant\'s name, as `tag`, and the variant\'s fields',
-            'number': 'it as a number',
-            'array': 'an array of its items',
-            'keyed': 'an object of its entries, each key written as its text',
-            'geojson': 'a GeoJSON geometry, its positions longitude first',
-            'feature': 'a GeoJSON object of its geometry and properties',
-            'secret': 'it redacted',
-        }.get(entry.get('json'), 'one shape')
-
-    def shown(self, entry):
-        out = ['## Shown to people', '']
-        name = entry['name']
-        if entry.get('text') == 'secret':
-            return out + [f'`text.format` doesn\'t take it: a `{name}` is never shown.', '']
-        options = entry.get('format', {}).get('options', [])
-        needed = [f'`{o["name"]}:`' for o in options if o.get('needed')]
-        optional = [f'`{o["name"]}:`' for o in options if not o.get('needed')]
-        sentence = '`text.format(value, locale:)` shows it to people in their locale.'
-        if needed:
-            sentence += f' A call also gives {joined(needed)}.'
-        if optional:
-            sentence += f' A call may also give {joined(optional, "or")}.'
-        out += [sentence, '']
-        valid = entry.get('examples', {}).get('valid', [])
-        if valid:
-            given = ['`locale: Locale.en_gb`']
-            if any(o['name'] == 'zone' for o in options):
-                given.append('`zone: Zone.europe_london`')
-            if entry.get('examples', {}).get('format'):
-                given.append(f'`format: TimeFormat.{entry["examples"]["format"]}`')
-            out += [f'With {joined(given)}:', '', '| Value | Shown |', '|---|---|']
-            out += [f'| {cell(e["text"])} | {cell(e["shown"])} |' for e in valid]
-            out.append('')
-        return out
-
-    def operations_section(self, entry, linked):
-        out = ['## Operations', '']
-        related = [op['name'] for op in entry.get('operations', [])]
-        for op in related:
-            summary = (self.operations.get(op) or {}).get('summary') or ''
-            out.append(f'- `{self.signature(op)}`' + (f': {summary}' if summary else ''))
-        if related:
-            out.append('')
-        baseline = []
-        if entry.get('text') in ('canonical', 'secret'):
-            baseline.append('`text.parse`')
-        if entry.get('text') == 'canonical':
-            baseline.append('`text.from`')
-        if entry.get('text') != 'secret':
-            baseline.append('`text.format`')
-        baseline += ['`json.read`', '`json.write`', '`==`']
-        linked.add(CONTRACT_TOPIC)
-        lead = 'Like every standard type, it also has' if related else 'It has'
-        order = ('It is ordered, so `<` and sorting take it.' if entry.get('ordered') else
-                 'It isn\'t ordered, so `<` and sorting don\'t take it.')
-        out += [f'{lead} the contract\'s own operations: {joined(baseline)}. {order} '
-                f'[Every standard type meets one contract](../topics/{CONTRACT_TOPIC}.md) says how they work.', '']
-        return out
-
-    def type_markdown(self, entry, linked):
-        golden = self.golden(entry)
-        group = entry.get('group') or 'Standard types'
-        linked.add(TYPES_INDEX)
-        facts = [f'[{group}]({TYPES_INDEX}.md#{github_slug(group, {})})']
-        facts.append('ordered' if entry.get('ordered') else 'not ordered')
-        if entry.get('personal'):
-            facts.append(f'personal data ({entry["personal"]})')
-        facts.append(f'since Jadpo {entry.get("release")}')
-        out = [f'# `{entry["name"]}`', '', self.summary(entry), '', '; '.join(facts) + '.', '',
-               '## Make one', '', self.make_one(entry), '']
-        out += self.members(entry, linked)
-        out += self.forms(entry, golden)
-        out += self.shown(entry)
-        out += self.operations_section(entry, linked)
-        return '\n'.join(out).rstrip('\n') + '\n'
-
-    def index_markdown(self, linked):
-        linked.add(STANDARD_TYPES_TOPIC)
-        out = ['# Standard types', '',
-               f'Every standard type Jadpo has, {len(self.types)} in all, by group. Each page says how to make one '
-               f'and how it is written, sent as JSON, stored and shown to people, with its examples. '
-               f'[The standard types](../topics/{STANDARD_TYPES_TOPIC}.md) explains the list.', '']
-        for group in self.groups:
-            out += [f'## {group}', '', '| Type | What it is |', '|---|---|']
-            for entry in self.in_order():
-                if entry.get('group') == group:
-                    linked.add(type_id(entry['name']))
-                    out.append(f'| [`{entry["name"]}`]({type_id(entry["name"])}.md) | '
-                               f'{first_sentence(self.summary(entry)).replace("|", chr(92) + "|")} |')
-            out.append('')
-        return '\n'.join(out).rstrip('\n') + '\n'
-
     def build(self):
-        """The index, then each type's page, as (kind, id, path, title,
-        area, markdown, the IDs it links)."""
-        if not self.types:
+        """The index, then each type's page from A to Z, as (kind, id, path,
+        title, area, markdown, the IDs it links)."""
+        if not self.pages:
             return []
-        linked = set()
         built = [('type', TYPES_INDEX, f'types/{TYPES_INDEX}.md', 'Standard types', 19,
-                  self.index_markdown(linked), linked)]
-        for entry in self.in_order():
-            linked = set()
-            text = self.type_markdown(entry, linked)
-            built.append(('type', type_id(entry['name']), f'types/{type_id(entry["name"])}.md', entry['name'],
-                          self.area(entry), text, linked))
+                  self.index, type_page_links(self.index))]
+        for entry in self.pages:
+            built.append(('type', entry['id'], f'types/{entry["id"]}.md', entry['name'],
+                          self.area_of.get(entry['name'], 19), entry['page'], type_page_links(entry['page'])))
         return built
+
+
+# A type's name in code, not already a link's text: `Money`, `Range<T>`.
+TYPE_IN_CODE = re.compile(r'(?<!\[)`([A-Z][A-Za-z0-9]*)(<[^`]*>)?`(?!\]\()')
+# The topics that list the standard types, each name of which links its page;
+# the guides, the Learn path and the primer link theirs too.
+TOPICS_LINKING_TYPES = {'the-standard-types', 'built-in-types'}
+# The words a type's page never uses (docs/writing.md, "How a standard type's
+# page reads"), outside code and a link's address.
+WORDS_TYPE_PAGES_AVOID = ('contract', 'baseline', 'not ordered')
+
+
+def link_type_names(text, names, linked, prefix='../types/'):
+    """`text` with each standard type's name in code linking its page,
+    outside fences and headings."""
+    def one(match):
+        if match.group(1) not in names:
+            return match.group(0)
+        page = type_id(match.group(1))
+        linked.add(page)
+        return f'[{match.group(0)}]({prefix}{page}.md)'
+    out, fenced = [], False
+    for line in text.split('\n'):
+        if line.startswith('```'):
+            fenced = not fenced
+        out.append(line if fenced or line.startswith('#') else TYPE_IN_CODE.sub(one, line))
+    return '\n'.join(out)
+
+
+def type_page_word_problems(types):
+    """Where a type's page uses a word the page's template rules out."""
+    problems = []
+    for entry in types:
+        prose = re.sub(r'`[^`\n]*`', '', re.sub(r'\]\([^)]*\)', ']', entry.get('page', ''))).lower()
+        for word in WORDS_TYPE_PAGES_AVOID:
+            if word in prose:
+                problems.append(f'{entry["name"]}\'s page says "{word}": say what a reader can do instead '
+                                f'(docs/writing.md, "How a standard type\'s page reads")')
+    return problems
+
+
+def split_type_example(code):
+    """A type's example as the declarations it needs and the code that makes
+    one."""
+    declarations, rest = [], []
+    for part in code.split('\n\n'):
+        (declarations if re.match(r'type \w+ =', part) else rest).append(part)
+    return declarations, '\n\n'.join(rest)
+
+
+def type_example_test(name, code):
+    """The test that compiles and runs a type's example: its statements as
+    they are, or a value of the type it names."""
+    _, body = split_type_example(code)
+    if re.match(r'(var|assert) ', body):
+        lines = body
+    else:
+        lines = f'var example: {name} = {body}\nassert example == example'
+    indented = '\n'.join(f'    {line}' if line else '' for line in lines.split('\n'))
+    return f'test "{name}" {{\n{indented}\n}}\n'
+
+
+def run_type_examples(examples):
+    """Runs `jadpo test` over one project holding `examples`, by name: every
+    problem it reports, each one's rule and message."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        declarations = [d for code in examples.values() for d in split_type_example(code)[0]]
+        (root / 'main.jadpo').write_text('\n\n'.join(declarations) + '\n')
+        (root / 'main.test.jadpo').write_text('\n'.join(type_example_test(name, code)
+                                                        for name, code in examples.items()))
+        code, out = jadpo(['test', '.', '--json', '--full', '--seed', TEST_SEED], cwd=tmp)
+    try:
+        report = json.loads(out)
+    except ValueError:
+        return [out.strip()[:400] or f'jadpo test exited {code}']
+    problems = [f'{d.get("rule")}: {d.get("message")}' for d in report.get('diagnostics', [])
+                if d.get('rule') != 'test.failed']
+    problems += [f'test.fault: {test.get("name")} {test.get("outcome")}'
+                 for test in (report.get('data') or {}).get('tests', []) if test.get('outcome') != 'passed']
+    return problems
+
+
+def type_example_problems(types):
+    """Every type's example compiles and runs, as the page shows it: one
+    project for them all, then one for each if that fails, to name which."""
+    examples = {entry['name']: entry.get('example', '') for entry in types}
+    missing = [f'{name}: its page has no example' for name, code in examples.items() if not code]
+    written = {name: code for name, code in examples.items() if code}
+    if not written or not run_type_examples(written):
+        return missing
+    problems = list(missing)
+    with ThreadPoolExecutor(WORKERS) as pool:
+        for name, found in zip(written, pool.map(lambda item: run_type_examples({item[0]: item[1]}), written.items())):
+            problems += [f'{name}: its example: {problem}' for problem in found]
+    return problems or ['the standard types\' examples fail together, though each passes alone']
 
 
 class Bundle:
@@ -2068,6 +1937,8 @@ class Bundle:
                          if page.topics() and page.topics()[0]['id']}
         self.guide_of = {page.path.resolve(): page.topics()[0]['id'] for page in self.guides
                          if page.topics() and page.topics()[0]['id']}
+        self.guide_group = {self.guide_of[page.path.resolve()]: page.group for page in self.guides
+                            if page.path.resolve() in self.guide_of}
         self.catalogue = {r['id']: r for r in help_data.get('rules', [])}
         self.commands = help_data.get('commands', [])
         self.global_flags = help_data.get('flags', [])
@@ -2075,11 +1946,25 @@ class Bundle:
         self.primer = primer
         # The standard type reference, from the compiler's contract data.
         self.types = TypeReference(help_data, root)
+        # How the reference is grouped, and the compiler's groups of types in
+        # its order, None when there is no compiler data to compare.
+        self.reference = reference_manifest.load(root)
+        self.type_groups = None
+        if help_data.get('types'):
+            groups = {}
+            for entry in help_data['types']:
+                groups.setdefault(entry.get('group'), []).append(type_id(entry['name']))
+            self.type_groups = list(groups.items())
         self.problems = []
+        # What a person wrote of each page, and its summary, before the
+        # manifest's contents and status line go on it.
+        self.written, self.summaries, self.tree = {}, {}, None
         # A renamed topic's ID -> the IDs it had before, which still reach it.
         self.aliases = {t['id']: t['aliases'] for page in pages for t in page.topics() if t['aliases']}
-        # Where each anchor of an area page went: (page, anchor) -> topic ID.
-        self.topic_of, self.overview = {}, {}
+        # Where each anchor of an area page went: (page, anchor) -> topic ID,
+        # and the anchor on that topic's own page, for a heading one keeps
+        # (`## Errors` and what is under it are on none).
+        self.topic_of, self.anchor_on_topic, self.overview = {}, {}, {}
         for page in pages:
             topics = page.topics()
             if not topics:
@@ -2087,9 +1972,12 @@ class Bundle:
             path = page.path.resolve()
             self.overview[path] = topics[0]['id']
             spans = [(t['start'], t['end'], t['id']) for t in topics]
-            for line, _, _, anchor in headings_of(page.body):
-                owner = next((tid for start, end, tid in spans if start <= line < end), topics[0]['id'])
-                self.topic_of[(path, anchor)] = owner
+            seen = {t['id']: {} for t in topics}
+            for line, _, title, anchor in headings_of(page.body):
+                owner = next((tid for start, end, tid in spans if start <= line < end), None)
+                self.topic_of[(path, anchor)] = owner or topics[0]['id']
+                if owner:
+                    self.anchor_on_topic[(path, anchor)] = github_slug(title, seen[owner])
 
     def link(self, source, target, here, linked):
         """`target`, written in `source`, as a bundle page in folder `here`
@@ -2098,12 +1986,11 @@ class Bundle:
             return target
         name, _, fragment = target.partition('#')
         resolved = (source.parent / name).resolve() if name else source.resolve()
-        tail = f'#{fragment}' if fragment else ''
 
-        def to(folder, page_id, keep=True):
+        def to(folder, page_id, anchor=fragment):
             linked.add(page_id)
             path = f'{folder}/{page_id}.md' if folder else f'{page_id}.md'
-            return os.path.relpath(path, here or '.') + (tail if keep else '')
+            return os.path.relpath(path, here or '.') + (f'#{anchor}' if anchor else '')
 
         if resolved in self.learn_of:
             return to('learn', self.learn_of[resolved])
@@ -2114,8 +2001,8 @@ class Bundle:
             if topic is None:
                 self.problems.append(f'{source.relative_to(self.root)}: no topic holds {target}')
                 topic = self.overview[resolved]
-            own = fragment and github_slug(self.title_of(topic), {}) == fragment
-            return to('topics', topic, keep=bool(fragment) and not own)
+            anchor = self.anchor_on_topic.get((resolved, fragment))
+            return to('topics', topic, None if anchor == github_slug(self.title_of(topic), {}) else anchor)
         if resolved.parent == (self.root / 'docs/errors').resolve() and resolved.suffix == '.md':
             return to('errors', resolved.stem)
         if self.primer is not None and resolved == self.primer.resolve():
@@ -2124,7 +2011,7 @@ class Bundle:
             relative = resolved.relative_to(self.root.resolve())
         except ValueError:
             return target
-        return REPO_URL + str(relative) + tail
+        return REPO_URL + str(relative) + (f'#{fragment}' if fragment else '')
 
     def title_of(self, topic_id):
         for page in self.pages:
@@ -2283,8 +2170,68 @@ class Bundle:
                           COMMAND_AREA, self.command_markdown(command, linked), linked))
         # Every page's fences keep only their language (docs/documentation.md,
         # "The bundle").
-        return [(kind, page_id, path, title, area, bare_fences(text), linked)
-                for kind, page_id, path, title, area, text, linked in built]
+        names = {entry['name'] for entry in self.types.pages}
+        linked_types = []
+        for kind, page_id, path, title, area, text, linked in built:
+            if kind in ('guide', 'learn', 'primer') or page_id in TOPICS_LINKING_TYPES:
+                text = link_type_names(text, names, linked, 'types/' if kind == 'primer' else '../types/')
+            linked_types.append((kind, page_id, path, title, area, bare_fences(text), linked))
+        return self.with_reference(linked_types)
+
+    def with_reference(self, built):
+        """The pages with what the manifest writes: a landing page where a node
+        needs one, each node's contents on the page it opens, and a status line
+        on each page not wholly built (docs/documentation.md, "The reference's
+        manifest")."""
+        self.written = {page_id: text for _, page_id, _, _, _, text, _ in built}
+        if self.reference is None or self.reference.error:
+            return built
+        entries = {entry['id']: entry for entry in self.index(built)['pages']}
+        for page_id, summary in self.reference.topic_summary.items():
+            if page_id in entries:
+                entries[page_id]['summary'] = summary
+        self.summaries = {page_id: entry['summary'] for page_id, entry in entries.items()}
+        paths = {page_id: path for _, page_id, path, _, _, _, _ in built}
+        made = self.reference.landings_to_make(entries)
+        for node in made:
+            page_id = node['id']
+            entries[page_id] = {'id': page_id, 'kind': 'landing', 'title': node['title'], 'summary': node['summary']}
+            self.summaries[page_id] = node['summary']
+            paths[page_id] = f'landings/{page_id}.md'
+        self.tree = self.reference.nav(entries, self.type_groups, site_path, self.version)
+        unfinished = self.reference.unfinished(entries, self.type_groups)
+        writer = reference_pages.Writer(paths, unfinished, self.area_built_topics())
+        groups = [id(group) for group in self.tree['groups']]
+        openers = {}
+        for node in reference_pages.walk(self.tree):
+            own = reference_pages.own_page(node, paths)
+            if own:
+                openers[own] = (node, id(node) in groups)
+        group_of_type = {entry['id']: own_id for node in reference_pages.walk(self.tree)
+                         for own_id in [reference_pages.own_page(node, paths)]
+                         for entry in node['topics'] if entry['kind'] == 'type' and own_id}
+        pages = []
+        for kind, page_id, path, title, area, text, linked in built:
+            if page_id in group_of_type:
+                linked = {*linked, group_of_type[page_id]}
+            if page_id in openers:
+                text = writer.with_contents(text, *openers[page_id], path)
+            pages.append((kind, page_id, path, title, area, text, linked))
+        for page_id in (node['id'] for node in made):
+            text = writer.landing(*openers[page_id])
+            pages.append(('landing', page_id, paths[page_id], openers[page_id][0]['title'], None, text,
+                          {target for _, target in links_as_ids(text, paths, paths[page_id])}))
+        out = []
+        for kind, page_id, path, title, area, text, linked in pages:
+            line = writer.status_line(page_id, path)
+            out.append((kind, page_id, path, title, area,
+                        reference_pages.with_status_line(text, line) if line else text, linked))
+        return out
+
+    def area_built_topics(self):
+        """Each area file's "What is built" topic."""
+        return {page.path.stem: topic['id'] for page in self.pages for topic in page.topics()
+                if plain(topic['title'].replace('`', '')) == 'What is built'}
 
     def index(self, built):
         areas = {area: title for kind, page_id, _, title, area, _, _ in built
@@ -2296,8 +2243,8 @@ class Bundle:
             if kind == 'topic' and title.startswith('What is built: '):
                 # Each area's table of what is built leads with the table.
                 fallback = f'Which parts of {areas.get(area, "the area")} are built, and what the rest waits on'
-            summary = (self.catalogue[page_id]['summary'] if kind == 'error'
-                       else summary_of(text, fallback))
+            summary = self.summaries.get(page_id) or (self.catalogue[page_id]['summary'] if kind == 'error'
+                                                      else summary_of(text, fallback))
             entries.append({
                 'id': page_id, 'kind': kind, 'title': title, 'summary': summary,
                 # About four characters a token, as tokenizers average on English.
@@ -2306,8 +2253,32 @@ class Bundle:
                 'area': area, 'links': sorted(linked - {page_id}),
                 # Only a renamed topic has them: its old IDs, which still reach it.
                 **({'aliases': list(aliases)} if aliases else {}),
+                # A guide's heading on the guides' index.
+                **({'group': self.guide_group[page_id]} if self.guide_group.get(page_id) else {}),
             })
+        if self.reference is not None:
+            # Where the reference's manifest places the page, for pages it places.
+            places = self.reference.places({e['id']: e for e in entries}, self.type_groups)
+            for entry in entries:
+                entry.update(places.get(entry['id'], {}))
         return {'version': self.version, 'pages': entries}
+
+    def reference_problems(self, built):
+        """What's wrong with the reference's manifest against these pages."""
+        if self.reference is None:
+            return [f'{reference_manifest.MANIFEST} is missing: every topic has its place there']
+        old_ids = {old: new for new, olds in self.aliases.items() for old in olds}
+        entries = {entry['id']: entry for entry in self.index(built)['pages']}
+        return self.reference.problems(entries, old_ids, self.type_groups)
+
+    def landing_problems(self, built):
+        """Each manifest node's page against what is in the node, as the page's
+        own links reach it."""
+        return landing_problems(self.tree, built) if self.tree else []
+
+    def status_line_problems(self, built):
+        """Each page's status against what it opens with."""
+        return status_line_problems(self.index(built)['pages'], built)
 
     def write(self, out):
         """Writes the bundle into `out`, replacing what was there."""
@@ -2319,13 +2290,196 @@ class Bundle:
             target = out / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text)
-        (out / 'index.json').write_text(json.dumps(self.index(built), indent=2, ensure_ascii=False) + '\n')
+        index = self.index(built)
+        (out / 'index.json').write_text(json.dumps(index, indent=2, ensure_ascii=False) + '\n')
+        if self.reference is not None:
+            nav = self.reference.nav({entry['id']: entry for entry in index['pages']}, self.type_groups,
+                                     site_path, self.version)
+            (out / 'nav.json').write_text(json.dumps(nav, indent=2, ensure_ascii=False) + '\n')
         # The agent skill goes in byte for byte, outside the index.
         skill = self.root / SKILL
         if skill.exists():
             (out / SKILL_IN_BUNDLE).parent.mkdir(parents=True, exist_ok=True)
             (out / SKILL_IN_BUNDLE).write_bytes(skill.read_bytes())
+        for notes in sorted((self.root / RELEASES).glob('*.md')):
+            (out / RELEASES_IN_BUNDLE).mkdir(parents=True, exist_ok=True)
+            (out / RELEASES_IN_BUNDLE / notes.name).write_bytes(notes.read_bytes())
         return built
+
+
+def links_as_ids(text, paths, here):
+    """The pages a page's relative links reach, as (path, ID), `here` being the
+    page's own path."""
+    ids = {path: page_id for page_id, path in paths.items()}
+    base = os.path.dirname(here)
+    found = []
+    for _, target in links_in(text):
+        if re.match(r'^[a-z][a-z0-9+.-]*:', target):
+            continue
+        name = target.partition('#')[0]
+        path = os.path.normpath(os.path.join(base, name)) if name else None
+        if path in ids:
+            found.append((path, ids[path]))
+    return found
+
+
+def landing_problems(tree, built):
+    """Each node of the reference opens a page, and that page links everything
+    directly in the node: its topics, its details, its pages or sections and its
+    "What is built" topics. Following those reaches everything under a group."""
+    texts = {page_id: text for _, page_id, _, _, _, text, _ in built}
+    paths = {page_id: path for _, page_id, path, _, _, _, _ in built}
+    problems = []
+    for node in reference_pages.walk(tree):
+        if node['href'] in reference_manifest.SITE_OWN:
+            continue
+        own = reference_pages.own_page(node, paths)
+        if own is None:
+            problems.append(f'reference: "{node["title"]}" has no page: give it a landing page or a first topic')
+            continue
+        linked = {page_id for _, page_id in links_as_ids(texts[own], paths, paths[own])}
+        held = [e['id'] for e in node['topics'] + node['details'] + node['built']]
+        held += filter(None, (reference_pages.own_page(child, paths) for child in node['children']))
+        for page_id in held:
+            if page_id != own and page_id not in linked:
+                problems.append(f'reference: "{node["title"]}", {paths[own]}, doesn\'t link {page_id}, which is in it')
+    return problems
+
+
+def status_line_problems(entries, built):
+    """A page not wholly built says so straight under its title, in the words
+    of its status; a page wholly built doesn't."""
+    texts = {page_id: text for _, page_id, _, _, _, text, _ in built}
+    problems = []
+    for entry in entries:
+        at_top = reference_pages.status_line_at_top(texts.get(entry['id'], ''))
+        wanted = reference_pages.STATUS_WORDS.get(entry.get('status'))
+        if wanted and at_top != wanted:
+            problems.append(f'{entry["kind"]} "{entry["id"]}" is {entry["status"]}, so it opens with '
+                            f'"**{wanted}.**" straight under its title')
+        elif at_top and not wanted:
+            problems.append(f'{entry["kind"]} "{entry["id"]}" opens with "**{at_top}.**", which its status doesn\'t say')
+    return problems
+
+
+def bundle_link_problems(built):
+    """Problems with the links on `Bundle.build()`'s pages: each relative
+    link reaches a page in the bundle and its anchor a heading of that page,
+    as the page's own file holds them."""
+    texts = {path: text for _, _, path, _, _, text, _ in built}
+    anchors, problems = {}, []
+    for _, _, path, _, _, text, _ in built:
+        for number, target in links_in(text):
+            if re.match(r'^[a-z][a-z0-9+.-]*:', target):
+                continue
+            name, _, fragment = target.partition('#')
+            resolved = os.path.normpath(os.path.join(os.path.dirname(path), name)) if name else path
+            if resolved not in texts:
+                problems.append(f'bundle {path}:{number}: links to {target}, which is no page in the bundle')
+            elif fragment:
+                if resolved not in anchors:
+                    anchors[resolved] = anchors_of(texts[resolved])
+                if fragment not in anchors[resolved]:
+                    problems.append(f'bundle {path}:{number}: links to {target}, but {resolved} has no heading '
+                                    f'with that anchor')
+    return problems
+
+
+# Where the site serves each kind of page in index.json, by its ID, an
+# index's path first (docs/documentation.md, "What the site serves"), and
+# the word that page's row uses for it.
+SITE_PATHS = {
+    'primer': (('/docs/primer',), 'primer'),
+    'learn': (('/learn', '/learn/<id>'), 'learn'),
+    'guide': (('/guides', '/guides/<id>'), 'guide'),
+    'topic': (('/docs/<id>',), 'topic'),
+    'command': (('/docs/<id>',), 'command'),
+    'landing': (('/docs/<id>',), 'landing'),
+    'type': (('/docs/types', '/docs/types/<id>'), 'standard type'),
+    'error': (('/docs/errors/<rule.id>',), 'error'),
+}
+SITE_INDEXES = {'learn', 'guides', 'types'}
+SITE_DOC = 'docs/documentation.md'
+SITE_HEADING = '## What the site serves'
+
+
+def site_path(kind, page_id):
+    """The address of a page in index.json, with no `.md`."""
+    paths = SITE_PATHS[kind][0]
+    if len(paths) > 1 and page_id in SITE_INDEXES:
+        return paths[0]
+    return paths[-1].replace('<id>', page_id).replace('<rule.id>', page_id)
+
+
+def site_path_problems(kinds=None, documented=None):
+    """Problems with the page kinds against "What the site serves": each
+    kind the bundle writes has its paths in a row that names it, and no
+    row gives a page by ID that no kind claims."""
+    documented = (ROOT / SITE_DOC).read_text() if documented is None else documented
+    section = documented.split(f'{SITE_HEADING}\n', 1)[-1].split('\n## ', 1)[0]
+    rows = {}
+    for line in section.split('\n'):
+        cells = line.strip().strip('|').split('|')
+        if line.startswith('|') and len(cells) == 2:
+            for path in re.findall(r'`(/[^`]*)`', cells[0]):
+                rows[path] = cells[1].lower()
+    problems = []
+    for kind in sorted(SITE_PATHS if kinds is None else kinds):
+        if kind not in SITE_PATHS:
+            problems.append(f'index.json has pages of kind {kind}, which SITE_PATHS and {SITE_DOC}, '
+                            f'"{SITE_HEADING[3:]}", give no path')
+            continue
+        paths, word = SITE_PATHS[kind]
+        for path in paths:
+            if path not in rows:
+                problems.append(f'{SITE_DOC}, "{SITE_HEADING[3:]}", gives no {path} for pages of kind {kind}')
+            elif word not in rows[path]:
+                problems.append(f'{SITE_DOC}, "{SITE_HEADING[3:]}": the row for {path} doesn\'t name pages of '
+                                f'kind {kind} ("{word}")')
+    claimed = {path for paths, _ in SITE_PATHS.values() for path in paths}
+    for path in sorted(rows):
+        if re.search(r'<(id|rule\.id)>', path) and path.removesuffix('.md') not in claimed:
+            problems.append(f'{SITE_DOC}, "{SITE_HEADING[3:]}", gives {path}, which no kind in index.json claims')
+    return problems
+
+
+# What tells an agent where to read, before it has read anything else.
+AGENT_READS = ('llms.txt', 'crates/jadpo-cli/scaffold/AGENTS.md.tmpl', 'docs/agent-skill/SKILL.md')
+AREA_PAGE = re.compile(r'docs/language/[0-9][0-9]-[^\s)#`]*\.md')
+SITE_URL = re.compile(r'https://jadpo\.dev(/[^\s)\]`\'",]*)')
+# Pages the site writes itself, under the folders the bundle's pages are in.
+SITE_OWN = {'/docs/index.json', '/docs/errors', '/docs/errors/'}
+
+
+def agent_reading_problems(built, root=ROOT):
+    """Problems with what AGENT_READS sends an agent to: a whole area page
+    (the standard library's is about 134,000 tokens) instead of its topics,
+    or an address on the site that no page in the bundle has."""
+    pages = {site_path(kind, page_id) for kind, page_id, *_ in built if kind in SITE_PATHS and page_id}
+    pages.add('/docs/primer')
+    problems = []
+    for name in AGENT_READS:
+        if not (root / name).exists():
+            continue
+        for number, line in enumerate((root / name).read_text().split('\n'), 1):
+            for m in AREA_PAGE.finditer(line):
+                problems.append(f'{name}:{number}: sends an agent to a whole area page, {m.group(0)}; '
+                                f'link its topic on the site, https://jadpo.dev/docs/<id>.md')
+            for m in SITE_URL.finditer(line):
+                path = m.group(1).split('#')[0].rstrip('.:;')
+                if '<' in path or '{' in path or path in SITE_OWN or not re.match(r'/(docs|learn|guides)(/|\.md$|$)', path):
+                    continue
+                if path != '/docs' and path.removesuffix('.md') not in pages:
+                    problems.append(f'{name}:{number}: sends an agent to {m.group(0)}, which the site doesn\'t serve')
+    return problems
+
+
+def read_once_problems(built, root=ROOT):
+    """What an agent reads once, the primer as the bundle gives it and the
+    repository's llms.txt, over its budget."""
+    primer = next((text for kind, _, _, _, _, text, _ in built if kind == 'primer'), '')
+    path = root / 'llms.txt'
+    return agent_guidance.read_once_problems(primer, path.read_text() if path.exists() else '')
 
 
 def check_skill(root=ROOT):
@@ -2347,41 +2501,91 @@ def check_skill(root=ROOT):
     return problems
 
 
-def type_table_problems(pages, types):
-    """Where the table of standard types on the Standard library page
-    disagrees with the compiler's groups (`jadpo help --json`'s `types`): a
-    group the data doesn't have, or in another order, or a type listed in a
-    group the data puts it outside."""
-    page = next((p for p in pages if p.area() == 19), None)
-    if page is None or not types:
-        return []
-    group_of = {entry['name']: entry.get('group') for entry in types}
-    groups = list(dict.fromkeys(entry.get('group') for entry in types))
-    lines = page.body.split('\n')
-    start = next((i for i, line in enumerate(lines) if line.startswith('| Group | Types |')), None)
-    if start is None:
-        return [f'{page.path.name}: no table of the standard types by group (`| Group | Types |`)']
-    problems, listed = [], []
-    for line in lines[start + 2:]:
-        if not line.startswith('|'):
-            break
-        cells = line.split('|')
-        group = re.sub(r'\s*\(.*\)$', '', cells[1].strip())
-        listed.append(group)
-        for name in re.findall(r'\*\*`([^`<]+)(?:<[^`]*>)?`\*\*', cells[2]):
-            if name in group_of and group_of[name] != group:
-                problems.append(f'{page.path.name}: `{name}` is listed under "{group}", but the compiler groups it '
-                                f'under "{group_of[name]}" (crates/jadpo-std/src/standard/groups.rs)')
-    if listed != groups:
-        problems.append(f'{page.path.name}: the standard types\' groups are {listed}, but the compiler\'s are '
-                        f'{groups} (crates/jadpo-std/src/standard/groups.rs)')
+MONTHS = ('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
+          'October', 'November', 'December')
+RELEASED = re.compile(rf'Released ([1-9]|[12][0-9]|3[01]) ({"|".join(MONTHS)}) (20[0-9][0-9])\.')
+
+
+def check_releases(root=ROOT):
+    """Problems with the release notes (docs/writing.md, "How release notes
+    read"): one file per release, `X.Y.Z.md`, opening `# Jadpo X.Y.Z` and then
+    `Released D Month YYYY.`, and one for the version Jadpo is at, so a release
+    can't go out without its notes."""
+    problems, found = [], set()
+    for path in sorted((root / RELEASES).glob('*')):
+        name = path.relative_to(root)
+        version = re.fullmatch(r'(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)\.md', path.name)
+        if not version:
+            problems.append(f'{name}: a release\'s notes are named by its version, such as 1.2.0.md')
+            continue
+        found.add(version.group(1))
+        lines = path.read_text().split('\n')
+        if lines[0] != f'# Jadpo {version.group(1)}':
+            problems.append(f'{name}: the first line is `# Jadpo {version.group(1)}`')
+        dated = next((line for line in lines[1:] if line.strip()), '')
+        if not RELEASED.fullmatch(dated):
+            problems.append(f'{name}: the line after the heading is the date, such as `Released 7 November 2026.`')
+    manifest = root / RELEASE_MANIFEST
+    if manifest.exists():
+        current = json.loads(manifest.read_text()).get('.')
+        if current and current not in found:
+            problems.append(f'{RELEASES}/{current}.md is missing: write the notes for {current} before it is released '
+                            f'(docs/writing.md, "How release notes read")')
     return problems
+
+
+# The most standard types a table on a page may name before it is a list of
+# them. The largest table that isn't one names 33.
+MOST_TYPES_IN_A_TABLE = 40
+# The one table allowed to name them all: the record of which release added
+# each, which crates/jadpo-check/tests/standard_types.rs reads.
+RELEASE_TABLE = '| Release | Standard types it adds |'
+TYPE_NAME_IN_CODE = re.compile(r'`([A-Z][A-Za-z0-9]*)(?:<[^`]*>)?`')
+TYPE_COUNT = re.compile(r'\b[Tt]here are \d[\d,]* standard types\b')
+
+
+def hand_type_table_problems(sources, types):
+    """Where a page lists the standard types by hand (docs/documentation.md,
+    "The bundle"): a table by group, a table naming more than a list's
+    worth of them, or a count. The one list is generated from the compiler's
+    data. `sources` are (name, text) pairs."""
+    if not types:
+        return []
+    names = {entry['name'] for entry in types}
+    problems = []
+    for name, text in sources:
+        table, fenced = [], False
+        for line in text.split('\n') + ['']:
+            if line.startswith('```'):
+                fenced = not fenced
+            if not fenced and line.startswith('|'):
+                table.append(line)
+                continue
+            if table:
+                problems += hand_table_problem(name, table, names)
+            table = []
+        if TYPE_COUNT.search(text):
+            problems.append(f'{name}: says how many standard types there are; link '
+                            f'https://jadpo.dev/docs/types, which the compiler\'s data writes')
+    return problems
+
+
+def hand_table_problem(name, table, names):
+    """A problem if this table is a hand list of the standard types."""
+    head = [cell.strip().lower() for cell in table[0].strip('|').split('|')]
+    if table[0].startswith(RELEASE_TABLE):
+        return []
+    named = {found for line in table for found in TYPE_NAME_IN_CODE.findall(line) if found in names}
+    if (head[0] == 'group' and any('types' in cell for cell in head[1:])) or len(named) > MOST_TYPES_IN_A_TABLE:
+        return [f'{name}: a table lists standard types by hand (`{table[0][:60]}`); link '
+                f'https://jadpo.dev/docs/types, which the compiler\'s data writes']
+    return []
 
 
 def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), guides=(), help_data=None):
     """Problems with the docs' shape, none of which needs an example
     compiled: topic IDs, a page per rule, topic sizes and links."""
-    problems = []
+    problems = guide_index_problems(guides)
     seen = {}
     types = (help_data or {}).get('types', [])
     for entry in types:
@@ -2390,7 +2594,10 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), 
             problems.append(f'standard type `{entry["name"]}`: its page ID {type_id(entry["name"])} isn\'t kebab case')
     if types:
         seen.setdefault(TYPES_INDEX, []).append('the standard types\' index')
-    problems += type_table_problems(pages, types)
+    problems += hand_type_table_problems(
+        [(page.path.name, page.body) for page in [*pages, *learn, *guides, *errors]]
+        + [(path.name, path.read_text()) for path in [root / 'docs/primer.md'] if path.exists()],
+        types)
     for page in list(pages) + list(learn) + list(guides):
         problems += [f'{page.path.name} {problem}' for problem in page.check_topics()]
         for topic in page.topics():
@@ -2410,18 +2617,30 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), 
         if rule not in pages_by_rule:
             problems.append(f'{rule} (area {entry.get("area")}) has no page: add docs/errors/{rule}.md')
     bundle = Bundle(pages, errors, {'rules': list(catalogue.values()), 'commands': list(commands), 'types': types,
-                                    'operations': (help_data or {}).get('operations', [])}, root,
+                                    'operations': (help_data or {}).get('operations', []),
+                                    'type_pages': (help_data or {}).get('type_pages')}, root,
                     primer=root / 'docs/primer.md', learn=learn, guides=guides)
-    for kind, page_id, _, _, _, text, _ in bundle.build():
-        if kind in ('topic', 'learn', 'guide') and words(text) > TOPIC_WORDS:
-            problems.append(f'topic "{page_id}" is {words(text)} words, over {TOPIC_WORDS}: split it')
+    built = bundle.build()
+    for kind, page_id, _, _, _, text, _ in built:
+        written = bundle.written.get(page_id, text)
+        if kind in ('topic', 'learn', 'guide') and words(written) > TOPIC_WORDS:
+            problems.append(f'topic "{page_id}" is {words(written)} words, over {TOPIC_WORDS}: split it')
     problems += bundle.problems
+    problems += bundle_link_problems(built)
+    problems += bundle.reference_problems(built)
+    problems += bundle.landing_problems(built)
+    problems += bundle.status_line_problems(built)
+    problems += site_path_problems({kind for kind, *_ in built})
+    problems += agent_reading_problems(built, root)
+    problems += read_once_problems(built, root)
     files = markdown_files(root)
     problems += check_links(files, root)
     problems += check_help_lines(files, catalogue, root)
     version = re.fullmatch(r'(\d+)\.(\d+)\.\d+\S*', (help_data or {}).get('version', ''))
     if version:
-        problems += check_release_line(files, f'{version.group(1)}.{version.group(2)}', version.group(0), root)
+        # Release notes name releases: that is what they are for.
+        dated = [path for path in files if (root / RELEASES) not in path.parents]
+        problems += check_release_line(dated, f'{version.group(1)}.{version.group(2)}', version.group(0), root)
     return problems
 
 
@@ -2774,7 +2993,6 @@ def export_corpus(corpus):
     """Writes each project with tests, as its blocks give it, and its
     `jadpo test --json` document to build/spec-corpus/<page>/<project>/,
     replacing what was there (docs/compiler-runtime.md §2.7)."""
-    import shutil
     # The pages' projects only: tools/docs/examples.py owns examples/.
     if CORPUS.exists():
         for folder in CORPUS.iterdir():
@@ -2792,9 +3010,9 @@ def export_corpus(corpus):
 
 AREAS = [
     (1, 'Project layout and modules'), (2, 'Values and types'), (3, 'Logic'), (4, 'Failures'),
-    (5, 'Data'), (6, 'Reads and writes'), (7, 'HTTP'), (8, 'Identity'), (9, 'Policy'),
-    (10, 'Configuration and time'), (11, 'External services'), (12, 'Jobs and events'),
-    (13, 'Testing'), (14, 'Tooling'), (15, 'Personal data'), (16, 'Built-in services'), (17, 'Debugging and review'), (18, 'Records and manifest'),
+    (5, 'Entities, stores and migrations'), (6, 'Reads and writes'), (7, 'HTTP'), (8, 'Sign-in and identity'), (9, 'Policy'),
+    (10, 'Configuration'), (11, 'External services'), (12, 'Background work'),
+    (13, 'Testing'), (14, 'Tools'), (15, 'Personal data'), (16, 'Built-in services'), (17, 'Debugging'), (18, 'Review and records'),
     (19, 'Standard library'), (20, 'Geospatial'),
     (21, 'AI'),
 ]
@@ -2916,7 +3134,13 @@ def main():
                                    guides=guides, help_data=help_data):
         failed = True
         print(f'  FAIL {problem}')
-    for problem in check_skill():
+    type_pages = help_data.get('type_pages', {}).get('types', [])
+    for problem in type_page_word_problems(type_pages) + (type_example_problems(type_pages) if compile_examples else []):
+        failed = True
+        print(f'  FAIL {problem}')
+    if compile_examples:
+        print(f'{len(type_pages)} standard type page(s); every example compiled and run')
+    for problem in check_skill() + check_releases():
         failed = True
         print(f'  FAIL {problem}')
     primer = Primer(PRIMER, catalogue) if PRIMER.exists() else None

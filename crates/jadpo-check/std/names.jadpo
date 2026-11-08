@@ -1,0 +1,12 @@
+// The `names` namespace (area 19, "Registry names"). Its operation is
+// listed, typed, in `jadpo-std`'s operation table, which names the Rust
+// function in `jadpo-value` that runs it; a test holds this stub to that
+// table. It never fails: whether its result is a name the registry takes
+// is the registry's to say.
+
+public library names {
+    /// `name`, a name in code, as the public registry writes it: lower
+    /// case, with a `-` before each capital but the first, so
+    /// `AcmeCouriers` is `acme-couriers`.
+    function registry_part(name: Text) -> Text {}
+}

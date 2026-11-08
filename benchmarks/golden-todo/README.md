@@ -77,6 +77,10 @@ key for 24 hours; unfinished work past that safe window must be held for an
 operator, never resent blindly. Built-in EmailMessage is not used because
 its queue emission supplies no application delivery receipt.
 
+An email address is personal data, and the package declares no call to erase
+one, so `acceptances/` says why each reminder's recipient stays with the
+provider. It is read only by `jadpo check`: nothing it says runs.
+
 ## Verification
 
 - `jadpo check`, `jadpo fmt --check` and `jadpo test` run the source and

@@ -1,11 +1,11 @@
 ---
-title: Data
+title: Entities, stores and migrations
 area: 5
 status: decided
 checked-with: this checkout's jadpo on every gate run
 ---
 
-# Data
+# Entities, stores and migrations
 <!-- topic: data -->
 
 How you declare the records your app keeps, where they are stored, and how
@@ -26,7 +26,7 @@ PostgreSQL database and you don't declare it yourself. Anything your app
 never saves is a `type`, not an entity.
 
 You declare other stores as connections in `app.jadpo`, in its
-`connections:` block (see [Integrations](11-integrations.md) for
+`connections:` block (see [External services](11-integrations.md) for
 connections in general). Each store's driver is written in the source, so
 every environment, from your machine to production, runs the same engine.
 Here a shop keeps its orders in a database apart from its catalogue:
@@ -68,7 +68,7 @@ entity Order {
 ```
 
 An action writes to at most one store. Work that spans two stores goes
-through an event and a subscriber ([Jobs and events](12-jobs-and-events.md)).
+through an event and a subscriber ([Background work](12-jobs-and-events.md)).
 An entity in Redis must say when its records expire
 ([Entities in Redis](#entities-in-redis)).
 
@@ -78,11 +78,11 @@ start. `main` on PostgreSQL is implied only once something needs a
 database. These need one:
 
 - any entity stored in a database;
-- sign-in and sessions ([Identity](08-identity.md));
+- sign-in and sessions ([Sign-in and identity](08-identity.md));
 - events and the outbox, the table that holds each event until it is
-  delivered ([Jobs and events](12-jobs-and-events.md));
+  delivered ([Background work](12-jobs-and-events.md));
 - idempotency keys ([Idempotent writes](07-http.md#idempotent-writes));
-- webhook de-duplication ([Integrations](11-integrations.md));
+- webhook de-duplication ([External services](11-integrations.md));
 - flags and audit ([Built-in services](16-built-in-services.md)).
 
 Where something needs a database and none can hold it, `jadpo check`
@@ -97,7 +97,7 @@ of the type its driver needs: `url: config.database_url`, with
 `jadpo migrate apply` and `jadpo migrate status` read it from the
 environment, then `.env.local`, or take the URL with `--url`. A
 connection's other settings are described under
-[Integrations](11-integrations.md).
+[External services](11-integrations.md).
 
 Not built yet: the "only once something needs one" part, which comes with
 the first feature that can run without a database, and the D1 driver
@@ -156,7 +156,7 @@ An address that sets TLS itself, with `sslmode`, `sslrootcert` or another
 of libpq's `ssl…` settings, is refused as the app starts, by `jadpo config
 check` and by `jadpo migrate`, with the error
 `configuration.value_invalid`
-([Configuration and time](10-configuration-and-time.md)). A `Certificate`
+([Checking values before the app starts](10-configuration-and-time.md#checking-values-before-the-app-starts)). A `Certificate`
 setting that isn't the PEM of exactly one certificate is refused the same
 way.
 
@@ -356,7 +356,8 @@ from `JADPO_HYPERDRIVE_<variable>`
   configuration's caching, so `jadpo build` says so when it writes a
   binding with no id.
 - **No session state.** Hyperdrive hands a Worker a connection for one
-  transaction at a time, so Jadpo's statements are unnamed, each transaction sets
+  transaction at a time, so Jadpo's statements are unnamed, a column of an
+  extension's type (`vector`, `geography`) included, each transaction sets
   its isolation level in its own `BEGIN`, and leases are rows, never
   advisory locks. That is the same on every target.
 
@@ -409,30 +410,31 @@ Not built yet: D1 itself. This is the rule its driver is built to.
 ## Entities and the `id`
 <!-- topic: entities-and-the-id -->
 
-An entity is a kind of stored record with a lasting identity. Each one is
-declared in its own file under its domain's `entities/` folder:
+An entity is a kind of stored record with a lasting identity, like a table
+with types. Each one is declared in its own file under its domain's
+`entities/` folder. A domain is one business area of your app, here
+`planning`.
 
-```jadpo check project=entities file=user.jadpo hidden
-entity User {
-    id: Uuid
-}
+`domains/planning/entities/project.jadpo`:
 
+```jadpo check project=entities file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=entities file=domains/planning/entities/project.jadpo migrate=initial
 type ProjectName = Text {
     max_length: 80
 }
-```
 
-```jadpo check project=entities file=project.jadpo
-// domains/planning/entities/project.jadpo
 /// A group of todos with a shared goal.
 entity Project {
     id: Uuid  // version 7, generated on create
-    owner_id: User.id {
-        on_delete: OnDelete.restricted
-    }
     name: ProjectName
 }
 ```
+
+`Text` and `Uuid` are built in. `Project` and `ProjectName` are yours, and a
+type only this file uses lives in this file.
 
 Every entity's identity is one field, `id`, based on `Uuid`. Jadpo
 generates it as a version 7 UUID when the record is created, or as the
@@ -706,7 +708,7 @@ The details:
   in `conflict:` ([Conflicts](06-reads-and-writes.md#conflicts)).
 - **How long purge waits.** `after:` takes a duration written in place
   (`30d`) or a `Duration` setting (`config.soft_delete_retention`,
-  [Configuration and time](10-configuration-and-time.md)), whose value is
+  [Settings](10-configuration-and-time.md#settings-configjadpo)), whose value is
   the one the app started with. A record is purged once `visible:`
   doesn't hold and its `since:` field is older than the run's time less
   `after:`.
@@ -870,10 +872,13 @@ cart or a sign-up in progress, is an entity in a Redis store instead
 ([Entities in Redis](#entities-in-redis)). Which services can hold a cache
 (Redis-compatible ones, or `Driver.memory` with a warning), and what a
 cache may and may never hold, are in
-[Caches: drivers and what they hold](16-built-in-services.md#caches-drivers-and-what-they-hold).
+[Cache drivers and what a cache may hold](16-built-in-services.md#cache-drivers-and-what-a-cache-may-hold).
 
-Not built yet: caches. Clearing only the affected entries, for example
-the category pages a product moved out of and into, isn't designed yet.
+Not built yet: caches, so every read today goes to the database. An entity's
+`caches:` is `toolchain.not_built_yet` where it is written, and a query's
+`cache:` is `query.unknown_section`.
+Clearing only the affected entries, for example the category pages a product
+moved out of and into, isn't designed yet.
 
 ## Entities in Redis
 <!-- topic: entities-in-redis -->
@@ -917,7 +922,7 @@ entity SignUpDraft {
 
 Expired records are hidden from every read and update, as records
 `visible:` hides are
-([Entities in Redis](06-reads-and-writes.md#entities-in-redis) under
+([Reading and writing entities in Redis](06-reads-and-writes.md#reading-and-writing-entities-in-redis) under
 Reads and writes). An `expires_after:` on an entity in a database, or a
 Redis entity without one, is a compile error.
 
@@ -962,7 +967,7 @@ for the field's type:
 | `Duration` | `bigint`, in milliseconds |
 | `Enum` without data | `text` holding the variant name; a standard enum holds its code, `GBP`, `Europe/London` |
 | `Money` ([Money and payments](19-standard-library.md#money-and-payments)) | two columns, always: `<field>_amount bigint` of minor units and `<field>_currency char(3)`, with a check constraint holding the currency to the one a type fixes |
-| `ZonedTime` ([Configuration and time](10-configuration-and-time.md)) | two columns: `<field>_instant timestamptz(3)` and `<field>_zone text` holding its zone's code |
+| `ZonedTime` ([Zones and local times](10-configuration-and-time.md#zones-and-local-times)) | two columns: `<field>_instant timestamptz(3)` and `<field>_zone text` holding its zone's code |
 | `Enum` with data, `Object`, `List`, `Set`, `Map` | `jsonb` |
 
 Structured fields, recursive ones included, are stored whole as `jsonb`,
@@ -977,7 +982,7 @@ changes stored values, so it needs a migration.
 
 A standard type whose data entry lists named columns is stored in those,
 as `Money` is, rather than as `jsonb`
-([Every boundary through the contract](19-standard-library.md#every-boundary-through-the-contract)).
+([How a standard value is sent, stored and shown](19-standard-library.md#how-a-standard-value-is-sent-stored-and-shown)).
 Every standard object and choice type is stored in named columns laid out
 from its parts, `<field>_<part>`:
 
@@ -1003,7 +1008,7 @@ which the route codec writes and reads back.
 A geometry (`Point` and the other five, or `Geometry`) is one PostGIS
 `geography` column. It is untyped, and a check constraint holds it to its
 geometry type and to WGS84. The first migration with one creates the
-extension ([Storage](20-geospatial.md#storage) under Geospatial).
+extension ([Storing geometries](20-geospatial.md#storing-geometries) under Geospatial).
 
 ### Changing what a field allows
 
@@ -1194,7 +1199,7 @@ what was written, but it reads back `==`.
   value is written by an action, through the codec.
 - **An id inside is a value, not a reference.** A `User.id` inside a
   stored value has no foreign key and no `on_delete:`, as an event's
-  payload has none ([Jobs and events](12-jobs-and-events.md)). A link the
+  payload has none ([Background work](12-jobs-and-events.md)). A link the
   database must keep is a field of its own, or a link entity.
 - **Policy is the field's.** A field's `policy:` covers its whole stored
   value, as any field's does. A field of an `Object` takes no `policy:`
@@ -1217,7 +1222,7 @@ what was written, but it reads back `==`.
   the plan's JSON table, by the identity key the outbox's `event` column
   records, so the outbox writes and reads a payload through the one codec,
   with the type's rules applied on read
-  ([Jobs and events](12-jobs-and-events.md)). No job takes arguments yet
+  ([Background work](12-jobs-and-events.md)). No job takes arguments yet
   (a schedule's `run:` takes none). A batch's saved values are numbered in
   the same table by their types.
 
@@ -1437,7 +1442,7 @@ migration {
   ([Removing data](#removing-data)).
 - **Renames keep their data.** The identity registry, a file Jadpo keeps
   under `database/`, records what each renamed thing was born as
-  ([Records and manifest](18-records-and-manifest.md)). Tables and columns
+  ([Review and records](18-records-and-manifest.md)). Tables and columns
   keep the names they were born with, so renaming a field keeps its
   column. A field renamed by hand, without the registry, reads as one
   removed and one added, and the removed one's decision says so.
@@ -1472,7 +1477,7 @@ digest past PostgreSQL's 63 bytes. Each store that holds an entity also
 gets the runtime's [system tables](#system-tables), prefixed `jadpo_`.
 
 Not built yet: `jadpo rename`, which writes the identity registry
-([Tooling](14-tooling.md)), and changing a column's type other than
+([Tools](14-tooling.md)), and changing a column's type other than
 widening it. `jadpo migrate new` says so for each.
 
 ### Removing data
@@ -1854,12 +1859,12 @@ to every store that holds an entity, since any of them can be written:
 
 | Table | Holds | Described in |
 |---|---|---|
-| `jadpo_outbox` | Each event an action emitted, with its trace context and how deep in a chain it is | [Jobs and events](12-jobs-and-events.md) |
-| `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure, and while a circuit breaker holds it, its connection and time held | [Jobs and events](12-jobs-and-events.md) |
-| `jadpo_handled_deliveries` | Each delivery a subscriber's action handled, committed with its writes in the store it writes | [Jobs and events](12-jobs-and-events.md) |
+| `jadpo_outbox` | Each event an action emitted, with its trace context and how deep in a chain it is | [Background work](12-jobs-and-events.md) |
+| `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure, and while a circuit breaker holds it, its connection and time held | [Background work](12-jobs-and-events.md) |
+| `jadpo_handled_deliveries` | Each delivery a subscriber's action handled, committed with its writes in the store it writes | [Background work](12-jobs-and-events.md) |
 | `jadpo_idempotency_keys` | Each idempotent request's key, digest and stored response | [Idempotent writes](07-http.md#idempotent-writes) |
-| `jadpo_operator_actions` | What an operator did to a delivery with `jadpo deliveries`: when, which action, the item and its state then, the operator's name and the database role | [Jobs and events](12-jobs-and-events.md) |
-| `jadpo_circuit_breakers` | Each connection's circuit breaker over the deliveries beside it: its state, the run of failures, when it opened, its pauses and probe, and when its alert was raised | [Jobs and events](12-jobs-and-events.md) |
+| `jadpo_operator_actions` | What an operator did to a delivery with `jadpo deliveries`: when, which action, the item and its state then, the operator's name and the database role | [Background work](12-jobs-and-events.md) |
+| `jadpo_circuit_breakers` | Each connection's circuit breaker over the deliveries beside it: its state, the run of failures, when it opened, its pauses and probe, and when its alert was raised | [Background work](12-jobs-and-events.md) |
 
 A subscriber's record that it handled a delivery goes in the store the
 subscriber writes, committing with its writes, and refers to no table in
@@ -1879,13 +1884,13 @@ They go in the store such an action writes, or `events: { store: }`'s,
 only where one is kept. A resumable single keyed changing call with an
 existing record store uses these tables for dispatch details only, with
 no request fingerprints or encrypted answers, so the provider's safe key
-window also bounds its retries ([Integrations](11-integrations.md)).
+window also bounds its retries ([External services](11-integrations.md)).
 
 ### Tables for sign-in
 
 Sign-in reads a credential with its caller's record in one statement, so
 these tables go in the store of the entity they belong to
-([Identity](08-identity.md)). Secrets in them are kept only as verifiers:
+([Sign-in and identity](08-identity.md)). Secrets in them are kept only as verifiers:
 a verifier is a one-way digest that Jadpo can check a secret against, but
 can't turn back into the secret.
 
@@ -1947,7 +1952,7 @@ a database, never a cache
 
 Every store holding runtime state, including a store holding only AI
 usage, also keeps `jadpo_housekeeping`: the owner, lease and last completed
-hourly cleanup pass ([Jobs and events](12-jobs-and-events.md)). It is
+hourly cleanup pass ([Background work](12-jobs-and-events.md)). It is
 generated and migrated with the other system tables.
 
 A store whose entities have `File` fields keeps `jadpo_files`, how many
@@ -2057,12 +2062,13 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 |---|---|
 | Entities, their fields, references, unique rules, indexes and stores | Built. |
 | Migrations, computed backfills and the test database | Built. |
-| PostgreSQL over TLS and through Hyperdrive | Built. Checking a Hyperdrive configuration's caching on a real deploy is not built yet. |
+| PostgreSQL over TLS and through Hyperdrive | Partly built: both connect. Not built yet: checking a Hyperdrive configuration's caching on a real deploy. |
 | D1, and actions on it as reads first and one checked batch of writes | Not built yet. |
 | Lifecycles | Built. |
-| Structured values stored as JSON, and their migrations | Built. Conditions on them, a `unique:` or index over them, and an update by `id` that works one out in the database are not built yet. |
-| The check of every stored value on read | Built. `CHECK` constraints holding fields' rules in the database are not built yet. |
-| Standard types stored in named columns, and the standard collections | Built. Comparing or ordering by them in a query is not built yet. |
+| Structured values stored as JSON, and their migrations | Partly built: each is stored whole, read back and migrated. Not built yet: conditions on them, a `unique:` or index over them, and an update by `id` that works one out in the database. |
+| The check of every stored value on read | Built. |
+| `CHECK` constraints holding fields' rules in the database | Not built yet. |
+| Standard types stored in named columns, and the standard collections | Partly built: each is stored and read back. Not built yet: comparing or ordering by them in a query. |
 | Manifest nodes | Built: a node for each entity's placement, unique rule, index and reference, with `references` edges between entities, one for each system table and migration snapshot, and one for each lifecycle and transition (`lifecycle Todo`, `transition Todo.delete`, with its `when:`, whether it can refuse a record and the fields it sets). |
 | Removing data | Built: retiring a field or an entity, moving an entity to another store and `--drop`, each needing its [acceptance](18-records-and-manifest.md#acceptances) ([Removing data](#removing-data)). Copying an entity's records to its new store is yours to do. |
 | Other schema changes in `jadpo migrate new` | Not built yet: a new `pattern:` on a stored field, and other column type changes. Turning `encrypted:` on or off is refused for good: it needs a data migration ([Encrypted fields](15-personal-data.md#encrypted-fields)). |
@@ -2072,7 +2078,7 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | Index kinds other than geographic and HNSW | Not built yet. |
 | A database implied only when something needs one | Not built yet: it comes with the first feature that can run without one. |
 | Seeds and `jadpo seed` | Built. |
-| `jadpo rename` | Not built yet: it writes the identity registry ([Tooling](14-tooling.md)). |
+| `jadpo rename` | Not built yet: it writes the identity registry ([Tools](14-tooling.md)). |
 
 ## Errors
 

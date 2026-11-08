@@ -1,4 +1,4 @@
-//! People and contact (area 19, "The standard types"): the names, handles
+//! People and contact (area 19, "How standard types are named, and what is left out"): the names, handles
 //! and numbers held as text, each a pattern on the contract as the payment
 //! numbers are (chunk 5.5i), and the three objects, `PersonName`,
 //! `EmailWithName` and `PostalAddress`, whose parts code reads and which
@@ -29,6 +29,7 @@ pub const LINE_MAX: usize = 200;
 /// The categories of the standard types that are personal data and aren't
 /// held as text, by name (area 15); a type held as text names its own.
 pub const PERSONAL: &[(&str, &str)] = &[
+    ("Email", "contact"),
     ("EmailWithName", "contact"),
     ("Nationality", "demographic"),
     ("PersonName", "identifying"),

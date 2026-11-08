@@ -12,8 +12,7 @@ use jadpo_std::standard::groups::{GROUPS, group_of};
 use jadpo_std::standard::{Holds, Json as Wire, STANDARD_TYPES, StandardType, Storage, TextForm};
 use jadpo_term::Json;
 
-/// Every standard type, in its group's order (area 19, "The standard
-/// types"), each group's types in the order the group lists them.
+/// Every standard type, in its group's order (area 19, "How standard types are named, and what is left out"), each group's types in the order the group lists them.
 pub fn types_json() -> Json {
     let stubs = jadpo_check::standard_stubs();
     let operations = jadpo_check::documented_operations();
@@ -68,10 +67,7 @@ pub fn types_json() -> Json {
             ),
             ("min", bound(entry.holds, true)),
             ("max", bound(entry.holds, false)),
-            (
-                "personal",
-                personal(entry.holds).map_or(Json::Null, Json::from),
-            ),
+            ("personal", entry.personal().map_or(Json::Null, Json::from)),
             ("text", text_word(entry.text).map_or(Json::Null, Json::from)),
             ("json", json_word(entry.json).into()),
             ("storage", storage_word(entry.storage).into()),
@@ -304,13 +300,6 @@ fn variants_json(entry: &StandardType, stub: Option<&jadpo_check::StandardStub>)
 fn pattern(holds: Holds) -> Option<&'static str> {
     match holds {
         Holds::Text { pattern, .. } => Some(pattern),
-        _ => None,
-    }
-}
-
-fn personal(holds: Holds) -> Option<&'static str> {
-    match holds {
-        Holds::Text { personal, .. } => personal,
         _ => None,
     }
 }

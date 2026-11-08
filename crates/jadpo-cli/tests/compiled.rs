@@ -714,6 +714,20 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             "an audit trail".into(),
             corpus_project(&crate::audit::files(), "compiled-audit").expect("it checks"),
         ),
+        (
+            "a GET running actions".into(),
+            corpus_project(&crate::read_only_get::files(), "compiled-read-only-get")
+                .expect("it checks"),
+        ),
+        (
+            "a route sending raw bytes".into(),
+            corpus_project(&crate::sends::files(), "compiled-sends").expect("it checks"),
+        ),
+        (
+            "the system writing a server-only field".into(),
+            corpus_project(&crate::server_only_writes::files(), "compiled-server-only")
+                .expect("it checks"),
+        ),
     ]
 }
 
@@ -1042,6 +1056,9 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
     // route's `…/confirmation`, the ceremony built for wasm32 and the
     // challenge taken once, each refusal with the interpreter's record.
     let confirmation = page("docs/language/08-identity.md confirmation");
+    // Area 2's fields and variants named with reserved words, over the wire
+    // and in the database (chunk G1).
+    let reserved_names = page("docs/language/02-values-and-types.md reserved-names");
     let projects = [
         ("area 7's todos", corpus_project(&files, "workerd-todos")),
         (
@@ -1075,6 +1092,18 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             "area 8's payout confirmed with a passkey",
             corpus_project(&confirmation, "workerd-confirmation"),
         ),
+        (
+            "area 2's names from reserved words",
+            corpus_project(&reserved_names, "workerd-reserved-names"),
+        ),
+        (
+            "a route sending raw bytes",
+            corpus_project(&crate::sends::files(), "workerd-sends"),
+        ),
+        (
+            "the system writing a server-only field",
+            corpus_project(&crate::server_only_writes::files(), "workerd-server-only"),
+        ),
     ];
     let folders: Vec<PathBuf> = projects
         .iter()
@@ -1101,7 +1130,10 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             (5, 5),
             (1, 1),
             (3, 3),
-            (3, 3)
+            (3, 3),
+            (1, 1),
+            (2, 2),
+            (1, 1)
         ]
     );
     println!(

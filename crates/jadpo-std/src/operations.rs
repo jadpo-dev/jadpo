@@ -54,7 +54,7 @@ pub enum Kind {
     /// is given as its text.
     Format,
     /// A value the standard type contract's operations take (area 19,
-    /// "Every standard type meets one contract"): which types fit, and
+    /// "What every standard type can do"): which types fit, and
     /// what each gives, is the value's standard type's data entry
     /// ([`crate::standard`]), which the checker reads.
     Contract,
@@ -177,6 +177,7 @@ pub struct Condition {
 )]
 pub enum Op {
     AiDistance,
+    BytesConcat,
     ColourContrast,
     ColourFromHsl,
     ColourFromOklch,
@@ -280,6 +281,7 @@ pub enum Op {
     MarkupToHtml,
     MarkupToPlainText,
     MediaFit,
+    NamesRegistryPart,
     MoneyAllocate,
     MoneyApplyDiscount,
     MoneyConvert,
@@ -290,6 +292,13 @@ pub enum Op {
     MoneyOf,
     MoneySplit,
     MoneySum,
+    PostalArea,
+    PostalDistrict,
+    PostalInwardCode,
+    PostalOutwardCode,
+    PostalSector,
+    PostalSubDistrict,
+    PostalUnit,
     RandomCode,
     RandomInteger,
     RandomSample,
@@ -935,6 +944,34 @@ const fn web(
 
 const URL: Kind = Kind::Builtin(Builtin::Url);
 
+/// A postal code not in Royal Mail's format (area 19, "A UK postcode's
+/// parts"): settled only by proof, a postcode written out in it.
+const ON_NOT_UK_FORMAT: Condition = Condition {
+    key: RuleKey::NotUkFormat,
+    option: None,
+};
+
+/// The one parameter of each `postal` operation.
+const POSTCODE: &[Param] = &[param("postcode", Kind::Std("PostalCode"))];
+
+/// A `postal` operation (area 19, "A UK postcode's parts"): one part of a
+/// `PostalCode` by Royal Mail's format, as text, each one function in
+/// `jadpo-value`'s `postal` module over
+/// `jadpo_std::standard::postal::uk_parts`. Each fails `not_uk_format`
+/// on a postal code not in that format.
+const fn postal(op: Op, name: &'static str, rust: &'static str) -> Operation {
+    Operation {
+        op,
+        namespace: "postal",
+        name,
+        params: POSTCODE,
+        result: TEXT,
+        at_least: None,
+        conditions: &[ON_NOT_UK_FORMAT],
+        rust,
+    }
+}
+
 /// `semver`'s operation (area 19, "Web and software", chunk 5.5n2), one
 /// function in `jadpo-value`'s `semver` module over
 /// `jadpo_std::standard::software`.
@@ -1108,6 +1145,17 @@ pub const OPERATIONS: &[Operation] = &[
         DECIMAL,
         "vector::distance",
     ),
+    // Joining bytes (area 19, "Bytes"), as `list.concat` joins lists.
+    Operation {
+        op: Op::BytesConcat,
+        namespace: "bytes",
+        name: "concat",
+        params: &[param("first", BYTES_VALUE), param("second", BYTES_VALUE)],
+        result: BYTES_VALUE,
+        at_least: None,
+        conditions: &[],
+        rust: "bytes::concat",
+    },
     // `colour`'s operations (area 19, "Colour"): each gives an sRGB
     // `Colour`, worked out through CSS Color 4's conversions.
     media_op(
@@ -1567,8 +1615,7 @@ pub const OPERATIONS: &[Operation] = &[
         LENGTH_VALUE,
         "geo::distance",
     ),
-    // The constructions at an axis order's named edges (area 19, "Shared
-    // vocabulary types"; chunk 5.11): GeoJSON text, read by the one
+    // The constructions at an axis order's named edges (area 19's design notes, "Shared vocabulary types"; chunk 5.11): GeoJSON text, read by the one
     // GeoJSON reader into the `Geometry` of the kind it names, and a pair
     // of numbers, or three with an altitude in metres, in the order the
     // name says. A coordinate out of its range is `out_of_range`, and
@@ -2178,6 +2225,35 @@ pub const OPERATIONS: &[Operation] = &[
             "money::sum",
         )
     },
+    // `names`' operation (area 19, "Registry names"): a name in code as
+    // the registry writes it, by the registry's own rule; it never fails.
+    Operation {
+        op: Op::NamesRegistryPart,
+        namespace: "names",
+        name: "registry_part",
+        params: &[param("name", TEXT_VALUE)],
+        result: TEXT_VALUE,
+        at_least: None,
+        conditions: &[],
+        rust: "names::registry_part",
+    },
+    // A UK postcode's parts (area 19, "A UK postcode's parts"), by Royal
+    // Mail's format; `sub_district` is `none` where there isn't one.
+    postal(Op::PostalArea, "area", "postal::area"),
+    postal(Op::PostalDistrict, "district", "postal::district"),
+    postal(Op::PostalInwardCode, "inward_code", "postal::inward_code"),
+    postal(
+        Op::PostalOutwardCode,
+        "outward_code",
+        "postal::outward_code",
+    ),
+    postal(Op::PostalSector, "sector", "postal::sector"),
+    postal(
+        Op::PostalSubDistrict,
+        "sub_district",
+        "postal::sub_district",
+    ),
+    postal(Op::PostalUnit, "unit", "postal::unit"),
     // Randomness (area 19, "Randomness"): each reads the
     // generator, the operating system's outside tests and one seeded per
     // test in them, so it is called only in actions, as `clock.now` is
@@ -2561,8 +2637,7 @@ pub const OPERATIONS: &[Operation] = &[
         BOOL,
         "text::ends_with",
     ),
-    // The standard type contract's three operations (area 19, "Every
-    // standard type meets one contract"), each one implementation in
+    // The standard type contract's three operations (area 19, "What every standard type can do"), each one implementation in
     // `jadpo-value`'s `standard` module over the data entries in
     // [`crate::standard`]. `text.format` writes text for people over the
     // locale data of the locales the application supports.
@@ -2960,6 +3035,9 @@ mod tests {
                     // What text or bytes decode to is known only when the
                     // program runs, so only an `attempt` settles it.
                     None if condition.key.only_when_run() => true,
+                    // A postcode's format, by a postcode written out in it
+                    // (area 19, "A UK postcode's parts").
+                    None if condition.key == RuleKey::NotUkFormat => true,
                     // A discount's amount off is in a currency only the
                     // running program knows, as is the price's (chunk
                     // 5.5i3).

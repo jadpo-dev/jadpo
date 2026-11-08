@@ -230,7 +230,7 @@ type PatchProperties = Object {
 }
 
 /// The map's delivery layer, as a mapping library reads it.
-function patch_layer(outlines: List<Polygon>, names: List<PatchName>) -> FeatureCollection<Polygon, PatchProperties> {
+function patch_layer(outlines: List<Polygon>, name_list: List<PatchName>) -> FeatureCollection<Polygon, PatchProperties> {
     return FeatureCollection {
         features: list.map(outlines, outline -> Feature {
             geometry: outline
@@ -453,8 +453,7 @@ fn a_route_s_layer_is_fetched_as_plain_geojson() {
     );
 }
 
-/// The constructions at an axis order's named edges (area 19, "Shared
-/// vocabulary types"; chunk 5.11): GeoJSON text, longitude first, and a
+/// The constructions at an axis order's named edges (area 19's design notes, "Shared vocabulary types"; chunk 5.11): GeoJSON text, longitude first, and a
 /// pair of numbers in the order the operation's name says.
 const PAIRS: &str = "type Exported = Text {}
 

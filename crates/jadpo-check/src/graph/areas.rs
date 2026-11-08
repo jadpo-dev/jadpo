@@ -277,6 +277,7 @@ fn lock_entries(db: &dyn Db, project: Project) -> Vec<Node> {
         .unwrap_or_default();
     let index = LineIndex::new(text);
     let homes = crate::surface::homes(db, project);
+    let own = &crate::own_sources::own_sources(db, project).entries;
     let mut out = Vec::new();
     for locked in lines {
         let line = locked.line();
@@ -300,10 +301,14 @@ fn lock_entries(db: &dyn Db, project: Project) -> Vec<Node> {
             .get(&locked.folder())
             .map(|home| registry.key(Kind::Package, &home.through, None));
         let (version, source, location, tag, commit, digest) = match &locked.source {
-            Source::Registry { version, digest } => (
+            Source::Registry {
+                version,
+                name,
+                digest,
+            } => (
                 Some(version.clone()),
                 "registry",
-                None,
+                Some(name.clone()),
                 None,
                 None,
                 Some(digest.clone()),
@@ -336,6 +341,11 @@ fn lock_entries(db: &dyn Db, project: Project) -> Vec<Node> {
             ),
             Source::Link { path } => (None, "link", Some(path.clone()), None, None, None),
         };
+        let own_source = location
+            .as_deref()
+            .filter(|_| source == "git")
+            .and_then(|repository| crate::own_sources::covering(own, repository))
+            .map(str::to_string);
         node.detail = Detail::LockEntry {
             version,
             source: source.to_string(),
@@ -343,6 +353,7 @@ fn lock_entries(db: &dyn Db, project: Project) -> Vec<Node> {
             tag,
             commit,
             digest,
+            own_source,
         };
         out.push(node);
     }
@@ -711,6 +722,35 @@ pub fn service_nodes(db: &dyn Db, project: Project) -> Part {
             node.detail = Detail::RateLimit {
                 requests: limit.requests,
                 window_ms: limit.window_ms,
+            };
+            uses(&mut edges, &key, store.clone());
+            nodes.push(node);
+        }
+        // Each limit a route or an API writes with `rate_limit:`, which a
+        // route uses in place of the defaults, counted where they are.
+        let apis = crate::routes::api_table(db, project);
+        let groups = crate::routes::groups(db, project);
+        let mut made = BTreeSet::new();
+        for (group, route) in groups.routes() {
+            let Some(own) = crate::routes::limit_of(apis, group, route) else {
+                continue;
+            };
+            let name = own.counted.strip_prefix("route ").unwrap_or(&own.counted);
+            let key = registry.key(Kind::RateLimit, name, None);
+            uses(&mut edges, &route.key, [key.clone()]);
+            if !made.insert(key.clone()) {
+                continue;
+            }
+            let requests = own.limit.requests.to_string();
+            let window = own.limit.window_ms.to_string();
+            let mut node = node_of(
+                key.clone(),
+                Kind::RateLimit,
+                &[name, &requests, &window, own.by.name()],
+            );
+            node.detail = Detail::RateLimit {
+                requests: own.limit.requests,
+                window_ms: own.limit.window_ms,
             };
             uses(&mut edges, &key, store.clone());
             nodes.push(node);

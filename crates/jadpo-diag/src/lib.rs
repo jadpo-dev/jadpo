@@ -12,7 +12,7 @@ use std::fmt;
 
 pub use suggest::nearest;
 
-/// Whether a rule can be declined (area 1, "Declining a judgement call"):
+/// Whether a rule can be declined (area 1, "Keeping code as it is, with a reason"):
 /// every finding is an error, and a judgement call may be answered by a
 /// `decline <rule>: "<reason>"` line above the declaration instead of a fix.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -132,6 +132,8 @@ rules! {
         "Two APIs share a prefix";
     API_PREFIX_REQUIRED: "api.prefix_required", area 7, Error, Agent,
         "Declared API has no prefix";
+    API_ROUTE_NEEDS_SIGN_IN: "api.route_needs_sign_in", area 7, Error, Human,
+        "A route needs a signed-in caller, but its API says `authentication: []`, which accepts no way to sign in";
     API_SERVE_OPENAPI_INVALID: "api.serve_openapi_invalid", area 7, Error, Agent,
         "An API's `serve_openapi:` setting holds something other than `true` or `false`";
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
@@ -220,6 +222,8 @@ rules! {
         "A `jadpo` command line starts with a command Jadpo doesn't have, or asks `jadpo help` about a command or rule it doesn't have";
     CLI_UNKNOWN_FLAG: "cli.unknown_flag", area 14, Error, Agent,
         "A `jadpo` command line has a flag the command doesn't take";
+    CLI_VERIFIER_START_FAILED: "cli.verifier_start_failed", area 14, Error, Human,
+        "The verifier won't start, for want of its credential or a sandbox to run packages in, or because it can't listen";
     CLI_VERSION_ARGUMENTS: "cli.version_arguments", area 14, Error, Agent,
         "A `jadpo version` command is given an argument, which it doesn't take";
     CLI_WHY_ARGUMENTS: "cli.why_arguments", area 14, Error, Agent,
@@ -613,11 +617,17 @@ rules! {
     INSTALL_FETCH_FAILED: "install.fetch_failed", area 14, Error, Human,
         "Installing a package couldn't read its git repository, or found no release there at the tag you gave";
     INSTALL_IN_USE: "install.in_use", area 14, Error, Agent,
-        "Package to remove is still used by the app";
+        "A package `jadpo package remove` was asked to remove is still brought in by the app's code";
     INSTALL_LINK_REFUSED: "install.link_refused", area 14, Error, Agent,
         "Linked package in a CI or production build";
+    INSTALL_NOT_IN_REGISTRY: "install.not_in_registry", area 14, Error, Human,
+        "The registry has no package of the name you gave, or no such release of it";
+    INSTALL_NOT_PROVED: "install.not_proved", area 14, Error, Human,
+        "The registry's answers don't prove the release is the one in its public log";
     INSTALL_SURFACE_MISMATCH: "install.surface_mismatch", area 14, Error, Human,
         "The package you are installing has code that offers something different from its committed `surface.jadpo_record`";
+    INSTALL_YANKED: "install.yanked", area 14, Error, Human,
+        "The release you asked for has been yanked, so it can't be newly installed";
     LAYOUT_CALL_DIRECTION: "layout.call_direction", area 1, Error, Human,
         "Code in `shared/` uses a declaration that belongs to one domain";
     LAYOUT_FILE_NAME_MISMATCH: "layout.file_name_mismatch", area 1, Error, Agent,
@@ -670,6 +680,8 @@ rules! {
         "Name does not survive conversion to its file name";
     PACKAGE_ACTION_INVALID: "package.action_invalid", area 11, Error, Agent,
         "Package action does what package code may not";
+    PACKAGE_ADVISORY: "package.advisory", area 14, Error, Human,
+        "An advisory is against a declaration of an installed package that the app reaches";
     PACKAGE_DIGEST_MISMATCH: "package.digest_mismatch", area 11, Error, Human,
         "The files of an installed package in `packages/` have been changed, added or removed since it was installed";
     PACKAGE_EMAILS_FOLDER: "package.emails_folder", area 11, Error, Agent,
@@ -690,6 +702,8 @@ rules! {
         "Code uses a package's declaration that isn't public";
     PACKAGE_OPERATION_INVALID: "package.operation_invalid", area 11, Error, Agent,
         "Provider operation holds what it can't, or lacks what it needs";
+    PACKAGE_OWN_SOURCE_INVALID: "package.own_source_invalid", area 11, Error, Agent,
+        "Application's `packages:` lists your company's git locations wrongly";
     PACKAGE_PROVIDER_INVALID: "package.provider_invalid", area 11, Error, Agent,
         "Provider file holds what it can't, or lacks `protocol:`";
     PACKAGE_PROVIDER_MISSING: "package.provider_missing", area 11, Error, Agent,
@@ -699,7 +713,7 @@ rules! {
     PACKAGE_RESERVED_NAME: "package.reserved_name", area 11, Error, Agent,
         "App's own integration takes a provider's reserved name";
     PACKAGE_STANDARD_CANDIDATE: "package.standard_candidate", area 11, Declinable, Agent,
-        "Provider field looks like a standard type the package doesn't use";
+        "Provider field looks like a standard type the package doesn't use, or like personal data it doesn't mark";
     PACKAGE_VERSION_NEEDED: "package.version_needed", area 11, Error, Agent,
         "Your code names something through a package that the app holds in two versions, without saying which version it means";
     PACKAGE_VERSION_UNNEEDED: "package.version_unneeded", area 11, Error, Agent,
@@ -755,7 +769,7 @@ rules! {
     POLICY_SUBJECT_DUPLICATE: "policy.subject_duplicate", area 9, Error, Agent,
         "Grant names the same caller twice";
     POLICY_SYSTEM_GRANT_MISSING: "policy.system_grant_missing", area 9, Error, Human,
-        "A schedule or subscriber reaches a grant that names `Access.public` but not `Access.system`, so the background work would always be refused";
+        "A schedule or subscriber reaches something whose list doesn't name `Access.system`, the one way an entity lets background work in";
     PROMPT_FREE_TEXT_IN_INSTRUCTIONS: "prompt.free_text_in_instructions", area 21, Error, Agent,
         "A prompt writes a free-text value, such as text a user typed, in its instructions rather than in its request";
     PROMPT_PLACEHOLDER_TYPE: "prompt.placeholder_type", area 21, Error, Agent,
@@ -766,22 +780,44 @@ rules! {
         "A prompt's type has a field that its prompt file never writes";
     PROMPT_SECTION_MISSING: "prompt.section_missing", area 21, Error, Agent,
         "A prompt and its file don't make its two sections, each once and in order";
+    PROTOCOL_MISMATCH: "protocol.mismatch", area 14, Error, Agent,
+        "A registry's OpenAPI document differs from the registry protocol";
+    PROTOCOL_UNREADABLE: "protocol.unreadable", area 14, Error, Agent,
+        "The document given to `jadpo package protocol` couldn't be read as OpenAPI's JSON";
     PUBLISH_BEHAVIOUR_CHANGED: "publish.behaviour_changed", area 14, Error, Human,
         "An example or test of a package's last release fails against its new version, and the change isn't marked a fix";
     PUBLISH_BREAKING_CHANGE: "publish.breaking_change", area 14, Error, Human,
         "A package's new version changes or removes something its last release offered, within the same major version";
     PUBLISH_CHANGELOG_MISSING: "publish.changelog_missing", area 14, Error, Agent,
-        "Package's changelog doesn't say why its new version is released";
+        "The new version's section of a package's `CHANGELOG.md` doesn't say why it is released";
     PUBLISH_DESCRIPTION_MISSING: "publish.description_missing", area 14, Error, Agent,
-        "Package's public declaration has no description";
+        "A public type, failure, library or library function of a package has no `///` description";
     PUBLISH_EXAMPLE_FAILED: "publish.example_failed", area 14, Error, Agent,
-        "Example in a package's description doesn't compile or doesn't hold";
+        "An example in a package's `///` description doesn't compile, or doesn't hold when it runs as a test";
     PUBLISH_EXAMPLE_MISSING: "publish.example_missing", area 14, Error, Agent,
-        "Package's function has no example, or a failure it raises is shown by none";
+        "A function of a package's public library has no example in its description, or can fail in a way no example or test shows";
+    PUBLISH_FAILED: "publish.failed", area 14, Error, Agent,
+        "The registry's verifier refused the release";
+    PUBLISH_FILE_NOT_ALLOWED: "publish.file_not_allowed", area 14, Error, Agent,
+        "A commit holds a file a release can't: anything but Jadpo source and the package's text files";
+    PUBLISH_LICENCE_PROPRIETARY: "publish.licence_proprietary", area 14, Error, Human,
+        "A package's licence is `Licence.proprietary`, which the public registry refuses";
+    PUBLISH_NOT_AT_TAG: "publish.not_at_tag", area 14, Error, Agent,
+        "What `jadpo package publish` would ask for isn't a pushed `v<version>` tag whose commit is the one checked out";
+    PUBLISH_PUBLISHER_MISMATCH: "publish.publisher_mismatch", area 14, Error, Human,
+        "A release names another publisher than the one asked to publish it";
+    PUBLISH_PUBLISHER_MISSING: "publish.publisher_missing", area 14, Error, Human,
+        "A package's index names no publisher, and it has to for the registry";
+    PUBLISH_REPOSITORY_REFUSED: "publish.repository_refused", area 14, Error, Human,
+        "The package's repository isn't one the registry can fetch: a public git repository reached over HTTPS";
     PUBLISH_SAMPLE_MISSING: "publish.sample_missing", area 14, Error, Agent,
         "Package's recipes have no sample app with one domain to compile in";
     PUBLISH_STALE_FILES: "publish.stale_files", area 14, Error, Agent,
         "A commit's `surface.jadpo_record` or changelog list isn't what the package's code gives";
+    PUBLISH_TOO_LARGE: "publish.too_large", area 14, Error, Human,
+        "A commit's release is past the size limit";
+    PUBLISH_TYPE_UNREVIEWED: "publish.type_unreviewed", area 14, Error, Agent,
+        "A provider package's public type isn't in its `reviewed:` list";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "Aggregate is given the wrong arguments";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,
@@ -854,6 +890,8 @@ rules! {
         "Rate limits' store isn't a connection that can count them";
     RATE_LIMITS_STORE_REQUIRED: "rate_limits.store_required", area 16, Error, Agent,
         "Deployable built for Workers has nowhere to count its rate limits";
+    RATE_LIMITS_WINDOW_UNSUPPORTED: "rate_limits.window_unsupported", area 16, Error, Agent,
+        "A rate limit's window is one its store can't count";
     RECEIVING_INVALID: "receiving.invalid", area 12, Error, Agent,
         "A queue in `receiving:` doesn't say how its messages are read";
     RECORD_EDITED: "record.edited", area 18, Error, Agent,
@@ -866,6 +904,8 @@ rules! {
         "A recording by `jadpo package record` or `jadpo ai record` got no answer worth keeping from the sandbox or the model, or its call couldn't be made";
     RECORDING_REFUSED: "recording.refused", area 14, Error, Human,
         "A recording was refused before anything was sent, because its connection would call a live API or has nothing set for its sandbox, its package is installed, or there is nothing to ask its prompt with";
+    REGISTRY_UNREACHABLE: "registry.unreachable", area 14, Error, Human,
+        "The registry couldn't be reached, or answered in a way that can't be read";
     ROUTE_API_UNKNOWN: "route.api_unknown", area 7, Error, Agent,
         "Route group names an API the application doesn't declare";
     ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,
@@ -874,6 +914,8 @@ rules! {
         "A route's `authentication:` line holds something other than `RouteAuthentication.none` or `RouteAuthentication.fresh`";
     ROUTE_BINDING_UNUSED: "route.binding_unused", area 7, Error, Agent,
         "Route reads a placeholder or input it never passes on";
+    ROUTE_CACHE_INVALID: "route.cache_invalid", area 7, Error, Agent,
+        "Route's `cache:` isn't `immutable`, or it keeps an answer a public cache may not hold";
     ROUTE_CALLS_PAST_DEADLINE: "route.calls_past_deadline", area 11, Error, Agent,
         "The outside calls a route makes could, at their slowest, take longer than the route is allowed to run";
     ROUTE_CONFIRM_INVALID: "route.confirm_invalid", area 8, Error, Agent,
@@ -914,12 +956,16 @@ rules! {
         "Route group has no prefix";
     ROUTE_QUERY_FIELD_UNSUPPORTED: "route.query_field_unsupported", area 7, Error, Agent,
         "Query-string input field is not a scalar, an enum or a list of them";
+    ROUTE_RATE_LIMIT_INVALID: "route.rate_limit_invalid", area 16, Error, Agent,
+        "A `rate_limit:` doesn't say how many requests over how long, or says it wrongly";
     ROUTE_RUN_INVALID: "route.run_invalid", area 7, Error, Agent,
         "Route `run:` is not a call of a named action or query";
     ROUTE_RUN_KIND: "route.run_kind", area 7, Error, Agent,
-        "A `GET` route runs an action, or a route of another method runs a query";
+        "A `GET` route runs an action that isn't read-only, or a route of another method runs a query";
     ROUTE_RUN_REQUIRED: "route.run_required", area 7, Error, Agent,
         "Route does not say what it runs";
+    ROUTE_SENDS_INVALID: "route.sends_invalid", area 7, Error, Agent,
+        "Route's `sends:` isn't a media type, or its `Output` isn't exactly one `Bytes` field";
     ROUTE_SETTLE_INVALID: "route.settle_invalid", area 7, Error, Agent,
         "Route `settle:` is not an answer query and a wait inside its deadline";
     ROUTE_STATUS_INVALID: "route.status_invalid", area 7, Error, Agent,
@@ -1190,6 +1236,8 @@ rules! {
         "Variable has no type";
     TEST_ASSERTION_FAILED: "test.assertion_failed", area 13, Error, Agent,
         "A test's `assert` doesn't hold: its condition is false, or a call checked with `assert … fails` returned or failed differently";
+    TEST_DATABASE_UNAVAILABLE: "test.database_unavailable", area 14, Error, Human,
+        "The tests that need a database couldn't run, because PostgreSQL for the tests couldn't be started or reached";
     TEST_FAILED: "test.failed", area 14, Error, Agent,
         "A test failed under `jadpo test`, or among a package's own tests under `jadpo package check`";
     TEST_FAKE_EXHAUSTED: "test.fake_exhausted", area 13, Error, Agent,
@@ -1227,15 +1275,15 @@ rules! {
     TOOLCHAIN_PROJECT_NOT_FOUND: "toolchain.project_not_found", area 14, Error, Agent,
         "You ran a command that works on a project in a folder with no `app.jadpo`, in it or in any folder above it";
     TOOLCHAIN_SCAFFOLD_DESTINATION_EXISTS: "toolchain.scaffold_destination_exists", area 14, Error, Human,
-        "You ran `jadpo new` with the name of a file that already exists";
+        "You ran `jadpo new` or `jadpo package new` with the name of a file that already exists";
     TOOLCHAIN_SCAFFOLD_DESTINATION_NOT_EMPTY: "toolchain.scaffold_destination_not_empty", area 14, Error, Human,
-        "You ran `jadpo new` on a folder that already has files in it, hidden files included";
+        "You ran `jadpo new` or `jadpo package new` on a folder that already has files in it, hidden files included";
     TOOLCHAIN_SCAFFOLD_NAME_INVALID: "toolchain.scaffold_name_invalid", area 14, Error, Agent,
         "You ran `jadpo new` with a path that doesn't end in a folder's name, such as `..` or `/`";
     TOOLCHAIN_SCAFFOLD_READ_FAILED: "toolchain.scaffold_read_failed", area 14, Error, Human,
-        "You ran `jadpo new` on a path Jadpo can't look into, such as a folder you can't read or a path through a file";
+        "You ran `jadpo new` or `jadpo package new` on a path Jadpo can't look into, such as a folder you can't read or a path through a file";
     TOOLCHAIN_SCAFFOLD_WRITE_FAILED: "toolchain.scaffold_write_failed", area 14, Error, Human,
-        "You ran `jadpo new`, and writing the project's files failed, usually because the folder it goes in can't be written";
+        "You ran `jadpo new` or `jadpo package new`, and writing its files failed, usually because the folder they go in can't be written";
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
         "A `.jadpo` file in the project couldn't be read, because it isn't UTF-8 text or you aren't allowed to read it";
     TOOLCHAIN_VERSION_INVALID: "toolchain.version_invalid", area 1, Error, Agent,
@@ -1297,11 +1345,11 @@ rules! {
     TRANSLATION_WORDING_SHAPE: "translation.wording_shape", area 10, Error, Agent,
         "A member is written in the wrong shape for what it words";
     TYPE_ABSENT_FIELD: "type.absent_field", area 2, Error, Agent,
-        "Omitted or optional field is not present";
+        "An `omit:` or `optional:` line names a field that the lines above it don't bring into the type";
     TYPE_ARGUMENT_COUNT: "type.argument_count", area 3, Error, Agent,
         "A call passes more or fewer values than the function or action it calls has parameters";
     TYPE_ARGUMENT_EMPTY: "type.argument_empty", area 19, Error, Agent,
-        "Text that may be empty where it never is";
+        "A call passes text that may be empty where the operation never takes empty text, such as `text.split`'s `separator`";
     TYPE_ARGUMENT_NEGATIVE: "type.argument_negative", area 19, Error, Agent,
         "A list or text operation is given a count or a position that might be negative";
     TYPE_ARITHMETIC_OPERAND: "type.arithmetic_operand", area 3, Error, Agent,
@@ -1309,73 +1357,73 @@ rules! {
     TYPE_ASSIGN_IMMUTABLE: "type.assign_immutable", area 3, Error, Agent,
         "A variable declared without `mut`, or a parameter, is given a new value";
     TYPE_ASSIGN_UNKNOWN: "type.assign_unknown", area 3, Error, Agent,
-        "Assignment target is not declared";
+        "An assignment gives a new value to a name that isn't declared in the block it is in or one around it";
     TYPE_AUTH_CREDENTIAL_STORED: "type.auth_credential_stored", area 8, Error, Agent,
-        "Entity field holds an API token or a service key";
+        "An entity has a field that holds an API token or a service key";
     TYPE_AUTH_PRINCIPAL_CONSTRUCTION: "type.auth_principal_construction", area 8, Error, Agent,
-        "Caller is made from a record outside tests, fixtures and seeds";
+        "Application code makes a caller from a record with `Principal.user(...)` or `Principal.service(...)`, which only tests, fixtures and seeds may do";
     TYPE_AUTH_PRINCIPAL_FAILURE_CONTEXT: "type.auth_principal_failure_context", area 8, Error, Agent,
-        "Failure field holds a caller";
+        "A failure has a field that holds a caller, a `Principal.user` or a `Principal.service`";
     TYPE_AUTH_PRINCIPAL_INPUT: "type.auth_principal_input", area 8, Error, Agent,
-        "Input field holds a caller";
+        "An `Input` has a field that holds a caller, a `Principal.user` or a `Principal.service`, as if a request could send who is calling";
     TYPE_AUTH_PRINCIPAL_OUTPUT: "type.auth_principal_output", area 8, Error, Agent,
-        "Output field holds a caller";
+        "An `Output` has a field that holds a caller, a `Principal.user` or a `Principal.service`";
     TYPE_AUTH_PRINCIPAL_VARIANT_UNKNOWN: "type.auth_principal_variant_unknown", area 8, Error, Agent,
-        "Caller variant is not one the principal declares";
+        "A route reads `current_principal.user` or `current_principal.service` for a kind of caller that `principal { }` doesn't declare";
     TYPE_AUTH_PUBLIC_PRINCIPAL: "type.auth_public_principal", area 8, Error, Human,
         "A route that anyone may call, with `authentication: RouteAuthentication.none`, passes on the signed-in caller, though it never looks for one";
     TYPE_AUTH_SESSIONS_CONTEXT: "type.auth_sessions_context", area 8, Error, Agent,
-        "Session, API token or service key operation outside an action, or without its sign-in method";
+        "Code calls a session, API token or service key operation, such as `sessions.end`, somewhere other than an action, or without the way of signing in it needs";
     TYPE_BASE_OUTSIDE_DECLARATION: "type.base_outside_declaration", area 2, Error, Agent,
-        "Base is used outside a type declaration";
+        "A field, parameter or result is given `Object`, `Enum`, `Input` or `Output` as its type, which is only ever the base of a type declaration";
     TYPE_BATCH_CAPTURE_NOT_STORABLE: "type.batch_capture_not_storable", area 12, Error, Agent,
-        "A batch saves a value that can't be stored";
+        "What a batch's `each:` or `finished:` captures, or its `key:`, is a value an entity field couldn't hold, such as a request's `Input`";
     TYPE_BATCH_CONTEXT: "type.batch_context", area 12, Error, Agent,
-        "Batch operation called outside an action";
+        "Code outside an action starts a batch, reads how far a run has got or cancels one";
     TYPE_BATCH_EACH_INVALID: "type.batch_each_invalid", area 12, Error, Agent,
-        "A batch's `each:` or `finished:` is not one call of an action in its domain, or a write's `each:` no inline function giving the row";
+        "A batch's `each:` or `finished:` is something other than one call of an action in its domain, or a file write's `each:` something other than one inline function giving the row";
     TYPE_BATCH_FROM_INVALID: "type.batch_from_invalid", area 12, Error, Agent,
         "A batch's `from:` is something other than a call of a named query that gives a `Page`, such as a query that gives a `List`";
     TYPE_BATCH_INPUT: "type.batch_input", area 12, Error, Agent,
-        "An `Input` or a route placeholder holds a batch type, which only the runtime builds";
+        "An `Input` or a route's placeholder holds a batch type such as `BatchRun`, a `File` or a `FileContents`, or what a provider or a queue sends holds a `File` or a `FileContents`, each of which only the runtime builds";
     TYPE_BATCH_ORDER_UPDATABLE: "type.batch_order_updatable", area 12, Declinable, Agent,
-        "A batch walks a query ordered by a field an update can change";
+        "A batch's `from:` is a query ordered by a field an update can change";
     TYPE_BATCH_ROW_INVALID: "type.batch_row_invalid", area 12, Error, Agent,
-        "A file helper's rows can't be read as the type its `as:` names or from where its `items_at:` says, its `max_unpacked_size:` isn't a size, or its rows can't be written as the row its `each:` gives";
+        "A file helper's rows can't be read as the `Input` its `as:` names or written as the `Output` its `each:` gives, or `json.read`'s `items_at:` isn't member names written out between dots, or a reader's `max_unpacked_size:` isn't a size";
     TYPE_CLOCK_CONTEXT: "type.clock_context", area 10, Error, Agent,
-        "The operation clock is unavailable in this context";
+        "A function, a library function, an inline function or a backfill reads `clock.now`, or calls an operation that reads the clock such as `crypto.verify_jwt`, which only an action may do";
     TYPE_CONSTRAINT_BASE: "type.constraint_base", area 2, Error, Agent,
-        "Constraint does not fit the type's base";
+        "A type gives a constraint that doesn't apply to what it is built on, such as `min` on a `Text` type";
     TYPE_CONSTRAINT_CONTRADICTION: "type.constraint_contradiction", area 2, Error, Agent,
-        "Constraints contradict each other";
+        "A type's constraints leave no value that follows them all, such as a `max_length` below its `min_length`";
     TYPE_CONSTRAINT_LOOSENED: "type.constraint_loosened", area 2, Error, Agent,
         "A type that builds on another sets a looser bound than the one it inherits, such as a higher `max_length`";
     TYPE_CONSTRAINT_REPEATED: "type.constraint_repeated", area 2, Error, Agent,
-        "Constraint is given twice";
+        "A type gives the same constraint more than once";
     TYPE_CONSTRUCTOR_ARGUMENT_COUNT: "type.constructor_argument_count", area 2, Error, Agent,
-        "Constructor is not given exactly one value";
+        "A type's constructor, such as `Quantity(...)`, is given more or fewer than one value";
     TYPE_CONSTRUCTOR_INPUT: "type.constructor_input", area 2, Error, Agent,
         "A type's constructor is given a value it can't convert, because the value is built on a different kind of value or may be `none`";
     TYPE_COPY_CLASH: "type.copy_clash", area 2, Error, Agent,
-        "Copied field would replace another field";
+        "A type copies a field with `include` or `pick` that another `include` or `pick` above it has already brought in";
     TYPE_COPY_CYCLE: "type.copy_cycle", area 2, Error, Agent,
-        "Type includes its own fields";
+        "A type's `include` leads back to the type itself, directly or through another type";
     TYPE_COPY_INTO_INPUT: "type.copy_into_input", area 2, Error, Human,
         "An `Input` type copies every field of another type with `include`, so a request could set any of them";
     TYPE_DECIMAL_SCALE_REQUIRED: "type.decimal_scale_required", area 2, Error, Agent,
-        "Decimal type has no scale";
+        "A type built on `Decimal` doesn't say its `scale`, the number of decimal places it keeps";
     TYPE_DIVISOR_ZERO: "type.divisor_zero", area 3, Error, Agent,
         "A division's divisor has a type that allows zero, so the division could fail when the program runs";
     TYPE_DUPLICATE_FIELD: "type.duplicate_field", area 2, Error, Agent,
-        "Field is given twice";
+        "A value is built with the same field given twice, or a type declares a field twice";
     TYPE_DUPLICATE_VARIANT: "type.duplicate_variant", area 2, Error, Agent,
-        "Enum variant is declared twice";
+        "An enum declares the same variant twice";
     TYPE_DUPLICATE_VARIANT_FIELD: "type.duplicate_variant_field", area 2, Error, Agent,
-        "Variant field is given twice";
+        "An enum variant's value is built with the same field given twice, or a variant declares a field twice";
     TYPE_ENUM_EMPTY: "type.enum_empty", area 2, Error, Agent,
-        "Enum declares no variants";
+        "An enum declares no variants";
     TYPE_ENUM_LABEL: "type.enum_label", area 2, Error, Agent,
-        "Enum variant is given a label or a value";
+        "An enum variant is given a label or a value, as in `open: \"Open\"`";
     TYPE_FIELD_ON_NON_RECORD: "type.field_on_non_record", area 2, Error, Agent,
         "Field is read from a value without fields";
     TYPE_FIELD_UNPROVED: "type.field_unproved", area 2, Error, Agent,
@@ -1474,6 +1522,8 @@ rules! {
         "Principal's subject field is not unique";
     TYPE_RANDOM_CONTEXT: "type.random_context", area 19, Error, Agent,
         "Randomness is read outside an action";
+    TYPE_RECORD_TYPE_ARGUMENTS: "type.record_type_arguments", area 2, Error, Agent,
+        "A record names its type with type arguments, which come from its place or its values";
     TYPE_REDUNDANT_NULLABILITY: "type.redundant_nullability", area 2, Error, Agent,
         "Type is already nullable";
     TYPE_RESERVED_FIELD_NAME: "type.reserved_field_name", area 2, Error, Agent,
@@ -1562,13 +1612,18 @@ pub fn find(id: &str) -> Option<&'static Rule> {
 /// What a declinable rule's next step adds: the line that declines it,
 /// and for a security rule that a person accepts the decline.
 pub fn decline_offer(rule: &Rule) -> String {
+    decline_offer_above(rule, "it")
+}
+
+/// As [`decline_offer`], the line going above `above`.
+fn decline_offer_above(rule: &Rule, above: &str) -> String {
     let accepted = if rule.security {
         ", which a person then accepts"
     } else {
         ""
     };
     format!(
-        ", or write `decline {}: \"<why>\"` above it if this is deliberate{accepted}",
+        ", or write `decline {}: \"<why>\"` above {above} if this is deliberate{accepted}",
         rule.id
     )
 }
@@ -1629,6 +1684,35 @@ pub struct Diagnostic {
     /// file (`semantic.duplicate_declaration`, area 1): printed as the `in
     /// use` field after `next`.
     pub in_use: Vec<(String, String)>,
+    /// Which earlier diagnostic of the same list says the same thing, by
+    /// its place: this one has no `reason` of its own, set by
+    /// [`shorten_repeats`].
+    pub repeat_of: Option<usize>,
+}
+
+/// Shortens a list of diagnostics for the one reading them, whose context
+/// it costs (chunk A14; CLI design language, "Repeats"): a diagnostic with
+/// the same rule and reason as an earlier one keeps its headline, place,
+/// next step and edits, and points back rather than saying why again.
+/// `--full` leaves the list as it is.
+pub fn shorten_repeats(diagnostics: &mut [Diagnostic]) {
+    let mut first: Vec<(&'static str, String, usize)> = Vec::new();
+    for (index, diagnostic) in diagnostics.iter_mut().enumerate() {
+        let Some(reason) = &diagnostic.reason else {
+            continue;
+        };
+        let rule = diagnostic.rule.id;
+        match first
+            .iter()
+            .find(|(seen, said, _)| *seen == rule && said == reason)
+        {
+            Some((_, _, at)) => {
+                diagnostic.repeat_of = Some(*at);
+                diagnostic.reason = None;
+            }
+            None => first.push((rule, reason.clone(), index)),
+        }
+    }
 }
 
 impl Diagnostic {
@@ -1642,6 +1726,7 @@ impl Diagnostic {
             next: None,
             impact: None,
             in_use: Vec::new(),
+            repeat_of: None,
         }
     }
 
@@ -1688,6 +1773,19 @@ impl Diagnostic {
         self.next = Some(Next {
             text,
             decides,
+            edits: Vec::new(),
+        });
+        self
+    }
+
+    /// As [`Diagnostic::next`], for a finding in a body, where no `decline`
+    /// can go: the decline line goes above `above`, the declaration around it.
+    pub fn next_declined_above(mut self, text: impl Into<String>, above: &str) -> Diagnostic {
+        let mut text = text.into();
+        text.push_str(&decline_offer_above(self.rule, above));
+        self.next = Some(Next {
+            text,
+            decides: self.rule.decides,
             edits: Vec::new(),
         });
         self

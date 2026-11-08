@@ -1,0 +1,10 @@
+// A package's index: its description, its licence and the earliest Jadpo
+// version it needs, and nothing else. The folder gives its name in code,
+// `Postcodes`, and its version, `v1`; `jadpo.lock` at the project's root
+// pins every file in the folder by its digest.
+
+/// UK postcodes: reading them as people type them.
+package Postcodes.v1 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}

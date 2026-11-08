@@ -225,6 +225,12 @@ fn a_personal_value_is_not_kept_in_a_history_yet() {
         "toolchain.not_built_yet",
         "Auditing `Invoice` isn't built yet",
     );
+    // An email address is one, with nothing marking it.
+    refused_once(
+        &INVOICE.replace("    note: Note?\n", "    note: Note?\n    payer: Email\n"),
+        "toolchain.not_built_yet",
+        "Auditing `Invoice` isn't built yet",
+    );
 }
 
 #[test]

@@ -5,7 +5,7 @@ area: 12
 
 # Jobs and events: design notes
 
-Why [Jobs and events](../12-jobs-and-events.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
+Why [Background work](../12-jobs-and-events.md) is the way it is: the decisions behind it, how it fits the rest of the language and what it carried to other areas. An app author reads the area page, not this one.
 
 ## Consistency with the rest of the language
 
@@ -153,6 +153,7 @@ Carried from other areas, and the choices the topic sections leave open:
 | Topic | Decision |
 |---|---|
 | Triggers | From area 1: routes, schedules and subscribers each call actions; durable workflows are subscribers |
+| Background work and `FieldAccess.server_only` | The system may write one (Richard's standing instruction, 2026-11-04; chunk A23). Area 9 says only that no request may touch the field, and no request is ever the system, so nothing keeps it out. A field's write adds the condition "this is the system", as `update: [Access.system]` does, so the same statement refuses every request on the interpreter, in native code and on Workers. A read isn't changed: the system's reads are never narrowed by a field's list, and a route's proof still says no client may read it |
 | Keyword and folders | From area 1: `schedule` in `schedules/`; events in `events/`; subscribers in `subscribers/` |
 | Cross-domain changes | From area 1: public actions inside the caller's transaction, or events for reactions that need not be all-or-nothing |
 | Actions | From area 3: every action is all-or-nothing and has no settings; `attempt` only on calls that can fail |
@@ -176,7 +177,7 @@ Carried from other areas, and the choices the topic sections leave open:
 
 ## Moved from the area page
 
-When [Jobs and events](../12-jobs-and-events.md) was rewritten to the
+When [Background work](../12-jobs-and-events.md) was rewritten to the
 [writing guide](../../writing.md), its references to the decisions
 above by number, its comparisons with other frameworks and its pointers
 into this page moved here. Nothing in this list changed a rule.

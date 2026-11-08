@@ -626,11 +626,23 @@ pub fn reserved_word_domains(db: &dyn Db, project: Project) -> Vec<(String, Diag
                 format!(
                     "Rename the folder `domains/{domain}/` after the business area it covers, and write the new name wherever `{domain}.` names the domain"
                 ),
-                Decider::Human,
+                domain_rename(db, project),
             ),
         ));
     }
     out
+}
+
+/// Who decides a domain's new name: its people once the project has a
+/// commit, since a domain is a boundary other code is shaped around, and
+/// the agent until then, since no one depends on it yet (area 1, "Domains";
+/// chunk A14).
+fn domain_rename(db: &dyn Db, project: Project) -> Decider {
+    if project.committed(db) {
+        Decider::Human
+    } else {
+        Decider::Agent
+    }
 }
 
 /// Naming problems of the domains themselves, read from folder names. A
@@ -668,7 +680,7 @@ pub fn domain_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         } else if names.is_generic(domain) {
             out.push(generic(domain, "domain", span).next_for(
                 format!("Rename `domains/{domain}/` after the business area it covers"),
-                Decider::Human,
+                domain_rename(db, project),
             ));
         }
     }

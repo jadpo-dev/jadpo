@@ -6,16 +6,17 @@ checked-with: this checkout's jadpo on every gate run
 ---
 
 # Standard library
-<!-- topic: standard-library -->
+<!-- topic: standard-library (was language-gaps-this-page-depends-on, scenario-applications) -->
 
-The standard library is the set of types and operations every program can
-use without declaring them, such as `Money`, `list.count(items)` and
-`temporal.in_zone(at, zone)`. A few are defined on the pages whose
+The standard library is the set of operations every program can use without
+declaring them, such as `list.count(items)` and `temporal.in_zone(at, zone)`,
+over the standard types, such as `Money`. A few are defined on the pages whose
 features need them: [Values and types](02-values-and-types.md),
-[Logic](03-logic.md) and [Configuration and time](10-configuration-and-time.md).
-This page collects them all, adds the types and operations real
-applications keep reaching for, lists the language changes they rely on,
-and says what is left out on purpose.
+[Logic](03-logic.md) and [Dates and times](10-configuration-and-time.md#time-types).
+This page collects the operations, and adds the ones real applications keep
+reaching for. [Standard types](https://jadpo.dev/docs/types) lists every type.
+[What's left out on purpose](#whats-left-out-on-purpose) says what to use
+instead.
 
 Operations are grouped into namespaces, each named for what it works on.
 You always call an operation through its namespace: `list.count(items)`,
@@ -30,17 +31,19 @@ never `count(items)`.
 | `integer` | Operations on values built on `Int` | 5 (1 from Logic) | This page and [Logic](03-logic.md) |
 | `decimal` | Operations on values built on `Decimal` | 13 (1 from Logic) | This page and [Logic](03-logic.md) |
 | `money` | `Money`, its rates and discounts | 10 | This page |
+| `postal` | A UK postcode's parts | 7 | This page |
 | `units` | Physical quantities, `DataSize` and `Bitrate` | 3 | This page |
 | `text` | Operations on text, and the contract's `parse`, `format` and `from` for every type | 21 | This page |
+| `bytes` | Joining bytes | 1 | This page |
 | `hash` | SHA-256 digests | 1 | This page |
 | `encoding` | Bytes as text and back | 9 | This page |
 | `crypto` | Encryption, passwords, signatures, message authentication | 10 | This page |
 | `random` | Tokens, codes, shuffles; actions only | 5 | This page |
-| `json` | One JSON document in memory, and large JSON lists through batches | 4 | This page; the batch forms in [Batches](12-jobs-and-events.md#batches-work-over-many-items) |
-| `csv` | CSV files, read and written through batches | 2 | [Batches](12-jobs-and-events.md#batches-work-over-many-items) |
-| `tsv` | TSV files, CSV's tab-separated form | 2 | [Batches](12-jobs-and-events.md#batches-work-over-many-items) |
-| `json_lines` | JSON Lines files, one value per line | 2 | [Batches](12-jobs-and-events.md#batches-work-over-many-items) |
-| `temporal` | Instants, dates, local times, zones, formats, recurrence | 24 (21 from Configuration and time) | [Zones and local times](10-configuration-and-time.md#zones-and-local-times) and this page |
+| `json` | One JSON document in memory, and large JSON lists through batches | 4 | This page; the batch forms in [Batches](12-jobs-and-events.md#batches) |
+| `csv` | CSV files, read and written through batches | 2 | [Batches](12-jobs-and-events.md#batches) |
+| `tsv` | TSV files, CSV's tab-separated form | 2 | [Batches](12-jobs-and-events.md#batches) |
+| `json_lines` | JSON Lines files, one value per line | 2 | [Batches](12-jobs-and-events.md#batches) |
+| `temporal` | Instants, dates, local times, zones, formats, recurrence | 24 (21 from Dates and times) | [Zones and local times](10-configuration-and-time.md#zones-and-local-times) and this page |
 | `locale` | Choosing a supported locale | 1 | [Choosing a locale from a request](10-configuration-and-time.md#choosing-a-locale-from-a-request) |
 | `colour` | Converting `Colour` between spaces, contrast | 5 | This page |
 | `web` | Building URLs, address blocks | 3 | This page |
@@ -48,9 +51,9 @@ never `count(items)`.
 | `media` | Fitting dimensions | 1 | This page |
 | `markup` | Markdown and HTML, made safe | 3 | This page |
 
-There are 171 operations in all: 28 defined on the Values and types,
-Logic, and Configuration and time pages, 8 file helpers defined with
-[batches](12-jobs-and-events.md#batches-work-over-many-items), and 135
+There are 178 operations in all: 28 defined on the Values and types,
+Logic, and Dates and times pages, 8 file helpers defined with
+[batches](12-jobs-and-events.md#batches), and 142
 defined here. Operators are counted apart, in
 [the standard operator table](#the-standard-operator-table). Operations
 on geometry and AI are counted on the [Geospatial](20-geospatial.md) and
@@ -59,89 +62,25 @@ on geometry and AI are counted on the [Geospatial](20-geospatial.md) and
 Every standard type also gets the same baseline of operations, generated
 for it and not counted per type: construction, `text.parse`,
 `text.format`, `text.from`, JSON, storage, `==` and order
-([Every standard type meets one contract](#every-standard-type-meets-one-contract)).
+([What every standard type can do](#what-every-standard-type-can-do)).
 
 The [design notes](notes/19-standard-library.md) record why each part of
 this page is the way it is, and [What is built](#what-is-built) says
 which parts work today. One operation, `crypto.verify_totp`, isn't built
 yet.
 
-## Shared vocabulary types
-<!-- topic: shared-vocabulary-types -->
+## How standard types are named, and what is left out
+<!-- topic: the-standard-types (was shared-vocabulary-types) -->
 
-Some types are needed by nearly every package and app, and each would
-otherwise invent its own. Geospatial libraries disagree on whether a
-point is `[lat, lng]` or `[lng, lat]`, and payment libraries on whether
-ten pounds is `10.00`, `"10.00"` or `1000`. When the language owns the
-type, every package and every app uses the same one, and that whole class
-of bug goes away. So the standard library defines a type wherever two
-packages would otherwise each define their own, even when the heavy
-operations on it live in a package or on another page.
-
-- **Each one is defined once.** It has one construction that validates
-  it, one shape on the wire and one shape in storage. Nothing else may
-  give it a second.
-- **Ambiguity is designed out.** Fields are named, never positional:
-  `Point { latitude: ...  longitude: ... }`, never a pair. An axis order
-  appears only in a conversion whose name says it: `geo.from_lng_lat(list)`,
-  `geo.from_lat_lng(list)`, `geo.from_geojson`.
-- **The types are global names.** Every standard type is a global name,
-  as `Email` and `Instant` are, so you write `PostalAddress`, never
-  something like `geo.Point`. Only the functions live in namespaces
-  (`geo.`, `money.`, `list.`).
-- **Your app names its own types for their purpose.** Don't declare your
-  own `Address`. Name a type for what it is for and what it holds:
-  `DeliveryStop { address: PostalAddress }`, `BillingContact`.
-- **A standard type's name can't be reused.** Declaring a type with a
-  standard type's name is the error `type.standard_clash`
-  ([A release that adds a standard type](#a-release-that-adds-a-standard-type)),
-  as reusing any built-in name is an error
-  ([Values and types](02-values-and-types.md)). So the shape check below
-  only has to catch equivalents under other names.
-- **Packages and apps use them.** When a package's public types, or your
-  app's own code, declare their own equivalent of a standard type, the
-  compiler reports the error `type.standard_exists`, pointing at the
-  standard type ([Packages use the standard types](#packages-use-the-standard-types)).
-  You can decline it with a reason. It is an error rather than a warning
-  because Jadpo has no warnings
-  ([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
-
-## The standard types
-<!-- topic: the-standard-types -->
-
-There are 247 standard types, listed here by group. Each part or kind a
-standard type names is a standard type too, so it is read, sent and
-stored by its code: `IdentityDocumentKind`, `InterestRateBasis`,
-`ContentRatingScheme`, `RichTextBlock`, `RichTextSpan`, `RichTextMark`,
-`ClothingSizeSystem`, `ShoeSizeSystem`, `RouteOfAdministration` and
-`ChatRole`. GeoJSON's `Feature` and `FeatureCollection` are defined on
-the [Geospatial](20-geospatial.md) page.
-
-In the table, "(enum)" marks a closed list held as a built-in enum, and
-"Extras in" names the namespace whose operations go beyond the
-[baseline](#every-standard-type-meets-one-contract). Every type is built,
-which the bold marks.
-
-| Group | Types | Extras in |
-|---|---|---|
-| People and contact (12) | **`PersonName`**, **`GivenName`**, **`FamilyName`**, **`Username`**, **`Email`**, **`EmailWithName`**, **`PhoneNumber`**, **`PhoneExtension`**, **`PostalAddress`**, **`PostalCode`**, **`Uprn`**, **`Nationality`** (enum) | `web` |
-| Places (10) | **`Country`** (enum), **`CountrySubdivision`** (enum), **`Continent`** (enum), **`UnLocode`**, **`CallingCode`**, **`Language`** (enum), **`WritingScript`** (enum), **`TextDirection`** (enum), **`Locale`** (enum), **`Zone`** (enum) | |
-| Geospatial (17) | **`Point`** (optional altitude), **`Latitude`**, **`Longitude`**, **`LineString`**, **`Polygon`**, **`MultiPoint`**, **`MultiLineString`**, **`MultiPolygon`**, **`Geometry`**, **`BoundingBox`**, **`Circle`**, **`Bearing`**, **`Crs`**, **`EastingNorthing`**, **`MapTile`**, **`H3Cell`**, **`Geohash`** | `geo` ([Geospatial](20-geospatial.md)) |
-| Money and banking (24) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, **`Price`**, **`UnitPrice`**, **`TaxRate`**, **`Discount`**, **`BasisPoints`**, **`InterestRate`**, **`PaymentCardNumber`**, **`MaskedCardNumber`**, **`CardBrand`** (enum), **`CardBin`**, **`CardExpiry`**, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, **`BankAccount`**, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`** | `money` |
-| Tax and identity numbers (11, and `IdentityDocumentKind`) | **`VatNumber`**, **`TaxId`**, **`UkUtr`**, **`UkCompanyNumber`**, **`UkNationalInsuranceNumber`**, **`UsSsn`**, **`UsEin`**, **`PassportNumber`**, **`DrivingLicenceNumber`**, **`IdentityDocument`** with **`IdentityDocumentKind`** (enum), **`NhsNumber`** | |
-| Commerce and logistics (20, and `ClothingSizeSystem` and `ShoeSizeSystem`) | **`Sku`**, **`Ean13`**, **`UpcA`**, **`Isbn`**, **`Sscc`**, **`Barcode`**, **`UnitQuantity`**, **`Rating`**, **`ClothingSize`** with **`ClothingSizeSystem`** (enum), **`ShoeSize`** with **`ShoeSizeSystem`** (enum), **`Dimensions`**, **`HsCode`**, **`Incoterm`** (enum), **`TrackingNumber`**, **`Carrier`**, **`ContainerNumber`**, **`LotNumber`**, **`SerialNumber`**, **`Vin`**, **`VehicleRegistration`** | `units`, `media` |
-| Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, **`RecurrenceRule`**, **`OpeningHours`**, **`CalendarEvent`** | `temporal`, `range` |
-| Physical quantities (17) | **`Length`**, **`Area`**, **`Volume`**, **`Angle`**, **`Mass`**, **`Pressure`**, **`Energy`**, **`Power`**, **`Temperature`**, **`TemperatureDifference`**, **`Speed`**, **`Frequency`**, **`Voltage`**, **`Current`**, **`Illuminance`**, **`SoundLevel`**, **`Concentration`** | `units` |
-| Maths and data (8) | **`Percentage`**, **`Ratio`**, **`Fraction`**, **`Range<T>`**, **`DataSize`**, **`Bitrate`**, **`Vector`**, **`Embedding`** | `range`, `units`; [AI](21-ai.md) |
-| Health (9, and `RouteOfAdministration`) | **`BloodType`** (enum), **`Icd10Code`**, **`SnomedConcept`**, **`Dose`**, **`DosageInstruction`** with **`RouteOfAdministration`** (enum), **`HeartRate`**, **`BloodPressure`**, **`BloodGlucose`**, **`Allergen`** (enum) | |
-| Media and visual (15, and `ContentRatingScheme`) | **`Colour`**, **`ImageDimensions`**, **`AspectRatio`**, **`Rect`**, **`Insets`**, **`PaperSize`** (enum), **`ExifOrientation`** (enum), **`AltText`**, **`FrameRate`**, **`VideoResolution`**, **`VideoCodec`**, **`AudioCodec`**, **`Timecode`**, **`SubtitleCue`**, **`ContentRating`** with **`ContentRatingScheme`** (enum) | `colour`, `media` |
-| Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
-| Software (19) | **`SemanticVersion`**, **`VersionRange`**, **`GitRef`**, **`PackageUrl`**, **`Cve`**, **`SpdxLicence`**, **`TraceId`**, **`SpanId`**, **`TraceParent`**, **`LogLevel`** (enum), **`FilePath`**, **`FileName`**, **`RegularExpression`**, **`ContainerImage`**, **`Digest`**, **`Uuid`**, **`Ulid`**, **`IdempotencyKey`**, **`Doi`** | `semver` |
-| Text formats (4) | **`Markdown`**, **`Html`**, **`RichText`**, **`LocalisedText`** | `markup`, `text` |
-| Security (20) | **`Password`**, **`PasswordHash`**, **`PasswordPolicy`**, **`Hash`**, **`Hmac`**, **`Jwt`**, **`JwtClaims`**, **`Jwk`**, **`PublicKey`**, **`PrivateKey`**, **`Certificate`**, **`TotpSecret`**, **`OneTimeCode`**, **`ApiKey`**, **`SecretText`**, **`BearerToken`**, **`OAuthScope`**, **`OidcClaims`**, **`WebAuthnCredential`**, **`EncryptedValue`** | `crypto` |
-| Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, **`FlightNumber`**, **`CabinClass`** (enum), **`BookingReference`** | |
-| Other with a published standard (10) | **`UnNumber`**, **`Orcid`**, **`CefrLevel`** (enum), **`Mpan`**, **`Mprn`**, **`EpcRating`** (enum), **`Tenure`** (enum), **`LawfulBasis`** (enum), **`Jurisdiction`**, **`ModelId`** | |
-| AI (3, and `ChatRole`) | **`TokenCount`**, **`TokenUsage`**, **`ChatMessage`** with **`ChatRole`** (enum) | [AI](21-ai.md) |
+A standard type's name says exactly what it is, and a type you might look for
+may be part of another or left for your app to define.
+[Standard types](https://jadpo.dev/docs/types) lists every one, from A to Z and
+by group, and each has a page saying what it is and how to make one. Each part
+or kind a standard type names is a standard type too: `IdentityDocument`'s
+`IdentityDocumentKind`, or `RichText`'s `RichTextBlock`. GeoJSON's `Feature` and
+`FeatureCollection` are explained on the [Geospatial](20-geospatial.md) page. Why
+Jadpo defines these types itself is in the
+[design notes](notes/19-standard-library.md#shared-vocabulary-types).
 
 Three rules shape the list:
 
@@ -198,16 +137,62 @@ entities are left out:
 | Formats: `Hex`, `Base64`, `Wkt`, `Json`, `CsvDialect`, `MessageFormat`, `VCard`, `OtpAuthUri`, `CssLength` | Out: `encoding.` and `json.` operations |
 | Application entities: `Recipe`, `HotelStay`, `OrderStatus`, `PaymentStatus`, `Consent`, `SensorReading`, `StoredFile`, `UserId`, `Allergy` and 31 more | Out: an application's own records |
 | `Gender`, `SexAtBirth`, `Cvv` | Out: sensitive (a CVV is never stored) |
-| `HashAlgorithm`, `KeyAlgorithm`; `SessionId`; `AcceptLanguage` | Out: no algorithm choices; the runtime's ([Identity](08-identity.md)); a call, `locale.from_accept_language` |
+| `HashAlgorithm`, `KeyAlgorithm`; `SessionId`; `AcceptLanguage` | Out: no algorithm choices; the runtime's ([Sign-in and identity](08-identity.md)); a call, `locale.from_accept_language` |
 | Niche, silly, or a maybe with no published standard | Out: 729 entries, a package's to define |
 
-## Every standard type meets one contract
+### What's left out on purpose
+
+Some things you might reach for aren't in the standard library, each for a
+reason and with something to use instead:
+
+| Left out | Why | Instead |
+|---|---|---|
+| Generic functions in your own code | They bring type-parameter errors for agents to fight | The standard library stays generic |
+| `reduce`, `fold` | A second way to accumulate | `for` with `var mut`; `list.sum` |
+| Comparators | A key expresses every order, and an inconsistent comparator differs by target | `sort_by`, `reverse` |
+| `items[i]` | Out of range needs an arm or a defect | `list.at` gives `T?` |
+| Regular expressions as calls | A pattern is a type's rule, in linear time | `pattern:` and construction ([Values and types](02-values-and-types.md)) |
+| Graphemes | They'd disagree with `max_length` and PostgreSQL, and change with each Unicode version | Code points |
+| Dynamic keys on records | A field is its own type and carries its own policy and marks | `Map` |
+| A dynamic JSON value | Nothing Jadpo is meant for needs one | `json.read(..., as:)`; `Text` to pass on |
+| CSV in memory | One way to read rows | `csv.read` through a store |
+| MD5, SHA-1 | Broken | A package |
+| Bitwise operations | Flags read better as a set; device formats belong in their package | `Set<Enum>` |
+| Fetching exchange rates | Outside data with a time and a source | A provider package; `money.convert` applies a rate the app holds |
+| Gender, sex at birth | Contested, and personal data | The app's own type, marked sensitive ([Personal data](15-personal-data.md)) |
+| CMYK and print colour | Needs a colour profile | A package on the standard `Colour` |
+| Training models | Needs GPUs, datasets and long jobs | A package or an outside service |
+| Aliases (`size` for `count`) | One obvious name each | The name this page gives |
+
+## What every standard type can do
 <!-- topic: every-standard-type-meets-one-contract -->
 
 Every standard type comes with the same baseline of operations, so once
 you know how one type is built, read, sent, stored and shown, you know
 them all. Some types add operations of their own on top
 ([Extras beyond the baseline](#extras-beyond-the-baseline)).
+
+Here is a time zone, read from text, written back and shown to a person.
+Save this as `main.jadpo` and run `jadpo test main.jadpo`:
+
+```jadpo check project=contract-first
+type NotAZone = Failure {
+    kind: FailureKind.invalid_value
+}
+
+test "a zone is read, written and shown one way" {
+    var zone: Zone = attempt text.parse("Europe/London", as: Zone) {
+        malformed: NotAZone
+    }
+    assert zone == Zone.europe_london
+    assert text.from(zone) == "Europe/London"
+    assert text.format(zone, locale: Locale.en_gb) == "UK Time"
+}
+```
+
+`Zone`, `Locale` and `text.` are built in, and `NotAZone` is the failure this
+example declares for text that isn't a zone. Every standard type has the
+same operations:
 
 | Baseline | What it is | Where a type has none |
 |---|---|---|
@@ -229,7 +214,7 @@ be built on a built-in type with bounds of its own (`TaxRate`), or be a
 named collection (`RichText` a list, `LocalisedText` a map). A named
 collection is built, sent and read as one your app declares is. Every
 standard object and choice is stored in named columns laid out from its
-parts ([Every boundary through the contract](#every-boundary-through-the-contract)).
+parts ([How a standard value is sent, stored and shown](#how-a-standard-value-is-sent-stored-and-shown)).
 
 `jadpo suggest` uses each standard type's shape and its signals, such as
 conversion constants, the words of names, format literals and validation
@@ -293,23 +278,24 @@ test "standard values are read, written and shown one way" {
 ### Extras beyond the baseline
 
 Many groups of types have operations beyond the baseline. Each has its
-full table under [Operations](#operations):
+full table under [All operations](#all-operations):
 
 | Group | Extras | Count |
 |---|---|---|
 | Money and payments | `money.from_minor`, `of`, `minor`, `currency`, `sum`, `allocate`, `split`, `convert` (with a given `ExchangeRate`, never fetched), `mask` (a `MaskedCardNumber` from a `PaymentCardNumber`), `apply_discount` (a `Discount` off a `Price`) | 10; arithmetic by the operator table |
 | Physical quantities, `DataSize`, `Bitrate` | `units.of`, `in`, `sum`; operators within a kind and the defined products and quotients | 3 |
-| Time and calendar | The 21 from [Configuration and time](10-configuration-and-time.md), plus `temporal.occurrences`, `temporal.open_at` and `temporal.period_between`; `CalendarPeriod` arithmetic by the operator table | 3 new |
+| Time and calendar | The 21 from [Dates and times](10-configuration-and-time.md#time-types), plus `temporal.occurrences`, `temporal.open_at` and `temporal.period_between`; `CalendarPeriod` arithmetic by the operator table | 3 new |
 | Ranges (`Range<T>`, `DateRange`, `InstantRange`) | `range.contains`, `range.overlaps`, `range.intersection` | 3 |
 | Colour | `colour.from_hsl`, `from_oklch`, `mix`, `with_lightness`, `contrast` (WCAG 2) | 5 |
 | Security | `crypto` as tabled below, with `sign`, `verify_signature`, `verify_jwt` and `verify_totp` | 10 |
 | Web | `web.with_query(url, entries)`, `web.resolve(base, relative)`, `web.cidr_contains(range, address)` | 3 |
-| Software | `semver.satisfies(version, range)` | 1 |
+| Software | `semver.satisfies(version, range)`, `names.registry_part(name)` | 2 |
 | Media | `media.fit(dimensions, within:)`, keeping the aspect ratio | 1 |
+| Postal codes | `postal.outward_code`, `inward_code`, `area`, `district`, `sub_district`, `sector` and `unit`: a UK postcode's parts by Royal Mail's format | 7 |
 | Text formats | `markup.to_html`, `rich_to_html`, `to_plain_text`; `text.pick` with fallback. `Html` is always safe: its construction sanitises | 4 |
 | Geometry | `geo.distance`, `length`, `bearing`, `area`, `intersects`, `contains`, `within`, `centroid`, `bounding_box`, the constructions and WKT's two | [Geospatial](20-geospatial.md) |
 | AI (`Vector`, `Embedding`, `ChatMessage`) | `ai.generate`, `stream`, `embed`, `embed_all`, `distance` | [AI](21-ai.md) |
-| People, places, identity numbers, commerce codes, health, travel, other | Baseline only: each identifier's check digit or pattern is its construction | |
+| Other people and places types, identity numbers, commerce codes, health, travel, other | Baseline only: each identifier's check digit or pattern is its construction | |
 
 ### Rules across a type's parts
 
@@ -491,7 +477,7 @@ function winter_sale() -> DateRange {
 }
 ```
 
-## Every boundary through the contract
+## How a standard value is sent, stored and shown
 <!-- topic: every-boundary-through-the-contract -->
 
 A standard value keeps its currency, unit and precision wherever it goes
@@ -502,21 +488,21 @@ never through an encoder of its own:
 | Boundary | Encoding | Specified in |
 |---|---|---|
 | HTTP requests and responses, OpenAPI | The contract's JSON, through the route codec | [HTTP](07-http.md), this page |
-| Storage and migrations | The contract's storage: one column, named columns laid out from the type's parts, or a native PostgreSQL type (a range, `time`, `timestamp`); a quantity's column carries a comment naming its SI unit; a fixed currency or rate a check constraint | [Data](05-data.md), this page |
-| SQL literals: a query's or a lifecycle's condition, a transition's `set:`, a backfill | The value the storage codec makes, which the runtime binds: a parameter wherever the statement takes one, otherwise that value written as SQL text | [Data](05-data.md) and [Reads and writes](06-reads-and-writes.md), this page |
-| Caches and Redis entities | The contract's JSON, as [Caches](05-data.md#caches) holds the API's JSON there | [Data](05-data.md) |
-| Event, job and batch payloads | The contract's JSON of the event's or the job's type, written and read by the route codec, and a batch's captured values the same; read with the type as it is when delivered, so a change an API record would call breaking needs an [acceptance](18-records-and-manifest.md#acceptances), and a payload that no longer reads is parked, never dropped | [Jobs and events](12-jobs-and-events.md) |
+| Storage and migrations | The contract's storage: one column, named columns laid out from the type's parts, or a native PostgreSQL type (a range, `time`, `timestamp`); a quantity's column carries a comment naming its SI unit; a fixed currency or rate a check constraint | [Entities, stores and migrations](05-data.md), this page |
+| SQL literals: a query's or a lifecycle's condition, a transition's `set:`, a backfill | The value the storage codec makes, which the runtime binds: a parameter wherever the statement takes one, otherwise that value written as SQL text | [Entities, stores and migrations](05-data.md) and [Reads and writes](06-reads-and-writes.md), this page |
+| Caches and Redis entities | The contract's JSON, as [Caches](05-data.md#caches) holds the API's JSON there | [Entities, stores and migrations](05-data.md) |
+| Event, job and batch payloads | The contract's JSON of the event's or the job's type, written and read by the route codec, and a batch's captured values the same; read with the type as it is when delivered, so a change an API record would call breaking needs an [acceptance](18-records-and-manifest.md#acceptances), and a payload that no longer reads is parked, never dropped | [Background work](12-jobs-and-events.md) |
 | CSV and TSV cells | A standard type's canonical text (`text.from`), read by `text.parse`; a type with no single text form (`PostalAddress`, `Price`, a choice) is the compile error naming JSON Lines that a list or an object is | This page, [Data formats](#data-formats-json-csv-tsv-and-json-lines) |
 | JSON Lines rows, `json.read` and `json.write` | The contract's JSON | This page |
 | Logs and traces | Values as [Logging](04-failures.md#logging) and [Personal data](15-personal-data.md) allow; a personal value's keyed hash covers the UTF-8 of its canonical text, or of its contract JSON where it has no single text form | [Personal data](15-personal-data.md) |
 | Settings | `text.parse`'s canonical text, with the source spellings a setting also takes (`5m`) | [Settings](10-configuration-and-time.md#settings-configjadpo) |
-| Translation placeholders and email | Shown to people by `text.format` (`PresentationText`), never read back | [Configuration and time](10-configuration-and-time.md) and [Built-in services](16-built-in-services.md) |
-| Outbound provider calls and webhooks | The contract's JSON for a field without `wire:`; `wire:` only names another encoding a provider uses | [Integrations](11-integrations.md) |
-| Records and the manifest | Types and defaults as source writes them; no runtime values | [Records and manifest](18-records-and-manifest.md) |
-| Test fixtures and seeds | Written through the actions they call, so through storage | [Data](05-data.md) and [Testing](13-testing.md) |
+| Translation placeholders and email | Shown to people by `text.format` (`PresentationText`), never read back | [Translations as messages](10-configuration-and-time.md#translations-as-messages) and [Built-in services](16-built-in-services.md) |
+| Outbound provider calls and webhooks | The contract's JSON for a field without `wire:`; `wire:` only names another encoding a provider uses | [External services](11-integrations.md) |
+| Records and the manifest | Types and defaults as source writes them; no runtime values | [Review and records](18-records-and-manifest.md) |
+| Test fixtures and seeds | Written through the actions they call, so through storage | [Entities, stores and migrations](05-data.md) and [Testing](13-testing.md) |
 | Files | Bytes; the format namespaces above turn them into values | [Files](16-built-in-services.md#files) |
-| Developer reports | A value as code makes one (`money.from_minor(1050, Currency.gbp)`), which keeps its currency, unit and places and is never read back | [Debugging and review](17-debugging-and-review.md) |
-| The interpreter and compiled code, native and wasm32 | One runtime crate, so one codec for each shape | [The compiler and runtime](../compiler-runtime.md) |
+| Developer reports | A value as code makes one (`money.from_minor(1050, Currency.gbp)`), which keeps its currency, unit and places and is never read back | [Debugging](17-debugging-and-review.md) |
+| The interpreter and compiled code, native and wasm32 | One runtime crate, so one codec for each shape | This page |
 
 Your app's own structured values are stored as their contract's JSON
 too ([Structured values](05-data.md#structured-values)).
@@ -788,7 +774,7 @@ standard type. It does this in a package's public types (the ones
 `surface.jadpo_record` lists) and in your app's own code alike, because
 an app's `Location { lat, lng }` reaches its API and its tables exactly
 as a package's would. You can
-[decline](01-project-layout-and-modules.md#declining-a-judgement-call) it,
+[decline](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason) it,
 so a type with a genuinely different meaning is kept, with a reason on
 its declaration.
 
@@ -877,7 +863,7 @@ reads as under [Errors](#errors).
 
 `Colour`'s alpha is the first field a shape lets an `Object` leave out.
 `LineString` and `Polygon` match through a list, which is one shape, so
-the error names both ([Interop](20-geospatial.md#interop); its example is
+the error names both ([GeoJSON and other formats](20-geospatial.md#geojson-and-other-formats); its example is
 under [Errors](#errors)).
 
 ### Reference lists ship with Jadpo
@@ -888,7 +874,7 @@ in the release, as these enums, not by applications.
 
 Not built yet: the data migration and the acceptances for swapping a type
 already stored or on the wire come with
-[Records and manifest](18-records-and-manifest.md), and until then such a
+[Review and records](18-records-and-manifest.md), and until then such a
 swap stops.
 
 ## A release that adds a standard type
@@ -1003,26 +989,26 @@ The example of `type.standard_clash` is under [Errors](#errors). The
 editor's quick fix is titled "Swap for the standard ...".
 
 Not built yet: the migration and acceptances a swap of a stored type
-needs ([Records and manifest](18-records-and-manifest.md)), and a general
-`jadpo rename` ([the roadmap](../roadmap.md)).
+needs ([Review and records](18-records-and-manifest.md)), and a general
+`jadpo rename`.
 
 ## What every operation follows
 <!-- topic: what-every-operation-follows -->
 
 Every namespace follows the same rules, so a call you haven't seen before
-reads like one you have. Here are some calls, and what they give:
+reads like one you have. Here are some calls, and what they give. Save this
+as `main.jadpo` and run `jadpo test main.jadpo`:
 
-```jadpo fragment
-text.trim(input.title)                                   // "  Rye loaf " gives "Rye loaf"
-text.split("flour,sugar,,eggs", ",")                     // ["flour", "sugar", "", "eggs"]
-text.pad_start(text.from(order.number), 6, fill: "0")    // 42 gives "000042"
-list.sum(list.map(basket.lines, line -> line.price * line.count))
-set.contains(recipe.allergens, Allergen.tree_nuts)
-encoding.to_hex(hash.sha256(upload.body))                // 64 lowercase hexadecimal digits
-attempt encoding.from_base64(input.attachment) {
-    malformed: AttachmentUnreadable
+```jadpo check project=every-operation
+test "calls through the standard library" {
+    assert text.trim("  Rye loaf ") == "Rye loaf"
+    assert text.split("flour,sugar,,eggs", ",") == ["flour", "sugar", "", "eggs"]
+    assert text.pad_start(text.from(42), 6, fill: "0") == "000042"
+    assert list.sum([3, 4, 5]) == 12
 }
 ```
+
+`text.` and `list.` are built-in namespaces, so nothing is imported.
 
 - **One namespace per type it works on:** `list.`, `set.` and `map.` for
   `List<T>`, `Set<T>` and `Map<K, V>`, `text.` for text, `money.` for
@@ -1128,7 +1114,7 @@ the object type
 ([Rules across fields](02-values-and-types.md#rules-across-fields)),
 checked by the same construction.
 
-## Operations
+## All operations
 <!-- topic: standard-library-operations -->
 
 The sections below list every operation beyond the contract's baseline,
@@ -1136,7 +1122,7 @@ with its signature, failures and SQL form, one section per namespace or
 group of types. The baseline itself (construction, `text.parse`,
 `text.format`, `text.from`, JSON, storage, `==` and order) is defined
 once, under
-[Every standard type meets one contract](#every-standard-type-meets-one-contract),
+[What every standard type can do](#what-every-standard-type-can-do),
 and isn't repeated.
 
 | Section | Namespace | Operations |
@@ -1149,7 +1135,7 @@ and isn't repeated.
 | Numbers | `integer`, `decimal` | 18 |
 | Money and payments | `money` | 8 |
 | Physical quantities | `units` | 3 |
-| Time and calendar additions | `temporal` | 24 (21 from Configuration and time) |
+| Time and calendar additions | `temporal` | 24 (21 from Dates and times) |
 | Text | `text` | 21 |
 | Text formats | `markup` | 3 |
 | Hashing and cryptography | `hash`, `crypto` | 11 |
@@ -1160,6 +1146,7 @@ and isn't repeated.
 | Media | `media` | 1 |
 | Web and software | `web`, `semver` | 4 |
 | Groups with the baseline only | | 0 |
+| A UK postcode's parts | `postal` | 7 |
 | Locale | `locale` | 1 ([Locales](10-configuration-and-time.md#locales)) |
 
 ## The standard operator table
@@ -1580,7 +1567,7 @@ The rules every SQL form follows:
   and escapes are written `E'...'`, so a session's time zone, date style,
   interval style and `standard_conforming_strings` make no difference.
 - **Lists, sets and maps.** A list or set is stored as a `jsonb` array
-  and a map as a `jsonb` object ([Data](05-data.md)); only `count` has a
+  and a map as a `jsonb` object ([Entities, stores and migrations](05-data.md)); only `count` has a
   SQL form.
 - **Each form is tested against the runtime before anything uses it.**
   Each operation with a form is run in the runtime and as its form, on
@@ -2366,7 +2353,7 @@ these operations do what an operator can't.
   There is no `decimal.from_integer`.
 - **Parsing and formatting** work as for every standard type, through
   the contract
-  ([Every standard type meets one contract](#every-standard-type-meets-one-contract)):
+  ([What every standard type can do](#what-every-standard-type-can-do)):
   `text.parse(raw, as: Quantity)` and `text.format(n, locale:)`. Parsing
   takes only the form a number has on the wire: no grouping, no decimal
   comma, no exponent. A spreadsheet's `1.234,50` is a job for a cell
@@ -2684,6 +2671,23 @@ currency's minor units, such as pence or cents, together with its
 `Currency`. It is never a decimal of pounds. Each currency's exponent,
 the number of digits after its decimal point, comes from ISO 4217: `jpy`
 0, `gbp` 2, `bhd` 3.
+
+Here is a price in pounds. Save this as `main.jadpo` and run `jadpo test
+main.jadpo`:
+
+```jadpo check project=money-first
+type CakePrice = Money {
+    currency: Currency.gbp
+}
+
+test "a price is held in pence and shown in pounds" {
+    var cake: CakePrice = CakePrice(money.from_minor(1050, Currency.gbp))
+    assert text.format(cake, locale: Locale.en_gb) == "£10.50"
+}
+```
+
+`Money`, `Currency`, `Locale`, `money.` and `text.` are built in. `CakePrice` is
+your own type, defined here.
 
 `Money` is a type built into the language, as `Duration` is, not an
 object: an amount has no fields, and `money.minor` and `money.currency`
@@ -3886,6 +3890,25 @@ temperature or a file's size. Each one (`Length`, `Mass`, `Temperature`
 ... and `DataSize`, `Bitrate`) holds an exact `Decimal` in its kind's SI
 base unit, at a fixed scale, a number of decimal places, for each kind.
 
+Here is a length with limits. Save this as `main.jadpo` and run `jadpo
+test main.jadpo`:
+
+```jadpo check project=quantities-first
+type ShelfLength = Length {
+    min: 10cm
+    max: 3metre
+}
+
+test "a length is a length, whatever unit made it" {
+    var shelf: ShelfLength = 90cm
+    assert shelf == 900mm
+    assert text.format(shelf, locale: Locale.en_gb) == "0.9 m"
+}
+```
+
+`Length`, `Locale` and `text.` are built in, and so are units such as `cm`.
+`ShelfLength` is your own type, defined here.
+
 You choose a unit only when you make a value or show one. A `Length` is
 a `Length` whatever unit built it, so `==` and comparisons work across
 units: `1km == 1000metre`. Inside a program a quantity has no unit, so
@@ -3937,7 +3960,7 @@ Making a quantity always names a unit. There are four ways:
 A bare number where a quantity is expected is a compile error,
 `type.unit_required`, whose fix asks for the unit (`5km`, or
 `units.of(5, LengthUnit.kilometre)`). It can never be declined
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)):
+([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)):
 a number without its unit is the mistake the type exists to prevent.
 
 A suffix that names no unit, or misses one only by case (`5mw`, between
@@ -4316,7 +4339,27 @@ test "a shelf keeps its length as it was cut" {
 These types add to the [time types](10-configuration-and-time.md#time-types):
 a time of day, a month, a week, a range of dates, an amount of calendar
 time, and the text forms of recurrences, opening hours and calendar
-events. The 21 `temporal` operations of the time types still apply;
+events. Here is an amount of calendar time added to a date. Save this as
+`main.jadpo` and run `jadpo test main.jadpo`:
+
+```jadpo check project=calendar-first
+type RentalDay = CalendarDate {}
+
+test "a month on from the 31st is the month's last day" {
+    var first_day: RentalDay = "2026-01-31"
+    var one_month: CalendarPeriod = CalendarPeriod {
+        years: 0
+        months: 1
+        days: 0
+    }
+    assert first_day + one_month == RentalDay("2026-02-28")
+}
+```
+
+`CalendarDate` and `CalendarPeriod` are built in. `RentalDay` is your own type,
+defined here.
+
+The 21 `temporal` operations of the time types still apply;
 three of them have SQL forms, so an aggregate query can group by time
 buckets. The types here add three operations:
 
@@ -5359,8 +5402,8 @@ formats for people, because it is a representation of its own
 | `drop_first(value, n)`, `drop_last(value, n)` | `Text` without `n` code points from that end; never longer | | `substr(x, n + 1)`; `CASE WHEN n = 0 THEN x ELSE left(x, -n) END` |
 | `pad_start(value, length, fill:)` | `Text` of at least `length` code points, `fill` added at the start; never cut; `fill:` one code point written out | | `CASE` on `char_length(x)` with `lpad` |
 | `from(value)` | `Text`, the value as JSON carries it: an `Int`'s digits, a `Decimal` with its scale's places, a `Uuid` in lowercase, `true` or `false`, a time in its wire form | | `x::text` for `Int`, `Decimal`, `Uuid` and `Bool`; times none |
-| `parse(raw, as: T)` | `T`, any standard type or type built on a representation, from its canonical text ([the contract](#every-standard-type-meets-one-contract)) | `malformed`, or the rule it breaks | none |
-| `format(value, locale:)` | `PresentationText` for people, any standard type, with the type's own options (`unit:`, `precision:`) ([the contract](#every-standard-type-meets-one-contract)) | | none |
+| `parse(raw, as: T)` | `T`, any standard type or type built on a representation, from its canonical text ([the contract](#what-every-standard-type-can-do)) | `malformed`, or the rule it breaks | none |
+| `format(value, locale:)` | `PresentationText` for people, any standard type, with the type's own options (`unit:`, `precision:`) ([the contract](#what-every-standard-type-can-do)) | | none |
 | `pick(value, locale:)` | `Text` from a `LocalisedText`: the locale's entry, else its language's, else the default | | none |
 | `slug(value)` | `Text` of lowercase ASCII letters, digits and single `-`: accents dropped, every other run of characters one `-`, none at either end; may be empty | | none |
 
@@ -5581,8 +5624,7 @@ White space, for `trim`, is Unicode's `White_Space` property.
 There is no `trim_start`, `trim_end` or `pad_end`, and no way to go
 through text character by character. Each job that needs one, such as a
 slug, a mask, a preview or a change of case, is an operation instead.
-Unicode normalisation happens where text comes in, not in a call (below,
-and [Language gaps](#language-gaps-this-page-depends-on)).
+Unicode normalisation happens where text comes in, not in a call (below).
 
 ### Arguments checked while compiling
 
@@ -5691,7 +5733,7 @@ takes no text either, since a value built on `Text` already is text
 (`Email`, `Url` and `IpAddress` included).
 
 A standard type's canonical text is the one form
-[the contract](#every-standard-type-meets-one-contract) writes it as:
+[the contract](#what-every-standard-type-can-do) writes it as:
 
 - A standard enum's code is its variant's entry in its table: a
   `Country`'s `GB`, a `Zone`'s IANA name, a `Locale`'s BCP 47 tag, a
@@ -5787,6 +5829,18 @@ Four standard types hold text with structure:
 - `LocalisedText` maps locales to text, and is read with `text.pick`.
 
 None of them is personal data, and none has a shape.
+
+Here is Markdown made into a page's HTML. Save this as `main.jadpo` and
+run `jadpo test main.jadpo`:
+
+```jadpo check project=text-formats-first
+test "Markdown becomes safe HTML" {
+    var post_markdown: Markdown = "Rye *loaf*"
+    assert markup.to_html(post_markdown) == "<p>Rye <em>loaf</em></p>\n"
+}
+```
+
+`Markdown` and `markup.` are built in, so the example declares nothing.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -6121,6 +6175,66 @@ type may be a list or a map of parts. It is sent as JSON's own
 collection, and a `RichText`, a `RichTextBlock` and a `LocalisedText` are
 each stored as that JSON in one `jsonb` column.
 
+## Bytes
+<!-- topic: bytes -->
+
+A `Bytes` value is a whole: the `bytes` operations make a new one, `encoding`
+writes it as text and reads it back, and `hash` digests it. Each is called as
+`bytes.<name>`. `bytes` is a reserved name, as every standard namespace is, so
+a variable that holds bytes is called something else, such as `raw` or
+`body`.
+
+| Operation | Gives | Fails | SQL form |
+|---|---|---|---|
+| `concat(first, second)` | `Bytes`, `first`'s bytes then `second`'s; any value built on `Bytes` goes in, and what comes out is plain `Bytes` | | none |
+
+Joining works on the bytes themselves, so nothing passes through text. A
+Merkle tree's node hash, RFC 6962 section 2.1's `SHA-256(0x01 || left ||
+right)`, is two joins. The value in the test is the root of RFC 6962's first
+two test leaves:
+
+```jadpo check project=bytes-concat
+type TreeHash = Bytes {}
+
+type HexDigits = Text {}
+
+type BadHexDigits = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// The bytes hexadecimal text holds.
+function read_tree_hash(hex_text: HexDigits) fails BadHexDigits -> TreeHash {
+    var raw: Bytes = attempt encoding.from_hex(hex_text) {
+        malformed: BadHexDigits
+    }
+    return TreeHash(raw)
+}
+
+/// A node's hash, from its two children's: a `01` byte says it is a node's.
+function join_children(left: TreeHash, right: TreeHash) fails BadHexDigits -> TreeHash {
+    var prefix: TreeHash = attempt read_tree_hash("01")
+    return TreeHash(hash.sha256(bytes.concat(bytes.concat(prefix, left), right)))
+}
+```
+
+```jadpo check project=bytes-concat file=main.test.jadpo
+test "two joins make a node's input" {
+    var left: TreeHash = attempt read_tree_hash(
+        "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+    )
+    var right: TreeHash = attempt read_tree_hash(
+        "96a296d224f285c67bee93c30f8a309157f0daa35dc5b87e410b78630a09cfc7"
+    )
+    var joined_hash: TreeHash = attempt join_children(left, right)
+    assert encoding.to_hex(
+        joined_hash
+    ) == "fac54203e7cc696cf0dfcb42c92a1d9dbaf70ad9e621f4bd8d98662f00e3c125"
+    var no_bytes: Bytes = encoding.to_utf8("")
+    assert encoding.to_hex(bytes.concat(no_bytes, left)) == encoding.to_hex(left)
+    assert encoding.to_hex(bytes.concat(left, no_bytes)) == encoding.to_hex(left)
+}
+```
+
 ## Hashing and cryptography
 <!-- topic: hashing-and-cryptography -->
 
@@ -6314,7 +6428,7 @@ test "what the clinic signs checks with the key it publishes" {
 A release that changes a construction keeps reading the old format, by
 the sealed value's version byte or the password hash's PHC string, and
 `correct_outdated` tells your app to hash a password again when its owner
-signs in. [Identity](08-identity.md) leaves checking a password to your
+signs in. [Sign-in and identity](08-identity.md) leaves checking a password to your
 application, which is why it needs these operations.
 
 ### Keys are settings that code never reads
@@ -6525,8 +6639,7 @@ rotates by being replaced.
 Each executor gives the operation one opaque key value, which prints as
 `<key>`. It comes from the source the plan decides for the call: the
 setting, a key-type field or a `var`. Only the runtime turns it into the key
-it holds ([compiler-runtime §2.5](../compiler-runtime.md#25-executors),
-"A key as a value").
+it holds.
 
 ### The sealed format
 
@@ -6591,7 +6704,7 @@ for an ETag or a content key.
 
 There is no MD5 or SHA-1, since both are broken. An outside system that
 still asks for one is reached through a package
-([Integrations](11-integrations.md)). That includes TOTP, whose RFC 6238
+([External services](11-integrations.md)). That includes TOTP, whose RFC 6238
 default is HMAC-SHA-1 and whose per-person secret is a `TotpSecret`, kept
 sealed ([How a secret is kept](#how-a-secret-is-kept)).
 
@@ -6818,7 +6931,7 @@ secret value ([Secret values](#secret-values)), never shown.
 
 **`Jwk`** holds one public key and never a secret. Its parts are `kty`,
 `crv`, `x`, `y`, `n`, `e`, `kid` (1 to 256 printable ASCII characters),
-`alg`, `use_` (`sig`, sent as RFC 7517's `use`), `key_ops` and `x5c`,
+`alg`, `use` (`sig`), `key_ops` and `x5c`,
 each but `kty` optional. Three rules across them hold a key to its kind:
 `parts_of_its_kty` (its kind's parts and no other's),
 `algorithm_of_its_kty` (an `alg`, where given, is its kind's) and
@@ -6877,7 +6990,7 @@ ASCII characters) and the claims a sign-in reads: `name` and
 `preferred_username` as lines, `given_name` and `family_name` as the
 standard types, `email`, `email_verified`, `phone_number`,
 `phone_number_verified` and `picture`. `gender` stays out, by the rule
-in [The standard types](#the-standard-types). `birthdate`, `address`,
+in [How standard types are named, and what is left out](#how-standard-types-are-named-and-what-is-left-out). `birthdate`, `address`,
 `locale`, `zoneinfo` and `updated_at` aren't held, since a sign-in
 doesn't need them. JSON naming a claim it doesn't hold isn't an
 `OidcClaims`, as for every object. It is shown by its name, else its
@@ -7091,8 +7204,8 @@ secret, and that order always agrees with `==`.
 
 Wherever Jadpo shows a value, it shows a secret as `<redacted ApiKey>`,
 naming its type: a failed test's values, `jadpo test`'s output and its
-`--json`, a failure's report, a fault, and anything a debugger or
-`jadpo watch` shows. Every one of them writes a value the same way.
+`--json`, a failure's report, a fault, and anything a debugger shows, as
+`jadpo watch` will once it is built. Every one of them writes a value the same way.
 
 A test that fails over a secret shows it redacted wherever it shows a
 value, and its diff still says which field differs:
@@ -7186,6 +7299,17 @@ as it is typed.
 These are the types for what security code keeps and checks: digests,
 signatures and sealed values, a password policy, passkeys and
 certificates.
+
+Here is a digest. Save this as `main.jadpo` and run `jadpo test main.jadpo`:
+
+```jadpo check project=security-first
+test "a digest is written as its Base64" {
+    var abc_digest: Hash = Hash(hash.sha256("abc"))
+    assert text.from(abc_digest) == "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0="
+}
+```
+
+`Hash`, `hash.` and `text.` are built in, so the example declares nothing.
 
 ### `Hash`, `Hmac` and `EncryptedValue`
 
@@ -7686,7 +7810,7 @@ defect where it runs, as overflow is. The checker proves a code's
 `temporal.occurrences`' `count` and `list.slice`'s.
 
 > Not built yet: `jadpo replay` itself
-> ([Debugging and review](17-debugging-and-review.md)). Since the
+> ([Debugging](17-debugging-and-review.md)). Since the
 > recorded bytes can hold tokens, nothing writes them out until it is.
 
 ## Encodings
@@ -7701,7 +7825,7 @@ as bytes, and percent-encoding for a part of a link. Each is called as
 |---|---|---|---|
 | `to_base64(bytes)` | `Text`, standard alphabet, padded | | `translate(encode(x, 'base64'), E'\n', '')` |
 | `from_base64(text)` | `Bytes` | `malformed` | none |
-| `to_base64url(bytes)` | `Text`, URL alphabet, unpadded, as [Identity](08-identity.md)'s signed parts are | | `rtrim(translate(encode(x, 'base64'), E'+/\n', '-_'), '=')` |
+| `to_base64url(bytes)` | `Text`, URL alphabet, unpadded, as [Sign-in and identity](08-identity.md)'s signed parts are | | `rtrim(translate(encode(x, 'base64'), E'+/\n', '-_'), '=')` |
 | `from_base64url(text)` | `Bytes`; padding refused | `malformed` | none |
 | `to_hex(bytes)` | `Text`, lowercase | | `encode(x, 'hex')` |
 | `from_hex(text)` | `Bytes`; either case | `malformed` | none |
@@ -7892,7 +8016,7 @@ with `store.read` and `store.put` ([Files](16-built-in-services.md#files)).
 
 A file's rows, however many, are read and written only through these
 operations' batch forms. They run as
-[batches](12-jobs-and-events.md#batches-work-over-many-items): background
+[batches](12-jobs-and-events.md#batches): background
 work over many items that keeps its progress. There is no loop over a
 file's rows and no reading a whole file into a list. How a run goes
 (batches, transactions, resuming, `batches.status` and `batches.cancel`,
@@ -7937,7 +8061,7 @@ problems) is described with batches; the operations are here.
   no single text form (`PostalAddress`, `PersonName`, `Price`, a choice
   such as `Discount`) counts as an object here, so the compile error
   points to JSON Lines, whose rows carry the contract's JSON
-  ([Every boundary through the contract](#every-boundary-through-the-contract)).
+  ([How a standard value is sent, stored and shown](#how-a-standard-value-is-sent-stored-and-shown)).
 - **Writing names its reader.** `CsvFormat.spreadsheet` writes a
   byte-order mark and CRLF line endings, and escapes text that looks
   like a formula. `CsvFormat.standard` writes CRLF only. A write without
@@ -8463,7 +8587,7 @@ rules: unknown fields are refused, and `optional` and `default` are
 applied. `json.write` takes any value an `Output` may hold. Both use the
 wire forms that requests and responses use, `Money`'s included
 ([Values and types](02-values-and-types.md), [HTTP](07-http.md) and
-[Configuration and time](10-configuration-and-time.md)).
+[Dates and times](10-configuration-and-time.md#time-types)).
 
 That is what the wire can carry: values built on the built-in and
 standard types, enums your app or the standard library declares, and
@@ -8713,7 +8837,7 @@ time, as `csv.read` does. How its run goes is in
 - **The document around the items is held to JSON's structure:** the
   objects on the way to the list name each member once. Anything the
   reader can't read on from stops the run, with the items before it done
-  ([Batches](12-jobs-and-events.md#batches-work-over-many-items)).
+  ([Batches](12-jobs-and-events.md#batches)).
 
 A seed library reads the catalogue a partner library exports: a JSON
 document whose packets sit at `catalogue.packets`, each packet's sowing
@@ -8865,6 +8989,19 @@ on:
 colour, `#1e6fd9`, and held as its red, green, blue and alpha channels.
 Use it for a brand colour, a theme, or a check that text is readable on
 its background.
+
+Here is one colour. Save this as `main.jadpo` and run `jadpo test
+main.jadpo`:
+
+```jadpo check project=colour-first
+test "a colour is written as CSS writes it" {
+    var brand_colour: Colour = "#1E6FD9"
+    assert text.from(brand_colour) == "#1e6fd9"
+    assert brand_colour.blue == 217
+}
+```
+
+`Colour` and `text.` are built in, so the example declares nothing.
 
 Here a design system reads its brand colour from a form, checks that body
 text is readable on its page colour, lightens a button for its hover
@@ -9308,6 +9445,19 @@ and the problem documents an API reports failures with. Each follows its
 standard, and, as every standard type is, each is read only in its
 canonical text.
 
+Here is a link on a page, followed to its address. Save this as
+`main.jadpo` and run `jadpo test main.jadpo`:
+
+```jadpo check project=web-first
+test "a link on a page leads to an address" {
+    var page: Url = "https://example.com/shop/teas"
+    var page_link: RelativeUrl = "../basket"
+    assert web.resolve(page, page_link) == "https://example.com/basket"
+}
+```
+
+`Url`, `RelativeUrl` and `web.` are built in, so the example declares nothing.
+
 Here a shop builds its search links, follows the links on its pages, lets
 its office's network in, reads the domain a seller types, retries a call
 the server failed, and reports a sold-out item as RFC 9457 has it:
@@ -9369,7 +9519,7 @@ function worth_retrying(status: HttpStatus) -> YesNo {
 /// The problem a sold-out item is reported with.
 function sold_out(item_page: ShopLink) -> ProblemDetails {
     return ProblemDetails {
-        type_: "https://tea.example/problems/sold-out"
+        type: "https://tea.example/problems/sold-out"
         status: 409
         title: "Sold out"
         detail: "Nothing is left of this item."
@@ -9431,6 +9581,7 @@ test "a status's class is a comparison, and a problem is sent as RFC 9457 has it
 | `web.resolve(base, relative)` | `Url`: a `RelativeUrl` or `UrlPath` resolved against `base` by RFC 3986 | | none |
 | `web.cidr_contains(range, address)` | `Bool`: the `IpAddress` is inside the `Cidr` | | `x >>= a` |
 | `semver.satisfies(version, range)` | `Bool`: a `SemanticVersion` is inside a `VersionRange` | | none |
+| `names.registry_part(name)` | `Text`: a name in code as the registry writes it, `AcmeCouriers` as `acme-couriers` | | none |
 
 `web`'s operations never fail, because each takes values that were
 checked when they were built.
@@ -9445,7 +9596,8 @@ checked when they were built.
   PostgreSQL's `>>=` doesn't. So an IPv4-mapped IPv6 address isn't inside
   an IPv4 range.
 
-`semver.satisfies` is under [Software types](#software-types).
+`semver.satisfies` is under [Software types](#software-types), and
+`names.registry_part` under [Registry names](#registry-names).
 
 ### Which standard each type follows
 
@@ -9467,6 +9619,37 @@ Every `UrlPath` is a `RelativeUrl`, and every `DomainName` is a
 type UrlPath = RelativeUrl {}`), and a value of the first passes where the
 second is taken: `web.resolve`'s `relative` takes a path. It never works
 the other way round.
+
+### Registry names
+
+`names.registry_part(name)` gives a name in code as the public registry
+writes it, so an application that lists or links packages works the name
+out exactly as the registry does. It lower-cases the name and puts a `-`
+before each capital but the first: `AcmeCouriers` is `acme-couriers`,
+`OpenAi` is `open-ai`. It never fails, and changes nothing else, so
+whether the result is a name the registry takes (starting with a
+lower-case letter, then lower-case letters, digits and single `-`, at
+most 39 characters) is the registry's to say.
+
+```jadpo check project=registry-part
+type WrittenInCode = Text {
+    min_length: 1
+    max_length: 64
+}
+
+type ScopedPart = Text {}
+
+/// The part of a package's registry name its name in code gives.
+function scoped_part(code: WrittenInCode) -> ScopedPart {
+    return ScopedPart(names.registry_part(code))
+}
+
+test "a name in code is written as the registry writes it" {
+    assert scoped_part("AcmeCouriers") == "acme-couriers"
+    assert scoped_part("OpenAi") == "open-ai"
+    assert scoped_part("Postcodes") == "postcodes"
+}
+```
 
 ### Types held as text
 
@@ -9572,10 +9755,7 @@ detail:
   name the others holds the method as text.
 - A **`ProblemDetails`** is RFC 9457's object for reporting an API
   failure: its five members, each of which may be `none`, as the RFC
-  allows. `type` is a reserved word, so code writes `type_`, and the wire
-  has `type`. That is the trailing `_` a closed list's code takes when it
-  is a reserved word, used here for a standard object's part
-  (`jadpo_std::standard::wire_name`).
+  allows.
 - Its `type` and `instance` are absolute `Url`s. The RFC allows relative
   references; resolve one with `web.resolve` first. Its `title` is a line
   and its `detail` a paragraph.
@@ -9617,6 +9797,19 @@ The software types are the values tools and build systems pass around:
 version numbers and ranges, git refs, package and container names,
 licences, trace ids, file names and paths. Each follows its standard, as
 the web types do.
+
+Here are two version numbers. Save this as `main.jadpo` and run `jadpo
+test main.jadpo`:
+
+```jadpo check project=software-first
+test "versions compare by SemVer's rules, not by their text" {
+    var installed_release: SemanticVersion = "1.9.0"
+    var offered_release: SemanticVersion = "1.10.0"
+    assert offered_release > installed_release
+}
+```
+
+`SemanticVersion` is built in, so the example declares nothing.
 
 Here a shop's plugin registry reads the version a release form names,
 offers a release only to the shops whose range it fits, and tells a newer
@@ -9856,7 +10049,7 @@ A `LogLevel` isn't ordered, because no enum is yet. So when
 Many standard types are a value with a check and nothing more: an IBAN, a
 card number, a barcode, an NHS number. They have no operations of their
 own. They do what every standard type does
-([Every standard type meets one contract](#every-standard-type-meets-one-contract)):
+([What every standard type can do](#what-every-standard-type-can-do)):
 each is built and checked from text or from its parts, sent, stored and
 shown to people. Their rules are how they are built, which `text.parse`
 and the type's data entry already cover.
@@ -10043,6 +10236,19 @@ Cards and identity documents are numbers a person holds: a card's brand
 and last four digits, its expiry, a VAT number or tax id, a passport or a
 driving licence. Each number is checked against its country's published
 form, and the ones that identify a person are shown masked.
+
+Here is a card number, kept only as its brand and last four digits. Save
+this as `main.jadpo` and run `jadpo test main.jadpo`:
+
+```jadpo check project=cards-first
+test "a card is kept as its brand and last four digits" {
+    var card: PaymentCardNumber = "4242424242424242"
+    assert text.format(money.mask(card), locale: Locale.en_gb) == "Visa •••• 4242"
+}
+```
+
+`PaymentCardNumber`, `Locale`, `money.` and `text.` are built in, so the example
+declares nothing.
 
 Here a shop keeps what it may of a customer's card once its payment
 provider has the number, checks a supplier's VAT number by its country's
@@ -10258,8 +10464,7 @@ number.
 
 **`IdentityDocument`** is its `kind`, its `country`, its `number`, and
 the day it `expires`, which may be `none`, as Spain's DNI for someone
-over 70 never expires. The part is called `kind` because `type` is a
-reserved word. The kind is `IdentityDocumentKind`, a standard enum of
+over 70 never expires. The kind is `IdentityDocumentKind`, a standard enum of
 `passport`, `identity_card`, `driving_licence` and `residence_permit`,
 each its own code, shown as its code.
 
@@ -10300,6 +10505,19 @@ These types hold people's names, postal addresses and email addresses,
 and the closed lists every app needs: countries and their subdivisions,
 languages, scripts, continents, nationalities. Each list is a built-in
 enum, read by its code and shown by its name in the reader's language.
+
+Here is one of those lists. Save this as `main.jadpo` and run `jadpo test
+main.jadpo`:
+
+```jadpo check project=people-first
+test "a country is written by its code and shown by its name" {
+    assert text.from(Country.de) == "DE"
+    assert text.format(Country.de, locale: Locale.en_gb) == "Germany"
+    assert text.format(Country.de, locale: Locale.de_de) == "Deutschland"
+}
+```
+
+`Country`, `Locale` and `text.` are built in, so the example declares nothing.
 
 Here a shop sends parcels abroad and prints each label for the person who
 packs it, greets its customers by name, and reads the countries a
@@ -10372,7 +10590,7 @@ test "a closed list reads its codes and its other code systems" {
     var made_in: Country = attempt supplier_country("gbr")
     assert made_in == Country.gb
     assert supplier_country("UK") fails UnknownCountry
-    assert text.from(Country.in_) == "IN"
+    assert text.from(Country.in) == "IN"
     assert text.from(Country.gb, form: CodeForm.numeric) == "826"
     assert text.format(Country.gb, locale: Locale.fr_fr) == "Royaume-Uni"
     assert text.format(Language.ja, locale: Locale.en_gb) == "Japanese"
@@ -10443,12 +10661,12 @@ test "a name and an address are kept part by part" {
             postal_code: "75004"
             country: Country.fr
         },
-        Nationality.in_
+        Nationality.in
     )
     var kept_record: Recipient = attempt Recipient.get(enrolled.id)
     assert kept_record.name == enrolled.name
     assert kept_record.ship_to == enrolled.ship_to
-    assert kept_record.citizen_of == Nationality.in_
+    assert kept_record.citizen_of == Nationality.in
     var readdressed: Recipient = readdress(
         kept_record,
         PostalAddress {
@@ -10523,8 +10741,9 @@ import needs it.
 
 A variant is its code in lower case with `_` for `-`:
 `CountrySubdivision.gb_eng`, as `Locale` writes its variants. A code that
-is a [reserved word](01-project-layout-and-modules.md#naming), or is
-`all`, takes a trailing `_`: `Country.in_`, `Language.or_`.
+is `all`, which lists the variants, takes a trailing `_`: `Currency.all_`,
+as `true`, `false` or `none` would, which no variant takes. Any other
+reserved word is a variant as it is: `Country.in`, `Language.or`.
 
 **`.all`** lists an enum's variants in its order, a closed list's by
 code, as a `List` of the enum. Retired codes are left out, because a
@@ -10550,7 +10769,7 @@ is.
 
 `text.parse` reads a form's code ignoring case. Where a retired variant
 shares a code with a current one, the code reads as the current one:
-`ind` is `Language.id`, not `Language.in_`.
+`ind` is `Language.id`, not `Language.in`.
 
 At a boundary, such as a request, JSON, a CSV cell or a setting, a
 standard enum's code is read ignoring case and written back in its
@@ -10561,7 +10780,7 @@ rule `variant`. Spaces and other spellings are still refused.
 ### Stored and shown
 
 **Stored:** a closed list's column holds its code, as `Currency`'s does:
-`GB`, and `IN` rather than `in_`. An object is stored as a column per
+`GB`, and `IN` rather than `in`. An object is stored as a column per
 part, named `<field>_<part>`. A part that may be `none` is a column that
 may be `NULL`. A `PostalAddress`'s lines are a `text[]` column, and its
 country is its code.
@@ -10638,9 +10857,12 @@ These are held as text:
 ### Personal data and shapes
 
 **Personal data:** a name, a given or family name and a username are
-`identifying`; a mailbox, an address, an extension and a UPRN are
-`contact`; a nationality is `demographic`. The lists of places aren't
-personal data.
+`identifying`; an email address, a mailbox, an address, an extension and a
+UPRN are `contact`; a nationality is `demographic`. The lists of places aren't
+personal data. Erasure clears a name, a given or family name, an email address,
+a mailbox, a phone number and an address with no `personal:`
+([Contact details and names need no mark](15-personal-data.md#contact-details-and-names-need-no-mark));
+the others only when marked.
 
 **No shapes:** `type.standard_exists` matches none of the objects,
 because `{ name, email }` and `{ first_name, last_name }` are too common
@@ -10798,6 +11020,239 @@ built with `attempt`. JSON, in a request or through `json.read`, breaks
 the rule by name at the address's path. Stored addresses are read as
 they were written.
 
+### A UK postcode's parts
+
+A UK postcode is made of parts that sorting, delivery and statistics use
+on their own. `SW1A 1AA` is the outward code `SW1A` and the inward code
+`1AA`; its area is `SW`, its district `SW1`, its sub-district `SW1A`, its
+sector `SW1A 1` and its unit `AA`. The seven `postal` operations each give
+one part, by Royal Mail's postcode format.
+Here a courier reads the postcode on a label, sends the parcel to the
+depot for its district, and puts it on the round for its sector:
+
+```jadpo check project=uk-postcode-parts
+type LabelText = Text {}
+
+type NotAPostcode = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A depot's code: one depot serves each postcode district.
+type DepotCode = Text {}
+
+/// A driver's round: one round covers each postcode sector.
+type RoundCode = Text {}
+
+/// The postcode a sender wrote on a label, in any case, with or without
+/// its space.
+function label_postcode(raw: LabelText) fails NotAPostcode -> PostalCode {
+    var postcode: PostalCode = attempt text.parse(raw, as: PostalCode, country: Country.gb) {
+        malformed: NotAPostcode
+    }
+    return postcode
+}
+
+/// The depot a parcel goes to: its postcode's district, `SW1` for
+/// `SW1A 1AA`.
+function depot_for(postcode: PostalCode) fails NotAPostcode -> DepotCode {
+    var district: Text = attempt postal.district(postcode) {
+        not_uk_format: NotAPostcode
+    }
+    return DepotCode(district)
+}
+
+/// The round a parcel goes on: its postcode's sector, `SW1A 1` for
+/// `SW1A 1AA`.
+function driver_round_for(postcode: PostalCode) fails NotAPostcode -> RoundCode {
+    var sector: Text = attempt postal.sector(postcode) {
+        not_uk_format: NotAPostcode
+    }
+    return RoundCode(sector)
+}
+```
+
+```jadpo check project=uk-postcode-parts file=main.test.jadpo
+test "a parcel goes to its district's depot and its sector's round" {
+    var labelled: PostalCode = attempt label_postcode("sw1a1aa")
+    var depot: DepotCode = attempt depot_for(labelled)
+    assert depot == "SW1"
+    var sorted_round: RoundCode = attempt driver_round_for(labelled)
+    assert sorted_round == "SW1A 1"
+    var norwich: PostalCode = attempt label_postcode("NR10 3EZ")
+    var norwich_depot: DepotCode = attempt depot_for(norwich)
+    assert norwich_depot == "NR10"
+}
+
+test "a postcode written out has its parts with no arm" {
+    assert postal.outward_code("SW1A 1AA") == "SW1A"
+    assert postal.inward_code("SW1A 1AA") == "1AA"
+    assert postal.area("SW1A 1AA") == "SW"
+    assert postal.district("SW1A 1AA") == "SW1"
+    assert postal.sub_district("SW1A 1AA") == "SW1A"
+    assert postal.sub_district("M2 5BQ") == none
+    assert postal.sector("SW1A 1AA") == "SW1A 1"
+    assert postal.unit("SW1A 1AA") == "AA"
+}
+
+test "only a postcode in Royal Mail's format has these parts" {
+    assert depot_for(PostalCode("75004")) fails NotAPostcode
+    assert depot_for(PostalCode("GIR 0AA")) fails NotAPostcode
+    assert driver_round_for(PostalCode("BFPO 61")) fails NotAPostcode
+    assert label_postcode("SW1A 2A0") fails NotAPostcode
+}
+```
+
+```jadpo check project=uk-postcode-parts file=tests/royal_mail_format.test.jadpo hidden
+test "each part of each shape of postcode" {
+    assert postal.outward_code("L27 8XY") == "L27"
+    assert postal.inward_code("L27 8XY") == "8XY"
+    assert postal.area("L27 8XY") == "L"
+    assert postal.district("L27 8XY") == "L27"
+    assert postal.sub_district("L27 8XY") == none
+    assert postal.sector("L27 8XY") == "L27 8"
+    assert postal.unit("L27 8XY") == "XY"
+    assert postal.outward_code("NR10 3EZ") == "NR10"
+    assert postal.inward_code("NR10 3EZ") == "3EZ"
+    assert postal.area("NR10 3EZ") == "NR"
+    assert postal.district("NR10 3EZ") == "NR10"
+    assert postal.sub_district("NR10 3EZ") == none
+    assert postal.sector("NR10 3EZ") == "NR10 3"
+    assert postal.unit("NR10 3EZ") == "EZ"
+    assert postal.outward_code("RG4 5AY") == "RG4"
+    assert postal.area("RG4 5AY") == "RG"
+    assert postal.sector("RG4 5AY") == "RG4 5"
+    assert postal.outward_code("NE69 7AW") == "NE69"
+    assert postal.sector("NE69 7AW") == "NE69 7"
+    assert postal.outward_code("SE23 2NF") == "SE23"
+    assert postal.unit("SE23 2NF") == "NF"
+    assert postal.outward_code("BT35 8GE") == "BT35"
+    assert postal.area("BT35 8GE") == "BT"
+    assert postal.district("BT35 8GE") == "BT35"
+    assert postal.sub_district("BT35 8GE") == none
+    assert postal.sector("BT35 8GE") == "BT35 8"
+}
+
+test "a postcode with no space has the same parts" {
+    assert postal.outward_code("L278XY") == "L27"
+    assert postal.inward_code("L278XY") == "8XY"
+    assert postal.sector("L278XY") == "L27 8"
+    assert postal.outward_code("NR103EZ") == "NR10"
+    assert postal.district("NR103EZ") == "NR10"
+    assert postal.outward_code("RG45AY") == "RG4"
+    assert postal.unit("RG45AY") == "AY"
+    assert postal.outward_code("NE697AW") == "NE69"
+    assert postal.outward_code("SE232NF") == "SE23"
+    assert postal.sector("BT358GE") == "BT35 8"
+    assert postal.sub_district("BT358GE") == none
+    assert postal.outward_code("SW1A   1AA") == "SW1A"
+}
+
+test "a sub-district is an outward code ending in a letter after one digit" {
+    assert postal.district("EC1A 1BB") == "EC1"
+    assert postal.sub_district("EC1A 1BB") == "EC1A"
+    assert postal.district("W1A0AX") == "W1"
+    assert postal.sub_district("W1A0AX") == "W1A"
+    assert postal.district("NW1W1AA") == "NW1"
+    assert postal.sub_district("NW1W1AA") == "NW1W"
+    assert postal.district("N1C 0AB") == "N1"
+    assert postal.sub_district("N1C 0AB") == "N1C"
+}
+
+test "every shape of outward code, whatever its letters" {
+    assert postal.outward_code("AA9A 9AA") == "AA9A"
+    assert postal.area("AA9A 9AA") == "AA"
+    assert postal.district("AA9A 9AA") == "AA9"
+    assert postal.sub_district("AA9A 9AA") == "AA9A"
+    assert postal.sector("AA9A 9AA") == "AA9A 9"
+    assert postal.outward_code("A9A 9AA") == "A9A"
+    assert postal.area("A9A 9AA") == "A"
+    assert postal.district("A9A 9AA") == "A9"
+    assert postal.sub_district("A9A 9AA") == "A9A"
+    assert postal.outward_code("A9 9AA") == "A9"
+    assert postal.district("A9 9AA") == "A9"
+    assert postal.sub_district("A9 9AA") == none
+    assert postal.outward_code("A99 9AA") == "A99"
+    assert postal.district("A99 9AA") == "A99"
+    assert postal.sub_district("A99 9AA") == none
+    assert postal.outward_code("AA9 9AA") == "AA9"
+    assert postal.sub_district("AA9 9AA") == none
+    assert postal.outward_code("AA99 9AA") == "AA99"
+    assert postal.district("AA99 9AA") == "AA99"
+    assert postal.sub_district("AA99 9AA") == none
+    assert postal.outward_code("AA9A9AA") == "AA9A"
+    assert postal.outward_code("A9A9AA") == "A9A"
+    assert postal.outward_code("A99AA") == "A9"
+    assert postal.sector("A99AA") == "A9 9"
+    assert postal.outward_code("A999AA") == "A99"
+    assert postal.sector("A999AA") == "A99 9"
+    assert postal.outward_code("AA99AA") == "AA9"
+    assert postal.outward_code("AA999AA") == "AA99"
+    assert postal.unit("AA999AA") == "AA"
+    assert postal.area("MA1 1AA") == "MA"
+    assert label_postcode("MA1 1AA") fails NotAPostcode
+}
+
+test "text not in the format has no parts" {
+    assert depot_for(PostalCode("12FSSD")) fails NotAPostcode
+    assert depot_for(PostalCode("1A1 1AA")) fails NotAPostcode
+    assert depot_for(PostalCode("EH1 JS")) fails NotAPostcode
+    assert depot_for(PostalCode("EH1JS")) fails NotAPostcode
+    assert depot_for(PostalCode("EH 1JS")) fails NotAPostcode
+    assert depot_for(PostalCode("SW 1A1AA")) fails NotAPostcode
+    assert depot_for(PostalCode("SW1A-1AA")) fails NotAPostcode
+    assert driver_round_for(PostalCode("SWIA 2AA")) fails NotAPostcode
+    assert driver_round_for(PostalCode("22162-1010")) fails NotAPostcode
+}
+
+test "a label is read in Royal Mail's own spacing" {
+    var liverpool: PostalCode = attempt label_postcode("L278XY")
+    assert liverpool == PostalCode("L27 8XY")
+    var norwich: PostalCode = attempt label_postcode("NR103EZ")
+    assert norwich == PostalCode("NR10 3EZ")
+    var lerwick: PostalCode = attempt label_postcode("ZE10AA")
+    assert lerwick == PostalCode("ZE1 0AA")
+    var morpeth: PostalCode = attempt label_postcode("NE697AW")
+    assert morpeth == PostalCode("NE69 7AW")
+    var forest_hill: PostalCode = attempt label_postcode("SE232NF")
+    assert forest_hill == PostalCode("SE23 2NF")
+    assert label_postcode("Definitely wrong") fails NotAPostcode
+}
+```
+
+| Operation | Gives | Fails | SQL form |
+|---|---|---|---|
+| `postal.outward_code(postcode)` | `Text`, the outward code: `SW1A` in `SW1A 1AA` | `not_uk_format` | none |
+| `postal.inward_code(postcode)` | `Text`, the inward code, its last three characters: `1AA` | `not_uk_format` | none |
+| `postal.area(postcode)` | `Text`, the letters it starts with: `SW` | `not_uk_format` | none |
+| `postal.district(postcode)` | `Text`, the outward code without a sub-district's letter: `SW1` | `not_uk_format` | none |
+| `postal.sub_district(postcode)` | `Text?`, the outward code where it ends in a letter after one digit, `SW1A`; `none` where it doesn't, as in `M2 5BQ` | `not_uk_format` | none |
+| `postal.sector(postcode)` | `Text`, the outward code, a space and the inward code's digit: `SW1A 1` | `not_uk_format` | none |
+| `postal.unit(postcode)` | `Text`, the inward code's two letters: `AA` | `not_uk_format` | none |
+
+**Royal Mail's format** is an outward code then an inward code. The
+outward code is one or two letters, a digit, and maybe a letter or a
+digit: `A9`, `A99`, `A9A`, `AA9`, `AA99` or `AA9A`. The inward code is a
+digit and two letters. Any number of spaces may come between them, none
+included, so `PostalCode("SW1A1AA")` has the same parts as `SW1A 1AA`.
+Each part is in capitals, as a `PostalCode` is.
+
+**A postal code not in that format fails `not_uk_format`.** That is
+another country's code, `75004`, and the two kinds of UK code outside the
+format, `GIR 0AA` and `BFPO` numbers. A `PostalCode` doesn't hold its
+country, so the format is what tells. A call needs no arm for it when its
+postcode is written out in the format, as `money.of` needs none for
+`too_many_places` when its currency and amount are written out.
+
+**The letters aren't checked against Royal Mail's areas.** `MA1 1AA` has
+parts, `MA`, `MA1` and so on, though no area is `MA`. Whether a code is a
+real UK postcode is `text.parse` with `country: Country.gb`, which reads
+it against libaddressinput's pattern of areas and refuses `MA1 1AA`.
+
+**Nothing is corrected.** A `0` typed for an `O`, or a `1` for an `I`, is
+read as it is written, so `SW1A 2A0` has no parts and `text.parse`
+refuses it. Correcting them would make `text.parse` take text it refuses
+now, and some could be read two ways, which it refuses.
+
 ### UN/LOCODEs
 
 A **`UnLocode`** is a UN code for a trade or transport location: five
@@ -10820,6 +11275,19 @@ These are the codes trade, transport and healthcare use: barcodes,
 ISBNs, container numbers, delivery terms, airport codes, blood types,
 diagnosis codes. Each is checked by its standard's pattern or check
 digit, and the closed lists are enums.
+
+Here is a barcode. Save this as `main.jadpo` and run `jadpo test
+main.jadpo`:
+
+```jadpo check project=codes-first
+test "a barcode holds its 13 digits" {
+    var scanned: Ean13 = "4006381333931"
+    assert scanned == "4006381333931"
+}
+```
+
+`Ean13` is built in. The compiler checks a literal, so `"4006381333932"`, with
+the wrong last digit, doesn't compile.
 
 Here a till scans a product's barcode, a supplier's order names its
 delivery term in whatever case its system writes, and a dock prints each
@@ -11498,7 +11966,7 @@ A geometry has no single text form, a `Point` included. Neither does a
 tile's `z/x/y`, a box's four numbers) depends on the order of its
 numbers, and an axis order exists only at an edge that names it. WKT is a
 format, not a type: only
-the two WKT operations ([Interop](20-geospatial.md#interop)) read and write it.
+the two WKT operations ([GeoJSON and other formats](20-geospatial.md#geojson-and-other-formats)) read and write it.
 
 ### GeoJSON
 
@@ -11531,7 +11999,7 @@ leaves out:
   `FeatureCollection` where a geometry goes. Those two are standard types
   of their own, `Feature<G, P>` and `FeatureCollection<G, P>`, read where
   one is the type
-  ([Interop](20-geospatial.md#interop)).
+  ([GeoJSON and other formats](20-geospatial.md#geojson-and-other-formats)).
 
 **Ring winding.** A ring wound either way is read, and rewound to the
 right-hand rule: the outer ring counterclockwise and each hole clockwise.
@@ -11592,7 +12060,7 @@ brackets, joined by `, `.
 
 **Stored:** a geometry is one PostGIS `geography` column, checked to its
 type (`Storage::Geography`), and a `BoundingBox` and a `Circle` are named
-columns ([Storage](20-geospatial.md#storage)). A `Latitude`, `Longitude`
+columns ([Storing geometries](20-geospatial.md#storing-geometries)). A `Latitude`, `Longitude`
 or `Bearing` is one `numeric` column; a `Crs`, `Geohash` or `H3Cell` one
 `text` column; and a `MapTile` and an `EastingNorthing` a column per
 part, an easting's and a northing's `numeric`.
@@ -11615,6 +12083,24 @@ parts of geospatial work are built.
 
 The AI types are the values an app passes to and from a model: chat
 messages and their roles, vectors and embeddings, and token counts.
+
+Here is one message, with no model involved. Save this as `main.jadpo` and
+run `jadpo test main.jadpo`:
+
+```jadpo check project=ai-types-first
+test "a chat message is its role and its content" {
+    var soup_question: ChatMessage = ChatMessage {
+        role: ChatRole.user
+        content: "Which soups are vegan?"
+    }
+    assert text.from(soup_question.role) == "user"
+    assert soup_question.content == "Which soups are vegan?"
+}
+```
+
+`ChatMessage`, `ChatRole` and `text.` are built in, so the example declares
+nothing.
+
 [AI](21-ai.md) covers the work you do with them: the `ai` capability and
 its operations `ai.generate`, `ai.stream`, `ai.embed` and `ai.embed_all`,
 with their failures ([The `ai` capability](21-ai.md#the-ai-capability));
@@ -11786,164 +12272,8 @@ test "an embedding has its model's length" {
 [What is built: AI](21-ai.md#what-is-built) says which parts of AI work
 are built.
 
-## Scenario applications
-<!-- topic: scenario-applications -->
-
-Nine kinds of application Jadpo is meant for, what each does, and the
-operations it uses. Use these tables to find the operation for a job;
-each operation is described in its section of this page, or on the page
-linked beside it.
-
-**1. Online shop**
-
-| Does | Needs |
-|---|---|
-| Basket total and a 10% discount | `money.sum`, `total * 90%` |
-| Discount spread across the lines for the receipt | `money.allocate` |
-| Product page address from its title | `text.slug` |
-| Order reference read out on the phone | `random.code` |
-| Products by price, highest first | `list.sort_by`, `list.reverse`; `order:` in a query |
-| Product feed for a marketplace | `csv.write` |
-| Image cache key | `hash.sha256`, `encoding.to_hex` |
-
-**2. Appointment bookings**
-
-| Does | Needs |
-|---|---|
-| Slots in the clinic's zone | `temporal.resolve`, `temporal.day_bounds` |
-| Free slots: all slots without booked ones | `set.difference` |
-| Earliest free slot | `list.min_by` |
-| Cancel link in the confirmation email | `random.token`, `encoding.to_url_component` |
-| Reminder a day before | `temporal.add_days` |
-| A booking ends after it starts | A rule across fields ([Rules across fields](02-values-and-types.md#rules-across-fields)) |
-| Calendar invite file | `.ics` package |
-
-**3. Delivery and logistics**
-
-| Does | Needs |
-|---|---|
-| Driver's next stop and the rest | `list.first`, `list.drop_first` |
-| Estimated arrival | `Instant + Duration` ([Arithmetic and comparison](10-configuration-and-time.md#arithmetic-and-comparison)) |
-| Is the address inside the zone, distance to depot | [Geospatial](20-geospatial.md) |
-| Tracking code | `random.code` |
-| Carrier manifest import | `csv.read` |
-| Proof-of-delivery photo fingerprint | `hash.sha256` |
-| Parcels by weight band | `list.group_by` |
-
-**4. Property listings**
-
-| Does | Needs |
-|---|---|
-| Asking price shown in the visitor's locale | `text.format` |
-| Price per square metre | `price / units.in(floor_area, AreaUnit.square_metre, ...)`: `Money` by a `Decimal` |
-| Listing address | `text.slug` |
-| Description preview | `text.trim`, `text.keep_first` |
-| Features filter | `set.contains`, `set.intersection` |
-| Map search in the visible area | [Geospatial](20-geospatial.md) |
-| Portal feed import | `json.read` as a batch |
-
-**5. SaaS with subscriptions and billing**
-
-| Does | Needs |
-|---|---|
-| Plan prices per customer's currency | `Money` with a currency known while running |
-| Proration for a mid-month change | `price * (days_left / days_in_month)`, the type's rounding |
-| Invoice total of lines | `money.sum` |
-| Signed webhooks to customers | `crypto.hmac`, `json.write` |
-| Customers' third-party tokens kept safe | `crypto.encrypt`, encrypted fields |
-| Features per plan | `set.contains` |
-| Usage per day | `map.get`, `map.with`; monthly totals by an aggregate query ([Counts, sums and groups](06-reads-and-writes.md#counts-sums-and-groups)) |
-
-**6. CMS with CSV imports and exports**
-
-| Does | Needs |
-|---|---|
-| Import articles from a spreadsheet | `csv.read`, construction per row |
-| Export for editors | `csv.write` with `CsvFormat.spreadsheet` |
-| Tags typed by hand, tidied | `text.trim`, `text.lower`, `set.with` |
-| Excerpt and word count | `text.keep_first`, `text.split`, `list.filter`, `list.count` |
-| Articles in a locale's alphabetical order | `list.sort_by` with `locale:` |
-| Rich text kept safe | `Html`, made safe by its construction |
-
-**7. IoT telemetry**
-
-| Does | Needs |
-|---|---|
-| Readings arriving in bulk | `json_lines.read` |
-| Average, spread and extremes per window | `list.sum`, `decimal.divide`, `decimal.sqrt`, `list.min_by`, `list.max_by` |
-| Drop repeated messages | `set.contains`, `list.distinct` |
-| Latest reading per device | `list.group_by`, `list.last` |
-| Hourly charts over months | Aggregate queries ([Counts, sums and groups](06-reads-and-writes.md#counts-sums-and-groups)) |
-| Each device signs its messages with its own key | `crypto.new_key`, and `crypto.sign` with a key-type field as its `key:` ([A key is never a value](#a-key-is-never-a-value)) |
-| Bit-packed payloads | The device's provider package ([Logic and bits](#logic-and-bits)) |
-
-**8. Internal admin tool**
-
-| Does | Needs |
-|---|---|
-| Bulk actions on selected records | `Set<Uuid>`, `set.difference` |
-| Email shown masked | `text.keep_first`, `text.keep_last` |
-| Export of a filtered list | `csv.write` |
-| A record's raw JSON for support | `json.write` |
-| Counts by status | Aggregate queries ([Counts, sums and groups](06-reads-and-writes.md#counts-sums-and-groups)) |
-| Roles | `set.contains` |
-| Two-factor codes | TOTP package; passkeys or a provider ([Ways to sign in](08-identity.md#ways-to-sign-in)) |
-
-**9. Support assistant with retrieval (AI)**
-
-| Does | Needs |
-|---|---|
-| Embed help articles and find the closest | `Vector`, pgvector query ([Embeddings and search](21-ai.md#embeddings-and-search)) |
-| Answer as a typed reply with sources | `ai.generate(..., as:)` ([Typed output](21-ai.md#typed-output)) |
-| Show the answer as it is written | `ai.stream` ([Streaming](21-ai.md#streaming)) |
-| Keep within a monthly budget | AI limits ([Budgets](21-ai.md#budgets)) |
-| Strip personal data before sending | `text.replace`; the [personal-data report](15-personal-data.md#the-personal-data-report) |
-| Chunk articles into passages | `text.split`, `list.keep_first` |
-
-How much of the standard library each application uses, and how each
-need was met, is in the
-[design notes](notes/19-standard-library.md#scenario-coverage).
-
-## Language gaps this page depends on
-<!-- topic: language-gaps-this-page-depends-on -->
-
-Some operations on this page rely on parts of the language that other
-pages describe: `for` over a set, `[]` as an empty map, inline functions
-of two values, maths on `Decimal`, secrets used only as a `crypto` key,
-`random`, `locale:` on sorting and case, `text.format` and `text.parse`,
-aggregate queries, rules across fields, normalised text, and `Money`. The
-[design notes](notes/19-standard-library.md#language-gaps-this-page-depends-on)
-list each one, the page it lives on and the operations it makes possible.
-
-Some things are left out on purpose. Here is what to use instead:
-
-| Left out | Instead |
-|---|---|
-| Generic functions in your own code | The standard library stays generic ([Generic code](03-logic.md#generic-code)) |
-| `reduce`, `fold` | `for` with `var mut`; `list.sum` |
-| Comparators | `sort_by`, `reverse` |
-| `items[i]` | `list.at`, which gives `T?` |
-| Regular expressions as calls | `pattern:` and construction ([Constraints](02-values-and-types.md#constraints)) |
-| Graphemes | Code points |
-| Dynamic keys on records | `Map` |
-| A dynamic JSON value | `json.read(..., as:)`; `Text` to pass on |
-| CSV in memory | `csv.read` through a store |
-| MD5, SHA-1 | A package ([External services](11-integrations.md)) |
-| Bitwise operations | `Set<Enum>` |
-| Fetching exchange rates | A provider package; `money.convert` applies a rate the app holds |
-| Gender, sex at birth | Your app's own type, marked sensitive ([Personal data](15-personal-data.md)) |
-| CMYK and print colour | A package on the standard `Colour` |
-| Training models | A package or an outside service |
-| Aliases (`size` for `count`) | The table's name |
-
-Why each is left out is in the
-[design notes](notes/19-standard-library.md#left-out-by-design).
-
-Of the parts of the language these operations rely on, only keys held as
-data aren't built yet; see [What is built](#what-is-built).
-
-## How the five languages compare
-<!-- topic: how-the-five-languages-compare -->
+## Coming from TypeScript
+<!-- topic: coming-from-typescript (was how-the-five-languages-compare) -->
 
 If you know TypeScript, a few of the standard library's choices will
 differ from what you expect:
@@ -11969,14 +12299,14 @@ what Jadpo took from each, is in the
 | Feature | Status |
 |---|---|
 | Everything on this page not listed below | Built |
-| What keys held as data allow: `crypto.verify_totp` and HS256 in `crypto.verify_jwt` | Not built yet: the next chunk on [the roadmap](../roadmap.md) |
-| A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename` | Not built yet: a swap waits on [Records and manifest](18-records-and-manifest.md), `jadpo rename` on [Tooling](14-tooling.md) |
+| What keys held as data allow: `crypto.verify_totp` and HS256 in `crypto.verify_jwt` | Not built yet |
+| A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename` | Not built yet: a swap waits on [Review and records](18-records-and-manifest.md), `jadpo rename` on [Tools](14-tooling.md) |
 | A query comparing or ordering by an amount of money, a one-step update working one out, a backfill of a new required one, and a condition on a JSON-held field | Not built yet: `toolchain.not_built_yet` names each |
 | The UK modulus check in `BankAccount` | Not built yet: waits on Vocalink's permission to ship its tables |
 | Checking `UnLocode`, `IataAirport`, `IcaoAirport`, `IataAirline` and `Icd10Code` against their lists | Not built yet: waits on licences that allow shipping the lists |
 | [Policy](09-policy.md)'s scopes narrowing `OAuthScope` | Not built yet: waits on [Policy](09-policy.md) |
 | Legacy encodings in the file readers | Not built yet: waits on an application that needs one |
-| `jadpo replay`, and a calendar file's writer | Not built yet: `jadpo replay` waits on [Debugging and review](17-debugging-and-review.md), a calendar file's writer on an application that needs one |
+| `jadpo replay`, and a calendar file's writer | Not built yet: `jadpo replay` waits on [Debugging](17-debugging-and-review.md), a calendar file's writer on an application that needs one |
 | What [Personal data](15-personal-data.md) does with each standard type's personal data category | Not built yet: waits on [Personal data](15-personal-data.md) |
 | The rest of geospatial and AI | Partly built: [What is built: Geospatial](20-geospatial.md#what-is-built) and [What is built: AI](21-ai.md#what-is-built) say which parts |
 

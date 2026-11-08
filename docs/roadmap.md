@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-11-01. This page is the only list of outstanding work: the
+**Updated:** 2026-11-08. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record language decisions on the [area pages](language/README.md)
 and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
@@ -148,30 +148,14 @@ a finished chunk is in git history.
   14, "A Workers deployable" and Decisions; area 10, "Client addresses".
 - [x] **8.2m2 Rate limits' store on Workers**: area 16, "Rate limits" and
   "Rate limits on Workers"; §2.6, "The Workers host".
-- [ ] **8.2n A real deploy** `opus · high`, after 8.2a to 8.2m2, **needs
-  a maintainer** (the maintainer's Cloudflare account): a teaching example deployed with
-  Hyperdrive's caching off to a real PostgreSQL, the cron and a queue,
-  its Wrangler file accepted by `wrangler deploy`; its cold start against
-  the one-second limit, its module against the plan's size limit, and
-  the client's address and the six connections on the real edge,
-  measured; whether the outbound guard's names can reach a private
-  address there checked. From 8.2i: the Worker reaching Hyperdrive
-  without TLS as its binding's address says, Hyperdrive's default TLS
-  checking the database's certificate, and a `vector` column read through
-  it (tokio-postgres describes one through a named statement). From 8.2h:
-  a Worker reaching its own `JadpoHandOn` (since 8.4b through
-  `ctx.exports`, not a binding), each invocation handed on given its own
-  30 seconds once the one that called it has ended, and a client leaving
-  a streamed answer ending the model's call.
-  From 8.2k: a queue's name in Jadpo's form and its consumer accepted by
-  Cloudflare, and a batch's `retry({ delaySeconds })` honoured on the edge.
-  From 8.4a: a recursion through 400 inline functions, and a thousand
-  frames of a large function, answered on the edge, whose V8 stack the
-  inline-function limit assumes is about workerd's megabyte, and the
-  module's 8 MiB stack within an isolate's memory.
-  From 8.4b: the hand-on reaching the Worker through `ctx.exports` on the
-  edge, under the file's name and under `wrangler deploy --env`, and the
-  dead-letter queue's consumer accepted beside the queue's.
+- [x] **8.2n A real deploy**: compiler/runtime §2.6, "PostgreSQL through Hyperdrive"; area 16, "Rate limits on Workers"; guide 11.
+- [ ] **8.2o What a deploy couldn't show** **needs a maintainer**, after 0.3.0
+  (2026-11-04): two locations counting apart, from a second network;
+  Hyperdrive's default TLS checking the database's certificate, which takes an
+  origin with a bad one; the module's 8 MiB stack within an isolate's memory,
+  from Cloudflare's logs; a message sent to the dead-letter queue parked
+  (`jadpo deliveries`); why two deployables with one `namespace_id` didn't
+  share their counts.
 
 - [x] **8.3 Performance spike**: §2.11.
 
@@ -273,11 +257,9 @@ D1 first: the site starts once D1 has merged.
 - [x] **D9 Docs for newcomers**: [writing guide](writing.md); the [Learn path](learn/README.md); the [primer](primer.md); [documentation](documentation.md), "The bundle".
 - [x] **D10 Area pages to the writing guide**: the area pages in [docs/language](language/README.md), each topic to the [writing guide](writing.md), "How a reference topic reads", and the rationale in each area's design notes.
 - [x] **D11 Task guides**: [guides](guides/README.md); [documentation](documentation.md), "Topic IDs" and "The bundle"; [writing guide](writing.md), "Kinds of user page"; `tools/docs/language_docs.py`, `GuidePage`.
-- [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "In development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
+- [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "Sign-in in development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
 - [x] **D13a Error pages people reach first**: [writing guide](writing.md), "How an error page reads" and "What the docs check enforces"; [documentation](documentation.md), "The bundle"; `tools/docs/language_docs.py`, `error_format_problems` and `error_format_scope`; the catalogue summaries in `crates/jadpo-diag`.
-- [ ] **D13b Command errors that explain**: an umbrella, split by size
-  (2026-10-31) into D13b1, D13b2a, D13b2b1, D13b2b2, D13b2c, D13b3a,
-  D13b3b and D13b3c, taken in order; tick it once all are.
+- [x] **D13b Command errors that explain**: D13b1 to D13b3c below; `tools/docs/language_docs.py`, `error_format_scope`, which covers every command error.
 - [x] **D13b1 The `sh run` block, settings and `jadpo new`**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; `tools/docs/language_docs.py`, `check_runs`; the pages of `configuration.local_*`, `cli.config_*` and `toolchain.*` a run raises, and `configuration.value_invalid`.
 - [x] **D13b2a Copied output, root runs and the first person-decided pages**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "What it compiles with"; the pages of `configuration.value_missing`, `configuration.local_changed`, `format.write_failed`, `translation.exchange_file_invalid`, `toolchain.build_failed` and `toolchain.fetch_failed`.
 - [x] **D13b2b1 A database for runs, migrations and seeds**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "Database command errors"; `tools/docs/language_docs.py`, `Databases`; the pages of `seed.production_refused`, `seed.unavailable`, `migration.apply_failed`, `migration.store_diverged`, `migration.extension_missing` and `migration.extension_outdated`.
@@ -285,17 +267,28 @@ D1 first: the site starts once D1 has merged.
 - [x] **D13b2c The rest a person decides**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "Command errors"; the pages of `cli.dev_start_failed`, `conform.refused`, `recording.refused`, `suggest.share_failed`, `format.unsafe` and `test.runtime_start_failed`.
 - [x] **D13b3a The command line's own errors**: area 14, "Command-line errors"; `tools/docs/language_docs.py`, `error_format_scope`; the pages of `cli.*_arguments`, `cli.unknown_command` and `cli.unknown_flag`.
 - [x] **D13b3b The other command errors**: area 14, "Command errors", "Database command errors" and `jadpo email`; [writing guide](writing.md), "What the docs check enforces"; `tools/docs/language_docs.py`, `error_format_scope` and `command_errors`; the pages of `cli.dev_port_invalid`, `cli.package_*`, `configuration.move_*`, `conform.failed`, `email.browser_failed`, `format.changes_required`, `recording.failed`, `seed.failed`, `suggest.record_invalid`, `test.failed`, `test.no_tests` and `translation.exchange_unit_unknown`.
-- [ ] **D13b3c The package commands' transcripts** `opus · high`: split
-  from D13b3b by size (2026-11-01). The pages of `install.in_use`,
-  `publish.changelog_missing`, `publish.description_missing`,
-  `publish.example_failed` and `publish.example_missing`, command errors
-  still shown as a copied transcript, to the format with checked runs,
-  each catalogue summary its first sentence and area 14's rows matching;
-  then `FORMAT_WAITS` in `tools/docs/language_docs.py` is emptied and
-  removed, so the format check covers every command error.
+- [x] **D13b3c The package commands' transcripts**: area 14, "Command errors"; [writing guide](writing.md), "The release line"; `tools/docs/language_docs.py`, `error_format_scope` and `run_block`; the pages of `install.in_use`, `publish.changelog_missing`, `publish.description_missing`, `publish.example_failed` and `publish.example_missing`.
 - [ ] **D13c The rest of the error pages** `opus · high`: every other page
   in `docs/errors/` to the format, each rule's catalogue summary its
   page's first sentence; `error_format_scope` then covers every page.
+  Split by size (2026-11-08) into D13c1 to D13c15 below, taken in order,
+  each widening `error_format_scope` to the rules it finished; tick it
+  once all are.
+- [x] **D13c1 `type.a*` to `type.e*`**: [writing guide](writing.md), "How an error page reads"; `tools/docs/language_docs.py`, `error_format_scope` and `BROUGHT_TO_FORMAT`; the catalogue summaries in `crates/jadpo-diag`; the pages of `type.a*` to `type.e*`.
+- [ ] **D13c2 `type.f*` to `type.n*`** `opus · high`: 31 pages.
+- [ ] **D13c3 `type.o*` to `type.v*`** `opus · high`: 37 pages.
+- [ ] **D13c4 `syntax.a*` to `syntax.l*`** `opus · high`: 27 pages.
+- [ ] **D13c5 `syntax.m*` to `syntax.v*`** `opus · high`: 28 pages.
+- [ ] **D13c6 `data.*`** `opus · high`: 40 pages.
+- [ ] **D13c7 `semantic.*`** `opus · high`: 35 pages.
+- [ ] **D13c8 `route.*` and `api.*`** `opus · high`: 33 pages.
+- [ ] **D13c9 `failure.*`, `decline.*` and `effect.*`** `opus · high`: 31 pages.
+- [ ] **D13c10 `query.*`, `record.*` and `visibility.*`** `opus · high`: 28 pages.
+- [ ] **D13c11 `policy.*`, `rate_limits.*`, `connection.*`, `constant.*`, `naming.*` and `import.*`** `opus · high`: 30 pages.
+- [ ] **D13c12 `configuration.*`, `deployable.*`, `toolchain.*`, `install.*`, `publish.*` and `library.*`** `opus · high`: 34 pages.
+- [ ] **D13c13 `translation.*`, `layout.*` and `email.*`** `opus · high`: 33 pages.
+- [ ] **D13c14 `package.*`, `test.*`, `migration.*` and `acceptance.*`** `opus · high`: 28 pages.
+- [ ] **D13c15 `step.*`, `subscriber.*`, `schedule.*`, `prompt.*`, `event.*`, `ai.*` and `receiving.*`** `opus · high`: 18 pages; then `error_format_scope` covers every rule.
 - [x] **D14 The toolchain launcher**, in 0.1.0: [tooling](language/14-tooling.md), "Which jadpo runs"; `crates/jadpo-cli/src/launcher.rs`, `releases.rs`, `attestation.rs`, `toolchains.rs`.
 
 ## Phase 10 — Golden todo
@@ -307,7 +300,9 @@ D1 first: the site starts once D1 has merged.
   and in TypeScript, several runs each, with hidden acceptance tests.
   Measures correctness, attempts and tokens to green, where each mistake
   was caught (check, test or escaped), how easily a person reviews the
-  diff, and how often a tempting unsafe shortcut gets through. The agent
+  diff, and how often a tempting unsafe shortcut gets through. It also counts how
+  often a person is asked to sign off per change, and splits each session's
+  tokens between reading docs, reading and writing code, and command output. The agent
   gets the docs as [documentation](documentation.md) delivers them, primer
   first, since no model has seen Jadpo; the results
   also say whether task guides are needed beyond the primer. The method is designed at the start of the chunk; its
@@ -353,7 +348,7 @@ first. They are taken before any other unticked chunk on this page
 time.
 
 - [x] **A0 Every unbuilt protection refused where it is written**: area 15, opening, the capability table and "What is built"; area 9, "Protecting policy"; area 6, "All-or-nothing actions and concurrent changes"; area 16, "What is built".
-- [x] **A1 Diagnostics that point at the cause**: area 1, "Reserved words" and "How a promotion happens"; area 2, "Values that may be missing"; area 9, "Actions"; area 14, "Commands for debugging, editors and help".
+- [x] **A1 Diagnostics that point at the cause**: area 1, "Reserved words" and "How a promotion happens"; area 2, "Values that may be missing"; area 9, "Permissions on actions"; area 14, "Commands for debugging, editors and help".
 - [x] **A2 Listed queries and calls a listing doesn't cover**: area 9, "Listing a query", "A call the listing doesn't cover" and "The permissions report"; area 1, "Which rules can be declined".
 - [x] **A3 External tokens in tests and `jadpo dev`**: area 8, "External tokens in tests and `jadpo dev`"; area 13, `as:`; area 14, `jadpo dev`'s "External tokens"; area 19, `Jwk`'s `key_ops`.
 - [x] **A4 Batches run to the end in tests**: area 13, "Batches" and "What is built"; compiler/runtime §2.5; `examples/24-seed-library/README.md`.
@@ -368,54 +363,114 @@ time.
 - [x] **A10 Staff only through their provider**: area 9, "Roles that need a way in" and Decisions; area 8, "How a session started", "How strongly a person signed in", "Company accounts" and Decisions; area 13, "Signing in for a route test"; area 18, "Acceptances" and Decisions; compiler/runtime §2.6, "Roles that need a way in"; `examples/29-lending-desk/README.md`.
 - [x] **A11 Route tests keep their session**: area 13, "Signing in for a route test", "What is built" and Decisions; `examples/29-lending-desk/README.md`.
 
+## What the 0.2.0 run found
+
+An outside agent's second run (inventory, checkout and return only, so the
+sign-in fixes stay unmeasured). Each is small; D15 and D16 come first, since
+a new agent can't find a type without them (Richard, 2026-11-03).
+
+- [x] **D15 Links that can't break**: documentation.md, "The bundle" and "What the site serves"; `bundle_link_problems`, `site_path_problems` and `agent_reading_problems` in `tools/docs/language_docs.py`; the site's `scripts/check-links.mjs`.
+- [x] **D16 Standard type pages that teach**: writing.md, "How a standard type's page reads"; documentation.md, "The bundle"; area 14, "`jadpo help`"; `crates/jadpo-std/src/standard/pages/` and `crates/jadpo-cli/src/type_page.rs`.
+- [x] **A12 What a new agent reads first**: documentation.md, "The bundle" and "How an agent uses it"; area 14, `jadpo new`; `tools/docs/agent_guidance.py`.
+- [x] **A13 A broken test environment says so once**: area 13, "The test database"; area 14, "`jadpo test`"; `docs/errors/test.database_unavailable.md`.
+- [x] **A14 Small diagnostics from the run**: design language, "Repeats and `--full`"; area 1, "One primary declaration per file" and "Domains"; area 13, "As JSON"; area 14, "The `jadpo` command" and "`jadpo check`"; `docs/errors/type.mismatch.md`, `docs/errors/syntax.expected_name.md`, `docs/errors/naming.generic_name.md`, `docs/errors/layout.unused_declaration.md`.
+- [x] **A15 Public writes in a new app**: area 18, "What a first record holds"; area 17, "Reviewing a change"; area 7, "Answers that never change"; area 15, "What the compiler checks"; compiler/runtime §2.3, "What a first record holds"; `docs/errors/route.cache_invalid.md`.
+- [ ] **A16 Run the sign-in half again** **needs a maintainer** after 0.3.0: the
+  same brief as 0.1's run, sign-in, roles and reminders included, the only way
+  to judge A7, A10 and A11. Until then, no public claim that sign-in is fixed.
+
+What the Reddit thread found (Richard, 2026-11-03):
+
+- [ ] **A17 `jadpo inspect` and `jadpo impact`** `opus · high`: area 14. An
+  agent can ask for the project map and for what a change to a name reaches,
+  rather than reading files to work it out. `jadpo impact` moves here from
+  "Tooling completeness".
+- [x] **A18 Leaving Jadpo**: [leaving Jadpo](leaving-jadpo.md); `crates/jadpo-cli/tests/leaving.rs`, `tools/checks/openapi_valid.py` and `tools/fixtures/openapi/`; `every_carried_crate_is_apache_2_0` in `crates/jadpo-cli/src/runtime_source.rs`.
+- [ ] **A19 Typed holes, to decide** `opus · high`: whether an agent can write
+  a hole and have the compiler say what type belongs there and what is in
+  scope. Waiting for Richard's decision on the recommendation in notes for
+  area 2, "Open questions": `_` as a value, always the error `type.hole`,
+  naming the type and what in scope fits; measured against the PersonName
+  detour, it saves nothing there, since D15, D16 and A14 already remove it.
+- [x] **A20 An email address is personal data**: area 15, "Contact details and names need no mark" and "What the compiler checks"; area 18, "What a first record holds"; compiler/runtime §2.3, "Contact details and names need no mark"; notes for areas 15 and 18.
+- [x] **A21 Phone numbers, names and addresses are cleared as an email is**: area 15, "Contact details and names need no mark" and "Erasure"; `data.erase_field_required`; compiler/runtime §2.3, "Contact details and names need no mark"; notes for area 15.
+- [x] **A22 A write background work could never make**: area 9, "Nothing grants it"; area 12, "Runs as the system"; `docs/errors/policy.system_grant_missing.md`; notes for area 9, "Background work and no grant".
+- [x] **A23 The system's lists decided**: area 9, "A list naming only people"; area 12, "Runs as the system"; `docs/errors/policy.system_grant_missing.md`; notes for areas 9 and 12.
+- [x] **A24 A `File` isn't sent or taken by a route until downloads are built**: area 16, "What a `File` holds" and "Downloading"; `toolchain.not_built_yet` and `type.batch_input`; notes for area 16.
+- [x] **A25 A `File` doesn't cross to or from a provider, a queue or a prompt**: area 16, "What a `File` holds"; area 11, "Types" and "Queues"; `toolchain.not_built_yet`, `type.batch_input` and `prompt.placeholder_type`; notes for area 16.
+- [x] **A26 A `File`'s parts, an attachment's name and where `FileContents` goes**: area 16, "What a `File` holds", "Attachments" and "`store.read(file)`"; area 11, "Types"; `type.field_on_non_record`, `toolchain.not_built_yet`, `type.batch_input` and `prompt.placeholder_type`; notes for area 16.
+- [x] **D17a Honest status words**: each area's "What is built" table; [writing guide](writing.md), "A status word"; `status_word_problems` in `tools/docs/agent_guidance.py`.
+- [x] **D17b The reference's manifest**: `docs/reference.toml` and its check; docs/documentation.md, "The reference's manifest".
+- [x] **D17c The navigation designed**: `design/docs-nav.html` in jadpo-website.
+- [x] **D17d The site built from the manifest**: `src/lib/nav.ts` and `src/components/docs/` in jadpo-website; its `DESIGN.md`.
+- [x] **D17e Landing pages and status lines**: `tools/docs/reference_pages.py`; docs/documentation.md, "Landing pages and status lines"; `docs/reference.toml`.
+- [x] **D17f Search that finds the docs**: `src/lib/search.ts` and `scripts/search.test.mjs` in jadpo-website.
+- [x] **D17g What an agent reads first**: [documentation guide](documentation.md), "How an agent uses it"; `llms.txt`, the skill and the AGENTS.md `jadpo new` writes; `whole_index_problems` and `read_once_problems` in `tools/docs/agent_guidance.py`.
+- [x] **D17h Standard types under Values and types**: docs/documentation.md, "The bundle"; `hand_type_table_problems` in `tools/docs/language_docs.py`; `/docs/types` in jadpo-website.
+- [x] **D17i Built-in services, one home each**: docs/language/16-built-in-services.md; docs/language/21-ai.md, "AI"; [writing guide](writing.md), "How a built-in service's page reads"; `docs/reference.toml`.
+- [x] **D17j Every other area**: the `(was …)` declarations on the area pages; `docs/reference.toml`, Configuration.
+- [x] **D17k Implementer history out of the topics**: [writing guide](writing.md), "Nothing of how it was built"; `builder_history_problems` in `tools/docs/agent_guidance.py`.
+- [x] **D17l The guides index grouped**: `docs/guides/README.md`; docs/documentation.md, "The bundle"; `src/components/guides/GuideList.astro` in jadpo-website.
+- [x] **D17m The ten guides**: `docs/guides/12-send-an-email.md` to `21-keep-customers-data-apart.md`.
+- [x] **D17o First examples stand alone**: [writing guide](writing.md), "A page's first example stands alone"; `tools/docs/first_examples.py`, run `--strict` by the gate.
+- [x] **D17n Review**: [writing guide](writing.md), "A page's first example stands alone", "The release line" and "How a built-in service's page reads".
+
+What publishing the first packages found (Richard, 2026-11-07):
+
+- [ ] **A27 Fakes' `.requests`** `opus · high`: area 13, "What the code
+  sent: `.requests`". `Integration.operation.requests` is a list typed as the
+  operation's input, `List<CreateBooking>`, so a test reads a sent field as
+  any other value; it is kept where the call is made, in the order sent,
+  each request as the package encoded it before it went out, and a field the
+  input marks `secret` or a credential reads as redacted, never its value.
+  The `ai` fake's `ai.<prompt>.requests` is the model to follow. Done when
+  area 13's example asserting on `ReminderMail.send_overdue_reminder.requests`
+  runs interpreted and compiled, and `toolchain.not_built_yet` no longer
+  names `.requests`.
+
+Not scheduled: a way to write a query the language can't express. Richard
+will work through it and other solutions later; don't design or build one
+until then.
+
 ## Approvals
 
 Everything a person must approve is found by the compiler and can be
 approved (Richard, 2026-10-31). The chunks here come after the A chunks
 above and before every other unticked chunk.
 
-0.2.0 shipped without V2. **V2 is part of 0.3.0,** with everything else in
-this section and the registry chunks below, released when V6 and R6 have
-both merged. V1 and V3 to V5 run at the same time as each other and as R1
+0.2.0 shipped without V2. **0.3.0 holds** everything in this section, R1 to
+R6, G1 to G7 (what the registry application, R7, needs from `jadpo`), the real
+deploy (8.2n) and what it finds, and D15, D16, D17, A12 to A15, A20, A21, A22, A23, A24, A25 and A26 (Richard,
+2026-11-03). It is released when those have merged. V1 and V3 to V5 run at the same time as each other and as R1
 and R4, where they touch different crates.
 
 Already built: acceptances (`jadpo acceptance new`, matching, the reason,
 history, the CODEOWNERS gate) for API and event breaks, every widening of
 who can do what (routes made public included), security declines,
-sign-in settings past their limit, new domains, new outside hosts,
-packages from git (every one, until V1) and removing data. The kinds that belong to
+sign-in settings past their limit, new domains, new outside hosts, risky
+package upgrades, third parties' packages from git and removing data. The kinds that belong to
 features not built yet come with those features: `ThresholdChange` with
 thresholds, a service's image with services, bot checks with bot
 protection, a domain renamed with `jadpo domain rename`.
 
 - [x] **V2 The approval report**: area 17, "Reviewing a change"; area 18, "Comparing two builds"; area 14, "`jadpo approval`"; compiler/runtime §2.3, "The approval report"; `docs/errors/cli.approval_arguments.md`.
-- [ ] **V1 Your own company's git packages** `opus · high`: area 11,
-  "Installing safely"; area 18, `PolicyChange.own_source_added`.
-  `packages:`'s `own_sources:` in `application { }` (added to area 1's
-  list of sections), its `own_source` lines in `access.jadpo_record`, and
-  `PackageChange.git_source` only for a repository under none of them.
+- [x] **V1 Your own company's git packages**: area 11, "Installing safely"; area 18, "Acceptances"; area 1, "What `application { }` holds"; compiler/runtime §2.3; `docs/errors/package.own_source_invalid.md`.
 - [x] **V3 Removing data needs a person**: area 5, "Removing data"; area 18, "Acceptances" and `DataChange`; area 14, "`jadpo migrate`"; area 16, "Deleting and erasing" and "Retention and erasure"; compiler/runtime §2.3, "Removals"; `docs/errors/migration.drop_not_accepted.md`.
-- [ ] **V4 Risky package upgrades need a person** `opus · high`: area 18,
-  "Package upgrades". The review compares the operations and declarations
-  the app uses, version ignored; a used operation removed, a used field
-  removed or retyped, a new failure on a used operation, or a host or
-  credential scheme changed needs a `PackageChange` acceptance; `jadpo
-  package update` prints the review.
+- [x] **V4 Risky package upgrades need a person**: area 18, "Package upgrades" and "Acceptances"; area 11, "How packages are installed and linked"; area 14, the package commands; compiler/runtime §2.3, "Acceptances".
 - [x] **V5 Where personal data goes**: area 15, "Marking personal fields"
   and "Where personal data goes"; area 14, `jadpo package check`;
   compiler/runtime §2.3, "Where personal data goes".
-- [ ] **V6 Personal data a connection can't erase** `opus · high` after V5:
-  area 15, "Erasure at providers"; area 18, `ErasureNotPossible`. A
-  connection that receives a marked field, whose package declares no
-  `erasure:`, needs an `ErasureNotPossible` acceptance with the reason the
-  data stays; the approval report shows the personal-data report's diff.
+- [x] **V6 Personal data a connection can't erase**: area 15, "Erasure at
+  providers"; area 18, `ErasureNotPossible`; area 17, "Reviewing a change";
+  compiler/runtime §2.3, "Erasure at providers".
 
 ## The public registry
 
 The registry at jadpo.dev ([External services](language/11-integrations.md#the-public-registry)).
 These chunks are taken after V2 and before every other unticked chunk,
-beside the other approval chunks, and R1 to R6 are part of 0.3.0
-(Richard, 2026-10-31). The chunks here build the `jadpo`
+beside the other approval chunks, and 0.3.0 holds R1 to R6 and everything R7
+needs from `jadpo` (Richard, 2026-11-03), so R7 starts from a release. The
+chunks here build the `jadpo`
 side; the registry application itself is built in the jadpo.dev
 repository against [the registry protocol](language/11-integrations.md#the-registry-protocol).
 R1 and R4 touch different crates and run at the same time.
@@ -431,25 +486,22 @@ real deploy) and, before outside authors can publish, D3 (releases).
   passkey".
 - [x] **R3 A release's facts, change record and fingerprints**: area 11, "How a release's facts, change record and fingerprints are worked out"; area 14, "`jadpo package check`" and "`jadpo package verify`"; compiler/runtime §2.3, "What a release shows"; `docs/errors/publish.behaviour_changed.md`, `docs/errors/publish.stale_files.md`.
 - [x] **R4 The registry protocol and a local registry**: area 11, "The registry protocol"; compiler/runtime §2.1, `jadpo-registry`.
-- [ ] **R5 The registry commands** `opus · high` after R3 and R4: area 11,
-  "Installing and updating from the registry", "Developing for the
-  registry"; area 14, the package commands. `add @publisher/name` with the
-  log check and the lock's scoped `registry` line, `update`'s three-day
-  wait, `--to` and urgent releases, `search`, `audit`, `publish` and
-  `--dry-run`, `preview`. Every screen designed with the design skills
-  first.
-- [ ] **R6 The verifier** `opus · high` after R3: area 11, "The verifier".
-  `jadpo package verify --serve`, fetching over git and then verifying with
-  no network, the check that a commit holds only Jadpo source and the
-  package's text files within the size limit, and its container image
-  published with each release (D3).
-  It runs on Fly.io, reached over HTTPS (Richard, 2026-10-31); **needs a
-  maintainer** for the Fly.io account before it is deployed.
+- [x] **R5 The registry commands**: area 11, "How the registry commands work"; area 14, the package commands; compiler/runtime §2.1, "The registry commands"; the pages of `install.not_in_registry`, `install.not_proved`, `install.yanked`, `package.advisory`, `publish.failed`, `publish.not_at_tag`, `publish.repository_refused` and `registry.unreachable`.
+- [x] **R6 The verifier**: area 11, "The verifier" and "Publishing errors"; area 14, "`jadpo package verify`"; compiler/runtime §2.1, `jadpo-verifier`; `deploy/verifier/`; `.github/workflows/verifier-image.yml`; documentation, "Versions and releases".
+- [x] **R6b The verifier deployed**: on Cloudflare Containers, from the jadpo.dev repository's `verifier/`; documentation, "Versions and releases"; area 11, "The verifier".
+- [x] **G1 Reserved words as names**: area 2, "Names from reserved words"; area 1, "Reserved words"; `docs/errors/syntax.expected_name.md`, `docs/errors/type.reserved_variant_name.md`.
+- [x] **G2 A `GET` that runs a read-only action**: area 7, "A `GET` that runs an action"; area 3, "Functions and actions"; `docs/errors/route.run_kind.md`; compiler/runtime, "An action on a `GET`".
+- [x] **G3 A route that sends raw bytes**: area 7, "Sending raw bytes", "Answers that never change" and "The public API record"; area 18, "Acceptances"; `docs/errors/route.sends_invalid.md`, `docs/errors/route.cache_invalid.md`; compiler/runtime, "A route that sends raw bytes".
+- [x] **G4 A route's `rate_limit:`**: area 16, "Rate limits" and "What the
+  binding promises"; §2.6; area 16's Decisions.
+- [x] **G5 Small gaps the registry found**: area 7, "Serving the document"; area 14, "`jadpo package protocol`"; area 19, "Bytes"; area 2, "A record names its type alone"; `docs/errors/api.route_needs_sign_in.md`, `docs/errors/protocol.mismatch.md`, `docs/errors/protocol.unreadable.md`, `docs/errors/type.record_type_arguments.md`.
+- [x] **G6 A package names its publisher**: area 11, "The index: `package.jadpo`", "Names and publishers", "Releasing" and "The verifier"; area 14, `jadpo package verify`; compiler/runtime §2.1, "A package's publisher"; `docs/errors/publish.publisher_missing.md`, `docs/errors/publish.publisher_mismatch.md`.
+- [x] **G7 `jadpo package new` and the licence bar**: area 14, `jadpo package new`, `jadpo package check` and `jadpo package verify`; area 11, "Developing and publishing a package" and "What publishing requires"; the design notes' "A new package and the licence bar"; `docs/errors/publish.licence_proprietary.md`.
 - [ ] **R7 The registry application** **needs a maintainer** to start the
-  jadpo.dev session, after R1, R4 and R6: built against the protocol and
-  passing R4's conformance test. Until the S3 driver its archives are kept
-  in PostgreSQL; until the search capability its word search is its own
-  queries over each package's written account.
+  jadpo.dev session, after R1, R4, R6, R6b, 8.2n and G1 to G7: built against the
+  protocol and passing R4's conformance test. Until the S3 driver its archives
+  are kept in PostgreSQL, and its database must offer pgvector 0.8. Word search
+  is `search:` with `matches`.
 
 After the registry is live, in order:
 
@@ -525,8 +577,10 @@ After the registry is live, in order:
      records go, a generated subscriber calling the package's `erasure:`
      operation after commit and retrying until it confirms, a delivery
      that gives up parked and shown, and a key that is personal data
-     kept only in the outbox until it is delivered. V6 reads the
-     declarations and builds `ErasureNotPossible`. Done when a test
+     kept only in the outbox until it is delivered. V6 read the
+     declarations and built `ErasureNotPossible`; this takes away the
+     personal-data report's line saying Jadpo doesn't call a provider's
+     `erasure:` yet. Done when a test
      erasing a person sees each fake provider's erasure called once,
      after the commit.
    - [ ] **P7 Marked fields in logs and access records** `opus · high`
@@ -658,12 +712,12 @@ After the registry is live, in order:
      see each failure on both executors, and `jadpo files copy` moves a
      disk store's files to S3.
    - [x] **B9 Flags declared, read and tested**: area 16, "Feature flags"
-     and "Flags: declared, read and tested"; area 1, "Rules triggered by
+     and "Flag rules: declaring, reading, testing"; area 1, "Rules triggered by
      time passing"; area 13, "Test settings"; compiler/runtime §2.6,
      "Feature flags".
    - [x] **B10 Changing and removing flags**: area 16, "Changing a flag",
-     "Removing a flag", "Flags in browsers and apps" and "Flags: changed,
-     listed and removed"; area 14, `jadpo flags`; compiler/runtime §2.6,
+     "Removing a flag", "Flags in browsers and apps" and "Flag rules: changing,
+     listing, removing"; area 14, `jadpo flags`; compiler/runtime §2.6,
      "Feature flags".
    - [x] **B11 The audit trail**: area 16, "Audit trail" (with "Reading
      a history", "Retention and erasure" and "What the audit trail
@@ -679,15 +733,13 @@ After the registry is live, in order:
    `call`.
 6. Records and acceptances: moved to "Approvals" (2026-10-31).
 7. Tooling completeness (area 14): interactive tests, `rename` (refusing a
-   name already in use, 2026-10-16), `impact`,
-   full completion.
+   name already in use, 2026-10-16), full completion.
 8. Packages and capabilities after the first build (decided 2026-10-16):
    services run by Jadpo (`runs:`, Docker or Podman hidden behind
    `jadpo services`); the `documents` capability; OAuth grants per owner;
    search, `bot_check` and `scanning` capabilities;
    telemetry's `telemetry:` section, custom metrics and the local
-   `jadpo traces`, `metrics` and `logs`; `jadpo watch`; publishing packages (`jadpo package new`, `check`,
-   `publish`, git-tag versions, publisher trust); a service's new or
+   `jadpo traces`, `metrics` and `logs`; `jadpo watch`; a service's new or
    changed container image and its `outbound:` grants, each with a
    `PackageChange` acceptance; packages from other Jadpo
    apps and the cross-app break check; choosing a provider when deploying,
@@ -701,6 +753,7 @@ After the registry is live, in order:
    ordinary frontend code.
 11. `jadpo docs` or `jadpo mcp` serving the bundle offline
    ([documentation](documentation.md), "Not decided yet").
+12. [ ] **D18 Areas by name** `opus · medium`: command and error pages and CLI strings saying "Area 14" or "(area 12)" name the area instead, as the [writing guide](writing.md)'s "Link by name, never by number" says.
 
 ## How we work
 

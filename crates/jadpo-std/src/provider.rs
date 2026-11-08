@@ -203,6 +203,93 @@ pub fn time_named(name: &str) -> bool {
         .any(|end| name.len() > end.len() && name.ends_with(end))
 }
 
+/// What a provider package's `Text` field may be by its name and its
+/// object's other fields (area 11, "Mapping imported types to standard
+/// types"): an email address, a part of a person's name, a phone number,
+/// or free text a person wrote, which only a mark says is personal data.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextCandidate {
+    /// An email's sender or recipient, `to`, `from`, `cc`, `bcc` or
+    /// `reply_to` beside an email's `subject`, `cc` or `bcc`: an `Email`,
+    /// or an `EmailWithName` where a name is shown with it.
+    Mailbox,
+    /// Named like an email address: `email`, `customer_email`.
+    Email,
+    /// A first name: `GivenName`.
+    GivenName,
+    /// A surname: `FamilyName`.
+    FamilyName,
+    /// A whole name as one text, which no standard type holds: a
+    /// `PersonName` keeps its parts apart.
+    WholeName,
+    /// A phone number: `PhoneNumber`.
+    Phone,
+    /// An email's subject or body, a message's content or a model's
+    /// prompt: free text, to mark `personal:`, with what it is.
+    FreeText(&'static str),
+}
+
+/// The names an email's sender and recipients go by.
+const MAILBOXES: [&str; 5] = ["to", "from", "cc", "bcc", "reply_to"];
+
+/// What `name`, a `Text` field of an object whose fields are `siblings`
+/// (itself among them), may be; `None` for text that names nothing.
+/// Names alone decide it, and only the distinctive ones: `to` and `from`
+/// are an email's only beside its `subject`, `cc` or `bcc`, and `content`
+/// a message's only beside its `role`.
+pub fn text_candidate(name: &str, siblings: &[&str]) -> Option<TextCandidate> {
+    let has = |wanted: &str| siblings.contains(&wanted);
+    let email = has("subject") || has("cc") || has("bcc");
+    let suffixed = |names: &[&str], ends: &[&str]| {
+        names.contains(&name)
+            || ends
+                .iter()
+                .any(|end| name.len() > end.len() && name.ends_with(end))
+    };
+    if email && MAILBOXES.contains(&name) {
+        return Some(TextCandidate::Mailbox);
+    }
+    if suffixed(&["email", "email_address"], &["_email", "_email_address"]) {
+        return Some(TextCandidate::Email);
+    }
+    if suffixed(
+        &["first_name", "given_name", "forename"],
+        &["_first_name", "_given_name"],
+    ) {
+        return Some(TextCandidate::GivenName);
+    }
+    if suffixed(
+        &["last_name", "family_name", "surname"],
+        &["_last_name", "_family_name", "_surname"],
+    ) {
+        return Some(TextCandidate::FamilyName);
+    }
+    if suffixed(&["full_name"], &["_full_name"]) {
+        return Some(TextCandidate::WholeName);
+    }
+    if suffixed(
+        &["phone", "phone_number", "telephone", "msisdn"],
+        &["_phone", "_phone_number"],
+    ) {
+        return Some(TextCandidate::Phone);
+    }
+    if email
+        && matches!(
+            name,
+            "subject" | "html" | "text" | "body" | "html_body" | "text_body"
+        )
+    {
+        return Some(TextCandidate::FreeText("an email's subject or body"));
+    }
+    if has("role") && matches!(name, "content" | "text") {
+        return Some(TextCandidate::FreeText("a message's content"));
+    }
+    if has("model") && matches!(name, "prompt" | "system" | "instructions") {
+        return Some(TextCandidate::FreeText("a prompt to a model"));
+    }
+    None
+}
+
 /// The operations an application calls through its connections to
 /// provider packages, whose connections, each a
 /// [`crate::connections::ConnectionDriver::Package`], are in the plan's
@@ -499,6 +586,60 @@ pub enum PathPart {
     Fixed(String),
     /// A placeholder: the input's member of this spelling on the wire.
     Field(String),
+}
+
+/// Whether a provider's refusal with `status` can be one of an
+/// operation's failures (area 11, "A provider's failures";
+/// decided 2026-11-07): a `4xx` the package driver doesn't read first, as
+/// a rejected credential (`401`, `403`) or a call that did nothing (`408`,
+/// `429`).
+pub fn is_failure_status(status: u16) -> bool {
+    (400..=499).contains(&status) && !matches!(status, 401 | 403 | 408 | 429)
+}
+
+/// How a provider answers one of an operation's failures (area 11, "A provider's failures"; decided 2026-11-07): its Jadpo code, the
+/// status it refuses with (`wire_status:`) and its own text for it at
+/// `error_code:` (`wire_name:`). A failure that gives neither is read by its
+/// code.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct FailureMatch {
+    pub code: String,
+    pub status: Option<u16>,
+    pub text: Option<String>,
+}
+
+/// The code of the failure among `failures` that a refusal with `status`
+/// is, whose text at `error_code:` is `raw` as the provider wrote it and
+/// `code` as a failure's code reads it (the same text but for AWS's error
+/// types): the most specific first, a failure's status and text, then its
+/// text (its code, where it gives no `wire_name:` or status), then its
+/// status alone. `None` when none matches.
+pub fn matched_failure<'a>(
+    failures: &'a [FailureMatch],
+    status: u16,
+    raw: Option<&str>,
+    code: Option<&str>,
+) -> Option<&'a str> {
+    let both = failures.iter().find(|failure| {
+        failure.status == Some(status) && failure.text.is_some() && failure.text.as_deref() == raw
+    });
+    let text = || {
+        failures.iter().find(|failure| {
+            failure.status.is_none()
+                && match &failure.text {
+                    Some(text) => Some(text.as_str()) == raw,
+                    None => code.is_some_and(|code| code == failure.code),
+                }
+        })
+    };
+    let alone = || {
+        failures
+            .iter()
+            .find(|failure| failure.status == Some(status) && failure.text.is_none())
+    };
+    both.or_else(text)
+        .or_else(alone)
+        .map(|failure| failure.code.as_str())
 }
 
 /// An operation an application calls.
@@ -824,6 +965,45 @@ mod tests {
         assert_eq!(wire_parts("Point"), Some(vec!["latitude", "longitude"]));
         assert_eq!(wire_parts("InstantRange"), Some(vec!["start", "end"]));
         assert_eq!(wire_parts("Email"), None);
+    }
+
+    /// The text `package.standard_candidate` flags, by name and by the
+    /// object's other fields, and what it leaves alone.
+    #[test]
+    fn text_named_like_a_person_says_what_it_may_be() {
+        use TextCandidate::*;
+        let email = ["from", "to", "subject", "html", "text"];
+        assert_eq!(text_candidate("from", &email), Some(Mailbox));
+        assert_eq!(text_candidate("to", &email), Some(Mailbox));
+        assert!(matches!(
+            text_candidate("subject", &email),
+            Some(FreeText(_))
+        ));
+        assert!(matches!(text_candidate("html", &email), Some(FreeText(_))));
+        assert_eq!(text_candidate("cc", &["cc", "to"]), Some(Mailbox));
+        // A conversion's `from` and `to` aren't an email's.
+        assert_eq!(text_candidate("from", &["from", "to", "amount"]), None);
+        assert_eq!(text_candidate("text", &["text", "id"]), None);
+        assert_eq!(text_candidate("customer_email", &[]), Some(Email));
+        assert_eq!(text_candidate("email", &[]), Some(Email));
+        assert_eq!(text_candidate("email_subject", &[]), None);
+        assert_eq!(text_candidate("first_name", &[]), Some(GivenName));
+        assert_eq!(text_candidate("surname", &[]), Some(FamilyName));
+        assert_eq!(text_candidate("full_name", &[]), Some(WholeName));
+        assert_eq!(text_candidate("name", &[]), None);
+        assert_eq!(text_candidate("phone_number", &[]), Some(Phone));
+        assert_eq!(text_candidate("billing_phone", &[]), Some(Phone));
+        assert_eq!(text_candidate("_phone", &[]), None);
+        assert_eq!(
+            text_candidate("content", &["role", "content"]),
+            Some(FreeText("a message's content"))
+        );
+        assert_eq!(text_candidate("content", &["content", "filename"]), None);
+        assert!(matches!(
+            text_candidate("prompt", &["model", "prompt"]),
+            Some(FreeText(_))
+        ));
+        assert_eq!(text_candidate("prompt", &["prompt"]), None);
     }
 
     /// A call's site names its operation by number, and a package action's

@@ -1,11 +1,11 @@
 ---
-title: Jobs and events
+title: Background work
 area: 12
 status: decided
 checked-with: this checkout's jadpo on every gate run
 ---
 
-# Jobs and events
+# Background work
 <!-- topic: jobs-and-events -->
 
 This page covers the work your app does outside a request: schedules that
@@ -30,7 +30,7 @@ Two more things feed this work without being triggers of their own:
 
 - Work over more items than one action can hold runs as a **batch**. An
   action starts it, and it calls an action for each item
-  ([Batches](#batches-work-over-many-items)).
+  ([Batches](#batches)).
 - The outside world produces events for your subscribers: webhooks, a
   package's own events and polls, and messages read from a queue
   ([Events from outside](#events-from-outside)).
@@ -47,21 +47,64 @@ Use a schedule for work that should happen on a timer rather than when
 someone asks, such as sending reminders every 15 minutes or tidying up
 once a day. A schedule runs one action at a fixed interval. It has a
 name, an `every:` saying how often, and a `run:` that calls an action in
-the same domain with no arguments.
+the same domain with no arguments. This one notes every 15 minutes that
+the app is running:
 
-`domains/planning/schedules/chore_census.jadpo`:
+```jadpo check project=schedule-first file=app.jadpo hidden
+application {}
+```
 
-```jadpo fragment
-// domains/planning/schedules/chore_census.jadpo
-/// Queues a reminder for each overdue todo.
-schedule chore_census {
+`domains/ops/schedules/heartbeat_timer.jadpo`:
+
+```jadpo check project=schedule-first file=domains/ops/schedules/heartbeat_timer.jadpo
+use ops/actions { record_heartbeat }
+
+/// Notes every 15 minutes that the app is running.
+schedule heartbeat_timer {
     every: 15m
-    run: queue_chore_census()
+    run: record_heartbeat()
 }
 ```
 
-Here `queue_chore_census` runs every 15 minutes. You don't start it,
-and a restart or a deploy doesn't upset its timing.
+`domains/ops/actions/record_heartbeat.jadpo`:
+
+```jadpo check project=schedule-first file=domains/ops/actions/record_heartbeat.jadpo
+use ops/entities { Heartbeat }
+
+/// Writes one heartbeat.
+action record_heartbeat() -> Heartbeat {
+    return Heartbeat.create {
+        set: {}
+    }
+}
+```
+
+`domains/ops/entities/heartbeat.jadpo`:
+
+```jadpo check project=schedule-first file=domains/ops/entities/heartbeat.jadpo migrate=initial
+/// One note that the app was running.
+entity Heartbeat {
+    id: Uuid
+    beat_at: Instant {
+        generated: Generated.on_create
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+```
+
+Here `record_heartbeat` runs every 15 minutes. You don't start it, and a
+restart or a deploy doesn't upset its timing. It runs on a server of your
+own and on Workers, where `every:` can't be under a minute.
+
+`heartbeat_timer`, `record_heartbeat` and `Heartbeat` are your app's own,
+and each `use` line brings one in from its file. `schedule`, `Generated`
+and `Access` are built in. A schedule has no person behind it, so a
+record it writes must let `Access.system` in. Run `jadpo migrate new
+initial` to make the tables.
 
 ### `every:` and `run:`
 
@@ -147,9 +190,9 @@ hourly purge schedule from the compiler, such as `Member.purge` for
   its code and kind. Due schedules run side by side, so one long run
   holds no other up.
 - **Grants.** A schedule runs as the system, so the records it reaches
-  must name `Access.system` in their policy. A schedule reaching what
-  only `Access.public` grants is `policy.system_grant_missing`, as a
-  subscriber or a batch is ([Background work](09-policy.md#background-work)).
+  must name `Access.system` in their policy. A schedule reaching a list
+  that doesn't name it is `policy.system_grant_missing`, as a subscriber
+  or a batch is ([Policy and background work](09-policy.md#policy-and-background-work)).
 
 ### The tick
 
@@ -240,7 +283,7 @@ The tick deletes:
   ([What an operator sees](#what-an-operator-sees));
 - the handled records of those deliveries (below);
 - browser sessions and API tokens that have ended, and service keys that
-  have expired ([Identity](08-identity.md)), which a lookup already
+  have expired ([Sign-in and identity](08-identity.md)), which a lookup already
   ignores. Each is deleted in the store it is kept in, beside its
   principal's users or services;
 - schedule run records and ended batch runs 30 days old
@@ -392,9 +435,9 @@ twice.
 
 This shape suits a bounded set found by a query. Work over a set with no
 bound, such as every row of an uploaded file, a large export or every
-page of a provider's list, is a [batch](#batches-work-over-many-items).
+page of a provider's list, is a [batch](#batches).
 
-## Batches: work over many items
+## Batches
 <!-- topic: batches-work-over-many-items -->
 
 Use a batch when one action can't hold the work: importing every row of
@@ -402,6 +445,103 @@ an uploaded spreadsheet, writing a large export, or walking every record
 a query finds or every page of a provider's list. A batch runs in the
 background, a slice at a time. It keeps its place as it goes, so a crash
 or a deploy carries on where it stopped and nothing is done twice.
+
+The simplest batch walks every record a query finds. This one marks every
+item in a stocktake as seen, however many there are:
+
+```jadpo check project=batch-first file=app.jadpo hidden
+application {}
+```
+
+`domains/stock/actions/start_stocktake.jadpo`:
+
+```jadpo check project=batch-first file=domains/stock/actions/start_stocktake.jadpo
+use stock/types { ItemPage }
+use stock/actions { mark_seen }
+use stock/queries { all_items }
+
+/// Starts marking every item seen.
+action start_stocktake() -> BatchRun {
+    return batches.each(from: all_items(ItemPage {}), each: item -> mark_seen(item))
+}
+```
+
+`batches.each` runs `mark_seen` for each item `all_items` gives, a page
+at a time, each page in its own transaction. The batch starts once this
+action commits, and the `BatchRun` it returns names it, for
+[`batches.status`](#progress-cancelling-and-the-summary) to ask about later.
+
+`batches` and `BatchRun` are built into Jadpo. The rest are your app's own,
+in these files:
+
+`domains/stock/actions/mark_seen.jadpo`:
+
+```jadpo check project=batch-first file=domains/stock/actions/mark_seen.jadpo
+use stock/entities { Item }
+
+/// Marks one item seen.
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+```
+
+`domains/stock/queries/all_items.jadpo`:
+
+```jadpo check project=batch-first file=domains/stock/queries/all_items.jadpo
+use stock/entities { Item }
+use stock/types { ItemPage }
+
+/// Every item, a page at a time, in an order no change to an item moves.
+query all_items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.id asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+```
+
+`domains/stock/types/item_page.jadpo`:
+
+```jadpo check project=batch-first file=domains/stock/types/item_page.jadpo
+/// Where a batch has got to in the list of items.
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 50
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+```
+
+`domains/stock/entities/item.jadpo`:
+
+```jadpo check project=batch-first file=domains/stock/entities/item.jadpo migrate=initial
+/// One item in a stocktake.
+entity Item {
+    id: Uuid
+    seen: Bool
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+```
+
+`PageSize` and `PageCursor` are built in. A batch has no person behind it,
+so `Item` lets `Access.system` in, and a real app lists its people beside
+it. Run `jadpo migrate new initial` to make the tables.
+
+### Batches over files
 
 You start a batch with a helper: one for each file format and direction,
 and `batches.each` for work with no file. Every helper handles small and
@@ -464,7 +604,7 @@ each item, and a `finished:`, which receives the stored file.
 returning a `Page`, which the run walks a page at a time
 ([Order and pages](06-reads-and-writes.md#order-and-pages)), or a call to
 a provider's list operation, which it walks by `page.next`
-([Integrations](11-integrations.md)).
+([External services](11-integrations.md)).
 
 ### `each:` and `finished:`
 
@@ -586,7 +726,7 @@ query by a field no update changes, such as `id`, or a creation time
 followed by `id`. A `from:` ordered by a field that can be updated is
 [`type.batch_order_updatable`](../errors/type.batch_order_updatable.md).
 It is an error you may decline when you know the order is safe
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
+([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 
 ### Batches instead of chained events
 
@@ -693,7 +833,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
 <!-- topic: how-a-run-is-kept -->
 
 This topic is the detail of how a `batches.each` run is stored, resumed
-and checked. Most apps never need it: [Batches](#batches-work-over-many-items)
+and checked. Most apps never need it: [Batches](#batches)
 says what a batch does. The rules for a file's run and an export's run
 build on this one ([How a file's run is kept](#how-a-files-run-is-kept),
 [How an export's run is kept](#how-an-exports-run-is-kept)).
@@ -876,7 +1016,7 @@ the items done, and once it failed or was cancelled, the last estimate.
 It is kept in `jadpo_batch_runs.estimated_total`. A count the store
 refuses leaves the run without one rather than stopping it. A query whose
 records Jadpo checks again after its statement, such as one with `geo.`
-conditions ([Geospatial queries](20-geospatial.md#queries)), has none.
+conditions ([Finding records by place](20-geospatial.md#finding-records-by-place)), has none.
 
 ### An order an update can change
 
@@ -947,7 +1087,7 @@ than one, are `toolchain.not_built_yet`.
 This topic is what a file helper's read run does beyond a query's run
 ([How a run is kept](#how-a-run-is-kept)). It covers `csv.read`,
 `tsv.read`, `json_lines.read` and `json.read`'s file form. Where
-[Batches](#batches-work-over-many-items) and
+[Batches](#batches) and
 [Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines)
 leave a choice open, the run takes the most cautious one.
 
@@ -970,7 +1110,7 @@ its `File`, so a resumed run reads the same one.
 ### Read before the transaction
 
 No outside call goes out while a transaction is open
-([The seam every outside call goes through](16-built-in-services.md#the-seam-every-outside-call-goes-through)),
+([How every outside call is made safe](16-built-in-services.md#how-every-outside-call-is-made-safe)),
 and an item's action runs
 inside its batch's transaction. So each batch's rows are read from the
 store first, through the `files` capability, in windows of at most a
@@ -1105,7 +1245,7 @@ them, is `toolchain.not_built_yet`.
 This topic is what a file helper's write run does beyond a query's run
 ([How a run is kept](#how-a-run-is-kept)). It covers `csv.write`,
 `tsv.write`, `json_lines.write` and `json.write`'s file form. Where
-[Batches](#batches-work-over-many-items) and
+[Batches](#batches) and
 [Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines)
 leave a choice open, the run takes the most cautious one. Data formats
 also says how each row is written.
@@ -1118,7 +1258,7 @@ As for `batches.each`: in the store `from:`'s query reads, which
 ### Each page is stored after its page commits
 
 No outside call goes out while a transaction is open
-([The seam every outside call goes through](16-built-in-services.md#the-seam-every-outside-call-goes-through)),
+([How every outside call is made safe](16-built-in-services.md#how-every-outside-call-is-made-safe)),
 so each page goes in three steps:
 
 1. A transaction locks the run's row and reads, as the system, the page
@@ -1208,13 +1348,13 @@ every tenant shares.
 
 A batch runs as the system, so what it reaches must let `Access.system`
 in, as for a schedule or a subscriber
-([Background work](09-policy.md#background-work)). Suppose what `from:`'s
+([Policy and background work](09-policy.md#policy-and-background-work)). Suppose what `from:`'s
 query reads, or what the action `each:` or `finished:` calls reaches
 (itself or through what it calls), has a grant list, a field's own list
-or a line under `actions:` that names `Access.public` and not
-`Access.system`. Then that is `policy.system_grant_missing`, at that
-query's or action's call. Each call is checked, so one batch may be
-refused at more than one.
+or a line under `actions:` that doesn't name `Access.system`, or is a
+listed query. Then that is `policy.system_grant_missing`, at that query's
+or action's call. Each call is checked, so one batch may be refused at
+more than one.
 
 A batch's query that only `Access.public` may read:
 
@@ -1395,7 +1535,7 @@ record every tenant shares (`Tenancy.shared`) isn't the tenant's.
 
 What a schedule, a subscriber or a batch reaches is checked against the
 line under `actions:` of every action it reaches, not only the one it
-runs ([Actions](09-policy.md#actions)). A listed action's line decides
+runs ([Permissions on actions](09-policy.md#permissions-on-actions)). A listed action's line decides
 its own body's writes wherever it is called from. Routes are checked the
 same way.
 
@@ -1770,19 +1910,49 @@ to it later without the action that caused it waiting. You declare it as
 a type whose base is `Event`, named in the past tense, one per file in
 the domain's `events/` folder.
 
+```jadpo check project=todo-events file=app.jadpo hidden
+application {}
+```
+
 `domains/planning/events/todo_completed.jadpo`:
 
-```jadpo fragment
-// domains/planning/events/todo_completed.jadpo
+```jadpo check project=todo-events file=domains/planning/events/todo_completed.jadpo
+use planning/entities { Todo }
+
 /// A todo was marked complete.
-public type TodoCompleted = Event {
+type TodoCompleted = Event {
     todo_id: Todo.id
     completed_at: Instant
 }
 ```
 
-`TodoCompleted` says a todo was completed, which todo and when. Mark an
-event `public` when another domain subscribes to it.
+`TodoCompleted` says a todo was completed, which todo and when. `Event` and
+`Instant` are built in. `Todo` is your app's own entity, a kind of stored
+record, and the `use` line brings it in from its file:
+
+`domains/planning/entities/todo.jadpo`:
+
+```jadpo check project=todo-events file=domains/planning/entities/todo.jadpo
+/// Something to do.
+entity Todo {
+    id: Uuid
+    done: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.public]
+    }
+}
+```
+
+`Access.public` lets anyone in, which keeps this example short
+([Policy](09-policy.md)), and `jadpo migrate new initial` makes the tables.
+
+An action [emits](#emitting-an-event) the event, and a
+[subscriber](#subscribers) reacts to it, so the next two topics finish this
+example. `public type` instead of `type` lets another domain subscribe to it
+([Reacting in another domain](#reacting-in-another-domain)).
 
 ### What an event holds
 
@@ -1843,8 +2013,7 @@ record's breaks do: an event removed (`planning.TodoCompleted:
 ApiChange.event_removed`), a field removed or retyped
 (`ApiChange.output_field_removed`, `.output_field_retyped`), a required
 field added (`.input_field_required`) or a rule tightened
-(`.rule_tightened`), each named `<domain>.<Event>.<field>` (Richard,
-2026-10-30).
+(`.rule_tightened`), each named `<domain>.<Event>.<field>`.
 
 ## Emitting an event
 <!-- topic: emitting-an-event -->
@@ -1852,14 +2021,24 @@ field added (`.input_field_required`) or a rule tightened
 An action announces an event with `emit`, a statement written like
 `reject` ([Raising a failure](04-failures.md#raising-a-failure-reject)).
 The event reaches its subscribers only once the action's writes have
-committed.
+committed. This action emits the `TodoCompleted` from
+[Declaring an event](#declaring-an-event). `TodoNotFound` is the failure
+the compiler provides for a `Todo` that isn't there
+([The operations every entity gets](06-reads-and-writes.md#the-operations-every-entity-gets)):
 
 `domains/planning/actions/complete_todo.jadpo`:
 
-```jadpo fragment
-// domains/planning/actions/complete_todo.jadpo
+```jadpo check project=todo-events file=domains/planning/actions/complete_todo.jadpo
+use planning/entities { Todo, TodoNotFound }
+use planning/events { TodoCompleted }
+
+/// Marks a todo complete, and says so.
 action complete_todo(todo_id: Todo.id) fails TodoNotFound -> Todo {
-    var todo: Todo = attempt mark_complete(todo_id)
+    var todo: Todo = attempt Todo.update(todo_id) {
+        set: {
+            done: true
+        }
+    }
     emit TodoCompleted {
         todo_id: todo.id
         completed_at: clock.now
@@ -1922,17 +2101,61 @@ More than 1,000 events in one action, or an event whose JSON is over
 
 A subscriber reacts to an event: each time the event is committed, it
 runs an action. It names one event in `on:` and the action to run in
-`run:`. Inside `run:`, `event` is the event delivered.
+`run:`. Inside `run:`, `event` is the event delivered. This one keeps a note
+of each `TodoCompleted` from [Declaring an event](#declaring-an-event):
 
 `domains/planning/subscribers/update_statistics.jadpo`:
 
-```jadpo fragment
-// domains/planning/subscribers/update_statistics.jadpo
+```jadpo check project=todo-events file=domains/planning/subscribers/update_statistics.jadpo
+use planning/actions { note_todo }
+use planning/events { TodoCompleted }
+
+/// Counts each completed todo.
 subscriber update_statistics {
     on: TodoCompleted
-    run: count_completion(event)
+    run: note_todo(event)
 }
 ```
+
+`domains/planning/actions/note_todo.jadpo`:
+
+```jadpo check project=todo-events file=domains/planning/actions/note_todo.jadpo
+use planning/entities { TodoNotFound, TodoNote }
+use planning/events { TodoCompleted }
+
+/// Keeps a note of a completed todo.
+action note_todo(completed: TodoCompleted) fails TodoNotFound -> TodoNote {
+    return attempt TodoNote.create {
+        set: {
+            todo_id: completed.todo_id
+            completed_at: completed.completed_at
+        }
+    }
+}
+```
+
+`domains/planning/entities/todo_note.jadpo`:
+
+```jadpo check project=todo-events file=domains/planning/entities/todo_note.jadpo migrate=initial
+use planning/entities { Todo }
+
+/// A note that a todo was completed, kept for statistics.
+entity TodoNote {
+    id: Uuid
+    todo_id: Todo.id {
+        on_delete: OnDelete.cascade
+    }
+    completed_at: Instant
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+```
+
+A subscriber has no person behind it, so `TodoNote` and the `Todo` it
+refers to let `Access.system` in.
 
 ### What a subscriber holds
 
@@ -1962,9 +2185,15 @@ A subscriber's action may emit further events.
 ### Runs as the system
 
 A subscriber runs as the system (`Access.system`,
-[Background work](09-policy.md#background-work)), not as the user who
+[Policy and background work](09-policy.md#policy-and-background-work)), not as the user who
 caused the event. If it needs to know who, put a field such as
-`by: User.id` in the event.
+`by: User.id` in the event. What its action could reach whose list doesn't
+name `Access.system` is `policy.system_grant_missing`, so a write it could
+never make fails at `jadpo check`, not as a failed delivery.
+
+The system may write a `FieldAccess.server_only` field, as any other, where
+the record's own list names `Access.system`: the field keeps out requests,
+and the system is none.
 
 ### What a subscriber stores from its event
 
@@ -2004,7 +2233,7 @@ current state, as [Declaring an event](#declaring-an-event) advises.
 In an app with a `tenant:` ([Tenancy](09-policy.md#tenancy)), each kind
 of background work reaches a stated set of tenants, and "no tenant"
 means the same thing for each: only the records every tenant shares
-([Background work](09-policy.md#background-work)):
+([Policy and background work](09-policy.md#policy-and-background-work)):
 
 | Work | Reaches |
 |---|---|
@@ -2024,7 +2253,7 @@ email's `send:` action, a webhook's reply action and
 The value naming a subscriber's or a batch's tenant must come from a
 record of that tenant, which its action reached under its caller's
 policy. Otherwise it is `policy.event_tenant_unproved`
-([Background work](09-policy.md#background-work)). So a caller can never
+([Policy and background work](09-policy.md#policy-and-background-work)). So a caller can never
 aim background work at a tenant they don't belong to.
 
 ## Reacting in another domain
@@ -2104,7 +2333,94 @@ whether the record changed since it was read
 Every committed event reaches each of its subscribers at least once.
 A crash can deliver it again, so Jadpo makes a repeat harmless: database
 work happens once, and outside calls carry keys that let the provider
-ignore a repeat.
+ignore a repeat. You write nothing for this. Here an action places an order
+and emits `OrderPlaced`, and a subscriber packs the order:
+
+```jadpo check project=delivery-first file=app.jadpo hidden
+application {}
+```
+
+`domains/shop/subscribers/pack_placed_order.jadpo`:
+
+```jadpo check project=delivery-first file=domains/shop/subscribers/pack_placed_order.jadpo
+use shop/actions { pack_order }
+use shop/events { OrderPlaced }
+
+/// Packs each order placed.
+subscriber pack_placed_order {
+    on: OrderPlaced
+    run: pack_order(event.order_id)
+}
+```
+
+`domains/shop/actions/pack_order.jadpo`:
+
+```jadpo check project=delivery-first file=domains/shop/actions/pack_order.jadpo
+use shop/entities { Order, OrderNotFound }
+
+/// Marks an order packed. Running it twice changes nothing more.
+action pack_order(order_id: Order.id) fails OrderNotFound -> Order {
+    return attempt Order.update(order_id) {
+        set: {
+            packed: true
+        }
+    }
+}
+```
+
+`domains/shop/actions/place_order.jadpo`:
+
+```jadpo check project=delivery-first file=domains/shop/actions/place_order.jadpo
+use shop/entities { Order }
+use shop/events { OrderPlaced }
+
+/// Places an order, and says so.
+action place_order() -> Order {
+    var order: Order = Order.create {
+        set: {
+            packed: false
+        }
+    }
+    emit OrderPlaced {
+        order_id: order.id
+    }
+    return order
+}
+```
+
+`domains/shop/events/order_placed.jadpo`:
+
+```jadpo check project=delivery-first file=domains/shop/events/order_placed.jadpo
+use shop/entities { Order }
+
+/// An order was placed.
+type OrderPlaced = Event {
+    order_id: Order.id
+}
+```
+
+`domains/shop/entities/order.jadpo`:
+
+```jadpo check project=delivery-first file=domains/shop/entities/order.jadpo migrate=initial
+/// An order someone placed.
+entity Order {
+    id: Uuid
+    packed: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+```
+
+`subscriber`, `event`, `emit` and `Event` are built in, and every other name
+is declared here. `OrderNotFound` is the failure the compiler provides for
+an `Order` that isn't there. If the app crashes after `pack_order` commits,
+the delivery may start again, finds it was already handled and does
+nothing. If `pack_order` fails on the way, Jadpo decides whether to try
+again ([Retries and giving up](#retries-and-giving-up)).
 
 ### At least once
 
@@ -2164,7 +2480,7 @@ An event saved in the outbox, a job's arguments and the values a batch
 captures are all written as the JSON of their types, by the same codec a
 request's body goes through. So a standard type keeps its currency, its
 unit and every decimal place
-([Every boundary through the contract](19-standard-library.md#every-boundary-through-the-contract)).
+([How a standard value is sent, stored and shown](19-standard-library.md#how-a-standard-value-is-sent-stored-and-shown)).
 Every event type is numbered in the plan's JSON table by its identity
 key, and the outbox writes and reads its payload through that table
 ([Structured values](05-data.md#structured-values)).
@@ -2403,8 +2719,9 @@ run resumed under a changed build still stops as `diverged`.
 Fakes honour keys and can answer `lost` and `in_use`. `jadpo test` runs
 every multi-step test again with a crash at each step boundary, on by
 default ([Fakes for integrations](13-testing.md#fakes-for-integrations)).
-`jadpo dev`, `jadpo watch` and `jadpo deliveries show` list each step's
-state ([Debugging and review](17-debugging-and-review.md)).
+`jadpo dev` and `jadpo deliveries show` list each step's state, and
+`jadpo watch` will once it is built
+([Debugging](17-debugging-and-review.md)).
 
 ### Providers that take no key
 
@@ -2856,7 +3173,9 @@ stops short.
   loopback binding `ctx.exports` gives its own `JadpoHandOn` entrypoint,
   naming each piece by its record. The fresh invocation reads the pieces
   back and runs them in its own `waitUntil`, within what is left of its
-  own 30 seconds, counted from its start
+  own 30 seconds, counted from its start. With no cron to help, 160 summaries
+  of 2 seconds each were kept over 89 seconds, the largest gap 3.8 seconds, and
+  a Worker deployed under `--env` carried 40 on for 81 seconds (measured once, from one location (London, LHR), on 2026-11-04)
   ([design notes](notes/12-jobs-and-events.md), "Work handed on, on
   Workers"). A hand-on the platform refuses, for example past its limit
   on how many invocations one request may chain, leaves the work in the
@@ -3035,7 +3354,7 @@ When a subscriber's action fails, Jadpo decides whether to try again
 from the way it failed. You don't write anything for that. A failure
 that may pass, such as a provider being down, is retried later; one that
 would happen again with the same input isn't. The failure kinds are
-those in [Kinds](04-failures.md#kinds):
+those in [Failure kinds](04-failures.md#failure-kinds):
 
 | How the action ended | What happens |
 |---|---|
@@ -3348,7 +3667,7 @@ records and checks every part of a schedule's life, so you find out.
   stops. There is no `--env` flag: an environment is its configuration.
   Times are UTC, as schedules count them.
 - **`jadpo why <schedule>`** answers "why didn't it run?", in the shape
-  of every `jadpo why` answer ([Debugging and review](17-debugging-and-review.md)).
+  of every `jadpo why` answer ([Debugging](17-debugging-and-review.md)).
   It gives the first of these that holds: paused, with the due times
   skipped since; no tick since a time; a lease held past its end; a run
   still holding it; a tick skipped since the last run; the last run
@@ -3454,7 +3773,7 @@ database:
 Three things aren't built yet: names for instances, so the lease holder
 shows as a run rather than an instance; sending the metrics and alerts
 to a monitoring tool; and the console's timeline of each schedule's runs
-and ticks ([Debugging and review](17-debugging-and-review.md)).
+and ticks ([Debugging](17-debugging-and-review.md)).
 
 ## Limits and runtime faults
 <!-- topic: limits-and-runtime-faults -->
@@ -3477,15 +3796,14 @@ These limits may change once they have been measured on real runs.
 |---|---|
 | Everything else on this page | Built. |
 | Publishing chosen public events outward | Not built yet. |
+| `jadpo batches list`, `show` and `cancel` | Not built yet: an action can call `batches.status` and `batches.cancel` meanwhile ([Tooling](14-tooling.md#commands-for-services-calls-email-and-stored-data)). |
 | `batches.each` over a provider's list operation, walked by `page.next` | Not built yet: a provider's list operation as `from:` is `toolchain.not_built_yet` where it is written; a named query giving a `Page` is built ([Walking records or a provider's list](#walking-records-or-a-providers-list-batcheseach)). |
-| Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging and review](17-debugging-and-review.md)), and a record's entry in the [personal-data report](15-personal-data.md) | Not built yet. |
+| Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging](17-debugging-and-review.md)), and a record's entry in the [personal-data report](15-personal-data.md) | Not built yet. |
 | Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for [telemetry](16-built-in-services.md). |
-| The console's timeline | Not built yet ([Debugging and review](17-debugging-and-review.md)). |
+| The console's timeline | Not built yet ([Debugging](17-debugging-and-review.md)). |
 | Jitter and `Retry-After` between a delivery's attempts | Not built yet: the next attempt waits only its backoff ([Retries and giving up](#retries-and-giving-up)). |
 | Splitting a page type allowing more than 1,000 items into batches; `batches.status` and `batches.cancel` with runs in no store or several; a file's run with several databases and none written | Not built yet ([How a run is kept](#how-a-run-is-kept), [How a file's run is kept](#how-a-files-run-is-kept)). |
 | `cli.signal_handler_failed` | Not built yet ([Running background work](#running-background-work)). |
-
-[The roadmap](../roadmap.md) says when.
 
 ## Errors
 

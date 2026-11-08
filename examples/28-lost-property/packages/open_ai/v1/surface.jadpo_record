@@ -6,6 +6,7 @@ package OpenAi.v1
     file package.jadpo
     kind provider
     version 1.0.0
+    publisher @jadpo
     licence apache_2_0
     jadpo 1.0
 

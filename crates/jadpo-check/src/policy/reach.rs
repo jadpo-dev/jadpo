@@ -157,6 +157,14 @@ pub fn own_writes(db: &dyn Db, project: Project, action: &str) -> Vec<String> {
     out
 }
 
+/// Whether the action called `action` creates, changes or deletes records,
+/// in its own body or through an action it calls.
+pub fn writes(db: &dyn Db, project: Project, action: &str) -> bool {
+    calls_from(db, project, action)
+        .iter()
+        .any(|called| !own_writes(db, project, called).is_empty())
+}
+
 /// Who the line under `actions:` for the action called `action` lets call
 /// it as it starts, when it is listed (area 9, "Actions").
 pub fn line_gate(db: &dyn Db, project: Project, action: &str) -> Option<LineGate> {
@@ -199,6 +207,8 @@ struct Reached {
     /// The line under `actions:` whose grants these are, as written, when
     /// a listed action's own body writes the record.
     line: Option<String>,
+    /// The action whose body does this; `None` for what a query reads.
+    by: Option<String>,
 }
 
 /// The action called `run` and every action it calls, itself or through
@@ -238,6 +248,7 @@ fn reached(
                 effect: Effect,
                 grants: Vec<Grant>,
                 line: Option<String>,
+                by: Option<&str>,
                 out: &mut Vec<Reached>| {
         if out.iter().any(|r| {
             r.field.is_none() && r.entity == entity && r.effect == effect && r.grants == grants
@@ -254,6 +265,7 @@ fn reached(
             tenant,
             field: None,
             line,
+            by: by.map(str::to_string),
         });
     };
     let own = |entity: &str, effect: Effect| -> Vec<Grant> {
@@ -269,6 +281,7 @@ fn reached(
                 &entity,
                 Effect::Read,
                 own(&entity, Effect::Read),
+                None,
                 None,
                 &mut out,
             );
@@ -294,7 +307,7 @@ fn reached(
                         ),
                         _ => (own(entity, *effect), None),
                     };
-                    push(entity, *effect, grants, line, &mut out);
+                    push(entity, *effect, grants, line, Some(&current), &mut out);
                 }
                 Act::Calls(_) => {}
                 Act::Queries(query) => {
@@ -305,6 +318,7 @@ fn reached(
                             Effect::Read,
                             own(&entity, Effect::Read),
                             None,
+                            Some(&current),
                             &mut out,
                         );
                     }
@@ -326,6 +340,7 @@ fn reached(
                             tenant: false,
                             field: Some(field.clone()),
                             line: None,
+                            by: Some(current.clone()),
                         });
                     }
                 }
@@ -371,6 +386,7 @@ fn generated_reach(
             tenant,
             field: None,
             line: None,
+            by: None,
         }],
         true,
     )
@@ -744,65 +760,153 @@ pub fn reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     out
 }
 
-/// What background work reaches that only `Access.public` lets it in to.
+/// What the system, running an action or a query, reaches that it should
+/// never be let in to that way, or can't be let in to at all.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PublicOnly {
-    Entity {
+pub enum SystemRefused {
+    /// A grant list naming `Access.public` and not `Access.system`.
+    PublicEntity { entity: String, effect: Effect },
+    /// The action's line under `actions:`, naming the same.
+    PublicLine { written: String },
+    /// No list grants anyone this: an entity's own, or the `written` line
+    /// under `actions:` deciding this write of a listed action's own body.
+    Ungranted {
         entity: String,
         effect: Effect,
+        line: Option<String>,
     },
-    /// The action's line under `actions:`.
-    Line {
-        written: String,
+    /// A field's own list that names nobody.
+    UngrantedField {
+        entity: String,
+        field: String,
+        effect: Effect,
     },
+    /// An entity's list naming only people. `by` is the action that reaches
+    /// it, `None` for a query's own read.
+    People {
+        entity: String,
+        effect: Effect,
+        by: Option<String>,
+    },
+    /// A field's own list naming only people.
+    PeopleField {
+        entity: String,
+        field: String,
+        effect: Effect,
+        by: Option<String>,
+    },
+    /// An action's line under `actions:` naming only people.
+    PeopleLine { written: String },
+    /// A listed query's line, which can't name `Access.system`.
+    ListedQuery { written: String },
 }
 
 /// The first thing the action called `run`, run as the system, reaches
-/// whose grants name `Access.public` but not `Access.system` (area 9,
-/// "Background work and `Access.public`", decided 2026-10-19): a
-/// statement anyone at all may run tests no caller, so it would let the
-/// system in without the entity ever granting background work. The line
-/// under `actions:` of `run` and of every action it calls, itself or
-/// through another, is checked first, since each lets its caller in as it
-/// starts, wherever it is called from (chunk 6.6b).
-pub fn public_only(db: &dyn Db, project: Project, run: &str) -> Option<PublicOnly> {
+/// that doesn't let the system in by a grant of its own (area 9, "Background
+/// work"). Every list that decides a statement or an action it could reach
+/// must name `Access.system`, whichever branch runs, as a route anyone may
+/// call must reach only what names `Access.public`.
+///
+/// So a list naming `Access.public` and not `Access.system` is refused, as it
+/// tests no caller and would let the system in without the entity ever
+/// granting background work (decided 2026-10-19); one naming nobody, which
+/// can only ever be refused (chunk A22); and one naming only people, which
+/// the system is never among (chunk A23). The line under `actions:` of `run`
+/// and of every action it calls, itself or through another, lets its caller
+/// in as it starts, wherever it is called from (chunk 6.6b). A listed query's
+/// line can't name the system at all.
+///
+/// A `FieldAccess.server_only` field isn't among them: its own list lets the
+/// system write it ([`super::FieldPolicy::grants`]), and the record's decides.
+pub fn system_refused(db: &dyn Db, project: Project, run: &str) -> Option<SystemRefused> {
     let access = &Policies::new(db, project);
-    for action in calls_from(db, project, run) {
-        if let Some(line) = access.root().action(&action)
-            && line.who.contains(&ActionWho::Public)
-            && !line.who.contains(&ActionWho::System)
-        {
-            return Some(PublicOnly::Line {
-                written: line.written.clone(),
-            });
-        }
+    let actions = calls_from(db, project, run);
+    let line_naming = |who: Option<&ActionWho>| {
+        actions.iter().find_map(|action| {
+            let line = access.root().action(action)?;
+            let named = match who {
+                Some(who) => line.who.contains(who),
+                None => true,
+            };
+            (named && !line.who.contains(&ActionWho::System)).then(|| line.written.clone())
+        })
+    };
+    if let Some(written) = line_naming(Some(&ActionWho::Public)) {
+        return Some(SystemRefused::PublicLine { written });
     }
-    public_only_reached(db, project, access, run, false)
+    if let Some(found) = system_refused_reached(db, project, access, run, false) {
+        return Some(found);
+    }
+    if let Some(written) = line_naming(None) {
+        return Some(SystemRefused::PeopleLine { written });
+    }
+    actions.iter().find_map(|action| {
+        acts(db, project, action).iter().find_map(|act| match act {
+            Act::Queries(query) => listed_query(access, query),
+            _ => None,
+        })
+    })
 }
 
 /// The same for the query called `query`, which a batch's run reads as
 /// the system (chunk 6.4c).
-pub fn public_only_query(db: &dyn Db, project: Project, query: &str) -> Option<PublicOnly> {
-    public_only_reached(db, project, &Policies::new(db, project), query, true)
+pub fn system_refused_query(db: &dyn Db, project: Project, query: &str) -> Option<SystemRefused> {
+    let access = &Policies::new(db, project);
+    system_refused_reached(db, project, access, query, true).or_else(|| listed_query(access, query))
 }
 
-fn public_only_reached(
+fn listed_query(access: &Policies<'_>, query: &str) -> Option<SystemRefused> {
+    access
+        .root()
+        .query(query)
+        .map(|line| SystemRefused::ListedQuery {
+            written: line.written.clone(),
+        })
+}
+
+fn system_refused_reached(
     db: &dyn Db,
     project: Project,
     access: &Policies<'_>,
     run: &str,
     query: bool,
-) -> Option<PublicOnly> {
+) -> Option<SystemRefused> {
     let (reached, _) = reached(db, project, access, run, query);
-    reached
-        .into_iter()
-        .find(|reach| {
-            reach.grants.contains(&Grant::Public) && !reach.grants.contains(&Grant::System)
+    reached.into_iter().find_map(|reach| {
+        if reach.grants.contains(&Grant::System) {
+            return None;
+        }
+        if reach.grants.contains(&Grant::Public) {
+            return Some(SystemRefused::PublicEntity {
+                entity: reach.entity,
+                effect: reach.effect,
+            });
+        }
+        Some(match (reach.grants.is_empty(), reach.field, reach.line) {
+            (true, Some(field), _) => SystemRefused::UngrantedField {
+                entity: reach.entity,
+                field,
+                effect: reach.effect,
+            },
+            (true, None, line) => SystemRefused::Ungranted {
+                entity: reach.entity,
+                effect: reach.effect,
+                line,
+            },
+            (false, Some(field), _) => SystemRefused::PeopleField {
+                entity: reach.entity,
+                field,
+                effect: reach.effect,
+                by: reach.by,
+            },
+            (false, None, Some(written)) => SystemRefused::PeopleLine { written },
+            (false, None, None) => SystemRefused::People {
+                entity: reach.entity,
+                effect: reach.effect,
+                by: reach.by,
+            },
         })
-        .map(|reach| PublicOnly::Entity {
-            entity: reach.entity,
-            effect: reach.effect,
-        })
+    })
 }
 
 /// Whether policy may refuse the caller of the action called `run` with

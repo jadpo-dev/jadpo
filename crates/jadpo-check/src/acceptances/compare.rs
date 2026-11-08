@@ -52,6 +52,9 @@ pub enum Family {
     Data,
     /// A domain's `monitoring.jadpo`, or `app.jadpo`'s disk floors.
     Thresholds,
+    /// What leaves through a connection that can't erase it, which is judged
+    /// as things stand rather than against the before side's records.
+    Erasure,
 }
 
 fn need(
@@ -530,6 +533,19 @@ pub fn api(api: &str, path: &str, before: &str, after: Option<&str>, out: &mut V
                     "PolicyChange.confirmation_removed",
                 );
             }
+            // A route whose body is now another media type, or raw bytes
+            // where it was JSON, or JSON where it was raw bytes (area 7,
+            // "Sending raw bytes"): what its clients read is gone.
+            if fact(entry, "sends") != fact(now, "sends") {
+                need(
+                    out,
+                    Family::Api,
+                    path,
+                    Some(heading),
+                    route_subject(api, heading),
+                    "ApiChange.media_type_changed",
+                );
+            }
             // A route that now takes or answers with another type: compare
             // what its clients sent and read with what it takes and answers.
             let input = |entry: &Entry| {
@@ -680,6 +696,9 @@ struct Access {
 
 const EFFECTS: [&str; 4] = ["create", "read", "update", "delete"];
 
+/// A grant anyone at all meets, as a record writes it.
+const PUBLIC: &str = "Access.public";
+
 fn access(text: &str) -> Access {
     let mut out = Access::default();
     for entry in entries(text, &format::ACCESS) {
@@ -752,6 +771,60 @@ fn access(text: &str) -> Access {
         }
     }
     out
+}
+
+/// The entities whose records anyone may create, change or delete in the
+/// access record's `text`, each with those effects: a field's own list only
+/// narrows its record's, so it opens nothing of its own.
+pub fn public_writes(text: &str) -> BTreeMap<String, Vec<String>> {
+    access(text)
+        .entities
+        .into_iter()
+        .filter_map(|(entity, (lists, _))| {
+            let effects: Vec<String> = ["create", "update", "delete"]
+                .into_iter()
+                .filter(|effect| lists.get(*effect).is_some_and(|who| who.contains(PUBLIC)))
+                .map(str::to_string)
+                .collect();
+            (!effects.is_empty()).then_some((entity, effects))
+        })
+        .collect()
+}
+
+/// The entities whose records anyone may read in the access record's `text`,
+/// each with the fields kept from them: `server_only`, or with a `read` list
+/// of their own that doesn't name anyone at all.
+pub fn public_reads(text: &str) -> BTreeMap<String, BTreeSet<String>> {
+    let access = access(text);
+    access
+        .entities
+        .iter()
+        .filter(|(_, (lists, _))| lists.get("read").is_some_and(|who| who.contains(PUBLIC)))
+        .map(|(entity, _)| {
+            let kept = access
+                .fields
+                .iter()
+                .filter_map(|(field, (server_only, lists))| {
+                    let (of, name) = field.rsplit_once('.')?;
+                    let closed =
+                        *server_only || lists.get("read").is_some_and(|who| !who.contains(PUBLIC));
+                    (of == entity && closed).then(|| name.to_string())
+                })
+                .collect();
+            (entity.clone(), kept)
+        })
+        .collect()
+}
+
+/// The actions under `actions:` in the access record's `text` that anyone
+/// may run.
+pub fn public_actions(text: &str) -> Vec<String> {
+    access(text)
+        .actions
+        .into_iter()
+        .filter(|(_, who)| who.contains(PUBLIC))
+        .map(|(action, _)| action)
+        .collect()
 }
 
 fn added<'a>(was: Option<&'a BTreeSet<String>>, now: &'a BTreeSet<String>) -> bool {
@@ -1072,22 +1145,62 @@ pub fn network(path: &str, before: &str, after: &str, out: &mut Vec<Need>) {
     }
 }
 
+/// What the access record's `own_source` lines say.
+fn own_source_lines(text: &str) -> Vec<String> {
+    entries(text, &format::ACCESS)
+        .into_iter()
+        .filter_map(|entry| {
+            entry
+                .heading
+                .strip_prefix("own_source ")
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+/// An own source added or widened (area 11, "Installing safely"): an entry
+/// that lets in a repository the before side's list didn't. Removing one,
+/// or narrowing one, lets nothing new in and needs nothing. A before side
+/// with no access record had no list, so its first entry needs a person
+/// like any other.
+pub fn own_source_needs(path: &str, before: &str, after: &str, out: &mut Vec<Need>) {
+    let was = own_source_lines(before);
+    for entry in own_source_lines(after) {
+        if !crate::own_sources::covers(&was, &entry) {
+            need(
+                out,
+                Family::Access,
+                path,
+                Some(&format!("own_source {entry}")),
+                format!("\"{entry}\""),
+                "PolicyChange.own_source_added",
+            );
+        }
+    }
+}
+
 /// A third party's package installed from git (area 11, "Publisher
-/// trust"): every git package not locked from git before, since telling
-/// the app's own company's repository from a third party's needs a
-/// setting the pages don't decide.
-pub fn lock(path: &str, before: &str, after: &str, out: &mut Vec<Need>) {
-    let from_git = |text: &str| -> BTreeSet<String> {
+/// trust"): a package locked from a git repository it wasn't locked from
+/// before, unless the repository is under one of `own`, today's
+/// `own_sources:`. A package moved to another repository is new code from
+/// someone new, so it counts as much as one new to git. A before side with
+/// no lock had no packages, so its first needs a person like any other.
+pub fn lock(path: &str, before: &str, after: &str, own: &[String], out: &mut Vec<Need>) {
+    let from_git = |text: &str| -> BTreeMap<String, String> {
         jadpo_db::parse_lock(&format::normalise(text))
             .unwrap_or_default()
             .into_iter()
-            .filter(|locked| matches!(locked.source, jadpo_db::Source::Git { .. }))
-            .map(|locked| locked.package)
+            .filter_map(|locked| match locked.source {
+                jadpo_db::Source::Git { repository, .. } => Some((locked.package, repository)),
+                _ => None,
+            })
             .collect()
     };
     let was = from_git(before);
-    for package in from_git(after) {
-        if !was.contains(&package) {
+    for (package, repository) in from_git(after) {
+        if was.get(&package) != Some(&repository)
+            && crate::own_sources::covering(own, &repository).is_none()
+        {
             out.push(Need {
                 heading: Some(format!("package {package}")),
                 said: super::words::said(&Family::Lock, &package, "PackageChange.git_source"),
@@ -1201,6 +1314,30 @@ failure todo_locked
                 ("main.TodoView.priority", "ApiChange.output_field_retyped"),
                 ("main.todo_locked", "ApiChange.failure_changed"),
             ])
+        );
+    }
+
+    #[test]
+    fn a_change_to_what_a_route_sends_is_a_break() {
+        let raw = |media: &str| {
+            TODOS.replace(
+                "GET /todos/{todo_id: Uuid}\n    output TodoView\n",
+                &format!("GET /todos/{{todo_id: Uuid}}\n    output TodoView\n    sends {media}\n"),
+            )
+        };
+        let changed = pairs(&[(
+            "\"main GET /todos/{todo_id: Uuid}\"",
+            "ApiChange.media_type_changed",
+        )]);
+        assert_eq!(api_needs(TODOS, &raw("application/x-tar")), changed);
+        assert_eq!(api_needs(&raw("application/x-tar"), TODOS), changed);
+        assert_eq!(
+            api_needs(&raw("application/x-tar"), &raw("application/gzip")),
+            changed
+        );
+        assert_eq!(
+            api_needs(&raw("application/x-tar"), &raw("application/x-tar")),
+            pairs(&[])
         );
     }
 

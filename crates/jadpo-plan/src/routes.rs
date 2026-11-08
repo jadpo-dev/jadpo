@@ -109,16 +109,7 @@ pub(crate) fn table(
                 name: api.name.clone(),
                 prefix: api.prefix.clone(),
                 idempotency: api.idempotency,
-                // An API that names none accepts every declared method.
-                methods: if api.methods.is_empty() {
-                    identity
-                        .methods
-                        .iter()
-                        .map(|method| method.method)
-                        .collect()
-                } else {
-                    api.methods.clone()
-                },
+                methods: jadpo_check::routes::apis::accepted_methods(db, project, &api.name),
             })
             .collect(),
         ..RouteTable::default()
@@ -328,11 +319,14 @@ pub(crate) fn table(
             run,
             settle,
             stream,
+            sends: route.sends.clone(),
+            immutable: route.immutable,
             keys,
             args,
             authentication: route.authentication,
             caller: route.caller,
             confirm: route.confirm,
+            rate_limit: routes::limit_of(apis, group, route),
             file: group.path.clone(),
             line,
         });
@@ -370,11 +364,14 @@ pub(crate) fn table(
             run: Run::Confirmation(at as u32),
             settle: None,
             stream: false,
+            sends: None,
+            immutable: false,
             keys: None,
             args: Vec::new(),
             authentication: route.authentication,
             caller: Some(jadpo_std::http::PrincipalKind::User),
             confirm: false,
+            rate_limit: None,
             file: "generated".to_string(),
             line: 0,
         });
@@ -405,11 +402,14 @@ pub(crate) fn table(
             run: Run::Exchange,
             settle: None,
             stream: false,
+            sends: None,
+            immutable: false,
             keys: None,
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Required,
             caller: Some(jadpo_std::http::PrincipalKind::Service),
             confirm: false,
+            rate_limit: None,
             file: "generated".to_string(),
             line: 0,
         });
@@ -452,12 +452,15 @@ pub(crate) fn table(
                 run: Run::Passkey(step),
                 settle: None,
                 stream: false,
+                sends: None,
+                immutable: false,
                 keys: None,
                 args: Vec::new(),
                 authentication: step.authentication(),
                 caller: (step.authentication().needs_caller())
                     .then_some(jadpo_std::http::PrincipalKind::User),
                 confirm: false,
+                rate_limit: None,
                 file: "generated".to_string(),
                 line: 0,
             });
@@ -483,11 +486,14 @@ pub(crate) fn table(
                     run: Run::Provider(at as u32, step),
                     settle: None,
                     stream: false,
+                    sends: None,
+                    immutable: false,
                     keys: None,
                     args: Vec::new(),
                     authentication: step.authentication(),
                     caller: None,
                     confirm: false,
+                    rate_limit: None,
                     file: "generated".to_string(),
                     line: 0,
                 });
@@ -518,11 +524,14 @@ pub(crate) fn table(
                 run: Run::MagicLink(step),
                 settle: None,
                 stream: false,
+                sends: None,
+                immutable: false,
                 keys: None,
                 args: Vec::new(),
                 authentication: step.authentication(),
                 caller: None,
                 confirm: false,
+                rate_limit: None,
                 file: "generated".to_string(),
                 line: 0,
             });
@@ -561,11 +570,14 @@ pub(crate) fn table(
                 run: Run::OpenApi(document.to_document()),
                 settle: None,
                 stream: false,
+                sends: None,
+                immutable: false,
                 keys: None,
                 args: Vec::new(),
                 authentication: served.authentication,
                 caller: None,
                 confirm: false,
+                rate_limit: None,
                 file: "generated".to_string(),
                 line: 0,
             });
@@ -605,11 +617,14 @@ pub(crate) fn table(
             run: Run::Flags(client.clone()),
             settle: None,
             stream: false,
+            sends: None,
+            immutable: false,
             keys: None,
             args: Vec::new(),
             authentication: served.authentication,
             caller: None,
             confirm: false,
+            rate_limit: None,
             file: "generated".to_string(),
             line: 0,
         });

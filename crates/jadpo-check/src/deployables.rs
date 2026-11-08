@@ -43,7 +43,7 @@ use std::sync::Arc;
 
 use jadpo_db::{Db, Project};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
-use jadpo_graph::body::{Body, Callee};
+use jadpo_graph::body::{Body, Callee, Expr as BodyExpr, Node};
 use jadpo_graph::{Detail, EdgeKind, Key, Kind};
 use jadpo_std::batch::BatchOp;
 use jadpo_std::{ClientAddressSource, DeployTarget, Runs, Trigger};
@@ -916,6 +916,13 @@ fn reach(
         let Some(body) = bodies.get(&key) else {
             continue;
         };
+        // A constant it reads is run by its key where it is read, as a
+        // callable is (area 3, "Constants"), and may read others.
+        for site in &body.sites {
+            if let Node::Expr(BodyExpr::Constant { constant }) = &site.node {
+                pending.push(constant.clone());
+            }
+        }
         for (_, callee) in body.calls() {
             match callee {
                 Callee::Function(next)

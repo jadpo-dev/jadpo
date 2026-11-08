@@ -1,4 +1,4 @@
-# Get a person's sign-off
+# Approve a risky change
 <!-- topic: guide-get-a-sign-off -->
 
 Some changes can hurt someone outside the code: removing a field a
@@ -9,45 +9,14 @@ was decided and why. A coding agent drafts the file and then stops,
 because the reason has to come from you. This guide removes a field
 from an API's output and gets it accepted.
 
-You start from the book catalogue in [Build an API](01-build-an-api.md),
-committed to git, with its `BookView` sending each book's `author`. You
-work on a branch, as for any change you would open a pull request for.
+You start from a small book catalogue, committed to git: a stored `Book`, a
+`BookView` output type that sends each book's `author`, and a route,
+`GET /books/{book_id}`, that answers with it.
+[Build an API](01-build-an-api.md) shows how to write a route. You work on a
+branch, as for any change you would open a pull request for.
 
 ```jadpo check project=guide-sign-off file=app.jadpo hidden
 application {}
-```
-
-```jadpo check project=guide-sign-off file=domains/books/entities/book.jadpo hidden
-/// A book the library lends.
-entity Book {
-    id: Uuid
-    title: Text {
-        min_length: 1
-        max_length: 200
-    }
-    author: Text {
-        min_length: 1
-        max_length: 100
-    }
-    added_at: Instant {
-        generated: Generated.on_create
-    }
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public]
-    }
-}
-```
-
-```jadpo check project=guide-sign-off file=domains/books/types/new_book.jadpo hidden
-use books/entities { Book }
-
-/// What a caller sends to add a book.
-type NewBook = Input {
-    title: Book.title
-    author: Book.author
-}
 ```
 
 ```jadpo check project=guide-sign-off file=domains/books/queries/book_by_id.jadpo hidden
@@ -64,22 +33,12 @@ query book_by_id(book_id: Book.id) fails BookNotFound -> BookView {
 
 ```jadpo check project=guide-sign-off file=domains/books/routes/books.jadpo hidden
 use books/entities { Book }
-use books/types { BookView, NewBook }
-use books/actions { add_book }
+use books/types { BookView }
 use books/queries { book_by_id }
 
 /// The library's catalogue.
 routes Books {
     prefix: /books
-
-    /// Adds a book.
-    POST / {
-        authentication: RouteAuthentication.none
-        input: NewBook
-        output: BookView
-        status: SuccessStatus.created
-        run: add_book(input)
-    }
 
     /// One book.
     GET /{book_id: Book.id} {
@@ -92,7 +51,32 @@ routes Books {
 
 ## Make the change
 
-Take `author` out of what the API sends:
+`Book` is the stored record. It keeps its `author`, but the API will stop
+sending it.
+
+`domains/books/entities/book.jadpo`:
+
+```jadpo check project=guide-sign-off file=domains/books/entities/book.jadpo
+/// A book the library lends.
+entity Book {
+    id: Uuid
+    title: Text {
+        min_length: 1
+        max_length: 200
+    }
+    author: Text {
+        min_length: 1
+        max_length: 100
+    }
+
+    policy: {
+        read: [Access.public]
+    }
+}
+```
+
+`BookView` is what the route sends, and `pick:` lists the fields it takes from
+`Book`. Take `author` out of it:
 
 `domains/books/types/book_view.jadpo`, changed. `Book.author` is gone from `pick:`.
 
@@ -101,31 +85,11 @@ use books/entities { Book }
 
 /// A book, as the API sends it.
 type BookView = Output {
-    pick: [Book.id, Book.title, Book.added_at]
+    pick: [Book.id, Book.title]
 }
 ```
 
 `domains/books/actions/add_book.jadpo`, changed. The `author:` line is gone.
-
-```jadpo check project=guide-sign-off file=domains/books/actions/add_book.jadpo
-use books/entities { Book }
-use books/types { BookView, NewBook }
-
-/// Adds a book to the catalogue.
-action add_book(input: NewBook) -> BookView {
-    var book: Book = Book.create {
-        set: {
-            title: input.title
-            author: input.author
-        }
-    }
-    return BookView {
-        id: book.id
-        title: book.title
-        added_at: book.added_at
-    }
-}
-```
 
 Run `jadpo api update`, which rewrites the API record. Its diff shows
 the field gone:
@@ -136,13 +100,13 @@ git diff api/
 
 ```text
 diff --git a/api/main.jadpo_record b/api/main.jadpo_record
-index 7cb91b2..ec32289 100644
+index e5811f4..b891675 100644
 --- a/api/main.jadpo_record
 +++ b/api/main.jadpo_record
-@@ -20,7 +20,6 @@ GET /openapi.json
+@@ -13,7 +13,6 @@ GET /openapi.json
+     status 200
  
  output BookView
-     added_at: Instant
 -    author: Text { min_length: 1, max_length: 100 }
      id: Uuid
      title: Text { min_length: 1, max_length: 200 }
@@ -156,16 +120,16 @@ jadpo check
 
 ```text
 error: removing an output field can break clients: main.BookView.author
- --> api/main.jadpo_record:21:1
+ --> api/main.jadpo_record:15:1
    |
-21 | output BookView
+15 | output BookView
    | ^^^^^^^^^^^^^^^ ApiChange.output_field_removed
   reason: Clients that read it find it gone. So a person accepts it: no acceptance this change adds lists `main.BookView.author: ApiChange.output_field_removed`.
   next: A person accepts it: `jadpo acceptance new <purpose>` writes the draft for them (human)
   rule: acceptance.missing
   help: https://jadpo.dev/docs/errors/acceptance.missing
 
-check failed: 1 error, 7 files
+check failed: 1 error, 5 files
 ```
 
 `jadpo check` compares the change with your default branch where this
@@ -209,7 +173,7 @@ error: `acceptances/20261020T1400_remove_book_author.jadpo` has no reason
   rule: acceptance.no_reason
   help: https://jadpo.dev/docs/errors/acceptance.no_reason
 
-check failed: 1 error, 8 files
+check failed: 1 error, 6 files
 ```
 
 ## Write the reason
@@ -248,9 +212,10 @@ history, so it judges the acceptances against the same base.
 |---|---|
 | A route removed, a required input field added, a rule tightened, an output field removed or retyped, a failure code changed; an event removed or its fields changed the same ways | `ApiChange` |
 | Anyone added to who may read or change something, a route opened to callers who aren't signed in, a sign-in setting loosened past its limit | `PolicyChange` |
+| A git location added to, or widened in, `packages:`'s `own_sources:` | `PolicyChange` |
 | A new domain | `DomainChange` |
 | A connection reaching an outside host it didn't | `NetworkChange` |
-| A package installed from git | `PackageChange` |
+| A third party's package installed from git | `PackageChange` |
 
 Changes that only add need none: a new route, a new optional input
 field, a new output field, or tighter policy. The record diffs still

@@ -1,5 +1,5 @@
-//! The standard types' data entries (area 19, "The standard types" and
-//! "Every standard type meets one contract").
+//! The standard types' data entries (area 19, "How standard types are named, and what is left out" and
+//! "What every standard type can do").
 //!
 //! Every standard type is a stub declaration in `jadpo-check`'s
 //! `std/standard.jadpo`, for programs to name, plus one entry here, which
@@ -39,6 +39,7 @@ pub mod media;
 pub mod modulus;
 pub mod named;
 pub mod opening_hours;
+pub mod pages;
 pub mod person_names_data;
 pub mod phones;
 mod phones_data;
@@ -58,6 +59,7 @@ pub mod storage;
 pub mod web;
 
 pub use codes::isbn_from_isbn10;
+
 pub use contact::{LINE_MAX, LINE_PATTERN};
 pub use places::{ClosedList, closed_list, retired, subdivision_name};
 pub use signals::{
@@ -1594,8 +1596,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Object(&DATE_RANGE_FIELDS),
         text: Some(TextForm::Interval),
         json: Json::Fields(&["start", "end"]),
-        // Stored in one `daterange` column (area 19, "Every standard type
-        // meets one contract").
+        // Stored in one `daterange` column (area 19, "What every standard type can do").
         storage: Storage::Columns {
             parts: &[("", "daterange")],
             fixed: &[],
@@ -2778,7 +2779,7 @@ pub const OPEN_END: &str = "..";
 /// The enums whose columns hold each variant's code rather than its name,
 /// so the database reads as the wire does: `Currency` holds `GBP` (chosen
 /// in chunk 5.5h), every closed list its code, `Country` `GB` and `IN`
-/// rather than `in_` (chunk 5.5l), and every other standard enum too,
+/// rather than `in` (chunk 5.5l), and every other standard enum too,
 /// `Zone` `Europe/London` and `HttpMethod` `GET` (chunk 5.5w): each
 /// standard enum by its entry's codes.
 pub fn stored_by_code(ty: &str) -> Option<&'static [(&'static str, &'static str)]> {
@@ -2953,19 +2954,6 @@ pub fn within(name: &str) -> Option<&'static str> {
         .iter()
         .find(|(narrow, _)| *narrow == name)
         .map(|(_, wide)| *wide)
-}
-
-/// A standard object's part as the wire names it (chunk 5.5n): its name,
-/// less the trailing `_` a reserved word takes in code, as a closed list's
-/// code does (question 22), so `ProblemDetails`' `type_` is sent as
-/// RFC 9457's `type`. Any other type's field is sent as it is named.
-pub fn wire_name<'a>(ty: &str, field: &'a str) -> &'a str {
-    match standard_type(ty) {
-        Some(entry) if matches!(entry.holds, Holds::Object(_)) => {
-            field.strip_suffix('_').unwrap_or(field)
-        }
-        _ => field,
-    }
 }
 
 /// Whether `text.parse` reads standard type `name` as people write it in
@@ -3325,10 +3313,7 @@ mod tests {
                 assert!(!codes.is_empty());
             }
             if let (Holds::Object(fields), Some(names)) = (entry.holds, entry.json.fields()) {
-                let declared: Vec<&str> = fields
-                    .iter()
-                    .map(|(name, _)| wire_name(entry.name, name))
-                    .collect();
+                let declared: Vec<&str> = fields.iter().map(|(name, _)| *name).collect();
                 assert_eq!(declared, names, "{}'s JSON is its fields", entry.name);
             }
             // A choice is sent in area 2's tagged form, and has no single

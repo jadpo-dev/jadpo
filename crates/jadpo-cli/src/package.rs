@@ -6,7 +6,8 @@
 //! `surface.jadpo_record` and its changelog's new section. `import` reads
 //! a provider's description into the app's own integration
 //! ([`crate::package_import`], chunk 7.2). Installing (`add`, `update`,
-//! `remove`, `link`, `unlink`) is in [`crate::install`].
+//! `remove`, `link`, `unlink`) is in [`crate::install`], and starting a package
+//! (`new`) in [`crate::package_new`].
 //!
 //! `show` answers what the package is first, its facts on the grid, then a
 //! list per section and a footer counting them, and the one command that
@@ -72,7 +73,7 @@ use jadpo_check::publishing::{self, Bump};
 use jadpo_check::release::{self, ChangeEntry};
 use jadpo_check::surface::{self, Declaration, Surface, What, first_paragraph};
 use jadpo_db::{Locked, Source};
-use jadpo_diag::{Diagnostic, nearest, rule};
+use jadpo_diag::{Decider, Diagnostic, nearest, rule};
 use jadpo_term::{Block, Fact, Json, Outcome, Row, RowState, Screen};
 
 use crate::fmt::project_needed;
@@ -82,6 +83,10 @@ use crate::table::Value;
 
 /// What `jadpo package` does today.
 pub const ACTIONS: &[Value] = &[
+    Value {
+        name: "new",
+        description: "Start a package in its own repository",
+    },
     Value {
         name: "show",
         description: "Show a package's surface, one declaration, or its guide",
@@ -107,6 +112,10 @@ pub const ACTIONS: &[Value] = &[
         description: "Run a capability's conformance suite against a package",
     },
     Value {
+        name: "protocol",
+        description: "Check a registry's OpenAPI document against the registry protocol",
+    },
+    Value {
         name: "add",
         description: "Install a package from a folder or a git repository's tag",
     },
@@ -130,13 +139,22 @@ pub const ACTIONS: &[Value] = &[
         name: "recipe",
         description: "Copy one of a package's recipes into a domain",
     },
-];
-
-/// What the language decides `jadpo package` does, not built yet, and the
-/// work that brings each.
-const LATER: &[(&str, &str)] = &[
-    ("new", "package repositories"),
-    ("publish", "the hosted registry"),
+    Value {
+        name: "search",
+        description: "Find packages and standard-library functions for a need",
+    },
+    Value {
+        name: "audit",
+        description: "List the advisories against the app's packages",
+    },
+    Value {
+        name: "publish",
+        description: "Ask the registry to release the package from a tag",
+    },
+    Value {
+        name: "preview",
+        description: "Serve the package's registry page locally",
+    },
 ];
 
 pub fn package(call: &Call) -> Reply {
@@ -149,12 +167,47 @@ pub fn package(call: &Call) -> Reply {
             "Run `jadpo package show <name> --guide`".to_string(),
         ));
     }
+    for (flag, goes_with, with) in [
+        (
+            "--to",
+            &["add", "update", "search"][..],
+            "`add`, `update` and `search`",
+        ),
+        ("--from", &["search"][..], "`search`"),
+        ("--kind", &["search"][..], "`search`"),
+        ("--publisher", &["verify", "new"][..], "`verify` and `new`"),
+    ] {
+        if call.value(flag).is_some() && !action.is_some_and(|action| goes_with.contains(&action)) {
+            return Reply::failed(arguments(
+                format!("`{flag}` goes with {with}"),
+                "No other action of `jadpo package` reads it.".to_string(),
+                format!("Run `jadpo package {} ... {flag} <value>`", goes_with[0]),
+            ));
+        }
+    }
+    for flag in ["--library", "--provider"] {
+        if call.flag(flag) && action != Some("new") {
+            return Reply::failed(arguments(
+                format!("`{flag}` goes with `jadpo package new`"),
+                "It says what kind of package to start, which only `new` does.".to_string(),
+                format!("Run `jadpo package new <Name> {flag}`"),
+            ));
+        }
+    }
+    if call.flag("--dry-run") && action != Some("publish") {
+        return Reply::failed(arguments(
+            "`--dry-run` goes with `jadpo package publish`".to_string(),
+            "It runs the registry's verifier on the pushed tag and publishes nothing, which only `publish` does.".to_string(),
+            "Run `jadpo package publish --dry-run`".to_string(),
+        ));
+    }
     match action {
         None => Reply::failed(arguments(
             "`jadpo package` needs something to do".to_string(),
             "`jadpo package show <name>` prints a package's surface, and `jadpo package check` runs the publishing bar in a package's own folder.".to_string(),
             "Run `jadpo package show <name>` or `jadpo package check`".to_string(),
         )),
+        Some("new") => crate::package_new::new(call),
         Some("show") => show(call),
         Some("check") => check(call),
         Some("verify") => package_release::verify(call),
@@ -166,22 +219,12 @@ pub fn package(call: &Call) -> Reply {
         Some("import") => crate::package_import::import(call),
         Some("record") => crate::package_record::record(call),
         Some("conform") => crate::package_conform::conform(call),
+        Some("protocol") => crate::package_protocol::protocol(call),
         Some("recipe") => crate::package_recipe::recipe(call),
-        Some(later) if LATER.iter().any(|(name, _)| *name == later) => {
-            let comes = LATER
-                .iter()
-                .find(|(name, _)| *name == later)
-                .map_or("", |(_, comes)| comes);
-            let diagnostic = Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                format!("`jadpo package {later}` isn't built yet"),
-            )
-            .reason(format!(
-                "Area 11 decides `jadpo package {later}`, and it comes with {comes}."
-            ))
-            .next("Run `jadpo package show <name>` or `jadpo package check` meanwhile");
-            Reply::failed(diagnostic)
-        }
+        Some("search") => crate::package_search::search(call),
+        Some("audit") => crate::package_audit::audit(call),
+        Some("publish") => crate::package_publish::publish(call),
+        Some("preview") => crate::package_preview::preview(call),
         Some(other) => {
             let reason = format!("`jadpo package` can {}.", either(&quoted(&names)));
             Reply::failed(match nearest(other, names.iter().copied()) {
@@ -249,7 +292,13 @@ fn show(call: &Call) -> Reply {
     };
     let all: Vec<&jadpo_db::PackageHome> = homes
         .values()
-        .filter(|home| *wanted == home.name || *wanted == home.code || *wanted == home.versioned())
+        .filter(|home| {
+            *wanted == home.name
+                || *wanted == home.code
+                || *wanted == home.versioned()
+                || lock_line(&loaded, &home.versioned())
+                    .is_some_and(|line| crate::install::registry_name_is(&line, wanted))
+        })
         .collect();
     if let [first, .., last] = all.as_slice() {
         // Two versions side by side (chunk 7.1c2): each is its own package.
@@ -359,8 +408,8 @@ fn source_words(surface: &Surface, locked: Option<&Locked>) -> (Option<String>, 
             tag,
             ..
         }) => (Some(version.clone()), format!("git {repository} tag {tag}")),
-        Some(Source::Registry { version, .. }) => {
-            (Some(version.clone()), "the registry".to_string())
+        Some(Source::Registry { version, name, .. }) => {
+            (Some(version.clone()), format!("registry {name}"))
         }
         Some(Source::Link { path }) => (None, format!("a link to {path}")),
         None => (None, "not in jadpo.lock".to_string()),
@@ -465,6 +514,9 @@ fn overview(
         fields.push(("version".into(), version.clone()));
     }
     fields.push(("source".into(), source.clone()));
+    if let Some(publisher) = &surface.publisher {
+        fields.push(("publisher".into(), publisher.clone()));
+    }
     if let Some(licence) = &surface.licence {
         fields.push(("licence".into(), licence.clone()));
     }
@@ -533,6 +585,10 @@ fn overview(
                 ("kind", Json::from(surface.kind)),
                 ("version", version.as_deref().map_or(Json::Null, Json::from)),
                 ("source", Json::from(source.as_str())),
+                (
+                    "publisher",
+                    surface.publisher.as_deref().map_or(Json::Null, Json::from),
+                ),
                 (
                     "licence",
                     surface.licence.as_deref().map_or(Json::Null, Json::from),
@@ -790,6 +846,8 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
             kind,
             code,
             message,
+            wire_status,
+            wire_name,
             fields: own,
         } => {
             if let Some(kind) = kind {
@@ -798,6 +856,15 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
             fields.push(("code".into(), code.clone()));
             if let Some(message) = message {
                 fields.push(("message".into(), message.clone()));
+            }
+            // How the provider answers it (area 11, "A provider's failures"): its status, then its own text.
+            let answered: Vec<String> = wire_status
+                .map(|status| status.to_string())
+                .into_iter()
+                .chain(wire_name.iter().map(|text| jadpo_db::record::quote(text)))
+                .collect();
+            if !answered.is_empty() {
+                fields.push(("answered as".into(), answered.join(" ")));
             }
             if !own.is_empty() {
                 lists.push(Block::list(
@@ -920,6 +987,11 @@ struct Item {
     name: &'static str,
     state: RowState,
     detail: String,
+    /// A skipped row that won't be checked: nothing is owed, only said.
+    left_out: bool,
+    /// What `--json` says instead of `detail`, which the screen keeps
+    /// short: the registry's page of a refused release shows it whole.
+    whole: Option<String>,
 }
 
 impl Item {
@@ -928,6 +1000,8 @@ impl Item {
             name,
             state: RowState::Done,
             detail: detail.into(),
+            left_out: false,
+            whole: None,
         }
     }
 
@@ -936,6 +1010,8 @@ impl Item {
             name,
             state: RowState::Failed,
             detail: detail.into(),
+            left_out: false,
+            whole: None,
         }
     }
 
@@ -944,10 +1020,29 @@ impl Item {
             name,
             state: RowState::Skipped,
             detail: detail.into(),
+            left_out: false,
+            whole: None,
+        }
+    }
+
+    fn left_out(name: &'static str, detail: impl Into<String>) -> Item {
+        Item {
+            left_out: true,
+            ..Item::later(name, detail)
+        }
+    }
+
+    fn whole(self, detail: impl Into<String>) -> Item {
+        Item {
+            whole: Some(detail.into()),
+            ..self
         }
     }
 
     fn word(&self) -> &'static str {
+        if self.left_out {
+            return "left out";
+        }
         match self.state {
             RowState::Done => "passed",
             RowState::Failed => "failed",
@@ -1042,7 +1137,7 @@ pub(crate) fn package_files(folder: &Path) -> Vec<String> {
     out
 }
 
-fn no_package(command: &str) -> Reply {
+pub(crate) fn no_package(command: &str) -> Reply {
     Reply::failed(arguments(
         "There is no package here".to_string(),
         format!(
@@ -1156,7 +1251,7 @@ pub(crate) fn compile(folder: &Path, command: &str) -> Result<Compiled, Option<R
     problems.extend(
         jadpo_check::check(&loaded.db, loaded.project)
             .into_iter()
-            // The curated packages take the names Jadpo reserves for them.
+            // An official package takes a name Jadpo keeps for it.
             .filter(|d| d.rule.id != rule::PACKAGE_RESERVED_NAME.id),
     );
     Ok(Compiled {
@@ -1168,6 +1263,28 @@ pub(crate) fn compile(folder: &Path, command: &str) -> Result<Compiled, Option<R
         label,
         problems,
     })
+}
+
+/// The package's description and each public declaration's, as fields of
+/// their own (area 11, "The verifier"), so the registry needn't read them
+/// back out of the surface record; `null` until the package compiles.
+fn descriptions_json(surface: Option<&Surface>) -> Json {
+    let text = |description: &Option<String>| description.as_deref().map_or(Json::Null, Json::from);
+    match surface {
+        Some(surface) => Json::object([
+            ("package", text(&surface.description)),
+            (
+                "declarations",
+                Json::array(surface.declarations.iter().map(|declaration| {
+                    Json::object([
+                        ("name", Json::from(declaration.name.as_str())),
+                        ("description", text(&declaration.description)),
+                    ])
+                })),
+            ),
+        ]),
+        None => Json::Null,
+    }
 }
 
 /// Shows each problem at its place in the package's folder.
@@ -1202,24 +1319,150 @@ fn check(call: &Call) -> Reply {
         Some(argument) => cwd.join(argument),
         None => cwd.clone(),
     };
-    bar(call, &folder, Mode::Check)
+    // The release the registry holds, when a tag names one it never took
+    // (area 14, Richard, 2026-11-07).
+    let previous = match call.value("--previous") {
+        None => Compared::Tags,
+        Some("none") => Compared::First,
+        Some(version) if semver(&format!("v{version}")).is_some() => {
+            Compared::Version(version.to_string())
+        }
+        Some(other) => {
+            return Reply::failed(arguments(
+                format!("`{other}` isn't a release"),
+                "For `jadpo package check`, `--previous` names the release the registry holds that this one follows, by its version, or `none` for a first release.".to_string(),
+                "Run `jadpo package check --previous <version>`, such as `--previous 1.0.0`, or `--previous none`".to_string(),
+            ));
+        }
+    };
+    bar(call, &folder, Mode::Check { previous })
+}
+
+/// Which release `jadpo package check` compares with.
+pub(crate) enum Compared {
+    /// The last `v<version>` tag the checkout grew from.
+    Tags,
+    /// None: a first release, whatever tags there are.
+    First,
+    /// The tagged release with this version.
+    Version(String),
 }
 
 /// How the bar runs.
 pub(crate) enum Mode {
     /// `jadpo package check`: in the author's checkout, against the git
-    /// tags, writing the surface and the changelog's new section.
-    Check,
+    /// tags or the release `--previous` names, writing the surface and the
+    /// changelog's new section.
+    Check { previous: Compared },
     /// `jadpo package verify`: on a commit as it stands, against the
     /// release given, writing nothing.
-    Verify { previous: Option<Box<Previous>> },
+    /// With `run` false, none of the package's code runs: the verifier's
+    /// first pass, whose facts its code can't touch.
+    /// `publisher` is who the release was asked for, when that is known.
+    Verify {
+        previous: Option<Box<Previous>>,
+        run: bool,
+        publisher: Option<String>,
+    },
 }
 
 /// Runs the publishing bar on the package in `folder`.
+/// The bar's `publisher` row (area 11, "Names and publishers"). `check` is
+/// also run by a package only used by path or from git, which needs none; what
+/// the registry reads, `verify` and `publish`, can't go without.
+fn publisher_row(
+    verifying: bool,
+    surface: Option<&Surface>,
+    asked: Option<&str>,
+    problems: &mut Vec<Diagnostic>,
+) -> Item {
+    let Some(surface) = surface else {
+        return Item::later("publisher", "the package has errors");
+    };
+    let index = jadpo_db::PACKAGE_INDEX;
+    match (&surface.publisher, asked) {
+        (None, _) if !verifying => Item::left_out("publisher", "publishing needs it"),
+        (None, _) => {
+            problems.push(
+                Diagnostic::new(
+                    &rule::PUBLISH_PUBLISHER_MISSING,
+                    format!("`{}` names no publisher", surface.package),
+                )
+                .reason(format!(
+                    "The registry publishes it under the publisher `{index}` names, and only their releasers can confirm it, so a fork can't be published as the original."
+                ))
+                .next_for(
+                    format!("Add `publisher: \"@<your handle>\"` to `{index}`, run `jadpo package check` and tag a new release"),
+                    Decider::Human,
+                ),
+            );
+            Item::failed("publisher", format!("`{index}` names none"))
+        }
+        (Some(named), Some(asked)) if named != asked => {
+            problems.push(
+                Diagnostic::new(
+                    &rule::PUBLISH_PUBLISHER_MISMATCH,
+                    format!("`{}` is `{named}`'s, not `{asked}`'s", surface.package),
+                )
+                .reason(format!(
+                    "`{index}` names `{named}`, and this release was asked for `{asked}`."
+                ))
+                .next_for(
+                    format!("Ask for it as `{named}`, or, if this is a fork of it, name your own handle in `{index}` and publish under that"),
+                    Decider::Human,
+                ),
+            );
+            Item::failed("publisher", format!("`{named}`, asked for `{asked}`"))
+        }
+        (Some(named), _) => Item::passed("publisher", named.clone()),
+    }
+}
+
+/// The bar's `licence` row (area 11, "What publishing requires"). The registry
+/// carries what others may use, so what it reads, `verify` and `publish`, can't
+/// be proprietary; `check` is also run by a private package, which may be.
+fn licence_row(
+    verifying: bool,
+    package: &str,
+    licence: Option<&str>,
+    jadpo: Option<&str>,
+    problems: &mut Vec<Diagnostic>,
+) -> Item {
+    let (Some(licence), Some(jadpo)) = (licence, jadpo) else {
+        return Item::failed("licence", "the index doesn't say");
+    };
+    if licence != "proprietary" {
+        return Item::passed("licence", format!("{licence}, from Jadpo {jadpo}"));
+    }
+    if !verifying {
+        return Item::passed("licence", "proprietary, registry refuses it");
+    }
+    let index = jadpo_db::PACKAGE_INDEX;
+    problems.push(
+        Diagnostic::new(
+            &rule::PUBLISH_LICENCE_PROPRIETARY,
+            format!("`{package}` is proprietary, and the public registry carries only open licences"),
+        )
+        .reason(format!(
+            "`{index}` says `Licence.proprietary`, so only its owner may use it, and the registry carries packages others may use. A private package stays in git, where `jadpo package check` is all it needs."
+        ))
+        .next_for(
+            format!("Choose an open licence in `{index}`, such as `Licence.mit`, run `jadpo package check` and tag a new release, or keep it private and install it from git"),
+            Decider::Human,
+        ),
+    );
+    Item::failed("licence", "proprietary")
+}
+
 pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     let folder = folder.to_path_buf();
     let verifying = matches!(mode, Mode::Verify { .. });
+    let running = !matches!(mode, Mode::Verify { run: false, .. });
+    let asked = match &mode {
+        Mode::Verify { publisher, .. } => publisher.clone(),
+        Mode::Check { .. } => None,
+    };
     let command = if verifying {
         "package verify"
     } else {
@@ -1239,6 +1482,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     // Another name would pass as a new major version, which nothing refuses.
     if let Mode::Verify {
         previous: Some(given),
+        ..
     } = &mode
         && given
             .package
@@ -1260,6 +1504,22 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
 
     let mut items: Vec<Item> = Vec::new();
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
+    // Which files a commit may hold: the registry refuses the rest before
+    // anything is run.
+    if verifying {
+        match package_release::files_row(&folder) {
+            Ok((row, refused)) => {
+                items.push(match row {
+                    Ok(detail) => Item::passed("files", detail),
+                    Err(detail) => Item::failed("files", detail),
+                });
+                diagnostics.extend(refused);
+            }
+            Err(error) => {
+                return write_failed(command, "the package's files", &error.to_string());
+            }
+        }
+    }
     let compiled_cleanly = compile.is_empty();
     items.push(if compiled_cleanly {
         Item::passed("compiles", "no errors")
@@ -1276,6 +1536,37 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         )
     });
     diagnostics.extend(in_package(&compiled, described));
+    // A provider package's public types, each gone through against the
+    // provider's documentation (area 11, "The scoped review and
+    // unconfirmed operations"): what the names `package.standard_candidate`
+    // reads can't tell. The row names the types and the step, for the
+    // registry's page of a refused release; each type's finding is below.
+    if let Some(review) = jadpo_check::review::public_review(db, project, &mount) {
+        items.push(match review.unreviewed.as_slice() {
+            [] if review.public == 0 => Item::passed("reviewed", "no public types"),
+            [] => Item::passed("reviewed", "every public type"),
+            names => {
+                let listed: Vec<String> = names.iter().map(|name| format!("`{name}`")).collect();
+                let (them, verb) = if names.len() == 1 {
+                    ("it", "isn't")
+                } else {
+                    ("each", "aren't")
+                };
+                Item::failed("reviewed", format!("{} not in `reviewed:`", names.len())).whole(
+                    format!(
+                        "{} {verb} reviewed: go through {them} against the provider's documentation, then add it to `reviewed:` {}",
+                        and_list(&listed),
+                        if review.imported {
+                            "in `imported:` in `provider.jadpo`"
+                        } else {
+                            "in `provider.jadpo`"
+                        },
+                    ),
+                )
+            }
+        });
+        diagnostics.extend(in_package(&compiled, review.problems));
+    }
     // A library package's translations: every language it ships is whole
     // (area 10, "Jadpo's and packages' text").
     let (worded, unworded) = jadpo_check::translations::packages::publishing(db, project, &mount);
@@ -1290,6 +1581,10 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     let mut test_blocks: Vec<Block> = Vec::new();
     let mut decoders: Option<Item> = None;
     match (&found, compiled_cleanly) {
+        (Some(_), true) if !running => {
+            items.push(Item::later("examples", "not run"));
+            items.push(Item::later("tests", "not run"));
+        }
         (Some(surface), true) => {
             let ran = examples_and_tests(&compiled, surface, &sources);
             items.push(ran.examples);
@@ -1311,11 +1606,19 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     } else if found.as_ref().is_some_and(|s| s.kind == "provider")
         && data_files.iter().any(|f| f.starts_with("recordings/"))
     {
-        items.push(Item::later("decoders", "the package has errors"));
+        items.push(Item::later(
+            "decoders",
+            if compiled_cleanly {
+                "not run"
+            } else {
+                "the package has errors"
+            },
+        ));
     }
     // Each recipe compiled in the package's `sample/` app (chunk 7.6b).
     if data_files.iter().any(|f| f.starts_with("recipes/")) {
         match (&found, compiled_cleanly) {
+            (Some(_), true) if !running => items.push(Item::later("recipes", "not run")),
             (Some(_), true) => {
                 if let Some(ran) = crate::package_recipe::in_sample(&folder, &compiled) {
                     items.push(if ran.passed {
@@ -1344,9 +1647,49 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         .as_ref()
         .map(|git| git.releases(&package))
         .unwrap_or_default();
+    // `--previous` says which release the registry holds: none, or the one
+    // tagged with its version, of this major version or an earlier one.
+    let named = match &mode {
+        Mode::Check { previous } => match previous {
+            Compared::Tags => None,
+            Compared::First => Some(None),
+            Compared::Version(version) => {
+                let held: Vec<Release> = git
+                    .as_ref()
+                    .map(|git| {
+                        git.releases_of_code(&code)
+                            .into_iter()
+                            .filter(|release| git.in_history(&release.tag))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let tags: Vec<String> = held.iter().map(|release| release.tag.clone()).collect();
+                match held.into_iter().find(|release| release.version == *version) {
+                    Some(release) => Some(Some(release)),
+                    None => {
+                        return Reply::failed(arguments(
+                            format!("No tag holds release {version} of `{code}`"),
+                            if tags.is_empty() {
+                                "`--previous` names a release by its `v<version>` tag, and this checkout grew from none.".to_string()
+                            } else {
+                                format!(
+                                    "`--previous` names a release by its `v<version>` tag, and this checkout grew from {}.",
+                                    and_list(&crate::run::quoted(&tags))
+                                )
+                            },
+                            "Name one of those releases, or `--previous none` for a first release"
+                                .to_string(),
+                        ));
+                    }
+                }
+            }
+        },
+        Mode::Verify { .. } => None,
+    };
     let mut previous: Option<Previous> = None;
     if let Mode::Verify {
         previous: Some(given),
+        ..
     } = mode
     {
         if given.package == package {
@@ -1358,19 +1701,48 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         }
         previous = Some(*given);
     }
+    // Only the releases this checkout grew from count: a tag made later,
+    // on this branch or another, isn't what it is compared with.
+    if let Some(git) = &git {
+        releases.retain(|release| git.in_history(&release.tag));
+    }
+    let chosen = named.is_some();
+    // A release of an earlier major version is compared with as a new
+    // major's first release is.
+    let mut earlier_major: Option<Release> = None;
+    if let Some(named) = named {
+        releases.clear();
+        match named {
+            Some(release) if release.named() == package => releases.push(release),
+            other => earlier_major = other,
+        }
+    }
+    // A checkout unchanged since a release is that release, checked as
+    // publishing and the verifier check it: against the release before.
     let unchanged = match (releases.first(), &git) {
-        (Some(last), Some(git)) => git.unchanged_since(&last.tag),
+        (Some(last), Some(git)) if !chosen => git.unchanged_since(&last.tag),
         _ => false,
     };
-    if !verifying && !unchanged && compiled_cleanly && found.is_some() {
+    let tagged: Option<Release> = unchanged.then(|| releases.remove(0));
+    if !verifying && compiled_cleanly && found.is_some() {
         let last = releases.first().map(|last| Release {
             tag: last.tag.clone(),
             version: last.version.clone(),
             surface: last.surface.clone(),
         });
         let last = last.or_else(|| {
-            git.as_ref()
-                .and_then(|git| git.releases_of_code(&code).into_iter().next())
+            if chosen {
+                return earlier_major.take();
+            }
+            git.as_ref().and_then(|git| {
+                let before = tagged.as_ref().and_then(|tagged| semver(&tagged.tag));
+                git.releases_of_code(&code).into_iter().find(|release| {
+                    git.in_history(&release.tag)
+                        && before
+                            .as_ref()
+                            .is_none_or(|before| semver(&release.tag).as_ref() < Some(before))
+                })
+            })
         });
         if let (Some(git), Some(last)) = (&git, last) {
             let name = last.named();
@@ -1385,7 +1757,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     // The previous release's examples and tests against the new code. Its
     // row goes before the version's, and waits for the changelog's marks.
     let behaviour: Option<Behaviour> = match &previous {
-        Some(given) if compiled_cleanly && found.is_some() => match &given.compiled {
+        Some(given) if running && compiled_cleanly && found.is_some() => match &given.compiled {
             Some(old) => match package_release::run_previous(&folder, &compiled, old) {
                 Ok(ran) => Some(ran),
                 Err(error) => {
@@ -1438,11 +1810,6 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         (Some(surface), true) => {
             let now = surface.text(None);
             let outcome = match releases.first() {
-                Some(last) if unchanged => Ok((
-                    last.version.clone(),
-                    format!("{}, released as {}", last.version, last.tag),
-                    None,
-                )),
                 Some(last) => {
                     publishing::version(label.as_str(), Some((&last.version, &last.surface)), &now)
                         .map(|bump| (bump.version.clone(), bump_words(&bump), Some(listing())))
@@ -1462,8 +1829,14 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
             };
             match outcome {
                 Ok((next, words, list)) => {
+                    let words = match &tagged {
+                        Some(tagged) if tagged.version == next => {
+                            format!("{next}, released as {}", tagged.tag)
+                        }
+                        _ => words,
+                    };
                     items.push(Item::passed("version", words));
-                    if list.is_some() && git.is_some() {
+                    if list.is_some() && git.is_some() && tagged.is_none() {
                         hint = Some(next.clone());
                     }
                     listed = list;
@@ -1573,10 +1946,20 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
                 // Nothing of the last release could be read to run.
                 items.insert(
                     behaviour_row,
-                    Item::later("behaviour", format!("{since} couldn't be read")),
+                    Item::later(
+                        "behaviour",
+                        if running {
+                            format!("{since} couldn't be read")
+                        } else {
+                            "not run".to_string()
+                        },
+                    ),
                 );
             }
-            if stale_log {
+            if !running {
+                // What its list holds depends on what running shows.
+                items.push(Item::later("changelog", "not run"));
+            } else if stale_log {
                 items.push(Item::failed(
                     "changelog",
                     format!("{version}'s list is out of date"),
@@ -1662,14 +2045,23 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         written = Some((in_folder(&shown, jadpo_db::record::SURFACE_FILE), !same));
     }
 
+    items.push(publisher_row(
+        verifying,
+        found.as_ref(),
+        asked.as_deref(),
+        &mut diagnostics,
+    ));
+
     let licence = found.as_ref().and_then(|s| s.licence.clone());
     let jadpo = found.as_ref().and_then(|s| s.jadpo.clone());
-    items.push(match (licence, jadpo) {
-        (Some(licence), Some(jadpo)) => {
-            Item::passed("licence", format!("{licence}, from Jadpo {jadpo}"))
-        }
-        _ => Item::failed("licence", "the index doesn't say"),
-    });
+    let declared = jadpo.clone();
+    items.push(licence_row(
+        verifying,
+        &package,
+        licence.as_deref(),
+        jadpo.as_deref(),
+        &mut diagnostics,
+    ));
 
     let mut screen = Screen::new();
     for diagnostic in &diagnostics {
@@ -1724,7 +2116,10 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     let (failed, passed, later) = (
         count(RowState::Failed),
         count(RowState::Done),
-        count(RowState::Skipped),
+        items
+            .iter()
+            .filter(|item| item.state == RowState::Skipped && !item.left_out)
+            .count(),
     );
     let mut counts = Vec::new();
     if failed == 0 {
@@ -1781,12 +2176,16 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
             (
                 "state",
                 Json::from(match item.state {
+                    _ if item.left_out => "left_out",
                     RowState::Done => "passed",
                     RowState::Failed => "failed",
                     RowState::Skipped => "not_checked",
                 }),
             ),
-            ("detail", Json::from(item.detail.as_str())),
+            (
+                "detail",
+                Json::from(item.whole.as_deref().unwrap_or(item.detail.as_str())),
+            ),
         ])
     }));
     let facts_json = facts
@@ -1811,6 +2210,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
                 },
             ),
             ("facts", facts_json),
+            ("descriptions", descriptions_json(found.as_ref())),
             ("change_record", record_json),
             (
                 "fingerprints",
@@ -1818,6 +2218,10 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
             ),
             ("previous", behaviour_json),
             ("jadpo", Json::from(crate::help::VERSION)),
+            (
+                "jadpo_declared",
+                declared.as_deref().map_or(Json::Null, Json::from),
+            ),
         ])
     } else {
         Json::object([
@@ -2116,10 +2520,10 @@ fn examples_and_tests(
             continue;
         };
         let span = name_span(declaration, sources);
-        if !found
+        let has_example = found
             .iter()
-            .any(|(_, example)| example.declaration == declaration.name)
-        {
+            .any(|(_, example)| example.declaration == declaration.name);
+        if !has_example {
             without += 1;
             problems.push(
                 Diagnostic::new(
@@ -2136,7 +2540,11 @@ fn examples_and_tests(
         }
         for failure in fails {
             if !publishing::shows_failure(&texts, &declaration.name, failure) {
-                unshown += 1;
+                // The bar's row counts a function with no example once, so
+                // its detail fits beside it; each failure is still an error.
+                if has_example {
+                    unshown += 1;
+                }
                 problems.push(
                     Diagnostic::new(
                         &rule::PUBLISH_EXAMPLE_MISSING,
@@ -2223,10 +2631,25 @@ fn examples_and_tests(
 
     let ran = jadpo_test::run(jadpo_test::Options {
         cwd: compiled.scratch.0.clone(),
+        full: true,
         ..jadpo_test::Options::default()
     });
     let run = match ran {
         jadpo_test::Ran::Done(run) => Some(run),
+        // With no database no test ran, which isn't a package with none.
+        jadpo_test::Ran::Stopped(diagnostic)
+            if diagnostic.rule.id == rule::TEST_DATABASE_UNAVAILABLE.id =>
+        {
+            let tests = Item::later("tests", "no test database");
+            problems.push(*diagnostic);
+            return Ran {
+                examples: Item::later("examples", "no test database"),
+                tests,
+                decoders: None,
+                problems,
+                blocks: Vec::new(),
+            };
+        }
         jadpo_test::Ran::Refused { .. } | jadpo_test::Ran::NoProject => {
             return Ran {
                 examples: if failed_examples > 0 {
@@ -2276,8 +2699,15 @@ fn examples_and_tests(
                 None => own.push(result),
             }
         }
+        // Every place a failure shows is the package's, not the scratch
+        // app's it ran in.
         for result in &mut own {
             result.test.file = compiled.relative(&result.test.file);
+            if let Some(failure) = &mut result.failure {
+                failure.map_paths(&|path| compiled.relative(path));
+                // `jadpo test` runs an app's tests; a package's run here.
+                failure.rerun = "jadpo package check".to_string();
+            }
         }
         // Every decoder over every recording, its own row (chunk 7.2d2).
         let recorded =
@@ -2662,6 +3092,16 @@ impl Git {
                 _ => false,
             }
         })
+    }
+
+    /// Whether the commit `tag` names is the checkout's or one it grew
+    /// from.
+    fn in_history(&self, tag: &str) -> bool {
+        Command::new("git")
+            .args(["merge-base", "--is-ancestor", tag, "HEAD"])
+            .current_dir(&self.folder)
+            .status()
+            .is_ok_and(|status| status.success())
     }
 
     /// Whether nothing in the package's folder changed since `tag`.

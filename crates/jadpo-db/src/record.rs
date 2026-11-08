@@ -73,6 +73,7 @@ pub const API: Kind = Kind {
     ],
     facts: &[
         "authentication",
+        "cache",
         "caller",
         "confirm",
         "fails",
@@ -82,6 +83,7 @@ pub const API: Kind = Kind {
         "message",
         "output",
         "redirect",
+        "sends",
         "settle",
         "status",
         "variant",
@@ -109,8 +111,9 @@ pub const EVENTS_FILE: &str = "events.jadpo_record";
 /// Who can do what, `access.jadpo_record` at the root (areas 9 and 18,
 /// chunk A8): a view of the permissions report, each entity's and field's
 /// grants, the actions and queries listed separately, the security rules
-/// declined and the sign-in settings that have a limit, so a change that
-/// widens access is a diff in the pull request and has a before side.
+/// declined, the sign-in settings that have a limit and the company's own
+/// git locations, so a change that widens access is a diff in the pull
+/// request and has a before side.
 pub const ACCESS: Kind = Kind {
     word: "access",
     format: 1,
@@ -118,7 +121,15 @@ pub const ACCESS: Kind = Kind {
     update: "`jadpo records update`",
     command: "jadpo records update",
     headings: &[
-        "tenant", "entity", "field", "action", "query", "role", "decline", "sign_in",
+        "tenant",
+        "entity",
+        "field",
+        "action",
+        "query",
+        "role",
+        "decline",
+        "sign_in",
+        "own_source",
     ],
     facts: &[
         "create",
@@ -262,6 +273,7 @@ pub const SURFACE: Kind = Kind {
         "file",
         "kind",
         "version",
+        "publisher",
         "licence",
         "jadpo",
         "guide",
@@ -270,6 +282,8 @@ pub const SURFACE: Kind = Kind {
         "host",
         "runs",
         "credential",
+        // A fixed header every request carries, `headers:` (area 11).
+        "header",
         "idempotency",
         "webhooks",
         "request",
@@ -289,6 +303,9 @@ pub const SURFACE: Kind = Kind {
         "variant",
         "code",
         "message",
+        // How a provider package's failure is answered (area 11, "A provider's failures").
+        "wire_status",
+        "wire_name",
         "calls",
         "operation",
         "every",

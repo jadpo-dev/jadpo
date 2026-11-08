@@ -544,7 +544,7 @@ struct Summary {
     left: BTreeSet<exits::Left>,
     /// The parts of its parameters that leave through a connection,
     /// followed where it is called, as [`Summary::prompted`] is.
-    left_params: BTreeSet<(exits::Exit, usize, Vec<String>)>,
+    left_params: BTreeSet<(exits::Exit, usize, Vec<String>, bool)>,
 }
 
 /// The summary of a callable nothing resolves to.
@@ -649,9 +649,9 @@ impl Summary {
             left_params: self
                 .left_params
                 .into_iter()
-                .map(|(exit, at, mut path)| {
+                .map(|(exit, at, mut path, answered)| {
                     path.truncate(DEPTH);
-                    (exit, at, path)
+                    (exit, at, path, answered)
                 })
                 .collect(),
         }
@@ -829,6 +829,191 @@ pub fn model_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     }
     out.extend(models::subscriber_problems(db, project, file));
     out.dedup();
+    out
+}
+
+/// What a route's answer gives that is personal data, as the personal-data
+/// report counts it (area 15, "Where personal data goes"): a field marked
+/// `personal:`, or a value of a standard type that is personal data whatever
+/// holds it, on a field no mark names or on nothing at all.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Given {
+    /// `Scan.tar`, marked `personal:`.
+    Marked(String),
+    /// `Customer.address`, a `PhoneNumber`.
+    FieldOf(String, String),
+    /// A value of the type `PhoneNumber`.
+    Value(String),
+}
+
+impl Given {
+    /// As the error says what is given.
+    fn named(&self) -> String {
+        match self {
+            Given::Marked(field) | Given::FieldOf(field, _) => format!("`{field}`"),
+            Given::Value(ty) => crate::ai_personal::a_type(ty),
+        }
+    }
+
+    fn said(&self) -> String {
+        match self {
+            Given::Marked(field) => format!("`{field}`, marked `personal:`"),
+            Given::FieldOf(field, ty) => {
+                format!(
+                    "`{field}`, {}, which is personal data",
+                    crate::ai_personal::a_type(ty)
+                )
+            }
+            Given::Value(ty) => {
+                format!("{}, which is personal data", crate::ai_personal::a_type(ty))
+            }
+        }
+    }
+}
+
+/// What the holding of `host`'s field `field` gives, when it is personal data:
+/// its own mark first, since that is what a person wrote.
+fn given_field(flow: &Flow<'_>, host: &str, field: &str) -> Option<Given> {
+    let (host, field) = exits::field_origin(flow, host, field);
+    let marks = crate::ai_personal::marks(flow.db, flow.project);
+    let holding = crate::ai_personal::field_holding(&flow.lookup, marks, &host, &field)?;
+    let name = format!("{host}.{field}");
+    if holding.categories.values().any(Option::is_none) {
+        return Some(Given::Marked(name));
+    }
+    let ty = holding.categories.values().flatten().next()?;
+    Some(Given::FieldOf(name, ty.clone()))
+}
+
+/// What is personal data among `prov`'s sources and in `output`, the type the
+/// route says it answers with, a field before a bare value: what
+/// [`cached_personal_problems`] refuses. What only decided the value isn't in
+/// it, and a parameter is what the request itself sent, unless its type or
+/// the output's says it is personal data.
+fn gives_personal(
+    flow: &Flow<'_>,
+    prov: &Prov,
+    output: Option<&crate::types::Ty>,
+) -> Option<Given> {
+    fn each(src: Src, flow: &Flow<'_>, out: &mut Vec<Given>) {
+        match src {
+            Src::Field { entity, field, .. } => out.extend(given_field(flow, &entity, &field)),
+            Src::Marked { host, field } | Src::Declared { host, field } => {
+                out.extend(given_field(flow, &host, &field));
+            }
+            Src::Record { entity, given, .. } => {
+                for field in flow.lookup.fields(&entity).into_iter().flatten() {
+                    if !given.contains(&field.name) {
+                        out.extend(given_field(flow, &entity, &field.name));
+                    }
+                }
+            }
+            Src::Typed { ty, .. } => out.push(Given::Value(ty)),
+            Src::Deep(inner) | Src::Answered(inner) => each(*inner, flow, out),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for src in prov.flat() {
+        each(src, flow, &mut out);
+    }
+    if let Some(output) = output {
+        let marks = crate::ai_personal::marks(flow.db, flow.project);
+        let mut found = BTreeMap::new();
+        crate::ai_personal::deep(
+            &flow.lookup,
+            marks,
+            output,
+            &mut found,
+            &mut BTreeSet::new(),
+        );
+        for (holder, holding) in found {
+            if holding.categories.is_empty() {
+                continue;
+            }
+            match holder {
+                crate::ai_personal::Holder::Field { host, field } => {
+                    out.extend(given_field(flow, &host, &field));
+                }
+                crate::ai_personal::Holder::Type(ty) => out.push(Given::Value(ty)),
+            }
+        }
+    }
+    out.into_iter().min()
+}
+
+/// `cache: immutable` on what can give personal data (area 7, "Answers that
+/// never change"; chunks G3 and A15): no erasure reaches a public cache, so
+/// it would keep a copy nothing can find (area 15, "What the compiler
+/// checks"). It follows what the route runs as the walk for what reaches a
+/// model does: through variables, calls and what is built from them.
+#[salsa::tracked(returns(ref))]
+pub fn cached_personal_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+    use crate::routes::{CACHE_REASON, group_read};
+    if !super::policy_clean(db, project) {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let flow = exits::flow_of(db, project);
+    let mut seen = BTreeSet::new();
+    for item in &jadpo_db::item_tree(db, file).items {
+        if item.kind != jadpo_db::ItemKind::Routes || !seen.insert(item.name.as_str()) {
+            continue;
+        }
+        let Some(read) = group_read(db, project, Name::new(db, item.name.clone())) else {
+            continue;
+        };
+        let Some(model) = read.model.as_ref().filter(|_| read.path == *file.path(db)) else {
+            continue;
+        };
+        for route in model.routes.iter().filter(|route| route.immutable) {
+            let given = if route.run.query {
+                crate::data::queries::query_model(
+                    db,
+                    project,
+                    Name::new(db, route.run.name.clone()),
+                )
+                .as_ref()
+                .map(|model| {
+                    element(
+                        &flow,
+                        &model.entity,
+                        &model.element,
+                        &model.includes,
+                        &flow.prover.read(&model.entity),
+                        None,
+                        &|reached| reached,
+                    )
+                })
+            } else {
+                crate::graph::declaration_key(&flow.lookup, &route.run.name)
+                    .and_then(|key| resolve(db, project, &key))
+                    .map(|callable| model_summary(db, project, callable).returns.clone())
+            };
+            let Some(personal) =
+                gives_personal(&flow, &given.unwrap_or_default(), route.output.as_ref())
+            else {
+                continue;
+            };
+            let label = route.label();
+            let Some((_, span)) = read.run_spans.iter().find(|(run, _)| *run == label) else {
+                continue;
+            };
+            out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_CACHE_INVALID,
+                    format!(
+                        "`{label}` says `cache: immutable`, but `{}` gives {}",
+                        route.run.name,
+                        personal.said()
+                    ),
+                )
+                .at(span.clone(), format!("gives {}", personal.named()))
+                .reason(CACHE_REASON)
+                .next("Remove `cache:`, or send something that isn't personal data"),
+            );
+        }
+    }
     out
 }
 
@@ -1240,7 +1425,7 @@ struct Walk<'b> {
     /// What it sends out through a connection ([`Summary::left`]).
     left: BTreeSet<exits::Left>,
     /// The parts of its parameters that do ([`Summary::left_params`]).
-    left_params: BTreeSet<(exits::Exit, usize, Vec<String>)>,
+    left_params: BTreeSet<(exits::Exit, usize, Vec<String>, bool)>,
     /// What reaches a model that `ai:` doesn't allow ([`models`]).
     exposures: Vec<Diagnostic>,
     /// Where each value is and what it holds, once reported.

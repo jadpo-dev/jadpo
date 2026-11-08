@@ -171,7 +171,7 @@ fn a_marked_field_is_followed_through_the_body() {
         "    var name: AcmePay.Words = user.display_name\n",
         "    var name: AcmePay.Words = wording.shout(user.display_name)\n",
         "    var name: AcmePay.Words = AcmePay.Words(text.trim(user.display_name))\n",
-        "    var names: List<Text> = [text.trim(user.display_name)]\n    var name: AcmePay.Words = AcmePay.Words(text.join(names, \"\"))\n",
+        "    var name_list: List<Text> = [text.trim(user.display_name)]\n    var name: AcmePay.Words = AcmePay.Words(text.join(name_list, \"\"))\n",
     ] {
         let body = send(&format!("{before}{}", create("name")));
         assert_eq!(
@@ -467,6 +467,49 @@ fn a_standard_type_is_followed_through_text_made_from_it() {
     );
 }
 
+/// An email address is personal data, marked or not: as a request's own
+/// value, on a field of a package's type, and on an entity's field, which is
+/// named. The report reads as written (chunk A20).
+#[test]
+fn an_email_address_is_personal_data_with_no_mark() {
+    const REQUEST: &str = "    name: Words\n    address: Email\n";
+    let invite = "use app { pay }\nuse shared/providers/acme_pay\n\n/// Invites someone.\naction invite(address: Email) -> AcmePay.CustomerReply {\n    return pay.customers.create(AcmePay.CustomerRequest {\n        name: \"x\"\n        address: address\n    })\n}\n";
+    assert_eq!(
+        reach(REQUEST, &[("domains/billing/actions/invite.jadpo", invite)]),
+        ["pay Email customers.create"]
+    );
+    let (db, project) = checked(REQUEST, &[("domains/billing/actions/invite.jadpo", invite)]);
+    let report = personal_data::report(&db, project);
+    assert!(
+        report
+            .markdown
+            .contains("| an `Email` | `contact` | operation `customers.create` | sent |"),
+        "{}",
+        report.markdown
+    );
+
+    let body = send(
+        "    return pay.customers.create(AcmePay.CustomerRequest {\n        name: user.plan\n        address: user.billing_email\n    })",
+    );
+    let user = USER.1.replace(
+        "    plan: AcmePay.Words\n",
+        "    plan: AcmePay.Words\n    billing_email: Email\n",
+    );
+    let (db, project) = checked(REQUEST, &[(SEND, &body), (USER.0, &user)]);
+    assert_eq!(
+        clean_rows(&db, project),
+        ["pay User.billing_email customers.create"]
+    );
+    let report = personal_data::report(&db, project);
+    assert!(
+        report
+            .markdown
+            .contains("| `User.billing_email` | `contact` | operation `customers.create` | sent |"),
+        "{}",
+        report.markdown
+    );
+}
+
 /// A value of a standard type that is personal data counts wherever it
 /// comes from: a request's own, with nothing marked, or a field holding
 /// one, which is named.
@@ -710,9 +753,13 @@ fn an_email_s_own_mark_counts() {
         PLAIN_REQUEST,
         &[("app.jadpo", MAIL_APP), notice, html, txt, notices],
     );
+    // The address it goes to is personal data too (chunk A20).
     assert_eq!(
         clean_rows(&db, project),
-        ["mail NoticeEmail.about email NoticeEmail"]
+        [
+            "mail NoticeEmail.about email NoticeEmail",
+            "mail Email email NoticeEmail"
+        ]
     );
     // Passed whole, with no field read, it counts for what its type marks.
     let passed = (
@@ -725,7 +772,10 @@ fn an_email_s_own_mark_counts() {
     );
     assert_eq!(
         clean_rows(&db, project),
-        ["mail NoticeEmail.about email NoticeEmail"]
+        [
+            "mail NoticeEmail.about email NoticeEmail",
+            "mail Email email NoticeEmail"
+        ]
     );
 }
 

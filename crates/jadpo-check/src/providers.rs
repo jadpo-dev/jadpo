@@ -25,7 +25,7 @@ use jadpo_db::{Db, Folder, Ownership, Place, Project};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr};
 
-use crate::lookups::{Lookup, NameView, SigView};
+use crate::lookups::{FailureView, Lookup, NameView, SigView};
 use crate::tree::{self, name_text, node_span};
 use crate::types::{Const, Def, FieldsBase, Ty, TypeRef, TypeView, type_table};
 
@@ -917,6 +917,29 @@ impl Reader<'_> {
                 return None;
             }
         }
+        // A `File` is the store and key its bytes are under: written out, it
+        // tells the provider where a file is kept, and read in, it lets the
+        // provider name any file (area 16, "What a `File` holds").
+        if let Some(held) = crate::types::decl::held_file(self.table, &resolved, &mut Vec::new()) {
+            let what = format!("`{}`'s `{key}:`", self.operation);
+            out.push(if key == "input" {
+                crate::types::decl::file_sent_to_provider(&what, &held, span.clone())
+            } else {
+                crate::types::decl::file_taken(&what, &held, span.clone())
+            });
+        }
+        // A file's bytes go out as Base64 (area 16, "`FileContents`"), but
+        // nothing reads an answer as them.
+        if key != "input"
+            && let Some(held) =
+                crate::types::decl::held_contents(self.table, &resolved, &mut Vec::new())
+        {
+            out.push(crate::types::decl::contents_taken(
+                &format!("`{}`'s `{key}:`", self.operation),
+                &held,
+                span.clone(),
+            ));
+        }
         let shown = match &resolved {
             Ty::Named(name) if !name.contains('.') => format!("{}.{name}", self.package),
             _ => format!("{}.{written}", self.package),
@@ -1056,6 +1079,9 @@ impl Reader<'_> {
             return Vec::new();
         };
         let mut found = Vec::new();
+        // How each failure listed so far is read from a refusal, and the
+        // one it came from (area 11, "A provider's failures").
+        let mut read_as: Vec<(Reads, String)> = Vec::new();
         for entry in list.exprs() {
             let written = tree::written(entry.syntax());
             let resolved = self
@@ -1074,9 +1100,30 @@ impl Reader<'_> {
             };
             match failure {
                 Some(name) => {
-                    if !found.contains(&name) {
-                        found.push(name);
+                    if found.contains(&name) {
+                        continue;
                     }
+                    if let Some(info) = self.lookup.failure_info(&name) {
+                        let reads = Reads::of(info);
+                        if let Some((_, first)) = read_as.iter().find(|(other, _)| *other == reads) {
+                            out.push(
+                                self.problem(
+                                    format!("`{written}` and `{first}` are read from the same refusal"),
+                                    self.span(entry.syntax()),
+                                    "read the same way",
+                                )
+                                .reason(format!(
+                                    "`{}`'s failures are told apart by what the provider answers: {}. Two read the same way leave the runtime no way to say which one came.",
+                                    self.operation,
+                                    reads.describe()
+                                ))
+                                .next(format!("Give `{written}` or `{first}` its own `wire_status:` or `wire_name:`, or list only one")),
+                            );
+                        } else {
+                            read_as.push((reads, written.clone()));
+                        }
+                    }
+                    found.push(name);
                 }
                 None if resolved.has_error() => {}
                 None => out.push(
@@ -1094,6 +1141,36 @@ impl Reader<'_> {
             }
         }
         found
+    }
+}
+
+/// How a refusal is read as one failure (area 11, "A provider's
+/// failures"; decided 2026-11-07): by its status and its text,
+/// by its text alone (its code, when it gives neither), or by its status
+/// alone.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Reads {
+    Both(u16, String),
+    Text(String),
+    Status(u16),
+}
+
+impl Reads {
+    fn of(info: &crate::failures::FailureInfo) -> Reads {
+        match (info.wire_status, &info.wire_name) {
+            (Some(status), Some(text)) => Reads::Both(status, text.clone()),
+            (Some(status), None) => Reads::Status(status),
+            (None, Some(text)) => Reads::Text(text.clone()),
+            (None, None) => Reads::Text(info.code.clone()),
+        }
+    }
+
+    fn describe(&self) -> String {
+        match self {
+            Reads::Both(status, text) => format!("both are a `{status}` with {text:?}"),
+            Reads::Text(text) => format!("both are {text:?} at `error_code:`"),
+            Reads::Status(status) => format!("both are any `{status}`"),
+        }
     }
 }
 

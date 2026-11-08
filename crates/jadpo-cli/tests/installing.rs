@@ -17,7 +17,7 @@ use super::packages::{git, plain, repository};
 
 /// A package's own repository with its surface written, and an app beside
 /// it: `<dir>/postcodes` and `<dir>/shop`.
-fn workspace(name: &str) -> (tempdir::Dir, PathBuf, PathBuf) {
+pub(super) fn workspace(name: &str) -> (tempdir::Dir, PathBuf, PathBuf) {
     let (dir, package) = repository(name);
     let checked = plain(&package, &["package", "check"]);
     assert!(
@@ -31,7 +31,7 @@ fn workspace(name: &str) -> (tempdir::Dir, PathBuf, PathBuf) {
 }
 
 /// Commits everything and tags it.
-fn release(package: &Path, tag: &str) {
+pub(super) fn release(package: &Path, tag: &str) {
     git(package, &["add", "-A"]);
     git(package, &["commit", "-q", "-m", tag]);
     git(package, &["tag", tag]);
@@ -109,6 +109,53 @@ next: jadpo package show postcodes  shows what it offers
             .starts_with("error: `Postcodes.v2` is already installed\n"),
         "{}",
         again.stderr
+    );
+}
+
+/// A newer Jadpo's publishing-bar finding in a released package's own code
+/// is an alert about the package, for its publisher: `add` and `check` go
+/// on (area 11, "How the package format is read").
+#[test]
+fn a_finding_for_the_packages_publisher_is_an_alert_not_a_refusal() {
+    let (_dir, package, app) = workspace("install-publishers");
+    // Two constants of one type holding one value, which a release from
+    // before `constant.similar_exists` could hold; neither is on the
+    // surface, so it still matches.
+    write(
+        &package,
+        "libraries/uk.jadpo",
+        &format!(
+            "constant shortest: WrittenPostcode = \"W1 1AA\"\nconstant also_shortest: WrittenPostcode = \"W1 1AA\"\n\n{}",
+            super::packages::UK_EXAMPLE.replace(
+                "        return attempt UkPostcode(text.upper(written)) {",
+                "        if (written == shortest or written == also_shortest) {\n            return attempt UkPostcode(written) {\n                invalid: InvalidPostcode\n            }\n        }\n        return attempt UkPostcode(text.upper(written)) {",
+            )
+        ),
+    );
+    let added = jadpo(&app, &["package", "add", "../postcodes"]);
+    assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
+    assert!(
+        added.stdout.contains(
+            "alert: `Postcodes.v2` has 1 finding for its publisher, not this app: `constant.similar_exists`\n"
+        ),
+        "{}",
+        added.stdout
+    );
+    write(&app, "domains/intake/actions/check_postcode.jadpo", USES);
+    let checked = jadpo(&app, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    assert!(
+        checked
+            .stdout
+            .contains("alert: `Postcodes.v2` has 1 finding"),
+        "{}",
+        checked.stdout
+    );
+    let json = jadpo(&app, &["check", "--json"]);
+    assert!(
+        json.stdout.contains("\"package_alerts\""),
+        "{}",
+        json.stdout
     );
 }
 
@@ -506,12 +553,21 @@ fn package_commands_name_what_they_cant_find() {
         "{}",
         folder.stderr
     );
-    let registry = jadpo(&app, &["package", "add", "postcodes"]);
+    // A bare name is the registry's; this address is closed, so nothing
+    // leaves this machine.
+    let bare: Vec<String> = ["package", "add", "postcodes"]
+        .iter()
+        .map(|arg| arg.to_string())
+        .collect();
+    let registry = run(
+        &bare,
+        &Environment::empty()
+            .with_var("JADPO_REGISTRY", "http://127.0.0.1:9/registry/v1/")
+            .with_cwd(&app),
+    );
     assert_eq!(registry.code, 1);
     assert!(
-        registry
-            .stderr
-            .starts_with("error: Installing from the registry isn't built yet\n"),
+        registry.stderr.contains("rule: registry.unreachable\n"),
         "{}",
         registry.stderr
     );

@@ -24,9 +24,16 @@ You write behaviour in three kinds of callable:
 - A **query** reads stored data and never changes it
   ([Named queries](06-reads-and-writes.md#named-queries)).
 
-Here is a function:
+An action that writes nothing, emits no email and makes no changing call,
+itself or through any action it calls, is read-only; it may emit an event. You don't mark it:
+the compiler works it out from what the action does. A read-only action can
+answer a `GET`, as a query can
+([A `GET` that runs an action](07-http.md#a-get-that-runs-an-action)).
 
-```jadpo check project=line-total file=numbers.jadpo hidden
+Here is a function. Save this as `main.jadpo` and run `jadpo test
+main.jadpo`:
+
+```jadpo check project=line-total
 type Stock = Int {
     min: 0
 }
@@ -35,15 +42,19 @@ type Quantity = Int {
     min: 1
     max: 1000
 }
-```
 
-```jadpo check project=line-total
 /// Total for one order line before discounts.
 function stock_needed(per_pack: Stock, packs: Quantity) -> Stock {
     var total: Stock = Stock(per_pack * packs)
     return total
 }
+
+test "six packs of four need 24" {
+    assert stock_needed(4, 6) == 24
+}
 ```
+
+`Int` is built in. `Stock`, `Quantity` and `stock_needed` are defined here.
 
 And an action, which loads a todo, changes it and returns a view of it:
 
@@ -382,7 +393,68 @@ function holdback(per_pack: Stock) -> Stock {
 ```
 
 A library's own functions and constants read its constants by name alone,
-as they call its functions.
+as they call its functions. That holds in a library package too, an object
+constant may be built from the library's other constants, and a field of
+one is read through its name, `grid_reach.eastward`:
+
+```jadpo check project=constants-package file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=constants-package file=shared/providers/grid_squares/v1/package.jadpo
+/// Grid squares and how far the grid reaches.
+package GridSquares.v1 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=constants-package file=shared/providers/grid_squares/v1/types/grid_distance.jadpo
+/// A distance on the grid, in metres.
+public type GridDistance = Decimal {
+    scale: 2
+    min: 0.00
+}
+```
+
+```jadpo check project=constants-package file=shared/providers/grid_squares/v1/types/grid_reach.jadpo
+/// How far the grid reaches east and north.
+public type GridReach = Object {
+    eastward: GridDistance
+    northward: GridDistance
+}
+```
+
+```jadpo check project=constants-package file=shared/providers/grid_squares/v1/libraries/grids.jadpo
+/// The grid's sizes.
+public library grids {
+    /// The side of one square.
+    constant square_side: GridDistance = 100.00
+
+    /// How far the grid reaches: ten squares each way.
+    constant grid_reach: GridReach = GridReach {
+        eastward: GridDistance(square_side * 10)
+        northward: GridDistance(square_side * 10)
+    }
+
+    /// The side of one square.
+    function square_size() -> GridDistance {
+        return square_side
+    }
+
+    /// How far east the grid reaches.
+    function furthest_east() -> GridDistance {
+        return grid_reach.eastward
+    }
+}
+```
+
+```jadpo check project=constants-package file=shared/providers/grid_squares/v1/libraries/grids.test.jadpo
+test "the grid reads its constants" {
+    assert grids.square_size() == 100.00
+    assert grids.furthest_east() == 1000.00
+}
+```
 
 A library a second domain uses moves to `shared/libraries/`, or, when it
 depends on its domain's types, stays and becomes `public`, as it would for
@@ -425,16 +497,16 @@ the others are reported.
 A VAT rate and a fee can share a value by coincidence, so the error is a
 judgement call you can decline: a `decline constant.similar_exists:
 "<why>"` line above the constant answers it
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)).
+([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 
 The library catalogue, the list of shared code that `jadpo check` writes
-into `build/catalogue/` ([Tooling](14-tooling.md)), lists each constant
+into `build/catalogue/` ([Tools](14-tooling.md)), lists each constant
 with its type, value, `///` description and the code that reads it.
 
 ### A constant or a setting
 
 If a deployment could ever need a different value, make it a setting in
-`config.jadpo` ([Configuration and time](10-configuration-and-time.md));
+`config.jadpo` ([Settings](10-configuration-and-time.md#settings-configjadpo));
 otherwise make it a constant. A page size an operator might tune is a
 setting. The number of pence in a pound is a constant. The Jadpo agent
 skill gives agents the same rule
@@ -463,7 +535,7 @@ From fixed to live, there are three kinds of value:
 
 **Making a constant a setting** is a job for a tool: `jadpo config move
 <constant>`, or the editor's "Make this a setting"
-([Tooling](14-tooling.md)). It adds a field of the same name and type to
+([Tools](14-tooling.md)). It adds a field of the same name and type to
 `config.jadpo` whose `default:` is the constant's value, deletes the
 constant, and rewrites every read (`security.max_login_attempts` becomes
 `config.max_login_attempts`). The reviewer then sees each place whose
@@ -937,13 +1009,13 @@ check failed: 1 error, 1 file
 
 An outside call is one that leaves your app: a provider operation (an
 outside service, reached through its package;
-[Integrations](11-integrations.md)), a package action, a file store's
+[External services](11-integrations.md)), a package action, a file store's
 `put` or `read`, or a `documents` render. Inside a loop's body, any of
 these is a compile error, in any action. A query inside a loop already is
 ([Reading in a loop](06-reads-and-writes.md#reading-in-a-loop)).
 
 To make a call for each item, use `batches.each`, the one way
-([Batches: work over many items](12-jobs-and-events.md#batches-work-over-many-items)).
+([Batches](12-jobs-and-events.md#batches)).
 A provider that takes a list is called once, with the list.
 
 Keeping calls out of loops means the steps of an action that makes several
@@ -1045,7 +1117,7 @@ The error's `next:` gives the one that fits the name.
 The batch helpers take inline functions written with `->` too: `each:` and
 `finished:` of `csv.read`, `csv.write`, `tsv`, `json_lines`, `json.read`,
 `json.write` and `batches.each`
-([Batches: work over many items](12-jobs-and-events.md#batches-work-over-many-items)).
+([Batches](12-jobs-and-events.md#batches)).
 They run later, in the background, after the action that started them
 commits, so they differ from the collection operations in two ways:
 
@@ -1120,7 +1192,8 @@ same in the interpreter and in a compiled build, on every target:
 Past either, the call or operation that would go deeper is the
 `recursion_limit` fault, at its place in the code. That holds in
 `jadpo test` and `jadpo dev` as in a deployable, a compiled build of your
-app. So `reply_count` above walks a thread a thousand replies deep, and
+app, and on Cloudflare's own network, where the deepest walks answered and
+the next level faulted, the Worker serving on (measured once, from one location (London, LHR), on 2026-11-04). So `reply_count` above walks a thread a thousand replies deep, and
 the same walk written as `list.map(comment.replies, reply -> ...)` four
 hundred.
 

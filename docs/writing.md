@@ -85,7 +85,9 @@ title. Design history and rationale belong in the design notes.
 A user page describes what works today, in the present tense. What isn't
 built goes in one section at the end, titled exactly `## Not built yet`,
 saying what to do instead. Nothing else on the page talks about build
-status.
+status, but for [a note beside an
+example](#a-pages-first-example-stands-alone) where a reader would
+otherwise expect a planned thing to work.
 
 > Bad: (first line of the page) Not built yet: `providers:` is
 > `toolchain.not_built_yet`.
@@ -123,6 +125,60 @@ Code in a user page is a `jadpo check` block, compiled and, when it has
 tests, run by the gate. A user page has no `fragment`. Show a command
 with the output it gives, copied from a real run. If you can't make an
 example compile, the feature isn't ready for a user page.
+
+### A page's first example stands alone
+
+A reader opens a page, often from a search, and reads its first example
+before anything else. That example must make sense without following a
+link, so it is the smallest thing that works, with all of it in front of
+them:
+
+- **Start with the simplest working use case.** Show what most apps want,
+  working: not an error, and not a rare option.
+- **Show or define every type and action it uses that isn't built in.**
+  Nothing it depends on is hidden, and nothing is only on another page. A
+  built-in type, such as `Bool` or `Email`, needs no definition.
+- **Show any configuration it needs.** If it can't compile without a
+  line in `app.jadpo`, `config.jadpo` or `policy.jadpo`, show that file. A
+  project's empty `application {}` doesn't count: every project has one.
+- **Make clear where each name comes from:** built into Jadpo, defined in
+  the example, imported from another file of your application, from a
+  package or a connection, or not built yet. Sometimes one sentence on what
+  an import is will do.
+- **Work on every target, or say which it doesn't.** A rate limit with a
+  one-hour window can't run on Workers, whose binding counts over 10 or 60
+  seconds, so a first example picks a window both run or says so.
+- **Go from basic to advanced.** The first example has no unrelated
+  concepts. The examples after it add one idea each.
+
+> Bad: a page on feature flags whose first example starts
+> `use ordering/types { CheckoutLayout }`, a type the reader never sees.
+>
+> Good: a page on feature flags whose first example declares one `Bool`
+> flag in `flags.jadpo`, and says that `flags { }` and `Bool` are built in
+> and the flag's name is yours.
+
+Every example still compiles, so an example never shows a planned feature.
+What isn't built goes in the status line at the top of a topic and the
+one note at the end of a page. A one-line note goes straight after an
+example only where a reader would otherwise expect a planned thing to
+work: "Signing in with Google isn't built yet, so this route uses magic
+links."
+
+A first example can take several files: a connection in `app.jadpo` and the
+action that uses it are one example, and all of it stands alone. It ends at
+the first file that does something, such as an action, a route or a test.
+
+A first example can build on what `jadpo new` writes, since any reader can run
+it. The words before it say so and name what it uses, as
+[Monitoring](language/16-built-in-services.md#monitoring) does with `greet`. Its
+block's `new` attribute makes the docs check start the project from a real
+`jadpo new`, so an example can't drift from it.
+
+This holds for a guide, a built-in service's home and the first topic with
+an example on any page of the reference. The Learn path is read in order,
+so its pages build on the ones before, and an error page's first example
+is the error.
 
 ### Put each file's path above its code
 
@@ -164,14 +220,19 @@ checks it on any line. Where a page must show the line or the release
 of the reader's `jadpo`, as `jadpo new` and `jadpo --version` print
 them, it writes `X.Y` for the line and `X.Y.Z` for the release: the
 docs check prints them that way in a command's output, and compiles a
-`check` block's `jadpo: "X.Y"` as the running line. A page about other
+`check` block's `jadpo: "X.Y"`, or one a `sh run` block's lines write,
+as the running line. A page about other
 lines uses lines no release has: `0.0` for an earlier one, `99.0` for a
 later one. The docs check fails a Markdown file that writes the running
 `jadpo`'s line as `jadpo: "…"`, as `jadpo new`'s status line, or its
 release as `jadpo --version` prints it, and the release rehearsal
 (`tools/release/rehearsal.py`) checks the pages again with the next
 minor release, so a page that names the line fails on its pull
-request, not on release day.
+request, not on release day. Whichever release it is, the check also fails
+`"compiler":"…"`, the compiler's release in a log line or a manifest, which a
+page writes as `"compiler":"X.Y.Z"`, and a sentence saying which release
+something came in, such as "Built in …" or "added in Jadpo …": write what is
+true now, "Built", with no release.
 
 ### No secrets on a command line
 
@@ -200,13 +261,41 @@ open. An error's `help:` line is its page's address on the site,
   the files the job adds or changes, and the files it starts from are
   `hidden` blocks, which the docs check compiles and the bundle leaves
   out; its first paragraph after the opening says in words what those
-  are. Guides don't depend on each other, so each says what it starts
-  from rather than "as the last guide did".
+  are. Its first example [stands
+  alone](#a-pages-first-example-stands-alone), so it needs none of them;
+  later steps can. Guides don't depend on each other, so each says what it
+  starts from rather than "as the last guide did". The guides' index lists
+  each guide once, under a `##` heading naming a kind of job, with a line
+  saying what the reader ends with; the docs check fails a guide with no
+  row. The index's order is the bundle's.
 - **Primer** (`docs/primer.md`): the one page an agent reads before
   writing an app, 3,000 to 5,000 tokens.
 
 Each user page declares its topic ID on the line after its `#` heading,
 as area pages do.
+
+## How release notes read
+
+Each release has a page of notes in `docs/releases/`, named by its version
+(`0.4.0.md`), which the site shows at `/changelog`. They are for someone
+deciding whether to upgrade and what it will take, so they lead with what
+breaks:
+
+1. `# Jadpo X.Y.Z`, then `Released D Month YYYY.`, then a paragraph saying
+   what the release is about, in a sentence or two.
+2. **`## Before you upgrade`**: each change that refuses code the release
+   before accepted, as a bold line saying what is refused, then what to do,
+   with the rule's name. Left out when there are none.
+3. **`## New`**: each new thing, as a bold line naming it, then what it does
+   for you.
+4. **`## Fixed`**: each fix, as what works now, and what happened before
+   where that helps.
+
+Notes are written from what changed, not copied from commit subjects, and
+follow the rest of this guide; they name releases, which no other page does.
+The docs check fails a release that has no notes, so the release pull request
+gets its notes before it merges, and a file that doesn't open with the heading
+and the date.
 
 ## How a reference topic reads
 
@@ -219,6 +308,11 @@ standard is the topic "Routes: signed in by default" on the
 - **Say first what happens by default.** "Every route needs a signed-in
   caller unless it says otherwise. You don't write anything for that."
   The reader learns what they get for free before any option.
+- **The first example [stands
+  alone](#a-pages-first-example-stands-alone).** Where a page of the
+  reference first shows code, nothing it uses is hidden or only on another
+  topic. A topic that isn't built may show its design as a `fragment`, with
+  the generated line above it.
 - **One section per option**, as a `###` heading naming it: when to use
   it, then the example, then what it does. "Use it for routes people
   call before they have an account, such as a health check", then the
@@ -232,6 +326,11 @@ standard is the topic "Routes: signed in by default" on the
 - **Link by name.** "[Policy](language/09-policy.md) still decides",
   never "area 9 still decides". "Question N" and design history go to the
   design notes in `docs/language/notes/`.
+- **Nothing of how it was built.** A page says what is true now: never a
+  chunk, a chunk's id, the roadmap, or who decided something and when.
+  `tools/docs/agent_guidance.py` fails a page that does, and "chunk" in
+  everyday use is reworded too ("piece"). A link to a design note gives only
+  the reason behind something the page has already said in full.
 - **Say constraints in plain words.** "A route can narrow its API's list
   but never add to it" says what a reader can and can't do; "narrow"
   alone doesn't.
@@ -239,7 +338,17 @@ standard is the topic "Routes: signed in by default" on the
   is. Where the plain version would change what a rule means, keep the
   rule's wording.
 - **Build status** is in the page's "What is built" section, or one note
-  at the end of the topic, never in its first lines.
+  at the end of the topic, or [a note beside an
+  example](#a-pages-first-example-stands-alone) where a reader would
+  otherwise expect a planned thing to work. A topic wholly or partly unbuilt also opens with a
+  status line, since an agent stops reading at the first thing that answers it.
+  The bundle writes that line from the [reference's
+  manifest](documentation.md#landing-pages-and-status-lines); never write it in
+  a topic.
+- **A status word** in "What is built" is Built only of a row wholly built.
+  Something it lacks makes the row Partly built, saying what, or gets a row
+  of its own; `tools/docs/agent_guidance.py` fails a Built row that says
+  otherwise.
 
 The design notes keep the Decisions table, the open questions and why
 the language is the way it is; nothing is deleted on its way there.
@@ -255,6 +364,65 @@ Every page that explains an error's `next:` line uses the same words:
 
 The marker is guidance that agents follow, and nothing enforces it yet.
 The primer says so once; other pages don't repeat it.
+
+## How a built-in service's page reads
+
+A reader arrives at a service's page knowing what they want done, and may never
+have seen the service. Each has one home in the sidebar, its first topic, which
+reads in this order:
+
+1. **Its guide**, in one line, where one exists.
+2. **What it's for**, in plain words, and the `[topic_summary]` line for its
+   row on the landing page says the same.
+3. **The smallest thing that works**, each file under its path, with its test.
+   A service that works shows an example the docs check compiles, never a
+   `fragment`, and shows only what is built. This first example [stands
+   alone](#a-pages-first-example-stands-alone): every file it needs is on the
+   page, and it makes clear which names are Jadpo's, which are your
+   application's and which come from a package.
+4. **What most apps change next**, then the limits.
+5. **`### Not built yet`**, last, when the rest is design, saying what works
+   today instead. A section someone may have linked keeps its heading beneath it,
+   at the next level down.
+
+The exact rules go in a topic of their own, under the page's `details` in the
+[manifest](documentation.md#the-references-manifest). It opens by saying when a
+reader needs it. A service that isn't built is the design, with the generated
+line above it, and ends by saying what an app does until it is.
+
+## How a standard type's page reads
+
+A reader arrives at a type's page with a name and one question: what is
+this, and how do I make one? Every page in `/docs/types/` answers in the
+same order, so a reader always knows where to look:
+
+1. **What it is**, under the title, in one line a newcomer understands.
+2. **When to use it and what to use instead**, in a paragraph: the job it
+   does, then the type to reach for when this one is wrong, with its name.
+3. **`## Shape`**: a table of its parts with a `Required?` column and each
+   part's type, or the text or the list of values it holds.
+4. **`## Example`**: a working example, compiled and run by the docs check.
+5. **`## Good to know`**: the surprises, in plain words, each leading with
+   what you can do. Write "`==` tells you whether two are the same", then
+   what `<` won't take. Never "contract", "baseline" or "not ordered". A
+   type with nothing surprising leaves its own notes out.
+6. **`## In JSON`**: what a route sends and receives, with its examples.
+7. **`## Details`**: how it is stored, its text form, how it is shown to
+   people and its operations, collapsed for a reader on the site. The
+   Markdown keeps every fact, in this same order.
+
+> Bad: "`PersonName`. People and contact; not ordered; personal data
+> (identifying); since Jadpo 0.1.0. Make one: build one from its fields."
+>
+> Good: "A person's name: a given name and, if they have one, a family
+> name. Use it wherever you store or show what someone is called."
+
+The first, second, fourth and fifth parts are written by hand, once for
+each type, in `crates/jadpo-std/src/standard/pages/`, one file for each of
+the type groups. The rest comes from the compiler's data, so it can't
+disagree with what is built. Name another type in backticks and the page
+links it. A test fails when a type has no entry, and the docs check fails
+a page that uses the words above or an example that doesn't compile.
 
 ## How an error page reads
 
@@ -371,10 +539,17 @@ user page that:
 
 - mentions an area or question by number;
 - talks about build status anywhere but a final `## Not built yet`
-  section;
+  section, or a paragraph of one sentence straight after an example;
 - uses spec vocabulary ("Decided.", "carried to");
 - links a file in this repository rather than a page of the docs;
 - holds a `fragment`, or an example that doesn't compile or whose tests
   fail, or a `sh run` block that doesn't print its output block.
+
+`python3 tools/docs/first_examples.py` reports each first example that
+doesn't [stand alone](#a-pages-first-example-stands-alone): it compiles the
+first example with only what a reader can see on that page, and lists what
+else it needed. The gate runs it with `--strict`, so a page that breaks the standard fails.
+It can't judge whether an example is the simplest one, whether the page says
+where each name comes from, or whether it runs on every target.
 
 The rest of this guide is for the writer and the reviewer.

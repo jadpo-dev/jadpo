@@ -809,3 +809,39 @@ fn the_sign_in_emails_connection_and_its_settings_are_kept_where_deliveries_run(
             .any(|kept| kept.starts_with("smtp_"))
     );
 }
+
+/// A top-level constant an action its route runs reads is reached, as a
+/// function it calls is: its plan holds the constant, and so does the
+/// constant another constant reads.
+#[test]
+fn a_constant_an_action_reads_is_held_by_the_deployable_that_reaches_it() {
+    let db = Database::default();
+    let mut files: Vec<(String, String)> = CAFE
+        .iter()
+        .map(|(path, text)| (path.to_string(), text.to_string()))
+        .collect();
+    for (path, text) in &mut files {
+        if path == "domains/cafe/actions/add_note.jadpo" {
+            *text = text
+                .replace(
+                    "    return NoteView {\n",
+                    "    assert not list.contains(refused_notes, input.text)\n    return NoteView {\n",
+                )
+                .replace(
+                    "/// The kiosk's greeting.\n",
+                    "constant opening: NoteText = \"Welcome\"\nconstant refused_notes: List<NoteText> = [opening]\n\n/// The kiosk's greeting.\n",
+                );
+        }
+    }
+    let project = checked(&db, &files);
+    let kiosk = planned(&db, project, "kiosk");
+    let held = callables(&kiosk);
+    assert!(held.contains("constant cafe.refused_notes"), "{held:?}");
+    assert!(held.contains("constant cafe.opening"), "{held:?}");
+    let office = planned(&db, project, "office");
+    assert!(
+        !callables(&office)
+            .iter()
+            .any(|key| key.starts_with("constant "))
+    );
+}

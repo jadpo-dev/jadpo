@@ -143,6 +143,7 @@ fn target(view: &View<'_>, need: &Need) -> Option<Target> {
     match need.change.as_str() {
         "PolicyChange.route_public"
         | "PolicyChange.confirmation_removed"
+        | "ApiChange.media_type_changed"
         | "ApiChange.route_removed" => {
             let text = subject.trim_matches('"');
             let (api, name) = text.split_once(' ')?;
@@ -169,11 +170,18 @@ fn target(view: &View<'_>, need: &Need) -> Option<Target> {
         }
         "PolicyChange.listing_added" | "PolicyChange.listing_removed" => callable_named(subject),
         change if change.ends_with("_declined") => callable_named(subject),
-        "NetworkChange.host_added" => Some(Target::Connection {
-            name: subject.to_string(),
-        }),
+        "NetworkChange.host_added" | crate::provider_erasure::DATA_STAYS => {
+            Some(Target::Connection {
+                name: subject.to_string(),
+            })
+        }
         "PackageChange.git_source" => Some(Target::Package {
             name: subject.to_string(),
+        }),
+        // An upgrade's subject ignores the version: every connection to
+        // the package, `AcmeCouriers.bookings.get`.
+        change if change.starts_with("PackageChange.") => Some(Target::Package {
+            name: subject.split('.').next()?.to_string(),
         }),
         // Who reached the records that leave the app's reach. A dropped
         // table or column was retired by an earlier change: no path has
@@ -598,10 +606,15 @@ pub fn paths(view: &View<'_>, need: &Need, public: &Public) -> Paths {
         }
         Target::Package { name } => {
             let package = format!("package {name}");
+            let versions = format!("{package}.");
             let connections: Vec<&Node<'_>> = view
                 .of_kind("connection")
                 .into_iter()
-                .filter(|node| node.edges("uses").contains(&package.as_str()))
+                .filter(|node| {
+                    node.edges("uses")
+                        .iter()
+                        .any(|used| *used == package || used.starts_with(&versions))
+                })
                 .collect();
             for connection in connections {
                 let through = |node: &Node<'_>| node.edges("uses").contains(&connection.id);

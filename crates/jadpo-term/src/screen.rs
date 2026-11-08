@@ -715,7 +715,10 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             heading,
             lines: body,
         } => {
-            let mut lines = vec![vec![bold(heading.as_str())]];
+            let mut lines = Vec::new();
+            if !heading.is_empty() {
+                lines.push(vec![bold(heading.as_str())]);
+            }
             lines.extend(body.iter().map(|line| vec![raw(format!("  {line}"))]));
             lines
         }
@@ -1240,7 +1243,7 @@ fn broken(text: &str) -> impl Iterator<Item = &str> {
 
 /// The headline: symbol and `error` in the failure colour and bold, two
 /// spaces, the subject in bold. Plain output reads `error: subject`. Every
-/// finding is an error (area 1, "Declining a judgement call"), so there is
+/// finding is an error (area 1, "Keeping code as it is, with a reason"), so there is
 /// no other word.
 pub(crate) fn headline(subject: &str, style: &Style) -> Line {
     if rich(style) {

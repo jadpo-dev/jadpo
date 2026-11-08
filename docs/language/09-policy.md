@@ -15,14 +15,20 @@ write your code makes, so you never write a permission check yourself.
 
 This todo may be created, read, changed and deleted only by its owner:
 
-```jadpo fragment
-// domains/todos/entities/todo.jadpo
+`domains/todos/entities/todo.jadpo`:
+
+```jadpo check project=policy-first file=domains/todos/entities/todo.jadpo
+use todos/entities { User }
+
+/// Something to do, belonging to one person.
 entity Todo {
     id: Uuid
     owner_id: User.id {
         on_delete: OnDelete.restricted
     }
-    title: TodoTitle
+    title: Text {
+        max_length: 200
+    }
 
     policy: {
         create: [owner_id]
@@ -37,6 +43,43 @@ entity Todo {
 one let in. A caller no list names is refused, and a todo they may not
 read behaves as if it didn't exist ([When policy says no](#when-policy-says-no)).
 
+`entity`, `policy:`, `Uuid`, `Text` and `OnDelete` are built into Jadpo.
+`Todo` and `User` are your app's own, and `use` brings `User` in from its
+own file. Your app says which entity is a person in `app.jadpo`, which is
+what lets a list mean "the signed-in user"
+([The principal](08-identity.md#the-principal)):
+
+`domains/todos/entities/user.jadpo`:
+
+```jadpo check project=policy-first file=domains/todos/entities/user.jadpo
+/// A person with an account.
+entity User {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [id]
+    }
+}
+```
+
+`app.jadpo`:
+
+```jadpo check project=policy-first file=app.jadpo migrate=initial
+use todos/entities { User }
+
+application {}
+
+principal {
+    user: {
+        subject: User.email
+    }
+}
+```
+
 Each entry in a list names who it lets in, in one of four ways:
 
 | Who | Written | Lets in |
@@ -44,7 +87,7 @@ Each entry in a list names who it lets in, in one of four ways:
 | [A user field on the record](#a-user-field-on-the-record) | `owner_id` | the user that field points to |
 | [A membership role](#a-membership-role) | `CompanyRole.editor` | a user with that role in the record's company |
 | [Anyone signed in, or anyone](#anyone-signed-in-or-anyone) | `Access.authenticated`, `Access.public` | anyone signed in; anyone at all |
-| [Background work](#background-work) | `Access.system` | schedules and subscribers, limited to the tenant their event came from |
+| [Policy and background work](#policy-and-background-work) | `Access.system` | schedules and subscribers, limited to the tenant their event came from |
 
 When your app is shared by many customer companies, [Tenancy](#tenancy)
 keeps each company's records to its own members, whatever the lists say.
@@ -106,7 +149,7 @@ names someone else as the owner is refused.
 A user field that any list names can't be changed by an ordinary update,
 since changing it would hand the record to someone else. You don't mark it
 `immutable:` for that. To hand a record to someone else, write a named
-action and list it in root `policy.jadpo`, as [Actions](#actions) shows.
+action and list it in root `policy.jadpo`, as [Permissions on actions](#permissions-on-actions) shows.
 
 ## A membership role
 <!-- topic: a-membership-role -->
@@ -312,15 +355,17 @@ A public read also needs a route that skips sign-in, one that says
 `authentication: RouteAuthentication.none`
 ([Routes: signed in by default](08-identity.md#routes-signed-in-by-default)).
 Either alone isn't enough: the route lets in callers who aren't signed in,
-and the grant lets them read the record.
+and the grant lets them read the record. A project's first record holding
+personal data anyone may read says so to a person
+([What a first record holds](18-records-and-manifest.md#what-a-first-record-holds)).
 
 There is no administrator who bypasses policy.
 
-## Background work
-<!-- topic: background-work -->
+## Policy and background work
+<!-- topic: policy-and-background-work (was background-work) -->
 
 Schedules and event subscribers are the work your app does without a
-request ([Jobs and events](12-jobs-and-events.md)). They run as the system
+request ([Background work](12-jobs-and-events.md)). They run as the system
 caller, which gets exactly what `Access.system` grants. To let them read or
 change an entity's records, name `Access.system` in its lists, such as
 `update: [owner_id, Access.system]`.
@@ -337,6 +382,25 @@ An entity grants background work explicitly. A schedule, a subscriber or
 a batch that reaches a statement only `Access.public` grants is a compile
 error, `policy.system_grant_missing`, in the same way that
 `policy.effect_ungranted` refuses such a route.
+
+### Nothing grants it
+
+So is one that reaches a statement no list grants anyone, such as a create
+on an entity with no `create:`. It could only ever be refused, and a route
+reaching it is `policy.effect_ungranted`, so nothing could run it.
+
+### A list naming only people
+
+So is one that reaches a list naming only people: `create:
+[Access.authenticated]`, `update: [owner_id]`, a role, a line under
+`actions:` without `Access.system`, or a listed query, whose line can't
+name it. What counts is what the code could reach, whichever branch runs,
+as for a route anyone may call (`policy.public_grant_missing`).
+
+So an action a route and a subscriber share is refused when the people's
+write is on a branch the subscriber never takes. Split it: the subscriber
+runs an action of its own, which the route's action may call
+([How to fix it](../errors/policy.system_grant_missing.md#how-to-fix-it)).
 
 ### Which tenant background work reaches
 
@@ -379,15 +443,15 @@ request:
   tenant, which is none;
 - a webhook's reply action
   ([Webhooks that need a reply](11-integrations.md#webhooks-that-need-a-reply));
-- the `on_first_sign_in:` action, which [Identity](08-identity.md) runs
+- the `on_first_sign_in:` action, which [Sign-in and identity](08-identity.md) runs
   for a person the app hasn't seen before.
 
 None of them reaches a tenant's records, only those every tenant shares,
 since no tenant's event starts them and "no tenant" means every tenant
 only for a schedule. Each is let in only by `Access.system`. So when one
-of them reaches a grant, or a line under `actions:`, that names
-`Access.public` and not `Access.system`, that is
-`policy.system_grant_missing`, reported where the action is named.
+of them reaches a grant, or a line under `actions:`, that doesn't name
+`Access.system`, that is `policy.system_grant_missing`, reported where the
+action is named.
 
 ### Proving which tenant work is for
 
@@ -435,11 +499,13 @@ for anything more than ids.
 What a batch's run stores, from its items, what it saved and its
 summary, is proved as a call's arguments are, by the tenant the run is
 limited to. What `batches.status` gives is held to what decides every
-batch's failures. [Jobs and events](12-jobs-and-events.md) covers this
+batch's failures. [Background work](12-jobs-and-events.md) covers this
 under "What a run reaches under policy".
 
 ## Tenancy
 <!-- topic: tenancy -->
+
+[Keep customers' data apart](../guides/21-keep-customers-data-apart.md) does the whole job, start to finish.
 
 Use tenancy when your app is shared by many customer companies, so that
 one company never sees another's data. Each customer is a tenant: one
@@ -467,7 +533,7 @@ policy {
 ```
 
 This file holds the rules for the whole app: the tenant, and the
-[actions](#actions) that need a permission of their own. Each entity's own
+[actions](#permissions-on-actions) that need a permission of their own. Each entity's own
 `policy:` section still lists who may create, read, change and delete its
 records. Naming a tenant adds these rules to every entity:
 
@@ -1520,7 +1586,7 @@ test "nobody seats themselves in a company everyone has left" {
 
 Moving a record to another company is rare, and it needs an action of its
 own. Only an action listed under `actions:` in root `policy.jadpo` may do
-it ([Actions](#actions) shows the list). The write checks every reference
+it ([Permissions on actions](#permissions-on-actions) shows the list). The write checks every reference
 the record keeps, and that no record of the old company refers to it. In
 the new company, it needs what creating the moved record there would: the
 entity's own `create:` and the caller's own membership there.
@@ -1529,8 +1595,8 @@ A membership moved in from another company holds no role its mover
 couldn't give there. So a viewer can't move in an owner's membership they
 hold elsewhere.
 
-## Actions
-<!-- topic: actions -->
+## Permissions on actions
+<!-- topic: action-permissions (was actions) -->
 
 Most actions need no permission of their own: an action takes its
 permission from the entities it touches. Root `policy.jadpo` lists the few
@@ -1614,7 +1680,8 @@ customer.
 A route anyone may call can't run a listed query, since its line never
 names `Access.public` (`policy.public_grant_missing`). A schedule,
 subscriber or batch never passes one either: the system is let in only
-by a line naming `Access.system`, which a query's can't.
+by a line naming `Access.system`, which a query's can't. Reaching one is
+`policy.system_grant_missing`.
 
 Here every signed-in customer reads a book, and only a bookseller where
 it is shelved:
@@ -1986,8 +2053,8 @@ has no `delete`, since a field is deleted with its record.
 
 `FieldAccess.server_only`, as on `import_reference` above, lets no request
 read or write the field. A test's or a seed's call without a caller runs
-without policy, so it may. [Jobs and events](12-jobs-and-events.md) says
-how schedules and subscribers write one.
+without policy, so it may. [Runs as the system](12-jobs-and-events.md#runs-as-the-system)
+says how schedules and subscribers write one.
 
 ### Writes
 
@@ -2134,7 +2201,7 @@ person accepts that change
 changes and database drops are accepted the same way. `jadpo check`
 compares the change with the default branch at its merge base through
 `access.jadpo_record`, who can do what, which it keeps at the root beside
-`api/`, and the API record. These need a person (Richard, 2026-10-30):
+`api/`, and the API record. These need a person:
 
 - a caller added to any grant list, an entity's or a field's
   (`library.Book.read: PolicyChange.widened`);
@@ -2164,7 +2231,7 @@ approval`](17-debugging-and-review.md#reviewing-a-change) shows those ways
 there.
 
 Schedules and subscribers act as the system
-([Background work](#background-work)), and what `Access.system` is granted
+([Policy and background work](#policy-and-background-work)), and what `Access.system` is granted
 shows in the permissions report. The compiler's own purge of soft-deleted
 records ([The purge schedule](12-jobs-and-events.md#the-purge-schedule)) is
 the only operation outside policy. Erasing a person needs `delete` on
@@ -2197,7 +2264,7 @@ generated API description lists the 403 wherever it can happen.
 Writes are checked in the same statement as the change, so a membership
 removed a moment earlier can't slip through.
 
-A token issued to another application ([Identity](08-identity.md))
+A token issued to another application ([Sign-in and identity](08-identity.md))
 carries scopes, which say what that application may do. Scopes only
 narrow: the token may do what both the person's grants and its scopes
 allow.

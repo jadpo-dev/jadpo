@@ -1,0 +1,12 @@
+/// {name}: say here which API this package reaches.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.{kebab}.example"
+        sandbox: "https://sandbox.{kebab}.example"
+    }
+    credential: CredentialScheme.bearer
+    // Each public type, once it has been gone through against the API's
+    // documentation: publishing needs every one.
+    reviewed: [Account, AccountId]
+}

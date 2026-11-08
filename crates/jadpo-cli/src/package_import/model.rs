@@ -62,6 +62,10 @@ pub struct Provider {
     /// The types an agent has reviewed, kept from the file an import
     /// merges into (chunk 7.2e2).
     pub reviewed: Vec<String>,
+    /// Each name in the description that code knows by another, kept from
+    /// the file an import merges into or found by it: `renamed:` (area 11,
+    /// "An importer"; Richard, 2026-11-07).
+    pub renamed: Vec<(String, String)>,
 }
 
 /// The provider's `idempotency:`.
@@ -154,6 +158,9 @@ pub struct FailureDecl {
     /// `FailureKind.<kind>`.
     pub kind: String,
     pub message: Option<String>,
+    /// The status the provider refuses with, from another provider's
+    /// documented answers (area 11, "A provider's failures").
+    pub wire_status: Option<u16>,
 }
 
 /// Something the description leaves to check: where, and what to do.
@@ -165,6 +172,66 @@ pub struct Finding {
 }
 
 impl Package {
+    /// Calls the type or failure the description names `from` by `to`, in
+    /// its own file and wherever the package names it; `false` when the
+    /// package declares no `from`, or already declares a `to`.
+    pub fn rename(&mut self, from: &str, to: &str) -> bool {
+        if from == to || self.types.contains_key(to) || self.failures.contains_key(to) {
+            return false;
+        }
+        if let Some(ty) = self.types.remove(from) {
+            self.types.insert(to.to_string(), ty);
+        } else if let Some(failure) = self.failures.remove(from) {
+            self.failures.insert(to.to_string(), failure);
+        } else {
+            return false;
+        }
+        let swap = |text: &mut String| *text = renamed_in_text(text, from, to);
+        for ty in self.types.values_mut() {
+            if let TypeDecl::Object { fields, .. } = ty {
+                for field in fields {
+                    swap(&mut field.ty.text);
+                }
+            }
+        }
+        for resource in self.resources.values_mut() {
+            for operation in resource.operations.values_mut() {
+                for named in operation
+                    .input
+                    .iter_mut()
+                    .chain(operation.output.iter_mut())
+                {
+                    swap(named);
+                }
+                for failure in &mut operation.failures {
+                    swap(failure);
+                }
+            }
+        }
+        for mapped in &mut self.mapped {
+            swap(&mut mapped.at);
+        }
+        for finding in &mut self.findings {
+            swap(&mut finding.at);
+        }
+        for reviewed in &mut self.provider.reviewed {
+            swap(reviewed);
+        }
+        true
+    }
+
+    /// The member names of the object or enum type called `name`, sorted:
+    /// its fields' or its variants'.
+    pub fn members_of(&self, name: &str) -> Option<Vec<String>> {
+        let mut out: Vec<String> = match self.types.get(name)? {
+            TypeDecl::Object { fields, .. } => fields.iter().map(|f| f.name.clone()).collect(),
+            TypeDecl::Enum { variants, .. } => variants.iter().map(|v| v.name.clone()).collect(),
+            TypeDecl::Refined { .. } => return None,
+        };
+        out.sort();
+        Some(out)
+    }
+
     /// The package's folder: `shared/providers/todos/v1`.
     pub fn folder(&self) -> String {
         format!(
@@ -248,6 +315,13 @@ impl Package {
                 "        reviewed: [{}]\n",
                 provider.reviewed.join(", ")
             ));
+        }
+        if !provider.renamed.is_empty() {
+            out.push_str("        renamed: {\n");
+            for (from, to) in &provider.renamed {
+                out.push_str(&format!("            {from}: {to}\n"));
+            }
+            out.push_str("        }\n");
         }
         out.push_str("    }\n}\n");
         out
@@ -373,6 +447,9 @@ fn failure_file(name: &str, failure: &FailureDecl) -> String {
     if let Some(message) = &failure.message {
         out.push_str(&format!("    message: {}\n", quote(message)));
     }
+    if let Some(status) = failure.wire_status {
+        out.push_str(&format!("    wire_status: {status}\n"));
+    }
     out.push_str("}\n");
     out
 }
@@ -465,6 +542,27 @@ pub fn camel(text: &str) -> String {
             }
         })
         .collect()
+}
+
+/// `text` with each whole name `from` in it written `to`: `List<Booking>`
+/// becomes `List<CourierBooking>`, and `BookingStatus` is left alone.
+pub fn renamed_in_text(text: &str, from: &str, to: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut word = String::new();
+    let flush = |word: &mut String, out: &mut String| {
+        out.push_str(if word == from { to } else { word.as_str() });
+        word.clear();
+    };
+    for c in text.chars() {
+        if c.is_alphanumeric() || c == '_' {
+            word.push(c);
+        } else {
+            flush(&mut word, &mut out);
+            out.push(c);
+        }
+    }
+    flush(&mut word, &mut out);
+    out
 }
 
 #[cfg(test)]

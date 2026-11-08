@@ -223,6 +223,9 @@ fn answer(status: &SqlValue, response: &SqlValue) -> Option<Claim> {
     })
 }
 
+/// Where a kept response made of raw bytes says what they are.
+const RAW_TYPE: &str = "sends";
+
 /// A kept response, or `None` while its request is still running.
 fn replay(status: &SqlValue, response: &SqlValue) -> Option<Response> {
     let status = match status {
@@ -238,6 +241,17 @@ fn replay(status: &SqlValue, response: &SqlValue) -> Option<Response> {
         .get("code")
         .and_then(serde_json::Value::as_str)
         .map(str::to_string);
+    // Raw bytes, kept as base64 with their media type (chunk G3).
+    if let Some(media_type) = kept.get(RAW_TYPE).and_then(serde_json::Value::as_str) {
+        let body = jadpo_value::encoding::from_base64(body)?;
+        return Some(Response {
+            status,
+            headers: super::raw_headers(media_type, body.len()),
+            body,
+            code,
+            ..Response::default()
+        });
+    }
     let headers = if body.is_empty() {
         Vec::new()
     } else {
@@ -263,10 +277,22 @@ pub fn store_params(guard: &Guard, response: &Response) -> Vec<SqlValue> {
             .clone()
             .map_or(serde_json::Value::Null, serde_json::Value::String),
     );
-    kept.insert(
-        "body".to_string(),
-        serde_json::Value::String(String::from_utf8_lossy(&response.body).into_owned()),
-    );
+    // What `sends:` sent isn't text, and a repeat gets it to the byte (chunk
+    // G3); every other body the runtime answers with is JSON.
+    let raw = response
+        .header("content-type")
+        .filter(|kind| *kind != "application/json");
+    let body = match raw {
+        Some(kind) => {
+            kept.insert(
+                RAW_TYPE.to_string(),
+                serde_json::Value::String(kind.to_string()),
+            );
+            jadpo_value::encoding::to_base64(&response.body)
+        }
+        None => String::from_utf8_lossy(&response.body).into_owned(),
+    };
+    kept.insert("body".to_string(), serde_json::Value::String(body));
     vec![
         SqlValue::Text(guard.scope.clone()),
         SqlValue::Text(guard.key.clone()),
@@ -405,11 +431,14 @@ mod tests {
             run: Run::Action(0),
             settle: None,
             stream: false,
+            sends: None,
+            immutable: false,
             keys: Some("main".into()),
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Public,
             caller: None,
             confirm: false,
+            rate_limit: None,
             file: "domains/accounts/routes/accounts.jadpo".into(),
             line: 1,
         }

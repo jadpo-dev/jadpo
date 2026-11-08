@@ -104,7 +104,7 @@ pub fn secret_value(name: &str) -> Option<&'static str> {
 }
 
 /// Whether a secret value of type `name` may one day be stored, sealed
-/// with an encrypted field's key ("Language gaps": keys held as data, with
+/// with an encrypted field's key (area 19's design notes, "Language gaps": keys held as data, with
 /// encrypted fields), so that storing one now is not built yet rather than
 /// refused: a `TotpSecret`, which checking a code needs back, and a
 /// `SecretText`. A password, a key, a token and a JWT are never stored as
@@ -894,7 +894,7 @@ pub const KEY_OP_PATTERN: &str = r"[\x21-\x7E]{1,64}";
 /// 8037 §2), an `RSA` key's `n` and `e` and an `EC` P-256 key's `crv`, `x`
 /// and `y` (RFC 7518 §6), which its rules across its parts hold it to
 /// ([`super::jwk::RULES`]); and the members a key set sends with any:
-/// `kid`, `alg`, `use_`, sent as `use`, which is a reserved word,
+/// `kid`, `alg`, `use`,
 /// `key_ops`, the operations it may be used for (RFC 7517 §4.3; chunk A3),
 /// and `x5c`, its certificates. No part holds a private key or a shared
 /// secret, and JSON naming one isn't a `Jwk` ([`super::jwk::REFUSED_MEMBERS`]).
@@ -907,7 +907,7 @@ pub const JWK_FIELDS: [(&str, Part); 11] = [
     ("e", Part::Optional(&Part::Matching(RSA_EXPONENT_PATTERN))),
     ("kid", Part::Optional(&Part::Matching(KEY_ID_PATTERN))),
     ("alg", Part::Optional(&Part::Matching("EdDSA|RS256|ES256"))),
-    ("use_", Part::Optional(&Part::Matching("sig"))),
+    ("use", Part::Optional(&Part::Matching("sig"))),
     (
         "key_ops",
         Part::Optional(&Part::Set(&Part::Matching(KEY_OP_PATTERN))),

@@ -137,6 +137,10 @@ jobs:
           # The whole history: `jadpo check` compares a change with the
           # default branch at its merge base to judge acceptances (area 18).
           fetch-depth: 0
+      # The tests build enough to fill the runner's disk, so make room first;
+      # nothing here uses these toolchains.
+      - name: Free the runner's disk
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
       # PostgreSQL 16 with pgvector and PostGIS, built from
       # tools/fixtures/postgres/Dockerfile (chunk 5.5v1), with durability off, as the
       # disposable servers local runs start have it (docs/compiler-runtime.md
@@ -179,8 +183,16 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: benchmarks/golden-todo/typescript/.bun-version
+      # What the verifier's sandbox runs on (area 11, "The verifier"): its
+      # isolation tests fail here rather than skip if it isn't there.
+      - name: Install the verifier's sandbox
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Every test, with live PostgreSQL
         env:
+          JADPO_REQUIRE_SANDBOX: '1'
           JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
           # Pull requests note a feature no example uses yet; a run started
           # by hand with require-examples fails on it.
@@ -209,6 +221,10 @@ jobs:
           # The whole history: `jadpo check` compares a change with the
           # default branch at its merge base to judge acceptances (area 18).
           fetch-depth: 0
+      # Unpacking this job's cache can fill the runner's disk before anything
+      # runs, so make room first; nothing here uses these toolchains.
+      - name: Free the runner's disk
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
       # PostgreSQL 16 with pgvector and PostGIS, as the `tests` job has it:
       # the corpus's projects with vectors and geometries need both, and
       # teaching example 22 pgvector 0.8 or later.
@@ -267,6 +283,10 @@ jobs:
           # The whole history: `jadpo check` compares a change with the
           # default branch at its merge base to judge acceptances (area 18).
           fetch-depth: 0
+      # Unpacking this job's cache can fill the runner's disk before anything
+      # runs, so make room first; nothing here uses these toolchains.
+      - name: Free the runner's disk
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
       # PostgreSQL 16 with pgvector and PostGIS, as the `tests` job has it,
       # built and started in the background while the toolchain installs.
       - name: Start PostgreSQL

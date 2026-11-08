@@ -69,10 +69,11 @@ use std::collections::BTreeMap;
 
 pub use jadpo_std::http::BODY_LIMIT;
 use jadpo_std::http::{
-    ADDRESS_LIMIT, ArgRoot, CALLER_LIMIT, Codec, CodecId, RoutePlan, RouteTable, Run, Segment,
+    ADDRESS_LIMIT, ArgRoot, CALLER_LIMIT, Codec, CodecId, RateLimit, RoutePlan, RouteRateLimit,
+    RouteTable, Run, Segment,
 };
 use jadpo_std::types::FailurePlan;
-use jadpo_std::{HttpMethod, Idempotency};
+use jadpo_std::{HttpMethod, Idempotency, RateLimitKey};
 use jadpo_value::Value;
 use jadpo_value::json::reading::{At, InputReader, Reading, TextReader, Writer};
 use jadpo_value::json::{Codecs, Doc, Members, Path, Problem, write_string};
@@ -447,6 +448,7 @@ async fn answer_request(
         .push(("x-request-id".to_string(), request_id.to_string()));
     if request.method == "HEAD" {
         response.body.clear();
+        response.stream = None;
     }
     response
 }
@@ -498,9 +500,19 @@ async fn respond(
     }
     // A request with a credential counts against its caller once signed
     // in, or against its address if it isn't; every other request against
-    // its address, here.
+    // its address, here. A route with a limit of its own (`rate_limit:`,
+    // area 16) counts that in place of the defaults; one by address counts
+    // whatever credential comes, before anything is read.
     let deferred = identity::carries_credential(app.table, request);
-    if !deferred && let Some(response) = by_address(ctx, request_id).await {
+    let own = own_limit(app, &found);
+    let limited = match own {
+        Some(own) if !deferred || own.by == RateLimitKey::Ip => {
+            own_by_address(ctx, own, request_id).await
+        }
+        None if !deferred => by_address(ctx, request_id).await,
+        _ => None,
+    };
+    if let Some(response) = limited {
         return response;
     }
     let mut response = route_request(app, executor, ctx, request, request_id, found).await;
@@ -523,17 +535,62 @@ async fn by_address(ctx: &Ctx<'_>, request_id: &str) -> Option<Response> {
         ctx.client()
             .map_or_else(|| "unknown".to_string(), address::counted_as)
     );
-    match ctx.host().rate_limit(&key, ADDRESS_LIMIT, ctx.now()).await {
+    counted(ctx, &key, ADDRESS_LIMIT, request_id).await
+}
+
+/// The limit the found route writes with `rate_limit:`, its own or its
+/// API's (area 16, "Rate limits"), which it counts in place of the
+/// defaults.
+fn own_limit<'a>(app: &App<'a>, found: &Found) -> Option<&'a RouteRateLimit> {
+    let Found::Route {
+        route: Some(number),
+        ..
+    } = found
+    else {
+        return None;
+    };
+    app.table.routes.get(*number as usize)?.rate_limit.as_ref()
+}
+
+/// 429 when `request`'s address has used `own`'s allowance.
+async fn own_by_address(ctx: &Ctx<'_>, own: &RouteRateLimit, request_id: &str) -> Option<Response> {
+    let key = format!(
+        "{} address {}",
+        own.counted,
+        ctx.client()
+            .map_or_else(|| "unknown".to_string(), address::counted_as)
+    );
+    counted(ctx, &key, own.limit, request_id).await
+}
+
+/// One more request for `key`, as the host counts it against `limit`: the
+/// 429 if it is over.
+async fn counted(ctx: &Ctx<'_>, key: &str, limit: RateLimit, request_id: &str) -> Option<Response> {
+    match ctx.host().rate_limit(key, limit, ctx.now()).await {
         Allowed::Yes => None,
-        Allowed::No { retry_after } => Some(rate_limited(request_id, retry_after)),
+        Allowed::No { retry_after } => Some(rate_limited(request_id, retry_after, limit)),
     }
 }
 
-fn rate_limited(request_id: &str, retry_after: u64) -> Response {
+/// A refused request: its wait, and the limit in the headers of the IETF
+/// draft (area 7, "Rate-limited requests").
+fn rate_limited(request_id: &str, retry_after: u64, limit: RateLimit) -> Response {
     let mut response = runtime_failure(RATE_LIMITED, request_id, None);
-    response
-        .headers
-        .push(("retry-after".to_string(), retry_after.to_string()));
+    response.headers.extend([
+        ("retry-after".to_string(), retry_after.to_string()),
+        (
+            "ratelimit-policy".to_string(),
+            format!(
+                "\"default\";q={};w={}",
+                limit.requests,
+                limit.window_ms / 1000
+            ),
+        ),
+        (
+            "ratelimit".to_string(),
+            format!("\"default\";r=0;t={retry_after}"),
+        ),
+    ]);
     response.counted = true;
     response
 }
@@ -948,22 +1005,35 @@ async fn run_route(
     } else {
         // A route anyone may call runs as no one, so a request with a
         // credential counts against its address before it runs, as every
-        // other does.
-        if identity::carries_credential(app.table, request)
-            && let Some(limited) = by_address(ctx, request_id).await
-        {
-            return limited;
+        // other does: against the route's own limit if it counts callers,
+        // whom this one isn't, unless that has counted it already.
+        if identity::carries_credential(app.table, request) {
+            let limited = match &route.rate_limit {
+                None => by_address(ctx, request_id).await,
+                Some(own) if own.by == RateLimitKey::Caller => {
+                    own_by_address(ctx, own, request_id).await
+                }
+                Some(_) => None,
+            };
+            if let Some(limited) = limited {
+                return limited;
+            }
         }
         None
     };
-    let counted = caller.is_none() && identity::carries_credential(app.table, request);
-    if let Some(caller) = &caller
-        && let Allowed::No { retry_after } = ctx
-            .host()
-            .rate_limit(&caller.key, CALLER_LIMIT, ctx.now())
-            .await
-    {
-        return rate_limited(request_id, retry_after);
+    let was_counted = caller.is_none() && identity::carries_credential(app.table, request);
+    if let Some(caller) = &caller {
+        let limited = match &route.rate_limit {
+            None => counted(ctx, &caller.key, CALLER_LIMIT, request_id).await,
+            Some(own) if own.by == RateLimitKey::Caller => {
+                let key = format!("{} {}", own.counted, caller.key);
+                counted(ctx, &key, own.limit, request_id).await
+            }
+            Some(_) => None,
+        };
+        if let Some(limited) = limited {
+            return limited;
+        }
     }
     let scope = caller.as_ref().map_or_else(
         || idempotency::ANONYMOUS.to_string(),
@@ -1053,7 +1123,7 @@ async fn run_route(
             .await
         }
     };
-    response.counted = response.counted || counted || ctx.caller().is_some();
+    response.counted = response.counted || was_counted || ctx.caller().is_some();
     ctx.set_caller(None);
     response
 }
@@ -1348,6 +1418,11 @@ async fn run_with_caller(
                         ))));
                     }
                 }
+            }
+            // What a `GET` runs can't write, whichever kind of thing it is
+            // (area 7, "What a route runs"; chunk G2).
+            if route.method == HttpMethod::Get {
+                ctx.read_only();
             }
             Ok(match &route.run {
                 Run::Action(callable) => {
@@ -1721,6 +1796,8 @@ fn answer(
     outcome: Outcome,
 ) -> Response {
     match outcome {
+        // Raw bytes for a body (area 7, "Sending raw bytes"; chunk G3).
+        Outcome::Value(value) if route.sends.is_some() => sent_raw(route, &value, request_id),
         Outcome::Value(value) => match route.output {
             Some(codec) => {
                 let mut body = String::new();
@@ -1728,9 +1805,12 @@ fn answer(
                     Some(write) => write(&app.codecs, &value, &mut body),
                     None => app.codecs.write(codec, &value, &mut body),
                 }
+                let mut headers =
+                    vec![("content-type".to_string(), "application/json".to_string())];
+                kept_for_good(route, &mut headers);
                 Response {
                     status: route.status.code(),
-                    headers: vec![("content-type".to_string(), "application/json".to_string())],
+                    headers,
                     body: body.into_bytes(),
                     ..Response::default()
                 }
@@ -1756,6 +1836,53 @@ fn answer(
             response
         }
         Outcome::Assertion(_) => runtime_failure(INTERNAL_FAULT, request_id, None),
+    }
+}
+
+/// `cache: immutable`'s header, on a success only, so a failure is never
+/// kept (area 7, "Answers that never change"; chunk G3).
+fn kept_for_good(route: &RoutePlan, headers: &mut Vec<(String, String)>) {
+    if route.immutable {
+        headers.push((
+            "cache-control".to_string(),
+            jadpo_std::http::CACHE_IMMUTABLE.to_string(),
+        ));
+    }
+}
+
+/// The headers of a body of `length` raw bytes: its media type, its length,
+/// which a `HEAD` keeps though it sends no body, and no sniffing, so a
+/// browser takes it as what it says it is.
+pub(crate) fn raw_headers(media_type: &str, length: usize) -> Vec<(String, String)> {
+    vec![
+        ("content-type".to_string(), media_type.to_string()),
+        ("content-length".to_string(), length.to_string()),
+        ("x-content-type-options".to_string(), "nosniff".to_string()),
+    ]
+}
+
+/// A `sends:` route's success: the field its `sends:` names, raw.
+fn sent_raw(route: &RoutePlan, value: &Value, request_id: &str) -> Response {
+    let field = route.sends.as_ref().and_then(|sends| {
+        let Value::Record(record) = value else {
+            return None;
+        };
+        match record.get(&sends.field) {
+            Some(Value::Bytes(body)) => Some((sends, body)),
+            _ => None,
+        }
+    });
+    let Some((sends, body)) = field else {
+        // The checker proved it is one `Bytes` field.
+        return runtime_failure(INTERNAL_FAULT, request_id, None);
+    };
+    let mut headers = raw_headers(&sends.media_type, body.len());
+    kept_for_good(route, &mut headers);
+    Response {
+        status: route.status.code(),
+        headers,
+        body: body.to_vec(),
+        ..Response::default()
     }
 }
 
@@ -2359,12 +2486,23 @@ pub fn response_value(
             ],
         );
     }
+    // What `sends:` sent, read back through its `Output`'s codec.
+    let raw = plan
+        .and_then(|plan| plan.sends.as_ref())
+        .filter(|_| (200..300).contains(&response.status))
+        .map(|sends| {
+            serde_json::json!({
+                sends.field.as_str(): jadpo_value::encoding::to_base64(&response.body)
+            })
+            .to_string()
+            .into_bytes()
+        });
     let output = match plan.map(|plan| (plan.output, &plan.run)) {
         Some((None, Run::MagicLink(step))) if (200..300).contains(&response.status) => {
             magic_link_output(*step, &response.body)
         }
         Some((Some(codec), _)) if (200..300).contains(&response.status) => {
-            jadpo_value::json::parse(&response.body)
+            jadpo_value::json::parse(raw.as_deref().unwrap_or(&response.body))
                 .and_then(|(json, numbers)| {
                     app.codecs.read(
                         codec,

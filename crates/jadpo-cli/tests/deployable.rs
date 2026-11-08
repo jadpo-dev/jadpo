@@ -651,6 +651,12 @@ fn ended(child: &mut Child, seconds: u64) -> Option<i32> {
 /// One HTTP/1.1 exchange with the server at `address`: the status and the
 /// body.
 fn exchange(address: &str, method: &str, path: &str, body: &str) -> (u16, String) {
+    let (status, _, body) = exchanged(address, method, path, body);
+    (status, body)
+}
+
+/// [`exchange`], with the answer's head as well.
+fn exchanged(address: &str, method: &str, path: &str, body: &str) -> (u16, String, String) {
     let mut stream = TcpStream::connect(address).expect("it accepts");
     stream
         .set_read_timeout(Some(Duration::from_secs(20)))
@@ -668,10 +674,10 @@ fn exchange(address: &str, method: &str, path: &str, body: &str) -> (u16, String
         .nth(1)
         .and_then(|code| code.parse().ok())
         .unwrap_or_else(|| panic!("an HTTP answer: {answer}"));
-    let body = answer
+    let (head, body) = answer
         .split_once("\r\n\r\n")
-        .map_or(String::new(), |(_, body)| body.to_string());
-    (status, body)
+        .map_or((answer.as_str(), ""), |(head, body)| (head, body));
+    (status, head.to_string(), body.to_string())
 }
 
 /// What a symbol naming `names`, a path in a crate, holds, legacy and v0
@@ -1349,6 +1355,39 @@ fn a_deployable_carries_its_supported_locales_and_answers_what_dev_answers() {
     }
     let (status, _) = exchange(&address, "POST", "/shown", &body("en-GB"));
     assert_eq!(status, 200, "it serves on");
+    let stopped = Command::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()
+        .expect("kill runs");
+    assert!(stopped.success());
+    assert_eq!(ended(&mut child, 30), Some(0));
+}
+
+/// A route's and an API's own `rate_limit:`, in compiled code (chunk G4):
+/// the deployable answers the requests `jadpo dev` answers, the same way
+/// (`route_limits.rs`).
+#[test]
+fn a_deployable_counts_a_routes_own_limit_as_dev_does() {
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let root = target
+        .parent()
+        .unwrap_or(target)
+        .join("jadpo-compiled/deployable/route-limits");
+    super::route_limits::project_at(&root, &super::route_limits::native_application());
+    jadpo(&root, &["records", "update"]);
+    jadpo(&root, &["build", "--json"]);
+    let binary = root.join("build/target/desk/desk");
+    let (mut child, lines) = start(&binary, &[("HOST", "127.0.0.1"), ("PORT", "0")]);
+    let started = next(&lines, 60);
+    assert_eq!(started["event"], "runtime.started", "{started}");
+    let address = started["address"]
+        .as_str()
+        .expect("its address")
+        .to_string();
+    super::route_limits::answers_as_every_host_does(|method, path| {
+        let (status, head, _) = exchanged(&address, method, path, "");
+        (status, head)
+    });
     let stopped = Command::new("kill")
         .args(["-TERM", &child.id().to_string()])
         .status()

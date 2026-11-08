@@ -40,11 +40,17 @@ jadpo-runtime = { workspace = true, features = ["testing"] }
 jadpo-std.workspace = true
 jadpo-lsp.workspace = true
 jadpo-plan.workspace = true
+# The registry's protocol, log and archives, for the registry commands
+# (chunk R5); its local registry is what their tests run against.
+jadpo-registry.workspace = true
 jadpo-sql.workspace = true
 jadpo-syntax.workspace = true
 jadpo-term.workspace = true
 jadpo-test.workspace = true
 jadpo-value.workspace = true
+# `jadpo package verify --serve` (area 11, "The verifier"; chunk R6).
+jadpo-verifier.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 # A Workers deployable's module size gzipped, as Wrangler reports an
@@ -77,8 +83,6 @@ miniz_oxide.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]
-# The registry's shapes, which `jadpo package verify --json` writes.
-jadpo-registry.workspace = true
 # Local OIDC provider TLS fixtures, using the native host's test authority.
 rcgen.workspace = true
 # A test's server on this machine standing in for AWS's SNS host.

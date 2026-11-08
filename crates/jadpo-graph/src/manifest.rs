@@ -432,6 +432,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             tag,
             commit,
             digest,
+            own_source,
         } => {
             out.set_some("version", version.as_deref());
             out.set("source", source.as_str());
@@ -439,6 +440,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set_some("tag", tag.as_deref());
             out.set_some("commit", commit.as_deref());
             out.set_some("packageDigest", digest.as_deref());
+            out.set_some("ownSource", own_source.as_deref());
         }
         Detail::GeneratedRoute {
             api,
@@ -736,7 +738,10 @@ const NODE_FIELDS: &[(&str, &str)] = &[
         "source",
         "Where a locked package came from: registry, git, path or link",
     ),
-    ("location", "A locked package's git repository or folder"),
+    (
+        "location",
+        "A locked package's git repository, folder or registry name",
+    ),
     ("tag", "A git package's tag"),
     ("commit", "A git package's tag's commit"),
     ("packageDigest", "A locked package's digest"),

@@ -88,6 +88,10 @@ fn project(files: &[(&str, &str)]) -> (tempdir::Dir, PathBuf) {
     for (path, text) in files {
         write(&root, path, text);
     }
+    if files.iter().any(|(path, _)| path.contains("/entities/")) {
+        let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+        assert_eq!(migrated.code, 0, "{}", migrated.stdout);
+    }
     let updated = jadpo(&root, &["records", "update"]);
     assert_eq!(updated.code, 0, "{}", updated.stdout);
     let checked = jadpo(&root, &["check"]);
@@ -159,7 +163,7 @@ fn jadpo_routes_lists_it_as_generated() {
     assert!(
         listed
             .stdout
-            .contains("GET   /v1/openapi.json  generated openapi  none  generated"),
+            .contains("GET   /v1/openapi.json  generated openapi  none             generated"),
         "{}",
         listed.stdout
     );
@@ -174,4 +178,40 @@ fn serve_openapi_false_leaves_the_path_unanswered() {
     );
     let (_dir, root) = project(&files);
     assert_eq!(get(&root, "/v1/openapi.json", None).status, 404);
+}
+
+/// `authentication: []` on an API of an app that signs callers in: its
+/// document answers a caller with no credential, and so do its routes.
+#[test]
+fn an_api_that_accepts_no_sign_in_answers_a_caller_with_no_credential() {
+    let mut files = FILES.to_vec();
+    let app = "use memos/entities { Writer }\n\napplication {\n    apis: {\n        main: {\n            prefix: /v1\n            authentication: []\n        }\n        staff: {\n            prefix: /staff\n        }\n    }\n}\n\nprincipal {\n    user: {\n        subject: Writer.handle\n    }\n}\n";
+    files[0] = ("app.jadpo", app);
+    files.push((
+        "domains/memos/entities/writer.jadpo",
+        "/// Someone who signs in.\nentity Writer {\n    id: Uuid\n    handle: Text {\n        max_length: 100\n        unique: true\n    }\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
+    ));
+    files.push((
+        "config.jadpo",
+        "config {\n    session_signing_key: SigningKey\n    browser_origin: Url {\n        test: \"https://memos.example\"\n    }\n}\n",
+    ));
+    files.push((
+        "authentication.jadpo",
+        "authentication {\n    browser_session: {\n        cookie: \"memo_session\"\n        signing_key: config.session_signing_key\n        origin: config.browser_origin\n    }\n}\n",
+    ));
+    let (_dir, root) = project(&files);
+    let written = fs::read_to_string(root.join("build/openapi/main.json")).expect("the document");
+    let response = get(&root, "/v1/openapi.json", None);
+    assert_eq!(
+        response.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&response.body)
+    );
+    assert_eq!(String::from_utf8_lossy(&response.body), written);
+    let record = fs::read_to_string(root.join("api/main.jadpo_record")).expect("the record");
+    assert!(
+        !record.contains("authentication browser_session"),
+        "{record}"
+    );
 }

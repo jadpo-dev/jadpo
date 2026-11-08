@@ -640,7 +640,12 @@
         "tags": [
           "Todos"
         ],
-        "x-jadpo-changes": false
+        "x-jadpo-changes": false,
+        "x-jadpo-rate-limit": {
+          "by": "ip",
+          "requests": 120,
+          "within": "1m"
+        }
       },
       "post": {
         "description": "Creates a todo.",
@@ -755,6 +760,11 @@
           "required": false,
           "reused": "idempotency_key_reused",
           "window": "1d"
+        },
+        "x-jadpo-rate-limit": {
+          "by": "ip",
+          "requests": 120,
+          "within": "1m"
         }
       }
     },
@@ -829,7 +839,12 @@
         "tags": [
           "Todos"
         ],
-        "x-jadpo-changes": false
+        "x-jadpo-changes": false,
+        "x-jadpo-rate-limit": {
+          "by": "ip",
+          "requests": 120,
+          "within": "1m"
+        }
       }
     }
   },

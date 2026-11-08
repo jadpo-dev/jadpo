@@ -1404,6 +1404,12 @@ impl Codecs<'_> {
                     {
                         continue;
                     }
+                    // On a provider's wire an optional field that is `none`
+                    // is left out, never sent as `null`, which a provider
+                    // may refuse (area 11, "How the input is sent").
+                    if self.coder.is_some() && *field == Value::None {
+                        continue;
+                    }
                     // A field sent as its standard type's parts, each its
                     // own member of this object (chunk 7.2e).
                     if let Some((contract, standard, parts)) = self.parts_of(*codec) {
@@ -1442,9 +1448,7 @@ impl Codecs<'_> {
                         out.push(',');
                     }
                     first = false;
-                    let name = shape
-                        .and_then(|shape| shape.json_name(at))
-                        .unwrap_or_else(|| jadpo_std::standard::wire_name(&record.ty, name));
+                    let name = shape.and_then(|shape| shape.json_name(at)).unwrap_or(name);
                     write_string(name, out);
                     out.push(':');
                     self.write(*codec, field, out);

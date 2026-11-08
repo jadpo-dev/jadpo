@@ -117,6 +117,14 @@ fn field(name: &'static str, shape: Shape) -> Field {
     }
 }
 
+/// `field`, which a body may leave out.
+fn optional(field: Field) -> Field {
+    Field {
+        optional: true,
+        ..field
+    }
+}
+
 fn text(kind: Text) -> Shape {
     Shape::Text(kind)
 }
@@ -209,6 +217,7 @@ pub fn named(name: &str) -> Option<Shape> {
         ]),
         "Facts" => object(vec![
             field("kind", Named("PackageKind")),
+            field("publisher", nullable(text(Text::Handle))),
             field("pure", Bool),
             field("hosts", list(Named("HostFact"))),
             field("changing_calls", list(plain())),
@@ -292,6 +301,7 @@ pub fn named(name: &str) -> Option<Shape> {
             field("repository", plain()),
             field("tag", plain()),
             field("dry_run", Bool),
+            optional(field("publisher", text(Text::Handle))),
         ]),
         "StartedRelease" => object(vec![field("id", plain())]),
         "ReleaseRequest" => object(vec![

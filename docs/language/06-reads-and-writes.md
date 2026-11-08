@@ -12,7 +12,7 @@ How a program reads and changes stored records: named queries, filters,
 order and pages, totals, related records, the operations every entity
 gets, what a refused write reports, and how an action stays
 all-or-nothing while other requests change the same records. Where
-records are stored, and how caches copy them, is on [Data](05-data.md);
+records are stored, and how caches copy them, is on [Entities, stores and migrations](05-data.md);
 who may read or change them is on [Policy](09-policy.md).
 
 The examples follow the golden todo app's `planning` domain: `User`,
@@ -31,11 +31,52 @@ folder ([Files and names](01-project-layout-and-modules.md#files-and-names)).
 You call it by name, as you call an action, the function that changes
 records ([Functions and actions](03-logic.md#functions-and-actions)).
 
-This query gives an owner's todos a page at a time, newest first. Its
-`filter` parameter is a `ListTodos`, an `Input` type a route fills from the
-request: an optional `status`, an optional `due_before`, a `page_size`
-that defaults to 25 and an optional `after`, the cursor the previous page
-returned:
+Here is the smallest one: an entity, and a query that reads its ten newest
+records.
+
+`domains/planning/entities/todo.jadpo`:
+
+```jadpo check project=named-first file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=named-first file=domains/planning/entities/todo.jadpo
+type TodoTitle = Text {
+    max_length: 200
+}
+
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+}
+```
+
+`domains/planning/queries/newest_todos.jadpo`:
+
+```jadpo check project=named-first file=domains/planning/queries/newest_todos.jadpo migrate=initial
+use planning/entities { Todo }
+
+/// The ten newest todos.
+query newest_todos() -> List<Todo> {
+    from: Todo
+    order: [Todo.created_at desc]
+    limit: 10
+}
+```
+
+`from:` names the entity, `order:` the order the records come back in and
+`limit:` the most it returns. The `use` line brings `Todo` in from the other
+file. `List`, `Instant`, `Text` and `Uuid` are built in, so they need none.
+
+The next query adds a condition and pages. It gives an owner's todos a page
+at a time, newest first, from a fuller `Todo` with an owner, a status and a
+due date. Its `filter` parameter is a `ListTodos`, an `Input` type a route
+fills from the request: an optional `status`, an optional `due_before`, a
+`page_size` that defaults to 25 and an optional `after`, the cursor the
+previous page returned:
 
 ```jadpo check project=named file=planning.jadpo hidden
 type UserName = Text {
@@ -126,9 +167,8 @@ query todos_for_owner(owner_id: User.id, filter: ListTodos) -> Page<TodoView> {
 }
 ```
 
-`from:` names the entity, `where:` the records it keeps, `order:` their
-order and `page:` how many come back at once and where the page starts.
-`where_present:` applies its condition only when the value on the right
+`where:` names the records it keeps, and `page:` says how many come back at
+once and where the page starts. `where_present:` applies its condition only when the value on the right
 is there: when the request leaves out `status`, every status comes back.
 The [Filters](#filters) and [Order and pages](#order-and-pages) topics
 cover each section in full.
@@ -333,7 +373,7 @@ A field may be passed to three kinds of operation:
   of its own or joined by `and`. A GiST index, PostgreSQL's index for
   shapes, finds the records, and Jadpo's own code decides each one, so the
   query gives the same answer as code
-  ([Queries](20-geospatial.md#queries)).
+  ([Finding records by place](20-geospatial.md#finding-records-by-place)).
 - **A standard operation with an exact SQL form**, which stands where the
   field would ([Operations in conditions](#operations-in-conditions),
   below).
@@ -619,7 +659,7 @@ A point field is ordered by distance, nearest first, with
 `order: [geo.distance(F, p) asc]`. That must be the list's only order, and
 it goes with `where: geo.within(F, p, distance: d)` on the same field and
 point, which bounds what is sorted. Records are sorted by the distance
-`geo.distance` gives, then by `id` ([Queries](20-geospatial.md#queries)).
+`geo.distance` gives, then by `id` ([Finding records by place](20-geospatial.md#finding-records-by-place)).
 
 ## Counts, sums and groups
 <!-- topic: counts-sums-and-groups -->
@@ -930,7 +970,7 @@ These can't be groups:
   can differ from the one built into every Jadpo build
   ([Zones and local times](10-configuration-and-time.md#zones-and-local-times)).
   So no SQL form of `temporal.in_zone` gives exactly what code gives.
-  Until that is decided, a report keeps the day as a `CalendarDate` field.
+  So a report keeps the day as a `CalendarDate` field.
 
 ### The result
 
@@ -980,7 +1020,7 @@ every caller may read, as an output's fields must be
 <!-- topic: a-query-giving-a-map-layer -->
 
 A query can return its records as a map layer: a
-`FeatureCollection<G, P>` ([Interop](20-geospatial.md#interop)), where `G`
+`FeatureCollection<G, P>` ([GeoJSON and other formats](20-geospatial.md#geojson-and-other-formats)), where `G`
 is the geometry type and `P` the type of each feature's properties. A
 `GET` route can then send the layer a mapping library fetches, as plain
 RFC 7946 GeoJSON ([Output and status](07-http.md#output-and-status)).
@@ -1175,12 +1215,12 @@ records. `geometry:` names the stored field that is each feature's
 geometry, a `G` every record has. It has to be named because an entity may
 hold several geometry fields, and the result type can't say which. `P`
 must be an `Object` type, as a feature's properties always are
-([Interop](20-geospatial.md#interop)). Its fields are filled from the
+([GeoJSON and other formats](20-geospatial.md#geojson-and-other-formats)). Its fields are filled from the
 record's fields of the same names, as any result type's are.
 
 The query picks fields and computes nothing, so it is a bounded list like
 any other: `order:` and `limit:`, with `geo.` conditions and an order by
-`geo.distance` if it needs them ([Queries](20-geospatial.md#queries)).
+`geo.distance` if it needs them ([Finding records by place](20-geospatial.md#finding-records-by-place)).
 
 - **`geometry:`** names a field of the entity read, of exactly the layer's
   own geometry type, and never `none`, since a feature always has a
@@ -1548,7 +1588,7 @@ action disable_user(user_id: User.id) fails UserNotFound, UserDisabled -> User {
 The statement is `UPDATE "user" SET "stage" = $1, "disabled_at" = $2
 WHERE "id" = $3 AND "stage" = $4`, with the stages bound as their column
 holds them, `'disabled'` and `'active'`
-([Every boundary through the contract](19-standard-library.md#every-boundary-through-the-contract)).
+([How a standard value is sent, stored and shown](19-standard-library.md#how-a-standard-value-is-sent-stored-and-shown)).
 When it changes no row, a second statement asks whether the user is there
 and visible, which tells `UserDisabled` from `UserNotFound`.
 `jadpo sql disable_user` shows both.
@@ -1761,7 +1801,7 @@ concurrent delete of it is a concurrent change
 ([All-or-nothing actions and concurrent changes](#all-or-nothing-actions-and-concurrent-changes)).
 
 The runtime maps the store's constraint name back to the rule, since
-Jadpo names every constraint itself ([Data](05-data.md)).
+Jadpo names every constraint itself ([Entities, stores and migrations](05-data.md)).
 
 ### A failed action inside another
 
@@ -1798,13 +1838,13 @@ request A: updates todo 7, commits
 Running it again is safe because an action's outside call comes before its
 writes and carries an idempotency key, a value that lets the provider
 recognise a repeat. So a rerun repeats the call harmlessly
-([Integrations](11-integrations.md)). There are two exceptions:
+([External services](11-integrations.md)). There are two exceptions:
 
 - **A changing call with no key.** Once it has gone out, the action isn't
   run again. It stops as `outcome_unknown`, for an operator to look at,
   since sending it again could act twice (see "Parked, never sent again
   blindly" in
-  [The seam every outside call goes through](16-built-in-services.md#the-seam-every-outside-call-goes-through)).
+  [How every outside call is made safe](16-built-in-services.md#how-every-outside-call-is-made-safe)).
 - **An action with several changing calls.** Once its record of the calls
   exists, a rerun replays the recorded calls and keeps the record's
   `clock.now` ([Several outside calls](#several-outside-calls), below).
@@ -1862,7 +1902,7 @@ The guarantee is the one repeatable read gives: every record the action
 writes is checked against the copy it loaded.
 
 This is done where every outside call goes through Jadpo's runtime
-([The seam every outside call goes through](16-built-in-services.md#the-seam-every-outside-call-goes-through)):
+([How every outside call is made safe](16-built-in-services.md#how-every-outside-call-is-made-safe)):
 
 - **Reads before a call are a snapshot.** An action's transaction still
   begins at its first store operation, at its isolation level. If the
@@ -1894,7 +1934,7 @@ This is done where every outside call goes through Jadpo's runtime
 - **A change reruns the action.** A concurrent change throws the attempt
   away and runs the action again, within the budget of three attempts. Its
   keyed calls take the same steps again, so each repeats under the key it
-  was first sent with ([Integrations](11-integrations.md)). A change found
+  was first sent with ([External services](11-integrations.md)). A change found
   at the commit of a route's or a delivery's held transaction does the
   same. A changing call without a key that went out stops the action as
   `outcome_unknown` instead. A reference to a record loaded before a call,
@@ -1930,7 +1970,7 @@ For reads and writes this changes three things and keeps the rest:
   `clock.now` is the time the record holds, not a fresh one; the reads are
   fresh. If a fresh read changes a request the action would send, the
   rerun stops as `diverged` before sending anything, held for an operator
-  ([Jobs and events](12-jobs-and-events.md)), rather than sending a
+  ([Background work](12-jobs-and-events.md)), rather than sending a
   different request under a used key.
   Database reads are never recorded, so this check is what keeps a rerun
   honest.
@@ -1940,7 +1980,7 @@ write that is refused for good, by a unique rule or a restricted
 reference, after a step took effect is warned of at compile time, naming
 the fixes: check with a read before the first call, record what happened
 and finish in a subscriber, or undo it as another step
-([Jobs and events](12-jobs-and-events.md)).
+([Background work](12-jobs-and-events.md)).
 
 ### A write before a call
 
@@ -1967,7 +2007,7 @@ reading:
   once, so a write in it comes before a call after the loop or in its next
   turn.
 - **Not declinable.** The order is never a judgement call
-  ([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)):
+  ([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)):
   run as written, the call would be refused.
 
 A bakery keeps the price sheet a supplier sends again, marking it
@@ -2136,6 +2176,11 @@ begins the transaction at it (`BEGIN ISOLATION LEVEL READ COMMITTED` or
 `REPEATABLE READ`). An action another action calls joins that action's
 transaction at its level, which already counts what the callee does. Each
 action a test calls begins its own.
+
+What a `GET` runs, a query or an
+[action that only reads](07-http.md#a-get-that-runs-an-action), begins its
+transaction at the same levels with `READ ONLY` added, so PostgreSQL refuses a
+write there too.
 
 So `view_video` above runs at read committed. Two requests counting one
 video at once both commit at their first attempt, the second waiting for
@@ -2346,7 +2391,7 @@ route GET /todos {
 
 Caches aren't built yet: they need the Redis driver.
 
-## Entities in Redis
+## Reading and writing entities in Redis
 <!-- topic: queries-on-entities-in-redis -->
 
 An entity in a Redis store

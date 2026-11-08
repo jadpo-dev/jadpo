@@ -42,6 +42,8 @@ error: `jadpo dev` has no `serve`
   help: https://jadpo.dev/docs/errors/cli.dev_arguments
 ```
 
+The answer is the same however many words follow it.
+
 ## How to fix it
 
 **If you want a token**, give the user's `id`:
@@ -63,4 +65,4 @@ It serves the app and restarts it on each save.
 ## Related
 
 - [`jadpo dev`](../language/14-tooling.md#jadpo-dev)
-- [In development and tests](../language/08-identity.md#in-development-and-tests)
+- [Sign-in in development and tests](../language/08-identity.md#sign-in-in-development-and-tests)

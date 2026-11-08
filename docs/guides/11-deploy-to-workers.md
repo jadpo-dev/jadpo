@@ -3,9 +3,9 @@
 
 `jadpo build` can build your app as WebAssembly for Cloudflare Workers,
 with the JavaScript that loads it and the description Wrangler,
-Cloudflare's command-line tool, deploys. This guide builds the book
-catalogue from [Build an API](01-build-an-api.md) as a Worker that
-reaches its PostgreSQL database through Hyperdrive.
+Cloudflare's command-line tool, deploys. This guide builds a book
+catalogue as a Worker that reaches its PostgreSQL database through
+Hyperdrive.
 
 You need:
 
@@ -18,9 +18,8 @@ You need:
   from a hosted PostgreSQL provider. One on your own machine won't do,
   since Cloudflare can't reach it.
 
-You start from the catalogue as [Deploy natively](10-deploy-natively.md)
-leaves it, with its `main` database connection and the `database_url`
-setting:
+You start from an app with a `Book` entity and routes that add a book and
+read one back. [Build an API](01-build-an-api.md) shows how to write those.
 
 ```jadpo check project=guide-workers file=domains/books/entities/book.jadpo hidden
 /// A book the library lends.
@@ -125,17 +124,26 @@ routes Books {
 }
 ```
 
-```jadpo check project=guide-workers file=config.jadpo hidden
+## Say what to build
+
+The database's address is a setting, so it isn't written in your code.
+`config { }` and `PostgresUrl`, a standard type, are built into Jadpo, and the
+name `database_url` is yours.
+
+`config.jadpo`:
+
+```jadpo check project=guide-workers file=config.jadpo
 config {
     /// The PostgreSQL database the app keeps its data in.
     database_url: PostgresUrl
 }
 ```
 
-## Say what to build
+`app.jadpo` names the database and the program to build. `main` and `limits` are
+names you choose for its two connections, and `web` is a name you choose for the
+program. `Driver`, `Target` and `rate_limits:` are built in.
 
-`app.jadpo`, changed. The `limits` connection, `rate_limits:` and
-`deployables:` are new.
+`app.jadpo`:
 
 ```jadpo check project=guide-workers file=app.jadpo
 application {
@@ -161,6 +169,8 @@ application {
 }
 ```
 
+- The `main` connection is your database, read through the `database_url`
+  setting.
 - `deployables:` lists the programs the app is built into. Without it
   there is one, `app`, built as a server program. `web` is built for
   Workers, `Target.wasm`, and `serves: [main]` means it answers the
@@ -209,10 +219,10 @@ A Worker keeps no connection to your database open between requests,
 and opening one for each request is slow. Hyperdrive is Cloudflare's
 service that keeps connections open and hands one to each request.
 Create one for your database with caching off, since a cache could
-answer a read with data that has since changed. Load the database's
-address from your settings file, as in
-[Deploy natively](10-deploy-natively.md), so it isn't typed into your
-shell:
+answer a read with data that has since changed. Keep the database's
+address in a file only you can read, such as `~/books-app.env`, holding
+`DATABASE_URL=<your database's address>`, and load it from there so it isn't
+typed into your shell:
 
 ```sh
 (set -a; . ~/books-app.env; npx wrangler hyperdrive create books \
@@ -233,6 +243,11 @@ Apply the migrations to the database first:
 (set -a; . ~/books-app.env; jadpo migrate apply)
 ```
 
+A hosted provider's address often ends in settings such as
+`?sslmode=require`. Remove them: Jadpo refuses an address that sets TLS
+itself, since its connection decides, and it always uses TLS to a database
+on another machine. Use the provider's direct address, not its pooled one.
+
 Then deploy from the Worker's folder:
 
 ```sh
@@ -243,7 +258,9 @@ npx wrangler deploy
 On Workers, settings are the Worker's variables and secrets, which
 Cloudflare keeps. Store a secret with `npx wrangler secret put <NAME>`,
 which asks for the value at a prompt, and give other settings as
-`--var NAME:value` to `npx wrangler deploy`. Wrangler prints the
+`--var NAME:value` to `npx wrangler deploy`. Any setting with no `default:`
+is listed as a secret the Worker needs, even one that isn't secret, so
+store it with `secret put` too. Wrangler prints the
 Worker's address, which answers the same routes and health check as
 the server program.
 
@@ -252,9 +269,3 @@ the server program.
 [A Workers deployable](../language/14-tooling.md#a-workers-deployable),
 [Declared deployables](../language/14-tooling.md#declared-deployables)
 and [Rate limits on Workers](../language/16-built-in-services.md#rate-limits-on-workers).
-
-## Not built yet
-
-The limits Jadpo writes for Cloudflare's rate-limiting binding haven't
-yet been checked against Cloudflare's network, only against its local
-runtime.

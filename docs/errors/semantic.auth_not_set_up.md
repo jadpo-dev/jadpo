@@ -203,4 +203,4 @@ still validated.
 - [Ways to sign in](../language/08-identity.md#ways-to-sign-in)
 - [The principal](../language/08-identity.md#the-principal)
 - [Open to anyone: `RouteAuthentication.none`](../language/08-identity.md#open-to-anyone-routeauthenticationnone)
-- [Actions](../language/09-policy.md#actions)
+- [Permissions on actions](../language/09-policy.md#permissions-on-actions)

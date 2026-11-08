@@ -365,3 +365,31 @@ fn a_queue_name_is_lowercase_letters_digits_and_dashes() {
         assert!(!queue_name_ok(bad), "{bad}");
     }
 }
+
+/// A message is read from outside as its event, so an event a queue lists
+/// holds no `File`, which would let the sender name any file's store and
+/// key (area 16, "What a `File` holds").
+#[test]
+fn a_queues_event_holding_a_file_is_refused() {
+    for holds in [
+        "sheet: File",
+        "sheets: List<File>",
+        "summary: ExportSummary",
+        "whole: FileContents",
+        "wholes: List<FileContents>",
+    ] {
+        let shipped = SHIPPED.replace("order: Text {\n        max_length: 40\n    }", holds);
+        let found = problems(&Project {
+            shipped: &shipped,
+            ..PROJECT
+        });
+        assert_eq!(
+            found
+                .iter()
+                .filter(|problem| problem.contains(" type.batch_input: "))
+                .count(),
+            1,
+            "{holds}: {found:?}"
+        );
+    }
+}

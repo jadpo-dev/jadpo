@@ -1715,7 +1715,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jadpo-check"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "blake3",
  "jadpo-db",
@@ -1731,7 +1731,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-cldr"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "icu_calendar",
  "icu_calendar_data",
@@ -1770,7 +1770,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-cli"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "ed25519-dalek",
  "getrandom 0.4.3",
@@ -1794,6 +1794,7 @@ dependencies = [
  "jadpo-term",
  "jadpo-test",
  "jadpo-value",
+ "jadpo-verifier",
  "miniz_oxide",
  "openssl",
  "p256",
@@ -1801,6 +1802,7 @@ dependencies = [
  "rcgen",
  "regex",
  "rustls",
+ "serde",
  "serde_json",
  "sha2",
  "sigstore-crypto",
@@ -1812,7 +1814,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-codegen"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "jadpo-check",
  "jadpo-db",
@@ -1829,7 +1831,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-db"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "jadpo-diag",
  "jadpo-syntax",
@@ -1839,11 +1841,11 @@ dependencies = [
 
 [[package]]
 name = "jadpo-diag"
-version = "0.2.0"
+version = "0.4.1"
 
 [[package]]
 name = "jadpo-drivers"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "bytes",
  "jadpo-runtime",
@@ -1855,7 +1857,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-fmt"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "jadpo-diag",
  "jadpo-syntax",
@@ -1864,7 +1866,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-graph"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "blake3",
  "jadpo-sql",
@@ -1873,7 +1875,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-host-native"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "bytes",
  "getrandom 0.4.3",
@@ -1895,7 +1897,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-host-workers"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "jadpo-drivers",
  "jadpo-runtime",
@@ -1914,7 +1916,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-interp"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "jadpo-check",
  "jadpo-db",
@@ -1930,7 +1932,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-lsp"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "jadpo-check",
  "jadpo-db",
@@ -1946,7 +1948,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-plan"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "blake3",
  "jadpo-check",
@@ -1958,9 +1960,10 @@ dependencies = [
 
 [[package]]
 name = "jadpo-registry"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "jadpo-db",
+ "jadpo-std",
  "serde",
  "serde_json",
  "sha2",
@@ -1968,7 +1971,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-runtime"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "blake3",
  "getrandom 0.4.3",
@@ -1988,14 +1991,14 @@ dependencies = [
 
 [[package]]
 name = "jadpo-sql"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "jadpo-std",
 ]
 
 [[package]]
 name = "jadpo-std"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "ammonia",
  "html5ever",
@@ -2008,7 +2011,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-syntax"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "jadpo-diag",
  "rowan",
@@ -2017,7 +2020,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-term"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "jadpo-diag",
  "serde_json",
@@ -2025,7 +2028,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-test"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "blake3",
  "jadpo-check",
@@ -2048,7 +2051,7 @@ dependencies = [
 
 [[package]]
 name = "jadpo-value"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "argon2",
  "chacha20poly1305",
@@ -2080,6 +2083,15 @@ dependencies = [
  "subtle",
  "writeable",
  "x509-parser 0.16.0",
+]
+
+[[package]]
+name = "jadpo-verifier"
+version = "0.4.1"
+dependencies = [
+ "jadpo-registry",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -2816,9 +2828,9 @@ dependencies = [
 
 [[package]]
 name = "pulldown-cmark"
-version = "0.13.5"
+version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "278e9268c93b9e498a2da46c34d90ba93a3255eb99009646398f34bc73ab36eb"
+checksum = "3db2be46835f013dd3f4fa7f5f7402c537787b54ebb6fe2b94bbdd7e2669bb7b"
 dependencies = [
  "bitflags 2.13.2",
  "memchr",

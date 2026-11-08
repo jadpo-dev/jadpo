@@ -116,6 +116,12 @@ def bump(scratch: Path) -> tuple[str, list[str]]:
     extension.write_text(written)
     if count != 1 or json.loads(written)['version'] != version:
         problems.append('editors/vscode/package.json: no top-level `version` to write')
+    # The release pull request brings the next release's notes, which the docs
+    # check asks for; the rehearsal stands in for them.
+    notes = scratch / 'docs/releases' / f'{version}.md'
+    if not notes.exists():
+        notes.parent.mkdir(parents=True, exist_ok=True)
+        notes.write_text(f'# Jadpo {version}\n\nReleased 1 January 2099.\n\nThe rehearsal\'s stand-in.\n')
     return version, problems
 
 

@@ -205,14 +205,21 @@ fn jadpo_dev_fakes_provider_calls_and_logs_each_one() {
     let request = calls[1]["requestId"].as_str().expect("its request");
     assert_eq!(Some(request), gone.header("x-request-id"));
 
-    // The screen, with its times and request ids as they came.
+    // The screen, with its times and request ids as they came. Its time
+    // column is as wide as its widest cell, which grows at 10 ms, with
+    // everything in it right-aligned; every other byte is fixed.
     let plain = jadpo(&root, &["calls"]);
     let first = calls[0]["requestId"].as_str().expect("a request");
     let time = |at: usize| format!("{} ms", calls[at]["ms"].as_u64().unwrap_or(0));
+    let wide = ["time".len(), time(0).len(), time(1).len()]
+        .into_iter()
+        .max()
+        .unwrap_or_default();
     assert_eq!(
         plain.stdout,
         format!(
-            "  call    operation                 source     answer        time  request\n  call_1  couriers.bookings.create  generated  + answered    {}  {}\n  call_2  couriers.bookings.create  scripted   x slot_taken  {}  {}\n\ncalls: 2 calls, 1 answered, 1 failed\n\nnext: jadpo calls show call_2  shows what was sent and what came back\n",
+            "  call    operation                 source     answer        {:>wide$}  request\n  call_1  couriers.bookings.create  generated  + answered    {:>wide$}  {}\n  call_2  couriers.bookings.create  scripted   x slot_taken  {:>wide$}  {}\n\ncalls: 2 calls, 1 answered, 1 failed\n\nnext: jadpo calls show call_2  shows what was sent and what came back\n",
+            "time",
             time(0),
             &first[..8],
             time(1),

@@ -10,38 +10,112 @@ checked-with: this checkout's jadpo on every gate run
 
 A Jadpo app answers HTTP requests with routes. A route says which method
 and URL it answers, what comes in, what goes out, and which action or query
-runs:
+runs. This route adds a todo:
 
-```jadpo fragment
-// domains/planning/routes/todos.jadpo
+```jadpo check project=http-first file=app.jadpo hidden
+application {}
+```
+
+`domains/todos/routes/todos.jadpo`:
+
+```jadpo check project=http-first file=domains/todos/routes/todos.jadpo
+use todos/types { NewTodo, TodoView }
+use todos/actions { add_todo }
+
+/// The todo list.
 routes Todos {
     prefix: /todos
 
+    /// Adds a todo.
     POST / {
-        input: CreateTodo
+        authentication: RouteAuthentication.none
+        input: NewTodo
         output: TodoView
-        status: SuccessStatus.created
-        run: create_todo(input, current_principal.user)
+        run: add_todo(input)
     }
 }
 ```
 
-This route answers `POST /todos`. Jadpo reads a `CreateTodo` from the
-JSON body and checks it, and `run:` gets it as `input`. `run:` calls the
-action `create_todo` for the signed-in user (`current_principal.user`, see
-[Who is calling](08-identity.md#who-is-calling-current_principal)). The
-action returns a `TodoView`, which must be the route's `output:`, and
-`status: SuccessStatus.created` makes the route answer 201 Created rather
-than 200.
+It answers `POST /todos`. Jadpo reads a `NewTodo` from the JSON body and
+checks it, and `run:` gets it as `input`. `run:` calls the action
+`add_todo`, which returns a `TodoView`, the route's `output:`. The route
+answers 200 with that value as JSON.
 
-A route holds no logic of its own. The work lives in
-[actions and queries](03-logic.md#functions-and-actions). When the action
-fails, the HTTP status comes from the failure's kind, a category such as
-`not_found` (404), never from the route ([Kinds](04-failures.md#kinds)).
+`NewTodo`, `TodoView` and `add_todo` are your app's own. Each `use` line
+brings a name in from another file of your app, and these are the files:
+
+`domains/todos/types/new_todo.jadpo`:
+
+```jadpo check project=http-first file=domains/todos/types/new_todo.jadpo
+/// What a caller sends to add a todo.
+type NewTodo = Input {
+    title: Text
+}
+```
+
+`domains/todos/types/todo_view.jadpo`:
+
+```jadpo check project=http-first file=domains/todos/types/todo_view.jadpo
+/// A todo, as the app sends it back.
+type TodoView = Output {
+    title: Text
+    done: Bool
+}
+```
+
+`domains/todos/actions/add_todo.jadpo`:
+
+```jadpo check project=http-first file=domains/todos/actions/add_todo.jadpo
+use todos/types { NewTodo, TodoView }
+
+/// Builds the todo and sends it back. It stores nothing.
+action add_todo(input: NewTodo) -> TodoView {
+    return TodoView {
+        title: input.title
+        done: false
+    }
+}
+```
+
+`policy.jadpo`:
+
+```jadpo check project=http-first file=policy.jadpo
+use todos
+
+policy {
+    actions: {
+        todos.add_todo: [Access.public]
+    }
+}
+```
+
+Most actions take their permission from the stored records they reach
+([Policy](09-policy.md)). `add_todo` reaches none, so `policy.jadpo` says
+who may run it, and `Access.public` means anyone. `RouteAuthentication`,
+`Access`, `Text` and `Bool` are built into Jadpo, so they need no `use`
+line.
 
 Every route needs a signed-in caller unless an `authentication:` line in
-the route says otherwise
-([Routes: signed in by default](08-identity.md#routes-signed-in-by-default)).
+the route says otherwise, as this one does because the app has no sign-in
+yet ([Routes: signed in by default](08-identity.md#routes-signed-in-by-default)).
+
+Run `jadpo api update` once, which writes [the public API
+record](#the-public-api-record), then `jadpo dev`, and send it a todo:
+
+```sh
+curl -X POST http://localhost:3000/todos \
+  -H 'content-type: application/json' \
+  -d '{"title": "Buy milk"}'
+```
+
+```text
+{"title":"Buy milk","done":false}
+```
+
+A route holds no logic of its own. The work lives in
+[actions and queries](03-logic.md#functions-and-actions). When an action
+fails, the HTTP status comes from the failure's kind, a category such as
+`not_found` (404), never from the route ([Failure kinds](04-failures.md#failure-kinds)).
 
 The topics of this page cover:
 
@@ -171,7 +245,7 @@ repeated: `?status=open&status=done`. A nested object needs a body.
 A field read from a header says so with `header:`. A header field is a
 scalar, and each header is named once. A header field never reads a
 credential (`Authorization`, cookies, `X-Jadpo-*`): those belong to
-sign-in ([Identity](08-identity.md)).
+sign-in ([Sign-in and identity](08-identity.md)).
 
 ### What is refused
 
@@ -214,12 +288,12 @@ POST / {
 |---|---|---|
 | left out (`SuccessStatus.ok`) | 200 | `output:` |
 | `SuccessStatus.created` | 201 | `output:` |
-| `SuccessStatus.accepted` | 202 | `output:`; the work carries on in the background ([Jobs and events](12-jobs-and-events.md)) |
+| `SuccessStatus.accepted` | 202 | `output:`; the work carries on in the background ([Background work](12-jobs-and-events.md)) |
 | `SuccessStatus.no_content` | 204 | no `output:`; the action returns `Unit` |
 
 Only the output's declared fields are sent. `IssuedToken` and `IssuedKey`,
 the built-in types for an issued sign-in token and a service's key
-([Identity](08-identity.md)), are sent as the objects they are: an `id`,
+([Sign-in and identity](08-identity.md)), are sent as the objects they are: an `id`,
 `started_at` and `ends_at`.
 
 A route never writes a failure's status. It comes from the kind of each
@@ -256,13 +330,251 @@ an action that builds it.
   A route test reads it back through the same codec, so `response.output`
   is the layer the action returned.
 
+### Sending raw bytes
+
+A route's body doesn't have to be JSON. `sends:` names the media type of a
+body of raw bytes, on a route whose `Output` has exactly one field of a type
+built on `Bytes`. That field is the body, with nothing around it. Here a
+land registry keeps a scan of each deed, and a client opens the PDF it is
+sent:
+
+```jadpo check project=raw-bytes file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=raw-bytes file=domains/titles/types/deed_ref.jadpo hidden
+/// A deed's reference.
+type DeedRef = Text {
+    pattern: "^D[0-9]{6}$"
+}
+```
+
+```jadpo check project=raw-bytes file=domains/titles/entities/deed.jadpo hidden migrate=initial
+use titles/types { DeedRef }
+
+/// A deed the registry holds.
+entity Deed {
+    id: Uuid
+    deed_ref: DeedRef {
+        unique: true
+    }
+    pdf: Bytes
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=raw-bytes file=domains/titles/failures/deed_not_found.jadpo hidden
+/// No deed has this reference.
+type DeedNotFound = Failure {
+    kind: FailureKind.not_found
+    message: "No deed has this reference."
+}
+```
+
+```jadpo check project=raw-bytes file=domains/titles/types/deed_scan.jadpo
+/// A scan of a deed, as a PDF.
+type DeedScan = Output {
+    pdf: Bytes
+}
+```
+
+```jadpo check project=raw-bytes file=domains/titles/queries/scan_of.jadpo
+use titles/entities { Deed }
+use titles/types { DeedRef, DeedScan }
+use titles/failures { DeedNotFound }
+
+/// A deed's scan.
+query scan_of(deed_ref: DeedRef) fails DeedNotFound -> DeedScan {
+    from: Deed
+    where: Deed.deed_ref == deed_ref
+    missing: DeedNotFound
+}
+```
+
+```jadpo check project=raw-bytes file=domains/titles/routes/deeds.jadpo
+use titles/types { DeedRef, DeedScan }
+use titles/queries { scan_of }
+
+/// Scans of deeds, by reference.
+routes Deeds {
+    prefix: /deeds
+
+    /// A deed's scan, which never changes once it is made.
+    GET /{deed_ref: DeedRef} {
+        authentication: RouteAuthentication.none
+        output: DeedScan
+        sends: "application/pdf"
+        cache: immutable
+        run: scan_of(deed_ref)
+    }
+}
+```
+
+In a route test, `response.output` is the `Output`, its field the bytes sent:
+
+```jadpo check project=raw-bytes file=domains/titles/failures/deed_exists.jadpo hidden
+/// A deed already has this reference.
+type DeedExists = Failure {
+    kind: FailureKind.conflict
+    message: "A deed already has this reference."
+}
+```
+
+```jadpo check project=raw-bytes file=domains/titles/actions/add_deed.jadpo hidden
+use titles/entities { Deed }
+use titles/failures { DeedExists }
+
+/// Keeps a deed to read back.
+action add_deed() fails DeedExists -> Deed {
+    return attempt Deed.create {
+        set: {
+            deed_ref: "D000123"
+            pdf: hash.sha256("the scan")
+        }
+        conflict: {
+            Deed.deed_ref: DeedExists
+        }
+    }
+}
+```
+
+```jadpo check project=raw-bytes file=domains/titles/routes/deeds.test.jadpo
+use titles/entities { Deed }
+use titles/types { DeedScan }
+use titles/actions { add_deed }
+
+test "a deed's scan is sent as it was kept" {
+    var deed: Deed = attempt add_deed()
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/deeds/{deed_ref}"
+        params: {
+            deed_ref: deed.deed_ref
+        }
+    }
+    assert response.status == 200
+    assert response.output == DeedScan {
+        pdf: hash.sha256("the scan")
+    }
+}
+
+test "a reference no deed has is not found" {
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/deeds/{deed_ref}"
+        params: {
+            deed_ref: "D999999"
+        }
+    }
+    assert response.status == 404
+    assert response.code == "deed_not_found"
+}
+```
+
+- **One field, always there.** An `Output` of any other shape is
+  `route.sends_invalid`, and so is a `Bytes?` field, a `List` or `Page`, a map
+  layer or an `AiStream`. A body has no room for anything else, and nothing
+  to send for `none`.
+- **A media type it can write in a header.** A lowercase `type/subtype`, with
+  any parameters after a `;`, as in `text/csv; charset=utf-8`. JSON isn't one:
+  JSON is what an `Output`'s own fields are sent as, so a route can't send a
+  JSON body nothing declares. Nor is `text/event-stream`, which is what an
+  `AiStream` is sent as.
+- **What runs it is unchanged.** `output:` is still exactly what the route runs
+  returns. A `GET` runs a query or an action the compiler proves only reads,
+  and any other method an action.
+- **The response.** The route's status, `Content-Type` as written,
+  `Content-Length` and `X-Content-Type-Options: nosniff`, so a browser takes
+  the body as what it says it is. A `HEAD` gets the same head, its length
+  included, and no body.
+- **Failures stay JSON.** Everything but the success answers as any route's
+  does, in the failure envelope, with `Content-Type: application/json`.
+- **Not with `settle:`.** That is `route.sends_invalid`: while the work carries
+  on, `settle:` answers with how far it has got, which raw bytes can't say.
+- **A repeat gets the same bytes.** Under an `Idempotency-Key`, a route of
+  another method keeps what it sent as any route does, to the byte.
+- **The field is read as any field is.** Policy and `personal:` marks apply
+  whichever way it is sent: a field not every caller may read is
+  `policy.output_field_unproved`, and a read of a marked field counts as one
+  ([Field restrictions](09-policy.md#field-restrictions),
+  [Marking personal fields](15-personal-data.md#marking-personal-fields)).
+  Bodies are never logged.
+- **OpenAPI** lists the success under the media type, with no schema, as
+  OpenAPI 3.1 writes a binary body. `x-jadpo-sends` names the `Output` and the
+  field, and `Content-Length` is one of its `headers`. Failures are listed as
+  any route's are. An importer gives the operation no `output:`, since it reads
+  only JSON.
+- **The API record** says `sends application/pdf` under the route, and the
+  `Output` keeps its entry. A route that starts or stops sending raw bytes, or
+  sends another media type, breaks whoever reads it, so it needs an acceptance:
+  `ApiChange.media_type_changed` ([Breaking changes](#breaking-changes)).
+
+### Answers that never change
+
+Nothing caches a route's answer unless the route says so. `cache: immutable`
+says the answer never changes, as a scan of a signed deed doesn't.
+The route's 200 then carries `Cache-Control: public, max-age=31536000,
+immutable`, so a browser or a CDN keeps it for a year and doesn't ask again. It
+goes with `sends:` or with JSON. A failure never carries the header, so a 404
+for a deed not scanned yet isn't kept.
+
+Anything else is `route.cache_invalid`:
+
+- **Only `immutable`.** It is the one thing `cache:` says.
+- **Only a `GET`.** No other method's answer can be kept.
+- **Only a route anyone may call.** A public cache would hand what one caller
+  was sent to anyone who asked, so a route needing a signed-in caller can't say
+  it.
+- **Only an answer of 200.** Any other `status:` is refused.
+- **No personal data.** No erasure reaches a public cache, so what the route
+  runs can't give any, directly or through what it calls, and its `output:`
+  can't say it holds any. It counts as
+  [the personal-data report](15-personal-data.md#where-personal-data-goes)
+  counts: a field marked `personal:`, and a standard type that is personal data
+  whatever holds it, such as `PhoneNumber` or `Email`, on a field with no mark as much as on its
+  own ([What the compiler checks](15-personal-data.md#what-the-compiler-checks)).
+
+OpenAPI says `x-jadpo-cache: immutable` on the operation and lists the header
+on the 200, and the API record says `cache immutable` under the route, as the
+record below shows. Adding it or taking it away breaks no client, so neither
+needs an acceptance.
+
+```jadpo check project=raw-bytes file=api/main.jadpo_record
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+GET /deeds/{deed_ref: Text { pattern: "^D[0-9]{6}$" }}
+    authentication none
+    output DeedScan
+    sends application/pdf
+    status 200
+    cache immutable
+    fails deed_not_found
+
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+output DeedScan
+    pdf: Bytes
+
+failure deed_not_found
+    status 404
+    message "No deed has this reference."
+```
+
 ## What a route runs
 <!-- topic: what-a-route-runs -->
 
 `run:` calls one named action. It passes the placeholders, `input` and the
-caller as ordinary arguments. A `GET` calls a named query instead, so it
-can never write, as HTTP promises of a `GET`, and a read needs no action
-wrapped around its query:
+caller as ordinary arguments. A `GET` calls a named query instead, or an
+action that only reads, so it can never write, as HTTP promises of a `GET`,
+and a read needs no action wrapped around its query:
 
 ```jadpo fragment
 GET /{todo_id: Todo.id} {
@@ -282,6 +594,371 @@ are called by their names. Another domain's `public` ones are called
 through that domain's name, as in `billing.charge(order)`
 ([Project layout and modules](01-project-layout-and-modules.md)). A route
 can't hold an action of its own written inline.
+
+### A `GET` that runs an action
+
+A query says what to read. A `GET` that has to work a value out, raise more
+than one failure or ask a model runs an action instead, as long as the
+compiler can prove the action only reads. It proves that from the graph:
+the action writes nothing, emits no email and makes no changing call, itself
+and through every action it calls. It may emit an event, so a subscriber
+can count what was read.
+
+Here `GET /tanks/{tank_id}/left` works out whether a tank has room left. It
+can fail two ways, so it answers 404 for a tank that isn't there and 422 for a
+reading past the tank's end:
+
+```jadpo check project=get-action file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=get-action file=domains/storage/types/notches.jadpo hidden
+type Notches = Int {
+    min: 0
+    max: 1000000
+}
+```
+
+```jadpo check project=get-action file=domains/storage/entities/tank.jadpo hidden migrate=initial
+use storage/types { Notches }
+
+entity Tank {
+    id: Uuid
+    notches: Notches
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=get-action file=domains/storage/types/left_asked.jadpo hidden
+use storage/types { Notches }
+
+type LeftAsked = Input {
+    used: Notches
+}
+```
+
+```jadpo check project=get-action file=domains/storage/types/left_view.jadpo hidden
+type LeftView = Output {
+    has_room: Bool
+}
+```
+
+```jadpo check project=get-action file=domains/storage/failures/past_the_end.jadpo hidden
+type PastTheEnd = Failure {
+    kind: FailureKind.rejected
+    message: "That reading is past the end of the tank."
+}
+```
+
+```jadpo check project=get-action file=domains/storage/actions/room_left.jadpo
+use storage/entities { Tank, TankNotFound }
+use storage/types { LeftAsked, LeftView }
+use storage/failures { PastTheEnd }
+
+action room_left(tank_id: Tank.id, asked: LeftAsked) fails TankNotFound, PastTheEnd -> LeftView {
+    var tank: Tank = attempt Tank.get(tank_id)
+    if (asked.used > tank.notches) {
+        reject PastTheEnd {}
+    }
+    return LeftView {
+        has_room: asked.used < tank.notches
+    }
+}
+```
+
+```jadpo check project=get-action file=domains/storage/routes/tanks.jadpo
+use storage/entities { Tank }
+use storage/types { LeftAsked, LeftView }
+use storage/actions { room_left }
+
+routes Tanks {
+    prefix: /tanks
+
+    GET /{tank_id: Tank.id}/left {
+        authentication: RouteAuthentication.none
+        input: LeftAsked
+        output: LeftView
+        run: room_left(tank_id, input)
+    }
+}
+```
+
+```jadpo check project=get-action file=domains/storage/fixtures/a_tank.jadpo hidden
+use storage/entities { Tank }
+
+fixture a_tank() -> Tank {
+    return Tank.create {
+        set: {
+            notches: 10
+        }
+    }
+}
+```
+
+```jadpo check project=get-action file=domains/storage/routes/tanks.test.jadpo hidden
+use storage/entities { Tank }
+use storage/types { LeftAsked, LeftView }
+use storage/fixtures { a_tank }
+
+test "a tank says what is left" {
+    var tank: Tank = a_tank()
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/tanks/{tank_id}/left"
+        params: {
+            tank_id: tank.id
+        }
+        input: LeftAsked {
+            used: 4
+        }
+    }
+    assert response.status == 200
+    assert response.output == LeftView {
+        has_room: true
+    }
+}
+
+test "a reading past the end is rejected" {
+    var tank: Tank = a_tank()
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/tanks/{tank_id}/left"
+        params: {
+            tank_id: tank.id
+        }
+        input: LeftAsked {
+            used: 11
+        }
+    }
+    assert response.status == 422
+    assert response.code == "past_the_end"
+}
+
+test "a tank that isn't there is not found" {
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/tanks/{tank_id}/left"
+        params: {
+            tank_id: "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e"
+        }
+        input: LeftAsked {
+            used: 1
+        }
+    }
+    assert response.status == 404
+    assert response.code == "tank_not_found"
+}
+```
+
+A `GET` may emit an event, so a read can be counted. Here showing a dish
+emits `DishShown`, and a subscriber notes when it was last shown:
+
+```jadpo check project=get-emits file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+    }
+    events: {
+        store: main
+    }
+}
+```
+
+```jadpo check project=get-emits file=domains/menu/types/dish_title.jadpo hidden
+type DishTitle = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+```jadpo check project=get-emits file=domains/menu/entities/dish.jadpo hidden
+use menu/types { DishTitle }
+
+/// A dish on the menu.
+entity Dish {
+    id: Uuid
+    title: DishTitle
+    last_shown_at: Instant?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+```
+
+```jadpo check project=get-emits file=domains/menu/types/dish_card.jadpo hidden
+use menu/types { DishTitle }
+
+type DishCard = Output {
+    title: DishTitle
+}
+```
+
+```jadpo check project=get-emits file=domains/menu/events/dish_shown.jadpo
+use menu/entities { Dish }
+
+/// Someone was shown a dish.
+type DishShown = Event {
+    dish_id: Dish.id
+}
+```
+
+```jadpo check project=get-emits file=domains/menu/events/events.jadpo_record hidden
+// Generated by Jadpo from the events of domain menu; update it with `jadpo records update`, never by hand.
+record events 1
+
+event DishShown
+    dish_id: Uuid
+```
+
+```jadpo check project=get-emits file=domains/menu/actions/show_dish.jadpo
+use menu/entities { Dish, DishNotFound }
+use menu/types { DishCard }
+use menu/events { DishShown }
+
+/// Shows a dish, and says it was shown.
+action show_dish(dish_id: Dish.id) fails DishNotFound -> DishCard {
+    var dish: Dish = attempt Dish.get(dish_id)
+    emit DishShown {
+        dish_id: dish.id
+    }
+    return DishCard {
+        title: dish.title
+    }
+}
+```
+
+```jadpo check project=get-emits file=domains/menu/actions/note_shown.jadpo hidden
+use menu/entities { Dish, DishNotFound }
+
+/// Notes when a dish was last shown.
+action note_shown(dish_id: Dish.id) fails DishNotFound -> Unit {
+    attempt Dish.update(dish_id) {
+        set: {
+            last_shown_at: clock.now
+        }
+    }
+}
+```
+
+```jadpo check project=get-emits file=domains/menu/subscribers/note_each_showing.jadpo hidden migrate=initial
+use menu/actions { note_shown }
+use menu/events { DishShown }
+
+/// Notes each showing of a dish.
+subscriber note_each_showing {
+    on: DishShown
+    run: note_shown(event.dish_id)
+}
+```
+
+```jadpo check project=get-emits file=domains/menu/routes/dishes.jadpo
+use menu/entities { Dish }
+use menu/types { DishCard }
+use menu/actions { show_dish }
+
+routes Dishes {
+    prefix: /dishes
+
+    GET /{dish_id: Dish.id} {
+        authentication: RouteAuthentication.none
+        output: DishCard
+        run: show_dish(dish_id)
+    }
+}
+```
+
+```jadpo check project=get-emits file=domains/menu/actions/add_dish.jadpo hidden
+use menu/entities { Dish }
+
+/// Puts a dish on the menu.
+action add_dish() -> Dish {
+    return Dish.create {
+        set: {
+            title: "Leek tart"
+            last_shown_at: none
+        }
+    }
+}
+```
+
+```jadpo check project=get-emits file=domains/menu/routes/dishes.test.jadpo hidden
+use menu/entities { Dish }
+use menu/actions { add_dish }
+
+test "showing a dish is counted by its subscriber" {
+    clock: "2026-11-07T12:00:00Z"
+    var dish: Dish = add_dish()
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/dishes/{dish_id}"
+        params: {
+            dish_id: dish.id
+        }
+    }
+    assert response.status == 200
+    var after_showing: Dish = attempt Dish.get(dish.id)
+    assert after_showing.last_shown_at == "2026-11-07T12:00:00Z"
+}
+```
+
+What the proof counts:
+
+| It does | So |
+|---|---|
+| Works a value out, calls a function, raises any failure | Read-only |
+| Reads with `get`, `history` or a query; `sessions.tokens`, `<Service>.keys`, `batches.status` | Read-only |
+| Calls a provider's operation that changes nothing: `changes: false`, or a `GET` operation that doesn't say | Read-only |
+| Asks a model: `ai.embed`, `ai.embed_all`, `ai.generate`, `ai.stream` ([Generating changes nothing at the provider](21-ai.md)) | Read-only |
+| A store's `read` | Read-only |
+| `create`, `update`, `delete`, a counter, a transition, `erase` or `export` | Not read-only |
+| `sessions.start`, `sessions.end`, issuing or revoking a token or a key, a magic link's request or redemption | Not read-only |
+| Starting or cancelling a run (`batches.each`, `batches.cancel`, a file helper) | Not read-only: each keeps a row |
+| `emit` of an event | Read-only: the event is kept in a transaction of its own, after the action's reads, so a subscriber can count a read |
+| `emit` of an email | Not read-only: an email is sent |
+| A provider's operation with `changes: true`, even an idempotent one, or a store's `put` | Not read-only |
+| Calls another action, a package's among them | Whatever that action does |
+
+Anything on any way through the action counts: a write in one branch of an
+`if` is has_room. A function needs no looking into, since a function can't do
+any of these. Anything else makes the route `route.run_kind`, whose message
+names what the action does and where, following the calls.
+
+What Jadpo keeps for itself is not the action's doing, and a `GET` that
+calls a model or a provider may still cause it: a model's use is counted
+against `ai: { limits: }` ([Budgets](21-ai.md)), and a provider's circuit
+breaker and the rate limits count their own. Each is done in a statement of
+its own, or in memory, never in the action's transaction. Signing a caller
+in reads and changes nothing. A `GET` keeps no `Idempotency-Key`, so a model
+or a provider that changes nothing is sent none of the keys derived from
+one. Reads leave no record: the audit trail only records changes, and the
+[access records](15-personal-data.md#access-records) aren't built yet; when
+they are, they go in a statement of their own for a query and an action
+alike.
+
+The runtime holds what a `GET` runs to the same line, its query or its action.
+Its transaction is begun `READ ONLY`, so PostgreSQL itself refuses a write.
+The events it emits are kept in a transaction of their own once its body
+succeeds, as a model's use is counted, and delivered as any action's are;
+a body that fails keeps none. Asking to write, to send an email or to make
+a changing call answers 500 `internal_fault` and keeps nothing. The proof means checked code never gets
+there, so reaching it is a bug in Jadpo.
+
+Everything else about a `GET` stays as it was. `HEAD` runs the same action and
+sends the same head with no body, so a `HEAD` of a route that calls a model
+calls the model. Its input is its query string, there is no `settle:` to set,
+since nothing was set off, and browsers and caches may repeat it. A `GET`
+calling a model costs money each time it's repeated: `ai: { limits: }` caps
+that, and a route that should not be open to the world says who may call it,
+as any route does.
 
 ### Listing tokens and keys
 
@@ -376,7 +1053,7 @@ in turn. They run in the request's own invocation, each delivery as any is
 delivered
 ([Delivery: at least once, safe to repeat](12-jobs-and-events.md#delivery-at-least-once-safe-to-repeat)),
 as the system limited to its event's tenant
-([Background work](09-policy.md#background-work)). The request's caller is
+([Policy and background work](09-policy.md#policy-and-background-work)). The request's caller is
 given back before the answer runs.
 
 The work has settled when every one of those deliveries has succeeded,
@@ -393,7 +1070,7 @@ Some work can't be waited for:
 - So does a delivery the request couldn't claim.
 - So does a batch run the action started. A batch is long work no route
   waits on, so a route whose action starts one answers 202
-  ([Batches: work over many items](12-jobs-and-events.md#batches-work-over-many-items)).
+  ([Batches](12-jobs-and-events.md#batches)).
 
 Waiting stops at the first such piece. The rest is left for after the
 response, and a retry is left to the outbox's sweep, the runtime's regular
@@ -460,7 +1137,7 @@ with that failure, though the action committed.
 
 When what a route runs returns an `AiStream`, the route sends a model's
 answer as it is written, piece by piece. An `AiStream` is the text
-`ai.stream` asks a model for ([Streaming](21-ai.md#streaming)). It is sent
+`ai.stream` asks a model for ([Streaming from a model](21-ai.md#streaming-from-a-model)). It is sent
 as server-sent events, the HTML standard's `text/event-stream`, which is
 the shape OpenAI's and Anthropic's APIs stream in. Jadpo has no WebSockets
 ([AI](21-ai.md)).
@@ -875,8 +1552,7 @@ The route is `<prefix>/<connection>` under the prefix of the `webhooks` API
 the app declares, whose record and OpenAPI document list it. Outside every
 declared API, it is `/webhooks/<connection>`. `jadpo routes` shows it as
 `generated webhook`, with `signature` for its authentication. An app route
-at the same path is `route.path_overlap` (see the
-[Integrations design notes](notes/11-integrations.md)). Replies and
+at the same path is `route.path_overlap`. Replies and
 handshakes are in
 [Webhook replies, handshakes and further signature schemes](11-integrations.md#webhook-replies-handshakes-and-further-signature-schemes).
 
@@ -915,9 +1591,20 @@ may raise events or call providers. So the key covers them too.
   client's key ([Calling](11-integrations.md#calling)).
 
 An API can require the key with `idempotency: Idempotency.required`, and
-OpenAPI lists the header. When a repeat counts as the same request is under
-[How failures reach the client](#how-failures-reach-the-client). The rest
-is in the [design notes](notes/07-http.md), "Idempotency keys".
+OpenAPI lists the header. The default is `Idempotency.optional`. When a
+repeat counts as the same request is under
+[How failures reach the client](#how-failures-reach-the-client).
+
+- **Whose keys they are.** A signed-in caller's keys are kept under their
+  user id. A route anyone may call keeps its keys under `anonymous`.
+- **A request that never finishes.** The claim holds no response and lasts
+  only for the route's deadline and five seconds, so it lapses.
+- **What a repeat answers with.** The kept status, body and code, under the
+  repeat's own `x-request-id`.
+- **Where keys are kept.** In the store the action writes. An action that
+  writes no store but emits, or that makes a changing call, keeps them in
+  the store `events: { store: }` names. One that does none of these keeps
+  none, since running it again changes nothing.
 
 ## How failures reach the client
 <!-- topic: how-failures-reach-the-client -->
@@ -982,7 +1669,7 @@ A response that starts a session or carries a credential is never kept.
 
 The digest isn't keyed (no secret is mixed into the hash), since a key
 would need a secret every deployment holds, and Jadpo has none
-([Configuration and time](10-configuration-and-time.md)). So a value that
+([Secrets](10-configuration-and-time.md#secrets)). So a value that
 isn't secret, sent and neither stored nor answered, can still be confirmed
 by guessing, by whoever reads the table. That person reads the kept
 responses and the application's own tables as well.
@@ -1016,7 +1703,7 @@ Some features generate their routes for you:
   [Passkeys](08-identity.md#passkeys)), each sign-in provider's
   `POST /auth/<name>/start` and `GET /auth/<name>/callback`
   ([Providers](08-identity.md#providers)), and `POST /auth/exchange`
-  ([Identity](08-identity.md));
+  ([Sign-in and identity](08-identity.md));
 - the privacy requests ([Data requests](15-personal-data.md#data-requests));
 - each API's `GET <prefix>/flags`, while a flag has `client: true`
   ([Flags in browsers and apps](16-built-in-services.md#flags-in-browsers-and-apps));
@@ -1029,8 +1716,7 @@ Some features generate their routes for you:
 - connecting and disconnecting an OAuth grant:
   `POST /connections/<name>/start`, `GET /connections/<name>/callback` and
   `POST /connections/<name>/disconnect`
-  ([Acting for a user at another service: OAuth grants](08-identity.md#acting-for-a-user-at-another-service-oauth-grants),
-  [Acting for each user: OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)).
+  ([OAuth grants](11-integrations.md#oauth-grants)).
 
 Jadpo generates endpoints only, never pages: the app's frontend owns every
 page. Generated routes appear in `jadpo routes`, the API record and OpenAPI
@@ -1066,7 +1752,8 @@ RateLimit: "default";r=0;t=42
 
 `Retry-After` gives the seconds to wait. `RateLimit` and `RateLimit-Policy`
 are the standard headers of the IETF draft
-`draft-ietf-httpapi-ratelimit-headers`. The failure's wording for people
+`draft-ietf-httpapi-ratelimit-headers`: the limit's requests (`q`) and window
+in seconds (`w`), and none left (`r=0`) until `t` seconds from now. The failure's wording for people
 comes from translations, as every failure's does, and is in the per-locale
 failure export ([OpenAPI](#openapi)).
 
@@ -1128,6 +1815,15 @@ GET /v1/openapi.json
   accepts no way to sign in that is built, every route it has lets anyone
   call it, so its document tells no one more than its routes do, and
   anyone may read it, as above.
+- **An API that says `authentication: []` accepts no way to sign in,**
+  whatever `authentication.jadpo` declares, so anyone may read its document
+  and its record lists no `authentication` line. Every route in it says
+  `authentication: RouteAuthentication.none`: one that needs a caller could
+  never be reached, and is refused
+  ([`api.route_needs_sign_in`](../errors/api.route_needs_sign_in.md)). Opening
+  the document of an API that had a sign-in is `PolicyChange.route_public`, as
+  opening any route is. An API with no `authentication:` line accepts every
+  way the application declares.
 - **It answers 200 with the document exactly as `jadpo check` writes it**
   to `build/openapi/<api>.json`, as `application/json`. Like any route that
   takes no input, it answers a query string or a body with 422
@@ -1144,9 +1840,12 @@ package, with no corrections or recordings
 
 | Field | On | Holds |
 |---|---|---|
-| `x-jadpo-changes` | Every operation | Whether the operation changes something: `true` for a route that runs an action, `false` for a `GET` and for the runtime's own reads |
+| `x-jadpo-changes` | Every operation | Whether the operation changes something: `true` for a route of any other method, `false` for a `GET`, whatever it runs, and for the runtime's own reads |
+| `x-jadpo-rate-limit` | Every route you write | What it is limited to, its own limit, its API's or the default: `requests`, `within` and `by`, as `rate_limit:` writes them ([Rate limits](16-built-in-services.md#rate-limits)) |
 | `x-jadpo-confirm` | A route with `confirm:` | What the signed-in person presents before it runs, `passkey` ([Confirm one request with a passkey](08-identity.md#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)); the operation lists the `X-Jadpo-Confirmation` header and the 403 `confirmation_required` |
 | `x-jadpo-idempotency` | Every operation that reads an `Idempotency-Key` | Whether it takes `Idempotency-Key`, and whether the API requires it: `header`, `required` (the API's `idempotency:`), `keeps` (`response`: a repeat gets the first answer; `request`: a repeat waits for the first but runs again; `nothing`: running it again changes nothing, or no store keeps it), `window` (`1d`), `max_length` (255), and the codes a key's repeat answers with, `in_use` (`conflict`) and `reused` (`idempotency_key_reused`) |
+| `x-jadpo-sends` | The media type of a route with `sends:` | The `output` and the `field` its body is ([Sending raw bytes](#sending-raw-bytes)) |
+| `x-jadpo-cache` | A route with `cache:` | `immutable` ([Answers that never change](#answers-that-never-change)) |
 | `x-jadpo-failure` | The schema of each failure the application declares | Its `code` and `kind` (`not_found`); sign-in's, policy's and the runtime's own codes carry none, since the caller's runtime handles them |
 | `x-jadpo-constraints` | Every field's, placeholder's and success response's schema | Every field's rules: its type and rules as the API record writes them, `Text { min_length: 1, max_length: 200 }`, `List<TodoView>`, `Money?` |
 
@@ -1391,7 +2090,7 @@ test "a todo that isn't there is not found" {
 
 A change that can break a client also needs an acceptance written by a
 person: a route removed, a required input field added, an output field
-removed, or a failure code changed. An acceptance is a file in
+removed, a body sent as another media type, or a failure code changed. An acceptance is a file in
 `acceptances/` saying a person accepts the change
 ([Acceptances](18-records-and-manifest.md#acceptances)). Every change that
 needs one uses the same form, such as a database drop, a policy weakening
@@ -1408,7 +2107,10 @@ changed, `none` no longer allowed, an enum variant gone),
 `main.TodoView.priority: ApiChange.output_field_removed` or
 `.output_field_retyped`, and `main.todo_locked: ApiChange.failure_changed`
 (the code gone or its status changed). A route that now takes or
-answers with another type is compared field by field with the one it had.
+answers with another type is compared field by field with the one it had. A
+route that now sends another media type, or starts or stops sending raw bytes,
+is `"main GET /deeds/{deed_ref: Text}": ApiChange.media_type_changed`
+([Sending raw bytes](#sending-raw-bytes)).
 A route made open to anyone is `PolicyChange.route_public`
 ([Protecting policy](09-policy.md#protecting-policy)).
 
@@ -1436,22 +2138,26 @@ where an app uses it.
 | Feature | Status |
 |---|---|
 | Checking routes | Built: `jadpo check` checks route groups, their prefixes and APIs (with `idempotency:`), methods and typed placeholders, the one input (from the query string for `GET` and `DELETE`, the JSON body otherwise, and `header:` fields), `output:` and `status:`, `deadline:`'s range and what `run:` calls, every route of the project against the others and the health paths, and each API's record. |
-| OpenAPI | Built: `jadpo check` writes one OpenAPI document per API to `build/openapi/`, and the failure wording for client apps beside it. Each API serves its own document at `<prefix>/openapi.json` (`serve_openapi: false` turns it off), listed in its record, its document and `jadpo routes`, and the documents carry the `x-jadpo` fields the OpenAPI importer reads ([OpenAPI](#openapi)). OpenAPI derives each route's responses from what it runs and shows `ZonedTime`, `Zone` and a mixed enum as they are sent. |
+| OpenAPI | Built: `jadpo check` writes one OpenAPI document per API to `build/openapi/`, and the failure wording for client apps beside it. Each API serves its own document at `<prefix>/openapi.json` (`serve_openapi: false` turns it off, `authentication: []` opens it to anyone), listed in its record, its document and `jadpo routes`, and the documents carry the `x-jadpo` fields the OpenAPI importer reads ([OpenAPI](#openapi)). OpenAPI derives each route's responses from what it runs and shows `ZonedTime`, `Zone` and a mixed enum as they are sent. |
 | Serving a request | Built: the runtime's HTTP component routes a request, decodes and checks its input (each problem as `{ field, rule }`), runs the action or query, and answers with the output or the failure envelope, its `request_id` and `x-request-id`, with the status the failure's kind sets; it answers `HEAD` and `OPTIONS` itself and counts the default rate limits. It reads a body only as JSON, and refuses a query string or body a route doesn't read, a header it can't read and a body over 1 MB. |
 | Deadlines and concurrent changes | Built: the runtime stops a route at its deadline without committing, even work that never waits, and runs an action again on a concurrent change found as it commits. |
 | Health endpoints | Built: `/health/live` and `/health/ready`. |
 | Idempotent writes | Built: the runtime keeps each write's `Idempotency-Key` with its response. |
 | Commands | Built: `jadpo dev` serves the routes and reloads on save, `jadpo routes` lists them and `jadpo api update` writes the records, each `api/<api>.jadpo_record` in the record format with no `version:` line; the OpenAPI version is a hash of it. |
 | Native connection limits | Built: natively, a client has 10 seconds for its headers and 30 for its body, a write waits at most 30 seconds for it to read, and the server holds at most 1,024 connections and 10 database connections per store per worker. |
-| Sign-in | Built: every route needs a signed-in caller unless it says `authentication: RouteAuthentication.none`; each API lists the sign-in methods it accepts, named in its record; a route passes `current_principal` to what it runs; a signed-in caller's requests count against its own rate limit, and its idempotency keys are its own; a request with a credential on a route anyone may call counts against its address before it runs ([Identity](08-identity.md)). |
+| Sign-in | Built: every route needs a signed-in caller unless it says `authentication: RouteAuthentication.none`; each API lists the sign-in methods it accepts, named in its record; a route passes `current_principal` to what it runs; a signed-in caller's requests count against its own rate limit, and its idempotency keys are its own; a request with a credential on a route anyone may call counts against its address before it runs ([Sign-in and identity](08-identity.md)). |
 | Policy | Built: policy decides what each route reaches, and OpenAPI lists the 403 `not_permitted` on every route that runs an action that writes or is listed under `actions:` ([Policy](09-policy.md)). |
+| A `GET` that runs an action | Built: the proof over every action it calls, `route.run_kind` naming what breaks it and where, a `READ ONLY` transaction and the faults beside it, for a `GET`'s query and action alike. |
 | Issued tokens and keys | Built: a `GET` runs `sessions.tokens` and `<Service>.keys` itself, and the record and OpenAPI describe the `IssuedToken` and `IssuedKey` it sends ([Service credentials](08-identity.md#service-credentials)). |
 | Map layers | Built: a route may send a `FeatureCollection<G, P>` bare, its properties held to what an `Output` may hold and, where an action returns it, to the fields every caller may read ([Field restrictions](09-policy.md#field-restrictions)); OpenAPI describes RFC 7946's object and the record names it with its type arguments. A `GET` sends one a query gives ([Reads and writes](06-reads-and-writes.md), "A query giving a map layer"), held to field policy where the query is declared. |
+| Sending raw bytes | Built: `sends:` on an `Output` of one `Bytes` field, on the native and Workers hosts and in the interpreter, with `Content-Length`, `HEAD`, repeats under a key, OpenAPI and the record ([Sending raw bytes](#sending-raw-bytes), and `route.sends_invalid`). |
+| Answers that never change | Built: `cache: immutable` writes `Cache-Control` on a 200 ([Answers that never change](#answers-that-never-change), and `route.cache_invalid`). |
 | `settle:` | Built: a route waits for the work its action set off ([Waiting for follow-on work](#waiting-for-follow-on-work), and `route.settle_invalid`). |
 | Streaming | Built: a route whose action returns an `AiStream` sends a model's answer as server-sent events ([Streaming a model's answer](#streaming-a-models-answer), and `route.stream_invalid`). |
 | Failure wording from a build | Not built yet: `jadpo check` writes `<api>.failures.<locale>.json` beside each OpenAPI document, and `jadpo build` is to write it too. |
 | `x-jadpo-events` | Not built yet: it waits for publishing events outward ([Where events travel](12-jobs-and-events.md#where-events-travel)). |
-| A route's own `rate_limit:` and the Redis store for rate limits | Not built yet ([Rate limits](16-built-in-services.md#rate-limits)). |
+| Rate limits | Built: a route's own `rate_limit:` and an API's ([Rate limits](16-built-in-services.md#rate-limits)). |
+| The Redis store for rate limits | Not built yet ([Rate limits](16-built-in-services.md#rate-limits)). |
 | Classifying breaking changes and their acceptances | Built ([Acceptances](18-records-and-manifest.md#acceptances)). |
 | The `Jadpo-Revision` header | Not built yet: it comes with caches ([Write revisions](#write-revisions)). |
 
@@ -1478,6 +2184,8 @@ what it runs; in a project each lives in its own folder.
 - [`route.query_field_unsupported`](../errors/route.query_field_unsupported.md)
 - [`route.status_invalid`](../errors/route.status_invalid.md)
 - [`route.deadline_invalid`](../errors/route.deadline_invalid.md)
+- [`route.sends_invalid`](../errors/route.sends_invalid.md)
+- [`route.cache_invalid`](../errors/route.cache_invalid.md)
 - [`route.settle_invalid`](../errors/route.settle_invalid.md)
 - [`route.stream_invalid`](../errors/route.stream_invalid.md)
 - [`route.authentication_invalid`](../errors/route.authentication_invalid.md)
@@ -1495,6 +2203,7 @@ what it runs; in a project each lives in its own folder.
 - [`api.prefix_overlap`](../errors/api.prefix_overlap.md)
 - [`api.idempotency_invalid`](../errors/api.idempotency_invalid.md)
 - [`api.authentication_invalid`](../errors/api.authentication_invalid.md)
+- [`api.route_needs_sign_in`](../errors/api.route_needs_sign_in.md)
 - [`api.serve_openapi_invalid`](../errors/api.serve_openapi_invalid.md)
 - [`api.setting_unknown`](../errors/api.setting_unknown.md)
 

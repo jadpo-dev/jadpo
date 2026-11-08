@@ -42,6 +42,18 @@ pub fn object_fields(name: &str) -> Option<&'static [(&'static str, Part)]> {
     (name == FILE).then_some(&FILE_FIELDS[..])
 }
 
+/// What a file of `FileType`'s variant `file_type` ends in, as an
+/// attachment with no name of its own is named (area 16, "Attachments").
+pub fn extension(file_type: &str) -> Option<&'static str> {
+    crate::standard::FILE_TYPES
+        .iter()
+        .find(|(name, _)| *name == file_type)
+        .map(|(name, _)| match *name {
+            "json_lines" => "jsonl",
+            other => other,
+        })
+}
+
 /// The most bytes `store.read` reads into memory (area 16, "Storage and
 /// formats are separate layers"): 10 MB, a field whose `max_size:` is
 /// over it being a compile error that points at the format helpers.
@@ -345,5 +357,19 @@ mod tests {
             Some(FILE_FIELDS.len())
         );
         assert_eq!(object_fields("FileContents"), None);
+    }
+
+    #[test]
+    fn a_file_types_extension_is_how_its_files_are_named() {
+        for (name, _) in crate::standard::FILE_TYPES {
+            let extension = extension(name).expect("an extension");
+            assert!(
+                extension.chars().all(|c| c.is_ascii_alphanumeric()),
+                "{name}"
+            );
+        }
+        assert_eq!(extension("pdf"), Some("pdf"));
+        assert_eq!(extension("json_lines"), Some("jsonl"));
+        assert_eq!(extension("nope"), None);
     }
 }

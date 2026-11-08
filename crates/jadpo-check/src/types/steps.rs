@@ -89,7 +89,7 @@ enum Call {
 /// Each provider operation each connection reaches, by the connection's
 /// name and the operation as a call writes it (`customers.create`): how it
 /// may be repeated, and whether its answer is large.
-struct Calls {
+pub(super) struct Calls {
     operations: BTreeMap<(String, String), (Call, bool)>,
     /// Each package's operations by its folder, for its own actions'
     /// calls, which name no connection (chunk 7.6).
@@ -104,7 +104,7 @@ struct Calls {
 }
 
 impl Calls {
-    fn new(db: &dyn Db, project: Project) -> Calls {
+    pub(super) fn new(db: &dyn Db, project: Project) -> Calls {
         let operations = crate::providers::operations(db, project);
         let keyed: BTreeSet<String> = crate::surface::homes(db, project)
             .into_values()
@@ -168,6 +168,13 @@ impl Calls {
             budgets,
             retried,
         }
+    }
+
+    /// Whether the outside call at `node` is known to change nothing
+    /// (chunk G2). `package` is the folder of the package whose action
+    /// makes it, if one.
+    pub(super) fn reads(&self, node: &Node, package: Option<&str>) -> bool {
+        matches!(self.of(node, package), Some((Call::Reads, _)))
     }
 
     /// Whether failure `key` ends a run for good: it isn't retried.
@@ -736,7 +743,7 @@ impl<'a> Walk<'a> {
 }
 
 /// The folder of the package that owns `file`, if one.
-fn package_of(db: &dyn Db, project: Project, file: File) -> Option<String> {
+pub(super) fn package_of(db: &dyn Db, project: Project, file: File) -> Option<String> {
     jadpo_db::location(db, project, file)
         .ownership
         .package()
@@ -1158,9 +1165,12 @@ fn late_failure(
         .reason(format!(
             "Once a changing call has taken effect, a failure that ends `{action}` for good rolls back its writes but not what `{before}` did, and a retry fails the same way; a failure of kind `unavailable` or `rate_limited` is retried instead, and one handled with `match` doesn't end it."
         ))
-        .next(format!(
-            "Check the condition before `{before}`, record what happened and finish in a subscriber of an event `{action}` emits, or undo `{before}` as another step in a `match` arm"
-        ))
+        .next_declined_above(
+            format!(
+                "Check the condition before `{before}`, record what happened and finish in a subscriber of an event `{action}` emits, or undo `{before}` as another step in a `match` arm"
+            ),
+            "the action",
+        )
 }
 
 /// At each route in `file`: `step.context` when its action makes several

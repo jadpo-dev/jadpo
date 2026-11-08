@@ -17,6 +17,8 @@ use crate::surface::{self, Surface, What};
 pub struct Facts {
     /// `library` or `provider`.
     pub kind: &'static str,
+    /// Who publishes it, `@acme`, when its index names one.
+    pub publisher: Option<String>,
     /// A library package is pure by the rules it compiles under: no
     /// network, no entities, no routes.
     pub pure: bool,
@@ -38,6 +40,28 @@ pub struct Facts {
     pub confirmed_operations: Vec<String>,
     /// Where it could use a standard type and doesn't.
     pub standard_candidates: Vec<StandardCandidate>,
+    /// When its newest recording was made, as `jadpo package record` keeps
+    /// it in `recordings/recorded.jadpo_record`: `2026-11-02T17:40:12Z`.
+    pub last_contract_run: Option<String>,
+}
+
+/// Where `jadpo package record` keeps when each of a package's recordings
+/// was made, in the package's folder.
+pub const RECORDED: &str = "recordings/recorded.jadpo_record";
+
+/// The newest time `text`, a package's [`RECORDED`], gives: each line
+/// `recorded <resource>.<operation> <instant>`, the instant in RFC 3339 in
+/// UTC, so the greatest is the newest.
+pub fn newest_recording(text: &str) -> Option<String> {
+    text.lines()
+        .filter_map(|line| {
+            let mut words = line.split_whitespace();
+            (words.next()? == "recorded").then_some(())?;
+            words.next()?;
+            let at = words.next()?;
+            (at.len() == 20 && at.ends_with('Z')).then(|| at.to_string())
+        })
+        .max()
 }
 
 /// A host a package reaches, and the operations that reach it.
@@ -111,6 +135,7 @@ pub fn facts(db: &dyn Db, project: Project, folder: &str) -> Option<Facts> {
     let library = surface.provider.is_none();
     Some(Facts {
         kind: surface.kind,
+        publisher: surface.publisher.clone(),
         pure: library,
         hosts,
         changing_calls: named(|what| matches!(what, What::Operation { changes: true, .. })),
@@ -129,6 +154,12 @@ pub fn facts(db: &dyn Db, project: Project, folder: &str) -> Option<Facts> {
             )
         }),
         standard_candidates: standard_candidates(db, project, folder),
+        last_contract_run: project
+            .records(db)
+            .iter()
+            .find(|record| record.path == format!("{folder}/{RECORDED}"))
+            .and_then(|record| record.text.as_ref().ok())
+            .and_then(|text| newest_recording(text)),
     })
 }
 

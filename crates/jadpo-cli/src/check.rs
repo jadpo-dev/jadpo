@@ -8,10 +8,11 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use jadpo_check::acceptances::first::Notice;
 use jadpo_check::deployables::PerInstance;
 use jadpo_db::Layout;
 use jadpo_diag::{Diagnostic, Span, rule};
-use jadpo_term::{Block, Fact, Json, Outcome, Screen};
+use jadpo_term::{Block, DecisionRow, Fact, Json, Outcome, Screen};
 
 use crate::derived;
 use crate::fmt::project_not_found;
@@ -57,7 +58,13 @@ pub fn check(call: &Call) -> Reply {
         Ok(checked) => checked,
         Err(reply) => return *reply,
     };
-    reported(&cwd, checked, started.elapsed(), "check failed")
+    reported(
+        &cwd,
+        checked,
+        started.elapsed(),
+        "check failed",
+        call.flag("--full"),
+    )
 }
 
 /// The date a rule triggered by time passing is judged at (area 1, "Rules
@@ -154,11 +161,13 @@ pub(crate) fn reported(
     checked: Checked,
     elapsed: Duration,
     failed: &str,
+    full: bool,
 ) -> Reply {
     let Checked {
         loaded,
         mut diagnostics,
         written,
+        publishers,
     } = checked;
     let db = &loaded.db;
     let layout = loaded.project.layout(db);
@@ -168,6 +177,9 @@ pub(crate) fn reported(
     // are fixed.
     if !loaded.links.is_empty() {
         jadpo_db::show_in_checkouts(&loaded.links, &mut diagnostics, &mut sources);
+    }
+    if !full {
+        jadpo_diag::shorten_repeats(&mut diagnostics);
     }
     let paths: Vec<&String> = files.iter().map(|file| file.path(db)).collect();
     let root = jadpo_db::shown_root(cwd, &loaded.root);
@@ -197,6 +209,8 @@ pub(crate) fn reported(
         }
         _ => None,
     };
+    // What a first record holds that a person decides (area 18, chunk A15).
+    let notice_list = jadpo_check::acceptances::first::notice_list(db, loaded.project);
     let not_judged = match loaded.project.before(db) {
         jadpo_db::Before::Nothing(reason) if layout == Layout::Project => {
             Some(format!("none, so acceptances aren't judged: {reason}"))
@@ -223,9 +237,126 @@ pub(crate) fn reported(
         root,
         &paths,
         loaded.unreadable.len(),
-        (layout, written, reviews, &per_instance),
-        (elapsed, failed, before, not_judged),
+        (
+            layout,
+            written,
+            reviews,
+            &per_instance,
+            notice_list,
+            &publishers,
+        ),
+        (elapsed, failed, before, not_judged, full),
     )
+}
+
+/// Each installed package whose own code holds a finding a newer Jadpo
+/// makes of the publishing bar (area 11, "How the package format is read"): an alert
+/// about the package, before the summary, never an error of the app's.
+pub(crate) fn publisher_alerts(publishers: &[Publishers]) -> Option<Block> {
+    (!publishers.is_empty()).then(|| {
+        Block::Alerts(
+            publishers
+                .iter()
+                .map(|(package, found)| publisher_alert(package, found))
+                .collect(),
+        )
+    })
+}
+
+/// An installed package's name and the findings left to its publisher.
+pub(crate) type Publishers = (String, Vec<Diagnostic>);
+
+/// One package's alert: its findings' rules, for its publisher.
+pub(crate) fn publisher_alert(package: &str, found: &[Diagnostic]) -> String {
+    let mut rules: Vec<String> = found.iter().map(|d| format!("`{}`", d.rule.id)).collect();
+    rules.dedup();
+    rules.sort();
+    rules.dedup();
+    format!(
+        "`{package}` has {} for its publisher, not this app: {}",
+        count(found.len(), "finding", "findings"),
+        rules.join(", ")
+    )
+}
+
+/// `publishers` as `--json` gives them.
+pub(crate) fn publishers_json(publishers: &[Publishers]) -> Json {
+    Json::array(publishers.iter().map(|(package, found)| {
+        Json::object([
+            ("package", package.as_str().into()),
+            (
+                "findings",
+                Json::array(found.iter().map(|d| {
+                    Json::object([
+                        ("rule", d.rule.id.into()),
+                        ("message", d.message.as_str().into()),
+                        (
+                            "file",
+                            d.primary
+                                .as_ref()
+                                .map_or(Json::Null, |label| label.span.path.as_str().into()),
+                        ),
+                    ])
+                })),
+            ),
+        ])
+    }))
+}
+
+/// What a person reads of `notice_list`: each thing nothing compared, then that
+/// it is theirs to decide. `jadpo check` shows them once it passes, and the
+/// approval report leads with them.
+pub(crate) fn notice_blocks(notice_list: &[Notice]) -> Vec<Block> {
+    let (one, heading) = match notice_list.len() {
+        0 => return Vec::new(),
+        1 => (true, "1 decision compared with nothing".to_string()),
+        n => (false, format!("{n} decisions compared with nothing")),
+    };
+    vec![
+        Block::Decisions {
+            heading,
+            rows: notice_list
+                .iter()
+                .map(|notice| DecisionRow {
+                    decided: false,
+                    text: notice.said.clone(),
+                    state: if notice.refused_next() {
+                        "refused from the next change".to_string()
+                    } else {
+                        "not compared".to_string()
+                    },
+                    path: vec![notice.place()],
+                })
+                .collect(),
+        },
+        Block::Decision {
+            subject: if one {
+                "nothing compares this, so a person reads it before it goes in".to_string()
+            } else {
+                "nothing compares these, so a person reads them before they go in".to_string()
+            },
+            location: None,
+            next: format!(
+                "A person decides whether the app means {it}. This passes either way, and {subject} compared as usual once a commit holds {it}.",
+                it = if one { "it" } else { "them" },
+                subject = if one { "it is" } else { "they are" },
+            ),
+        },
+    ]
+}
+
+/// `notice_list` as `--json` gives it.
+fn notice_list_json(notice_list: &[Notice]) -> Json {
+    Json::array(notice_list.iter().map(|notice| {
+        Json::object([
+            ("subject", notice.subject.as_str().into()),
+            ("kind", notice.kind.as_str().into()),
+            ("said", notice.said.as_str().into()),
+            ("decides", "human".into()),
+            ("file", notice.path.as_str().into()),
+            ("line", notice.line.map_or(Json::Null, Json::Int)),
+        ])
+    }))
 }
 
 /// What `jadpo check` says once it passes of each `max_concurrent:` a
@@ -264,6 +395,9 @@ pub(crate) struct Checked {
     pub diagnostics: Vec<Diagnostic>,
     /// The derived files written, by path from the project's root.
     pub written: Vec<String>,
+    /// Each installed package's findings left to its publisher
+    /// ([`jadpo_check::Checked::publishers`]).
+    pub publishers: Vec<Publishers>,
 }
 
 /// Checks `target` as `jadpo check` does, once `prepare` has set what it
@@ -291,11 +425,22 @@ fn checked_with(
             .next("Check it can be read, then run `jadpo check` again")
         })
         .collect();
-    let mut checked = jadpo_check::check(db, loaded.project);
+    let jadpo_check::Checked {
+        problems: mut checked,
+        publishers,
+    } = jadpo_check::checked(db, loaded.project);
     if let Some(cache) = &cache
         && loaded.unreadable.is_empty()
     {
-        cache.record(&loaded, &checked);
+        // A package file with a finding for its publisher is checked
+        // again each time, so its alert keeps being shown.
+        let mut held = checked.clone();
+        held.extend(
+            publishers
+                .iter()
+                .flat_map(|(_, found)| found.iter().cloned()),
+        );
+        cache.record(&loaded, &held);
     }
     if crate::run::in_ci(&call.environment) {
         checked.extend(jadpo_check::packages::links_refused(db, loaded.project));
@@ -354,8 +499,21 @@ fn checked_with(
         loaded,
         diagnostics,
         written,
+        publishers,
     })
 }
+
+/// What `jadpo check` shows beside the diagnostics: the layout, the
+/// derived files written, the scoped review, the caps counted per
+/// instance, the first record's notices and the publishers' alerts.
+type Shown<'a> = (
+    Layout,
+    Vec<String>,
+    &'a [jadpo_check::review::ProviderReview],
+    &'a [PerInstance],
+    &'a [Notice],
+    &'a [Publishers],
+);
 
 fn count(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
@@ -367,15 +525,19 @@ fn report(
     root: Option<String>,
     paths: &[&String],
     unreadable: usize,
-    (layout, written, reviews, per_instance): (
-        Layout,
-        Vec<String>,
-        &[jadpo_check::review::ProviderReview],
-        &[PerInstance],
+    (layout, written, reviews, per_instance, notice_list, publishers): Shown<'_>,
+    (elapsed, failed, before, not_judged, full): (
+        Duration,
+        &str,
+        Option<Json>,
+        Option<String>,
+        bool,
     ),
-    (elapsed, failed, before, not_judged): (Duration, &str, Option<Json>, Option<String>),
 ) -> Reply {
     let errors = diagnostics.len();
+    // With errors the agent's work comes first: a person is asked once it
+    // passes.
+    let notice_list = if errors == 0 { notice_list } else { &[] };
     let mut facts = Vec::new();
     if errors > 0 {
         facts.push(Fact::problem(count(errors, "error", "errors")));
@@ -411,37 +573,62 @@ fn report(
             screen.push(per_instance_block(per_instance));
         }
     }
+    for block in notice_blocks(notice_list) {
+        screen.push(block);
+    }
     if let Some(said) = &not_judged {
         screen.push(Block::Fields(vec![("before".to_string(), said.clone())]));
     }
+    if let Some(alerts) = publisher_alerts(publishers) {
+        screen.push(alerts);
+    }
     screen.push(Block::summary(outcome, headline, facts));
-    let mut data = Json::object([
-        (
-            "layout",
-            match layout {
-                Layout::Project => "project",
-                Layout::Loose => "loose",
-            }
-            .into(),
-        ),
-        ("root", Json::from(root.as_deref().unwrap_or("."))),
-        ("files", Json::array(paths.iter().map(|path| path.as_str()))),
-        ("errors", errors.into()),
-        ("build", Json::array(written)),
-        ("providers", crate::provider_review::json(reviews)),
-        (
-            "per_instance",
-            Json::array(per_instance.iter().map(|cap| {
-                Json::object([
-                    ("connection", cap.connection.as_str().into()),
-                    ("max_concurrent", cap.cap.into()),
-                    ("deployable", cap.deployable.as_str().into()),
-                ])
-            })),
-        ),
-    ]);
+    let files_written = if full {
+        vec![
+            ("files", Json::array(paths.iter().map(|path| path.as_str()))),
+            ("errors", errors.into()),
+            ("build", Json::array(written)),
+        ]
+    } else {
+        // Every run's list of files and of what it wrote cost more to read
+        // than they tell (chunk A14): counted, and whole with `--full`.
+        vec![("fileCount", total.into()), ("errors", errors.into())]
+    };
+    let mut data = Json::object(
+        [
+            (
+                "layout",
+                match layout {
+                    Layout::Project => "project",
+                    Layout::Loose => "loose",
+                }
+                .into(),
+            ),
+            ("root", Json::from(root.as_deref().unwrap_or("."))),
+        ]
+        .into_iter()
+        .chain(files_written)
+        .chain([
+            ("providers", crate::provider_review::json(reviews)),
+            (
+                "per_instance",
+                Json::array(per_instance.iter().map(|cap| {
+                    Json::object([
+                        ("connection", cap.connection.as_str().into()),
+                        ("max_concurrent", cap.cap.into()),
+                        ("deployable", cap.deployable.as_str().into()),
+                    ])
+                })),
+            ),
+            ("notice_list", notice_list_json(notice_list)),
+            ("package_alerts", publishers_json(publishers)),
+        ]),
+    );
     if let (Some(before), Json::Object(fields)) = (before, &mut data) {
         fields.push(("before".to_string(), before));
+    }
+    if !full {
+        data = data.pruned();
     }
     Reply::Report {
         screen,

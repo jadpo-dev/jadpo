@@ -1,0 +1,12 @@
+// The package's `sample/` app: the smallest app its recipes compile in, each
+// copied into its one domain, `sample_app`. Nothing runs it.
+application {
+    connections: {
+        service: {
+            package: {name}.v1
+            domains: [sample_app]
+            credential: config.service_key
+            environment: config.service_environment
+        }
+    }
+}

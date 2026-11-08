@@ -13,28 +13,34 @@ languages. The docs are the only source, and the compiler is the check.
 1. Read the primer once per session: https://jadpo.dev/docs/primer.md. It
    covers the project layout, the syntax and the constructs nearly every
    app uses.
-2. For the task, read the bundle's index, https://jadpo.dev/docs/index.json
-   (or the shorter https://jadpo.dev/llms.txt), pick pages by `title` and
-   `summary`, and fetch only their `.md`. The app declares its version in
-   `app.jadpo`; use `https://jadpo.dev/v/<version>/docs/index.json` and the
-   same prefix on every page to read the docs for that version.
-3. Don't fetch everything. There is no single file of all the docs.
+2. Read https://jadpo.dev/llms.txt once too. It lists the guides, one for
+   each common job, and the reference's groups.
+3. For a task, follow its guide if it has one. Otherwise open its group's
+   page, which lists what is in the group, and fetch only the topics you
+   need, each at `https://jadpo.dev/docs/<id>.md`.
+4. The app declares its version in `app.jadpo`. Use the same addresses
+   under `https://jadpo.dev/v/<version>/` to read the docs for that version.
+5. Don't fetch everything. There is no single file of all the docs, and
+   `docs/index.json` is a list for tools: never read it whole.
 
 ## Check your work
 
-Run both after every change, and read the result before writing more:
+Run both after each connected change, a declaration and the first thing
+that uses it, and read the result before writing more:
 
 ```text
 jadpo check --json
 jadpo test --json
 ```
 
-Each prints one JSON document: `schemaVersion`, `command`, `ok`, `data` and
-`diagnostics`. Stop when `ok` is `true`. Otherwise read each entry of
+Each prints one JSON document: `schemaVersion`, `command`, `ok`,
+`durationMs`, `data` and `diagnostics`, kept short: add `--full` for
+everything it leaves out. Stop when `ok` is `true`. Otherwise read each entry of
 `diagnostics`:
 
 - `rule` names the error, and `message` says what is wrong.
-- `reason` says why Jadpo refuses it.
+- `reason` says why Jadpo refuses it. An entry saying the same as an earlier
+  one has `sameAs`, that entry's place in the list, instead.
 - `next.text` is the step to take, and `next.edits` lists edits to apply
   when the fix is mechanical.
 - `help` is the address of the rule's page, such as

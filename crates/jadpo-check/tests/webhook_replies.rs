@@ -155,6 +155,28 @@ fn a_reply_action_runs_as_the_system() {
     );
 }
 
+/// A list naming only people lets the reply action in no more than none.
+#[test]
+fn a_reply_action_reaching_a_list_naming_only_people_is_refused() {
+    assert_eq!(
+        problems("Access.authenticated", &answer("", HEARD)),
+        [
+            "app.jadpo policy.system_grant_missing: `support.answer_call` runs as the system, which `PhoneLog`'s `create:` doesn't let in"
+        ]
+    );
+}
+
+/// So does one with no list at all, which has `create: []` here.
+#[test]
+fn a_reply_action_reaching_what_no_list_grants_is_refused() {
+    assert_eq!(
+        problems("", &answer("", HEARD)),
+        [
+            "app.jadpo policy.system_grant_missing: `support.answer_call` runs as the system, which nothing lets create `PhoneLog`"
+        ]
+    );
+}
+
 const CALLS_SEEN: &str = "domains/support/actions/answer_call.jadpo policy.output_field_unproved: `answer_call`'s reply shows whether a `PhoneLog` is there, which not everyone may read";
 
 /// A reply counting or testing for records only the system may read is

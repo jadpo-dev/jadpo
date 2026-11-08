@@ -8,7 +8,9 @@
 > currency, and a function that isn't the package's or doesn't take and
 > give the right types. `wire_parts:` is refused on a type
 > not made of parts, beside another way of sending the field, with a part
-> left out, unknown or given twice, or a spelling that isn't text.
+> left out, unknown or given twice, or a spelling that isn't text. A
+> failure's `wire_status:` is refused outside a provider package, and
+> where it isn't a `4xx` the driver reads as a failure.
 
 An encoding holds the types its provider sends that way:
 
@@ -52,6 +54,55 @@ error: `Wire.unix_seconds` sends an `Instant`, and `collected_on` is a `Text`
   |               ^^^^^^^^^^^^^^^^^ a `Text` field
   reason: `Wire.unix_seconds` is how a provider sends an `Instant`; a field of another type is sent as the contract writes it, in another encoding, or by the package's own `decode:` and `encode:` functions.
   next: Name the encoding the provider sends a `Text` in, or remove `wire:` (agent)
+  rule: package.wire_invalid
+  help: https://jadpo.dev/docs/errors/package.wire_invalid
+
+check failed: 1 error, 4 files
+```
+
+A failure's `wire_status:` is the status its provider refuses with. A
+`401` or `403` is read as the credential refused, and a `408` or `429` as
+a call that did nothing, before any failure is looked for:
+
+```jadpo check project=e72f-wire-status file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72f-wire-status file=shared/providers/postcodes_io/v1/package.jadpo hidden
+/// postcodes.io's UK postcode lookups.
+package PostcodesIo.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72f-wire-status file=shared/providers/postcodes_io/v1/provider.jadpo hidden
+/// postcodes.io's public API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.postcodes.io"
+    }
+    error_code: "error"
+}
+```
+
+```jadpo check project=e72f-wire-status file=shared/providers/postcodes_io/v1/failures/too_many_requests.jadpo expect=package.wire_invalid
+/// postcodes.io is asked too often.
+public type TooManyRequests = Failure {
+    kind: FailureKind.rate_limited
+    wire_status: 429
+}
+```
+
+```text output
+error: A provider's `429` is never one of its failures
+ --> shared/providers/postcodes_io/v1/failures/too_many_requests.jadpo:4:18
+  |
+4 |     wire_status: 429
+  |                  ^^^ not a refusal Jadpo reads as a failure
+  reason: A `408` or `429` says the call did nothing and may be sent again, read as `unavailable`, so no failure can be it.
+  next: Write the `4xx` status the provider refuses with, or remove `wire_status:` (agent)
   rule: package.wire_invalid
   help: https://jadpo.dev/docs/errors/package.wire_invalid
 

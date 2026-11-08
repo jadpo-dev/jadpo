@@ -308,7 +308,7 @@ pub(super) fn type_keyword(p: &mut Parser<'_>, m: crate::parser::Marker) {
     p.bump_remap(TYPE_KW);
     name(p, "this type");
     if p.at(L_BRACE) {
-        member_list(p, Members::Declaration);
+        member_list(p, Members::Fields);
     } else {
         skip_line(p);
     }
@@ -1101,7 +1101,8 @@ fn null_test_len(p: &Parser<'_>) -> Option<usize> {
     (null && !p.nth_on_new_line(n)).then_some(n + 1)
 }
 
-/// A `?` followed on its line by a value and then a `:`: a ternary.
+/// A `?` followed on its line by a value and then a `:`, with no comma
+/// between them: a ternary.
 pub(super) fn ternary_ahead(p: &Parser<'_>) -> bool {
     if p.nth_on_new_line(1) || !starts_operand(p, 1) {
         return false;
@@ -1114,6 +1115,7 @@ pub(super) fn ternary_ahead(p: &Parser<'_>) -> bool {
             R_PAREN | R_BRACK | R_BRACE if depth == 0 => return false,
             R_PAREN | R_BRACK | R_BRACE => depth -= 1,
             COLON if depth == 0 => return true,
+            COMMA if depth == 0 => return false,
             _ => {}
         }
         i += 1;
@@ -1161,7 +1163,16 @@ pub(super) fn infix(
                 habit,
                 (&written, jadpo),
                 (is_start, is_end),
-                vec![TextEdit::replace(is_start, is_end, jadpo)],
+                // Tight after a value, `==` would join what ends it: `>==`.
+                vec![TextEdit::replace(
+                    is_start,
+                    is_end,
+                    if p.prev_end() == is_start {
+                        format!(" {jadpo}")
+                    } else {
+                        jadpo.to_string()
+                    },
+                )],
                 true,
             );
             let m = lhs.precede(p);
@@ -1603,29 +1614,27 @@ pub(super) fn member_equals(p: &mut Parser<'_>, context: Members) {
 }
 
 /// A `,` after a member: one error, read as nothing. With another member
-/// after it on the line, a bare one moves to its own line, since only
-/// `name: value` members may share a line.
-pub(super) fn member_comma(p: &mut Parser<'_>, bare: bool) {
+/// after it on the line, that member moves to its own line, where the
+/// formatter would put it. With only the comma gone the two could read as
+/// one thing: `a, b` as a member with no colon, `a: text?, b: c` as a
+/// ternary.
+pub(super) fn member_comma(p: &mut Parser<'_>) {
     let (start, end) = p.range();
     let more = !p.nth_on_new_line(1) && !matches!(p.nth(1), R_BRACE | EOF);
-    let edit = if bare && more {
-        let next = p.nth_range(1).0;
+    let before = p.text()[..start as usize]
+        .trim_end_matches([' ', '\t'])
+        .len() as u32;
+    let edit = if more {
+        let rest = &p.text()[end as usize..];
+        let next = end + (rest.len() - rest.trim_start_matches([' ', '\t']).len()) as u32;
         let (line_start, _) = line_bounds(p, start);
         let opened_here = p.text()[line_start as usize..start as usize].contains('{');
         let mut indent = indent_at(p, start);
         if opened_here {
             indent.push_str("    ");
         }
-        TextEdit::replace(start, next, format!("\n{indent}"))
-    } else if more {
-        // `a: b,c: d` keeps a space where the comma was, so the two
-        // members don't run together.
-        let joined = p.nth_range(1).0 == end;
-        TextEdit::replace(start, end, if joined { " " } else { "" })
+        TextEdit::replace(before, next, format!("\n{indent}"))
     } else {
-        let before = p.text()[..start as usize]
-            .trim_end_matches([' ', '\t'])
-            .len() as u32;
         TextEdit::replace(before, end, "")
     };
     report(

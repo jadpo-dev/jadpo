@@ -22,10 +22,10 @@ This page covers what you do with them:
 
 | Part | What | Builds on |
 |---|---|---|
-| [Operations](#operations) | 10 in `geo`: distance, length, bearing, area, intersects, contains, within (with or without `distance:`), centroid, bounding box; and the two for WKT text | The standard library's [operations](19-standard-library.md#what-every-operation-follows) and its whole-number maths |
-| [Storage](#storage) | One PostGIS `geography` column per geometry, checked to its type and WGS84; GiST indexes derived from your queries | [Storage types](05-data.md#storage-types) |
-| [Queries](#queries) | `geo.within`, `geo.contains`, `geo.intersects` as `where:` conditions; `order:` by `geo.distance` inside a radius | [Reads and writes](06-reads-and-writes.md) |
-| [Interop](#interop) | GeoJSON `Feature` and `FeatureCollection`; WKT where other systems use it | The standard library's GeoJSON |
+| [Geometry operations](#geometry-operations) | 10 in `geo`: distance, length, bearing, area, intersects, contains, within (with or without `distance:`), centroid, bounding box; and the two for WKT text | The standard library's [operations](19-standard-library.md#what-every-operation-follows) and its whole-number maths |
+| [Storing geometries](#storing-geometries) | One PostGIS `geography` column per geometry, checked to its type and WGS84; GiST indexes derived from your queries | [Storage types](05-data.md#storage-types) |
+| [Finding records by place](#finding-records-by-place) | `geo.within`, `geo.contains`, `geo.intersects` as `where:` conditions; `order:` by `geo.distance` inside a radius | [Reads and writes](06-reads-and-writes.md) |
+| [GeoJSON and other formats](#geojson-and-other-formats) | GeoJSON `Feature` and `FeatureCollection`; WKT where other systems use it | The standard library's GeoJSON |
 
 PostGIS is the PostgreSQL extension for geographic data. Where this page
 says a PostGIS behaviour was verified, it was checked against PostGIS
@@ -44,7 +44,7 @@ can rely on them without checking each operation.
 A point names its latitude and its longitude, so you never have to
 remember which comes first. An order appears only where a format fixes
 one: in `geo.from_geojson`, `geo.from_lng_lat`, `geo.from_lat_lng` and
-the WKT operations under [Interop](#interop).
+the WKT operations under [GeoJSON and other formats](#geojson-and-other-formats).
 
 ### Edges are great circles
 
@@ -99,11 +99,33 @@ Anything else, a `Geometry` included, is `type.mismatch`, and the message
 names this page. To measure a `Geometry`, `match` it first, so your code
 decides what, say, a point's area is.
 
-## Operations
+## Geometry operations
 <!-- topic: geometry-operations -->
 
 The `geo.` operations measure distances, lengths, directions and areas,
-and say whether one shape touches or holds another:
+and say whether one shape touches or holds another. Here is the distance
+between two places. Save this as `main.jadpo` and run
+`jadpo test main.jadpo`:
+
+```jadpo check project=geo-first
+test "London to Paris is measured on the ellipsoid" {
+    var big_ben: Point = Point {
+        latitude: 51.5072
+        longitude: -0.1276
+        altitude: none
+    }
+    var eiffel_tower: Point = Point {
+        latitude: 48.8566
+        longitude: 2.3522
+        altitude: none
+    }
+    assert geo.distance(big_ben, eiffel_tower) == 343896.891267metre
+}
+```
+
+`Point` and `geo.` are built in, so the example declares nothing.
+
+Every operation:
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
@@ -121,7 +143,7 @@ and say whether one shape touches or holds another:
 Each SQL form is PostGIS's own function for the operation, which
 [aggregate queries](06-reads-and-writes.md#the-aggregates) can use. A
 `where:` condition doesn't compile to its form: it searches a little
-wider and leaves the answer to Jadpo's code, as [Queries](#queries)
+wider and leaves the answer to Jadpo's code, as [Finding records by place](#finding-records-by-place)
 explains. `bounding_box` and `centroid` have no use in a query.
 
 Here a bakery measures its van's trips, its round and its patches:
@@ -306,7 +328,7 @@ ring, so it parts from that meaning in four cases:
   points each in a different part aren't covered.
 
 `geo.contains` keeps to "no point of `b` lies outside `a`" in each of
-these cases, in code and in a query ([Queries](#queries)).
+these cases, in code and in a query ([Finding records by place](#finding-records-by-place)).
 
 ### A box as the container
 
@@ -314,7 +336,7 @@ With a `BoundingBox` as `a`, `geo.contains` compares latitudes and
 longitudes directly, because a box's edges are parallels and meridians,
 not great circles. In code a box can hold any geometry; an edge's highest
 or lowest point, and the longitudes between its ends, count. In a query
-the box filter works on `Point` fields only ([Queries](#queries)).
+the box filter works on `Point` fields only ([Finding records by place](#finding-records-by-place)).
 
 ### A circle as the container
 
@@ -354,9 +376,7 @@ so a line's edge between them is just its two ends.
 
 `buffer` isn't an operation ([What geospatial leaves out, and what to use instead](#what-geospatial-leaves-out-and-what-to-use-instead)).
 Neither is the distance between a point and a line or polygon. It comes
-when one of the standard library's
-[scenario applications](19-standard-library.md#scenario-applications)
-needs it.
+when an application needs it.
 
 ## Predicates and shapes
 <!-- topic: predicates-and-shapes -->
@@ -536,7 +556,7 @@ its own: each of its polygons is valid, and they may overlap.
 
 A polygon read from GeoJSON or WKT that isn't valid is refused, `format`
 at the ring's place, as the standard library's other checks on reading
-are ([Every boundary through the contract](19-standard-library.md#every-boundary-through-the-contract)).
+are ([How a standard value is sent, stored and shown](19-standard-library.md#how-a-standard-value-is-sent-stored-and-shown)).
 A polygon built in code that isn't valid breaks a named rule,
 `rings_valid`, which you map like any rule across fields
 ([Rules across fields](02-values-and-types.md#rules-across-fields)).
@@ -712,7 +732,7 @@ error: This `Polygon` breaks its rule `rings_valid`
 check failed: 1 error, 1 file
 ```
 
-## Storage
+## Storing geometries
 <!-- topic: geospatial-storage (was storage) -->
 
 A geometry field of an entity is stored in one PostgreSQL column of
@@ -842,7 +862,7 @@ starts with `CREATE EXTENSION IF NOT EXISTS postgis;`, in the migration's
 transaction like the rest. An application with no geometry column or
 index never creates the extension and never needs PostGIS on its server,
 as an application with no entity needs no database
-([Data](05-data.md)). [A store with no PostGIS](#a-store-with-no-postgis)
+([Entities, stores and migrations](05-data.md)). [A store with no PostGIS](#a-store-with-no-postgis)
 says what happens when the server can't create it.
 
 ### One `geography` column, with a check
@@ -903,7 +923,7 @@ sends no type number, so the server takes the column's own type, as
 pgvector's values are sent. It reads back the EWKB of `geography_send`.
 When the compiler writes a geometry into a statement, it writes EWKT,
 each coordinate the shortest decimal of its double. WKB is used only
-inside the driver ([Interop](#interop)).
+inside the driver ([GeoJSON and other formats](#geojson-and-other-formats)).
 
 ### Indexes
 
@@ -949,7 +969,7 @@ server. What happens on each kind of store:
 | Any store, in an application with no geometry column or index | Nothing: PostGIS is never needed |
 | PostgreSQL with PostGIS available | The first migration with a geometry column or index creates the extension; nothing to configure. Neon, Supabase, Amazon RDS and Google Cloud SQL all offer PostGIS (assumption from their documentation, not tested here) |
 | PostgreSQL without it, or a role that can't create it | `jadpo migrate apply` stops before changing anything, with `migration.extension_missing`. The error names the extension and says that a role allowed to create it runs `CREATE EXTENSION postgis` once. PostGIS isn't a trusted extension, so creating it needs a superuser or the provider's own admin role (verified). The application already refuses to start against a database whose migrations aren't applied ([Migrations](05-data.md#migrations)), which covers the rest |
-| Redis ([Entities in Redis](06-reads-and-writes.md#entities-in-redis)), and D1 when it arrives | A geometry field is kept in the entity's JSON as its GeoJSON, as a Redis entity keeps all its fields. Any `geo.` condition or order is the compile error that names PostgreSQL, as for any query a Redis entity can't serve |
+| Redis ([Reading and writing entities in Redis](06-reads-and-writes.md#reading-and-writing-entities-in-redis)), and D1 when it arrives | A geometry field is kept in the entity's JSON as its GeoJSON, as a Redis entity keeps all its fields. Any `geo.` condition or order is the compile error that names PostgreSQL, as for any query a Redis entity can't serve |
 
 So the compiler refuses what it can see, a `geo.` condition on a store
 that has no spatial queries, and `jadpo migrate apply` refuses what only
@@ -975,7 +995,7 @@ error: `main` has no `postgis` extension, and its role can't create it
   help: https://jadpo.dev/docs/errors/migration.extension_missing
 ```
 
-## Queries
+## Finding records by place
 <!-- topic: geospatial-queries (was queries) -->
 
 You find records by where they are with a `geo.` call as a query's
@@ -1454,14 +1474,14 @@ with its own tolerances, and Jadpo exactly. `ST_Covers` also parts from
 `geo.contains` on four kinds of polygon. So a query's condition uses
 PostGIS only to find the rows, through the index, a millimetre wider than
 the condition, and the runtime decides each row with the same code a body
-runs ([Queries](#queries)). The index is used, and the answer is the
+runs ([Finding records by place](#finding-records-by-place)). The index is used, and the answer is the
 code's.
 
 The cost is the code's test on each row found: about 40 µs a distance
 natively, and 0.44 ms for a point in a 100-point patch. So a radius
 holding a thousand bakeries spends some 40 ms sorting them by distance.
 
-## Interop
+## GeoJSON and other formats
 <!-- topic: geospatial-interop (was interop) -->
 
 Other systems send and expect geometries in their own formats: map
@@ -1589,7 +1609,9 @@ test "a patch with one corner at a height is refused" {
   where the type is written or where a literal's values give it. A
   literal takes its arguments from the type its place expects, or else
   from its values: a feature's from its geometry and its properties, a
-  collection's from its features.
+  collection's from its features. A literal never writes them itself:
+  `Feature<Point, Pin> { ... }` is
+  [`type.record_type_arguments`](../errors/type.record_type_arguments.md).
 - **Read strictly.** A feature's members are `type`, which must be
   `Feature` (another is `variant`), `geometry`, `properties`, and the
   `bbox` that RFC 7946 §5 lets any object carry. A `bbox` is checked as
@@ -1675,9 +1697,9 @@ test "the map fetches its pins as GeoJSON" {
 }
 ```
 
-This route answers `POST`, since an action builds its layer. A layer of
-stored records comes from a query, which a `GET` route runs, so a mapping
-library fetches it from the route's address
+This route answers `POST`, which any action can do. A layer of stored
+records comes from a query, which a `GET` route runs, so a mapping library
+fetches it from the route's address
 ([A query giving a map layer](06-reads-and-writes.md#a-query-giving-a-map-layer)).
 
 ### WKT and EWKT
@@ -1892,9 +1914,9 @@ what to use instead:
 | `geo.buffer` | PostGIS buffers a `geography` by projecting it to a planar system it picks, so the result depends on PROJ's choice and can't be reproduced in Jadpo's code | `within(distance:)` and `Circle` for "near"; a provider package for drawn buffers |
 | Coordinate systems other than WGS84 (British National Grid and the rest) | Accurate conversion needs datum grids (OSTN15 for Great Britain), megabytes of data per system that every wasm32 build would carry | `EastingNorthing` kept with its `Crs`; a provider package later |
 | Straight edges on longitude and latitude (`geometry` columns) | Two edge meanings would split every operation in two; the standard library stores geometries as `geography` | Great circles ([Edges are great circles](#edges-are-great-circles)) |
-| Routing, travel times, geocoding | Network data and paid services | Provider packages ([Integrations](11-integrations.md)) |
+| Routing, travel times, geocoding | Network data and paid services | Provider packages ([External services](11-integrations.md)) |
 | Nearest first without a radius, farthest first, pages by distance | Disagree with `geo.distance` or can't use the index | A radius ([Nearest first inside a radius](#nearest-first-inside-a-radius)) |
-| Simplifying, unions, splitting at the antimeridian | None of the standard library's [scenario applications](19-standard-library.md#scenario-applications) needs them; each is a large algorithm | Later, when one does |
+| Simplifying, unions, splitting at the antimeridian | None of the nine kinds of application the standard library is designed for needs them; each is a large algorithm | Later, when one does |
 | `GeometryCollection`, and a `Feature` with no geometry | Rare, and each makes every consumer handle an extra case | A `MultiPolygon`, or the right geometry type |
 | Altitude in any operation | WGS84's operations are on the surface; height above the ellipsoid isn't height above the ground | Kept and stored, never measured |
 
@@ -1904,6 +1926,6 @@ what to use instead:
 | Feature | Status |
 |---|---|
 | Everything on this page but the rows below | Built. |
-| Geometries in Redis | Not built yet: waits for entities in Redis ([Entities in Redis](06-reads-and-writes.md#entities-in-redis)). Until then nothing stores a geometry there. A Redis entity will keep a geometry as its GeoJSON, and every geometry, with and without altitude, comes back from its GeoJSON unchanged, except that a polygon wound clockwise comes back wound by the right-hand rule, which PostGIS storage doesn't do. |
+| Geometries in Redis | Not built yet: waits for entities in Redis ([Reading and writing entities in Redis](06-reads-and-writes.md#reading-and-writing-entities-in-redis)). Until then nothing stores a geometry there. A Redis entity will keep a geometry as its GeoJSON, and every geometry, with and without altitude, comes back from its GeoJSON unchanged, except that a polygon wound clockwise comes back wound by the right-hand rule, which PostGIS storage doesn't do. |
 | A `geo.` condition in an include or an aggregate query | Not built yet (`toolchain.not_built_yet`): an include's records aren't checked again by the code yet, and an aggregate's totals are the database's ([The aggregates](06-reads-and-writes.md#the-aggregates)). |
 | `IndexKind`s other than `geographic` and `hnsw` | Not built yet ([Special kinds of index](05-data.md#special-kinds-of-index)). |

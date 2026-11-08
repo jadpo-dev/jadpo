@@ -105,6 +105,7 @@ Help
 
 On every command
   --json        Print data for tools instead of text
+  --full        Show everything a report shortens
   --help        Show every flag, with examples
   --color       Choose when to use colour     auto, always, never
 
@@ -186,6 +187,7 @@ Help
 
 On every command
   --json        Print data for tools instead of text
+  --full        Show everything a report shortens
   --help        Show every flag, with examples
   --color       Choose when to use colour     auto · always · never
 
@@ -235,6 +237,7 @@ Arguments
 
 On every command
   --json        Print data for tools instead of text
+  --full        Show everything a report shortens
   --help        Show every flag, with examples
   --color       Choose when to use colour     auto, always, never
 
@@ -308,7 +311,7 @@ fn help_json_is_the_whole_command_reference() {
     let output = jadpo(&["help", "--json"]);
     assert_eq!(output.code, 0);
     let document = json(&output);
-    assert_eq!(document["schemaVersion"], 2);
+    assert_eq!(document["schemaVersion"], 3);
     assert_eq!(document["command"], "help");
     assert_eq!(document["ok"], true);
     let data = &document["data"];
@@ -393,8 +396,8 @@ fn help_json_is_the_whole_command_reference() {
         .iter()
         .map(|f| f["name"].as_str().expect("name"))
         .collect();
-    assert_eq!(flags, ["--json", "--help", "--color"]);
-    assert_eq!(data["flags"][2]["value"], "when");
+    assert_eq!(flags, ["--json", "--full", "--help", "--color"]);
+    assert_eq!(data["flags"][3]["value"], "when");
     let rules = data["rules"].as_array().expect("rules");
     assert!(rules.iter().any(|rule| rule["id"] == "cli.unknown_command"
         && rule["area"] == 14
@@ -416,6 +419,7 @@ fn help_json_is_the_whole_command_reference() {
             "test.failed",
             "test.no_tests",
             "test.runtime_start_failed",
+            "test.database_unavailable",
             "migration.apply_failed",
             "migration.extension_missing",
             "migration.extension_outdated",
@@ -463,10 +467,20 @@ fn help_json_is_the_whole_command_reference() {
 
 #[test]
 fn help_json_for_one_command_is_that_command() {
-    let document = json(&jadpo(&["help", "completions", "--json"]));
+    // The same but for how long each took.
+    let timeless = |args: &[&str]| {
+        let mut document = json(&jadpo(args));
+        document
+            .as_object_mut()
+            .expect("an object")
+            .remove("durationMs")
+            .expect("its duration");
+        document
+    };
+    let document = timeless(&["help", "completions", "--json"]);
     assert_eq!(document["data"]["name"], "completions");
-    assert_eq!(json(&jadpo(&["completions", "--help", "--json"])), document);
-    assert_eq!(json(&jadpo(&["--json"])), json(&jadpo(&["help", "--json"])));
+    assert_eq!(timeless(&["completions", "--help", "--json"]), document);
+    assert_eq!(timeless(&["--json"]), timeless(&["help", "--json"]));
 }
 
 #[test]
@@ -675,6 +689,33 @@ fn completions_for_an_unknown_shell_suggests_one() {
     );
 }
 
+/// `jadpo dev` answers a word it doesn't have however many follow it, so its
+/// `next:` never names a command that doesn't exist.
+#[test]
+fn a_word_jadpo_dev_doesnt_have_is_answered_with_a_command_that_works() {
+    let output = jadpo(&["dev", "grants", "add", "x"]);
+    assert_eq!(output.code, 2);
+    assert_eq!(
+        output.stderr,
+        "error: `jadpo dev` has no `grants`
+  reason: `jadpo dev` serves the app; `jadpo dev token <user-id>` signs a token from its local issuer.
+  next: Run `jadpo dev`, or `jadpo dev token <user-id>` (agent)
+  rule: cli.dev_arguments
+  help: https://jadpo.dev/docs/errors/cli.dev_arguments
+"
+    );
+    // `token` keeps the count: what it is told to keep is a command.
+    let output = jadpo(&["dev", "token", "a", "b"]);
+    assert_eq!(output.code, 2);
+    assert!(
+        output
+            .stderr
+            .contains("next: Run `jadpo dev token a` (agent)"),
+        "{}",
+        output.stderr
+    );
+}
+
 #[test]
 fn extra_arguments_are_refused() {
     let output = jadpo(&["version", "extra"]);
@@ -799,6 +840,7 @@ fn tab_completes_flags_with_descriptions_and_values() {
         complete(&["help", "--"]),
         [
             "--json\tPrint data for tools instead of text",
+            "--full\tShow everything a report shortens",
             "--help\tShow every flag, with examples",
             "--color\tChoose when to use colour",
         ]

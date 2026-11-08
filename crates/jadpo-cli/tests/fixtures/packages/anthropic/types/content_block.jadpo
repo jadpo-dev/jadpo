@@ -1,0 +1,6 @@
+/// One block of a message's content: its type (`text`, `thinking` and
+/// others), and the text of a `text` block.
+public type ContentBlock = Object {
+    type: Text
+    text: Text?
+}

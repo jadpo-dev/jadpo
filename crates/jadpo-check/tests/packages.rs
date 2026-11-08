@@ -437,6 +437,41 @@ fn the_index_holds_its_description_licence_and_version_only() {
 }
 
 #[test]
+fn an_index_may_name_its_publisher_and_has_to_name_it_well() {
+    let named = (
+        INDEX.0,
+        "/// UK postcodes.\npackage Postcodes.v2 {\n    publisher: \"@acme-labs\"\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}\n",
+    );
+    let mut files = with(&[SAVE]);
+    files.retain(|(path, _)| *path != INDEX.0);
+    files.push(named);
+    assert_eq!(installed(&files), Vec::<String>::new());
+    for written in [
+        "\"acme\"",
+        "\"@Acme\"",
+        "\"@acme/postcodes\"",
+        "\"@-acme\"",
+        "\"@acme--labs\"",
+        "\"\"",
+        "Licence.mit",
+        "3",
+    ] {
+        let text = format!(
+            "/// UK postcodes.\npackage Postcodes.v2 {{\n    publisher: {written}\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}}\n"
+        );
+        let mut files = with(&[SAVE]);
+        files.retain(|(path, _)| *path != INDEX.0);
+        files.push((INDEX.0, text.as_str()));
+        let found = installed(&files);
+        let expected = format!("package.index_invalid: `{written}` isn't a package's `publisher:`");
+        assert!(
+            found.iter().any(|p| p.contains(&expected)),
+            "{expected}: {found:#?}"
+        );
+    }
+}
+
+#[test]
 fn a_package_holds_no_email_templates() {
     let email = (
         "packages/postcodes/v2/emails/welcome.jadpo",
@@ -1337,5 +1372,328 @@ fn a_package_s_failure_arm_without_its_version_is_refused_once() {
         vec![
             "domains/addresses/actions/maybe_postcode.jadpo package.version_needed: `Postcodes` is held in two versions, so a name through it says which".to_string(),
         ]
+    );
+}
+
+/// A mail provider written by hand, its public types and one it keeps to
+/// itself, in `folder`.
+fn mailer(folder: &str, provider: &str) -> Vec<(String, String)> {
+    vec![
+        (
+            format!("{folder}/package.jadpo"),
+            "/// Acme Mail.\npackage AcmeMail.v1 {\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}\n"
+                .to_string(),
+        ),
+        (format!("{folder}/provider.jadpo"), provider.to_string()),
+        (
+            format!("{folder}/types/outgoing_email.jadpo"),
+            "/// One email to send.
+public type OutgoingEmail = Object {
+    from: Text
+    to: List<Text>
+    cc: List<Text>?
+    subject: Text
+    html: Text {
+        personal: PersonalData.identifying
+    }
+    customer_email: Text
+    first_name: Text
+    surname: Text
+    full_name: Text
+    billing_phone: Text
+    name: Text
+    tag: Text
+}
+"
+            .to_string(),
+        ),
+        (
+            format!("{folder}/types/conversion.jadpo"),
+            "/// A rate between two currencies.
+public type Conversion = Object {
+    from: Text
+    to: Text
+    text: Text
+}
+"
+            .to_string(),
+        ),
+        (
+            format!("{folder}/types/kept.jadpo"),
+            "/// The provider's own shape, kept inside.
+type Kept = Object {
+    email: Text
+}
+"
+            .to_string(),
+        ),
+        (
+            format!("{folder}/types/chat.jadpo"),
+            "/// One message to a model.
+public type ChatTurn = Object {
+    role: Text
+    content: Text
+    model: Text
+    prompt: Text
+}
+"
+            .to_string(),
+        ),
+    ]
+}
+
+const MAIL_PROVIDER: &str = "/// Acme Mail's sending API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: \"https://api.acme-mail.example\"
+    }
+}
+";
+
+fn borrowed(files: &[(String, String)]) -> Vec<(&str, &str)> {
+    files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect()
+}
+
+/// `package.standard_candidate` reads a provider's text by its name (area
+/// 11, "Shape and name detection"): an email's sender and recipients,
+/// addresses, names and phone numbers may be standard types, and free
+/// text a person writes is marked `personal:`. A `to` that isn't an
+/// email's, a field already marked, a type kept inside and a name that
+/// says nothing aren't flagged.
+#[test]
+fn a_providers_text_named_like_personal_data_is_flagged() {
+    let files = mailer("shared/providers/acme_mail/v1", MAIL_PROVIDER);
+    let mut all = vec![APP];
+    all.extend(borrowed(&files));
+    let found: Vec<String> = problems(&all, &[])
+        .into_iter()
+        .filter(|p| p.contains("package.standard_candidate"))
+        .map(|p| p.split_once(": ").map(|(_, m)| m.to_string()).unwrap_or(p))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            "`ChatTurn.content` may hold personal data with no `personal:`",
+            "`ChatTurn.prompt` may hold personal data with no `personal:`",
+            "`OutgoingEmail.from` may be an `Email`",
+            "`OutgoingEmail.to` may be an `Email`",
+            "`OutgoingEmail.cc` may be an `Email`",
+            "`OutgoingEmail.subject` may hold personal data with no `personal:`",
+            "`OutgoingEmail.customer_email` may be an `Email`",
+            "`OutgoingEmail.first_name` may be a `GivenName`",
+            "`OutgoingEmail.surname` may be a `FamilyName`",
+            "`OutgoingEmail.full_name` may hold personal data with no `personal:`",
+            "`OutgoingEmail.billing_phone` may be a `PhoneNumber`",
+        ],
+        "{found:#?}"
+    );
+    // A list keeps its shape in the swap it suggests.
+    let db = Database::default();
+    let project = project_with_records(&db, Layout::Project, &all, &[]);
+    let cc = jadpo_check::check(&db, project)
+        .into_iter()
+        .find(|d| d.message == "`OutgoingEmail.cc` may be an `Email`")
+        .expect("the cc finding");
+    assert!(
+        cc.next
+            .as_ref()
+            .is_some_and(|next| next.text.contains("`cc: List<Email>?`")),
+        "{:?}",
+        cc.next
+    );
+}
+
+/// An installed package's files are held to its digest, so a release
+/// from before its text was read isn't refused in the app.
+#[test]
+fn an_installed_providers_text_is_left_to_its_publisher() {
+    let folder = "packages/acme_mail/v1";
+    let mut files = mailer(folder, MAIL_PROVIDER);
+    // A decline its publisher wrote is no one's to remove in the app.
+    files[2].1 = files[2].1.replace(
+        "    tag: Text\n",
+        "    decline package.standard_candidate: \"Checked by its publisher\"\n    tag: Text\n",
+    );
+    let held = borrowed(&files);
+    let lock = lock_for("AcmeMail.v1", folder, &held, &[]);
+    let mut all = vec![APP];
+    all.extend(held);
+    let found = problems(&all, &[("jadpo.lock", &lock)]);
+    assert!(
+        !found
+            .iter()
+            .any(|p| p.contains("package.standard_candidate") || p.contains("decline.unused")),
+        "{found:#?}"
+    );
+}
+
+/// A hand-written package lists its reviewed types in `provider { }`
+/// itself, each once and each its own; an imported one keeps the list in
+/// `imported:`.
+#[test]
+fn a_hand_written_provider_lists_what_it_reviewed() {
+    let check = |provider: &str| {
+        let files = mailer("shared/providers/acme_mail/v1", provider);
+        let mut all = vec![APP];
+        all.extend(borrowed(&files));
+        problems(&all, &[])
+            .into_iter()
+            .filter(|p| p.contains("package.provider_invalid"))
+            .collect::<Vec<_>>()
+    };
+    let with = |reviewed: &str| MAIL_PROVIDER.replace("\n}\n", &format!("\n    {reviewed}\n}}\n"));
+    assert_eq!(
+        check(&with("reviewed: [OutgoingEmail, Conversion]")),
+        Vec::<String>::new()
+    );
+    let found = check(&with("reviewed: [OutgoingEmial, Conversion, Conversion]"));
+    for expected in [
+        "`OutgoingEmial` in `reviewed:` isn't one of the package's types",
+        "`Conversion` is in `reviewed:` twice",
+    ] {
+        assert!(
+            found.iter().any(|p| p.contains(expected)),
+            "{expected}: {found:#?}"
+        );
+    }
+    let beside = with(
+        "imported: {\n        file: \"acme-mail.json\"\n        digest: \"sha256:4f1c\"\n    }\n    reviewed: [Conversion]",
+    );
+    let found = check(&beside);
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("`reviewed:` is beside `imported:`")),
+        "{found:#?}"
+    );
+}
+
+/// The package's library with two constants of one type holding one value,
+/// a judgement call a newer Jadpo might raise in a published release.
+const ALIKE: (&str, &str) = (
+    "packages/postcodes/v2/libraries/uk.jadpo",
+    "/// Reading UK postcodes.
+public library uk {
+    /// The shortest postcode.
+    constant shortest: WrittenPostcode = \"W1 1AA\"
+
+    /// The shortest postcode, again.
+    constant also_shortest: WrittenPostcode = \"W1 1AA\"
+
+    /// Reads a UK postcode as it is written.
+    function parse(written: WrittenPostcode) fails InvalidPostcode -> UkPostcode {
+        if (written == shortest or written == also_shortest) {
+            return attempt UkPostcode(written) {
+                invalid: InvalidPostcode
+            }
+        }
+        return attempt UkPostcode(written) {
+            invalid: InvalidPostcode
+        }
+    }
+}
+",
+);
+
+/// The rules of the files given, as `path rule` lines, set apart or not.
+fn checked_installed(files: &[(&str, &str)]) -> (Vec<String>, Vec<(String, Vec<String>)>) {
+    let lock = lock_for("Postcodes.v2", "packages/postcodes/v2", files, &[GUIDE]);
+    let db = Database::default();
+    let records = [GUIDE, ("jadpo.lock", lock.as_str())];
+    let project = project_with_records(&db, Layout::Project, files, &records);
+    let line = |d: &jadpo_diag::Diagnostic| {
+        let path = d
+            .primary
+            .as_ref()
+            .map_or("", |label| label.span.path.as_str());
+        format!("{path} {}", d.rule.id)
+    };
+    let checked = jadpo_check::checked(&db, project);
+    (
+        checked.problems.iter().map(line).collect(),
+        checked
+            .publishers
+            .iter()
+            .map(|(package, found)| (package.clone(), found.iter().map(line).collect()))
+            .collect(),
+    )
+}
+
+/// A newer Jadpo's publishing-bar finding in an installed package's own
+/// code is its publisher's to answer: the app is told and keeps working.
+/// A real error still refuses (area 11, "How the package format is read").
+#[test]
+fn an_installed_packages_publishing_bar_finding_is_left_to_its_publisher() {
+    let files: Vec<(&str, &str)> = with(&[SAVE])
+        .into_iter()
+        .map(|file| if file.0 == UK.0 { ALIKE } else { file })
+        .collect();
+    let (problems, publishers) = checked_installed(&files);
+    assert_eq!(problems, Vec::<String>::new());
+    assert_eq!(
+        publishers,
+        [(
+            "Postcodes.v2".to_string(),
+            vec!["packages/postcodes/v2/libraries/uk.jadpo constant.similar_exists".to_string()]
+        )]
+    );
+    // An error that isn't a judgement call is a package that doesn't
+    // compile, and refuses the app as before.
+    let broken = ALIKE.1.replace(
+        "return attempt UkPostcode(written) {\n                invalid",
+        "return attempt UkPostcode(also) {\n                invalid",
+    );
+    let files: Vec<(&str, &str)> = files
+        .into_iter()
+        .map(|file| {
+            if file.0 == UK.0 {
+                (UK.0, broken.as_str())
+            } else {
+                file
+            }
+        })
+        .collect();
+    let (problems, _) = checked_installed(&files);
+    assert!(
+        problems
+            .iter()
+            .any(|line| line.starts_with("packages/postcodes/v2/libraries/uk.jadpo ")),
+        "{problems:?}"
+    );
+}
+
+/// The app's own integration is the app's code: its findings are errors.
+#[test]
+fn the_apps_own_integrations_publishing_bar_finding_is_an_error() {
+    let own: Vec<(String, String)> = with(&[])
+        .into_iter()
+        .map(|(path, text)| {
+            let path = path.replace("packages/postcodes", "shared/providers/postcodes");
+            let text = if path.ends_with("libraries/uk.jadpo") {
+                ALIKE.1
+            } else {
+                text
+            };
+            (path, text.to_string())
+        })
+        .chain([(
+            SAVE.0.to_string(),
+            SAVE.1
+                .replace("use packages/postcodes", "use shared/providers/postcodes"),
+        )])
+        .collect();
+    let own: Vec<(&str, &str)> = own.iter().map(|(p, t)| (p.as_str(), t.as_str())).collect();
+    let found = problems(&own, &[]);
+    assert_eq!(
+        found
+            .iter()
+            .filter(|line| line.contains("constant.similar_exists"))
+            .count(),
+        1,
+        "{found:?}"
     );
 }

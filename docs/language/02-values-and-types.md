@@ -28,7 +28,22 @@ types the language's own features need.
 ### Representation types
 
 The representation types say how a value is held: as a number, as text, as
-bytes. They are the raw material you build your own types from.
+bytes. They are the raw material you build your own types from. Here is one
+in use. Save this as `main.jadpo` and run `jadpo test main.jadpo`:
+
+```jadpo check project=built-in-types
+type TodoTitle = Text {
+    max_length: 200
+}
+
+test "a title is text up to its limit" {
+    var title: TodoTitle = "Buy flour"
+    assert title == "Buy flour"
+}
+```
+
+`Text` is built in, and `TodoTitle` is a type of your own, defined here. The
+six representation types are:
 
 | Type | What it holds |
 |---|---|
@@ -71,48 +86,8 @@ Its fields are named, never positional:
 
 Their names are global, like `Int`, so you never import one. Their
 operations are grouped under a prefix such as `money.`, `units.` or
-`temporal.`. There are 253 standard types, and
-[The standard types](19-standard-library.md#the-standard-types) lists every
-one and every operation. The groups and their best-known types are:
-
-| Group | Headline types | Namespaces |
-|---|---|---|
-| Money and payments | `Money`, `Currency`, `ExchangeRate`, `Price`, `TaxRate`, `Discount`, `Iban`, `BankAccount`, `PaymentCardNumber` | `money` |
-| Time and calendar | `Instant`, `CalendarDate`, `ZonedTime`, `Duration`, `LocalTime`, `DateRange`, `RecurrenceRule`, `OpeningHours` | `temporal`, `range` |
-| Quantities and units | `Length`, `Mass`, `Temperature`, `Speed`, `Energy`, `DataSize`, `Percentage`, `Ratio`, `Range<T>` | `units`, `range` |
-| People and places | `PersonName`, `Username`, `Email`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Country`, `Language`, `Locale`, `Zone` | `locale`, `text` |
-| Web and network | `Url`, `Slug`, `DomainName`, `HttpStatus`, `IpAddress`, `Cidr`, `Cookie` | `web` |
-| Software | `SemanticVersion`, `GitRef`, `FilePath`, `TraceId`, `Ulid`, `IdempotencyKey` | `semver` |
-| Text and documents | `Markdown`, `Html`, `RichText`, `LocalisedText` | `markup`, `text` |
-| Media | `Colour`, `ImageDimensions`, `AspectRatio`, `FrameRate`, `VideoCodec`, `Timecode`, `ContentRating` | `colour`, `media` |
-| Security and secrets | `Password`, `PasswordHash`, `Hash`, `Hmac`, `Jwt`, `PublicKey`, `Certificate`, `ApiKey`, `SecretText`, `EncryptedValue` | `crypto`, `hash`, `random` |
-| Geospatial | `Point`, `Latitude`, `Polygon`, `Geometry`, `BoundingBox`, `Geohash` | `geo` ([Geospatial](20-geospatial.md)) |
-| AI | `TokenCount`, `TokenUsage`, `ChatMessage`, `ChatRole`, `Vector`, `Embedding` | `ai` ([AI](21-ai.md)) |
-| Codes and identifiers | `Sku`, `Ean13`, `Isbn`, `Barcode`, `TrackingNumber`, `Vin`, `VatNumber`, `NhsNumber`, `Icd10Code`, `IataAirport`, `FlightNumber`, `Orcid` | none beyond the contract below |
-
-Every standard type, by group. "(enum)" marks a fixed list of values,
-held as a built-in [enum](#enums):
-
-| Group | Types |
-|---|---|
-| People and contact (12) | `PersonName`, `GivenName`, `FamilyName`, `Username`, `Email`, `EmailWithName`, `PhoneNumber`, `PhoneExtension`, `PostalAddress`, `PostalCode`, `Uprn`, `Nationality` (enum) |
-| Places (10) | `Country` (enum), `CountrySubdivision` (enum), `Continent` (enum), `UnLocode`, `CallingCode`, `Language` (enum), `WritingScript` (enum), `TextDirection` (enum), `Locale` (enum), `Zone` (enum) |
-| Geospatial (17) | `Point`, `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` |
-| Money and banking (24) | `Money`, `Currency` (enum), `ExchangeRate`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, `PaymentCardNumber`, `MaskedCardNumber`, `CardBrand` (enum), `CardBin`, `CardExpiry`, `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`, `UkAccountNumber`, `BankAccount`, `AbaRoutingNumber`, `Lei`, `Isin` |
-| Tax and identity numbers (12) | `VatNumber`, `TaxId`, `UkUtr`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin`, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, `IdentityDocumentKind` (enum), `NhsNumber` |
-| Commerce and logistics (22) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ClothingSizeSystem` (enum), `ShoeSize`, `ShoeSizeSystem` (enum), `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` |
-| Time and calendar (19) | `Instant`, `CalendarDate`, `ZonedTime`, `Duration`, `Weekday` (enum), `LocalTime`, `LocalDateTime`, `Month` (enum), `YearMonth`, `Year`, `Quarter`, `IsoWeek`, `UtcOffset`, `DateRange`, `InstantRange`, `CalendarPeriod`, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` |
-| Physical quantities (17) | `Length`, `Area`, `Volume`, `Angle`, `Mass`, `Pressure`, `Energy`, `Power`, `Temperature`, `TemperatureDifference`, `Speed`, `Frequency`, `Voltage`, `Current`, `Illuminance`, `SoundLevel`, `Concentration` |
-| Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, `Range<T>`, `DataSize`, `Bitrate`, `Vector`, `Embedding` |
-| Health (10) | `BloodType` (enum), `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `RouteOfAdministration` (enum), `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` (enum) |
-| Media and visual (16) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating`, `ContentRatingScheme` (enum) |
-| Web and network (23) | `Url`, `UrlPath`, `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod` (enum), `HttpStatus`, `HttpHeaderName`, `FileType`, `UserAgent`, `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, `IpAddress`, `Cidr`, `NetworkPort`, `MacAddress`, `Imei`, `Emoji`, `PushToken` |
-| Software (19) | `SemanticVersion`, `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`, `SpanId`, `TraceParent`, `LogLevel` (enum), `FilePath`, `FileName`, `RegularExpression`, `ContainerImage`, `Digest`, `Uuid`, `Ulid`, `IdempotencyKey`, `Doi` |
-| Text formats (4) | `Markdown`, `Html`, `RichText`, `LocalisedText` |
-| Security (20) | `Password`, `PasswordHash`, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, `PublicKey`, `PrivateKey`, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue` |
-| Travel (6) | `IataAirport`, `IcaoAirport`, `IataAirline`, `FlightNumber`, `CabinClass` (enum), `BookingReference` |
-| Other with a published standard (10) | `UnNumber`, `Orcid`, `CefrLevel` (enum), `Mpan`, `Mprn`, `EpcRating` (enum), `Tenure` (enum), `LawfulBasis` (enum), `Jurisdiction`, `ModelId` |
-| AI (4) | `TokenCount`, `TokenUsage`, `ChatMessage`, `ChatRole` (enum) |
+`temporal.`. [Standard types](https://jadpo.dev/docs/types) lists every one, from
+A to Z and by group, each with its own page.
 
 The money types have a few rules of their own, because money is where
 mistakes cost most. `Money` holds a whole number of a currency's minor units,
@@ -158,10 +133,10 @@ of them:
 A type that copies a standard type under another name is the error
 `type.standard_exists`. For example, a `Booking` with only a start and an
 end, each an `Instant`, is an `InstantRange`. When the copy is deliberate,
-you can [decline the error](01-project-layout-and-modules.md#declining-a-judgement-call)
+you can [decline the error](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)
 with a reason. A declaration with the same name
 as a standard type is `type.standard_clash`. Both are explained under
-[The standard types](19-standard-library.md#the-standard-types) and
+[Packages use the standard types](19-standard-library.md#packages-use-the-standard-types) and
 [A release that adds a standard type](19-standard-library.md#a-release-that-adds-a-standard-type).
 
 ### What the standard types do
@@ -359,14 +334,14 @@ that covers the feature.
 |---|---|---|
 | Containers | `List<T>`, `Set<T>`, `Map<K, V>` | Described below. |
 | Translation | `PluralCount`, `TextDirection`, `TranslationReview` | `PluralCount` is a whole number that picks a message's plural form, used directly as a `Message` field; `TextDirection` is a locale's direction, `.left_to_right` or `.right_to_left`, which `locale.direction(value)` gives; `TranslationReview` is `.none` or `.required`, the `review:` of `translations:` in `application { }` ([What the compiler checks of translations](10-configuration-and-time.md#what-the-compiler-checks-of-translations)). |
-| Files | `File`, `FileUpload`, `UploadSlot`, `FileContents` | A stored file (its key, name, size and type) as an entity field; the token of a finished upload in an `Input`; the signed address, or addresses for each part, an upload goes to; and what `store.read` returns, a file's bytes for passing on (to a provider, a PDF service, an email), which the format helpers do not accept ([Files](16-built-in-services.md#files)). |
-| Batches | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `CsvFormat` | A batch run, as the batch helpers return it and as an entity field can store it; its progress from `batches.status`; one bad row or failed item, without its value; what `finished:` receives after reading (or `batches.each`) and after writing, the latter holding the stored `File`; and who a CSV is written for, `CsvFormat.spreadsheet` or `.standard` ([Batches](12-jobs-and-events.md#batches-work-over-many-items)). |
-| Services | `SearchText`, `OAuthGrant`, `AnyObject` | What people type into a search box, 1 to 200 characters with no line breaks, tabs or other control characters, which a query's `matches` reads as words, quoted phrases and `-word` ([Search](16-built-in-services.md#search)); a connection's credential held for each owner record, `OAuthGrant { owner: ... }`, written only in a connection's `credential:` and never readable by code ([Acting for each user: OAuth grants](11-integrations.md#acting-for-each-user-oauth-grants)); and, only as a package operation's input field, any of the app's object types, sent in its JSON form (Postmark's template variables, Stripe's metadata). |
+| Files | `File`, `FileUpload`, `UploadSlot`, `FileContents` | A stored file (its key, name, size and type) as an entity field; the token of a finished upload in an `Input`; the signed address, or addresses for each part, an upload goes to; and what `store.read` returns, a file's bytes for passing on to a provider, which the format helpers do not accept ([Files](16-built-in-services.md#files)). |
+| Batches | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `CsvFormat` | A batch run, as the batch helpers return it and as an entity field can store it; its progress from `batches.status`; one bad row or failed item, without its value; what `finished:` receives after reading (or `batches.each`) and after writing, the latter holding the stored `File`; and who a CSV is written for, `CsvFormat.spreadsheet` or `.standard` ([Batches](12-jobs-and-events.md#batches)). |
+| Services | `SearchText`, `OAuthGrant`, `AnyObject` | What people type into a search box, 1 to 200 characters with no line breaks, tabs or other control characters, which a query's `matches` reads as words, quoted phrases and `-word` ([Search](16-built-in-services.md#search)); a connection's credential held for each owner record, `OAuthGrant { owner: ... }`, written only in a connection's `credential:` and never readable by code ([OAuth grants](11-integrations.md#oauth-grants)); and, only as a package operation's input field, any of the app's object types, sent in its JSON form (Postmark's template variables, Stripe's metadata). |
 | Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration. Other features add bases the same way: `Failure` ([Failures](04-failures.md)), `Event` ([Declaring an event](12-jobs-and-events.md#declaring-an-event)), `EmailMessage` ([Email](16-built-in-services.md#email)), `Document`, a template rendered to HTML or PDF ([Documents](16-built-in-services.md#documents)), and `Message`, a translated message whose fields are its placeholders ([Translations as messages](10-configuration-and-time.md#translations-as-messages)). |
 | Decoding | `DecodeProblem` | `field: Text`, a field's path with list positions as numbers, and `rule: Text`; never the value. It is what a failure mapped from `json.read`'s `mismatch` receives in its `problem` field, and only the runtime builds one. |
 | Nothing | `Unit` | What an action returns when it returns nothing. |
 
-The batch types' fields, as [Batches](12-jobs-and-events.md#batches-work-over-many-items)
+The batch types' fields, as [Batches](12-jobs-and-events.md#batches)
 uses them:
 
 | Type | Fields |
@@ -461,7 +436,7 @@ The same rules hold for the settings on the fields of every type with
 fields, entities and events included. The settings that only an entity's or
 an event's fields take (`generated`, `on_delete`, `unique`, `immutable`,
 `role`, `personal`, `erase`, `retention`) are described with those
-features, starting at [Data](05-data.md).
+features, starting at [Entities, stores and migrations](05-data.md).
 
 An exact number holds at most 38 digits, and a number literal with more is
 `type.invalid_literal`.
@@ -503,7 +478,7 @@ type ParcelWeight = Mass {
 
 A name can be a unit by chance: the `Knots` scouts tie are no speed. The
 rule is a judgement call, so you can decline it on the type with a reason
-([Declining a judgement call](01-project-layout-and-modules.md#declining-a-judgement-call)):
+([Keeping code as it is, with a reason](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)):
 
 ```jadpo check project=scout-knots
 /// Knots the scouts can tie.
@@ -910,7 +885,7 @@ Every type is declared the same way, `type Name = Base { ... }`. The base
 says what the type is built from, and the block holds the details: rules for
 a number or text, fields for an object, variants for an enum. An `entity` is
 declared on its own, because it is more than a type: it is stored, and it has
-actions, queries and policy ([Data](05-data.md)).
+actions, queries and policy ([Entities, stores and migrations](05-data.md)).
 
 ```jadpo check project=one-form file=names.jadpo hidden
 type ReceiptId = Uuid {}
@@ -1076,6 +1051,266 @@ function make_badge(profile: Profile) fails BadgeNameTooLong -> Badge {
 }
 ```
 
+### Names from reserved words
+
+A reserved word ([Reserved words](01-project-layout-and-modules.md#reserved-words))
+may name a field in the body of a type or entity, and a variant in the body
+of an enum. Other languages' data is full of a field called `type`, and
+nothing here can be misread: a field is declared as `word: Type`, set as
+`word: value` and read as `thing.word`, and a variant is always written
+after its enum's name.
+
+```jadpo check project=reserved-names file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=reserved-names file=domains/depot/types/parcel_name.jadpo hidden
+type ParcelName = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+```jadpo check project=reserved-names file=domains/depot/types/kind.jadpo
+type Kind = Enum {
+    library
+    package
+    type
+}
+```
+
+```jadpo check project=reserved-names file=domains/depot/types/haulier.jadpo
+use depot/types { ParcelName }
+
+type Haulier = Enum {
+    public
+    test: {
+        for: ParcelName
+    }
+}
+```
+
+```jadpo check project=reserved-names file=domains/depot/entities/parcel.jadpo
+use depot/types { Kind, ParcelName }
+
+entity Parcel {
+    id: Uuid
+    package: ParcelName
+    type: Kind
+    in: ParcelName?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=reserved-names file=domains/depot/types/parcel_view.jadpo
+use depot/entities { Parcel }
+use depot/types { Kind }
+
+/// A parcel as clients see it.
+type ParcelView = Output {
+    pick: [Parcel.package, Parcel.in]
+    type: Kind
+}
+```
+
+```jadpo check project=reserved-names file=domains/depot/queries/parcels_of.jadpo
+use depot/entities { Parcel }
+use depot/types { Kind, ParcelView }
+
+query parcels_of(name: Parcel.package, asked: Kind) -> List<ParcelView> {
+    from: Parcel
+    where: Parcel.package == name
+    where: Parcel.type == asked
+    order: [Parcel.in asc]
+    limit: 20
+}
+```
+
+```jadpo check project=reserved-names file=domains/depot/actions/ship_parcel.jadpo
+use depot/entities { Parcel }
+use depot/types { Haulier, Kind, ParcelView, Waybill }
+use depot/libraries { notices }
+
+/// What shipping a parcel takes.
+type ShipParcel = Input {
+    package: Parcel.package
+    type: Kind
+}
+
+action ship_parcel(input: ShipParcel) -> ParcelView {
+    var parcel: Parcel = Parcel.create {
+        set: {
+            package: input.package
+            type: input.type
+            in: notices.label(
+                Waybill {
+                    if: input.package
+                    haulier: Haulier.public
+                }
+            )
+        }
+    }
+    return ParcelView {
+        package: parcel.package
+        type: parcel.type
+        in: parcel.in
+    }
+}
+```
+
+```jadpo check project=reserved-names file=domains/depot/types/waybill.jadpo
+use depot/types { Haulier, ParcelName }
+
+type Waybill = Object {
+    if: ParcelName
+    haulier: Haulier
+}
+```
+
+```jadpo check project=reserved-names file=domains/depot/libraries/notices.jadpo
+use depot/types { Haulier, ParcelName, Waybill }
+
+library notices {
+    /// Who a parcel is for.
+    function label(waybill: Waybill) -> ParcelName {
+        return match waybill.haulier {
+            Haulier.public -> waybill.if
+            Haulier.test(details) -> details.for
+        }
+    }
+}
+```
+
+```jadpo check project=reserved-names file=domains/depot/routes/parcels.jadpo migrate=initial
+use depot/types { ParcelView }
+use depot/actions { ShipParcel, ship_parcel }
+
+routes Parcels {
+    prefix: /parcels
+
+    /// Ships a parcel.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: ShipParcel
+        output: ParcelView
+        status: SuccessStatus.created
+        run: ship_parcel(input)
+    }
+}
+```
+
+```jadpo check project=reserved-names file=api/main.jadpo_record
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+POST /parcels
+    authentication none
+    input ShipParcel (body)
+    output ParcelView
+    status 201
+
+enum Kind
+    variant library
+    variant package
+    variant type
+
+output ParcelView
+    in: Text { min_length: 1, max_length: 80 }?
+    package: Text { min_length: 1, max_length: 80 }
+    type: Kind
+
+input ShipParcel
+    package: Text { min_length: 1, max_length: 80 }
+    type: Kind
+```
+
+```jadpo check project=reserved-names file=domains/depot/routes/parcels.test.jadpo hidden
+use depot/types { Haulier, Kind, ParcelView, Waybill }
+use depot/actions { ShipParcel, ship_parcel }
+use depot/queries { parcels_of }
+use depot/libraries { notices }
+
+test "a parcel goes over the wire with the names it was given" {
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/parcels"
+        input: ShipParcel {
+            package: "left-pad"
+            type: Kind.package
+        }
+    }
+    assert response.status == 201
+    assert response.output == ParcelView {
+        package: "left-pad"
+        type: Kind.package
+        in: "left-pad"
+    }
+}
+
+test "a query filters on a field named with a reserved word" {
+    var first: ParcelView = ship_parcel(
+        ShipParcel {
+            package: "left-pad"
+            type: Kind.library
+        }
+    )
+    var other: ParcelView = ship_parcel(
+        ShipParcel {
+            package: "left-pad"
+            type: Kind.type
+        }
+    )
+    var shelf: List<ParcelView> = parcels_of("left-pad", Kind.library)
+    assert shelf == [first]
+    assert other.type == Kind.type
+}
+
+test "a variant named with a reserved word is matched" {
+    var waybill: Waybill = Waybill {
+        if: "left-pad"
+        haulier: Haulier.test {
+            for: "the depot"
+        }
+    }
+    assert notices.label(waybill) == "the depot"
+}
+```
+
+- **What holds it says what it is.** A field is read as `thing.type`, a
+  query's condition names it as `Parcel.type`, and a wording or a `match`
+  arm names a variant as `Kind.library`.
+- **A list of fields may name it alone**, as `unique: { both: [package, type]
+  }`, a policy's `read: [for]` and `order: [type desc]` do, since nothing
+  else a list holds is one word and nothing more.
+- **Elsewhere, alone, the word is still the word.** A rule across fields names
+  fields alone, so it can't read one named with a reserved word: `rule r:
+  type == kind` is `syntax.expected_name`, and the field is renamed or the
+  rule moved into a function. A field called `none` or `true` is the value
+  wherever it stands alone, in a list too.
+- **Only fields and variants.** A parameter, a path parameter, a `match`
+  binding, a variable, a declaration, a
+  rule, a `unique:` entry and a setting the language doesn't define still
+  can't be named with one.
+- **No enum has a `true`, `false` or `none`.** `Kind.none` beside a `Kind?`
+  would read as the `none` it isn't, so a variant called one of these is
+  `type.reserved_variant_name`, as `all` is. A field may be called one.
+- **The wire has the name as written.** Records, OpenAPI and JSON all say
+  `type`, with no spelling of their own, and a column is quoted like any
+  other. `wire_name:` stays for provider packages, where the provider's
+  spelling isn't the Jadpo name
+  ([Spellings](11-integrations.md#spellings-wire_name)).
+- `include`, `pick`, `omit` and `optional`, which aren't reserved words,
+  build a type's fields and stay `type.reserved_field_name`.
+
 ### Field types
 
 Every field of an object, entity or enum variant is a type of its own, written
@@ -1209,7 +1444,7 @@ test "a booking that ends before it starts is refused" {
   request's body or query string, the output a route test reads,
   `text.parse` of a standard type's text, and a read from the store. Jadpo
   never stores a value that breaks a rule, so one read back from the store
-  is a defect ([Data](05-data.md)).
+  is a defect ([Entities, stores and migrations](05-data.md)).
 - **One rule is reported.** The field rules run first, then each rule in the
   order written, and the first one broken is the one reported, so a report
   never depends on more than one rule.
@@ -1352,6 +1587,14 @@ error: `Booking { ... }` can't fail, so it takes no `attempt`
 
 check failed: 1 error, 1 file
 ```
+
+### A record names its type alone
+
+A record's head is its type's name, never type arguments. `Range { ... }`,
+`Feature { ... }` and `FeatureCollection { ... }`, the standard types that take
+them, get them from the type the record's place expects, or else from its
+values, so `Feature<Point, Pin> { ... }` is
+[`type.record_type_arguments`](../errors/type.record_type_arguments.md).
 
 ## Building a type from other types
 <!-- topic: building-a-type-from-other-types -->
@@ -1560,7 +1803,8 @@ A value that may be `none` widens as the value itself does: a
 <!-- topic: enums -->
 
 An enum is a closed list of named alternatives. Variants are always written
-with their enum's name.
+with their enum's name, so a reserved word may name one, other than `true`,
+`false` and `none` ([Names from reserved words](#names-from-reserved-words)).
 
 ```jadpo check project=enum-values
 type TicketStatus = Enum {
@@ -1945,7 +2189,7 @@ function restock(product: Product, stock: Stock) -> Product {
 | A map literal with entries | Not built yet: it is not designed yet. |
 | `FileUpload`, `UploadSlot`, `OAuthGrant`, `AnyObject` and the `Document` base | Not built yet: each comes with the features that use it. |
 | `jadpo inspect`, showing a built type's final fields and where each came from | Not built yet. Hover shows them. |
-| `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `File` and `FileContents` | Partly built: only the runtime builds one. A program reads the batch types' fields, and an entity field keeps a `BatchRun` or a `File` as its JSON; a program can't read a `File`'s or a `FileContents`'s parts yet. |
+| `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `File` and `FileContents` | Partly built: only the runtime builds one. A program reads the batch types' fields, and an entity field keeps a `BatchRun` or a `File` as its JSON; a program reads no part of a `File` or a `FileContents`, which is `type.field_on_non_record`. |
 
 ## Errors
 
@@ -1988,6 +2232,7 @@ triggers it and the compiler's actual output.
 - [`type.unit_as_number`](../errors/type.unit_as_number.md)
 - [`type.optional_outside_input`](../errors/type.optional_outside_input.md)
 - [`type.reserved_field_name`](../errors/type.reserved_field_name.md)
+- [`type.reserved_variant_name`](../errors/type.reserved_variant_name.md)
 - [`type.base_outside_declaration`](../errors/type.base_outside_declaration.md)
 - [`type.not_a_type`](../errors/type.not_a_type.md)
 - [`type.type_argument_count`](../errors/type.type_argument_count.md)

@@ -128,25 +128,64 @@ impl Exit {
     }
 }
 
-/// A holder of personal data leaving by an exit, and whether it only
-/// decided what was sent, rather than being in it.
-pub type Left = (Exit, Holder, bool);
+/// How a holder of personal data is in what leaves: only as what decided
+/// it, rather than in it, and only as what a provider's answer may hold.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct How {
+    pub decided: bool,
+    pub answered: bool,
+}
+
+impl How {
+    /// Whether a row saying this says at least what one saying `other`
+    /// does, so the other adds nothing.
+    pub fn covers(self, other: How) -> bool {
+        self != other && self.decided <= other.decided && self.answered <= other.answered
+    }
+}
+
+/// A holder of personal data leaving by an exit, and how it is in what
+/// leaves.
+pub type Left = (Exit, Holder, How);
+
+/// `left` without the rows another row of the same exit and holder covers.
+pub fn strongest(left: &BTreeSet<Left>) -> impl Iterator<Item = &Left> {
+    left.iter().filter(|(exit, holder, how)| {
+        !left
+            .iter()
+            .any(|(other, same, stronger)| other == exit && same == holder && stronger.covers(*how))
+    })
+}
 
 impl Walk<'_> {
     /// `prov` leaves by `exit`, with what `declared` holds: each holder of
     /// personal data in it, or that decided it, and each parameter's part
     /// for the callers to follow.
     fn sends(&mut self, flow: &Flow<'_>, exit: &Exit, prov: &Prov, declared: &[Ty]) {
+        self.sends_as(flow, exit, prov, declared, false);
+    }
+
+    /// [`Self::sends`], of a value that is all `answered` when a provider's
+    /// answer made it.
+    fn sends_as(
+        &mut self,
+        flow: &Flow<'_>,
+        exit: &Exit,
+        prov: &Prov,
+        declared: &[Ty],
+        answered: bool,
+    ) {
         if !(self.personal && self.report) {
             return;
         }
         let mut params = Vec::new();
-        let mut held = holders(flow, prov, |at, path| params.push((at, path)));
+        let mut held = holders(flow, prov, |at, path| params.push((at, path, answered)));
+        let mut answers = Held(BTreeMap::new());
         for src in prov.flat() {
-            hold_for_exits(flow, src, false, &mut held, &mut params);
+            hold_for_exits(flow, src, false, &mut held, &mut answers, &mut params);
         }
-        for (at, path) in params {
-            self.left_params.insert((exit.clone(), at, path));
+        for (at, path, answered) in params {
+            self.left_params.insert((exit.clone(), at, path, answered));
         }
         let marks = ai_personal::marks(flow.db, flow.project);
         for ty in declared {
@@ -156,10 +195,20 @@ impl Walk<'_> {
                 held.hold(holder, &holding, false);
             }
         }
-        held.fold_types();
-        for (holder, (holding, decided)) in held.0 {
-            if !holding.categories.is_empty() {
-                self.left.insert((exit.clone(), holder, decided));
+        // A standard type a marked field is of goes with the field, however
+        // either of them got there.
+        let mut all = Held(held.0.clone());
+        for (holder, (holding, decided)) in &answers.0 {
+            all.hold(holder.clone(), holding, *decided);
+        }
+        all.fold_types();
+        let rows = [(held, answered), (answers, true)];
+        for (holders, answered) in rows {
+            for (holder, (holding, decided)) in holders.0 {
+                if !holding.categories.is_empty() && all.0.contains_key(&holder) {
+                    self.left
+                        .insert((exit.clone(), holder, How { decided, answered }));
+                }
             }
         }
     }
@@ -246,14 +295,14 @@ impl Walk<'_> {
                 );
                 // What its own operations send, under their names.
                 let summary = flow.summary(action);
-                for (exit, holder, decided) in &summary.left {
+                for (exit, holder, how) in &summary.left {
                     self.left
-                        .insert((exit.on(connection), holder.clone(), *decided));
+                        .insert((exit.on(connection), holder.clone(), *how));
                 }
-                for (exit, at, path) in &summary.left_params {
+                for (exit, at, path, answered) in &summary.left_params {
                     let prov = provs.get(*at).map(|p| p.at(path)).unwrap_or_default();
                     let prov = self.with_pc(prov);
-                    self.sends(flow, &exit.on(connection), &prov, &[]);
+                    self.sends_as(flow, &exit.on(connection), &prov, &[], *answered);
                 }
             }
             Callee::Files {
@@ -379,15 +428,14 @@ impl Walk<'_> {
         }
         // What decided that the call runs decides what it sends.
         let decided = self.with_pc(Prov::default());
-        for (exit, holder, only_decided) in &summary.left {
-            self.left
-                .insert((exit.clone(), holder.clone(), *only_decided));
+        for (exit, holder, how) in &summary.left {
+            self.left.insert((exit.clone(), holder.clone(), *how));
             self.sends(flow, exit, &decided, &[]);
         }
-        for (exit, at, path) in &summary.left_params {
+        for (exit, at, path, answered) in &summary.left_params {
             let prov = provs.get(*at).map(|p| p.at(path)).unwrap_or_default();
             let prov = self.with_pc(prov);
-            self.sends(flow, exit, &prov, &[]);
+            self.sends_as(flow, exit, &prov, &[], *answered);
         }
     }
 }
@@ -431,10 +479,11 @@ fn hold_for_exits(
     src: Src,
     decided: bool,
     held: &mut Held,
-    params: &mut Vec<(usize, Vec<String>)>,
+    answers: &mut Held,
+    params: &mut Vec<(usize, Vec<String>, bool)>,
 ) {
     match shallow(src) {
-        Src::Decided(inner) => hold_for_exits(flow, *inner, true, held, params),
+        Src::Decided(inner) => hold_for_exits(flow, *inner, true, held, answers, params),
         Src::Declared { host, field } => {
             let marks = ai_personal::marks(flow.db, flow.project);
             if let Some(holding) = ai_personal::field_holding(&flow.lookup, marks, &host, &field) {
@@ -443,12 +492,30 @@ fn hold_for_exits(
         }
         Src::Answered(inner) => {
             let answered = holders(flow, &Prov::of((*inner).clone()), |at, path| {
-                params.push((at, path));
+                params.push((at, path, true));
             });
             for (holder, (holding, only_decided)) in answered.0 {
-                held.hold(holder, &holding, decided || only_decided);
+                answers.hold(holder, &holding, decided || only_decided);
             }
-            hold_for_exits(flow, *inner, decided, held, params);
+            // What an answer may hold stays an answer's, however it is held.
+            let mut declared = Held(BTreeMap::new());
+            let mut inner_params = Vec::new();
+            hold_for_exits(
+                flow,
+                *inner,
+                decided,
+                &mut declared,
+                answers,
+                &mut inner_params,
+            );
+            for (holder, (holding, only_decided)) in declared.0 {
+                answers.hold(holder, &holding, only_decided);
+            }
+            params.extend(
+                inner_params
+                    .into_iter()
+                    .map(|(at, path, _)| (at, path, true)),
+            );
         }
         _ => {}
     }
@@ -469,7 +536,7 @@ fn parameters_out(
     }
     let body = &typed_body(flow.db, flow.project, callable).body;
     let marks = ai_personal::marks(flow.db, flow.project);
-    for (exit, at, path) in &summary.left_params {
+    for (exit, at, path, answered) in &summary.left_params {
         let Some(param) = body.params.get(*at) else {
             continue;
         };
@@ -481,7 +548,11 @@ fn parameters_out(
         ai_personal::deep(&flow.lookup, marks, &ty, &mut found, &mut BTreeSet::new());
         for (holder, holding) in found {
             if !holding.categories.is_empty() {
-                out.insert((exit.clone(), holder, false));
+                let how = How {
+                    decided: false,
+                    answered: *answered,
+                };
+                out.insert((exit.clone(), holder, how));
             }
         }
     }
@@ -552,7 +623,7 @@ pub(super) fn package_callable<'db>(
         .rfind(|callable| body_facts(db, project, *callable).key.as_ref() == Some(key))
 }
 
-fn flow_of<'a>(db: &'a dyn Db, project: Project) -> Flow<'a> {
+pub(super) fn flow_of<'a>(db: &'a dyn Db, project: Project) -> Flow<'a> {
     Flow {
         db,
         project,
@@ -605,27 +676,27 @@ pub fn left(db: &dyn Db, project: Project) -> BTreeSet<Left> {
         let mut walk = Walk::blank(&body, model.path.clone(), model.name.clone());
         walk.report = true;
         walk.personal = true;
-        for (exit, at, path) in &summary.left_params {
+        for (exit, at, path, answered) in &summary.left_params {
             let Some(arg) = model.args.get(*at) else {
                 continue;
             };
             let mut full = arg.clone();
             full.extend(path.iter().cloned());
             let part = event_part(&flow, &payload, model.event.name(), &full);
-            walk.sends(&flow, exit, &part, &[]);
+            walk.sends_as(&flow, exit, &part, &[], *answered);
         }
         let mut sent = walk.left;
         sent.extend(summary.left.iter().cloned());
-        for (exit, holder, decided) in sent {
+        for (exit, holder, how) in sent {
             if exit.connection != OWN_CONNECTION {
-                out.insert((exit, holder, decided));
+                out.insert((exit, holder, how));
                 continue;
             }
             for connection in connections
                 .iter()
                 .filter(|connection| Some(&connection.folder) == model.package.as_ref())
             {
-                out.insert((exit.on(&connection.name), holder.clone(), decided));
+                out.insert((exit.on(&connection.name), holder.clone(), how));
             }
         }
     }
@@ -695,7 +766,7 @@ pub fn left(db: &dyn Db, project: Project) -> BTreeSet<Left> {
                             through: Through::Email("MagicLinkEmail".to_string()),
                         },
                         holder,
-                        false,
+                        How::default(),
                     ));
                 }
             }
@@ -746,14 +817,14 @@ pub fn package_left<'db>(db: &'db dyn Db, project: Project, folder: Name<'db>) -
         let mut walk = Walk::blank(&body, model.path.clone(), model.name.clone());
         walk.report = true;
         walk.personal = true;
-        for (exit, at, path) in &summary.left_params {
+        for (exit, at, path, answered) in &summary.left_params {
             let Some(arg) = model.args.get(*at) else {
                 continue;
             };
             let mut full = arg.clone();
             full.extend(path.iter().cloned());
             let part = event_part(&flow, &payload, model.event.name(), &full);
-            walk.sends(&flow, exit, &part, &[]);
+            walk.sends_as(&flow, exit, &part, &[], *answered);
         }
         out.extend(walk.left);
     }
@@ -771,7 +842,7 @@ pub fn package_left<'db>(db: &'db dyn Db, project: Project, folder: Name<'db>) -
                         through: Through::Operation(operation.full_name()),
                     },
                     holder,
-                    false,
+                    How::default(),
                 ));
             }
         }

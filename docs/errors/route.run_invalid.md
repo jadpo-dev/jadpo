@@ -40,7 +40,7 @@ error: `run: true` isn't a call
    |
 27 |         run: true
    |              ^^^^ not a call
-  reason: `run:` calls one named action, or a named query for a `GET`, passing the route's placeholders and `input`; there is no inline action in a route.
+  reason: `run:` calls one named action, or for a `GET` a named query or an action that only reads, passing the route's placeholders and `input`; there is no inline action in a route.
   next: Write `run: <name>(...)`, moving any logic into an action (agent)
   rule: route.run_invalid
   help: https://jadpo.dev/docs/errors/route.run_invalid

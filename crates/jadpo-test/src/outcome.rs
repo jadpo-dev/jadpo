@@ -40,6 +40,39 @@ pub struct TestFailure {
     pub kept: Vec<String>,
 }
 
+impl TestFailure {
+    /// The failure with every path it shows, where it failed and each
+    /// place its detail names, rewritten by `path`: a scratch app's paths
+    /// as the folder the code came from names them (`jadpo package
+    /// check`).
+    pub fn map_paths(&mut self, path: &dyn Fn(&str) -> String) {
+        let located = |at: &mut Located| at.path = path(&at.path);
+        let failure = |info: &mut FailureInfo| {
+            if let Some(at) = &mut info.at {
+                located(at);
+            }
+        };
+        located(&mut self.location);
+        match &mut self.detail {
+            Detail::Assertion(assertion) => {
+                if let Some(instead) = &mut assertion.instead {
+                    failure(instead);
+                }
+            }
+            Detail::Failure(info) => failure(info),
+            Detail::Fault(info) => {
+                if let Some(at) = &mut info.at {
+                    located(at);
+                }
+                for frame in &mut info.stack {
+                    located(&mut frame.location);
+                }
+            }
+            Detail::Fake(_) | Detail::Recording(_) => {}
+        }
+    }
+}
+
 /// Where `jadpo test` crashed a run of a test that reaches an action with
 /// several changing calls (area 13, "Provider calls and capabilities in
 /// tests"; chunk 7.5d): the step and the boundary.
