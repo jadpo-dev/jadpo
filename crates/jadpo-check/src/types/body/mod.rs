@@ -1396,6 +1396,7 @@ impl Body<'_> {
                         table: self.table,
                         out: Vec::new(),
                         headers: Vec::new(),
+                        variant: false,
                         failure: false,
                         sent: false,
                         provider: false,
