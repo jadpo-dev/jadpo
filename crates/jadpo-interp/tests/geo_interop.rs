@@ -230,7 +230,7 @@ type PatchProperties = Object {
 }
 
 /// The map's delivery layer, as a mapping library reads it.
-function patch_layer(outlines: List<Polygon>, names: List<PatchName>) -> FeatureCollection<Polygon, PatchProperties> {
+function patch_layer(outlines: List<Polygon>, name_list: List<PatchName>) -> FeatureCollection<Polygon, PatchProperties> {
     return FeatureCollection {
         features: list.map(outlines, outline -> Feature {
             geometry: outline

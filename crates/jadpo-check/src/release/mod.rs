@@ -13,7 +13,8 @@ mod reach;
 
 pub use changes::{Change, ChangeEntry, behaviour_changed, personal_data_changes, surface_changes};
 pub use facts::{
-    Facts, FailureFact, HostFact, PersonalDataFact, StandardCandidate, facts, named_holder,
+    Facts, FailureFact, HostFact, PersonalDataFact, RECORDED, StandardCandidate, facts,
+    named_holder, newest_recording,
 };
 pub use fingerprints::{Fingerprint, Shape, fingerprints, type_names, type_shape};
 pub use reach::reached;

@@ -26,7 +26,7 @@ use crate::tree::{self, name_text, node_span};
 use crate::types::{Def, Ty, TypeView, callables_of, type_table, typed_body};
 
 /// The keys of `provider.jadpo`'s `imported:`.
-pub const IMPORTED_KEYS: [&str; 3] = ["file", "digest", "reviewed"];
+pub const IMPORTED_KEYS: [&str; 4] = ["file", "digest", "reviewed", "renamed"];
 
 /// One own integration: what the app calls of it, and what those calls
 /// reach.
@@ -391,7 +391,7 @@ pub fn imported_problems(
     member: &ast::Member,
     out: &mut Vec<Diagnostic>,
 ) {
-    let reason = "`imported:` gives the description the package was imported from, `file:` and `digest:`, and `reviewed:`, the package's types the agent has gone through against the provider's documentation, each named once.";
+    let reason = "`imported:` gives the description the package was imported from, `file:` and `digest:`, `reviewed:`, the package's types the agent has gone through against the provider's documentation, each named once, and `renamed:`, each name in the description code knows by another.";
     for (name, inner) in tree::members(member.block()) {
         let key = name_text(&name).unwrap_or_default();
         if !IMPORTED_KEYS.contains(&key.as_str()) {

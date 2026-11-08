@@ -178,6 +178,32 @@ fn a_providers_facts_cover_what_its_code_can_do_public_or_not() {
     assert_eq!(facts.standard_candidates.len(), 1);
     assert_eq!(facts.standard_candidates[0].declaration, "Customer.created");
     assert_eq!(facts.standard_candidates[0].standard, "Instant");
+    assert_eq!(facts.last_contract_run, None);
+}
+
+/// The last contract run is the newest recording `jadpo package record`
+/// made, from its `recordings/recorded.jadpo_record` (area 11, "What a
+/// release shows"; Richard, 2026-11-07).
+#[test]
+fn the_last_contract_run_is_the_newest_recording() {
+    let facts = facts_of(
+        &provider(),
+        &[
+            (
+                "shared/providers/acme_pay/v1/recordings/customers.get.json",
+                "{}\n",
+            ),
+            (
+                "shared/providers/acme_pay/v1/recordings/recorded.jadpo_record",
+                "// Written by `jadpo package record`: when each recording was made.\nrecord recordings 1\n\nrecorded customers.create 2026-10-30T09:15:00Z\nrecorded customers.get 2026-11-02T17:40:12Z\n",
+            ),
+        ],
+        PAY,
+    );
+    assert_eq!(
+        facts.last_contract_run.as_deref(),
+        Some("2026-11-02T17:40:12Z")
+    );
 }
 
 #[test]

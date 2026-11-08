@@ -322,6 +322,11 @@ pub fn run(
             | Op::PostalUnit,
             _,
         ) => Err(Fault::Shape),
+        // `names`' operation (area 19, "Registry names").
+        (Op::NamesRegistryPart, [Value::Text(name)]) => {
+            Ok(Value::text(&jadpo_std::names::registry_part(name)))
+        }
+        (Op::NamesRegistryPart, _) => Err(Fault::Shape),
         // `semver`'s operation (area 19, "Web and software").
         (Op::SemverSatisfies, [version, range]) => semver::satisfies(version, range),
         (Op::SemverSatisfies, _) => Err(Fault::Shape),
@@ -1088,6 +1093,7 @@ mod tests {
                 | Op::PostalSector
                 | Op::PostalSubDistrict
                 | Op::PostalUnit => vec![Value::text("SW1A 1AA")],
+                Op::NamesRegistryPart => vec![Value::text("AcmeCouriers")],
                 Op::SemverSatisfies => vec![
                     semver::read_version("1.2.3").expect("a version"),
                     Value::text("^1.0.0"),

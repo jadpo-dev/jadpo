@@ -3143,14 +3143,16 @@ proof below does, walking in the mode that follows values to a model.
 so the proof never sits inside `routes::groups`, which a route test's body
 reads. `not_read_only` walks the graph from the action: `outside::does` says
 what a site writes and which actions it joins, `steps::Calls` says whether an
-outside call changes anything, and `emit` is read off the statement, over every
-site of a body, so a write on one way through or in an inline function counts.
+outside call changes anything, and `emit` is read off the statement, an
+email's counting and an event's not, over every site of a body, so a write on
+one way through or in an inline function counts.
 It keeps positions only in `own_changes`, which nothing but this check reads.
 At run time `Ctx::read_only` marks the next boundary. It begins with
 `Database::begin_read_only` (`BEGIN ... READ ONLY` on PostgreSQL, an ordinary
 `begin_at` on a store with no such mode), `Boundary::transaction` refuses
-`writes`, so `seal` can't keep an event, and a provider's changing call and a
-store's `put` are faults. A `GET`'s query and listing run the same way, and a
+`writes`, and a provider's changing call and a store's `put` are faults. `seal`
+keeps the events it emitted in a transaction of their own, begun at the
+boundary's isolation in the outbox's store, once the body has succeeded. A `GET`'s query and listing run the same way, and a
 `HEAD` drops the stream as it drops the body.
 
 **Listing tokens and keys from a `GET`** (area 8). A

@@ -103,8 +103,8 @@ is never over it.
 ```jadpo check project=e-ordering-text-fix
 type Name = Text {}
 
-function in_order(names: List<Name>) -> List<Name> {
-    return list.sort_by(names, name -> name)
+function in_order(given: List<Name>) -> List<Name> {
+    return list.sort_by(given, name -> name)
 }
 ```
 

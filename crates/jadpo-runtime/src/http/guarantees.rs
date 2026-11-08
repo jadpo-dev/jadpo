@@ -1032,15 +1032,23 @@ fn what_a_get_runs_never_writes_even_if_the_proof_were_wrong() {
     assert_eq!(host.store.lines(), ["begin read only", "read", "rollback"]);
 }
 
+/// What a `GET` runs may emit an event, so a subscriber can count a read
+/// (area 7; Richard, 2026-11-07): its reads stay `READ ONLY`, and the
+/// event is kept in a transaction of its own before the read commits.
 #[test]
-fn what_a_get_runs_never_leaves_an_event_even_if_the_proof_were_wrong() {
+fn what_a_get_runs_keeps_its_events_in_a_transaction_of_their_own() {
     let table = get_table();
     let program = Program::new(Ends::OnlyEmits);
     let host = Fake::default();
     let answered = send(&table, &program, &host, &get("GET", "a"), NOW);
-    assert_eq!(answered.status, 500, "{:?}", host.store.lines());
-    assert_eq!(host.store.lines(), ["begin read only", "read", "rollback"]);
-    assert!(answered.deferred.is_empty(), "nothing goes out");
+    assert_eq!(answered.status, 204, "{:?}", host.store.lines());
+    let lines = host.store.lines();
+    assert_eq!(lines[..3], ["begin read only", "read", "begin"]);
+    assert!(
+        lines[3].starts_with("INSERT INTO \"jadpo_outbox\""),
+        "{lines:?}"
+    );
+    assert_eq!(lines[lines.len() - 2..], ["commit", "commit"]);
 }
 
 #[test]

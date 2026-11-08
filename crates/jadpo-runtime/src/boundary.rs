@@ -724,6 +724,10 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
         return Ok(());
     };
     let events = std::mem::take(&mut boundary.outbox);
+    // What a `GET` runs may emit an event, so a subscriber can count a
+    // read (area 7; Richard, 2026-11-07): its transaction is `READ ONLY`,
+    // so the event is kept in one of its own.
+    let apart = boundary.read_only.then_some(boundary.isolation);
     if !events.is_empty() {
         let open = boundary.store.clone();
         let Some(store) = open.or_else(|| outbox.map(str::to_string)) else {
@@ -766,8 +770,25 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
             sealed.outbox.push((id, event.key, event.payload));
         }
         let written = u32::try_from(sealed.outbox.len()).unwrap_or(u32::MAX);
-        let transaction = ctx.transaction(&store).await?;
-        crate::outbox::write(transaction, &sealed, emitted_at, trace, depth).await?;
+        match apart {
+            Some(isolation) => {
+                let Some(database) = ctx.capabilities().database(&store) else {
+                    return Err(StoreError::Fault(format!("no store called `{store}`")));
+                };
+                let mut own = database.begin_at(isolation).await?;
+                if let Err(error) =
+                    crate::outbox::write(own.as_mut(), &sealed, emitted_at, trace, depth).await
+                {
+                    let _ = own.rollback().await;
+                    return Err(error);
+                }
+                own.commit().await?;
+            }
+            None => {
+                let transaction = ctx.transaction(&store).await?;
+                crate::outbox::write(transaction, &sealed, emitted_at, trace, depth).await?;
+            }
+        }
         if let Some(boundary) = ctx.boundary_mut() {
             boundary.sealed = sealed.deliveries;
             boundary.kept = written;

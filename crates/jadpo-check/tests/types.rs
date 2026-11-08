@@ -102,7 +102,7 @@ fn each_mistake_gives_its_rule() {
             "type.primitive_signature",
         ),
         (
-            "function all(names: List<Text>) -> ProductName {\n    return \"x\"\n}\n",
+            "function all(name_list: List<Text>) -> ProductName {\n    return \"x\"\n}\n",
             "type.primitive_signature",
         ),
         (

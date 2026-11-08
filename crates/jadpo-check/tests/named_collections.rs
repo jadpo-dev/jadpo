@@ -138,7 +138,7 @@ fn a_named_set_is_built_from_a_set_or_a_list_of_its_items() {
         // so `max_length` follows from the list's own.
         "function from_short(short: Shortlist) fails NoNames -> NameSet {\n    var result: NameSet = attempt NameSet(short) {\n        min_length: NoNames\n    }\n    return result\n}\n",
         // ... and at least one when the list has any items.
-        "function from_names(names: FewNames) -> NameSet {\n    return NameSet(names)\n}\n",
+        "function from_names(name_list: FewNames) -> NameSet {\n    return NameSet(name_list)\n}\n",
         "function counted(found: List<Name>) fails NoNames, TooMany -> NameSet {\n    if (list.count(found) == 0) {\n        reject NoNames\n    } else if (list.count(found) > 3) {\n        reject TooMany\n    }\n    return NameSet(found)\n}\n",
         // A set's own lengths carry over.
         "function from_pairs(pairs: PairSet) -> PairSet {\n    return PairSet(pairs)\n}\n",

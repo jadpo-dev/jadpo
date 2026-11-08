@@ -281,6 +281,7 @@ pub enum Op {
     MarkupToHtml,
     MarkupToPlainText,
     MediaFit,
+    NamesRegistryPart,
     MoneyAllocate,
     MoneyApplyDiscount,
     MoneyConvert,
@@ -2223,6 +2224,18 @@ pub const OPERATIONS: &[Operation] = &[
             MONEY,
             "money::sum",
         )
+    },
+    // `names`' operation (area 19, "Registry names"): a name in code as
+    // the registry writes it, by the registry's own rule; it never fails.
+    Operation {
+        op: Op::NamesRegistryPart,
+        namespace: "names",
+        name: "registry_part",
+        params: &[param("name", TEXT_VALUE)],
+        result: TEXT_VALUE,
+        at_least: None,
+        conditions: &[],
+        rust: "names::registry_part",
     },
     // A UK postcode's parts (area 19, "A UK postcode's parts"), by Royal
     // Mail's format; `sub_district` is `none` where there isn't one.

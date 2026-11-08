@@ -329,6 +329,21 @@ pub fn record(call: &Call) -> Reply {
             );
         }
     }
+    // When it was recorded, which the package's facts give as its last
+    // contract run (area 11, "What a release shows"; Richard, 2026-11-07).
+    let when = folder.join(jadpo_check::release::RECORDED);
+    let kept_when = recorded_at(
+        std::fs::read_to_string(&when).ok().as_deref(),
+        operation,
+        &instant_text(crate::registry::now_seconds()),
+    );
+    if let Err(error) = std::fs::write(&when, kept_when) {
+        return crate::package::write_failed(
+            "package record",
+            jadpo_check::release::RECORDED,
+            &error.to_string(),
+        );
+    }
     let shown = shown_path(&root, &file);
     let (placeholders, as_sent) = counts(&text);
     let mut values = crate::package::plural(placeholders, "placeholder", "placeholders");
@@ -638,5 +653,72 @@ impl NextMarked for Diagnostic {
         } else {
             self.next(text)
         }
+    }
+}
+/// What `recordings/recorded.jadpo_record` holds once `operation` is
+/// recorded `at`: every other operation's line kept, its own written anew,
+/// in operation order.
+pub(crate) fn recorded_at(before: Option<&str>, operation: &str, at: &str) -> String {
+    let mut lines: Vec<(String, String)> = before
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| {
+            let mut words = line.split_whitespace();
+            (words.next()? == "recorded").then_some(())?;
+            let named = words.next()?;
+            let when = words.next()?;
+            (named != operation).then(|| (named.to_string(), when.to_string()))
+        })
+        .collect();
+    lines.push((operation.to_string(), at.to_string()));
+    lines.sort();
+    let mut out = String::from(
+        "// Written by `jadpo package record`: when each recording was made.\nrecord recordings 1\n\n",
+    );
+    for (named, when) in lines {
+        out.push_str(&format!("recorded {named} {when}\n"));
+    }
+    out
+}
+
+/// `seconds` since 1970 as RFC 3339 in UTC, to the second.
+fn instant_text(seconds: i64) -> String {
+    let day = crate::registry::day_from(seconds).unwrap_or_default();
+    let of_day = seconds.rem_euclid(86_400);
+    format!(
+        "{day}T{:02}:{:02}:{:02}Z",
+        of_day / 3600,
+        of_day % 3600 / 60,
+        of_day % 60
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{instant_text, recorded_at};
+
+    #[test]
+    fn a_recording_keeps_when_it_was_made_beside_the_others() {
+        let first = recorded_at(None, "pickups.create", "2026-11-07T21:30:00Z");
+        assert_eq!(
+            first,
+            "// Written by `jadpo package record`: when each recording was made.\nrecord recordings 1\n\nrecorded pickups.create 2026-11-07T21:30:00Z\n"
+        );
+        let both = recorded_at(Some(&first), "labels.get", "2026-11-08T08:00:00Z");
+        assert!(both.ends_with(
+            "recorded labels.get 2026-11-08T08:00:00Z\nrecorded pickups.create 2026-11-07T21:30:00Z\n"
+        ));
+        let again = recorded_at(Some(&both), "pickups.create", "2026-11-09T10:00:00Z");
+        assert!(again.ends_with("recorded pickups.create 2026-11-09T10:00:00Z\n"));
+        assert_eq!(
+            jadpo_check::release::newest_recording(&again).as_deref(),
+            Some("2026-11-09T10:00:00Z")
+        );
+    }
+
+    #[test]
+    fn an_instant_is_written_in_utc_to_the_second() {
+        assert_eq!(instant_text(1_794_087_000), "2026-11-07T21:30:00Z");
+        assert_eq!(instant_text(0), "1970-01-01T00:00:00Z");
     }
 }

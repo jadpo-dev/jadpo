@@ -150,7 +150,7 @@ fn a_collection_type_is_not_a_constructor() {
     );
     assert_eq!(
         check(&format!(
-            "{LISTS}function names(xs: List<Name>) -> List<Name> {{\n    return List<Name>(xs)\n}}\n"
+            "{LISTS}function name_list(xs: List<Name>) -> List<Name> {{\n    return List<Name>(xs)\n}}\n"
         )),
         ["type.constructor_input"]
     );

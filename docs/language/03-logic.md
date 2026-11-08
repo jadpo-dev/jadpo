@@ -24,8 +24,8 @@ You write behaviour in three kinds of callable:
 - A **query** reads stored data and never changes it
   ([Named queries](06-reads-and-writes.md#named-queries)).
 
-An action that writes nothing, emits nothing and makes no changing call,
-itself or through any action it calls, is read-only. You don't mark it:
+An action that writes nothing, emits no email and makes no changing call,
+itself or through any action it calls, is read-only; it may emit an event. You don't mark it:
 the compiler works it out from what the action does. A read-only action can
 answer a `GET`, as a query can
 ([A `GET` that runs an action](07-http.md#a-get-that-runs-an-action)).
