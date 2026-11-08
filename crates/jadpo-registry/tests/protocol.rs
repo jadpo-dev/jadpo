@@ -4,8 +4,9 @@
 
 use jadpo_registry::names::{Digest, ScopedName, Version};
 use jadpo_registry::protocol::{
-    AdvisoryQuery, BASE, ENDPOINTS, FingerprintQuery, Installed, MOST_PREFIXES, Method,
-    PackageKind, Request, StartRelease,
+    AdvisoryQuery, BASE, DecodeFailure, ENDPOINTS, FingerprintQuery, Installed, LONGEST_SHAPE_PATH,
+    MOST_PREFIXES, MOST_SHAPE_MEMBERS, Method, PackageKind, Request, ShapeKind, ShapeMember,
+    StartRelease,
 };
 use jadpo_registry::shape::{Shape, check_value};
 
@@ -61,6 +62,16 @@ fn requests() -> Vec<Request> {
         Request::ReleaseRequest {
             id: "rel_01".into(),
         },
+        Request::LogSignedHead,
+        Request::DecodeFailure(DecodeFailure {
+            package: ScopedName::parse("@acme/postcodes").unwrap(),
+            version: Version::parse("2.1.0").unwrap(),
+            operation: "bookings.create".into(),
+            shape: vec![ShapeMember {
+                path: "$.id".into(),
+                kind: ShapeKind::Number,
+            }],
+        }),
     ]
 }
 
@@ -75,6 +86,10 @@ fn the_protocol_is_served_under_its_versioned_path() {
         "/registry/v1/packages/@acme/postcodes"
     );
     assert_eq!(Request::LogHead.target(), "/registry/v1/log/head");
+    assert_eq!(
+        Request::LogSignedHead.target(),
+        "/registry/v1/log/signed-head"
+    );
     assert_eq!(
         Request::LogProof {
             digest: digest(),
@@ -169,6 +184,35 @@ fn a_request_off_the_table_is_refused() {
             Request::parse(
                 Method::Post,
                 "/registry/v1/fingerprints/query",
+                body.as_bytes()
+            )
+            .is_err(),
+            "{body}"
+        );
+    }
+    // A report of a shape is at most a thousand members, each of a path a
+    // person could read, and holds no value.
+    let report = |shape: String| {
+        format!(
+            r#"{{"package":"@acme/postcodes","version":"2.1.0","operation":"bookings.create","shape":{shape}}}"#
+        )
+    };
+    for body in [
+        report(format!(
+            "[{}]",
+            vec![r#"{"path":"$.a","kind":"text"}"#; MOST_SHAPE_MEMBERS + 1].join(",")
+        )),
+        report(format!(
+            r#"[{{"path":"$.{}","kind":"text"}}]"#,
+            "a".repeat(LONGEST_SHAPE_PATH)
+        )),
+        report(r#"[{"path":"$.a","kind":"text","value":"secret"}]"#.to_string()),
+        report(r#"[{"path":"$.a","kind":"secret"}]"#.to_string()),
+    ] {
+        assert!(
+            Request::parse(
+                Method::Post,
+                "/registry/v1/decode-failures",
                 body.as_bytes()
             )
             .is_err(),

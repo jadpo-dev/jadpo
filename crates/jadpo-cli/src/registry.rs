@@ -13,16 +13,20 @@
 //! The registry is `https://jadpo.dev/registry/v1/`. `JADPO_REGISTRY` names a
 //! stand-in, as `JADPO_RUST_DIST_SERVER` does for Rust's: HTTPS, or plain HTTP
 //! on this machine only.
+//!
+//! When this tool holds a public key for the registry it asks for a signed
+//! head, and refuses one not signed by a key it holds: `protocol::PUBLIC_KEYS`
+//! for the public registry, `JADPO_REGISTRY_KEY` for a stand-in.
 
 use std::path::{Path, PathBuf};
 
 use jadpo_diag::{Decider, Diagnostic, rule};
 use jadpo_registry::archive;
-use jadpo_registry::log::{Hash, LogEntry, check_extends, check_included};
+use jadpo_registry::log::{Hash, LogEntry, check_extends, check_included, check_signed_head};
 use jadpo_registry::names::{Digest, ScopedName, Version};
 use jadpo_registry::protocol::{
     self, AdvisoryAnswer, AdvisoryQuery, Change, ChangeEntry, ConsistencyProof, InclusionProof,
-    Installed, LogHead, Package, Release, ReleaseSummary, Request,
+    Installed, LogHead, Package, Release, ReleaseSummary, Request, SignedLogHead,
 };
 use jadpo_term::{Block, ChangeMark, Environment, Row};
 use serde::de::DeserializeOwned;
@@ -33,6 +37,10 @@ use crate::run::{Call, Reply};
 
 /// What names a stand-in for the registry.
 pub(crate) const VARIABLE: &str = "JADPO_REGISTRY";
+
+/// The Ed25519 public keys a stand-in signs its log's heads with, each as a
+/// `PublicKey` is written, comma-separated so a stand-in can change its key.
+pub(crate) const KEY_VARIABLE: &str = "JADPO_REGISTRY_KEY";
 
 /// Where the last head seen is kept, beside the project's other local state.
 const HEAD: &str = ".jadpo/registry_head";
@@ -120,16 +128,50 @@ fn nothing_served(address: &str, status: u16) -> Diagnostic {
 pub(crate) struct Client {
     /// The protocol's address, ending `/registry/v1/`.
     address: String,
+    /// The public keys held for it. With any held, a head has to be signed
+    /// by one of them.
+    keys: Vec<String>,
 }
 
 impl Client {
     pub(crate) fn of(environment: &Environment) -> Client {
+        let keys = match environment.var(KEY_VARIABLE) {
+            Some(keys) => keys
+                .split(',')
+                .map(str::trim)
+                .filter(|key| !key.is_empty())
+                .map(str::to_string)
+                .collect(),
+            None if environment.var(VARIABLE).is_none() => protocol::PUBLIC_KEYS
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            None => Vec::new(),
+        };
         Client {
             address: environment
                 .var(VARIABLE)
                 .unwrap_or(protocol::PUBLIC)
                 .to_string(),
+            keys,
         }
+    }
+
+    /// The log's head, signed by a key this tool holds when it holds any.
+    /// What's wrong with a signature is the reason a release isn't proved.
+    fn head(&self) -> Result<LogHead, Headless> {
+        if self.keys.is_empty() {
+            return self.ask(&Request::LogHead).map_err(Headless::Asked);
+        }
+        let signed: Option<SignedLogHead> = self
+            .ask_if_served(&Request::LogSignedHead)
+            .map_err(Headless::Asked)?;
+        let Some(signed) = signed else {
+            return Err(Headless::Refused(
+                "It doesn't sign its log's head, and this tool holds a key for it.".to_string(),
+            ));
+        };
+        check_signed_head(&signed, &self.keys).map_err(|why| Headless::Refused(format!("{why}.")))
     }
 
     /// The address of `path` on the site the registry serves its protocol
@@ -251,6 +293,13 @@ fn failure_of(answer: &download::Answer) -> Option<Asked> {
 
 // --- the log ---------------------------------------------------------------
 
+/// Why [`Client::head`] gave no head.
+enum Headless {
+    Asked(Asked),
+    /// It answered, with no signature this tool can accept.
+    Refused(String),
+}
+
 /// `install.not_proved`.
 fn not_proved(message: String, reason: String) -> Reply {
     Reply::Failed(Box::new(
@@ -313,7 +362,10 @@ fn prove(root: &Path, client: &Client, entry: &LogEntry, command: &str) -> Resul
             reason,
         )
     };
-    let head: LogHead = client.ask(&Request::LogHead).map_err(Asked::reply)?;
+    let head: LogHead = client.head().map_err(|why| match why {
+        Headless::Asked(asked) => asked.reply(),
+        Headless::Refused(reason) => refused(reason),
+    })?;
     if let Some(seen) = kept_head(root)? {
         if head.size < seen.size {
             return Err(refused(format!(

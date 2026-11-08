@@ -194,6 +194,108 @@ fn stand_in(
     (server, url, asked)
 }
 
+/// `jadpo <args>` holding `keys` for the local registry.
+fn holding(url: &str, keys: &str, cwd: &Path, args: &[&str]) -> Output {
+    let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+    run(
+        &args,
+        &Environment::empty()
+            .with_var("JADPO_REGISTRY", url)
+            .with_var("JADPO_REGISTRY_KEY", keys)
+            .with_cwd(cwd),
+    )
+}
+
+// --- signed heads ----------------------------------------------------------
+
+#[test]
+fn a_head_signed_by_a_key_the_tool_holds_is_taken() {
+    let world = world("registry-signed", &days_ago(40));
+    let added = holding(
+        &world.url,
+        &LocalRegistry::public_key(),
+        &world.app,
+        &["package", "add", "@acme/postcodes"],
+    );
+    assert_eq!(added.code, 0, "{}", added.stderr);
+    assert!(world.app.join("jadpo.lock").is_file());
+}
+
+#[test]
+fn a_head_signed_by_another_key_is_refused() {
+    let world = world("registry-other-key", &days_ago(40));
+    // A public key that isn't the one this registry signs with.
+    let other = "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw";
+    let added = holding(
+        &world.url,
+        other,
+        &world.app,
+        &["package", "add", "@acme/postcodes"],
+    );
+    assert_eq!(added.code, 1, "{}", added.stderr);
+    assert!(
+        added.stderr.contains("rule: install.not_proved\n"),
+        "{}",
+        added.stderr
+    );
+    assert!(added.stderr.contains("signed by a key"), "{}", added.stderr);
+    assert!(!world.app.join("jadpo.lock").exists());
+}
+
+#[test]
+fn a_changed_signature_and_a_registry_that_doesnt_sign_are_refused() {
+    let world = world("registry-bad-signature", &days_ago(40));
+    let key = LocalRegistry::public_key();
+    let (_held, url, _) = stand_in(&world.registry, |incoming, answer| {
+        if incoming.target.ends_with("/log/signed-head") {
+            let mut json: serde_json::Value = serde_json::from_slice(&answer.body).unwrap();
+            json["size"] = serde_json::json!(json["size"].as_u64().unwrap() + 1);
+            return Fetched {
+                body: serde_json::to_vec(&json).unwrap(),
+                ..answer
+            };
+        }
+        answer
+    });
+    let added = holding(
+        &url,
+        &key,
+        &world.app,
+        &["package", "add", "@acme/postcodes"],
+    );
+    assert_eq!(added.code, 1, "{}", added.stderr);
+    assert!(
+        added.stderr.contains("rule: install.not_proved\n"),
+        "{}",
+        added.stderr
+    );
+    assert!(added.stderr.contains("isn't its key's"), "{}", added.stderr);
+
+    let (_held, url, _) = stand_in(&world.registry, |incoming, answer| {
+        if incoming.target.ends_with("/log/signed-head") {
+            return Fetched {
+                status: 404,
+                content_type: None,
+                body: Vec::new(),
+            };
+        }
+        answer
+    });
+    let added = holding(
+        &url,
+        &key,
+        &world.app,
+        &["package", "add", "@acme/postcodes"],
+    );
+    assert_eq!(added.code, 1, "{}", added.stderr);
+    assert!(
+        added.stderr.contains("doesn't sign its log's head"),
+        "{}",
+        added.stderr
+    );
+    assert!(!world.app.join("jadpo.lock").exists());
+}
+
 // --- add -------------------------------------------------------------------
 
 #[test]

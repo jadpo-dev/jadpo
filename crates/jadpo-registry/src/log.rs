@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
 use crate::names::{Digest, ScopedName, Version, is_lower_hex};
-pub use crate::protocol::{ConsistencyProof, InclusionProof, LogHead};
+pub use crate::protocol::{ConsistencyProof, InclusionProof, LogHead, SignedLogHead};
 
 /// A SHA-256 hash in the log, written in JSON as 64 lower-case hex digits.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -344,6 +344,10 @@ pub enum LogError {
     /// The new head doesn't extend the last one seen: the log was
     /// rewritten, or this client is shown a different one.
     DoesNotExtend,
+    /// The head is signed by a key this client doesn't hold.
+    UntrustedKey,
+    /// The head's signature isn't its key's.
+    BadSignature,
 }
 
 impl fmt::Display for LogError {
@@ -358,11 +362,40 @@ impl fmt::Display for LogError {
             LogError::DoesNotExtend => {
                 "the registry's log doesn't extend the one last seen: its history was changed"
             }
+            LogError::UntrustedKey => {
+                "the registry's head is signed by a key this tool doesn't hold for it"
+            }
+            LogError::BadSignature => "the signature on the registry's head isn't its key's",
         })
     }
 }
 
 impl std::error::Error for LogError {}
+
+/// The line a head's signature is over: `jadpo-log-head 42 <root>`, its
+/// root as 64 lower-case hex digits. It can't be mistaken for a log leaf,
+/// which starts with a package's `@`.
+pub fn signed_line(size: u64, root: &Hash) -> String {
+    format!("jadpo-log-head {size} {root}")
+}
+
+/// Checks that `signed` is signed by one of `keys`, each a `PublicKey`,
+/// and gives the head it signs.
+pub fn check_signed_head(signed: &SignedLogHead, keys: &[String]) -> Result<LogHead, LogError> {
+    if !keys.contains(&signed.key) {
+        return Err(LogError::UntrustedKey);
+    }
+    let signature =
+        jadpo_value::encoding::from_base64(&signed.signature).ok_or(LogError::BadSignature)?;
+    let line = signed_line(signed.size, &signed.root);
+    if !jadpo_value::crypto::verify_signature(line.as_bytes(), &signature, &signed.key) {
+        return Err(LogError::BadSignature);
+    }
+    Ok(LogHead {
+        size: signed.size,
+        root: signed.root,
+    })
+}
 
 /// Checks that `proof` shows `expected` is in the log at `head`, the head
 /// the client has already checked extends the last one it saw.

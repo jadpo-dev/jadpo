@@ -32,3 +32,36 @@ error: Translations need the application's locales
 
 check failed: 1 error, 3 files
 ```
+
+An email needs them too, for its subject: the subject is the email's member in
+its domain's language files, so there is nothing to send it with until a
+locale words it.
+
+```jadpo check project=e-tr-locales-required-email file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-tr-locales-required-email file=domains/accounts/emails/welcome_email.txt hidden
+Welcome to Acme, {{ display_name }}.
+```
+
+```jadpo check project=e-tr-locales-required-email file=domains/accounts/emails/welcome_email.jadpo expect=translation.locales_required
+/// Sent when someone signs up.
+type WelcomeEmail = EmailMessage {
+    display_name: Text
+}
+```
+
+```text output
+error: Translations need the application's locales
+ --> domains/accounts/emails/welcome_email.jadpo:2:6
+  |
+2 | type WelcomeEmail = EmailMessage {
+  |      ^^^^^^^^^^^^ no locales declared
+  reason: Each language file is for one of the locales the application supports, and each supported locale words every message. None is declared, so there is nothing to check the wording against.
+  next: Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }` (agent)
+  rule: translation.locales_required
+  help: https://jadpo.dev/docs/errors/translation.locales_required
+
+check failed: 1 error, 2 files
+```

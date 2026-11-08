@@ -178,22 +178,19 @@ The application itself is built in the jadpo.dev repository against
 [the registry protocol](language/11-integrations.md#the-registry-protocol);
 these chunks are what is left on either side.
 
-- [ ] **R10 What the registry asks of `jadpo`** `opus · high`: jadpo-website's
-  `docs/registry/plan.md`, "Asks for Jadpo"; area 11, "The verifier" and
-  "What publishing requires". A verifier image for pre-releases, with what
-  `jadpo fix` would change in its result, so compatibility runs cover
-  pre-releases; `facts.last_contract_run` filled from a package's newest
-  recording, which REG-36 waits on; a release allowed its `NOTICE` file; an
-  `EmailMessage` with no subject refused by `jadpo check` rather than failing
-  at run time; `imported:` keeping a `renamed:` map that reimporting applies;
-  a contract run's undecodable shape reported to the registry (the protocol's
-  endpoint and the runtime's send); and signed log heads, with keys held as
-  data and `crypto.sign`. Done when each has its test and the registry's list
-  no longer names it.
+- [ ] **R10b What an app's contract run sends** `opus · high` after K4: area
+  11, "What a release shows" and "The registry protocol". The app's opt-in,
+  and `jadpo test --kind contract` reporting an answer a package can no longer
+  decode to `POST decode-failures` with `jadpo_registry::report::shape_of`.
+  Done when a contract run against a local registry sends the shape and no
+  value, and the setting that opts in is on its area page.
 - [ ] **R11 What the registry application has left** **needs a maintainer**
   to start the jadpo.dev session, after R10: area 14, "Suggestions" and "The
   suggestions report"; `docs/registry/tasks.md`. `POST fingerprints/query`
   served, so `jadpo suggest`'s scan stops saying `registry not reached`;
+  `GET log/signed-head`, signing with a key held as data, its public key added
+  to `protocol::PUBLIC_KEYS`; `POST decode-failures` kept and shown; `fixes`
+  and the `pre-release` verifier image used in compatibility runs;
   REG-35 (publishers verified by a domain they prove, shown by `jadpo package
   add`); REG-36 (the last contract run on a package's page). Sign-up beyond
   the short list waits on terms and a privacy notice.

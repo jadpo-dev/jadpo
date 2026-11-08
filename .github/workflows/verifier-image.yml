@@ -4,9 +4,11 @@ name: Verifier image
 # verifier"; deploy/verifier/Dockerfile), on each Release: the Release's own
 # `jadpo` for Linux, checked against its attestation, in the image, which is
 # then started and used before anything is published. release-please.yml
-# starts it for each release it makes; it can also be run by hand for a tag.
-# A pull request that touches it builds its own `jadpo` and tests the image
-# the same way, publishing nothing.
+# starts it for each release it makes, and a pre-release's tag (v0.5.0-rc.1,
+# which no release pull request makes) starts it directly, so the registry
+# can check every package with a pre-release before it ships. It can also be
+# run by hand for a tag. A pull request that touches it builds its own
+# `jadpo` and tests the image the same way, publishing nothing.
 #
 # Publishing runs while the repository variable JADPO_VERIFIER_IMAGE is `on`.
 # It is off until a maintainer sets it (docs/documentation.md, "Versions and
@@ -20,6 +22,9 @@ on:
         description: The release's tag, vX.Y.Z
         required: true
         type: string
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
   pull_request:
     paths:
       - crates/jadpo-verifier/**
@@ -46,15 +51,15 @@ jobs:
     permissions:
       contents: read
     env:
-      TAG: ${{ inputs.tag }}
+      TAG: ${{ inputs.tag || (github.event_name == 'push' && github.ref_name) || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag || github.sha }}
+          ref: ${{ env.TAG || github.sha }}
           persist-credentials: false
       # dist's workflow is building them when this starts.
       - name: Wait for the release's archive and check its attestation
-        if: inputs.tag != ''
+        if: env.TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -66,17 +71,17 @@ jobs:
           tar -xzf "$ARCHIVE" --strip-components=1 --wildcards '*/jadpo'
           mv jadpo deploy/verifier/jadpo
       - name: Install the pinned Rust toolchain
-        if: inputs.tag == ''
+        if: env.TAG == ''
         run: |
           channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
           rustup toolchain install "$channel" --profile minimal
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        if: inputs.tag == ''
+        if: env.TAG == ''
         with:
           save-if: false
           cache-on-failure: true
       - name: Build this revision's jadpo
-        if: inputs.tag == ''
+        if: env.TAG == ''
         run: |
           cargo build --package jadpo-cli --bin jadpo
           cp target/debug/jadpo deploy/verifier/jadpo
@@ -89,10 +94,10 @@ jobs:
           JADPO_VERIFIER_TOKEN: verifier-image-smoke-test-credential-0123456789
         run: python3 deploy/verifier/smoke.py "$IMAGE:candidate"
       - name: Keep the image for publishing
-        if: inputs.tag != ''
+        if: env.TAG != ''
         run: docker save "$IMAGE:candidate" | gzip > verifier-image.tar.gz
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: inputs.tag != ''
+        if: env.TAG != ''
         with:
           name: verifier-image
           path: verifier-image.tar.gz
@@ -100,7 +105,7 @@ jobs:
 
   publish:
     needs: build
-    if: inputs.tag != '' && vars.JADPO_VERIFIER_IMAGE == 'on'
+    if: (inputs.tag != '' || github.event_name == 'push') && vars.JADPO_VERIFIER_IMAGE == 'on'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -109,7 +114,7 @@ jobs:
       id-token: write
       attestations: write
     env:
-      TAG: ${{ inputs.tag }}
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -124,6 +129,12 @@ jobs:
           docker tag "$IMAGE:candidate" "$IMAGE:$version"
           printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           docker push "$IMAGE:$version"
+          # The registry's compatibility runs ask for the newest pre-release
+          # by this name.
+          if [[ "$version" == *-* ]]; then
+            docker tag "$IMAGE:candidate" "$IMAGE:pre-release"
+            docker push "$IMAGE:pre-release"
+          fi
           digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$version")"
           echo "digest=${digest#*@}" >> "$GITHUB_OUTPUT"
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2

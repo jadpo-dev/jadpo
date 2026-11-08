@@ -745,6 +745,58 @@ fn verify_refuses_a_commit_whose_files_arent_what_its_code_gives() {
     );
 }
 
+/// A release that a Jadpo release breaks tells its publisher what `jadpo
+/// fix` would change (area 11, "The verifier"): each finding with its
+/// fixes, and a swap's changes, which need no choice from the author.
+#[test]
+fn verify_says_what_jadpo_fix_would_change() {
+    let (dir, root) = repository("release-fixes");
+    write(
+        &root,
+        "types/geo_point.jadpo",
+        "/// Where a postcode's centre is.\npublic type GeoPoint = Object {\n    lat: Decimal\n    lng: Decimal\n}\n",
+    );
+    let (data, document, code) = json(
+        dir.path(),
+        &["package", "verify", root.to_str().expect("a path")],
+    );
+    assert_ne!(code, 0, "{document}");
+    assert_eq!(data["passed"], false, "{document}");
+    let fixes = data["fixes"].as_array().expect("the fixes");
+    assert_eq!(fixes.len(), 1, "{fixes:?}");
+    let fix = &fixes[0];
+    assert_eq!(fix["declaration"], "GeoPoint");
+    assert_eq!(fix["rule"], "type.standard_exists");
+    assert_eq!(fix["path"], "types/geo_point.jadpo");
+    assert_eq!(fix["line"], 2);
+    assert_eq!(fix["standard"], "Point");
+    assert_eq!(fix["fixes"], serde_json::json!(["swap"]));
+    let swap = fix["swap"].as_array().expect("what a swap changes");
+    assert_eq!(swap[0]["path"], "types/geo_point.jadpo", "{swap:?}");
+    assert_eq!(swap[0]["change"], "removed", "{swap:?}");
+    // It changes nothing in the folder it read.
+    assert!(root.join("types/geo_point.jadpo").exists());
+}
+
+/// A package with nothing to fix has an empty list, every field being
+/// always there.
+#[test]
+fn verify_says_nothing_to_fix_with_an_empty_list() {
+    let (dir, root, first) = two_releases("release-no-fixes");
+    let (data, document, code) = json(
+        dir.path(),
+        &[
+            "package",
+            "verify",
+            root.to_str().expect("a path"),
+            "--previous",
+            first.to_str().expect("a path"),
+        ],
+    );
+    assert_eq!(code, 0, "{document}");
+    assert_eq!(data["fixes"], serde_json::json!([]));
+}
+
 #[test]
 fn verify_without_a_previous_release_is_a_first_release() {
     let (dir, root) = released("release-verify-first");
