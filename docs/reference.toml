@@ -1004,6 +1004,7 @@ title = "Finding code a standard type could replace"
 topics = [
   "suggestions",
   "signals",
+  "functions-that-already-exist",
   "snippets-and-their-canonical-form",
   "suggestions-report",
   "ignoring-a-suggestion",

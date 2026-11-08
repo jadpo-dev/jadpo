@@ -168,6 +168,28 @@ impl Client {
     /// gives it.
     pub(crate) fn ask<T: DeserializeOwned>(&self, request: &Request) -> Result<T, Asked> {
         let answer = self.send(request, LONGEST_ANSWER)?;
+        self.read(request, answer)
+    }
+
+    /// As [`Client::ask`], but `None` when the registry answers 404 or 405
+    /// with no failure of the protocol's: it doesn't serve that row (yet),
+    /// though it may serve others.
+    pub(crate) fn ask_if_served<T: DeserializeOwned>(
+        &self,
+        request: &Request,
+    ) -> Result<Option<T>, Asked> {
+        let answer = self.send(request, LONGEST_ANSWER)?;
+        if matches!(answer.status, 404 | 405) && failure_of(&answer).is_none() {
+            return Ok(None);
+        }
+        self.read(request, answer).map(Some)
+    }
+
+    fn read<T: DeserializeOwned>(
+        &self,
+        request: &Request,
+        answer: download::Answer,
+    ) -> Result<T, Asked> {
         let endpoint = request.endpoint();
         let unread = |why: String| {
             Asked::Unreachable(Box::new(unreachable(format!(

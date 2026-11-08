@@ -15,10 +15,10 @@ use crate::log::{Log, LogEntry};
 use crate::names::{Digest, Handle, ScopedName, Version};
 use crate::protocol::{
     ARCHIVE_NOT_FOUND, Advisory, AdvisoryAnswer, BarRow, ConsistencyProof, Facts, Failure,
-    InclusionProof, Method, NOT_IN_LOG, PACKAGE_NOT_FOUND, Package, PackageKind, Publisher,
-    RELEASE_NOT_FOUND, RELEASE_REQUEST_NOT_FOUND, REPOSITORY_REFUSED, Refusal, Release,
-    ReleaseRequest, ReleaseState, ReleaseSummary, Request, SIZE_PAST_HEAD, SearchAnswer,
-    SearchResult, StartedRelease,
+    FingerprintAnswer, InclusionProof, Method, NOT_IN_LOG, PACKAGE_NOT_FOUND, Package, PackageKind,
+    PublishedFingerprint, Publisher, RELEASE_NOT_FOUND, RELEASE_REQUEST_NOT_FOUND,
+    REPOSITORY_REFUSED, Refusal, Release, ReleaseRequest, ReleaseState, ReleaseSummary, Request,
+    SIZE_PAST_HEAD, SearchAnswer, SearchResult, StartedRelease,
 };
 
 /// A release to add: its package's details, used when the package is new,
@@ -114,6 +114,9 @@ struct State {
     /// package's, with their written accounts.
     standard: Vec<(String, String)>,
     accounts: Vec<(ScopedName, String, String)>,
+    /// Each release's public functions and actions, by source fingerprint,
+    /// as the verifier wrote them.
+    fingerprints: Vec<PublishedFingerprint>,
     /// Each release started, with its repository, tag, whether it was a
     /// dry run and the publisher the client said it was for.
     requests: Vec<(ReleaseRequest, String, String, bool, Option<Handle>)>,
@@ -292,6 +295,12 @@ impl LocalRegistry {
             declaration.to_string(),
             account.to_string(),
         ));
+    }
+
+    /// A release's public function or action, by its source fingerprint,
+    /// for `POST fingerprints/query`.
+    pub fn fingerprint(&self, fingerprint: PublishedFingerprint) {
+        self.state().fingerprints.push(fingerprint);
     }
 
     /// Every release started: its repository, tag and whether it was a dry
@@ -547,6 +556,37 @@ impl LocalRegistry {
                     .cloned()
                     .collect();
                 json(200, &AdvisoryAnswer { advisories })
+            }
+            Request::QueryFingerprints(query) => {
+                // The whole bucket of each prefix, never only what matches:
+                // the client compares the fingerprints itself. Of a
+                // declaration's releases with one fingerprint, the newest
+                // that isn't yanked.
+                let yanked = |f: &PublishedFingerprint| {
+                    state.packages.get(&f.package).is_none_or(|package| {
+                        package
+                            .releases
+                            .iter()
+                            .any(|r| r.version == f.version && r.yanked)
+                    })
+                };
+                let mut fingerprints: Vec<PublishedFingerprint> = Vec::new();
+                for f in &state.fingerprints {
+                    let hex = f.source.as_str().trim_start_matches("sha256:");
+                    if yanked(f) || !query.prefixes.iter().any(|p| hex.starts_with(p.as_str())) {
+                        continue;
+                    }
+                    match fingerprints.iter_mut().find(|kept| {
+                        kept.package == f.package
+                            && kept.declaration == f.declaration
+                            && kept.source == f.source
+                    }) {
+                        Some(kept) if kept.version < f.version => kept.version = f.version.clone(),
+                        Some(_) => {}
+                        None => fingerprints.push(f.clone()),
+                    }
+                }
+                json(200, &FingerprintAnswer { fingerprints })
             }
             Request::StartRelease(start) => {
                 if !start.repository.starts_with("https://") {

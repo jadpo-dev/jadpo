@@ -388,8 +388,10 @@ What the Reddit thread found (Richard, 2026-11-03):
 - [x] **A18 Leaving Jadpo**: [leaving Jadpo](leaving-jadpo.md); `crates/jadpo-cli/tests/leaving.rs`, `tools/checks/openapi_valid.py` and `tools/fixtures/openapi/`; `every_carried_crate_is_apache_2_0` in `crates/jadpo-cli/src/runtime_source.rs`.
 - [ ] **A19 Typed holes, to decide** `opus · high`: whether an agent can write
   a hole and have the compiler say what type belongs there and what is in
-  scope. A language decision, so it goes to Richard with a recommendation and
-  what it would save, measured against the PersonName detour in the 0.2.0 run.
+  scope. Waiting for Richard's decision on the recommendation in notes for
+  area 2, "Open questions": `_` as a value, always the error `type.hole`,
+  naming the type and what in scope fits; measured against the PersonName
+  detour, it saves nothing there, since D15, D16 and A14 already remove it.
 - [x] **A20 An email address is personal data**: area 15, "Contact details and names need no mark" and "What the compiler checks"; area 18, "What a first record holds"; compiler/runtime §2.3, "Contact details and names need no mark"; notes for areas 15 and 18.
 - [x] **A21 Phone numbers, names and addresses are cleared as an email is**: area 15, "Contact details and names need no mark" and "Erasure"; `data.erase_field_required`; compiler/runtime §2.3, "Contact details and names need no mark"; notes for area 15.
 - [x] **A22 A write background work could never make**: area 9, "Nothing grants it"; area 12, "Runs as the system"; `docs/errors/policy.system_grant_missing.md`; notes for area 9, "Background work and no grant".
@@ -503,9 +505,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
 
 After the registry is live, in order:
 
-- [ ] **R8 `jadpo suggest` points at the registry** `opus · high`: a
-  finding when the app's own function fingerprints like a registry
-  package's or a standard function (area 14, "Suggestions").
+- [x] **R8 `jadpo suggest` points at the registry**: area 14, "Signals", "Functions that already exist" and "The suggestions report"; area 11, "The registry protocol"; compiler/runtime, "Suggestions from the registry".
 - [ ] **R9 Blast radius in an update** `opus · high`: `jadpo package update
   --plan` follows each change record entry through the app's graph to
   the actions, routes, jobs and stored fields it reaches, with the
