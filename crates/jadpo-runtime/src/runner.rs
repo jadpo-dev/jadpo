@@ -763,13 +763,12 @@ async fn attempt(
                 Ok(crate::erasure::LogWrite::Statement(store, params)) => {
                     let database = ctx.host().database(&store);
                     Ok(match database {
-                        Some(kept) => match kept
-                            .query_once(crate::erasure::INSERT_LOG, &params)
-                            .await
-                        {
-                            Ok(_) => Outcome::Value(Value::Unit),
-                            Err(_) => Outcome::Failed(Box::new(crate::unavailable())),
-                        },
+                        Some(kept) => {
+                            match kept.query_once(crate::erasure::INSERT_LOG, &params).await {
+                                Ok(_) => Outcome::Value(Value::Unit),
+                                Err(_) => Outcome::Failed(Box::new(crate::unavailable())),
+                            }
+                        }
                         None => Outcome::Failed(Box::new(crate::unavailable())),
                     })
                 }

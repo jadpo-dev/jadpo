@@ -259,11 +259,7 @@ fn bound(params: &[WriteParam], id: &SqlValue, at: i64) -> Result<Vec<SqlValue>,
 /// settled. A store that can't be reached, or a concurrent change there, is
 /// worth trying again, and a person entity this build doesn't have has
 /// nothing to do.
-pub(crate) async fn apply_delivery(
-    ctx: &mut Ctx<'_>,
-    store: &str,
-    delivery: &Delivery,
-) -> Outcome {
+pub(crate) async fn apply_delivery(ctx: &mut Ctx<'_>, store: &str, delivery: &Delivery) -> Outcome {
     let Some((entity, id, at)) = parts(&delivery.value) else {
         return Outcome::Fault(ctx.fault(
             crate::FaultKind::Defect("a person's erasure with no person".into()),
@@ -272,7 +268,10 @@ pub(crate) async fn apply_delivery(
     };
     let started = ctx.started();
     let plan = started.erasure();
-    let Some(part) = plan.person(&entity).and_then(|person| person.elsewhere(store)) else {
+    let Some(part) = plan
+        .person(&entity)
+        .and_then(|person| person.elsewhere(store))
+    else {
         return Outcome::Value(Value::Unit);
     };
     let Ok(id) = crate::to_sql(&id, SqlType::Uuid) else {
@@ -384,7 +383,10 @@ pub struct ReplayStopped {
 fn stopped(store: &str, error: &StoreError) -> ReplayStopped {
     ReplayStopped {
         store: store.to_string(),
-        waiting: matches!(error, StoreError::Unavailable | StoreError::ConcurrentChange),
+        waiting: matches!(
+            error,
+            StoreError::Unavailable | StoreError::ConcurrentChange
+        ),
         why: crate::deployable::store_error(error),
     }
 }

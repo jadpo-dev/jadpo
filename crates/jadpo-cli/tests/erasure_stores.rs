@@ -137,9 +137,8 @@ pub(crate) fn files_with_log(log: &str) -> Vec<(String, String)> {
             format!("{uses}\n\n/// {name}.\naction {name}{signature} {{\n{body}}}\n"),
         )
     };
-    let entity = |name: &str, source: String| {
-        (format!("domains/club/entities/{name}.jadpo"), source)
-    };
+    let entity =
+        |name: &str, source: String| (format!("domains/club/entities/{name}.jadpo"), source);
     vec![
         (
             "app.jadpo".to_string(),
@@ -440,21 +439,20 @@ entity Customer {{
         ),
         entity(
             "departure",
-            format!(
-                "/// Someone erased, as the app's own subscriber heard it.
-entity Departure {{
+            "/// Someone erased, as the app's own subscriber heard it.
+entity Departure {
     id: Uuid
     who: Uuid
     person_entity: Text
     at: Instant
 
-    policy: {{
+    policy: {
         create: [Access.system]
         read: [Access.public]
-    }}
-}}
+    }
+}
 "
-            ),
+            .to_string(),
         ),
         action(
             "join",
@@ -826,12 +824,8 @@ async fn two_members(program: &Program, club: &Club) -> (Value, Value) {
     for (member, handle) in [(&ada, "ada"), (&bob, "bob")] {
         let pair = |action: &str| (action.to_string(), format!("{handle}'s {action}"));
         for (action, text) in [pair("plan"), pair("file_todo"), pair("bill")] {
-            club.call(
-                program,
-                &action,
-                vec![member.clone(), Value::text(&text)],
-            )
-            .await;
+            club.call(program, &action, vec![member.clone(), Value::text(&text)])
+                .await;
         }
         club.call(
             program,
@@ -870,8 +864,14 @@ const ARCHIVED: [(&str, &str); 5] = [
         "invoices",
         "SELECT \"billing_name\" || ' ' || (\"customer_id\" IS NULL)::text FROM \"old_invoice\" ORDER BY 1",
     ),
-    ("patients", "SELECT \"known_as\" FROM \"patient\" ORDER BY 1"),
-    ("deliveries", "SELECT \"subscriber\" FROM \"jadpo_deliveries\" WHERE \"status\" <> 'succeeded' AND \"subscriber\" LIKE 'erasure%'"),
+    (
+        "patients",
+        "SELECT \"known_as\" FROM \"patient\" ORDER BY 1",
+    ),
+    (
+        "deliveries",
+        "SELECT \"subscriber\" FROM \"jadpo_deliveries\" WHERE \"status\" <> 'succeeded' AND \"subscriber\" LIKE 'erasure%'",
+    ),
 ];
 
 /// The main commit first and everything else after it: until a sweep runs,
@@ -891,7 +891,8 @@ fn the_main_store_commits_first_then_each_store_and_the_log() {
 
         // Gone from `main` at once, and still in the archive.
         assert_eq!(
-            club.texts("main", "SELECT \"handle\" FROM \"member\"").await,
+            club.texts("main", "SELECT \"handle\" FROM \"member\"")
+                .await,
             ["bob"]
         );
         assert_eq!(
@@ -929,11 +930,8 @@ fn the_main_store_commits_first_then_each_store_and_the_log() {
             ["erasure in archive", "erasure log", "subscriber note_departures"]
         );
         assert_eq!(
-            club.texts(
-                "erasures",
-                "SELECT \"entity\" FROM \"jadpo_erasure_log\""
-            )
-            .await,
+            club.texts("erasures", "SELECT \"entity\" FROM \"jadpo_erasure_log\"")
+                .await,
             Vec::<String>::new(),
             "the log is written after the commit"
         );
@@ -959,7 +957,8 @@ fn the_main_store_commits_first_then_each_store_and_the_log() {
         );
         // The patient's own event went from the archive back to `main`.
         assert_eq!(
-            club.texts("main", "SELECT \"drug\" FROM \"prescription\"").await,
+            club.texts("main", "SELECT \"drug\" FROM \"prescription\"")
+                .await,
             ["bob's drug"]
         );
         assert_eq!(
@@ -1108,10 +1107,8 @@ fn a_store_that_cant_apply_it_is_tried_again_and_shown() {
         .await
         .expect("the items");
         assert!(
-            shown
-                .iter()
-                .any(|item| item.target == "erasure in archive"
-                    && item.code.as_deref() == Some("unavailable")),
+            shown.iter().any(|item| item.target == "erasure in archive"
+                && item.code.as_deref() == Some("unavailable")),
             "{shown:?}"
         );
         // Still down at its next attempt, it counts another.
@@ -1217,9 +1214,7 @@ async fn restore(club: &Club, ada: &Value, main: bool, archive: bool) {
     if main {
         club.run(
             "main",
-            &format!(
-                "INSERT INTO \"member\" (\"id\", \"handle\") VALUES ('{id}', 'ada')"
-            ),
+            &format!("INSERT INTO \"member\" (\"id\", \"handle\") VALUES ('{id}', 'ada')"),
         )
         .await;
         club.run(
@@ -1306,7 +1301,8 @@ fn restoring_brings_no_one_back(name: &str, log: &str) {
         let found = replayed(program, club).await;
         assert_eq!(found.erased, 1, "{found:?}");
         assert_eq!(
-            club.texts("main", "SELECT \"handle\" FROM \"member\"").await,
+            club.texts("main", "SELECT \"handle\" FROM \"member\"")
+                .await,
             ["bob"]
         );
         assert_eq!(
@@ -1438,7 +1434,13 @@ fn a_replay_clears_a_restored_kept_record_and_leaves_an_erased_one() {
         club.clock.advance(HOUR);
 
         let idle = replayed(program, club).await;
-        assert_eq!(idle, Replayed { logged: 1, erased: 0 });
+        assert_eq!(
+            idle,
+            Replayed {
+                logged: 1,
+                erased: 0
+            }
+        );
 
         // As the backup holds it, from before she was erased.
         club.run(
@@ -1511,7 +1513,9 @@ fn jadpo_dev_replays_the_log_as_it_starts() {
     }
     let server = jadpo_test::database::server().expect("a PostgreSQL server");
     let url = server.create_database("erasure_dev").expect("a database");
-    let archive = server.create_database("erasure_dev_archive").expect("a database");
+    let archive = server
+        .create_database("erasure_dev_archive")
+        .expect("a database");
     fs::write(
         root.join(".env.local"),
         format!(

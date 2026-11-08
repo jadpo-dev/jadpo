@@ -1503,10 +1503,12 @@ action cancel(invoice_id: Invoice.id) fails InvoiceNotFound -> Unit {
 #[test]
 fn an_erasure_in_another_store_starts_from_the_id_it_is_given() {
     let db = Database::default();
-    let project = project_of(&db, &[
-        (
-            "app.jadpo",
-            "application {
+    let project = project_of(
+        &db,
+        &[
+            (
+                "app.jadpo",
+                "application {
     connections: {
         main: {
             driver: Driver.postgres
@@ -1525,10 +1527,10 @@ fn an_erasure_in_another_store_starts_from_the_id_it_is_given() {
     }
 }
 ",
-        ),
-        (
-            "domains/club/entities/member.jadpo",
-            "entity Member {
+            ),
+            (
+                "domains/club/entities/member.jadpo",
+                "entity Member {
     id: Uuid
     handle: Email {
         personal: PersonalData.identifying
@@ -1537,10 +1539,10 @@ fn an_erasure_in_another_store_starts_from_the_id_it_is_given() {
     person: true
 }
 ",
-        ),
-        (
-            "domains/club/entities/old_todo.jadpo",
-            "use club/entities { Member }
+            ),
+            (
+                "domains/club/entities/old_todo.jadpo",
+                "use club/entities { Member }
 
 entity OldTodo {
     id: Uuid
@@ -1551,10 +1553,10 @@ entity OldTodo {
     store: archive
 }
 ",
-        ),
-        (
-            "domains/club/entities/old_review.jadpo",
-            "use club/entities { Member }
+            ),
+            (
+                "domains/club/entities/old_review.jadpo",
+                "use club/entities { Member }
 
 entity OldReview {
     id: Uuid
@@ -1568,10 +1570,10 @@ entity OldReview {
     store: archive
 }
 ",
-        ),
-        (
-            "domains/club/entities/patient.jadpo",
-            "use club/entities { Member }
+            ),
+            (
+                "domains/club/entities/patient.jadpo",
+                "use club/entities { Member }
 
 entity Patient {
     id: Uuid
@@ -1584,8 +1586,9 @@ entity Patient {
     store: archive
 }
 ",
-        ),
-    ]);
+            ),
+        ],
+    );
     let plan = Plan::build(&db, project);
     let erasure = &plan.events().erasure;
     assert_eq!(

@@ -282,7 +282,8 @@ pub(crate) async fn write(
         ctx.checked_row(row, id);
     }
     let Some(returns) = &plan.returns else {
-        crate::erasure::emit(ctx, &plan.erased, &rows, now).map_err(|what| defect(ctx, what, site))?;
+        crate::erasure::emit(ctx, &plan.erased, &rows, now)
+            .map_err(|what| defect(ctx, what, site))?;
         if let Some(audit) = &plan.audit {
             let Some(before) = &before else {
                 return Err(defect(

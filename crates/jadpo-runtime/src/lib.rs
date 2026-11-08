@@ -112,8 +112,8 @@ pub mod deployable;
 pub mod effects;
 pub mod email;
 pub mod embed;
-pub mod erasure;
 mod env;
+pub mod erasure;
 mod executor;
 mod failure;
 #[cfg(feature = "testing")]

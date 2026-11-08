@@ -1339,13 +1339,7 @@ impl Reader<'_> {
     }
 
     /// One field, with its data settings checked.
-    fn field(
-        &mut self,
-        path: &str,
-        entity: &str,
-        name: &str,
-        value: &Expr,
-    ) -> Option<FieldModel> {
+    fn field(&mut self, path: &str, entity: &str, name: &str, value: &Expr) -> Option<FieldModel> {
         let written = TypeRef::from_expr(value);
         let ty = self.lookup.resolve(&written);
         let born = entity_field_key(self.registry, entity, &[name.to_string()])

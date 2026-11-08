@@ -764,7 +764,10 @@ mod tests {
         }
         // A file of the store's own stays out of it.
         let file = jadpo_std::files::key_for(&[7; 16]);
-        assert!(matches!(store.answer(&put(&file, b"csv")), Answer::Value(_)));
+        assert!(matches!(
+            store.answer(&put(&file, b"csv")),
+            Answer::Value(_)
+        ));
         assert_eq!(list(), [second.clone(), first.clone()]);
         assert!(matches!(
             store.answer(&read(&first, 0, 10)),

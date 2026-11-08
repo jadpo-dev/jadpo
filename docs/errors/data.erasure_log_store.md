@@ -57,15 +57,16 @@ error: `main` holds a person's records, so a restore would take the log back wit
 check failed: 1 error, 2 files
 ```
 
-```text output
-```
-
 `(human)` at the end of the `next:` line tells your coding agent to stop
-and ask you, because it decides what you run and back up.
+and ask you which fix you want, because the choice is yours to make: it
+decides what you run and back up.
 
 ## How to fix it
 
-Add a database of its own and name that. It needs no entities:
+The question is what else you can run beside the database your people are in.
+
+**If you can run a second database,** add one and name that. It needs no
+entities of its own:
 
 ```jadpo check project=e-erasure-log-store-fix file=app.jadpo
 application {
@@ -96,11 +97,16 @@ entity User {
 }
 ```
 
-Or name a store of files, on a server with a disk of its own:
+A restore of `main` now leaves the log as it was.
 
-```jadpo fragment
+**If the app runs on one server with a disk of its own,** name a store of files:
+
+```jadpo check project=e-erasure-log-store-files file=app.jadpo
 application {
     connections: {
+        main: {
+            driver: Driver.postgres
+        }
         erasures: {
             driver: Driver.disk
             path: "/var/lib/app/erasures"
@@ -114,7 +120,19 @@ application {
 }
 ```
 
-A Worker has no disk, so it keeps the log in a database.
+```jadpo check project=e-erasure-log-store-files file=domains/accounts/entities/user.jadpo hidden migrate=initial
+entity User {
+    id: Uuid
+    email: Email {
+        personal: PersonalData.contact
+    }
+
+    person: true
+}
+```
+
+Each person erased is now a file in that folder. A Worker has no disk, so it
+keeps the log in a database.
 
 ## Related
 

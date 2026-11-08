@@ -280,22 +280,20 @@ pub(crate) fn erasure_plan(
     let erasures = jadpo_check::erasure::erasures(db, project);
     let sign_in = crate::purge::sign_in_state(db, project);
     let retired = retired_columns(db, project);
-    let log = jadpo_check::privacy::privacy(db, project)
-        .log
-        .as_ref()
-        .map(|(store, kind)| match kind {
-            jadpo_check::data::ConnectionKind::Files => ErasureLog::Files {
-                connection: store.clone(),
-            },
-            _ => ErasureLog::Database {
-                store: store.clone(),
-            },
-        });
-    let apps: Vec<String> = crate::audit::subscribers_of(
-        db,
-        project,
-        jadpo_std::erasure::PERSON_ERASED_KEY,
-    );
+    let log =
+        jadpo_check::privacy::privacy(db, project)
+            .log
+            .as_ref()
+            .map(|(store, kind)| match kind {
+                jadpo_check::data::ConnectionKind::Files => ErasureLog::Files {
+                    connection: store.clone(),
+                },
+                _ => ErasureLog::Database {
+                    store: store.clone(),
+                },
+            });
+    let apps: Vec<String> =
+        crate::audit::subscribers_of(db, project, jadpo_std::erasure::PERSON_ERASED_KEY);
     let part_of = |person: &EntityModel,
                    part: &jadpo_check::erasure::Erasure,
                    store: &str|

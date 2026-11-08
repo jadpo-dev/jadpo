@@ -1678,7 +1678,8 @@ fn replay_erasures(
             .next("Check that each store can be reached, then run `jadpo dev` again"),
         )
     };
-    let runtime = Runtime::new().map_err(|error| failed(format!("Starting it failed: {error}.")))?;
+    let runtime =
+        Runtime::new().map_err(|error| failed(format!("Starting it failed: {error}.")))?;
     let mut host = jadpo_host_native::NativeHost::new();
     for (store, url) in urls {
         let security = secured.get(store).cloned().unwrap_or_default();

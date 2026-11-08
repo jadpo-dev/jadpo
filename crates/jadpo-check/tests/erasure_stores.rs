@@ -663,6 +663,10 @@ entity Departure {
     at: Instant
 
     store: erasures
+
+    policy: {
+        create: [Access.system]
+    }
 }
 ";
 
@@ -693,14 +697,20 @@ subscriber forget_them {
 fn an_app_subscribes_to_person_erased() {
     let with = [
         ("domains/accounts/actions/forget.jadpo", FORGET),
-        ("domains/accounts/subscribers/forget_them.jadpo", FORGET_THEM),
+        (
+            "domains/accounts/subscribers/forget_them.jadpo",
+            FORGET_THEM,
+        ),
         ("domains/accounts/entities/departure.jadpo", DEPARTURE),
     ];
     assert_eq!(problems(&with), NONE);
     let no_person = USER.replace("    person: true\n", "");
     let found = rules(&[
         ("domains/accounts/actions/forget.jadpo", FORGET),
-        ("domains/accounts/subscribers/forget_them.jadpo", FORGET_THEM),
+        (
+            "domains/accounts/subscribers/forget_them.jadpo",
+            FORGET_THEM,
+        ),
         ("domains/accounts/entities/departure.jadpo", DEPARTURE),
         (USER_PATH, &no_person),
         (NOTE_PATH, ""),

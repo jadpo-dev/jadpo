@@ -132,10 +132,7 @@ fn erasure_log(
     );
     let connections = crate::data::connections(db, project);
     let kind = connections.kind(&written);
-    if !matches!(
-        kind,
-        Some(ConnectionKind::Postgres | ConnectionKind::Files)
-    ) {
+    if !matches!(kind, Some(ConnectionKind::Postgres | ConnectionKind::Files)) {
         let mut stores = connections.databases();
         stores.extend(connections.files());
         let mut problem = Diagnostic::new(

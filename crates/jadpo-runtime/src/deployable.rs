@@ -711,8 +711,7 @@ pub async fn replay_erasures(
     let Some(events) = plan.events() else {
         return Ok(());
     };
-    let replayed =
-        crate::erasure::replay(host, &events.plan.erasure, &events.plan.files).await?;
+    let replayed = crate::erasure::replay(host, &events.plan.erasure, &events.plan.files).await?;
     if replayed.erased > 0 {
         log.event(
             "runtime.erasures_replayed",

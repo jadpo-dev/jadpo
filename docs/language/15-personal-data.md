@@ -1025,6 +1025,14 @@ test "closing an account hides the customer and keeps the policy number" {
 }
 ```
 
+### Legal holds and restricted use
+
+A legal hold, which stops a person's data being erased while a case is
+open, is application data that you write. An action checks a hold flag and
+refuses with its own failure before it calls `User.erase`. Restricting use
+of someone's data while a complaint is open (Article 18) works the same
+way.
+
 ## After the person's own commit
 <!-- topic: erasure-after-the-commit -->
 
@@ -1312,14 +1320,6 @@ A subscriber to it in an app with no person is
   deleting a person's key ("crypto-shredding").
 - **Logs** aren't rewritten either. They hold identifiers and hashes,
   never marked values, and expire on their own retention.
-
-### Legal holds and restricted use
-
-A legal hold, which stops a person's data being erased while a case is
-open, is application data that you write. An action checks a hold flag and
-refuses with its own failure before it calls `User.erase`. Restricting use
-of someone's data while a complaint is open (Article 18) works the same
-way.
 
 ## Erasure at providers
 <!-- topic: erasure-at-providers -->

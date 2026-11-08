@@ -63,13 +63,16 @@ check failed: 1 error, 3 files
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop
-and ask you, because where the log is kept decides what you have to run and
-back up.
+and ask you which fix you want, because the choice is yours to make: it
+decides what you have to run and back up.
 
 ## How to fix it
 
-Name a connection for it in `app.jadpo`: a database that holds no person's
-records, or a store of files. A database of its own needs no entities:
+The question is where a log you can't lose should live: it has to outlast a
+restore of the database your people are in.
+
+**If you can run a second database,** name one that holds no person's records.
+It needs no entities of its own. In `app.jadpo`:
 
 ```jadpo check project=e-erasure-log-required-fix file=app.jadpo
 application {
@@ -113,9 +116,57 @@ action close_account(id: User.id) fails UserNotFound -> Unit {
 }
 ```
 
-The page on [what erasure doesn't
-rewrite](../language/15-personal-data.md#what-erasure-doesnt-rewrite) says what
-the log holds and how it is replayed.
+Each erasure now leaves an entry there, and restoring the main database leaves
+the log as it was.
+
+**If the app runs on one server with a disk of its own,** name a store of files.
+In `app.jadpo`:
+
+```jadpo check project=e-erasure-log-required-files file=app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        erasures: {
+            driver: Driver.disk
+            path: "/var/lib/app/erasures"
+        }
+    }
+    privacy: {
+        erasure_log: {
+            store: erasures
+        }
+    }
+}
+```
+
+```jadpo check project=e-erasure-log-required-files file=domains/accounts/entities/user.jadpo hidden
+entity User {
+    id: Uuid
+    email: Email {
+        personal: PersonalData.contact
+    }
+
+    policy: {
+        delete: [Access.public]
+    }
+
+    person: true
+}
+```
+
+```jadpo check project=e-erasure-log-required-files file=domains/accounts/actions/close_account.jadpo hidden migrate=initial
+use accounts/entities { User, UserNotFound }
+
+/// Erases someone.
+action close_account(id: User.id) fails UserNotFound -> Unit {
+    attempt User.erase(id)
+}
+```
+
+Each person erased is now a file in that folder. A Worker has no disk, so it
+keeps the log in a database.
 
 ## Related
 

@@ -1786,7 +1786,8 @@ fn a_deployable_erases_across_stores_and_replays_the_log_as_it_starts() {
         }
     }
 ";
-    let config = "    main_url: PostgresUrl\n    archive_url: PostgresUrl\n    erasures_url: PostgresUrl\n";
+    let config =
+        "    main_url: PostgresUrl\n    archive_url: PostgresUrl\n    erasures_url: PostgresUrl\n";
     for (path, text) in crate::erasure_stores::served_files(application, config) {
         let path = root.join(path);
         fs::create_dir_all(path.parent().expect("parent")).expect("folders");
@@ -1869,7 +1870,10 @@ fn a_deployable_erases_across_stores_and_replays_the_log_as_it_starts() {
     let replayed = next(&lines, 60);
     assert_eq!(replayed["event"], "runtime.erasures_replayed", "{replayed}");
     assert_eq!(replayed["logged"], 1, "{replayed}");
-    assert_eq!(replayed["erased"], 2, "her record and her ticket: {replayed}");
+    assert_eq!(
+        replayed["erased"], 2,
+        "her record and her ticket: {replayed}"
+    );
     assert_eq!(count(&main, "member"), 0, "erased before anything else");
     assert_eq!(count(&archive, "ticket"), 0);
     let started = next(&lines, 60);

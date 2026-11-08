@@ -252,12 +252,8 @@ async fn ready(deployable: &Deployable, host: &WorkersHost, isolate: &Isolate) -
     }
     // A restored backup is erased before the isolate serves anything (area
     // 15; chunk P4c), each isolate replaying the log as it starts.
-    if let Err(stopped) = jadpo_runtime::deployable::replay_erasures(
-        host,
-        isolate.program.plan(),
-        &isolate.log,
-    )
-    .await
+    if let Err(stopped) =
+        jadpo_runtime::deployable::replay_erasures(host, isolate.program.plan(), &isolate.log).await
     {
         if stopped.waiting {
             waiting(&isolate.log, &stopped.store, Then::NextRequest);

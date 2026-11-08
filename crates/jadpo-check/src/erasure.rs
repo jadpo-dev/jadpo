@@ -286,8 +286,7 @@ fn erasure_of(
     store: Option<&str>,
     marked: &dyn Fn(&str, &str) -> bool,
 ) -> Erasure {
-    let within =
-        |entity: &EntityModel| store.is_none() || entity.store.as_deref() == store;
+    let within = |entity: &EntityModel| store.is_none() || entity.store.as_deref() == store;
     let mut out = Erasure {
         deleted: vec![person.to_string()],
         ..Erasure::default()
