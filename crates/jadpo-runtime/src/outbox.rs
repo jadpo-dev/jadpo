@@ -374,6 +374,11 @@ impl Events<'_> {
         if let Some(read) = crate::audit::read_payload(event, payload) {
             return read;
         }
+        // An erasure's event, whose payload is the runtime's too (area 15;
+        // chunk P4c).
+        if event == jadpo_std::erasure::PERSON_ERASED_KEY {
+            return crate::erasure::read_payload(payload);
+        }
         let number = self
             .numbers
             .iter()

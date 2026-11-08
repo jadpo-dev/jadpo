@@ -71,6 +71,7 @@ pub mod email;
 pub mod email_health;
 pub mod embed;
 mod enums;
+pub mod erasure;
 pub mod files;
 pub mod fixed;
 pub mod flags;

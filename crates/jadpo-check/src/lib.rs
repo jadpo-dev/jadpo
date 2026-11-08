@@ -55,6 +55,7 @@ pub mod personal_data;
 pub mod persons;
 pub mod policy;
 pub mod polls;
+pub mod privacy;
 pub mod prompt_recordings;
 pub mod prompts;
 pub mod provider_erasure;
@@ -418,6 +419,7 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         );
         out.extend(types::steps_settings(db, project).problems.iter().cloned());
         out.extend(data::sealed::key_problems(db, project).iter().cloned());
+        out.extend(privacy::privacy(db, project).problems.iter().cloned());
         out.extend(routes::table_problems(db, project).iter().cloned());
         out.extend(routes::signin_problems(db, project).iter().cloned());
         out.extend(records::record_problems(db, project).iter().cloned());

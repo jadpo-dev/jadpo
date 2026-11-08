@@ -1156,9 +1156,11 @@ impl Part<'_> {
             else {
                 continue;
             };
-            let Some(on_delete) = reference.on_delete else {
+            // One to a person in another store says only what erasure does
+            // (area 15; chunk P4c): no foreign key, no `on_delete:`.
+            if reference.on_delete.is_none() && field.erase.is_none() {
                 continue;
-            };
+            }
             let Some(target) = declaration_key(self.lookup, &reference.target) else {
                 continue;
             };
@@ -1176,8 +1178,12 @@ impl Part<'_> {
             node.doc = None;
             node.detail = Detail::Reference {
                 target: target.clone(),
-                on_delete: on_delete.name().to_string(),
-                constraint: crate::data::foreign_key(entity, field),
+                on_delete: reference
+                    .on_delete
+                    .map_or_else(String::new, |on_delete| on_delete.name().to_string()),
+                constraint: reference
+                    .on_delete
+                    .map_or_else(String::new, |_| crate::data::foreign_key(entity, field)),
             };
             self.out.nodes.push(node);
             self.out
