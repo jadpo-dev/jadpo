@@ -42,8 +42,9 @@ check failed: 1 error, 1 file
 the fix itself.
 
 Where an object is required, the error shows its shape and the value
-written out. A text goes in the one field the object must have, as an edit
-your coding agent can apply, and a standard type's page is one command away:
+written out. A text goes in the one field that can't be `none`, and every
+other field is given as `none`, as an edit your coding agent can apply; a
+standard type's page is one command away:
 
 ```jadpo check project=e-mismatch-object expect=type.mismatch
 function author() -> PersonName {
@@ -58,7 +59,7 @@ error: `"Frank Herbert"` can't be used where `PersonName` is required
 2 |     return "Frank Herbert"
   |            ^^^^^^^^^^^^^^^ the wrong kind of value
   reason: This is text, and `PersonName` is an object: `PersonName { given: GivenName, family: FamilyName? }`.
-  next: Write `PersonName { given: "Frank Herbert" }`, and see `jadpo help PersonName` for the type (agent)
+  next: Write `PersonName { given: "Frank Herbert", family: none }`, and see `jadpo help PersonName` for the type (agent)
   rule: type.mismatch
   help: https://jadpo.dev/docs/errors/type.mismatch
 
