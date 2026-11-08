@@ -363,7 +363,7 @@ deployable is a Worker. Neither is an image.
 Of what this page describes, these aren't built yet: running a service in a
 container; the Redis and S3 drivers; OAuth grants; the `cache`, `publishing`,
 `documents`, `bot_check` and `scanning` capabilities; an outside engine for
-`search`; the hosted registry; importers other than `openapi`; and choosing
+`search`; importers other than `openapi`; and choosing
 a provider when deploying.
 
 Of the built-in services, flags, rate limits, files, audit and search are
@@ -2147,13 +2147,11 @@ would change.
 
 ### Not built yet
 
-The registry at jadpo.dev publishes, installs, searches by words and yanks.
-These parts of this topic aren't built there yet: search by meaning, the
-written account and the review of each release's diff, urgent releases and the
-advisories they publish, compatibility runs, refusing a tag that moves,
-organisations with several members and their releasers, automatic release,
-successors and reports. Accounts are open to a short list of people for now;
-anyone can search and install.
+The registry at jadpo.dev does what this topic describes, apart from these:
+compatibility runs against Jadpo's pre-releases, telling a publisher what
+`jadpo fix` would change, and an app's reports from its scheduled contract
+runs. Accounts are open to a short list of people for now; anyone can search
+and install.
 
 ## The registry protocol
 <!-- topic: the-registry-protocol -->
@@ -6052,7 +6050,8 @@ and the cache runs in memory. Where the other connections go in
 - The personal-data report lists the connections that receive marked
   fields ([Where personal data goes](15-personal-data.md#where-personal-data-goes)),
   which of them can erase, and the acceptances for those that can't. Which
-  can erase isn't built yet.
+  can erase is read from each package's and connection's `erasure:`; calling
+  a package's `erasure:` operation isn't built yet.
 
 ### Targets
 
@@ -7038,8 +7037,8 @@ which keys a connection to a package takes and needs, and what
   ("Fakes and the development call log").
 
 > `outbound:` waits for services, which aren't built yet. Package
-> settings have no defaults yet. The approval report that shows host
-> changes isn't built yet.
+> settings have no defaults yet. The approval report shows host changes,
+> and a new host needs a `NetworkChange.host_added` acceptance.
 
 ## A package's names, and watching a linked checkout
 <!-- topic: package-names-and-linked-checkouts (was a-package-s-names-and-watching-a-linked-checkout) -->
@@ -8464,7 +8463,7 @@ package's name, as its types are.
 | The `jadpo` tool's side of the public registry: `add` and `update` checked against the log, `search`, `audit`, `publish` and `preview` ([How the registry commands work](#how-the-registry-commands-work)) | Built. |
 | A package's publisher ([Names and publishers](#names-and-publishers)): `publisher:` in the index, on its surface and in its facts, the bar's `publisher` row, `jadpo package publish` and `verify --publisher`, the verifier's request and the registry's check of a release | Built. |
 | [Starting a package](#developing-and-publishing-a-package): `jadpo package new`, and the bar's `licence` row refusing `Licence.proprietary` for `verify` and `publish` | Built. |
-| The registry at jadpo.dev: publishing, installing by name, search, yanks, advisories and compatibility runs | Partly built: publishing from a tag, confirming a release with a passkey, installing and updating by name with the log's proofs, search by words, and yanks and takedowns. Not built yet: search by meaning, the written account and the review of each release's diff, urgent releases and advisories, compatibility runs, refusing a tag that moves, organisations with several members, automatic release, successors and reports. Accounts are open to a short list of people for now; anyone can search and install. |
+| The registry at jadpo.dev: publishing, installing by name, search, yanks, advisories and compatibility runs | Partly built: publishing from a tag, confirming a release with a passkey, automatic release, installing and updating by name with the log's proofs, search by words and by meaning, the written account and the review of each release's diff, yanks and takedowns, urgent releases and advisories, compatibility runs against each Jadpo release, reporting a tag that moves, organisations with several members, successors and reports. Not built yet: compatibility runs against Jadpo's pre-releases, telling a publisher what `jadpo fix` would change, and an app's reports from its scheduled contract runs. Accounts are open to a short list of people for now; anyone can search and install. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
 | Erasure at providers | Partly built: the package's and the connection's `erasure:` are read and checked, and a connection that can't erase what it receives needs an `ErasureNotPossible` acceptance ([Erasure at providers](15-personal-data.md#erasure-at-providers)). Not built yet: calling the provider. |
