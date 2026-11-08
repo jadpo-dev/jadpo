@@ -45,6 +45,7 @@
 pub mod account_chooser;
 pub mod address;
 pub(crate) mod confirmation;
+pub mod downloads;
 pub mod external_token;
 #[cfg(test)]
 mod guarantees;
@@ -461,6 +462,14 @@ async fn respond(
     request_id: &str,
     ready: Option<&health::Readiness>,
 ) -> Response {
+    // A file's signed link (area 16, "Downloading"), when the path's
+    // store is one that keeps files; `/files/...` is any other route's
+    // otherwise.
+    if let Some((store, link)) = downloads::path(request)
+        && let Some(response) = downloads::answer(ctx, request, request_id, store, link).await
+    {
+        return response;
+    }
     // What the path is, found once in the trie (chunk 8.1k).
     let found = app.routes.find(&request.method, &request.path);
     if let Found::Health { ready: readiness } = found {
@@ -1499,7 +1508,7 @@ async fn run_with_caller(
                 let First::Left(outcome) = answered else {
                     return runtime_failure(DEADLINE_EXCEEDED, request_id, None);
                 };
-                let mut response = answer(app, (number, route), request_id, outcome);
+                let mut response = answer(ctx, app, (number, route), request_id, outcome);
                 if response.status == route.status.code() {
                     response.status = status;
                 }
@@ -1570,7 +1579,7 @@ async fn run_with_caller(
         };
         let mut response = match &settling {
             Some(_) => Response::default(),
-            None => answer(app, (number, route), request_id, outcome),
+            None => answer(ctx, app, (number, route), request_id, outcome),
         };
         let guard = guard.as_ref().filter(|_| claimed.get());
         let keep = guard.filter(|_| storable);
@@ -1656,12 +1665,8 @@ async fn run_with_caller(
                     crate::runner::Settled::Unsettled
                 }
             };
-            response = answer(
-                app,
-                (number, route),
-                request_id,
-                answer_query(app, ctx, settle, args).await,
-            );
+            let answered = answer_query(app, ctx, settle, args).await;
+            response = answer(ctx, app, (number, route), request_id, answered);
             if response.status == route.status.code() {
                 match settled {
                     crate::runner::Settled::Settled => {
@@ -1790,11 +1795,13 @@ async fn answer_query(
 /// The response `outcome` gives: the output with the route's status, or
 /// the failure envelope.
 fn answer(
+    ctx: &Ctx<'_>,
     app: &App<'_>,
     (number, route): (u32, &RoutePlan),
     request_id: &str,
     outcome: Outcome,
 ) -> Response {
+    let outcome = sent_as_links(ctx, route, outcome);
     match outcome {
         // Raw bytes for a body (area 7, "Sending raw bytes"; chunk G3).
         Outcome::Value(value) if route.sends.is_some() => sent_raw(route, &value, request_id),
@@ -1836,6 +1843,35 @@ fn answer(
             response
         }
         Outcome::Assertion(_) => runtime_failure(INTERNAL_FAULT, request_id, None),
+    }
+}
+
+/// `outcome` with each `File` it would send as its signed link (area 16,
+/// "Downloading"), or a fault if a file's store signs none: never the
+/// store and key it is kept under.
+fn sent_as_links(ctx: &Ctx<'_>, route: &RoutePlan, outcome: Outcome) -> Outcome {
+    let linker = downloads::Linker::new(ctx);
+    let unsigned = || {
+        Outcome::Fault(Box::new(Fault {
+            kind: crate::FaultKind::Defect("a file whose store signs no links".to_string()),
+            frames: ctx.frames(),
+        }))
+    };
+    match outcome {
+        Outcome::Value(value) if route.links => match linker.linked(&value) {
+            Some(linked) => Outcome::Value(linked),
+            None => unsigned(),
+        },
+        Outcome::Failed(mut failure) => {
+            for (_, value) in &mut failure.client {
+                match linker.linked(value) {
+                    Some(linked) => *value = linked,
+                    None => return unsigned(),
+                }
+            }
+            Outcome::Failed(failure)
+        }
+        other => other,
     }
 }
 

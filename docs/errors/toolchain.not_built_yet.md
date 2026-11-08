@@ -27,11 +27,10 @@ check failed: 1 error, 1 file
 ```
 
 A decided feature that isn't built can also be refused where its effect would
-be wrong. A `File` in a route's `output:` or a failure's `client:` is refused,
-because downloads aren't built and the answer would hold the store and key the
-file is kept under ([What a `File` holds](../language/16-built-in-services.md#what-a-file-holds)).
-A `File` in a provider operation's `input:` or a webhook's `reply:` is refused
-for the same reason, since sending a file to a provider isn't built. A
+be wrong. A `File` in a provider operation's `input:` or a webhook's `reply:` is
+refused, since sending a file to a provider isn't built and the provider would
+be told where the file is kept and be given none of it
+([What a `File` holds](../language/16-built-in-services.md#what-a-file-holds)). A
 `FileContents` in a route's `output:` or a failure's `client:` is refused too,
 since the answer would hold the whole file as Base64.
 

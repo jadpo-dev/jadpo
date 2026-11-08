@@ -340,6 +340,7 @@ impl<'a> Canon<'a> {
             Expr::Request { route, .. } => {
                 C::Tag("request", vec![C::Atom(route.written().to_string())])
             }
+            Expr::Download { .. } => C::Tag("download", Vec::new()),
             Expr::Now | Expr::SentEmails | Expr::Unchecked => C::Atom("…".into()),
         }
     }

@@ -492,15 +492,16 @@ async fn written(
 ) -> Step {
     let id = SqlValue::Uuid(start.run);
     let media = crate::files::media_of(write.format.file_type()).unwrap_or("text/plain");
-    if let Err(refusal) =
-        crate::files::join(ctx, &write.store, &start.run, place.pieces, media).await
-    {
-        let ran = refused("its file", &write.store, refusal);
-        if let Ran::Failed(why) = &ran {
-            super::end(ctx.host(), start, BatchState::Failed, Some(why)).await;
+    let hash = match crate::files::join(ctx, &write.store, &start.run, place.pieces, media).await {
+        Ok(hash) => hash,
+        Err(refusal) => {
+            let ran = refused("its file", &write.store, refusal);
+            if let Ran::Failed(why) = &ran {
+                super::end(ctx.host(), start, BatchState::Failed, Some(why)).await;
+            }
+            return Step::Ended(ran);
         }
-        return Step::Ended(ran);
-    }
+    };
     let name = match saved.values.get(write.name as usize) {
         Some(Value::Text(name)) => Some(name.to_string()),
         _ => None,
@@ -511,6 +512,7 @@ async fn written(
         name.as_deref(),
         i64::try_from(place.bytes).unwrap_or(i64::MAX),
         write.format.file_type(),
+        hash.as_deref(),
     );
     let mut open = match Batch::open(ctx, &plan.store, plan.isolation, saved.system).await {
         Ok(open) => open,

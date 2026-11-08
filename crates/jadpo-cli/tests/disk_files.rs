@@ -62,6 +62,10 @@ pub(crate) fn bakery(sheets_at: &Path, full_at: &Path) -> Vec<(String, String)> 
             "use bakery/entities { PriceSheet }\n\n/// A kept sheet as its supplier sees it.\ntype SheetView = Output {\n    pick: [PriceSheet.id, PriceSheet.supplier]\n}\n",
         ),
         (
+            "domains/bakery/types/sheet_link.jadpo",
+            "use bakery/entities { PriceSheet }\n\n/// A kept sheet and the link to download it.\ntype SheetLink = Output {\n    pick: [PriceSheet.supplier, PriceSheet.sheet]\n}\n",
+        ),
+        (
             "domains/bakery/failures/sheet_not_kept.jadpo",
             "/// The store had no room for a sheet.\ntype SheetNotKept = Failure {\n    kind: FailureKind.unavailable\n    message: \"There was no room to keep the sheet.\"\n}\n",
         ),
@@ -90,8 +94,12 @@ pub(crate) fn bakery(sheets_at: &Path, full_at: &Path) -> Vec<(String, String)> 
             "use app { full }\nuse bakery/entities { OverflowSheet }\nuse bakery/types { SheetRequest }\nuse bakery/failures { SheetNotKept }\n\n/// Keeps a sheet in the overflow store.\naction keep_overflow(request: SheetRequest) fails SheetNotKept -> Unit {\n    var sheet: File = attempt full.put(encoding.to_utf8(request.sheet_text), FileType.csv) {\n        storage_full: SheetNotKept\n    }\n    var kept: OverflowSheet = OverflowSheet.create {\n        set: {\n            supplier: request.supplier\n            sheet: sheet\n        }\n    }\n    assert kept.supplier == request.supplier\n}\n",
         ),
         (
+            "domains/bakery/actions/link_sheet.jadpo",
+            "use app { sheets }\nuse bakery/entities { PriceSheet }\nuse bakery/types { PriceRow, SheetLink, SheetRequest }\nuse bakery/failures { SheetNotKept }\nuse bakery/actions { save_price }\n\n/// Keeps a sheet and answers with the link to it.\naction link_sheet(request: SheetRequest) fails SheetNotKept -> SheetLink {\n    var sheet: File = attempt sheets.put(encoding.to_utf8(request.sheet_text), FileType.csv) {\n        storage_full: SheetNotKept\n    }\n    var reading: BatchRun = csv.read(sheet, as: PriceRow, each: row -> save_price(row))\n    var kept: PriceSheet = PriceSheet.create {\n        set: {\n            supplier: request.supplier\n            sheet: sheet\n            reading: reading\n        }\n    }\n    return SheetLink {\n        supplier: kept.supplier\n        sheet: kept.sheet\n    }\n}\n",
+        ),
+        (
             "domains/bakery/routes/sheets.jadpo",
-            "use bakery/types { SheetRequest, SheetView }\nuse bakery/actions { keep_overflow, keep_prices }\n\n/// The bakery's price sheets.\nroutes Sheets {\n    prefix: /sheets\n\n    /// Keeps a sheet and reads its prices in.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        output: SheetView\n        status: SuccessStatus.created\n        run: keep_prices(input)\n    }\n\n    /// Keeps a sheet in the overflow store.\n    POST /overflow {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        status: SuccessStatus.no_content\n        run: keep_overflow(input)\n    }\n}\n",
+            "use bakery/types { SheetLink, SheetRequest, SheetView }\nuse bakery/actions { keep_overflow, keep_prices, link_sheet }\n\n/// The bakery's price sheets.\nroutes Sheets {\n    prefix: /sheets\n\n    /// Keeps a sheet and reads its prices in.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        output: SheetView\n        status: SuccessStatus.created\n        run: keep_prices(input)\n    }\n\n    /// Keeps a sheet in the overflow store.\n    POST /overflow {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        status: SuccessStatus.no_content\n        run: keep_overflow(input)\n    }\n\n    /// Keeps a sheet and answers with the link to it.\n    POST /linked {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        output: SheetLink\n        status: SuccessStatus.created\n        run: link_sheet(input)\n    }\n}\n",
         ),
     ];
     files
@@ -303,6 +311,21 @@ fn jadpo_dev_keeps_files_under_the_project_and_keeps_its_floor() {
         "the sheet's two prices were read in: {}",
         dev.log()
     );
+    // A download, served from the disk over real HTTP.
+    let sent = |method: &str, path: &str, headers: &[(&str, &str)]| {
+        let reply = dev.send(method, path, headers, "");
+        let all = crate::file_downloads::HEADERS
+            .iter()
+            .filter_map(|name| {
+                reply
+                    .header(name)
+                    .map(|value| ((*name).to_string(), value.to_string()))
+            })
+            .collect();
+        (reply.status, all, reply.bytes().to_vec())
+    };
+    let answer = dev.send("POST", "/sheets/linked", &[], SHEET);
+    crate::file_downloads::serves_a_file(&answer.json(), &sent, &store);
     let refused = dev.send("POST", "/sheets/overflow", &[], SHEET);
     assert_eq!(refused.status, 503, "{refused:?}");
     assert_eq!(

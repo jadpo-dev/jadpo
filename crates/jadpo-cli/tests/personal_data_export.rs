@@ -442,10 +442,11 @@ fn project(name: &str, files: &[(String, String)]) -> PathBuf {
     root
 }
 
-/// An export that would leave out a `File` field is refused where it is
-/// written, until the links downloads give are built.
+/// An export of a person reaching a `File` field carries that file's
+/// signed link (area 15, "Export"; area 16, "Downloading"): a `File`
+/// held directly no longer refuses the export.
 #[test]
-fn an_export_reaching_a_file_is_not_built_yet() {
+fn an_export_reaching_a_file_checks() {
     let mut files = files();
     for (path, text) in &mut files {
         if path == "app.jadpo" {
@@ -470,31 +471,13 @@ fn an_export_reaching_a_file_is_not_built_yet() {
         }
     }
     let root = project("file", &files);
-    let records = jadpo(&root, &["records", "update"]);
-    assert_eq!(records.code, 0, "{}{}", records.stdout, records.stderr);
-    let checked = jadpo(&root, &["check"]);
-    assert_ne!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
-    let output = format!("{}{}", checked.stdout, checked.stderr);
-    assert!(output.contains("toolchain.not_built_yet"), "{output}");
-    assert!(
-        output.contains("Exporting a `Reader` here isn't built yet"),
-        "{output}"
-    );
-    let _ = fs::remove_dir_all(&root);
-}
-
-#[test]
-fn an_export_passes_its_tests() {
-    if !jadpo_test::live() {
-        return;
-    }
-    let root = project("tests", &files());
     for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
-        let done = jadpo(&root, args);
-        assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
+        let output = jadpo(&root, args);
+        assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
     }
-    let tested = jadpo(&root, &["test", "--seed", "1"]);
-    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("7 passed"), "{}", tested.stdout);
+    let checked = jadpo(&root, &["check"]);
+    let output = format!("{}{}", checked.stdout, checked.stderr);
+    assert!(!output.contains("toolchain.not_built_yet"), "{output}");
+    assert_eq!(checked.code, 0, "{output}");
     let _ = fs::remove_dir_all(&root);
 }

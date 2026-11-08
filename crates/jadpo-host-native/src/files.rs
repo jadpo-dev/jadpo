@@ -41,10 +41,13 @@
 //!   folder; a key naming nothing is deleted already, so a repeat acts
 //!   once (chunk B3).
 //!
-//! Its I/O is blocking: a window is at most a megabyte. Uploads and
-//! downloads come with the rest of the files capability (roadmap
-//! "Remaining built-in services").
+//! Its I/O is blocking: a window is at most a megabyte. Uploads come with
+//! the rest of the files capability (roadmap "Remaining built-in services");
+//! a download reads through `read` a window at a time, signed with the key
+//! the store keeps in its folder.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -70,7 +73,15 @@ pub struct DiskStore {
     /// it: `jadpo dev`'s, under the project; a deployable's is made, or
     /// refused, as it starts.
     dev_root: bool,
+    /// The key its download links are signed with, once read (area 16,
+    /// "Downloading"): kept in the store's own folder, never named by any
+    /// file's key.
+    link_key: RefCell<Option<[u8; 32]>>,
 }
+
+/// The file in a store's root holding what its links are signed with: not
+/// a key [`is_key`] allows, so no download or file's key can name it.
+const LINK_KEY_FILE: &str = "link-key";
 
 impl DiskStore {
     /// The store a deployable keeps at `path`, with `floor` millionths of
@@ -108,6 +119,7 @@ impl DiskStore {
             root,
             floor: floor.min(WHOLE_DISK),
             dev_root: false,
+            link_key: RefCell::new(None),
         })
     }
 
@@ -118,6 +130,7 @@ impl DiskStore {
             root,
             floor: floor.min(WHOLE_DISK),
             dev_root: true,
+            link_key: RefCell::new(None),
         }
     }
 
@@ -238,8 +251,13 @@ impl DiskStore {
         }
         if missing {
             // Joined already: its pieces went once it was whole.
-            if parts.is_empty() && folder.open(name).is_ok() {
-                return Answer::Value(Value::Unit);
+            if parts.is_empty()
+                && let Ok(file) = folder.open(name)
+            {
+                return match hash_file(file) {
+                    Ok(hash) => Answer::Value(Value::text(&hash)),
+                    Err(_) => Answer::Unavailable,
+                };
             }
             return Answer::Failed(NOT_FOUND.into());
         }
@@ -247,10 +265,11 @@ impl DiskStore {
             return Answer::Failed(STORAGE_FULL.into());
         }
         let staged = part_name(name);
+        let mut hasher = blake3::Hasher::new();
         let kept = (|| {
             let mut file = folder.create(&staged)?;
             for (_, _, part) in &mut parts {
-                std::io::copy(part, &mut file)?;
+                copy_hashing(part, &mut file, &mut hasher)?;
             }
             file.sync_all()?;
             drop(file);
@@ -264,7 +283,7 @@ impl DiskStore {
         for (at, name, _) in &parts {
             let _ = at.remove(name);
         }
-        Answer::Value(Value::Unit)
+        Answer::Value(Value::text(&hasher.finalize().to_hex()))
     }
 
     /// Removes the first `pieces` pieces of file `key`, whose id is `id`,
@@ -354,6 +373,27 @@ impl DiskStore {
         ))
     }
 
+    /// What its download links are signed with: read from its folder, and
+    /// made there first when this is the first link of its store, by the
+    /// one thread or process that gets the name; the others read what it
+    /// made, and made only when `make`. `None` when it can't be read or
+    /// made.
+    fn link_key(&self, make: bool) -> Option<[u8; 32]> {
+        if let Some(key) = *self.link_key.borrow() {
+            return Some(key);
+        }
+        let root = self.root(make).ok()?;
+        let key = match read_link_key(&root) {
+            Ok(key) => key,
+            Err(error) if make && error.kind() == ErrorKind::NotFound => {
+                make_link_key(&root).ok()?
+            }
+            Err(_) => return None,
+        };
+        *self.link_key.borrow_mut() = Some(key);
+        Some(key)
+    }
+
     fn answer(&self, call: &Call) -> Answer {
         let Value::Record(input) = &call.input else {
             return Answer::Misconfigured;
@@ -404,6 +444,10 @@ impl Capability for DiskStore {
         let answer = self.answer(call);
         Box::pin(async move { answer })
     }
+
+    fn link_key(&self, _connection: &str, make: bool) -> Option<[u8; 32]> {
+        self.link_key(make)
+    }
 }
 
 /// The server's own disk, which a native deployable gives the driver
@@ -433,6 +477,8 @@ pub struct DiskFiles {
     /// Each store's free-space floor, by connection: none until
     /// [`DiskFiles::with_floors`] says.
     floors: Rc<dyn Fn(&str) -> u32>,
+    /// Each store's link key, once read.
+    keys: RefCell<HashMap<String, [u8; 32]>>,
 }
 
 impl std::fmt::Debug for DiskFiles {
@@ -449,6 +495,7 @@ impl DiskFiles {
         DiskFiles {
             root: root.into(),
             floors: Rc::new(|_| 0),
+            keys: RefCell::new(HashMap::new()),
         }
     }
 
@@ -477,6 +524,81 @@ impl Capability for DiskFiles {
             None => Answer::Failed(NOT_FOUND.into()),
         };
         Box::pin(async move { answer })
+    }
+
+    fn link_key(&self, connection: &str, make: bool) -> Option<[u8; 32]> {
+        if let Some(key) = self.keys.borrow().get(connection) {
+            return Some(*key);
+        }
+        let key = self.store(connection)?.link_key(make)?;
+        self.keys.borrow_mut().insert(connection.to_string(), key);
+        Some(key)
+    }
+}
+
+/// The link key kept in `root`: a regular file of exactly 32 bytes.
+fn read_link_key(root: &os::Dir) -> std::io::Result<[u8; 32]> {
+    let mut file = root.open(LINK_KEY_FILE)?;
+    let mut key = [0u8; 32];
+    file.read_exact(&mut key)?;
+    let mut more = [0u8; 1];
+    if file.read(&mut more)? != 0 {
+        return Err(ErrorKind::InvalidData.into());
+    }
+    Ok(key)
+}
+
+/// A new link key in `root`, written to a temporary file and linked into
+/// place, which refuses a name already there, so two workers making one at
+/// once agree on the first; and so a crash never leaves part of one.
+fn make_link_key(root: &os::Dir) -> std::io::Result<[u8; 32]> {
+    let mut key = [0u8; 32];
+    getrandom::fill(&mut key).map_err(|_| std::io::Error::from(ErrorKind::Other))?;
+    let staged = part_name(LINK_KEY_FILE);
+    let mut file = root.create(&staged)?;
+    let written = file
+        .write_all(&key)
+        .and_then(|()| file.sync_all())
+        .and_then(|()| root.link(&staged, LINK_KEY_FILE));
+    drop(file);
+    let _ = root.remove(&staged);
+    match written {
+        Ok(()) => {
+            root.sync()?;
+            Ok(key)
+        }
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => read_link_key(root),
+        Err(error) => Err(error),
+    }
+}
+
+/// `from` copied to `to` a window at a time, its bytes hashed as they go.
+fn copy_hashing(
+    from: &mut std::fs::File,
+    to: &mut std::fs::File,
+    hasher: &mut blake3::Hasher,
+) -> std::io::Result<()> {
+    let mut window = vec![0u8; 1 << 16];
+    loop {
+        let read = from.read(&mut window)?;
+        let Some(bytes) = window.get(..read).filter(|bytes| !bytes.is_empty()) else {
+            return Ok(());
+        };
+        hasher.update(bytes);
+        to.write_all(bytes)?;
+    }
+}
+
+/// The hash of what `file` holds, read a window at a time.
+fn hash_file(mut file: std::fs::File) -> std::io::Result<String> {
+    let mut hasher = blake3::Hasher::new();
+    let mut window = vec![0u8; 1 << 16];
+    loop {
+        let read = file.read(&mut window)?;
+        let Some(bytes) = window.get(..read).filter(|bytes| !bytes.is_empty()) else {
+            return Ok(hasher.finalize().to_hex().to_string());
+        };
+        hasher.update(bytes);
     }
 }
 
@@ -596,6 +718,18 @@ mod os {
             Ok(rustix::fs::renameat(&self.0, from, &self.0, to)?)
         }
 
+        /// A second name, `to`, for file `from`; a name already there is
+        /// refused.
+        pub fn link(&self, from: &str, to: &str) -> std::io::Result<()> {
+            Ok(rustix::fs::linkat(
+                &self.0,
+                from,
+                &self.0,
+                to,
+                AtFlags::empty(),
+            )?)
+        }
+
         /// Removes file `name`: a link is removed itself, never what it
         /// names.
         pub fn remove(&self, name: &str) -> std::io::Result<()> {
@@ -683,6 +817,12 @@ mod os {
             std::fs::rename(self.0.join(from), self.0.join(to))
         }
 
+        /// A second name, `to`, for file `from`; a name already there is
+        /// refused.
+        pub fn link(&self, from: &str, to: &str) -> std::io::Result<()> {
+            std::fs::hard_link(self.0.join(from), self.0.join(to))
+        }
+
         pub fn remove(&self, name: &str) -> std::io::Result<()> {
             std::fs::remove_file(self.0.join(name))
         }
@@ -703,6 +843,47 @@ mod os {
 
 #[cfg(test)]
 mod tests {
+    /// A store's link key is made once, kept, and can be neither read
+    /// through a planted link nor named by a file's key.
+    #[cfg(unix)]
+    #[test]
+    fn a_stores_link_key_is_made_once_and_is_no_files() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let dir = std::env::temp_dir().join(format!("jadpo-link-key-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let root = dir.join("store");
+        let store = DiskStore::made_at(root.clone(), 0);
+        assert_eq!(store.link_key(false), None, "following a link makes none");
+        assert!(!root.exists());
+        let key = store.link_key(true).expect("made");
+        assert_eq!(store.link_key(true), Some(key), "kept");
+        let again = DiskStore::made_at(root.clone(), 0);
+        assert_eq!(
+            again.link_key(false),
+            Some(key),
+            "read back, not made again"
+        );
+        let meta = std::fs::metadata(root.join(LINK_KEY_FILE)).expect("kept");
+        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        assert!(!is_key(LINK_KEY_FILE));
+
+        // Racing: both get the same key, whichever got the name.
+        let raced = dir.join("raced");
+        let opened = DiskStore::made_at(raced.clone(), 0);
+        let root_dir = opened.root(true).expect("made");
+        let one = make_link_key(&root_dir).expect("first");
+        let two = make_link_key(&root_dir).expect("second finds the first");
+        assert_eq!(one, two);
+
+        // A link planted in its place is refused, whatever it names.
+        let planted = dir.join("planted");
+        std::fs::create_dir_all(&planted).expect("made");
+        symlink("/etc/hostname", planted.join(LINK_KEY_FILE)).expect("planted");
+        let refused = DiskStore::made_at(planted.clone(), 0);
+        assert_eq!(refused.link_key(true), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::*;
     use jadpo_runtime::capability::Repeat;
     use std::fs;

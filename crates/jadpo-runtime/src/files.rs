@@ -101,8 +101,21 @@ pub struct Stored {
     pub size: u64,
 }
 
+/// The hash of `bytes` as a `File` keeps it (area 16, "Downloading"): what
+/// its ETag is made from.
+pub fn hash_of(bytes: &[u8]) -> String {
+    blake3::hash(bytes).to_hex().to_string()
+}
+
 /// A `File` (area 16): what an entity field keeps and `store.put` gives.
-pub fn file_value(store: &str, key: &str, name: Option<&str>, size: i64, file_type: &str) -> Value {
+pub fn file_value(
+    store: &str,
+    key: &str,
+    name: Option<&str>,
+    size: i64,
+    file_type: &str,
+    hash: Option<&str>,
+) -> Value {
     let ordinal = jadpo_std::variant_ordinal(jadpo_std::FILE_TYPE, file_type).unwrap_or(0);
     Value::record(
         FILE,
@@ -115,6 +128,7 @@ pub fn file_value(store: &str, key: &str, name: Option<&str>, size: i64, file_ty
                 Rc::from("type"),
                 Value::variant(jadpo_std::FILE_TYPE, ordinal, file_type, Vec::new()),
             ),
+            (Rc::from("hash"), hash.map_or(Value::None, Value::text)),
         ],
     )
 }
@@ -181,6 +195,7 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
         return Done::Fault(FaultKind::Defect("a put given no file type".into()));
     };
     let size = i64::try_from(held.len()).unwrap_or(i64::MAX);
+    let hash = hash_of(held);
     // In an action with several changing calls a `put` is a step like a
     // provider's call (area 12; chunk 7.5b): its object's key is derived
     // from its place, so a rerun writes the same object rather than a
@@ -221,7 +236,14 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
                     // Logged as the step it is (chunk 7.5f).
                     made.step = at;
                     crate::outside::given_back(ctx, &made, &Answer::Value(Value::Unit));
-                    Done::Value(file_value(connection, &key, None, size, &variant.name))
+                    Done::Value(file_value(
+                        connection,
+                        &key,
+                        None,
+                        size,
+                        &variant.name,
+                        Some(&hash),
+                    ))
                 }
                 _ => Done::Fault(FaultKind::Defect(format!(
                     "`{operation}`'s recorded answer isn't one a store gives"
@@ -285,7 +307,14 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
         return unanswered(refused, &format!("`{operation}`"));
     }
     match sent {
-        Ok(_) => Done::Value(file_value(connection, &key, None, size, &variant.name)),
+        Ok(_) => Done::Value(file_value(
+            connection,
+            &key,
+            None,
+            size,
+            &variant.name,
+            Some(&hash),
+        )),
         Err(Unanswered::Failed(code)) if code == STORAGE_FULL => Done::Broke(RuleKey::StorageFull),
         Err(refused) => unanswered(refused, &format!("`{connection}.put`")),
     }
@@ -547,7 +576,7 @@ pub async fn join(
     id: &[u8; 16],
     pieces: u64,
     media: &str,
-) -> Result<(), Unanswered> {
+) -> Result<Option<String>, Unanswered> {
     let input = Value::record(
         "FileJoin",
         vec![
@@ -561,7 +590,10 @@ pub async fn join(
     );
     call(ctx, Call::new(store, JOIN, input, Repeat::Keyed))
         .await
-        .map(|_| ())
+        .map(|answer| match answer {
+            Value::Text(hash) => Some(hash.to_string()),
+            _ => None,
+        })
 }
 
 /// Drops the first `pieces` pieces of the file whose new id is `id`, and
@@ -718,6 +750,7 @@ impl MemoryFiles {
             None,
             i64::try_from(bytes.len()).unwrap_or(i64::MAX),
             file_type,
+            Some(&hash_of(bytes)),
         )
     }
 
@@ -804,13 +837,15 @@ impl MemoryFiles {
                             whole.extend(bytes);
                         }
                     }
+                    let hash = hash_of(&whole);
                     files.insert(key.to_string(), whole);
-                    return Answer::Value(Value::Unit);
+                    return Answer::Value(Value::text(&hash));
                 }
                 // Joined already: the pieces went as the file was kept.
-                if files.contains_key(&**key) && keys.iter().all(|piece| !files.contains_key(piece))
+                if keys.iter().all(|piece| !files.contains_key(piece))
+                    && let Some(whole) = files.get(&**key)
                 {
-                    return Answer::Value(Value::Unit);
+                    return Answer::Value(Value::text(&hash_of(whole)));
                 }
                 Answer::Failed(NOT_FOUND.into())
             }
@@ -841,6 +876,12 @@ impl Capability for MemoryFiles {
     fn call<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, Answer> {
         let answer = self.answer(call);
         Box::pin(async move { answer })
+    }
+
+    fn link_key(&self, _connection: &str, _make: bool) -> Option<[u8; 32]> {
+        // A test's store's: its links are good for that store alone, by
+        // the store's name in what signs them.
+        Some([0x4c; 32])
     }
 
     fn source(&self) -> Source {
@@ -915,6 +956,7 @@ mod tests {
             None,
             WHOLE_READ_LIMIT as i64 + 1,
             "csv",
+            None,
         );
         let refused = crate::block_on(read_whole(&mut ctx, &large)).expect("no wait");
         assert!(

@@ -657,13 +657,28 @@ fn exchange(address: &str, method: &str, path: &str, body: &str) -> (u16, String
 
 /// [`exchange`], with the answer's head as well.
 fn exchanged(address: &str, method: &str, path: &str, body: &str) -> (u16, String, String) {
+    exchanged_with(address, method, path, &[], body)
+}
+
+/// [`exchanged`], with `headers` sent as well.
+fn exchanged_with(
+    address: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &str,
+) -> (u16, String, String) {
     let mut stream = TcpStream::connect(address).expect("it accepts");
     stream
         .set_read_timeout(Some(Duration::from_secs(20)))
         .expect("a timeout");
+    let extra: String = headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect();
     write!(
         stream,
-        "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n{body}",
         body.len()
     )
     .expect("sent");
@@ -1978,6 +1993,22 @@ fn a_deployable_keeps_a_disk_stores_files_at_its_path() {
         crate::disk_files::eventually(30, || count(&connection, "price_line") == 2),
         "the sheet's two prices were read back in from the disk"
     );
+
+    // A download, served from the disk by the compiled program.
+    let (status, body) = exchange(&address, "POST", "/sheets/linked", crate::disk_files::SHEET);
+    assert_eq!(status, 201, "{body}");
+    let answered: Value = serde_json::from_str(&body).expect("JSON");
+    let sent = |method: &str, path: &str, headers: &[(&str, &str)]| {
+        let (status, head, body) = exchanged_with(&address, method, path, headers, "");
+        let all = head
+            .lines()
+            .skip(1)
+            .filter_map(|line| line.split_once(": "))
+            .map(|(name, value)| (name.to_ascii_lowercase(), value.to_string()))
+            .collect();
+        (status, all, body.into_bytes())
+    };
+    crate::file_downloads::serves_a_file(&answered, &sent, &sheets);
 
     let (status, body) = exchange(
         &address,

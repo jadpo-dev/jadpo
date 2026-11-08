@@ -309,17 +309,6 @@ work below (Richard, 2026-11-08).
    The disk driver in production moved here from item 5; the `search`,
    `bot_check` and `scanning` capabilities, image variants, the
    `telemetry:` section and custom metrics stay under item 5.
-   - [ ] **B4 Downloads** `opus · high`: area 16, "Downloading" and "The
-     disk driver" (downloads). An `Output` that picks a `File` field
-     sends a signed link valid for five minutes with the file's name,
-     size and type; the disk driver serves it from the app's own origin,
-     single ranges and `If-Range` with an ETag from the file's hash,
-     `Content-Disposition: attachment` but for the image allow-list,
-     `nosniff` and `sandbox`, read in fixed windows. Done when route
-     tests download a file whole and by range on both executors, and an
-     expired or altered link is refused. Lifts `User.export`'s
-     `toolchain.not_built_yet` on a person reaching a `File` field: a
-     `File` in `PersonalDataExport` becomes this signed link.
    - [ ] **B5 Uploads** `opus · xhigh`: area 16, "Uploading", "Compressed
      uploads" and "The disk driver" (uploads); area 2, `FileUpload` and
      `UploadSlot`; area 9, the slot's grant. `Entity.field_upload()`
@@ -358,10 +347,14 @@ work below (Richard, 2026-11-08).
      with the design skills first. Done when tests read fixture files and
      see each failure on both executors, and `jadpo files copy` moves a
      disk store's files to S3.
-   - [ ] **B14 Where else a `File` goes** `opus · high` after B4 and B5:
+   - [ ] **B14 Where else a `File` goes** `opus · high` after B5:
      area 16, "What a `File` holds", "Attachments", "`store.read(file)`"
      and "Deleting and erasing"; area 11, "Types". A `File` in an
      operation's `input:` or a webhook's `reply:`, sent as its bytes;
+     a `File` held inside a structured value that a person's export
+     reaches (area 15, "Export"), as its signed link;
+     a `File` held inside a structured value that a person's export
+     reaches (area 15, "Export"), as its signed link;
      several attachments from one field (`List<File>`, `Set<File>`, a
      `Map`) and a `FileContents` on an email; fields naming one store of
      files in entities of two databases. Done when each runs on both

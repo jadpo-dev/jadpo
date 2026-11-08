@@ -12,6 +12,7 @@ autotests = false
 # for wasm32: it is listed in [workspace.metadata.targets] native_only, so
 # tools/verify.py leaves it out of the wasm32 build.
 [dependencies]
+blake3.workspace = true
 jadpo-runtime.workspace = true
 jadpo-std.workspace = true
 # The values the disk driver is sent and answers (chunk 6.4b).
