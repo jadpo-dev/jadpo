@@ -539,13 +539,14 @@ After the registry is live, in order:
 What shows a developer why Jadpo is worth trying, so it comes ahead of the
 work below (Richard, 2026-11-08).
 
-- [ ] **U1 The review web view** `opus · high`: area 17, "Reviewing a change"
+- [ ] **U1 The review web view** **needs a maintainer**: Richard plans it and
+  its design first (2026-11-08), then `opus · high`: area 17, "Reviewing a change"
   and "The web view". A static page in `build/review/` written by `jadpo
   approval`, from the report's JSON: the change at a high level in the
   report's order, the graph of the change as a flow chart, each path opened
   to see what surrounds it, what the change newly reaches, and links from
   every line to its source. No accounts and no approvals; acceptances stay
-  files. Designed with the design skills first. Done when a change to the
+  files. Done when a change to the
   golden todo opens as this page and CI can publish it beside the pull
   request.
 - [ ] **U2 What changed between an agent's revisions** `opus · high` after
