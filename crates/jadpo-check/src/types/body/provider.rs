@@ -196,6 +196,17 @@ impl Body<'_> {
         if !self.operation_input(&operation, call, written) {
             return failed(self);
         }
+        // What goes out, whether it ends up in the body, the path or the
+        // query string, is all from the input (area 19, "Where a secret
+        // can go").
+        if let Some((ty, input)) = &operation.input
+            && super::super::secrets::holds_password(self.table, ty)
+        {
+            let span = self.span(callee);
+            self.out.push(super::super::secrets::sent_to_provider(
+                written, input, span,
+            ));
+        }
         let result = match &operation.output {
             Ty::Prim(Prim::Unit) => Ty::Prim(Prim::Unit),
             other => other.clone(),
@@ -418,6 +429,22 @@ impl Body<'_> {
             return failed(self);
         };
         self.args(&sig, call, written);
+        // The password is the app's to answer for here, where the app hands
+        // it over, since a package signs nothing off for the apps that
+        // install it (area 19, "Where a secret can go").
+        if let Some((_, param)) = sig
+            .params
+            .iter()
+            .find(|(_, ty)| super::super::secrets::holds_password(self.table, ty))
+            && crate::types::outside::sends_a_password(self.db, self.project, &action.canonical)
+        {
+            let span = self.span(callee);
+            self.out.push(super::super::secrets::sent_to_provider(
+                written,
+                &param.to_string(),
+                span,
+            ));
+        }
         (
             sig.result.clone(),
             CallKind::Effect(written.to_string()),

@@ -511,6 +511,15 @@ mod tests {
                 digest(codecs, &reset, &token("abc"), None),
                 digest(codecs, &reset, &token("xyz"), None)
             );
+            // Every kind of secret value, whichever way it came.
+            for kind in jadpo_std::standard::security::SECRET_VALUES {
+                let of = |text: &str| [Some(Value::secret(kind, text))];
+                assert_eq!(
+                    digest(codecs, &reset, &of("first"), None),
+                    digest(codecs, &reset, &of("second"), None),
+                    "{kind}"
+                );
+            }
         });
     }
 

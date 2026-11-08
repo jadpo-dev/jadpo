@@ -36,6 +36,7 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
         table: &lookup,
         out: Vec::new(),
         headers: Vec::new(),
+        variant: false,
         failure: false,
         sent: false,
         provider,
@@ -75,6 +76,9 @@ pub(super) struct Decls<'a> {
     /// The headers the `Input` being checked reads so far, lower case, and
     /// where (area 7, "One input").
     pub headers: Vec<(String, Span)>,
+    /// Whether the lines being checked are an enum variant's block, whose
+    /// field written twice is `type.duplicate_variant_field`.
+    pub variant: bool,
     /// Whether the fields being checked are a failure's (area 8: a caller
     /// is never put in one).
     pub failure: bool,
@@ -985,12 +989,14 @@ impl Decls<'_> {
             wires.insert(sent, (text.clone(), span));
             if let Some(block) = block {
                 let lines = shape::lines(Some(block.clone()), FieldsBase::Object);
+                self.variant = true;
                 self.lines(
                     Some(block),
                     FieldsBase::Object,
                     &format!("{host}.{text}"),
                     &lines,
                 );
+                self.variant = false;
             }
         }
     }
@@ -1244,9 +1250,12 @@ impl Decls<'_> {
             }
         }
         let partial = base == FieldsBase::EmailPartial;
-        if !area_two && base != FieldsBase::Object && !email && !partial {
+        // A failure's lines are settings. Otherwise a field is written once
+        // whatever the type is built on; the rest is judged only for these.
+        if base == FieldsBase::Failure {
             return;
         }
+        let judged = area_two || base == FieldsBase::Object || email || partial;
         let table = self.table;
         let (_, problems) = derive(base, lines, &mut |name| match table.fields(name) {
             Some(fields) => Found::Fields(fields.iter().map(|f| f.name.clone()).collect()),
@@ -1257,7 +1266,13 @@ impl Decls<'_> {
             None => Found::Unknown,
         });
         for problem in problems {
+            let written_twice = matches!(&problem.kind, LineKind::Duplicate(name)
+                if lines.iter().filter(|line| matches!(line, Line::Field { name: n, .. } if n == name)).count() > 1);
+            if !judged && !written_twice {
+                continue;
+            }
             if (email || partial)
+                && !written_twice
                 && !matches!(
                     problem.kind,
                     LineKind::UnknownField { .. }
@@ -1385,7 +1400,11 @@ impl Decls<'_> {
             }
             LineKind::Duplicate(name) => {
                 let mut found = Diagnostic::new(
-                    &rule::TYPE_DUPLICATE_FIELD,
+                    if self.variant {
+                        &rule::TYPE_DUPLICATE_VARIANT_FIELD
+                    } else {
+                        &rule::TYPE_DUPLICATE_FIELD
+                    },
                     format!("`{host}` declares `{name}` twice"),
                 )
                 .at(key_span, "declared again");
@@ -2629,6 +2648,9 @@ impl Decls<'_> {
             for (spelling, part) in spellings {
                 match sent.get(&spelling) {
                     Some((_, _, Some(theirs))) if part.as_ref() == Some(theirs) => {}
+                    // One field written twice is one mistake, which the
+                    // duplicate's own error reports.
+                    Some((other, ..)) if other == name => {}
                     Some((other, first, _)) => {
                         let problem =
                             wire_clash(host, name, other, &spelling, span.clone(), first.clone())

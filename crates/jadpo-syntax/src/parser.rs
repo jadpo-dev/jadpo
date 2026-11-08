@@ -98,6 +98,9 @@ pub(crate) struct Parser<'a> {
     /// While a statement's first value is parsed: `=` after it assigns,
     /// rather than being SQL's comparison.
     pub(crate) assigning: bool,
+    /// Whether a function's or action's body is being parsed, where a
+    /// `decline` line has nothing to stand above.
+    pub(crate) in_body: bool,
     /// Where the current statement's value starts, so Rust's `call()?`
     /// can be rewritten as `attempt call()`.
     pub(crate) stmt_value_start: Option<u32>,
@@ -135,6 +138,7 @@ impl<'a> Parser<'a> {
             attempted: false,
             snippet,
             assigning: false,
+            in_body: false,
             stmt_value_start: None,
             member_value_start: None,
             depth: 0,

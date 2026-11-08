@@ -1504,6 +1504,12 @@ impl Reader<'_> {
             ));
             return None;
         }
+        if let Some(secret) = crate::types::secrets::secret_of(self.lookup, &ty) {
+            self.out.push(crate::types::secrets::outside_the_body(
+                &name, secret, "a URL", type_span,
+            ));
+            return None;
+        }
         let structure = self.lookup.structure(&ty);
         let named = matches!(ty, Ty::Named(_) | Ty::Field(..));
         let scalar = matches!(&structure, Ty::Prim(prim) if !sent_as_object(*prim));
@@ -2040,12 +2046,38 @@ impl Reader<'_> {
                 return None;
             }
         };
+        let fields = self
+            .lookup
+            .fields(&name)
+            .map(<[_]>::to_vec)
+            .unwrap_or_default();
+        // A secret comes in the body, and only a key or a token in a
+        // header (area 7, "One input"; area 19, "Where a secret can go").
+        for field in &fields {
+            if field.declared.has_error() {
+                continue;
+            }
+            let Some(secret) = crate::types::secrets::secret_in(self.lookup, &field.declared)
+            else {
+                continue;
+            };
+            let from = match &field.header {
+                Some(_) if crate::types::secrets::travels_in_a_header(secret) => None,
+                Some(_) => Some("a header"),
+                None if method.reads_query() => Some("the query string"),
+                None => None,
+            };
+            if let Some(from) = from {
+                self.out.push(crate::types::secrets::outside_the_body(
+                    &format!("{name}.{}", field.name),
+                    secret,
+                    from,
+                    span.clone(),
+                ));
+                return None;
+            }
+        }
         if method.reads_query() {
-            let fields = self
-                .lookup
-                .fields(&name)
-                .map(<[_]>::to_vec)
-                .unwrap_or_default();
             for field in fields {
                 if field.header.is_some() || field.declared.has_error() {
                     continue;

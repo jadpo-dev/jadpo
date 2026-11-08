@@ -1572,6 +1572,7 @@ fn member_item(p: &mut Parser<'_>, context: Members) {
                 habits::member_comma(p);
             }
         }
+        DECLINE_KW if p.nth(1) != COLON && p.in_body => decline_in_body(p),
         DECLINE_KW if p.nth(1) != COLON => declined(p, |p| {
             if p.at(DECLINE_KW) || p.at(R_BRACE) || p.at_eof() {
                 no_declaration(p);
@@ -2004,6 +2005,7 @@ fn block(p: &mut Parser<'_>) -> CompletedMarker {
         return m.complete(p, BLOCK);
     }
     let errors = p.error_count();
+    let outer = std::mem::replace(&mut p.in_body, true);
     p.with_newlines(false, |p| {
         p.with_records(true, |p| {
             while !p.at(R_BRACE) && !p.at_eof() {
@@ -2018,10 +2020,26 @@ fn block(p: &mut Parser<'_>) -> CompletedMarker {
             }
         })
     });
+    p.in_body = outer;
     p.stop_at_first_name_error(errors);
     p.leave();
     close_brace(p, open);
     m.complete(p, BLOCK)
+}
+
+/// A `decline` line among a body's statements, or above a field of a value
+/// built there.
+fn decline_in_body(p: &mut Parser<'_>) {
+    let error = p
+        .error_here(
+            &rule::SYNTAX_EXPECTED_STATEMENT,
+            "A decline can't go inside a body",
+        )
+        .label("not a statement")
+        .reason("A `decline` line stands directly above the declaration or member whose finding it declines, never among a body's statements.")
+        .next("Move the `decline` line above the declaration the finding is on");
+    p.push_error(error);
+    skip_statement(p);
 }
 
 fn block_item(p: &mut Parser<'_>) {
@@ -2033,16 +2051,7 @@ fn block_item(p: &mut Parser<'_>) {
         kind if kind.is_keyword() && keyword_qualifier(p, 0) => expr_stmt(p),
         VAR_KW => var_stmt(p),
         DECLINE_KW if p.nth(1) != COLON => {
-            let error = p
-                .error_here(
-                    &rule::SYNTAX_EXPECTED_STATEMENT,
-                    "A decline can't go inside a body",
-                )
-                .label("not a statement")
-                .reason("A `decline` line stands directly above the declaration or member whose finding it declines, never among a body's statements.")
-                .next("Move the `decline` line above the declaration the finding is on");
-            p.push_error(error);
-            skip_statement(p);
+            decline_in_body(p);
             return;
         }
         CONSTANT_KW => {
