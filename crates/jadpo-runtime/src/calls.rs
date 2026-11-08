@@ -14,8 +14,9 @@
 //!   (area 10), `prompts.render` (area 21), and a value an email's HTML
 //!   template writes out (area 16).
 //! - With the `testing` feature, a test's `fakes:` ([`fake`]), its
-//!   `fakes: { ai: }` ([`ai_fake`]) and `ai.<prompt>.requests`
-//!   ([`ai_requests`]) (area 13).
+//!   `fakes: { ai: }` ([`ai_fake`]), `ai.<prompt>.requests`
+//!   ([`ai_requests`]) and a provider operation's `.requests`
+//!   ([`operation_requests`]) (area 13).
 //!
 //! Each gives a [`Called`], which each executor turns into the stop its
 //! walker raises at the site.
@@ -498,4 +499,17 @@ pub fn ai_requests(ctx: &mut Ctx<'_>, plan: Plan<'_>, prompt: &str, at: u32) -> 
         Some(ai) => Called::Value(crate::ai::requests(ctx, &ai, prompt)),
         None => Called::defect(ctx, "`.requests` in a program that asks no model", at),
     }
+}
+
+/// `connection.resource.operation.requests` at a test's site (area 13,
+/// "What the code sent"): the inputs the code sent the operation, as its
+/// fake kept them.
+#[cfg(feature = "testing")]
+pub fn operation_requests(ctx: &mut Ctx<'_>, connection: &str, operation: &str) -> Called {
+    let sent = ctx
+        .host()
+        .capability(connection)
+        .map(|fake| fake.requests(connection, operation))
+        .unwrap_or_default();
+    Called::Value(Value::list(sent))
 }

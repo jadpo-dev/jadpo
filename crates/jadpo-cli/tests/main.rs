@@ -94,6 +94,7 @@ mod package_actions;
 mod package_conform;
 mod package_import;
 mod package_new;
+mod package_plans;
 mod package_polls;
 mod package_protocol;
 mod package_recipes;

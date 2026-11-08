@@ -412,6 +412,26 @@ pub enum Block {
         heading: String,
         rows: Vec<DecisionRow>,
     },
+    /// A list whose lines each carry rows beneath them: a bold heading at
+    /// column 0, each line a `+ ~ -` mark (or `✗`, for an error) and
+    /// columns at column 2 as in [`Block::ChangeList`], and beneath it at
+    /// column 4 its rows, a muted label and a value (`actions
+    /// save_address, tidy_all`), cut to fit unless it is one word, such as
+    /// a path, which stays whole. `jadpo package update --plan` follows
+    /// each change record entry through the app with it.
+    Reaches {
+        heading: String,
+        entries: Vec<Reach>,
+    },
+}
+
+/// One line of a [`Block::Reaches`]: its mark, `None` for an error's `✗`,
+/// its columns and the rows beneath it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reach {
+    pub mark: Option<ChangeMark>,
+    pub cells: Vec<String>,
+    pub rows: Vec<(String, String)>,
 }
 
 /// One decision: what it is, in a sentence, its state, and the steps of
@@ -868,6 +888,7 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             }
             lines
         }
+        Block::Reaches { heading, entries } => reach_lines(heading, entries, style),
         Block::ChangeList { heading, rows } => {
             let columns = rows.iter().map(|(_, cells)| cells.len()).max().unwrap_or(0);
             // A column empty on every row takes no room.
@@ -952,6 +973,66 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             }
         }
     }
+}
+
+fn reach_lines(heading: &str, entries: &[Reach], style: &Style) -> Vec<Line> {
+    let columns = entries.iter().map(|e| e.cells.len()).max().unwrap_or(0);
+    let widths: Vec<usize> = (0..columns)
+        .map(|i| {
+            entries
+                .iter()
+                .filter_map(|e| e.cells.get(i))
+                .map(|cell| width(cell))
+                .max()
+                .unwrap_or(0)
+        })
+        .collect();
+    let label = entries
+        .iter()
+        .flat_map(|e| e.rows.iter().map(|(label, _)| width(label)))
+        .max()
+        .unwrap_or(0)
+        + 2;
+    let mut lines = vec![vec![bold(heading)]];
+    for entry in entries {
+        let mark = match entry.mark {
+            Some(mark) => paint(mark.token(), mark.text()),
+            None => paint(Token::Failure, Symbol::Failure.text(symbols(style))),
+        };
+        let mut line = vec![raw("  "), mark, raw(" ")];
+        let mut used = 4;
+        let last = entry
+            .cells
+            .iter()
+            .rposition(|cell| !cell.is_empty())
+            .unwrap_or(0);
+        for (j, cell) in entry.cells.iter().enumerate().take(last + 1) {
+            if j < last {
+                used += widths[j] + 2;
+                line.push(raw(format!("{cell:<w$}  ", w = widths[j])));
+            } else if j == 0 {
+                line.push(raw(cell.clone()));
+            } else {
+                let room = style.width.saturating_sub(used);
+                line.push(paint(Token::Muted, cut(cell, room, style)));
+            }
+        }
+        lines.push(line);
+        for (name, value) in &entry.rows {
+            let room = style.width.saturating_sub(4 + label);
+            let value = if value.contains(' ') {
+                cut(value, room, style)
+            } else {
+                value.clone()
+            };
+            lines.push(vec![
+                raw("    "),
+                paint(Token::Muted, format!("{name:<label$}")),
+                raw(value),
+            ]);
+        }
+    }
+    lines
 }
 
 fn decision_rows(heading: &str, rows: &[DecisionRow], style: &Style) -> Vec<Line> {

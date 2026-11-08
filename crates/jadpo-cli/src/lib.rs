@@ -49,6 +49,7 @@ mod package_cache;
 mod package_conform;
 mod package_import;
 pub mod package_new;
+mod package_plan;
 pub mod package_preview;
 mod package_protocol;
 mod package_publish;

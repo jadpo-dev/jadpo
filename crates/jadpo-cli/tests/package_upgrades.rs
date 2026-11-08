@@ -344,3 +344,69 @@ fn check_passes_once_a_person_gives_the_reason_and_the_report_says_it_plainly() 
     let checked = jadpo(&app, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
 }
+
+/// The plan's screen (chunk R9), each line's indent and column padding
+/// squeezed.
+fn plan(app: &Path) -> String {
+    let done = jadpo(app, &["package", "update", "acme_pay", "--plan"]);
+    assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    done.stdout
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" ") + "\n")
+        .collect()
+}
+
+#[test]
+fn a_plan_follows_a_new_failure_to_the_action_that_must_handle_it() {
+    let (_dir, package, app) = installed("plan-failure");
+    change(
+        &package,
+        "resources/customers.jadpo",
+        "        changes: true\n",
+        "        changes: true\n        failures: [CardRefused]\n",
+    );
+    let lock = fs::read_to_string(app.join("jadpo.lock")).expect("the lock");
+    let screen = plan(&app);
+    assert!(
+        screen.contains("~ new failure customers.create CardRefused\nactions send\n"),
+        "{screen}"
+    );
+    assert!(screen.contains("Would not compile\n"), "{screen}");
+    assert!(
+        screen.contains("at domains/billing/actions/send.jadpo:"),
+        "{screen}"
+    );
+    assert!(
+        screen.contains("Needs a person\n+ customers.create new failure card_refused\n"),
+        "{screen}"
+    );
+    // The operation the app never calls reaches nothing.
+    assert!(!screen.contains("refunds.start"), "{screen}");
+    assert_eq!(
+        fs::read_to_string(app.join("jadpo.lock")).expect("the lock"),
+        lock
+    );
+}
+
+#[test]
+fn a_plan_follows_a_changed_host_to_every_call_into_the_package() {
+    let (_dir, package, app) = installed("plan-host");
+    change(
+        &package,
+        "provider.jadpo",
+        "live: \"https://api.acme-pay.example\"",
+        "live: \"https://eu.acme-pay.example\"",
+    );
+    let screen = plan(&app);
+    assert!(
+        screen.contains("+ new host provider https://eu.acme-pay.example\nactions send\n"),
+        "{screen}"
+    );
+    assert!(
+        screen.contains(
+            "~ host changed https://api.acme-pay.example → https://eu.acme-pay.example\n"
+        ),
+        "{screen}"
+    );
+    assert!(!screen.contains("Would not compile"), "{screen}");
+}

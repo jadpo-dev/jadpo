@@ -1,9 +1,17 @@
 # `type.reserved_variant_name`
 
-`.all` lists every variant of an enum whose variants carry no data, so
-no enum declares a variant called `all`. A closed list
-whose code is `all` writes it with a trailing `_`, as Albania's lek is
-`Currency.all_`.
+An enum declares a variant called `all`, `true`, `false` or `none`, which already mean something else.
+
+## Why Jadpo refuses it
+
+`Newsletter.all` lists every variant of `Newsletter`, for an enum whose
+variants carry no data, so it can't also be a variant. A standard closed
+list whose code is `all` writes it with a trailing `_`, as Albania's lek
+is `Currency.all_`.
+
+## What it looks like
+
+main.jadpo:
 
 ```jadpo check project=e-reserved-variant-name expect=type.reserved_variant_name
 type Newsletter = Enum {
@@ -26,9 +34,14 @@ error: `all` can't be a variant of `Newsletter`
 check failed: 1 error, 1 file
 ```
 
-`true`, `false` and `none` are values, so no variant takes those names either:
-beside a `Kind?`, `Kind.none` would read as the `none` it isn't. Any other
-reserved word may name a variant.
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+`true`, `false` and `none` are values, so no variant takes those names
+either: beside a `Compression?`, `Compression.none` would read as the
+`none` it isn't. Any other reserved word may name a variant.
+
+main.jadpo:
 
 ```jadpo check project=e-reserved-variant-value expect=type.reserved_variant_name
 type Compression = Enum {
@@ -50,3 +63,49 @@ error: `none` can't be a variant of `Compression`
 
 check failed: 1 error, 1 file
 ```
+
+## How to fix it
+
+**If the variant is called `all`**, name it for what it means:
+
+```jadpo fragment
+type Newsletter = Enum {
+    subscribed
+    everything
+}
+```
+
+```jadpo check project=e-reserved-variant-name-fix hidden
+type Newsletter = Enum {
+    subscribed
+    everything
+}
+```
+
+`Newsletter.all` now lists both variants.
+
+**If the variant is called `true`, `false` or `none`**, name it for what
+that case is:
+
+```jadpo fragment
+type Compression = Enum {
+    gzip
+    uncompressed
+}
+```
+
+```jadpo check project=e-reserved-variant-value-fix hidden
+type Compression = Enum {
+    gzip
+    uncompressed
+}
+```
+
+`Compression.uncompressed` is now a value of the enum, and `none` still
+means no value.
+
+## Related
+
+- [Enums](../language/02-values-and-types.md#enums)
+- [Names from reserved words](../language/02-values-and-types.md#names-from-reserved-words)
+- [Closed lists are enums](../language/19-standard-library.md#closed-lists-are-enums)

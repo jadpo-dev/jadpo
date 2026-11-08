@@ -17,8 +17,8 @@ use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use super::super::rules::Const;
 use super::super::ty::{Prim, Ty};
-use super::Body;
 use super::facts::{NodeKey, node_key};
+use super::{Body, Context};
 
 /// What one scripted answer is, for the typed body.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -90,94 +90,13 @@ impl Body<'_> {
                 );
                 continue;
             };
-            let connections = crate::connections::package_connections(self.db, self.project);
-            let Some(found) = connections
-                .connections
-                .iter()
-                .find(|known| known.name == *connection)
-            else {
-                let known: Vec<String> = connections
-                    .connections
-                    .iter()
-                    .map(|known| known.name.clone())
-                    .collect();
-                let near = nearest(connection, known.iter().map(String::as_str));
-                let mut problem = invalid(
-                    format!("`{connection}` isn't a connection to a provider"),
-                    span,
-                    "no such connection",
-                )
-                .reason(format!(
-                    "`fakes:` scripts the operations of the app's connections to provider packages{}.",
-                    if known.is_empty() {
-                        ", and the app has none".to_string()
-                    } else {
-                        format!(
-                            ": {}",
-                            crate::and_list(
-                                &known
-                                    .iter()
-                                    .map(|name| format!("`{name}`"))
-                                    .collect::<Vec<_>>()
-                            )
-                        )
-                    }
-                ));
-                problem = match near {
-                    Some(near) => problem.next(format!("Use `{near}` instead of `{connection}`")),
-                    None => problem.next(format!("Remove `{written}:`")),
-                };
-                self.out.push(problem);
-                continue;
-            };
-            let operations = crate::providers::operations(self.db, self.project);
-            // A package's actions call its operations whether public or
-            // not, so a test scripts those too (chunk 7.6).
-            let acts = crate::package_code::actions(self.db, self.project)
-                .iter()
-                .any(|action| action.folder == found.folder);
-            let Some(operation) = operations
-                .find(&found.folder, resource, name)
-                .filter(|operation| operation.public || acts)
-                .cloned()
-            else {
-                if crate::providers::has_problems(self.db, self.project, &found.folder) {
-                    continue;
-                }
-                let known: Vec<String> = operations
-                    .of(&found.folder)
-                    .filter(|operation| operation.public)
-                    .map(crate::providers::Operation::full_name)
-                    .collect();
-                let asked = format!("{resource}.{name}");
-                let near = nearest(&asked, known.iter().map(String::as_str));
-                let mut problem = invalid(
-                    format!("`{connection}` has no operation `{asked}`"),
-                    span,
-                    "no such operation",
-                )
-                .reason(format!(
-                    "`fakes:` scripts the public operations of `{}`{}.",
-                    found.package,
-                    if known.is_empty() {
-                        ", and it has none".to_string()
-                    } else {
-                        format!(
-                            ": {}",
-                            crate::and_list(
-                                &known
-                                    .iter()
-                                    .map(|name| format!("`{name}`"))
-                                    .collect::<Vec<_>>()
-                            )
-                        )
-                    }
-                ));
-                problem = match near {
-                    Some(near) => problem.next(format!("Use `{connection}.{near}` instead")),
-                    None => problem.next(format!("Remove `{written}:`")),
-                };
-                self.out.push(problem);
+            let Some(operation) = self.operation_named(
+                connection,
+                resource,
+                name,
+                &span,
+                Naming::scripting(&written),
+            ) else {
                 continue;
             };
             if seen.contains(&written) {
@@ -312,6 +231,194 @@ impl Body<'_> {
                     .insert(node_key(answer.syntax()), fact(FakeAnswer::Value));
             }
         }
+    }
+
+    /// `connection.resource.operation.requests` in a test: what the code
+    /// sent the operation, in order, each typed as its input (area 13,
+    /// "What the code sent"). `rest` is what follows the connection, its
+    /// `requests` last.
+    pub(super) fn operation_requests(
+        &mut self,
+        expr: &Expr,
+        connection: &str,
+        rest: &[String],
+    ) -> Ty {
+        let span = self.span(expr);
+        let written = crate::tree::written(expr.syntax());
+        if self.context != Context::Test || !self.test {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_NOT_CALLABLE,
+                    format!("Only a test reads `{written}`"),
+                )
+                .at(span, "what a fake was sent")
+                .reason("`.requests` lists what the code sent a provider, which only a test's fake keeps; a running app never sees what another call sent.")
+                .next(format!("Read `{written}` in a test")),
+            );
+            return Ty::Error;
+        }
+        let [resource, name, _requests] = rest else {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_UNKNOWN_NAME,
+                    format!("`{written}` isn't a provider operation"),
+                )
+                .at(span, "not `connection.resource.operation.requests`")
+                .reason("`.requests` follows a provider operation, named by its connection, resource and operation as the code calls it.")
+                .next("Write `<connection>.<resource>.<operation>.requests`"),
+            );
+            return Ty::Error;
+        };
+        let reading = format!("`{connection}.{resource}.{name}`");
+        let Some(operation) =
+            self.operation_named(connection, resource, name, &span, Naming::reading(&reading))
+        else {
+            return Ty::Error;
+        };
+        let full_name = operation.full_name();
+        let input = operation.input.map_or(Ty::Prim(Prim::Unit), |(ty, _)| ty);
+        self.facts
+            .operation_requests
+            .insert(node_key(expr.syntax()), (connection.to_string(), full_name));
+        Ty::List(Box::new(input))
+    }
+
+    /// The operation `connection.resource.name` names, or `None` with the
+    /// problem reported at `span`.
+    fn operation_named(
+        &mut self,
+        connection: &str,
+        resource: &str,
+        name: &str,
+        span: &jadpo_diag::Span,
+        naming: Naming<'_>,
+    ) -> Option<crate::providers::Operation> {
+        let connections = crate::connections::package_connections(self.db, self.project);
+        let Some(found) = connections
+            .connections
+            .iter()
+            .find(|known| known.name == *connection)
+        else {
+            let known: Vec<String> = connections
+                .connections
+                .iter()
+                .map(|known| known.name.clone())
+                .collect();
+            let near = nearest(connection, known.iter().map(String::as_str));
+            let mut problem = naming
+                .problem(
+                    format!("`{connection}` isn't a connection to a provider"),
+                    span.clone(),
+                    "no such connection",
+                )
+                .reason(format!(
+                    "{} the operations of the app's connections to provider packages{}.",
+                    naming.doing,
+                    if known.is_empty() {
+                        ", and the app has none".to_string()
+                    } else {
+                        format!(
+                            ": {}",
+                            crate::and_list(
+                                &known
+                                    .iter()
+                                    .map(|name| format!("`{name}`"))
+                                    .collect::<Vec<_>>()
+                            )
+                        )
+                    }
+                ));
+            problem = match near {
+                Some(near) => problem.next(format!("Use `{near}` instead of `{connection}`")),
+                None => problem.next(naming.otherwise.clone()),
+            };
+            self.out.push(problem);
+            return None;
+        };
+        let operations = crate::providers::operations(self.db, self.project);
+        // A package's actions call its operations whether public or
+        // not, so a test names those too (chunk 7.6).
+        let acts = crate::package_code::actions(self.db, self.project)
+            .iter()
+            .any(|action| action.folder == found.folder);
+        if let Some(operation) = operations
+            .find(&found.folder, resource, name)
+            .filter(|operation| operation.public || acts)
+            .cloned()
+        {
+            return Some(operation);
+        }
+        if crate::providers::has_problems(self.db, self.project, &found.folder) {
+            return None;
+        }
+        let known: Vec<String> = operations
+            .of(&found.folder)
+            .filter(|operation| operation.public)
+            .map(crate::providers::Operation::full_name)
+            .collect();
+        let asked = format!("{resource}.{name}");
+        let near = nearest(&asked, known.iter().map(String::as_str));
+        let mut problem = naming
+            .problem(
+                format!("`{connection}` has no operation `{asked}`"),
+                span.clone(),
+                "no such operation",
+            )
+            .reason(format!(
+                "{} the public operations of `{}`{}.",
+                naming.doing,
+                found.package,
+                if known.is_empty() {
+                    ", and it has none".to_string()
+                } else {
+                    format!(
+                        ": {}",
+                        crate::and_list(
+                            &known
+                                .iter()
+                                .map(|name| format!("`{name}`"))
+                                .collect::<Vec<_>>()
+                        )
+                    )
+                }
+            ));
+        problem = match near {
+            Some(near) => problem.next(format!("Use `{connection}.{near}` instead")),
+            None => problem.next(naming.otherwise.clone()),
+        };
+        self.out.push(problem);
+        None
+    }
+}
+
+/// How [`Body::operation_named`] words a name that isn't an operation.
+struct Naming<'a> {
+    rule: &'static jadpo_diag::Rule,
+    /// `` `fakes:` scripts ``.
+    doing: &'a str,
+    /// What to do when no name is near.
+    otherwise: String,
+}
+
+impl Naming<'_> {
+    fn scripting(written: &str) -> Naming<'static> {
+        Naming {
+            rule: &rule::SEMANTIC_FAKE_INVALID,
+            doing: "`fakes:` scripts",
+            otherwise: format!("Remove `{written}:`"),
+        }
+    }
+
+    fn reading(written: &str) -> Naming<'static> {
+        Naming {
+            rule: &rule::SEMANTIC_UNKNOWN_NAME,
+            doing: "`.requests` lists what was sent to",
+            otherwise: format!("Name one of the operations `{written}`'s connection has"),
+        }
+    }
+
+    fn problem(&self, headline: String, span: jadpo_diag::Span, label: &str) -> Diagnostic {
+        Diagnostic::new(self.rule, headline).at(span, label.to_string())
     }
 }
 

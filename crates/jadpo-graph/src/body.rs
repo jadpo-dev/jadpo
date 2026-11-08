@@ -623,6 +623,13 @@ pub enum Callee {
     AiRequests {
         prompt: String,
     },
+    /// `connection.resource.operation.requests` in a test (area 13, "What
+    /// the code sent"): the inputs the code sent the operation, in order.
+    OperationRequests {
+        connection: String,
+        /// `bookings.create`.
+        operation: String,
+    },
     /// What an email's HTML template writes out, escaped (area 16,
     /// "Email"): never written in source, but made for each `{{ value }}`
     /// that isn't `Html`.
@@ -666,6 +673,7 @@ impl Callee {
             | Callee::Embed { .. }
             | Callee::AiFake { .. }
             | Callee::AiRequests { .. }
+            | Callee::OperationRequests { .. }
             | Callee::Escape
             | Callee::Unknown => None,
         }

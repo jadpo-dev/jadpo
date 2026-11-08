@@ -1144,6 +1144,12 @@ pub static COMMANDS: &[Command] = &[
                 description: "For publish: check, and publish nothing",
                 values: &[],
             },
+            Flag {
+                name: "--plan",
+                value: None,
+                description: "For update: show its reach, change nothing",
+                values: &[],
+            },
         ],
         examples: &[
             Example {
@@ -1177,6 +1183,10 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "Take a release before its three days are up",
                 command: "jadpo package update holidays --to 2.1.0",
+            },
+            Example {
+                description: "See what an update would reach in the app before taking it",
+                command: "jadpo package update holidays --plan",
             },
             Example {
                 description: "Find what answers a need",

@@ -104,3 +104,34 @@ became links by title. Nothing in this list changed a rule.
   and `test.no_tests` (area 14); the database engine and caches
   (area 5, area 6); `attempt` (area 3); stable identity of a test
   (area 18).
+
+## `.requests` (chunk A27)
+
+Decisions the page didn't make, recommended here and open for a
+maintainer to overrule:
+
+- **The form it is read in.** `.requests` is read as
+  `connection.resource.operation.requests`, the form the code calls and
+  `fakes:` scripts. The page's earlier fragments named a `ReminderMail`
+  integration by two names, from before packages and connections;
+  they read `reminder_mail.reminders.send_overdue_reminder` now, and
+  `rate_limited`, which isn't one of a fake's conditions, became
+  `unavailable`.
+- **A repeat under a kept key is listed once.** The same request sent
+  again under a key the provider keeps, by a crash's rerun or a retry
+  after `lost`, isn't a second entry: `jadpo test` reruns a test with a
+  crash at each step boundary and the test must pass each time, so the
+  list can't grow with the crash. A send answered `unavailable` kept
+  nothing and is listed again, which is what the area page's retried
+  example shows.
+- **What a crash sends again with no key** (a read, or a call its package
+  marks safe) is listed again, as the `ai` fake's is: the rerun does send
+  it. A test that counts such a call over an action with several changing
+  calls fails naming the crash boundary; it should count the keyed calls
+  instead. A later chunk could match a rerun's sends against the attempt
+  it replaced if tests need that.
+- **An operation with no `input:`** lists one `Unit` per send.
+- **A connection that fills a capability.** A mail connection's
+  operation lists what the caught mail was sent, as its fake keeps it; a
+  connection that fills `ai` has nothing here, since `ai.<prompt>.requests`
+  reads those by prompt.

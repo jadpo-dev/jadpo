@@ -1490,3 +1490,82 @@ fn preview_serves_the_packages_page_with_nothing_published() {
     let elsewhere = plain(&world.app, &["package", "preview"]);
     assert_eq!(elsewhere.code, 2, "{}", elsewhere.stderr);
 }
+
+#[test]
+fn a_plan_follows_the_registrys_change_record_and_installs_nothing() {
+    let world = installed("registry-plan");
+    write(
+        &world.app,
+        "domains/intake/actions/check_postcode.jadpo",
+        USES,
+    );
+    // 2.1.0 adds a type; its record, which the registry keeps, also says
+    // `uk.parse` behaves differently, as a previous release's test found.
+    release(&world.package, "v2.0.0");
+    write(&world.package, "types/outward_code.jadpo", OUTWARD);
+    plain(&world.package, &["package", "check"]);
+    seed(
+        &world.registry,
+        &world.package,
+        "2.1.0",
+        &days_ago(4),
+        vec![
+            ChangeEntry {
+                declaration: "OutwardCode".into(),
+                kind: "type".into(),
+                change: Change::Added,
+                detail: None,
+                why: None,
+            },
+            ChangeEntry {
+                declaration: "uk.parse".into(),
+                kind: "function".into(),
+                change: Change::BehaviourChanged,
+                detail: Some("reads upper case".into()),
+                why: Some("it kept lower".into()),
+            },
+        ],
+    );
+    let installed_before = snapshot(&world.app.join("packages/postcodes/v2"));
+    let lock_before = std::fs::read_to_string(world.app.join("jadpo.lock")).unwrap();
+    let planned = with(
+        &world.url,
+        &world.app,
+        &["package", "update", "postcodes", "--plan"],
+    );
+    assert_eq!(planned.code, 0, "{}{}", planned.stdout, planned.stderr);
+    assert!(
+        planned
+            .stdout
+            .starts_with("Planned Postcodes.v2 from 2.0.0 to 2.1.0, nothing changed\n"),
+        "{}",
+        planned.stdout
+    );
+    assert!(
+        planned.stdout.contains(
+            "Change record, 2.0.0 to 2.1.0
+  + added              type OutwardCode
+    reaches  nothing in the app
+  ~ behaviour changed  uk.parse          reads upper case, a fix: it kept lower
+    actions  check_postcode
+"
+        ),
+        "{}",
+        planned.stdout
+    );
+    assert!(
+        planned
+            .stdout
+            .ends_with("next: jadpo package update postcodes  takes 2.1.0\n"),
+        "{}",
+        planned.stdout
+    );
+    assert_eq!(
+        snapshot(&world.app.join("packages/postcodes/v2")),
+        installed_before
+    );
+    assert_eq!(
+        std::fs::read_to_string(world.app.join("jadpo.lock")).unwrap(),
+        lock_before
+    );
+}
