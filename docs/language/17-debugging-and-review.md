@@ -861,5 +861,5 @@ personal value in a report follows the rules for
 | `jadpo approval` | Partly built: the report in `build/review/` in [this page's order](#reviewing-a-change), the before side built from git and its manifest kept in `build/before/<commit>/`, and the personal-data report's difference, a connection at a time. Not built yet: the rest of that difference, which comes with the rest of that report, and a package's service and a bot check, which come with those features. |
 | Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines and `jadpo trace`, `test new --from` and `call` | Not built yet. |
 | `jadpo dev grants add` | Not built yet. |
-| The developer console, MCP (`jadpo mcp`) and the review web view | Not built yet: they come after those, as product work. |
+| The developer console, MCP (`jadpo mcp`) and the review web view | Not built yet. |
 | `jadpo traces`, `metrics`, `logs` and `watch`; path coverage, production counts in review, `jadpo replay` and query cost | Not built yet. |
