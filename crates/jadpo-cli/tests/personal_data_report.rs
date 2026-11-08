@@ -91,7 +91,7 @@ fn check_writes_where_personal_data_goes() {
 
 Where the app's personal data goes: each connection a field marked `personal:`, or a value of a standard type that is personal data, is sent through, and the hosts that connection reaches. A value counts as sent when it may be in what goes out, may have decided it, or was sent to a provider whose answer it may be in. Each connection says whether it erases its copy when a person is erased. Written by `jadpo check`.
 
-Not listed yet: what each store and cache keeps, who may read it and how long it is kept. Jadpo doesn't call a provider's `erasure:` yet.
+Not listed yet: what each store and cache keeps, who may read it and how long it is kept.
 
 ## `pay`
 

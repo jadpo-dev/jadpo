@@ -102,6 +102,9 @@ pub(crate) struct Planner<'a> {
     /// state its store holds, each with the column holding their `id`:
     /// what a person's erasure deletes with them (area 15; chunk P3).
     pub sign_in: std::collections::BTreeMap<String, Vec<(&'static str, &'static str)>>,
+    /// Each connection's key at its provider, copied into an erasure's
+    /// event (area 15, "Erasure at providers").
+    pub provider_keys: Vec<jadpo_check::provider_erasure::ProviderKey>,
     /// Each table's retired columns, by store and table, from the latest
     /// migration: a person's erasure clears them on a record it clears the
     /// marked fields of, since it can't know which held personal data once
@@ -1307,6 +1310,7 @@ pub(crate) fn plans(
         action: None,
         json,
         sign_in: Default::default(),
+        provider_keys: Default::default(),
         retired: Default::default(),
     };
     let mut query_plans: Vec<QueryPlan> = queries

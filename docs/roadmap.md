@@ -232,18 +232,6 @@ work below (Richard, 2026-11-08).
      it, for a caller with read on the person's record; and the test
      generated for each person entity that after `erase`, `export`
      returns nothing. Done when export tests pass on both executors.
-   - [ ] **P6 Erasure at providers** `opus · high` after P4c and V6: area
-     15, "Erasure at providers"; area 11, "Erasure at providers". Each
-     connection's key copied into `PersonErased` before the person's
-     records go, a generated subscriber calling the package's `erasure:`
-     operation after commit and retrying until it confirms, a delivery
-     that gives up parked and shown, and a key that is personal data
-     kept only in the outbox until it is delivered. V6 read the
-     declarations and built `ErasureNotPossible`; this takes away the
-     personal-data report's line saying Jadpo doesn't call a provider's
-     `erasure:` yet. Done when a test
-     erasing a person sees each fake provider's erasure called once,
-     after the commit.
    - [ ] **P7 Marked fields in logs and access records** `opus · high`
      after P5: area 15, "Marked fields in logs", "Sensitive fields" and
      "Access records"; area 4, "Logging"; area 19's standard types that

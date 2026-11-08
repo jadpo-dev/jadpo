@@ -25,6 +25,11 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::erasure::INSERT_LOG.to_string(),
         ),
         ("erasure::LOG_PAGE", crate::erasure::LOG_PAGE.to_string()),
+        (
+            "erasure::KEY_IN_OUTBOX",
+            crate::erasure::KEY_IN_OUTBOX.to_string(),
+        ),
+        ("erasure::CLEAR_KEY", crate::erasure::CLEAR_KEY.to_string()),
         ("flags::READ", crate::flags::READ.to_string()),
         ("flags::READ_STORED", crate::flags::READ_STORED.to_string()),
         (

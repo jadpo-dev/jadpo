@@ -56,6 +56,17 @@ pub fn store_subscriber(store: &str) -> String {
     format!("erasure in {store}")
 }
 
+/// The generated subscriber that calls `connection`'s erasure operation:
+/// `erasure at stripe`.
+pub fn provider_subscriber(connection: &str) -> String {
+    format!("erasure at {connection}")
+}
+
+/// Where a `PersonErased`'s payload holds each connection's key, by the
+/// connection's name: the event's only personal part, read only by the
+/// generated subscribers and taken away as each is delivered.
+pub const PAYLOAD_KEYS: &str = "keys";
+
 /// An erasure in every store it reaches, and where the log is kept.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ErasurePlan {
@@ -63,6 +74,8 @@ pub struct ErasurePlan {
     pub people: Vec<PersonPlan>,
     /// `privacy: { erasure_log: { store: } }`.
     pub log: Option<ErasureLog>,
+    /// Each connection that can ask its provider to erase someone.
+    pub providers: Vec<ProviderErasure>,
 }
 
 impl ErasurePlan {
@@ -70,6 +83,28 @@ impl ErasurePlan {
     pub fn person(&self, entity: &str) -> Option<&PersonPlan> {
         self.people.iter().find(|person| person.entity == entity)
     }
+
+    /// What `connection` calls to erase someone.
+    pub fn provider(&self, connection: &str) -> Option<&ProviderErasure> {
+        self.providers
+            .iter()
+            .find(|provider| provider.connection == connection)
+    }
+}
+
+/// A connection's call that erases a person at its provider (area 15,
+/// "Erasure at providers"): its package's `erasure: { call: by: }` and the
+/// connection's `erasure: { key: }`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct ProviderErasure {
+    pub connection: String,
+    /// `customers.delete`.
+    pub operation: String,
+    /// That operation's number in the plan's provider operations.
+    pub called: u32,
+    /// The field of its input the key is, by its spelling on the wire;
+    /// `None` when the key is its whole input.
+    pub field: Option<String>,
 }
 
 /// One person entity's erasure.

@@ -105,7 +105,14 @@ fn built(name: &str, send_name: &str, erasure: &str, extra: &str, refused: bool)
     write(
         &root,
         "domains/billing/entities/user.jadpo",
-        "use shared/providers/acme_pay\n\n/// Someone who pays.\nentity User {\n    id: Uuid\n    display_name: AcmePay.Words {\n        personal: PersonalData.identifying\n    }\n    plan: AcmePay.Words\n    pay_customer_id: AcmePay.CustomerId?\n    person: true\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n}\n",
+        &format!(
+            "use shared/providers/acme_pay\n\n/// Someone who pays.\nentity User {{\n    id: Uuid\n    display_name: AcmePay.Words {{\n        personal: PersonalData.identifying\n    }}\n    plan: AcmePay.Words\n    pay_customer_id: AcmePay.CustomerId?\n{}    person: true\n\n    policy: {{\n        create: [Access.public]\n        read: [Access.public]\n    }}\n}}\n",
+            if extra.contains("sealed_customer_id") {
+                "    sealed_customer_id: AcmePay.CustomerId? {\n        encrypted: true\n    }\n"
+            } else {
+                ""
+            }
+        ),
     );
     write(
         &root,
@@ -655,6 +662,33 @@ fn a_package_erasure_that_cannot_be_called_is_refused() {
             checked.stdout
         );
     }
+}
+
+/// The statement that erases a person copies the key from their record, in
+/// the database, and only the application can open a sealed value.
+#[test]
+fn an_encrypted_field_cannot_be_a_key() {
+    let root = built(
+        "erasure-key-encrypted",
+        "user.plan",
+        ERASURE,
+        "            erasure: {\n                key: User.sealed_customer_id\n            }\n",
+        true,
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 1, "{}", checked.stdout);
+    assert!(
+        checked.stdout.contains(
+            "An erasure's copy of the key can't read `User.sealed_customer_id`, which is encrypted"
+        ),
+        "{}",
+        checked.stdout
+    );
+    assert!(
+        checked.stdout.contains("rule: data.encrypted_field_used"),
+        "{}",
+        checked.stdout
+    );
 }
 
 #[test]

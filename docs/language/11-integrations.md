@@ -6046,9 +6046,7 @@ error, unless an acceptance ([Acceptances](18-records-and-manifest.md#acceptance
 is listed in the personal-data report. The app may add its own
 `PersonErased` subscribers.
 
-> Calling the provider isn't built yet: it comes with
-> [Personal data](15-personal-data.md). Both declarations are read and
-> checked, and the acceptance is built.
+> Both declarations, the acceptance and the calls are built.
 
 ### Proving a package works
 
@@ -6088,8 +6086,7 @@ and the cache runs in memory. Where the other connections go in
 - The personal-data report lists the connections that receive marked
   fields ([Where personal data goes](15-personal-data.md#where-personal-data-goes)),
   which of them can erase, and the acceptances for those that can't. Which
-  can erase is read from each package's and connection's `erasure:`; calling
-  a package's `erasure:` operation isn't built yet.
+  can erase is read from each package's and connection's `erasure:`.
 
 ### Targets
 
@@ -8570,7 +8567,7 @@ package's name, as its types are.
 | The registry at jadpo.dev: publishing, installing by name, search, yanks, advisories and compatibility runs | Partly built: publishing from a tag, confirming a release with a passkey, automatic release, installing and updating by name with the log's proofs, search by words and by meaning, the written account and the review of each release's diff, yanks and takedowns, urgent releases and advisories, compatibility runs against each Jadpo release, reporting a tag that moves, organisations with several members, successors and reports. Built in `jadpo`, for the registry to use: a verifier image for each pre-release, what `jadpo fix` would change in the verifier's answer, `GET log/signed-head` checked against the keys it holds, and `POST decode-failures`'s shape. Not built yet: compatibility runs against Jadpo's pre-releases, telling a publisher what `jadpo fix` would change, signed heads from jadpo.dev and the key it signs with held in `jadpo`, and an app's reports from its scheduled contract runs, which wait for the contract run. Accounts are open to a short list of people for now; anyone can search and install. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
-| Erasure at providers | Partly built: the package's and the connection's `erasure:` are read and checked, and a connection that can't erase what it receives needs an `ErasureNotPossible` acceptance ([Erasure at providers](15-personal-data.md#erasure-at-providers)). Not built yet: calling the provider. |
+| Erasure at providers | Built: the package's and the connection's `erasure:` are read and checked, a connection that can't erase what it receives needs an `ErasureNotPossible` acceptance, and a generated subscriber calls each provider after the commit ([Erasure at providers](15-personal-data.md#erasure-at-providers)). |
 
 ### Mistakes not reported yet
 
