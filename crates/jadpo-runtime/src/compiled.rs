@@ -1414,6 +1414,12 @@ pub fn ai_requests(cx: &mut Ctx<'_>, p: &Program, prompt: &str, at: u32) -> Ran 
     called(calls::ai_requests(cx, p.loaded.plan(), prompt, at))
 }
 
+/// `connection.resource.operation.requests` in a test (area 13).
+#[cfg(feature = "testing")]
+pub fn operation_requests(cx: &mut Ctx<'_>, connection: &str, operation: &str) -> Ran {
+    called(calls::operation_requests(cx, connection, operation))
+}
+
 // --- assertions --------------------------------------------------------------
 
 /// `assert value` at site `at`.

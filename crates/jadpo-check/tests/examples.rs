@@ -541,6 +541,8 @@ const BODY: &[&str] = &[
     "ask a model for embeddings",
     "script a model's answers",
     "read what a model was asked",
+    // What a test's code sent a provider (area 13).
+    "read what a provider was sent",
     "write create",
     "write update",
     "write update by id",
@@ -925,6 +927,7 @@ fn body_features(
                         Callee::Embed { .. } => "ask a model for embeddings",
                         Callee::AiFake { .. } => "script a model's answers",
                         Callee::AiRequests { .. } => "read what a model was asked",
+                        Callee::OperationRequests { .. } => "read what a provider was sent",
                         // What an HTML template's value is written out
                         // through, which lowering makes, never source.
                         Callee::Escape => continue,

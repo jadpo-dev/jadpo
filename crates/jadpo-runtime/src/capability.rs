@@ -516,6 +516,15 @@ impl Capability for Fake {
         }
     }
 
+    fn requests(&self, connection: &str, operation: &str) -> Vec<Value> {
+        self.sent
+            .borrow()
+            .iter()
+            .filter(|call| call.connection == connection && call.operation == operation)
+            .map(|call| jadpo_value::secret::redacted(&call.input))
+            .collect()
+    }
+
     fn source(&self) -> Source {
         Source::Fake
     }

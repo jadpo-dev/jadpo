@@ -1061,6 +1061,13 @@ impl Emitter<'_> {
                 let (prompt, at) = (text(prompt), number(id.0));
                 self.tri(quote!(rt::ai_requests(cx, p, #prompt, #at)))
             }
+            Callee::OperationRequests {
+                connection,
+                operation,
+            } => {
+                let (connection, operation) = (text(connection), text(operation));
+                self.tri(quote!(rt::operation_requests(cx, #connection, #operation)))
+            }
             Callee::Schedule { .. } => {
                 let ran = self.schedule_ran(id, false);
                 self.tri(ran)

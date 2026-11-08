@@ -7602,8 +7602,8 @@ fake answers, how a script is used, and what the call log keeps.
   request. Each request's line in `jadpo dev` lists its calls, and its
   `--json` event gives them.
 
-> A script's `.requests` isn't built yet, nor are the timelines the call
-> log would keep beside its calls.
+> The timelines the call log would keep beside its calls aren't built
+> yet.
 
 
 ## Shape and name detection

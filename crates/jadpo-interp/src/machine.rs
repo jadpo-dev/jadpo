@@ -2330,6 +2330,14 @@ impl<'p> Machine<'p> {
                 let sent = called(calls::ai_requests(ctx, plan, prompt, id.0))?;
                 self.values.push(sent);
             }
+            // What a test's code sent a provider (area 13).
+            Callee::OperationRequests {
+                connection,
+                operation,
+            } => {
+                let sent = called(calls::operation_requests(ctx, connection, operation))?;
+                self.values.push(sent);
+            }
             // A model asked for embeddings: an outside call (area 21,
             // chunk 5.5v4).
             Callee::Embed { .. } => {
