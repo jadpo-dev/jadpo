@@ -167,6 +167,7 @@ pub(crate) fn reported(
         loaded,
         mut diagnostics,
         written,
+        publishers,
     } = checked;
     let db = &loaded.db;
     let layout = loaded.project.layout(db);
@@ -236,9 +237,70 @@ pub(crate) fn reported(
         root,
         &paths,
         loaded.unreadable.len(),
-        (layout, written, reviews, &per_instance, notice_list),
+        (
+            layout,
+            written,
+            reviews,
+            &per_instance,
+            notice_list,
+            &publishers,
+        ),
         (elapsed, failed, before, not_judged, full),
     )
+}
+
+/// Each installed package whose own code holds a finding a newer Jadpo
+/// makes of the publishing bar (area 11, "How the package format is read"): an alert
+/// about the package, before the summary, never an error of the app's.
+pub(crate) fn publisher_alerts(publishers: &[Publishers]) -> Option<Block> {
+    (!publishers.is_empty()).then(|| {
+        Block::Alerts(
+            publishers
+                .iter()
+                .map(|(package, found)| publisher_alert(package, found))
+                .collect(),
+        )
+    })
+}
+
+/// An installed package's name and the findings left to its publisher.
+pub(crate) type Publishers = (String, Vec<Diagnostic>);
+
+/// One package's alert: its findings' rules, for its publisher.
+pub(crate) fn publisher_alert(package: &str, found: &[Diagnostic]) -> String {
+    let mut rules: Vec<String> = found.iter().map(|d| format!("`{}`", d.rule.id)).collect();
+    rules.dedup();
+    rules.sort();
+    rules.dedup();
+    format!(
+        "`{package}` has {} for its publisher, not this app: {}",
+        count(found.len(), "finding", "findings"),
+        rules.join(", ")
+    )
+}
+
+/// `publishers` as `--json` gives them.
+pub(crate) fn publishers_json(publishers: &[Publishers]) -> Json {
+    Json::array(publishers.iter().map(|(package, found)| {
+        Json::object([
+            ("package", package.as_str().into()),
+            (
+                "findings",
+                Json::array(found.iter().map(|d| {
+                    Json::object([
+                        ("rule", d.rule.id.into()),
+                        ("message", d.message.as_str().into()),
+                        (
+                            "file",
+                            d.primary
+                                .as_ref()
+                                .map_or(Json::Null, |label| label.span.path.as_str().into()),
+                        ),
+                    ])
+                })),
+            ),
+        ])
+    }))
 }
 
 /// What a person reads of `notice_list`: each thing nothing compared, then that
@@ -333,6 +395,9 @@ pub(crate) struct Checked {
     pub diagnostics: Vec<Diagnostic>,
     /// The derived files written, by path from the project's root.
     pub written: Vec<String>,
+    /// Each installed package's findings left to its publisher
+    /// ([`jadpo_check::Checked::publishers`]).
+    pub publishers: Vec<Publishers>,
 }
 
 /// Checks `target` as `jadpo check` does, once `prepare` has set what it
@@ -360,11 +425,22 @@ fn checked_with(
             .next("Check it can be read, then run `jadpo check` again")
         })
         .collect();
-    let mut checked = jadpo_check::check(db, loaded.project);
+    let jadpo_check::Checked {
+        problems: mut checked,
+        publishers,
+    } = jadpo_check::checked(db, loaded.project);
     if let Some(cache) = &cache
         && loaded.unreadable.is_empty()
     {
-        cache.record(&loaded, &checked);
+        // A package file with a finding for its publisher is checked
+        // again each time, so its alert keeps being shown.
+        let mut held = checked.clone();
+        held.extend(
+            publishers
+                .iter()
+                .flat_map(|(_, found)| found.iter().cloned()),
+        );
+        cache.record(&loaded, &held);
     }
     if crate::run::in_ci(&call.environment) {
         checked.extend(jadpo_check::packages::links_refused(db, loaded.project));
@@ -423,8 +499,21 @@ fn checked_with(
         loaded,
         diagnostics,
         written,
+        publishers,
     })
 }
+
+/// What `jadpo check` shows beside the diagnostics: the layout, the
+/// derived files written, the scoped review, the caps counted per
+/// instance, the first record's notices and the publishers' alerts.
+type Shown<'a> = (
+    Layout,
+    Vec<String>,
+    &'a [jadpo_check::review::ProviderReview],
+    &'a [PerInstance],
+    &'a [Notice],
+    &'a [Publishers],
+);
 
 fn count(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
@@ -436,13 +525,7 @@ fn report(
     root: Option<String>,
     paths: &[&String],
     unreadable: usize,
-    (layout, written, reviews, per_instance, notice_list): (
-        Layout,
-        Vec<String>,
-        &[jadpo_check::review::ProviderReview],
-        &[PerInstance],
-        &[Notice],
-    ),
+    (layout, written, reviews, per_instance, notice_list, publishers): Shown<'_>,
     (elapsed, failed, before, not_judged, full): (
         Duration,
         &str,
@@ -496,6 +579,9 @@ fn report(
     if let Some(said) = &not_judged {
         screen.push(Block::Fields(vec![("before".to_string(), said.clone())]));
     }
+    if let Some(alerts) = publisher_alerts(publishers) {
+        screen.push(alerts);
+    }
     screen.push(Block::summary(outcome, headline, facts));
     let files_written = if full {
         vec![
@@ -535,6 +621,7 @@ fn report(
                 })),
             ),
             ("notice_list", notice_list_json(notice_list)),
+            ("package_alerts", publishers_json(publishers)),
         ]),
     );
     if let (Some(before), Json::Object(fields)) = (before, &mut data) {

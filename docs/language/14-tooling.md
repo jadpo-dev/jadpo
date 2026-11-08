@@ -885,7 +885,10 @@ the app's code has `use packages/<name>` (`install.in_use`).
 ### `jadpo package show`
 
 Prints a package's description, licence, version, kind and public
-surface, or one declaration with its file. `packages` is a synonym ([A package's surface](11-integrations.md#a-packages-surface)).
+surface, or one declaration with its file. It takes the package's folder
+name, its name in code, or, for one from the registry, the registry name
+`jadpo package add` took (`@acme/postcodes`), which `add`'s hint names.
+`packages` is a synonym ([A package's surface](11-integrations.md#a-packages-surface)).
 
 The description is in bold. The package's facts follow: its version and
 source from its lock line, or "the app's own". Then come [what a release
@@ -985,7 +988,15 @@ and publishing a package](11-integrations.md#developing-and-publishing-a-package
 - The new version's section of `CHANGELOG.md` is written, and needs your
   reason for the release (`publish.changelog_missing`).
 - The version is worked out from the surface at the last `v<version>` tag,
-  and a breaking change is refused (`publish.breaking_change`).
+  and a breaking change is refused (`publish.breaking_change`). The
+  registry counts the releases it published, and a tag can name one it never
+  took, such as a release its verifier refused: `--previous <version>`
+  compares with that tagged release instead, and `--previous none` checks a
+  first release whatever the tags say, as `verify --previous` names the
+  release before. A version no tag the checkout grew from holds is
+  `cli.package_arguments`. `check` stays offline, so a package's CI gets the
+  same answer with or without a network, and the flag says what only the
+  registry knows.
 - A `recipes` row compiles each recipe in the one domain of the package's
   `sample/` app (`publish.sample_missing` without one).
 - A `publisher` row shows who `package.jadpo` names, and says `left out` when

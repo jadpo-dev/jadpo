@@ -42,6 +42,8 @@ fn a_repositorys_own_files_are_left_out_of_the_release() {
         "LICENSE",
         "LICENCE.txt",
         "COPYING",
+        "NOTICE",
+        "NOTICE.txt",
     ] {
         assert_eq!(judge(path), Judged::LeftOut, "{path}");
     }

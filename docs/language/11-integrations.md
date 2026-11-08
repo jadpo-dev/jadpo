@@ -1826,7 +1826,8 @@ description of every public message.
 > `publish.type_unreviewed` (under "The scoped review and unconfirmed
 > operations"); item 4's tests are the package's own
 > `.test.jadpo` files; item 5 works out the version from the surface at
-> the last tag and refuses a breaking change (`publish.breaking_change`);
+> the last tag (or the release `--previous` names) and refuses a breaking
+> change (`publish.breaking_change`);
 > item 7 is the index's own check and the `licence` row: `check` passes
 > `Licence.proprietary`, because a private package's CI runs it before a tag, and
 > `verify` and `publish` refuse it (`publish.licence_proprietary`). Item 8 is the
@@ -2302,8 +2303,10 @@ symbolic link or a submodule refuses the commit
 ([`publish.file_not_allowed`](../errors/publish.file_not_allowed.md),
 [`publish.too_large`](../errors/publish.too_large.md)). What a repository
 needs for itself, hidden files and folders and a root `README`, `LICENSE`,
-`LICENCE` or `COPYING`, is left out instead: it isn't in the archive or the
-digest, and `left_out` lists it. `jadpo package verify <folder>` has the
+`LICENCE`, `COPYING` or `NOTICE`, is left out instead: it isn't in the
+archive or the digest, and `left_out` lists it. A `NOTICE` is the file
+Apache-2.0 asks a work to carry beside its licence, so a release may hold
+one as it holds a `LICENSE`. `jadpo package verify <folder>` has the
 same `files` row, so a local pass is a pass here.
 
 **Where its code runs.** Each pass runs in a sandbox of its own, sharing
@@ -6436,6 +6439,13 @@ it when you write a package by hand or a check refuses one.
   folder in byte order, as Go's `dirhash` does; every file in the folder
   counts, hidden ones left out, so a changed, added or removed file is
   `package.digest_mismatch`.
+- **A newer Jadpo's findings in a package's own code.** In an
+  installed package's files, a judgement call (a declinable rule, such as
+  `package.standard_candidate`) or a `publish.` rule is its publisher's to
+  answer: `jadpo check`, `add` and `update` show it as an `alert` about the
+  package and go on, and `--json` lists it under `package_alerts`. Any
+  other error, a security rule's included, still refuses. The app's own
+  integration's findings are errors.
 - **What isn't compiled.** An installed package's tests (run when it is
   published, not in the app's `jadpo test`), its `recipes/` and `sample/`
   are read only for its digest. The app's own integration's tests run with
@@ -6536,7 +6546,11 @@ what `jadpo package check` and `jadpo package show` do.
   convert at the edge, in the package.
 - **`jadpo package show`** finds a package by its folder's name
   (`postcodes`), its name in code (`Postcodes`) or with its version
-  (`Postcodes.v2`), and a declaration by the name the app writes after
+  (`Postcodes.v2`), and one installed from the registry by its registry
+  name too (`@acme/postcodes`, or `postcodes` for Jadpo's own
+  `@jadpo/postcodes`), as `update` and `remove` do. `add` from the
+  registry ends with that name in its hint, so the hint and the command
+  agree. It finds a declaration by the name the app writes after
   the package's (`uk.parse`, `UkPostcode`, `bookings.create`). An
   installed package's version and source come from its lock line; the
   app's own integration's source is "the app's own". Lists cut a long
@@ -6709,7 +6723,7 @@ can't be reached, or whose answer doesn't fit the protocol, is
 >
 > ✓ package added  Postcodes.v2 2.1.0 · 1 function · 3 types · 1 failure
 >
-> → jadpo package show postcodes  shows what it offers
+> → jadpo package show @acme/postcodes  shows what it offers
 > ```
 >
 > The lock's line is `package Postcodes.v2 version 2.1.0 registry

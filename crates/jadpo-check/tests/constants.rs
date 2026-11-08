@@ -255,3 +255,46 @@ fn a_constant_is_a_graph_node_with_its_value() {
         ]
     );
 }
+
+/// A library package's constants (area 3, "Where a constant lives"; Richard,
+/// 2026-11-07): its functions read them bare, a constant is built from
+/// another, and a field of an object constant is read through it.
+fn grid(reader: &'static str) -> Vec<String> {
+    problems(
+        Layout::Project,
+        &[
+            APP,
+            (
+                "shared/providers/grid/v1/package.jadpo",
+                "/// Grid sizes.\npackage Grid.v1 {\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}\n",
+            ),
+            (
+                "shared/providers/grid/v1/types/grid_distance.jadpo",
+                "/// A length in metres.\npublic type GridDistance = Decimal {\n    scale: 2\n}\n",
+            ),
+            (
+                "shared/providers/grid/v1/types/extent.jadpo",
+                "/// How far a grid reaches.\npublic type Extent = Object {\n    east: GridDistance\n    north: GridDistance\n}\n",
+            ),
+            (
+                "shared/providers/grid/v1/libraries/grids.jadpo",
+                "/// The grids.\npublic library grids {\n    /// The side of a square.\n    constant side: GridDistance = 100.00\n\n    /// How far the grid reaches.\n    constant extent: Extent = Extent {\n        east: side\n        north: side\n    }\n\n    /// The side of a square.\n    function square() -> GridDistance {\n        return side\n    }\n\n    /// How far east the grid reaches.\n    function east() -> GridDistance {\n        return extent.east\n    }\n}\n",
+            ),
+            ("domains/maps/actions/reach.jadpo", reader),
+        ],
+    )
+}
+
+#[test]
+fn a_library_package_reads_its_constants_bare() {
+    let reader = "use shared/providers/grid\n\naction reach() -> Grid.GridDistance {\n    if (Grid.grids.square() > Grid.grids.east()) {\n        return Grid.grids.square()\n    }\n    return Grid.grids.east()\n}\n";
+    assert_eq!(grid(reader), Vec::<String>::new());
+}
+
+#[test]
+fn a_library_reads_a_field_of_its_object_constant() {
+    let text = format!(
+        "{PENCE}type Fees = Object {{\n    small: Coins\n    large: Coins\n}}\n\nlibrary pricing {{\n    constant small_fee: Coins = 250\n\n    constant fees: Fees = Fees {{\n        small: small_fee\n        large: Coins(small_fee * 2)\n    }}\n\n    function large_fee() -> Coins {{\n        return fees.large\n    }}\n}}\n\nfunction fee() -> Coins {{\n    return pricing.large_fee()\n}}\n"
+    );
+    assert_eq!(loose(&text), Vec::<String>::new());
+}

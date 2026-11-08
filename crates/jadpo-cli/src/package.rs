@@ -292,7 +292,13 @@ fn show(call: &Call) -> Reply {
     };
     let all: Vec<&jadpo_db::PackageHome> = homes
         .values()
-        .filter(|home| *wanted == home.name || *wanted == home.code || *wanted == home.versioned())
+        .filter(|home| {
+            *wanted == home.name
+                || *wanted == home.code
+                || *wanted == home.versioned()
+                || lock_line(&loaded, &home.versioned())
+                    .is_some_and(|line| crate::install::registry_name_is(&line, wanted))
+        })
         .collect();
     if let [first, .., last] = all.as_slice() {
         // Two versions side by side (chunk 7.1c2): each is its own package.
@@ -1313,14 +1319,41 @@ fn check(call: &Call) -> Reply {
         Some(argument) => cwd.join(argument),
         None => cwd.clone(),
     };
-    bar(call, &folder, Mode::Check)
+    // The release the registry holds, when a tag names one it never took
+    // (area 14, Richard, 2026-11-07).
+    let previous = match call.value("--previous") {
+        None => Compared::Tags,
+        Some("none") => Compared::First,
+        Some(version) if semver(&format!("v{version}")).is_some() => {
+            Compared::Version(version.to_string())
+        }
+        Some(other) => {
+            return Reply::failed(arguments(
+                format!("`{other}` isn't a release"),
+                "For `jadpo package check`, `--previous` names the release the registry holds that this one follows, by its version, or `none` for a first release.".to_string(),
+                "Run `jadpo package check --previous <version>`, such as `--previous 1.0.0`, or `--previous none`".to_string(),
+            ));
+        }
+    };
+    bar(call, &folder, Mode::Check { previous })
+}
+
+/// Which release `jadpo package check` compares with.
+pub(crate) enum Compared {
+    /// The last `v<version>` tag the checkout grew from.
+    Tags,
+    /// None: a first release, whatever tags there are.
+    First,
+    /// The tagged release with this version.
+    Version(String),
 }
 
 /// How the bar runs.
 pub(crate) enum Mode {
     /// `jadpo package check`: in the author's checkout, against the git
-    /// tags, writing the surface and the changelog's new section.
-    Check,
+    /// tags or the release `--previous` names, writing the surface and the
+    /// changelog's new section.
+    Check { previous: Compared },
     /// `jadpo package verify`: on a commit as it stands, against the
     /// release given, writing nothing.
     /// With `run` false, none of the package's code runs: the verifier's
@@ -1428,7 +1461,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     let running = !matches!(mode, Mode::Verify { run: false, .. });
     let asked = match &mode {
         Mode::Verify { publisher, .. } => publisher.clone(),
-        Mode::Check => None,
+        Mode::Check { .. } => None,
     };
     let command = if verifying {
         "package verify"
@@ -1614,6 +1647,45 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         .as_ref()
         .map(|git| git.releases(&package))
         .unwrap_or_default();
+    // `--previous` says which release the registry holds: none, or the one
+    // tagged with its version, of this major version or an earlier one.
+    let named = match &mode {
+        Mode::Check { previous } => match previous {
+            Compared::Tags => None,
+            Compared::First => Some(None),
+            Compared::Version(version) => {
+                let held: Vec<Release> = git
+                    .as_ref()
+                    .map(|git| {
+                        git.releases_of_code(&code)
+                            .into_iter()
+                            .filter(|release| git.in_history(&release.tag))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let tags: Vec<String> = held.iter().map(|release| release.tag.clone()).collect();
+                match held.into_iter().find(|release| release.version == *version) {
+                    Some(release) => Some(Some(release)),
+                    None => {
+                        return Reply::failed(arguments(
+                            format!("No tag holds release {version} of `{code}`"),
+                            if tags.is_empty() {
+                                "`--previous` names a release by its `v<version>` tag, and this checkout grew from none.".to_string()
+                            } else {
+                                format!(
+                                    "`--previous` names a release by its `v<version>` tag, and this checkout grew from {}.",
+                                    and_list(&crate::run::quoted(&tags))
+                                )
+                            },
+                            "Name one of those releases, or `--previous none` for a first release"
+                                .to_string(),
+                        ));
+                    }
+                }
+            }
+        },
+        Mode::Verify { .. } => None,
+    };
     let mut previous: Option<Previous> = None;
     if let Mode::Verify {
         previous: Some(given),
@@ -1634,10 +1706,21 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
     if let Some(git) = &git {
         releases.retain(|release| git.in_history(&release.tag));
     }
+    let chosen = named.is_some();
+    // A release of an earlier major version is compared with as a new
+    // major's first release is.
+    let mut earlier_major: Option<Release> = None;
+    if let Some(named) = named {
+        releases.clear();
+        match named {
+            Some(release) if release.named() == package => releases.push(release),
+            other => earlier_major = other,
+        }
+    }
     // A checkout unchanged since a release is that release, checked as
     // publishing and the verifier check it: against the release before.
     let unchanged = match (releases.first(), &git) {
-        (Some(last), Some(git)) => git.unchanged_since(&last.tag),
+        (Some(last), Some(git)) if !chosen => git.unchanged_since(&last.tag),
         _ => false,
     };
     let tagged: Option<Release> = unchanged.then(|| releases.remove(0));
@@ -1648,6 +1731,9 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
             surface: last.surface.clone(),
         });
         let last = last.or_else(|| {
+            if chosen {
+                return earlier_major.take();
+            }
             git.as_ref().and_then(|git| {
                 let before = tagged.as_ref().and_then(|tagged| semver(&tagged.tag));
                 git.releases_of_code(&code).into_iter().find(|release| {
