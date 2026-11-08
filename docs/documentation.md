@@ -494,9 +494,10 @@ needs, or use a local clone with a file-reading coding agent.
     trusted publishing policy for `vscode-extension.yml`, and the Open VSX
     namespace `jadpo` a trusted publisher for it.
   - The verifier's container image (`deploy/verifier/`) is built and tested
-    on each release, and pushed to `ghcr.io/jadpo-dev/verifier` while the
-    repository variable `JADPO_VERIFIER_IMAGE` is `on`, with the workflow's
-    own token. The registry runs the verifier on Cloudflare Containers, from
+    on each release and on each pre-release's tag (`v0.5.0-rc.1`), and
+    pushed to `ghcr.io/jadpo-dev/verifier` while the repository variable
+    `JADPO_VERIFIER_IMAGE` is `on`, with the workflow's own token, a
+    pre-release also moving the image's `pre-release` tag. The registry runs the verifier on Cloudflare Containers, from
     the jadpo.dev repository: its CI builds the image from
     `deploy/verifier/Dockerfile` with the newest release's own `jadpo`, checked
     against its attestation, and deploys it behind a small Worker at

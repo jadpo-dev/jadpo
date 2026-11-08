@@ -94,7 +94,14 @@ fn a_secret_is_never_emailed_or_shown_in_a_message() {
         rules(
             Layout::Project,
             &[
-                ("app.jadpo", "application {}\n"),
+                (
+                    "app.jadpo",
+                    "application {}\n\nlocales {\n    default: Locale.en_gb\n    supported: [Locale.en_gb]\n}\n",
+                ),
+                (
+                    "domains/accounts/translations/en_gb.jadpo",
+                    "translations {\n    reset_email: \"Your password\"\n}\n",
+                ),
                 (
                     "domains/accounts/emails/reset_email.jadpo",
                     "/// Sent when a password is reset.\ntype ResetEmail = EmailMessage {\n    decline email.field_unused: \"the secret is the finding here\"\n    new_password: Password\n}\n",
