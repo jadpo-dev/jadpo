@@ -21,6 +21,9 @@ pub enum Text {
     Digest,
     /// A log hash: 64 lower-case hex digits.
     Hash,
+    /// The first hex digits of a source fingerprint, as `POST
+    /// fingerprints/query` sends them: `3fa9c`.
+    Prefix,
 }
 
 impl Text {
@@ -36,6 +39,7 @@ impl Text {
             }
             Text::Digest => "^sha256:[0-9a-f]{64}$",
             Text::Hash => "^[0-9a-f]{64}$",
+            Text::Prefix => "^[0-9a-f]{5}$",
         })
     }
 
@@ -49,6 +53,7 @@ impl Text {
             Text::Version => Version::parse(text).is_ok(),
             Text::Digest => Digest::parse(text).is_ok(),
             Text::Hash => crate::log::Hash::from_hex(text).is_some(),
+            Text::Prefix => crate::protocol::is_prefix(text),
         }
     }
 }
@@ -165,6 +170,9 @@ pub const NAMES: &[&str] = &[
     "Installed",
     "AdvisoryAnswer",
     "Advisory",
+    "FingerprintQuery",
+    "FingerprintAnswer",
+    "PublishedFingerprint",
     "StartRelease",
     "StartedRelease",
     "ReleaseRequest",
@@ -296,6 +304,17 @@ pub fn named(name: &str) -> Option<Shape> {
             field("to", text(Text::Version)),
             field("summary", plain()),
             field("copies", list(text(Text::ScopedName))),
+        ]),
+        "FingerprintQuery" => object(vec![field("prefixes", list(text(Text::Prefix)))]),
+        "FingerprintAnswer" => object(vec![field(
+            "fingerprints",
+            list(Named("PublishedFingerprint")),
+        )]),
+        "PublishedFingerprint" => object(vec![
+            field("package", text(Text::ScopedName)),
+            field("version", text(Text::Version)),
+            field("declaration", plain()),
+            field("source", text(Text::Digest)),
         ]),
         "StartRelease" => object(vec![
             field("repository", plain()),

@@ -1,9 +1,18 @@
 # `type.money_split`
 
-Money divided by a count: `/` by an `Int`. Dividing money by a count is
-sharing it out, and rounding each share loses a minor unit; `money.split`
-hands every one to some share, and `money.allocate` shares in proportion.
-`/` by a `Decimal` stays, since that is a rate (`/ 1.20` takes VAT off).
+Code divides money by a whole number with `/`, which would share it out and lose minor units to rounding.
+
+## Why Jadpo refuses it
+
+Dividing money by a count is sharing it out, and rounding each share
+loses minor units: £10.00 / 3 is £3.33, and three of those make £9.99.
+`money.split` and `money.allocate` hand every minor unit to some share,
+so the shares always add up to the total. `/` by a `Decimal` stays,
+because that is a rate rather than a share: `/ 1.20` takes 20% VAT off.
+
+## What it looks like
+
+main.jadpo:
 
 ```jadpo check project=e-money-split expect=type.money_split
 type BillTotal = Money {
@@ -31,34 +40,73 @@ error: `BillTotal` is divided by a count
 check failed: 1 error, 1 file
 ```
 
-Two amounts in currencies both types fix differently don't compile, by
-area 3's `type.arithmetic_operand` (and `type.ordering_operand` for `<`):
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
 
-```jadpo check project=e-currency-mismatch expect=type.arithmetic_operand
-type CakePrice = Money {
+## How to fix it
+
+The question is whether the shares are equal.
+
+**If they are equal**, share the total with `money.split`:
+
+```jadpo fragment
+type Share = Money {}
+
+/// Each friend's share of a bill split three ways.
+function shares(total: BillTotal) -> List<Share> {
+    return list.map(money.split(total, 3), share -> Share(share))
+}
+```
+
+```jadpo check project=e-money-split-fix-1 hidden
+type BillTotal = Money {
     currency: Currency.gbp
+    min: 0
 }
 
-type EuroPrice = Money {
-    currency: Currency.eur
-}
+type Share = Money {}
 
-/// A cake priced in pounds, delivered from a shop that charges in euros.
-function delivered(price: CakePrice, delivery: EuroPrice) -> CakePrice {
-    return CakePrice(price + delivery)
+/// Each friend's share of a bill split three ways.
+function shares(total: BillTotal) -> List<Share> {
+    return list.map(money.split(total, 3), share -> Share(share))
 }
 ```
 
-```text output
-error: `CakePrice` and `EuroPrice` can't be added: they're in different currencies
- --> main.jadpo:11:22
-   |
-11 |     return CakePrice(price + delivery)
-   |                      ^^^^^^^^^^^^^^^^ GBP and EUR
-  reason: `CakePrice` is in GBP and `EuroPrice` in EUR, as their types or the calls that made them fix; amounts are added only in one currency.
-  next: Use two amounts in the same currency (agent)
-  rule: type.arithmetic_operand
-  help: https://jadpo.dev/docs/errors/type.arithmetic_operand
+`shares` gives three near-equal amounts that add up to the total
+exactly.
 
-check failed: 1 error, 1 file
+**If they are in proportion**, share it with `money.allocate` and the
+ratios:
+
+```jadpo fragment
+type Share = Money {}
+
+/// A bill shared between two adults and a child, who pays half.
+function shares(total: BillTotal) -> List<Share> {
+    return list.map(money.allocate(total, [2, 2, 1]), share -> Share(share))
+}
 ```
+
+```jadpo check project=e-money-split-fix-2 hidden
+type BillTotal = Money {
+    currency: Currency.gbp
+    min: 0
+}
+
+type Share = Money {}
+
+/// A bill shared between two adults and a child, who pays half.
+function shares(total: BillTotal) -> List<Share> {
+    return list.map(money.allocate(total, [2, 2, 1]), share -> Share(share))
+}
+```
+
+`shares` gives the three amounts in the ratio 2 : 2 : 1, adding up to the
+total exactly.
+
+## Related
+
+- [Money](../language/19-standard-library.md#money)
+- [Money operations](../language/19-standard-library.md#money-operations)
+- [Sharing money out](../language/19-standard-library.md#sharing-money-out)
+- [`type.arithmetic_operand`](type.arithmetic_operand.md), for two amounts in different currencies

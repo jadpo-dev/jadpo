@@ -42,6 +42,7 @@ mod domain_names;
 mod email_partials;
 mod encrypted_fields;
 mod erasure;
+mod erasure_stores;
 mod events;
 mod examples;
 mod exports;

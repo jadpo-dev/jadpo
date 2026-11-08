@@ -911,6 +911,10 @@ application {
   listing it in `runtime.started`'s `unbuilt`, since they could plant
   files it reads; so is a store with no `path:`, answering
   `misconfigured` when used.
+- **The erasure log.** A store named by `privacy: { erasure_log: }` keeps a
+  file for each person erased, under `erasure-log/` in its folder, which no
+  file's key can name and nothing deletes
+  ([What erasure doesn't rewrite](15-personal-data.md#what-erasure-doesnt-rewrite)).
 - **Files never change.** Each is kept under a key the runtime
   generates, a UUID sharded into two directory levels, never one derived
   from a file's name. The driver refuses any key that doesn't match its

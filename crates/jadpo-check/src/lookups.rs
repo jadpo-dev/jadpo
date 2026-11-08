@@ -348,6 +348,10 @@ pub trait WriteView {
     /// What erasing a record of the person entity called `person` does
     /// (area 15, "Erasure"; chunk P3).
     fn erasure(&self, person: &str) -> Option<&crate::erasure::Erasure>;
+
+    /// Whether the application says where the erasure log is kept, rightly
+    /// or not, or is no application that could (area 15; chunk P4c).
+    fn names_an_erasure_log(&self) -> bool;
 }
 
 /// Reading declared failures.
@@ -627,6 +631,11 @@ impl WriteView for Lookup<'_> {
         crate::erasure::erasures(self.db, self.project)
             .people
             .get(person)
+    }
+
+    fn names_an_erasure_log(&self) -> bool {
+        self.project.layout(self.db) != jadpo_db::Layout::Project
+            || crate::privacy::privacy(self.db, self.project).log_written
     }
 }
 

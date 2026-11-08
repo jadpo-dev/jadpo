@@ -71,6 +71,8 @@ Data
 
 Look things up
   routes        List every route
+  inspect       Print the project map, or one node
+  impact        List what a change to a name reaches
   ai            Show prompts, record, usage   show, record, usage
   calls         Show provider calls in dev    list, show, script
   email         Read the dev inbox and check mail
@@ -153,6 +155,8 @@ Data
 
 Look things up
   routes        List every route
+  inspect       Print the project map, or one node
+  impact        List what a change to a name reaches
   ai            Show prompts, record, usage   show · record · usage
   calls         Show provider calls in dev    list · show · script
   email         Read the dev inbox and check mail
@@ -336,6 +340,8 @@ fn help_json_is_the_whole_command_reference() {
             "seed",
             "sql",
             "routes",
+            "inspect",
+            "impact",
             "ai",
             "calls",
             "email",
@@ -806,6 +812,8 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "seed\tFill the development database from a seed",
             "sql\tShow the SQL a query or action sends",
             "routes\tList every route",
+            "inspect\tPrint the project map, or one node",
+            "impact\tList what a change to a name reaches",
             "ai\tShow prompts, record, usage",
             "calls\tShow provider calls in dev",
             "email\tRead the dev inbox and check mail",

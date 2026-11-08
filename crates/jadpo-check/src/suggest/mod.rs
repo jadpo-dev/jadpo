@@ -11,6 +11,7 @@
 //! taught snippets are found by, and the canonical form confirms a match.
 
 pub mod canonical;
+pub mod functions;
 pub mod record;
 pub mod settings;
 pub mod taught;
@@ -37,10 +38,15 @@ pub enum Signal {
     Loop,
     /// A snippet `jadpo suggest found` recorded.
     Taught,
+    /// A copy of a function or action a registry package publishes.
+    Published,
+    /// A function named for a standard operation, taking and giving what
+    /// it does.
+    Function,
 }
 
 impl Signal {
-    pub const ALL: [Signal; 7] = [
+    pub const ALL: [Signal; 9] = [
         Signal::Shape,
         Signal::Conversion,
         Signal::Name,
@@ -48,6 +54,8 @@ impl Signal {
         Signal::Validation,
         Signal::Loop,
         Signal::Taught,
+        Signal::Published,
+        Signal::Function,
     ];
 
     pub fn word(self) -> &'static str {
@@ -59,6 +67,8 @@ impl Signal {
             Signal::Validation => "validation",
             Signal::Loop => "loop",
             Signal::Taught => "taught",
+            Signal::Published => "published",
+            Signal::Function => "function",
         }
     }
 
@@ -103,6 +113,8 @@ pub struct Finding {
     strength: usize,
     /// Its place among the entries, the tie-break after `strength`.
     order: usize,
+    /// The package and version a `published` finding names.
+    pub package: Option<(String, String)>,
 }
 
 /// A snippet `jadpo suggest found` taught: the next scan finds its
@@ -525,7 +537,16 @@ struct Field<'a> {
 /// Everything `jadpo suggest` finds in `project`, ignores not applied:
 /// one finding per snippet, in file order, each the smallest that holds
 /// its signal.
-pub fn scan(db: &dyn Db, project: Project, taught: &[Taught]) -> Vec<Finding> {
+///
+/// `published` are the published functions the registry answered for the
+/// app's own functions' prefixes ([`functions::prefixes`]); empty when it
+/// wasn't asked.
+pub fn scan(
+    db: &dyn Db,
+    project: Project,
+    taught: &[Taught],
+    published: &[functions::Published],
+) -> Vec<Finding> {
     let graph = crate::graph::graph(db, project).clone();
     let readings = readings();
     let texts: BTreeMap<String, String> = project
@@ -537,6 +558,9 @@ pub fn scan(db: &dyn Db, project: Project, taught: &[Taught]) -> Vec<Finding> {
     let mut found = Vec::new();
 
     declarations(db, project, &graph, &readings, &texts, &taught, &mut found);
+    let own = functions::own_functions(db, project);
+    functions::published(&own, published, &mut found);
+    functions::standard(&graph, &own, &mut found);
 
     for &file in project.files(db) {
         let path = file.path(db);
@@ -608,6 +632,7 @@ fn finding(
         reason,
         strength,
         order: reading.order,
+        package: None,
     }
 }
 
@@ -913,6 +938,7 @@ fn taught_at(
         },
         strength: 1,
         order: usize::MAX,
+        package: None,
     });
 }
 
@@ -999,6 +1025,7 @@ fn body(
                                     ),
                                     strength: 1,
                                     order: usize::MAX,
+                                    package: None,
                                 });
                             }
                         }
@@ -1298,8 +1325,29 @@ pub fn catalogue() -> Vec<Entry> {
             values: Vec::new(),
         });
     }
+    // The two signals that read whole functions: one entry each, since
+    // their data is every standard operation and every published function.
+    out.push(Entry {
+        suggestion: CATALOGUE_OPERATIONS.to_string(),
+        signal: Signal::Function,
+        looks_for: "a function named for one, taking and giving what it does".to_string(),
+        values: Vec::new(),
+    });
+    out.push(Entry {
+        suggestion: CATALOGUE_PACKAGES.to_string(),
+        signal: Signal::Published,
+        looks_for: "a copy of a function or action one publishes, asked of the registry"
+            .to_string(),
+        values: Vec::new(),
+    });
     out
 }
+
+/// What the catalogue's `function` entry suggests: any standard operation.
+pub const CATALOGUE_OPERATIONS: &str = "standard operations";
+
+/// What the catalogue's `published` entry suggests: any registry package.
+pub const CATALOGUE_PACKAGES: &str = "registry packages";
 
 #[cfg(test)]
 mod tests {

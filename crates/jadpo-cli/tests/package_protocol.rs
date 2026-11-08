@@ -58,13 +58,13 @@ fn a_file_that_conforms_is_one_line() {
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
     assert_eq!(
         out.stdout,
-        "Conforms to the registry protocol: build/openapi/main.json, 10 requests\n"
+        "Conforms to the registry protocol: build/openapi/main.json, 11 requests\n"
     );
     let json = jadpo(&root, &["build/openapi/main.json", "--json"]);
     assert_eq!(json.code, 0, "{}", json.stdout);
     let data: serde_json::Value = serde_json::from_str(&json.stdout).expect("JSON");
     assert_eq!(data["data"]["conforms"], true, "{data:#}");
-    assert_eq!(data["data"]["requests"], 10, "{data:#}");
+    assert_eq!(data["data"]["requests"], 11, "{data:#}");
     assert_eq!(
         data["data"]["mismatches"],
         serde_json::json!([]),

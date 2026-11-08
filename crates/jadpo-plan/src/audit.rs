@@ -177,11 +177,19 @@ pub(crate) fn histories(
 /// to, in key order: an application's own, since no package's subscriber
 /// hears an event its app emits.
 pub(crate) fn subscribers(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Vec<String> {
+    subscribers_of(db, project, jadpo_std::audit::AUDIT_EVENT_KEY)
+}
+
+/// The identity keys of an application's own subscribers of the built-in
+/// event whose key is `event`, in key order.
+pub(crate) fn subscribers_of(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    event: &str,
+) -> Vec<String> {
     let mut out: Vec<String> = jadpo_check::events::subscribers(db, project)
         .iter()
-        .filter(|model| {
-            model.event.as_str() == jadpo_std::audit::AUDIT_EVENT_KEY && model.package.is_none()
-        })
+        .filter(|model| model.event.as_str() == event && model.package.is_none())
         .map(|model| model.key.as_str().to_string())
         .collect();
     out.sort();
