@@ -239,7 +239,9 @@ setting holds, or the one `--url` names. A store whose address no
 variable gives gets a disposable PostgreSQL for the session. Jadpo starts
 that from PostgreSQL's own programs (`initdb`, `pg_ctl` and `postgres`), so
 PostgreSQL has to be installed on your machine; you don't create a
-database or set a password. Pending migrations are applied as they appear.
+database or set a password. Pending migrations are applied as they appear, and
+the erasure log is replayed as it starts ([What erasure doesn't
+rewrite](15-personal-data.md#what-erasure-doesnt-rewrite)).
 While it runs, the address of each database it started is in
 `build/dev/stores.json`, for `jadpo schedules` and `jadpo why`.
 
@@ -2062,8 +2064,7 @@ The server offers what the compiler knows and nothing else: suggestions
 written by a model belong to your agent, never to `jadpo lsp`. VS Code
 asks for completion as you type a word, a `.`, a `:` or a digit.
 
-Not built yet: publishing the extension, which is switched off until the
-Marketplace and Open VSX are set up; and rename in the editor. It goes through the same code as
+Not built yet: rename in the editor. It goes through the same code as
 `jadpo rename`, so an entity field renamed in the editor keeps its
 stored data, and it waits for that command and the identity registry it
 writes ([Entities, stores and migrations](05-data.md), [Stable
@@ -2991,6 +2992,11 @@ the build doesn't have or that changed since, stops the start
 waited for, trying again after 1 second and doubling to 10, since a
 database that is down isn't a configuration error.
 
+Then it replays the erasure log, so a restored backup is erased before it
+serves anything ([What erasure doesn't
+rewrite](15-personal-data.md#what-erasure-doesnt-rewrite)), waiting the same
+way for a store that can't be reached. One it can't finish stops the start.
+
 Then it listens on `PORT` (8080 when unset) on `HOST` (every IPv4
 interface when unset), with a worker per core.
 
@@ -3032,6 +3038,8 @@ with the stamp's fields (`build`, `commit`, `modified`, `compiler`,
   (`problems`, each with a `problem` code, the setting, variable or store
   it is about, and a `message`);
 - `runtime.waiting`, while a database can't be reached;
+- `runtime.erasures_replayed`, with how many entries the erasure log holds and
+  how many times the replay found someone still there, only when it did;
 - `runtime.started`, with the address, workers, `trigger` (`native` or
   `external`) and each connection whose driver wasn't built (`unbuilt`);
 - `runtime.ticked`, after each tick, the server's own timer's as well as a
@@ -3494,7 +3502,10 @@ or that changed since, is logged as `runtime.startup_failed` and the
 request answered `503`. A database it can't reach yet is logged as
 `runtime.waiting` and answered the same. So a migration applied after the
 Worker is deployed is picked up by its next request, with no restart. Once
-current, an isolate doesn't compare again, and logs `runtime.started` with
+current, an isolate replays the erasure log before it serves anything, each
+isolate as it starts, answering `503` until it has ([What erasure doesn't
+rewrite](15-personal-data.md#what-erasure-doesnt-rewrite)). Then it doesn't
+compare again, and logs `runtime.started` with
 each connection whose driver wasn't built.
 
 ### Serving
@@ -3533,7 +3544,8 @@ waited longest.
 ### The tick
 
 Each run of the minute's cron trigger calls the Worker's `scheduled`. That
-starts the isolate as a request does and, once its databases are current,
+starts the isolate as a request does and, once its databases are current and
+the erasure log replayed,
 runs the runtime's tick ([The tick](12-jobs-and-events.md#the-tick)): the
 schedules due, the outbox's sweep and the deletions, and the queues
 `receiving:` reads through a package. Out of date, it logs why as a
@@ -3582,7 +3594,8 @@ Cloudflare hands again each one not acknowledged.
 
 It logs one JSON object a line on the console, which Workers Logs and
 `wrangler tail` read, with the same events and stamp fields as a native
-binary's: `runtime.startup_failed`, `runtime.waiting`, `runtime.started`,
+binary's: `runtime.startup_failed`, `runtime.waiting`,
+`runtime.erasures_replayed`, `runtime.started`,
 `runtime.ticked` after each tick of its cron, `operation.failed` for a
 fault behind a 500 with its `.jadpo` frames, and `queue.retried` for a
 batch with a message retried. A Worker and a native binary start, compare

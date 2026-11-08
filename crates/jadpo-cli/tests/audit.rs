@@ -66,7 +66,19 @@ pub(crate) const FILES: [(&str, &str); 28] = [
         "app.jadpo",
         r#"use billing/entities { Clerk }
 
-application {}
+application {
+    connections: {
+        erasures: {
+            driver: Driver.disk
+            path: "/var/lib/billing/erasures"
+        }
+    }
+    privacy: {
+        erasure_log: {
+            store: erasures
+        }
+    }
+}
 
 principal {
     user: {

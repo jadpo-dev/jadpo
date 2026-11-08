@@ -278,7 +278,7 @@ D1 first: the site starts once D1 has merged.
   each widening `error_format_scope` to the rules it finished; tick it
   once all are.
 - [x] **D13c1 `type.a*` to `type.e*`**: [writing guide](writing.md), "How an error page reads"; `tools/docs/language_docs.py`, `error_format_scope` and `BROUGHT_TO_FORMAT`; the catalogue summaries in `crates/jadpo-diag`; the pages of `type.a*` to `type.e*`.
-- [ ] **D13c2 `type.f*` to `type.n*`** `opus · high`: 31 pages.
+- [x] **D13c2 `type.f*` to `type.n*`**: [writing guide](writing.md), "How an error page reads"; `tools/docs/language_docs.py`, `BROUGHT_TO_FORMAT`; the catalogue summaries in `crates/jadpo-diag`; the pages of `type.f*` to `type.n*`.
 - [ ] **D13c3 `type.o*` to `type.v*`** `opus · high`: 37 pages.
 - [ ] **D13c4 `syntax.a*` to `syntax.l*`** `opus · high`: 27 pages.
 - [ ] **D13c5 `syntax.m*` to `syntax.v*`** `opus · high`: 28 pages.
@@ -568,19 +568,13 @@ After the registry is live, in order:
      "Belonging", "Kept records" and "The person's own record, as built
      (chunk P4b)"; compiler/runtime §2.3, "A person's records" and
      "Erasure", and §2.6, "A person's erasure".
-   - [ ] **P4c Other stores, `PersonErased` and the erasure log** `opus ·
-     xhigh` after P4b: area 15, "What erasure reaches" and "What erasure
-     doesn't rewrite"; the design notes' "Records in another store",
-     "`PersonErased`" and "Backups", as decided. A reference to a person
-     across stores with `erase:` and no `on_delete:`, each outcome applied
-     by a generated subscriber in that store after the main commit;
-     `PersonErased` emitted in the erasure's transaction with the entity's
-     name, the `id` and the time; and `privacy: { erasure_log: { store: } }`
-     (only that part of `privacy:`), a store that holds no person's records
-     or a store of files, written after the commit and replayed at every
-     start. OAuth grants and caches join when they are built. Done when
-     an erased person leaves nothing the page says erasure reaches, on
-     both executors.
+   - [x] **P4c Other stores, `PersonErased` and the erasure log**: area 15,
+     "Records in another store", "Who was erased: `PersonErased`", "What
+     erasure doesn't rewrite" and "What is built", and the design notes'
+     "Other stores, `PersonErased` and the log, as built (chunk P4c)";
+     compiler/runtime §2.3, "Erasure", and §2.6, "Past the person's
+     transaction"; the pages of `data.erasure_log_*`,
+     `data.person_removal_across_stores` and `data.reference_across_stores`.
    - [ ] **P5 Export** `opus · high` after P4c and V5: area 15, "Export"
      and "Who may erase and export"; area 13's generated test.
      `User.export(id)` as a `PersonalDataExport`: the person's record,

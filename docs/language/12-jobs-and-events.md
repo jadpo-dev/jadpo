@@ -1305,8 +1305,10 @@ that joins again finds the file whole.
 
 A cancel ends the run at its next page, as for a query's run. Once that
 end commits, the file's pieces, and the file if they were joined, are
-dropped. If the store can't be reached then, they stay. Deleting files
-nothing points at comes with the rest of the `files` capability.
+dropped. If the store can't be reached then, they stay, and nothing removes
+them later: [deleting files no record
+holds](16-built-in-services.md#deleting-and-erasing) doesn't reach a cancelled
+run's.
 
 ### A store with no room
 
@@ -3491,9 +3493,10 @@ You don't write anything for this.
 
 ### Not built yet
 
-The jitter and `Retry-After` are built for a call's own retries within
-one attempt ([Calling](11-integrations.md#calling)). Between attempts of
-a delivery, the next attempt waits only its backoff.
+`Retry-After` is built for a call's own retries within one attempt
+([Calling](11-integrations.md#calling)). Between attempts of a delivery,
+the next attempt waits its backoff, with jitter, and doesn't read
+`Retry-After`.
 
 ## What an operator sees
 <!-- topic: what-an-operator-sees -->
@@ -3801,7 +3804,7 @@ These limits may change once they have been measured on real runs.
 | Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging](17-debugging-and-review.md)), and a record's entry in the [personal-data report](15-personal-data.md) | Not built yet. |
 | Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for [telemetry](16-built-in-services.md). |
 | The console's timeline | Not built yet ([Debugging](17-debugging-and-review.md)). |
-| Jitter and `Retry-After` between a delivery's attempts | Not built yet: the next attempt waits only its backoff ([Retries and giving up](#retries-and-giving-up)). |
+| `Retry-After` between a delivery's attempts | Not built yet: the next attempt waits its backoff, with jitter ([Retries and giving up](#retries-and-giving-up)). |
 | Splitting a page type allowing more than 1,000 items into batches; `batches.status` and `batches.cancel` with runs in no store or several; a file's run with several databases and none written | Not built yet ([How a run is kept](#how-a-run-is-kept), [How a file's run is kept](#how-a-files-run-is-kept)). |
 | `cli.signal_handler_failed` | Not built yet ([Running background work](#running-background-work)). |
 

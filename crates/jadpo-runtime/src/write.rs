@@ -124,6 +124,8 @@ pub(crate) async fn write(
     let result = match ctx.transaction(&plan.store).await {
         Ok(transaction) => match &plan.returns {
             Some(_) => transaction.query(sql, &params).await,
+            // An erasure's rows say who it erased (chunk P4c).
+            None if !plan.erased.is_empty() => transaction.query(sql, &params).await,
             None => transaction
                 .execute(sql, &params)
                 .await
@@ -280,6 +282,8 @@ pub(crate) async fn write(
         ctx.checked_row(row, id);
     }
     let Some(returns) = &plan.returns else {
+        crate::erasure::emit(ctx, &plan.erased, &rows, now)
+            .map_err(|what| defect(ctx, what, site))?;
         if let Some(audit) = &plan.audit {
             let Some(before) = &before else {
                 return Err(defect(

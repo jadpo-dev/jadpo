@@ -15,8 +15,9 @@ lives. The aim is that requests under GDPR, UK GDPR and CCPA/CPRA work out
 of the box. Built so far: `person: true`, the check that erasure can find
 every field marked `personal:`, [retention](#retention), which deletes
 data when its time is up, and [erasure](#erasure) of a person's records in
-their store, the bytes of their files included and their own record kept
-field by field where it must be. `personal:` is also read for
+every store, the bytes of their files included and their own record kept
+field by field where it must be, with the log that keeps them erased after
+a restore. `personal:` is also read for
 [the AI page's](21-ai.md#personal-data-sent-to-a-model) check of what
 reaches a model, and [the report](#the-personal-data-report) lists every
 connection and host personal data reaches. Nothing exports personal data
@@ -45,7 +46,7 @@ is the one fact Jadpo asks you to write down.
 |---|---|---|---|
 | Marking | `personal:` on a field; nothing on an `Email`, a `PhoneNumber`, a name or a `PostalAddress`, which are personal data already | Hashes it in logs, lists it in the report | Partly: read for the AI check and the report's connections, and checked that erasure can find it; nothing hashes it |
 | The person | `person: true` on an entity | Finds every record that belongs to them | Yes |
-| Erasure | `erase:` on references it can't work out | Generates `User.erase(id)` across every store and cache | Partly: in the person's store, files' bytes and the person's own record kept field by field included; not yet another store |
+| Erasure | `erase:` on references it can't work out, and where its log is kept | Generates `User.erase(id)` across every store and cache | Partly: in every store, with `PersonErased` and the erasure log; caches and providers aren't built yet |
 | Export | nothing | Generates `User.export(id)` | No: `toolchain.not_built_yet` |
 | Retention | `retention:` on a field or entity | Clears or deletes it when the time is up | Partly: not yet on an event |
 | Report | nothing | Writes `build/report/personal-data.md` | Partly: every connection and host personal data reaches |
@@ -372,8 +373,9 @@ Erasure follows the references from every record it deletes, however
 deep, so a reference to one of the person's todos decides what erasure
 does to its record in the same way. A record erasure keeps stays with
 whatever refers to it, as it does when an ordinary delete clears a
-reference. Everything goes in one statement, so an erasure is never left
-half done.
+reference. Everything in the person's store goes in one statement, so an
+erasure is never left half done there, and each other store follows
+([Records in another store](#records-in-another-store)).
 
 ### Deleting the person's records: `Erasure.deleted`
 
@@ -385,7 +387,24 @@ todos:
 ```jadpo check project=erasure file=app.jadpo hidden
 use accounts/entities { User }
 
-application {}
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        erasures: {
+            driver: Driver.postgres
+        }
+    }
+    schedules: {
+        store: main
+    }
+    privacy: {
+        erasure_log: {
+            store: erasures
+        }
+    }
+}
 
 principal {
     user: {
@@ -791,7 +810,24 @@ until their retention ends:
 ```jadpo check project=kept-record file=app.jadpo hidden
 use cover/entities { Customer }
 
-application {}
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        erasures: {
+            driver: Driver.postgres
+        }
+    }
+    schedules: {
+        store: main
+    }
+    privacy: {
+        erasure_log: {
+            store: erasures
+        }
+    }
+}
 
 principal {
     user: {
@@ -989,20 +1025,254 @@ test "closing an account hides the customer and keeps the policy number" {
 }
 ```
 
+### Legal holds and restricted use
+
+A legal hold, which stops a person's data being erased while a case is
+open, is application data that you write. An action checks a hold flag and
+refuses with its own failure before it calls `User.erase`. Restricting use
+of someone's data while a complaint is open (Article 18) works the same
+way.
+
+## After the person's own commit
+<!-- topic: erasure-after-the-commit -->
+
+Erasing a person is one transaction in their store. Everything else an erasure
+reaches follows it, and what it doesn't rewrite is kept erased.
+
+### Records in another store
+
+An action can write to only one store, so records your app keeps in another
+store are erased straight after the person's own commit, by an event
+[subscriber](12-jobs-and-events.md#subscribers) that Jadpo generates, named
+`erasure in archive` here. Such a record refers to the person with a
+reference that says `erase:` and has no `on_delete:`, and `erase:` means what
+it means on any reference:
+
+```jadpo check project=other-stores file=app.jadpo
+// app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        archive: {
+            driver: Driver.postgres
+        }
+        erasures: {
+            driver: Driver.postgres
+        }
+    }
+    privacy: {
+        erasure_log: {
+            store: erasures
+        }
+    }
+}
+```
+
+```jadpo check project=other-stores file=domains/club/types/ticket_title.jadpo hidden
+/// What a ticket says.
+type TicketTitle = Text {
+    max_length: 200
+}
+```
+
+```jadpo check project=other-stores file=domains/club/entities/member.jadpo hidden
+/// Someone in the club.
+entity Member {
+    id: Uuid
+    email: Email {
+        unique: true
+        personal: PersonalData.contact
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        delete: [Access.public]
+    }
+
+    person: true
+}
+```
+
+```jadpo check project=other-stores file=domains/club/entities/old_ticket.jadpo migrate=initial
+// domains/club/entities/old_ticket.jadpo
+use club/entities { Member }
+use club/types { TicketTitle }
+
+/// A ticket from years ago, deleted with whoever raised it.
+entity OldTicket {
+    id: Uuid
+    owner_id: Member.id {
+        erase: Erasure.deleted
+    }
+    title: TicketTitle
+
+    store: archive
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+- **It isn't a foreign key,** since no database holds one across stores, so
+  nothing checks what it names when a record is written. It is indexed like
+  any reference, since erasure finds its records by it.
+- **Nothing reads through it.** A query is one statement, which reads one
+  database, so an include can't follow it, and neither can a membership's
+  `member:`.
+- **Only erasure applies it.** Anything else that would delete the person
+  would leave a record holding an `id` no record has, out of reach of any
+  erasure, so it is refused: a hard `delete` of them, a `retention:` or a
+  `purge:`, on their entity or through a cascade
+  ([`data.person_removal_across_stores`](../errors/data.person_removal_across_stores.md)).
+  A lifecycle's `delete` only hides them, and erasure still finds them. So a
+  person whose own record stays until its retention ends can't be referred
+  to from another store.
+- **Each store's share is one statement.** Records there it deletes, however
+  deep, and those it keeps, go as they would in the person's own store. A
+  person it deletes there is erased in their own right, with their own
+  [`PersonErased`](#who-was-erased-personerased) and their own entry in the
+  log, so a record in a third store that refers to them is reached from
+  there.
+- **Any other reference across stores,** with an `on_delete:` or to an entity
+  that isn't a person, is
+  [`data.reference_across_stores`](../errors/data.reference_across_stores.md).
+
+A store that can't do its share yet doesn't undo the erasure. The delivery
+stays in the person's store, tried again for a month, and
+[`jadpo deliveries`](12-jobs-and-events.md#what-an-operator-sees) shows it with
+why. Past that it is `failed`, and stays for an operator, whose retry finishes
+it. The next start's replay applies it too ([What erasure doesn't
+rewrite](#what-erasure-doesnt-rewrite)), once the person's entry is in the log.
+
+This test closes an account and looks in the archive:
+
+```jadpo check project=other-stores file=domains/club/actions/close_account.jadpo
+// domains/club/actions/close_account.jadpo
+use club/entities { Member, MemberNotFound }
+
+/// Erases a member, here and in the archive.
+action close_account(member: Member.id) fails MemberNotFound -> Unit {
+    attempt Member.erase(member)
+}
+```
+
+```jadpo check project=other-stores file=domains/club/failures/email_taken.jadpo hidden
+/// Someone has that address already.
+type EmailTaken = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=other-stores file=domains/club/actions/enrol.jadpo hidden
+use club/entities { Member }
+use club/failures { EmailTaken }
+
+/// Adds a member.
+action enrol(email: Member.email) fails EmailTaken -> Member {
+    return attempt Member.create {
+        set: {
+            email: email
+        }
+        conflict: {
+            Member.email: EmailTaken
+        }
+    }
+}
+```
+
+```jadpo check project=other-stores file=domains/club/actions/file_ticket.jadpo hidden
+use club/entities { Member, OldTicket }
+
+/// Files a ticket in the archive.
+action file_ticket(member: Member, title: OldTicket.title) -> OldTicket {
+    return OldTicket.create {
+        set: {
+            owner_id: member.id
+            title: title
+        }
+    }
+}
+```
+
+```jadpo check project=other-stores file=domains/club/actions/close_account.test.jadpo
+// domains/club/actions/close_account.test.jadpo
+use club/entities { Member, MemberNotFound, OldTicket, OldTicketNotFound }
+use club/actions { enrol, file_ticket }
+
+test "closing an account reaches the archive" {
+    var ada: Member = attempt enrol("ada@example.com")
+    var old_ticket: OldTicket = file_ticket(ada, "The heating")
+    attempt close_account(ada.id)
+    assert Member.get(ada.id) fails MemberNotFound
+    assert OldTicket.get(old_ticket.id) fails OldTicketNotFound
+}
+```
+
+### Who was erased: `PersonErased`
+
+An erasure emits a `PersonErased` event for each person it erases, in its
+transaction: `entity`, the person entity's name, `id`, their `id`, and
+`erased_at`, when they were erased, and nothing personal. It travels through
+the outbox like any event
+([Delivery: at least once, safe to repeat](12-jobs-and-events.md#delivery-at-least-once-safe-to-repeat)).
+Subscribe to it to reach anything Jadpo can't, such as a CRM your app calls
+through its own integration:
+
+```jadpo check project=other-stores file=domains/club/entities/farewell.jadpo
+// domains/club/entities/farewell.jadpo
+/// A note that someone has gone, kept without saying who they were.
+entity Farewell {
+    id: Uuid
+    departed: Uuid
+    at: Instant
+
+    policy: {
+        create: [Access.system]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=other-stores file=domains/club/actions/note_farewell.jadpo
+// domains/club/actions/note_farewell.jadpo
+use club/entities { Farewell }
+
+/// Notes that someone has gone.
+action note_farewell(event: PersonErased) -> Farewell {
+    return Farewell.create {
+        set: {
+            departed: event.id
+            at: event.erased_at
+        }
+    }
+}
+```
+
+```jadpo check project=other-stores file=domains/club/subscribers/say_farewell.jadpo migrate=farewells
+// domains/club/subscribers/say_farewell.jadpo
+use club/actions { note_farewell }
+
+/// Notes each person erased.
+subscriber say_farewell {
+    on: PersonErased
+    run: note_farewell(event)
+}
+```
+
+A subscriber to it in an app with no person is
+[`subscriber.event_invalid`](../errors/subscriber.event_invalid.md).
+
 ### What erasure reaches
 
 - **Every store and cache.** The main store's records go in one
   transaction, and cached copies are wiped at once
-  ([Caches](05-data.md#caches)). An action can write to only one store,
-  so records your app keeps in another store are erased straight after,
-  by an event [subscriber](12-jobs-and-events.md#subscribers) that Jadpo
-  generates. Such a record refers to the person with a reference that
-  says `erase:` and has no `on_delete:`. It isn't a foreign key, since no
-  database holds one across stores: the subscriber applies what `erase:`
-  says in that store, after the main store commits.
-  Any other reference across stores, with an `on_delete:` or to an entity
-  that isn't a person, is
-  [`data.reference_across_stores`](../errors/data.reference_across_stores.md).
+  ([Caches](05-data.md#caches)). Records in another store follow straight
+  after ([Records in another store](#records-in-another-store)).
 - **Records with a lifecycle** are removed outright, not soft-deleted.
   Your own code can't do that, but erasure, like purge, is an operation
   the compiler generates, so it can
@@ -1026,26 +1296,30 @@ test "closing an account hides the customer and keeps the policy number" {
 
 - **Backups** aren't rewritten. Each erasure leaves an entry in an erasure
   log, holding the person entity's name, the person's `id` and the time
-  and nothing else. Your app names where the log is kept, in `privacy: {
-  erasure_log: { store: } }`: a store that holds no person's records, or a
-  store of files, so restoring a person's database can't take the log back
-  with it. The runtime replays the log every time it starts, erasing again
-  anyone logged who is still there, so a restored backup is erased before
-  the app serves anything. Backups themselves expire on the hosting
+  and nothing else, written after it commits. Your app names where the log
+  is kept, in `privacy: { erasure_log: { store: } }`: a store that holds no
+  person's records, or a store of files, so restoring a person's database
+  can't take the log back with it
+  ([`data.erasure_log_store`](../errors/data.erasure_log_store.md)). An app
+  that erases someone must name one
+  ([`data.erasure_log_required`](../errors/data.erasure_log_required.md)). A
+  database named this way needs no entity of its own, and a Worker keeps the
+  log in a database, since it has no disk.
+  The runtime replays the log every time it starts, erasing again
+  anyone logged who is still there, in each store, so a restored backup is
+  erased before the app serves anything. It asks each store about a thousand
+  people at a time, and finding nothing changes nothing, however often. A
+  log it can't read, or a store it can't work in, keeps the app from serving
+  until it can, and a replay that finds someone says so with
+  `runtime.erasures_replayed`. An entry stays as long as the log does, since
+  a backup older than any entry could still be restored.
+  Backups themselves expire on the hosting
   platform's schedule, which the report states. This is what the UK
   regulator, the ICO, calls putting data "beyond use".
 - **There are no per-person encryption keys**, so erasure never works by
   deleting a person's key ("crypto-shredding").
 - **Logs** aren't rewritten either. They hold identifiers and hashes,
   never marked values, and expire on their own retention.
-
-### Legal holds and restricted use
-
-A legal hold, which stops a person's data being erased while a case is
-open, is application data that you write. An action checks a hold flag and
-refuses with its own failure before it calls `User.erase`. Restricting use
-of someone's data while a complaint is open (Article 18) works the same
-way.
 
 ## Erasure at providers
 <!-- topic: erasure-at-providers -->
@@ -1077,9 +1351,9 @@ stripe: {
 }
 ```
 
-Erasure emits a `PersonErased` event, which holds the person entity's name,
-the person's `id` and when they were erased, and nothing personal, besides
-the keys below. The `erasure:` is a declaration on the package, not part of
+The [`PersonErased`](#who-was-erased-personerased) event holds nothing
+personal besides the keys below. The `erasure:` is a declaration on the
+package, not part of
 any [capability](11-integrations.md#capabilities), so Stripe and Postmark
 are erased the same way.
 
@@ -1133,8 +1407,8 @@ are erased the same way.
   `key:` is a field of a `person: true` entity, of that type
   ([`connection.value_invalid`](../errors/connection.value_invalid.md)).
 - **Anything else** your app sends data to, such as a CRM it calls
-  through its own integration, can be erased by your own `PersonErased`
-  subscribers.
+  through its own integration, can be erased by your own
+  [`PersonErased`](#who-was-erased-personerased) subscribers.
 
 ## Export
 <!-- topic: personal-data-export (was export) -->
@@ -1348,7 +1622,13 @@ and no purge is listed in the report as "kept until erased".
   ([`data.erase_unreached`](../errors/data.erase_unreached.md)), and so
   is one on the person's own field that says anything but
   `Erasure.retained`, or on an unmarked one
-  ([`data.erase_own_field`](../errors/data.erase_own_field.md)).
+  ([`data.erase_own_field`](../errors/data.erase_own_field.md)). A person
+  another store refers to goes only by erasure
+  ([`data.person_removal_across_stores`](../errors/data.person_removal_across_stores.md)).
+- **Erasure lasts.** An app that erases someone names where the log is kept
+  ([`data.erasure_log_required`](../errors/data.erasure_log_required.md)),
+  somewhere restoring a person's database can't take it back
+  ([`data.erasure_log_store`](../errors/data.erasure_log_store.md)).
 - **What is kept is read only for the reason it is kept.** A query saying
   `include_erased: true` reads only `id` and the retained fields
   ([`query.include_erased_reads`](../errors/query.include_erased_reads.md)),
@@ -1828,11 +2108,11 @@ This is not legal advice. A privacy professional reviews the report.
 | `personal: PersonalData.<category>` on an entity's, an event's or an email's field, or an object's, input's or output's a package declares | Partly built: it is read and checked against the fourteen categories for the [AI](21-ai.md) page's check of what reaches a model and for [where personal data goes](#where-personal-data-goes), and a marked field on an entity erasure never reaches is `data.personal_unreachable`. On an app's own object, input or output it is `type.unknown_setting`. Not built yet: the rest of what this page says marking does. A marked field nothing reads compiles without an error, and no log or access record uses the marking. |
 | `person: true` | Built: an entity marked `person: true` is a person, and every record that refers to one directly belongs to them. The build's manifest shows each person under its entity as a `person` node, listing the references its records belong through (`through`) and the fields erasure keeps of their record (`retained`). |
 | `retention:` on a field or an entity | Partly built. Built: the entity's hourly purge schedule clears a nullable field's value, or deletes the record with what cascades from it and the sign-in state of everyone it deletes who signs in, cascades included, at the first run once `since:` is longer ago than `after:`, a `Duration` setting; a `File`'s bytes go once no record holds it ([Files](16-built-in-services.md#deleting-and-erasing)); each problem under [Retention](#retention) is an error where it is written. The graph holds a `retention` node for each, under its field or entity, with its period and `since:`. Not built yet: `retention:` on an event's or an email's field, `toolchain.not_built_yet` where it is written. |
-| `erase:` on a reference or the person's own field | Partly built: each problem under [Erasure](#erasure) and "Erasure is complete" is an error where it is written. Not built yet: a reference to a person from another store, which stays [`data.reference_across_stores`](../errors/data.reference_across_stores.md) until a generated subscriber can apply it. |
+| `erase:` on a reference or the person's own field | Built: each problem under [Erasure](#erasure) and "Erasure is complete" is an error where it is written, and a reference to a person from another store, which says `erase:` and no `on_delete:` ([Records in another store](#records-in-another-store)). |
 | `include_erased:` on a query | Built: it finds the people erasure keeps a record of too, and is held to what they keep. |
-| `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. A record that belongs to several people keeps its marked fields until the last of them is erased, and another person's own record loses only the reference ([Records that belong to several people](#records-that-belong-to-several-people)). The person's own record stays field by field, hidden, where one of their fields says so ([The person's own record](#the-persons-own-record)). The bytes of each `File` it deletes or clears go once it commits ([Files](16-built-in-services.md#deleting-and-erasing)), and an audited record it deletes takes its history with it. Not built yet: one that would keep an audited record, whose history still refers to the person ([Audit trail](16-built-in-services.md#audit-trail)), `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial; and records in another store, `PersonErased`, the erasure log and providers' erasure, which nothing emits or calls. |
+| `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. A record that belongs to several people keeps its marked fields until the last of them is erased, and another person's own record loses only the reference ([Records that belong to several people](#records-that-belong-to-several-people)). The person's own record stays field by field, hidden, where one of their fields says so ([The person's own record](#the-persons-own-record)). The bytes of each `File` it deletes or clears go once it commits ([Files](16-built-in-services.md#deleting-and-erasing)), and an audited record it deletes takes its history with it. Records in another store go by a generated subscriber once it commits, retried and shown ([Records in another store](#records-in-another-store)); it emits [`PersonErased`](#who-was-erased-personerased) in its transaction; and each person erased has an entry in the log, replayed at every start, on `jadpo dev`, a native deployable and a Worker ([What erasure doesn't rewrite](#what-erasure-doesnt-rewrite)). Not built yet: one that would keep an audited record, whose history still refers to the person ([Audit trail](16-built-in-services.md#audit-trail)), `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial; and providers' erasure, which nothing calls. |
 | `User.export(id)` | Not built yet: it is `toolchain.not_built_yet` where it is called. |
-| `privacy:` in `application { }` | Not built yet: it is `toolchain.not_built_yet` where it is written. Nor is `jadpo privacy requests`, which lists the requests it starts. |
+| `privacy:` in `application { }` | Partly built: `erasure_log: { store: }`. Everything else in it is `toolchain.not_built_yet` where it is written. Nor is `jadpo privacy requests`, which lists the requests it starts. |
 | Encrypted fields | Built: `encrypted: true`, key-type, `TotpSecret` and `SecretText` fields, sealed on write and opened on read, interpreted, compiled and on Workers; each refusal above; rotation through `_PREVIOUS`, with `field_encryption.reseal` and `jadpo config rotation`. |
 | The personal-data report | Partly built: `jadpo check` writes `build/report/personal-data.md` and `.json`, for a project with no errors, listing [where personal data goes](#where-personal-data-goes), and `jadpo package check` shows the same for a package. Each connection says whether its copy is erased or kept for an accepted reason, and the approval review shows its difference from the before side's, a connection at a time. Not built yet: the rest of its list, each person entity's fields, category, store and readers, the queries that say `include_erased: true`, retention, what erasure does, keys in the outbox, step records and OAuth grants. |
 | `erasure:` on a package and on a connection | Partly built. Built: each is read and checked, and a connection that receives personal data and can't erase it needs an `ErasureNotPossible` acceptance ([Erasure at providers](#erasure-at-providers)). Not built yet: calling the package's `erasure:`, so a connection that declares one is not yet asked to erase anyone. |
@@ -1852,9 +2132,13 @@ it and the compiler's real output from `jadpo check`.
 - [`data.erase_required`](../errors/data.erase_required.md)
 - [`data.erase_retention_required`](../errors/data.erase_retention_required.md)
 - [`data.erase_unreached`](../errors/data.erase_unreached.md)
+- [`data.erasure_log_required`](../errors/data.erasure_log_required.md)
+- [`data.erasure_log_store`](../errors/data.erasure_log_store.md)
 - [`data.field_encryption_key_invalid`](../errors/data.field_encryption_key_invalid.md)
 - [`data.field_encryption_key_required`](../errors/data.field_encryption_key_required.md)
+- [`data.person_removal_across_stores`](../errors/data.person_removal_across_stores.md)
 - [`data.personal_unreachable`](../errors/data.personal_unreachable.md)
+- [`data.reference_across_stores`](../errors/data.reference_across_stores.md)
 - [`data.retention_field_required`](../errors/data.retention_field_required.md)
 - [`data.retention_held`](../errors/data.retention_held.md)
 - [`data.retention_lifecycle_field`](../errors/data.retention_lifecycle_field.md)

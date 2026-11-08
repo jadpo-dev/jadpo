@@ -158,6 +158,13 @@ pub const DISCARD: &str = "discard";
 /// ([`FilesPlan`]).
 pub const DELETE: &str = "delete";
 
+/// The capability's operation that lists what the erasure log keeps here
+/// (area 15, "What erasure doesn't rewrite"; chunk P4c): its input is empty,
+/// and it answers every key [`crate::erasure::log_key`] made that it holds,
+/// in order, as a list of text. `put` and `read` take such a key too; only
+/// the runtime sends any of them, and no file's key can name one.
+pub const LIST: &str = "list";
+
 /// The event a change that leaves a file held by no record keeps in the
 /// outbox (chunk B3), whose generated subscriber deletes the file's bytes
 /// ([`crate::subscriber::Target::Files`]): its payload is `{"store", "key"}`,

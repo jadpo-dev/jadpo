@@ -937,6 +937,36 @@ impl Reader<'_> {
                 Key::from_text(jadpo_std::audit::AUDIT_EVENT_KEY),
             ));
         }
+        // The event an erasure emits (area 15; chunk P4c), which only the
+        // runtime emits, as a person is erased.
+        if let Ty::Opaque(name, args) = &ty
+            && args.is_empty()
+            && name == jadpo_std::erasure::PERSON_ERASED
+        {
+            let person = crate::data::data_model(self.db, self.project)
+                .entities
+                .iter()
+                .any(|entity| entity.person);
+            if !person {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::SUBSCRIBER_EVENT_INVALID,
+                        format!("Nothing publishes `{name}`"),
+                    )
+                    .at(self.span(&value), "no entity is a person")
+                    .reason(format!(
+                        "`{name}` is emitted as a person is erased, so an application with no entity marked `person: true` never emits it."
+                    ))
+                    .next("Mark the entity that is a person `person: true`, or remove this subscriber"),
+                );
+                return None;
+            }
+            self.builtin = true;
+            return Some((
+                name.clone(),
+                Key::from_text(jadpo_std::erasure::PERSON_ERASED_KEY),
+            ));
+        }
         let event = match &ty {
             Ty::Named(name) if self.lookup.base(name) == Some(FieldsBase::Event) => name.clone(),
             _ => {

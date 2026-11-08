@@ -476,6 +476,11 @@ impl Planner<'_> {
                 continue;
             };
             let target = self.model.entity(&reference.target)?;
+            // One to a person in another store is no foreign key, and no
+            // statement can look there (area 15; chunk P4c).
+            if target.store != entity.store {
+                continue;
+            }
             if tenancy.is_none() {
                 tenancy = Some(new(&own.via)?);
             }
@@ -496,6 +501,9 @@ impl Planner<'_> {
                 else {
                     continue;
                 };
+                if child.store != entity.store {
+                    continue;
+                }
                 for at in &child.fields {
                     if at.reference.as_ref().map(|r| r.target.as_str()) != Some(&entity.name) {
                         continue;
