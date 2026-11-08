@@ -119,6 +119,7 @@ pub fn candidates(words: &[String], cwd: Option<&Path>) -> String {
             Some(Values::Schedule) => cwd.map(crate::schedules::names).unwrap_or_default(),
             Some(Values::Deployable) => cwd.map(crate::build::names).unwrap_or_default(),
             Some(Values::Flag) => cwd.map(crate::flags::names).unwrap_or_default(),
+            Some(Values::Declaration) => cwd.map(crate::inspect::names).unwrap_or_default(),
             Some(Values::Id) => Vec::new(),
             None => Vec::new(),
         }
