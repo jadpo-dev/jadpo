@@ -28,18 +28,8 @@ impl Resolver<'_> {
     /// specific of a type or entity, its field, its variant, or a variant's
     /// field. Names of the standard library and of nothing are `None`.
     pub fn path(&self, names: &[String]) -> Option<Key> {
-        let (first, rest) = names.split_first()?;
-        if !starts_upper(first) {
-            return None;
-        }
-        let symbol = self
-            .symbols
-            .declared(first)
-            .iter()
-            .find(|symbol| symbol.library.is_none())?;
-        if !matches!(symbol.kind, ItemKind::Type(_) | ItemKind::Entity) {
-            return None;
-        }
+        let (written, rest) = self.host(names)?;
+        let first = written.as_str();
         let host = declaration_key(self.symbols, first)?;
         for n in (1..=rest.len()).rev() {
             if self.table.field(first, &rest[..n]).is_some() {
@@ -55,6 +45,41 @@ impl Resolver<'_> {
             return Some(variant_key(self.symbols, first, variant));
         }
         Some(host)
+    }
+
+    /// The type or entity a dotted name starts with, as written, and the
+    /// names after it: `Address` in `Address.postcode`, or a package's
+    /// type written through the package, `Postcodes.UkPostcode` (and
+    /// `Postcodes.v3.UkPostcode` while two versions are held), so a field
+    /// or signature naming a package's type depends on it (area 11).
+    fn host<'n>(&self, names: &'n [String]) -> Option<(String, &'n [String])> {
+        let first = names.first()?;
+        if !starts_upper(first) {
+            return None;
+        }
+        let parts = if self.symbols.is_package(first) {
+            let versioned = names.get(1).is_some_and(|part| {
+                self.symbols
+                    .versions(first)
+                    .contains(&format!("{first}.{part}"))
+            });
+            if versioned { 3 } else { 2 }
+        } else {
+            1
+        };
+        if names.len() < parts {
+            return None;
+        }
+        let written = names[..parts].join(".");
+        let symbol = self
+            .symbols
+            .declared(&written)
+            .iter()
+            .find(|symbol| symbol.library.is_none())?;
+        if !matches!(symbol.kind, ItemKind::Type(_) | ItemKind::Entity) {
+            return None;
+        }
+        Some((written, &names[parts..]))
     }
 
     /// Every type, entity, field and variant `node` names, leaving out the

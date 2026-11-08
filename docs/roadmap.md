@@ -488,10 +488,7 @@ After the registry is live, in order:
 - [ ] **R8 `jadpo suggest` points at the registry** `opus · high`: a
   finding when the app's own function fingerprints like a registry
   package's or a standard function (area 14, "Suggestions").
-- [ ] **R9 Blast radius in an update** `opus · high`: `jadpo package update
-  --plan` follows each change record entry through the app's graph to
-  the actions, routes, jobs and stored fields it reaches, with the
-  compile errors and migrations that would follow; after V4.
+- [x] **R9 Blast radius in an update**: area 14, "`jadpo package update` and `remove`" (`--plan`); area 11, "How packages are installed and linked"; area 18, "Package upgrades"; area 14's notes, "`jadpo package update --plan`".
 - Then, each with its own chunk below: signed log heads (keys held as data
   and `crypto.sign`, P9 under item 3), the S3 driver for the registry's archives
   (B7, under item 4), the search capability (item 8), and GitHub sign-in for

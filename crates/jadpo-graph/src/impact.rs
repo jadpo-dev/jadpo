@@ -7,7 +7,9 @@
 //! emits or subscribes to it, raises it, refers to it, includes it or
 //! names it (an edge of [`DEPENDS`] from the one to the other). A change
 //! to a field, a variant or a rule across fields is a change to the type
-//! or entity that holds it, so what depends on that is reached too. Tests
+//! or entity that holds it, so what depends on that is reached too, both
+//! for the node asked about and for every field the walk reaches: a type
+//! stored in an entity's field reaches the entity and what uses it. Tests
 //! are reached but never counted as users (area 1), and nothing depends on
 //! a test.
 
@@ -46,6 +48,10 @@ pub struct Impact {
     pub entry_points: Vec<NodeId>,
     /// The tests the change reaches, in key order.
     pub tests: Vec<NodeId>,
+    /// Everything else the change reaches, entry points included, in key
+    /// order: what `jadpo package update --plan` sorts into actions,
+    /// routes, jobs and stored fields (area 14).
+    pub reached: Vec<NodeId>,
 }
 
 /// Whether a node of `kind` is where work starts: a route, a schedule or a
@@ -66,22 +72,21 @@ pub fn dependents(graph: &Graph, id: NodeId) -> BTreeSet<NodeId> {
         .collect()
 }
 
+/// The type or entity holding a field, variant or rule; `None` for
+/// anything else.
+pub fn holder(graph: &Graph, id: NodeId) -> Option<NodeId> {
+    let node = graph.node(id);
+    if !matches!(node.kind, Kind::Field | Kind::Variant | Kind::Rule) {
+        return None;
+    }
+    node.parent.as_ref().and_then(|key| graph.find(key))
+}
+
 /// The node and the holders a change to it changes too.
 fn changed(graph: &Graph, target: NodeId) -> Vec<NodeId> {
     let mut out = vec![target];
     let mut at = target;
-    while matches!(
-        graph.node(at).kind,
-        Kind::Field | Kind::Variant | Kind::Rule
-    ) {
-        let Some(parent) = graph
-            .node(at)
-            .parent
-            .as_ref()
-            .and_then(|key| graph.find(key))
-        else {
-            break;
-        };
+    while let Some(parent) = holder(graph, at) {
         out.push(parent);
         at = parent;
     }
@@ -109,8 +114,12 @@ pub fn impact(graph: &Graph, target: NodeId) -> Impact {
     let mut queue: VecDeque<NodeId> = changed.iter().copied().collect();
     let mut entry_points = BTreeSet::new();
     let mut tests = BTreeSet::new();
+    let mut reached = BTreeSet::new();
     while let Some(at) = queue.pop_front() {
-        for next in dependents(graph, at) {
+        let mut next_nodes = dependents(graph, at);
+        // A field reached is a change to what holds it.
+        next_nodes.extend(holder(graph, at));
+        for next in next_nodes {
             if !seen.insert(next) {
                 continue;
             }
@@ -122,6 +131,7 @@ pub fn impact(graph: &Graph, target: NodeId) -> Impact {
             if is_entry_point(kind) {
                 entry_points.insert(next);
             }
+            reached.insert(next);
             queue.push_back(next);
         }
     }
@@ -131,5 +141,6 @@ pub fn impact(graph: &Graph, target: NodeId) -> Impact {
         users: users.into_iter().collect(),
         entry_points: entry_points.into_iter().collect(),
         tests: tests.into_iter().collect(),
+        reached: reached.into_iter().collect(),
     }
 }

@@ -6908,7 +6908,10 @@ each refuses.
   describes: each surface entry added, changed or removed, `used by the
   app` when the app's code writes it or reaches it, through the package
   (`Postcodes.uk.tidy`) or a connection to it, and under `Needs a person`
-  each change an acceptance must list. A linked package is unlinked first. An installed
+  each change an acceptance must list. With `--plan` it fetches and
+  verifies the same release and writes nothing: the app is compiled against
+  it in a scratch copy, and each change record entry is followed to what it
+  reaches ([Tools](14-tooling.md#jadpo-package-update-and-remove)). A linked package is unlinked first. An installed
   folder changed by hand (`package.digest_mismatch`) is installed again
   from its source, at the release the lock names when there is none
   newer, so `update` is also how a changed package is put back.

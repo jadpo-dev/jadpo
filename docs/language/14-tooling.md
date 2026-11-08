@@ -1072,7 +1072,7 @@ connection or operation is `cli.package_arguments`, with the nearest.
 | `jadpo package new <Name> --library` or `--provider` `[--publisher <handle>]` | Starts a package in its own repository |
 | `jadpo package add <name or source>` | Installs a package |
 | `jadpo package import <format> <file>` | Turns a published API description into the app's own integration |
-| `jadpo package update <name>` / `remove <name>` | Moves a package to a new version, or removes it |
+| `jadpo package update <name> [--plan]` / `remove <name>` | Moves a package to a new version, shows what moving it would reach, or removes it |
 | `jadpo package show <name> [<declaration>]` | Prints a package's description and public surface |
 | `jadpo package link <path>` / `unlink <name>` | Compiles the app against a package's live checkout |
 | `jadpo package recipe <package> <recipe> --into <domain>` | Copies a package's recipe into your code |
@@ -1178,6 +1178,70 @@ under `Needs a person` each change of what the app uses that an acceptance
 must list: the review [Records and
 manifest](18-records-and-manifest.md#package-upgrades) describes. `remove` is refused while
 the app's code has `use packages/<name>` (`install.in_use`).
+
+`update <name> --plan` takes the same release and changes nothing. It
+compiles the app against it in a scratch copy of the project, the package's
+folder and lock line replaced there and nowhere else, and follows each entry
+of the release's change record through the app's graph, along the walk
+[`jadpo impact`](#jadpo-impact) takes, to the actions, routes, jobs
+(schedules and subscribers) and entities' stored fields it reaches; an entry
+that reaches nothing says so, and an added one never reaches anything. Then
+come the errors `jadpo check` would show against the release that it doesn't
+show now, with where each is; the records that would be out of date; the
+changes to the schema the next migration would hold, each with the decision
+it needs; and the review under `Needs a person`, as `update` prints it.
+Run it before an update to see what it would break and where.
+
+```text
+$ jadpo package update postcodes --plan
+✓ Planned Postcodes.v2 from 2.0.0 to 2.1.0, nothing changed
+    folder   packages/postcodes/v2
+    source   path ../postcodes
+    surface  matches its code
+
+Change record, 2.0.0 to 2.1.0
+  + added    function uk.outward
+    reaches  nothing in the app
+  ~ retyped  type UkPostcode      min_length: 6, was min_length: 5
+    actions  save_address, tidy_all
+    routes   POST /addresses
+    jobs     schedule nightly_tidy
+    stored   Address.postcode
+  - removed  function uk.tidy
+    actions  tidy_all
+    jobs     schedule nightly_tidy
+
+Would not compile
+  ✗ Library `Postcodes.uk` has no function `tidy`
+    at  domains/places/actions/tidy_all.jadpo:6
+
+Records out of date
+  ~ api/main.jadpo_record
+
+Migration that would follow
+  ~ field `Address.postcode` changed  needs a decision: refit
+
+Needs a person
+  ~ UkPostcode  field retyped  UkPostcode  Text { max_length: 8, min_length: 5…
+  - uk.tidy     removed
+
+✓ upgrade planned  2 reach the app · 1 error · 1 schema change · 2 need a person
+
+→ jadpo package update postcodes  takes 2.1.0
+```
+
+The change record is the registry's for a package from there, every entry
+since the installed release. For a folder or a git package it is worked out
+as the verifier works one out, from the two surfaces and the two releases'
+facts, without running the installed release's tests, so it has no
+`behaviour changed` entry. A package's or provider's own entry, such as a
+changed host, reaches every call into the package. The plan exits 0 whatever
+it finds. With `--json`, `data` holds the `package`, `from`, `version` and
+`source`, `updated: false`, the `change_record`, each entry with what it
+`reaches` (`actions`, `routes`, `jobs`, `stored`), the `errors` (`rule`,
+`message`, `path`, `line`), the `records`, the `migration` (each `change`
+and its `decision`) and the `review`. `--plan` with any other action is
+`cli.package_arguments`.
 
 ### `jadpo package show`
 
