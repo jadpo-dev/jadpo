@@ -77,6 +77,7 @@ mod json_columns;
 mod json_migrations;
 mod jwk_upgrade;
 mod launcher;
+mod leaving;
 mod lifecycle;
 mod locales;
 mod lsp;

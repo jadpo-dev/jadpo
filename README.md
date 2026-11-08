@@ -82,3 +82,7 @@ databases, authentication, integrations and AI.
 
 Code is [Apache 2.0](LICENSE); documentation is [CC BY 4.0](docs/LICENSE.md).
 See [TRADEMARKS.md](TRADEMARKS.md) for use of the Jadpo name.
+
+[Leaving Jadpo](docs/leaving-jadpo.md) says what a project keeps if it stops
+using Jadpo: plain PostgreSQL tables, an OpenAPI 3.1 document, and the
+runtime's licence and source.

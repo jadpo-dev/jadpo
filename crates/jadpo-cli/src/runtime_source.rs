@@ -203,6 +203,40 @@ mod tests {
         }
     }
 
+    /// What a project keeps if it leaves Jadpo (docs/leaving-jadpo.md):
+    /// every Jadpo crate a deployable compiles from this `jadpo` is under
+    /// the Apache License 2.0, as its carried manifest says.
+    #[test]
+    fn every_carried_crate_is_apache_2_0() {
+        let manifest = |path: &str| {
+            let (_, bytes) = files()
+                .iter()
+                .find(|(carried, _)| carried == path)
+                .unwrap_or_else(|| panic!("{path}"));
+            String::from_utf8(bytes.clone()).expect("UTF-8")
+        };
+        let workspace = manifest("Cargo.toml");
+        let package = &workspace[workspace
+            .find("[workspace.package]")
+            .expect("the package fields")..];
+        let package = &package[..package[1..]
+            .find("\n[")
+            .map_or(package.len(), |at| at + 1)];
+        assert!(
+            package
+                .lines()
+                .any(|line| line == "license = \"Apache-2.0\""),
+            "{package}"
+        );
+        for name in layered() {
+            let own = manifest(&format!("{name}/Cargo.toml"));
+            assert!(
+                own.lines().any(|line| line == "license.workspace = true"),
+                "{name}: {own}"
+            );
+        }
+    }
+
     #[test]
     fn the_folder_is_written_once_and_kept_to_what_is_carried() {
         let cache =

@@ -20,6 +20,7 @@ Otherwise start with the [project introduction](../README.md),
 | [CLI design language](cli-design-language.md) | How every CLI screen and generated page looks |
 | [Security](security.md) | Who attacks a Jadpo app, a developer's machine, CI and a release, what each can reach, and what stops them; [SECURITY.md](../SECURITY.md) says how to report a vulnerability |
 | [Vision](vision.md) | Why Jadpo exists and who it is for |
+| [Leaving Jadpo](leaving-jadpo.md) | What a project keeps if it stops using Jadpo: its tables, its OpenAPI, the licence and where the runtime comes from, each with the test that shows it |
 
 Checks run with `python3 tools/verify.py`.
 
