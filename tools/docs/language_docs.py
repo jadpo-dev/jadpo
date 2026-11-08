@@ -883,7 +883,9 @@ CHECK_SUMMARIES = True
 COMMAND_LINE = 'cli.'
 # The beginnings of the rule names whose pages D13c has brought to the
 # format (docs/roadmap.md, D13c1 to D13c15); each part adds its own.
-BROUGHT_TO_FORMAT = ('type.a', 'type.b', 'type.c', 'type.d', 'type.e')
+BROUGHT_TO_FORMAT = ('type.a', 'type.b', 'type.c', 'type.d', 'type.e',
+                     'type.f', 'type.g', 'type.h', 'type.i', 'type.j', 'type.k',
+                     'type.l', 'type.m', 'type.n')
 # The command that checks source; a rule it raises is shown by a check
 # block, not a command's run.
 CHECK_COMMAND = 'check'

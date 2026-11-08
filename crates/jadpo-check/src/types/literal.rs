@@ -334,8 +334,10 @@ pub(crate) struct ObjectWanted {
     /// `Book.author(PersonName { ... })`; `None` when the object itself is
     /// what is wanted.
     wrapper: Option<String>,
-    /// Each field a value must give, with its declared type.
-    required: Vec<(String, Ty)>,
+    /// Each field a value must give, in order, with its declared type and
+    /// whether it may be `none`. A field that may be `none` is still given
+    /// (area 2, "Values that may be missing"), so every field is here.
+    fields: Vec<(String, Ty, bool)>,
 }
 
 impl ObjectWanted {
@@ -349,21 +351,26 @@ impl ObjectWanted {
     /// The value written out, with what each field needs left to fill in.
     pub(crate) fn skeleton(&self) -> String {
         let name = &self.name;
-        if self.required.is_empty() {
+        if self.fields.is_empty() {
             return self.wrapped(format!("{name} {{ ... }}"));
         }
         let fields: Vec<String> = self
-            .required
+            .fields
             .iter()
-            .map(|(field, _)| format!("{field}: ..."))
+            .map(|(field, _, _)| format!("{field}: ..."))
             .collect();
         self.wrapped(format!("{name} {{ {} }}", fields.join(", ")))
     }
 
     /// The value `written`, a text literal, makes when it fits the one field
-    /// the object must have: an edit that checks as it stands.
+    /// that can't be `none`, every other field given as `none`: an edit that
+    /// checks as it stands.
     fn holding(&self, table: &dyn TypeView, written: &str) -> Option<String> {
-        let [(field, declared)] = self.required.as_slice() else {
+        let mut needed = self
+            .fields
+            .iter()
+            .filter(|(_, _, may_be_none)| !may_be_none);
+        let (Some((field, declared, _)), None) = (needed.next(), needed.next()) else {
             return None;
         };
         let text = written.strip_prefix('"')?.strip_suffix('"')?;
@@ -371,7 +378,15 @@ impl ObjectWanted {
             return None;
         }
         check(table, declared, &Const::Str(text.to_string())).ok()?;
-        Some(self.wrapped(format!("{} {{ {field}: {written} }}", self.name)))
+        let given: Vec<String> = self
+            .fields
+            .iter()
+            .map(|(name, _, may_be_none)| match may_be_none {
+                true => format!("{name}: none"),
+                false => format!("{field}: {written}"),
+            })
+            .collect();
+        Some(self.wrapped(format!("{} {{ {} }}", self.name, given.join(", "))))
     }
 }
 
@@ -399,12 +414,14 @@ pub(crate) fn object_wanted(table: &dyn TypeView, expected: &Ty) -> Option<Objec
     if fields.len() > SHAPE_FIELDS {
         parts.push("…".to_string());
     }
-    let required = fields
+    // Every field: an object or a standard type is built with all of them,
+    // as `type.missing_field` checks.
+    let fields = fields
         .iter()
-        .filter(|field| {
-            !field.optional && field.default.is_none() && !table.is_nullable(&field.declared)
+        .map(|field| {
+            let may_be_none = field.optional || table.is_nullable(&field.declared);
+            (field.name.clone(), field.declared.clone(), may_be_none)
         })
-        .map(|field| (field.name.clone(), field.declared.clone()))
         .collect();
     // The outermost type a value is built through: a field whose declared
     // type is itself a field is built through that field.
@@ -435,7 +452,7 @@ pub(crate) fn object_wanted(table: &dyn TypeView, expected: &Ty) -> Option<Objec
         standard: is_standard(&name).then(|| name.clone()),
         name,
         wrapper,
-        required,
+        fields,
     })
 }
 
