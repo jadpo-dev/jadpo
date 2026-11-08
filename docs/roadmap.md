@@ -417,16 +417,7 @@ What the Reddit thread found (Richard, 2026-11-03):
 
 What publishing the first packages found (Richard, 2026-11-07):
 
-- [ ] **A27 Fakes' `.requests`** `opus · high`: area 13, "What the code
-  sent: `.requests`". `Integration.operation.requests` is a list typed as the
-  operation's input, `List<CreateBooking>`, so a test reads a sent field as
-  any other value; it is kept where the call is made, in the order sent,
-  each request as the package encoded it before it went out, and a field the
-  input marks `secret` or a credential reads as redacted, never its value.
-  The `ai` fake's `ai.<prompt>.requests` is the model to follow. Done when
-  area 13's example asserting on `ReminderMail.send_overdue_reminder.requests`
-  runs interpreted and compiled, and `toolchain.not_built_yet` no longer
-  names `.requests`.
+- [x] **A27 Fakes' `.requests`**: docs/language/13-testing.md, "What the code sent: `.requests`"; docs/language/notes/13-testing.md, "`.requests` (chunk A27)".
 
 Not scheduled: a way to write a query the language can't express. Richard
 will work through it and other solutions later; don't design or build one
@@ -502,10 +493,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
 After the registry is live, in order:
 
 - [x] **R8 `jadpo suggest` points at the registry**: area 14, "Signals", "Functions that already exist" and "The suggestions report"; area 11, "The registry protocol"; compiler/runtime, "Suggestions from the registry".
-- [ ] **R9 Blast radius in an update** `opus · high`: `jadpo package update
-  --plan` follows each change record entry through the app's graph to
-  the actions, routes, jobs and stored fields it reaches, with the
-  compile errors and migrations that would follow; after V4.
+- [x] **R9 Blast radius in an update**: area 14, "`jadpo package update` and `remove`" (`--plan`); area 11, "How packages are installed and linked"; area 18, "Package upgrades"; area 14's notes, "`jadpo package update --plan`".
 - Then, each with its own chunk below: signed log heads (keys held as data
   and `crypto.sign`, P9 under item 3), the S3 driver for the registry's archives
   (B7, under item 4), the search capability (item 8), and GitHub sign-in for
@@ -533,6 +521,25 @@ After the registry is live, in order:
 - [ ] **R12 Jadpo HQ** **needs a maintainer**: area 14, "HQ's agent" and
   "`jadpo suggest`". The service `jadpo suggest share` sends to, built against
   the protocol its local fake speaks today.
+
+## Reviewing a change
+
+What shows a developer why Jadpo is worth trying, so it comes ahead of the
+work below (Richard, 2026-11-08).
+
+- [ ] **U1 The review web view** **needs a maintainer**: Richard plans it and
+  its design first (2026-11-08), then `opus · high`: area 17, "Reviewing a change"
+  and "The web view". A static page in `build/review/` written by `jadpo
+  approval`, from the report's JSON: the change at a high level in the
+  report's order, the graph of the change as a flow chart, each path opened
+  to see what surrounds it, what the change newly reaches, and links from
+  every line to its source. No accounts and no approvals; acceptances stay
+  files. Done when a change to the
+  golden todo opens as this page and CI can publish it beside the pull
+  request.
+- [ ] **U2 What changed between an agent's revisions** `opus · high` after
+  U1: area 17, "The web view". The differences between an agent's successive
+  revisions of a change, added to the page.
 
 ## After the first build, in order
 
@@ -879,8 +886,7 @@ After the registry is live, in order:
      "Budgets" and "Streams, embeddings and the OpenAI and Anthropic
      packages". `keep_content:`, kept in encrypted fields, and an `embed:`
      with a `batch:` below 100, split across requests.
-9. Product work: the developer console and MCP, the graph review UI
-   (Revset-inspired), acting as an OAuth
+9. Product work: the developer console and MCP, acting as an OAuth
    provider, D1 (area 5, "Actions on D1", with `jadpo sql` for SQLite) and
    row-level security (opt-in, design notes for area 6). The console holds
    telemetry, the schedules' timeline and the dev inbox's page, and `jadpo

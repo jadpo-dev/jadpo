@@ -6921,6 +6921,70 @@ each refuses.
   folder changed by hand (`package.digest_mismatch`) is installed again
   from its source, at the release the lock names when there is none
   newer, so `update` is also how a changed package is put back.
+- **`update <name> --plan`.** It fetches and verifies the release
+  `update` would take and writes nothing. The app is compiled against it in
+  a scratch copy of the project, held in memory, the package's folder and
+  lock line replaced there and nowhere else. Each entry of the release's
+  change record is followed through the app's graph as it stands, along the
+  walk [`jadpo impact`](14-tooling.md#jadpo-impact) takes, to the actions,
+  routes, jobs (schedules and subscribers) and entities' stored fields it
+  reaches; an entry that reaches nothing says so, and an added one never
+  reaches anything. A package's or provider's own entry, such as a changed
+  host, reaches every call into the package. Then come the errors `jadpo
+  check` would show against the release that it doesn't show now, with
+  where each is; the records that would be out of date; the changes to the
+  schema the next migration would hold, each with the decision it needs;
+  and the review under `Needs a person`, as `update` prints it:
+
+  ```text
+  $ jadpo package update postcodes --plan
+  ✓ Planned Postcodes.v2 from 2.0.0 to 2.1.0, nothing changed
+      folder   packages/postcodes/v2
+      source   path ../postcodes
+      surface  matches its code
+
+  Change record, 2.0.0 to 2.1.0
+    + added    function uk.outward
+      reaches  nothing in the app
+    ~ retyped  type UkPostcode      min_length: 6, was min_length: 5
+      actions  save_address, tidy_all
+      routes   POST /addresses
+      jobs     schedule nightly_tidy
+      stored   Address.postcode
+    - removed  function uk.tidy
+      actions  tidy_all
+      jobs     schedule nightly_tidy
+
+  Would not compile
+    ✗ Library `Postcodes.uk` has no function `tidy`
+      at  domains/places/actions/tidy_all.jadpo:6
+
+  Records out of date
+    ~ api/main.jadpo_record
+
+  Migration that would follow
+    ~ field `Address.postcode` changed  needs a decision: refit
+
+  Needs a person
+    ~ UkPostcode  field retyped  UkPostcode  Text { max_length: 8, min_length: 5…
+    - uk.tidy     removed
+
+  ✓ upgrade planned  2 reach the app · 1 error · 1 schema change · 2 need a person
+
+  → jadpo package update postcodes  takes 2.1.0
+  ```
+
+  The change record is the registry's for a package from there, every
+  entry since the installed release. For a folder or a git package it is
+  worked out as the verifier works one out, from the two surfaces and the
+  two releases' facts, without running the installed release's tests, so
+  it has no `behaviour changed` entry. The plan exits 0 whatever it finds.
+  With `--json`, `data` holds the `package`, `from`, `version` and
+  `source`, `updated: false`, the `change_record`, each entry with what it
+  `reaches` (`actions`, `routes`, `jobs`, `stored`), the `errors` (`rule`,
+  `message`, `path`, `line`), the `records`, the `migration` (each `change`
+  and its `decision`) and the `review`. `--plan` with any other action is
+  `cli.package_arguments`.
 - **`remove <name>`.** Refused while a file of the app's has `use
   packages/<name>` (`install.in_use`), naming each; otherwise the folder
   and its lock line go, and the lock stays, possibly empty. A linked
@@ -7538,8 +7602,8 @@ fake answers, how a script is used, and what the call log keeps.
   request. Each request's line in `jadpo dev` lists its calls, and its
   `--json` event gives them.
 
-> A script's `.requests` isn't built yet, nor are the timelines the call
-> log would keep beside its calls.
+> The timelines the call log would keep beside its calls aren't built
+> yet.
 
 
 ## Shape and name detection

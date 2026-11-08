@@ -1076,7 +1076,7 @@ connection or operation is `cli.package_arguments`, with the nearest.
 | `jadpo package new <Name> --library` or `--provider` `[--publisher <handle>]` | Starts a package in its own repository |
 | `jadpo package add <name or source>` | Installs a package |
 | `jadpo package import <format> <file>` | Turns a published API description into the app's own integration |
-| `jadpo package update <name>` / `remove <name>` | Moves a package to a new version, or removes it |
+| `jadpo package update <name> [--plan]` / `remove <name>` | Moves a package to a new version, shows what moving it would reach, or removes it |
 | `jadpo package show <name> [<declaration>]` | Prints a package's description and public surface |
 | `jadpo package link <path>` / `unlink <name>` | Compiles the app against a package's live checkout |
 | `jadpo package recipe <package> <recipe> --into <domain>` | Copies a package's recipe into your code |
@@ -1182,6 +1182,15 @@ under `Needs a person` each change of what the app uses that an acceptance
 must list: the review [Records and
 manifest](18-records-and-manifest.md#package-upgrades) describes. `remove` is refused while
 the app's code has `use packages/<name>` (`install.in_use`).
+
+`update <name> --plan` takes the same release and changes nothing. It
+compiles the app against the release in a scratch copy and follows each
+change record entry, along the walk [`jadpo impact`](#jadpo-impact) takes,
+to the actions, routes, jobs and stored fields it reaches, then lists the
+compile errors, out-of-date records, schema changes and `Needs a person`
+review that would follow. Run it before an update. Its screen and its
+`--json` are in [How packages are installed and
+linked](11-integrations.md#how-packages-are-installed-and-linked).
 
 ### `jadpo package show`
 

@@ -725,6 +725,7 @@ fn reach(graph: &Graph, id: NodeId) -> Impact {
         users: Vec::new(),
         entry_points: Vec::new(),
         tests: Vec::new(),
+        reached: Vec::new(),
     };
     let members: Vec<NodeId> = graph.children(id).collect();
     for &member in &members {
@@ -733,8 +734,14 @@ fn reach(graph: &Graph, id: NodeId) -> Impact {
         out.users.extend(found.users);
         out.entry_points.extend(found.entry_points);
         out.tests.extend(found.tests);
+        out.reached.extend(found.reached);
     }
-    for list in [&mut out.users, &mut out.entry_points, &mut out.tests] {
+    for list in [
+        &mut out.users,
+        &mut out.entry_points,
+        &mut out.tests,
+        &mut out.reached,
+    ] {
         list.retain(|node| !members.contains(node));
         list.sort();
         list.dedup();

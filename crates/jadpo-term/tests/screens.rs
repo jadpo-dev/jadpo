@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 
 use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_term::{
-    Block, DecisionRow, Depth, Fact, Mode, Outcome, Row, Screen, Style, Symbols, Theme, Token,
+    Block, ChangeMark, DecisionRow, Depth, Fact, Mode, Outcome, Reach, Row, Screen, Style, Symbols,
+    Theme, Token,
 };
 
 const TITLES: &str = "domains/planning/libraries/titles.jadpo";
@@ -674,5 +675,57 @@ fn plain_decisions_say_their_state_in_brackets() {
   callers no grant names can now call `lending.borrow`, which declines `policy.call_ungranted` (accepted)
     CompanyRole.viewer → GET /projects/{project_id}/budgets/{budget_id} → work.project_budget_detail → ProjectBudgetView.budget
 "
+    );
+}
+
+/// `jadpo package update --plan`'s change record: each change and, beneath
+/// it, what it reaches; a list of names is cut to fit and a path stays
+/// whole (chunk R9).
+#[test]
+fn a_reach_list_cuts_names_to_fit_and_keeps_a_path_whole() {
+    let screen = Screen::new()
+        .with(Block::Reaches {
+            heading: "Change record, 2.0.0 to 2.1.0".to_string(),
+            entries: vec![Reach {
+                mark: Some(ChangeMark::Changed),
+                cells: vec![
+                    "retyped".to_string(),
+                    "type UkPostcode".to_string(),
+                    "min_length: 6, was min_length: 5".to_string(),
+                ],
+                rows: vec![(
+                    "actions".to_string(),
+                    "save_address, tidy_all, price_basket, price_lines, till_total, check_postcode"
+                        .to_string(),
+                )],
+            }],
+        })
+        .with(Block::Reaches {
+            heading: "Would not compile".to_string(),
+            entries: vec![Reach {
+                mark: None,
+                cells: vec!["Library `Postcodes.uk` has no function `tidy`".to_string()],
+                rows: vec![(
+                    "at".to_string(),
+                    "domains/a_rather_long_domain_name/actions/and_a_long_action_name_too.jadpo:6"
+                        .to_string(),
+                )],
+            }],
+        });
+    assert_eq!(
+        screen.render(&rich()),
+        "Change record, 2.0.0 to 2.1.0
+  ~ retyped  type UkPostcode  min_length: 6, was min_length: 5
+    actions  save_address, tidy_all, price_basket, price_lines, till_total, che…
+
+Would not compile
+  ✗ Library `Postcodes.uk` has no function `tidy`
+    at  domains/a_rather_long_domain_name/actions/and_a_long_action_name_too.jadpo:6
+"
+    );
+    assert!(
+        screen
+            .render(&Style::new(Mode::Plain))
+            .contains("\n  x Library `Postcodes.uk` has no function `tidy`\n"),
     );
 }
