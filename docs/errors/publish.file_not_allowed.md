@@ -13,8 +13,8 @@ under `recordings/` and, in a `sample/` app, its `jadpo.lock`. Every one of
 them has to be text, and none of them a symbolic link or a submodule.
 
 What a repository needs for itself isn't refused. Hidden files and folders
-such as `.gitignore` and `.github/`, and a `README`, `LICENSE`, `LICENCE`
-or `COPYING` at the root, are left out of the release: nobody who installs
+such as `.gitignore` and `.github/`, and a `README`, `LICENSE`, `LICENCE`,
+`COPYING` or `NOTICE` at the root, are left out of the release: nobody who installs
 the package receives them, and they aren't in its digest.
 
 ## What it looks like

@@ -21,6 +21,17 @@ use jadpo_syntax::ast::{AstNode, Decl};
 use crate::graph::text::doc;
 use crate::tree;
 
+/// Whether a finding of `rule` in a published package's own code is its
+/// publisher's to answer rather than a reason the package doesn't compile
+/// (area 11, "How the package format is read"): a judgement call, answered by a fix or a
+/// decline, and the bar's own `publish.` rules. A newer Jadpo can add such a
+/// finding to a release that passed the bar when it was published; an app
+/// that installed it is told, and keeps working. A security rule's decline
+/// needs a person, so it still refuses, as every other error does.
+pub fn publishers_to_answer(rule: &jadpo_diag::Rule) -> bool {
+    rule.id.starts_with("publish.") || (rule.declinable && !rule.security)
+}
+
 /// Each public declaration of the package in `folder` that has no `///`
 /// description: its types, failures, libraries and each function of a
 /// public library. In path order, then by position.

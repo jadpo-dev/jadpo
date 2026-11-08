@@ -601,14 +601,17 @@ impl SigView for Lookup<'_> {
     }
 
     fn constant_type(&self, library: Option<&str>, name: &str) -> Option<&crate::types::Ty> {
-        let name = match library {
-            Some(_) => name.to_string(),
-            None => self.canonical_name(name),
+        // A library's constant is known by its library's own name, as its
+        // functions are: in a package, `Grid.grids` (area 3; Richard,
+        // 2026-11-07).
+        let (library, name) = match library {
+            Some(library) => (Some(self.canonical_name(library)), name.to_string()),
+            None => (None, self.canonical_name(name)),
         };
         constant_type(
             self.db,
             self.project,
-            library.map(|library| self.name(library)),
+            library.map(|library| self.name(&library)),
             self.name(&name),
         )
         .as_ref()

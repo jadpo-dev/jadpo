@@ -929,7 +929,10 @@ pub static COMMANDS: &[Command] = &[
                       publishing bar (no errors, a description on every public declaration, the \
                       examples in its descriptions run as tests, its tests, a version its changes since \
                       the last tag allow, a changelog that says why), prints the release's facts and change \
-                      record, and writes surface.jadpo_record and CHANGELOG.md's new section. `verify \
+                      record, and writes surface.jadpo_record and CHANGELOG.md's new section; \
+                      `--previous <version>` compares with that tagged release rather than the last \
+                      tag, and `--previous none` checks a first release, for a tag the registry never \
+                      released. `verify \
                       <folder> [--previous <folder>] [--publisher <handle>]` runs the same bar as the registry's verifier does, on \
                       a commit as it stands, writing nothing, and `--json` gives all a release shows; \
                       `--serve` answers the registry, in a sandbox with no network. \
@@ -1011,8 +1014,8 @@ pub static COMMANDS: &[Command] = &[
             },
             Flag {
                 name: "--previous",
-                value: Some("folder"),
-                description: "For verify: the release before this one",
+                value: Some("release"),
+                description: "Last release: a folder, a version or none",
                 values: &[],
             },
             Flag {

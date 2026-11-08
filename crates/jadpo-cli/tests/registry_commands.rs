@@ -254,6 +254,18 @@ fn add_installs_that_exact_name_and_says_who_it_comes_from() {
         "{}",
         shown.stdout
     );
+    // The hint names it as it was added, and `show` takes that name
+    // (Richard, 2026-11-07).
+    assert!(
+        added
+            .stdout
+            .ends_with("next: jadpo package show @acme/postcodes  shows what it offers\n"),
+        "{}",
+        added.stdout
+    );
+    let by_registry = plain(&world.app, &["package", "show", "@acme/postcodes"]);
+    assert_eq!(by_registry.code, 0, "{}", by_registry.stderr);
+    assert_eq!(by_registry.stdout, shown.stdout);
 }
 
 #[test]
@@ -628,7 +640,12 @@ fn update_waits_three_days_and_names_what_it_skipped() {
 fn update_takes_the_newest_release_three_days_old_with_its_change_record() {
     let world = installed("registry-old-enough");
     second_release(&world, &days_ago(4));
-    let updated = with(&world.url, &world.app, &["package", "update", "postcodes"]);
+    // A package from the registry is named by its registry name too.
+    let updated = with(
+        &world.url,
+        &world.app,
+        &["package", "update", "@acme/postcodes"],
+    );
     assert_eq!(updated.code, 0, "{}{}", updated.stdout, updated.stderr);
     assert!(
         updated
