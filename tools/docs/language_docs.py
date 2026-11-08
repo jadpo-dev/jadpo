@@ -881,6 +881,9 @@ CHECK_SUMMARIES = True
 # The prefix of the rules about the command line itself: its commands,
 # flags and arguments.
 COMMAND_LINE = 'cli.'
+# The beginnings of the rule names whose pages D13c has brought to the
+# format (docs/roadmap.md, D13c1 to D13c15); each part adds its own.
+BROUGHT_TO_FORMAT = ('type.a', 'type.b', 'type.c', 'type.d', 'type.e')
 # The command that checks source; a rule it raises is shown by a check
 # block, not a command's run.
 CHECK_COMMAND = 'check'
@@ -902,7 +905,8 @@ def error_format_scope(catalogue, root=ROOT, commands=()):
     error page reads", gives them: those the primer, the Learn path, the
     guides or a teaching example's README names, those whose next step a
     person decides, the command line's own (`cli.*`), and every other rule
-    only a command raises. Every other page follows once D13c is built."""
+    only a command raises, and those D13c has brought to the format
+    (BROUGHT_TO_FORMAT). Every other page follows once D13c is built."""
     named = set()
     for path in [root / 'docs/primer.md', *sorted((root / 'docs/learn').glob('*.md')),
                  *sorted((root / 'docs/guides').glob('*.md'))]:
@@ -913,6 +917,7 @@ def error_format_scope(catalogue, root=ROOT, commands=()):
     named |= {rule for rule, entry in catalogue.items()
               if entry.get('decides') == 'human' or rule.startswith(COMMAND_LINE)}
     named |= command_errors(catalogue, commands)
+    named |= {rule for rule in catalogue if rule.startswith(BROUGHT_TO_FORMAT)}
     return named & catalogue.keys()
 
 

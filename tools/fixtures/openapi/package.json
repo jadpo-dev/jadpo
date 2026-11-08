@@ -1,0 +1,10 @@
+{
+  "name": "jadpo-openapi-tools",
+  "private": true,
+  "description": "An OpenAPI validator, pinned for the check that every OpenAPI document Jadpo writes is valid OpenAPI 3.1 (docs/leaving-jadpo.md; tools/checks/openapi_valid.py). Installed here by `npm ci --ignore-scripts`, never globally.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "dependencies": {
+    "@seriousme/openapi-schema-validator": "2.11.0"
+  }
+}

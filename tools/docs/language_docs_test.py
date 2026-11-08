@@ -1465,15 +1465,19 @@ class ErrorFormat(unittest.TestCase):
                          'seed.failed': {'area': command, 'decides': 'agent'},
                          'acceptance.edited': {'area': command, 'decides': 'agent'},
                          'deployable.empty': {'area': command, 'decides': 'agent'},
-                         'install.in_use': {'area': command, 'decides': 'agent'}}
+                         'install.in_use': {'area': command, 'decides': 'agent'},
+                         'type.absent_field': {'area': 2, 'decides': 'agent'},
+                         'type.foreign_type': {'area': 2, 'decides': 'agent'}}
             commands = [{'name': 'check', 'rules': ['acceptance.edited']},
                         {'name': 'seed', 'rules': ['seed.failed']},
                         {'name': 'package', 'rules': ['install.in_use']}]
             # The command line's own rules, and every other rule only a
-            # command raises, are in scope; a rule `jadpo check` raises, or
-            # no command lists, waits for D13c.
+            # command raises, are in scope, as are those a part of D13c
+            # has finished; a rule `jadpo check` raises, or no command
+            # lists, waits for its part of D13c.
             self.assertEqual(docs.error_format_scope(catalogue, root, commands),
-                             {'a.b', 'c.d', 'e.f', 'cli.y', 'seed.failed', 'install.in_use'})
+                             {'a.b', 'c.d', 'e.f', 'cli.y', 'seed.failed', 'install.in_use',
+                              'type.absent_field'})
 
     def test_the_bundle_gives_the_summary_once(self):
         with tempfile.TemporaryDirectory() as tmp:

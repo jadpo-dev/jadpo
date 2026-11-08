@@ -1339,11 +1339,11 @@ rules! {
     TRANSLATION_WORDING_SHAPE: "translation.wording_shape", area 10, Error, Agent,
         "A member is written in the wrong shape for what it words";
     TYPE_ABSENT_FIELD: "type.absent_field", area 2, Error, Agent,
-        "Omitted or optional field is not present";
+        "An `omit:` or `optional:` line names a field that the lines above it don't bring into the type";
     TYPE_ARGUMENT_COUNT: "type.argument_count", area 3, Error, Agent,
         "A call passes more or fewer values than the function or action it calls has parameters";
     TYPE_ARGUMENT_EMPTY: "type.argument_empty", area 19, Error, Agent,
-        "Text that may be empty where it never is";
+        "A call passes text that may be empty where the operation never takes empty text, such as `text.split`'s `separator`";
     TYPE_ARGUMENT_NEGATIVE: "type.argument_negative", area 19, Error, Agent,
         "A list or text operation is given a count or a position that might be negative";
     TYPE_ARITHMETIC_OPERAND: "type.arithmetic_operand", area 3, Error, Agent,
@@ -1351,73 +1351,73 @@ rules! {
     TYPE_ASSIGN_IMMUTABLE: "type.assign_immutable", area 3, Error, Agent,
         "A variable declared without `mut`, or a parameter, is given a new value";
     TYPE_ASSIGN_UNKNOWN: "type.assign_unknown", area 3, Error, Agent,
-        "Assignment target is not declared";
+        "An assignment gives a new value to a name that isn't declared in the block it is in or one around it";
     TYPE_AUTH_CREDENTIAL_STORED: "type.auth_credential_stored", area 8, Error, Agent,
-        "Entity field holds an API token or a service key";
+        "An entity has a field that holds an API token or a service key";
     TYPE_AUTH_PRINCIPAL_CONSTRUCTION: "type.auth_principal_construction", area 8, Error, Agent,
-        "Caller is made from a record outside tests, fixtures and seeds";
+        "Application code makes a caller from a record with `Principal.user(...)` or `Principal.service(...)`, which only tests, fixtures and seeds may do";
     TYPE_AUTH_PRINCIPAL_FAILURE_CONTEXT: "type.auth_principal_failure_context", area 8, Error, Agent,
-        "Failure field holds a caller";
+        "A failure has a field that holds a caller, a `Principal.user` or a `Principal.service`";
     TYPE_AUTH_PRINCIPAL_INPUT: "type.auth_principal_input", area 8, Error, Agent,
-        "Input field holds a caller";
+        "An `Input` has a field that holds a caller, a `Principal.user` or a `Principal.service`, as if a request could send who is calling";
     TYPE_AUTH_PRINCIPAL_OUTPUT: "type.auth_principal_output", area 8, Error, Agent,
-        "Output field holds a caller";
+        "An `Output` has a field that holds a caller, a `Principal.user` or a `Principal.service`";
     TYPE_AUTH_PRINCIPAL_VARIANT_UNKNOWN: "type.auth_principal_variant_unknown", area 8, Error, Agent,
-        "Caller variant is not one the principal declares";
+        "A route reads `current_principal.user` or `current_principal.service` for a kind of caller that `principal { }` doesn't declare";
     TYPE_AUTH_PUBLIC_PRINCIPAL: "type.auth_public_principal", area 8, Error, Human,
         "A route that anyone may call, with `authentication: RouteAuthentication.none`, passes on the signed-in caller, though it never looks for one";
     TYPE_AUTH_SESSIONS_CONTEXT: "type.auth_sessions_context", area 8, Error, Agent,
-        "Session, API token or service key operation outside an action, or without its sign-in method";
+        "Code calls a session, API token or service key operation, such as `sessions.end`, somewhere other than an action, or without the way of signing in it needs";
     TYPE_BASE_OUTSIDE_DECLARATION: "type.base_outside_declaration", area 2, Error, Agent,
-        "Base is used outside a type declaration";
+        "A field, parameter or result is given `Object`, `Enum`, `Input` or `Output` as its type, which is only ever the base of a type declaration";
     TYPE_BATCH_CAPTURE_NOT_STORABLE: "type.batch_capture_not_storable", area 12, Error, Agent,
-        "A batch saves a value that can't be stored";
+        "What a batch's `each:` or `finished:` captures, or its `key:`, is a value an entity field couldn't hold, such as a request's `Input`";
     TYPE_BATCH_CONTEXT: "type.batch_context", area 12, Error, Agent,
-        "Batch operation called outside an action";
+        "Code outside an action starts a batch, reads how far a run has got or cancels one";
     TYPE_BATCH_EACH_INVALID: "type.batch_each_invalid", area 12, Error, Agent,
-        "A batch's `each:` or `finished:` is not one call of an action in its domain, or a write's `each:` no inline function giving the row";
+        "A batch's `each:` or `finished:` is something other than one call of an action in its domain, or a file write's `each:` something other than one inline function giving the row";
     TYPE_BATCH_FROM_INVALID: "type.batch_from_invalid", area 12, Error, Agent,
         "A batch's `from:` is something other than a call of a named query that gives a `Page`, such as a query that gives a `List`";
     TYPE_BATCH_INPUT: "type.batch_input", area 12, Error, Agent,
-        "An `Input` or a route placeholder holds a batch type, a `File` or a `FileContents`, or what a provider or a queue sends holds a `File` or a `FileContents`, which only the runtime builds";
+        "An `Input` or a route's placeholder holds a batch type such as `BatchRun`, a `File` or a `FileContents`, or what a provider or a queue sends holds a `File` or a `FileContents`, each of which only the runtime builds";
     TYPE_BATCH_ORDER_UPDATABLE: "type.batch_order_updatable", area 12, Declinable, Agent,
-        "A batch walks a query ordered by a field an update can change";
+        "A batch's `from:` is a query ordered by a field an update can change";
     TYPE_BATCH_ROW_INVALID: "type.batch_row_invalid", area 12, Error, Agent,
-        "A file helper's rows can't be read as the type its `as:` names or from where its `items_at:` says, its `max_unpacked_size:` isn't a size, or its rows can't be written as the row its `each:` gives";
+        "A file helper's rows can't be read as the `Input` its `as:` names or written as the `Output` its `each:` gives, or `json.read`'s `items_at:` isn't member names written out between dots, or a reader's `max_unpacked_size:` isn't a size";
     TYPE_CLOCK_CONTEXT: "type.clock_context", area 10, Error, Agent,
-        "The operation clock is unavailable in this context";
+        "A function, a library function, an inline function or a backfill reads `clock.now`, or calls an operation that reads the clock such as `crypto.verify_jwt`, which only an action may do";
     TYPE_CONSTRAINT_BASE: "type.constraint_base", area 2, Error, Agent,
-        "Constraint does not fit the type's base";
+        "A type gives a constraint that doesn't apply to what it is built on, such as `min` on a `Text` type";
     TYPE_CONSTRAINT_CONTRADICTION: "type.constraint_contradiction", area 2, Error, Agent,
-        "Constraints contradict each other";
+        "A type's constraints leave no value that follows them all, such as a `max_length` below its `min_length`";
     TYPE_CONSTRAINT_LOOSENED: "type.constraint_loosened", area 2, Error, Agent,
         "A type that builds on another sets a looser bound than the one it inherits, such as a higher `max_length`";
     TYPE_CONSTRAINT_REPEATED: "type.constraint_repeated", area 2, Error, Agent,
-        "Constraint is given twice";
+        "A type gives the same constraint more than once";
     TYPE_CONSTRUCTOR_ARGUMENT_COUNT: "type.constructor_argument_count", area 2, Error, Agent,
-        "Constructor is not given exactly one value";
+        "A type's constructor, such as `Quantity(...)`, is given more or fewer than one value";
     TYPE_CONSTRUCTOR_INPUT: "type.constructor_input", area 2, Error, Agent,
         "A type's constructor is given a value it can't convert, because the value is built on a different kind of value or may be `none`";
     TYPE_COPY_CLASH: "type.copy_clash", area 2, Error, Agent,
-        "Copied field would replace another field";
+        "A type copies a field with `include` or `pick` that another `include` or `pick` above it has already brought in";
     TYPE_COPY_CYCLE: "type.copy_cycle", area 2, Error, Agent,
-        "Type includes its own fields";
+        "A type's `include` leads back to the type itself, directly or through another type";
     TYPE_COPY_INTO_INPUT: "type.copy_into_input", area 2, Error, Human,
         "An `Input` type copies every field of another type with `include`, so a request could set any of them";
     TYPE_DECIMAL_SCALE_REQUIRED: "type.decimal_scale_required", area 2, Error, Agent,
-        "Decimal type has no scale";
+        "A type built on `Decimal` doesn't say its `scale`, the number of decimal places it keeps";
     TYPE_DIVISOR_ZERO: "type.divisor_zero", area 3, Error, Agent,
         "A division's divisor has a type that allows zero, so the division could fail when the program runs";
     TYPE_DUPLICATE_FIELD: "type.duplicate_field", area 2, Error, Agent,
-        "Field is given twice";
+        "A value is built with the same field given twice, or a type declares a field twice";
     TYPE_DUPLICATE_VARIANT: "type.duplicate_variant", area 2, Error, Agent,
-        "Enum variant is declared twice";
+        "An enum declares the same variant twice";
     TYPE_DUPLICATE_VARIANT_FIELD: "type.duplicate_variant_field", area 2, Error, Agent,
-        "Variant field is given twice";
+        "An enum variant's value is built with the same field given twice, or a variant declares a field twice";
     TYPE_ENUM_EMPTY: "type.enum_empty", area 2, Error, Agent,
-        "Enum declares no variants";
+        "An enum declares no variants";
     TYPE_ENUM_LABEL: "type.enum_label", area 2, Error, Agent,
-        "Enum variant is given a label or a value";
+        "An enum variant is given a label or a value, as in `open: \"Open\"`";
     TYPE_FIELD_ON_NON_RECORD: "type.field_on_non_record", area 2, Error, Agent,
         "Field is read from a value without fields";
     TYPE_FIELD_UNPROVED: "type.field_unproved", area 2, Error, Agent,
