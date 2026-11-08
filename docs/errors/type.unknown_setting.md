@@ -1,6 +1,16 @@
 # `type.unknown_setting`
 
-A type's block holds only the constraints in the table above:
+A block holds a setting it doesn't have, often a misspelling of one it does, such as `maxlength` for `max_length`.
+
+## Why Jadpo refuses it
+
+Each block has a fixed set of settings, so a misspelling can't be quietly
+ignored. A `maxlength` that did nothing would leave the text with no limit
+at all, with nothing to say so.
+
+## What it looks like
+
+main.jadpo:
 
 ```jadpo check project=e-unknown-setting expect=type.unknown_setting
 type ProductName = Text {
@@ -23,12 +33,16 @@ error: `maxlength` isn't a setting Jadpo knows
 check failed: 1 error, 1 file
 ```
 
-`personal:` is a setting of a field where Jadpo keeps or sends its value: an
-entity's, an event's or an email's, or an object's, an input's or an output's
-that a package declares
-([Marking personal fields](../language/15-personal-data.md#marking-personal-fields)).
-An app's own type holds what a marked field gave it, and the value is followed
-back to that field:
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+`personal:` is a setting of a field where Jadpo keeps or sends its value:
+an entity's, an event's or an email's, or an object's, an input's or an
+output's that a package declares. An app's own type holds what a marked
+field gave it, and the value is followed back to that field, so it is
+refused there.
+
+main.jadpo:
 
 ```jadpo check project=e-unknown-setting-personal expect=type.unknown_setting
 /// A card shown to someone.
@@ -52,3 +66,35 @@ error: `personal` isn't a setting of `Card`'s fields
 
 check failed: 1 error, 1 file
 ```
+
+## How to fix it
+
+**If the setting is misspelt**, use the name the error gives. `main.jadpo`
+becomes:
+
+```jadpo check project=e-unknown-setting-fix-1
+type ProductName = Text {
+    min_length: 1
+    max_length: 120
+}
+```
+
+A `ProductName` over 120 characters is now refused when one is made.
+
+**If it marks a field as personal on your own type**, remove the setting.
+`main.jadpo` becomes:
+
+```jadpo check project=e-unknown-setting-personal-fix
+/// A card shown to someone.
+type Card = Output {
+    name: Text
+}
+```
+
+Mark the field the value is read from, on its entity, instead. A value
+read from that field into a `Card` is followed back to it.
+
+## Related
+
+- [Constraints](../language/02-values-and-types.md#constraints)
+- [Marking personal fields](../language/15-personal-data.md#marking-personal-fields)
