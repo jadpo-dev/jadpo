@@ -11,13 +11,14 @@
 //!   built once by a [`Builder`].
 //! - [`json`] writes canonical JSON; [`manifest`] is the graph in it;
 //!   [`catalogue`] renders the views `check` writes; [`diff`] compares two
-//!   graphs.
+//!   graphs; [`impact`] follows edges backwards to what a change reaches.
 //! - [`paths`] numbers each way through a typed body.
 
 pub mod body;
 pub mod catalogue;
 pub mod diff;
 mod graph;
+pub mod impact;
 pub mod json;
 mod key;
 mod kind;

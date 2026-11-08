@@ -184,6 +184,10 @@ rules! {
         "A `jadpo fmt` command names a path that isn't there or isn't a `.jadpo` file";
     CLI_HELP_ARGUMENTS: "cli.help_arguments", area 14, Error, Agent,
         "A `jadpo help` command names more than one command or rule";
+    CLI_IMPACT_ARGUMENTS: "cli.impact_arguments", area 14, Error, Agent,
+        "A `jadpo impact` command names no declaration, one the project doesn't have, or a name two domains share";
+    CLI_INSPECT_ARGUMENTS: "cli.inspect_arguments", area 14, Error, Agent,
+        "A `jadpo inspect` command names a declaration the project doesn't have, or a name two domains share";
     CLI_LSP_ARGUMENTS: "cli.lsp_arguments", area 14, Error, Agent,
         "A `jadpo lsp` command is given an argument, which it doesn't take";
     CLI_MIGRATE_ARGUMENTS: "cli.migrate_arguments", area 14, Error, Agent,
