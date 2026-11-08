@@ -1470,11 +1470,10 @@ class ErrorFormat(unittest.TestCase):
                         {'name': 'seed', 'rules': ['seed.failed']},
                         {'name': 'package', 'rules': ['install.in_use']}]
             # The command line's own rules, and every other rule only a
-            # command raises, are in scope, but for the ones waiting for
-            # D13b3c; a rule `jadpo check` raises, or no command lists,
-            # waits for D13c.
+            # command raises, are in scope; a rule `jadpo check` raises, or
+            # no command lists, waits for D13c.
             self.assertEqual(docs.error_format_scope(catalogue, root, commands),
-                             {'a.b', 'c.d', 'e.f', 'cli.y', 'seed.failed'})
+                             {'a.b', 'c.d', 'e.f', 'cli.y', 'seed.failed', 'install.in_use'})
 
     def test_the_bundle_gives_the_summary_once(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1760,6 +1759,14 @@ class ReleaseLine(unittest.TestCase):
         self.assertEqual(docs.with_release_line('application {\n    jadpo: "X.Y"\n}\n'),
                          'application {\n    jadpo: "0.3"\n}\n')
         self.assertEqual(docs.with_release_line('application {}\n'), 'application {}\n')
+
+    def test_a_file_a_run_writes_names_the_running_line_too(self):
+        lines = ['```sh run project=e', "cat > package.jadpo <<'DOC'", '    jadpo: "X.Y"', 'DOC', '```']
+        page = docs.ErrorPage.__new__(docs.ErrorPage)
+        page.runs = []
+        block = page.run_block(lines, 0, {'run': True, 'project': 'e'})
+        self.assertIn('jadpo: "0.3"', block['source'])
+        self.assertNotIn('X.Y', block['source'])
 
     def test_a_page_naming_the_running_line_or_release_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
