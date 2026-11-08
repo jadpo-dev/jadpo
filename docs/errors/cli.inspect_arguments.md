@@ -35,7 +35,15 @@ jadpo inspect
 jadpo inspect <name>
 ```
 
-**If two domains each keep a private one of that name**, the error lists both; name one with its domain, `ordering.at_least_one`.
+The first prints every domain's declarations; the second prints the one you name.
+
+**If two domains each keep a private one of that name**, name it with its domain, as the error lists it:
+
+```sh
+jadpo inspect ordering.at_least_one
+```
+
+It prints that domain's declaration alone.
 
 ## Related
 

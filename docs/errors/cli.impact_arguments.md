@@ -34,7 +34,15 @@ error: `grete` isn't a declaration
 jadpo impact <name>
 ```
 
-`jadpo inspect` lists every declaration. **If two domains each keep a private one of that name**, the error lists both; name one with its domain, `ordering.at_least_one`.
+It lists the domains that call it, its triggers and its tests; `jadpo inspect` lists every declaration.
+
+**If two domains each keep a private one of that name**, name it with its domain, as the error lists it:
+
+```sh
+jadpo impact ordering.at_least_one
+```
+
+It answers for that domain's declaration alone.
 
 ## Related
 
