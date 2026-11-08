@@ -482,7 +482,7 @@ fn probed(send: impl Fn(&str, &str, &str) -> (u16, String)) -> Vec<Probed> {
 /// the disposable server answers with `host=… dbname=…` pairs, an
 /// external one with a URL. A database named on the admin connection's
 /// pairs is the last `dbname=`, as libpq reads it.
-fn as_url(connection: &str) -> String {
+pub(crate) fn as_url(connection: &str) -> String {
     if connection.starts_with("postgres") {
         return connection.to_string();
     }

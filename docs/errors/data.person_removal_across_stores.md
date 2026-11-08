@@ -73,6 +73,17 @@ action remove(id: User.id) fails UserNotFound -> Unit {
 ```
 
 ```text output
+error: `User.delete` would delete a `User` that `OldNote.owner_id` refers to from another store
+ --> domains/accounts/actions/remove.jadpo:5:13
+  |
+5 |     attempt User.delete(id)
+  |             ^^^^^^^^^^^ deletes outside erasure
+  reason: `OldNote.owner_id` isn't a foreign key: only erasing a `User` applies what its `erase:` says, after the commit, in its store. Deleted any other way, the `User` would be gone and the `OldNote` records would stay, out of reach of any erasure.
+  next: Call `User.erase`, or give `User` a lifecycle whose `delete` transition hides them (human)
+  rule: data.person_removal_across_stores
+  help: https://jadpo.dev/docs/errors/data.person_removal_across_stores
+
+check failed: 1 error, 4 files
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop
@@ -90,3 +101,9 @@ log](data.erasure_log_required.md).
 **If they must go on a schedule,** keep the other entity in the person's store,
 where the reference is a foreign key and says `on_delete:`, and a `retention:`
 or a `purge:` takes it into account.
+
+## Related
+
+- [Records in another store](../language/15-personal-data.md#records-in-another-store)
+- [`data.reference_across_stores`](data.reference_across_stores.md)
+- [Retention](../language/15-personal-data.md#retention)

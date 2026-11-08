@@ -311,12 +311,8 @@ impl Dev {
         Dev::launch(root, Some(url), Vec::new(), Vec::new())
     }
 
-    /// On the database `url`, as a restart of a session finds it.
-    pub(super) fn start_on(root: &Path, url: String) -> Dev {
-        Dev::launch(root, Some(url), Vec::new(), Vec::new())
-    }
-
-    /// A project with no entities, so no database to serve.
+    /// A project with no entities, so no database to serve, or whose
+    /// connections each find theirs in `.env.local`.
     pub(super) fn start_without_database(root: &Path) -> Dev {
         Dev::launch(root, None, Vec::new(), Vec::new())
     }

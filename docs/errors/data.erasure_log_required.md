@@ -49,6 +49,17 @@ action close_account(id: User.id) fails UserNotFound -> Unit {
 ```
 
 ```text output
+error: Erasing a `User` needs an erasure log, and the application names none
+ --> domains/accounts/actions/close_account.jadpo:5:13
+  |
+5 |     attempt User.erase(id)
+  |             ^^^^^^^^^^ leaves an entry in the log
+  reason: Restoring a backup would bring back everyone erased since it was taken. The log is what erases them again as the app starts, so it is kept where the restore can't take it back: a database that holds no person's records, or a store of files.
+  next: Add `privacy: { erasure_log: { store: <connection> } }` to `application { }`, naming a connection for it (human)
+  rule: data.erasure_log_required
+  help: https://jadpo.dev/docs/errors/data.erasure_log_required
+
+check failed: 1 error, 3 files
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop
@@ -105,3 +116,8 @@ action close_account(id: User.id) fails UserNotFound -> Unit {
 The page on [what erasure doesn't
 rewrite](../language/15-personal-data.md#what-erasure-doesnt-rewrite) says what
 the log holds and how it is replayed.
+
+## Related
+
+- [What erasure doesn't rewrite](../language/15-personal-data.md#what-erasure-doesnt-rewrite)
+- [`data.erasure_log_store`](data.erasure_log_store.md)

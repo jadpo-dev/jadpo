@@ -70,11 +70,6 @@ impl ErasurePlan {
     pub fn person(&self, entity: &str) -> Option<&PersonPlan> {
         self.people.iter().find(|person| person.entity == entity)
     }
-
-    /// The plan of the person entity born `born`, as the log keeps it.
-    pub fn born(&self, born: &str) -> Option<&PersonPlan> {
-        self.people.iter().find(|person| person.born == born)
-    }
 }
 
 /// One person entity's erasure.

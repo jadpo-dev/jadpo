@@ -161,3 +161,4 @@ as they are.
 - [Stores](../language/05-data.md#stores)
 - [References and `on_delete`](../language/05-data.md#references-and-on_delete)
 - [One store per action](../language/06-reads-and-writes.md#one-store-per-action)
+- [Records in another store](../language/15-personal-data.md#records-in-another-store)

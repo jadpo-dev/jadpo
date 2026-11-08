@@ -773,8 +773,15 @@ async fn attempt(
                         None => Outcome::Failed(Box::new(crate::unavailable())),
                     })
                 }
+                // A full store is worth trying again, as one that can't be
+                // reached is: an entry waits for room.
                 Ok(crate::erasure::LogWrite::File(call)) => {
-                    send(ctx, *call, budget, within).await
+                    match send(ctx, *call, budget, within).await {
+                        Ok(Outcome::Failed(_)) => {
+                            Ok(Outcome::Failed(Box::new(crate::unavailable())))
+                        }
+                        sent => sent,
+                    }
                 }
                 Err(what) => Ok(Outcome::Fault(
                     ctx.fault(FaultKind::Defect(what.into()), Frame::ENTRY),

@@ -1275,6 +1275,24 @@ fn restoring_brings_no_one_back(name: &str, log: &str) {
                 .expect_err("no log to read");
             assert_eq!(stopped.store, "erasures");
             club.down.borrow_mut().clear();
+            // An entry of an entity no longer declared has nothing to erase.
+            club.run(
+                "erasures",
+                "INSERT INTO \"jadpo_erasure_log\" (\"entity\", \"person_id\", \"erased_at\") VALUES ('Retired', gen_random_uuid(), now())",
+            )
+            .await;
+            assert_eq!(
+                replayed(program, club).await,
+                Replayed {
+                    logged: 3,
+                    erased: 0
+                }
+            );
+            club.run(
+                "erasures",
+                "DELETE FROM \"jadpo_erasure_log\" WHERE \"entity\" = 'Retired'",
+            )
+            .await;
         }
 
         // `main` restored: she is erased before anything is served, and her
@@ -1464,9 +1482,11 @@ fn jadpo_dev_replays_the_log_as_it_starts() {
     let application = "    connections: {
         main: {
             driver: Driver.postgres
+            url: config.main_url
         }
         archive: {
             driver: Driver.postgres
+            url: config.archive_url
         }
         erasures: {
             driver: Driver.disk
@@ -1479,7 +1499,8 @@ fn jadpo_dev_replays_the_log_as_it_starts() {
         }
     }
 ";
-    for (path, text) in served_files(application, "") {
+    let config = "    main_url: PostgresUrl\n    archive_url: PostgresUrl\n";
+    for (path, text) in served_files(application, config) {
         let path = root.join(path);
         fs::create_dir_all(path.parent().expect("parent")).expect("folders");
         fs::write(path, text).expect("write");
@@ -1490,7 +1511,17 @@ fn jadpo_dev_replays_the_log_as_it_starts() {
     }
     let server = jadpo_test::database::server().expect("a PostgreSQL server");
     let url = server.create_database("erasure_dev").expect("a database");
-    let dev = super::http::Dev::start_on(&root, url.clone());
+    let archive = server.create_database("erasure_dev_archive").expect("a database");
+    fs::write(
+        root.join(".env.local"),
+        format!(
+            "MAIN_URL={}\nARCHIVE_URL={}\n",
+            super::deployable::as_url(&url),
+            super::deployable::as_url(&archive)
+        ),
+    )
+    .expect("the settings");
+    let dev = super::http::Dev::start_without_database(&root);
     let joined = dev.send("POST", "/members", &[], r#"{"handle":"ada"}"#);
     assert_eq!(joined.status, 201, "{joined:?}");
     let id = joined.json()["id"].as_str().expect("an id").to_string();
@@ -1524,7 +1555,7 @@ fn jadpo_dev_replays_the_log_as_it_starts() {
     ));
     let count = |sql: &str| run(sql.to_string()).len();
     assert_eq!(count("SELECT 1 FROM \"member\""), 1);
-    let dev = super::http::Dev::start_on(&root, url.clone());
+    let dev = super::http::Dev::start_without_database(&root);
     assert_eq!(
         count("SELECT 1 FROM \"member\""),
         0,

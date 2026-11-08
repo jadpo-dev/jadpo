@@ -16,6 +16,10 @@ something you run and back up.
 
 ## What it looks like
 
+```jadpo check project=e-erasure-log-store file=app.jadpo hidden
+application {}
+```
+
 ```jadpo check project=e-erasure-log-store file=domains/accounts/entities/user.jadpo hidden migrate=initial
 entity User {
     id: Uuid
@@ -40,6 +44,17 @@ application {
 ```
 
 ```text output
+error: `main` holds a person's records, so a restore would take the log back with them
+ --> app.jadpo:4:20
+  |
+4 |             store: main
+  |                    ^^^^ `User` is kept here
+  reason: The log is what erases someone again after a backup brings them back. Restoring `main` would bring back their `User` records and lose every entry written since the backup, so nobody erased since would be erased again.
+  next: Add a database that holds no person's records and name it, or name a store of files (human)
+  rule: data.erasure_log_store
+  help: https://jadpo.dev/docs/errors/data.erasure_log_store
+
+check failed: 1 error, 2 files
 ```
 
 ```text output
@@ -100,3 +115,8 @@ application {
 ```
 
 A Worker has no disk, so it keeps the log in a database.
+
+## Related
+
+- [What erasure doesn't rewrite](../language/15-personal-data.md#what-erasure-doesnt-rewrite)
+- [`data.erasure_log_required`](data.erasure_log_required.md)

@@ -984,12 +984,12 @@ entity OldTicket {
     }
     title: TicketTitle
 
+    store: archive
+
     policy: {
         create: [Access.public]
         read: [Access.public]
     }
-
-    store: archive
 }
 ```
 
@@ -1076,8 +1076,8 @@ action file_ticket(member: Member, title: OldTicket.title) -> OldTicket {
 
 ```jadpo check project=other-stores file=domains/club/actions/close_account.test.jadpo
 // domains/club/actions/close_account.test.jadpo
-use club/actions { file_ticket, join }
 use club/entities { Member, MemberNotFound, OldTicket, OldTicketNotFound }
+use club/actions { file_ticket, join }
 
 test "closing an account reaches the archive" {
     var ada: Member = attempt join("ada@example.com")
