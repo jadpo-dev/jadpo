@@ -1467,7 +1467,8 @@ class ErrorFormat(unittest.TestCase):
                          'deployable.empty': {'area': command, 'decides': 'agent'},
                          'install.in_use': {'area': command, 'decides': 'agent'},
                          'type.absent_field': {'area': 2, 'decides': 'agent'},
-                         'type.foreign_type': {'area': 2, 'decides': 'agent'}}
+                         'type.foreign_type': {'area': 2, 'decides': 'agent'},
+                         'type.optional_outside_input': {'area': 2, 'decides': 'agent'}}
             commands = [{'name': 'check', 'rules': ['acceptance.edited']},
                         {'name': 'seed', 'rules': ['seed.failed']},
                         {'name': 'package', 'rules': ['install.in_use']}]
@@ -1477,7 +1478,7 @@ class ErrorFormat(unittest.TestCase):
             # lists, waits for its part of D13c.
             self.assertEqual(docs.error_format_scope(catalogue, root, commands),
                              {'a.b', 'c.d', 'e.f', 'cli.y', 'seed.failed', 'install.in_use',
-                              'type.absent_field'})
+                              'type.absent_field', 'type.foreign_type'})
 
     def test_the_bundle_gives_the_summary_once(self):
         with tempfile.TemporaryDirectory() as tmp:
