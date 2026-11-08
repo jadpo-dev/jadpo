@@ -10,9 +10,9 @@ use jadpo_registry::local::{LocalRegistry, ReleaseSeed};
 use jadpo_registry::log::{LogEntry, LogError, check_extends, check_included};
 use jadpo_registry::names::{Digest, Handle, ScopedName, Version};
 use jadpo_registry::protocol::{
-    Advisory, AdvisoryAnswer, ConsistencyProof, InclusionProof, LogHead, Method, Package,
-    PackageKind, Release, ReleaseRequest, ReleaseState, Request, SearchAnswer, StartedRelease,
-    check_answer,
+    Advisory, AdvisoryAnswer, ConsistencyProof, FingerprintAnswer, FingerprintQuery,
+    InclusionProof, LogHead, Method, Package, PackageKind, PublishedFingerprint, Release,
+    ReleaseRequest, ReleaseState, Request, SearchAnswer, StartedRelease, check_answer,
 };
 
 fn name(text: &str) -> ScopedName {
@@ -461,6 +461,55 @@ fn advisories_are_found_for_the_installed_versions() {
         vec![name("@acme/geocoder")]
     );
     assert!(ask_for("2.1.0").advisories.is_empty());
+}
+
+#[test]
+fn a_fingerprint_query_answers_each_prefix_s_whole_bucket() {
+    let registry = registry();
+    let source = |hex: &str| Digest::parse(&format!("sha256:{hex:0<64}")).unwrap();
+    let published = |package: &str, v: &str, declaration: &str, hex: &str| PublishedFingerprint {
+        package: name(package),
+        version: version(v),
+        declaration: declaration.into(),
+        source: source(hex),
+    };
+    registry.fingerprint(published("@acme/postcodes", "2.0.0", "uk.parse", "3fa9c1"));
+    registry.fingerprint(published("@acme/postcodes", "2.1.0", "uk.parse", "3fa9c1"));
+    registry.fingerprint(published(
+        "@acme/postcodes",
+        "2.1.0",
+        "uk.outward",
+        "3fa9c2",
+    ));
+    registry.fingerprint(published("@acme/geocoder", "1.0.0", "lookup", "00e1b7"));
+    registry.yank(&name("@acme/geocoder"), &version("1.0.0"));
+    let served = registry.serve().unwrap();
+    let ask_for = |prefixes: &[&str]| -> Vec<String> {
+        let answer: FingerprintAnswer = ask(
+            &served.url(),
+            &Request::QueryFingerprints(FingerprintQuery {
+                prefixes: prefixes.iter().map(|p| p.to_string()).collect(),
+            }),
+        );
+        answer
+            .fingerprints
+            .iter()
+            .map(|f| format!("{} {} {}", f.package, f.version, f.declaration))
+            .collect()
+    };
+    // Everything in the bucket, so the registry can't tell which one the
+    // app holds; of one declaration's releases, the newest.
+    assert_eq!(
+        ask_for(&["3fa9c"]),
+        [
+            "@acme/postcodes 2.1.0 uk.parse",
+            "@acme/postcodes 2.1.0 uk.outward"
+        ]
+    );
+    // A yanked release is never offered.
+    assert!(ask_for(&["00e1b"]).is_empty());
+    assert!(ask_for(&["fffff"]).is_empty());
+    assert!(ask_for(&[]).is_empty());
 }
 
 #[test]

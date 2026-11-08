@@ -2174,6 +2174,7 @@ it can send makes a release live.
 | `GET log/consistency?from=&to=` | The hashes that prove the log of size `to` extends the log of size `from` |
 | `GET search?q=&from=&to=&kind=` | Ranked results, the standard library's first, each naming a package and declaration, with why it matched |
 | `POST advisories/query` | Given installed packages and versions, the advisories against them, each naming its declarations, versions and the packages carrying copies |
+| `POST fingerprints/query` | Given `prefixes`, each the first five hex digits of a source fingerprint, every public function and action of a release that isn't yanked whose `source` fingerprint starts with one: its `package`, `version` (the newest with that fingerprint), `declaration` and `source` |
 | `POST releases` | Given a repository, a tag, `dry_run` and optionally `publisher`, starts a release (or a dry run) and answers its id |
 | `GET releases/{id}` | Its state (`verifying`, `failed` with the bar's rows, `pending`, `cancelled`, `live`), with its facts and change record once checked |
 
@@ -2215,6 +2216,15 @@ it can send makes a release live.
   `size_past_head` (422, a size past the head or sizes the wrong way
   round) and `repository_refused` (422, not a repository reached over
   HTTPS). `POST releases` answers 202, the others 200.
+- **`POST fingerprints/query`** is how `jadpo suggest` finds an app's
+  copy of a published function ([Functions that already
+  exist](14-tooling.md#functions-that-already-exist)). It sends prefixes,
+  at most 1,000 a request and each five lower-case hex digits, never a
+  fingerprint, and the registry answers each prefix's whole bucket, so it
+  learns nothing of which function an app holds; a prefix of another
+  length, or more than 1,000, is 422 `invalid_input`. The fingerprints are
+  the `source` ones `jadpo package verify` writes for each release
+  (recorded 2026-11-08).
 - **The lock's `registry` source** records the scoped name:
   `package Postcodes.v2 version 2.1.0 registry @acme/postcodes digest
   sha256:…`.

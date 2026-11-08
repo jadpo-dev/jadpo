@@ -12,7 +12,7 @@ use crate::support;
 fn scan_with(text: &str, taught: &[Taught]) -> Vec<Finding> {
     let db = Database::default();
     let project = support::project(&db, Layout::Loose, &[("shop.jadpo", text)]);
-    suggest::scan(&db, project, taught)
+    suggest::scan(&db, project, taught, &[])
 }
 
 fn scan(text: &str) -> Vec<Finding> {
@@ -262,4 +262,106 @@ fn the_catalogue_is_generated_from_the_entries() {
     assert!(has("Uuid", Signal::Validation));
     assert!(has("Length", Signal::Conversion));
     assert!(has("list.sum", Signal::Loop));
+    assert!(has(suggest::CATALOGUE_OPERATIONS, Signal::Function));
+    assert!(has(suggest::CATALOGUE_PACKAGES, Signal::Published));
+}
+
+// --- functions that already exist (roadmap R8) ------------------------------
+
+/// Text and a yes or no, as a signature has to name them.
+const WORDS: &str = "/// Some text.\ntype Words = Text {}\n\n/// Yes or no.\ntype Flag = Bool {}\n\n/// A whole number.\ntype Whole = Int {}\n\n";
+
+#[test]
+fn a_function_named_for_a_standard_operation_that_takes_what_it_does_is_found() {
+    let text = format!(
+        "{WORDS}/// A URL slug.\nfunction slug(title: Words) -> Words {{\n    return Words(text.lower(title))\n}}\n\n/// Whether it starts so.\nfunction text_starts_with(value: Words, prefix: Words) -> Flag {{\n    return Flag(text.slice(value, 0, 1) == prefix)\n}}\n"
+    );
+    assert_eq!(problems(&text), Vec::<String>::new());
+    assert_eq!(
+        rows_of(Signal::Function, &text),
+        [
+            "function text.slug: function slug(title: Words) -> Words",
+            "function text.starts_with: function text_starts_with(value: Words, prefix: Words) -> Flag",
+        ]
+    );
+    let found = of(Signal::Function, &text);
+    assert_eq!(found[0].snippet.line, 11);
+    assert!(
+        found[0].reason.contains("`text.slug`"),
+        "{}",
+        found[0].reason
+    );
+    // In a library, by its own name.
+    let library = format!(
+        "{WORDS}/// Text helpers.\nlibrary titles {{\n    /// A URL slug.\n    function slug(title: Words) -> Words {{\n        return Words(text.lower(title))\n    }}\n}}\n"
+    );
+    assert_eq!(problems(&library), Vec::<String>::new());
+    assert_eq!(
+        rows_of(Signal::Function, &library),
+        ["function text.slug: function slug(title: Words) -> Words"]
+    );
+}
+
+#[test]
+fn a_function_with_another_name_or_shape_is_left_alone() {
+    // More in its name, a parameter the operation doesn't take, or more
+    // parameters than it has: none is the standard operation.
+    let text = format!(
+        "{WORDS}/// A slug and more.\nfunction slug_of(title: Words) -> Words {{\n    return Words(text.lower(title))\n}}\n\n/// By number.\nfunction slug(id: Whole) -> Words {{\n    return Words(text.from(id))\n}}\n\n/// Two.\nfunction trim(a: Words, b: Words) -> Words {{\n    return Words(a + b)\n}}\n"
+    );
+    assert_eq!(problems(&text), Vec::<String>::new());
+    assert_eq!(rows_of(Signal::Function, &text), Vec::<String>::new());
+}
+
+#[test]
+fn a_copy_of_a_published_function_is_found_by_its_source_fingerprint() {
+    use jadpo_check::suggest::functions::{self, Published};
+
+    // The package's function, as its author wrote it.
+    let package = format!(
+        "{WORDS}/// Postcode helpers.\nlibrary uk {{\n    /// The outward half of a postcode.\n    public function outward(written: Words) -> Words {{\n        var cleaned: Text = text.upper(text.trim(written))\n        return Words(text.keep_first(cleaned, 4))\n    }}\n}}\n"
+    );
+    let db = Database::default();
+    let project = support::project(&db, Layout::Loose, &[("uk.jadpo", &package)]);
+    let own = functions::own_functions(&db, project);
+    assert_eq!(own.len(), 1);
+    assert!(own[0].source.starts_with("sha256:"), "{}", own[0].source);
+    let published = [Published {
+        package: "@acme/postcodes".into(),
+        version: "2.1.0".into(),
+        declaration: "uk.outward".into(),
+        source: own[0].source.clone(),
+    }];
+    let hex = &own[0].source["sha256:".len()..];
+    assert_eq!(functions::prefixes(&own), [hex[..5].to_string()]);
+
+    // The app's copy: renamed, its variables too, reformatted and with a
+    // description of its own, is the same function.
+    let copy = format!(
+        "{WORDS}/// Reads the outward code.\nfunction outward_code(postcode: Words) -> Words {{\n    var tidy: Text = text.upper(text.trim(postcode))\n    return Words(text.keep_first(tidy,   4))\n}}\n\n/// Not a copy.\nfunction inward_code(postcode: Words) -> Words {{\n    return Words(text.keep_last(postcode, 3))\n}}\n"
+    );
+    assert_eq!(problems(&copy), Vec::<String>::new());
+    let db = Database::default();
+    let project = support::project(&db, Layout::Loose, &[("shop.jadpo", &copy)]);
+    let found: Vec<Finding> = suggest::scan(&db, project, &[], &published)
+        .into_iter()
+        .filter(|f| f.signal == Signal::Published)
+        .collect();
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].suggestion, "@acme/postcodes uk.outward");
+    assert_eq!(
+        found[0].package,
+        Some(("@acme/postcodes".to_string(), "2.1.0".to_string()))
+    );
+    assert_eq!(
+        found[0].snippet.shown,
+        "function outward_code(postcode: Words) -> Words"
+    );
+    assert!(found[0].reason.contains("copy"), "{}", found[0].reason);
+    // Not asked, nothing is published.
+    assert!(
+        suggest::scan(&db, project, &[], &[])
+            .iter()
+            .all(|f| f.signal != Signal::Published)
+    );
 }
