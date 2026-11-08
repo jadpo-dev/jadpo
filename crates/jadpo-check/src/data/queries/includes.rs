@@ -146,6 +146,29 @@ impl Reader<'_> {
             };
             found = Some((kind, other, f));
         }
+        // A reference to a person across stores isn't a foreign key, and no
+        // statement reads two databases (area 15; chunk P4c).
+        if let Some((_, target, _)) = &found
+            && target.store != entity.store
+        {
+            let written = shown(via_expr.syntax());
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_INCLUDE_UNKNOWN,
+                    format!("`{written}` leads to a record in another store"),
+                )
+                .at(via_span, format!("`{}` is in another store", target.name))
+                .reason(format!(
+                    "A query is one statement, which reads one database, and `{}` and `{}` are kept in two.",
+                    entity.name, target.name
+                ))
+                .next(format!(
+                    "Read the `{}` with a query of its own, by the `id` this one gives",
+                    target.name
+                )),
+            );
+            return None;
+        }
         let Some((kind, target, via)) = found else {
             // A reference whose type names nothing is resolution's error.
             if entities

@@ -20,6 +20,11 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::schedules::housekeeping::RELEASE.to_string(),
         ),
         ("ai_budget::DEBIT", crate::ai_budget::DEBIT.to_string()),
+        (
+            "erasure::INSERT_LOG",
+            crate::erasure::INSERT_LOG.to_string(),
+        ),
+        ("erasure::LOG_PAGE", crate::erasure::LOG_PAGE.to_string()),
         ("flags::READ", crate::flags::READ.to_string()),
         ("flags::READ_STORED", crate::flags::READ_STORED.to_string()),
         (

@@ -57,6 +57,7 @@ mod emails;
 mod encrypted_fields;
 mod erasure;
 mod erasure_not_possible;
+mod erasure_stores;
 mod events;
 mod external_first_sign_in;
 mod external_tokens;

@@ -309,6 +309,53 @@ fn events_plan(
             subscriber.elsewhere()
         });
     }
+    // Each store whose records refer to a person across stores, with the
+    // subscriber that applies an erasure there, and the one that keeps its
+    // entry in the log: each tried for as long as a request may take, then
+    // left for an operator (area 15; chunk P4c).
+    let erasure = writes::erasure_plan(db, project);
+    let generated = erasure
+        .people
+        .iter()
+        .flat_map(|person| person.elsewhere.iter().map(|part| part.store.clone()))
+        .collect::<std::collections::BTreeSet<String>>()
+        .into_iter()
+        .map(|store| {
+            (
+                jadpo_std::erasure::store_subscriber(&store),
+                format!("apply erasures in {store}"),
+                Target::ErasureIn { store },
+            )
+        })
+        .chain(erasure.log.iter().map(|log| {
+            (
+                jadpo_std::erasure::LOG_SUBSCRIBER.to_string(),
+                format!("log erasures in {}", log.connection()),
+                Target::ErasureLog(log.clone()),
+            )
+        }));
+    for (key, name, target) in generated {
+        let subscriber = SubscriberPlan {
+            key,
+            name,
+            event: jadpo_std::erasure::PERSON_ERASED_KEY.to_string(),
+            target,
+            attempts: jadpo_std::erasure::ATTEMPTS,
+            within_ms: jadpo_std::erasure::WITHIN_MS,
+            // It reaches every tenant's records, as erasure does.
+            tenant: TenantFrom::Untenanted,
+            store: None,
+            connections: Vec::new(),
+            through: None,
+            file: "app.jadpo".to_string(),
+            line: 1,
+        };
+        subscribers.push(if running {
+            subscriber
+        } else {
+            subscriber.elsewhere()
+        });
+    }
     subscribers.sort_by(|a, b| a.key.cmp(&b.key));
     jadpo_std::subscriber::EventsPlan {
         subscribers,
@@ -317,6 +364,7 @@ fn events_plan(
             .clone(),
         emails,
         files,
+        erasure,
     }
 }
 

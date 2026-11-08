@@ -17,6 +17,11 @@ pub struct EventsPlan {
     /// (area 16, "Deleting and erasing"; chunk B3): each has a subscriber
     /// whose target is [`Target::Files`].
     pub files: crate::files::FilesPlan,
+    /// Each person entity's erasure in every store it reaches, and where
+    /// the log is kept (area 15; chunk P4c): each store has a subscriber
+    /// whose target is [`Target::ErasureIn`], and the log one whose target
+    /// is [`Target::ErasureLog`].
+    pub erasure: crate::erasure::ErasurePlan,
 }
 
 impl EventsPlan {
@@ -112,7 +117,12 @@ impl SubscriberPlan {
                 vec![connection.clone()]
             }
             Target::Action { .. } => self.connections.clone(),
-            Target::Elsewhere => Vec::new(),
+            Target::ErasureLog(crate::erasure::ErasureLog::Files { connection }) => {
+                vec![connection.clone()]
+            }
+            Target::ErasureLog(crate::erasure::ErasureLog::Database { .. })
+            | Target::ErasureIn { .. }
+            | Target::Elsewhere => Vec::new(),
         }
     }
 
@@ -168,6 +178,17 @@ pub enum Target {
     /// sends the capability's [`crate::files::DELETE`] for its key, which
     /// a repeat sends again safely, then records the bytes gone.
     Files { connection: String },
+    /// A person's erasure applied in `store`, which isn't their own, after
+    /// the main commit (area 15, "What erasure reaches"; chunk P4c): the
+    /// event is [`crate::erasure::PERSON_ERASED`], and its delivery runs
+    /// [`crate::erasure::PersonPlan::elsewhere`]'s statement, which a
+    /// repeat runs again and finds nothing to do.
+    ErasureIn { store: String },
+    /// A person's entry in the erasure log, after the main commit (area
+    /// 15, "What erasure doesn't rewrite"; chunk P4c): the event is
+    /// [`crate::erasure::PERSON_ERASED`], and a repeat keeps the entry as
+    /// it is.
+    ErasureLog(crate::erasure::ErasureLog),
     /// Delivered by another deployable, one that runs the app's
     /// subscribers (area 14, "Declared deployables"; roadmap chunk
     /// 8.1o3): a deployable that doesn't run them still lists each, so an

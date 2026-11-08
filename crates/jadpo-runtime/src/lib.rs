@@ -113,6 +113,7 @@ pub mod effects;
 pub mod email;
 pub mod embed;
 mod env;
+pub mod erasure;
 mod executor;
 mod failure;
 #[cfg(feature = "testing")]
@@ -171,6 +172,7 @@ pub mod webauthn;
 pub mod webhooks;
 mod write;
 
+pub(crate) use boundary::committed as boundary_committed;
 pub use boundary::{
     ActionBody, RERUN_ATTEMPTS, RERUN_WINDOW_MS, action, commit_held, misconfigured,
     outcome_unknown, unavailable,

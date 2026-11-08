@@ -744,6 +744,26 @@ pub fn membership_read<'db>(
         let found =
             field_named("member").and_then(|(f, _)| entity.fields.iter().find(|x| x.name == f));
         match (found, &user) {
+            // Who holds a role is read in the statement that reads the
+            // record, so a membership and its user share a store (area 15;
+            // chunk P4c).
+            (Some(field), Some(user))
+                if field.reference.as_ref().is_some_and(|r| r.target == *user)
+                    && crate::data::data_model(db, project)
+                        .entity(user)
+                        .is_some_and(|target| target.store != entity.store) =>
+            {
+                problems.push(binding(
+                    span.clone(),
+                    format!("`member: {written}` refers to a `{user}` in another store"),
+                    "in another store",
+                    &format!(
+                        "A role is read in the one statement that reads a record, and `{}` and `{user}` are kept in two databases, so `{}.{}` is a reference only erasure follows.",
+                        entity.name, entity.name, field.name
+                    ),
+                    &format!("Keep `{}` in the store `{user}` is in", entity.name),
+                ));
+            }
             (Some(field), Some(user))
                 if field.reference.as_ref().is_some_and(|r| r.target == *user) =>
             {

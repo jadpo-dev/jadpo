@@ -725,10 +725,27 @@ impl MemoryFiles {
         let Value::Record(input) = &call.input else {
             return Answer::Misconfigured;
         };
+        // Every key of the erasure log kept here (area 15; chunk P4c).
+        if call.operation == jadpo_std::files::LIST {
+            let mut keys: Vec<Value> = self
+                .files
+                .borrow()
+                .keys()
+                .filter(|key| jadpo_std::erasure::log_key_parts(key).is_some())
+                .map(|key| Value::text(key))
+                .collect();
+            keys.sort_by_key(|key| match key {
+                Value::Text(text) => text.to_string(),
+                _ => String::new(),
+            });
+            return Answer::Value(Value::list(keys));
+        }
         let Some(Value::Text(key)) = input.get("key") else {
             return Answer::Misconfigured;
         };
-        if !jadpo_std::files::is_key(key) {
+        let logged = jadpo_std::erasure::log_key_parts(key).is_some()
+            && matches!(call.operation.as_str(), PUT | READ);
+        if !jadpo_std::files::is_key(key) && !logged {
             return Answer::Failed(NOT_FOUND.into());
         }
         match call.operation.as_str() {

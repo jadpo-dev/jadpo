@@ -278,7 +278,7 @@ D1 first: the site starts once D1 has merged.
   each widening `error_format_scope` to the rules it finished; tick it
   once all are.
 - [x] **D13c1 `type.a*` to `type.e*`**: [writing guide](writing.md), "How an error page reads"; `tools/docs/language_docs.py`, `error_format_scope` and `BROUGHT_TO_FORMAT`; the catalogue summaries in `crates/jadpo-diag`; the pages of `type.a*` to `type.e*`.
-- [ ] **D13c2 `type.f*` to `type.n*`** `opus · high`: 31 pages.
+- [x] **D13c2 `type.f*` to `type.n*`**: [writing guide](writing.md), "How an error page reads"; `tools/docs/language_docs.py`, `BROUGHT_TO_FORMAT`; the catalogue summaries in `crates/jadpo-diag`; the pages of `type.f*` to `type.n*`.
 - [ ] **D13c3 `type.o*` to `type.v*`** `opus · high`: 37 pages.
 - [ ] **D13c4 `syntax.a*` to `syntax.l*`** `opus · high`: 27 pages.
 - [ ] **D13c5 `syntax.m*` to `syntax.v*`** `opus · high`: 28 pages.
@@ -534,6 +534,25 @@ After the registry is live, in order:
   "`jadpo suggest`". The service `jadpo suggest share` sends to, built against
   the protocol its local fake speaks today.
 
+## Reviewing a change
+
+What shows a developer why Jadpo is worth trying, so it comes ahead of the
+work below (Richard, 2026-11-08).
+
+- [ ] **U1 The review web view** **needs a maintainer**: Richard plans it and
+  its design first (2026-11-08), then `opus · high`: area 17, "Reviewing a change"
+  and "The web view". A static page in `build/review/` written by `jadpo
+  approval`, from the report's JSON: the change at a high level in the
+  report's order, the graph of the change as a flow chart, each path opened
+  to see what surrounds it, what the change newly reaches, and links from
+  every line to its source. No accounts and no approvals; acceptances stay
+  files. Done when a change to the
+  golden todo opens as this page and CI can publish it beside the pull
+  request.
+- [ ] **U2 What changed between an agent's revisions** `opus · high` after
+  U1: area 17, "The web view". The differences between an agent's successive
+  revisions of a change, added to the page.
+
 ## After the first build, in order
 
 1. [x] **F1 Units and money in plain numbers**: area 2, "Units and money
@@ -571,19 +590,13 @@ After the registry is live, in order:
      "Belonging", "Kept records" and "The person's own record, as built
      (chunk P4b)"; compiler/runtime §2.3, "A person's records" and
      "Erasure", and §2.6, "A person's erasure".
-   - [ ] **P4c Other stores, `PersonErased` and the erasure log** `opus ·
-     xhigh` after P4b: area 15, "What erasure reaches" and "What erasure
-     doesn't rewrite"; the design notes' "Records in another store",
-     "`PersonErased`" and "Backups", as decided. A reference to a person
-     across stores with `erase:` and no `on_delete:`, each outcome applied
-     by a generated subscriber in that store after the main commit;
-     `PersonErased` emitted in the erasure's transaction with the entity's
-     name, the `id` and the time; and `privacy: { erasure_log: { store: } }`
-     (only that part of `privacy:`), a store that holds no person's records
-     or a store of files, written after the commit and replayed at every
-     start. OAuth grants and caches join when they are built. Done when
-     an erased person leaves nothing the page says erasure reaches, on
-     both executors.
+   - [x] **P4c Other stores, `PersonErased` and the erasure log**: area 15,
+     "Records in another store", "Who was erased: `PersonErased`", "What
+     erasure doesn't rewrite" and "What is built", and the design notes'
+     "Other stores, `PersonErased` and the log, as built (chunk P4c)";
+     compiler/runtime §2.3, "Erasure", and §2.6, "Past the person's
+     transaction"; the pages of `data.erasure_log_*`,
+     `data.person_removal_across_stores` and `data.reference_across_stores`.
    - [ ] **P5 Export** `opus · high` after P4c and V5: area 15, "Export"
      and "Who may erase and export"; area 13's generated test.
      `User.export(id)` as a `PersonalDataExport`: the person's record,
@@ -885,8 +898,7 @@ After the registry is live, in order:
      "Budgets" and "Streams, embeddings and the OpenAI and Anthropic
      packages". `keep_content:`, kept in encrypted fields, and an `embed:`
      with a `batch:` below 100, split across requests.
-9. Product work: the developer console and MCP, the graph review UI
-   (Revset-inspired), acting as an OAuth
+9. Product work: the developer console and MCP, acting as an OAuth
    provider, D1 (area 5, "Actions on D1", with `jadpo sql` for SQLite) and
    row-level security (opt-in, design notes for area 6). The console holds
    telemetry, the schedules' timeline and the dev inbox's page, and `jadpo

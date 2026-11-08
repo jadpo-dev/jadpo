@@ -346,6 +346,10 @@ rules! {
         "Erasing a person keeps records with `Erasure.retained`, their own or others', but their entity has no `retention:` saying when they go";
     DATA_ERASE_UNREACHED: "data.erase_unreached", area 15, Error, Agent,
         "A field's `erase:` is on a field erasing a person never reaches: one that isn't a reference, or a reference to records erasure never deletes";
+    DATA_ERASURE_LOG_REQUIRED: "data.erasure_log_required", area 15, Error, Human,
+        "An action erases a person, and the application doesn't say where the erasure log is kept, so restoring a backup would bring them back";
+    DATA_ERASURE_LOG_STORE: "data.erasure_log_store", area 15, Error, Human,
+        "The erasure log is kept somewhere restoring a person's database would take it back with them, or somewhere it can't be kept";
     DATA_FIELD_ENCRYPTION_KEY_INVALID: "data.field_encryption_key_invalid", area 15, Error, Agent,
         "The application's `field_encryption_key:` reads something other than an `EncryptionKey` setting";
     DATA_FIELD_ENCRYPTION_KEY_REQUIRED: "data.field_encryption_key_required", area 15, Error, Human,
@@ -398,6 +402,8 @@ rules! {
         "Patch given something other than an `Input`";
     DATA_PATCH_OVERLAP: "data.patch_overlap", area 6, Error, Agent,
         "Supplied-field block sets a field the patch already sets";
+    DATA_PERSON_REMOVAL_ACROSS_STORES: "data.person_removal_across_stores", area 15, Error, Human,
+        "Something other than erasure would remove a person another store refers to, and nothing would apply what that reference's `erase:` says";
     DATA_PERSONAL_UNREACHABLE: "data.personal_unreachable", area 15, Error, Human,
         "A field marked as personal data is on an entity erasing a person never reaches, so it could never be found";
     DATA_READ_IN_LOOP: "data.read_in_loop", area 6, Error, Agent,
@@ -1425,63 +1431,63 @@ rules! {
     TYPE_ENUM_LABEL: "type.enum_label", area 2, Error, Agent,
         "An enum variant is given a label or a value, as in `open: \"Open\"`";
     TYPE_FIELD_ON_NON_RECORD: "type.field_on_non_record", area 2, Error, Agent,
-        "Field is read from a value without fields";
+        "Code reads a field, as in `name.value`, from a value whose type has no fields, such as one built on `Text`";
     TYPE_FIELD_UNPROVED: "type.field_unproved", area 2, Error, Agent,
-        "Object field value may break the field's rules";
+        "An object is built with a field value that might break a rule the field adds, such as a value that can be longer than the field's `max_length`";
     TYPE_FIELD_UPDATE_FORBIDDEN: "type.field_update_forbidden", area 9, Error, Agent,
         "An update changes a field that stays fixed once its record exists, such as a user field a grant names or a field marked `immutable: true`";
     TYPE_FILE_READ_TOO_LARGE: "type.file_read_too_large", area 16, Error, Agent,
         "Code reads a whole file into memory from a file field that can hold more than the 10 MB a whole read allows";
     TYPE_FOREIGN_TYPE: "type.foreign_type", area 2, Error, Agent,
-        "Type named as another language names it";
+        "A type is named as another language names it, such as `string` or `int`, and the project declares no type of that name";
     TYPE_FOREIGN_VALUE: "type.foreign_value", area 2, Error, Agent,
-        "Value written as another language writes it";
+        "A value is written as another language writes it, such as `null` for `none` or Python's `True` for `true`";
     TYPE_INCOMPARABLE: "type.incomparable", area 3, Error, Agent,
-        "Values cannot be compared for equality";
+        "An `==` or `!=` compares two values of different types, neither of which stands in for the other, or compares a value that is never `none` with `none`";
     TYPE_INLINE_FUNCTION_PARAMETERS: "type.inline_function_parameters", area 3, Error, Agent,
-        "Inline function has a different number of parameters than its operation gives";
+        "An inline function has more or fewer parameters than the operation it is passed to gives it, such as one parameter for `map.filter`, which gives two";
     TYPE_INLINE_FUNCTION_PLACEMENT: "type.inline_function_placement", area 3, Error, Agent,
-        "Inline function is not an argument to a collection operation";
+        "An inline function is written somewhere other than as an argument to a standard-library operation that takes one, such as an argument to your own function";
     TYPE_INVALID_LITERAL: "type.invalid_literal", area 2, Error, Agent,
         "A literal value breaks a rule of the type it goes into, such as a number below the type's `min`";
     TYPE_INVALID_PATTERN: "type.invalid_pattern", area 2, Error, Agent,
-        "Pattern is not a supported regular expression";
+        "A type's `pattern:` is a regular expression Jadpo can't use, because it has a backreference or lookaround or isn't a valid regular expression";
     TYPE_KEY_AS_VALUE: "type.key_as_value", area 19, Error, Agent,
         "A key held as data is read as a value, when it goes only into a key-type field or a `crypto` call's `key:`";
     TYPE_LOCALE_DEFAULT_UNSUPPORTED: "type.locale_default_unsupported", area 10, Error, Agent,
-        "Default locale is not a supported one";
+        "The `default:` of `locales { }` is a locale its `supported:` list doesn't have";
     TYPE_LOCALE_DUPLICATE: "type.locale_duplicate", area 10, Error, Agent,
-        "Locale is listed twice";
+        "A locale is listed twice in `locales { }`, in `supported:` or in `in_progress:`";
     TYPE_LOCALE_IN_PROGRESS_DEFAULT: "type.locale_in_progress_default", area 10, Error, Agent,
-        "The default locale is listed as in progress";
+        "The `default:` locale of `locales { }` is also listed in `in_progress:`, as a locale whose wording isn't finished";
     TYPE_LOCALE_IN_PROGRESS_UNSUPPORTED: "type.locale_in_progress_unsupported", area 10, Error, Agent,
-        "An in-progress locale is not a supported locale";
+        "A locale listed in `in_progress:` isn't in the `supported:` list of `locales { }`";
     TYPE_LOCALE_INVALID: "type.locale_invalid", area 10, Error, Agent,
-        "Locale is not written as a Locale";
+        "A locale in `locales { }` is written as something other than one of `Locale`'s names, such as a tag in quotes or a misspelt `Locale.en_bg`";
     TYPE_LOCALE_UNSUPPORTED: "type.locale_unsupported", area 10, Error, Agent,
         "Your code writes out a locale, such as `Locale.fr_fr`, that isn't in the app's list of supported locales";
     TYPE_LOGICAL_OPERAND: "type.logical_operand", area 3, Error, Agent,
-        "Logical operator needs Bool operands";
+        "An `and` or an `or` is given a value that isn't a `Bool`, or a `Bool` that may be `none`";
     TYPE_MAP_KEY_BOUNDARY: "type.map_key_boundary", area 2, Error, Agent,
-        "Map key at a boundary isn't text";
+        "An `Input` or an `Output` holds a map keyed by a type built on something other than `Text` or `Uuid`, though JSON writes a map's keys as text";
     TYPE_MATCH_ARM_VALUE: "type.match_arm_value", area 3, Error, Agent,
-        "Match arm gives no value";
+        "An arm of a `match` that gives a value is a block that can reach its end without one";
     TYPE_MATCH_DUPLICATE_PATTERN: "type.match_duplicate_pattern", area 3, Error, Agent,
-        "Match pattern is already covered";
+        "A `match` arm matches a case that an arm above it already matches";
     TYPE_MATCH_NON_EXHAUSTIVE: "type.match_non_exhaustive", area 3, Error, Agent,
         "A `match` on an enum, a `Bool` or a value that may be `none` leaves out one of its cases";
     TYPE_MATCH_PATTERN_TYPE: "type.match_pattern_type", area 3, Error, Agent,
-        "Pattern cannot match this value";
+        "A `match` arm's pattern is for a different kind of value from the one matched, such as `true` in a `match` on an enum";
     TYPE_MATCH_SOME_NON_OPTIONAL: "type.match_some_non_optional", area 3, Error, Agent,
-        "Nullable pattern on a value that is never none";
+        "A `match` uses `some(...)` or `none` on a value whose type says it is never `none`";
     TYPE_MATCH_UNKNOWN_BINDING: "type.match_unknown_binding", area 3, Error, Agent,
-        "Pattern names data a case does not carry";
+        "A `match` arm puts a name in brackets after a variant that carries no data for it to name";
     TYPE_MATCH_UNKNOWN_VARIANT: "type.match_unknown_variant", area 3, Error, Agent,
-        "Pattern names an unknown enum variant";
+        "A `match` arm names a variant that the enum doesn't declare";
     TYPE_MATCH_UNREACHABLE_PATTERN: "type.match_unreachable_pattern", area 3, Error, Agent,
-        "Match arm is unreachable after the wildcard";
+        "A `match` arm comes after the `_` arm, which has already matched every value it could";
     TYPE_MATCH_WILDCARD_CLOSED: "type.match_wildcard_closed", area 3, Error, Agent,
-        "Wildcard on a value whose cases can be listed";
+        "A `match` on an enum, a `Bool` or a value that may be `none` has a `_` arm instead of an arm for each case";
     TYPE_MATCH_WILDCARD_REQUIRED: "type.match_wildcard_required", area 3, Error, Agent,
         "A `match` on text or a number lists some values but has no `_` arm for all the others";
     TYPE_MISMATCH: "type.mismatch", area 2, Error, Agent,
@@ -1489,21 +1495,21 @@ rules! {
     TYPE_MISSING_FIELD: "type.missing_field", area 2, Error, Agent,
         "An object value is built without one of the fields its type declares";
     TYPE_MISSING_VARIANT_FIELD: "type.missing_variant_field", area 2, Error, Agent,
-        "Variant is missing a field";
+        "An enum variant's value is built without one of the fields the variant declares";
     TYPE_MONEY_SPLIT: "type.money_split", area 19, Error, Agent,
-        "Money is divided by a count";
+        "Code divides money by a whole number with `/`, which would share it out and lose minor units to rounding";
     TYPE_NAMED_ARGUMENT_UNKNOWN: "type.named_argument_unknown", area 3, Error, Agent,
-        "Named argument is not a parameter";
+        "A call names an argument that the operation it calls doesn't have, such as a misspelt `itmes:`";
     TYPE_NAMED_ARGUMENT_UNSUPPORTED: "type.named_argument_unsupported", area 3, Error, Agent,
-        "Callable does not take named arguments";
+        "A call to your own function or action names its arguments, which only the standard library's operations take";
     TYPE_NOT_A_TYPE: "type.not_a_type", area 2, Error, Agent,
-        "Field's type is written as a value or a call";
+        "A field's type is written as a value, a call or a block of fields, such as an enum's variant where the enum goes";
     TYPE_NOT_A_VALUE: "type.not_a_value", area 3, Error, Agent,
-        "Declaration named where a value is read";
+        "A type, function or other declaration is named where a value is read, as in `var placed: Placed = Placed`";
     TYPE_NOT_RECORD: "type.not_record", area 2, Error, Agent,
-        "Braces build a type that has no fields";
+        "Braces build a value of a type that has no fields, such as one built on `Text`, or of one only the runtime builds, or `include` or `pick` copies from a type with no fields";
     TYPE_NULLABLE_SELECTION: "type.nullable_selection", area 2, Error, Agent,
-        "Field is read from a value that may be none";
+        "Code reads a field from a value that may be `none`, before a `match` has found it";
     TYPE_OPTIONAL_OUTSIDE_INPUT: "type.optional_outside_input", area 2, Error, Agent,
         "Optional or default field outside an Input";
     TYPE_ORDERING_OPERAND: "type.ordering_operand", area 3, Error, Agent,

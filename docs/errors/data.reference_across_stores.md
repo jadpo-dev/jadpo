@@ -9,6 +9,12 @@ database keeps foreign keys only between its own tables. Here `OldTodo`
 is in the `archive` database and `User` is in `main`, so neither database
 could check that the user exists or apply `on_delete:`.
 
+Only a reference to a person may cross stores, one that says `erase:` and
+has no `on_delete:` ([Records in another
+store](../language/15-personal-data.md#records-in-another-store)). It isn't a
+foreign key: erasing the person applies what `erase:` says in that store,
+after the person's own commit. `User` here isn't a person.
+
 Jadpo won't choose for you between moving one of the entities and giving
 up the reference. Moving decides which database holds the records, and
 giving up the reference means nothing keeps the two in step.
@@ -57,7 +63,7 @@ error: `OldTodo.owner_id` refers to a `User` in another store
   |
 5 |     owner_id: User.id {
   |     ^^^^^^^^ `OldTodo` is in `archive`
-  reason: A reference is a foreign key, which a database keeps only between its own tables; an action writes one store, and work across stores goes through an event and a subscriber.
+  reason: A reference is a foreign key, which a database keeps only between its own tables; an action writes one store, and work across stores goes through an event and a subscriber. Only a reference to a person may cross, one that says `erase:` and no `on_delete:`, which isn't a foreign key: erasure applies it in this store after the person's commits.
   next: Keep `OldTodo` and `User` in one store, or store the id as a plain `Uuid` (human)
   rule: data.reference_across_stores
   help: https://jadpo.dev/docs/errors/data.reference_across_stores
@@ -155,3 +161,4 @@ as they are.
 - [Stores](../language/05-data.md#stores)
 - [References and `on_delete`](../language/05-data.md#references-and-on_delete)
 - [One store per action](../language/06-reads-and-writes.md#one-store-per-action)
+- [Records in another store](../language/15-personal-data.md#records-in-another-store)
