@@ -1127,59 +1127,59 @@ rules! {
     SUGGEST_SHARE_FAILED: "suggest.share_failed", area 14, Error, Human,
         "Jadpo HQ couldn't be reached, or refused what `jadpo suggest share` sent, so the entries wait to be shared again";
     SYNTAX_ASSERTION_FORM: "syntax.assertion_form", area 13, Error, Agent,
-        "Assertion written in another language's form";
+        "A test checks a value with another language's assertion instead of `assert`";
     SYNTAX_ASYNC_AWAIT: "syntax.async_await", area 3, Error, Agent,
-        "Code marked `async` or `await`";
+        "A function or a call is marked `async` or `await`";
     SYNTAX_ATTEMPT_PLACEMENT: "syntax.attempt_placement", area 3, Error, Agent,
-        "Attempt is used inside an expression";
+        "An `attempt` is written inside an expression instead of starting a statement";
     SYNTAX_COLLECTION_TYPE: "syntax.collection_type", area 2, Error, Agent,
-        "Collection type written in another language's form";
+        "A collection type is written in another language's form instead of `List<T>`, `Set<T>` or `Map<K, V>`";
     SYNTAX_COLON_REQUIRED: "syntax.colon_required", area 3, Error, Agent,
-        "Member has no colon before its value";
+        "A member inside braces is written without the colon between its name and its value";
     SYNTAX_COMMENT_STYLE: "syntax.comment_style", area 1, Error, Agent,
-        "Comment written with `#` or `/* */`";
+        "A comment is written with `#` or `/* */` instead of `//`";
     SYNTAX_CONDITION_BRACKETS: "syntax.condition_brackets", area 3, Error, Agent,
-        "Condition is not in brackets";
+        "A condition isn't wholly inside brackets";
     SYNTAX_ELSE_IF: "syntax.else_if", area 3, Error, Agent,
-        "Else-if written as `elif` or `elsif`";
+        "An `if` is continued with `elif`, `elsif` or `elseif` instead of `else if`";
     SYNTAX_EQUALITY_OPERATOR: "syntax.equality_operator", area 3, Error, Agent,
-        "Comparison written with another language's operator";
+        "A comparison is written with another language's operator instead of `==` or `!=`";
     SYNTAX_EXPECTED_DECLARATION: "syntax.expected_declaration", area 1, Error, Agent,
-        "Expected a declaration";
+        "A line at the top of a file doesn't start a declaration";
     SYNTAX_EXPECTED_EXPRESSION: "syntax.expected_expression", area 3, Error, Agent,
-        "Expected a value";
+        "A value is missing where one is needed";
     SYNTAX_EXPECTED_HTTP_METHOD: "syntax.expected_http_method", area 7, Error, Agent,
-        "Route method is not one a route is written with";
+        "A route is written with a word other than `GET`, `POST`, `PUT`, `PATCH` or `DELETE`";
     SYNTAX_EXPECTED_NAME: "syntax.expected_name", area 1, Error, Agent,
-        "Expected a name";
+        "A name is missing, or a reserved word stands where a name is needed";
     SYNTAX_EXPECTED_STATEMENT: "syntax.expected_statement", area 3, Error, Agent,
-        "Expected a statement";
+        "A body holds something that isn't a Jadpo statement";
     SYNTAX_EXPORT_KEYWORD: "syntax.export_keyword", area 1, Error, Agent,
-        "Declaration marked `export` or `pub`";
+        "A declaration is marked `export` or `pub`";
     SYNTAX_FAILS_AFTER_RESULT: "syntax.fails_after_result", area 4, Error, Agent,
-        "Fails list comes after the result type";
+        "A signature's `fails` list comes after its result type instead of before `->`";
     SYNTAX_FOR_LOOP: "syntax.for_loop", area 3, Error, Agent,
-        "Loop written in another language's form";
+        "A loop is written in another language's form instead of `for item in items`";
     SYNTAX_FUNCTION_KEYWORD: "syntax.function_keyword", area 3, Error, Agent,
-        "Function declared with `fn`, `func`, `def` or `fun`";
+        "A function is declared with `fn`, `func`, `def` or `fun` instead of `function`";
     SYNTAX_IMPORT_STATEMENT: "syntax.import_statement", area 1, Error, Agent,
-        "Import written in another language's form";
+        "A file brings names in with another language's import instead of `use`";
     SYNTAX_INCREMENT_OPERATOR: "syntax.increment_operator", area 3, Error, Agent,
-        "Variable changed with `++`, `--` or `+=`";
+        "A variable is changed with `++`, `--`, `+=`, `-=` or `*=`";
     SYNTAX_INLINE_FUNCTION_ARROW: "syntax.inline_function_arrow", area 3, Error, Agent,
-        "Inline function written in another language's form";
+        "An inline function is written in another language's form instead of `item -> expression`";
     SYNTAX_INVALID_ESCAPE: "syntax.invalid_escape", area 1, Error, Agent,
-        "Unknown escape in a string";
+        "A string holds a backslash followed by something that isn't an escape Jadpo knows";
     SYNTAX_LOCALES_DEFAULT_REQUIRED: "syntax.locales_default_required", area 10, Error, Agent,
-        "Locales declaration has no default";
+        "A `locales { }` declaration has no `default:`";
     SYNTAX_LOCALES_DUPLICATE_OPTION: "syntax.locales_duplicate_option", area 10, Error, Agent,
-        "Locales option is given twice";
+        "An option of `locales { }` is given twice";
     SYNTAX_LOCALES_SUPPORTED_REQUIRED: "syntax.locales_supported_required", area 10, Error, Agent,
-        "Locales declaration lists no supported locales";
+        "A `locales { }` declaration has no `supported:`";
     SYNTAX_LOCALES_UNKNOWN_OPTION: "syntax.locales_unknown_option", area 10, Error, Agent,
-        "Locales declaration has no such option";
+        "A `locales { }` declaration sets an option that doesn't exist";
     SYNTAX_LOGICAL_OPERATOR: "syntax.logical_operator", area 3, Error, Agent,
-        "Logical operator written in another language's form";
+        "A logical operator is written in another language's form instead of `and`, `or` or `not`";
     SYNTAX_MAPPING_BLOCK_REQUIRED: "syntax.mapping_block_required", area 4, Error, Agent,
         "Mappings are written after the call instead of in a block";
     SYNTAX_MATCH_ARROW: "syntax.match_arrow", area 3, Error, Agent,
