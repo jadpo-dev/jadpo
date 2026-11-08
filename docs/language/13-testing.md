@@ -633,25 +633,6 @@ public type ReminderReceipt = Object {
 type DueTime = Instant {}
 ```
 
-```jadpo check project=overdue-reminders file=domains/planning/entities/todo.jadpo migrate=initial hidden
-use planning/types { DueTime }
-
-/// A task with a due date.
-entity Todo {
-    id: Uuid
-    title: Text {
-        max_length: 200
-    }
-    owner: Email
-    due_at: DueTime
-
-    policy: {
-        create: [Access.system]
-        read: [Access.system]
-    }
-}
-```
-
 ```jadpo check project=overdue-reminders file=domains/planning/actions/remind_overdue.jadpo hidden
 use app { reminder_mail }
 use planning/types { DueTime }
@@ -712,6 +693,25 @@ fixture one_overdue_todo() {
         }
     }
     assert todo.title == "Buy milk"
+}
+```
+
+```jadpo check project=overdue-reminders file=domains/planning/entities/todo.jadpo migrate=initial hidden
+use planning/types { DueTime }
+
+/// A task with a due date.
+entity Todo {
+    id: Uuid
+    title: Text {
+        max_length: 200
+    }
+    owner: Email
+    due_at: DueTime
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
 }
 ```
 
