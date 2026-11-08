@@ -18,6 +18,124 @@ Why [Values and types](../02-values-and-types.md) is the way it is: the decision
 | A package input that takes any of the app's object types, serialised as JSON (Postmark's template variables, Stripe's metadata) | 2, 11 | Decided: the built-in `AnyObject` |
 | `5%` as a percentage literal (`free_space_floor:`, area 16) | 2 | Follows from a decision |
 
+## Open questions
+
+1. **Typed holes: may an agent write `_` where it doesn't know the value,
+   and have `jadpo check` say what goes there?** A recommendation, awaiting
+   a decision (roadmap A19).
+
+   *Recommendation:* yes, narrowly. `_` may stand where a value goes (an
+   argument, a field of an object being built, a `return`, a `var`'s value,
+   a `set:` line), and is always the error `type.hole`, decided by the
+   agent:
+
+   ```text
+   error: `_` stands for a `Greeting.name`
+    --> domains/hello/actions/greet.jadpo:7:15
+     |
+   7 |         name: _
+     |               ^ a `Greeting.name` goes here
+     reason: `Greeting.name` is a `PersonName { given: GivenName, family: FamilyName? }`. In scope, `input.name` fits.
+     next: Write `input.name` (agent)
+     rule: type.hole
+   ```
+
+   - **What it says:** the type, written as the code would write it, with
+     an object's shape and the field type it is built through, as the
+     first `type.mismatch` already gives them; then up to five values that
+     fit, closest first: locals and parameters, their fields one level
+     down (`input.name`), constants, and library and standard calls whose
+     result fits. With one fit, `next:` carries its edit; with none, the
+     edit that builds one (`Greeting.name(PersonName { given: ..., family:
+     none })`) and `jadpo help <Type>` for a standard type. `--json` adds
+     `expected` (the type as written) and `fits` (each one's text, type
+     and edit), so a tool reads them without parsing the reason. Hovering
+     over `_` in the editor shows the same.
+   - **One form, `_`, and only as a value.** No named holes (`?name`, as in
+     Agda and Idris): every error already gives its place. `_` is already
+     the `match` wildcard, "anything" in a pattern; as a value it reads as
+     "not chosen yet", as in Haskell. Today `_` as a value is
+     `syntax.expected_expression`, which ignores the type the checker
+     knows is wanted there, so this turns an existing, unhelpful error into
+     a useful one, with no new token or reserved word. Not in a type
+     (`List<_>`) or a pattern: type positions have completion and `jadpo
+     help types`.
+   - **Where nothing says the type** (`_ + 1`, `_.count`), the same rule
+     says so, and to declare the value with its type first. That is rare,
+     since every `var`, parameter, field and return states its type.
+   - **It can never ship.** A hole is an error like every other finding
+     (there is no warning severity) and can't be declined, so `check`,
+     `test` and `build` refuse the project and CI fails it. There is no
+     deferred mode, as GHC's `-fdefer-typed-holes` or Idris running until
+     it reaches one: tests run only on a project that checks, and a hole
+     that ran would be one more runtime failure for every reviewer to
+     think about. Lean's `sorry`, a gap that compiles with a warning, is
+     the shape to avoid. A hole is safer than what an agent writes today
+     when it doesn't know, a placeholder that compiles (`""`, `0`) and can
+     ship.
+
+   **What it would save, measured against the `PersonName` detour.** In
+   the outside agent's 0.2.0 run, runs 17 to 19 took 3 minutes 14 seconds
+   and gave 7 of the run's 16 compiler errors (4, then 3). The agent wrote
+   text where `PersonName`, an object, was required, believing it knew the
+   type; then hit three 404s, one from a broken link, found `jadpo help
+   PersonName` didn't exist, and read the Rust source at the release tag
+   for the two fields; then wrapped the value in its field type
+   (`Book.author(PersonName { ... })`) as the second error's edit said.
+
+   A hole would have saved none of that: an agent writes `_` only where it
+   knows it doesn't know, and this one thought it knew. What removes the
+   detour is already built: links that can't break, `jadpo help
+   PersonName`, and a first `type.mismatch` that shows the shape and the
+   field type together. Reproduced on 2026-11-08 with jadpo 0.3.0 in a new
+   project giving an input and an output a `PersonName` field, written as
+   text in the action and its test: the first `jadpo check` names the
+   shape, the wrapper, `jadpo help PersonName` and an exact edit at each
+   place, with no lookup. One round is left: the edit writes `PersonName {
+   given: "Ann" }`, which is `type.missing_field` for `family`, since an
+   object literal writes a nullable field as `none`. Fixing that edit, not
+   a hole, makes the detour one `check`.
+
+   Where a hole does help is the case the run didn't have: an agent that
+   knows it doesn't know which value goes in, which field types make
+   common (`Customer.email` against `Email`, a reference's `Customer.id`
+   against `Supplier.id`). Today it guesses and reads a `type.mismatch`,
+   one `check`; with a hole it is still one `check`, but the answer lists
+   what in scope fits rather than leaving the agent to search for it. So
+   the saving is lookups, not runs, and it is unmeasured: the next outside
+   run's journal should count the holes written and the lookups after
+   them.
+
+   **Its size:** one piece of work of moderate size. The parser makes `_` a
+   value node; the checker already records the type each position
+   requires, for completion, and raises `type.hole` there; the fits come
+   from completion's names in scope and its test of what fits, which
+   already puts what fits first, adding fields one level down; the shape
+   and the wrapper come from `type.mismatch`'s object builder; then the
+   rule's page, a section on this area's page, and area 14's lines for
+   `check --json` and hover. Nothing in the runtime, the interpreter or
+   code generation changes, since a project with a hole never passes
+   `check`.
+
+   **What it overlaps:** completion, the same list ranked the same way,
+   for an agent that runs `check` rather than an editor; `type.mismatch`,
+   the same shape, wrapper and building edit; `jadpo help <Type>`, which
+   it points to; and `jadpo inspect` (roadmap A17), the project map, where
+   a hole answers at one place. A position query, `jadpo inspect
+   <file>:<line>:<column>`, was weighed instead of syntax and rejected: an
+   agent edits text and doesn't know columns, and writing `_` is an edit
+   it already makes.
+
+   **Prior art.** GHC reports `_` (and `_name`) as "Found hole" with its
+   type, the bindings in scope and the "valid hole fits", an error unless
+   deferred. Agda's and Idris's `?` goals show the type and context in the
+   editor, and Idris 2 runs a program until it reaches one. Lean's `_`
+   asks the elaborator to fill it and `sorry` admits a gap. TypeScript has
+   none: agents write `as any` or a dummy value. Work on Hazel (OOPSLA
+   2024) found that giving a model the type and the relevant definitions
+   at a hole improved what it wrote, which is the information this report
+   gives.
+
 ## Decisions
 
 | Topic | Decision |
