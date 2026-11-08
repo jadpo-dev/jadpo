@@ -271,6 +271,24 @@ D1 first: the site starts once D1 has merged.
 - [ ] **D13c The rest of the error pages** `opus · high`: every other page
   in `docs/errors/` to the format, each rule's catalogue summary its
   page's first sentence; `error_format_scope` then covers every page.
+  Split by size (2026-11-08) into D13c1 to D13c15 below, taken in order,
+  each widening `error_format_scope` to the rules it finished; tick it
+  once all are.
+- [x] **D13c1 `type.a*` to `type.e*`**: [writing guide](writing.md), "How an error page reads"; `tools/docs/language_docs.py`, `error_format_scope` and `BROUGHT_TO_FORMAT`; the catalogue summaries in `crates/jadpo-diag`; the pages of `type.a*` to `type.e*`.
+- [ ] **D13c2 `type.f*` to `type.n*`** `opus · high`: 31 pages.
+- [ ] **D13c3 `type.o*` to `type.v*`** `opus · high`: 37 pages.
+- [ ] **D13c4 `syntax.a*` to `syntax.l*`** `opus · high`: 27 pages.
+- [ ] **D13c5 `syntax.m*` to `syntax.v*`** `opus · high`: 28 pages.
+- [ ] **D13c6 `data.*`** `opus · high`: 40 pages.
+- [ ] **D13c7 `semantic.*`** `opus · high`: 35 pages.
+- [ ] **D13c8 `route.*` and `api.*`** `opus · high`: 33 pages.
+- [ ] **D13c9 `failure.*`, `decline.*` and `effect.*`** `opus · high`: 31 pages.
+- [ ] **D13c10 `query.*`, `record.*` and `visibility.*`** `opus · high`: 28 pages.
+- [ ] **D13c11 `policy.*`, `rate_limits.*`, `connection.*`, `constant.*`, `naming.*` and `import.*`** `opus · high`: 30 pages.
+- [ ] **D13c12 `configuration.*`, `deployable.*`, `toolchain.*`, `install.*`, `publish.*` and `library.*`** `opus · high`: 34 pages.
+- [ ] **D13c13 `translation.*`, `layout.*` and `email.*`** `opus · high`: 33 pages.
+- [ ] **D13c14 `package.*`, `test.*`, `migration.*` and `acceptance.*`** `opus · high`: 28 pages.
+- [ ] **D13c15 `step.*`, `subscriber.*`, `schedule.*`, `prompt.*`, `event.*`, `ai.*` and `receiving.*`** `opus · high`: 18 pages; then `error_format_scope` covers every rule.
 - [x] **D14 The toolchain launcher**, in 0.1.0: [tooling](language/14-tooling.md), "Which jadpo runs"; `crates/jadpo-cli/src/launcher.rs`, `releases.rs`, `attestation.rs`, `toolchains.rs`.
 
 ## Phase 10 — Golden todo
