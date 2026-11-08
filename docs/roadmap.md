@@ -204,16 +204,36 @@ work below (Richard, 2026-11-08).
 - [ ] **U1 The review web view** **needs a maintainer**: Richard plans it and
   its design first (2026-11-08), then `opus · high`: area 17, "Reviewing a change"
   and "The web view". A static page in `build/review/` written by `jadpo
-  approval`, from the report's JSON: the change at a high level in the
-  report's order, the graph of the change as a flow chart, each path opened
-  to see what surrounds it, what the change newly reaches, and links from
-  every line to its source. No accounts and no approvals; acceptances stay
-  files. Done when a change to the
-  golden todo opens as this page and CI can publish it beside the pull
-  request.
-- [ ] **U2 What changed between an agent's revisions** `opus · high` after
-  U1: area 17, "The web view". The differences between an agent's successive
-  revisions of a change, added to the page.
+  approval`, from the report's JSON: decisions first, each with its state and
+  the command that writes its acceptance, then the change in the report's
+  order, the graph of the change as a flow chart, each path opened to see what
+  surrounds it, what the change newly reaches, and links from every line to
+  its source. A button copies the selected nodes' keys and the reviewer's
+  request for a coding agent, and nothing written in the change. No accounts
+  and no approvals; acceptances stay files. Done when a change to the golden
+  todo opens as this page and CI can publish it beside the pull request.
+- [ ] **U2 `jadpo review <pr>`** `opus · high` after U1: area 17, "The web
+  view". Fetches a pull request into a worktree of its own, never touching
+  the developer's checkout or uncommitted work, runs the report and opens the
+  page. The base branch's `jadpo` release produces the report, since a pull
+  request can change its project's `jadpo:` line and `jadpo.lock`, and the
+  page says when it does. First check that a pull request's `jadpo.lock`
+  live-checkout link can't read outside the worktree.
+- [ ] **U3 Watching a change, and what changed between revisions** **needs a
+  maintainer** to decide whether the view stays a file or gains a small local
+  server, after U2: area 17, "The web view". The page follows the worktree
+  while an agent edits it: the report re-run when edits go quiet, the last
+  good report kept with "source has errors" over it, and what changed since
+  you last looked between an agent's successive revisions.
+- [ ] **U4 Handing a question to a coding agent** **needs a maintainer** to
+  decide whether Jadpo launches agents at all, after U3: an agent adapter per
+  tool, carrying node keys and the reviewer's words only, and copy-only for a
+  pull request from a fork, since descriptions, pull request text and code are
+  written by whoever opened it.
+- [ ] **U5 A review link from GitHub** **needs a maintainer**, only if people
+  ask for it, after U4: a launcher registered for `jadpo-review://` that
+  treats every link as untrusted, and how GitHub reaches it, which may need an
+  https page on jadpo.dev because GitHub may not link a custom scheme.
 
 ## After the first build, in order
 
