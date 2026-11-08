@@ -41,6 +41,7 @@ use jadpo_syntax::SyntaxKind::*;
 use jadpo_syntax::ast::{self, AstNode};
 
 use crate::case::{is_upper_camel, round_trips, to_snake};
+use crate::lookups::Lookup;
 use crate::setting_move::{FileChange, Mark, Row, Stopped};
 use crate::std_lib::StdNames;
 use crate::tree;
@@ -105,6 +106,9 @@ pub struct Finding {
     pub fixes: Vec<FixKind>,
     /// The declaration's kind in the reader's words: "type", "entity".
     pub word: &'static str,
+    /// Its name in the type table: its written name, or a package's
+    /// declaration under its package.
+    pub canonical: String,
 }
 
 /// The findings of `project` a fix answers, in file and source order.
@@ -137,6 +141,10 @@ pub fn finding_of(db: &dyn Db, project: Project, problem: &Diagnostic) -> Option
         })?
         .clone();
     let line = text[..label.span.start as usize].matches('\n').count() as u32 + 1;
+    // The type table's key: a package's declaration is held under its
+    // package's name, the same as an app's own is under its bare one.
+    let ownership = &jadpo_db::location(db, project, file).ownership;
+    let canonical = Lookup::within(db, project, ownership).canonical_name(&name);
     let (standard, fixes) = if clash {
         let standard = jadpo_std::standard_type(&name)?;
         let fixes = if is_type(&item.kind) {
@@ -147,7 +155,7 @@ pub fn finding_of(db: &dyn Db, project: Project, problem: &Diagnostic) -> Option
         (standard, fixes)
     } else {
         let table = type_table(db, project);
-        let found = crate::types::decl::standard_match(table, &name, None)?;
+        let found = crate::types::decl::standard_match(table, &canonical, None)?;
         (found.standard, vec![FixKind::Swap])
     };
     Some(Finding {
@@ -161,6 +169,7 @@ pub fn finding_of(db: &dyn Db, project: Project, problem: &Diagnostic) -> Option
         release: standard.release,
         fixes,
         word: item.kind.word(),
+        canonical,
     })
 }
 
@@ -412,7 +421,7 @@ fn swapped_fields(
 ) -> BTreeMap<String, &'static str> {
     let table = type_table(db, project);
     let only = (finding.standard == finding.name).then_some(finding.standard);
-    crate::types::decl::standard_match(table, &finding.name, only)
+    crate::types::decl::standard_match(table, &finding.canonical, only)
         .map(|found| {
             found
                 .fields

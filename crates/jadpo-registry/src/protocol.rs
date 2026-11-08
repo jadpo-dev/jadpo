@@ -21,6 +21,12 @@ pub const BASE: &str = "/registry/v1/";
 /// The registry the `jadpo` tool talks to.
 pub const PUBLIC: &str = "https://jadpo.dev/registry/v1/";
 
+/// The Ed25519 public keys of the public registry's log, each as a
+/// `PublicKey` is written: unpadded Base64url. Empty until jadpo.dev signs
+/// its heads, so nothing is asked of it yet; a key here makes every head
+/// from the public registry have to be signed by one of them.
+pub const PUBLIC_KEYS: &[&str] = &[];
+
 /// The methods the protocol uses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Method {
@@ -256,6 +262,18 @@ pub const ENDPOINTS: &[Endpoint] = &[
         failures: &[],
     },
     Endpoint {
+        id: "log_signed_head",
+        method: Method::Get,
+        path: "log/signed-head",
+        summary: "The log's size and root hash, with the registry's signature over them.",
+        path_params: &[],
+        query: &[],
+        body: None,
+        status: 200,
+        answer: Answer::Json("SignedLogHead"),
+        failures: &[],
+    },
+    Endpoint {
         id: "log_proof",
         method: Method::Get,
         path: "log/proof/{digest}",
@@ -353,6 +371,18 @@ pub const ENDPOINTS: &[Endpoint] = &[
         body: Some("FingerprintQuery"),
         status: 200,
         answer: Answer::Json("FingerprintAnswer"),
+        failures: &[],
+    },
+    Endpoint {
+        id: "decode_failure",
+        method: Method::Post,
+        path: "decode-failures",
+        summary: "Takes the shape of an answer a package can no longer decode, never its values.",
+        path_params: &[],
+        query: &[],
+        body: Some("DecodeFailure"),
+        status: 202,
+        answer: Answer::Json("ReceivedReport"),
         failures: &[],
     },
     Endpoint {
@@ -600,6 +630,19 @@ pub struct LogHead {
     pub root: Hash,
 }
 
+/// `GET log/signed-head`: a head, the key that signed it and the
+/// signature. `signature` is the standard Base64 a `Bytes` is written in,
+/// over [`crate::log::signed_line`]; `key` is a `PublicKey`'s unpadded
+/// Base64url.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SignedLogHead {
+    pub size: u64,
+    pub root: Hash,
+    pub key: String,
+    pub signature: String,
+}
+
 /// `GET log/proof/{digest}?size=`: the release's entry and index, and the
 /// hashes that prove it is in the log of `size` leaves. The root isn't
 /// sent: the client proves against the head it holds.
@@ -722,6 +765,57 @@ pub fn is_prefix(text: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
+/// The most members one `POST decode-failures` may send.
+pub const MOST_SHAPE_MEMBERS: usize = 1000;
+
+/// The longest a member's path may be, in bytes.
+pub const LONGEST_SHAPE_PATH: usize = 256;
+
+/// `POST decode-failures`'s body: an answer a scheduled contract run
+/// couldn't decode, by its shape alone ([`crate::report::shape_of`]).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecodeFailure {
+    pub package: ScopedName,
+    pub version: Version,
+    /// As a package's operations are written: `bookings.create`.
+    pub operation: String,
+    pub shape: Vec<ShapeMember>,
+}
+
+/// One place in an answer and what kind of value was there.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShapeMember {
+    /// From the answer's root `$`, by member and `[]` for a list's items:
+    /// `$.data[].id`.
+    pub path: String,
+    pub kind: ShapeKind,
+}
+
+/// The kinds of value JSON has.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShapeKind {
+    Object,
+    List,
+    Text,
+    Number,
+    Bool,
+    Null,
+}
+
+impl ShapeKind {
+    pub const VALUES: &[&str] = &["object", "list", "text", "number", "bool", "null"];
+}
+
+/// `POST decode-failures`'s answer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReceivedReport {
+    pub id: String,
+}
+
 /// `POST releases`'s body.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -796,6 +890,7 @@ pub enum Request {
         digest: Digest,
     },
     LogHead,
+    LogSignedHead,
     LogProof {
         digest: Digest,
         size: u64,
@@ -812,6 +907,7 @@ pub enum Request {
     },
     QueryAdvisories(AdvisoryQuery),
     QueryFingerprints(FingerprintQuery),
+    DecodeFailure(DecodeFailure),
     StartRelease(StartRelease),
     ReleaseRequest {
         id: String,
@@ -837,11 +933,13 @@ impl Request {
             Request::Release { .. } => "release",
             Request::Archive { .. } => "archive",
             Request::LogHead => "log_head",
+            Request::LogSignedHead => "log_signed_head",
             Request::LogProof { .. } => "log_proof",
             Request::LogConsistency { .. } => "log_consistency",
             Request::Search { .. } => "search",
             Request::QueryAdvisories(_) => "query_advisories",
             Request::QueryFingerprints(_) => "query_fingerprints",
+            Request::DecodeFailure(_) => "decode_failure",
             Request::StartRelease(_) => "start_release",
             Request::ReleaseRequest { .. } => "release_request",
         })
@@ -868,6 +966,7 @@ impl Request {
             ),
             Request::Archive { digest } => format!("archives/{digest}"),
             Request::LogHead => "log/head".into(),
+            Request::LogSignedHead => "log/signed-head".into(),
             Request::LogProof { digest, size } => format!("log/proof/{digest}?size={size}"),
             Request::LogConsistency { from, to } => format!("log/consistency?from={from}&to={to}"),
             Request::Search { q, from, to, kind } => {
@@ -885,6 +984,7 @@ impl Request {
             }
             Request::QueryAdvisories(_) => "advisories/query".into(),
             Request::QueryFingerprints(_) => "fingerprints/query".into(),
+            Request::DecodeFailure(_) => "decode-failures".into(),
             Request::StartRelease(_) => "releases".into(),
             Request::ReleaseRequest { id } => format!("releases/{}", encode(id)),
         };
@@ -896,6 +996,7 @@ impl Request {
         match self {
             Request::QueryAdvisories(query) => serde_json::to_string(query).ok(),
             Request::QueryFingerprints(query) => serde_json::to_string(query).ok(),
+            Request::DecodeFailure(report) => serde_json::to_string(report).ok(),
             Request::StartRelease(start) => serde_json::to_string(start).ok(),
             _ => None,
         }
@@ -966,6 +1067,7 @@ impl Request {
             },
             "archive" => Request::Archive { digest: digest()? },
             "log_head" => Request::LogHead,
+            "log_signed_head" => Request::LogSignedHead,
             "log_proof" => Request::LogProof {
                 digest: digest()?,
                 size: size("size")?,
@@ -1010,6 +1112,23 @@ impl Request {
                     return Err(invalid("prefixes"));
                 }
                 Request::QueryFingerprints(query)
+            }
+            "decode_failure" => {
+                let report: DecodeFailure = read_body(body)?;
+                if report.shape.len() > MOST_SHAPE_MEMBERS {
+                    return Err(Refusal::InvalidInput {
+                        field: "shape".into(),
+                        rule: "max_items",
+                    });
+                }
+                if report
+                    .shape
+                    .iter()
+                    .any(|member| member.path.len() > LONGEST_SHAPE_PATH)
+                {
+                    return Err(invalid("shape"));
+                }
+                Request::DecodeFailure(report)
             }
             "start_release" => Request::StartRelease(read_body(body)?),
             "release_request" => Request::ReleaseRequest {

@@ -2041,7 +2041,8 @@ The verifier works out a release's **facts** from the compiled graph:
   publisher and Jadpo; suspected malware goes to Jadpo. An app may opt in
   to telling the registry when its scheduled contract run gets a
   response a package can no longer decode, sending the shape that failed
-  and never the values. Issues stay in the package's repository.
+  and never the values ([`POST decode-failures`](#the-registry-protocol)).
+  Issues stay in the package's repository.
 
 ### The changelog
 
@@ -2151,8 +2152,8 @@ would change.
 
 The registry at jadpo.dev does what this topic describes, apart from these:
 compatibility runs against Jadpo's pre-releases, telling a publisher what
-`jadpo fix` would change, and an app's reports from its scheduled contract
-runs. Accounts are open to a short list of people for now; anyone can search
+`jadpo fix` would change, signing its log's heads, and an app's reports from
+its scheduled contract runs. Accounts are open to a short list of people for now; anyone can search
 and install.
 
 ## The registry protocol
@@ -2170,11 +2171,13 @@ it can send makes a release live.
 | `GET packages/@{publisher}/{name}/releases/{version}` | One release: repository, tag, commit, digest, its `surface.jadpo_record`, facts, change record, written account, compatible Jadpo releases and its index in the log |
 | `GET archives/{digest}` | The release's files as a tar archive whose files, unpacked, have that digest, as the lock computes it |
 | `GET log/head` | The log's size and root hash |
+| `GET log/signed-head` | The log's size and root hash, with the `key` that signed them and its `signature` |
 | `GET log/proof/{digest}?size=` | The release's log entry, its index and the hashes that prove it is in the log of that size |
 | `GET log/consistency?from=&to=` | The hashes that prove the log of size `to` extends the log of size `from` |
 | `GET search?q=&from=&to=&kind=` | Ranked results, the standard library's first, each naming a package and declaration, with why it matched |
 | `POST advisories/query` | Given installed packages and versions, the advisories against them, each naming its declarations, versions and the packages carrying copies |
 | `POST fingerprints/query` | Given `prefixes`, each the first five hex digits of a source fingerprint, every public function and action of a release that isn't yanked whose `source` fingerprint starts with one: its `package`, `version` (the newest with that fingerprint), `declaration` and `source` |
+| `POST decode-failures` | Given a `package`, `version`, `operation` and the `shape` of an answer its scheduled contract run couldn't decode, keeps the report and answers its `id` |
 | `POST releases` | Given a repository, a tag, `dry_run` and optionally `publisher`, starts a release (or a dry run) and answers its id |
 | `GET releases/{id}` | Its state (`verifying`, `failed` with the bar's rows, `pending`, `cancelled`, `live`), with its facts and change record once checked |
 
@@ -2188,6 +2191,16 @@ it can send makes a release live.
   is in the log. Proofs are made by RFC 6962's definitions and checked by
   RFC 9162's algorithms; the root is never sent with a proof, since a
   client checks it against the head it holds.
+- **A head can be signed.** `GET log/signed-head`'s `signature` is an Ed25519
+  signature over the one line `jadpo-log-head {size} {root}`, its root as 64
+  hex digits, written as a `Bytes` is, and its `key` the `PublicKey` it
+  verifies against. A registry keeps its signing keys as data and signs with
+  [`crypto.sign`](19-standard-library.md#signatures), so it can change them.
+  `jadpo` holds the public registry's keys; when it holds any for the registry
+  it asks, it asks for this row instead of `log/head` and refuses a head with
+  no signature, a signature that isn't its key's, or a key it doesn't hold
+  (`install.not_proved`). `JADPO_REGISTRY_KEY` gives a stand-in's keys,
+  comma-separated.
 - **A placeholder fills a whole segment**, so `{publisher}` is the handle
   with its `@`: `GET packages/@acme/postcodes` is `packages/{publisher}/{name}`
   with `publisher` `@acme`. Each part of a scoped name is lower-case
@@ -2215,7 +2228,8 @@ it can send makes a release live.
   (404, also for a release logged after the size asked about),
   `size_past_head` (422, a size past the head or sizes the wrong way
   round) and `repository_refused` (422, not a repository reached over
-  HTTPS). `POST releases` answers 202, the others 200.
+  HTTPS). `POST releases` and `POST decode-failures` answer 202, the others
+  200.
 - **`POST fingerprints/query`** is how `jadpo suggest` finds an app's
   copy of a published function ([Functions that already
   exist](14-tooling.md#functions-that-already-exist)). It sends prefixes,
@@ -2225,6 +2239,13 @@ it can send makes a release live.
   length, or more than 1,000, is 422 `invalid_input`. The fingerprints are
   the `source` ones `jadpo package verify` writes for each release
   (recorded 2026-11-08).
+- **`POST decode-failures`** holds a shape and never a value. `shape` is a
+  list of at most 1,000 members, each a `path` of at most 256 bytes from the
+  answer's root, `$.data[].id`, and its `kind`: `object`, `list`, `text`,
+  `number`, `bool` or `null`. A member name stands for itself only when it is
+  letters, `_` and `-` of at most 64 bytes, starting with a letter; any other,
+  a map keyed by a customer's id for instance, is `*`, so a value can't leave
+  as a name. Anything else is 422 `invalid_input`.
 - **The lock's `registry` source** records the scoped name:
   `package Postcodes.v2 version 2.1.0 registry @acme/postcodes digest
   sha256:…`.
@@ -2243,7 +2264,9 @@ it can send makes a release live.
 <!-- topic: the-verifier -->
 
 The verifier is `jadpo package verify`, the same tool authors run, in a
-container image published with each Jadpo release. A package's tests and
+container image published with each Jadpo release and pre-release, under
+its own version, and each pre-release's also as `pre-release`, so a
+compatibility run can ask for the newest. A package's tests and
 examples are code from anyone, so the verifier is built around where that
 code runs and what can come back from it.
 
@@ -2278,7 +2301,7 @@ code runs and what can come back from it.
 
 `result` has every field, `null` or empty where it has no value: `passed`,
 `package`, `version`, `bar`, `problems`, `surface`, `facts`, `descriptions`,
-`change_record`, `fingerprints`, `previous`, `jadpo`, `checked_with`,
+`change_record`, `fingerprints`, `fixes`, `previous`, `jadpo`, `checked_with`,
 `left_out`, and for a
 release that passed its `digest` and `archive`: the tar archive of
 [`GET archives/{digest}`](#the-registry-protocol), in base64, which is how
@@ -2288,8 +2311,14 @@ wouldn't fit that 10 MiB fails too, rather than pass and never arrive.
 declaration's as `declarations`, a list of `name` and `description` (`null`
 where it has none), so the registry shows them without reading them back
 out of `surface`; it is `null` until the package compiles (recorded
-2026-11-07). `jadpo package verify --json` gives the same. The
-source and the diff are asked for on their own, since neither would fit
+2026-11-07). `fixes` is what [`jadpo fix`](14-tooling.md#jadpo-fix) would
+change, empty when it has nothing to do: for each finding its `declaration`,
+`rule`, `path`, `line`, `standard`, the `fixes` it takes (`swap`, `rename`)
+and `swap`, the files a swap changes as `jadpo fix --json` lists them, `null`
+when it can't be swapped or a swap would add an error. A rename waits on the
+name its author picks, so it is offered and not previewed. It comes from the
+source, so the second run can't change it. `jadpo package verify --json` gives
+the same. The source and the diff are asked for on their own, since neither would fit
 beside the archive; each is at most 8 MiB of its answer, past which
 `truncated` says some was left out. They are what the package's author wrote,
 so a model reads them as data. `could_not_check` says nothing
@@ -6711,13 +6740,15 @@ advisories](#yanks-takedowns-and-advisories), [Search](#search) and
 [Developing for the registry](#developing-for-the-registry): what each
 command does and shows. The registry is `https://jadpo.dev/registry/v1/`;
 `JADPO_REGISTRY` names a stand-in, over HTTPS or on this machine, such as
-`https://staging.jadpo.dev/registry/v1/` or a local registry. A registry that
+`https://staging.jadpo.dev/registry/v1/` or a local registry, and
+`JADPO_REGISTRY_KEY` the keys it signs its head with. A registry that
 can't be reached, or whose answer doesn't fit the protocol, is
 [`registry.unreachable`](../errors/registry.unreachable.md).
 
 > **`add` and `update` take a release in this order**, and stop at the first
 > that fails (`install.not_proved`), leaving the lock and `packages/` as they
-> were: the release's details; the log's head, which has to extend the last
+> were: the release's details; the log's head, signed by a key it holds when
+> it holds any for this registry, which has to extend the last
 > one kept in `.jadpo/registry_head`, by `log/consistency`; `log/proof` at
 > that head; the head kept; the archive, whose files have to have the digest
 > the log holds; then the checks for a package from anywhere, compiling it
@@ -8536,7 +8567,7 @@ package's name, as its types are.
 | The `jadpo` tool's side of the public registry: `add` and `update` checked against the log, `search`, `audit`, `publish` and `preview` ([How the registry commands work](#how-the-registry-commands-work)) | Built. |
 | A package's publisher ([Names and publishers](#names-and-publishers)): `publisher:` in the index, on its surface and in its facts, the bar's `publisher` row, `jadpo package publish` and `verify --publisher`, the verifier's request and the registry's check of a release | Built. |
 | [Starting a package](#developing-and-publishing-a-package): `jadpo package new`, and the bar's `licence` row refusing `Licence.proprietary` for `verify` and `publish` | Built. |
-| The registry at jadpo.dev: publishing, installing by name, search, yanks, advisories and compatibility runs | Partly built: publishing from a tag, confirming a release with a passkey, automatic release, installing and updating by name with the log's proofs, search by words and by meaning, the written account and the review of each release's diff, yanks and takedowns, urgent releases and advisories, compatibility runs against each Jadpo release, reporting a tag that moves, organisations with several members, successors and reports. Not built yet: compatibility runs against Jadpo's pre-releases, telling a publisher what `jadpo fix` would change, and an app's reports from its scheduled contract runs. Accounts are open to a short list of people for now; anyone can search and install. |
+| The registry at jadpo.dev: publishing, installing by name, search, yanks, advisories and compatibility runs | Partly built: publishing from a tag, confirming a release with a passkey, automatic release, installing and updating by name with the log's proofs, search by words and by meaning, the written account and the review of each release's diff, yanks and takedowns, urgent releases and advisories, compatibility runs against each Jadpo release, reporting a tag that moves, organisations with several members, successors and reports. Built in `jadpo`, for the registry to use: a verifier image for each pre-release, what `jadpo fix` would change in the verifier's answer, `GET log/signed-head` checked against the keys it holds, and `POST decode-failures`'s shape. Not built yet: compatibility runs against Jadpo's pre-releases, telling a publisher what `jadpo fix` would change, signed heads from jadpo.dev and the key it signs with held in `jadpo`, and an app's reports from its scheduled contract runs, which wait for the contract run. Accounts are open to a short list of people for now; anyone can search and install. |
 | Importers other than OpenAPI | Not built yet. |
 | Choosing a provider when deploying | Not built yet. |
 | Erasure at providers | Partly built: the package's and the connection's `erasure:` are read and checked, and a connection that can't erase what it receives needs an `ErasureNotPossible` acceptance ([Erasure at providers](15-personal-data.md#erasure-at-providers)). Not built yet: calling the provider. |

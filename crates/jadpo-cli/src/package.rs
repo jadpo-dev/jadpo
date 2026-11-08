@@ -2224,6 +2224,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
                 package_release::fingerprints_json(&fingerprints),
             ),
             ("previous", behaviour_json),
+            ("fixes", package_release::fixes_json(&compiled)),
             ("jadpo", Json::from(crate::help::VERSION)),
             (
                 "jadpo_declared",

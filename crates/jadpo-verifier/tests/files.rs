@@ -127,3 +127,23 @@ fn the_size_is_the_archives_to_the_byte() {
     let packed = jadpo_registry::archive::pack(&files).expect("it packs");
     assert_eq!(judge_tree(entries).size, packed.len() as u64);
 }
+
+/// A pre-release gets the verifier's image too, under its own version and
+/// the name the registry's compatibility runs ask for (area 11, "The
+/// verifier"): the workflow is what publishes it, so it is read here.
+#[test]
+fn a_pre_release_gets_the_verifiers_image() {
+    let workflow = include_str!("../../../.github/workflows/verifier-image.yml");
+    assert!(
+        workflow.contains("v[0-9]+.[0-9]+.[0-9]+-*"),
+        "the workflow starts for a pre-release's tag"
+    );
+    assert!(
+        workflow.contains("\"$IMAGE:pre-release\""),
+        "a pre-release is pushed under the name the registry asks for"
+    );
+    assert!(
+        workflow.contains("== *-*"),
+        "only a pre-release moves that name"
+    );
+}

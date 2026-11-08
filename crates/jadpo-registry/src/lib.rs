@@ -26,4 +26,5 @@ pub mod log;
 pub mod names;
 pub mod openapi;
 pub mod protocol;
+pub mod report;
 pub mod shape;

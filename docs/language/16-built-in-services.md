@@ -4162,7 +4162,11 @@ file rewords it. `{{ app.display_name }}` is
 
 An email's entry in its domain's language files is required in every
 supported locale that isn't in progress, as a message's wording is
-(`translation.wording_missing`).
+(`translation.wording_missing`, or `translation.file_missing` for a domain
+with no language file for that locale). With no `locales { }` there is
+nothing to word it for, so `jadpo check` refuses the email
+(`translation.locales_required`) rather than leave it to fail when it is
+sent.
 
 ### A field nothing reads
 

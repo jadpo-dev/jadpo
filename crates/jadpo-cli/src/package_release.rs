@@ -801,6 +801,59 @@ pub(crate) fn facts_json(facts: &Facts) -> Json {
     ])
 }
 
+/// What `jadpo fix` would change in the package (area 11, "The verifier"):
+/// each finding it answers, the fixes it takes, and for one that can be
+/// swapped the files the swap changes, worked out on a copy of the
+/// package's text. A rename waits on the name its author picks, so it is
+/// offered and not previewed. A swap that would add an error says `null`.
+pub(crate) fn fixes_json(compiled: &crate::package::Compiled) -> Json {
+    use jadpo_check::fixes::{self, Fix, FixKind};
+
+    let prefix = format!("{}/", compiled.mount);
+    let in_package = |finding: &fixes::Finding| finding.path.starts_with(&prefix);
+    let found = fixes::findings(&compiled.loaded.db, compiled.loaded.project);
+    if !found.iter().any(in_package) {
+        return Json::array(Vec::<Json>::new());
+    }
+    let mut copy = jadpo_db::load(&compiled.scratch.0);
+    let found = fixes::findings(&copy.db, copy.project);
+    let mut rows = Vec::new();
+    for finding in found.iter().filter(|finding| in_package(finding)) {
+        let swap = if finding.fixes.contains(&FixKind::Swap) {
+            let planned = fixes::plan(&copy.db, copy.project, finding, &Fix::Swap);
+            match planned.map(|plan| fixes::apply(&mut copy, &plan)) {
+                Ok(Ok(fixed)) => {
+                    let mut changes = fixed.files.clone();
+                    fixes::restore(&mut copy, &fixed);
+                    for change in &mut changes {
+                        change.path = compiled.relative(&change.path);
+                    }
+                    Json::array(crate::config::files_json(&changes))
+                }
+                _ => Json::Null,
+            }
+        } else {
+            Json::Null
+        };
+        rows.push(Json::object([
+            ("declaration", Json::from(finding.name.as_str())),
+            ("rule", Json::from(finding.rule.id)),
+            (
+                "path",
+                Json::from(compiled.relative(&finding.path).as_str()),
+            ),
+            ("line", i64::from(finding.line).into()),
+            ("standard", Json::from(finding.standard)),
+            (
+                "fixes",
+                Json::array(finding.fixes.iter().map(|fix| Json::from(fix.word()))),
+            ),
+            ("swap", swap),
+        ]));
+    }
+    Json::array(rows)
+}
+
 /// The change record, in the shape the registry's protocol names
 /// `ChangeEntry`.
 pub(crate) fn record_json(record: &[ChangeEntry]) -> Json {

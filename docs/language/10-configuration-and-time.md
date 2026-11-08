@@ -3298,7 +3298,8 @@ end of the page.
   support (`translation.locale_unsupported`);
 - a call of no message (`translation.message_unknown`);
 - a `locale:` that isn't a supported locale (`type.locale_unsupported`);
-- translations in a project with no `locales { }`
+- translations in a project with no `locales { }`, an email's subject
+  among them, since an `EmailMessage` has no words of its own for one
   (`translation.locales_required`).
 
 ### Missing wording
