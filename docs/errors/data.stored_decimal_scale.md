@@ -1,7 +1,18 @@
 # `data.stored_decimal_scale`
 
-The database rounds a sum its own way, so a decimal added to a stored field
-keeps no more places than the field does:
+An update by `id` adds or subtracts a decimal with more places than its field keeps.
+
+## Why Jadpo refuses it
+
+An update by `id` has the database work the new value out in one step, and
+PostgreSQL rounds a sum half away from zero where Jadpo rounds half to
+even. So the value could differ from the one Jadpo would give, by rounding
+alone. A decimal with no more places than the field keeps needs no
+rounding, so it is the same in both.
+
+## What it looks like
+
+main.jadpo:
 
 ```jadpo check project=e-stored-decimal-scale expect=data.stored_decimal_scale
 type Balance = Decimal {
@@ -35,3 +46,40 @@ error: `Wallet.update` adds a decimal with more places than `Wallet.balance` kee
 
 check failed: 1 error, 1 file
 ```
+
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+## How to fix it
+
+**If the amount fits the field**, give it no more places than the field
+keeps:
+
+```jadpo fragment
+            balance: Balance(Wallet.balance + 0.01)
+```
+
+```jadpo check project=e-stored-decimal-fix hidden
+type Balance = Decimal {
+    scale: 2
+}
+
+entity Wallet {
+    id: Uuid
+    balance: Balance
+}
+
+action add_interest(wallet_id: Wallet.id) fails WalletNotFound -> Wallet {
+    return attempt Wallet.update(wallet_id) {
+        set: {
+            balance: Balance(Wallet.balance + 0.01)
+        }
+    }
+}
+```
+
+The sum now has at most two places, so the database has nothing to round.
+
+## Related
+
+- [Counters and other one-step updates](../language/06-reads-and-writes.md#counters-and-other-one-step-updates)
