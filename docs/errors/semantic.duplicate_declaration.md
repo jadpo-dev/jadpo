@@ -1,10 +1,29 @@
 # `semantic.duplicate_declaration`
 
+A name, or a test's sentence, is already taken where it is declared.
+
+## Why Jadpo refuses it
+
+A name has to mean one thing, so that reading it, or calling it, can only
+lead to one declaration. Jadpo won't pick a new name for you, because it
+doesn't know what the two things are for; the error says what is taken,
+so whoever renames one can follow the names around it.
+
+If two declarations are written the same way, ignoring layout, comments
+and `public`, they are a copy: the error says to remove one and use the
+other, or to move it to `shared/` if two domains need it. If they differ,
+they are two things with one name, and one has to be renamed.
+
+## What it looks like
+
 ```jadpo check project=e-duplicate file=a.jadpo hidden
 type Count = Int {
     min: 0
 }
 ```
+
+b.jadpo:
+
 
 ```jadpo check project=e-duplicate file=b.jadpo expect=semantic.duplicate_declaration
 type Count = Int {
@@ -28,16 +47,14 @@ error: `Count` is declared twice
 check failed: 1 error, 2 files
 ```
 
-The error names both declarations and their files, and says which of two
-cases it is. If the two
-are written the same way, ignoring layout, comments and `public`, it is a
-copy: remove one and use the other, or move it to `shared/` if two domains
-need it. If they differ, they are two things with one name: rename one. It
-never invents a name. It lists the names in use that contain the same
-words, with their files, so the agent renaming one sees what is taken and
-what the convention is. A private function or type needs a name unique
-only within its domain, so here `shipping`'s own `Address` is no clash,
-while a second one in `billing` is:
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+A private function or type needs a name that is unique only within its
+domain. Here `shipping`'s own `Address` is no clash, while a second one in
+`billing` is. The `in use:` list shows the names that contain the same
+words, so an agent renaming one sees what is taken. It shows at most
+twelve names, the twelfth line counting the rest:
 
 ```jadpo check project=e-duplicate-domain file=app.jadpo hidden
 application {}
@@ -67,6 +84,9 @@ type ShippingAddress = Object {
 action print_label(address: ShippingAddress) -> Unit {}
 ```
 
+domains/billing/actions/send_reminder.jadpo:
+
+
 ```jadpo check project=e-duplicate-domain file=domains/billing/actions/send_reminder.jadpo expect=semantic.duplicate_declaration
 type Address = Object {
     street: Text
@@ -94,11 +114,126 @@ error: `Address` is declared twice in `billing`
 check failed: 1 error, 5 files
 ```
 
-The next step says "Rename one of them" without naming `jadpo rename`,
-which is not built yet (area 14, "Renaming"). A name contains another's words when
-its words, split as the file name splits them, include them in order
-(`ShippingAddress` and `format_address` contain `Address`'s); the list
-gives each file's path from the project root, as every other error does,
-and shows at most twelve names, the twelfth line counting the rest. A name
-declared twice in one scope is this error alone: no import or promotion is
-asked for either copy.
+A variable can't reuse a name already in scope, parameters included:
+
+```jadpo check project=e-duplicate-variable expect=semantic.duplicate_declaration
+type Count = Int {
+    min: 0
+}
+
+function doubled(count: Count) -> Count {
+    var count: Count = count
+    return count
+}
+```
+
+```text output
+error: `count` is already declared
+ --> main.jadpo:6:9
+  |
+5 | function doubled(count: Count) -> Count {
+  |                  ----- first declared here
+6 |     var count: Count = count
+  |         ^^^^^ declared again
+  reason: A name in scope can't be declared again, parameters included, so one name means one value wherever it is read.
+  next: Give this variable a name of its own (agent)
+  rule: semantic.duplicate_declaration
+  help: https://jadpo.dev/docs/errors/semantic.duplicate_declaration
+
+check failed: 1 error, 1 file
+```
+
+A name can't be the same as a built-in type:
+
+```jadpo check project=e-duplicate-builtin expect=semantic.duplicate_declaration
+type Int = Text {
+    max_length: 36
+}
+```
+
+```text output
+error: `Int` is a built-in type
+ --> main.jadpo:1:6
+  |
+1 | type Int = Text {
+  |      ^^^ already declared by Jadpo
+  reason: Built-in types exist without being declared, and their names can't be reused.
+  next: Choose another name for this type (agent)
+  rule: semantic.duplicate_declaration
+  help: https://jadpo.dev/docs/errors/semantic.duplicate_declaration
+
+check failed: 1 error, 1 file
+```
+
+A test's sentence is its name, unique across the project:
+
+```jadpo check project=e-duplicate-test expect=semantic.duplicate_declaration
+type Count = Int {
+    min: 0
+}
+
+function doubled(count: Count) -> Count {
+    return Count(count * 2)
+}
+
+test "doubling keeps a count" {
+    assert doubled(2) == 4
+}
+
+test "doubling keeps a count" {
+    assert doubled(3) == 6
+}
+```
+
+```text output
+error: The test "doubling keeps a count" is declared twice
+ --> main.jadpo:13:6
+   |
+13 | test "doubling keeps a count" {
+   |      ^^^^^^^^^^^^^^^^^^^^^^^^ declared again here
+  reason: A test's sentence is its name, unique across the project, so a report or a rerun names exactly one test; it is already a test in `main.jadpo`.
+  next: Reword this test's sentence to say what it checks that the other doesn't, or remove it if it's a copy (agent)
+  rule: semantic.duplicate_declaration
+  help: https://jadpo.dev/docs/errors/semantic.duplicate_declaration
+
+check failed: 1 error, 1 file
+```
+
+## How to fix it
+
+**If the two are the same thing**, remove one and use the other:
+
+a.jadpo:
+
+```jadpo check project=e-duplicate-fix-1 file=a.jadpo
+type Count = Int {
+    min: 0
+}
+```
+
+`Count` is now declared once, and everything that used either copy uses
+it.
+
+**If they are two different things**, rename one, here and where it is
+used:
+
+b.jadpo:
+
+```jadpo check project=e-duplicate-fix-2 file=b.jadpo
+type VisitCount = Int {
+    min: 1
+}
+```
+
+```jadpo check project=e-duplicate-fix-2 file=a.jadpo hidden
+type Count = Int {
+    min: 0
+}
+```
+
+Each name now means one thing.
+
+## Related
+
+- [Names are unique](../language/01-project-layout-and-modules.md#names-are-unique)
+- [When two names clash](../language/01-project-layout-and-modules.md#when-two-names-clash)

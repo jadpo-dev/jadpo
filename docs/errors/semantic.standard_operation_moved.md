@@ -1,8 +1,18 @@
 # `semantic.standard_operation_moved`
 
-An operation the standard library has moved to another name: its edit
-writes the new name, and the call is checked as the new operation.
-`temporal.format` has moved to the time types' `text.format`:
+Code calls a standard-library operation by a name it has moved from.
+
+## Why Jadpo refuses it
+
+The standard library has one name for each operation, so an old name is
+reported rather than kept working beside the new one. The edit writes the
+new name, and the call is checked as the new operation.
+
+## What it looks like
+
+`temporal.format` has moved to `text.format`:
+
+main.jadpo:
 
 ```jadpo check project=e-operation-moved expect=semantic.standard_operation_moved
 type OrderedAt = Instant {}
@@ -31,10 +41,12 @@ error: `temporal.format` is now `text.format`
 check failed: 1 error, 1 file
 ```
 
-`collection.` has moved to `list.`, `set.` and `map.`: a call
-through it is reported with an edit to the namespace for its first value,
-a list unless it is a set or a map, and checked as that operation where
-it is built.
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+`collection.` has moved to `list.`, `set.` and `map.`. A call through it
+is reported with an edit to the namespace for its first value, a list
+unless it is a set or a map:
 
 ```jadpo check project=e-collection-moved expect=semantic.standard_operation_moved
 type BatchName = Text {
@@ -63,3 +75,37 @@ error: `collection.count` is now `list.count`
 
 check failed: 1 error, 1 file
 ```
+
+## How to fix it
+
+**If the call uses the old name**, write the new one:
+
+```jadpo fragment
+function placed(at: OrderedAt) -> PresentationText {
+    return text.format(
+        at,
+        zone: Zone.europe_london,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_long
+    )
+}
+```
+
+```jadpo check project=e-operation-moved-fix hidden
+type OrderedAt = Instant {}
+
+function placed(at: OrderedAt) -> PresentationText {
+    return text.format(
+        at,
+        zone: Zone.europe_london,
+        locale: Locale.en_gb,
+        format: TimeFormat.date_long
+    )
+}
+```
+
+The call now does what the old name did, and `jadpo check` passes.
+
+## Related
+
+- [All operations](../language/19-standard-library.md#all-operations)
