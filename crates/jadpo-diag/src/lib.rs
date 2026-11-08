@@ -321,21 +321,21 @@ rules! {
     CONSTANT_VALUE_NOT_FIXED: "constant.value_not_fixed", area 3, Error, Agent,
         "Constant's value is only known while the app runs";
     DATA_CLEARED_REQUIRED_REFERENCE: "data.cleared_required_reference", area 5, Error, Agent,
-        "A reference that can never be `none` is cleared on delete";
+        "A reference that can't be `none` is set to be cleared when the record it refers to is deleted";
     DATA_CONFLICT_CANNOT_BREAK: "data.conflict_cannot_break", area 6, Error, Agent,
         "A write's `conflict:` block maps a rule that the write can never break";
     DATA_CONFLICT_UNKNOWN: "data.conflict_unknown", area 6, Error, Agent,
-        "Conflict mapping names no unique rule or reference";
+        "A write's `conflict:` block names something that isn't a unique rule, a reference or a transition";
     DATA_CONFLICT_UNMAPPED: "data.conflict_unmapped", area 6, Error, Agent,
         "A write could be refused by a unique rule or a reference, and its `conflict:` block doesn't say which failure the caller gets then";
     DATA_DUPLICATE_RULE: "data.duplicate_rule", area 5, Error, Agent,
-        "Unique rule or index repeats another";
+        "A unique rule or an index covers the same fields as another, or an index gives one of its settings twice";
     DATA_ENCRYPTED_FIELD_INVALID: "data.encrypted_field_invalid", area 15, Error, Agent,
         "A field that can't be stored sealed, or that says it isn't sealed when its type always is";
     DATA_ENCRYPTED_FIELD_USED: "data.encrypted_field_used", area 15, Error, Agent,
         "An encrypted field is used somewhere the database or a log would have to read it";
     DATA_ENTITY_IN_FIELD: "data.entity_in_field", area 5, Error, Agent,
-        "Field holds an entity instead of a reference to one";
+        "A field holds a whole entity instead of a reference to one";
     DATA_ERASE_FIELD_REQUIRED: "data.erase_field_required", area 15, Error, Human,
         "Erasing a person would clear a field that can't be `none`: a reference whose record erasure keeps, a marked field of a record it anonymises, or a marked field of the person's own record it keeps";
     DATA_ERASE_OWN_FIELD: "data.erase_own_field", area 15, Error, Human,
@@ -355,67 +355,67 @@ rules! {
     DATA_FIELD_ENCRYPTION_KEY_REQUIRED: "data.field_encryption_key_required", area 15, Error, Human,
         "A field is kept sealed, but the application names no key to seal it with";
     DATA_FIELD_LIST_REQUIRED: "data.field_list_required", area 5, Error, Agent,
-        "Unique rule or index is not a list of fields";
+        "A `unique:` or `indexes:` section isn't a block of named lists, each of at least one of the entity's fields";
     DATA_FIELD_WITHOUT_JSON: "data.field_without_json", area 5, Error, Agent,
-        "Structured field holds a type with no stored JSON form";
+        "A field kept as JSON holds a type with no stored form, such as an event";
     DATA_FILE_FIELD_INVALID: "data.file_field_invalid", area 16, Error, Agent,
         "A `File` field's store, size or types are missing or wrong";
     DATA_GENERATED_TYPE: "data.generated_type", area 5, Error, Agent,
-        "Generated field is not a required `Instant`";
+        "A field with `generated:` isn't a required `Instant`";
     DATA_IDENTITY_MISSING: "data.identity_missing", area 5, Error, Agent,
-        "Entity has no `id` field";
+        "An entity has no `id` field";
     DATA_IDENTITY_TYPE: "data.identity_type", area 5, Error, Agent,
-        "Entity's `id` is not a required `Uuid`";
+        "An entity's `id` isn't a required `Uuid`, or has data settings of its own";
     DATA_LIFECYCLE_CONDITION: "data.lifecycle_condition", area 5, Error, Agent,
         "A lifecycle's `visible:` or `when:` condition isn't a plain test of the record's own fields against fixed values";
     DATA_LIFECYCLE_HARD_DELETE: "data.lifecycle_hard_delete", area 6, Error, Human,
         "Code would remove a record that has a lifecycle for good, which only the lifecycle's own purge may do";
     DATA_LIFECYCLE_INITIAL_REQUIRED: "data.lifecycle_initial_required", area 5, Error, Agent,
-        "Required field a transition sets has no starting value";
+        "A required field that a lifecycle's transition sets has no starting value in `initial:`";
     DATA_LIFECYCLE_OWNED_FIELD: "data.lifecycle_owned_field", area 6, Error, Agent,
         "A create, update or patch sets a field that only the entity's lifecycle may change";
     DATA_LIFECYCLE_PURGE_AFTER: "data.lifecycle_purge_after", area 5, Error, Agent,
-        "Purge's `after:` isn't a positive duration";
+        "A lifecycle's `purge:` has an `after:` that isn't a positive duration or a `Duration` setting";
     DATA_LIFECYCLE_PURGE_SINCE: "data.lifecycle_purge_since", area 5, Error, Agent,
-        "Purge's `since:` isn't a time field of the record";
+        "A lifecycle's `purge:` has a `since:` that isn't one of the record's `Instant` fields";
     DATA_LIFECYCLE_PURGE_VISIBLE: "data.lifecycle_purge_visible", area 5, Error, Agent,
-        "Lifecycle purges records but hides none";
+        "A lifecycle has a `purge:` but no `visible:` saying which records are hidden";
     DATA_LIFECYCLE_SECTION: "data.lifecycle_section", area 5, Error, Agent,
-        "Lifecycle has a section it doesn't take, or lacks one it needs";
+        "A lifecycle, a transition or a `purge:` has a part it doesn't take, lacks one it needs, or gives one twice";
     DATA_LIFECYCLE_TRANSITION_NAME: "data.lifecycle_transition_name", area 5, Error, Agent,
-        "Transition is named like another operation or a field";
+        "A lifecycle's transition is named after an operation the entity already has or one of its fields, or isn't in lower_snake_case";
     DATA_LIFECYCLE_UNKNOWN_FIELD: "data.lifecycle_unknown_field", area 5, Error, Agent,
-        "Lifecycle names a field the entity doesn't have";
+        "A lifecycle names a field the entity doesn't have";
     DATA_LIFECYCLE_VALUE: "data.lifecycle_value", area 5, Error, Agent,
-        "Lifecycle sets a value that isn't fixed";
+        "A lifecycle's `set:` or `initial:` gives a field something other than a fixed value";
     DATA_NAME_TOO_LONG: "data.name_too_long", area 5, Error, Agent,
-        "Name is too long for a table or column";
+        "An entity's or a field's name is too long to be the name of a table or a column";
     DATA_ON_DELETE_NOT_REFERENCE: "data.on_delete_not_reference", area 5, Error, Agent,
-        "Field that is not a reference sets `on_delete`";
+        "A field that isn't a reference has `on_delete:`";
     DATA_ON_DELETE_REQUIRED: "data.on_delete_required", area 5, Error, Human,
         "A field refers to a record of another entity but doesn't say what happens to it when that record is deleted";
     DATA_PATCH_FIELD_REQUIRED: "data.patch_field_required", area 6, Error, Agent,
-        "Patch input has a field that isn't optional";
+        "A patch's `Input` has a field that isn't optional";
     DATA_PATCH_FIELD_UNKNOWN: "data.patch_field_unknown", area 6, Error, Agent,
-        "Patch names a field the entity or its input doesn't have";
+        "A patch's `Input` has a field the entity doesn't, or its `when_supplied:` names a field the `Input` doesn't have";
     DATA_PATCH_NOT_INPUT: "data.patch_not_input", area 6, Error, Agent,
-        "Patch given something other than an `Input`";
+        "A patch is given something other than an `Input`";
     DATA_PATCH_OVERLAP: "data.patch_overlap", area 6, Error, Agent,
-        "Supplied-field block sets a field the patch already sets";
+        "A `when_supplied:` block sets a field that the patch or another of its entries already sets";
     DATA_PERSON_REMOVAL_ACROSS_STORES: "data.person_removal_across_stores", area 15, Error, Human,
         "Something other than erasure would remove a person another store refers to, and nothing would apply what that reference's `erase:` says";
     DATA_PERSONAL_UNREACHABLE: "data.personal_unreachable", area 15, Error, Human,
         "A field marked as personal data is on an entity erasing a person never reaches, so it could never be found";
     DATA_READ_IN_LOOP: "data.read_in_loop", area 6, Error, Agent,
-        "Query or `get` inside a `for` loop";
+        "A query or another database read, such as a `get`, is inside a `for` loop";
     DATA_REFERENCE_ACROSS_STORES: "data.reference_across_stores", area 5, Error, Human,
         "A field refers to a record of an entity that is kept in a different database";
     DATA_REFERENCE_CYCLE: "data.reference_cycle", area 5, Error, Human,
         "Two or more entities refer to each other through required fields, so none of their records could ever be created first";
     DATA_REPEATED_FIELD: "data.repeated_field", area 5, Error, Agent,
-        "Unique rule or index lists a field twice";
+        "A unique rule or an index lists the same field twice";
     DATA_RESERVED_TABLE_NAME: "data.reserved_table_name", area 5, Error, Agent,
-        "Entity's table name starts with `jadpo_`";
+        "An entity's table would have a name starting with `jadpo_`";
     DATA_RETENTION_FIELD_REQUIRED: "data.retention_field_required", area 15, Error, Agent,
         "A field's `retention:` is on a field that can't be `none`, so its value could never be cleared";
     DATA_RETENTION_HELD: "data.retention_held", area 15, Error, Human,
@@ -427,37 +427,37 @@ rules! {
     DATA_RETENTION_SINCE: "data.retention_since", area 15, Error, Agent,
         "A retention's `since:` isn't one of the record's `Instant` fields";
     DATA_SET_GENERATED_FIELD: "data.set_generated_field", area 6, Error, Agent,
-        "Write sets a field the store generates";
+        "A write, a patch or a lifecycle sets `id` or a field the store generates";
     DATA_STORE_REQUIRED: "data.store_required", area 5, Error, Human,
         "An entity names no database to live in, and the app declares databases but none called `main`";
     DATA_STORE_UNKNOWN: "data.store_unknown", area 5, Error, Agent,
-        "Entity's store is not a database connection";
+        "An entity's `store:` names something that isn't one of the app's database connections";
     DATA_STORED_DECIMAL_SCALE: "data.stored_decimal_scale", area 6, Error, Agent,
-        "Update by `id` adds a decimal with more places than its field keeps";
+        "An update by `id` adds or subtracts a decimal with more places than its field keeps";
     DATA_STORED_VALUE_OUTSIDE_UPDATE: "data.stored_value_outside_update", area 6, Error, Agent,
-        "Stored field read outside an update by `id`";
+        "A stored field, written `Entity.field`, is read anywhere but an update by `id` of that record";
     DATA_STORED_VALUE_UNPROVEN: "data.stored_value_unproven", area 6, Error, Human,
         "An update by `id` works out a new value from a stored field, and the value could break its type's rules";
     DATA_UNIQUE_NULLABLE_FIELD: "data.unique_nullable_field", area 5, Error, Agent,
-        "Unique rule includes a field that can be `none`";
+        "A unique rule over several fields includes a field that can be `none`";
     DATA_UNIQUE_SINGLE_FIELD: "data.unique_single_field", area 5, Error, Agent,
-        "Unique rule has only one field";
+        "A rule in `unique:` has only one field";
     DATA_UNKNOWN_FIELD: "data.unknown_field", area 5, Error, Agent,
-        "Unique rule or index names a field the entity does not have";
+        "A unique rule or an index names a field the entity doesn't have";
     DATA_UNKNOWN_SECTION: "data.unknown_section", area 5, Error, Agent,
-        "Entity has a section Jadpo does not know";
+        "An entity holds something that is neither a field nor a section it takes";
     DATA_UPDATE_BY_ID_VALUE: "data.update_by_id_value", area 6, Error, Agent,
         "An update by `id` sets a value that the database can't work out on its own, such as one read earlier in the action";
     DATA_VECTOR_STORE_UNSUPPORTED: "data.vector_store_unsupported", area 21, Error, Agent,
-        "Vector field on a store that isn't PostgreSQL";
+        "A field holding a vector is on an entity kept in a store that isn't PostgreSQL";
     DATA_WRITE_BEFORE_CALL: "data.write_before_call", area 6, Error, Agent,
-        "Write comes before a later outside call";
+        "A write comes before a later outside call in the same action";
     DATA_WRITE_NOT_ENTITY: "data.write_not_entity", area 6, Error, Agent,
-        "Write names a type that isn't an entity";
+        "A write calls `create`, `update` or `delete` on a type that isn't an entity";
     DATA_WRITE_SECTION_REQUIRED: "data.write_section_required", area 6, Error, Agent,
-        "Write doesn't say what it changes";
+        "A create or an update doesn't say which fields it sets";
     DATA_WRITE_SECTION_UNEXPECTED: "data.write_section_unexpected", area 6, Error, Agent,
-        "Write has a section it doesn't take";
+        "A write has a section it doesn't take, gives one twice, or gives `conflict:` as anything but a block";
     DECLINE_NO_REASON: "decline.no_reason", area 1, Error, Agent,
         "Decline gives no reason";
     DECLINE_NOT_DECLINABLE: "decline.not_declinable", area 1, Error, Agent,

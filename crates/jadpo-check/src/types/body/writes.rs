@@ -995,7 +995,7 @@ impl Body<'_> {
             };
             if generated.contains(field.as_str()) {
                 let span = self.span(name);
-                self.set_generated(entity, &field, span, written);
+                self.set_generated(entity, &field, span, written, "`set:`");
             }
         }
         let mut skip: Vec<&str> = generated.iter().copied().collect();
@@ -1269,7 +1269,7 @@ impl Body<'_> {
         );
     }
 
-    fn set_generated(&mut self, entity: &str, field: &str, span: Span, written: &str) {
+    fn set_generated(&mut self, entity: &str, field: &str, span: Span, written: &str, from: &str) {
         let why = if field == "id" {
             format!(
                 "`{entity}.id` is generated when the record is created and never supplied by callers."
@@ -1286,7 +1286,7 @@ impl Body<'_> {
             )
             .at(span, "generated")
             .reason(why)
-            .next(format!("Remove `{field}` from `set:`")),
+            .next(format!("Remove `{field}` from {from}")),
         );
     }
 
@@ -1357,7 +1357,13 @@ impl Body<'_> {
                     .iter()
                     .any(|f| f.name == field.name && (f.generated || f.name == "id"));
                 if generated {
-                    self.set_generated(entity, &field.name, span.clone(), written);
+                    self.set_generated(
+                        entity,
+                        &field.name,
+                        span.clone(),
+                        written,
+                        &format!("`{input}`"),
+                    );
                     continue;
                 }
                 if rules.owned.contains(&field.name) {
@@ -1539,7 +1545,7 @@ impl Body<'_> {
                     && generated.iter().any(|f| f.name == field)
                 {
                     let span = self.span(&field_name);
-                    self.set_generated(entity, &field, span, &written);
+                    self.set_generated(entity, &field, span, &written, "`when_supplied:`");
                 }
             }
             let mut skip: Vec<String> = generated.iter().map(|f| f.name.clone()).collect();
