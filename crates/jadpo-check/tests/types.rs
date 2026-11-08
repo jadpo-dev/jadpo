@@ -265,6 +265,33 @@ fn one_mistake_gives_one_error() {
         ),
         ["type.unknown_enum_variant"]
     );
+    // A field declared twice is one mistake: not a wire clash as well.
+    assert_eq!(
+        with_names("type Thing = Object {\n    name: ProductName\n    name: ProductName\n}\n"),
+        ["type.duplicate_field"]
+    );
+    assert_eq!(
+        with_names(
+            "type Outcome = Enum {\n    declined: {\n        reason: ProductName\n        reason: ProductName\n    }\n}\n"
+        ),
+        ["type.duplicate_variant_field"]
+    );
+    // Whatever the type is built on.
+    for base in ["Input", "Output", "Event", "Message"] {
+        assert_eq!(
+            with_names(&format!(
+                "type Thing = {base} {{\n    name: ProductName\n    name: ProductName\n}}\n"
+            )),
+            ["type.duplicate_field"],
+            "{base}"
+        );
+    }
+    assert_eq!(
+        with_names(
+            "entity Thing {\n    id: Uuid\n    name: ProductName\n    name: ProductName\n}\n"
+        ),
+        ["type.duplicate_field"]
+    );
 }
 
 /// The table "When one type can stand in for another", row by row.

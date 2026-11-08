@@ -33,6 +33,42 @@ fn a_similar_library_function_is_an_error_until_declined() {
     );
 }
 
+const CONSIGNMENT: &str = "type Consignment = Object {\n    delivered_to: Country\n}\n\n";
+
+const WRITES_RETIRED: &str = "function to_belgrade() -> Consignment {\n    return Consignment {\n        delivered_to: Country.yu\n    }\n}\n";
+
+/// A field of a value in a body is not a member a decline can stand on,
+/// so the innermost declaration around a finding there is the function.
+#[test]
+fn a_decline_covers_a_finding_in_a_record_field_of_its_function() {
+    assert_eq!(
+        loose(&format!(
+            "{CONSIGNMENT}decline type.variant_retired: \"Reissues old paperwork\"\n{WRITES_RETIRED}"
+        )),
+        Vec::<String>::new()
+    );
+}
+
+/// The insertion the editor offers lands above the function too, not
+/// inside the body, where `decline` is a syntax error.
+#[test]
+fn a_decline_inserted_for_a_record_field_goes_above_the_function() {
+    let text = format!("{CONSIGNMENT}{WRITES_RETIRED}");
+    let db = Database::default();
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", &text)]);
+    let found = jadpo_check::check(&db, project);
+    let finding = found
+        .iter()
+        .find(|d| d.rule.id == "type.variant_retired")
+        .expect("the finding");
+    let edit = jadpo_check::declines::insertion(&db, project, finding).expect("an insertion");
+    assert_eq!(
+        edit.span.start as usize,
+        text.find("function").expect("the function")
+    );
+    assert_eq!(edit.replacement, "decline type.variant_retired: \"\"\n");
+}
+
 #[test]
 fn a_similar_constant_is_declined_on_the_constant() {
     let text = "type Coins = Int {\n    min: 0\n}\n\nconstant fee: Coins = 250\ndecline constant.similar_exists: \"A delivery charge that happens to match the fee\"\nconstant charge: Coins = 250\n\nfunction total() -> Coins {\n    return Coins(fee + charge)\n}\n";

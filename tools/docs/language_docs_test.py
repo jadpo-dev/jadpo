@@ -1478,7 +1478,8 @@ class ErrorFormat(unittest.TestCase):
             # lists, waits for its part of D13c.
             self.assertEqual(docs.error_format_scope(catalogue, root, commands),
                              {'a.b', 'c.d', 'e.f', 'cli.y', 'seed.failed', 'install.in_use',
-                              'type.absent_field', 'type.foreign_type'})
+                              'type.absent_field', 'type.foreign_type',
+                              'type.optional_outside_input'})
 
     def test_the_bundle_gives_the_summary_once(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -606,18 +606,9 @@ impl Body<'_> {
                 && rest.last().is_some_and(|last| text(last) == "requests")
             {
                 // What a test's code sent a provider's fake (area 13, "What
-                // the code sent") is decided, and not built yet.
-                let written = tree::written(expr.syntax());
-                let span = self.span(expr);
-                self.out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("`{written}` isn't built yet"),
-                    )
-                    .at(span, "what the code sent")
-                    .reason("A provider's fake will list what the code sent each operation as `.requests`, which isn't built yet; only the `ai` fake's `ai.<prompt>.requests` is.")
-                    .next("Assert on what the code returns from the answers `fakes:` scripts until `.requests` is built"),
-                );
+                // the code sent").
+                let names: Vec<String> = rest.iter().map(text).collect();
+                return self.operation_requests(expr, &head, &names);
             } else {
                 let written = tree::written(expr.syntax());
                 let span = self.span(expr);

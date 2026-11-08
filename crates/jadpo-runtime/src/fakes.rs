@@ -82,6 +82,10 @@ impl Usage {
 pub struct ProviderFake {
     scripts: RefCell<Vec<Scripts>>,
     keys: KeptKeys,
+    /// What the code sent, for `.requests` (area 13): each by its
+    /// `connection.resource.operation`, in the order sent, its secrets
+    /// out of reach.
+    requests: RefCell<Vec<(String, jadpo_value::Value)>>,
 }
 
 impl ProviderFake {
@@ -111,6 +115,14 @@ impl ProviderFake {
 
 impl Capability for ProviderFake {
     fn call<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, Answer> {
+        // The same request again under the key its provider keeps, as a
+        // crash's rerun sends it, is the one request (area 13): only the
+        // run's own sends are listed, so a crash doesn't change the list.
+        if !self.keys.repeats(call) {
+            self.requests
+                .borrow_mut()
+                .push((call.name(), jadpo_value::secret::redacted(&call.input)));
+        }
         if let Some((answer, _)) = self.keys.given(call) {
             return Box::pin(async move { answer });
         }
@@ -170,6 +182,16 @@ impl Capability for ProviderFake {
             }),
         }
         true
+    }
+
+    fn requests(&self, connection: &str, operation: &str) -> Vec<jadpo_value::Value> {
+        let name = format!("{connection}.{operation}");
+        self.requests
+            .borrow()
+            .iter()
+            .filter(|(sent, _)| *sent == name)
+            .map(|(_, input)| input.clone())
+            .collect()
     }
 }
 
@@ -233,6 +255,19 @@ impl KeptKeys {
                 first.source,
             ))
         }
+    }
+
+    /// Whether `call` repeats a request kept under its key, unchanged: the
+    /// provider sees the one request again, and a fake lists it once
+    /// (area 13, "What the code sent").
+    pub fn repeats(&self, call: &Call) -> bool {
+        call.key.as_ref().is_some_and(|sent| {
+            self.kept.borrow().iter().any(|kept| {
+                kept.connection == call.connection
+                    && kept.key == sent.key
+                    && kept.input == call.input
+            })
+        })
     }
 
     /// Where the answer to `call` comes from when its key is kept.
@@ -318,6 +353,8 @@ pub fn script(
                 functions,
                 at,
                 ended: std::cell::RefCell::new(None),
+                sends_secrets: false,
+                wrote_secret: std::cell::Cell::new(false),
             };
             let sent = as_sent(providers, connection, operation, &value, Some(&coder));
             if coder.ended.into_inner().is_some() {
@@ -774,6 +811,30 @@ mod tests {
             did_nothing: vec!["busy".into()],
         });
         call
+    }
+
+    /// `.requests` lists a send once however often the same request goes
+    /// again under its kept key, and a send that kept nothing each time
+    /// it goes (area 13, "What the code sent").
+    #[test]
+    fn a_repeat_under_a_kept_key_is_one_request() {
+        let fake = ProviderFake::new();
+        let frame = frame();
+        fake.script("couriers", "bookings.create", Answer::Unavailable, frame);
+        fake.script("couriers", "bookings.create", Answer::Unknown, frame);
+        let call = keyed("bookings.create", "k1", "first");
+        let _ = keyed_answer(&fake, &call);
+        assert_eq!(fake.requests("couriers", "bookings.create").len(), 1);
+        // It did nothing, so nothing was kept, and it goes again.
+        let _ = keyed_answer(&fake, &call);
+        assert_eq!(fake.requests("couriers", "bookings.create").len(), 2);
+        // `lost` acted: the same request again is the one that acted.
+        let _ = keyed_answer(&fake, &call);
+        assert_eq!(fake.requests("couriers", "bookings.create").len(), 2);
+        // Another request under the key is another request.
+        let other = keyed("bookings.create", "k1", "second");
+        let _ = keyed_answer(&fake, &other);
+        assert_eq!(fake.requests("couriers", "bookings.create").len(), 3);
     }
 
     fn keyed_answer(fake: &ProviderFake, call: &Call) -> Answer {

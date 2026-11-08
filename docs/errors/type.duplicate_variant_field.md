@@ -51,6 +51,38 @@ check failed: 1 error, 1 file
 `(agent)` at the end of the `next:` line means your coding agent can make
 the fix itself.
 
+A variant that declares the same field twice in its block is the same
+error:
+
+```jadpo check project=e-variant-duplicate-declared expect=type.duplicate_variant_field
+type DeclineReason = Text {
+    max_length: 200
+}
+
+type PaymentOutcome = Enum {
+    declined: {
+        reason: DeclineReason
+        reason: DeclineReason
+    }
+}
+```
+
+```text output
+error: `PaymentOutcome.declined` declares `reason` twice
+ --> main.jadpo:8:9
+  |
+7 |         reason: DeclineReason
+  |         ------ first declared here
+8 |         reason: DeclineReason
+  |         ^^^^^^ declared again
+  reason: Each field is written once; a second line with the same name would leave its reader guessing which one counts.
+  next: Remove one `reason`, or rename it (agent)
+  rule: type.duplicate_variant_field
+  help: https://jadpo.dev/docs/errors/type.duplicate_variant_field
+
+check failed: 1 error, 1 file
+```
+
 ## How to fix it
 
 **If both lines give the same field**, keep the one with the value you
@@ -83,6 +115,29 @@ function declined_payment(reason: DeclineReason) -> PaymentOutcome {
 The `declined` value is built with one `reason`. If the second line was
 meant for another field, give it that field's name, and declare the
 field in the variant's block if it has none.
+
+**If the variant declares it twice**, remove one line from its block,
+or rename it if it was meant to be another field:
+
+```jadpo fragment
+    declined: {
+        reason: DeclineReason
+    }
+```
+
+```jadpo check project=e-variant-duplicate-declared-fix hidden
+type DeclineReason = Text {
+    max_length: 200
+}
+
+type PaymentOutcome = Enum {
+    declined: {
+        reason: DeclineReason
+    }
+}
+```
+
+The variant now has one `reason`, so a value of it has one too.
 
 ## Related
 

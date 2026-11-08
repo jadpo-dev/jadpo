@@ -44,6 +44,57 @@ impl Secret {
     }
 }
 
+/// `value` with every secret value it holds, however deep, put out of
+/// reach: what a fake keeps of a request (area 13, "What the code sent"),
+/// so a test reads a sent field that holds a secret as redacted and can't
+/// confirm its text. The text it holds is a placeholder, a fresh one for
+/// each secret so a set or a map of them keeps them apart.
+pub fn redacted(value: &crate::Value) -> crate::Value {
+    let mut next = 0;
+    redact(value, &mut next)
+}
+
+fn redact(value: &crate::Value, next: &mut u32) -> crate::Value {
+    use crate::Value;
+    use std::collections::BTreeMap;
+    let all = |values: &[Value], next: &mut u32| -> Vec<Value> {
+        values.iter().map(|value| redact(value, next)).collect()
+    };
+    let fields = |fields: &[(Rc<str>, Value)], next: &mut u32| {
+        fields
+            .iter()
+            .map(|(name, value)| (Rc::clone(name), redact(value, next)))
+            .collect::<Vec<_>>()
+    };
+    match value {
+        Value::Secret(secret) => {
+            *next += 1;
+            Value::Secret(Secret::new(secret.kind(), &format!("<redacted {next}>")))
+        }
+        Value::List(items) => Value::list(all(items, next)),
+        Value::Set(items) => Value::set(all(items, next)),
+        Value::Map(entries) => {
+            let mut map = BTreeMap::new();
+            for (key, value) in entries.iter() {
+                let key = redact(key, next);
+                map.insert(key, redact(value, next));
+            }
+            Value::Map(Rc::new(map))
+        }
+        Value::Record(record) => {
+            let mut record = (**record).clone();
+            record.fields = fields(&record.fields, next);
+            Value::Record(Rc::new(record))
+        }
+        Value::Variant(variant) => {
+            let mut variant = (**variant).clone();
+            variant.fields = fields(&variant.fields, next);
+            Value::Variant(Rc::new(variant))
+        }
+        other => other.clone(),
+    }
+}
+
 impl PartialEq for Secret {
     /// In constant time: the kinds, then the texts' bytes, every byte of
     /// the longer looked at whatever the first difference.

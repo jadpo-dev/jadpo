@@ -204,8 +204,22 @@ fn sorted(list: Option<&Vec<String>>) -> Vec<String> {
 /// rule, as the rule and what it declines on: the declaration's name with
 /// its domain (`lending.borrow_book`), as `actions:` names an action.
 pub fn security_declines(db: &dyn Db, project: Project) -> Vec<(String, String)> {
+    // A package's own code signs nothing off for the apps that install it,
+    // so a decline there is unused, never a decision to record.
+    let in_a_package: std::collections::BTreeSet<&String> = project
+        .files(db)
+        .iter()
+        .filter(|file| {
+            jadpo_db::location(db, project, **file)
+                .ownership
+                .package()
+                .is_some()
+        })
+        .map(|file| file.path(db))
+        .collect();
     crate::declines::declines(db, project)
         .into_iter()
+        .filter(|decline| !in_a_package.contains(&decline.path))
         .filter(|decline| jadpo_diag::find(&decline.rule).is_some_and(|rule| rule.security))
         .filter_map(|decline| {
             let subject = decline.subject.clone()?;

@@ -2,9 +2,9 @@
 
 A secret value ("Secret values") is never sent, logged,
 stored or shown: an `Output`, a failure's fields, an event, an email, a
-message and an entity refuse one, however deep, and so does any
-operation, operator or construction but the one made to take it. It
-arrives in an `Input`. A client that needs to know whether a key is set is
+message, a webhook's `reply:` and an entity refuse one, however deep, and
+so does any operation, operator or construction but the one made to take
+it. It arrives in an `Input`. A client that needs to know whether a key is set is
 sent that instead.
 
 ```jadpo check project=e-secret-exposed expect=type.secret_exposed

@@ -724,6 +724,14 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             corpus_project(&crate::sends::files(), "compiled-sends").expect("it checks"),
         ),
         (
+            "a signed-off password sent to a provider".into(),
+            corpus_project(
+                &crate::secret_boundaries::files(),
+                "compiled-password-signed-off",
+            )
+            .expect("it checks"),
+        ),
+        (
             "the system writing a server-only field".into(),
             corpus_project(&crate::server_only_writes::files(), "compiled-server-only")
                 .expect("it checks"),
@@ -833,6 +841,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "docs/language/10-configuration-and-time.md translation-messages",
         "docs/language/12-jobs-and-events.md several-steps",
         "docs/language/13-testing.md fakes-in-tests",
+        "docs/language/13-testing.md overdue-reminders",
         "docs/language/15-personal-data.md erasure",
         "docs/language/15-personal-data.md kept-record",
         "docs/language/15-personal-data.md other-stores",

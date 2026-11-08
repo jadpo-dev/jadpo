@@ -1638,7 +1638,7 @@ arm); and a function per kind of site (`binary`, `truth`, `field`,
 `assert_fails`; `caller`, `session`, `batch`, `advance`
 and `schedule`; `translate`, `render_prompt`, `escape`,
 `files`, `provider`, `provider_maps` and `mapped_code`, `ai`, `package`,
-`fake`, `ai_fake` and `ai_requests`), each turning what the runtime or `jadpo-value` gives
+`fake`, `ai_fake`, `ai_requests` and `operation_requests`), each turning what the runtime or `jadpo-value` gives
 into the stop the interpreter's walker raises at the same site, with the
 same words. The operators are one implementation both executors call,
 `jadpo_runtime::operators::operate`, and so is the standard library:
@@ -1667,7 +1667,7 @@ operation, its package's functions run by the executor), `ai`
 (`ai.generate`, `ai.stream`, `ai.embed` and `ai.embed_all`, by the site the
 plan decodes, `calls::Asked`), and with the `testing` feature `fake` (a
 test's `fakes:`), `ai_fake` (its `fakes: { ai: }`, a recording's answer
-among them) and `ai_requests`. An `attempt` over a provider's operation or
+among them), `ai_requests` and `operation_requests` (a provider fake's `.requests`). An `attempt` over a provider's operation or
 a package's action maps a failure of the operation's, its package's or
 `timed_out` by its code (`calls::provider_maps`, and `calls::mapped`,
 which faults on one no arm maps); compiled code writes that arm into the

@@ -744,6 +744,15 @@ fn a_decline_inside_a_body_is_expected_statement() {
 }
 
 #[test]
+fn a_decline_on_a_field_of_a_value_in_a_body_is_expected_statement() {
+    let (error, covered) = one_error(
+        "function f() -> T {\n    return T {\n        decline library.similar_exists: \"x\"\n        a: 1\n    }\n}\n",
+    );
+    assert_eq!(error.rule.id, "syntax.expected_statement");
+    assert_eq!(covered, "decline");
+}
+
+#[test]
 fn a_decline_without_its_colon_offers_one() {
     let text = "decline library.similar_exists \"Rounds down\"\nfunction f(a: Int) -> Int {\n    return a\n}\n";
     let (error, _) = one_error(text);
