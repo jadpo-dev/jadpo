@@ -186,7 +186,9 @@ reserved word. A decline with no declaration under it is
 
 A decline covers its one rule on its one declaration: the innermost
 declaration or member around the finding's location. So a decline on a
-type covers a finding on the type, not one on its field.
+type covers a finding on the type, not one on its field. A field of a
+value built in a body can't carry a decline, so a finding there is on
+the function or action around it.
 
 The reason is required. A missing or blank one is `decline.no_reason`, and
 the finding stays declined meanwhile, so you see one error, not two.

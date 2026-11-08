@@ -199,14 +199,25 @@ fn is_target(kind: SyntaxKind) -> bool {
 }
 
 /// The declaration or member a finding at `offset` is on: the innermost
-/// one around it that a `decline` can stand above, so a member inside a
-/// body, a record literal's field for one, gives way to the declaration
-/// around it (a `decline` line in a body is a syntax error).
+/// one around it that a `decline` line can stand above.
 fn target_at(root: &SyntaxNode, offset: u32) -> Option<SyntaxNode> {
     let token = root.token_at_offset(offset.into()).right_biased()?;
-    token.parent_ancestors().find(|node| {
-        is_target(node.kind()) && !node.ancestors().skip(1).any(|above| above.kind() == BLOCK)
-    })
+    token
+        .parent_ancestors()
+        .find(|node| is_target(node.kind()) && !in_body(node))
+}
+
+/// Whether `node` is a field of a value built in a body, which no `decline`
+/// can stand above (area 1): a finding there is on the function or action
+/// around it.
+fn in_body(node: &SyntaxNode) -> bool {
+    let member = |kind| matches!(kind, MEMBER | BARE_MEMBER);
+    member(node.kind())
+        && node
+            .ancestors()
+            .skip(1)
+            .find(|up| up.kind() == BLOCK || (is_target(up.kind()) && !member(up.kind())))
+            .is_some_and(|up| up.kind() == BLOCK)
 }
 
 /// The findings `found` leaves once each declined one is dropped, with

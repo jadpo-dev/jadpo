@@ -49,8 +49,34 @@ check failed: 1 error, 1 file
 `(agent)` at the end of the `next:` line means your coding agent can make
 the fix itself.
 
-A type that declares the same field twice, with two `name:` lines in
-`type Product = Object { }`, is the same error.
+A type that declares the same field twice is the same error:
+
+```jadpo check project=e-duplicate-field-declared expect=type.duplicate_field
+type ProductName = Text {
+    max_length: 120
+}
+
+type Product = Object {
+    name: ProductName
+    name: ProductName
+}
+```
+
+```text output
+error: `Product` declares `name` twice
+ --> main.jadpo:7:5
+  |
+6 |     name: ProductName
+  |     ---- first declared here
+7 |     name: ProductName
+  |     ^^^^ declared again
+  reason: Each field is written once; a second line with the same name would leave its reader guessing which one counts.
+  next: Remove one `name`, or rename it (agent)
+  rule: type.duplicate_field
+  help: https://jadpo.dev/docs/errors/type.duplicate_field
+
+check failed: 1 error, 1 file
+```
 
 ## How to fix it
 
@@ -82,6 +108,27 @@ function build_product(name: ProductName) -> Product {
 The `Product` is built with one `name`. If the second line was meant
 for another field, give it that field's name, and declare the field in
 the type if it has none.
+
+**If the type declares it twice**, remove one line, or rename it if it
+was meant to be another field:
+
+```jadpo fragment
+type Product = Object {
+    name: ProductName
+}
+```
+
+```jadpo check project=e-duplicate-field-declared-fix hidden
+type ProductName = Text {
+    max_length: 120
+}
+
+type Product = Object {
+    name: ProductName
+}
+```
+
+The type now has one `name`, so a value of it has one too.
 
 ## Related
 
