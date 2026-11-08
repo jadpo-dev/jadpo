@@ -257,6 +257,9 @@ pub(crate) struct Facts {
     pub ai_fakes: BTreeMap<NodeKey, (String, jadpo_graph::body::AiFakeAnswer)>,
     /// Each `ai.<prompt>.requests` a test reads, with the prompt's name.
     pub ai_requests: BTreeMap<NodeKey, String>,
+    /// Each `connection.resource.operation.requests` a test reads (area
+    /// 13): the connection and the operation, `bookings.create`.
+    pub operation_requests: BTreeMap<NodeKey, (String, String)>,
     /// Each value an email template writes out, and how (area 16).
     pub template_writes: BTreeMap<NodeKey, super::template::TemplateWrite>,
     /// Each `{{ include ... }}` of a partial (area 16; chunk 7.3c), by its

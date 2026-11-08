@@ -6,7 +6,11 @@
 //! an email and a message; the data model refuses one in an entity; the
 //! body check refuses `json.write` of one, an operator other than `==` and
 //! `!=` on one, and passing one to any standard operation but the one made
-//! to take it.
+//! to take it. A `Password` is also refused where it goes out on a
+//! provider's operation, `type.password_sent_to_provider`, a security rule
+//! a person signs off; routes take a secret only in a request's body, or
+//! a token in a header (`route.secret_outside_body`); and a webhook's
+//! reply is refused one as a response is (decided 2026-11-08).
 
 use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_std::Op;
@@ -65,36 +69,58 @@ pub(crate) fn held_secret(
     ty: &Ty,
     seen: &mut Vec<String>,
 ) -> Option<&'static str> {
-    if let Some(secret) = secret_of(table, ty) {
+    held_matching(table, ty, seen, &|_| true)
+}
+
+/// Whether a value of `ty` is or holds a `Password`, as [`held_secret`]
+/// finds a secret: an object may hold a key before it holds a password,
+/// so this isn't its first answer.
+pub(crate) fn holds_password(table: &dyn TypeView, ty: &Ty) -> bool {
+    held_matching(table, ty, &mut Vec::new(), &|secret| {
+        secret == security::PASSWORD
+    })
+    .is_some()
+}
+
+/// The first secret value a value of `ty` is or holds that `wanted`
+/// picks out, however deep.
+fn held_matching(
+    table: &dyn TypeView,
+    ty: &Ty,
+    seen: &mut Vec<String>,
+    wanted: &dyn Fn(&'static str) -> bool,
+) -> Option<&'static str> {
+    if let Some(secret) = secret_of(table, ty).filter(|secret| wanted(secret)) {
         return Some(secret);
     }
     match ty {
         // A feature's properties (area 20, chunk 5.5u7).
-        Ty::Opaque(name, args) if super::is_feature_type(name) => {
-            args.iter().find_map(|arg| held_secret(table, arg, seen))
+        Ty::Opaque(name, args) if super::is_feature_type(name) => args
+            .iter()
+            .find_map(|arg| held_matching(table, arg, seen, wanted)),
+        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => {
+            held_matching(table, inner, seen, wanted)
         }
-        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => held_secret(table, inner, seen),
-        Ty::Map(key, value) => {
-            held_secret(table, key, seen).or_else(|| held_secret(table, value, seen))
-        }
+        Ty::Map(key, value) => held_matching(table, key, seen, wanted)
+            .or_else(|| held_matching(table, value, seen, wanted)),
         Ty::Named(name) => {
             if seen.contains(name) {
                 return None;
             }
             seen.push(name.clone());
             match table.def(name) {
-                Some(Def::Scalar { parent, .. }) => held_secret(table, parent, seen),
+                Some(Def::Scalar { parent, .. }) => held_matching(table, parent, seen, wanted),
                 Some(Def::Fields {
                     base: FieldsBase::Object | FieldsBase::Input,
                     fields,
                     ..
                 }) => fields
                     .iter()
-                    .find_map(|field| held_secret(table, &field.declared, seen)),
+                    .find_map(|field| held_matching(table, &field.declared, seen, wanted)),
                 Some(Def::Enum { variants }) => variants
                     .iter()
                     .flat_map(|variant| variant.fields.iter().flatten())
-                    .find_map(|field| held_secret(table, &field.declared, seen)),
+                    .find_map(|field| held_matching(table, &field.declared, seen, wanted)),
                 _ => None,
             }
         }
@@ -233,6 +259,87 @@ fn indefinite(secret: &str) -> &'static str {
     } else {
         "a"
     }
+}
+
+/// Whether a request may carry secret value `secret` in a header: only a
+/// credential made to be sent on every request, which is what a header is
+/// for. A bearer token and a JWT are read from one by RFC 6750, and an
+/// `ApiKey` by long habit (`X-Api-Key`); a password or a code is typed
+/// once, into a form, and a `SecretText` could be anything (decided
+/// 2026-11-08).
+pub(crate) fn travels_in_a_header(secret: &str) -> bool {
+    matches!(
+        secret,
+        security::BEARER_TOKEN | security::API_KEY | security::JWT
+    )
+}
+
+/// A route's input or a placeholder that would read secret value `secret`
+/// from a URL or, for one that doesn't belong there, a header: named
+/// `name`, `from` where it is read, at `span`.
+pub(crate) fn outside_the_body(name: &str, secret: &str, from: &str, span: Span) -> Diagnostic {
+    let why = if from == "a header" {
+        format!(
+            "{} `{secret}` is typed once into a form and sent in the request's JSON body; only a key or a token, sent on every request, is read from a header, and `Authorization` is read by sign-in.",
+            capital(indefinite(secret))
+        )
+    } else {
+        format!(
+            "A URL is written to access logs and proxies' logs, kept in a browser's history and passed on in a `Referer` header, so {} `{secret}` in one is read by people it was never meant for.",
+            indefinite(secret)
+        )
+    };
+    let next = if from == "a header" {
+        format!("Take `{name}` in the request's body, without `header:`")
+    } else {
+        format!(
+            "Take `{name}` in the JSON body of a `POST`, `PUT` or `PATCH`, in the route's `input:`"
+        )
+    };
+    Diagnostic::new(
+        &rule::ROUTE_SECRET_OUTSIDE_BODY,
+        format!(
+            "`{name}` reads {} `{secret}` from {from}",
+            indefinite(secret)
+        ),
+    )
+    .at(span, format!("a secret, in {from}"))
+    .reason(why)
+    .next(next)
+}
+
+/// A `Password` going out on what `written` calls, whose input `input`
+/// holds it: refused unless a person signs it off (area 19, "Where a
+/// secret can go"; decided 2026-11-08).
+pub(crate) fn sent_to_provider(written: &str, input: &str, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TYPE_PASSWORD_SENT_TO_PROVIDER,
+        format!("`{written}` sends a `Password` to a provider"),
+    )
+    .at(span, "a password, sent out")
+    .reason(format!(
+        "`{input}` holds a `Password`. A password goes no further than its hash, because anyone holding one can sign in with it; sent to a provider, it is in the hands of a system you don't run, and of whatever that system logs or keeps."
+    ))
+    .next_declined_above(
+        "Send what the provider needs instead, such as a token issued for this, and keep the password's hash here",
+        "the action",
+    )
+}
+
+/// A webhook's reply holding a secret value.
+pub(crate) fn in_a_reply(event: &str, secret: &str, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TYPE_SECRET_EXPOSED,
+        format!("`{event}`'s `reply:` holds {} `{secret}`", indefinite(secret)),
+    )
+    .at(span, "sent back")
+    .reason(format!(
+        "{} `{secret}` is a secret value: it is never sent, logged, stored or shown. A webhook's reply is written out to whoever sent the webhook, and kept with its id to answer a repeat.",
+        capital(indefinite(secret))
+    ))
+    .next(format!(
+        "Remove the `{secret}` from the reply, and send the provider what it needs instead"
+    ))
 }
 
 /// `A` or `An`, starting a sentence.

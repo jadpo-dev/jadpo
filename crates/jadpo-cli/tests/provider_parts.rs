@@ -502,16 +502,14 @@ fn a_scripted_answer_sends_the_parts() {
 }
 
 /// What the code sent a provider's fake, `.requests` (area 13, "What the
-/// code sent"), is decided but isn't built yet: it says so, rather than
-/// calling it something that is called and not a value.
+/// code sent"): a typed list of the operation's input, for a call the
+/// test's code made through its own connection.
 #[test]
-fn a_fakes_requests_say_they_arent_built_yet() {
+fn a_fakes_requests_list_what_was_sent() {
     let (out, code) = tested(
         "fake-requests",
-        "use app { payments }\nuse shared/providers/tidepay\n\ntest \"a charge is asked for once\" {\n    var found: Tidepay.Charge = charge_of(\"ch_2\")\n    assert list.count(payments.charges.get.requests) == 1\n}\n",
+        "use app { payments }\nuse shared/providers/tidepay\n\ntest \"a charge is asked for once\" {\n    var found: Tidepay.Charge = charge_of(\"ch_2\")\n    assert found.shop == none\n    assert list.count(payments.charges.get.requests) == 1\n}\n",
     );
-    assert_eq!(code, 1, "{out}");
-    assert!(out.contains("toolchain.not_built_yet"), "{out}");
-    assert!(out.contains("payments.charges.get.requests"), "{out}");
-    assert!(!out.contains("is called, not a value"), "{out}");
+    assert_eq!(code, 0, "{out}");
+    assert!(!out.contains("toolchain.not_built_yet"), "{out}");
 }

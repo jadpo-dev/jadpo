@@ -160,7 +160,8 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 | Callee::Stream { .. }
                 | Callee::Embed { .. }
                 | Callee::AiFake { .. }
-                | Callee::AiRequests { .. } => {}
+                | Callee::AiRequests { .. }
+                | Callee::OperationRequests { .. } => {}
                 // A message is used by what calls it (area 10).
                 Callee::Translation(key) => {
                     if let Some(name) = crate::translations::type_of_key(db, project, key) {

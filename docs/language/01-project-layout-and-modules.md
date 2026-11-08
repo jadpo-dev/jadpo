@@ -194,7 +194,8 @@ The reason is required. A missing or blank one is `decline.no_reason`, and
 the finding stays declined meanwhile, so you see one error, not two.
 
 An agent or a person may decline. A rule the compiler's catalogue marks
-as a security rule, such as `policy.call_ungranted`, also needs an
+as a security rule, such as `policy.call_ungranted` or
+`type.password_sent_to_provider`, also needs an
 [acceptance](18-records-and-manifest.md#acceptances) to decline, since
 an agent can write a reason itself: a new decline of one is
 `PolicyChange.<rule name>_declined` on the declaration it sits above
@@ -216,6 +217,7 @@ the action" in place of "above it".
 | `translation.field_unused` | [Translations as messages](10-configuration-and-time.md#translations-as-messages) | No wording in a language uses one of a message's fields |
 | `package.standard_candidate` | [External services](11-integrations.md) | A provider field looks like a standard type the package doesn't use, or like personal data it doesn't mark |
 | [`type.batch_order_updatable`](../errors/type.batch_order_updatable.md) | [Background work](12-jobs-and-events.md) | A batch walks a query ordered by a field an update can change |
+| [`type.password_sent_to_provider`](../errors/type.password_sent_to_provider.md) | [Standard library](19-standard-library.md) | A `Password` goes out on a provider's operation, which needs a person's acceptance |
 | [`step.late_failure`](../errors/step.late_failure.md) | [Background work](12-jobs-and-events.md) | An action can fail for good after a changing call took effect |
 | `email.field_unused` | [Built-in services](16-built-in-services.md) | An email's field is written by no template and no subject |
 | `email.health_problem` | [Built-in services](16-built-in-services.md) | An email's template fails a check of the mail health score |
