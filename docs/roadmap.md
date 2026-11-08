@@ -367,10 +367,7 @@ What the Reddit thread found (Richard, 2026-11-03):
   agent can ask for the project map and for what a change to a name reaches,
   rather than reading files to work it out. `jadpo impact` moves here from
   "Tooling completeness".
-- [ ] **A18 Leaving Jadpo** `opus · medium`: a short page saying what a
-  project keeps if it stops using Jadpo: what its tables look like to anyone
-  else, its OpenAPI, the licence, and where the runtime comes from. It claims
-  only what a test or a check shows.
+- [x] **A18 Leaving Jadpo**: [leaving Jadpo](leaving-jadpo.md); `crates/jadpo-cli/tests/leaving.rs`, `tools/checks/openapi_valid.py` and `tools/fixtures/openapi/`; `every_carried_crate_is_apache_2_0` in `crates/jadpo-cli/src/runtime_source.rs`.
 - [ ] **A19 Typed holes, to decide** `opus · high`: whether an agent can write
   a hole and have the compiler say what type belongs there and what is in
   scope. A language decision, so it goes to Richard with a recommendation and
