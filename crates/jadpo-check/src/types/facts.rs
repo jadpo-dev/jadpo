@@ -125,7 +125,9 @@ pub fn fact_of(node: &Node) -> Option<Fact> {
             // An audited entity's `history` reads it as `get` does (area 16;
             // chunk B11).
             Callee::Entity { entity, operation }
-                if operation == "get" || operation == jadpo_std::audit::HISTORY =>
+                if operation == "get"
+                    || operation == jadpo_std::audit::HISTORY
+                    || operation == crate::resolve::EXPORT =>
             {
                 Fact::Gets(entity.name().to_string())
             }

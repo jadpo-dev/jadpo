@@ -53,7 +53,7 @@ async fn body(
                     let caller = match target {
                         Target::Callable(id) => plan.callable(id).map(|callable| callable.caller),
                         Target::Query(id) => plan.query(id).map(|query| query.caller),
-                        Target::Get(_) | Target::History(_) => Some(None),
+                        Target::Get(_) | Target::History(_) | Target::Export(_) => Some(None),
                         _ => None,
                     };
                     if let Some(caller) = caller {
@@ -211,6 +211,7 @@ fn store<'a, 'p: 'a>(
             Target::Query(id) => plan.query(id).map(|query| StoreOp::Read(&query.read)),
             Target::Get(id) => plan.entity(id).map(|entity| StoreOp::Read(&entity.get)),
             Target::History(id) => plan.history(id).map(StoreOp::History),
+            Target::Export(id) => plan.export(id).map(StoreOp::Export),
             Target::Write(id) => plan.write(id).map(|write| StoreOp::Write(&write.plan)),
             Target::Callable(_)
             | Target::Request { .. }
@@ -229,6 +230,7 @@ fn store<'a, 'p: 'a>(
                 Target::Query(_) => "a query with no plan",
                 Target::Get(_) => "an entity with no plan",
                 Target::History(_) => "a history with no plan",
+                Target::Export(_) => "an export with no plan",
                 Target::Write(_) => "a write with no plan",
                 Target::Callable(_)
                 | Target::Request { .. }

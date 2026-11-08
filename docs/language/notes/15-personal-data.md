@@ -21,6 +21,26 @@ Why [Personal data](../15-personal-data.md) is the way it is: the decisions behi
 - **`subject` already means something.** Area 8's principal has a `subject`
   (the sign-in identifier), so this page uses "person", not "data subject",
   in source.
+- **What an export reaches.** It is what `erase` reaches, read rather than
+  written, so what the law gives one person can't drift from what the
+  other deletes. The one exception is another person's own record that
+  refers to them: erasing clears only the reference, and exporting it would
+  hand one person another's data.
+- **An export with nothing to say.** `User.export` doesn't fail: the page's
+  example declares no `fails`, a history gives an empty page for a record
+  the caller may not read, and a person's export gives one with nothing in
+  it the same way, whether they are absent, erased or just not the caller's
+  to read.
+- **Reading more than one store.** `export` reads each store in a read-only
+  transaction of its own, beside the action's, since it must reach records
+  across every store where `erase` does and an action may write only one.
+- **A `File` field waits for downloads.** The area's own rule is that
+  whatever can't be carried out in full is refused where it is written;
+  a link that goes nowhere would be a silently partial export.
+- **The after-`erase` test.** Generating one for each person entity needs
+  a person to make, which data builders will give. Until then, every test
+  that erases a person is held to its export holding nothing, checked after
+  the test's deliveries.
 - **Options as enum values.** `PersonalData.contact` and `Erasure.deleted`
   follow area 2's `Type.value` rule and its "values, not verbs" naming.
 

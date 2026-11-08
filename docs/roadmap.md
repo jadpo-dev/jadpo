@@ -226,16 +226,6 @@ work below (Richard, 2026-11-08).
    (area 19, "Encrypted fields" and "Language gaps this page depends on")
    and `crypto.verify_totp`: split by size (2026-10-31) into P1 to P12,
    taken in order.
-   - [ ] **P5 Export** `opus · high` after P4c and V5: area 15, "Export"
-     and "Who may erase and export"; area 13's generated test.
-     `User.export(id)` as a `PersonalDataExport`: the person's record,
-     every record that belongs to them and those erasure deletes with
-     them, as JSON, one list per entity
-     with the API's field names, credentials left out, a `File` field as
-     a link, with each kind's retention and the companies that receive
-     it, for a caller with read on the person's record; and the test
-     generated for each person entity that after `erase`, `export`
-     returns nothing. Done when export tests pass on both executors.
    - [ ] **P6 Erasure at providers** `opus · high` after P4c and V6: area
      15, "Erasure at providers"; area 11, "Erasure at providers". Each
      connection's key copied into `PersonErased` before the person's
@@ -249,7 +239,7 @@ work below (Richard, 2026-11-08).
      erasing a person sees each fake provider's erasure called once,
      after the commit.
    - [ ] **P7 Marked fields in logs and access records** `opus · high`
-     after P5: area 15, "Marked fields in logs", "Sensitive fields" and
+     area 15, "Marked fields in logs", "Sensitive fields" and
      "Access records"; area 4, "Logging"; area 19's standard types that
      are personal data, treated as marked there. Every marked field
      logged as a keyed hash of its canonical text, whatever its type and
@@ -284,7 +274,7 @@ work below (Richard, 2026-11-08).
      SHA-1, RFC 6238's default, and points two-factor codes at a package.
      Done when each is checked against its standard's known answers on
      both executors and built for WebAssembly.
-   - [ ] **P11 Data requests: the routes** `opus · xhigh` after P5 and
+   - [ ] **P11 Data requests: the routes** `opus · xhigh` after
      P7: area 15, "Data requests" ("Self-service by email", "Signed in",
      "Made by staff", "Protection" and "Changing the routes"); area 7,
      "Generated routes"; area 16, "Rate limits". `privacy:` in
@@ -324,7 +314,9 @@ work below (Richard, 2026-11-08).
      `Content-Disposition: attachment` but for the image allow-list,
      `nosniff` and `sandbox`, read in fixed windows. Done when route
      tests download a file whole and by range on both executors, and an
-     expired or altered link is refused.
+     expired or altered link is refused. Lifts `User.export`'s
+     `toolchain.not_built_yet` on a person reaching a `File` field: a
+     `File` in `PersonalDataExport` becomes this signed link.
    - [ ] **B5 Uploads** `opus · xhigh`: area 16, "Uploading", "Compressed
      uploads" and "The disk driver" (uploads); area 2, `FileUpload` and
      `UploadSlot`; area 9, the slot's grant. `Entity.field_upload()`
@@ -575,7 +567,7 @@ work below (Richard, 2026-11-08).
       "What is built". Every route refusing bad input with `{ field, rule }`, each
       declared failure's envelope and the rest of that list, generated, run with
       the project's and shown under the route they test. Area 15's after-`erase`
-      test is P5's.
+      test for a person entity no test erases needs W1's data builders; every erasure a test makes is already checked.
     - [ ] **W3 What a failed test reports** `opus · high` after item 3's trace:
       area 13, "What a failed test reports". The trace, fakes, kept database and
       clock in the report.
