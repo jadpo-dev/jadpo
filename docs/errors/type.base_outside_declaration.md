@@ -1,6 +1,18 @@
 # `type.base_outside_declaration`
 
-There is no unnamed object: `Object`, `Enum`, `Input` and `Output` appear only after `=` (question 19):
+A field, parameter or result is given `Object`, `Enum`, `Input` or `Output` as its type, which is only ever the base of a type declaration.
+
+## Why Jadpo refuses it
+
+`Object`, `Enum`, `Input` and `Output` say what a declared type is built
+from, written after `=` in `type Name = Base { ... }`. They aren't types
+of their own: a bare `Object` has no fields, so nothing says what it
+holds. Jadpo has no unnamed shapes, so a nested shape is declared once,
+with a name, and every field and signature that holds it uses that name.
+
+## What it looks like
+
+main.jadpo:
 
 ```jadpo check project=e-base expect=type.base_outside_declaration
 type Basket = Object {
@@ -21,3 +33,34 @@ error: `Object` is used as a type
 
 check failed: 1 error, 1 file
 ```
+
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+## How to fix it
+
+**If the field holds a shape of its own**, declare that shape as a named
+type with its fields, and give the field that name. main.jadpo becomes:
+
+```jadpo check project=e-base-fix
+type BasketNote = Text {
+    max_length: 200
+}
+
+type BasketDetails = Object {
+    note: BasketNote
+}
+
+type Basket = Object {
+    details: BasketDetails
+}
+```
+
+`Basket.details` now holds a `BasketDetails`, and any other field or
+signature that holds the same shape uses the same name.
+
+## Related
+
+- [One form for every type](../language/02-values-and-types.md#one-form-for-every-type)
+- [Objects](../language/02-values-and-types.md#objects)
+- [Enums](../language/02-values-and-types.md#enums)
