@@ -9,7 +9,7 @@ here.
 ## Your database is plain PostgreSQL
 
 Jadpo keeps your records in ordinary PostgreSQL tables that any tool can
-read and write. Each migration's schema change is a SQL file,
+read. Each migration's schema change is a SQL file,
 `database/migrations/<name>/postgres.sql`, which PostgreSQL's own `psql`
 applies to an empty database.
 
@@ -28,7 +28,8 @@ applies to an empty database.
   only reads your records can leave them alone.
 - **Nothing of Jadpo's runs inside the database.** The golden todo's
   migrations add no function, trigger or extension. An app that stores
-  geometries gets PostGIS, PostgreSQL's own extension for them
+  geometries also gets the PostGIS extension, which is PostGIS's, not
+  Jadpo's
   ([Storage types](language/05-data.md#storage-types)).
 
 Shown by `crates/jadpo-cli/tests/leaving.rs`. It applies the golden todo's

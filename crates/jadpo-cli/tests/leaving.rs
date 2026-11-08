@@ -154,11 +154,13 @@ fn the_golden_todos_migrations_are_plain_postgresql_psql_applies() {
         &address,
         "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY 1",
     );
-    let (runtime, entities): (Vec<&String>, Vec<&String>) = tables
-        .iter()
-        .partition(|table| table.starts_with("jadpo_"));
+    let (runtime, entities): (Vec<&String>, Vec<&String>) =
+        tables.iter().partition(|table| table.starts_with("jadpo_"));
     assert_eq!(entities, ["service", "todo", "user"], "{tables:?}");
-    assert!(runtime.iter().any(|table| *table == "jadpo_outbox"), "{tables:?}");
+    assert!(
+        runtime.iter().any(|table| *table == "jadpo_outbox"),
+        "{tables:?}"
+    );
     // A column after each field, of PostgreSQL's own type for it.
     let columns = psql_rows(
         &address,
@@ -178,7 +180,7 @@ fn the_golden_todos_migrations_are_plain_postgresql_psql_applies() {
     // The database holds the keys, unique rules and references.
     let constraints = psql_rows(
         &address,
-        "SELECT conrelid::regclass::text || ' ' || conname || ' ' || contype FROM pg_constraint \
+        "SELECT conrelid::regclass::text || ' ' || conname || ' ' || contype::text FROM pg_constraint \
          WHERE conrelid IN ('public.todo'::regclass, 'public.service'::regclass) ORDER BY 1",
     );
     assert_eq!(
@@ -226,30 +228,52 @@ type Priority = Enum {
 "#,
     ),
     (
+        "domains/house/types/chore_title.jadpo",
+        r#"/// What a chore is, in a few words.
+type ChoreTitle = Text {
+    max_length: 80
+}
+"#,
+    ),
+    (
         "domains/house/entities/chore.jadpo",
-        r#"use house/types { Priority }
+        r#"use house/types { ChoreTitle, Priority }
 
 /// Something to do around the house.
 entity Chore {
     id: Uuid
-    title: Text
+    title: ChoreTitle {
+        unique: true
+    }
     done: Bool
     priority: Priority
 }
 "#,
     ),
     (
+        "domains/house/failures/chore_exists.jadpo",
+        r#"type ChoreExists = Failure {
+    kind: FailureKind.conflict
+    message: "There is already a chore with that title."
+}
+"#,
+    ),
+    (
         "domains/house/actions/add_chore.jadpo",
         r#"use house/entities { Chore }
-use house/types { Priority }
+use house/failures { ChoreExists }
+use house/types { ChoreTitle, Priority }
 
 /// Adds a chore, not yet done.
-action add_chore(title: Text, priority: Priority) -> Chore {
-    return Chore.create {
+action add_chore(title: ChoreTitle, priority: Priority) fails ChoreExists -> Chore {
+    return attempt Chore.create {
         set: {
             title: title
             done: false
             priority: priority
+        }
+        conflict: {
+            Chore.title: ChoreExists
         }
     }
 }
@@ -262,8 +286,8 @@ use house/types { Priority }
 
 /// Two chores, for local development.
 seed {
-    house.add_chore("Water the plants", Priority.low)
-    house.add_chore("Fix the gate", Priority.high)
+    attempt house.add_chore("Water the plants", Priority.low)
+    attempt house.add_chore("Fix the gate", Priority.high)
 }
 "#,
     ),

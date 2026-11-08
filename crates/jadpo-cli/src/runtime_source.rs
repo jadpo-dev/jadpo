@@ -219,9 +219,7 @@ mod tests {
         let package = &workspace[workspace
             .find("[workspace.package]")
             .expect("the package fields")..];
-        let package = &package[..package[1..]
-            .find("\n[")
-            .map_or(package.len(), |at| at + 1)];
+        let package = &package[..package[1..].find("\n[").map_or(package.len(), |at| at + 1)];
         assert!(
             package
                 .lines()
