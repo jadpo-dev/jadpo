@@ -132,6 +132,7 @@ mod route_limits;
 mod rule_slice;
 mod schedules;
 mod search;
+mod secret_boundaries;
 mod seeds;
 mod sends;
 mod served_openapi;

@@ -47,7 +47,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::rc::Rc;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 use jadpo_std::HttpMethod;
 use jadpo_std::provider::{
@@ -644,6 +644,12 @@ pub(crate) struct SiteCoder<'c, 'x> {
     pub(crate) functions: &'c dyn Functions,
     pub(crate) at: u32,
     pub(crate) ended: RefCell<Option<String>>,
+    /// Whether a secret value goes out as itself: true only for the one
+    /// request sent to a provider.
+    pub(crate) sends_secrets: bool,
+    /// Set when a secret value is written, so what is shown of a call
+    /// needs writing again.
+    pub(crate) wrote_secret: Cell<bool>,
 }
 
 impl fmt::Debug for SiteCoder<'_, '_> {
@@ -683,6 +689,11 @@ impl jadpo_value::json::Coder for SiteCoder<'_, '_> {
         self.ended
             .borrow_mut()
             .get_or_insert_with(|| format!("`{rule}`"));
+    }
+
+    fn writes_secrets(&self) -> bool {
+        self.wrote_secret.set(true);
+        self.sends_secrets
     }
 }
 
@@ -867,6 +878,7 @@ async fn made(
         mut request,
         fields,
         keying,
+        shown,
     } = match made_request {
         Ok(made) => made,
         Err(Unready::Misconfigured) => {
@@ -936,11 +948,11 @@ async fn made(
     }
     // What the development call log shows of the request (chunk 7.2d).
     let shown = ctx.host().call_log().map(|_| {
-        (
-            request.method.word(),
-            request.url.clone(),
-            request.body.clone(),
-        )
+        let (url, body) = match shown {
+            Some(shown) => (shown.url, shown.body),
+            None => (request.url.clone(), request.body.clone()),
+        };
+        (request.method.word(), url, body)
     });
     let mut made = made.with_request(request);
     made.step = step;
@@ -1314,135 +1326,45 @@ fn request(
         Address::Unknown => return Err(Unready::Misconfigured),
     };
     let base = sendable(&base).ok_or(Unready::Misconfigured)?;
-    // The input as the package's JSON, its members by their spellings on
-    // the wire, each number as written so no place is lost (chunk 7.2c2).
-    let mut numbers = jadpo_value::json::Numbers::default();
-    let mut members = match (op.input, input) {
-        (Some(number), Some(value)) => {
-            let Some(codec) = providers.json.codec_of(number) else {
-                return Err(Unready::Fault(FaultKind::Defect(
-                    "a provider's input the plan gave no codec".into(),
-                )));
-            };
-            let coder = SiteCoder {
-                ctx: RefCell::new(&mut *ctx),
-                functions: site.functions,
-                at: site.at,
-                ended: RefCell::new(None),
-            };
-            let codecs = jadpo_value::json::Codecs {
-                coder: Some(&coder),
-                ..providers.json.codecs
-            };
-            let written = codecs.write_value(codec, value);
-            if let Some(how) = coder.ended.into_inner() {
-                return Err(Unready::Fault(FaultKind::Provider(format!(
-                    "`{}.{}`'s input doesn't encode: {how}",
-                    name, op.name
-                ))));
-            }
-            match jadpo_value::json::parse(written.as_bytes()) {
-                Some((serde_json::Value::Object(members), written)) => {
-                    numbers = written;
-                    members
-                }
-                _ => {
-                    return Err(Unready::Fault(FaultKind::Defect(
-                        "a provider's input that isn't an object".into(),
-                    )));
-                }
-            }
-        }
-        _ => serde_json::Map::new(),
-    };
+    // The input as the package's JSON, each secret as its kind alone: what
+    // a step's fingerprint and the development call log are made from
+    // (area 19, "Where a secret can go").
+    let (mut shown_members, shown_numbers, wrote_secret) =
+        written_input(ctx, providers, (name, op), input, site, false)?;
     // What the call's site writes beside its input, at its place: a
     // model's structured-output setting (area 21; chunk 5.5v3b).
-    if let Some((place, value)) = added {
-        add_at(&mut members, place, value);
+    if let Some((place, value)) = added.clone() {
+        add_at(&mut shown_members, place, value);
     }
     // Each top-level field as written, for the fingerprint a step of an
     // action with several changing calls keeps (chunk 7.5b).
-    let fields: Vec<(String, Vec<u8>)> = members
+    let fields: Vec<(String, Vec<u8>)> = shown_members
         .iter()
         .map(|(name, value)| {
-            let text = json_text(value, &numbers, &mut vec![name.clone()]);
+            let text = json_text(value, &shown_numbers, &mut vec![name.clone()]);
             (name.clone(), text.into_bytes())
         })
         .collect();
-    let mut url = base.trim_end_matches('/').to_string();
-    for part in &op.path {
-        match part {
-            PathPart::Fixed(text) => url.push_str(text),
-            PathPart::Field(name) => match members.remove(name) {
-                Some(value) => match plain(&value, &numbers, name) {
-                    // A dot segment, or none at all, would leave the
-                    // placeholder's segment: every URL parser on the way
-                    // resolves `/accounts/../statement` to `/statement`,
-                    // another operation, sent with the connection's
-                    // credential (area 11, "How the input is sent").
-                    Some(text) if matches!(text.as_str(), "" | "." | "..") => {
-                        return Err(Unready::Fault(FaultKind::Provider(format!(
-                            "`{}`'s placeholder `{{{name}}}` given a value that would leave its path segment (empty, `.` or `..`), so nothing was sent",
-                            op.name
-                        ))));
-                    }
-                    Some(text) => url.push_str(&jadpo_value::encoding::to_url_component(&text)),
-                    None => {
-                        return Err(Unready::Fault(FaultKind::Defect(format!(
-                            "`{}`'s placeholder `{{{name}}}` given a value that isn't text or a number",
-                            op.name
-                        ))));
-                    }
-                },
-                None => {
-                    return Err(Unready::Fault(FaultKind::Defect(format!(
-                        "`{}`'s placeholder `{{{name}}}` given no value",
-                        op.name
-                    ))));
-                }
-            },
+    // An input that holds a secret is written again, secrets as themselves,
+    // for the one request that goes out; what shows of it stays as it was.
+    let (url, body, shown) = if wrote_secret {
+        let (mut sent, numbers, _) = written_input(ctx, providers, (name, op), input, site, true)?;
+        if let Some((place, value)) = added {
+            add_at(&mut sent, place, value);
         }
-    }
-    let body = if op.method.reads_query() {
-        let mut query = Vec::new();
-        for (member, value) in &members {
-            let name = jadpo_value::encoding::to_url_component(member);
-            let mut at = vec![member.clone()];
-            match value {
-                serde_json::Value::Null => {}
-                serde_json::Value::Array(items) => {
-                    for (place, item) in items.iter().enumerate() {
-                        at.push(place.to_string());
-                        let text = plain_at(item, &numbers, &at)
-                            .unwrap_or_else(|| json_text(item, &numbers, &mut at));
-                        at.pop();
-                        query.push(format!(
-                            "{name}={}",
-                            jadpo_value::encoding::to_url_component(&text)
-                        ));
-                    }
-                }
-                other => {
-                    let text = plain_at(other, &numbers, &at)
-                        .unwrap_or_else(|| json_text(other, &numbers, &mut at));
-                    query.push(format!(
-                        "{name}={}",
-                        jadpo_value::encoding::to_url_component(&text)
-                    ));
-                }
-            }
-        }
-        if !query.is_empty() {
-            url.push('?');
-            url.push_str(&query.join("&"));
-        }
-        None
+        let (url, body) = address_and_body(op, &base, sent, &numbers)?;
+        let (shown_url, shown_body) = address_and_body(op, &base, shown_members, &shown_numbers)?;
+        (
+            url,
+            body,
+            Some(Shown {
+                url: shown_url,
+                body: shown_body,
+            }),
+        )
     } else {
-        Some(json_text(
-            &serde_json::Value::Object(members),
-            &numbers,
-            &mut Vec::new(),
-        ))
+        let (url, body) = address_and_body(op, &base, shown_members, &shown_numbers)?;
+        (url, body, None)
     };
     let aws_json = plan.protocol == Protocol::AwsJson;
     let mut headers = vec![
@@ -1583,7 +1505,154 @@ fn request(
         },
         fields,
         keying,
+        shown,
     })
+}
+
+/// The input as the package's JSON, its members by their spellings on the
+/// wire, each number as written so no place is lost (chunk 7.2c2): with
+/// each secret value as itself when `sends_secrets`, as its kind alone
+/// otherwise; and whether it held one.
+fn written_input(
+    ctx: &mut Ctx<'_>,
+    providers: &Providers<'_>,
+    (name, op): (&str, &OperationPlan),
+    input: Option<&Value>,
+    site: Site<'_>,
+    sends_secrets: bool,
+) -> Result<
+    (
+        serde_json::Map<String, serde_json::Value>,
+        jadpo_value::json::Numbers,
+        bool,
+    ),
+    Unready,
+> {
+    let mut numbers = jadpo_value::json::Numbers::default();
+    let (Some(number), Some(value)) = (op.input, input) else {
+        return Ok((serde_json::Map::new(), numbers, false));
+    };
+    let Some(codec) = providers.json.codec_of(number) else {
+        return Err(Unready::Fault(FaultKind::Defect(
+            "a provider's input the plan gave no codec".into(),
+        )));
+    };
+    let coder = SiteCoder {
+        ctx: RefCell::new(&mut *ctx),
+        functions: site.functions,
+        at: site.at,
+        ended: RefCell::new(None),
+        sends_secrets,
+        wrote_secret: Cell::new(false),
+    };
+    let codecs = jadpo_value::json::Codecs {
+        coder: Some(&coder),
+        ..providers.json.codecs
+    };
+    let written = codecs.write_value(codec, value);
+    let wrote_secret = coder.wrote_secret.get();
+    if let Some(how) = coder.ended.into_inner() {
+        return Err(Unready::Fault(FaultKind::Provider(format!(
+            "`{}.{}`'s input doesn't encode: {how}",
+            name, op.name
+        ))));
+    }
+    match jadpo_value::json::parse(written.as_bytes()) {
+        Some((serde_json::Value::Object(members), written)) => {
+            numbers = written;
+            Ok((members, numbers, wrote_secret))
+        }
+        _ => Err(Unready::Fault(FaultKind::Defect(
+            "a provider's input that isn't an object".into(),
+        ))),
+    }
+}
+
+/// The address `op` is sent to and its body, from the members of its
+/// input: a placeholder's member goes into the path, and the rest into the
+/// query string or the body, as the method says.
+fn address_and_body(
+    op: &OperationPlan,
+    base: &str,
+    mut members: serde_json::Map<String, serde_json::Value>,
+    numbers: &jadpo_value::json::Numbers,
+) -> Result<(String, Option<String>), Unready> {
+    let mut url = base.trim_end_matches('/').to_string();
+    for part in &op.path {
+        match part {
+            PathPart::Fixed(text) => url.push_str(text),
+            PathPart::Field(name) => match members.remove(name) {
+                Some(value) => match plain(&value, numbers, name) {
+                    // A dot segment, or none at all, would leave the
+                    // placeholder's segment: every URL parser on the way
+                    // resolves `/accounts/../statement` to `/statement`,
+                    // another operation, sent with the connection's
+                    // credential (area 11, "How the input is sent").
+                    Some(text) if matches!(text.as_str(), "" | "." | "..") => {
+                        return Err(Unready::Fault(FaultKind::Provider(format!(
+                            "`{}`'s placeholder `{{{name}}}` given a value that would leave its path segment (empty, `.` or `..`), so nothing was sent",
+                            op.name
+                        ))));
+                    }
+                    Some(text) => url.push_str(&jadpo_value::encoding::to_url_component(&text)),
+                    None => {
+                        return Err(Unready::Fault(FaultKind::Defect(format!(
+                            "`{}`'s placeholder `{{{name}}}` given a value that isn't text or a number",
+                            op.name
+                        ))));
+                    }
+                },
+                None => {
+                    return Err(Unready::Fault(FaultKind::Defect(format!(
+                        "`{}`'s placeholder `{{{name}}}` given no value",
+                        op.name
+                    ))));
+                }
+            },
+        }
+    }
+    let body = if op.method.reads_query() {
+        let mut query = Vec::new();
+        for (member, value) in &members {
+            let name = jadpo_value::encoding::to_url_component(member);
+            let mut at = vec![member.clone()];
+            match value {
+                serde_json::Value::Null => {}
+                serde_json::Value::Array(items) => {
+                    for (place, item) in items.iter().enumerate() {
+                        at.push(place.to_string());
+                        let text = plain_at(item, numbers, &at)
+                            .unwrap_or_else(|| json_text(item, numbers, &mut at));
+                        at.pop();
+                        query.push(format!(
+                            "{name}={}",
+                            jadpo_value::encoding::to_url_component(&text)
+                        ));
+                    }
+                }
+                other => {
+                    let text = plain_at(other, numbers, &at)
+                        .unwrap_or_else(|| json_text(other, numbers, &mut at));
+                    query.push(format!(
+                        "{name}={}",
+                        jadpo_value::encoding::to_url_component(&text)
+                    ));
+                }
+            }
+        }
+        if !query.is_empty() {
+            url.push('?');
+            url.push_str(&query.join("&"));
+        }
+        None
+    } else {
+        Some(json_text(
+            &serde_json::Value::Object(members),
+            numbers,
+            &mut Vec::new(),
+        ))
+    };
+    Ok((url, body))
 }
 
 /// `receive_message` as AWS names an operation, `ReceiveMessage`.
@@ -1604,6 +1673,16 @@ struct Made {
     request: Request,
     fields: Vec<(String, Vec<u8>)>,
     keying: Option<Keying>,
+    /// What shows of a request that holds a secret value: the address and
+    /// body with each secret as its kind alone; `None` when it holds
+    /// none, and shows as it was sent (area 19, "Where a secret can go").
+    shown: Option<Shown>,
+}
+
+/// A request's address and body as the development call log shows them.
+struct Shown {
+    url: String,
+    body: Option<String>,
 }
 
 /// What a keyed call's key is derived from besides the application, the
@@ -1778,6 +1857,8 @@ pub(crate) fn decode(
         functions: site.functions,
         at: site.at,
         ended: RefCell::new(None),
+        sends_secrets: false,
+        wrote_secret: std::cell::Cell::new(false),
     };
     let codecs = jadpo_value::json::Codecs {
         coder: Some(&coder),

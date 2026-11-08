@@ -968,6 +968,8 @@ rules! {
         "A `GET` route runs an action that isn't read-only, or a route of another method runs a query";
     ROUTE_RUN_REQUIRED: "route.run_required", area 7, Error, Agent,
         "Route does not say what it runs";
+    ROUTE_SECRET_OUTSIDE_BODY: "route.secret_outside_body", area 7, Error, Agent,
+        "A route reads a secret value from a URL or a header";
     ROUTE_SENDS_INVALID: "route.sends_invalid", area 7, Error, Agent,
         "Route's `sends:` isn't a media type, or its `Output` isn't exactly one `Bytes` field";
     ROUTE_SETTLE_INVALID: "route.settle_invalid", area 7, Error, Agent,
@@ -1514,6 +1516,8 @@ rules! {
         "A comparison such as `<` or `>` is used on a value that has no order, such as text or a value that may be `none`";
     TYPE_PASSWORD_HASH_EXPOSED: "type.password_hash_exposed", area 19, Error, Agent,
         "An `Output`, a request's `Input` or a failure's fields hold a `PasswordHash`, which never leaves the server";
+    TYPE_PASSWORD_SENT_TO_PROVIDER: "type.password_sent_to_provider", area 19, Security, Human,
+        "A `Password` goes out on a provider's operation";
     TYPE_PRESENTATION_TEXT_PERSISTENCE: "type.presentation_text_persistence", area 10, Error, Agent,
         "An entity's field holds `PresentationText`, text already formatted for one reader";
     TYPE_PRIMITIVE_SIGNATURE: "type.primitive_signature", area 2, Error, Agent,
@@ -1890,6 +1894,7 @@ mod tests {
                 "step.late_failure",
                 "translation.field_unused",
                 "type.batch_order_updatable",
+                "type.password_sent_to_provider",
                 "type.standard_exists",
                 "type.unit_as_number",
                 "type.variant_retired"
@@ -1904,7 +1909,10 @@ mod tests {
             .filter(|rule| rule.security)
             .map(|rule| rule.id)
             .collect();
-        assert_eq!(security, ["policy.call_ungranted"]);
+        assert_eq!(
+            security,
+            ["policy.call_ungranted", "type.password_sent_to_provider"]
+        );
         const { assert!(rule::POLICY_CALL_UNGRANTED.declinable) };
         let diagnostic = Diagnostic::new(&rule::POLICY_CALL_UNGRANTED, "A call refuses")
             .next("List the called action for them");

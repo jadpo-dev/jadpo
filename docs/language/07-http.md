@@ -195,6 +195,10 @@ passes it to `patch_todo` as `todo_id`.
   over a scalar, or an entity's id (`X.id`). It is never optional.
 - The segment is decoded once and checked. A bad value is a 422, like any
   bad input.
+- It is never a secret value, which would be written to access logs and
+  browser history with the URL
+  ([`route.secret_outside_body`](../errors/route.secret_outside_body.md);
+  [Where a secret can go](19-standard-library.md#where-a-secret-can-go)).
 - The methods are `GET`, `POST`, `PUT`, `PATCH` and `DELETE`. The runtime
   answers `HEAD` and `OPTIONS` itself.
 - Two routes that could match the same request, such as
@@ -238,14 +242,19 @@ GET / {
 ### The query string
 
 Query-string fields are scalars, enums or lists of them. A list is the key
-repeated: `?status=open&status=done`. A nested object needs a body.
+repeated: `?status=open&status=done`. A nested object needs a body. A
+secret value needs one too, since a query string is a URL's
+([`route.secret_outside_body`](../errors/route.secret_outside_body.md)).
 
 ### Headers
 
 A field read from a header says so with `header:`. A header field is a
 scalar, and each header is named once. A header field never reads a
 credential (`Authorization`, cookies, `X-Jadpo-*`): those belong to
-sign-in ([Sign-in and identity](08-identity.md)).
+sign-in ([Sign-in and identity](08-identity.md)). Of the secret values, a
+`BearerToken`, a `Jwt` and an `ApiKey` may come in a header of your own;
+the rest come in the body
+([`route.secret_outside_body`](../errors/route.secret_outside_body.md)).
 
 ### What is refused
 
@@ -2198,6 +2207,7 @@ what it runs; in a project each lives in its own folder.
 - [`route.header_credential`](../errors/route.header_credential.md)
 - [`route.header_duplicate`](../errors/route.header_duplicate.md)
 - [`route.header_not_scalar`](../errors/route.header_not_scalar.md)
+- [`route.secret_outside_body`](../errors/route.secret_outside_body.md)
 - [`route.prefix_api`](../errors/route.prefix_api.md)
 - [`api.prefix_required`](../errors/api.prefix_required.md)
 - [`api.prefix_overlap`](../errors/api.prefix_overlap.md)

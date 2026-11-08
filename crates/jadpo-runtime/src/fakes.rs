@@ -353,6 +353,8 @@ pub fn script(
                 functions,
                 at,
                 ended: std::cell::RefCell::new(None),
+                sends_secrets: false,
+                wrote_secret: std::cell::Cell::new(false),
             };
             let sent = as_sent(providers, connection, operation, &value, Some(&coder));
             if coder.ended.into_inner().is_some() {

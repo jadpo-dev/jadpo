@@ -7089,22 +7089,307 @@ test "a partner's key is recognised by its verifier" {
 
 A secret stays on the server. An `Input`, an `Object`, a variable and a
 parameter may hold one, and `json.read` reads one, since none of them
-leaves it.
+is written out of the program.
 
-Nothing that leaves the server may hold one, however deeply it is
-nested in lists, maps, options, objects, `Input`s or a variant's data.
-The compiler refuses a secret in each of these with
-`type.secret_exposed`:
+Nothing written out may hold one, however deeply it is nested in lists,
+maps, options, objects, `Input`s or a variant's data. The compiler
+refuses a secret in each of these with `type.secret_exposed`:
 
-- an `Output`;
+- an `Output`, which is every way a route answers: JSON, a list or a page
+  of them, a map layer's properties, the raw bytes of `sends:`;
 - a failure's `client` or `internal` fields. A failure's fields are
   logged, so this keeps secrets out of the logs too;
 - an event, which is kept in the outbox and handed on;
-- an email or a message.
+- an email, a message or a prompt;
+- a webhook's `reply:`, which goes back to whoever sent the webhook and is
+  kept to answer a repeat.
 
 `json.write` can't write one either (`type.mismatch`). A `PasswordHash`
 has a rule of its own, `type.password_hash_exposed`, because a hash,
 unlike a secret, is stored.
+
+A route has no other way to answer. What it returns must be an `Output`, so
+a bare `Password`, a `List<Password>` or an `Object` holding one is
+`route.output_not_output`. A route sets no response header, no cookie
+and no redirect of its own, so none can be built from a secret. Nor does
+Jadpo echo one: a request refused for a bad secret names the field and the
+rule ([How failures reach the client](07-http.md#how-failures-reach-the-client)),
+and logs, spans and `jadpo dev` never show a value.
+
+### How a secret arrives
+
+A secret arrives in a request's JSON body, the `Input` of a `POST`, `PUT` or
+`PATCH`. A URL is written to access logs and proxies' logs, kept in a
+browser's history and passed on in a `Referer` header, so a path placeholder
+or the query string of a `GET` or a `DELETE` holding a secret, a list of
+them included, is
+[`route.secret_outside_body`](../errors/route.secret_outside_body.md).
+
+A header field is refused the same way, except for the credentials sent on
+every request: a `BearerToken` (RFC 6750), a `Jwt` and an `ApiKey`. A
+`Password`, a `TotpSecret`, a `SecretText` and a `OneTimeCode` are typed
+once into a form, so each comes in the body:
+
+```jadpo check project=e-secret-query expect=route.secret_outside_body
+type LoginAccepted = Bool {}
+
+type SignInForm = Input {
+    account_password: Password
+}
+
+type SignInAnswer = Output {
+    accepted: LoginAccepted
+}
+
+action sign_in(login_attempt: SignInForm) -> SignInAnswer {
+    return SignInAnswer {
+        accepted: LoginAccepted(login_attempt.account_password == "correct horse battery staple")
+    }
+}
+
+policy {
+    actions: {
+        sign_in: [Access.public]
+    }
+}
+
+routes Logins {
+    prefix: /logins
+
+    GET / {
+        authentication: RouteAuthentication.none
+        input: SignInForm
+        output: SignInAnswer
+        run: sign_in(input)
+    }
+}
+```
+
+```text output
+error: `SignInForm.account_password` reads a `Password` from the query string
+ --> main.jadpo:28:16
+   |
+28 |         input: SignInForm
+   |                ^^^^^^^^^^ a secret, in the query string
+  reason: A URL is written to access logs and proxies' logs, kept in a browser's history and passed on in a `Referer` header, so a `Password` in one is read by people it was never meant for.
+  next: Take `SignInForm.account_password` in the JSON body of a `POST`, `PUT` or `PATCH`, in the route's `input:` (agent)
+  rule: route.secret_outside_body
+  help: https://jadpo.dev/docs/errors/route.secret_outside_body
+
+check failed: 1 error, 1 file
+```
+
+### Sending a password to a provider
+
+An operation's input is the one thing that holds a secret and leaves the
+server. Your app has a reason to send a provider its own key or a token it
+issued, so `ApiKey`, `BearerToken`, `Jwt`, `TotpSecret`, `SecretText` and
+`OneTimeCode` go out as themselves when an operation takes them: each was
+made for a machine to hand on, and can be replaced by itself.
+
+A `Password` is a person's, is often the same on every site they use, and
+signs them in to all of it. So a call of a provider's operation whose
+input holds one, however deep, is
+[`type.password_sent_to_provider`](../errors/type.password_sent_to_provider.md).
+That covers everything the operation sends, since its body, its path's
+placeholders and its query string are all read from its input.
+
+```jadpo check project=e-password-to-provider-area file=app.jadpo hidden
+application {
+    connections: {
+        directory: {
+            package: OldDirectory.v1
+            domains: [accounts]
+            credential: config.directory_key
+            environment: config.directory_environment
+        }
+    }
+}
+```
+
+```jadpo check project=e-password-to-provider-area file=config.jadpo hidden
+config {
+    directory_environment: ProviderEnvironment
+    directory_key: Text {
+        secret: true
+    }
+}
+```
+
+```jadpo check project=e-password-to-provider-area file=shared/providers/old_directory/v1/package.jadpo hidden
+/// The directory the company is moving off.
+package OldDirectory.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e-password-to-provider-area file=shared/providers/old_directory/v1/provider.jadpo hidden
+/// How the old directory is reached.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://directory.example"
+        sandbox: "https://sandbox.directory.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=e-password-to-provider-area file=shared/providers/old_directory/v1/types/bind_result.jadpo hidden
+/// What the directory says of it.
+public type BindResult = Object {
+    match_found: Bool
+}
+```
+
+```jadpo check project=e-password-to-provider-area file=shared/providers/old_directory/v1/resources/sign_ons.jadpo hidden
+public resource sign_ons {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/sign_ons"
+        input: BindRequest
+        output: BindResult
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=e-password-to-provider-area file=shared/providers/old_directory/v1/types/bind_request.jadpo
+/// A sign-in to check against the directory.
+public type BindRequest = Object {
+    user: Text
+    account_password: Password
+}
+```
+
+```jadpo check project=e-password-to-provider-area file=domains/accounts/actions/check_password.jadpo expect=type.password_sent_to_provider
+use app { directory }
+use shared/providers/old_directory
+
+/// Whether a person's password is the one the old directory has.
+action check_password(request: OldDirectory.BindRequest) -> OldDirectory.BindResult {
+    return directory.sign_ons.create(request)
+}
+```
+
+```text output
+error: `directory.sign_ons.create` sends a `Password` to a provider
+ --> domains/accounts/actions/check_password.jadpo:6:12
+  |
+6 |     return directory.sign_ons.create(request)
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^ a password, sent out
+  reason: `OldDirectory.BindRequest` holds a `Password`. A password goes no further than its hash, because anyone holding one can sign in with it; sent to a provider, it is in the hands of a system you don't run, and of whatever that system logs or keeps.
+  next: Send what the provider needs instead, such as a token issued for this, and keep the password's hash here, or write `decline type.password_sent_to_provider: "<why>"` above the action if this is deliberate, which a person then accepts (human)
+  rule: type.password_sent_to_provider
+  help: https://jadpo.dev/docs/errors/type.password_sent_to_provider
+
+check failed: 1 error, 8 files
+```
+
+It is a security rule, so a person signs it off: write
+`decline type.password_sent_to_provider: "<why>"` above the action, and a
+person accepts the decline in an
+[acceptance](18-records-and-manifest.md#acceptances)
+(`PolicyChange.password_sent_to_provider_declined`). The decline is listed
+in `access.jadpo_record`. This is for the cases where a password really has
+to go out: binding to an LDAP or Active Directory server, checking a
+password against an old system while people move off it, and setting a
+person's first password at an identity provider.
+
+```jadpo check project=e-password-to-provider-signed file=app.jadpo hidden
+application {
+    connections: {
+        directory: {
+            package: OldDirectory.v1
+            domains: [accounts]
+            credential: config.directory_key
+            environment: config.directory_environment
+        }
+    }
+}
+```
+
+```jadpo check project=e-password-to-provider-signed file=config.jadpo hidden
+config {
+    directory_environment: ProviderEnvironment
+    directory_key: Text {
+        secret: true
+    }
+}
+```
+
+```jadpo check project=e-password-to-provider-signed file=shared/providers/old_directory/v1/package.jadpo hidden
+/// The directory the company is moving off.
+package OldDirectory.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e-password-to-provider-signed file=shared/providers/old_directory/v1/provider.jadpo hidden
+/// How the old directory is reached.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://directory.example"
+        sandbox: "https://sandbox.directory.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=e-password-to-provider-signed file=shared/providers/old_directory/v1/types/bind_result.jadpo hidden
+/// What the directory says of it.
+public type BindResult = Object {
+    match_found: Bool
+}
+```
+
+```jadpo check project=e-password-to-provider-signed file=shared/providers/old_directory/v1/types/bind_request.jadpo hidden
+/// A sign-in to check against the directory.
+public type BindRequest = Object {
+    user: Text
+    account_password: Password
+}
+```
+
+```jadpo check project=e-password-to-provider-signed file=shared/providers/old_directory/v1/resources/sign_ons.jadpo hidden
+public resource sign_ons {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/sign_ons"
+        input: BindRequest
+        output: BindResult
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=e-password-to-provider-signed file=domains/accounts/actions/check_password.jadpo
+use app { directory }
+use shared/providers/old_directory
+
+/// Whether a person's password is the one the old directory has.
+decline type.password_sent_to_provider: "Binds against the directory we are moving off, until the migration ends"
+action check_password(request: OldDirectory.BindRequest) -> OldDirectory.BindResult {
+    return directory.sign_ons.create(request)
+}
+```
+
+The rule is the app's to answer, not a package's. A package may describe an
+operation that takes a `Password`, and `jadpo package check` passes it:
+nothing is sent until something calls it, and the type shows in the
+package's surface. The finding comes at the app's call, whether it calls the
+operation or one of the package's public actions given a `Password` that the
+action sends on, so a person answering for the app's users signs it off. A
+`decline` in a package's own code answers nothing (`decline.unused`).
+
+A signed-off password is written as itself into that one request and goes
+nowhere else: `jadpo calls` and the development call log show
+`<redacted Password>`, and a step's fingerprint is made without it.
 
 ### How a secret is kept
 
@@ -12332,3 +12617,4 @@ examples are checked as loose files.
 - [`type.random_context`](../errors/type.random_context.md)
 - [`type.password_hash_exposed`](../errors/type.password_hash_exposed.md)
 - [`type.secret_exposed`](../errors/type.secret_exposed.md)
+- [`type.password_sent_to_provider`](../errors/type.password_sent_to_provider.md)
