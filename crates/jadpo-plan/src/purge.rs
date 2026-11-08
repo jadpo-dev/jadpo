@@ -396,8 +396,11 @@ fn referring(model: &DataModel, target: &str) -> Vec<(String, String, Option<OnD
     let mut out = Vec::new();
     for child in &model.entities {
         for field in &child.fields {
+            // One that says nothing is a person's in another store (area
+            // 15; chunk P4c), which no statement here can read.
             if let Some(reference) = &field.reference
                 && reference.target == target
+                && reference.on_delete.is_some()
             {
                 out.push((child.name.clone(), field.name.clone(), reference.on_delete));
             }

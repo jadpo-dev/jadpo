@@ -482,7 +482,7 @@ fn probed(send: impl Fn(&str, &str, &str) -> (u16, String)) -> Vec<Probed> {
 /// the disposable server answers with `host=… dbname=…` pairs, an
 /// external one with a URL. A database named on the admin connection's
 /// pairs is the last `dbname=`, as libpq reads it.
-fn as_url(connection: &str) -> String {
+pub(crate) fn as_url(connection: &str) -> String {
     if connection.starts_with("postgres") {
         return connection.to_string();
     }
@@ -1738,6 +1738,157 @@ fn a_pruned_deployable_cleans_schedule_and_batch_history_before_the_jobs_role() 
         1,
         "jobs retains its prompt schedule work"
     );
+}
+
+/// SIGTERM to `child`.
+fn terminate(child: &Child) {
+    Command::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()
+        .expect("kill runs");
+}
+
+/// A native deployable replays the erasure log before it listens (area 15,
+/// "What erasure doesn't rewrite"; chunk P4c): a member erased through its
+/// routes is gone from `main`, then from the archive and logged by the
+/// subscribers its own commit set off; a restore of both databases, which
+/// leaves the log, brings them back, and the next start says so and erases
+/// them before it answers anything; and a start with nothing to do says
+/// nothing and changes nothing.
+#[test]
+fn a_deployable_erases_across_stores_and_replays_the_log_as_it_starts() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let root = target
+        .parent()
+        .unwrap_or(target)
+        .join("jadpo-compiled/deployable/erasure-log");
+    let _ = fs::remove_dir_all(root.join("database"));
+    let application = "    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.main_url
+        }
+        archive: {
+            driver: Driver.postgres
+            url: config.archive_url
+        }
+        erasures: {
+            driver: Driver.postgres
+            url: config.erasures_url
+        }
+    }
+    privacy: {
+        erasure_log: {
+            store: erasures
+        }
+    }
+";
+    let config =
+        "    main_url: PostgresUrl\n    archive_url: PostgresUrl\n    erasures_url: PostgresUrl\n";
+    for (path, text) in crate::erasure_stores::served_files(application, config) {
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().expect("parent")).expect("folders");
+        fs::write(path, text).expect("source");
+    }
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let built = jadpo(&root, &["build", "--json"]);
+    assert_eq!(built.code, 0, "{}{}", built.stdout, built.stderr);
+    let server = jadpo_test::postgres::Server::start().expect("server");
+    let main = server.create_database("erased_main").expect("main");
+    let archive = server.create_database("erased_archive").expect("archive");
+    let erasures = server.create_database("erased_log").expect("the log");
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    apply(&main, &steps["main"]);
+    apply(&archive, &steps["archive"]);
+    apply(&erasures, &steps["erasures"]);
+    let (main_url, archive_url, erasures_url) =
+        (as_url(&main), as_url(&archive), as_url(&erasures));
+    let settings = [
+        ("PORT", "0"),
+        ("MAIN_URL", main_url.as_str()),
+        ("ARCHIVE_URL", archive_url.as_str()),
+        ("ERASURES_URL", erasures_url.as_str()),
+    ];
+    let binary = root.join("build/target/app/app");
+    let (mut child, lines) = start(&binary, &settings);
+    let started = next(&lines, 60);
+    assert_eq!(started["event"], "runtime.started", "{started}");
+    let address = started["address"].as_str().expect("an address").to_string();
+    let (status, body) = exchange(&address, "POST", "/members", r#"{"handle":"ada"}"#);
+    assert_eq!(status, 201, "{body}");
+    let joined: Value = serde_json::from_str(&body).expect("JSON");
+    let id = joined["id"].as_str().expect("an id").to_string();
+    let ticket = format!(r#"{{"owner_id":"{id}","title":"The heating"}}"#);
+    let (status, body) = exchange(&address, "POST", "/members/tickets", &ticket);
+    assert_eq!(status, 201, "{body}");
+    let (status, body) = exchange(&address, "POST", &format!("/members/{id}/close"), "");
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(count(&main, "member"), 0, "gone with the response");
+    // Its subscribers run after the response, each in its own store.
+    let waited = std::time::Instant::now();
+    while count(&archive, "ticket") > 0 || count(&erasures, "jadpo_erasure_log") == 0 {
+        assert!(
+            waited.elapsed() < Duration::from_secs(30),
+            "not applied: {:?}",
+            rows(
+                &main,
+                "SELECT subscriber, status, last_failure::text FROM jadpo_deliveries"
+            )
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let logged = rows(
+        &erasures,
+        "SELECT entity, person_id::text FROM jadpo_erasure_log",
+    );
+    assert_eq!(logged, [["Member".to_string(), id.clone()]]);
+    terminate(&child);
+    assert_eq!(ended(&mut child, 30), Some(0));
+
+    // A restore of each database, which takes the outbox back too.
+    rows(
+        &main,
+        &format!("INSERT INTO member (id, handle) VALUES ('{id}', 'ada')"),
+    );
+    rows(&main, "DELETE FROM jadpo_outbox");
+    rows(
+        &archive,
+        &format!(
+            "INSERT INTO ticket (id, owner_id, title) VALUES (gen_random_uuid(), '{id}', 'The heating')"
+        ),
+    );
+    let (mut child, lines) = start(&binary, &settings);
+    let replayed = next(&lines, 60);
+    assert_eq!(replayed["event"], "runtime.erasures_replayed", "{replayed}");
+    assert_eq!(replayed["logged"], 1, "{replayed}");
+    assert_eq!(
+        replayed["erased"], 2,
+        "her record and her ticket: {replayed}"
+    );
+    assert_eq!(count(&main, "member"), 0, "erased before anything else");
+    assert_eq!(count(&archive, "ticket"), 0);
+    let started = next(&lines, 60);
+    assert_eq!(started["event"], "runtime.started", "{started}");
+    terminate(&child);
+    assert_eq!(ended(&mut child, 30), Some(0));
+
+    // Nothing to do: nothing said and nothing new in any outbox.
+    let kept = count(&main, "jadpo_outbox");
+    let (mut child, lines) = start(&binary, &settings);
+    let started = next(&lines, 60);
+    assert_eq!(started["event"], "runtime.started", "{started}");
+    assert_eq!(count(&main, "jadpo_outbox"), kept);
+    terminate(&child);
+    assert_eq!(ended(&mut child, 30), Some(0));
 }
 
 /// A native deployable keeps a `Driver.disk` store's files at its `path:`

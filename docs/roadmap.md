@@ -571,19 +571,13 @@ After the registry is live, in order:
      "Belonging", "Kept records" and "The person's own record, as built
      (chunk P4b)"; compiler/runtime §2.3, "A person's records" and
      "Erasure", and §2.6, "A person's erasure".
-   - [ ] **P4c Other stores, `PersonErased` and the erasure log** `opus ·
-     xhigh` after P4b: area 15, "What erasure reaches" and "What erasure
-     doesn't rewrite"; the design notes' "Records in another store",
-     "`PersonErased`" and "Backups", as decided. A reference to a person
-     across stores with `erase:` and no `on_delete:`, each outcome applied
-     by a generated subscriber in that store after the main commit;
-     `PersonErased` emitted in the erasure's transaction with the entity's
-     name, the `id` and the time; and `privacy: { erasure_log: { store: } }`
-     (only that part of `privacy:`), a store that holds no person's records
-     or a store of files, written after the commit and replayed at every
-     start. OAuth grants and caches join when they are built. Done when
-     an erased person leaves nothing the page says erasure reaches, on
-     both executors.
+   - [x] **P4c Other stores, `PersonErased` and the erasure log**: area 15,
+     "Records in another store", "Who was erased: `PersonErased`", "What
+     erasure doesn't rewrite" and "What is built", and the design notes'
+     "Other stores, `PersonErased` and the log, as built (chunk P4c)";
+     compiler/runtime §2.3, "Erasure", and §2.6, "Past the person's
+     transaction"; the pages of `data.erasure_log_*`,
+     `data.person_removal_across_stores` and `data.reference_across_stores`.
    - [ ] **P5 Export** `opus · high` after P4c and V5: area 15, "Export"
      and "Who may erase and export"; area 13's generated test.
      `User.export(id)` as a `PersonalDataExport`: the person's record,
