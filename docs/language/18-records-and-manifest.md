@@ -350,8 +350,8 @@ Editors get a record language: a TextMate grammar,
 `source.jadpo-record`, in `editors/vscode`, and `jadpo lsp` serving a
 record's errors, outline, file links and folding.
 
-Not built yet: the base commit's build, which comes with `jadpo
-approval`, so every view is checked by its shape alone, and the record
+Not built yet: `jadpo check` building the base commit, as `jadpo
+approval` does, so every view is checked by its shape alone, and the record
 language for editors ([What is built](#what-is-built)).
 
 ## The manifest
