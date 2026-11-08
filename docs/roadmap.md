@@ -505,9 +505,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
 
 After the registry is live, in order:
 
-- [ ] **R8 `jadpo suggest` points at the registry** `opus · high`: a
-  finding when the app's own function fingerprints like a registry
-  package's or a standard function (area 14, "Suggestions").
+- [x] **R8 `jadpo suggest` points at the registry**: area 14, "Signals", "Functions that already exist" and "The suggestions report"; area 11, "The registry protocol"; compiler/runtime, "Suggestions from the registry".
 - [ ] **R9 Blast radius in an update** `opus · high`: `jadpo package update
   --plan` follows each change record entry through the app's graph to
   the actions, routes, jobs and stored fields it reaches, with the

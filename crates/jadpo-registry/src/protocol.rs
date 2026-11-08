@@ -344,6 +344,18 @@ pub const ENDPOINTS: &[Endpoint] = &[
         failures: &[],
     },
     Endpoint {
+        id: "query_fingerprints",
+        method: Method::Post,
+        path: "fingerprints/query",
+        summary: "The published functions and actions whose source fingerprints start with one of the prefixes given.",
+        path_params: &[],
+        query: &[],
+        body: Some("FingerprintQuery"),
+        status: 200,
+        answer: Answer::Json("FingerprintAnswer"),
+        failures: &[],
+    },
+    Endpoint {
         id: "start_release",
         method: Method::Post,
         path: "releases",
@@ -662,6 +674,54 @@ pub struct AdvisoryAnswer {
     pub advisories: Vec<Advisory>,
 }
 
+/// How many hex digits of a source fingerprint `POST fingerprints/query`
+/// sends: about a million buckets, so a registry answering the
+/// whole bucket can't tell which of its functions an app holds a copy of.
+pub const PREFIX_DIGITS: usize = 5;
+
+/// The most prefixes one `POST fingerprints/query` may send; a client with
+/// more sends them in several.
+pub const MOST_PREFIXES: usize = 1000;
+
+/// `POST fingerprints/query`'s body: the first [`PREFIX_DIGITS`] hex
+/// digits of each source fingerprint the app's own functions and actions
+/// have, never the fingerprints themselves.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FingerprintQuery {
+    pub prefixes: Vec<String>,
+}
+
+/// A public function or action of a release, by its source fingerprint.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublishedFingerprint {
+    pub package: ScopedName,
+    /// The newest release that isn't yanked whose declaration has this
+    /// fingerprint.
+    pub version: Version,
+    /// As an app writes it after the package's name: `uk.parse`.
+    pub declaration: String,
+    /// `sha256:…` of its normalised source.
+    pub source: Digest,
+}
+
+/// `POST fingerprints/query`'s answer: every published function and
+/// action whose source fingerprint starts with one of the prefixes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FingerprintAnswer {
+    pub fingerprints: Vec<PublishedFingerprint>,
+}
+
+/// Whether `text` is a prefix `POST fingerprints/query` takes.
+pub fn is_prefix(text: &str) -> bool {
+    text.len() == PREFIX_DIGITS
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
 /// `POST releases`'s body.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -751,6 +811,7 @@ pub enum Request {
         kind: Option<PackageKind>,
     },
     QueryAdvisories(AdvisoryQuery),
+    QueryFingerprints(FingerprintQuery),
     StartRelease(StartRelease),
     ReleaseRequest {
         id: String,
@@ -780,6 +841,7 @@ impl Request {
             Request::LogConsistency { .. } => "log_consistency",
             Request::Search { .. } => "search",
             Request::QueryAdvisories(_) => "query_advisories",
+            Request::QueryFingerprints(_) => "query_fingerprints",
             Request::StartRelease(_) => "start_release",
             Request::ReleaseRequest { .. } => "release_request",
         })
@@ -822,6 +884,7 @@ impl Request {
                 query
             }
             Request::QueryAdvisories(_) => "advisories/query".into(),
+            Request::QueryFingerprints(_) => "fingerprints/query".into(),
             Request::StartRelease(_) => "releases".into(),
             Request::ReleaseRequest { id } => format!("releases/{}", encode(id)),
         };
@@ -832,6 +895,7 @@ impl Request {
     pub fn body(&self) -> Option<String> {
         match self {
             Request::QueryAdvisories(query) => serde_json::to_string(query).ok(),
+            Request::QueryFingerprints(query) => serde_json::to_string(query).ok(),
             Request::StartRelease(start) => serde_json::to_string(start).ok(),
             _ => None,
         }
@@ -934,6 +998,19 @@ impl Request {
                 },
             },
             "query_advisories" => Request::QueryAdvisories(read_body(body)?),
+            "query_fingerprints" => {
+                let query: FingerprintQuery = read_body(body)?;
+                if query.prefixes.len() > MOST_PREFIXES {
+                    return Err(Refusal::InvalidInput {
+                        field: "prefixes".into(),
+                        rule: "max_items",
+                    });
+                }
+                if !query.prefixes.iter().all(|prefix| is_prefix(prefix)) {
+                    return Err(invalid("prefixes"));
+                }
+                Request::QueryFingerprints(query)
+            }
             "start_release" => Request::StartRelease(read_body(body)?),
             "release_request" => Request::ReleaseRequest {
                 id: params["id"].to_string(),
