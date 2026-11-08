@@ -1,6 +1,17 @@
 # `api.prefix_overlap`
 
-Each API has a prefix of its own:
+Two APIs share a prefix.
+
+## Why Jadpo refuses it
+
+A URL says which API it belongs to through its prefix, and each API has its
+own OpenAPI document and its own record. Two APIs at one prefix would mix
+their routes and documents, and Jadpo can't tell which API a request was
+meant for.
+
+## What it looks like
+
+app.jadpo:
 
 ```jadpo check project=e-api-overlap file=app.jadpo expect=api.prefix_overlap
 application {
@@ -28,3 +39,31 @@ error: APIs `main` and `partners` share the prefix `/v1`
 
 check failed: 1 error, 1 file
 ```
+
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+## How to fix it
+
+**If both APIs are needed**, give one a prefix of its own:
+
+```jadpo check project=e-api-overlap-fixed file=app.jadpo
+application {
+    apis: {
+        main: {
+            prefix: /v1
+        }
+        partners: {
+            prefix: /partners
+        }
+    }
+}
+```
+
+`partners` now answers under `/partners`, and each API has its own document
+and record.
+
+## Related
+
+- [APIs and versions](../language/07-http.md#apis-and-versions)
+- [A new major version](../language/07-http.md#a-new-major-version)
