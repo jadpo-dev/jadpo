@@ -366,7 +366,10 @@ impl ObjectWanted {
     /// that can't be `none`, every other field given as `none`: an edit that
     /// checks as it stands.
     fn holding(&self, table: &dyn TypeView, written: &str) -> Option<String> {
-        let mut needed = self.fields.iter().filter(|(_, _, may_be_none)| !may_be_none);
+        let mut needed = self
+            .fields
+            .iter()
+            .filter(|(_, _, may_be_none)| !may_be_none);
         let (Some((field, declared, _)), None) = (needed.next(), needed.next()) else {
             return None;
         };
