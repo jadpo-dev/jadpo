@@ -115,3 +115,20 @@ fn a_registry_name_comes_from_the_publisher_and_the_name_in_code() {
     }
     assert!(ScopedName::of_code(&handle, &"Long".repeat(10)).is_none());
 }
+
+/// `names.registry_part` and the registry's names share one rule (area 19,
+/// "Registry names"): what an application works out is the registry's name.
+#[test]
+fn the_registry_and_names_registry_part_agree() {
+    let handle = Handle::parse("@acme").unwrap();
+    for code in [
+        "Postcodes",
+        "AcmeCouriers",
+        "OpenAi",
+        "GitHub",
+        "Oauth2Tokens",
+    ] {
+        let name = ScopedName::of_code(&handle, code).expect("a name");
+        assert_eq!(name.name(), jadpo_std::names::registry_part(code), "{code}");
+    }
+}

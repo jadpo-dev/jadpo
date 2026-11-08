@@ -1,7 +1,9 @@
 //! A `GET` that runs an action (area 7, "What a route runs"; chunk G2,
 //! decided 2026-11-03): an action may answer a `GET` when the graph proves
-//! it writes nothing, emits nothing and makes no changing call, itself and
-//! through every action it calls. So it can work a value out, raise several
+//! it writes nothing, emits no email and makes no changing call, itself and
+//! through every action it calls. It may emit an event (Richard,
+//! 2026-11-07), so a subscriber can count a read: the event is kept in a
+//! transaction of its own, never the `GET`'s. So it can work a value out, raise several
 //! failures and call a model, and repeating it is still safe, as HTTP
 //! promises of a `GET`.
 //!
@@ -13,7 +15,8 @@
 //!   session, key and magic link operations that change a row; and starting
 //!   or cancelling a run, each of which keeps one. `Entity.get`, `history`,
 //!   a query, `sessions.tokens`, `<Service>.keys` and `batches.status` read.
-//! - **An emit** is `emit`, of an event or an email.
+//! - **An emit** is `emit` of an email. An event is kept beside the
+//!   action, as a model's budget is.
 //! - **A changing call** is what [`super::steps`] says: a provider
 //!   operation with `changes: true`, idempotent or not, and a store's `put`.
 //!   A provider operation with `changes: false`, a store's `read` and the
@@ -49,7 +52,7 @@ use crate::lookups::{Lookup, Name};
 pub enum Change {
     /// A write, as written where it is made: `Note.create`.
     Writes(String),
-    /// `emit`, of the event or email named.
+    /// `emit` of the email named.
     Emits(String),
     /// A changing call, as written where it is made:
     /// `couriers.bookings.create`.
@@ -106,10 +109,21 @@ fn change_of(
     id: SiteId,
     calls: &Calls,
     package: Option<&str>,
+    types: &dyn crate::types::TypeView,
 ) -> Option<(Change, Span)> {
     let node = &body.site(id).node;
     if let Node::Stmt(Stmt::Emit { value }) = node {
         let value = (*value)?;
+        // An event is kept on its own, so a `GET` may emit one.
+        let event = match &body.site(value).ty {
+            jadpo_graph::TypeRef::Node(key) => {
+                types.base(key.name()) == Some(crate::types::FieldsBase::Event)
+            }
+            _ => false,
+        };
+        if event {
+            return None;
+        }
         return Some((
             Change::Emits(names.name(body, value)),
             names.span(body, value),
@@ -131,6 +145,7 @@ fn change_of(
 #[salsa::tracked(returns(ref))]
 fn own_changes(db: &dyn Db, project: Project) -> BTreeMap<Key, Own> {
     let calls = Calls::new(db, project);
+    let types = Lookup::new(db, project);
     let mut out = BTreeMap::new();
     for &file in project.files(db) {
         let Some(names) = Names::of(db, file) else {
@@ -147,7 +162,7 @@ fn own_changes(db: &dyn Db, project: Project) -> BTreeMap<Key, Own> {
                 if let Does::Joins(callee) = does(&body.site(id).node) {
                     own.callees.push((callee.clone(), names.span(&body, id)));
                 } else if own.change.is_none() {
-                    own.change = change_of(&body, &names, id, &calls, package.as_deref());
+                    own.change = change_of(&body, &names, id, &calls, package.as_deref(), &types);
                 }
             }
             out.entry(key).or_insert(own);
@@ -291,7 +306,7 @@ fn problem(
         .at(span, "not read-only")
         .also(why.at.clone(), "here")
         .reason(format!(
-            "A `GET` is safe to repeat, so it runs a named query, or an action the graph proves writes nothing, emits nothing and makes no changing call; {chain} {does}."
+            "A `GET` is safe to repeat, so it runs a named query, or an action the graph proves writes nothing, emits no email and makes no changing call; {chain} {does}."
         ))
         .next(format!(
             "Answer `{}` with another method, or leave `{}` out of what `{action}` does",

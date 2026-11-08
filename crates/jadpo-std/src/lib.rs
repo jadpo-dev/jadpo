@@ -83,6 +83,7 @@ mod literal;
 mod locale;
 pub mod migration;
 pub mod money;
+pub mod names;
 mod num;
 mod operations;
 pub mod percentage;

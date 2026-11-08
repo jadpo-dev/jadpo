@@ -53,6 +53,7 @@ Why [Testing](../13-testing.md) is the way it is: the decisions behind it, how i
 | Running tests | `jadpo test` by file, `file:line`, `--name`, `--kind`, `--failed`; `--watch` reruns affected tests on save; `--interactive` keyboard view to search, navigate and run every test in the app; editor run buttons; no `test.only` |
 | Data builders | Generated `make.Entity { ... }` with valid defaults through the real create operation; builders may set any non-generated field, including ones ordinary inputs do not accept, so hard-to-reach states are easy to build; validation still applies |
 | Side-effect assertions | `assert emitted Event { ... }` and fakes' `.requests` |
+| What a fake's `.requests` holds | Decided 2026-11-07 (Richard): a list typed as the operation's input, kept at the call site in the order sent, each request as the package encoded it, with secret and credential fields redacted. Not built: roadmap chunk A27, "Fakes' `.requests`" |
 | Comparing values | `==` on records and lists with field diffs; no snapshot assertions |
 | What a failed test leaves | `--keep-failed` keeps the database and trace |
 | Speed of database copies | Copies prepared in the background; measured on the golden app before changing approach |

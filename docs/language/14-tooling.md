@@ -930,7 +930,10 @@ is. It calls the sandbox once through the connection, never the live
 service and never with a stand-in credential (`recording.refused`). It
 checks the answer against the operation's output type and keeps it as
 `recordings/<resource>.<operation>.json`, in the app's own integration or
-a linked checkout, its plain values replaced by placeholders. A refusal,
+a linked checkout, its plain values replaced by placeholders, and writes
+when it was made, `recorded <resource>.<operation> <instant>`, in
+`recordings/recorded.jadpo_record`, which the package's facts read as
+its last contract run. A refusal,
 no answer, or an answer that doesn't decode keeps nothing
 (`recording.failed`). A missing or wrong `--input` is
 `cli.package_arguments`.

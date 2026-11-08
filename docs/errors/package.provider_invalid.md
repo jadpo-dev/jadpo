@@ -79,7 +79,7 @@ error: `Delivry` in `reviewed:` isn't one of the package's types
    |
 10 |         reviewed: [Delivry]
    |                    ^^^^^^^ not a type of the package
-  reason: `imported:` gives the description the package was imported from, `file:` and `digest:`, and `reviewed:`, the package's types the agent has gone through against the provider's documentation, each named once. The package declares no type `Delivry` in its `types/`.
+  reason: `imported:` gives the description the package was imported from, `file:` and `digest:`, `reviewed:`, the package's types the agent has gone through against the provider's documentation, each named once, and `renamed:`, each name in the description code knows by another. The package declares no type `Delivry` in its `types/`.
   next: Use `Delivery` instead of `Delivry` (agent)
   rule: package.provider_invalid
   help: https://jadpo.dev/docs/errors/package.provider_invalid

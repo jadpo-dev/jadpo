@@ -780,8 +780,15 @@ pub(crate) fn facts_json(facts: &Facts) -> Json {
             })),
         ),
         ("confirmed_operations", strings(&facts.confirmed_operations)),
-        // The registry's scheduled runs: nothing a commit can say.
-        ("last_contract_run", Json::Null),
+        // The newest recording `jadpo package record` made (Richard,
+        // 2026-11-07).
+        (
+            "last_contract_run",
+            facts
+                .last_contract_run
+                .as_deref()
+                .map_or(Json::Null, Json::from),
+        ),
         (
             "standard_candidates",
             Json::array(facts.standard_candidates.iter().map(|fact| {
