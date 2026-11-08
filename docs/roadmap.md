@@ -278,7 +278,7 @@ D1 first: the site starts once D1 has merged.
   each widening `error_format_scope` to the rules it finished; tick it
   once all are.
 - [x] **D13c1 `type.a*` to `type.e*`**: [writing guide](writing.md), "How an error page reads"; `tools/docs/language_docs.py`, `error_format_scope` and `BROUGHT_TO_FORMAT`; the catalogue summaries in `crates/jadpo-diag`; the pages of `type.a*` to `type.e*`.
-- [ ] **D13c2 `type.f*` to `type.n*`** `opus · high`: 31 pages.
+- [x] **D13c2 `type.f*` to `type.n*`**: [writing guide](writing.md), "How an error page reads"; `tools/docs/language_docs.py`, `BROUGHT_TO_FORMAT`; the catalogue summaries in `crates/jadpo-diag`; the pages of `type.f*` to `type.n*`.
 - [ ] **D13c3 `type.o*` to `type.v*`** `opus · high`: 37 pages.
 - [ ] **D13c4 `syntax.a*` to `syntax.l*`** `opus · high`: 27 pages.
 - [ ] **D13c5 `syntax.m*` to `syntax.v*`** `opus · high`: 28 pages.
@@ -493,10 +493,7 @@ real deploy) and, before outside authors can publish, D3 (releases).
 After the registry is live, in order:
 
 - [x] **R8 `jadpo suggest` points at the registry**: area 14, "Signals", "Functions that already exist" and "The suggestions report"; area 11, "The registry protocol"; compiler/runtime, "Suggestions from the registry".
-- [ ] **R9 Blast radius in an update** `opus · high`: `jadpo package update
-  --plan` follows each change record entry through the app's graph to
-  the actions, routes, jobs and stored fields it reaches, with the
-  compile errors and migrations that would follow; after V4.
+- [x] **R9 Blast radius in an update**: area 14, "`jadpo package update` and `remove`" (`--plan`); area 11, "How packages are installed and linked"; area 18, "Package upgrades"; area 14's notes, "`jadpo package update --plan`".
 - Then, each with its own chunk below: signed log heads (keys held as data
   and `crypto.sign`, P9 under item 3), the S3 driver for the registry's archives
   (B7, under item 4), the search capability (item 8), and GitHub sign-in for
@@ -524,6 +521,25 @@ After the registry is live, in order:
 - [ ] **R12 Jadpo HQ** **needs a maintainer**: area 14, "HQ's agent" and
   "`jadpo suggest`". The service `jadpo suggest share` sends to, built against
   the protocol its local fake speaks today.
+
+## Reviewing a change
+
+What shows a developer why Jadpo is worth trying, so it comes ahead of the
+work below (Richard, 2026-11-08).
+
+- [ ] **U1 The review web view** **needs a maintainer**: Richard plans it and
+  its design first (2026-11-08), then `opus · high`: area 17, "Reviewing a change"
+  and "The web view". A static page in `build/review/` written by `jadpo
+  approval`, from the report's JSON: the change at a high level in the
+  report's order, the graph of the change as a flow chart, each path opened
+  to see what surrounds it, what the change newly reaches, and links from
+  every line to its source. No accounts and no approvals; acceptances stay
+  files. Done when a change to the
+  golden todo opens as this page and CI can publish it beside the pull
+  request.
+- [ ] **U2 What changed between an agent's revisions** `opus · high` after
+  U1: area 17, "The web view". The differences between an agent's successive
+  revisions of a change, added to the page.
 
 ## After the first build, in order
 
@@ -870,8 +886,7 @@ After the registry is live, in order:
      "Budgets" and "Streams, embeddings and the OpenAI and Anthropic
      packages". `keep_content:`, kept in encrypted fields, and an `embed:`
      with a `batch:` below 100, split across requests.
-9. Product work: the developer console and MCP, the graph review UI
-   (Revset-inspired), acting as an OAuth
+9. Product work: the developer console and MCP, acting as an OAuth
    provider, D1 (area 5, "Actions on D1", with `jadpo sql` for SQLite) and
    row-level security (opt-in, design notes for area 6). The console holds
    telemetry, the schedules' timeline and the dev inbox's page, and `jadpo

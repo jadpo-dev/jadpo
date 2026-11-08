@@ -237,17 +237,17 @@ fn real(path: &Path) -> PathBuf {
 // --- verifying a package ---------------------------------------------------
 
 /// A package verified for installing: compiled, its surface its code's.
-struct Verified {
-    package: String,
-    version: String,
+pub(crate) struct Verified {
+    pub(crate) package: String,
+    pub(crate) version: String,
     /// Its files, relative to its folder, with their bytes.
-    files: Vec<(String, Vec<u8>)>,
-    digest: String,
+    pub(crate) files: Vec<(String, Vec<u8>)>,
+    pub(crate) digest: String,
     surface: Surface,
     /// Its committed `surface.jadpo_record`.
-    surface_text: String,
+    pub(crate) surface_text: String,
     /// What a release shows of it, worked out from its code.
-    facts: Option<jadpo_check::release::Facts>,
+    pub(crate) facts: Option<jadpo_check::release::Facts>,
     /// Findings of the publishing bar in its code, which a newer Jadpo
     /// makes and its publisher answers: an alert, never a refusal (area
     /// 11, "How the package format is read").
@@ -256,7 +256,7 @@ struct Verified {
 
 impl Verified {
     /// The alert its publisher's findings make, before the summary.
-    fn alert(&self, screen: &mut Screen) {
+    pub(crate) fn alert(&self, screen: &mut Screen) {
         if !self.publishers.is_empty() {
             screen.push(Block::Alerts(vec![crate::check::publisher_alert(
                 &self.package,
@@ -499,7 +499,7 @@ fn install(root: &Path, verified: &Verified, command: &str) -> Result<(), Reply>
 }
 
 /// `lines` with `line` in place of the package's own, or added.
-fn with_line(lines: &[Locked], line: Locked) -> Vec<Locked> {
+pub(crate) fn with_line(lines: &[Locked], line: Locked) -> Vec<Locked> {
     let mut out: Vec<Locked> = lines
         .iter()
         .filter(|other| other.package != line.package)
@@ -533,7 +533,7 @@ fn counts(surface: &Surface) -> Vec<Fact> {
 
 /// A lock line's source in words: `path ../postcodes`, `git <repository>
 /// tag v2.1.0`.
-fn source_words(source: &Source) -> String {
+pub(crate) fn source_words(source: &Source) -> String {
     match source {
         Source::Path { path, .. } => format!("path {path}"),
         Source::Git {
@@ -544,7 +544,7 @@ fn source_words(source: &Source) -> String {
     }
 }
 
-fn version_of(source: &Source) -> Option<&str> {
+pub(crate) fn version_of(source: &Source) -> Option<&str> {
     match source {
         Source::Path { version, .. }
         | Source::Git { version, .. }
@@ -1203,6 +1203,18 @@ pub fn update(call: &Call) -> Reply {
             ),
         ));
     }
+    if call.flag("--plan") {
+        return crate::package_plan::plan(
+            &root,
+            call.value("--to"),
+            &lines,
+            &line,
+            &verified,
+            &source,
+            &before,
+            registry_notes.as_ref(),
+        );
+    }
     let was = review_side(&root);
     if let Err(reply) = install(&root, &verified, "package update") {
         return reply;
@@ -1523,7 +1535,7 @@ fn up_to_date_in_registry(
 }
 
 /// What an upgrade's review reads of the project as it stands.
-fn review_side(root: &Path) -> upgrades::Side {
+pub(crate) fn review_side(root: &Path) -> upgrades::Side {
     let files: Vec<(String, String)> = jadpo_db::files_under(root, true)
         .into_iter()
         .filter(|path| upgrades::read_for_a_review(path))

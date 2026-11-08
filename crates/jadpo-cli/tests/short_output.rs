@@ -278,7 +278,7 @@ fn the_first_mismatch_shows_the_shape_and_its_edit_and_the_next_points_back() {
         "{reason}"
     );
     let next = first["next"]["text"].as_str().expect("next");
-    let written = "Book.author(PersonName { given: \"Frank Herbert\" })";
+    let written = "Book.author(PersonName { given: \"Frank Herbert\", family: none })";
     assert!(next.contains(written), "{next}");
     assert!(next.contains("`jadpo help PersonName`"), "{next}");
     assert_eq!(first["next"]["edits"][0]["replacement"], written);
@@ -290,7 +290,7 @@ fn the_first_mismatch_shows_the_shape_and_its_edit_and_the_next_points_back() {
     assert!(second["sameAs"].is_i64(), "{second}");
     assert_eq!(
         second["next"]["edits"][0]["replacement"],
-        "Book.author(PersonName { given: \"Ursula Le Guin\" })"
+        "Book.author(PersonName { given: \"Ursula Le Guin\", family: none })"
     );
 
     // On the screen, and whole with `--full`.
@@ -312,7 +312,8 @@ fn the_first_mismatch_shows_the_shape_and_its_edit_and_the_next_points_back() {
     assert!(document["data"].get("files").is_none());
     assert!(document["data"].get("build").is_none());
 
-    // The edits, applied, check.
+    // The edits, applied, check: a field that may be `none` is still
+    // written, so the next check finds nothing (area 2).
     let path = root.join("domains/lending/actions/add_book.test.jadpo");
     let mut text = fs::read_to_string(&path).expect("read");
     let mut edits: Vec<(usize, usize, String)> = of_rule(&document, "type.mismatch")
@@ -335,9 +336,12 @@ fn the_first_mismatch_shows_the_shape_and_its_edit_and_the_next_points_back() {
     }
     fs::write(&path, text).expect("write");
     let after = json(&jadpo(&root, &["check", "--json"]));
-    assert!(of_rule(&after, "type.mismatch").is_empty(), "{after}");
     assert!(
-        of_rule(&after, "syntax.expected_name").is_empty(),
+        after["diagnostics"]
+            .as_array()
+            .expect("diagnostics")
+            .iter()
+            .all(|diagnostic| diagnostic["severity"] != "error"),
         "{after}"
     );
 }

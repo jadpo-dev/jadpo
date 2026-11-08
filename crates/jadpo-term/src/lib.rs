@@ -21,7 +21,8 @@ pub use json::{Json, SCHEMA_VERSION, diagnostic_json, envelope, short_envelope};
 pub use palette::{Symbol, Token};
 pub use report::{Diagram, DiagramLine, Field, Frame, Item, Mark, Report, Text};
 pub use screen::{
-    Block, Change, ChangeGroup, ChangeMark, DecisionRow, Fact, Outcome, Row, RowState, Screen,
+    Block, Change, ChangeGroup, ChangeMark, DecisionRow, Fact, Outcome, Reach, Row, RowState,
+    Screen,
 };
 pub use sources::{Position, Sources, line_text, shown_path};
 pub use spinner::{Progress, SPINNER_DELAY, Spinner};
