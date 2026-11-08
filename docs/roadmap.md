@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-11-01. This page is the only list of outstanding work: the
+**Updated:** 2026-11-08. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record language decisions on the [area pages](language/README.md)
 and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
@@ -259,9 +259,7 @@ D1 first: the site starts once D1 has merged.
 - [x] **D11 Task guides**: [guides](guides/README.md); [documentation](documentation.md), "Topic IDs" and "The bundle"; [writing guide](writing.md), "Kinds of user page"; `tools/docs/language_docs.py`, `GuidePage`.
 - [x] **D12 What the Learn path found**: [area 8](language/08-identity.md), "Sign-in in development and tests"; [area 14](language/14-tooling.md), "What is built"; [documentation](documentation.md), "Where the content lives" and "The bundle".
 - [x] **D13a Error pages people reach first**: [writing guide](writing.md), "How an error page reads" and "What the docs check enforces"; [documentation](documentation.md), "The bundle"; `tools/docs/language_docs.py`, `error_format_problems` and `error_format_scope`; the catalogue summaries in `crates/jadpo-diag`.
-- [ ] **D13b Command errors that explain**: an umbrella, split by size
-  (2026-10-31) into D13b1, D13b2a, D13b2b1, D13b2b2, D13b2c, D13b3a,
-  D13b3b and D13b3c, taken in order; tick it once all are.
+- [x] **D13b Command errors that explain**: D13b1 to D13b3c below; `tools/docs/language_docs.py`, `error_format_scope`, which covers every command error.
 - [x] **D13b1 The `sh run` block, settings and `jadpo new`**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; `tools/docs/language_docs.py`, `check_runs`; the pages of `configuration.local_*`, `cli.config_*` and `toolchain.*` a run raises, and `configuration.value_invalid`.
 - [x] **D13b2a Copied output, root runs and the first person-decided pages**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "What it compiles with"; the pages of `configuration.value_missing`, `configuration.local_changed`, `format.write_failed`, `translation.exchange_file_invalid`, `toolchain.build_failed` and `toolchain.fetch_failed`.
 - [x] **D13b2b1 A database for runs, migrations and seeds**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "Database command errors"; `tools/docs/language_docs.py`, `Databases`; the pages of `seed.production_refused`, `seed.unavailable`, `migration.apply_failed`, `migration.store_diverged`, `migration.extension_missing` and `migration.extension_outdated`.
@@ -269,14 +267,7 @@ D1 first: the site starts once D1 has merged.
 - [x] **D13b2c The rest a person decides**: [writing guide](writing.md), "How an error page reads"; compiler/runtime §2.7, "Command examples"; area 14, "Command errors"; the pages of `cli.dev_start_failed`, `conform.refused`, `recording.refused`, `suggest.share_failed`, `format.unsafe` and `test.runtime_start_failed`.
 - [x] **D13b3a The command line's own errors**: area 14, "Command-line errors"; `tools/docs/language_docs.py`, `error_format_scope`; the pages of `cli.*_arguments`, `cli.unknown_command` and `cli.unknown_flag`.
 - [x] **D13b3b The other command errors**: area 14, "Command errors", "Database command errors" and `jadpo email`; [writing guide](writing.md), "What the docs check enforces"; `tools/docs/language_docs.py`, `error_format_scope` and `command_errors`; the pages of `cli.dev_port_invalid`, `cli.package_*`, `configuration.move_*`, `conform.failed`, `email.browser_failed`, `format.changes_required`, `recording.failed`, `seed.failed`, `suggest.record_invalid`, `test.failed`, `test.no_tests` and `translation.exchange_unit_unknown`.
-- [ ] **D13b3c The package commands' transcripts** `opus · high`: split
-  from D13b3b by size (2026-11-01). The pages of `install.in_use`,
-  `publish.changelog_missing`, `publish.description_missing`,
-  `publish.example_failed` and `publish.example_missing`, command errors
-  still shown as a copied transcript, to the format with checked runs,
-  each catalogue summary its first sentence and area 14's rows matching;
-  then `FORMAT_WAITS` in `tools/docs/language_docs.py` is emptied and
-  removed, so the format check covers every command error.
+- [x] **D13b3c The package commands' transcripts**: area 14, "Command errors"; [writing guide](writing.md), "The release line"; `tools/docs/language_docs.py`, `error_format_scope` and `run_block`; the pages of `install.in_use`, `publish.changelog_missing`, `publish.description_missing`, `publish.example_failed` and `publish.example_missing`.
 - [ ] **D13c The rest of the error pages** `opus · high`: every other page
   in `docs/errors/` to the format, each rule's catalogue summary its
   page's first sentence; `error_format_scope` then covers every page.
