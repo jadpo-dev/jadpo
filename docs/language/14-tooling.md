@@ -978,8 +978,10 @@ Hints where code could use a standard type or operation, and never edits
 | `found <file>:<line> <Type or operation> "<why>"` | Teaches a miss, in `taught_suggestions.jadpo_record` |
 | `share`, `share --approve`, `--decline`, `--new-token` | Sends what was learned to Jadpo HQ |
 
-The findings come from the signals on the standard types' entries and the
-loop table. `ignore` and `found` also add to `.jadpo/suggest_pending`. A
+The findings come from the signals on the standard types' entries, the
+loop and operation tables, and the registry's fingerprints of published
+functions ([Functions that already exist](#functions-that-already-exist)).
+`ignore` and `found` also add to `.jadpo/suggest_pending`. A
 wrong number, place, type or operation is `cli.suggest_arguments`.
 
 `share` sends the pending hashes and shows the snippets HQ asks for, with
@@ -1261,13 +1263,13 @@ an `http://` address on this machine. It needs no project.
 A document that conforms is one line:
 
 ```text
-✓ Conforms to the registry protocol  build/openapi/main.json · 10 requests
+✓ Conforms to the registry protocol  build/openapi/main.json · 11 requests
 ```
 
 When its output isn't a terminal, as in CI, the line is plain text:
 
 ```text
-Conforms to the registry protocol: build/openapi/main.json, 10 requests
+Conforms to the registry protocol: build/openapi/main.json, 11 requests
 ```
 
 One that differs is `protocol.mismatch` with each difference under its request,
@@ -2282,6 +2284,8 @@ every entry.
 | `validation` | Texts the type's validation accepts and texts it refuses | A regular expression, in `matches` or a `pattern:` rule, that accepts every one and refuses every one | `pattern: "[^@]+@[^@]+\\.[a-z]+"` → `Email` |
 | `loop` | A table beside the operation table, since operations have no contract entry: the loop each operation replaces | A `for` loop whose only statement is that loop's | `total = total + item.price` → `list.sum` |
 | `taught` | A snippet `jadpo suggest found` recorded, in this checkout | The same canonical form anywhere | as recorded |
+| `published` | The registry's source fingerprints of the functions and actions its packages publish ([The registry protocol](11-integrations.md#the-registry-protocol)) | An app's own function or action whose source fingerprint is one of them: a copy, renamed or reformatted | `function read_postcode(…)` → `@acme/postcodes uk.parse` |
+| `function` | The operation table: each standard operation's name, parameters and result | An app's own function whose name is an operation's, with or without its namespace, and whose parameters and result each fit the operation's | `function slug(title: Title) -> Title` → `text.slug` |
 
 The entries with signals so far:
 
@@ -2311,6 +2315,52 @@ whole name is one of a type's units, such as `type Pence = Int {}`, gives
 no `name` finding: it is `type.unit_as_number`, a `jadpo check` error
 ([Units and money in plain numbers](02-values-and-types.md#units-and-money-in-plain-numbers)),
 declined or not.
+
+## Functions that already exist
+<!-- topic: functions-that-already-exist -->
+
+Two signals read whole functions: a copy of one a package publishes, and
+one the standard library already has. Each finding's snippet is the
+declaration, shown as its first line; installed packages under `packages/`,
+tests, fixtures and seeds are left out.
+
+**`published`.** Each of the app's own functions and actions has a source
+fingerprint, worked out exactly as a release's is ([How a release's facts,
+change record and fingerprints are worked out](11-integrations.md#how-a-releases-facts-change-record-and-fingerprints-are-worked-out)):
+its tokens as the formatter writes them, without its description,
+comments, visibility, `decline` lines or its own name, its parameters and
+variables named by position as the similar-helper check names them. So a
+copy of `uk.parse` renamed `read_postcode`, its variables renamed too and
+reformatted, has `uk.parse`'s fingerprint. The finding suggests the package
+and the declaration, `@acme/postcodes uk.parse`, and says the release; a
+fix or an advisory for the package never reaches a copy.
+
+`jadpo suggest` asks the registry with the first five hex digits of each
+fingerprint, each once, and never the fingerprints, names or source
+(`POST fingerprints/query`, [The registry protocol](11-integrations.md#the-registry-protocol)).
+The registry answers every published fingerprint starting with one of
+them, so it can't tell which it was asked about, and the scan compares them
+itself. A package of the app's own is never told about its own publisher's
+releases. It asks `JADPO_REGISTRY` when that names a stand-in, as the
+package commands do, and `JADPO_SUGGEST_REGISTRY` set to anything but `on`
+stops it asking, on a machine or in CI. A registry that can't be reached,
+or answers what can't be read, never stops the scan: its other findings
+are listed, and its summary says `registry not reached`.
+
+**`function`.** A standard operation has no source of its own to
+fingerprint, so its fingerprint is its name, parameters and result as the
+operation table gives them. A function fires when its own name is the
+operation's, with or without the operation's namespace (`slug` or
+`text_slug` for `text.slug`), every parameter the operation needs is
+there, each fits the operation's in order (built on the type it takes, or
+the list, set or map it takes), and its result fits the operation's. A
+function named for an operation that takes something else, or with more in
+its name (`slug_of`), is left alone.
+
+The canonical form of a `published` finding is the function's normalised
+tokens, so an ignore lasts until its code changes; a `function` finding's is
+its name, its parameters' types and its result, so an ignore lasts until its
+signature changes.
 
 ## Snippets and their canonical form
 <!-- topic: snippets-and-their-canonical-form -->
@@ -2370,7 +2420,26 @@ What to do
 ```
 
 Findings are numbered S1, S2… in file order, each with its place, what it
-suggests, the signal and the snippet. A snippet goes beside its row when
+suggests, the signal and the snippet. A copy of a published function
+suggests its package and declaration, and the routine gains a line:
+
+```text
+Suggestions
+  S1  domains/shop/libraries/addresses.jadpo:7  @acme/postcodes uk.parse  published
+      function read_postcode(typed: WrittenPostcode) fails InvalidPostcode -> U…
+
+What to do
+  Review the rest of the code against `jadpo suggest --catalogue`.
+  Before changing code for something it missed, run
+  `jadpo suggest found <file>:<line> <Type or operation> "<why>"`.
+  To keep one quiet, run `jadpo suggest ignore <number> "<why>"`.
+  To use a published one, run `jadpo package add <package>` and call it.
+
+✓ 1 suggestion  1 file
+```
+
+When the registry can't be reached, the summary ends `registry not
+reached` in the warning colour. A snippet goes beside its row when
 every one fits in 80 columns. Otherwise every snippet goes on the line
 under its row, cut with `…` only if it is longer than that line.
 
@@ -2380,14 +2449,20 @@ since reviewing the rest still applies. The last line, to run
 configured ([Sharing with Jadpo HQ](#sharing-with-jadpo-hq)).
 
 `--json` gives each finding's number, place, range, suggestion, signal,
-reason, text, canonical form and both hashes, and the instruction's lines.
+package and version (`null` but for `published`), reason, text, canonical
+form and both hashes, the instruction's lines, and `registry`: its `state`
+(`answered`, `not_asked` when the app has no functions of its own, `off`
+or `unreachable`) and, when off or unreachable, its `reason`.
 `jadpo suggest --catalogue` lists every signal, generated from the entries
 and the loop table, as text or `--json`.
 
 A finding that is gone at the next scan was taken. The scan keeps a note
 of its last findings in `.jadpo/suggest_last`, which is local and not
 committed. Each one missing from the next scan, and not ignored meanwhile,
-becomes an `accepted` entry to share. The summary counts them.
+becomes an `accepted` entry to share. The summary counts them. A scan the
+registry didn't answer can't tell a copy from code that changed, so a
+`published` finding missing from it isn't taken, and an ignore of one isn't
+dropped as stale.
 
 ## Ignoring a suggestion
 <!-- topic: ignoring-a-suggestion -->
@@ -3785,7 +3860,7 @@ Each row says what is built and what is specified but not built yet.
 | Language server | Partly built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; and the code actions under [Editor support](#editor-support). Not built yet: rename, which waits for `jadpo rename`. |
 | VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release to the VS Code Marketplace and Open VSX, which publishes through trusted publishing. |
 | Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; the agent skill is built, but for the three parts [Tools for agents](#tools-for-agents) lists; `jadpo inspect` and `impact` are built; `domain` and `rename` are not built yet, nor is generated CI. |
-| Suggestions | Partly built: `jadpo suggest` with its six signal kinds and taught signals, the catalogue, accepted findings, `ignore`, `found`, `share`, `suggestions { }` and the committed taught record, `share` against a fake of Jadpo HQ. Not built yet: HQ itself, so a real `share` has nowhere to go. |
+| Suggestions | Partly built: `jadpo suggest` with its eight signal kinds and taught signals, `published` asking the registry by fingerprint prefix and `function` reading the operation table, the catalogue, accepted findings, `ignore`, `found`, `share`, `suggestions { }` and the committed taught record, `share` against a fake of Jadpo HQ. Not built yet: HQ itself, so a real `share` has nowhere to go; the public registry's `POST fingerprints/query`, so until jadpo.dev serves it a scan says `registry not reached`. |
 | Review and sign-off | Built: `jadpo check` judging acceptances against the default branch at its merge base, `--before`, `jadpo acceptance new` ([Acceptances](18-records-and-manifest.md#acceptances)) and [`jadpo approval`](#jadpo-approval). |
 | Build-only errors | Built: `jadpo build` for the one deployable an app that declares none has and for declared deployables, what a target can't run reported by `jadpo check` as `deployable.target_unsupported`; its `settings` line, and a Worker's `secrets: { required: [ ] }`, name every setting a deployable reads, its connections' included. |
 
