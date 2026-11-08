@@ -1083,16 +1083,18 @@ mod tests {
             );
         }
         let key = jadpo_std::files::key_for(&id);
+        let hash = blake3::hash(b"code\r\nA1\r\nA2\r\n").to_hex().to_string();
         assert_eq!(
             answered(&files, &joined(&key, 3)),
-            Answer::Value(Value::Unit)
+            Answer::Value(Value::text(&hash))
         );
         let path = root.join("imports").join(&key);
         assert_eq!(fs::read(&path).expect("joined"), b"code\r\nA1\r\nA2\r\n");
         assert!(!root.join("imports").join(piece_key(&id, 0)).exists());
         assert_eq!(
             answered(&files, &joined(&key, 3)),
-            Answer::Value(Value::Unit)
+            Answer::Value(Value::text(&hash)),
+            "joining again gives the same hash"
         );
         let discarded = Call::new(
             "imports",
@@ -1375,7 +1377,7 @@ mod tests {
         );
         assert_eq!(
             answered(&roomy, &joined(&file, 1)),
-            Answer::Value(Value::Unit)
+            Answer::Value(Value::text(&blake3::hash(b"code\n").to_hex()))
         );
         assert_eq!(
             answered(&roomy, &put(&key, b"code\n")),

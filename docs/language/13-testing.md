@@ -270,12 +270,12 @@ header's value. It gives a `Response` with `status`, `code` and `body`, the
 bytes it read (`none` unless it succeeded), in place of `output`:
 
 ```jadpo fragment
-var kept: Response = request {
+var sheet_answer: Response = request {
     method: HttpMethod.post
     path: "/sheets"
     input: new_sheet
 }
-var sheet: File? = match kept.output {
+var sheet: File? = match sheet_answer.output {
     some(view) -> view.sheet
     none -> none
 }
