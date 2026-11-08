@@ -122,7 +122,6 @@ D1 first: the site starts once D1 has merged.
   Split by size (2026-11-08) into the parts below, taken in order,
   each widening `error_format_scope` to the rules it finished; delete it
   once all are.
-- [ ] **D13c6 `data.*`** `opus · high`: 40 pages.
 - [ ] **D13c7 `semantic.*`** `opus · high`: 35 pages.
 - [ ] **D13c8 `route.*` and `api.*`** `opus · high`: 33 pages.
 - [ ] **D13c9 `failure.*`, `decline.*` and `effect.*`** `opus · high`: 31 pages.
