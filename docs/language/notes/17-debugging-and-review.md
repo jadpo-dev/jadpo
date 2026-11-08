@@ -114,6 +114,7 @@ review web view. See [the roadmap](../../roadmap.md).
 | `jadpo call` | One-shot `jadpo call <name> --as <user>`, JSON in and out, local writes with `--rollback`, production refused, policy always applies |
 | Developer console and MCP | Local, read-only console in `jadpo dev`; CLI first for agents; MCP later for agents without a shell, generated from the command reference, read-only, OAuth-protected |
 | Review report and view | `jadpo approval` ordered decisions first; Markdown and JSON; the graph web view later; acceptances stay files |
+| Review, in order | Richard, 2026-11-08: a static page opening on the decisions, with a button copying node keys and the reviewer's request; then `jadpo review <pr>`, the report from the base branch's release; then following an agent's edits; then agent adapters; a launcher only if people ask, on the scheme `jadpo-review://`. Open: whether the view stays a file once it follows edits, and whether Jadpo launches agents at all |
 | Contract and order | The evidence and commands are decided; console, MCP, review view and breakpoints are product work; build order as listed under Status |
 | Coverage by path | Paths run by tests, untested production paths by traffic, paths unseen for 90 days |
 | Production in review | Optional production counts in the approval report |
