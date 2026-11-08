@@ -372,10 +372,7 @@ a new agent can't find a type without them (Richard, 2026-11-03).
 
 What the Reddit thread found (Richard, 2026-11-03):
 
-- [ ] **A17 `jadpo inspect` and `jadpo impact`** `opus · high`: area 14. An
-  agent can ask for the project map and for what a change to a name reaches,
-  rather than reading files to work it out. `jadpo impact` moves here from
-  "Tooling completeness".
+- [x] **A17 `jadpo inspect` and `jadpo impact`**: area 14, "`jadpo inspect`", "`jadpo impact`", "Tools for agents" and Decisions; area 1, "Seeing a change's reach"; area 2, "Building a type from other types"; area 18, "The manifest"; `cli.inspect_arguments` and `cli.impact_arguments`.
 - [ ] **A18 Leaving Jadpo** `opus · medium`: a short page saying what a
   project keeps if it stops using Jadpo: what its tables look like to anyone
   else, its OpenAPI, the licence, and where the runtime comes from. It claims

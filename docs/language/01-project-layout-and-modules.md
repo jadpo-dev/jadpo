@@ -797,11 +797,9 @@ and shown in the editor, never written into source files.
 
 Before shared or public code changes, its reach shows in three ways:
 find-references in the editor; a `jadpo impact <name>` command listing the
-calling domains, the entry points and the tests that cover it; and
-`jadpo check` itself, which reports the domains a change affects and runs
-their tests.
-
-Not built yet: `jadpo impact`.
+calling domains, the entry points and the tests that cover it
+([`jadpo impact`](14-tooling.md#jadpo-impact)); and `jadpo check` itself,
+which reports the domains a change affects and runs their tests.
 
 ## Ownership and calls replace modules
 <!-- topic: ownership-and-calls-replace-modules -->
@@ -1185,7 +1183,7 @@ The compiler builds this layout, with each rule's real output under
 | Domains, `public` and calls | Built: owner-qualified calls and per-declaration `public`, with `visibility.private_cross_domain`, `visibility.public_not_allowed` and `visibility.public_unused`. |
 | Reserved words | Built: a reserved word names only a field or an enum variant ([Names from reserved words](02-values-and-types.md#names-from-reserved-words)). |
 | Comments | Built: `//` and `///` documentation comments. |
-| Similar helpers | Partly built: `library.similar_exists`, a declinable error. Not built yet: `jadpo impact`. |
+| Similar helpers | Built: `library.similar_exists`, a declinable error, and `jadpo impact`. |
 | Declinable errors | Partly built: no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; the catalogue's security rules, whose decline needs an [acceptance](18-records-and-manifest.md#acceptances); `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline"; and the date rule for an expired [feature flag](16-built-in-services.md#feature-flags), `flag.expired`, judged at today by `check` and at the commit's date by `build`. `jadpo approval` lists them ([Review and records](18-records-and-manifest.md)). |
 | Constants | Built: `constant` as a reserved word and a declaration placed and shared as helper functions are, a private one unique within its domain, `constant.similar_exists`, and a top-level `var` pointed at `constant` ([Constants](03-logic.md#constants)). |
 | Imports | Built: `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |

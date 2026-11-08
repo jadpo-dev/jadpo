@@ -307,16 +307,318 @@ Not built yet:
 ## Commands for looking into and changing code
 <!-- topic: commands-for-looking-into-and-changing-code -->
 
-These commands show you what your code does: its routes, the SQL its
-queries send, and what a prompt sends a model.
+These commands show you what your code does: the project map, what a
+change to a name reaches, its routes, the SQL its queries send, and what a
+prompt sends a model.
 
 | Command | Does |
 |---|---|
+| `jadpo inspect` | Prints the project map |
+| `jadpo inspect <name>` | Prints one declaration: where it is, its fields or signature, and its edges |
+| `jadpo impact <name>` | Lists what a change to a declaration reaches |
 | `jadpo routes` | Lists every route |
 | `jadpo sql <query>`, `jadpo sql <action>` | Prints the SQL a query or an action's writes send |
 | `jadpo ai show <prompt>` | Prints what a prompt sends a model |
 | `jadpo ai record <prompt> --as <name>` | Records the model's answer to a prompt, for tests |
 | `jadpo ai usage` | Shows the tokens and cost of the app's model calls |
+
+### `jadpo inspect`
+
+Prints the project map: each domain's declarations, `shared` last, with
+where each is written and what each calls, runs and raises, then a count.
+It reads the graph `jadpo check` builds, so an agent asks for the map
+rather than reading files to work it out. `--json` prints the manifest
+itself ([The manifest](18-records-and-manifest.md#the-manifest)). A shop
+whose `ordering` and `payments` domains share a library function:
+
+```jadpo check project=shop file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=shop file=policy.jadpo hidden
+use ordering
+use payments
+
+policy {
+    actions: {
+        ordering.place_order: [Access.public]
+        payments.refund: [Access.public]
+    }
+}
+```
+
+```jadpo check project=shop file=shared/types/quantity.jadpo hidden
+/// How many of one item.
+type Quantity = Int {
+    min: 0
+    max: 1000
+}
+```
+
+```jadpo check project=shop file=shared/libraries/quantities.jadpo hidden
+use shared/types { Quantity }
+
+library quantities {
+    /// The larger of two quantities.
+    function larger(first: Quantity, second: Quantity) -> Quantity {
+        if (first > second) {
+            return first
+        }
+        return second
+    }
+}
+```
+
+```jadpo check project=shop file=domains/ordering/types/new_order.jadpo hidden
+use shared/types { Quantity }
+
+/// What a customer asks for, and the least each pack holds.
+type NewOrder = Input {
+    asked: Quantity
+    pack: Quantity
+    minimum: Quantity
+}
+```
+
+```jadpo check project=shop file=domains/ordering/types/order_total.jadpo hidden
+use shared/types { Quantity }
+use ordering/types { NewOrder }
+
+/// What an order sends, with what was asked for.
+type OrderTotal = Output {
+    include: [NewOrder]
+    pack: Quantity
+    sent: Quantity
+}
+```
+
+```jadpo check project=shop file=domains/ordering/actions/place_order.jadpo hidden
+use shared/libraries { quantities }
+use shared/types { Quantity }
+use ordering/types { NewOrder, OrderTotal }
+
+/// Sends at least a pack, and never less than the minimum.
+action place_order(input: NewOrder) -> OrderTotal {
+    var pack: Quantity = quantities.larger(input.pack, input.minimum)
+    return OrderTotal {
+        asked: input.asked
+        pack: pack
+        minimum: input.minimum
+        sent: quantities.larger(input.asked, pack)
+    }
+}
+```
+
+```jadpo check project=shop file=domains/ordering/actions/place_order.test.jadpo hidden
+use ordering/types { NewOrder, OrderTotal }
+
+test "an order sends at least a pack" {
+    var total: OrderTotal = place_order(NewOrder {
+        asked: 2
+        pack: 6
+        minimum: 1
+    })
+    assert total.sent == 6
+}
+```
+
+```jadpo check project=shop file=domains/ordering/actions/send_invoices.jadpo hidden
+use shared/libraries { quantities }
+use shared/types { Quantity }
+
+/// Counts the night's invoices, one at least.
+action send_invoices() -> Quantity {
+    return quantities.larger(0, 1)
+}
+```
+
+```jadpo check project=shop file=domains/ordering/schedules/nightly_invoices.jadpo hidden
+use ordering/actions { send_invoices }
+
+/// Sends the day's invoices each night.
+schedule nightly_invoices {
+    every: 1d
+    run: send_invoices()
+}
+```
+
+```jadpo check project=shop file=domains/ordering/routes/orders.jadpo hidden
+use ordering/types { NewOrder, OrderTotal }
+use ordering/actions { place_order }
+
+/// Orders.
+routes Orders {
+    prefix: /orders
+
+    /// Prices an order, for anyone.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: NewOrder
+        output: OrderTotal
+        run: place_order(input)
+    }
+}
+```
+
+```jadpo check project=shop file=domains/payments/types/refund_request.jadpo hidden
+use shared/types { Quantity }
+
+/// The items a customer sends back.
+type RefundRequest = Input {
+    returned: Quantity
+}
+```
+
+```jadpo check project=shop file=domains/payments/types/refund_view.jadpo hidden
+use shared/types { Quantity }
+
+/// The items a refund pays for.
+type RefundView = Output {
+    paid_for: Quantity
+}
+```
+
+```jadpo check project=shop file=domains/payments/actions/refund.jadpo hidden
+use shared/libraries { quantities }
+use payments/types { RefundRequest, RefundView }
+
+/// Refunds the items sent back, one at least.
+action refund(input: RefundRequest) -> RefundView {
+    return RefundView {
+        paid_for: quantities.larger(input.returned, 1)
+    }
+}
+```
+
+```jadpo check project=shop file=domains/payments/actions/refund.test.jadpo hidden
+use payments/types { RefundRequest, RefundView }
+
+test "a refund pays for at least one item" {
+    var sent: RefundView = refund(RefundRequest {
+        returned: 0
+    })
+    assert sent.paid_for == 1
+}
+```
+
+```jadpo check project=shop file=domains/payments/routes/payments.jadpo hidden migrate=initial
+use payments/types { RefundRequest, RefundView }
+use payments/actions { refund }
+
+/// Payments.
+routes Payments {
+    prefix: /payments
+
+    /// Sends a refund, for anyone.
+    POST /refunds {
+        authentication: RouteAuthentication.none
+        input: RefundRequest
+        output: RefundView
+        run: refund(input)
+    }
+}
+```
+
+```sh run project=shop
+jadpo inspect
+```
+
+```text output
+ordering
+  type NewOrder                 domains/ordering/types/new_order.jadpo:4
+  type OrderTotal               domains/ordering/types/order_total.jadpo:5
+  action place_order            domains/ordering/actions/place_order.jadpo:6
+    calls    quantities.larger
+  action send_invoices          domains/ordering/actions/send_invoices.jadpo:5
+    calls    quantities.larger
+  route POST /orders            domains/ordering/routes/orders.jadpo:9
+    runs     place_order
+  schedule nightly_invoices     domains/ordering/schedules/nightly_invoices.jadpo:4
+    runs     send_invoices
+
+payments
+  type RefundRequest            domains/payments/types/refund_request.jadpo:4
+  type RefundView               domains/payments/types/refund_view.jadpo:4
+  action refund                 domains/payments/actions/refund.jadpo:5
+    calls    quantities.larger
+  route POST /payments/refunds  domains/payments/routes/payments.jadpo:9
+    runs     refund
+
+shared
+  type Quantity                 shared/types/quantity.jadpo:2
+  function quantities.larger    shared/libraries/quantities.jadpo:5
+
+12 declarations: 2 domains, 2 tests
+```
+
+`jadpo inspect <name>` prints one declaration: where it is, its
+description, its type or signature, and its edges both ways, each by its
+name now.
+A built type shows its final fields in order, each with where it came from:
+`from` the field an `include` or `pick` copied, or `written`, with the
+copied field a written one replaces ([Building a type from other
+types](02-values-and-types.md#building-a-type-from-other-types)):
+
+```sh run project=shop
+jadpo inspect OrderTotal
+```
+
+```text output
+type OrderTotal
+  at: domains/ordering/types/order_total.jadpo:5
+  about: What an order sends, with what was asked for.
+  base: Output
+  fields: asked  from NewOrder.asked
+          pack: Quantity  written, replaces NewOrder.pack
+          minimum  from NewOrder.minimum
+          sent: Quantity  written
+  uses: NewOrder
+  used by: place_order, POST /orders
+```
+
+With `--json` it prints the node as the manifest has it, and its fields'
+nodes. A name is a declaration's as code writes it: `place_order`,
+`quantities.larger`, `NewOrder.pack`, `"POST /orders"`, or its whole key,
+`"type ordering.OrderTotal"`. When two domains each keep a private one of
+that name, it is named with its domain, `ordering.at_least_one`. A name
+the project doesn't have is `cli.inspect_arguments`, with the nearest.
+Tab completes the project's declarations.
+
+`jadpo inspect` and `jadpo impact` refuse a project with errors and show
+them instead: a graph built from one leaves out what couldn't be
+resolved, so the answer would be missing what it left out.
+
+### `jadpo impact`
+
+Lists what a change to one declaration reaches ([Seeing a change's
+reach](01-project-layout-and-modules.md#seeing-a-changes-reach)): the
+domains that call it, with how many calls each makes (`callers`); the
+entry points that reach it, its routes, schedules and subscribers
+(`triggers`); the test files that reach it, calling it themselves or
+through a route; and whether it is public. Run it before changing or
+removing anything shared or public.
+
+```sh run project=shop
+jadpo impact quantities.larger
+```
+
+```text output
+function quantities.larger
+  at: shared/libraries/quantities.jadpo:5
+  callers: ordering (3 calls), payments (1 call)
+  triggers: POST /orders, POST /payments/refunds, schedule nightly_invoices
+  tests: domains/ordering/actions/place_order.test.jadpo
+         domains/payments/actions/refund.test.jadpo
+  public: no
+```
+
+For a type, a field, a constant or an entity, the domains are those that
+use it (`used in`), each with how many of its declarations do. A change to
+a field is a change to its type, so it reaches what uses the type too, and
+a change to a library reaches what calls any of its functions. Each line
+says `none` when nothing is reached. `--json` names each caller, with its
+calls, each trigger and each test. A name the project doesn't have is
+`cli.impact_arguments`, with the nearest.
 
 ### `jadpo routes`
 
@@ -383,14 +685,9 @@ spent. The database is the one its connection's setting names, a running
 
 Not built yet:
 
-- `jadpo inspect`, which prints the project map: every declaration, call
-  and failure. Until then `build/manifest.json` and the catalogues hold
-  the map.
 - `jadpo sql` for SQLite, which comes with a SQLite store, and
   `jadpo sql --explain`, which runs the statement on a disposable
   database and shows the plan. The flag says `toolchain.not_built_yet`.
-- `jadpo impact <name>`, which lists what a change to `name` reaches
-  ([Project layout and modules](01-project-layout-and-modules.md)).
 - `jadpo rename <old> <new>`, which renames a declaration or field
   everywhere and keeps its stored data. It refuses a new name already in
   use.
@@ -1910,16 +2207,11 @@ before it changes something shared, it asks what the change reaches.
 - **The schema and query reports** (`build/report/`): every table, column
   and index with the query that needed it, and each query call's store,
   row bound and query count.
-- **`jadpo impact <name>`**: what a change to a declaration reaches.
-
-```text
-$ jadpo impact rounding.half_even
-rounding.half_even   shared/libraries/rounding.jadpo:4
-  called from   ordering (3 calls), payments (1 call)
-  entry points  POST /orders, POST /payments/refunds, schedule nightly_invoices
-  tests         ordering/actions/place_order.test.jadpo, payments/actions/refund.test.jadpo
-  public        no
-```
+- **`jadpo inspect`**: the project map, or one declaration with its
+  fields, signature and edges ([`jadpo inspect`](#jadpo-inspect)).
+- **`jadpo impact <name>`**: what a change to a declaration reaches: the
+  domains that call it, the entry points and the tests
+  ([`jadpo impact`](#jadpo-impact)).
 
 - **`jadpo domain rename`, `split` and `merge`**: move files and update
   every call. A new or renamed domain appears in the approval review
@@ -1948,10 +2240,10 @@ rounding.half_even   shared/libraries/rounding.jadpo:4
   what generates a project's CI (`jadpo new` creates none); whatever does
   must follow this.
 
-Not built yet: the schema and query reports, `jadpo impact`, the
-`jadpo domain` commands, those three parts of the agent skill and generated
-CI. The catalogues, the similar-helper check and the rest of the skill are
-built.
+Not built yet: the schema and query reports, the `jadpo domain`
+commands, those three parts of the agent skill and generated CI. The
+catalogues, the similar-helper check, `jadpo inspect`, `jadpo impact` and
+the rest of the skill are built.
 
 ## Suggestions
 <!-- topic: suggestions -->
@@ -3395,6 +3687,7 @@ yet, or that other commands replace.
 | `cli.flags_arguments` | `flags` | A `jadpo flags` command names an action it doesn't have, a flag the project doesn't declare, or a value, user or share the flag can't take |
 | `cli.fmt_arguments` | `fmt` | A `jadpo fmt` command names a path that isn't there or isn't a `.jadpo` file |
 | `cli.help_arguments` | `help` | A `jadpo help` command names more than one command or rule |
+| `cli.impact_arguments` | `impact` | A `jadpo impact` command names no declaration, one the project doesn't have, or a name two domains share |
 | `cli.incident_arguments` | `incident` | Incident command has invalid arguments |
 | `cli.incident_invalid` | `incident` | Runtime event is not a valid enrichment input |
 | `cli.incident_manifest_invalid` | `incident` | Local build manifest is not valid JSON |
@@ -3403,6 +3696,7 @@ yet, or that other commands replace.
 | `cli.incident_operation_unknown` | `incident` | Runtime operation is absent from the local manifest |
 | `cli.incident_read_failed` | `incident` | Runtime event file could not be read |
 | `cli.incident_revision_mismatch` | `incident` | Runtime event and local source revisions differ |
+| `cli.inspect_arguments` | `inspect` | A `jadpo inspect` command names a declaration the project doesn't have, or a name two domains share |
 | `cli.lsp_arguments` | `lsp` | A `jadpo lsp` command is given an argument, which it doesn't take |
 | `cli.migrate_arguments` | `migrate` | A `jadpo migrate` command names no action, one it doesn't have, a purpose for an action that takes none, or a `--drop` of what isn't retired |
 | `cli.new_arguments` | `new` | A `jadpo new` command names no project, or more than one |
@@ -3484,10 +3778,10 @@ Each row says what is built and what is specified but not built yet.
 | Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 3) with `durationMs`, project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys, shortened unless `--full` is given; `jadpo test --json` is described in [Testing](13-testing.md) and under `testReport` in `jadpo help --json`. |
 | `build/` | Partly built: `jadpo check` writes `build/manifest.json`, the catalogues in `build/catalogue/`, the permissions, network, provider and personal-data reports in `build/report/` and the monitoring rules in `build/monitoring/`; `jadpo test` keeps its last run in `build/test/`. Not built yet: the schema and query reports, and `diagnostics/`, `inventory/`, `audit/` and `compatibility/`. |
-| Commands | Partly built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe. Not built yet: those in their "Not built yet" notes, `jadpo inspect`, `impact`, `rename`, `domain`, `services`, `dev grants`, `files`, `batches`, `search reindex`, `trace`, `traces`, `metrics`, `logs`, `watch`, `call`, `console`, `mcp`, `replay`, `path`, `privacy requests`, `incident` and `test new --from`. |
+| Commands | Partly built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe. Not built yet: those in their "Not built yet" notes, `jadpo rename`, `domain`, `services`, `dev grants`, `files`, `batches`, `search reindex`, `trace`, `traces`, `metrics`, `logs`, `watch`, `call`, `console`, `mcp`, `replay`, `path`, `privacy requests`, `incident` and `test new --from`. |
 | Language server | Partly built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; and the code actions under [Editor support](#editor-support). Not built yet: rename, which waits for `jadpo rename`. |
 | VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release to the VS Code Marketplace and Open VSX, which publishes through trusted publishing. |
-| Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; the agent skill is built, but for the three parts [Tools for agents](#tools-for-agents) lists; `impact`, `domain` and `rename` are not built yet, nor is generated CI. |
+| Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; the agent skill is built, but for the three parts [Tools for agents](#tools-for-agents) lists; `jadpo inspect` and `impact` are built; `domain` and `rename` are not built yet, nor is generated CI. |
 | Suggestions | Partly built: `jadpo suggest` with its six signal kinds and taught signals, the catalogue, accepted findings, `ignore`, `found`, `share`, `suggestions { }` and the committed taught record, `share` against a fake of Jadpo HQ. Not built yet: HQ itself, so a real `share` has nowhere to go. |
 | Review and sign-off | Built: `jadpo check` judging acceptances against the default branch at its merge base, `--before`, `jadpo acceptance new` ([Acceptances](18-records-and-manifest.md#acceptances)) and [`jadpo approval`](#jadpo-approval). |
 | Build-only errors | Built: `jadpo build` for the one deployable an app that declares none has and for declared deployables, what a target can't run reported by `jadpo check` as `deployable.target_unsupported`; its `settings` line, and a Worker's `secrets: { required: [ ] }`, name every setting a deployable reads, its connections' included. |
