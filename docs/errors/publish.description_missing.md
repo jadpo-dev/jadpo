@@ -73,6 +73,8 @@ line above it:
 ```jadpo fragment
 /// The first half of a UK postcode, before the space, such as `SW1A`.
 public type OutwardCode = Text {
+    ...
+}
 ```
 
 ```jadpo check project=e-description-missing-fixed file=shared/providers/postcodes/v1/types/outward_code.jadpo hidden

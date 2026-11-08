@@ -139,6 +139,7 @@ its description, holding statements as a test's body does: a call, and
 an `assert` of what it gives and of each failure it can raise:
 
 ```jadpo fragment
+public library starter {
     /// Takes the spaces off both ends of what someone typed.
     ///
     /// ```jadpo
@@ -147,6 +148,9 @@ an `assert` of what it gives and of each failure it can raise:
     /// assert starter.tidied("   ") fails NothingEntered
     /// ```
     function tidied(entered: EnteredText) fails NothingEntered -> TidyText {
+        ...
+    }
+}
 ```
 
 ```jadpo check project=e-example-missing-fixed file=shared/providers/postcodes/v1/libraries/starter.jadpo hidden
