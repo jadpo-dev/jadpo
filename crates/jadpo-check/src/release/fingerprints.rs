@@ -244,7 +244,11 @@ fn sha256(bytes: &[u8]) -> String {
 }
 
 /// A declaration's normalised tokens, as a digest.
-fn digest_of(node: &jadpo_syntax::SyntaxNode, own: Option<&ast::Name>, locals: bool) -> String {
+pub(crate) fn digest_of(
+    node: &jadpo_syntax::SyntaxNode,
+    own: Option<&ast::Name>,
+    locals: bool,
+) -> String {
     let tokens = crate::graph::similar::normalised(node, own.map(AstNode::syntax), locals);
     sha256(tokens.join("\0").as_bytes())
 }

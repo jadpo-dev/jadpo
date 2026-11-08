@@ -32,7 +32,10 @@ fn read(root: &Path, path: &str) -> String {
 
 fn jadpo_with(cwd: &Path, args: &[&str], vars: &[(&str, &str)]) -> Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
-    let mut env = Environment::empty().with_cwd(cwd);
+    // Never the public registry: these tests are about sharing.
+    let mut env = Environment::empty()
+        .with_cwd(cwd)
+        .with_var("JADPO_SUGGEST_REGISTRY", "off");
     for (key, value) in vars {
         env = env.with_var(key, value);
     }

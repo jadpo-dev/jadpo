@@ -4,6 +4,7 @@
 //!
 //! ```text
 //! ignore 3f9a1c0e2b7d4a51 conversion Money "Basis points, not money"
+//! ignore 8c2d0b6e1f4a9573 published @acme/postcodes uk.parse "Trimmed on purpose"
 //! ```
 //!
 //! The hash is the snippet's canonical form's, so every variant of it stays
@@ -88,9 +89,15 @@ pub fn parse(text: &str) -> Result<Vec<Ignore>, (usize, String)> {
         }
         let wrong = || (at, "this line is not an ignored suggestion".to_string());
         let rest = line.strip_prefix("ignore ").ok_or_else(wrong)?;
-        let mut words = rest.splitn(4, ' ');
-        let (Some(hash), Some(signal), Some(suggestion), Some(reason)) =
-            (words.next(), words.next(), words.next(), words.next())
+        let mut words = rest.splitn(3, ' ');
+        let (Some(hash), Some(signal), Some(rest)) = (words.next(), words.next(), words.next())
+        else {
+            return Err(wrong());
+        };
+        // What it suggests runs to the quoted reason: a published
+        // function's is its package and declaration, `@acme/postcodes
+        // uk.parse`, with a space between.
+        let Some((suggestion, reason)) = rest.find(" \"").map(|at| (&rest[..at], &rest[at + 1..]))
         else {
             return Err(wrong());
         };
@@ -152,6 +159,12 @@ mod tests {
                 suggestion: "Duration".into(),
                 reason: String::new(),
             },
+            Ignore {
+                hash: "0000000000000002".into(),
+                signal: Signal::Published,
+                suggestion: "@acme/postcodes uk.parse".into(),
+                reason: "Trimmed \"on purpose\"".into(),
+            },
         ];
         let text = render(&entries);
         assert!(text.starts_with(&jadpo_db::record::header(
@@ -159,9 +172,10 @@ mod tests {
             FROM
         )));
         let back = parse(&text).expect("reads");
-        assert_eq!(back.len(), 2);
+        assert_eq!(back.len(), 3);
         assert_eq!(back[0].suggestion, "Duration");
-        assert_eq!(back[1].reason, entries[0].reason);
+        assert_eq!(back[1], entries[2]);
+        assert_eq!(back[2].reason, entries[0].reason);
     }
 
     #[test]

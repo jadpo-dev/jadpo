@@ -38,13 +38,32 @@
 //! - *Refused* (a missing or unknown number, a place with nothing to read,
 //!   an unknown type or operation, no reason) is `cli.suggest_arguments`,
 //!   with the nearest name.
+//!
+//! The registry's findings (roadmap R8; the same shape pass, unattended):
+//!
+//! - A copy of a published function and a function named for a standard
+//!   one join the one list, in file order and in its columns, so there is
+//!   nothing new to learn to read them. What a copy suggests is its
+//!   package and declaration, `@acme/postcodes uk.parse`, as `jadpo package
+//!   search` lists a result; its snippet is the declaration's first line,
+//!   never its body.
+//! - The routine gains one line only while a copy is listed: add the
+//!   package and call it, the one step an agent can't infer from a name.
+//! - *States.* Answered (nothing more: calm); turned off, or nothing of
+//!   the app's own to ask about (nothing on the screen; `--json` says
+//!   which); not reached or not served yet (the summary's last fact,
+//!   `registry not reached`, in the warning colour: the scan worked but is
+//!   missing something; assumption: no hint, since only a person can fix
+//!   a connection and the agent should carry on).
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use jadpo_check::suggest::functions::{self, Published};
 use jadpo_check::suggest::{self, Finding, Signal, Snippet, Taught, record, taught};
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_term::{Block, Fact, Json, Outcome, Screen, shown_path};
+use jadpo_registry::protocol::{FingerprintAnswer, FingerprintQuery, MOST_PREFIXES, Request};
+use jadpo_term::{Block, Fact, Json, Outcome, Screen, Token, shown_path};
 use serde_json::Value;
 
 use crate::fmt::project_needed;
@@ -420,7 +439,7 @@ fn write_record(root: &Path, entries: &[record::Ignore]) -> Result<(), Box<Diagn
 // --- the scan -----------------------------------------------------------
 
 /// The routine the scan ends with: the agent's instruction.
-fn routine(any: bool, sharing: bool) -> Vec<String> {
+fn routine(any: bool, published: bool, sharing: bool) -> Vec<String> {
     let mut lines = vec![
         "Review the rest of the code against `jadpo suggest --catalogue`.".to_string(),
         "Before changing code for something it missed, run".to_string(),
@@ -428,6 +447,11 @@ fn routine(any: bool, sharing: bool) -> Vec<String> {
     ];
     if any {
         lines.push("To keep one quiet, run `jadpo suggest ignore <number> \"<why>\"`.".to_string());
+    }
+    if published {
+        lines.push(
+            "To use a published one, run `jadpo package add <package>` and call it.".to_string(),
+        );
     }
     if sharing {
         lines.push("When done, run `jadpo suggest share`.".to_string());
@@ -470,12 +494,22 @@ fn scan(call: &Call, cwd: &Path, root: &Path) -> Reply {
         Ok(taught) => taught,
         Err(problem) => return Reply::failed(*problem),
     };
-    let all = suggest::scan(&loaded.db, loaded.project, &taught);
+    let registry = ask_registry(call, &loaded);
+    let answered = matches!(registry, Registry::Answered(_));
+    let published = match &registry {
+        Registry::Answered(published) => published.as_slice(),
+        _ => &[],
+    };
+    let all = suggest::scan(&loaded.db, loaded.project, &taught, published);
     // An ignore no finding has any more is stale: its code changed or went.
+    // Without the registry's answer a copy can't be told apart from code
+    // that changed, so an ignore of one is kept.
     let before = ignored.len();
     ignored.retain(|ignore| {
-        all.iter()
-            .any(|f| ignore.covers(&f.snippet.hash, f.signal, &f.suggestion))
+        (!answered && ignore.signal == Signal::Published)
+            || all
+                .iter()
+                .any(|f| ignore.covers(&f.snippet.hash, f.signal, &f.suggestion))
     });
     let stale = before - ignored.len();
     if recorded
@@ -496,6 +530,10 @@ fn scan(call: &Call, cwd: &Path, root: &Path) -> Reply {
         let Some(signal) = Signal::from_word(&text(&object, "signal")) else {
             continue;
         };
+        // A copy the registry wasn't asked about this time wasn't taken.
+        if signal == Signal::Published && !answered {
+            continue;
+        }
         let suggestion = text(&object, "suggestion");
         let still = findings.iter().chain(&quiet).any(|f| {
             f.snippet.hash == snippet.hash && f.signal == signal && f.suggestion == suggestion
@@ -595,12 +633,22 @@ fn scan(call: &Call, cwd: &Path, root: &Path) -> Reply {
             "stale ignores dropped",
         )));
     }
+    if matches!(registry, Registry::Unreached(_)) {
+        facts.push(Fact {
+            text: "registry not reached".to_string(),
+            tone: Some(Token::Warning),
+        });
+    }
     // Sharing turned off, or no HQ to share with yet, drops the
     // instruction to share.
     let settings = jadpo_check::suggest::settings::settings(&loaded.db, loaded.project);
     let sharing = crate::share::turned_off(call, settings, root, None).is_none()
         && crate::hq::configured(&call.environment).is_some();
-    let instruction = routine(!findings.is_empty(), sharing);
+    let instruction = routine(
+        !findings.is_empty(),
+        findings.iter().any(|f| f.signal == Signal::Published),
+        sharing,
+    );
     let mut screen = Screen::new();
     if !findings.is_empty() {
         screen.push(Block::Section {
@@ -633,6 +681,7 @@ fn scan(call: &Call, cwd: &Path, root: &Path) -> Reply {
         ),
         ("accepted", accepted.len().into()),
         ("ignored", quiet.len().into()),
+        ("registry", registry.json()),
         ("staleIgnores", stale.into()),
         (
             "instruction",
@@ -640,6 +689,95 @@ fn scan(call: &Call, cwd: &Path, root: &Path) -> Reply {
         ),
     ]);
     Reply::screen(screen, data)
+}
+
+// --- the registry -----------------------------------------------------
+
+/// The variable that stops the scan asking the registry, on a machine or
+/// in CI: any value but `on`.
+pub const REGISTRY_SWITCH: &str = "JADPO_SUGGEST_REGISTRY";
+
+/// What the registry gave the scan.
+enum Registry {
+    /// Its answer: the published functions with one of the prefixes.
+    Answered(Vec<Published>),
+    /// Not asked: the app has no functions or actions of its own.
+    NotAsked,
+    /// Not asked, by [`REGISTRY_SWITCH`].
+    Off(String),
+    /// Asked, with no answer that could be read, and why.
+    Unreached(String),
+}
+
+impl Registry {
+    fn json(&self) -> Json {
+        let (state, reason) = match self {
+            Registry::Answered(_) => ("answered", None),
+            Registry::NotAsked => ("not_asked", None),
+            Registry::Off(why) => ("off", Some(why)),
+            Registry::Unreached(why) => ("unreachable", Some(why)),
+        };
+        let mut fields = vec![("state", Json::from(state))];
+        if let Some(reason) = reason {
+            fields.push(("reason", Json::from(reason.as_str())));
+        }
+        Json::object(fields)
+    }
+}
+
+/// Asks the registry which published functions share a prefix of the app's
+/// own functions' source fingerprints (area 14, "Signals"; area 11, "The
+/// registry protocol"). It sends the prefixes alone, a thousand at a time,
+/// and an unreachable registry never stops the scan.
+fn ask_registry(call: &Call, loaded: &jadpo_db::Loaded) -> Registry {
+    if let Some(value) = call.environment.var(REGISTRY_SWITCH)
+        && !value.is_empty()
+        && value != "on"
+    {
+        return Registry::Off(format!("{REGISTRY_SWITCH}={value} in the environment"));
+    }
+    let own = functions::own_functions(&loaded.db, loaded.project);
+    let prefixes = functions::prefixes(&own);
+    if prefixes.is_empty() {
+        return Registry::NotAsked;
+    }
+    let client = crate::registry::Client::of(&call.environment);
+    let mut published = Vec::new();
+    for batch in prefixes.chunks(MOST_PREFIXES) {
+        let request = Request::QueryFingerprints(FingerprintQuery {
+            prefixes: batch.to_vec(),
+        });
+        match client.ask_if_served::<FingerprintAnswer>(&request) {
+            Ok(None) => {
+                return Registry::Unreached(
+                    "It doesn't answer `POST fingerprints/query` yet.".to_string(),
+                );
+            }
+            Ok(Some(answer)) => {
+                published.extend(answer.fingerprints.into_iter().map(|f| Published {
+                    package: f.package.to_string(),
+                    version: f.version.to_string(),
+                    declaration: f.declaration,
+                    source: f.source.to_string(),
+                }))
+            }
+            Err(crate::registry::Asked::Unreachable(diagnostic)) => {
+                return Registry::Unreached(
+                    diagnostic
+                        .reason
+                        .clone()
+                        .unwrap_or(diagnostic.message.clone()),
+                );
+            }
+            Err(crate::registry::Asked::Failure(code, message)) => {
+                return Registry::Unreached(match message {
+                    Some(message) => format!("It answered `{code}`: {message}"),
+                    None => format!("It answered `{code}`."),
+                });
+            }
+        }
+    }
+    Registry::Answered(published)
 }
 
 fn finding_json(number: &str, finding: &Finding) -> Json {
@@ -652,6 +790,20 @@ fn finding_json(number: &str, finding: &Finding) -> Json {
         ("end", Json::from(snippet.end as usize)),
         ("suggestion", Json::from(finding.suggestion.as_str())),
         ("signal", Json::from(finding.signal.word())),
+        (
+            "package",
+            finding
+                .package
+                .as_ref()
+                .map_or(Json::Null, |(package, _)| Json::from(package.as_str())),
+        ),
+        (
+            "version",
+            finding
+                .package
+                .as_ref()
+                .map_or(Json::Null, |(_, version)| Json::from(version.as_str())),
+        ),
         ("reason", Json::from(finding.reason.as_str())),
         ("text", Json::from(snippet.text.as_str())),
         ("canonical", Json::from(snippet.canonical.as_str())),
@@ -946,7 +1098,13 @@ fn catalogue() -> Reply {
             }
         }
     }
-    let named: BTreeSet<&str> = entries.iter().map(|e| e.suggestion.as_str()).collect();
+    // The `function` and `published` entries stand for every standard
+    // operation and every package, so they aren't counted as one.
+    let named: BTreeSet<&str> = entries
+        .iter()
+        .filter(|e| !matches!(e.signal, Signal::Function | Signal::Published))
+        .map(|e| e.suggestion.as_str())
+        .collect();
     let screen = Screen::new()
         .with(Block::Section {
             heading: "Catalogue".to_string(),
