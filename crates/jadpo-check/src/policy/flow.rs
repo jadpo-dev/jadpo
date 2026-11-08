@@ -2944,6 +2944,9 @@ impl Walk<'_> {
         let mut client = false;
         for (key, value) in fields {
             let prov = self.eval(flow, *value);
+            if !client_field(flow, key) {
+                self.failure_context(flow, key, &prov);
+            }
             let prov = self.with_pc(prov);
             if client_field(flow, key) {
                 client = true;

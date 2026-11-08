@@ -400,6 +400,7 @@ mod tests {
                     absent: Some(jadpo_std::Constant::None),
                     none_left_out: false,
                     section: None,
+                    hashed: false,
                     wire: None,
                 })
                 .collect(),

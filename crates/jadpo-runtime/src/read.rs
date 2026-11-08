@@ -130,6 +130,7 @@ pub(crate) async fn read_as(
         unpoliced: ctx.unpoliced(),
         fetch: Cell::new(0),
         loaded: Some(&loaded),
+        accessed: Rc::default(),
     };
     if let Some(page) = &plan.page {
         env.size = match &page.size {
@@ -155,6 +156,7 @@ pub(crate) async fn read_as(
         };
         run_read(transaction, plan, &env).await
     };
+    crate::logging::read(ctx, env.accessed.take());
     // The rows it loaded, whose versions an outside call reads before it
     // closes the snapshot they were read in (chunk 7.4).
     for (versions, ids) in loaded.take() {
@@ -250,6 +252,7 @@ pub(crate) async fn read_detached(
         unpoliced: ctx.unpoliced(),
         fetch: Cell::new(0),
         loaded: Some(&loaded),
+        accessed: Rc::default(),
     };
     let host = ctx.host();
     let Some(database) = host.database(&plan.store) else {
@@ -264,6 +267,7 @@ pub(crate) async fn read_detached(
     };
     let result = run_read(&mut *transaction, plan, &env).await;
     let _ = transaction.rollback().await;
+    crate::logging::read(ctx, env.accessed.take());
     let (_, values, hidden) = match result {
         Ok(found) => found,
         Err(Problem::Store(error)) => return Err(refused(ctx, error, site)),
@@ -309,6 +313,7 @@ pub(crate) async fn count(
         unpoliced: ctx.unpoliced(),
         fetch: Cell::new(0),
         loaded: None,
+        accessed: Rc::default(),
     };
     let select = &plan.select;
     let mut params = Vec::with_capacity(select.params.len());
@@ -423,6 +428,8 @@ struct Env<'a> {
     /// The ids of the rows each statement naming its rows loaded, with
     /// how their versions are read (chunk 7.4).
     loaded: Option<&'a RefCell<Vec<Loaded>>>,
+    /// What it has read of sensitive fields, for its access records.
+    accessed: Rc<RefCell<Vec<crate::logging::Accessed>>>,
 }
 
 /// The ids of rows one statement loaded, with how their versions are read
@@ -532,6 +539,26 @@ fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Probl
 /// The main statement's rows, the values they become, and whether it found
 /// a record the caller may not read, which is left out before anything
 /// else reads it.
+/// Keeps an access record for each row of `select`, a read of a sensitive
+/// field (area 15, "Access records").
+fn note_sensitive(select: &Select, rows: &[Row], env: &Env<'_>) {
+    let Some(sensitive) = &select.sensitive else {
+        return;
+    };
+    let mut accessed = env.accessed.borrow_mut();
+    for row in rows {
+        accessed.push(crate::logging::Accessed {
+            entity: sensitive.entity.clone(),
+            fields: sensitive.fields.clone(),
+            record_id: crate::logging::id_of(row, sensitive.id),
+            person_id: match sensitive.person {
+                Some(at) => crate::logging::id_of(row, at),
+                None => serde_json::Value::Null,
+            },
+        });
+    }
+}
+
 async fn run_read(
     transaction: &mut dyn Transaction,
     plan: &ReadPlan,
@@ -718,6 +745,7 @@ fn records<'a>(
     env: &'a Env<'a>,
 ) -> LocalFuture<'a, Result<Vec<Value>, Problem>> {
     Box::pin(async move {
+        note_sensitive(select, rows, env);
         let mut found: Vec<BTreeMap<SqlValue, Vec<Value>>> = Vec::new();
         for include in &select.includes {
             let mut keys: Vec<SqlValue> = Vec::new();
@@ -744,6 +772,7 @@ fn records<'a>(
                     unpoliced: env.unpoliced,
                     fetch: Cell::new(0),
                     loaded: env.loaded,
+                    accessed: env.accessed.clone(),
                 };
                 let child_rows = run(&mut *transaction, &include.select, &inner).await?;
                 let values =

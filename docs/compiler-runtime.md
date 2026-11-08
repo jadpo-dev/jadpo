@@ -2640,6 +2640,18 @@ see the replay erase again and a second one find nothing; its tests run compiled
 with the interpreter's records in the gate's compiled step, and a deployable's
 start in `deployable.rs`.
 
+**Logs and access records.** `jadpo_runtime::logging` writes what the
+runtime records about a person's data through `Host::log`: a deployable's
+standard output or console, or a test's record so the two executors'
+events are compared line by line. `Hasher` keys a value's hash with the
+record's key in a test, `JADPO_LOG_HASH_KEY`, else one drawn per process.
+A plan's `FailurePlan` field says it is `hashed` when the flow walk finds
+personal data reaches it, by the same walk that follows values to a
+connection (`exits::failure_fields_holding`); a `Select` carries
+`SensitiveRead` for a sensitive field it selects or searches, with the
+columns that name the record and its person, and an access record is one
+event per row.
+
 **The audit trail.** `jadpo-plan`'s `Planner::audit` gives each write of
 an audited entity a `jadpo_std::audit::AuditPlan`: the fields an entry
 records (every field but `id` and the server-only ones, each with its

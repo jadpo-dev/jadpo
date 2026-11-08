@@ -723,6 +723,11 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             corpus_project(&crate::audit::files(), "compiled-audit").expect("it checks"),
         ),
         (
+            "marked fields in logs".into(),
+            corpus_project(&crate::marked_logs::files(), "compiled-marked-logs")
+                .expect("it checks"),
+        ),
+        (
             "a GET running actions".into(),
             corpus_project(&crate::read_only_get::files(), "compiled-read-only-get")
                 .expect("it checks"),
@@ -862,6 +867,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "a person's export",
         "a file's bytes deleted",
         "an audit trail",
+        "marked fields in logs",
         "examples 11-cake-shop",
         "examples 12-recipe-book",
         "examples 15-parcel-tracker",

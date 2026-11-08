@@ -1499,7 +1499,7 @@ async fn run_with_caller(
                 let First::Left(outcome) = answered else {
                     return runtime_failure(DEADLINE_EXCEEDED, request_id, None);
                 };
-                let mut response = answer(app, (number, route), request_id, outcome);
+                let mut response = answer(app, ctx, (number, route), request_id, outcome);
                 if response.status == route.status.code() {
                     response.status = status;
                 }
@@ -1570,7 +1570,7 @@ async fn run_with_caller(
         };
         let mut response = match &settling {
             Some(_) => Response::default(),
-            None => answer(app, (number, route), request_id, outcome),
+            None => answer(app, ctx, (number, route), request_id, outcome),
         };
         let guard = guard.as_ref().filter(|_| claimed.get());
         let keep = guard.filter(|_| storable);
@@ -1656,12 +1656,8 @@ async fn run_with_caller(
                     crate::runner::Settled::Unsettled
                 }
             };
-            response = answer(
-                app,
-                (number, route),
-                request_id,
-                answer_query(app, ctx, settle, args).await,
-            );
+            let outcome = answer_query(app, ctx, settle, args).await;
+            response = answer(app, ctx, (number, route), request_id, outcome);
             if response.status == route.status.code() {
                 match settled {
                     crate::runner::Settled::Settled => {
@@ -1791,10 +1787,14 @@ async fn answer_query(
 /// the failure envelope.
 fn answer(
     app: &App<'_>,
+    ctx: &Ctx<'_>,
     (number, route): (u32, &RoutePlan),
     request_id: &str,
     outcome: Outcome,
 ) -> Response {
+    if let Outcome::Failed(failure) = &outcome {
+        crate::logging::rejected(ctx, failure, Some(&route.key));
+    }
     match outcome {
         // Raw bytes for a body (area 7, "Sending raw bytes"; chunk G3).
         Outcome::Value(value) if route.sends.is_some() => sent_raw(route, &value, request_id),

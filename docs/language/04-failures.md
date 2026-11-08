@@ -738,7 +738,11 @@ its internal fields. No stack is captured for a domain failure.
 Internal values made of text, which can hold names or email addresses,
 are logged as a keyed hash, so equal values still match up across events.
 
-Logging isn't built yet ([What is built](#what-is-built)).
+The internal fields follow [Marked fields in
+logs](15-personal-data.md#marked-fields-in-logs): identifiers, numbers,
+enums, booleans and times as values, text and personal data as a keyed
+hash, and a `Password` or a secret left out. `cause` is the failure it was
+mapped from, written the same way.
 
 ## Messages and languages
 <!-- topic: messages-and-languages -->
@@ -795,7 +799,7 @@ with `attempt`.
 | Faults from code | Built: `Int` and `Decimal` overflow and the recursion limit are faults at their site, and a failure keeps the path it travelled and the failure it was mapped from. |
 | What the client sees | Built: the envelope, the validation details and the OpenAPI responses. |
 | Concealing records | Built: a record [policy](09-policy.md) hides reports the code's own not-found failure, and its log says `concealed_by: policy`. |
-| Logging | Not built yet. |
+| Logging | Built: `failure.rejected` for each failure that ends a route, a delivery or a schedule's run, on a native server and on Workers. A batch's item keeps its failure in its problems. |
 
 ## Errors
 

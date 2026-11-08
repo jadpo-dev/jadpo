@@ -153,6 +153,8 @@ pub struct Held {
     /// The deliveries of what it emitted, written to the outbox in
     /// `transaction`, for the runner once it commits (chunk 6.1b).
     pub deliveries: Vec<crate::outbox::Delivery>,
+    /// The people it erased: what holds only if it commits.
+    pub(crate) erased: Vec<crate::boundary::Erased>,
     /// How many events it kept, counted once it commits (a schedule's run
     /// record keeps the count; chunk 6.7).
     pub kept: u32,
@@ -1433,8 +1435,22 @@ impl<'p> Ctx<'p> {
     /// `config:` (area 13), else the one its program started with. `None`
     /// when neither gives one, and for a secret, which code never reads.
     /// Notes that the person of `entity` with `id` was erased (area 15).
-    pub(crate) fn note_erased(&mut self, entity: &str, id: &str) {
-        self.erased.push((entity.to_string(), id.to_string()));
+    pub(crate) fn note_erased(&mut self, entity: String, id: String) {
+        self.erased.push((entity, id));
+    }
+
+    /// Keeps that the person of `entity` with `id` was erased, for its
+    /// access record and what a test checks, once the action commits.
+    pub(crate) fn erasing(&mut self, entity: &str, id: &str) {
+        let erased = crate::boundary::Erased {
+            entity: entity.to_string(),
+            id: id.to_string(),
+            fields: crate::logging::erased(self, entity, id),
+        };
+        match self.boundary.as_mut() {
+            Some(boundary) => boundary.erased_on_commit(erased),
+            None => crate::boundary::confirm_erased(self, vec![erased]),
+        }
     }
 
     /// Who this run has erased so far, each once.

@@ -505,6 +505,12 @@ impl Host for WorkersHost {
             .or_else(|| hyperdrive::address(&binding))
     }
 
+    fn log(&self, event: &str, fields: serde_json::Map<String, serde_json::Value>) {
+        if let Some(log) = &self.log {
+            log.event_of(event, fields);
+        }
+    }
+
     /// Web Crypto's `getRandomValues` ([`web_crypto_random`]).
     fn random(&self, bytes: &mut [u8]) -> bool {
         web_crypto_random(bytes)

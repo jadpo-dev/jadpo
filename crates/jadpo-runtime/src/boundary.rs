@@ -57,6 +57,8 @@ pub(crate) struct Boundary {
     sealed: Vec<crate::outbox::Delivery>,
     /// How many events it wrote to the outbox as it sealed (chunk 6.2).
     kept: u32,
+    /// The people it erased: what holds only if it commits.
+    erased: Vec<Erased>,
     /// A store operation found another transaction had changed what this
     /// one read, so the body is run again.
     concurrent_change: bool,
@@ -342,6 +344,16 @@ impl Boundary {
         self.transaction.take()
     }
 
+    /// Keeps a person it erased, to report only once it commits.
+    pub(crate) fn erased_on_commit(&mut self, erased: Erased) {
+        self.erased.push(erased);
+    }
+
+    /// The people it erased.
+    pub(crate) fn take_erased(&mut self) -> Vec<Erased> {
+        std::mem::take(&mut self.erased)
+    }
+
     /// The deliveries of what it kept in the outbox as it sealed.
     pub(crate) fn take_sealed(&mut self) -> Vec<crate::outbox::Delivery> {
         std::mem::take(&mut self.sealed)
@@ -609,6 +621,7 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
             ctx.keep_held(Held {
                 transaction: boundary.transaction,
                 deliveries: boundary.sealed,
+                erased: boundary.erased,
                 kept: boundary.kept,
                 session: boundary.session,
                 issued: boundary.issued,
@@ -640,6 +653,7 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
         match ended {
             Ended::Committed => {
                 ctx.background_mut().count_kept(boundary.kept);
+                confirm_erased(ctx, boundary.erased);
                 committed(ctx, boundary.sealed);
                 return outcome;
             }
@@ -661,6 +675,24 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
                 }));
             }
         }
+    }
+}
+
+/// Someone an action erased, reported only once it commits: for what a
+/// test's erasure checks, and the access record.
+#[derive(Debug)]
+pub(crate) struct Erased {
+    pub entity: String,
+    pub id: String,
+    pub fields: serde_json::Map<String, serde_json::Value>,
+}
+
+/// What a committed action's erasures leave: each person's access record,
+/// and what a test's erasure checks.
+pub(crate) fn confirm_erased(ctx: &mut Ctx<'_>, erased: Vec<Erased>) {
+    for erased in erased {
+        ctx.host().log("privacy.erased", erased.fields);
+        ctx.note_erased(erased.entity, erased.id);
     }
 }
 
@@ -831,6 +863,7 @@ pub async fn commit_held(
         transaction,
         deliveries,
         kept,
+        erased,
         ..
     } = held;
     if let Some((store, sql, params)) = then {
@@ -860,6 +893,7 @@ pub async fn commit_held(
             }
         }
         ctx.background_mut().count_kept(kept);
+        confirm_erased(ctx, erased);
         committed(ctx, deliveries);
         return Ok(());
     }
@@ -867,6 +901,7 @@ pub async fn commit_held(
         open.commit().await?;
     }
     ctx.background_mut().count_kept(kept);
+    confirm_erased(ctx, erased);
     committed(ctx, deliveries);
     Ok(())
 }

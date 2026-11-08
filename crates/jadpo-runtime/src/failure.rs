@@ -25,6 +25,12 @@ pub struct Failure {
     pub client: Vec<(String, Value)>,
     /// Never leaves the server.
     pub internal: Vec<(String, Value)>,
+    /// The internal fields that hold personal data, whatever their type:
+    /// its log event keeps them only as a keyed hash.
+    pub hashed: Vec<String>,
+    /// The internal fields the runtime wrote itself, which hold no one's
+    /// data and its log event shows as they are.
+    pub shown: Vec<String>,
     /// For a failure a construction's `attempt` maps a rule to: the rule
     /// the constructed value broke, as written (`max: 1000`), never the
     /// value.
@@ -57,6 +63,8 @@ impl Failure {
             message: None,
             client: Vec::new(),
             internal: Vec::new(),
+            hashed: Vec::new(),
+            shown: Vec::new(),
             broken: None,
             frames: Vec::new(),
             cause: None,
@@ -81,6 +89,9 @@ impl Failure {
         failure.status = plan.status;
         failure.message = plan.message.clone();
         for (field, value) in plan.fields.iter().zip(given) {
+            if field.hashed {
+                failure.hashed.push(field.name.clone());
+            }
             let entry = (field.name.clone(), value?);
             match field.section {
                 Some(Section::Client) => failure.client.push(entry),

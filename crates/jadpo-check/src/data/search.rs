@@ -6,12 +6,11 @@
 //! `where: Entity matches phrase` ([`super::queries`]).
 //!
 //! `store:`, an engine's connection instead of PostgreSQL, isn't built:
-//! it is `toolchain.not_built_yet` where it is written. So is a field of a
-//! sensitive category (area 15): a search reads what the field says, and
-//! every read of a sensitive field is to be recorded in the access
-//! records, which aren't built yet. Any other personal field may be
-//! with_matches: its words live in the record's own row, worked out from the
-//! field, so whatever clears or deletes the field clears its words too.
+//! it is `toolchain.not_built_yet` where it is written. A personal field
+//! may be searched: its words live in the record's own row, worked out
+//! from the field, so whatever clears or deletes the field clears its
+//! words too. Searching a field of a sensitive category (area 15) leaves
+//! an access record for each record it finds.
 
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_std::SearchLanguage;
@@ -41,7 +40,6 @@ pub(super) fn read(
     lookup: &dyn TypeView,
     path: &str,
     entity: &EntityModel,
-    sensitive: &[(String, String)],
     member: &ast::Member,
     key_span: &Span,
     out: &mut Vec<Diagnostic>,
@@ -211,34 +209,6 @@ pub(super) fn read(
                                 ),
                                 format!("Remove `{field_name}` from `fields:`"),
                             ));
-                            problems = true;
-                            continue;
-                        }
-                        // Marked sensitive, or a standard type that is
-                        // sensitive data whatever holds it (area 19).
-                        let category = sensitive
-                            .iter()
-                            .find(|(field, _)| *field == field_name)
-                            .map(|(_, category)| category.clone())
-                            .or_else(|| {
-                                lookup.rule_chain(&ty).iter().find_map(|(held, _)| {
-                                    crate::ai_personal::standard_category(held)
-                                        .filter(|c| crate::ai_personal::is_sensitive(c))
-                                        .map(str::to_string)
-                                })
-                            });
-                        if let Some(category) = category {
-                            out.push(
-                                Diagnostic::new(
-                                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                                    format!("Searching `{name}.{field_name}`, `{category}` data, isn't built yet"),
-                                )
-                                .at(span, format!("`PersonalData.{category}`, a sensitive category"))
-                                .reason(format!(
-                                    "Every read of a sensitive field is recorded in the access records (area 15, \"Sensitive fields\"), and a search reads what `{field_name}` says. The access records aren't built yet, so this compiler can't record it."
-                                ))
-                                .next(format!("Remove `{field_name}` from `fields:` for now")),
-                            );
                             problems = true;
                             continue;
                         }

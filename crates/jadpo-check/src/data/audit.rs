@@ -11,12 +11,9 @@
 //! the permissions report read. What only the whole data model shows is
 //! [`audit_problems`], each `toolchain.not_built_yet` where `audit:` is
 //! written, so nothing is copied into a history that the pages don't say
-//! how to keep or remove:
+//! how to keep or remove (a marked field is kept as a keyed hash, as
+//! logs do):
 //!
-//! - a field marked `personal:`, or of a standard type that is personal
-//!   data whatever holds it, which the history keeps as a keyed hash, as
-//!   logs do, and that hash isn't built (area 15, "Marked fields in
-//!   logs");
 //! - a `File` field, whose value is a stored file's bytes;
 //! - a field with a `retention:` of its own, whose value the history
 //!   would keep past it;
@@ -257,8 +254,6 @@ pub fn audit_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     let path = file.path(db);
     let model = super::data_model(db, project);
     let erasures = crate::erasure::erasures(db, project);
-    let marks = crate::ai_personal::marks(db, project);
-    let lookup = crate::lookups::Lookup::for_file(db, project, file);
     let mut out = Vec::new();
     let mut seen = BTreeSet::new();
     for item in &item_tree(db, file).items {
@@ -311,43 +306,10 @@ pub fn audit_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                 .position(|f| f.name == field)
                 .and_then(|at| read.spans.fields.get(at).cloned())
         };
-        // A value the history would keep that the pages say it keeps only
-        // as a keyed hash, or not at all yet.
+        // A value the history would keep that the pages don't say how to
+        // keep or remove yet.
         let mut found = None;
         for field in &entity.fields {
-            let marked = marks
-                .fields
-                .get(&(name.clone(), field.name.clone()))
-                .and_then(|mark| mark.category.clone());
-            let standard = crate::ai_personal::standard_personal(&lookup, &field.ty);
-            let why = if let Some(category) = marked {
-                Some((
-                    format!("`{}` is marked `PersonalData.{category}`", field.name),
-                    "marked personal".to_string(),
-                ))
-            } else if let Some((ty, category)) = standard.first() {
-                Some((
-                    format!(
-                        "`{}` is {}, personal data (`PersonalData.{category}`) whatever holds it",
-                        field.name,
-                        crate::ai_personal::a_type(ty)
-                    ),
-                    crate::ai_personal::a_type(ty),
-                ))
-            } else {
-                None
-            };
-            if let Some((what, label)) = why {
-                found = Some(unbuilt(
-                    format!("Auditing `{name}` isn't built yet"),
-                    field_at(&field.name).map(|at| (at, label)),
-                    format!(
-                        "{what}, and its history keeps a personal value only as a keyed hash, as logs do, which isn't built yet (area 15, \"Marked fields in logs\"): accepted, the value would be copied into every entry."
-                    ),
-                    format!("Leave `audit:` out of `{name}` for now"),
-                ));
-                break;
-            }
             if field.file.is_some() {
                 found = Some(unbuilt(
                     format!("Auditing `{name}` isn't built yet"),

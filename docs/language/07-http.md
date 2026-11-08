@@ -949,9 +949,8 @@ its own, or in memory, never in the action's transaction. Signing a caller
 in reads and changes nothing. A `GET` keeps no `Idempotency-Key`, so a model
 or a provider that changes nothing is sent none of the keys derived from
 one. Reads leave no record: the audit trail only records changes, and the
-[access records](15-personal-data.md#access-records) aren't built yet; when
-they are, they go in a statement of their own for a query and an action
-alike.
+[access records](15-personal-data.md#access-records) are log events, so
+they go in no statement at all.
 
 The runtime holds what a `GET` runs to the same line, its query or its action.
 Its transaction is begun `READ ONLY`, so PostgreSQL itself refuses a write.

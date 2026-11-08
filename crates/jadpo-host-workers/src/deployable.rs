@@ -141,7 +141,10 @@ pub fn hand_on(deployable: &Deployable, work: String, env: JsValue, ctx: JsValue
         return JsValue::UNDEFINED;
     };
     let deployable = *deployable;
-    let host = Rc::new(host.with_drivers_built_by(drivers(&isolate.program)));
+    let host = Rc::new(
+        host.with_drivers_built_by(drivers(&isolate.program))
+            .with_log(isolate.log),
+    );
     let fresh = Rc::clone(&host);
     host.defer(Box::pin(async move {
         if !ready(&deployable, &fresh, &isolate).await {
@@ -190,7 +193,9 @@ async fn cron(deployable: &Deployable, controller: &JsValue, env: JsValue, ctx: 
     let Some(isolate) = isolate(deployable, &host) else {
         return;
     };
-    let host = host.with_drivers_built_by(drivers(&isolate.program));
+    let host = host
+        .with_drivers_built_by(drivers(&isolate.program))
+        .with_log(isolate.log);
     if !ready(deployable, &host, &isolate).await {
         return;
     }
@@ -271,10 +276,16 @@ async fn ready(deployable: &Deployable, host: &WorkersHost, isolate: &Isolate) -
     if !isolate.current.replace(true) {
         isolate.log.event(
             "runtime.started",
-            [(
-                "unbuilt",
-                jadpo_runtime::deployable::unbuilt(&isolate.unbuilt),
-            )],
+            [
+                (
+                    "unbuilt",
+                    jadpo_runtime::deployable::unbuilt(&isolate.unbuilt),
+                ),
+                (
+                    "log_hash_key",
+                    Value::from(jadpo_runtime::logging::key_source(host)),
+                ),
+            ],
         );
     }
     true

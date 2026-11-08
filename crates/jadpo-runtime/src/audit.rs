@@ -123,6 +123,7 @@ pub(crate) async fn record(
         _ => Value::None,
     };
     let mut changed: Vec<Changed> = Vec::new();
+    let hasher = crate::logging::Hasher::of(ctx.host());
     for field in &plan.fields {
         let of = |value: Option<&Value>| match value {
             Some(Value::Record(record)) => record.get(&field.name).cloned().unwrap_or(Value::None),
@@ -141,6 +142,14 @@ pub(crate) async fn record(
             text_of(&of(before), field.json, json).map_err(|what| defect(ctx, &what, site))?;
         let now = text_of(&of(after), field.json, json).map_err(|what| defect(ctx, &what, site))?;
         if was != now {
+            // A personal value is kept as a keyed hash, as logs keep it,
+            // so the history shows that it changed and never what it was
+            // (area 16; area 15, "Marked fields in logs").
+            if field.hashed {
+                let hash = |text: Option<String>| hasher.hash(text.as_deref()?.as_bytes());
+                changed.push((field.name.clone(), hash(was), hash(now)));
+                continue;
+            }
             changed.push((field.name.clone(), was, now));
         }
     }
@@ -257,7 +266,7 @@ fn text_of(
 
 /// Who is making the change: the signed-in user or service, the
 /// application for a schedule's run or a subscriber's delivery, or no one.
-fn who(ctx: &Ctx<'_>) -> (AuditBy, Option<[u8; 16]>, Option<[u8; 16]>) {
+pub(crate) fn who(ctx: &Ctx<'_>) -> (AuditBy, Option<[u8; 16]>, Option<[u8; 16]>) {
     use jadpo_std::policy::CallerPart;
     if let SqlValue::Uuid(id) = ctx.caller_param(CallerPart::User) {
         return (AuditBy::User, Some(id), None);

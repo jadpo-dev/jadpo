@@ -44,7 +44,7 @@ is the one fact Jadpo asks you to write down.
 
 | Capability | What you write | What the compiler does | Built yet |
 |---|---|---|---|
-| Marking | `personal:` on a field; nothing on an `Email`, a `PhoneNumber`, a name or a `PostalAddress`, which are personal data already | Hashes it in logs, lists it in the report | Partly: read for the AI check and the report's connections, and checked that erasure can find it; nothing hashes it |
+| Marking | `personal:` on a field; nothing on an `Email`, a `PhoneNumber`, a name or a `PostalAddress`, which are personal data already | Hashes it in logs, lists it in the report | Partly: read for the AI check and the report's connections, checked that erasure can find it, and hashed in logs and histories ([Marked fields in logs](#marked-fields-in-logs)) |
 | The person | `person: true` on an entity | Finds every record that belongs to them | Yes |
 | Erasure | `erase:` on references it can't work out, and where its log is kept | Generates `User.erase(id)` across every store and cache | Partly: in every store, with `PersonErased` and the erasure log; caches and providers aren't built yet |
 | Export | nothing | Generates `User.export(id)` | Partly: all but a `File` field's link, `toolchain.not_built_yet` until downloads are built |
@@ -154,7 +154,8 @@ type or of one built on it, and so is a value of one wherever it goes:
   category
   ([Personal data sent to a model](21-ai.md#personal-data-sent-to-a-model)),
   [a public cache](07-http.md#answers-that-never-change) can't keep one, and an
-  [audited entity](16-built-in-services.md#audit-trail) can't hold one yet.
+  [audited entity](16-built-in-services.md#audit-trail) keeps one as a keyed
+  hash, as logs do.
 - Erasure clears it as it clears a marked field, so on a record erasure keeps
   it is optional, or says `erase: Erasure.retained` on a person's own record
   ([Erasure](#erasure)).
@@ -248,6 +249,16 @@ A type with no single text form, such as a `PostalAddress`, is hashed from
 its JSON as `json.write` writes it. So one value hashes the same in every
 log and on both executors, because every boundary goes through
 [the standard types' contract](19-standard-library.md#what-every-standard-type-can-do).
+
+The key is the deployment's `JADPO_LOG_HASH_KEY`. With it unset, a process
+makes a key of its own: nothing is lost but matching a hash across
+processes, or a Worker's across isolates, and `runtime.started` says so with
+`log_hash_key: "per_process"`. `jadpo test` keys it itself.
+
+A hash reads `hmac-sha256:` and sixty-four hex digits. A failure's log
+event gives a field of no single text form from its plain JSON, field by
+field. A `Password`, a key or a secret goes in no log, hashed or not, even
+if a failure's field holds one.
 
 ### Sensitive fields
 
@@ -1850,6 +1861,20 @@ regulator what it did.
 
 Reads of ordinary personal data aren't recorded one by one.
 
+An export is `privacy.exported`, written when it starts, and an erasure
+`privacy.erased`, for each person it erased, once it has committed, so an
+erasure that rolls back leaves none. A read of a sensitive field is
+`privacy.read`, one event for each record it reads, naming the sensitive
+fields it reads. A search of a sensitive field counts as reading it, for
+each record it finds, whether or not the record's output holds it.
+
+Each holds `at`, `by` (`user`, `service`, `application` or `no_caller`),
+`user_id`, `service_id`, `request_id`, `entity`, and `kept: "long"`, which
+is what an operator's retention keeps it by. A read holds the record's
+`record_id` and the `person_id` of the record's person: the record's own
+`id` on a person's record, or the first reference to a person the entity
+declares. A record with no reference to a person says `person_id: null`.
+
 ## Where data is stored
 <!-- topic: where-data-is-stored -->
 
@@ -2166,6 +2191,8 @@ This is not legal advice. A privacy professional reviews the report.
 | Encrypted fields | Built: `encrypted: true`, key-type, `TotpSecret` and `SecretText` fields, sealed on write and opened on read, interpreted, compiled and on Workers; each refusal above; rotation through `_PREVIOUS`, with `field_encryption.reseal` and `jadpo config rotation`. |
 | The personal-data report | Partly built: `jadpo check` writes `build/report/personal-data.md` and `.json`, for a project with no errors, listing [where personal data goes](#where-personal-data-goes), and `jadpo package check` shows the same for a package. Each connection says whether its copy is erased or kept for an accepted reason, and the approval review shows its difference from the before side's, a connection at a time. Not built yet: the rest of its list, each person entity's fields, category, store and readers, the queries that say `include_erased: true`, retention, what erasure does, keys in the outbox, step records and OAuth grants. |
 | `erasure:` on a package and on a connection | Partly built. Built: each is read and checked, and a connection that receives personal data and can't erase it needs an `ErasureNotPossible` acceptance ([Erasure at providers](#erasure-at-providers)). Not built yet: calling the package's `erasure:`, so a connection that declares one is not yet asked to erase anyone. |
+| Marked fields in logs | Built: a marked field and a standard type that is personal data, written as a keyed hash in a failure's log event and an audited entity's history, interpreted and compiled. |
+| Sensitive fields and access records | Built: `privacy.exported`, `privacy.erased` once it commits, and a `privacy.read` event for each record a read of a sensitive field reads, a search among them, interpreted and compiled. A `create` or `update` that returns the record makes none, since the code wrote what it holds; an aggregate reads no one record, so it makes none. |
 | Everything else on this page | Not built yet. |
 
 ## Errors
