@@ -38,9 +38,9 @@ valid, accepts code the docs say it refuses, or a docs page is wrong.
 ### Where things are
 
 - Outstanding work, in order: [docs/roadmap.md](docs/roadmap.md). It is the
-  only tracker; each session takes the first unticked chunk. A finished chunk
-  is one ticked line naming where its work is written; its full text lives
-  in git history.
+  only tracker; each session takes the first chunk. A finished chunk is deleted
+  from it, and a dependency no longer on it is done; its text is in git
+  history.
 - What the language means: [docs/language](docs/language/README.md), twenty-one
   decided areas. Where anything else disagrees, the area page wins. Language
   decisions are recorded in the area's design notes

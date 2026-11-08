@@ -882,7 +882,7 @@ CHECK_SUMMARIES = True
 # flags and arguments.
 COMMAND_LINE = 'cli.'
 # The beginnings of the rule names whose pages D13c has brought to the
-# format (docs/roadmap.md, D13c1 to D13c15); each part adds its own.
+# format (docs/roadmap.md, D13c); each part adds its own.
 # 'type.se' stays out, for type.secret_exposed; its page isn't brought to
 # the format yet.
 BROUGHT_TO_FORMAT = ('type.a', 'type.b', 'type.c', 'type.d', 'type.e',
