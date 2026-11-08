@@ -628,6 +628,11 @@ public type ReminderReceipt = Object {
 }
 ```
 
+```jadpo check project=overdue-reminders file=domains/planning/types/due_time.jadpo hidden
+/// When a todo counts as overdue from.
+type DueTime = Instant {}
+```
+
 ```jadpo check project=overdue-reminders file=domains/planning/entities/todo.jadpo migrate=initial hidden
 use planning/types { DueTime }
 
@@ -649,8 +654,8 @@ entity Todo {
 
 ```jadpo check project=overdue-reminders file=domains/planning/actions/remind_overdue.jadpo hidden
 use app { reminder_mail }
-use planning/queries { overdue_todos }
 use planning/types { DueTime }
+use planning/queries { overdue_todos }
 use shared/providers/reminder_mail
 
 /// Sends the reminder for the todo longest overdue, if one is.
@@ -682,11 +687,6 @@ query overdue_todos(now: DueTime) -> List<Todo> {
     order: [Todo.id asc]
     limit: 100
 }
-```
-
-```jadpo check project=overdue-reminders file=domains/planning/types/due_time.jadpo hidden
-/// When a todo counts as overdue from.
-type DueTime = Instant {}
 ```
 
 ```jadpo check project=overdue-reminders file=domains/planning/schedules/overdue_reminders.jadpo hidden
