@@ -635,7 +635,8 @@ commit holds it, it goes: from then on it is compared.
 | [Personal data](15-personal-data.md#marking-personal-fields) anyone may read, with no sign-in: a field marked `personal:`, or of a standard type that is personal data such as an `Email`, on an entity whose `read:` lists `Access.public`, unless its own `policy:` keeps it from them | `public_read` | A commit holds it |
 | A connection that receives personal data and can't erase it ([Erasure at providers](15-personal-data.md#erasure-at-providers)) | `ErasureNotPossible.data_stays` | An acceptance lists it with a reason: the next change is refused until one does, since this kind says how things stand |
 | A security rule declined | `PolicyChange.<rule>_declined` | A commit holds it |
-| A sign-in setting past its limit | `PolicyChange.sign_in_loosened` | A commit holds it |
+| A sign-in setting past its limit | `PolicyChange.password_sent_to_provider_declined` | `accounts.check_password` | A new `decline type.password_sent_to_provider:`, on the action it sits above ([Sending a password to a provider](19-standard-library.md#sending-a-password-to-a-provider)) |
+| `PolicyChange.sign_in_loosened` | A commit holds it |
 | An entity shared by every tenant | `PolicyChange.shared_entity_added` | A commit holds it |
 | An own source in `packages:` | `PolicyChange.own_source_added` | A commit holds it |
 | A third party's package from git | `PackageChange.git_source` | A commit holds it |

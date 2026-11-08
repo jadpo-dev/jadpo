@@ -254,6 +254,8 @@ pub fn check(
             functions,
             at: crate::Frame::ENTRY,
             ended: RefCell::new(None),
+            sends_secrets: false,
+            wrote_secret: std::cell::Cell::new(false),
         },
         pairs,
         broken: RefCell::new(None),

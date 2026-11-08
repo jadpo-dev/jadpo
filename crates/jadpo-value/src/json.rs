@@ -81,6 +81,14 @@ pub trait Coder: std::fmt::Debug {
     /// A value its built-in encoding can't hold, by the rule it broke: it
     /// was written as `null`, and the call goes no further.
     fn unwritten(&self, rule: &str);
+
+    /// Whether a secret value is written as itself here, on the provider's
+    /// wire (area 19, "Where a secret can go"), or as its kind alone, as
+    /// everywhere else writes one: what the development call log and a
+    /// step's fingerprint are made from. Called each time one is written.
+    fn writes_secrets(&self) -> bool {
+        false
+    }
 }
 
 mod doc;
@@ -1379,6 +1387,13 @@ impl Codecs<'_> {
                     }
                 }
             },
+            // A secret value goes out as itself on a provider's wire alone
+            // (area 19, "Where a secret can go").
+            (_, Value::Secret(secret))
+                if self.coder.is_some_and(|coder| coder.writes_secrets()) =>
+            {
+                write_string(secret.expose(), out)
+            }
             (Some(Codec::Scalar { int_as_number, .. }), value) => {
                 write_scalar(value, *int_as_number, out)
             }

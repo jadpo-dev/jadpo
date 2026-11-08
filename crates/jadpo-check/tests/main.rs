@@ -113,6 +113,7 @@ mod scale;
 mod schedule_checks;
 mod schedules;
 mod search;
+mod secret_boundaries;
 mod secrets;
 mod security_records;
 mod sends;

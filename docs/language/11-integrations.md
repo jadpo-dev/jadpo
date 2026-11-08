@@ -1805,7 +1805,9 @@ package unless:
 
 The bar applies only to what is published: the app's own integrations and
 libraries skip it. Examples are part of the bar because they must run,
-which the compiler can check.
+which the compiler can check. An operation that takes a `Password` passes it,
+and shows in the surface: the app that calls it answers for that
+([Sending a password to a provider](19-standard-library.md#sending-a-password-to-a-provider)).
 
 A library package also ships complete wording in its own default locale,
 with a `///` description on every public message
@@ -2937,6 +2939,11 @@ from a provider, however deep a type holds it
   The provider would get the store and key and none of the bytes.
 - In an operation's `output:` or `wire_output:`, or a webhook's event, it is
   `type.batch_input`, since a provider could name any file.
+
+A secret value given to an operation goes out as itself, but a `Password` only
+once a person has signed it off at the call, and a webhook's `reply:` holds
+none at all
+([Sending a password to a provider](19-standard-library.md#sending-a-password-to-a-provider)).
 
 A file's bytes do go out: an operation's `input:` may hold the `FileContents`
 `store.read` gives, sent as its Base64. It doesn't come back, so an `output:`,
@@ -4157,7 +4164,9 @@ written once and tested, without reaching into the apps that install it.
   operations in any order, pass answers between them, use its pure
   functions, and return a result or fail. They can't emit app events, send
   email, call any other connection, or read configuration or secrets. The
-  app calls one as `connection.action(input)` inside its own action. One
+  app calls one as `connection.action(input)` inside its own action, and
+  answers there for a `Password` the action sends on
+  ([Sending a password to a provider](19-standard-library.md#sending-a-password-to-a-provider)). One
   with several changing calls follows
   [Several changing calls through a package](#several-changing-calls-through-a-package).
   Inside a package, operations are named without the connection:

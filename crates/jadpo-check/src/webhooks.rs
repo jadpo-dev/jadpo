@@ -497,6 +497,25 @@ pub fn package_events(db: &dyn Db, project: Project) -> PackageEvents {
                     at,
                 ));
             }
+            // A reply is an answer like any other (area 19, "Where a secret
+            // can go").
+            if let Some((_, _, canonical)) = &reply
+                && let Some(secret) = crate::types::secrets::held_secret(
+                    table,
+                    &Ty::Named(canonical.clone()),
+                    &mut Vec::new(),
+                )
+            {
+                let at = tree::members(decl.member_list())
+                    .into_iter()
+                    .find(|(key, _)| name_text(key).as_deref() == Some(crate::types::REPLY))
+                    .map_or_else(
+                        || name_span.clone(),
+                        |(key, _)| node_span(&path, key.syntax()),
+                    );
+                out.problems
+                    .push(crate::types::secrets::in_a_reply(&name, secret, at));
+            }
             let (Some(wire_name), true) = (wire_name, clean) else {
                 continue;
             };

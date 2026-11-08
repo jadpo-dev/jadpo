@@ -312,6 +312,56 @@ pub fn file_outside(db: &dyn Db, project: Project, file: File) -> BTreeMap<Key, 
     out
 }
 
+/// Whether the package action named `canonical` (`AcmeDirectory.bind`)
+/// itself sends a `Password` out, by calling one of its package's own
+/// operations whose input holds one (area 19, "Where a secret can go"):
+/// a package action can't call another (area 11, "What package code may
+/// do"), so its own calls are all there is.
+pub fn sends_a_password(db: &dyn Db, project: Project, canonical: &str) -> bool {
+    let Some(action) = crate::package_code::actions(db, project)
+        .iter()
+        .find(|action| action.canonical == canonical)
+    else {
+        return false;
+    };
+    let lookup = crate::lookups::Lookup::new(db, project);
+    let operations = crate::providers::operations(db, project);
+    project.files(db).iter().any(|&file| {
+        let Some(ownership) = jadpo_db::location(db, project, file)
+            .ownership
+            .package()
+            .cloned()
+        else {
+            return false;
+        };
+        ownership.folder == action.folder
+            && bodies(db, project, file)
+                .iter()
+                .filter(|(key, _)| key.name() == canonical)
+                .any(|(_, body)| {
+                    body.sites.iter().any(|site| match &site.node {
+                        Node::Expr(Expr::Call {
+                            callee:
+                                Callee::Provider {
+                                    connection,
+                                    operation,
+                                },
+                            ..
+                        }) if connection == jadpo_graph::body::OWN_CONNECTION => operation
+                            .split_once('.')
+                            .and_then(|(resource, name)| {
+                                operations.find(&action.folder, resource, name)
+                            })
+                            .and_then(|found| found.input.as_ref())
+                            .is_some_and(|(input, _)| {
+                                super::secrets::holds_password(&lookup, input)
+                            }),
+                        _ => false,
+                    })
+                })
+    })
+}
+
 /// What each action and fixture does, itself or through the actions it
 /// calls, by key: the outside call it makes and the write, each the one it
 /// makes itself, or else the nearest an action it calls makes.
