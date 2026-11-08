@@ -1181,63 +1181,63 @@ rules! {
     SYNTAX_LOGICAL_OPERATOR: "syntax.logical_operator", area 3, Error, Agent,
         "Logical operator written in another language's form";
     SYNTAX_MAPPING_BLOCK_REQUIRED: "syntax.mapping_block_required", area 4, Error, Agent,
-        "Mappings are written after the call instead of in a block";
+        "An `attempt`'s mappings are written after the call instead of in a block";
     SYNTAX_MATCH_ARROW: "syntax.match_arrow", area 3, Error, Agent,
-        "Match arm uses `=>`";
+        "A `match` arm is written with `=>` instead of `->`";
     SYNTAX_MATCH_PATTERN: "syntax.match_pattern", area 3, Error, Agent,
-        "Expected a match pattern";
+        "A `match` arm doesn't start with a pattern, or names a case's data other than with one name in brackets";
     SYNTAX_MEMBER_COMMA: "syntax.member_comma", area 3, Error, Agent,
-        "Members separated by commas";
+        "Members inside braces are separated by commas";
     SYNTAX_NAMED_ARGUMENT_DUPLICATE: "syntax.named_argument_duplicate", area 3, Error, Agent,
-        "Named argument is given twice";
+        "A call gives the same named argument twice";
     SYNTAX_NAMED_ARGUMENT_EQUALS: "syntax.named_argument_equals", area 3, Error, Agent,
-        "Named argument written with `=`";
+        "A named argument is written with `=` instead of `:`";
     SYNTAX_NEW_KEYWORD: "syntax.new_keyword", area 2, Error, Agent,
-        "Value created with `new`";
+        "A value is created with `new`";
     SYNTAX_NULL_COALESCING: "syntax.null_coalescing", area 2, Error, Agent,
-        "Default for a missing value written with `??`";
+        "A default for a missing value is written with `??` or `?:` instead of a `match`";
     SYNTAX_NULLABLE_TYPE: "syntax.nullable_type", area 2, Error, Agent,
-        "Nullable type written in another language's form";
+        "A type that may be missing is written in another language's form instead of `T?`";
     SYNTAX_OPTIONAL_CHAINING: "syntax.optional_chaining", area 2, Error, Agent,
-        "Field of a missing value read with `?.`";
+        "A field of a value that may be `none` is read with `?.` instead of a `match`";
     SYNTAX_PERCENT_AMBIGUOUS: "syntax.percent_ambiguous", area 19, Error, Agent,
-        "A number, `%` and a value with no spaces could be a percentage or a remainder";
+        "A number, `%` and a value touch with no spaces, so the `%` could mean a percentage or a remainder";
     SYNTAX_POSITIONAL_AFTER_NAMED: "syntax.positional_after_named", area 3, Error, Agent,
-        "Positional argument follows a named one";
+        "An argument without a name follows a named one";
     SYNTAX_RETURN_TYPE_ARROW: "syntax.return_type_arrow", area 3, Error, Agent,
-        "Result type written after `:`";
+        "A signature's result type is written after `:` instead of `->`";
     SYNTAX_SEMICOLON: "syntax.semicolon", area 3, Error, Agent,
-        "Statement or member ends with `;`";
+        "A statement or member ends with `;`";
     SYNTAX_STRING_QUOTES: "syntax.string_quotes", area 2, Error, Agent,
-        "String in single quotes or backticks";
+        "A string is written in single quotes or backticks instead of double quotes";
     SYNTAX_SUGGESTIONS_DUPLICATE_OPTION: "syntax.suggestions_duplicate_option", area 14, Error, Agent,
-        "Suggestions setting is given twice";
+        "A `suggestions { }` block gives the same setting twice";
     SYNTAX_SUGGESTIONS_UNKNOWN_OPTION: "syntax.suggestions_unknown_option", area 14, Error, Agent,
-        "Suggestions settings have no such option";
+        "A `suggestions { }` block has a setting other than `project_token:` or `share:`";
     SYNTAX_SWITCH_STATEMENT: "syntax.switch_statement", area 3, Error, Agent,
-        "Choice written with `switch` or `when`";
+        "A choice between cases is written with `switch`, `when`, `case` or `default` instead of `match`";
     SYNTAX_TERNARY_OPERATOR: "syntax.ternary_operator", area 3, Error, Agent,
-        "Value chosen with `? :`";
+        "A value is chosen with `? :` instead of a `match`";
     SYNTAX_TRY_CATCH: "syntax.try_catch", area 3, Error, Agent,
-        "Failure handled with `try`, `catch` or `?`";
+        "A failure is handled with `try`, `catch`, `finally` or `?` instead of `attempt` or a `match`";
     SYNTAX_TYPE_BLOCK_REQUIRED: "syntax.type_block_required", area 2, Error, Agent,
-        "Type has no block";
+        "A type is declared without a block after its base";
     SYNTAX_TYPE_KEYWORD: "syntax.type_keyword", area 2, Error, Agent,
-        "Type declared with `struct`, `interface` or `enum`";
+        "A type is declared with `struct`, `interface` or `enum` instead of `type`";
     SYNTAX_TYPE_PARENT_REQUIRED: "syntax.type_parent_required", area 2, Error, Agent,
-        "Type has no base";
+        "A type is declared without a base before its block";
     SYNTAX_UNEXPECTED_CHARACTER: "syntax.unexpected_character", area 1, Error, Agent,
-        "Character is not part of Jadpo";
+        "A file holds a character that isn't part of Jadpo";
     SYNTAX_UNEXPECTED_TOKEN: "syntax.unexpected_token", area 1, Error, Agent,
-        "Something else was expected here";
+        "A bracket, a comma or another part of the syntax is missing, or something stands where it doesn't belong";
     SYNTAX_UNSUPPORTED_THROW: "syntax.unsupported_throw", area 3, Error, Agent,
-        "Failure raised with `throw` or `raise`";
+        "A failure is raised with `throw` or `raise` instead of `reject`";
     SYNTAX_UNTERMINATED_STRING: "syntax.unterminated_string", area 1, Error, Agent,
-        "String is not closed";
+        "A string has no closing `\"` on its line";
     SYNTAX_VARIABLE_KEYWORD: "syntax.variable_keyword", area 3, Error, Agent,
         "A variable is declared with `let`, `const` or `val`, words from other languages, where Jadpo writes `var`";
     SYNTAX_VARIABLE_TYPE_REQUIRED: "syntax.variable_type_required", area 2, Error, Agent,
-        "Variable has no type";
+        "A variable or a constant is declared without a type";
     TEST_ASSERTION_FAILED: "test.assertion_failed", area 13, Error, Agent,
         "A test's `assert` doesn't hold: its condition is false, or a call checked with `assert … fails` returned or failed differently";
     TEST_DATABASE_UNAVAILABLE: "test.database_unavailable", area 14, Error, Human,
