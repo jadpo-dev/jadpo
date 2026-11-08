@@ -384,10 +384,7 @@ a new agent can't find a type without them (Richard, 2026-11-03).
 
 What the Reddit thread found (Richard, 2026-11-03):
 
-- [ ] **A17 `jadpo inspect` and `jadpo impact`** `opus · high`: area 14. An
-  agent can ask for the project map and for what a change to a name reaches,
-  rather than reading files to work it out. `jadpo impact` moves here from
-  "Tooling completeness".
+- [x] **A17 `jadpo inspect` and `jadpo impact`**: area 14, "`jadpo inspect`", "`jadpo impact`", "Tools for agents" and Decisions; area 1, "Seeing a change's reach"; area 2, "Building a type from other types"; area 18, "The manifest"; `cli.inspect_arguments` and `cli.impact_arguments`.
 - [x] **A18 Leaving Jadpo**: [leaving Jadpo](leaving-jadpo.md); `crates/jadpo-cli/tests/leaving.rs`, `tools/checks/openapi_valid.py` and `tools/fixtures/openapi/`; `every_carried_crate_is_apache_2_0` in `crates/jadpo-cli/src/runtime_source.rs`.
 - [ ] **A19 Typed holes, to decide** `opus · high`: whether an agent can write
   a hole and have the compiler say what type belongs there and what is in

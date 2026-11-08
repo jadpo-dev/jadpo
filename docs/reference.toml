@@ -799,7 +799,7 @@ status = [
   "11-integrations: Installing: `add` from a folder or git",
   "11-integrations: The registry at jadpo.dev",
 ]
-missing = "the registry's search by meaning, advisories and compatibility runs"
+missing = "the registry's compatibility runs against Jadpo's pre-releases"
 topics = [
   "kinds-of-package",
   "where-packages-live",
@@ -827,7 +827,7 @@ status = [
   "11-integrations: Starting a package",
   "11-integrations: The registry at jadpo.dev",
 ]
-missing = "the registry's organisations, automatic release, urgent releases and compatibility runs"
+missing = "the registry's compatibility runs against pre-releases and an app's contract-run reports"
 topics = [
   "the-package-format",
   "developing-and-publishing-a-package",
@@ -928,7 +928,7 @@ id = "commands"
 title = "Commands"
 summary = "Every jadpo command, what it does and how to run it."
 status = ["14-tooling: Commands"]
-missing = "`jadpo inspect`, `impact`, `rename`, `domain`, `services`, `dev grants`, `files`, `batches`, `search reindex`, the debugging commands, `path` and privacy requests"
+missing = "`jadpo rename`, `domain`, `services`, `dev grants`, `files`, `batches`, `search reindex`, the debugging commands, `path` and privacy requests"
 
 [[group.page.section]]
 id = "the-jadpo-command"
@@ -938,7 +938,7 @@ commands = ["new", "check", "fmt", "test", "build", "dev"]
 [[group.page.section]]
 id = "commands-for-looking-into-and-changing-code"
 title = "Commands for looking into and changing code"
-commands = ["routes", "sql", "ai"]
+commands = ["inspect", "impact", "routes", "sql", "ai"]
 
 [[group.page.section]]
 id = "commands-for-the-database-settings-and-translations"
