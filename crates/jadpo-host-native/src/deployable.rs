@@ -11,7 +11,9 @@
 //! build holds: one not applied, or a database that applied one the build
 //! doesn't have, stops the start (area 5, "Migrations"), and a database
 //! that can't be reached yet is waited for, since a database that is down
-//! is not a configuration error (area 10). Only then does it open its
+//! is not a configuration error (area 10). It replays the erasure log, so
+//! a restored backup is erased before anything is served (area 15; chunk
+//! P4c). Only then does it open its
 //! port: `PORT` (8080 when unset) on `HOST` (every IPv4 interface when
 //! unset), with a worker per core, each serving and ticking through the
 //! runtime's `Serving` on its own `NativeHost`
@@ -27,7 +29,9 @@
 //! `runtime.startup_failed` with every problem that stopped the start,
 //! `runtime.waiting` while a database can't be reached, `runtime.started`
 //! with where it listens and each connection whose driver couldn't be
-//! built (which the runtime answers `misconfigured`), `runtime.ticked`
+//! built (which the runtime answers `misconfigured`),
+//! `runtime.erasures_replayed` when the replay found anyone logged still
+//! there, `runtime.ticked`
 //! after each tick, its own timer's or the `tick` command's, with each
 //! store it couldn't work in, `operation.failed` for a fault behind a 500
 //! (area 17, "Errors point at the `.jadpo` line"), and `runtime.stopped`.
@@ -55,7 +59,8 @@ use jadpo_drivers::factory::Unbuilt;
 use jadpo_runtime::compiled::Program;
 use jadpo_runtime::config::ConfigValues;
 use jadpo_runtime::deployable::{
-    Compared, Log, Logged, Then, compare_store, compare_stores, problem, unbuilt, waiting,
+    Compared, Log, Logged, Then, compare_store, compare_stores, problem, replay_problem, unbuilt,
+    waiting,
 };
 use jadpo_runtime::http::address::Target;
 use jadpo_runtime::http::{Request, Response};
@@ -167,6 +172,9 @@ fn start(deployable: &Deployable, log: &Log) -> Result<(), Vec<Value>> {
         .map_err(|why| vec![problem("address_invalid", why)])?;
     let trigger = trigger(&program);
     let unbuilt = check_stores(deployable, &program, &stop, log)?;
+    if !stop.load(Ordering::SeqCst) {
+        replay_erasures(&program, &stop, log)?;
+    }
     if stop.load(Ordering::SeqCst) {
         log.event("runtime.stopped", []);
         return Ok(());
@@ -271,6 +279,16 @@ fn tick(deployable: &Deployable, log: &Log) -> Result<ExitCode, Vec<Value>> {
     }
     let logged = Rc::new(Logged::new(*log, drivers.unbuilt()));
     let host = Rc::new(NativeHost::new().with_drivers(drivers));
+    // A tick is a start like any other: the scheduler's next run tries again.
+    let replay = jadpo_runtime::deployable::replay_erasures(&*host, program.plan(), log);
+    match unless_stopped(&runtime, &stop, replay) {
+        None => {
+            log.event("runtime.stopped", []);
+            return Ok(ExitCode::SUCCESS);
+        }
+        Some(Err(stopped)) => return Err(vec![replay_problem(&stopped)]),
+        Some(Ok(())) => {}
+    }
     let program: Rc<dyn Executor> = Rc::new(program);
     let serving = Serving::new(Rc::clone(&host) as Rc<dyn Host>, move || {
         Rc::clone(&program)
@@ -410,6 +428,55 @@ fn check_stores(
         Ok(drivers.unbuilt().to_vec())
     } else {
         Err(problems)
+    }
+}
+
+/// Replays the erasure log before anything is served (area 15, "What erasure
+/// doesn't rewrite"; chunk P4c), waiting for a store that can't be reached
+/// yet as [`check_stores`] does. A stop that comes meanwhile ends it, for
+/// the caller to see; a replay that can't finish stops the start, since a
+/// restored backup would otherwise serve someone erased.
+fn replay_erasures(program: &Program, stop: &AtomicBool, log: &Log) -> Result<(), Vec<Value>> {
+    let logged = program
+        .plan()
+        .events()
+        .is_some_and(|events| events.plan.erasure.log.is_some());
+    if !logged {
+        return Ok(());
+    }
+    let runtime = Runtime::new().map_err(|error| {
+        vec![problem(
+            "runtime",
+            format!("Its runtime couldn't start: {error}."),
+        )]
+    })?;
+    let drivers = match program.started() {
+        Some(started) => Drivers::build(
+            &program.runtime().connections,
+            &started,
+            &deployable_supplies(),
+        ),
+        None => Drivers::default(),
+    };
+    let host = NativeHost::new().with_drivers(drivers);
+    let mut wait = Duration::from_secs(1);
+    let mut said = false;
+    loop {
+        let replay = jadpo_runtime::deployable::replay_erasures(&host, program.plan(), log);
+        match unless_stopped(&runtime, stop, replay) {
+            None | Some(Ok(())) => return Ok(()),
+            Some(Err(stopped)) if stopped.waiting => {
+                if !said {
+                    waiting(log, &stopped.store, Then::Restart);
+                    said = true;
+                }
+                if waited(stop, wait) {
+                    return Ok(());
+                }
+                wait = (wait * 2).min(MOST_WAIT);
+            }
+            Some(Err(stopped)) => return Err(vec![replay_problem(&stopped)]),
+        }
     }
 }
 

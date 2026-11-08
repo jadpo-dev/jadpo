@@ -36,7 +36,7 @@ WITH RECURSIVE "erased" ("entity", "id") AS (
   WHERE "id" IN (SELECT "id" FROM "erased" WHERE "entity" = 0)
   RETURNING "id"
 )
-SELECT "id" FROM "deleted0"
+SELECT 0, "id" FROM "deleted0"
 -- $1: input 0 as Uuid
 -- $2: clock.now as Timestamp
 -- $3: caller Signed as Bool

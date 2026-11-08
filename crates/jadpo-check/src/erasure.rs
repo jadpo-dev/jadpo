@@ -32,8 +32,19 @@
 //!   does nothing, so it is refused.
 //! - **A `File`'s bytes** go with the records and fields erasure deletes
 //!   and clears, counted by area 16's trigger like any other change
-//!   (chunk B3). Every record erasure reaches is in the person's store,
-//!   since no reference crosses stores.
+//!   (chunk B3), in the store each record is in.
+//! - **Another store** (chunk P4c): a reference to a person may cross
+//!   stores when it says `erase:` and has no `on_delete:`, and the walk
+//!   counts it like any other for the checks ([`Erasure::deleted`] and the
+//!   rest cover every store). What runs is one statement a store
+//!   ([`Erasure::stores`]): a walk from the person's `id` that stays in that
+//!   store, the person's own in their transaction and each other a
+//!   generated subscriber's after it. Each person it deletes on the way is
+//!   erased in their own right, with a `PersonErased` of their own, so a
+//!   record in a third store that refers to them is reached from there.
+//!   The person's record going any other way would leave such a reference
+//!   holding an `id` no record has, out of erasure's reach, so nothing else
+//!   may remove them ([`removal_problems`]).
 //! - **The person's own record** (chunk P4b) is kept field by field when a
 //!   field of theirs that isn't a reference says `erase: Erasure.retained`
 //!   ([`Erasure::own`]): every other marked field is cleared, the time is
@@ -79,6 +90,12 @@ pub struct Erasure {
     /// What it would reach that isn't built yet, each as the end of a
     /// sentence saying why: what refuses `User.erase` where it is called.
     pub unbuilt: Vec<String>,
+    /// What it does in each store, by the store's name: the person's own
+    /// and each other store with a record that refers to the person (chunk
+    /// P4c). The fields above cover every store, for the checks; these
+    /// cover one each, the person's place always first whether their table
+    /// is there or not, and are what a statement is written from.
+    pub stores: BTreeMap<String, Erasure>,
 }
 
 /// A reference erasure follows to records it deletes.
@@ -229,26 +246,55 @@ pub fn erasures(db: &dyn Db, project: Project) -> Arc<Erasures> {
         .iter()
         .filter(|entity| entity.person)
         .map(|person| {
-            (
-                person.name.clone(),
-                erasure_of(model, &person.name, &marked),
-            )
+            let mut erasure = erasure_of(model, &person.name, None, &marked);
+            erasure.reach = reach_of(model, &person.name);
+            erasure.stores = stores_of(model, person)
+                .into_iter()
+                .map(|store| {
+                    let within = erasure_of(model, &person.name, Some(&store), &marked);
+                    (store, within)
+                })
+                .collect();
+            (person.name.clone(), erasure)
         })
         .collect();
     Arc::new(Erasures { people })
 }
 
-/// What erasing one record of `person` does.
-fn erasure_of(model: &DataModel, person: &str, marked: &dyn Fn(&str, &str) -> bool) -> Erasure {
+/// The person's store and each other holding a record that refers to one.
+fn stores_of(model: &DataModel, person: &EntityModel) -> BTreeSet<String> {
+    let mut out: BTreeSet<String> = person.store.iter().cloned().collect();
+    for holder in &model.entities {
+        let refers = holder.fields.iter().any(|field| {
+            field
+                .reference
+                .as_ref()
+                .is_some_and(|reference| reference.target == person.name)
+        });
+        if refers {
+            out.extend(holder.store.iter().cloned());
+        }
+    }
+    out
+}
+
+/// What erasing one record of `person` does: everywhere, or, with `store`,
+/// only to the records in that store.
+fn erasure_of(
+    model: &DataModel,
+    person: &str,
+    store: Option<&str>,
+    marked: &dyn Fn(&str, &str) -> bool,
+) -> Erasure {
+    let within = |entity: &EntityModel| store.is_none() || entity.store.as_deref() == store;
     let mut out = Erasure {
         deleted: vec![person.to_string()],
-        reach: reach_of(model, person),
         ..Erasure::default()
     };
     let mut kept: BTreeMap<String, Vec<KeptReference>> = BTreeMap::new();
     let mut at = 0;
     while let Some(current) = out.deleted.get(at).cloned() {
-        for holder in &model.entities {
+        for holder in model.entities.iter().filter(|holder| within(holder)) {
             for field in &holder.fields {
                 if field
                     .reference
@@ -337,7 +383,7 @@ fn erasure_of(model: &DataModel, person: &str, marked: &dyn Fn(&str, &str) -> bo
         let Some(entity) = model.entity(name) else {
             continue;
         };
-        if !entity.keeps_erased() {
+        if !entity.keeps_erased() || !within(entity) {
             continue;
         }
         if entity.audit.is_some() {
@@ -481,6 +527,7 @@ pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
             &how,
             &subject,
         ));
+        out.extend(removal_problems(db, project, entity, &read.spans));
         // Each marked field reported once, however many references
         // anonymise the record.
         let mut cleared: BTreeSet<String> = BTreeSet::new();
@@ -562,6 +609,65 @@ pub fn erasure_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
                 }
             }
         }
+    }
+    out
+}
+
+/// `entity`'s `retention:` and lifecycle's `purge:`, when what they delete
+/// holds a person another store refers to: no foreign key applies that
+/// reference, so a person it refers to goes only by erasure (area 15, "What
+/// erasure reaches"; chunk P4c).
+fn removal_problems(
+    db: &dyn Db,
+    project: Project,
+    entity: &EntityModel,
+    spans: &crate::data::EntitySpans,
+) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    let keys = [
+        (spans.retention.as_ref(), "retention"),
+        (spans.purge.as_ref(), "purge"),
+    ];
+    if keys.iter().all(|(at, _)| at.is_none()) {
+        return out;
+    }
+    let model = data_model(db, project);
+    let reach = crate::data::retention::reach(model, &entity.name);
+    let holding = reach.entities.iter().find_map(|name| {
+        let links = crate::data::links_of(db, project, Name::new(db, name.clone()));
+        links.erased_across.first().map(|at| (name, at.clone()))
+    });
+    let Some((person, holder)) = holding else {
+        return out;
+    };
+    let name = &entity.name;
+    for (at, word) in keys {
+        let Some(at) = at else {
+            continue;
+        };
+        let deletes = if person == name {
+            format!("each `{name}`")
+        } else {
+            format!("each `{person}` it cascades to")
+        };
+        out.push(
+            Diagnostic::new(
+                &rule::DATA_PERSON_REMOVAL_ACROSS_STORES,
+                format!(
+                    "`{word}:` would delete a `{person}` that `{}.{}` refers to from another store",
+                    holder.entity, holder.field
+                ),
+            )
+            .at(at.clone(), format!("deletes {deletes}"))
+            .reason(format!(
+                "`{}.{}` isn't a foreign key: only erasing a `{person}` applies what its `erase:` says, after the commit, in its store. Deleted any other way, the `{person}` would be gone and the `{}` records would stay, out of reach of any erasure.",
+                holder.entity, holder.field, holder.entity
+            ))
+            .next(format!(
+                "Keep `{}` in the store `{person}` is in, or remove `{word}:` and erase each `{person}` with `{person}.erase`",
+                holder.entity
+            )),
+        );
     }
     out
 }

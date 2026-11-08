@@ -37,6 +37,7 @@ mod fmt;
 mod help;
 mod hq;
 mod inbox_page;
+mod inspect;
 mod install;
 pub mod launcher;
 mod local;

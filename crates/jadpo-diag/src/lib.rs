@@ -184,6 +184,10 @@ rules! {
         "A `jadpo fmt` command names a path that isn't there or isn't a `.jadpo` file";
     CLI_HELP_ARGUMENTS: "cli.help_arguments", area 14, Error, Agent,
         "A `jadpo help` command names more than one command or rule";
+    CLI_IMPACT_ARGUMENTS: "cli.impact_arguments", area 14, Error, Agent,
+        "A `jadpo impact` command names no declaration, one the project doesn't have, or a name two domains share";
+    CLI_INSPECT_ARGUMENTS: "cli.inspect_arguments", area 14, Error, Agent,
+        "A `jadpo inspect` command names a declaration the project doesn't have, or a name two domains share";
     CLI_LSP_ARGUMENTS: "cli.lsp_arguments", area 14, Error, Agent,
         "A `jadpo lsp` command is given an argument, which it doesn't take";
     CLI_MIGRATE_ARGUMENTS: "cli.migrate_arguments", area 14, Error, Agent,
@@ -342,6 +346,10 @@ rules! {
         "Erasing a person keeps records with `Erasure.retained`, their own or others', but their entity has no `retention:` saying when they go";
     DATA_ERASE_UNREACHED: "data.erase_unreached", area 15, Error, Agent,
         "A field's `erase:` is on a field erasing a person never reaches: one that isn't a reference, or a reference to records erasure never deletes";
+    DATA_ERASURE_LOG_REQUIRED: "data.erasure_log_required", area 15, Error, Human,
+        "An action erases a person, and the application doesn't say where the erasure log is kept, so restoring a backup would bring them back";
+    DATA_ERASURE_LOG_STORE: "data.erasure_log_store", area 15, Error, Human,
+        "The erasure log is kept somewhere restoring a person's database would take it back with them, or somewhere it can't be kept";
     DATA_FIELD_ENCRYPTION_KEY_INVALID: "data.field_encryption_key_invalid", area 15, Error, Agent,
         "The application's `field_encryption_key:` reads something other than an `EncryptionKey` setting";
     DATA_FIELD_ENCRYPTION_KEY_REQUIRED: "data.field_encryption_key_required", area 15, Error, Human,
@@ -394,6 +402,8 @@ rules! {
         "Patch given something other than an `Input`";
     DATA_PATCH_OVERLAP: "data.patch_overlap", area 6, Error, Agent,
         "Supplied-field block sets a field the patch already sets";
+    DATA_PERSON_REMOVAL_ACROSS_STORES: "data.person_removal_across_stores", area 15, Error, Human,
+        "Something other than erasure would remove a person another store refers to, and nothing would apply what that reference's `erase:` says";
     DATA_PERSONAL_UNREACHABLE: "data.personal_unreachable", area 15, Error, Human,
         "A field marked as personal data is on an entity erasing a person never reaches, so it could never be found";
     DATA_READ_IN_LOOP: "data.read_in_loop", area 6, Error, Agent,

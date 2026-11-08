@@ -741,6 +741,52 @@ async fn attempt(
             );
             send(ctx, call, budget, within).await
         }
+        // A person's erasure in another store, or their entry in the log,
+        // after the main commit (area 15; chunk P4c): each safe to repeat,
+        // and each settled as any delivery is, so a store that can't do it
+        // yet is tried again, and at last left for an operator.
+        Target::ErasureIn { store } => {
+            let applying = crate::erasure::apply_delivery(ctx, store, &delivery);
+            match within {
+                Some(stop) => match race(applying, stop).await {
+                    First::Left(outcome) => Ok(outcome),
+                    First::Right(()) => Err(Cut::ShuttingDown),
+                },
+                None => match race(applying, budget.cut()).await {
+                    First::Left(outcome) => Ok(outcome),
+                    First::Right(cut) => Err(cut),
+                },
+            }
+        }
+        Target::ErasureLog(log) => {
+            match crate::erasure::log_write(ctx, log, &delivery.value) {
+                Ok(crate::erasure::LogWrite::Statement(store, params)) => {
+                    let database = ctx.host().database(&store);
+                    Ok(match database {
+                        Some(kept) => {
+                            match kept.query_once(crate::erasure::INSERT_LOG, &params).await {
+                                Ok(_) => Outcome::Value(Value::Unit),
+                                Err(_) => Outcome::Failed(Box::new(crate::unavailable())),
+                            }
+                        }
+                        None => Outcome::Failed(Box::new(crate::unavailable())),
+                    })
+                }
+                // A full store is worth trying again, as one that can't be
+                // reached is: an entry waits for room.
+                Ok(crate::erasure::LogWrite::File(call)) => {
+                    match send(ctx, *call, budget, within).await {
+                        Ok(Outcome::Failed(_)) => {
+                            Ok(Outcome::Failed(Box::new(crate::unavailable())))
+                        }
+                        sent => sent,
+                    }
+                }
+                Err(what) => Ok(Outcome::Fault(
+                    ctx.fault(FaultKind::Defect(what.into()), Frame::ENTRY),
+                )),
+            }
+        }
         // A file held by no record (area 16, "Deleting and erasing";
         // chunk B3): its bytes deleted under its key, which a repeat sends
         // again safely, then recorded gone, so none may hold it again.
