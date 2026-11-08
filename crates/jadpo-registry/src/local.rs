@@ -11,15 +11,20 @@ use serde::Serialize;
 
 use crate::archive;
 use crate::http::{Fetched, Incoming, Server};
-use crate::log::{Log, LogEntry};
+use crate::log::{Log, LogEntry, signed_line};
 use crate::names::{Digest, Handle, ScopedName, Version};
 use crate::protocol::{
-    ARCHIVE_NOT_FOUND, Advisory, AdvisoryAnswer, BarRow, ConsistencyProof, Facts, Failure,
-    FingerprintAnswer, InclusionProof, Method, NOT_IN_LOG, PACKAGE_NOT_FOUND, Package, PackageKind,
-    PublishedFingerprint, Publisher, RELEASE_NOT_FOUND, RELEASE_REQUEST_NOT_FOUND,
-    REPOSITORY_REFUSED, Refusal, Release, ReleaseRequest, ReleaseState, ReleaseSummary, Request,
-    SIZE_PAST_HEAD, SearchAnswer, SearchResult, StartedRelease,
+    ARCHIVE_NOT_FOUND, Advisory, AdvisoryAnswer, BarRow, ConsistencyProof, DecodeFailure, Facts,
+    Failure, FingerprintAnswer, InclusionProof, Method, NOT_IN_LOG, PACKAGE_NOT_FOUND, Package,
+    PackageKind, PublishedFingerprint, Publisher, RELEASE_NOT_FOUND, RELEASE_REQUEST_NOT_FOUND,
+    REPOSITORY_REFUSED, ReceivedReport, Refusal, Release, ReleaseRequest, ReleaseState,
+    ReleaseSummary, Request, SIZE_PAST_HEAD, SearchAnswer, SearchResult, SignedLogHead,
+    StartedRelease,
 };
+
+/// The key every local registry signs its heads with: a test's own, which
+/// is why it can be written down (RFC 8032, section 7.1, TEST 1).
+pub const TEST_SIGNING_KEY: &str = "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A";
 
 /// A release to add: its package's details, used when the package is new,
 /// and the release's own.
@@ -102,6 +107,10 @@ impl ReleaseSeed {
     }
 }
 
+fn signing_keys() -> jadpo_value::crypto::KeyRing {
+    jadpo_value::crypto::KeyRing::from_key_text(TEST_SIGNING_KEY, None).expect("a key")
+}
+
 #[derive(Debug, Default)]
 struct State {
     publishers: BTreeMap<Handle, (bool, bool)>,
@@ -117,6 +126,8 @@ struct State {
     /// Each release's public functions and actions, by source fingerprint,
     /// as the verifier wrote them.
     fingerprints: Vec<PublishedFingerprint>,
+    /// Each shape reported by a contract run.
+    decode_failures: Vec<DecodeFailure>,
     /// Each release started, with its repository, tag, whether it was a
     /// dry run and the publisher the client said it was for.
     requests: Vec<(ReleaseRequest, String, String, bool, Option<Handle>)>,
@@ -417,6 +428,18 @@ impl LocalRegistry {
         self.state().log.head()
     }
 
+    /// The public key of [`TEST_SIGNING_KEY`], which this registry signs
+    /// its heads with.
+    pub fn public_key() -> String {
+        let keys = signing_keys();
+        jadpo_value::crypto::public_key(&keys).expect("a key")
+    }
+
+    /// The shapes contract runs have reported, oldest first.
+    pub fn decode_failures(&self) -> Vec<DecodeFailure> {
+        self.state().decode_failures.clone()
+    }
+
     /// Answers one HTTP request.
     pub fn handle(&self, incoming: &Incoming) -> Fetched {
         let openapi = format!("{}openapi.json", crate::protocol::BASE);
@@ -473,6 +496,22 @@ impl LocalRegistry {
                 None => failure(ARCHIVE_NOT_FOUND),
             },
             Request::LogHead => json(200, &state.log.head()),
+            Request::LogSignedHead => {
+                let head = state.log.head();
+                let keys = signing_keys();
+                let signature =
+                    jadpo_value::crypto::sign(signed_line(head.size, &head.root).as_bytes(), &keys)
+                        .expect("a key");
+                json(
+                    200,
+                    &SignedLogHead {
+                        size: head.size,
+                        root: head.root,
+                        key: LocalRegistry::public_key(),
+                        signature: jadpo_value::encoding::to_base64(&signature),
+                    },
+                )
+            }
             Request::LogProof { digest, size } => {
                 if *size > state.log.size() {
                     return failure(SIZE_PAST_HEAD);
@@ -587,6 +626,15 @@ impl LocalRegistry {
                     }
                 }
                 json(200, &FingerprintAnswer { fingerprints })
+            }
+            Request::DecodeFailure(report) => {
+                state.decode_failures.push(report.clone());
+                json(
+                    202,
+                    &ReceivedReport {
+                        id: format!("rep_{}", state.decode_failures.len()),
+                    },
+                )
             }
             Request::StartRelease(start) => {
                 if !start.repository.starts_with("https://") {

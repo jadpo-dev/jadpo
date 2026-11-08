@@ -706,6 +706,14 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             .expect("it checks"),
         ),
         (
+            "a person's export".into(),
+            corpus_project(
+                &crate::personal_data_export::files(),
+                "compiled-personal-data-export",
+            )
+            .expect("it checks"),
+        ),
+        (
             "a file's bytes deleted".into(),
             corpus_project(&crate::file_deletes::files(), "compiled-file-deletes")
                 .expect("it checks"),
@@ -851,6 +859,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "a kept record",
         "an erasure across stores",
         "an erasure logged in a store of files",
+        "a person's export",
         "a file's bytes deleted",
         "an audit trail",
         "examples 11-cake-shop",

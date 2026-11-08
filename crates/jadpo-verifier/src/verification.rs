@@ -178,6 +178,7 @@ fn answer(passed: bool, bar: Vec<Value>, problems: Vec<Value>, left_out: &[Strin
         "descriptions": null,
         "change_record": [],
         "fingerprints": [],
+        "fixes": [],
         "previous": null,
         "jadpo": null,
         "checked_with": [],
@@ -827,6 +828,7 @@ fn combine(source: &Report, ran: &Report, left_out: &[String]) -> Value {
         "descriptions": data["descriptions"],
         "change_record": change_record,
         "fingerprints": data["fingerprints"],
+        "fixes": data["fixes"],
         "previous": previous,
         "jadpo": data["jadpo"],
         "checked_with": [data["jadpo"]],
@@ -863,6 +865,7 @@ fn disagreements(source: &Value, run: &Value) -> Vec<&'static str> {
         ("facts", "facts"),
         ("descriptions", "descriptions"),
         ("fingerprints", "fingerprints"),
+        ("fixes", "fixes"),
         ("jadpo", "Jadpo release"),
     ] {
         if source[field] != run[field] {

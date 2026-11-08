@@ -15,10 +15,12 @@ autotests = false
 # against (area 11, "The registry protocol"). jadpo-db for the lock's
 # package digest, so an archive's digest is the one `jadpo.lock` records;
 # sha2 for the log's RFC 6962 hashes, RustCrypto's SHA-256 that
-# `hash.sha256` and the lock already use.
+# `hash.sha256` and the lock already use. jadpo-value for what a signed
+# head is checked with: the Ed25519 `crypto.verify_signature` runs.
 [dependencies]
 jadpo-db.workspace = true
 jadpo-std.workspace = true
+jadpo-value.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sha2.workspace = true

@@ -83,6 +83,8 @@ pub(crate) enum Target {
     /// An audited entity's `history`, by the number of its plan (area 16;
     /// chunk B11).
     History(u32),
+    /// A person's `export`, by the number of its plan (area 15, "Export").
+    Export(u32),
     /// `create`, `update` or `delete`, by the number of the write's plan.
     Write(u32),
     /// A route test's request, by the route's place in the route table;
@@ -1278,6 +1280,7 @@ impl<'p> Machine<'p> {
                     Target::Query(_)
                     | Target::Get(_)
                     | Target::History(_)
+                    | Target::Export(_)
                     | Target::Write(_)
                     | Target::Request { .. }
                     | Target::Session(_)
@@ -2523,6 +2526,7 @@ impl<'p> Machine<'p> {
             Decoded::Query(Some(query)) => Some(Target::Query(*query)),
             Decoded::Get(Some(entity)) => Some(Target::Get(*entity)),
             Decoded::History(Some(history)) => Some(Target::History(*history)),
+            Decoded::Export(Some(export)) => Some(Target::Export(*export)),
             _ => None,
         }
     }

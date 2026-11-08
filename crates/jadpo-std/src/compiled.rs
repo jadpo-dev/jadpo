@@ -43,6 +43,9 @@ pub struct SitesPlan {
     /// Each audited entity's `history` (area 16, "Audit trail"; chunk
     /// B11), by the number of its plan.
     pub histories: Vec<crate::audit::HistoryPlan>,
+    /// Each person entity's `export` (area 15, "Export"), by the number
+    /// of its plan.
+    pub exports: Vec<crate::erasure::ExportPlan>,
 }
 
 /// One outside call's site, decoded (areas 11 and 21).

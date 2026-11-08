@@ -171,6 +171,62 @@ fn row<'a>(answer: &'a Value, item: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("no {item} row: {answer}"))
 }
 
+fn fix_rows() -> Value {
+    json!([{
+        "declaration": "GeoPoint",
+        "rule": "type.standard_exists",
+        "path": "types/geo_point.jadpo",
+        "line": 2,
+        "standard": "Point",
+        "fixes": ["swap"],
+        "swap": [],
+    }])
+}
+
+/// What `jadpo fix` would change comes from the source alone.
+#[test]
+fn what_jadpo_fix_would_change_is_in_the_answer() {
+    let Some(sandbox) = sandbox() else { return };
+    let set = set("verify-fixes");
+    let (url, commit) = set.repository(PACKAGE);
+    let facts = json!({ "kind": "library" });
+    let jadpo = stand_in(
+        set.tools.path(),
+        &report(true, &facts, &[("fixes", fix_rows())]),
+        &says(&report(
+            true,
+            &facts,
+            &[("bar", ran_bar()), ("fixes", fix_rows())],
+        )),
+    );
+    let verifier = verifier(sandbox, set.repositories.path(), set.scratch.path(), jadpo);
+    let answer = checked(verifier.verify(&set.request(&url, &commit, &verifier, None)));
+    assert_eq!(answer["fixes"], fix_rows(), "{answer}");
+}
+
+/// A run that says otherwise is caught as any other disagreement is.
+#[test]
+fn a_run_cant_choose_what_jadpo_fix_would_change() {
+    let Some(sandbox) = sandbox() else { return };
+    let set = set("verify-fixes-forged");
+    let (url, commit) = set.repository(PACKAGE);
+    let facts = json!({ "kind": "library" });
+    let jadpo = stand_in(
+        set.tools.path(),
+        &report(true, &facts, &[("fixes", fix_rows())]),
+        &says(&report(
+            true,
+            &facts,
+            &[("bar", ran_bar()), ("fixes", json!([]))],
+        )),
+    );
+    let verifier = verifier(sandbox, set.repositories.path(), set.scratch.path(), jadpo);
+    let answer = checked(verifier.verify(&set.request(&url, &commit, &verifier, None)));
+    assert_eq!(answer["passed"], false, "{answer}");
+    assert_eq!(answer["fixes"], fix_rows(), "{answer}");
+    assert_eq!(row(&answer, "agreement")["state"], "failed");
+}
+
 #[test]
 fn a_commit_that_passes_comes_with_its_digest_and_archive() {
     let Some(sandbox) = sandbox() else { return };

@@ -7,13 +7,15 @@
 use jadpo_registry::archive::unpack;
 use jadpo_registry::http::{Fetched, fetch};
 use jadpo_registry::local::{LocalRegistry, ReleaseSeed};
-use jadpo_registry::log::{LogEntry, LogError, check_extends, check_included};
+use jadpo_registry::log::{LogEntry, LogError, check_extends, check_included, check_signed_head};
 use jadpo_registry::names::{Digest, Handle, ScopedName, Version};
 use jadpo_registry::protocol::{
-    Advisory, AdvisoryAnswer, ConsistencyProof, FingerprintAnswer, FingerprintQuery,
-    InclusionProof, LogHead, Method, Package, PackageKind, PublishedFingerprint, Release,
-    ReleaseRequest, ReleaseState, Request, SearchAnswer, StartedRelease, check_answer,
+    Advisory, AdvisoryAnswer, ConsistencyProof, DecodeFailure, FingerprintAnswer, FingerprintQuery,
+    InclusionProof, LONGEST_SHAPE_PATH, LogHead, MOST_SHAPE_MEMBERS, Method, Package, PackageKind,
+    PublishedFingerprint, ReceivedReport, Release, ReleaseRequest, ReleaseState, Request,
+    SearchAnswer, ShapeKind, ShapeMember, SignedLogHead, StartedRelease, check_answer,
 };
+use jadpo_registry::report::shape_of;
 
 fn name(text: &str) -> ScopedName {
     ScopedName::parse(text).unwrap()
@@ -698,4 +700,115 @@ fn a_failing_bar_fails_whoever_it_is_from() {
         vec![("tests".to_string(), false, "1 of 3 fails".to_string())],
     );
     assert_eq!(publisher_row(&registry, &id), (ReleaseState::Failed, None));
+}
+
+#[test]
+fn a_head_is_signed_by_the_registrys_key() {
+    let registry = registry();
+    let served = registry.serve().expect("serves");
+    let answer = fetch(
+        Method::Get,
+        &format!("{}log/signed-head", served.url()),
+        None,
+    )
+    .expect("an answer");
+    assert_eq!(answer.status, 200);
+    let signed: SignedLogHead = serde_json::from_slice(&answer.body).expect("a signed head");
+    let keys = vec![LocalRegistry::public_key()];
+    let head = check_signed_head(&signed, &keys).expect("signed by the key");
+    assert_eq!(head, registry.head());
+
+    // A key the client doesn't hold is refused however good the signature.
+    assert_eq!(
+        check_signed_head(&signed, &["someone-else".to_string()]),
+        Err(LogError::UntrustedKey)
+    );
+    // A signature is over this size and this root.
+    let moved = SignedLogHead {
+        size: signed.size + 1,
+        ..signed.clone()
+    };
+    assert_eq!(
+        check_signed_head(&moved, &keys),
+        Err(LogError::BadSignature)
+    );
+    let unreadable = SignedLogHead {
+        signature: "not base64".into(),
+        ..signed
+    };
+    assert_eq!(
+        check_signed_head(&unreadable, &keys),
+        Err(LogError::BadSignature)
+    );
+}
+
+#[test]
+fn a_contract_runs_report_holds_a_shape_and_no_value() {
+    let answer = serde_json::json!({
+        "id": 42,
+        "customer": { "email": "ada@example.com", "name": "Ada Lovelace" },
+        "items": [{ "total": "9.99" }, { "total": null }, { "voided": true }],
+        "by_user": { "usr_123": "Ada", "bob@example.com": "Bob" },
+    });
+    let shape = shape_of(&answer);
+    let text = serde_json::to_string(&shape).unwrap();
+    for value in ["Ada", "ada@example", "9.99", "42", "usr_123", "bob@example"] {
+        assert!(!text.contains(value), "{value} left in {text}");
+    }
+    let of = |path: &str, kind: ShapeKind| ShapeMember {
+        path: path.into(),
+        kind,
+    };
+    for member in [
+        of("$", ShapeKind::Object),
+        of("$.id", ShapeKind::Number),
+        of("$.customer.email", ShapeKind::Text),
+        of("$.items", ShapeKind::List),
+        of("$.items[].total", ShapeKind::Text),
+        of("$.items[].total", ShapeKind::Null),
+        of("$.items[].voided", ShapeKind::Bool),
+        of("$.by_user.*", ShapeKind::Text),
+    ] {
+        assert!(shape.contains(&member), "{member:?} not in {shape:?}");
+    }
+
+    let registry = registry();
+    let served = registry.serve().expect("serves");
+    let report = DecodeFailure {
+        package: name("@acme/couriers"),
+        version: version("2.1.0"),
+        operation: "bookings.create".into(),
+        shape,
+    };
+    let answer = fetch(
+        Method::Post,
+        &format!("{}decode-failures", served.url()),
+        Some(serde_json::to_vec(&report).unwrap().as_slice()),
+    )
+    .expect("an answer");
+    assert_eq!(answer.status, 202);
+    let received: ReceivedReport = serde_json::from_slice(&answer.body).expect("an id");
+    assert!(!received.id.is_empty());
+    assert_eq!(registry.decode_failures(), [report]);
+}
+
+/// However many members an answer has, a report fits what the protocol
+/// takes.
+#[test]
+fn a_report_keeps_to_what_the_protocol_takes() {
+    let members: serde_json::Map<String, serde_json::Value> = (0..MOST_SHAPE_MEMBERS * 2)
+        .map(|n| (format!("m{}", "a".repeat(n % 60)), serde_json::json!(n)))
+        .chain((0..2000).map(|n| (format!("x{n}"), serde_json::json!(n))))
+        .collect();
+    let mut deep = serde_json::Value::Null;
+    for _ in 0..200 {
+        deep = serde_json::json!({ "deeper": deep });
+    }
+    let shape = shape_of(&serde_json::json!({ "wide": members, "deep": deep }));
+    assert!(shape.len() <= MOST_SHAPE_MEMBERS);
+    assert!(
+        shape
+            .iter()
+            .all(|member| member.path.len() <= LONGEST_SHAPE_PATH)
+    );
 }

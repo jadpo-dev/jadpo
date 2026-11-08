@@ -37,6 +37,7 @@ mod connections;
 mod constant;
 mod deployable;
 mod emails;
+mod export;
 mod flags;
 mod identity;
 mod policy;
@@ -462,6 +463,8 @@ pub struct Plan {
     /// Every audited entity's `history` (area 16; chunk B11), by its
     /// entity's key, in key order.
     histories: Vec<(Key, jadpo_std::audit::HistoryPlan)>,
+    /// Each person entity's `export` (area 15, "Export"), by entity key.
+    exports: Vec<(Key, jadpo_std::erasure::ExportPlan)>,
     /// What the runtime reads of the program (chunk 8.1a): the validator,
     /// shape and failure plans, the JSON table, every route with its
     /// codecs, the settings, subscribers, batches, schedules, purges,
@@ -832,6 +835,35 @@ impl Plan {
             .enumerate()
             .map(|(i, (key, _))| (key.clone(), i as u32))
             .collect();
+        // Each person entity's `export` (area 15, "Export").
+        // A deployable keeps only those its callables call, so it reads no
+        // retention setting it has no use for.
+        let exported: std::collections::HashSet<Key> = bodies
+            .iter()
+            .flat_map(|(_, body)| body.calls())
+            .filter_map(|(_, callee)| match callee {
+                jadpo_graph::body::Callee::Entity { entity, operation }
+                    if operation == "export" =>
+                {
+                    Some(entity.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        let keep_export = |key: &Key| pruning.is_none() || exported.contains(key);
+        let exports = export::plans(
+            db,
+            project,
+            &mut types,
+            &json_types,
+            &keep_export,
+            &setting_number,
+        );
+        let export_ids: HashMap<Key, u32> = exports
+            .iter()
+            .enumerate()
+            .map(|(i, (key, _))| (key.clone(), i as u32))
+            .collect();
         let gates = policy::gates(db, project, &mut types, &json_types, &|action| {
             pruning.is_none_or(|_| {
                 found
@@ -977,6 +1009,7 @@ impl Plan {
             let text = files.get(&file).map(String::as_str).unwrap_or_default();
             let entity = |key: &Key| entity_ids.get(key).copied();
             let history = |key: &Key| history_ids.get(key).copied();
+            let export = |key: &Key| export_ids.get(key).copied();
             let write = |site: u32| write_ids.get(&(key.clone(), site)).copied();
             let sites = sites::Decoder {
                 types: &mut types,
@@ -985,6 +1018,7 @@ impl Plan {
                 query: &query_number,
                 entity: &entity,
                 history: &history,
+                export: &export,
                 write: &write,
                 setting: &setting_of,
                 flag: &|key: &Key| flags::number(db, project, key.name()),
@@ -1510,6 +1544,7 @@ impl Plan {
             writes: writes.iter().map(|write| write.plan.clone()).collect(),
             calls,
             histories: histories.iter().map(|(_, plan)| plan.clone()).collect(),
+            exports: exports.iter().map(|(_, plan)| plan.clone()).collect(),
         };
         // What the boundary needs of each action and fixture.
         let actions = callables
@@ -1569,6 +1604,7 @@ impl Plan {
             entities,
             writes,
             histories,
+            exports,
             runtime: Arc::new(runtime),
             backfills,
             migration_json,
@@ -1838,6 +1874,11 @@ impl Plan {
     /// The `history` numbered `id` (area 16; chunk B11).
     pub fn history(&self, id: u32) -> Option<&jadpo_std::audit::HistoryPlan> {
         self.histories.get(id as usize).map(|(_, plan)| plan)
+    }
+
+    /// The `export` numbered `id` (area 15, "Export").
+    pub fn export(&self, id: u32) -> Option<&jadpo_std::erasure::ExportPlan> {
+        self.exports.get(id as usize).map(|(_, plan)| plan)
     }
 
     /// The `history` of the entity called `entity`, when it is audited.

@@ -207,9 +207,9 @@ impl Bind for Statement {
 /// The columns a statement selects, each a field of its entity once, with
 /// what it becomes.
 #[derive(Default)]
-struct Columns {
-    names: Vec<String>,
-    kinds: Vec<Column>,
+pub(crate) struct Columns {
+    pub(crate) names: Vec<String>,
+    pub(crate) kinds: Vec<Column>,
 }
 
 /// What a sealed field's values are bound to besides their record's `id`:
@@ -239,7 +239,7 @@ const EF_SEARCH: u64 = 40;
 
 impl Columns {
     /// The field's column, added once; a compound type's every column.
-    fn add(&mut self, field: &str, mut kind: Column) -> u32 {
+    pub(crate) fn add(&mut self, field: &str, mut kind: Column) -> u32 {
         // A sealed value is opened for its own record: its `id` is read
         // with it, whatever else the read keeps (area 15; chunk P9).
         if let Column::Sealed { id, .. } = &mut kind {
@@ -1249,7 +1249,7 @@ fn versions(entity: &EntityModel, names: &[String]) -> Option<RowVersions> {
 pub(crate) use jadpo_check::data::{field, sql_type as column_type};
 
 /// Fields' column names: each its born name, which survives a rename.
-fn borns(entity: &EntityModel, names: &[String]) -> Vec<String> {
+pub(crate) fn borns(entity: &EntityModel, names: &[String]) -> Vec<String> {
     names
         .iter()
         .map(|name| {

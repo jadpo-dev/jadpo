@@ -129,6 +129,7 @@ impl Loaded {
             translations: Some(&plan.translations),
             locales: plan.locales.as_ref(),
             calls: &plan.sites.calls,
+            exports: &plan.sites.exports,
             callables: Some(&plan.callables),
             runs: plan.runs,
             #[cfg(feature = "testing")]
@@ -194,6 +195,8 @@ pub struct Plan<'a> {
     /// (chunk 8.1f): the first `ai.generate` of a prompt is how a test's
     /// scripted answer to it is sent (chunk 8.1i).
     pub calls: &'a [CallPlan],
+    /// Each person entity's `export` (area 15, "Export").
+    pub exports: &'a [jadpo_std::erasure::ExportPlan],
     /// Each callable's number by its identity key, but a test's (chunk
     /// 8.1e): how the runtime finds one the plan names by its key.
     pub callables: Option<&'a BTreeMap<String, u32>>,
@@ -240,6 +243,7 @@ impl Plan<'static> {
         translations: None,
         locales: None,
         calls: &[],
+        exports: &[],
         callables: None,
         runs: Runs::EVERYTHING,
         #[cfg(feature = "testing")]

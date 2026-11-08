@@ -217,7 +217,9 @@ pub fn scopes(db: &dyn Db, project: Project) -> Vec<String> {
     // against the package's locales and the app's root file
     // ([`package_scopes`]).
     for symbol in all_symbols(symbols(db, project)) {
-        if subject_kind(symbol) == Some(Kind::Message)
+        // An email's subject is its member in the domain's language files,
+        // so an email needs them as a message does.
+        if matches!(subject_kind(symbol), Some(Kind::Message | Kind::Email))
             && symbol.ownership.package().is_none()
             && let Some(scope) = scope_of(&symbol.ownership)
         {

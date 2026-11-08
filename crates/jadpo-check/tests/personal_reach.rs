@@ -698,7 +698,16 @@ const NO_ROOM: (&str, &str) = (
     "/// The store is full.\ntype NoRoom = Failure {\n    kind: FailureKind.unavailable\n}\n",
 );
 
-const MAIL_APP: &str = "application {\n    display_name: \"Pay\"\n    connections: {\n        main: {\n            driver: Driver.postgres\n        }\n        mail: {\n            driver: Driver.smtp\n            host: \"smtp.pay.example\"\n        }\n        pay: {\n            package: AcmePay.v1\n            domains: [billing]\n            credential: config.pay_api_key\n            environment: config.pay_environment\n        }\n    }\n    events: {\n        store: main\n    }\n    email: {\n        connection: mail\n        from: \"hello@pay.example\"\n    }\n}\n";
+const MAIL_APP: &str = "application {\n    display_name: \"Pay\"\n    connections: {\n        main: {\n            driver: Driver.postgres\n        }\n        mail: {\n            driver: Driver.smtp\n            host: \"smtp.pay.example\"\n        }\n        pay: {\n            package: AcmePay.v1\n            domains: [billing]\n            credential: config.pay_api_key\n            environment: config.pay_environment\n        }\n    }\n    events: {\n        store: main\n    }\n    email: {\n        connection: mail\n        from: \"hello@pay.example\"\n    }\n}\n\nlocales {\n    default: Locale.en_gb\n    supported: [Locale.en_gb]\n}\n";
+
+const WELCOME_SUBJECT: (&str, &str) = (
+    "domains/billing/translations/en_gb.jadpo",
+    "translations {\n    welcome_email: \"Welcome\"\n}\n",
+);
+const NOTICE_SUBJECT: (&str, &str) = (
+    "domains/billing/translations/en_gb.jadpo",
+    "translations {\n    notice_email: \"Notice\"\n}\n",
+);
 
 /// An email goes through the connection `email:` names, with what its
 /// fields were given and its own marks.
@@ -722,7 +731,14 @@ fn an_email_goes_through_the_connection_email_names() {
     );
     let (db, project) = checked(
         PLAIN_REQUEST,
-        &[("app.jadpo", MAIL_APP), welcome, html, txt, welcomes],
+        &[
+            ("app.jadpo", MAIL_APP),
+            welcome,
+            html,
+            txt,
+            welcomes,
+            WELCOME_SUBJECT,
+        ],
     );
     assert_eq!(
         clean_rows(&db, project),
@@ -751,7 +767,14 @@ fn an_email_s_own_mark_counts() {
     );
     let (db, project) = checked(
         PLAIN_REQUEST,
-        &[("app.jadpo", MAIL_APP), notice, html, txt, notices],
+        &[
+            ("app.jadpo", MAIL_APP),
+            notice,
+            html,
+            txt,
+            notices,
+            NOTICE_SUBJECT,
+        ],
     );
     // The address it goes to is personal data too (chunk A20).
     assert_eq!(
@@ -768,7 +791,14 @@ fn an_email_s_own_mark_counts() {
     );
     let (db, project) = checked(
         PLAIN_REQUEST,
-        &[("app.jadpo", MAIL_APP), notice, html, txt, passed],
+        &[
+            ("app.jadpo", MAIL_APP),
+            notice,
+            html,
+            txt,
+            passed,
+            NOTICE_SUBJECT,
+        ],
     );
     assert_eq!(
         clean_rows(&db, project),

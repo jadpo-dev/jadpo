@@ -176,22 +176,19 @@ The application itself is built in the jadpo.dev repository against
 [the registry protocol](language/11-integrations.md#the-registry-protocol);
 these chunks are what is left on either side.
 
-- [ ] **R10 What the registry asks of `jadpo`** `opus · high`: jadpo-website's
-  `docs/registry/plan.md`, "Asks for Jadpo"; area 11, "The verifier" and
-  "What publishing requires". A verifier image for pre-releases, with what
-  `jadpo fix` would change in its result, so compatibility runs cover
-  pre-releases; `facts.last_contract_run` filled from a package's newest
-  recording, which REG-36 waits on; a release allowed its `NOTICE` file; an
-  `EmailMessage` with no subject refused by `jadpo check` rather than failing
-  at run time; `imported:` keeping a `renamed:` map that reimporting applies;
-  a contract run's undecodable shape reported to the registry (the protocol's
-  endpoint and the runtime's send); and signed log heads, with keys held as
-  data and `crypto.sign`. Done when each has its test and the registry's list
-  no longer names it.
+- [ ] **R10b What an app's contract run sends** `opus · high` after K4: area
+  11, "What a release shows" and "The registry protocol". The app's opt-in,
+  and `jadpo test --kind contract` reporting an answer a package can no longer
+  decode to `POST decode-failures` with `jadpo_registry::report::shape_of`.
+  Done when a contract run against a local registry sends the shape and no
+  value, and the setting that opts in is on its area page.
 - [ ] **R11 What the registry application has left** **needs a maintainer**
   to start the jadpo.dev session, after R10: area 14, "Suggestions" and "The
   suggestions report"; `docs/registry/tasks.md`. `POST fingerprints/query`
   served, so `jadpo suggest`'s scan stops saying `registry not reached`;
+  `GET log/signed-head`, signing with a key held as data, its public key added
+  to `protocol::PUBLIC_KEYS`; `POST decode-failures` kept and shown; `fixes`
+  and the `pre-release` verifier image used in compatibility runs;
   REG-35 (publishers verified by a domain they prove, shown by `jadpo package
   add`); REG-36 (the last contract run on a package's page). Sign-up beyond
   the short list waits on terms and a privacy notice.
@@ -224,16 +221,6 @@ work below (Richard, 2026-11-08).
    (area 19, "Encrypted fields" and "Language gaps this page depends on")
    and `crypto.verify_totp`: split by size (2026-10-31) into P1 to P12,
    taken in order.
-   - [ ] **P5 Export** `opus · high` after P4c and V5: area 15, "Export"
-     and "Who may erase and export"; area 13's generated test.
-     `User.export(id)` as a `PersonalDataExport`: the person's record,
-     every record that belongs to them and those erasure deletes with
-     them, as JSON, one list per entity
-     with the API's field names, credentials left out, a `File` field as
-     a link, with each kind's retention and the companies that receive
-     it, for a caller with read on the person's record; and the test
-     generated for each person entity that after `erase`, `export`
-     returns nothing. Done when export tests pass on both executors.
    - [ ] **P6 Erasure at providers** `opus · high` after P4c and V6: area
      15, "Erasure at providers"; area 11, "Erasure at providers". Each
      connection's key copied into `PersonErased` before the person's
@@ -247,7 +234,7 @@ work below (Richard, 2026-11-08).
      erasing a person sees each fake provider's erasure called once,
      after the commit.
    - [ ] **P7 Marked fields in logs and access records** `opus · high`
-     after P5: area 15, "Marked fields in logs", "Sensitive fields" and
+     area 15, "Marked fields in logs", "Sensitive fields" and
      "Access records"; area 4, "Logging"; area 19's standard types that
      are personal data, treated as marked there. Every marked field
      logged as a keyed hash of its canonical text, whatever its type and
@@ -282,7 +269,7 @@ work below (Richard, 2026-11-08).
      SHA-1, RFC 6238's default, and points two-factor codes at a package.
      Done when each is checked against its standard's known answers on
      both executors and built for WebAssembly.
-   - [ ] **P11 Data requests: the routes** `opus · xhigh` after P5 and
+   - [ ] **P11 Data requests: the routes** `opus · xhigh` after
      P7: area 15, "Data requests" ("Self-service by email", "Signed in",
      "Made by staff", "Protection" and "Changing the routes"); area 7,
      "Generated routes"; area 16, "Rate limits". `privacy:` in
@@ -322,7 +309,9 @@ work below (Richard, 2026-11-08).
      `Content-Disposition: attachment` but for the image allow-list,
      `nosniff` and `sandbox`, read in fixed windows. Done when route
      tests download a file whole and by range on both executors, and an
-     expired or altered link is refused.
+     expired or altered link is refused. Lifts `User.export`'s
+     `toolchain.not_built_yet` on a person reaching a `File` field: a
+     `File` in `PersonalDataExport` becomes this signed link.
    - [ ] **B5 Uploads** `opus · xhigh`: area 16, "Uploading", "Compressed
      uploads" and "The disk driver" (uploads); area 2, `FileUpload` and
      `UploadSlot`; area 9, the slot's grant. `Entity.field_upload()`
@@ -573,7 +562,7 @@ work below (Richard, 2026-11-08).
       "What is built". Every route refusing bad input with `{ field, rule }`, each
       declared failure's envelope and the rest of that list, generated, run with
       the project's and shown under the route they test. Area 15's after-`erase`
-      test is P5's.
+      test for a person entity no test erases needs W1's data builders; every erasure a test makes is already checked.
     - [ ] **W3 What a failed test reports** `opus · high` after item 3's trace:
       area 13, "What a failed test reports". The trace, fakes, kept database and
       clock in the report.

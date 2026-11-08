@@ -262,6 +262,58 @@ fn translations_need_the_applications_locales() {
     );
 }
 
+const WELCOME_EMAIL: &str = "/// Sent when someone signs up.\ntype WelcomeEmail = EmailMessage {\n    display_name: Text\n}\n";
+
+/// An email's subject is its member in its domain's language files, so an
+/// email is translated text whether or not a `Message` sits beside it.
+#[test]
+fn an_email_needs_the_applications_locales_for_its_subject() {
+    let files: Files = vec![
+        ("app.jadpo".to_string(), "application {}\n".to_string()),
+        (
+            "domains/accounts/emails/welcome_email.jadpo".to_string(),
+            WELCOME_EMAIL.to_string(),
+        ),
+        (
+            "domains/accounts/emails/welcome_email.txt".to_string(),
+            "Hello {{ display_name }}.\n".to_string(),
+        ),
+    ];
+    let found = diagnostics(&files);
+    let required: Vec<&Diagnostic> = found
+        .iter()
+        .filter(|d| d.rule.id == "translation.locales_required")
+        .collect();
+    assert_eq!(required.len(), 1, "{found:?}");
+    let label = required[0].primary.as_ref().expect("a label");
+    assert_eq!(
+        label.span.path,
+        "domains/accounts/emails/welcome_email.jadpo"
+    );
+}
+
+/// With locales declared, a domain whose only translated thing is an email
+/// still has a language file to write for each supported locale.
+#[test]
+fn an_email_in_a_domain_with_no_language_file_is_refused() {
+    let files: Files = vec![
+        ("app.jadpo".to_string(), APP.to_string()),
+        (
+            "domains/accounts/emails/welcome_email.jadpo".to_string(),
+            WELCOME_EMAIL.to_string(),
+        ),
+        (
+            "domains/accounts/emails/welcome_email.txt".to_string(),
+            "Hello {{ display_name }}.\n".to_string(),
+        ),
+    ];
+    let found = rules_of(&files);
+    assert!(
+        found.contains(&"translation.file_missing".to_string()),
+        "{found:?}"
+    );
+}
+
 #[test]
 fn a_second_translations_declaration_in_a_file_needs_a_file_of_its_own() {
     let en = format!("{EN}\n{EN}");

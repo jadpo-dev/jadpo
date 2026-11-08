@@ -115,6 +115,7 @@ pub mod embed;
 mod env;
 pub mod erasure;
 mod executor;
+pub mod export;
 mod failure;
 #[cfg(feature = "testing")]
 pub mod fakes;

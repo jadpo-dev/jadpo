@@ -79,7 +79,9 @@ pub(super) fn does(node: &Node) -> Does<'_> {
             | Callee::PackageAction { action: key, .. } => Does::Joins(key),
             // An entity's other operations are writes, built or not.
             Callee::Entity { operation, .. }
-                if operation != "get" && operation != jadpo_std::audit::HISTORY =>
+                if operation != "get"
+                    && operation != jadpo_std::audit::HISTORY
+                    && operation != crate::resolve::EXPORT =>
             {
                 Does::Writes
             }
