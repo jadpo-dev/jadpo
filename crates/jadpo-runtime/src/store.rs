@@ -292,6 +292,7 @@ fn concealing(mut failure: Failure, concealed: bool) -> Failure {
         failure
             .internal
             .push(("concealed_by".to_string(), Value::text("policy")));
+        failure.shown.push("concealed_by".to_string());
     }
     failure
 }

@@ -126,6 +126,7 @@ mod host;
 pub mod http;
 pub mod lease;
 mod limits;
+pub mod logging;
 mod migrate;
 pub mod operators;
 pub mod outbox;

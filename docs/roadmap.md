@@ -241,22 +241,7 @@ work below (Richard, 2026-11-08).
    (area 19, "Encrypted fields" and "Language gaps this page depends on")
    and `crypto.verify_totp`: split by size (2026-10-31) into P1 to P12,
    taken in order.
-   - [ ] **P7 Marked fields in logs and access records** `opus · high`
-     area 15, "Marked fields in logs", "Sensitive fields" and
-     "Access records"; area 4, "Logging"; area 19's standard types that
-     are personal data, treated as marked there. Every marked field
-     logged as a keyed hash of its canonical text, whatever its type and
-     in a failure's context too, the same on both executors; every
-     export, erasure and read of a sensitive field recorded, without
-     values, as a long-kept log event; and an audited entity's marked
-     field kept in its history as that hash, lifting B11's
-     `toolchain.not_built_yet` (area 16, "What the audit trail doesn't
-     keep yet"). The hosts' `failure.rejected` event is built here, since
-     no failure is logged yet (area 4, "Logging"), and with the access
-     records a field of a sensitive category becomes searchable (area
-     16, "Search and personal data"). Done when log and access-record
-     tests show both on both executors.
-   - [ ] **P8 The personal-data report** `opus · high` after V5 and P7:
+   - [ ] **P8 The personal-data report** `opus · high` after V5:
      area 15, "The personal-data report", "Where data is stored", "What
      this does not cover" and "What the compiler checks" (a marked field
      nothing reads, declinable). V5 starts the report with the
@@ -277,8 +262,8 @@ work below (Richard, 2026-11-08).
      SHA-1, RFC 6238's default, and points two-factor codes at a package.
      Done when each is checked against its standard's known answers on
      both executors and built for WebAssembly.
-   - [ ] **P11 Data requests: the routes** `opus · xhigh` after
-     P7: area 15, "Data requests" ("Self-service by email", "Signed in",
+   - [ ] **P11 Data requests: the routes** `opus · xhigh`:
+     area 15, "Data requests" ("Self-service by email", "Signed in",
      "Made by staff", "Protection" and "Changing the routes"); area 7,
      "Generated routes"; area 16, "Rate limits". `privacy:` in
      `application { }`; `POST /privacy/requests`, `/confirm` and
@@ -366,13 +351,12 @@ work below (Richard, 2026-11-08).
      settled for flags (L3). Done when an erased person leaves no row in
      either table, on both executors.
    - [ ] **B16 What the audit trail doesn't keep yet** `opus · xhigh`
-     after P7: area 16, "What the audit trail doesn't keep yet"; area 15,
+     area 16, "What the audit trail doesn't keep yet"; area 15,
      "What is built". A `File` field, a field with its own `retention:`, a
      person's record removed other than by erasure, a `delete` whose
      cascade changes an audited record, and an erasure that keeps an
      audited record. The pages don't yet say how each is kept or removed,
-     so **needs a maintainer** for that decision first; P7 lifts only the
-     marked-field case.
+     so **needs a maintainer** for that decision first.
    - [ ] **B17 Rate limits in the documents** `opus · high`: area 16, "What
      is built"; area 7, "The `x-jadpo` fields". A generated route's own
      limits in OpenAPI's `x-jadpo-rate-limit` and `jadpo routes`, and the

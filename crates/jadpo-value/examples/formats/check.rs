@@ -148,6 +148,7 @@ fn table() -> Table {
             absent,
             none_left_out: false,
             section: None,
+            hashed: false,
             wire: None,
         };
     let delivery = ShapePlan {

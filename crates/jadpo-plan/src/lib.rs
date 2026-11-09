@@ -719,7 +719,10 @@ impl Plan {
                     .map(|home| home.folder)
                     .collect(),
             )
-            .with_sign_in_providers(jadpo_check::sign_in_providers::declared(db, project).clone());
+            .with_sign_in_providers(jadpo_check::sign_in_providers::declared(db, project).clone())
+            .with_hashed_failure_fields(
+                jadpo_check::policy::flow::exits::failure_fields_holding(db, project).clone(),
+            );
         if !backfills.is_empty() {
             let lookup = jadpo_check::lookups::Lookup::new(db, project);
             for ((backfill, (entity, field)), reads) in backfills

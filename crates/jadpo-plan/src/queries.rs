@@ -37,7 +37,7 @@ use jadpo_std::Op;
 use jadpo_std::read::{
     Cardinality, Check, Column, EnvelopePart, Field, FieldRules, IncludeRead, IncludeShape,
     MissingPlan, MissingValue, Operand, PageRead, Param, ReadPlan, Recheck, RecheckOrder, Record,
-    RowVersions, Select, Size, Source, SqlType,
+    RowVersions, Select, SensitiveRead, Size, Source, SqlType,
 };
 
 use crate::constant::Constant;
@@ -288,6 +288,13 @@ impl Planner<'_> {
         let mut columns = Columns::default();
         // The record's own columns first, in its type's order.
         let mut record = self.record(entity, &query.element, &query.includes, &mut columns)?;
+        // An access record for each record a read of a sensitive field
+        // reads (area 15, "Access records"), a search's words among them.
+        let sensitive = self.sensitive_read(
+            entity,
+            &mut columns,
+            !model::searches(&query.filter).is_empty(),
+        );
         // A map layer (chunk 5.5u8): each record a `Feature`, its geometry
         // the field `geometry:` names and its properties the record.
         if let Some(geometry) = &query.geometry {
@@ -594,6 +601,7 @@ impl Planner<'_> {
             record,
             includes,
             versions: versions(entity, &columns.names),
+            sensitive,
         };
         let page = if page {
             let size = match (&query.limit, size) {
@@ -714,6 +722,7 @@ impl Planner<'_> {
             let matched = field(target, match_field)?;
             columns.add(&matched.name, self.column(target, matched)?);
             let record = self.record(target, &include.element, &include.includes, &mut columns)?;
+            let sensitive = self.sensitive_read(target, &mut columns, false);
             let (sql, unpoliced) = match include.kind {
                 IncludeKind::Parent | IncludeKind::Child => {
                     let mut conditions = vec![text::any(&matched.born, &keys)];
@@ -787,10 +796,84 @@ impl Planner<'_> {
                     record,
                     includes,
                     versions,
+                    sensitive,
                 },
             });
         }
         Some(out)
+    }
+
+    /// The category of personal data `entity`'s field `field` is, marked or
+    /// by its type (area 15, "Marking personal fields").
+    pub(crate) fn personal_category(&self, entity: &EntityModel, field: &str) -> Option<String> {
+        let marks = jadpo_check::ai_personal::marks(self.lookup.db(), self.lookup.project());
+        marks
+            .mark(&entity.name, field)
+            .and_then(|mark| mark.category.clone())
+            .or_else(|| {
+                let model = entity.fields.iter().find(|f| f.name == field)?;
+                jadpo_check::ai_personal::standard_personal(self.lookup, &model.ty)
+                    .first()
+                    .map(|(_, category)| category.clone())
+            })
+    }
+
+    /// What an access record says of a read of `entity` that selects
+    /// `columns`, each of its sensitive fields among them, and, for a
+    /// search, those its words come from (area 15, "Access records"): the
+    /// columns holding the record's `id` and its person's added if they
+    /// aren't selected. `None` when it reads none.
+    pub(crate) fn sensitive_read(
+        &mut self,
+        entity: &EntityModel,
+        columns: &mut Columns,
+        by_words: bool,
+    ) -> Option<SensitiveRead> {
+        let sensitive = |planner: &Self, field: &str| {
+            planner
+                .personal_category(entity, field)
+                .is_some_and(|category| jadpo_check::ai_personal::is_sensitive(&category))
+        };
+        let mut fields: Vec<String> = entity
+            .fields
+            .iter()
+            .filter(|field| columns.names.contains(&field.name) && sensitive(self, &field.name))
+            .map(|field| field.name.clone())
+            .collect();
+        if by_words && let Some(search) = &entity.search {
+            for field in &search.fields {
+                if !fields.contains(field) && sensitive(self, field) {
+                    fields.push(field.clone());
+                }
+            }
+        }
+        if fields.is_empty() {
+            return None;
+        }
+        let id = field(entity, "id")?;
+        let id = columns.add(&id.name, self.column(entity, id)?);
+        // Whose it is: the person's own record, or the reference it holds
+        // to a person's.
+        let person = if entity.person {
+            Some(id)
+        } else {
+            match entity.fields.iter().find(|field| {
+                field
+                    .reference
+                    .as_ref()
+                    .and_then(|reference| self.model.entity(&reference.target))
+                    .is_some_and(|target| target.person)
+            }) {
+                Some(owner) => Some(columns.add(&owner.name, self.column(entity, owner)?)),
+                None => None,
+            }
+        };
+        Some(SensitiveRead {
+            entity: entity.name.clone(),
+            fields,
+            id,
+            person,
+        })
     }
 
     /// The rules the field of each of `entity`'s columns `names`, read as
@@ -1111,6 +1194,7 @@ impl Planner<'_> {
             let at = columns.add(&field.name, kind);
             fields.push((field.name.clone(), Field::Column(at)));
         }
+        let sensitive = self.sensitive_read(entity, &mut columns, false);
         let mut statement = Statement::default();
         let id = statement.param(
             Source::Arg {
@@ -1159,6 +1243,7 @@ impl Planner<'_> {
                 },
                 includes: Vec::new(),
                 versions,
+                sensitive,
             },
             page: None,
             missing: not_found,

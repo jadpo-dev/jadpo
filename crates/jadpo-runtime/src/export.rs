@@ -22,6 +22,13 @@ pub(crate) async fn export(
     args: &[Value],
     site: u32,
 ) -> Result<Value, Interrupt> {
+    let person = args
+        .first()
+        .and_then(|id| match jadpo_value::standard::from(id) {
+            Ok(Value::Text(text)) => Some(text.to_string()),
+            _ => None,
+        });
+    crate::logging::exported(ctx, &plan.entity, person.as_deref());
     let found = read_detached(ctx, &plan.access, json, args, site).await?;
     if !matches!(found, Found::Value(Value::Record(_))) {
         return Ok(built(nothing(), 0));

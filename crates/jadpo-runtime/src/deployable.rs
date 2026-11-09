@@ -121,9 +121,23 @@ impl Log {
         (self.sink)(&self.line(event, fields));
     }
 
+    /// Logs `event` with `fields` already put together.
+    pub fn event_of(&self, event: &str, fields: Map<String, Value>) {
+        (self.sink)(&self.line_of(event, fields));
+    }
+
     /// `event` with the stamp, then `fields`, as one line of JSON, its
     /// keys sorted.
     pub fn line<const N: usize>(&self, event: &str, fields: [(&str, Value); N]) -> String {
+        let mut map = Map::new();
+        for (key, value) in fields {
+            map.insert(key.into(), value);
+        }
+        self.line_of(event, map)
+    }
+
+    /// [`Self::line`], of `fields` already put together.
+    pub fn line_of(&self, event: &str, mut fields: Map<String, Value>) -> String {
         let mut out = Map::new();
         out.insert("event".into(), event.into());
         out.insert("build".into(), self.stamp.build.into());
@@ -135,9 +149,7 @@ impl Log {
         out.insert("compiler".into(), self.stamp.compiler.into());
         out.insert("deployable".into(), self.stamp.deployable.into());
         out.insert("target".into(), self.stamp.target.into());
-        for (key, value) in fields {
-            out.insert(key.into(), value);
-        }
+        out.append(&mut fields);
         Value::Object(out).to_string()
     }
 }

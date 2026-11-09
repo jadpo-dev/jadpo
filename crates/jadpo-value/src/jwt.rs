@@ -1284,6 +1284,7 @@ mod tests {
             absent: None,
             none_left_out: false,
             section: None,
+            hashed: false,
             wire: None,
         };
         let shapes = [crate::shape::Shape::new(&ShapePlan {

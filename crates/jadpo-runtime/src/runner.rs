@@ -1025,6 +1025,9 @@ async fn attempt(
         crate::lease::release(database, &lease, now).await;
         return Some((outcome, GIVEN_BACK));
     }
+    if let Outcome::Failed(failure) = &outcome {
+        crate::logging::rejected(ctx, failure, None);
+    }
     let after = outbox::after(&outcome);
     let after = if acted { after.once_acted() } else { after };
     let state = match after {
@@ -1712,6 +1715,7 @@ impl<'c, 'p> Batch<'c, 'p> {
             return Err(StoreError::ConcurrentChange);
         }
         transaction.commit().await?;
+        crate::boundary::confirm_erased(ctx, boundary.take_erased());
         crate::boundary::committed(ctx, boundary.take_sealed());
         Ok(())
     }

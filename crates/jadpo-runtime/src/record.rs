@@ -86,6 +86,9 @@ pub enum Entry {
     },
     /// How the invocation ended ([`outcome`]).
     Outcome(String),
+    /// A log event, one JSON object, its keys sorted (area 4, "Logging"):
+    /// what a deployable would log, compared between the executors.
+    Logged(String),
     /// One span of what it did ([`spans`]; chunk 10.3c): its kind, where
     /// it is, how many records it gave or wrote, and how it ended. Never
     /// its times, which no seed decides.
@@ -118,6 +121,11 @@ pub enum Ran {
 }
 
 impl Record {
+    /// The key its digests and a test's log hashes are made with.
+    pub(crate) fn key(&self) -> &[u8; 32] {
+        &self.key
+    }
+
     /// An empty record whose digests are keyed with `key`.
     pub fn new(key: [u8; 32]) -> Record {
         Record {
@@ -271,6 +279,20 @@ fn is_uuid(text: &[u8]) -> bool {
         })
 }
 
+/// Keeps a log event in `record`, when the run keeps one.
+pub(crate) fn logged(
+    record: Option<&Record>,
+    event: &str,
+    fields: serde_json::Map<String, serde_json::Value>,
+) {
+    let Some(record) = record else {
+        return;
+    };
+    let mut line = fields;
+    line.insert("event".to_string(), event.into());
+    record.push(Entry::Logged(serde_json::Value::Object(line).to_string()));
+}
+
 impl Entry {
     /// The entry as one line of the record's canonical form.
     pub fn line(&self) -> String {
@@ -296,6 +318,7 @@ impl Entry {
                 format!("{ended} | {ran}")
             }
             Entry::Event { event, payload } => format!("event {event} {}", one_line(payload)),
+            Entry::Logged(line) => format!("log {line}"),
             Entry::Call {
                 connection,
                 operation,

@@ -97,6 +97,11 @@ pub struct FieldPlan {
     pub none_left_out: bool,
     /// A failure field's section.
     pub section: Option<Section>,
+    /// A failure's internal field that holds personal data, whatever its
+    /// type: its log event keeps it only as a keyed hash (area 15, "Marked
+    /// fields in logs").
+    #[serde(default)]
+    pub hashed: bool,
     /// A provider package's field's spelling on the wire, its
     /// `wire_name:` (area 11, chunk 7.2c): its member's name in JSON.
     pub wire: Option<String>,

@@ -205,6 +205,7 @@ fn a_feature_collection_round_trips_through_json_as_compiled_code_runs_it() {
             omittable: false,
             none_left_out: false,
             section: None,
+            hashed: false,
             wire: None,
         }],
     };

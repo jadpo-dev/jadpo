@@ -103,6 +103,7 @@ pub(crate) async fn answer(
     let answered = match outcome {
         Outcome::Value(answered) => answered,
         Outcome::Failed(declared) => {
+            crate::logging::rejected(ctx, &declared, None);
             release(database, &key, &at).await;
             if declared.kind.as_deref() == Some("unavailable") {
                 return failure(UNAVAILABLE, request_id, None);

@@ -87,6 +87,7 @@ mod locales;
 mod lsp;
 mod magic_links;
 mod manifest;
+mod marked_logs;
 mod migrate;
 mod new;
 mod operation_conditions;

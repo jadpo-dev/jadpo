@@ -1801,6 +1801,9 @@ fn answer(
     request_id: &str,
     outcome: Outcome,
 ) -> Response {
+    if let Outcome::Failed(failure) = &outcome {
+        crate::logging::rejected(ctx, failure, Some(&route.key));
+    }
     let outcome = sent_as_links(ctx, route, outcome);
     match outcome {
         // Raw bytes for a body (area 7, "Sending raw bytes"; chunk G3).

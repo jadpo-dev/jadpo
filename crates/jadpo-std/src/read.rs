@@ -619,6 +619,21 @@ pub struct Select {
     /// are checked unchanged when a write follows an outside call (area 6,
     /// "Outside calls hold no transaction"; chunk 7.4).
     pub versions: Option<RowVersions>,
+    /// For a read of a sensitive field: each record it reads is an access
+    /// record (area 15, "Access records").
+    #[serde(default)]
+    pub sensitive: Option<SensitiveRead>,
+}
+
+/// What an access record says of each record a read of a sensitive field
+/// reads: the entity, the sensitive fields it reads, and the columns holding
+/// the record's `id` and, when the record belongs to a person, their `id`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SensitiveRead {
+    pub entity: String,
+    pub fields: Vec<String>,
+    pub id: u32,
+    pub person: Option<u32>,
 }
 
 /// What a read keeps of the rows it loads while its action's transaction

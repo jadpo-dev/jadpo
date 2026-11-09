@@ -209,6 +209,10 @@ fn start(deployable: &Deployable, log: &Log) -> Result<(), Vec<Value>> {
             ("workers", Value::from(workers)),
             ("trigger", Value::from(trigger.name())),
             ("unbuilt", self::unbuilt(&unbuilt)),
+            (
+                "log_hash_key",
+                Value::from(jadpo_runtime::logging::key_source(&NativeHost::new())),
+            ),
         ],
     );
     while !stop.load(Ordering::SeqCst) {
@@ -278,7 +282,7 @@ fn tick(deployable: &Deployable, log: &Log) -> Result<ExitCode, Vec<Value>> {
         return Err(stores.problems);
     }
     let logged = Rc::new(Logged::new(*log, drivers.unbuilt()));
-    let host = Rc::new(NativeHost::new().with_drivers(drivers));
+    let host = Rc::new(NativeHost::new().with_drivers(drivers).with_log(*log));
     // A tick is a start like any other: the scheduler's next run tries again.
     let replay = jadpo_runtime::deployable::replay_erasures(&*host, program.plan(), log);
     match unless_stopped(&runtime, &stop, replay) {
@@ -361,7 +365,7 @@ fn handlers(
         };
         let logged = Rc::new(Logged::new(log, drivers.unbuilt()));
         let program: Rc<dyn Executor> = Rc::new(program);
-        let host = worker.host().with_drivers(drivers);
+        let host = worker.host().with_drivers(drivers).with_log(log);
         let handler = AppHandler::new(host, move || Rc::clone(&program)).observed_by(logged);
         Box::new(if timed { handler } else { handler.untimed() })
     })
@@ -458,7 +462,7 @@ fn replay_erasures(program: &Program, stop: &AtomicBool, log: &Log) -> Result<()
         ),
         None => Drivers::default(),
     };
-    let host = NativeHost::new().with_drivers(drivers);
+    let host = NativeHost::new().with_drivers(drivers).with_log(*log);
     let mut wait = Duration::from_secs(1);
     let mut said = false;
     loop {

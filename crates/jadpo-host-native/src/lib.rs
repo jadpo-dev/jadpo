@@ -293,6 +293,9 @@ pub struct NativeHost {
     background: Rc<tracked::Tracked>,
     /// What the runtime fetches on its own account (chunk 7.7b).
     outbound: fetch::Outward,
+    /// The deployable's log, for what the runtime records as it runs
+    /// (area 4, "Logging"); none for `jadpo dev` and a test.
+    log: Option<jadpo_runtime::deployable::Log>,
     /// `jadpo dev`'s local issuer, in the configured external-token
     /// issuer's place (area 8, "External tokens in tests and `jadpo dev`";
     /// chunk A3). Only with `testing`: a deployable has none.
@@ -348,6 +351,13 @@ impl NativeHost {
     /// dev` run on, `jadpo dev` with its fakes in front.
     pub fn with_drivers(mut self, drivers: Drivers) -> NativeHost {
         self.drivers = drivers;
+        self
+    }
+
+    /// Logs to `log` what the runtime records as it runs: a deployable's
+    /// host.
+    pub fn with_log(mut self, log: jadpo_runtime::deployable::Log) -> NativeHost {
+        self.log = Some(log);
         self
     }
 
@@ -499,6 +509,12 @@ impl Host for NativeHost {
     /// The process's environment.
     fn variable(&self, name: &str) -> Option<String> {
         std::env::var(name).ok()
+    }
+
+    fn log(&self, event: &str, fields: serde_json::Map<String, serde_json::Value>) {
+        if let Some(log) = &self.log {
+            log.event_of(event, fields);
+        }
     }
 
     /// The operating system's cryptographic generator, through getrandom:

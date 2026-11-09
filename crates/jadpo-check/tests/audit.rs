@@ -3,9 +3,9 @@
 //! `jadpo_audit` table in its own store, read back with the generated
 //! `Entity.history(id)`. Its retention is a `Duration` setting counted
 //! from each entry's own time, applied by the entity's purge schedule.
-//! What the history can't yet keep or remove soundly is
-//! `toolchain.not_built_yet` where it is written: a personal value, a
-//! `File`, a field with a retention of its own, a person's record that
+//! A personal value is kept as a keyed hash. What the history can't yet
+//! keep or remove soundly is `toolchain.not_built_yet` where it is written:
+//! a `File`, a field with a retention of its own, a person's record that
 //! something other than erasure removes, a change a cascade makes, and an
 //! erasure that keeps an audited record.
 
@@ -204,33 +204,32 @@ fn an_audits_period_is_a_duration_setting() {
     );
 }
 
+/// A personal value is kept in a history as a keyed hash, so an entity
+/// holding one may be audited (area 16, "What the audit trail doesn't
+/// keep yet").
 #[test]
-fn a_personal_value_is_not_kept_in_a_history_yet() {
-    refused_once(
-        &INVOICE.replace(
-            "    note: Note?\n",
-            "    note: Note?\n    payer: Note {\n        personal: PersonalData.identifying\n    }\n",
-        )
-        .replace("    audit: {", "    person: true\n\n    audit: {"),
-        "toolchain.not_built_yet",
-        "Auditing `Invoice` isn't built yet",
-    );
-    // A standard type that is personal data whatever holds it, as logs
-    // treat it.
-    refused_once(
-        &INVOICE.replace(
+fn a_personal_value_is_kept_in_a_history_as_a_hash() {
+    for source in [
+        INVOICE
+            .replace(
+                "    note: Note?\n",
+                "    note: Note?\n    payer: Note {\n        personal: PersonalData.identifying\n    }\n",
+            )
+            .replace("    audit: {", "    person: true\n\n    audit: {"),
+        // A standard type that is personal data whatever holds it.
+        INVOICE.replace(
             "    note: Note?\n",
             "    note: Note?\n    payer_phone: PhoneNumber\n",
         ),
-        "toolchain.not_built_yet",
-        "Auditing `Invoice` isn't built yet",
-    );
-    // An email address is one, with nothing marking it.
-    refused_once(
-        &INVOICE.replace("    note: Note?\n", "    note: Note?\n    payer: Email\n"),
-        "toolchain.not_built_yet",
-        "Auditing `Invoice` isn't built yet",
-    );
+        // An email address is one, with nothing marking it.
+        INVOICE.replace("    note: Note?\n", "    note: Note?\n    payer: Email\n"),
+    ] {
+        let found = problems(&source);
+        assert!(
+            found.iter().all(|problem| !problem.contains("Auditing `Invoice`")),
+            "{found:?}"
+        );
+    }
 }
 
 #[test]

@@ -79,7 +79,9 @@ async fn consume(
     let Some(isolate) = isolate(deployable, &host) else {
         return retried(&messages, &pushed, None, &name, NOT_STARTED);
     };
-    let host = host.with_drivers_built_by(drivers(&isolate.program));
+    let host = host
+        .with_drivers_built_by(drivers(&isolate.program))
+        .with_log(isolate.log);
     if !ready(deployable, &host, &isolate).await {
         return retried(&messages, &pushed, Some(&isolate.log), &name, NOT_STARTED);
     }

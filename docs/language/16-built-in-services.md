@@ -1457,15 +1457,16 @@ nothing the field sealed.
 
 ### What the audit trail doesn't keep yet
 
+A field marked `personal:`, or of a standard type that is personal data
+whatever holds it, such as a `PhoneNumber` or an `Email`, is kept in its
+history as a keyed hash, as logs keep it
+([Marked fields in logs](15-personal-data.md#marked-fields-in-logs)), so the
+history shows that an email changed, not what it was.
+
 Each of these is `toolchain.not_built_yet` where it is written, so no
 value is copied into a history that the pages don't yet say how to keep
 or remove:
 
-- A field marked `personal:`, or of a standard type that is personal
-  data whatever holds it, such as a `PhoneNumber` or an `Email`. Its history will keep
-  it as a keyed hash, as logs do
-  ([Marked fields in logs](15-personal-data.md#marked-fields-in-logs)),
-  so the history shows that an email changed, not what it was.
 - A `File` field, and a field with a `retention:` of its own, whose value
   the history would keep past it.
 - A person's record removed other than by their erasure: by a `delete`
@@ -3436,9 +3437,9 @@ Its words are kept only in its record's own row, worked out from the
 field, so whatever clears or deletes the field (erasure, anonymising,
 retention) clears its words in the same statement, and nothing is copied
 anywhere else. A field of a sensitive category, such as
-`PersonalData.health`, isn't searched yet: every read of a sensitive
-field is recorded in the [access records](15-personal-data.md#access-records),
-which aren't built, so it is `toolchain.not_built_yet` in `fields:`.
+`PersonalData.health`, is searched like any other, and each record a
+search of one finds leaves an entry in the
+[access records](15-personal-data.md#access-records).
 An [encrypted field](15-personal-data.md#encrypted-fields) is never
 searched.
 
@@ -4974,7 +4975,7 @@ The errors this page describes are built with the feature they belong to.
 | Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). A `File` an `Output` or a person's export reaches goes out as a signed link valid for five minutes, served from the disk with single ranges, `If-Range` and an ETag from the file's hash ([Downloading](#downloading)). Not built yet: upload slots, multipart ones included, fields naming one store of files in entities of two databases, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written; and the `jadpo files` commands (`ls`, `show`, `get`, `put` and `copy`). |
 | Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flag rules: declaring, reading, testing](#flag-rules-declaring-reading-testing)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flag rules: changing, listing, removing](#flag-rules-changing-listing-removing)). Not built yet: named tenants, which wait for tenancy to be settled for flags; and a user's erasure reaching their `id` in `jadpo_flags` and `jadpo_flag_changes`, which comes with erasures. |
 | Audit | Partly built: an entity's `audit:`, an entry in the same transaction as each change, `history` with the record's `read` grant and the fields the caller can read, retention by the purge schedule, entries deleted with their record by erasure, `AuditEntryRecorded` to subscribers, and the permissions report's line ([Audit trail](#audit-trail)). Not built yet: what [What the audit trail doesn't keep yet](#what-the-audit-trail-doesnt-keep-yet) lists, each `toolchain.not_built_yet` where it is written, and `publishing`, which comes with outgoing webhooks. |
-| Search | Partly built: on PostgreSQL, `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages; and searching a field of a sensitive category, `toolchain.not_built_yet` in `fields:` until the access records are built. |
+| Search | Partly built: on PostgreSQL, `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages. |
 | Documents | Not built yet: the application's `documents:` is `toolchain.not_built_yet` where it is written. |
 | Bot protection | Not built yet: the application's `bot_check:` and a route's are `toolchain.not_built_yet` where they are written. |
 | Outgoing webhooks | Not built yet. |
