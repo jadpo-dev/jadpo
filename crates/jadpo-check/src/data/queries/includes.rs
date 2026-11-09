@@ -292,7 +292,7 @@ impl Reader<'_> {
                                 "A `geo.` condition in an include isn't built yet".to_string(),
                             )
                             .at(at, "in an include")
-                            .reason("A `geo.` condition's records are found through a GiST index and each is held to Jadpo's own test again as the query runs (area 20, \"Queries\"); this compiler does that for a query's own records, not yet for those an include adds.")
+                            .reason("A `geo.` condition's records are found through a GiST index and each is held to Jadpo's own test again as the query runs; this compiler does that for a query's own records, not yet for those an include adds.")
                             .next("Query the related records with a query of their own"),
                         );
                         continue;

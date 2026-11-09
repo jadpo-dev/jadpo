@@ -42,7 +42,7 @@ pub fn sql(call: &Call) -> Reply {
                 &rule::TOOLCHAIN_NOT_BUILT_YET,
                 "`jadpo sql --explain` isn't built yet",
             )
-            .reason("`--explain` runs the query on a disposable database and shows PostgreSQL's plan (area 14); it is decided, and comes later.")
+            .reason("`--explain` runs the query on a disposable database and shows PostgreSQL's plan; it is decided, and comes later.")
             .next("Run `jadpo sql <query>` to see its statements"),
         );
     }

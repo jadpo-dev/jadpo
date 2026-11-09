@@ -1,9 +1,18 @@
 # `deployable.unserved`
 
+No deployable serves an API the app has, or runs background work the app has.
+
+## Why Jadpo refuses it
+
 Once `deployables:` is declared, an API's routes are served only by a
-deployable that names it, and background work runs only where its
-trigger is listed, so nothing the app declares is left unserved. The
-desk's `backstage` API has a route:
+deployable that names it, and background work runs only where its trigger
+is listed. A route or a schedule nothing runs would be declared, compiled
+and shipped, and never happen. Jadpo won't pick the program for you, because
+that decides what each one carries.
+
+## What it looks like
+
+The desk's `backstage` API has a route:
 
 ```jadpo check project=e-deployable-unserved file=domains/desk/types/line.jadpo hidden
 /// A line of text.
@@ -92,7 +101,7 @@ input Remark
     line: Text { max_length: 40 }
 ```
 
-but the one deployable serves only `main`:
+The one deployable serves only `main`:
 
 ```jadpo check project=e-deployable-unserved expect=deployable.unserved file=app.jadpo
 application {
@@ -126,3 +135,238 @@ error: No deployable serves the API `backstage`
 
 check failed: 1 error, 7 files
 ```
+
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+Background work needs a deployable that runs it too. This app has a
+schedule, and its one deployable lists no trigger:
+
+```jadpo check project=e-deployable-unrun file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+    }
+}
+```
+
+```jadpo check project=e-deployable-unrun file=domains/bakery/actions/check_ovens.jadpo hidden
+/// Checks the ovens' temperatures, which changes nothing here.
+action check_ovens() -> Unit {
+    assert 1 == 1
+}
+```
+
+```jadpo check project=e-deployable-unrun file=domains/bakery/schedules/oven_check.jadpo migrate=initial
+use bakery/actions { check_ovens }
+
+/// Checks the ovens twice a minute.
+schedule oven_check {
+    every: 30s
+    run: check_ovens()
+}
+```
+
+```jadpo check project=e-deployable-unrun expect=deployable.unserved file=app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+    }
+    deployables: {
+        kiosk: {
+            serves: [main]
+            target: Target.native
+        }
+    }
+}
+```
+
+```text output
+error: No deployable runs the app's schedules
+ --> app.jadpo:7:5
+  |
+7 |     deployables: {
+  |     ^^^^^^^^^^^ none runs them
+  reason: Once `deployables:` is declared, background work runs only in a deployable whose `runs:` lists its trigger, and the schedule `oven_check` needs `Trigger.schedules`.
+  next: Add `Trigger.schedules` to a deployable's `runs:` (agent)
+  rule: deployable.unserved
+  help: https://jadpo.dev/docs/errors/deployable.unserved
+
+check failed: 1 error, 3 files
+```
+
+## How to fix it
+
+**If an existing deployable can answer the API**, add it to that one's
+`serves:`:
+
+```jadpo fragment
+        kiosk: {
+            serves: [main, backstage]
+            target: Target.native
+        }
+```
+
+```jadpo check project=e-deployable-unserved-fix file=app.jadpo hidden
+application {
+    apis: {
+        main: {
+            prefix: /
+        }
+        backstage: {
+            prefix: /backstage
+        }
+    }
+    deployables: {
+        kiosk: {
+            serves: [main, backstage]
+            target: Target.native
+        }
+    }
+}
+```
+
+```jadpo check project=e-deployable-unserved-fix file=domains/desk/types/line.jadpo hidden
+/// A line of text.
+type Line = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e-deployable-unserved-fix file=domains/desk/types/remark.jadpo hidden
+use desk/types { Line }
+
+/// What is said.
+type Remark = Input {
+    line: Line
+}
+```
+
+```jadpo check project=e-deployable-unserved-fix file=domains/desk/types/echoed.jadpo hidden
+use desk/types { Line }
+
+/// What is said back.
+type Echoed = Output {
+    line: Line
+}
+```
+
+```jadpo check project=e-deployable-unserved-fix file=domains/desk/actions/echo.jadpo hidden
+use desk/types { Echoed, Remark }
+
+/// Says the words back.
+action echo(input: Remark) -> Echoed {
+    return Echoed {
+        line: input.line
+    }
+}
+```
+
+```jadpo check project=e-deployable-unserved-fix file=policy.jadpo hidden
+use desk
+
+policy {
+    actions: {
+        desk.echo: [Access.public]
+    }
+}
+```
+
+```jadpo check project=e-deployable-unserved-fix file=domains/desk/routes/backstage.jadpo hidden
+use desk/types { Echoed, Remark }
+use desk/actions { echo }
+
+/// The desk backstage.
+routes Backstage {
+    prefix: /backstage
+    api: backstage
+
+    /// Says it back.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: Remark
+        output: Echoed
+        run: echo(input)
+    }
+}
+```
+
+```jadpo check project=e-deployable-unserved-fix file=api/backstage.jadpo_record hidden
+// Generated by Jadpo from the routes of API backstage; update it with `jadpo api update`, never by hand.
+record api 1
+
+POST /backstage
+    authentication none
+    input Remark (body)
+    output Echoed
+    status 200
+
+GET /backstage/openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+output Echoed
+    line: Text { max_length: 40 }
+
+input Remark
+    line: Text { max_length: 40 }
+```
+
+`kiosk` now answers `/backstage` as well as `main`.
+
+**If the background work has no deployable**, add its trigger to one's
+`runs:`:
+
+```jadpo fragment
+        kiosk: {
+            serves: [main]
+            runs: [Trigger.schedules]
+            target: Target.native
+        }
+```
+
+```jadpo check project=e-deployable-unrun-fix file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+    }
+    deployables: {
+        kiosk: {
+            serves: [main]
+            runs: [Trigger.schedules]
+            target: Target.native
+        }
+    }
+}
+```
+
+```jadpo check project=e-deployable-unrun-fix file=domains/bakery/actions/check_ovens.jadpo hidden
+/// Checks the ovens' temperatures, which changes nothing here.
+action check_ovens() -> Unit {
+    assert 1 == 1
+}
+```
+
+```jadpo check project=e-deployable-unrun-fix file=domains/bakery/schedules/oven_check.jadpo hidden migrate=initial
+use bakery/actions { check_ovens }
+
+/// Checks the ovens twice a minute.
+schedule oven_check {
+    every: 30s
+    run: check_ovens()
+}
+```
+
+`kiosk` now runs the schedule on its own tick.
+
+## Related
+
+- [Nothing left unserved](../language/14-tooling.md#nothing-left-unserved)
+- [Declared deployables](../language/14-tooling.md#declared-deployables)

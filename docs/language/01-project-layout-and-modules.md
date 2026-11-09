@@ -211,7 +211,7 @@ the action" in place of "above it".
 
 | Rule | Page | Reports |
 |---|---|---|
-| [`library.similar_exists`](../errors/library.similar_exists.md) | Project layout and modules | A library function already does the same |
+| [`library.similar_exists`](../errors/library.similar_exists.md) | Project layout and modules | A function does the same as a library function that already exists |
 | [`constant.similar_exists`](../errors/constant.similar_exists.md) | [Logic](03-logic.md) | Another constant of the same type holds the same value |
 | [`policy.call_ungranted`](../errors/policy.call_ungranted.md) | [Policy](09-policy.md) | A listed action calls one that refuses some of the people its line lets in |
 | `translation.field_unused` | [Translations as messages](10-configuration-and-time.md#translations-as-messages) | No wording in a language uses one of a message's fields |

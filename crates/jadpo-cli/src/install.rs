@@ -751,7 +751,7 @@ pub fn add(call: &Call) -> Reply {
                         "Adding another Jadpo app's API isn't built yet",
                     )
                     .reason(format!(
-                        "`{written}` is a Jadpo app, whose package comes from its OpenAPI document with the importer (area 11, \"Packages from other Jadpo apps\")."
+                        "`{written}` is a Jadpo app, whose package comes from its OpenAPI document with the importer."
                     ))
                     .next("Add a package's own folder, or a git repository at a release tag, meanwhile"),
                 );
