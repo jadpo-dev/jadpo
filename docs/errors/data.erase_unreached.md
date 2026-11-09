@@ -113,6 +113,7 @@ type TagLabel = Text {
 
 entity User {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email {
         personal: PersonalData.contact
     }

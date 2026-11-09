@@ -95,6 +95,7 @@ application {
 ```jadpo check project=e-erasure-log-required-fix file=domains/accounts/entities/user.jadpo hidden
 entity User {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email {
         personal: PersonalData.contact
     }
@@ -144,6 +145,7 @@ application {
 ```jadpo check project=e-erasure-log-required-files file=domains/accounts/entities/user.jadpo hidden
 entity User {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email {
         personal: PersonalData.contact
     }

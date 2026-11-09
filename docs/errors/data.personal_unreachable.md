@@ -80,9 +80,11 @@ type PassengerName = Text {
 /// A loss a passenger reported.
 entity LossReport {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     passenger_name: PassengerName {
         personal: PersonalData.identifying
     }
+    decline data.personal_unread: "Read by code this example leaves out"
     passenger_email: Email {
         personal: PersonalData.contact
     }
@@ -129,9 +131,11 @@ entity LossReport {
     passenger_id: Passenger.id {
         on_delete: OnDelete.cascade
     }
+    decline data.personal_unread: "Read by code this example leaves out"
     passenger_name: PassengerName {
         personal: PersonalData.identifying
     }
+    decline data.personal_unread: "Read by code this example leaves out"
     passenger_email: Email {
         personal: PersonalData.contact
     }

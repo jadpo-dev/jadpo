@@ -406,6 +406,8 @@ rules! {
         "Something other than erasure would remove a person another store refers to, and nothing would apply what that reference's `erase:` says";
     DATA_PERSONAL_UNREACHABLE: "data.personal_unreachable", area 15, Error, Human,
         "A field marked as personal data is on an entity erasing a person never reaches, so it could never be found";
+    DATA_PERSONAL_UNREAD: "data.personal_unread", area 15, Declinable, Agent,
+        "No query, output or action reads a field marked as personal data, so the app holds data it doesn't use";
     DATA_READ_IN_LOOP: "data.read_in_loop", area 6, Error, Agent,
         "A query or another database read, such as a `get`, is inside a `for` loop";
     DATA_REFERENCE_ACROSS_STORES: "data.reference_across_stores", area 5, Error, Human,
@@ -1884,6 +1886,7 @@ mod tests {
             declinable,
             [
                 "constant.similar_exists",
+                "data.personal_unread",
                 "email.field_unused",
                 "email.health_problem",
                 "library.similar_exists",

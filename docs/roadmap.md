@@ -239,18 +239,6 @@ work below (Richard, 2026-11-08).
    (area 19, "Encrypted fields" and "Language gaps this page depends on")
    and `crypto.verify_totp`: split by size (2026-10-31) into P1 to P12,
    taken in order.
-   - [ ] **P8 The personal-data report** `opus · high` after V5:
-     area 15, "The personal-data report", "Where data is stored", "What
-     this does not cover" and "What the compiler checks" (a marked field
-     nothing reads, declinable). V5 starts the report with the
-     connections a marked field reaches; this adds, for each person
-     entity, every marked field with its category, store and who may
-     read it, the queries that say `include_erased: true`, its retention
-     or "kept until erased", what erasure does to
-     each record, keys waiting in the outbox, step records, sensitive
-     fields, each store's location setting and what the language covers.
-     Designed with the design skills first. Done when `jadpo check`
-     writes it and its JSON twin, and the approval report shows its diff.
    - [ ] **P10 What keys held as data allow** `opus · high` after P9:
      area 19, "Hashing and cryptography" and "Signed tokens".
      `crypto.verify_totp` (RFC 6238's vectors, one step either side),

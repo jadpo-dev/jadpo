@@ -98,9 +98,11 @@ type PolicyNumber = Text {
 
 entity Customer {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email? {
         personal: PersonalData.contact
     }
+    decline data.personal_unread: "Read by code this example leaves out"
     policy_number: PolicyNumber {
         personal: PersonalData.identifying
         erase: Erasure.retained
@@ -134,9 +136,11 @@ type PolicyNumber = Text {
 
 entity Customer {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email? {
         personal: PersonalData.contact
     }
+    decline data.personal_unread: "Read by code this example leaves out"
     policy_number: PolicyNumber {
         personal: PersonalData.identifying
     }
