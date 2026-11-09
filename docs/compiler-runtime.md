@@ -5353,8 +5353,8 @@ A field over 100 MB gets a slot in parts: the token says `part_size`
 (`jadpo_std::files::part_size_for`, 16 MiB, larger only past 10,000 parts),
 `PUT /files/<store>/uploads/<token>/parts/<n>` goes through
 `Capability::receive_part`, whose `Receiving` replaces any part of that
-number, and `attach` sends the capability's keyed `COMPLETE` before its
-`STAT`: the disk driver joins the parts (`DiskStore::complete`) by
+number, and `attach` sends the capability's `COMPLETE`, safe to repeat,
+before its `STAT`: the disk driver joins the parts (`DiskStore::complete`) by
 copying them in order into a temporary file linked into place. The disk
 driver's `delete` takes an unjoined upload's parts with it, and
 `UPLOAD_SLOT_FIELDS`' `omitted` places keep what doesn't apply to a slot out
