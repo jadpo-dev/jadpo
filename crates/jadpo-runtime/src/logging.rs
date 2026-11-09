@@ -353,6 +353,35 @@ pub(crate) fn privacy_cancelled(ctx: &Ctx<'_>, request: &str, person: &str) {
     ctx.host().log("privacy.request_cancelled", fields);
 }
 
+/// An export's file was downloaded (area 15, "Exports"): its request and
+/// whose it was, never its contents.
+pub(crate) fn privacy_downloaded(ctx: &Ctx<'_>, request: &str, person: &str) {
+    let mut fields = access(ctx, "person");
+    fields.insert("privacy_request_id".to_string(), request.to_string().into());
+    fields.insert("person_id".to_string(), person.to_string().into());
+    ctx.host().log("privacy.downloaded", fields);
+}
+
+/// An alert a data request raises (area 15, "Deadlines and events"), once:
+/// `request_nearing_deadline` a week before its deadline, and
+/// `request_overdue` once it has passed.
+pub(crate) fn privacy_alert(
+    ctx: &Ctx<'_>,
+    alert: &str,
+    request: &str,
+    person: &str,
+    kind: &str,
+    deadline: i64,
+) {
+    let mut fields = Map::new();
+    fields.insert("alert".to_string(), alert.into());
+    fields.insert("privacy_request_id".to_string(), request.to_string().into());
+    fields.insert("person_id".to_string(), person.to_string().into());
+    fields.insert("kind".to_string(), kind.to_string().into());
+    fields.insert("deadline".to_string(), instant(deadline));
+    ctx.host().log("privacy.alert", fields);
+}
+
 /// An export of the person of `entity` with `id` was asked for.
 pub(crate) fn exported(ctx: &Ctx<'_>, entity: &str, id: Option<&str>) {
     let mut fields = access(ctx, entity);

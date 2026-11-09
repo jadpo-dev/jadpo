@@ -23,7 +23,8 @@ use std::rc::Rc;
 
 use jadpo_std::email::{
     ATTACHMENT, ATTACHMENT_FIELDS, BuiltinEmail, EmailPlan, EmailsPlan, MESSAGE, MESSAGE_FIELDS,
-    MagicLinkEmailPlan, MailInput, PackageEmail, Sender, escape_html,
+    MagicLinkEmailPlan, MailInput, PackageEmail, PrivacyNotice, PrivacyNoticePlan, Sender,
+    escape_html,
 };
 use jadpo_value::Value;
 
@@ -50,14 +51,18 @@ pub async fn message(
     ctx: &mut Ctx<'_>,
     emails: &EmailsPlan,
     email: &EmailPlan,
-    value: &Value,
+    delivery: &crate::outbox::Delivery,
 ) -> Result<(Value, Option<SignInSent>), Outcome> {
+    let value = &delivery.value;
     match &email.builtin {
         Some(BuiltinEmail::MagicLink(plan)) => {
             return magic_link(executor, ctx, emails, plan, value).await;
         }
         Some(BuiltinEmail::PrivacyAddressCheck(plan)) => {
             return Box::pin(privacy_address_check(executor, ctx, emails, plan, value)).await;
+        }
+        Some(BuiltinEmail::PrivacyNotice(plan)) => {
+            return Box::pin(privacy_notice(executor, ctx, emails, plan, delivery)).await;
         }
         None => {}
     }
@@ -96,6 +101,40 @@ async fn privacy_address_check(
         Ok(words) => words,
         Err(fault) => return Err(Outcome::Fault(ctx.fault(fault.into(), Frame::ENTRY))),
     };
+    // The application's own email (level 4): its fields picked from
+    // `PrivacyAddressCheckEmail`, filled now.
+    if let Some(key) = &plan.own {
+        let Some(own) = emails.email(key) else {
+            return Err(defect(
+                ctx,
+                "an address-check email this build doesn't have",
+            ));
+        };
+        let filled: Vec<(Rc<str>, Value)> = own
+            .fields
+            .iter()
+            .map(|name| {
+                let value = match name.as_str() {
+                    "to" | "address" => Value::text(&minted.address),
+                    "locale" => locale.clone(),
+                    "confirm_link" => Value::text(&minted.link),
+                    "expires_in" => Value::text(&expires_in),
+                    _ => Value::None,
+                };
+                (Rc::from(name.as_str()), value)
+            })
+            .collect();
+        let value = Value::record(&own.name, filled);
+        let sent = SignInSent {
+            token: minted.token.clone(),
+            code: None,
+            privacy: true,
+        };
+        return Ok((
+            rendered(executor, ctx, emails, own, &value).await?,
+            Some(sent),
+        ));
+    }
     let mut line = |key: &str, given: &[(&str, &str)]| -> Result<String, Outcome> {
         let Some(entry) = plan.message(key) else {
             return Err(defect(
@@ -196,6 +235,434 @@ async fn privacy_address_check(
             privacy: true,
         }),
     ))
+}
+
+/// What one of the privacy emails sent on an event says, read as it is
+/// sent.
+struct NoticeFields {
+    address: String,
+    locale: Value,
+    tag: &'static str,
+    ordinal: u32,
+    /// The export's link and how long it works.
+    download_link: Option<String>,
+    expires_in: Option<String>,
+    expires_at: Option<i64>,
+    /// The erasure's cancel link and when it runs.
+    cancel_link: Option<String>,
+    erases_on: Option<String>,
+    erases_at: Option<i64>,
+    /// What was kept, as the email says it: each record's name and when
+    /// its retention ends.
+    kept: Vec<(String, String)>,
+}
+
+/// What `delivery`'s privacy email is written from; `None` when the
+/// person can't be reached any more, and nothing is sent.
+async fn notice_fields(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    plan: &PrivacyNoticePlan,
+    delivery: &crate::outbox::Delivery,
+) -> Result<Option<NoticeFields>, Outcome> {
+    let program = executor.plan();
+    let Some(events) = program.events() else {
+        return Err(defect(ctx, "a privacy email in a build with no events"));
+    };
+    let Some(steps) = events.plan.privacy.as_ref() else {
+        return Err(defect(ctx, "a privacy email with no `privacy:`"));
+    };
+    let outbox_row = (plan.notice == PrivacyNotice::ErasureCompleted).then_some(delivery.outbox);
+    let value = &delivery.value;
+    let Some(mail) = crate::http::privacy_steps::mail_for(ctx, steps, value, outbox_row).await?
+    else {
+        return Ok(None);
+    };
+    let field = |name: &str| match value {
+        Value::Record(record) => record.get(name).cloned().unwrap_or(Value::None),
+        _ => Value::None,
+    };
+    let text = |value: Value| match value {
+        Value::Text(text) => Some(text.to_string()),
+        _ => None,
+    };
+    let instant = |value: Value| match value {
+        Value::Instant(at) => Some(at),
+        _ => None,
+    };
+    let mut fields = NoticeFields {
+        address: mail.address.clone(),
+        locale: mail.locale.clone(),
+        tag: mail.tag,
+        ordinal: mail.ordinal,
+        download_link: text(field("download_link")),
+        expires_in: None,
+        expires_at: instant(field("expires_at")),
+        cancel_link: text(field("cancel_link")),
+        erases_on: None,
+        erases_at: instant(field("erases_at")),
+        kept: Vec::new(),
+    };
+    match plan.notice {
+        PrivacyNotice::ExportReady => {
+            let keep = crate::http::privacy_steps::keep_ms(steps).unwrap_or_default();
+            fields.expires_in = match jadpo_value::present::duration_words(keep, mail.tag) {
+                Ok(words) => Some(words),
+                Err(fault) => {
+                    return Err(Outcome::Fault(ctx.fault(fault.into(), Frame::ENTRY)));
+                }
+            };
+        }
+        PrivacyNotice::ErasureConfirmed => {
+            fields.erases_on = match fields
+                .erases_at
+                .map(|at| crate::http::privacy_steps::date_words(at, mail.tag))
+                .transpose()
+            {
+                Ok(words) => words,
+                Err(fault) => {
+                    return Err(Outcome::Fault(ctx.fault(fault.into(), Frame::ENTRY)));
+                }
+            };
+        }
+        PrivacyNotice::ErasureCompleted => {
+            for (entity, until) in &mail.kept {
+                let Some(wording) = steps
+                    .kept
+                    .iter()
+                    .find(|kept| kept.entity == *entity)
+                    .map(|kept| &kept.wording)
+                else {
+                    continue;
+                };
+                let name = match jadpo_value::present::translate(
+                    wording,
+                    &mail.locale,
+                    &[],
+                    &plan.locales,
+                ) {
+                    Ok(Value::Text(name)) => name.to_string(),
+                    Ok(_) => return Err(defect(ctx, "a kept record's wording that isn't text")),
+                    Err(fault) => {
+                        return Err(Outcome::Fault(ctx.fault(fault.into(), Frame::ENTRY)));
+                    }
+                };
+                let until = match crate::http::privacy_steps::date_words(*until, mail.tag) {
+                    Ok(words) => words,
+                    Err(fault) => {
+                        return Err(Outcome::Fault(ctx.fault(fault.into(), Frame::ENTRY)));
+                    }
+                };
+                fields.kept.push((name, until));
+            }
+        }
+    }
+    Ok(Some(fields))
+}
+
+/// The records a completion email or its request holds, one per kind kept.
+fn kept_values(kept: &[(String, String)]) -> Value {
+    let records: Vec<Value> = kept
+        .iter()
+        .map(|(name, until)| {
+            Value::record(
+                jadpo_std::privacy::KEPT_RECORD,
+                vec![
+                    (Rc::from("name"), Value::text(name)),
+                    (Rc::from("kept_until"), Value::text(until)),
+                ],
+            )
+        })
+        .collect();
+    Value::List(records.into())
+}
+
+/// One of the privacy emails sent on an event (area 16, "Every built-in
+/// email"): the application's own (level 4), or Jadpo's, its lines worded
+/// in its locale and its HTML and text wrapped in the application's layout
+/// or a plain document of Jadpo's (levels 1 to 3).
+async fn privacy_notice(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    emails: &EmailsPlan,
+    plan: &PrivacyNoticePlan,
+    delivery: &crate::outbox::Delivery,
+) -> Result<(Value, Option<SignInSent>), Outcome> {
+    let Some(fields) = notice_fields(executor, ctx, plan, delivery).await? else {
+        return Err(Outcome::Value(Value::Unit));
+    };
+    if let Some(key) = &plan.own {
+        let Some(own) = emails.email(key) else {
+            return Err(defect(ctx, "a privacy email this build doesn't have"));
+        };
+        let filled: Vec<(Rc<str>, Value)> = own
+            .fields
+            .iter()
+            .map(|name| {
+                let text =
+                    |value: &Option<String>| value.as_deref().map_or(Value::None, Value::text);
+                let value = match name.as_str() {
+                    "to" | "address" => Value::text(&fields.address),
+                    "locale" => fields.locale.clone(),
+                    "download_link" => text(&fields.download_link),
+                    "expires_in" => text(&fields.expires_in),
+                    "cancel_link" => text(&fields.cancel_link),
+                    "erases_on" => text(&fields.erases_on),
+                    "kept" => kept_values(&fields.kept),
+                    _ => Value::None,
+                };
+                (Rc::from(name.as_str()), value)
+            })
+            .collect();
+        let value = Value::record(&own.name, filled);
+        return Ok((rendered(executor, ctx, emails, own, &value).await?, None));
+    }
+    let locale = fields.locale.clone();
+    let mut line = |key: &str, given: &[(&str, &str)]| -> Result<String, Outcome> {
+        let Some(entry) = plan.message(key) else {
+            return Err(defect(
+                ctx,
+                "a privacy email missing one of Jadpo's messages",
+            ));
+        };
+        let args: Vec<Value> = entry
+            .params
+            .iter()
+            .map(|param| {
+                if param.name == jadpo_std::jadpo_text::APP_NAME {
+                    return Value::text(&plan.app_name);
+                }
+                given
+                    .iter()
+                    .find(|(name, _)| *name == param.name)
+                    .map_or(Value::None, |(_, text)| Value::text(text))
+            })
+            .collect();
+        match jadpo_value::present::translate(entry, &locale, &args, &plan.locales) {
+            Ok(Value::Text(text)) => Ok(text.to_string()),
+            Ok(_) => Err(defect(ctx, "a privacy email's line that isn't text")),
+            Err(fault) => Err(Outcome::Fault(ctx.fault(fault.into(), Frame::ENTRY))),
+        }
+    };
+    struct Lines {
+        subject: String,
+        heading: String,
+        intro: String,
+        button: Option<(String, String)>,
+        after: Vec<String>,
+        list: Vec<String>,
+    }
+    let lines = match plan.notice {
+        PrivacyNotice::ExportReady => Lines {
+            subject: line("privacy_export_email", &[])?,
+            heading: line("privacy_export_heading", &[])?,
+            intro: line("privacy_export_intro", &[])?,
+            button: Some((
+                line("privacy_export_button", &[])?,
+                fields.download_link.clone().unwrap_or_default(),
+            )),
+            after: vec![
+                line(
+                    "privacy_export_expiry_line",
+                    &[("expires_in", fields.expires_in.as_deref().unwrap_or(""))],
+                )?,
+                line("privacy_export_ignore_line", &[])?,
+            ],
+            list: Vec::new(),
+        },
+        PrivacyNotice::ErasureConfirmed => Lines {
+            subject: line("privacy_erasure_confirmation_email", &[])?,
+            heading: line("privacy_erasure_confirmation_heading", &[])?,
+            intro: line(
+                "privacy_erasure_confirmation_intro",
+                &[("erases_on", fields.erases_on.as_deref().unwrap_or(""))],
+            )?,
+            button: Some((
+                line("privacy_erasure_confirmation_button", &[])?,
+                fields.cancel_link.clone().unwrap_or_default(),
+            )),
+            after: vec![line("privacy_erasure_confirmation_cancel_line", &[])?],
+            list: Vec::new(),
+        },
+        PrivacyNotice::ErasureCompleted => {
+            let mut list = Vec::new();
+            for (name, until) in &fields.kept {
+                list.push(line(
+                    "privacy_erasure_completed_kept_line",
+                    &[("name", name.as_str()), ("kept_until", until.as_str())],
+                )?);
+            }
+            let after = if list.is_empty() {
+                vec![line("privacy_erasure_completed_nothing_kept", &[])?]
+            } else {
+                vec![line("privacy_erasure_completed_kept_intro", &[])?]
+            };
+            Lines {
+                subject: line("privacy_erasure_completed_email", &[])?,
+                heading: line("privacy_erasure_completed_heading", &[])?,
+                intro: line("privacy_erasure_completed_intro", &[])?,
+                button: None,
+                after,
+                list,
+            }
+        }
+    };
+    let rtl = matches!(
+        jadpo_value::locale::direction(fields.ordinal),
+        Value::Variant(direction) if &*direction.name == jadpo_std::TextDirection::RightToLeft.name()
+    );
+    let direction = if rtl { "rtl" } else { "ltr" };
+    let mut html = format!(
+        "<div dir=\"{direction}\" style=\"max-width:480px;font-size:16px;line-height:1.5;\"><h1 style=\"margin:0 0 16px;font-size:24px;line-height:1.25;font-weight:600;\">{heading}</h1><p style=\"margin:0 0 24px;\">{intro}</p>",
+        heading = escape_html(&lines.heading),
+        intro = escape_html(&lines.intro),
+    );
+    let mut text = format!("{}\n\n{}\n\n", lines.heading, lines.intro);
+    if let Some((button, link)) = &lines.button {
+        html.push_str(&format!(
+            "<p style=\"margin:0 0 24px;\"><a href=\"{link}\" style=\"display:inline-block;padding:12px 24px;border-radius:6px;background-color:#1f2937;color:#ffffff;font-weight:600;text-decoration:none;\">{button}</a></p>",
+            link = escape_html(link),
+            button = escape_html(button),
+        ));
+        text.push_str(&format!("{button}: {link}\n\n"));
+    }
+    for after in &lines.after {
+        html.push_str(&format!(
+            "<p style=\"margin:0 0 8px;font-size:14px;\">{}</p>",
+            escape_html(after)
+        ));
+        text.push_str(after);
+        text.push_str("\n\n");
+    }
+    if !lines.list.is_empty() {
+        html.push_str("<ul style=\"margin:0;padding-inline-start:20px;font-size:14px;\">");
+        for item in &lines.list {
+            html.push_str(&format!("<li>{}</li>", escape_html(item)));
+            text.push_str("- ");
+            text.push_str(item);
+            text.push('\n');
+        }
+        html.push_str("</ul>");
+        text.push('\n');
+    }
+    html.push_str("</div>");
+    let subject_value = Value::text(&lines.subject);
+    let (html, text) = match (emails.layout_html, emails.layout_text) {
+        (None, None) => (
+            Value::text(&format!(
+                "<!DOCTYPE html>\n<html lang=\"{tag}\" dir=\"{direction}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title}</title></head><body style=\"margin:0;padding:24px;\">{html}</body></html>\n",
+                tag = fields.tag,
+                title = escape_html(&lines.subject),
+            )),
+            Value::text(&text),
+        ),
+        (layout_html, layout_text) => (
+            wrap(executor, ctx, layout_html, html, &subject_value, &locale).await?,
+            wrap(executor, ctx, layout_text, text, &subject_value, &locale).await?,
+        ),
+    };
+    let from = sender(ctx, emails)?;
+    let message = Value::record(
+        MESSAGE,
+        MESSAGE_FIELDS
+            .iter()
+            .zip([
+                from,
+                Value::text(&fields.address),
+                subject_value,
+                html,
+                text,
+                Value::List(Vec::new().into()),
+            ])
+            .map(|(name, value)| (Rc::from(*name), value))
+            .collect(),
+    );
+    Ok((message, None))
+}
+
+/// The request a privacy email's own sending is given (area 16, "Built-in
+/// emails", level 5): made now, or `None` when nothing is to be sent.
+pub async fn privacy_request(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    event: &str,
+    delivery: &crate::outbox::Delivery,
+) -> Result<Option<Value>, Outcome> {
+    let program = executor.plan();
+    let Some(events) = program.events() else {
+        return Err(defect(ctx, "a privacy email in a build with no events"));
+    };
+    let Some(email) = events.plan.emails.email(event) else {
+        return Err(defect(ctx, "a privacy email this build doesn't have"));
+    };
+    let record = |fields: Vec<(&str, Value)>, name: &str| {
+        Value::record(
+            name,
+            fields
+                .into_iter()
+                .map(|(field, value)| (Rc::from(field), value))
+                .collect(),
+        )
+    };
+    match email.builtin.as_ref() {
+        Some(BuiltinEmail::PrivacyAddressCheck(plan)) => {
+            let minted = match crate::http::privacy::mint(ctx, plan, &delivery.value).await {
+                Ok(Some(minted)) => minted,
+                Ok(None) => return Ok(None),
+                Err("unavailable") => return Err(Outcome::Failed(Box::new(crate::unavailable()))),
+                Err(what) => return Err(defect(ctx, what)),
+            };
+            let locale = match &delivery.value {
+                Value::Record(record) => record.get("locale").cloned().unwrap_or(Value::None),
+                _ => Value::None,
+            };
+            Ok(Some(record(
+                vec![
+                    ("address", Value::text(&minted.address)),
+                    ("confirm_link", Value::text(&minted.link)),
+                    ("expires_at", Value::Instant(minted.expires_at)),
+                    ("locale", locale),
+                ],
+                jadpo_std::email::PRIVACY_ADDRESS_CHECK_REQUEST,
+            )))
+        }
+        Some(BuiltinEmail::PrivacyNotice(plan)) => {
+            let Some(fields) = notice_fields(executor, ctx, plan, delivery).await? else {
+                return Ok(None);
+            };
+            let text = |value: &Option<String>| value.as_deref().map_or(Value::None, Value::text);
+            let instant = |value: Option<i64>| value.map_or(Value::None, Value::Instant);
+            Ok(Some(match plan.notice {
+                PrivacyNotice::ExportReady => record(
+                    vec![
+                        ("address", Value::text(&fields.address)),
+                        ("download_link", text(&fields.download_link)),
+                        ("expires_at", instant(fields.expires_at)),
+                        ("locale", fields.locale.clone()),
+                    ],
+                    plan.notice.request_type(),
+                ),
+                PrivacyNotice::ErasureConfirmed => record(
+                    vec![
+                        ("address", Value::text(&fields.address)),
+                        ("erases_at", instant(fields.erases_at)),
+                        ("cancel_link", text(&fields.cancel_link)),
+                        ("locale", fields.locale.clone()),
+                    ],
+                    plan.notice.request_type(),
+                ),
+                PrivacyNotice::ErasureCompleted => record(
+                    vec![
+                        ("address", Value::text(&fields.address)),
+                        ("kept", kept_values(&fields.kept)),
+                        ("locale", fields.locale.clone()),
+                    ],
+                    plan.notice.request_type(),
+                ),
+            }))
+        }
+        _ => Err(defect(ctx, "a privacy email Jadpo doesn't write")),
+    }
 }
 
 /// The message an email of the application's is sent as, rendered from

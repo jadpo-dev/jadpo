@@ -122,7 +122,6 @@ D1 first: the site starts once D1 has merged.
   Split by size (2026-11-08) into the parts below, taken in order,
   each widening `error_format_scope` to the rules it finished; delete it
   once all are.
-- [ ] **D13c12 `configuration.*`, `deployable.*`, `toolchain.*`, `install.*`, `publish.*` and `library.*`** `opus · high`: 34 pages.
 - [ ] **D13c13 `translation.*`, `layout.*` and `email.*`** `opus · high`: 33 pages.
 - [ ] **D13c14 `package.*`, `test.*`, `migration.*` and `acceptance.*`** `opus · high`: 28 pages.
 - [ ] **D13c15 `step.*`, `subscriber.*`, `schedule.*`, `prompt.*`, `event.*`, `ai.*` and `receiving.*`** `opus · high`: 18 pages; then `error_format_scope` covers every rule.
@@ -246,20 +245,6 @@ work below (Richard, 2026-11-08).
      SHA-1, RFC 6238's default, and points two-factor codes at a package.
      Done when each is checked against its standard's known answers on
      both executors and built for WebAssembly.
-   - [ ] **P12 Data requests: exports, erasures and their emails**
-     `opus · xhigh` after P6 and P11: area 15, "Exports", "Erasures",
-     "Deadlines and events" and "The privacy emails"; area 16, "Built-in
-     emails" and "Files". An export as a single-use download link that
-     expires after 7 days, encrypted at rest and deleted with the link
-     (the file downloads it needs built here unless item 2 has); an
-     erasure after its cooling-off, with its cancel link and a completion
-     email naming what was kept, sent once every provider confirms;
-     `PrivacyRequestOverdue`; the other three emails at five levels and the
-     address check's `email:` and `send:`; and
-     with no mail connection a required `PrivacyExportReady` subscriber;
-     and `jadpo privacy requests`, designed with the design skills first.
-     Done when a request runs from asking to completion in tests on both
-     executors.
 2. Remaining built-in services (area 16): files, flags, audit, search
    and monitoring thresholds, with the `ThresholdChange` acceptance for a
    threshold raised or removed: split by size (2026-10-31) into B1 to

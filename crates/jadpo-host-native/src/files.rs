@@ -604,7 +604,9 @@ impl DiskStore {
         };
         let logged = jadpo_std::erasure::log_key_parts(key).is_some()
             && matches!(call.operation.as_str(), PUT | READ);
-        if !is_key(key) && !logged {
+        let export = jadpo_std::privacy::is_export_key(key)
+            && matches!(call.operation.as_str(), PUT | READ | DELETE);
+        if !is_key(key) && !logged && !export {
             return Answer::Failed(NOT_FOUND.into());
         }
         match call.operation.as_str() {

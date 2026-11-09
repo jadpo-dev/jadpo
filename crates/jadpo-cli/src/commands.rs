@@ -26,6 +26,7 @@ pub use crate::inspect::{impact, inspect};
 pub use crate::migrate::migrate;
 pub use crate::new::new;
 pub use crate::package::package;
+pub use crate::privacy::privacy;
 pub use crate::records::records;
 pub use crate::routes::routes;
 use crate::run::{Call, Reply, Session, both, either, quoted, unknown_topic};

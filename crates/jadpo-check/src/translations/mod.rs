@@ -33,8 +33,8 @@ use crate::lookups::Name;
 use crate::types::Prim;
 
 pub use declared::{
-    Kind, Mode, ParamSpec, SHARED, Subject, Subjects, bare_name, package_of, package_scopes,
-    scope_of, scopes, subjects,
+    Kind, Mode, ParamSpec, SHARED, Subject, Subjects, bare_name, kept_wording_key, package_of,
+    package_scopes, scope_of, scopes, subjects,
 };
 
 /// The namespace a message is called through: `translations.<scope>.<key>`.

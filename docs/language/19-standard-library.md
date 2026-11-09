@@ -10946,12 +10946,12 @@ test "a name and an address are kept part by part" {
         },
         Nationality.in
     )
-    var kept_record: Recipient = attempt Recipient.get(enrolled.id)
-    assert kept_record.name == enrolled.name
-    assert kept_record.ship_to == enrolled.ship_to
-    assert kept_record.citizen_of == Nationality.in
+    var read_back: Recipient = attempt Recipient.get(enrolled.id)
+    assert read_back.name == enrolled.name
+    assert read_back.ship_to == enrolled.ship_to
+    assert read_back.citizen_of == Nationality.in
     var readdressed: Recipient = readdress(
-        kept_record,
+        read_back,
         PostalAddress {
             lines: ["2-7-2 Marunouchi"]
             locality: "Chiyoda-ku"

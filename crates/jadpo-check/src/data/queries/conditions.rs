@@ -408,7 +408,7 @@ impl Reader<'_> {
                     )
                     .at(Self::span(scope.path, whole), format!("a `{held}`"))
                     .reason(format!(
-                        "`{}.{}` is a `{held}`, stored whole as its JSON in one `jsonb` column (area 5), and this compiler's queries don't compare such a column yet.",
+                        "`{}.{}` is a `{held}`, stored whole as its JSON in one `jsonb` column, and this compiler's queries don't compare such a column yet.",
                         entity.name, field.name
                     ))
                     .next("Filter the records after the query for now"),

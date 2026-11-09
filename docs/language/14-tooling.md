@@ -1005,6 +1005,7 @@ sees](12-jobs-and-events.md#what-an-operator-sees)).
 |---|---|
 | `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries |
 | `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` |
+| `jadpo privacy` | Lists a person's data requests |
 
 ### `jadpo deliveries`
 
@@ -1061,6 +1062,30 @@ The database is `--url`'s, the connection's setting's, or a running
 nearest.
 
 Not built yet: `jadpo deliveries` doesn't list batch runs.
+
+### `jadpo privacy`
+
+`jadpo privacy requests` lists the data requests people have made
+([Data requests](15-personal-data.md#data-requests)). It takes `--json`.
+
+Alone, it lists those still to finish, the nearest legal deadline first, 20
+to a page (`--page`): each request's id, whether it is an export or an
+erasure, how it started (`email`, `signed in` or `staff`), how it stands
+and when it is due. `--state` lists those in one state, and `--all` every
+request, newest first. An export's states are `received`, `ready`,
+`downloaded` and `expired`, an erasure's `received`, `erasing`, `stalled`,
+`completed` and `cancelled`. `stalled` means a provider gave up, and the
+request is waiting for an operator: `jadpo deliveries` shows what it is
+waiting for.
+
+Above the footer an alert line says how many are past their deadline or
+within a week of it. The list shows no address, only each request's id;
+`--json` adds who made it, how their identity was checked and the person's
+`id`.
+
+The database is `--url`'s, the connection's setting's, or a running
+`jadpo dev`'s. A database it can't read is `privacy.unavailable`, and an
+unknown state or action `cli.privacy_arguments`.
 
 ## Commands for packages
 <!-- topic: commands-for-packages -->
@@ -3656,7 +3681,7 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `index.recommendation_unknown` | `schema index-accept` | Index recommendation is not current |
 | `install.fetch_failed` | `package add`, `update` | Installing a package couldn't read its git repository, or found no release there at the tag you gave ([Installing errors](11-integrations.md#installing-errors)) |
 | `install.in_use` | `package remove` | A package `jadpo package remove` was asked to remove is still brought in by the app's code ([Installing errors](11-integrations.md#installing-errors)) |
-| `install.link_refused` | `check`, `test` in CI | Linked package in a CI or production build ([Installing errors](11-integrations.md#installing-errors)) |
+| `install.link_refused` | `check`, `test` in CI | A package is linked to a checkout in a CI run or a production build ([Installing errors](11-integrations.md#installing-errors)) |
 | `install.surface_mismatch` | `package add`, `update` | The package you are installing has code that offers something different from its committed `surface.jadpo_record` ([Installing errors](11-integrations.md#installing-errors)) |
 | `lsp.content_length_missing` | `lsp` | Language-server message has no Content-Length header |
 | `lsp.json_invalid` | `lsp` | Language-server message is not valid JSON |
@@ -3726,7 +3751,7 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `publish.licence_proprietary` | `package verify`, `package publish` | A package's licence is `Licence.proprietary`, which the public registry refuses ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.publisher_mismatch` | `package verify`, `package publish` | A release names another publisher than the one asked to publish it ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.publisher_missing` | `package verify`, `package publish` | A package's index names no publisher, and it has to for the registry ([Publishing errors](11-integrations.md#publishing-errors)) |
-| `publish.sample_missing` | `package check` | Package's recipes have no sample app with one domain to compile in ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.sample_missing` | `package check` | A package with recipes has no sample app with one domain to compile them in ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.stale_files` | `package verify` | A commit's `surface.jadpo_record` or changelog list isn't what the package's code gives ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.too_large` | `package verify` | A commit's release is past the size limit ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.type_unreviewed` | `package check`, `package verify` | A provider package's public type isn't in its `reviewed:` list ([Publishing errors](11-integrations.md#publishing-errors)) |
@@ -3810,6 +3835,7 @@ yet, or that other commands replace.
 | `cli.package_not_openapi` | `package import` | A file given to `jadpo package import` is JSON but not an OpenAPI 3.0 or 3.1 document |
 | `cli.package_unreadable` | `package import` | A file given to `jadpo package import` isn't there, can't be read, or isn't JSON |
 | `cli.presentation_arguments` | any command | A `--color` flag holds something other than `auto`, `always` or `never`, or nothing |
+| `cli.privacy_arguments` | `privacy` | A `jadpo privacy` command names an action it doesn't have, or a state or page `requests` doesn't list |
 | `cli.project_required` | any command | Command requires a project path |
 | `cli.records_arguments` | `records` | A `jadpo records` command names an action other than `update` |
 | `cli.routes_arguments` | `routes` | A `jadpo routes` command is given an argument, which it doesn't take |
@@ -3860,6 +3886,7 @@ against one.
 | `migration.extension_missing` | `migrate apply`, `seed`, `dev`, `test` | The project's migrations need a PostgreSQL extension, such as pgvector, that the database server doesn't offer or that the role applying them can't create |
 | `migration.extension_outdated` | `migrate apply`, `seed`, `dev`, `test` | The database server's PostgreSQL extension, such as pgvector, is older than the project's migrations and queries need |
 | `migration.store_diverged` | `migrate apply`, `seed`, `dev` | The migrations a database has applied don't match the project's: one has changed since it ran, the project doesn't have one, or one comes out of order |
+| `privacy.unavailable` | `privacy` | The app's data requests couldn't be read from their database, because it can't be reached or has no table for them yet |
 | `runs.unavailable` | `runs unfinished` | The app's unfinished runs couldn't be read from their database, because it can't be reached or has no table for them yet |
 | `schedules.lease_held` | `schedules run`, `deliveries retry` | A schedule was run by hand while another run of it still holds its lease, so it wasn't run again |
 | `schedules.no_tick` | `schedules run`, `deliveries retry` | A schedule was run by hand against a deployment, and no tick of the app picked the run up in time, so nothing ran |

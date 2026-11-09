@@ -1,17 +1,22 @@
 # `deployable.target_unsupported`
 
-A deployable that declares a target is held to the connections it
-reaches, from the routes of the APIs it serves and the background work it
-runs: the disk and a service Jadpo runs (`runs:`) without `host:` aren't
-on Workers, SMTP on port 25 is blocked there, and only a Worker receives
-a Cloudflare queue or counts in Cloudflare's rate-limiting binding (area
-11; area 16, "Rate limits"). One built for Workers that
-runs the schedules is held to them too: its tick is the minute's cron, so
-a schedule more often than once a minute is refused at its `every:`
-(area 12), and so is its `client_address:`:
-Cloudflare's `CF-Connecting-IP` is the only source a Worker reads (area
-10, "Client addresses"). Each refusal names what to use
-instead. A bakery keeps its suppliers' price sheets on its disk:
+A deployable reaches something its target can't run.
+
+## Why Jadpo refuses it
+
+A deployable is held to what it reaches, from the routes of the APIs it
+serves and the background work it runs. Some of that can't work on its
+target: a Worker has no disk, runs no service beside the app and can't send
+mail on port 25, and only a Worker receives a Cloudflare queue or counts in
+Cloudflare's rate-limiting binding. Catching it here means the app doesn't
+fail in production, the first time a request gets that far.
+
+Jadpo won't pick the replacement for you, since it decides where your data
+or your work lives. Each refusal names what to use instead.
+
+## What it looks like
+
+A bakery keeps its suppliers' price sheets on its disk:
 
 ```jadpo check project=e-deployable-target-unsupported file=app.jadpo hidden
 application {
@@ -143,7 +148,7 @@ failure sheet_not_kept
     message "There was no room to keep the sheet."
 ```
 
-and its edge, which serves the API that keeps them, is built for Workers:
+Its edge, which serves the API that keeps them, is built for Workers:
 
 ```jadpo check project=e-deployable-target-unsupported expect=deployable.target_unsupported file=app.jadpo
 application {
@@ -185,7 +190,13 @@ error: `edge` can't use `sheets` on Workers, which has no disk
 check failed: 1 error, 8 files
 ```
 
-Another bakery checks its ovens' temperatures twice a minute:
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+A deployable built for Workers that runs the schedules is held to them too.
+A Worker ticks on Cloudflare's cron, once a minute at most, so a schedule
+due more often is refused at its `every:`. Here a bakery checks its ovens
+twice a minute:
 
 ```jadpo check project=e-deployable-schedule-workers file=app.jadpo hidden
 application {
@@ -246,8 +257,10 @@ error: `edge` can't run `oven_check` every 30 seconds on Workers, whose cron run
 check failed: 1 error, 3 files
 ```
 
-A third bakery reads its customers' addresses from its load balancer's
-`X-Forwarded-For`, and serves them from Workers:
+Its `client_address:` is held to the target as well: Cloudflare's
+`CF-Connecting-IP` is the only source a Worker reads. Here a bakery reads
+its customers' addresses from its load balancer's `X-Forwarded-For`, and
+serves them from Workers:
 
 ```jadpo check project=e-deployable-client-address-workers expect=deployable.target_unsupported file=app.jadpo
 application {
@@ -288,3 +301,235 @@ error: `edge` can't read the client's address from `X-Forwarded-For` on Workers
 
 check failed: 1 error, 1 file
 ```
+
+## How to fix it
+
+The question is whether the work has to stay on that target.
+
+**If it doesn't have to run on Workers**, build it natively, where a disk
+is available:
+
+```jadpo fragment
+        edge: {
+            serves: [main]
+            target: Target.native
+        }
+```
+
+```jadpo check project=e-deployable-target-unsupported-native file=app.jadpo hidden
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+    deployables: {
+        edge: {
+            serves: [main]
+            target: Target.native
+        }
+    }
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported-native file=domains/bakery/types/sheet_text.jadpo hidden
+/// A price sheet as a supplier sends it.
+type SheetText = Text {
+    min_length: 1
+    max_length: 100000
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported-native file=domains/bakery/types/new_sheet.jadpo hidden
+use bakery/types { SheetText }
+
+/// A price sheet to keep.
+type NewSheet = Input {
+    text: SheetText
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported-native file=domains/bakery/types/sheet_kept.jadpo hidden
+use bakery/entities { PriceSheet }
+
+/// The sheet as kept.
+type SheetKept = Output {
+    id: PriceSheet.id
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported-native file=domains/bakery/failures/sheet_not_kept.jadpo hidden
+/// The sheets store had no room for a sheet.
+type SheetNotKept = Failure {
+    kind: FailureKind.unavailable
+    message: "There was no room to keep the sheet."
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported-native file=domains/bakery/entities/price_sheet.jadpo hidden
+/// A supplier's price sheet, kept as it was sent.
+entity PriceSheet {
+    id: Uuid
+    sheet: File {
+        store: sheets
+        max_size: 5mb
+        types: [FileType.csv]
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported-native file=domains/bakery/actions/keep_prices.jadpo hidden
+use app { sheets }
+use bakery/entities { PriceSheet }
+use bakery/types { NewSheet, SheetKept }
+use bakery/failures { SheetNotKept }
+
+/// Keeps a price sheet as it was sent.
+action keep_prices(input: NewSheet) fails SheetNotKept -> SheetKept {
+    var sheet: File = attempt sheets.put(encoding.to_utf8(input.text), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    var filed: PriceSheet = PriceSheet.create {
+        set: {
+            sheet: sheet
+        }
+    }
+    return SheetKept {
+        id: filed.id
+    }
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported-native file=domains/bakery/routes/tariffs.jadpo hidden
+use bakery/types { NewSheet, SheetKept }
+use bakery/actions { keep_prices }
+
+/// The suppliers' tariffs.
+routes Tariffs {
+    prefix: /tariffs
+
+    /// Keeps a price sheet.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: NewSheet
+        output: SheetKept
+        status: SuccessStatus.created
+        run: keep_prices(input)
+    }
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported-native file=api/main.jadpo_record hidden migrate=initial
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+POST /tariffs
+    authentication none
+    input NewSheet (body)
+    output SheetKept
+    status 201
+    fails sheet_not_kept
+
+input NewSheet
+    text: Text { min_length: 1, max_length: 100000 }
+
+output SheetKept
+    id: Uuid
+
+failure sheet_not_kept
+    status 503
+    message "There was no room to keep the sheet."
+```
+
+`edge` now keeps its sheets on the server's disk. To stay on Workers, keep
+the files through a package over S3's API, such as Cloudflare R2.
+
+**If a schedule runs too often for Workers**, give it `every: 1m` or longer:
+
+```jadpo fragment
+schedule oven_check {
+    every: 1m
+    run: check_ovens()
+}
+```
+
+```jadpo check project=e-deployable-schedule-workers-fix file=domains/bakery/schedules/oven_check.jadpo hidden
+use bakery/actions { check_ovens }
+
+/// Checks the ovens once a minute.
+schedule oven_check {
+    every: 1m
+    run: check_ovens()
+}
+```
+
+```jadpo check project=e-deployable-schedule-workers-fix file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+    }
+    deployables: {
+        edge: {
+            runs: [Trigger.schedules, Trigger.subscribers]
+            target: Target.wasm
+        }
+    }
+}
+```
+
+```jadpo check project=e-deployable-schedule-workers-fix file=domains/bakery/actions/check_ovens.jadpo hidden migrate=initial
+/// Checks the ovens' temperatures, which changes nothing here.
+action check_ovens() -> Unit {
+    assert 1 == 1
+}
+```
+
+The ovens are now checked each time the Worker's cron runs, once a minute.
+
+**If it reads the client's address from a header on Workers**, use
+`cloudflare`, with no `hops:`:
+
+```jadpo check project=e-deployable-client-address-workers-fix file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.cloudflare
+    }
+    connections: {
+        limits: {
+            driver: Driver.cloudflare_rate_limits
+            namespace: 1001
+        }
+    }
+    deployables: {
+        edge: {
+            serves: [main]
+            target: Target.wasm
+        }
+    }
+    rate_limits: {
+        store: limits
+    }
+}
+```
+
+Rate limits now count the address Cloudflare gives each request.
+
+## Related
+
+- [Its target, checked](../language/14-tooling.md#its-target-checked)
+- [A Workers deployable](../language/14-tooling.md#a-workers-deployable)
+- [Client addresses](../language/10-configuration-and-time.md#client-addresses)
+- [Rate limits](../language/16-built-in-services.md#rate-limits)

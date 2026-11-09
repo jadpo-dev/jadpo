@@ -955,7 +955,7 @@ commands = ["api", "records", "acceptance", "approval", "declines", "fix", "sugg
 [[group.page.section]]
 id = "commands-for-background-work"
 title = "Commands for background work"
-commands = ["schedules", "deliveries"]
+commands = ["schedules", "deliveries", "privacy"]
 
 [[group.page.section]]
 id = "commands-for-packages"

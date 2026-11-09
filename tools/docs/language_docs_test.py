@@ -1464,7 +1464,7 @@ class ErrorFormat(unittest.TestCase):
                          'cli.y': {'area': command, 'decides': 'agent'},
                          'seed.failed': {'area': command, 'decides': 'agent'},
                          'acceptance.edited': {'area': command, 'decides': 'agent'},
-                         'deployable.empty': {'area': command, 'decides': 'agent'},
+                         'subscriber.empty': {'area': command, 'decides': 'agent'},
                          'install.in_use': {'area': command, 'decides': 'agent'},
                          'type.absent_field': {'area': 2, 'decides': 'agent'},
                          'type.foreign_type': {'area': 2, 'decides': 'agent'},

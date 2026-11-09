@@ -5,7 +5,7 @@ A setting under `privacy:` isn't one of its settings, or isn't valid.
 ## Why Jadpo refuses it
 
 `privacy:` holds `erasure_log:`, `self_service:`, `path:`,
-`generate_routes:`, `emails:` and `exports:`. Anything else is a typo or a
+`generate_routes:`, `exports:`, `erasures:` and `emails:`. Anything else is a typo or a
 setting from somewhere else, and Jadpo would rather say so than leave a person
 unable to make the request the setting was meant to allow. A value has to be
 of the right shape too: `path:` and `self_service`'s pages are paths on your
@@ -45,7 +45,7 @@ error: `export_link` isn't a setting of `privacy:`
   |
 3 |         export_link: "/data"
   |         ^^^^^^^^^^^ not a setting
-  reason: `privacy:` says where the erasure log is kept and how a person makes a data request: `erasure_log:`, `self_service:`, `path:`, `generate_routes:`, `emails:` and `exports:`.
+  reason: `privacy:` says where the erasure log is kept and how a person makes a data request: `erasure_log:`, `self_service:`, `path:`, `generate_routes:`, `exports:`, `erasures:` and `emails:`.
   next: Remove `export_link:` (agent)
   rule: data.privacy_setting_invalid
   help: https://jadpo.dev/docs/errors/data.privacy_setting_invalid
@@ -61,11 +61,55 @@ fix itself.
 **If the setting is a typo or from somewhere else,** remove it, or name one
 `privacy:` holds. To put the routes somewhere else, say so with `path:`:
 
+```jadpo check project=e-privacy-setting-fix file=config.jadpo hidden
+config {
+    mail_sender: Email {
+        default: "hello@notes.example"
+    }
+    site: Url {
+        default: "https://notes.example"
+    }
+    smtp_host: Hostname {
+        default: "localhost"
+    }
+}
+```
+
+```jadpo check project=e-privacy-setting-fix file=authentication.jadpo hidden
+authentication {
+    browser_session: {
+        cookie: "notes_session"
+        origin: config.site
+    }
+}
+```
+
 ```jadpo check project=e-privacy-setting-fix file=app.jadpo
 use accounts/entities { User }
 
 application {
+    display_name: "Notes"
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: config.smtp_host
+        }
+        vault: {
+            driver: Driver.disk
+            path: "/var/lib/notes/vault"
+        }
+    }
+    email: {
+        connection: mail
+        from: config.mail_sender
+    }
     privacy: {
+        erasure_log: {
+            store: vault
+        }
+        exports: {
+            store: vault
+        }
         path: "/data"
     }
 }

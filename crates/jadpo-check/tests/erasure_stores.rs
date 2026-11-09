@@ -611,7 +611,7 @@ entity Town {
 }
 
 #[test]
-fn privacy_refuses_what_it_does_not_hold_and_what_is_not_built_yet() {
+fn privacy_refuses_what_it_does_not_hold() {
     let unknown = APP.replace(
         "    privacy: {\n",
         "    privacy: {\n        export_link: \"/data\"\n",
@@ -621,10 +621,10 @@ fn privacy_refuses_what_it_does_not_hold_and_what_is_not_built_yet() {
         found.contains(&"data.privacy_setting_invalid".to_string()),
         "{found:?}"
     );
-    let delivered_later = APP.replace("    privacy: {\n", "    privacy: {\n        exports: {}\n");
-    let found = rules(&[("app.jadpo", &delivered_later)]);
+    let no_store = APP.replace("    privacy: {\n", "    privacy: {\n        exports: {}\n");
+    let found = rules(&[("app.jadpo", &no_store)]);
     assert!(
-        found.contains(&"toolchain.not_built_yet".to_string()),
+        found.contains(&"data.privacy_setting_invalid".to_string()),
         "{found:?}"
     );
     let not_a_store = APP.replace("store: erasures", "folder: erasures");

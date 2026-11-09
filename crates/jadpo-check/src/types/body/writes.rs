@@ -1871,7 +1871,7 @@ impl Body<'_> {
                         )
                         .at(span, "stored as JSON")
                         .reason(format!(
-                            "`{shown}` is stored whole as its JSON in one `jsonb` column (area 5), which Jadpo writes through its type's codec and the database doesn't work out in one step yet."
+                            "`{shown}` is stored whole as its JSON in one `jsonb` column, which Jadpo writes through its type's codec and the database doesn't work out in one step yet."
                         ))
                         .next(format!(
                             "Load the record and update it, `{written}({}) {{ set: {{ ... }} }}`, for now",
@@ -1897,7 +1897,7 @@ impl Body<'_> {
                         )
                         .at(span, "an amount of money, stored")
                         .reason(format!(
-                            "`{shown}` is an amount of money, stored as its minor units and its currency in two columns (area 19), which this compiler doesn't have the database work out in one step yet."
+                            "`{shown}` is an amount of money, stored as its minor units and its currency in two columns, which this compiler doesn't have the database work out in one step yet."
                         ))
                         .next(format!(
                             "Load the record and update it, `{written}({}) {{ set: {{ ... }} }}`, for now",

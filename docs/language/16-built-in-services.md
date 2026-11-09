@@ -915,6 +915,10 @@ application {
   file for each person erased, under `erasure-log/` in its folder, which no
   file's key can name and nothing deletes
   ([What erasure doesn't rewrite](15-personal-data.md#what-erasure-doesnt-rewrite)).
+- **Exports.** A store named by `privacy: { exports: }` keeps a person's
+  encrypted export under `privacy-exports/`, which no file's key can name,
+  until its link is used or ends
+  ([Exports](15-personal-data.md#exports)).
 - **Files never change.** Each is kept under a key the runtime
   generates, a UUID sharded into two directory levels, never one derived
   from a file's name. The driver refuses any key that doesn't match its
@@ -2804,9 +2808,7 @@ Jadpo sends some emails itself: the magic-link email
 ([Magic links](08-identity.md#magic-links)) and the privacy emails
 ([Data requests](15-personal-data.md#data-requests)). Each works with
 nothing written, and your app can change as much of it as it needs, in
-five levels. Each level keeps the ones below it. Of the privacy emails, the
-address check is built at levels 1 to 3; the others, and its levels 4 and
-5, are not.
+five levels. Each level keeps the ones below it.
 
 Every email, built in or your app's own, goes through your app's one
 `email:` setting in `application { }`. It names a connection that
@@ -2914,6 +2916,38 @@ routes are:
 | `privacy_address_check_ignore_line` | | "If you didn't ask, you can ignore this email." |
 | `privacy_link_expired` | | "This link has expired or has been used. Ask again." |
 | `privacy_person_not_found` | | "We can't find that person." |
+
+The export-ready email:
+
+| Message | Fields | `en_gb` wording |
+|---|---|---|
+| `privacy_export_email` (the subject) | | "Your data from {app_name} is ready" |
+| `privacy_export_heading` | | "Your data is ready" |
+| `privacy_export_intro` | | "Here is the copy of your data you asked {app_name} for." |
+| `privacy_export_button` | | "Download your data" |
+| `privacy_export_expiry_line` | `expires_in: PresentationText` | "The link works once, for {expires_in}." |
+| `privacy_export_ignore_line` | | "If you didn't ask for this, you can ignore this email. The file is deleted when the link ends." |
+
+The erasure-confirmed email:
+
+| Message | Fields | `en_gb` wording |
+|---|---|---|
+| `privacy_erasure_confirmation_email` (the subject) | | "We'll erase your data from {app_name}" |
+| `privacy_erasure_confirmation_heading` | | "We'll erase your data" |
+| `privacy_erasure_confirmation_intro` | `erases_on: PresentationText` | "Everything {app_name} holds about you will be erased on {erases_on}." |
+| `privacy_erasure_confirmation_button` | | "Cancel the erasure" |
+| `privacy_erasure_confirmation_cancel_line` | | "If you change your mind, cancel before then and nothing is erased." |
+
+The erasure-completed email:
+
+| Message | Fields | `en_gb` wording |
+|---|---|---|
+| `privacy_erasure_completed_email` (the subject) | | "Your data has been erased from {app_name}" |
+| `privacy_erasure_completed_heading` | | "Your data has been erased" |
+| `privacy_erasure_completed_intro` | | "We've erased what {app_name} held about you." |
+| `privacy_erasure_completed_kept_intro` | | "The law makes us keep these records for a while longer:" |
+| `privacy_erasure_completed_kept_line` | `name: PresentationText`, `kept_until: PresentationText` | "{name}, until {kept_until}" |
+| `privacy_erasure_completed_nothing_kept` | | "Nothing was kept." |
 
 [Passkeys](08-identity.md#passkeys) bring no email, only the wording of
 their failures, which a client app shows. These messages are on, listed,
@@ -5253,7 +5287,7 @@ The errors this page describes are built with the feature they belong to.
 |---|---|
 | Email | Built: email's templates, the shared layout, `email:`, sending after commit through the SMTP driver, attachments and parking ([Email rules: templates and sending](#email-rules-templates-and-sending)). The SMTP conversation runs in the driver, over the host's transport and its TLS upgrade. |
 | Jadpo's own magic-link email | Built: at all five levels, worded by Jadpo or reworded by the app, wrapped in the app's layout, the app's own email filled with the link and the code, or the app's own sending given them ([Jadpo's own magic-link email](#jadpos-own-magic-link-email), [Your own magic-link email](#your-own-magic-link-email)). |
-| The privacy emails | Not built yet. They come with data requests ([Data requests](15-personal-data.md#data-requests)). |
+| The privacy emails | Built: the address check, export ready, erasure confirmed and erasure completed, each at the five levels ([Every built-in email](#every-built-in-email)), interpreted and compiled. |
 | Mail packages | Built: a mail package as the connection, partials and `email.sent` ([Mail packages, partials and `email.sent`](#mail-packages-partials-and-emailsent)). |
 | The dev inbox and the health score | Partly built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
 | Rate limits | Partly built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. A generated route's own limits don't appear in OpenAPI's `x-jadpo-rate-limit` or `jadpo routes`, and a magic-link refusal gives `Retry-After` without the `RateLimit` headers. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |

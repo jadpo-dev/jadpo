@@ -33,7 +33,7 @@ mod shape;
 mod signatures;
 mod steps;
 mod stores;
-mod table;
+pub(crate) mod table;
 mod ty;
 
 pub(crate) use body::transition_key;
