@@ -221,7 +221,7 @@ fn required<'a>(
                     })
             }
             Kind::Failure => reachable.contains(&subject.type_name),
-            Kind::Email => false,
+            Kind::Email | Kind::Kept => false,
         })
         .collect()
 }

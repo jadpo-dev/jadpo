@@ -1215,26 +1215,23 @@ impl Decls<'_> {
                         .collect(),
                     _ => continue,
                 };
-                if !names
+                let Some(built_in) = names
                     .iter()
-                    .any(|name| super::table::builtin_fields(name).is_some())
-                {
+                    .find(|name| super::table::builtin_fields(name).is_some())
+                else {
                     continue;
-                }
+                };
                 let Some(member) = member(index) else {
                     continue;
                 };
                 self.out.push(
                     Diagnostic::new(
                         &rule::TYPE_NOT_RECORD,
-                        format!(
-                            "`{host}` can't copy from `{}`",
-                            jadpo_std::email::MAGIC_LINK_EMAIL_TYPE
-                        ),
+                        format!("`{host}` can't copy from `{built_in}`"),
                     )
-                    .at(self.span(member.syntax()), "the sign-in email's fields")
-                    .reason("`MagicLinkEmail`'s fields, a sign-in link and its code, go only into the application's own sign-in email, `type <Name> = EmailMessage { pick: [...] }` named by `magic_link: { email: }`, which Jadpo fills as it sends it.")
-                    .next("Remove the copy, or make this the sign-in email"),
+                    .at(self.span(member.syntax()), "a built-in email's fields")
+                    .reason(format!("`{built_in}`'s fields, links and codes among them, go only into the application's own email, `type <Name> = EmailMessage {{ pick: [...] }}` named by the setting that sends it, which Jadpo fills as it sends it."))
+                    .next("Remove the copy, or make this that email"),
                 );
             }
         }

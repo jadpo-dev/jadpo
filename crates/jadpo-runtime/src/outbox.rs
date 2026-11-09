@@ -363,6 +363,11 @@ impl Events<'_> {
         if event == jadpo_std::email::PRIVACY_ADDRESS_CHECK_EMAIL {
             return crate::http::privacy::read_payload(payload);
         }
+        // A data request's step, whose payload is the runtime's too (area
+        // 15, "Data requests").
+        if event == jadpo_std::privacy::STEP_EVENT {
+            return crate::http::privacy_steps::read_step(payload);
+        }
         // A file held by no record, whose payload is the runtime's too
         // (chunk B3).
         if event == jadpo_std::files::FILE_RELEASED {

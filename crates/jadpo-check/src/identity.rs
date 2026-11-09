@@ -599,6 +599,129 @@ pub fn sign_in_send_action(db: &dyn Db, project: Project) -> (Option<String>, Ve
     (None, vec![problem])
 }
 
+/// The application's own email for a built-in email, `written`, by its
+/// canonical name, when it is an email whose fields besides `to` and
+/// `locale` are each picked from `email_type` (area 16, "Every built-in
+/// email"); with its problem, under `rule`, when it isn't.
+pub(crate) fn own_email_named(
+    lookup: &Lookup<'_>,
+    written: &FirstSignIn,
+    email_type: &str,
+    rule: &'static jadpo_diag::Rule,
+) -> Result<String, Box<Diagnostic>> {
+    let span = written.span.clone();
+    let shown = written.names.join(".");
+    let shape = format!(
+        "`email:` names the application's own email, `type <Name> = EmailMessage {{ pick: [{email_type}.<field>, ...] }}`, whose fields Jadpo fills: each is one of `{email_type}`'s, besides the `to:` and `locale:` every email has."
+    );
+    let Some(symbol) = named_symbol(lookup, written, |kind| matches!(kind, ItemKind::Type(_)))
+    else {
+        return Err(Box::new(
+            Diagnostic::new(rule, format!("`{shown}` isn't an email"))
+                .at(span, "no such email")
+                .reason(shape)
+                .next("Name an email type, written `<domain>.<Email>`, declared in the domain's `emails/` folder"),
+        ));
+    };
+    let fields = match lookup.def(&symbol.canonical) {
+        Some(Def::Fields {
+            base: crate::types::FieldsBase::EmailMessage,
+            fields,
+            ..
+        }) => fields.clone(),
+        _ => {
+            return Err(Box::new(
+                Diagnostic::new(rule, format!("`{shown}` isn't an email"))
+                    .at(span, "not an `EmailMessage`")
+                    .reason(shape)
+                    .next(format!(
+                        "Declare `type {} = EmailMessage {{ pick: [{email_type}.<field>] }}`",
+                        symbol.name
+                    )),
+            ));
+        }
+    };
+    let own: Vec<String> = fields
+        .iter()
+        .filter(|field| {
+            !crate::types::EMAIL_FIELDS
+                .iter()
+                .any(|(name, _)| *name == field.name)
+        })
+        .filter(|field| {
+            !(field.copied && matches!(&field.declared, Ty::Field(host, _) if host == email_type))
+        })
+        .map(|field| format!("`{}`", field.name))
+        .collect();
+    if own.is_empty() {
+        return Ok(symbol.canonical.clone());
+    }
+    Err(Box::new(
+        Diagnostic::new(rule, format!("`{shown}` has fields Jadpo can't fill"))
+            .at(
+                span,
+                format!("{} not from `{email_type}`", crate::and_list(&own)),
+            )
+            .reason(shape)
+            .next(format!(
+                "Take {} out of `{}`, picking only from `{email_type}`",
+                crate::and_list(&own),
+                symbol.name
+            )),
+    ))
+}
+
+/// The action that sends a built-in email itself, `written`, by its
+/// canonical name, when it takes one `request_type` and returns `Unit`
+/// (area 16, "Every built-in email"); with its problem, under `rule`, when
+/// it isn't.
+pub(crate) fn send_action_named(
+    lookup: &Lookup<'_>,
+    written: &FirstSignIn,
+    request_type: &str,
+    rule: &'static jadpo_diag::Rule,
+) -> Result<String, Box<Diagnostic>> {
+    use crate::lookups::SigView;
+    let span = written.span.clone();
+    let shown = written.names.join(".");
+    let action = written.names.last().cloned().unwrap_or_default();
+    let shape = format!(
+        "`send:` names the action that sends the email itself, through any connection: it takes one `{request_type}` and returns `Unit`. It runs after what emitted it commits, as a subscriber does, and a failure is retried as a subscriber's is."
+    );
+    let Some(symbol) = named_symbol(lookup, written, |kind| *kind == ItemKind::Action) else {
+        return Err(Box::new(
+            Diagnostic::new(rule, format!("`{shown}` isn't an action"))
+                .at(span, "no such action")
+                .reason(shape)
+                .next("Name an action, written `<domain>.<action>`"),
+        ));
+    };
+    let Some(signature) = lookup.signature(&symbol.canonical).cloned() else {
+        return Ok(symbol.canonical.clone());
+    };
+    let takes = matches!(
+        signature.params.as_slice(),
+        [(_, Ty::Opaque(name, args))] if name == request_type && args.is_empty()
+    );
+    let gives = signature.result == Ty::Prim(Prim::Unit);
+    if takes && gives {
+        return Ok(symbol.canonical.clone());
+    }
+    let label = if takes {
+        "doesn't return `Unit`".to_string()
+    } else {
+        format!("doesn't take one `{request_type}`")
+    };
+    Err(Box::new(
+        Diagnostic::new(rule, format!("`{shown}` can't send this email"))
+            .at(span, label)
+            .reason(shape)
+            .next(format!(
+                "Declare it `action {action}(request: {request_type}) -> Unit`"
+            )),
+    ))
+}
+
 /// What `sign_in:` needs from the rest of the application (area 8,
 /// "Magic links"; area 16, "Built-in emails"): the `email:` connection
 /// the sign-in email goes through and the `display_name:` it names the

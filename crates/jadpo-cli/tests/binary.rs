@@ -133,6 +133,7 @@ fn bash_completes_commands_and_values() {
             "schedules",
             "flags",
             "deliveries",
+            "privacy",
             "runs",
             "new",
             "config",

@@ -65,11 +65,55 @@ who a request acts for.
 **If your app has people who sign in,** declare who a `user` is, on the entity
 that is a person, so a request can find them by their address:
 
+```jadpo check project=e-privacy-person-fix file=config.jadpo hidden
+config {
+    mail_sender: Email {
+        default: "hello@notes.example"
+    }
+    site: Url {
+        default: "https://notes.example"
+    }
+    smtp_host: Hostname {
+        default: "localhost"
+    }
+}
+```
+
+```jadpo check project=e-privacy-person-fix file=authentication.jadpo hidden
+authentication {
+    browser_session: {
+        cookie: "notes_session"
+        origin: config.site
+    }
+}
+```
+
 ```jadpo check project=e-privacy-person-fix file=app.jadpo
 use accounts/entities { User }
 
 application {
+    display_name: "Notes"
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: config.smtp_host
+        }
+        vault: {
+            driver: Driver.disk
+            path: "/var/lib/notes/vault"
+        }
+    }
+    email: {
+        connection: mail
+        from: config.mail_sender
+    }
     privacy: {
+        erasure_log: {
+            store: vault
+        }
+        exports: {
+            store: vault
+        }
         path: "/privacy"
     }
 }
@@ -93,8 +137,8 @@ entity User {
 }
 ```
 
-Requests by email also need an origin, a connection and a `display_name:`;
-each says so when it is missing.
+A data request also needs somewhere to keep exports, an erasure log, an origin
+and a way to tell the person; each says so when it is missing.
 
 ## Related
 

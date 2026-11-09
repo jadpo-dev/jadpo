@@ -58,6 +58,7 @@ pub mod local_issuer;
 pub mod magic_links;
 pub(crate) mod passkeys;
 pub mod privacy;
+pub mod privacy_steps;
 pub(crate) mod provider_sign_in;
 pub(crate) mod sign_in_events;
 pub(crate) mod sign_in_links;
@@ -2196,6 +2197,9 @@ pub async fn session(
             Box::pin(privacy::confirm_op(executor, ctx, plan, args, at)).await
         }
         (SessionOp::PrivacyCancel, _) => Box::pin(privacy::cancel_op(ctx, plan, args, at)).await,
+        (SessionOp::PrivacyDownload, _) => {
+            Box::pin(privacy::download_op(executor, ctx, args, at)).await
+        }
         (SessionOp::PrivacyCreateRequest, _) => {
             Box::pin(privacy::create_request_op(executor, ctx, plan, args, at)).await
         }
@@ -2617,8 +2621,8 @@ pub fn response_value(
         Some((None, Run::MagicLink(step))) if (200..300).contains(&response.status) => {
             magic_link_output(*step, &response.body)
         }
-        Some((None, Run::Privacy(_))) if (200..300).contains(&response.status) => {
-            privacy::response_output(&response.body)
+        Some((None, Run::Privacy(step))) if (200..300).contains(&response.status) => {
+            privacy::response_output(*step, &response.body)
         }
         Some((Some(codec), _)) if (200..300).contains(&response.status) => {
             jadpo_value::json::parse(raw.as_deref().unwrap_or(&response.body))

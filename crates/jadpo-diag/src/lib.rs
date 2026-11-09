@@ -202,6 +202,8 @@ rules! {
         "A file given to `jadpo package import` isn't there, can't be read, or isn't JSON";
     CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
         "A `--color` flag holds something other than `auto`, `always` or `never`, or nothing";
+    CLI_PRIVACY_ARGUMENTS: "cli.privacy_arguments", area 14, Error, Agent,
+        "A `jadpo privacy` command names an action it doesn't have, or a state or page `requests` doesn't list";
     CLI_RECORDS_ARGUMENTS: "cli.records_arguments", area 14, Error, Agent,
         "A `jadpo records` command names an action other than `update`";
     CLI_ROUTES_ARGUMENTS: "cli.routes_arguments", area 14, Error, Agent,
@@ -780,6 +782,8 @@ rules! {
         "Grant names the same caller twice";
     POLICY_SYSTEM_GRANT_MISSING: "policy.system_grant_missing", area 9, Error, Human,
         "A schedule or subscriber reaches something whose list doesn't name `Access.system`, the one way an entity lets background work in";
+    PRIVACY_UNAVAILABLE: "privacy.unavailable", area 14, Error, Human,
+        "The app's data requests couldn't be read from their database, because it can't be reached or has no table for them yet";
     PROMPT_FREE_TEXT_IN_INSTRUCTIONS: "prompt.free_text_in_instructions", area 21, Error, Agent,
         "A prompt writes a free-text value, such as text a user typed, in its instructions rather than in its request";
     PROMPT_PLACEHOLDER_TYPE: "prompt.placeholder_type", area 21, Error, Agent,

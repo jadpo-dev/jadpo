@@ -263,15 +263,19 @@ pub enum PrivacyStep {
     Export,
     /// `POST <path>/erasure`: the signed-in person's own erasure.
     Erasure,
+    /// `POST <path>/exports/download`: an export's link's token, used up
+    /// as the file is given.
+    Download,
 }
 
 impl PrivacyStep {
-    pub const ALL: [PrivacyStep; 5] = [
+    pub const ALL: [PrivacyStep; 6] = [
         PrivacyStep::Request,
         PrivacyStep::Confirm,
         PrivacyStep::Cancel,
         PrivacyStep::Export,
         PrivacyStep::Erasure,
+        PrivacyStep::Download,
     ];
 
     pub fn method(self) -> crate::HttpMethod {
@@ -294,6 +298,7 @@ impl PrivacyStep {
             PrivacyStep::Cancel => &["requests", "cancel"],
             PrivacyStep::Export => &["export"],
             PrivacyStep::Erasure => &["erasure"],
+            PrivacyStep::Download => &["exports", "download"],
         }
     }
 
@@ -308,7 +313,7 @@ impl PrivacyStep {
     /// Anyone may ask or confirm by a link; the signed-in routes act on
     /// the caller's own record, behind a recent sign-in.
     pub fn authentication(self) -> Authentication {
-        if self.self_service() {
+        if self.self_service() || self == PrivacyStep::Download {
             Authentication::Public
         } else {
             Authentication::Fresh
@@ -320,6 +325,7 @@ impl PrivacyStep {
     pub fn status(self) -> crate::SuccessStatus {
         match self {
             PrivacyStep::Cancel => crate::SuccessStatus::NoContent,
+            PrivacyStep::Download => crate::SuccessStatus::Ok,
             _ => crate::SuccessStatus::Accepted,
         }
     }
@@ -332,6 +338,7 @@ impl PrivacyStep {
             PrivacyStep::Cancel => "data request cancellation",
             PrivacyStep::Export => "own data export",
             PrivacyStep::Erasure => "own data erasure",
+            PrivacyStep::Download => "data export download",
         }
     }
 
@@ -341,6 +348,7 @@ impl PrivacyStep {
             PrivacyStep::Request => Some(PRIVACY_ASK),
             PrivacyStep::Confirm => Some(PRIVACY_CONFIRMATION),
             PrivacyStep::Cancel => Some(PRIVACY_CANCELLATION),
+            PrivacyStep::Download => Some(PRIVACY_DOWNLOAD),
             PrivacyStep::Export | PrivacyStep::Erasure => None,
         }
     }
@@ -349,6 +357,7 @@ impl PrivacyStep {
     pub fn output(self) -> Option<&'static str> {
         match self {
             PrivacyStep::Request | PrivacyStep::Cancel => None,
+            PrivacyStep::Download => Some(crate::erasure::PERSONAL_DATA_EXPORT),
             _ => Some(PRIVACY_REQUEST_ACCEPTED),
         }
     }
@@ -359,6 +368,7 @@ impl PrivacyStep {
 pub const PRIVACY_ASK: &str = "PrivacyAsk";
 pub const PRIVACY_CONFIRMATION: &str = "PrivacyConfirmation";
 pub const PRIVACY_CANCELLATION: &str = "PrivacyCancellation";
+pub const PRIVACY_DOWNLOAD: &str = "PrivacyDownload";
 pub const PRIVACY_REQUEST_ACCEPTED: &str = "PrivacyRequestAccepted";
 
 /// `PrivacyRequestAccepted`'s fields, in order.
@@ -370,6 +380,9 @@ pub const PRIVACY_REQUEST_ACCEPTED_FIELDS: [&str; 3] = ["request_id", "kind", "d
 /// address.
 pub const PRIVACY_REQUEST_RECEIVED: &str = "PrivacyRequestReceived";
 pub const PRIVACY_ERASURE_SCHEDULED: &str = "PrivacyErasureScheduled";
+pub const PRIVACY_EXPORT_READY: &str = "PrivacyExportReady";
+pub const PRIVACY_ERASURE_COMPLETED: &str = "PrivacyErasureCompleted";
+pub const PRIVACY_REQUEST_OVERDUE: &str = "PrivacyRequestOverdue";
 
 /// `privacy.create_request`, the generated action `actions:` grants.
 pub const PRIVACY_CREATE_REQUEST: &str = "privacy.create_request";
@@ -384,8 +397,27 @@ pub const PRIVACY_CHECK_RESEND_AFTER_MS: i64 = 60 * 1000;
 pub const PRIVACY_CHECKS_PER_HOUR: u32 = 5;
 
 /// An erasure's cooling-off period, 14 days by default (area 15,
-/// "Erasures").
+/// "Erasures"), and how short and long `cooling_off:` may make it: a day,
+/// so a person has time to see the email, to 21 days, which leaves a week of
+/// the shortest legal month for the providers to confirm.
 pub const PRIVACY_COOLING_OFF_MS: i64 = 14 * 24 * 60 * 60 * 1000;
+pub const PRIVACY_COOLING_OFF_MIN_MS: i64 = 24 * 60 * 60 * 1000;
+pub const PRIVACY_COOLING_OFF_MAX_MS: i64 = 21 * 24 * 60 * 60 * 1000;
+
+/// How long an export's link and file last, 7 days by default (area 15,
+/// "Exports"), and how short and long `keep:` may make it: a day, so a
+/// person has time to see the email, to 30 days.
+pub const PRIVACY_EXPORT_KEEP_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+pub const PRIVACY_EXPORT_KEEP_MIN_MS: i64 = 24 * 60 * 60 * 1000;
+pub const PRIVACY_EXPORT_KEEP_MAX_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+
+/// The frontend page an export's link opens unless `exports: { link: }`
+/// says.
+pub const PRIVACY_EXPORT_LINK: &str = "/privacy/download";
+
+/// How long before its deadline a request still open raises its alert
+/// (area 15, "Deadlines and events").
+pub const PRIVACY_ALERT_BEFORE_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 
 /// The default `path:` of the routes `privacy:` generates.
 pub const PRIVACY_PATH: &str = "privacy";
@@ -872,6 +904,10 @@ pub struct PrivacyPlan {
     /// Who may call `privacy.create_request` (`None` when no line grants
     /// it).
     pub create_request: Option<crate::policy::Gate>,
+    /// `erasures: { cooling_off: }`, in milliseconds.
+    pub cooling_off_ms: i64,
+    /// The locales a request's language is chosen from.
+    pub locales: crate::LocalePlan,
 }
 
 /// The built-in `FirstSignIn` (area 8, "A person the app has not seen"):
@@ -891,7 +927,7 @@ pub const SIGN_IN_CODES_DISABLED: &str = "SignInCodesDisabled";
 /// passkey's, never its credential ID or key.
 pub const PASSKEY_ADDED: &str = "PasskeyAdded";
 pub const PASSKEY_REMOVED: &str = "PasskeyRemoved";
-pub const SIGN_IN_EVENTS: [&str; 7] = [
+pub const SIGN_IN_EVENTS: [&str; 10] = [
     SIGNED_IN,
     SIGN_IN_REFUSED,
     SIGN_IN_CODES_DISABLED,
@@ -899,6 +935,9 @@ pub const SIGN_IN_EVENTS: [&str; 7] = [
     PASSKEY_REMOVED,
     PRIVACY_REQUEST_RECEIVED,
     PRIVACY_ERASURE_SCHEDULED,
+    PRIVACY_EXPORT_READY,
+    PRIVACY_ERASURE_COMPLETED,
+    PRIVACY_REQUEST_OVERDUE,
 ];
 
 /// The identity key the outbox keeps the built-in sign-in event `name`
@@ -912,6 +951,9 @@ pub fn sign_in_event_key(name: &str) -> Option<&'static str> {
         PASSKEY_REMOVED => Some("jadpo.PasskeyRemoved"),
         PRIVACY_REQUEST_RECEIVED => Some("jadpo.PrivacyRequestReceived"),
         PRIVACY_ERASURE_SCHEDULED => Some("jadpo.PrivacyErasureScheduled"),
+        PRIVACY_EXPORT_READY => Some("jadpo.PrivacyExportReady"),
+        PRIVACY_ERASURE_COMPLETED => Some("jadpo.PrivacyErasureCompleted"),
+        PRIVACY_REQUEST_OVERDUE => Some("jadpo.PrivacyRequestOverdue"),
         _ => None,
     }
 }
@@ -925,7 +967,14 @@ pub fn passkey_event(name: &str) -> bool {
 /// Whether the built-in event `name` is a data request's own, which only
 /// `privacy:` publishes.
 pub fn privacy_event(name: &str) -> bool {
-    matches!(name, PRIVACY_REQUEST_RECEIVED | PRIVACY_ERASURE_SCHEDULED)
+    matches!(
+        name,
+        PRIVACY_REQUEST_RECEIVED
+            | PRIVACY_ERASURE_SCHEDULED
+            | PRIVACY_EXPORT_READY
+            | PRIVACY_ERASURE_COMPLETED
+            | PRIVACY_REQUEST_OVERDUE
+    )
 }
 
 /// What publishes the built-in event `name`, for a message: `signing in`,
@@ -936,6 +985,9 @@ pub fn published_by(name: &str) -> &'static str {
         PASSKEY_REMOVED => "removing a passkey",
         PRIVACY_REQUEST_RECEIVED => "a data request",
         PRIVACY_ERASURE_SCHEDULED => "a data request for erasure",
+        PRIVACY_EXPORT_READY => "an export made for a data request",
+        PRIVACY_ERASURE_COMPLETED => "an erasure every provider has confirmed",
+        PRIVACY_REQUEST_OVERDUE => "a data request past its deadline",
         _ => "signing in",
     }
 }
@@ -957,9 +1009,13 @@ pub fn test_built_fields(name: &str) -> Option<&'static [&'static str]> {
         // answered by the generated privacy routes (area 15).
         PRIVACY_REQUEST_RECEIVED => Some(&["request_id", "user_id", "kind", "source", "deadline"]),
         PRIVACY_ERASURE_SCHEDULED => Some(&["request_id", "user_id", "erases_at", "cancel_link"]),
+        PRIVACY_EXPORT_READY => Some(&["request_id", "user_id", "download_link", "expires_at"]),
+        PRIVACY_ERASURE_COMPLETED => Some(&["request_id", "user_id", "completed_at"]),
+        PRIVACY_REQUEST_OVERDUE => Some(&["request_id", "user_id", "kind", "deadline"]),
         PRIVACY_ASK => Some(&["address", "locale"]),
         PRIVACY_CONFIRMATION => Some(&["token", "kind"]),
         PRIVACY_CANCELLATION => Some(&["token"]),
+        PRIVACY_DOWNLOAD => Some(&["token"]),
         // What a route test sends the generated magic-link routes (area 8,
         // "In development and tests").
         MAGIC_LINK_ASK => Some(&["address", "return_to", "locale"]),
@@ -991,6 +1047,7 @@ pub fn magic_link_input(name: &str) -> bool {
             | PRIVACY_ASK
             | PRIVACY_CONFIRMATION
             | PRIVACY_CANCELLATION
+            | PRIVACY_DOWNLOAD
     )
 }
 
@@ -1146,6 +1203,9 @@ pub enum SessionOp {
     PrivacyConfirm,
     /// `privacy.cancel(token)`: cancels the erasure its cancel link names.
     PrivacyCancel,
+    /// `privacy.download(token)`: the export an export's link names, used
+    /// up as it is given, as a `PersonalDataExport`.
+    PrivacyDownload,
     /// `privacy.create_request(user_id, kind, identity_check)` (area 15,
     /// "Made by staff"): granted in policy, a request made for someone
     /// staff have identified, giving a `PrivacyRequestAccepted`.
@@ -1171,7 +1231,7 @@ pub enum SessionOp {
 }
 
 impl SessionOp {
-    pub const ALL: [SessionOp; 19] = [
+    pub const ALL: [SessionOp; 20] = [
         SessionOp::Start,
         SessionOp::End,
         SessionOp::IssueToken,
@@ -1186,6 +1246,7 @@ impl SessionOp {
         SessionOp::PrivacyRequest,
         SessionOp::PrivacyConfirm,
         SessionOp::PrivacyCancel,
+        SessionOp::PrivacyDownload,
         SessionOp::PrivacyCreateRequest,
         SessionOp::TestPasskeyRegister,
         SessionOp::TestPasskeySignIn,
@@ -1209,6 +1270,7 @@ impl SessionOp {
             SessionOp::PrivacyRequest => "request",
             SessionOp::PrivacyConfirm => "confirm",
             SessionOp::PrivacyCancel => "cancel",
+            SessionOp::PrivacyDownload => "download",
             SessionOp::PrivacyCreateRequest => "create_request",
             SessionOp::TestPasskeyRegister => "register",
             SessionOp::TestPasskeySignIn | SessionOp::TestProviderSignIn => "sign_in",
@@ -1273,6 +1335,7 @@ impl SessionOp {
             SessionOp::PrivacyRequest
                 | SessionOp::PrivacyConfirm
                 | SessionOp::PrivacyCancel
+                | SessionOp::PrivacyDownload
                 | SessionOp::PrivacyCreateRequest
         )
     }
@@ -1329,6 +1392,7 @@ impl SessionOp {
             | SessionOp::PrivacyRequest
             | SessionOp::PrivacyConfirm
             | SessionOp::PrivacyCancel
+            | SessionOp::PrivacyDownload
             | SessionOp::PrivacyCreateRequest
             | SessionOp::TestPasskeyRegister
             | SessionOp::TestPasskeySignIn

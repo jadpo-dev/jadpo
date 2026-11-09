@@ -180,6 +180,18 @@ impl Planner<'_> {
             lookup_id: self.person_lookup(user, None),
             // Numbered once the action gates are (`crate::Plan`).
             create_request: None,
+            cooling_off_ms: privacy.cooling_off_ms,
+            locales: jadpo_check::locales::locales(db, project)
+                .plan
+                .clone()
+                .unwrap_or_else(|| {
+                    let en_gb = jadpo_std::locale_ordinal("en_gb").unwrap_or_default();
+                    jadpo_std::LocalePlan {
+                        default: en_gb,
+                        supported: vec![en_gb],
+                        in_progress: Vec::new(),
+                    }
+                }),
         })
     }
 

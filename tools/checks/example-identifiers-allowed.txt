@@ -642,3 +642,10 @@ admin
 article
 officer
 team
+
+# Ordinary words the data-request events and screens use.
+completed_at
+delivered
+delivers
+overdue
+staff

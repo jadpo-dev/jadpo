@@ -575,6 +575,8 @@ pub const PRIVACY_ADDRESS_CHECKS: SystemTable = SystemTable {
         column("sends", SqlType::Int4, false),
         // When nothing in the row counts any more.
         column("kept_until", SqlType::Timestamp, false),
+        // The language the person asked in, which their request takes.
+        column("locale", SqlType::Text, true),
     ],
     primary_key: &["id"],
     unique: &[
@@ -617,6 +619,18 @@ pub const PRIVACY_REQUESTS: SystemTable = SystemTable {
         column("cancelled_at", SqlType::Timestamp, true),
         column("cancel_key", SqlType::Text, true),
         column("open", SqlType::Text, true),
+        // The language the emails about it are written in.
+        column("locale", SqlType::Text, false),
+        // Where an export's encrypted file is kept, when its link stops
+        // working, and the link kept only as a verifier.
+        column("export_file", SqlType::Text, true),
+        column("export_expires_at", SqlType::Timestamp, true),
+        column("export_key", SqlType::Text, true),
+        // When its export was downloaded, or when it was erased and when
+        // that was finished.
+        column("downloaded_at", SqlType::Timestamp, true),
+        column("erased_at", SqlType::Timestamp, true),
+        column("completed_at", SqlType::Timestamp, true),
     ],
     primary_key: &["id"],
     unique: &[
@@ -627,6 +641,10 @@ pub const PRIVACY_REQUESTS: SystemTable = SystemTable {
         SystemUnique {
             columns: &["cancel_key"],
             rule: "system privacy requests by cancel link",
+        },
+        SystemUnique {
+            columns: &["export_key"],
+            rule: "system privacy requests by download link",
         },
     ],
     foreign_keys: &[],

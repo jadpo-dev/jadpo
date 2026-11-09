@@ -92,6 +92,7 @@ Production
   schedules     Watch and control schedules   run, pause, resume, history
   flags         Change and remove flags       list, set, reset, remove
   deliveries    Retry, dismiss or cancel deliveries
+  privacy       List data requests            requests
   runs          Check runs before a deploy    unfinished
 
 Set up
@@ -176,6 +177,7 @@ Production
   schedules     Watch and control schedules   run · pause · resume · history
   flags         Change and remove flags       list · set · reset · remove
   deliveries    Retry, dismiss or cancel deliveries
+  privacy       List data requests            requests
   runs          Check runs before a deploy    unfinished
 
 Set up
@@ -357,6 +359,7 @@ fn help_json_is_the_whole_command_reference() {
             "schedules",
             "flags",
             "deliveries",
+            "privacy",
             "runs",
             "new",
             "config",
@@ -829,6 +832,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "schedules\tWatch and control schedules",
             "flags\tChange and remove flags",
             "deliveries\tRetry, dismiss or cancel deliveries",
+            "privacy\tList data requests",
             "runs\tCheck runs before a deploy",
             "new\tStart a project",
             "config\tCheck and set local settings",

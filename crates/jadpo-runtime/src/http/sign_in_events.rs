@@ -23,7 +23,8 @@
 use std::rc::Rc;
 
 use jadpo_std::http::{
-    PASSKEY_ADDED, PASSKEY_REMOVED, PRIVACY_ERASURE_SCHEDULED, PRIVACY_REQUEST_RECEIVED,
+    PASSKEY_ADDED, PASSKEY_REMOVED, PRIVACY_ERASURE_COMPLETED, PRIVACY_ERASURE_SCHEDULED,
+    PRIVACY_EXPORT_READY, PRIVACY_REQUEST_OVERDUE, PRIVACY_REQUEST_RECEIVED,
     SIGN_IN_CODES_DISABLED, SIGN_IN_REFUSED, SIGNED_IN, sign_in_event_key,
 };
 use jadpo_std::{SignInMethod, SignInRefusal};
@@ -105,6 +106,34 @@ pub(crate) enum SignInEvent {
         erases_at: i64,
         cancel_link: String,
     },
+    /// An export is made and its link can be delivered.
+    PrivacyExportReady {
+        request: [u8; 16],
+        user: [u8; 16],
+        download_link: String,
+        /// Milliseconds.
+        expires_at: i64,
+    },
+    /// An erasure has finished: every provider has confirmed.
+    PrivacyErasureCompleted {
+        request: [u8; 16],
+        user: [u8; 16],
+        /// Milliseconds.
+        completed_at: i64,
+        /// The address the completion email goes to, and its language and
+        /// what was kept: only in the payload, read only by that email.
+        to: Option<String>,
+        locale: String,
+        kept: serde_json::Value,
+    },
+    /// A request has passed its deadline without finishing.
+    PrivacyRequestOverdue {
+        request: [u8; 16],
+        user: [u8; 16],
+        kind: &'static str,
+        /// Milliseconds.
+        deadline: i64,
+    },
 }
 
 impl SignInEvent {
@@ -117,6 +146,9 @@ impl SignInEvent {
             SignInEvent::PasskeyRemoved { .. } => PASSKEY_REMOVED,
             SignInEvent::PrivacyRequestReceived { .. } => PRIVACY_REQUEST_RECEIVED,
             SignInEvent::PrivacyErasureScheduled { .. } => PRIVACY_ERASURE_SCHEDULED,
+            SignInEvent::PrivacyExportReady { .. } => PRIVACY_EXPORT_READY,
+            SignInEvent::PrivacyErasureCompleted { .. } => PRIVACY_ERASURE_COMPLETED,
+            SignInEvent::PrivacyRequestOverdue { .. } => PRIVACY_REQUEST_OVERDUE,
         }
     }
 
@@ -197,6 +229,47 @@ impl SignInEvent {
                 ("erases_at", Value::Instant(*erases_at)),
                 ("cancel_link", Value::text(cancel_link)),
             ],
+            SignInEvent::PrivacyExportReady {
+                request,
+                user: id,
+                download_link,
+                expires_at,
+            } => vec![
+                ("request_id", user(&Some(*request))),
+                ("user_id", user(&Some(*id))),
+                ("download_link", Value::text(download_link)),
+                ("expires_at", Value::Instant(*expires_at)),
+            ],
+            SignInEvent::PrivacyErasureCompleted {
+                request,
+                user: id,
+                completed_at,
+                ..
+            } => vec![
+                ("request_id", user(&Some(*request))),
+                ("user_id", user(&Some(*id))),
+                ("completed_at", Value::Instant(*completed_at)),
+            ],
+            SignInEvent::PrivacyRequestOverdue {
+                request,
+                user: id,
+                kind,
+                deadline,
+            } => vec![
+                ("request_id", user(&Some(*request))),
+                ("user_id", user(&Some(*id))),
+                (
+                    "kind",
+                    Value::variant(
+                        jadpo_std::PrivacyRequestKind::NAME,
+                        jadpo_std::variant_ordinal(jadpo_std::PrivacyRequestKind::NAME, kind)
+                            .unwrap_or_default(),
+                        kind,
+                        Vec::new(),
+                    ),
+                ),
+                ("deadline", Value::Instant(*deadline)),
+            ],
             SignInEvent::PasskeyAdded { user: id, passkey }
             | SignInEvent::PasskeyRemoved { user: id, passkey } => vec![
                 ("user_id", user(&Some(*id))),
@@ -271,6 +344,43 @@ impl SignInEvent {
                 "user_id": user(&Some(*id)),
                 "erases_at": erases_at,
                 "cancel_link": cancel_link,
+            }),
+            SignInEvent::PrivacyExportReady {
+                request,
+                user: id,
+                download_link,
+                expires_at,
+            } => serde_json::json!({
+                "request_id": user(&Some(*request)),
+                "user_id": user(&Some(*id)),
+                "download_link": download_link,
+                "expires_at": expires_at,
+            }),
+            SignInEvent::PrivacyErasureCompleted {
+                request,
+                user: id,
+                completed_at,
+                to,
+                locale,
+                kept,
+            } => serde_json::json!({
+                "request_id": user(&Some(*request)),
+                "user_id": user(&Some(*id)),
+                "completed_at": completed_at,
+                "to": to,
+                "locale": locale,
+                "kept": kept,
+            }),
+            SignInEvent::PrivacyRequestOverdue {
+                request,
+                user: id,
+                kind,
+                deadline,
+            } => serde_json::json!({
+                "request_id": user(&Some(*request)),
+                "user_id": user(&Some(*id)),
+                "kind": kind,
+                "deadline": deadline,
             }),
             SignInEvent::PasskeyAdded { user: id, passkey }
             | SignInEvent::PasskeyRemoved { user: id, passkey } => serde_json::json!({
@@ -374,6 +484,62 @@ pub(crate) fn read_payload(key: &str, payload: &str) -> Option<Result<Value, Str
                         user,
                         erases_at,
                         cancel_link,
+                    }
+                }
+                _ => return Some(Err(not())),
+            }
+        }
+        PRIVACY_EXPORT_READY => {
+            let request = text("request_id").and_then(super::magic_links::parse_uuid);
+            let link = text("download_link").map(str::to_string);
+            let expires_at = object.get("expires_at").and_then(serde_json::Value::as_i64);
+            match (request, user, link, expires_at) {
+                (Some(request), Ok(Some(user)), Some(download_link), Some(expires_at)) => {
+                    SignInEvent::PrivacyExportReady {
+                        request,
+                        user,
+                        download_link,
+                        expires_at,
+                    }
+                }
+                _ => return Some(Err(not())),
+            }
+        }
+        PRIVACY_ERASURE_COMPLETED => {
+            let request = text("request_id").and_then(super::magic_links::parse_uuid);
+            let completed_at = object
+                .get("completed_at")
+                .and_then(serde_json::Value::as_i64);
+            match (request, user, completed_at) {
+                (Some(request), Ok(Some(user)), Some(completed_at)) => {
+                    SignInEvent::PrivacyErasureCompleted {
+                        request,
+                        user,
+                        completed_at,
+                        to: None,
+                        locale: String::new(),
+                        kept: serde_json::Value::Null,
+                    }
+                }
+                _ => return Some(Err(not())),
+            }
+        }
+        PRIVACY_REQUEST_OVERDUE => {
+            let request = text("request_id").and_then(super::magic_links::parse_uuid);
+            let kind = text("kind").and_then(|written| {
+                jadpo_std::PrivacyRequestKind::ALL
+                    .iter()
+                    .find(|known| known.name() == written)
+                    .map(|known| known.name())
+            });
+            let deadline = object.get("deadline").and_then(serde_json::Value::as_i64);
+            match (request, user, kind, deadline) {
+                (Some(request), Ok(Some(user)), Some(kind), Some(deadline)) => {
+                    SignInEvent::PrivacyRequestOverdue {
+                        request,
+                        user,
+                        kind,
+                        deadline,
                     }
                 }
                 _ => return Some(Err(not())),

@@ -342,6 +342,74 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::http::privacy::CANCEL.to_string(),
         ),
         (
+            "http::privacy::EXPORT_BY_KEY",
+            crate::http::privacy::EXPORT_BY_KEY.to_string(),
+        ),
+        (
+            "http::privacy::EXPORT_USED",
+            crate::http::privacy::EXPORT_USED.to_string(),
+        ),
+        (
+            "http::privacy_steps::LIST_BY_DEADLINE",
+            crate::http::privacy_steps::LIST_BY_DEADLINE.to_string(),
+        ),
+        (
+            "http::privacy_steps::LIST_NEWEST",
+            crate::http::privacy_steps::LIST_NEWEST.to_string(),
+        ),
+        (
+            "http::privacy_steps::COUNTS",
+            crate::http::privacy_steps::COUNTS.to_string(),
+        ),
+        (
+            "http::privacy_steps::READ_REQUEST",
+            crate::http::privacy_steps::READ_REQUEST.to_string(),
+        ),
+        (
+            "http::privacy_steps::LOCK_REQUEST",
+            crate::http::privacy_steps::LOCK_REQUEST.to_string(),
+        ),
+        (
+            "http::privacy_steps::EXPORT_READY",
+            crate::http::privacy_steps::EXPORT_READY.to_string(),
+        ),
+        (
+            "http::privacy_steps::EXPORT_ENDED",
+            crate::http::privacy_steps::EXPORT_ENDED.to_string(),
+        ),
+        (
+            "http::privacy_steps::EXPORTS_OF",
+            crate::http::privacy_steps::EXPORTS_OF.to_string(),
+        ),
+        (
+            "http::privacy_steps::ERASING_NOW",
+            crate::http::privacy_steps::ERASING_NOW.to_string(),
+        ),
+        (
+            "http::privacy_steps::OUTSTANDING",
+            crate::http::privacy_steps::OUTSTANDING.to_string(),
+        ),
+        (
+            "http::privacy_steps::STALLED_NOW",
+            crate::http::privacy_steps::STALLED_NOW.to_string(),
+        ),
+        (
+            "http::privacy_steps::COMPLETED_NOW",
+            crate::http::privacy_steps::COMPLETED_NOW.to_string(),
+        ),
+        (
+            "http::privacy_steps::STEP_DONE",
+            crate::http::privacy_steps::STEP_DONE.to_string(),
+        ),
+        (
+            "http::privacy_steps::PAYLOAD",
+            crate::http::privacy_steps::PAYLOAD.to_string(),
+        ),
+        (
+            "http::privacy_steps::LOCALE_OF",
+            crate::http::privacy_steps::LOCALE_OF.to_string(),
+        ),
+        (
             "http::provider_sign_in::PUT",
             crate::http::provider_sign_in::PUT.to_string(),
         ),

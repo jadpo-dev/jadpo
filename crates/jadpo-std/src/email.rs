@@ -230,6 +230,186 @@ pub enum BuiltinEmail {
     /// by email"), at level 1, reworded and wrapped as the magic-link
     /// email is.
     PrivacyAddressCheck(PrivacyAddressCheckEmailPlan),
+    /// One of the other three privacy emails, each sent on its event.
+    PrivacyNotice(PrivacyNoticePlan),
+}
+
+/// The three privacy emails sent on an event (area 16, "Every built-in
+/// email"), with what each is called.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum PrivacyNotice {
+    ExportReady,
+    ErasureConfirmed,
+    ErasureCompleted,
+}
+
+impl PrivacyNotice {
+    pub const ALL: [PrivacyNotice; 3] = [
+        PrivacyNotice::ExportReady,
+        PrivacyNotice::ErasureConfirmed,
+        PrivacyNotice::ErasureCompleted,
+    ];
+
+    /// As `privacy: { emails: { } }` names it.
+    pub fn setting(self) -> &'static str {
+        match self {
+            PrivacyNotice::ExportReady => "export_ready",
+            PrivacyNotice::ErasureConfirmed => "erasure_confirmed",
+            PrivacyNotice::ErasureCompleted => "erasure_completed",
+        }
+    }
+
+    /// The built-in event it is sent on, whose identity key its plan keys.
+    pub fn event(self) -> &'static str {
+        match self {
+            PrivacyNotice::ExportReady => crate::http::PRIVACY_EXPORT_READY,
+            PrivacyNotice::ErasureConfirmed => crate::http::PRIVACY_ERASURE_SCHEDULED,
+            PrivacyNotice::ErasureCompleted => crate::http::PRIVACY_ERASURE_COMPLETED,
+        }
+    }
+
+    /// The identity key of the event it is sent on.
+    pub fn key(self) -> &'static str {
+        match self {
+            PrivacyNotice::ExportReady => "jadpo.PrivacyExportReady",
+            PrivacyNotice::ErasureConfirmed => "jadpo.PrivacyErasureScheduled",
+            PrivacyNotice::ErasureCompleted => "jadpo.PrivacyErasureCompleted",
+        }
+    }
+
+    /// As a log and its subscriber's key name it.
+    pub fn name(self) -> &'static str {
+        match self {
+            PrivacyNotice::ExportReady => "jadpo.PrivacyExportEmail",
+            PrivacyNotice::ErasureConfirmed => "jadpo.PrivacyErasureConfirmedEmail",
+            PrivacyNotice::ErasureCompleted => "jadpo.PrivacyErasureCompletedEmail",
+        }
+    }
+
+    /// The built-in type an application's own email picks from.
+    pub fn email_type(self) -> &'static str {
+        match self {
+            PrivacyNotice::ExportReady => "PrivacyExportEmail",
+            PrivacyNotice::ErasureConfirmed => "PrivacyErasureConfirmedEmail",
+            PrivacyNotice::ErasureCompleted => "PrivacyErasureCompletedEmail",
+        }
+    }
+
+    /// The built-in type the application's own sending is given.
+    pub fn request_type(self) -> &'static str {
+        match self {
+            PrivacyNotice::ExportReady => "PrivacyExportRequest",
+            PrivacyNotice::ErasureConfirmed => "PrivacyErasureConfirmedRequest",
+            PrivacyNotice::ErasureCompleted => "PrivacyErasureCompletedRequest",
+        }
+    }
+
+    /// The notice with event key `key`.
+    pub fn with_key(key: &str) -> Option<PrivacyNotice> {
+        PrivacyNotice::ALL
+            .into_iter()
+            .find(|notice| notice.key() == key)
+    }
+}
+
+/// What a privacy email's built-in types hold beyond a built-in value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Filled {
+    Of(crate::Builtin),
+    /// A list of [`crate::privacy::KEPT_RECORD`].
+    Kept,
+    /// The `Locale` of the request.
+    Locale,
+}
+
+/// The fields, in order, of the built-in email or request type called
+/// `name` of a privacy email: what an application's own email picks from
+/// and its own sending is given.
+pub fn privacy_type_fields(name: &str) -> Option<&'static [(&'static str, Filled)]> {
+    use crate::Builtin::{Email, Instant, PresentationText, Url};
+    match name {
+        PRIVACY_ADDRESS_CHECK_EMAIL_TYPE => Some(&[
+            ("address", Filled::Of(Email)),
+            ("confirm_link", Filled::Of(Url)),
+            ("expires_in", Filled::Of(PresentationText)),
+        ]),
+        PRIVACY_ADDRESS_CHECK_REQUEST => Some(&[
+            ("address", Filled::Of(Email)),
+            ("confirm_link", Filled::Of(Url)),
+            ("expires_at", Filled::Of(Instant)),
+            ("locale", Filled::Locale),
+        ]),
+        "PrivacyExportEmail" => Some(&[
+            ("address", Filled::Of(Email)),
+            ("download_link", Filled::Of(Url)),
+            ("expires_in", Filled::Of(PresentationText)),
+        ]),
+        "PrivacyExportRequest" => Some(&[
+            ("address", Filled::Of(Email)),
+            ("download_link", Filled::Of(Url)),
+            ("expires_at", Filled::Of(Instant)),
+            ("locale", Filled::Locale),
+        ]),
+        "PrivacyErasureConfirmedEmail" => Some(&[
+            ("address", Filled::Of(Email)),
+            ("erases_on", Filled::Of(PresentationText)),
+            ("cancel_link", Filled::Of(Url)),
+        ]),
+        "PrivacyErasureConfirmedRequest" => Some(&[
+            ("address", Filled::Of(Email)),
+            ("erases_at", Filled::Of(Instant)),
+            ("cancel_link", Filled::Of(Url)),
+            ("locale", Filled::Locale),
+        ]),
+        "PrivacyErasureCompletedEmail" => {
+            Some(&[("address", Filled::Of(Email)), ("kept", Filled::Kept)])
+        }
+        "PrivacyErasureCompletedRequest" => Some(&[
+            ("address", Filled::Of(Email)),
+            ("kept", Filled::Kept),
+            ("locale", Filled::Locale),
+        ]),
+        crate::privacy::KEPT_RECORD => Some(&[
+            ("name", Filled::Of(PresentationText)),
+            ("kept_until", Filled::Of(PresentationText)),
+        ]),
+        _ => None,
+    }
+}
+
+/// The built-in event and email types the privacy emails' fields can read
+/// from: the built-in types an application's email may `pick:` from.
+pub const PRIVACY_EMAIL_TYPES: [&str; 4] = [
+    PRIVACY_ADDRESS_CHECK_EMAIL_TYPE,
+    "PrivacyExportEmail",
+    "PrivacyErasureConfirmedEmail",
+    "PrivacyErasureCompletedEmail",
+];
+
+/// How Jadpo writes and sends a privacy email that goes out on an event.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PrivacyNoticePlan {
+    pub notice: PrivacyNotice,
+    /// `application { display_name: }`.
+    pub app_name: String,
+    /// Jadpo's messages the email is written with, by key.
+    pub messages: Vec<TranslationEntry>,
+    /// The locales its wording falls back through.
+    pub locales: LocalePlan,
+    /// `email:`, the application's own email (level 4), by its key.
+    pub own: Option<String>,
+    /// `send:`, the action that sends it itself (level 5), by callable
+    /// number: given its request type.
+    pub send: Option<u32>,
+}
+
+impl PrivacyNoticePlan {
+    /// The message called `key`, without its `jadpo.`.
+    pub fn message(&self, key: &str) -> Option<&TranslationEntry> {
+        self.messages
+            .iter()
+            .find(|entry| entry.key.strip_prefix("jadpo.") == Some(key))
+    }
 }
 
 /// The built-in type of the privacy address-check email (area 16, "Every
@@ -242,18 +422,6 @@ pub const PRIVACY_ADDRESS_CHECK_REQUEST: &str = "PrivacyAddressCheckRequest";
 /// The fields the runtime keeps the email as: who it goes to, its
 /// language and the check it is for.
 pub const PRIVACY_ADDRESS_CHECK_EMAIL_FIELDS: [&str; 3] = ["to", "locale", "request"];
-
-/// `PrivacyAddressCheckEmail`'s fields, in order, each with the built-in
-/// type it holds.
-pub const PRIVACY_ADDRESS_CHECK_EMAIL_TYPE_FIELDS: [(&str, crate::Builtin); 3] = [
-    ("address", crate::Builtin::Email),
-    ("confirm_link", crate::Builtin::Url),
-    ("expires_in", crate::Builtin::Text),
-];
-
-/// `PrivacyAddressCheckRequest`'s fields, in order.
-pub const PRIVACY_ADDRESS_CHECK_REQUEST_FIELDS: [&str; 4] =
-    ["address", "confirm_link", "expires_at", "locale"];
 
 /// How Jadpo writes and sends the address-check email.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
