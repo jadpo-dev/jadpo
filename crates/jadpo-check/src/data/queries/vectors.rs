@@ -244,7 +244,13 @@ impl Reader<'_> {
             return None;
         }
         if self.lookup.is_nullable(&given) {
-            self.optional_in_where(scope, &target);
+            self.optional_outside_where(
+                scope,
+                &target,
+                "`nearest` needs a vector to measure from",
+                "`nearest` orders the records by their distance from a vector the call supplies, so that vector is there on every call; `where_present:` is for a filter a call may leave out.",
+                "Pass a vector that is always there",
+            );
             return None;
         }
         let theirs = vector_type(self.lookup, &given);
