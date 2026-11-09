@@ -362,16 +362,18 @@ mod tests {
 
     use super::*;
 
+    fn key() -> Vec<u8> {
+        std::process::id().to_be_bytes().to_vec()
+    }
+
     fn hasher() -> Hasher {
-        Hasher {
-            key: Some(b"key".to_vec()),
-        }
+        Hasher { key: Some(key()) }
     }
 
     fn hash_of(text: &str) -> Json {
         Json::String(format!(
             "hmac-sha256:{}",
-            jadpo_value::crypto::mac(b"key", &[text.as_bytes()])
+            jadpo_value::crypto::mac(&key(), &[text.as_bytes()])
                 .iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect::<String>()
