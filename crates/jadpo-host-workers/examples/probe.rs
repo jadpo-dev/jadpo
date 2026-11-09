@@ -619,6 +619,7 @@ fn request(url: &str, timeout_ms: u64, body: Option<&str>) -> Request {
             .map(|_| vec![("content-type".to_string(), "application/json".to_string())])
             .unwrap_or_default(),
         body: body.map(str::to_string),
+        raw_body: None,
         timeout_ms,
         reading: Reading::default(),
         repeatable: body.is_none(),

@@ -1367,3 +1367,84 @@ fn asking_for_a_slot_or_attaching_reaches_the_fields_store() {
     );
     assert_eq!(attached, ["sheets"]);
 }
+
+/// What `app.jadpo` and `config.jadpo` report as rules.
+fn connection_rules(app: &str, config: &str) -> Vec<String> {
+    support::rules(
+        Layout::Project,
+        &[("app.jadpo", app), ("config.jadpo", config)],
+    )
+    .into_iter()
+    .filter(|rule| rule != "import.unused" && rule != "config.unused")
+    .collect()
+}
+
+const S3_CONFIG: &str = "config {\n    files_host: Text\n    files_key_id: Text\n    files_secret: Text {\n        secret: true\n    }\n}\n";
+
+fn s3_app(settings: &str) -> String {
+    format!(
+        "application {{\n    connections: {{\n        uploads: {{\n            driver: Driver.s3\n{settings}        }}\n    }}\n}}\n"
+    )
+}
+
+const S3_WHOLE: &str = "            host: config.files_host\n            region: \"auto\"\n            bucket: \"acme\"\n            credential: {\n                key_id: config.files_key_id\n                secret: config.files_secret\n            }\n";
+
+#[test]
+fn an_s3_connections_settings_are_held_to_what_they_say() {
+    assert_eq!(
+        connection_rules(&s3_app(S3_WHOLE), S3_CONFIG),
+        Vec::<String>::new()
+    );
+    // Text written out, and a real address.
+    let written = S3_WHOLE.replace(
+        "host: config.files_host",
+        "host: \"https://acme.r2.cloudflarestorage.com\"",
+    );
+    assert_eq!(
+        connection_rules(&s3_app(&written), S3_CONFIG),
+        Vec::<String>::new()
+    );
+
+    let missing_region = S3_WHOLE.replace("            region: \"auto\"\n", "");
+    assert_eq!(
+        connection_rules(&s3_app(&missing_region), S3_CONFIG),
+        ["connection.key_missing"]
+    );
+    let no_credential = "            host: config.files_host\n            region: \"auto\"\n            bucket: \"acme\"\n";
+    assert_eq!(
+        connection_rules(&s3_app(no_credential), S3_CONFIG),
+        ["connection.key_missing"]
+    );
+    let not_an_address = S3_WHOLE.replace("host: config.files_host", "host: \"localhost:9000\"");
+    assert_eq!(
+        connection_rules(&s3_app(&not_an_address), S3_CONFIG),
+        ["connection.value_invalid"]
+    );
+    let plain_http = S3_WHOLE.replace("host: config.files_host", "host: \"http://example.com\"");
+    assert_eq!(
+        connection_rules(&s3_app(&plain_http), S3_CONFIG),
+        ["connection.value_invalid"]
+    );
+    let written_secret =
+        S3_WHOLE.replace("secret: config.files_secret", "secret: \"plainly-wrong\"");
+    assert_eq!(
+        connection_rules(&s3_app(&written_secret), S3_CONFIG),
+        ["connection.value_invalid"]
+    );
+    let not_secret =
+        "config {\n    files_host: Text\n    files_key_id: Text\n    files_secret: Text\n}\n";
+    assert_eq!(
+        connection_rules(&s3_app(S3_WHOLE), not_secret),
+        ["connection.value_invalid"]
+    );
+    let one_part = S3_WHOLE.replace("                key_id: config.files_key_id\n", "");
+    assert_eq!(
+        connection_rules(&s3_app(&one_part), S3_CONFIG),
+        ["connection.key_missing"]
+    );
+    let extra = format!("{S3_WHOLE}            path: \"/nope\"\n");
+    assert_eq!(
+        connection_rules(&s3_app(&extra), S3_CONFIG),
+        ["connection.key_invalid"]
+    );
+}

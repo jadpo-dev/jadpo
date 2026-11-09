@@ -61,6 +61,9 @@ pub struct Supplies {
     #[cfg(feature = "package")]
     pub fetch: Option<Rc<dyn crate::package::Fetch>>,
     pub disk: Option<Rc<dyn Disk>>,
+    /// What a request signed for now reads the time from (the S3 driver).
+    #[cfg(feature = "package")]
+    pub clock: Option<crate::s3::Clock>,
 }
 
 impl fmt::Debug for Supplies {
@@ -70,7 +73,10 @@ impl fmt::Debug for Supplies {
             .field("transport", &self.transport.is_some());
         #[cfg(feature = "package")]
         out.field("fetch", &self.fetch.is_some());
-        out.field("disk", &self.disk.is_some()).finish()
+        out.field("disk", &self.disk.is_some());
+        #[cfg(feature = "package")]
+        out.field("clock", &self.clock.is_some());
+        out.finish()
     }
 }
 
@@ -83,6 +89,8 @@ impl Supplies {
             #[cfg(feature = "package")]
             fetch: None,
             disk: None,
+            #[cfg(feature = "package")]
+            clock: None,
         }
     }
 
@@ -99,6 +107,13 @@ impl Supplies {
 
     pub fn with_disk(mut self, disk: Rc<dyn Disk>) -> Supplies {
         self.disk = Some(disk);
+        self
+    }
+
+    /// `clock`, milliseconds since 1970, for signing requests.
+    #[cfg(feature = "package")]
+    pub fn with_clock(mut self, clock: crate::s3::Clock) -> Supplies {
+        self.clock = Some(clock);
         self
     }
 }
@@ -294,6 +309,7 @@ fn build_one(
                 .map(Built::Capability)
                 .map_err(Why::Invalid)
         }
+        ConnectionDriver::S3(bucket) => s3_store(bucket, started, supplies),
         ConnectionDriver::Smtp(server) => {
             let host = match &server.host {
                 jadpo_std::email::SmtpHost::Setting(at) => text(*at)?.to_string(),
@@ -314,6 +330,42 @@ fn build_one(
             Ok(Built::Nothing)
         }
     }
+}
+
+/// The S3 driver for a connection's bucket, over the host's HTTP.
+#[cfg(feature = "package")]
+fn s3_store(
+    bucket: &jadpo_std::connections::S3Bucket,
+    started: &Started,
+    supplies: &Supplies,
+) -> Result<Built, Why> {
+    let fetch = supplies.fetch.clone().ok_or(Why::NotSupplied("HTTP"))?;
+    let clock = supplies.clock.clone().ok_or(Why::NotSupplied("a clock"))?;
+    let text = |at: u32| started.driver_setting(at).ok_or(Why::Unset(Some(at)));
+    let said = |value: &jadpo_std::connections::Said| -> Result<String, Why> {
+        match value {
+            jadpo_std::connections::Said::Written(text) => Ok(text.clone()),
+            jadpo_std::connections::Said::Setting(at) => text(*at).map(str::to_string),
+        }
+    };
+    let host = said(&bucket.host)?;
+    let region = said(&bucket.region)?;
+    let name = said(&bucket.bucket)?;
+    let key_id = text(bucket.key_id)?;
+    let secret = text(bucket.secret)?;
+    crate::s3::S3Store::new(fetch, clock, (&host, &region, &name), (key_id, secret))
+        .map(|store| Built::Capability(Rc::new(store)))
+        .map_err(Why::Invalid)
+}
+
+/// Without HTTP in this build there is no S3 driver.
+#[cfg(not(feature = "package"))]
+fn s3_store(
+    _bucket: &jadpo_std::connections::S3Bucket,
+    _started: &Started,
+    _supplies: &Supplies,
+) -> Result<Built, Why> {
+    Err(Why::NotInThisBuild)
 }
 
 /// A PostgreSQL store at `url`, secured as its connection says (area 5,

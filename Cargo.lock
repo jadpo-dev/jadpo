@@ -1847,10 +1847,12 @@ version = "0.4.1"
 name = "jadpo-drivers"
 version = "0.4.1"
 dependencies = [
+ "blake3",
  "bytes",
  "jadpo-runtime",
  "jadpo-std",
  "jadpo-value",
+ "serde_json",
  "tokio",
  "tokio-postgres",
 ]

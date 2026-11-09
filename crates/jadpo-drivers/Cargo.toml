@@ -18,7 +18,7 @@ default = []
 postgres = ["dep:tokio-postgres", "dep:bytes", "tokio/io-util"]
 # The package driver (area 11, chunk 7.2c): JSON over HTTP through the
 # `Fetch` the host gives; the runtime makes and reads each request.
-package = []
+package = ["dep:blake3", "dep:jadpo-value", "dep:serde_json"]
 # The SMTP driver (area 16, chunk 7.3): a rendered email written as one
 # MIME message and handed to its server in an SMTP conversation over the
 # host's `Transport` (chunk 8.1b).
@@ -30,6 +30,8 @@ jadpo-runtime.workspace = true
 # (chunk 8.1d).
 jadpo-std.workspace = true
 jadpo-value = { workspace = true, optional = true }
+blake3 = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 tokio.workspace = true
 tokio-postgres = { workspace = true, optional = true }
 bytes = { workspace = true, optional = true }

@@ -16,13 +16,16 @@
 //!   SMTP conversation over the host's [`Transport`] (chunks 7.3 and
 //!   8.1b).
 //!
+//! - [`s3`]: the S3 driver, behind the `package` feature: the `files`
+//!   capability over the same [`package::Fetch`], signed with AWS
+//!   Signature Version 4, natively and on Workers.
 //! - [`factory`]: each connection's driver built from the plan's
 //!   connections table and what the program started with, over what the
 //!   host supplies (chunk 8.1d).
 //!
 //! Built so far: PostgreSQL (chunk 3.1), the package driver (chunk 7.2c),
-//! SMTP (chunk 7.3) and the factory (chunk 8.1d). Redis and S3 come with
-//! their areas.
+//! SMTP (chunk 7.3), the factory (chunk 8.1d) and S3. Redis comes with
+//! its area.
 
 // A panic aborts a Workers instance, so runtime code reports faults as
 // values (docs/compiler-runtime.md §2.6); tests may still unwrap.
@@ -42,6 +45,8 @@ pub mod factory;
 #[cfg(feature = "package")]
 pub mod package;
 pub mod postgres;
+#[cfg(feature = "package")]
+pub mod s3;
 #[cfg(feature = "smtp")]
 pub mod smtp;
 mod transport;

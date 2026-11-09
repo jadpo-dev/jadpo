@@ -178,7 +178,7 @@ error: `edge` can't use `sheets` on Workers, which has no disk
 15 |             target: Target.wasm
    |                     ^^^^^^^^^^^ built for Workers
   reason: `sheets` keeps files on the server's own disk (`Driver.disk`), and a Worker has none; `edge` uses it through `keep_prices`.
-  next: Keep `sheets`'s files through a package over S3's API, such as Cloudflare R2, or use them from a `Target.native` deployable (agent)
+  next: Keep `sheets`'s files in a `Driver.s3` connection, such as Cloudflare R2, or use them from a `Target.native` deployable (agent)
   rule: deployable.target_unsupported
   help: https://jadpo.dev/docs/errors/deployable.target_unsupported
 

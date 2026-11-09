@@ -182,6 +182,7 @@ mod tests {
             url: "https://api.example/v1/bookings".into(),
             headers: Vec::new(),
             body: Some("{}".into()),
+            raw_body: None,
             timeout_ms: 1000,
             reading: Reading::default(),
             repeatable: false,
