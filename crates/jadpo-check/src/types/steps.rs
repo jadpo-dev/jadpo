@@ -528,7 +528,7 @@ impl<'a> Walk<'a> {
                 match does(node) {
                     Does::Calls => self.call(id, node, &mut way),
                     Does::Joins(callee) => self.joins(id, node, callee, &mut way),
-                    Does::Writes | Does::Nothing => {}
+                    Does::Writes | Does::Attaches | Does::Nothing => {}
                 }
                 if let Node::Expr(Expr::Attempt {
                     inner: Some(inner),
@@ -1649,7 +1649,7 @@ impl Shape<'_, '_> {
                             self.out,
                         );
                     }
-                    Does::Writes | Does::Nothing => {}
+                    Does::Writes | Does::Attaches | Does::Nothing => {}
                 }
             }
         }

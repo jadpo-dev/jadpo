@@ -83,6 +83,47 @@ Why [Built-in services](../16-built-in-services.md) is the way it is: the decisi
 - **Refusals.** An expired or altered link is `403`, `link_expired` or
   `link_invalid`, as a signed S3 link is.
 
+- **What a slot holds.** An `UploadSlot` is `url`, `token` and `max_size`.
+  The url is the disk driver's own address, relative, as a download link is;
+  the token is what an `Input` attaches by. A token is good for the one field
+  it was given for, so a client can't turn a slot for one field into a file
+  on another; a mismatch is `invalid_value` rather than a fault, since only a
+  client's token is wrong.
+  *Recommendation: keep; multipart slots add `part_size` and `parts_url`.*
+- **When a slot's clock runs.** The 15 minutes are the address's. The token
+  stays good for as long as the bytes are there, a day, so a client slow to
+  come back doesn't lose a file it has already sent. *Recommendation: keep.*
+- **One file to a slot.** A second `PUT` to a slot that has its file is
+  `409`, since a file's bytes never change and an attach has already checked
+  them; the disk driver links the file into place, which refuses a file
+  already there. *Recommendation: keep.*
+- **How the address refuses.** A body whose first bytes aren't a type its
+  field takes is `415` `file_type_refused`, as is a `Content-Encoding`
+  (`content_encoding_refused`); a disk that would be left below its floor is
+  `503` `storage_full`. *Recommendation: keep; they say what happened in the
+  refusal's code.*
+- **What an upload says of itself.** Its name is read from `Content-Disposition`
+  (`filename*=UTF-8''…`, RFC 8187), the last part of a path, with no control
+  characters and no more than 255 bytes, and is kept with the file beside the
+  bytes; `Content-Type` claims a type. A file's type comes from its first
+  bytes: a magic number names it whatever was claimed, and text takes the one
+  type its field lists, or the claimed type when it could be several.
+  *Recommendation: keep.*
+- **A grant with no record yet.** `Entity.field_upload()` needs the `create`
+  or `update` grant, but a grant that tests a record's fields has no record to
+  test, so it lets in anyone signed in; the write that attaches is held to the
+  grant in full. *Recommendation: keep.*
+- **The attach is an outside call.** Asking the store about the upload comes
+  before the statement, as any outside call does: reads before it are a
+  snapshot, and a write before it is `data.write_before_call`, so a slow store
+  never holds a transaction. *Recommendation: keep.*
+- **Fields over 100 MB.** They need a slot in parts, so a plain slot for one
+  is `toolchain.not_built_yet` where it is asked for, until parts are built.
+- **How long an upload may take.** The native host gives each piece 30
+  seconds and the whole upload an hour, so a client that stops or drips bytes
+  can't keep a connection for good. *Recommendation: keep; a minimum rate
+  would be a setting nothing needs yet.*
+
 ## Carried to later areas
 
 | Item | Area | Status |

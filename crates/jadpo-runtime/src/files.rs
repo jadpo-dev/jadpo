@@ -43,12 +43,12 @@ use std::rc::Rc;
 
 use jadpo_std::RuleKey;
 use jadpo_std::files::{
-    DELETE, DISCARD, FILE, FILE_RELEASED, FilesPlan, JOIN, NOT_FOUND, PUT, READ, STORAGE_FULL,
-    UNHELD_KEPT_MS, WHOLE_READ_LIMIT, key_for, piece_key,
+    DELETE, DISCARD, FILE, FILE_RELEASED, FilesPlan, HEAD_BYTES, JOIN, NOT_FOUND, PUT, READ, STAT,
+    STORAGE_FULL, UNHELD_KEPT_MS, UPLOADED, WHOLE_READ_LIMIT, key_for, piece_key, type_of,
 };
 use jadpo_value::Value;
 
-use crate::capability::{Answer, Call, Capability, Repeat, Source};
+use crate::capability::{Answer, Call, Capability, Kept, Receiving, Refused, Repeat, Source};
 use crate::effects::{Unanswered, call};
 use crate::outbox::{Delivery, Sealed, micros};
 use crate::{
@@ -272,7 +272,7 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
     // Recorded as held by none before the bytes go, so bytes no record
     // ever holds are found and deleted after a day, a crash between the
     // two included (chunk B3).
-    if let Err(refused) = keep_put(ctx, connection, &key).await {
+    if let Err(refused) = keep_unheld(ctx, connection, &key).await {
         return match refused {
             StoreError::Unavailable | StoreError::ConcurrentChange => {
                 Done::Failed(Box::new(Failure {
@@ -320,9 +320,116 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
     }
 }
 
-/// Records the file a put keeps under `key` in `connection` as held by
-/// none, in the store keeping the record of its files, if one does.
-async fn keep_put(ctx: &mut Ctx<'_>, connection: &str, key: &str) -> Result<(), StoreError> {
+/// The failure a `FileUpload` an attach can't take raises (area 16,
+/// "Uploading"): `invalid_value`, why only in its log.
+fn upload_refused(why: &str) -> Failure {
+    let mut failure = Failure::new("runtime invalid_value", "InvalidValue", "invalid_value");
+    failure.kind = Some("invalid_value".to_string());
+    failure.status = Some(422);
+    failure.message = Some("This upload can't be attached.".to_string());
+    failure
+        .internal
+        .push(("reason".to_string(), Value::text(why)));
+    failure
+}
+
+/// Asks the store what the upload `token` names left, and gives the
+/// `File` it is, or stops the write as `invalid_value` (area 16,
+/// "Uploading"): a token for another field, or a file that isn't there,
+/// is too large or isn't a type the field takes. An outside call, so it
+/// ends the reads before it, as any call does; only the runtime's refusal
+/// of one once the action has written is left, which the compiler rules
+/// out.
+pub(crate) fn attach<'a, 'p>(
+    ctx: &'a mut Ctx<'p>,
+    check: &'a jadpo_std::write::FileCheck,
+    token: &'a str,
+    site: u32,
+) -> LocalFuture<'a, Result<Value, crate::read::Interrupt>> {
+    Box::pin(attached(ctx, check, token, site))
+}
+
+/// [`attach`]'s work, boxed so a write's own frame stays small.
+async fn attached(
+    ctx: &mut Ctx<'_>,
+    check: &jadpo_std::write::FileCheck,
+    token: &str,
+    site: u32,
+) -> Result<Value, crate::read::Interrupt> {
+    let refused = |ctx: &mut Ctx<'_>, why: &str| {
+        crate::read::Interrupt::Failed(ctx.fail(upload_refused(why), site))
+    };
+    let Some(slot) = crate::http::uploads::token_slot(ctx.host(), &check.store, token) else {
+        return Err(refused(ctx, "a token this field's store didn't sign"));
+    };
+    if slot.field != check.field {
+        return Err(refused(ctx, "a token for another field"));
+    }
+    let input = Value::record("FileStat", vec![(Rc::from("key"), Value::text(&slot.key))]);
+    let answer = match call(ctx, Call::new(&check.store, STAT, input, Repeat::Safe)).await {
+        Ok(answer) => answer,
+        Err(Unanswered::Failed(code)) if code == NOT_FOUND => {
+            return Err(refused(ctx, "no file was uploaded to this slot"));
+        }
+        Err(Unanswered::Failure(failure)) => {
+            return Err(crate::read::Interrupt::Failed(ctx.fail(*failure, site)));
+        }
+        Err(Unanswered::Fault(kind)) => {
+            return Err(crate::read::Interrupt::Fault(ctx.fault(kind, site)));
+        }
+        Err(Unanswered::Failed(code)) => {
+            return Err(crate::read::Interrupt::Fault(ctx.fault(
+                FaultKind::Defect(format!("`{}.stat` answered `{code}`", check.store)),
+                site,
+            )));
+        }
+    };
+    let Value::Record(about) = &answer else {
+        return Err(crate::read::Interrupt::Fault(ctx.fault(
+            FaultKind::Defect("a store's answer about an upload isn't a record".into()),
+            site,
+        )));
+    };
+    let text = |name: &str| match about.get(name) {
+        Some(Value::Text(text)) => Some(text.to_string()),
+        _ => None,
+    };
+    let size = match about.get("size") {
+        Some(Value::Int(size)) => u64::try_from(*size).unwrap_or(u64::MAX),
+        _ => u64::MAX,
+    };
+    if size > check.max_size {
+        return Err(refused(ctx, "the file is over what the field holds"));
+    }
+    let head = match about.get("head") {
+        Some(Value::Bytes(head)) => head.to_vec(),
+        _ => Vec::new(),
+    };
+    let claimed = text("claimed");
+    let Some(file_type) = type_of(&head, claimed.as_deref(), &check.types) else {
+        return Err(refused(
+            ctx,
+            "the file's first bytes aren't a type the field takes",
+        ));
+    };
+    Ok(file_value(
+        &check.store,
+        &slot.key,
+        text("name").as_deref(),
+        i64::try_from(size).unwrap_or(i64::MAX),
+        file_type,
+        text("hash").as_deref(),
+    ))
+}
+
+/// Records the file a put or an upload keeps under `key` in `connection`
+/// as held by none, in the store keeping the record of its files, if one
+/// does (area 16, "Uploading"), before its bytes land.
+pub(crate) async fn keep_unheld(
+    ctx: &Ctx<'_>,
+    connection: &str,
+    key: &str,
+) -> Result<(), StoreError> {
     let Some(counter) = ctx
         .started()
         .files()
@@ -691,6 +798,8 @@ pub async fn read_whole(ctx: &mut Ctx<'_>, file: &Value) -> Done {
 #[derive(Debug, Default)]
 pub struct MemoryFiles {
     files: RefCell<BTreeMap<String, Vec<u8>>>,
+    /// What each upload left beside its bytes.
+    uploads: RefCell<BTreeMap<String, MemoryUpload>>,
     read_at_most: Option<usize>,
     full: Cell<bool>,
     reads: Cell<usize>,
@@ -865,10 +974,96 @@ impl MemoryFiles {
             }
             DELETE => {
                 self.files.borrow_mut().remove(&**key);
+                self.uploads.borrow_mut().remove(&**key);
                 Answer::Value(Value::Unit)
+            }
+            STAT => {
+                let uploads = self.uploads.borrow();
+                let (Some(about), Some(bytes)) = (
+                    uploads.get(&**key),
+                    self.files.borrow().get(&**key).cloned(),
+                ) else {
+                    return Answer::Failed(NOT_FOUND.into());
+                };
+                Answer::Value(uploaded(
+                    bytes.get(..bytes.len().min(HEAD_BYTES)).unwrap_or_default(),
+                    bytes.len() as u64,
+                    &about.hash,
+                    about.name.as_deref(),
+                    about.claimed.as_deref(),
+                ))
             }
             _ => Answer::Misconfigured,
         }
+    }
+}
+
+/// What an upload left beside its bytes, in a test's store.
+#[derive(Debug)]
+struct MemoryUpload {
+    hash: String,
+    name: Option<String>,
+    claimed: Option<String>,
+}
+
+/// The [`UPLOADED`] answering a store's [`STAT`]: what a store keeps of an
+/// upload, and the first of its bytes.
+pub fn uploaded(
+    head: &[u8],
+    size: u64,
+    hash: &str,
+    name: Option<&str>,
+    claimed: Option<&str>,
+) -> Value {
+    Value::record(
+        UPLOADED,
+        vec![
+            (
+                Rc::from("size"),
+                Value::Int(i64::try_from(size).unwrap_or(i64::MAX)),
+            ),
+            (Rc::from("hash"), Value::text(hash)),
+            (Rc::from("name"), name.map_or(Value::None, Value::text)),
+            (
+                Rc::from("claimed"),
+                claimed.map_or(Value::None, Value::text),
+            ),
+            (Rc::from("head"), Value::Bytes(Rc::from(head))),
+        ],
+    )
+}
+
+/// An upload a test's store is keeping.
+struct MemoryReceiving<'a> {
+    store: &'a MemoryFiles,
+    key: String,
+    bytes: Vec<u8>,
+}
+
+impl Receiving for MemoryReceiving<'_> {
+    fn write(&mut self, bytes: &[u8]) -> Result<(), Refused> {
+        if self.store.full.get() {
+            return Err(Refused::Full);
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(())
+    }
+
+    fn finish(self: Box<Self>, kept: &Kept<'_>) -> Result<(), Refused> {
+        let mut files = self.store.files.borrow_mut();
+        if files.contains_key(&self.key) {
+            return Err(Refused::Taken);
+        }
+        self.store.uploads.borrow_mut().insert(
+            self.key.clone(),
+            MemoryUpload {
+                hash: kept.hash.to_string(),
+                name: kept.name.map(str::to_string),
+                claimed: kept.claimed.map(str::to_string),
+            },
+        );
+        files.insert(self.key, self.bytes);
+        Ok(())
     }
 }
 
@@ -876,6 +1071,25 @@ impl Capability for MemoryFiles {
     fn call<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, Answer> {
         let answer = self.answer(call);
         Box::pin(async move { answer })
+    }
+
+    fn receive(
+        &self,
+        _connection: &str,
+        key: &str,
+        _expected: u64,
+    ) -> Result<Box<dyn Receiving + '_>, Refused> {
+        if self.full.get() {
+            return Err(Refused::Full);
+        }
+        if self.files.borrow().contains_key(key) {
+            return Err(Refused::Taken);
+        }
+        Ok(Box::new(MemoryReceiving {
+            store: self,
+            key: key.to_string(),
+            bytes: Vec::new(),
+        }))
     }
 
     fn link_key(&self, _connection: &str, _make: bool) -> Option<[u8; 32]> {

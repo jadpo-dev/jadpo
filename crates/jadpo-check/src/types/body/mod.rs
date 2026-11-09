@@ -17,6 +17,10 @@
 //! uses `Error` or an open failure set, which accept everything, so nothing
 //! here reports a knock-on of something it doesn't check.
 
+/// What a write's `set:` and `patch:` ask of a `File` field (area 16,
+/// "Uploading"): a stored file or a finished upload.
+pub(crate) const ATTACHED: &str = "File or FileUpload";
+
 mod across;
 pub(crate) mod backfill;
 mod batches;

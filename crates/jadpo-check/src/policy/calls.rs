@@ -128,7 +128,7 @@ fn guards(db: &dyn Db, project: Project, access: &Policies<'_>, callee: &str) ->
                         });
                     }
                 }
-                Act::Entity(..) | Act::Calls(_) | Act::SignsIn => {}
+                Act::Entity(..) | Act::Uploads(_) | Act::Calls(_) | Act::SignsIn => {}
             }
         }
     }

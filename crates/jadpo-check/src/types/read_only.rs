@@ -131,7 +131,7 @@ fn change_of(
     }
     let name = || names.name(body, id);
     match does(node) {
-        Does::Writes => Some((Change::Writes(name()), names.span(body, id))),
+        Does::Writes | Does::Attaches => Some((Change::Writes(name()), names.span(body, id))),
         Does::Calls if !calls.reads(node, package) => {
             Some((Change::Calls(name()), names.span(body, id)))
         }

@@ -156,12 +156,26 @@ pub(crate) fn no_json_form(
                 // A stored file, kept in an entity field or saved with a
                 // run, is its type's JSON on the server (area 16, chunk
                 // 6.4b): a request sends a `FileUpload`, and an output a
-                // signed link, which come with uploads.
+                // signed link.
                 None if name == jadpo_std::files::FILE => (used != JsonUse::Store).then(|| {
                     (
                         found.to_string(),
-                        "a stored file's, which the runtime keeps; a request sends a `FileUpload` and an output a signed link, which come with uploads"
+                        "a stored file's, which the runtime keeps; a request sends a `FileUpload` and an output a signed link"
                             .to_string(),
+                    )
+                }),
+                // The token of a finished upload is what a request sends
+                // (area 16, "Uploading"), and a slot what an answer does.
+                None if name == jadpo_std::files::FILE_UPLOAD => (used != JsonUse::Read).then(|| {
+                    (
+                        found.to_string(),
+                        "an upload's token, which only a request sends".to_string(),
+                    )
+                }),
+                None if name == jadpo_std::files::UPLOAD_SLOT => (used != JsonUse::Write).then(|| {
+                    (
+                        found.to_string(),
+                        "where an upload goes, which only an answer sends".to_string(),
                     )
                 }),
                 None => Some((

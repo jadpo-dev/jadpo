@@ -660,7 +660,8 @@ test "a body cut into segments" {
 /// a person's erasure (chunk P3, `crate::erasure`), a file's bytes
 /// deleted once no record holds them, the bytes each store keeps among
 /// the records (chunk B3, `crate::file_deletes`), a file downloaded (chunk
-/// B4, `crate::file_downloads`), and the audit trail
+/// B4, `crate::file_downloads`), a file uploaded (chunk B5,
+/// `crate::file_uploads`), and the audit trail
 /// (chunk B11, `crate::audit`).
 fn parity_projects() -> Vec<(String, PathBuf)> {
     let caught: Vec<(String, String)> = PACKAGE_CAUGHT
@@ -732,6 +733,14 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             corpus_project(
                 &crate::file_downloads::files("/var/lib/bakery/sheets"),
                 "compiled-file-downloads",
+            )
+            .expect("it checks"),
+        ),
+        (
+            "a file uploaded".into(),
+            corpus_project(
+                &crate::file_uploads::files("/var/lib/bakery/sheets"),
+                "compiled-file-uploads",
             )
             .expect("it checks"),
         ),

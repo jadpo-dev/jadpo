@@ -739,6 +739,45 @@ impl Emitter<'_> {
                     #answered
                 })
             }
+            Expr::Upload {
+                slot,
+                body,
+                content_type,
+                content_encoding,
+                file_name,
+            } => {
+                let parts: Vec<Option<SiteId>> = vec![
+                    Some(slot),
+                    Some(body),
+                    content_type,
+                    content_encoding,
+                    file_name,
+                ];
+                let values: Vec<TokenStream> = parts
+                    .iter()
+                    .map(|part| match part {
+                        Some(site) => self.expr(*site),
+                        None => quote!(Value::None),
+                    })
+                    .collect();
+                let names: Vec<proc_macro2::Ident> = (0..values.len())
+                    .map(|at| format_ident!("a{}", at))
+                    .collect();
+                if let Some(defect) = self.waits_inline() {
+                    return quote!({ #(let #names = #values;)* #defect });
+                }
+                let ran = self.stepped(
+                    quote!(rt::upload(cx, p, vec![#(#names),*]).await),
+                    id,
+                    false,
+                );
+                let answered = self.tri(quote!(ran));
+                quote!({
+                    #(let #names = #values;)*
+                    let ran = #ran;
+                    #answered
+                })
+            }
             Expr::Request {
                 route,
                 params,
@@ -1513,6 +1552,10 @@ impl Emitter<'_> {
                     // A person's export (area 15).
                     Some(Decoded::Export(Some(export))) => {
                         (quote!(rt::export), *export, Some(None))
+                    }
+                    // A field's upload slot (area 16, "Uploading").
+                    Some(Decoded::Upload(Some(upload))) => {
+                        (quote!(rt::upload_slot), *upload, Some(None))
                     }
                     // Something a later area builds, named as the
                     // interpreter names it.

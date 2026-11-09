@@ -54,8 +54,8 @@ and a conformance suite that a package filling it must pass.
 
 The table gives each capability's whole job, and not all of it works yet.
 `documents`, `bot_check`, `scanning` and `publishing` aren't built, and `files`
-has only its disk driver, with signed links but no upload slots
-([What is built](#what-is-built)).
+has only its disk driver, with signed links and single upload slots but no
+multipart ones ([What is built](#what-is-built)).
 
 ## Feature flags
 <!-- topic: feature-flags -->
@@ -991,9 +991,8 @@ another.
 
 The rest of this topic is the design for what comes next, and none of it
 works today. Today your app writes files with `put`, keeps them on the disk
-driver and sends them back by [signed link](#downloading). A client's file
-can reach your app only inside a request, within the 1 MB limit on a request
-body ([What is refused](07-http.md#what-is-refused)).
+driver, sends them back by [signed link](#downloading) and takes them from
+clients through a [slot](#uploading).
 
 #### The S3 driver
 
@@ -1002,31 +1001,6 @@ body ([What is refused](07-http.md#what-is-refused)).
 files yet. Cloudflare R2, Amazon S3, Backblaze B2, DigitalOcean Spaces and MinIO will
 all use it, each with its own host and settings, listed on the driver's
 page. No package wraps the driver with presets.
-
-#### Uploading
-
-Files go straight from the client to the store, not through your app, so
-the 1 MB limit on a request body ([What is refused](07-http.md#what-is-refused))
-isn't in the way:
-
-1. An action calls the generated `User.avatar_upload()`, which returns an
-   `UploadSlot`: a signed address valid for 15 minutes that accepts only
-   `max_size` bytes.
-2. The client sends the file to that address.
-3. The client sends the slot's token in an ordinary create or update, in
-   an `Input` field of type `FileUpload`. Before the write commits, the
-   runtime checks that the file is there, its size, and its type from its
-   first bytes rather than what the client claimed. A mismatch is
-   `invalid_value`.
-
-Asking for a slot needs the `create` or `update` grant on the entity
-([Grants](09-policy.md#grants)). Uploads that are never attached are
-deleted after a day.
-
-On the disk driver, an upload is streamed to a temporary file as it
-arrives. It is counted, with a `413` at the first byte over `max_size`,
-hashed and type-checked, then synced and renamed into place, and the
-directory is synced.
 
 #### Large uploads go in parts
 
@@ -1050,14 +1024,6 @@ POST /imports { "sheet": "upl_…" }          the ordinary create joins the part
 <- 201
 ```
 
-#### Compressed uploads
-
-An upload sent with a `Content-Encoding` is refused. A gzip file, such as
-`.csv.gz`, is read only by a batch helper given `max_unpacked_size:`, and
-going past that size fails the file, so a small upload can't unpack to
-gigabytes. That reading is built ([Reading gzip](#reading-gzip)). Jadpo
-unpacks no other compression and no archives, such as zip.
-
 #### Image variants and scanning
 
 Both come when an app needs them.
@@ -1075,6 +1041,191 @@ Both come when an app needs them.
   itself. A file stays in a scanning state, and can't be attached, until
   it passes. An infected file is refused like one of the wrong type, and
   deleted.
+
+## Uploading
+<!-- topic: uploading -->
+
+Files go straight from the client to the store, not through your app's
+routes, so the 1 MB limit on a request body
+([What is refused](07-http.md#what-is-refused)) isn't in the way:
+
+1. An action calls the generated `PriceSheet.sheet_upload()`, one for each
+   `File` field of the entity, which returns an `UploadSlot`.
+2. The client sends the file to the slot's address, `PUT` to its `url`.
+3. The client sends the slot's `token` in an ordinary create or update, in
+   an `Input` field of type `FileUpload`. A write takes a `FileUpload` for a
+   `File` field in `set:` or `patch:`, as it takes a `File`.
+
+`domains/bakery/entities/price_sheet.jadpo` keeps a sheet a supplier sends:
+
+```jadpo check project=files-upload file=app.jadpo hidden
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+}
+```
+
+```jadpo check project=files-upload file=domains/bakery/entities/price_sheet.jadpo
+/// A supplier's price sheet, kept as it was sent.
+entity PriceSheet {
+    id: Uuid
+    sheet: File {
+        store: sheets
+        max_size: 5mb
+        types: [FileType.csv]
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+`domains/bakery/types/sheet_upload.jadpo` is what the client sends once the
+file has gone:
+
+```jadpo check project=files-upload file=domains/bakery/types/sheet_upload.jadpo
+/// The sheet a supplier has uploaded.
+type SheetUpload = Input {
+    sheet: FileUpload
+}
+```
+
+`domains/bakery/types/sheet_view.jadpo`:
+
+```jadpo check project=files-upload file=domains/bakery/types/sheet_view.jadpo
+use bakery/entities { PriceSheet }
+
+/// A kept sheet and the link to its file.
+type SheetView = Output {
+    pick: [PriceSheet.id, PriceSheet.sheet]
+}
+```
+
+`domains/bakery/actions/sheet_slot.jadpo` and
+`domains/bakery/actions/keep_sheet.jadpo`:
+
+```jadpo check project=files-upload file=domains/bakery/actions/sheet_slot.jadpo
+use bakery/entities { PriceSheet }
+
+/// Where a supplier sends their sheet.
+action sheet_slot() -> UploadSlot {
+    return PriceSheet.sheet_upload()
+}
+```
+
+```jadpo check project=files-upload file=domains/bakery/actions/keep_sheet.jadpo migrate=initial
+use bakery/entities { PriceSheet }
+use bakery/types { SheetUpload, SheetView }
+
+/// Keeps the sheet a supplier has uploaded.
+action keep_sheet(input: SheetUpload) -> SheetView {
+    var saved_sheet: PriceSheet = PriceSheet.create {
+        set: {
+            sheet: input.sheet
+        }
+    }
+    return SheetView {
+        id: saved_sheet.id
+        sheet: saved_sheet.sheet
+    }
+}
+```
+
+`domains/bakery/routes/sheets.jadpo`:
+
+```jadpo check project=files-upload file=domains/bakery/routes/sheets.jadpo
+use bakery/types { SheetUpload, SheetView }
+use bakery/actions { keep_sheet, sheet_slot }
+
+routes Sheets {
+    prefix: /sheets
+
+    POST /slot {
+        authentication: RouteAuthentication.none
+        output: UploadSlot
+        run: sheet_slot()
+    }
+
+    POST / {
+        authentication: RouteAuthentication.none
+        input: SheetUpload
+        output: SheetView
+        status: SuccessStatus.created
+        run: keep_sheet(input)
+    }
+}
+```
+
+The slot is an object: `url` is relative, since your app's own origin takes
+the file, `token` is what the client sends back, and `max_size` the most
+bytes the address accepts:
+
+```json
+{ "url": "/files/sheets/uploads/upl_eyJrIjoi…", "token": "upl_eyJrIjoi…", "max_size": 5000000 }
+```
+
+A slot's address is good for 15 minutes from when it was given, and for one
+file, whose bytes then never change. The token is good for as long as the
+bytes are there, so a slow client can attach after the address has expired.
+Uploads that are never attached are deleted after a day
+([Deleting and erasing](#deleting-and-erasing)).
+
+Asking for a slot needs the `create` or `update` grant on the entity
+([Asking for an upload slot](09-policy.md#asking-for-an-upload-slot)). A
+slot is signed for its store, so asking for one asks nothing of it.
+
+Sending the file:
+
+- The address is `PUT /files/<store>/uploads/<token>`. It answers `204`
+  once the file is kept. These answers count against the default rate limits
+  as any request does.
+- `Content-Type` may say the file's type, and `Content-Disposition` its name
+  (`filename*=UTF-8''…`, RFC 8187), which is the name its signed link and
+  download give it. The type is only ever a hint: a file's type comes from its
+  first bytes. Text that has no magic number of its own takes the type its
+  field lists when there is only one, or the type `Content-Type` claims, among
+  the text types its first bytes could be.
+
+| What the address refuses | Answer |
+|---|---|
+| An altered address, or one past its 15 minutes | `403`, `link_invalid` or `link_expired` |
+| A body over `max_size:`, at its first byte over | `413` `file_too_large` |
+| A body whose first bytes aren't a type its field takes | `415` `file_type_refused` |
+| A `Content-Encoding` ([Compressed uploads](#compressed-uploads)) | `415` `content_encoding_refused` |
+| A second file to the same slot | `409` `upload_already_sent` |
+| A disk that would be left below `free_space_floor:` | `503` `storage_full` |
+
+On the disk driver the file is streamed to a temporary file as it arrives,
+counted, hashed and type-checked, then synced and linked into place, and the
+directory is synced, so a client that stops part-way leaves nothing and a
+crash leaves the whole file or none of it.
+
+Attaching it. Before the write's statement runs, the runtime checks the
+`FileUpload`: that the token is one the field's store signed for that field
+and no other, that the file is there, its size, and its type from its first
+bytes rather than what the client claimed. A mismatch is `invalid_value`,
+`422`, and nothing is written. What fits is then held to the field's settings
+as any `File` is ([What a write checks](#what-a-write-checks)). Asking the
+store is an outside call, so a write that attaches an upload comes before the
+action's first write, as any outside call does
+([`data.write_before_call`](../errors/data.write_before_call.md)), and the
+reads before it are a snapshot ([Outside calls hold no
+transaction](06-reads-and-writes.md#outside-calls-hold-no-transaction)).
+
+### Compressed uploads
+
+An upload sent with a `Content-Encoding` is refused, `415`
+`content_encoding_refused`, before any of it is read. A gzip file, such as
+`.csv.gz`, is read only by a batch helper given `max_unpacked_size:`, and
+going past that size fails the file, so a small upload can't unpack to
+gigabytes. That reading is built ([Reading gzip](#reading-gzip)). Jadpo
+unpacks no other compression and no archives, such as zip.
 
 ## Audit trail
 <!-- topic: audit-trail -->
@@ -4972,7 +5123,7 @@ The errors this page describes are built with the feature they belong to.
 | The dev inbox and the health score | Partly built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
 | Rate limits | Partly built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. A generated route's own limits don't appear in OpenAPI's `x-jadpo-rate-limit` or `jadpo routes`, and a magic-link refusal gives `Retry-After` without the `RateLimit` headers. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |
 | Outside calls | Built: the one place in the runtime every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([How every outside call is made safe](#how-every-outside-call-is-made-safe)). |
-| Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). A `File` an `Output` or a person's export reaches goes out as a signed link valid for five minutes, served from the disk with single ranges, `If-Range` and an ETag from the file's hash ([Downloading](#downloading)). Not built yet: upload slots, multipart ones included, fields naming one store of files in entities of two databases, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written; and the `jadpo files` commands (`ls`, `show`, `get`, `put` and `copy`). |
+| Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). A `File` an `Output` or a person's export reaches goes out as a signed link valid for five minutes, served from the disk with single ranges, `If-Range` and an ETag from the file's hash ([Downloading](#downloading)). A client's file reaches a store through a [slot](#uploading): `Entity.field_upload()`, the disk driver's upload address, and a `FileUpload` attached by an ordinary create or update. Not built yet: multipart slots, fields naming one store of files in entities of two databases, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written; and the `jadpo files` commands (`ls`, `show`, `get`, `put` and `copy`). |
 | Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flag rules: declaring, reading, testing](#flag-rules-declaring-reading-testing)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flag rules: changing, listing, removing](#flag-rules-changing-listing-removing)). Not built yet: named tenants, which wait for tenancy to be settled for flags; and a user's erasure reaching their `id` in `jadpo_flags` and `jadpo_flag_changes`, which comes with erasures. |
 | Audit | Partly built: an entity's `audit:`, an entry in the same transaction as each change, `history` with the record's `read` grant and the fields the caller can read, retention by the purge schedule, entries deleted with their record by erasure, `AuditEntryRecorded` to subscribers, and the permissions report's line ([Audit trail](#audit-trail)). Not built yet: what [What the audit trail doesn't keep yet](#what-the-audit-trail-doesnt-keep-yet) lists, each `toolchain.not_built_yet` where it is written, and `publishing`, which comes with outgoing webhooks. |
 | Search | Partly built: on PostgreSQL, `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages. |

@@ -252,6 +252,9 @@ pub(crate) struct Facts {
     /// Each `request { link: }` in a route test (area 13): a file's link
     /// followed, which names no route.
     pub downloads: std::collections::BTreeSet<NodeKey>,
+    /// Each `request { upload: }` in a route test (area 13): a file sent
+    /// to a slot's address, which names no route.
+    pub uploads: std::collections::BTreeSet<NodeKey>,
     /// Each answer a test's `fakes:` scripts, by its expression (area 13;
     /// chunk 7.2d).
     pub fakes: BTreeMap<NodeKey, super::fakes::FakeFact>,

@@ -53,7 +53,10 @@ async fn body(
                     let caller = match target {
                         Target::Callable(id) => plan.callable(id).map(|callable| callable.caller),
                         Target::Query(id) => plan.query(id).map(|query| query.caller),
-                        Target::Get(_) | Target::History(_) | Target::Export(_) => Some(None),
+                        Target::Get(_)
+                        | Target::History(_)
+                        | Target::Export(_)
+                        | Target::Slot(_) => Some(None),
                         _ => None,
                     };
                     if let Some(caller) = caller {
@@ -92,6 +95,9 @@ async fn body(
                     )
                     .await
                     .map_err(Stop::Fault),
+                    Target::Upload | Target::Slot(_) => {
+                        uploading(program, ctx, target, &args, at.0).await
+                    }
                     Target::Session(op) => session(program, ctx, op, &args, at.0).await,
                     Target::Batch(op, number) => batch(program, ctx, op, number, &args, at.0).await,
                     // A store's put or read, a provider's operation and a
@@ -203,6 +209,36 @@ fn advance(ctx: &mut Ctx<'_>, args: &[Value], at: u32) -> Result<Value, Stop> {
         .map_err(Stop::Fault)
 }
 
+/// A `Entity.field_upload()` or a route test's `request { upload: }`
+/// (area 16, "Uploading"), boxed so [`body`]'s own frame stays small.
+fn uploading<'a, 'p: 'a>(
+    program: &'a Program,
+    ctx: &'a mut Ctx<'p>,
+    target: Target,
+    args: &'a [Value],
+    at: u32,
+) -> LocalFuture<'a, Result<Value, Stop>> {
+    Box::pin(async move {
+        match target {
+            Target::Upload => {
+                jadpo_runtime::http::uploads::upload_test(&program.app(), program, ctx, args)
+                    .await
+                    .map_err(Stop::Fault)
+            }
+            Target::Slot(id) => match program.plan().upload(id) {
+                Some(plan) => called(calls::upload_slot(ctx, plan, at).await),
+                None => Err(Stop::Fault(
+                    ctx.fault(FaultKind::Defect("a slot with no plan".to_string()), at),
+                )),
+            },
+            _ => Err(Stop::Fault(ctx.fault(
+                FaultKind::Defect("a call that isn't an upload's".to_string()),
+                at,
+            ))),
+        }
+    })
+}
+
 /// A read or a write (area 6), which the runtime runs from its plan,
 /// inside the running action's transaction or a boundary of its own: what
 /// is left here is finding the plan and dispatching a refusal to the
@@ -225,6 +261,8 @@ fn store<'a, 'p: 'a>(
             Target::Callable(_)
             | Target::Request { .. }
             | Target::Download
+            | Target::Upload
+            | Target::Slot(_)
             | Target::Session(_)
             | Target::Batch(..)
             | Target::Files(..)
@@ -245,6 +283,8 @@ fn store<'a, 'p: 'a>(
                 Target::Callable(_)
                 | Target::Request { .. }
                 | Target::Download
+                | Target::Upload
+                | Target::Slot(_)
                 | Target::Session(_)
                 | Target::Batch(..)
                 | Target::Files(..)

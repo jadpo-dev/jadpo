@@ -422,6 +422,7 @@ async fn read(request: JsValue) -> Option<Request> {
         body,
         address: None,
         too_large,
+        stream: None,
     })
 }
 

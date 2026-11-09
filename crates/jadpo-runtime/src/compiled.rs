@@ -1114,6 +1114,14 @@ pub async fn export(cx: &mut Ctx<'_>, p: &Program, n: u32, args: &[Value], at: u
     }
 }
 
+/// `Entity.field_upload()` `n`, from site `at` (area 16, "Uploading").
+pub async fn upload_slot(cx: &mut Ctx<'_>, p: &Program, n: u32, _args: &[Value], at: u32) -> Ran {
+    match p.process.plan.sites.uploads.get(n as usize) {
+        Some(plan) => called(calls::upload_slot(cx, plan, at).await),
+        None => Err(defect(cx, "a slot with no plan", at)),
+    }
+}
+
 /// Write `n` with its inputs, `args`, from site `at`: a refusal its site's
 /// `conflict:` maps is [`Stop::Refused`], for the site to raise its arm's
 /// failure.
@@ -1226,6 +1234,14 @@ pub async fn download(cx: &mut Ctx<'_>, p: &Program, args: Vec<Value>) -> Ran {
     )
     .await
     .map_err(Stop::Fault)
+}
+
+/// A route test's `request { upload: }`, `args` the slot, the body and
+/// what it says of itself (area 13).
+pub async fn upload(cx: &mut Ctx<'_>, p: &Program, args: Vec<Value>) -> Ran {
+    crate::http::uploads::upload_test(&p.app(), p, cx, &args)
+        .await
+        .map_err(Stop::Fault)
 }
 
 /// After a test's step at site `at`, which gave `ran`: what it emitted

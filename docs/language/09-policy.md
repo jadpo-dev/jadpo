@@ -125,6 +125,16 @@ removes the record or runs the lifecycle's `delete` transition
 So a soft delete, which keeps the record but hides it, still needs
 `delete`.
 
+### Asking for an upload slot
+
+`Entity.field_upload()` gives a client somewhere to send a file for one of
+the entity's `File` fields ([Uploading](16-built-in-services.md#uploading)).
+Asking for one needs the `create` or `update` grant on the entity. Anyone
+either list names may ask. A grant that tests a record's fields, such as a
+user field or a role held in the record, has no record to test yet, so it
+lets in anyone signed in; the write that attaches the file is held to the
+grant in full.
+
 ## A user field on the record
 <!-- topic: a-user-field-on-the-record -->
 

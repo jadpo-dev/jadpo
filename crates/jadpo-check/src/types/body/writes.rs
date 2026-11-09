@@ -54,6 +54,27 @@ pub(crate) struct WriteFact {
     /// `delete` of the person's record by `id`, as policy sees it, which
     /// decides what happens to every record of theirs too.
     pub erase: bool,
+    /// Whether it attaches an upload: a `FileUpload` set on a `File`
+    /// field, checked with the store before the write (area 16,
+    /// "Uploading").
+    pub attaches: bool,
+}
+
+/// Whether `ty` is a `FileUpload`.
+fn is_upload(ty: &Ty) -> bool {
+    matches!(ty, Ty::Opaque(name, _) if name == jadpo_std::files::FILE_UPLOAD)
+}
+
+/// `field` as a write's `set:` and `patch:` see it: a `File` field takes a
+/// stored file or a finished upload (area 16, "Uploading").
+fn attachable(mut field: FieldDef) -> FieldDef {
+    if matches!(field.declared.strip_nullable(), Ty::Opaque(name, _) if name == jadpo_std::files::FILE)
+    {
+        let nullable = matches!(field.declared, Ty::Nullable(_));
+        let wanted = Ty::Opaque(super::ATTACHED.to_string(), Vec::new());
+        field.declared = if nullable { wanted.nullable() } else { wanted };
+    }
+    field
 }
 
 /// A rule a write can break (area 6, "When a write is refused").
@@ -473,6 +494,7 @@ impl Body<'_> {
             .filter(|field| field.name != "id" && !field.generated)
             .filter(|field| !rules.owned.contains(&field.name))
             .cloned()
+            .map(attachable)
             .collect();
         // `set:`.
         if let Some(set) = members.get("set") {
@@ -498,6 +520,18 @@ impl Body<'_> {
         let patch_input = members
             .get("patch")
             .and_then(|patch| self.write_patch(entity, by_id, patch, &settable, &written, &rules));
+        let mut attaches = members.get("set").is_some_and(|set| {
+            tree::members(set.block())
+                .iter()
+                .filter_map(|(_, member)| member.value())
+                .any(|value| self.attaches(&value))
+        }) || patch_input.as_ref().is_some_and(|(input, _)| {
+            self.table.fields(input).is_some_and(|fields| {
+                fields
+                    .iter()
+                    .any(|field| is_upload(self.table.structure(&field.declared).strip_nullable()))
+            })
+        });
         if let Some((_, input_fields)) = &patch_input {
             for field in input_fields {
                 if settable.iter().any(|f| f.name == *field) {
@@ -515,6 +549,7 @@ impl Body<'_> {
             for (field, value) in
                 self.when_supplied(entity, by_id, supplied, input, &settable, &rules)
             {
+                attaches |= self.attaches(&value);
                 if let Some(target) = rules.reference(&field)
                     && !self.holds(&value, target)
                 {
@@ -581,9 +616,18 @@ impl Body<'_> {
                 not_found,
                 fallible,
                 erase: false,
+                attaches,
             },
         );
         result
+    }
+
+    /// Whether `value`, written to a field, is a finished upload.
+    fn attaches(&self, value: &ast::Expr) -> bool {
+        self.facts
+            .types
+            .get(&node_key(value.syntax()))
+            .is_some_and(|ty| is_upload(self.table.structure(ty).strip_nullable()))
     }
 
     // --- a person's erasure -----------------------------------------------
@@ -738,6 +782,7 @@ impl Body<'_> {
                 not_found: Some(not_found.clone()),
                 fallible: Fallible::Fails(vec![not_found]),
                 erase: true,
+                attaches: false,
             },
         );
         Ty::Prim(Prim::Unit)

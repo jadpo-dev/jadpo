@@ -1185,6 +1185,7 @@ impl Names<'_> {
             || name == ERASE
             || name == EXPORT
             || name == jadpo_std::audit::HISTORY
+            || jadpo_std::files::upload_field(&name).is_some()
         {
             return;
         }

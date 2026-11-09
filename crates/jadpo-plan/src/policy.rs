@@ -572,6 +572,40 @@ impl Planner<'_> {
         Some(Gate { callers, system })
     }
 
+    /// Who may ask for a slot for a field of an entity whose `create` and
+    /// `update` grants are `grants`, with no record to test them on.
+    fn slot_gate(&self, grants: &[Grant]) -> Option<Gate> {
+        if grants.contains(&Grant::Public) {
+            return self.gate(&LineGate::Anyone, false);
+        }
+        let system = grants.contains(&Grant::System);
+        let signed = grants.iter().any(|grant| {
+            matches!(
+                grant,
+                Grant::Signed | Grant::Caller { .. } | Grant::Role { via: Some(_), .. }
+            )
+        });
+        let roles: Vec<(String, String)> = grants
+            .iter()
+            .filter_map(|grant| match grant {
+                Grant::Role {
+                    membership,
+                    role,
+                    via: None,
+                } => Some((membership.clone(), role.clone())),
+                _ => None,
+            })
+            .collect();
+        let line = if signed {
+            LineGate::Signed
+        } else if !roles.is_empty() {
+            LineGate::Roles(roles)
+        } else {
+            LineGate::Nobody
+        };
+        self.gate(&line, system)
+    }
+
     /// Who may run the query called `name`, when root `policy { actions:
     /// }` lists it (area 9, "Listing a query"): anyone signed in, or a
     /// role held across the whole application, checked as it starts.
@@ -684,6 +718,61 @@ impl CallerBind for After {
     fn caller(&mut self, part: CallerPart) -> String {
         self.param(Source::Caller(part), part.ty())
     }
+}
+
+/// Each `Entity.field_upload()` the program calls (area 16, "Uploading"),
+/// numbered in the order given: the field's settings and who may ask for
+/// one. A grant that tests a record's fields (a user field, a role held in
+/// the record) can't be told with no record, so it asks only that the
+/// caller is signed in; the write that attaches the file is held to the
+/// grant in full.
+pub(crate) fn uploads(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    types: &mut crate::types::Types,
+    json: &std::cell::RefCell<Vec<jadpo_graph::TypeRef>>,
+    wanted: &std::collections::BTreeSet<(jadpo_graph::Key, String)>,
+) -> Vec<((jadpo_graph::Key, String), jadpo_std::files::UploadPlan)> {
+    let model = jadpo_check::data::data_model(db, project);
+    let lookup = jadpo_check::lookups::Lookup::new(db, project);
+    let access = jadpo_check::policy::access(db, project);
+    let planner = Planner {
+        model,
+        lookup: &lookup,
+        types,
+        access,
+        action: None,
+        json,
+        sign_in: Default::default(),
+        provider_keys: Default::default(),
+        retired: Default::default(),
+    };
+    wanted
+        .iter()
+        .filter_map(|(entity, field)| {
+            let held = model.entity(entity.name())?;
+            let file = held
+                .fields
+                .iter()
+                .find(|candidate| candidate.name == *field)?
+                .file
+                .as_ref()?;
+            let mut grants = planner.grants(held, Effect::Create);
+            for grant in planner.grants(held, Effect::Update) {
+                if !grants.contains(&grant) {
+                    grants.push(grant);
+                }
+            }
+            let plan = jadpo_std::files::UploadPlan {
+                field: format!("{}.{field}", held.name),
+                store: file.store.clone(),
+                max_size: file.max_size,
+                types: file.types.clone(),
+                gate: planner.slot_gate(&grants),
+            };
+            Some(((entity.clone(), field.clone()), plan))
+        })
+        .collect()
 }
 
 /// Who may call each action listed under root `policy { actions: }` that

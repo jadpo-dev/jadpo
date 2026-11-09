@@ -85,6 +85,9 @@ pub(crate) enum Target {
     History(u32),
     /// A person's `export`, by the number of its plan (area 15, "Export").
     Export(u32),
+    /// `Entity.field_upload()`, by the number of its plan (area 16,
+    /// "Uploading").
+    Slot(u32),
     /// `create`, `update` or `delete`, by the number of the write's plan.
     Write(u32),
     /// A route test's request, by the route's place in the route table;
@@ -102,6 +105,8 @@ pub(crate) enum Target {
     },
     /// A route test's `request { link: }` (area 13).
     Download,
+    /// A route test's `request { upload: }` (area 13).
+    Upload,
     /// `sessions.start` or `sessions.end` (area 8).
     Session(jadpo_std::http::SessionOp),
     /// `batches.each`, by the number its site decodes, or with `None`
@@ -1283,9 +1288,11 @@ impl<'p> Machine<'p> {
                     | Target::Get(_)
                     | Target::History(_)
                     | Target::Export(_)
+                    | Target::Slot(_)
                     | Target::Write(_)
                     | Target::Request { .. }
                     | Target::Download
+                    | Target::Upload
                     | Target::Session(_)
                     | Target::Batch(..)
                     | Target::Files(..)
@@ -1982,6 +1989,35 @@ impl<'p> Machine<'p> {
                     self.tasks.push(Task::Expr(site));
                 }
             }
+            Expr::Upload {
+                slot,
+                body,
+                content_type,
+                content_encoding,
+                file_name,
+            } => {
+                // Each thing it says of itself, `none` where it says
+                // nothing, so every value has its place.
+                let parts: Vec<Option<SiteId>> = vec![
+                    Some(*slot),
+                    Some(*body),
+                    *content_type,
+                    *content_encoding,
+                    *file_name,
+                ];
+                self.tasks.push(Task::Invoke {
+                    target: Target::Upload,
+                    count: parts.len(),
+                    at: id,
+                    then: None,
+                });
+                for site in parts.into_iter().rev() {
+                    match site {
+                        Some(site) => self.tasks.push(Task::Expr(site)),
+                        None => self.tasks.push(Task::PushNone),
+                    }
+                }
+            }
             Expr::Request {
                 route,
                 params,
@@ -2542,6 +2578,7 @@ impl<'p> Machine<'p> {
             Decoded::Get(Some(entity)) => Some(Target::Get(*entity)),
             Decoded::History(Some(history)) => Some(Target::History(*history)),
             Decoded::Export(Some(export)) => Some(Target::Export(*export)),
+            Decoded::Upload(Some(upload)) => Some(Target::Slot(*upload)),
             _ => None,
         }
     }
