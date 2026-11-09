@@ -323,6 +323,17 @@ impl Body<'_> {
                     let ty = self.entity_get(&head, call, span);
                     return (ty, CallKind::Effect(written), reach);
                 }
+                // A `File` field's upload slot (area 16, "Uploading"),
+                // unless a lifecycle's transition has the name.
+                if let Some(field) = jadpo_std::files::upload_field(&rest[0]).map(str::to_string)
+                    && !self
+                        .writes
+                        .write_rules(&head)
+                        .is_some_and(|rules| rules.transition(&rest[0]).is_some())
+                {
+                    let ty = self.upload_slot(&head, &field, call, block, span);
+                    return (ty, CallKind::Effect(written), reach);
+                }
                 // An audited entity's history (area 16; chunk B11), unless
                 // an entity that keeps none names a transition `history`.
                 if rest[0] == jadpo_std::audit::HISTORY

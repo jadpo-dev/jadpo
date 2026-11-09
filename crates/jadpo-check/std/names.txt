@@ -37,7 +37,7 @@
 # `erasure`.
 [types]
 Page Nearest
-File FileContents Principal Response Access AiStream
+File FileContents FileUpload UploadSlot Principal Response Access AiStream
 IssuedToken IssuedKey DecodeProblem FirstSignIn MagicLinkEmail MagicLinkRequest
 MagicLinkRedeemed SignedIn SignInRefused SignInCodesDisabled PasskeyAdded
 PasskeyRemoved TestPasskey SentEmail MagicLinkAsk MagicLinkConfirmation

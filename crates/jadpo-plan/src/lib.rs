@@ -474,6 +474,9 @@ pub struct Plan {
     histories: Vec<(Key, jadpo_std::audit::HistoryPlan)>,
     /// Each person entity's `export` (area 15, "Export"), by entity key.
     exports: Vec<(Key, jadpo_std::erasure::ExportPlan)>,
+    /// Each `Entity.field_upload()` (area 16, "Uploading"), by entity key
+    /// and field.
+    uploads: Vec<((Key, String), jadpo_std::files::UploadPlan)>,
     /// What the runtime reads of the program (chunk 8.1a): the validator,
     /// shape and failure plans, the JSON table, every route with its
     /// codecs, the settings, subscribers, batches, schedules, purges,
@@ -876,6 +879,25 @@ impl Plan {
             .enumerate()
             .map(|(i, (key, _))| (key.clone(), i as u32))
             .collect();
+        // Each `Entity.field_upload()` its bodies call (area 16,
+        // "Uploading").
+        let wanted_uploads: std::collections::BTreeSet<(Key, String)> = bodies
+            .iter()
+            .flat_map(|(_, body)| body.calls())
+            .filter_map(|(_, callee)| match callee {
+                jadpo_graph::body::Callee::Entity { entity, operation } => {
+                    jadpo_std::files::upload_field(operation)
+                        .map(|field| (entity.clone(), field.to_string()))
+                }
+                _ => None,
+            })
+            .collect();
+        let uploads = policy::uploads(db, project, &mut types, &json_types, &wanted_uploads);
+        let upload_ids: HashMap<(Key, String), u32> = uploads
+            .iter()
+            .enumerate()
+            .map(|(i, (key, _))| (key.clone(), i as u32))
+            .collect();
         let gates = policy::gates(db, project, &mut types, &json_types, &|action| {
             pruning.is_none_or(|_| {
                 found
@@ -1022,6 +1044,8 @@ impl Plan {
             let entity = |key: &Key| entity_ids.get(key).copied();
             let history = |key: &Key| history_ids.get(key).copied();
             let export = |key: &Key| export_ids.get(key).copied();
+            let upload =
+                |key: &Key, field: &str| upload_ids.get(&(key.clone(), field.to_string())).copied();
             let write = |site: u32| write_ids.get(&(key.clone(), site)).copied();
             let sites = sites::Decoder {
                 types: &mut types,
@@ -1031,6 +1055,7 @@ impl Plan {
                 entity: &entity,
                 history: &history,
                 export: &export,
+                upload: &upload,
                 write: &write,
                 setting: &setting_of,
                 flag: &|key: &Key| flags::number(db, project, key.name()),
@@ -1557,6 +1582,7 @@ impl Plan {
             calls,
             histories: histories.iter().map(|(_, plan)| plan.clone()).collect(),
             exports: exports.iter().map(|(_, plan)| plan.clone()).collect(),
+            uploads: uploads.iter().map(|(_, plan)| plan.clone()).collect(),
         };
         // What the boundary needs of each action and fixture.
         let actions = callables
@@ -1617,6 +1643,7 @@ impl Plan {
             writes,
             histories,
             exports,
+            uploads,
             runtime: Arc::new(runtime),
             backfills,
             migration_json,
@@ -1891,6 +1918,11 @@ impl Plan {
     /// The `export` numbered `id` (area 15, "Export").
     pub fn export(&self, id: u32) -> Option<&jadpo_std::erasure::ExportPlan> {
         self.exports.get(id as usize).map(|(_, plan)| plan)
+    }
+
+    /// The `Entity.field_upload()` numbered `id` (area 16, "Uploading").
+    pub fn upload(&self, id: u32) -> Option<&jadpo_std::files::UploadPlan> {
+        self.uploads.get(id as usize).map(|(_, plan)| plan)
     }
 
     /// The `history` of the entity called `entity`, when it is audited.

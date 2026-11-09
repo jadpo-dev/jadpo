@@ -95,6 +95,9 @@ pub enum Decoded {
     /// A person's `export(id)`, by the number of its plan (area 15,
     /// "Export").
     Export(Option<u32>),
+    /// `Entity.field_upload()` (area 16, "Uploading"), by the number of
+    /// its plan.
+    Upload(Option<u32>),
     /// `create`, `update` or `delete`: the number of the write's plan, and
     /// the failure each `conflict:` arm raises, with where each of its
     /// given fields goes.
@@ -344,6 +347,7 @@ pub(crate) struct Decoder<'a> {
     pub history: &'a dyn Fn(&Key) -> Option<u32>,
     /// A person entity's `export` plan's number, by the entity's key.
     pub export: &'a dyn Fn(&Key) -> Option<u32>,
+    pub upload: &'a dyn Fn(&Key, &str) -> Option<u32>,
     /// The number of the plan of the write at each site of this body.
     pub write: &'a dyn Fn(u32) -> Option<u32>,
     /// The number of each setting, by its key (area 10).
@@ -974,6 +978,14 @@ impl Decoder<'_> {
                 }
                 Callee::Entity { entity, operation } if operation == "export" => {
                     Decoded::Export((self.export)(entity))
+                }
+                Callee::Entity { entity, operation }
+                    if jadpo_std::files::upload_field(operation).is_some() =>
+                {
+                    Decoded::Upload((self.upload)(
+                        entity,
+                        jadpo_std::files::upload_field(operation).unwrap_or_default(),
+                    ))
                 }
                 Callee::Entity { entity, operation } => {
                     Decoded::Written(format!("{}.{operation}", self.types.name(entity)))

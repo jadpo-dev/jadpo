@@ -61,14 +61,26 @@ const RANGE_NOT_SATISFIABLE: (u16, &str, &str) = (
 
 const ALLOW: &str = "GET, HEAD, OPTIONS";
 
-/// The key signing `store`'s links, derived from what `store` keeps;
-/// `None` when no connection of that name keeps files.
-fn signing_key(host: &dyn Host, store: &str, make: bool) -> Option<[u8; 32]> {
+/// A key signing `store`'s links or slots, as `context` keeps them apart,
+/// derived from what `store` keeps; `None` when no connection of that name
+/// keeps files.
+pub(super) fn derived_key(
+    host: &dyn Host,
+    store: &str,
+    make: bool,
+    context: &str,
+) -> Option<[u8; 32]> {
     let kept = host.capability(store)?.link_key(store, make)?;
-    let mut key = blake3::Hasher::new_derive_key(CONTEXT);
+    let mut key = blake3::Hasher::new_derive_key(context);
     key.update(&kept);
     key.update(store.as_bytes());
     Some(*key.finalize().as_bytes())
+}
+
+/// The key signing `store`'s links; `None` when no connection of that name
+/// keeps files.
+fn signing_key(host: &dyn Host, store: &str, make: bool) -> Option<[u8; 32]> {
+    derived_key(host, store, make, CONTEXT)
 }
 
 fn tag(key: &[u8; 32], body: &str) -> blake3::Hash {
@@ -356,6 +368,12 @@ fn filename(name: &str) -> String {
         }
     }
     out
+}
+
+/// `name` percent-encoded as [`filename`] writes it, without its charset
+/// prefix.
+pub(super) fn filename_value(name: &str) -> String {
+    filename(name).trim_start_matches("UTF-8''").to_string()
 }
 
 /// What a file with no name of its own is saved as.

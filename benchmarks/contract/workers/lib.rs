@@ -188,7 +188,7 @@ pub fn control(command: String, env: JsValue, context: JsValue) -> JsValue {
     let mut headers:Vec<(String,String)>=command["headers"].as_array().map(|hs|hs.iter().map(|h|(h[0].as_str().unwrap().into(),h[1].as_str().unwrap().into())).collect()).unwrap_or_default();
     headers.push(("cf-connecting-ip".into(),"127.0.0.1".into()));
     let full=command["path"].as_str().unwrap();let(path,query)=full.split_once('?').unwrap_or((full,""));
-    let request=jadpo_runtime::http::Request{method:command["method"].as_str().unwrap().into(),path:path.into(),query:if query.is_empty(){None}else{Some(query.into())},headers,body:command["body"].as_str().unwrap_or("").as_bytes().to_vec(),address:None,too_large:false};
+    let request=jadpo_runtime::http::Request{method:command["method"].as_str().unwrap().into(),path:path.into(),query:if query.is_empty(){None}else{Some(query.into())},headers,body:command["body"].as_str().unwrap_or("").as_bytes().to_vec(),address:None,too_large:false,stream:None};
     let worker=state.worker.borrow().clone();
     let response=jadpo_runtime::http::serve_request(&program.app(),&program,&host,&worker,&request).await;
     state.deferred.borrow_mut().extend(response.deferred);

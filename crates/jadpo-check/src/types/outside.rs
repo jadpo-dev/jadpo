@@ -59,6 +59,9 @@ pub(super) enum Does<'b> {
     Calls,
     /// A write.
     Writes,
+    /// A write that attaches an upload, so the store is asked first
+    /// (area 16, "Uploading"): a call, then a write.
+    Attaches,
     /// A call of an action or fixture, which joins the caller's
     /// transaction and does what it does.
     Joins(&'b Key),
@@ -67,6 +70,7 @@ pub(super) enum Does<'b> {
 
 pub(super) fn does(node: &Node) -> Does<'_> {
     match node {
+        Node::Expr(Expr::Write { attaches: true, .. }) => Does::Attaches,
         Node::Expr(Expr::Write { .. }) => Does::Writes,
         Node::Expr(Expr::Call { callee, .. }) => match callee {
             Callee::Provider { .. }
@@ -77,11 +81,13 @@ pub(super) fn does(node: &Node) -> Does<'_> {
             Callee::Action(key)
             | Callee::Fixture(key)
             | Callee::PackageAction { action: key, .. } => Does::Joins(key),
-            // An entity's other operations are writes, built or not.
+            // An entity's other operations are writes, built or not; a
+            // slot is signed, which asks nothing of a store.
             Callee::Entity { operation, .. }
                 if operation != "get"
                     && operation != jadpo_std::audit::HISTORY
-                    && operation != crate::resolve::EXPORT =>
+                    && operation != crate::resolve::EXPORT
+                    && jadpo_std::files::upload_field(operation).is_none() =>
             {
                 Does::Writes
             }
@@ -158,6 +164,19 @@ pub(super) fn children(node: &Node) -> Vec<SiteId> {
             Expr::Download { link, range } => {
                 out.push(*link);
                 out.extend(*range);
+            }
+            Expr::Upload {
+                slot,
+                body,
+                content_type,
+                content_encoding,
+                file_name,
+            } => {
+                out.push(*slot);
+                out.push(*body);
+                out.extend(*content_type);
+                out.extend(*content_encoding);
+                out.extend(*file_name);
             }
             Expr::Request {
                 params,
@@ -303,6 +322,10 @@ pub fn file_outside(db: &dyn Db, project: Project, file: File) -> BTreeMap<Key, 
                     own.calls.get_or_insert_with(|| names.name(&body, id));
                 }
                 Does::Writes => {
+                    own.writes.get_or_insert_with(|| names.name(&body, id));
+                }
+                Does::Attaches => {
+                    own.calls.get_or_insert_with(|| names.name(&body, id));
                     own.writes.get_or_insert_with(|| names.name(&body, id));
                 }
                 Does::Joins(callee) => {
@@ -521,6 +544,10 @@ impl Walk<'_> {
                 match does(node) {
                     Does::Calls => self.call(id, &way),
                     Does::Writes => {
+                        way.written.insert(id);
+                    }
+                    Does::Attaches => {
+                        self.call(id, &way);
                         way.written.insert(id);
                     }
                     Does::Joins(callee) => {

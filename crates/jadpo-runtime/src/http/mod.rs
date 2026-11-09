@@ -16,7 +16,8 @@
 //! context and request id and answers it; a route test's goes through
 //! [`route_test`]. Its request guarantees (chunk 4.2):
 //!
-//! - a body over 1 MB is refused with 413 `request_too_large`;
+//! - a body over 1 MB is refused with 413 `request_too_large`, but for an
+//!   upload's ([`uploads`]);
 //! - every route has a deadline: when it passes, whatever is running is
 //!   dropped, its transaction with it, so nothing commits, and the answer
 //!   is 504 `deadline_exceeded`. Work that never waits checks it as it runs
@@ -64,6 +65,7 @@ pub mod test_passkeys;
 #[cfg(feature = "testing")]
 pub mod test_providers;
 mod trie;
+pub mod uploads;
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
@@ -102,7 +104,46 @@ pub struct Request {
     /// The host stopped reading the body once it passed [`BODY_LIMIT`]:
     /// `body` holds what it read, and the request is refused with 413.
     pub too_large: bool,
+    /// The body, unread, handed over a piece at a time, for an upload
+    /// (area 16, "Uploading"), which `body` never holds.
+    pub stream: Option<BodyStream>,
 }
+
+/// What a host streams an upload's body from.
+pub trait BodySource {
+    /// The next piece of the body; `None` at its end, `Some(Err(()))`
+    /// when the client went away or stopped sending.
+    fn next(&self) -> crate::LocalFuture<'_, Option<Result<Vec<u8>, ()>>>;
+}
+
+/// A request's body, unread, read a piece at a time as an upload takes it.
+#[derive(Clone)]
+pub struct BodyStream(std::rc::Rc<dyn BodySource>);
+
+impl BodyStream {
+    pub fn new(source: std::rc::Rc<dyn BodySource>) -> BodyStream {
+        BodyStream(source)
+    }
+
+    /// The next piece of the body.
+    pub fn next(&self) -> crate::LocalFuture<'_, Option<Result<Vec<u8>, ()>>> {
+        self.0.next()
+    }
+}
+
+impl std::fmt::Debug for BodyStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("BodyStream")
+    }
+}
+
+impl PartialEq for BodyStream {
+    fn eq(&self, other: &BodyStream) -> bool {
+        std::rc::Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for BodyStream {}
 
 impl Request {
     /// The first header called `name`, compared without case.
@@ -462,11 +503,16 @@ async fn respond(
     request_id: &str,
     ready: Option<&health::Readiness>,
 ) -> Response {
-    // A file's signed link (area 16, "Downloading"), when the path's
-    // store is one that keeps files; `/files/...` is any other route's
-    // otherwise.
+    // A file's signed link (area 16, "Downloading"), or an upload's
+    // address ("Uploading"), when the path's store is one that keeps
+    // files; `/files/...` is any other route's otherwise.
     if let Some((store, link)) = downloads::path(request)
         && let Some(response) = downloads::answer(ctx, request, request_id, store, link).await
+    {
+        return response;
+    }
+    if let Some((store, token)) = uploads::path(request)
+        && let Some(response) = uploads::answer(ctx, request, request_id, store, token).await
     {
         return response;
     }

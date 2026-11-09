@@ -471,7 +471,8 @@ impl Lower<'_> {
             typed::Node::Expr(
                 typed::Expr::Write { .. }
                 | typed::Expr::Request { .. }
-                | typed::Expr::Download { .. },
+                | typed::Expr::Download { .. }
+                | typed::Expr::Upload { .. },
             ) => true,
             typed::Node::Expr(typed::Expr::Now | typed::Expr::SentEmails) => true,
             _ => false,
@@ -1852,6 +1853,9 @@ impl Lower<'_> {
         if self.facts.downloads.contains(&key) {
             return self.download(record);
         }
+        if self.facts.uploads.contains(&key) {
+            return self.upload(record);
+        }
         if let Some(fact) = self.facts.requests.get(&key).cloned() {
             return self.request(&fact, record);
         }
@@ -1945,6 +1949,31 @@ impl Lower<'_> {
         typed::Expr::Download {
             link: self.expr(&link),
             range: value("range").map(|expr| self.expr(&expr)),
+        }
+    }
+
+    /// A route test's `request { upload: }` (area 13): a file sent to a
+    /// slot's address, and what it says of itself.
+    fn upload(&mut self, record: &ast::RecordExpr) -> typed::Expr {
+        let members = crate::tree::members(record.member_list());
+        let value = |name: &str| {
+            members
+                .iter()
+                .find(|(key, _)| crate::tree::name_text(key).as_deref() == Some(name))
+                .and_then(|(_, member)| member.value())
+        };
+        let (Some(slot), Some(body)) = (value("upload"), value("body")) else {
+            return typed::Expr::Unchecked;
+        };
+        if let Some(method) = value("method") {
+            self.scan(method.syntax());
+        }
+        typed::Expr::Upload {
+            slot: self.expr(&slot),
+            body: self.expr(&body),
+            content_type: value("content_type").map(|expr| self.expr(&expr)),
+            content_encoding: value("content_encoding").map(|expr| self.expr(&expr)),
+            file_name: value("file_name").map(|expr| self.expr(&expr)),
         }
     }
 
@@ -2198,6 +2227,7 @@ impl Lower<'_> {
                 .as_deref()
                 .and_then(|failure| self.type_key(failure)),
             fallible: self.fallible(Some(&fact.fallible)),
+            attaches: fact.attaches,
         }
     }
 

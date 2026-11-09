@@ -67,6 +67,7 @@ mod file_deletes;
 mod file_downloads;
 mod file_exports;
 mod file_imports;
+mod file_uploads;
 mod first_records;
 mod fix;
 mod flags;

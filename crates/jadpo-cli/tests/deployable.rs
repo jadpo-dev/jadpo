@@ -2145,6 +2145,28 @@ fn a_deployable_keeps_a_disk_stores_files_at_its_path() {
     };
     crate::file_downloads::serves_a_file(&answered, &sent, &sheets);
 
+    // An upload, streamed to the disk by the compiled program, its whole
+    // path over real HTTP; and one that goes over its slot's limit part-way
+    // through, which is cut off there.
+    let uploaded = |method: &str, path: &str, headers: &[(&str, &str)], body: &[u8]| {
+        let (status, head, body) = exchanged_with(
+            &address,
+            method,
+            path,
+            headers,
+            &String::from_utf8_lossy(body),
+        );
+        let all = head
+            .lines()
+            .skip(1)
+            .filter_map(|line| line.split_once(": "))
+            .map(|(name, value)| (name.to_ascii_lowercase(), value.to_string()))
+            .collect();
+        (status, all, body.into_bytes())
+    };
+    crate::file_uploads::serves_an_upload(&uploaded, &sheets);
+    crate::file_uploads::a_chunked_upload_stops_at_its_limit(&address, &uploaded, &sheets);
+
     let (status, body) = exchange(
         &address,
         "POST",
