@@ -3681,7 +3681,7 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `index.recommendation_unknown` | `schema index-accept` | Index recommendation is not current |
 | `install.fetch_failed` | `package add`, `update` | Installing a package couldn't read its git repository, or found no release there at the tag you gave ([Installing errors](11-integrations.md#installing-errors)) |
 | `install.in_use` | `package remove` | A package `jadpo package remove` was asked to remove is still brought in by the app's code ([Installing errors](11-integrations.md#installing-errors)) |
-| `install.link_refused` | `check`, `test` in CI | Linked package in a CI or production build ([Installing errors](11-integrations.md#installing-errors)) |
+| `install.link_refused` | `check`, `test` in CI | A package is linked to a checkout in a CI run or a production build ([Installing errors](11-integrations.md#installing-errors)) |
 | `install.surface_mismatch` | `package add`, `update` | The package you are installing has code that offers something different from its committed `surface.jadpo_record` ([Installing errors](11-integrations.md#installing-errors)) |
 | `lsp.content_length_missing` | `lsp` | Language-server message has no Content-Length header |
 | `lsp.json_invalid` | `lsp` | Language-server message is not valid JSON |
@@ -3751,7 +3751,7 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `publish.licence_proprietary` | `package verify`, `package publish` | A package's licence is `Licence.proprietary`, which the public registry refuses ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.publisher_mismatch` | `package verify`, `package publish` | A release names another publisher than the one asked to publish it ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.publisher_missing` | `package verify`, `package publish` | A package's index names no publisher, and it has to for the registry ([Publishing errors](11-integrations.md#publishing-errors)) |
-| `publish.sample_missing` | `package check` | Package's recipes have no sample app with one domain to compile in ([Publishing errors](11-integrations.md#publishing-errors)) |
+| `publish.sample_missing` | `package check` | A package with recipes has no sample app with one domain to compile them in ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.stale_files` | `package verify` | A commit's `surface.jadpo_record` or changelog list isn't what the package's code gives ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.too_large` | `package verify` | A commit's release is past the size limit ([Publishing errors](11-integrations.md#publishing-errors)) |
 | `publish.type_unreviewed` | `package check`, `package verify` | A provider package's public type isn't in its `reviewed:` list ([Publishing errors](11-integrations.md#publishing-errors)) |

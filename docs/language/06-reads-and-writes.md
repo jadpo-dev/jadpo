@@ -2355,7 +2355,7 @@ error: Reading a second store in `order_product` isn't built yet
   |
 4 |     var product: Product = attempt Product.get(product_id)
   |                                    ^^^^^^^^^^^^^^^^^^^^^^^ store `catalogue`
-  reason: An action may read another store outside its transaction (area 6), but this compiler runs all of an action's store operations in the one transaction its first begins; `order_product` uses `Order` (store `main`), and here it reads `Product` (store `catalogue`).
+  reason: An action may read another store outside its transaction, but this compiler runs all of an action's store operations in the one transaction its first begins; `order_product` uses `Order` (store `main`), and here it reads `Product` (store `catalogue`).
   next: Read `Product` before `order_product` runs, and pass in what it needs, for now (agent)
   rule: toolchain.not_built_yet
   help: https://jadpo.dev/docs/errors/toolchain.not_built_yet

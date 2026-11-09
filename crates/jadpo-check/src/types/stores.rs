@@ -682,7 +682,7 @@ fn second_store_read(
                 )
                 .at(Span::new(path, *start, *end), format!("store `{store}`"))
                 .reason(format!(
-                    "An action may read another store outside its transaction (area 6), but this compiler runs all of an action's store operations in the one transaction its first begins; `{name}` uses `{own_entity}` (store `{own_store}`), and here it {how} `{entity}` (store `{store}`)."
+                    "An action may read another store outside its transaction, but this compiler runs all of an action's store operations in the one transaction its first begins; `{name}` uses `{own_entity}` (store `{own_store}`), and here it {how} `{entity}` (store `{store}`)."
                 ))
                 .next(format!(
                     "Read `{entity}` before `{name}` runs, and pass in what it needs, for now"
