@@ -13,9 +13,7 @@
 //! limit by the runtime.
 
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_std::files::{
-    FILE, FILE_CONTENTS, FilesOp, SINGLE_SLOT_LIMIT, UPLOAD_SLOT, WHOLE_READ_LIMIT, shown_size,
-};
+use jadpo_std::files::{FILE, FILE_CONTENTS, FilesOp, UPLOAD_SLOT, WHOLE_READ_LIMIT, shown_size};
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use super::super::ty::{Prim, Ty};
@@ -30,8 +28,8 @@ impl Body<'_> {
     /// `Entity.field_upload()` (area 16, "Uploading"): a slot for one
     /// `File` field. It takes nothing, and who may ask is the entity's
     /// `create` and `update` grants, read where the routes are checked. A
-    /// field over 100 MB is given a slot in parts, which isn't built yet.
-    /// Its type.
+    /// field over 100 MB is given a slot in parts, which the same type
+    /// holds. Its type.
     pub(super) fn upload_slot(
         &mut self,
         entity: &str,
@@ -50,7 +48,7 @@ impl Body<'_> {
                     .find(|candidate| candidate.name == field)
             })
             .filter(|candidate| candidate.file.is_some());
-        let Some(model) = model else {
+        if model.is_none() {
             self.args_only(call);
             self.walk(|walk| walk.member_values(block));
             self.out.push(
@@ -65,8 +63,7 @@ impl Body<'_> {
                 .next(format!("Name a `File` field of `{entity}`")),
             );
             return Ty::Error;
-        };
-        let max_size = model.file.as_ref().map(|file| file.max_size);
+        }
         self.args_only(call);
         self.walk(|walk| walk.member_values(block.clone()));
         let args = Self::arguments(call);
@@ -82,25 +79,6 @@ impl Body<'_> {
                     "`{written}` gives a slot for the field `{field}`: its settings say what the slot accepts."
                 ))
                 .next(format!("Write `{written}()`")),
-            );
-            return Ty::Error;
-        }
-        if let Some(max_size) = max_size.filter(|max_size| *max_size > SINGLE_SLOT_LIMIT) {
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("A slot for `{entity}.{field}` isn't built yet"),
-                )
-                .at(span, "decided, not built")
-                .reason(format!(
-                    "`{entity}.{field}` holds files of up to {}. A field over {} gets a slot in parts, which isn't built yet.",
-                    shown_size(max_size),
-                    shown_size(SINGLE_SLOT_LIMIT)
-                ))
-                .next(format!(
-                    "Lower `{entity}.{field}`'s `max_size:` to {} for now",
-                    shown_size(SINGLE_SLOT_LIMIT)
-                )),
             );
             return Ty::Error;
         }

@@ -778,6 +778,12 @@ impl<'t> Codecs<'t> {
 
     /// An `Int` codec's twin that writes a JSON number.
     fn as_number(&mut self, id: CodecId) -> CodecId {
+        if let Some(Codec::Nullable(inner)) = self.codecs.get(id.0 as usize).cloned() {
+            let inner = self.as_number(inner);
+            let number = CodecId(self.codecs.len() as u32);
+            self.codecs.push(Codec::Nullable(inner));
+            return number;
+        }
         let Some(Codec::Scalar {
             builtin, validator, ..
         }) = self.codecs.get(id.0 as usize).cloned()
@@ -1066,7 +1072,8 @@ impl<'t> Codecs<'t> {
                         // A link's size goes out as a JSON number: no file
                         // comes near the size where one loses precision.
                         if (name == jadpo_std::files::FILE_LINK && *field == "size")
-                            || (name == jadpo_std::files::UPLOAD_SLOT && *field == "max_size")
+                            || (name == jadpo_std::files::UPLOAD_SLOT
+                                && matches!(*field, "max_size" | "part_size"))
                         {
                             self.as_number(id)
                         } else {

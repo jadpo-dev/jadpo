@@ -745,6 +745,8 @@ impl Emitter<'_> {
                 content_type,
                 content_encoding,
                 file_name,
+                part,
+                dropped,
             } => {
                 let parts: Vec<Option<SiteId>> = vec![
                     Some(slot),
@@ -752,6 +754,8 @@ impl Emitter<'_> {
                     content_type,
                     content_encoding,
                     file_name,
+                    part,
+                    dropped,
                 ];
                 let values: Vec<TokenStream> = parts
                     .iter()

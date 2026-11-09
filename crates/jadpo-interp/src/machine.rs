@@ -1995,6 +1995,8 @@ impl<'p> Machine<'p> {
                 content_type,
                 content_encoding,
                 file_name,
+                part,
+                dropped,
             } => {
                 // Each thing it says of itself, `none` where it says
                 // nothing, so every value has its place.
@@ -2004,6 +2006,8 @@ impl<'p> Machine<'p> {
                     *content_type,
                     *content_encoding,
                     *file_name,
+                    *part,
+                    *dropped,
                 ];
                 self.tasks.push(Task::Invoke {
                     target: Target::Upload,

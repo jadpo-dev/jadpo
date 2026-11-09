@@ -1170,10 +1170,9 @@ fn a_function_cant_ask_for_a_slot() {
     );
 }
 
-/// A field over 100 MB gets a slot in parts, which isn't built yet, so a
-/// plain slot for one is refused where it is asked for.
+/// A field over 100 MB gets a slot in parts, the same `UploadSlot`.
 #[test]
-fn a_slot_for_a_field_over_a_hundred_mb_is_not_built_yet() {
+fn a_field_over_a_hundred_mb_gets_a_slot_in_parts() {
     let entity = "entity BigSheet {\n    id: Uuid\n    sheet: File {\n        store: sheets\n        max_size: 200mb\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n}\n";
     let source = "use pantry/entities { BigSheet }\n\naction asked() -> UploadSlot {\n    return BigSheet.sheet_upload()\n}\n";
     assert_eq!(
@@ -1181,7 +1180,7 @@ fn a_slot_for_a_field_over_a_hundred_mb_is_not_built_yet() {
             ("domains/pantry/entities/big_sheet.jadpo", entity),
             ("domains/pantry/actions/asked.jadpo", source),
         ]),
-        ["toolchain.not_built_yet"]
+        Vec::<String>::new()
     );
 }
 

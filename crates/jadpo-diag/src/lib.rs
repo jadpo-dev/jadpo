@@ -309,19 +309,19 @@ rules! {
     CONNECTION_DOMAIN_NOT_LISTED: "connection.domain_not_listed", area 11, Error, Human,
         "An action calls an outside service through a connection whose `domains:` list doesn't include the action's domain";
     CONNECTION_KEY_INVALID: "connection.key_invalid", area 11, Error, Agent,
-        "Connection gives a key its package doesn't take";
+        "A connection gives a key its package or driver doesn't take";
     CONNECTION_KEY_MISSING: "connection.key_missing", area 11, Error, Agent,
-        "Connection leaves out a key its package needs";
+        "A connection leaves out a key its package or driver needs";
     CONNECTION_PACKAGE_UNKNOWN: "connection.package_unknown", area 11, Error, Agent,
-        "Connection names no provider package the app holds";
+        "A connection names a package the app doesn't hold, or a library package, which needs no connection";
     CONNECTION_VALUE_INVALID: "connection.value_invalid", area 11, Error, Agent,
-        "Connection's key holds a value it can't";
+        "A connection's key holds a value it can't take, such as a credential that isn't a secret setting";
     CONSTANT_CYCLE: "constant.cycle", area 3, Error, Agent,
-        "Constant's value depends on itself";
+        "A constant's value depends on itself";
     CONSTANT_SIMILAR_EXISTS: "constant.similar_exists", area 3, Declinable, Agent,
-        "Another constant of the same type holds the same value";
+        "A constant has the same type and value as another constant";
     CONSTANT_VALUE_NOT_FIXED: "constant.value_not_fixed", area 3, Error, Agent,
-        "Constant's value is only known while the app runs";
+        "A constant's value is only known while the app runs, because it comes from a call, `config` or `clock`";
     DATA_CLEARED_REQUIRED_REFERENCE: "data.cleared_required_reference", area 5, Error, Agent,
         "A reference that can't be `none` is set to be cleared when the record it refers to is deleted";
     DATA_CONFLICT_CANNOT_BREAK: "data.conflict_cannot_break", area 6, Error, Agent,
@@ -617,15 +617,15 @@ rules! {
     FORMAT_WRITE_FAILED: "format.write_failed", area 14, Error, Human,
         "A file `jadpo fmt` formatted couldn't be written, usually because it is read-only";
     IMPORT_DUPLICATE: "import.duplicate", area 1, Error, Agent,
-        "Name or folder imported twice";
+        "A file imports the same name twice, or has two `use` lines for one folder";
     IMPORT_MISSING: "import.missing", area 1, Error, Agent,
         "A file uses a name declared elsewhere in the project without bringing it in on a `use` line";
     IMPORT_UNKNOWN: "import.unknown", area 1, Error, Agent,
-        "Import names nothing in its folder";
+        "A `use` line names a folder or a name that isn't there";
     IMPORT_UNNEEDED: "import.unneeded", area 1, Error, Agent,
         "A file imports a name it already sees without a `use` line, such as a built-in or something its test subject declares";
     IMPORT_UNUSED: "import.unused", area 1, Error, Agent,
-        "Imported name the file does not use";
+        "A `use` line brings in something the file doesn't use";
     INSTALL_FETCH_FAILED: "install.fetch_failed", area 14, Error, Human,
         "Installing a package couldn't read its git repository, or found no release there at the tag you gave";
     INSTALL_IN_USE: "install.in_use", area 14, Error, Agent,
@@ -685,11 +685,11 @@ rules! {
     MIGRATION_UNFINISHED: "migration.unfinished", area 5, Error, Agent,
         "Latest migration is not finished";
     NAMING_FOLDED_COLLISION: "naming.folded_collision", area 1, Error, Agent,
-        "Two names fold to the same file name";
+        "Two names in the project become the same file name";
     NAMING_GENERIC_NAME: "naming.generic_name", area 1, Error, Agent,
         "A domain or library is called something generic, such as `helpers` or `utils`, that says nothing about what it holds";
     NAMING_ROUND_TRIP: "naming.round_trip", area 1, Error, Agent,
-        "Name does not survive conversion to its file name";
+        "An `UpperCamelCase` name has consecutive capitals, so it doesn't convert to its file name and back unchanged";
     PACKAGE_ACTION_INVALID: "package.action_invalid", area 11, Error, Agent,
         "Package action does what package code may not";
     PACKAGE_ADVISORY: "package.advisory", area 14, Error, Human,
@@ -735,29 +735,29 @@ rules! {
     PACKAGE_WIRE_NAME_INVALID: "package.wire_name_invalid", area 11, Error, Agent,
         "Wire name outside a provider package, or one the type already uses";
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
-        "Policy names something that can't say who";
+        "A grant, a membership or a `tenant:` names something that can't say who is allowed or where";
     POLICY_CALL_UNGRANTED: "policy.call_ungranted", area 9, Security, Human,
         "An action listed under `actions:` calls another action that refuses some of the people the listed action's line lets in";
     POLICY_DECLARATION_DUPLICATE: "policy.declaration_duplicate", area 9, Error, Agent,
-        "Policy is declared twice";
+        "An entity declares `policy:` twice, or the app declares root `policy { }` twice";
     POLICY_EFFECT_DUPLICATE: "policy.effect_duplicate", area 9, Error, Agent,
-        "Policy gives the same list twice";
+        "A policy gives the same grant list twice, or lists one action twice under `actions:`";
     POLICY_EFFECT_UNGRANTED: "policy.effect_ungranted", area 9, Error, Human,
         "A route runs an action that nobody is allowed to call, because nothing in the app says who may";
     POLICY_EFFECT_UNKNOWN: "policy.effect_unknown", area 9, Error, Agent,
-        "Policy holds something that isn't a grant or a setting";
+        "A `policy:`, a `membership:` or root `policy { }` holds something that isn't one of its settings";
     POLICY_EVENT_TENANT_UNPROVED: "policy.event_tenant_unproved", area 9, Error, Agent,
         "An event or a batch names a tenant its action never reached under its caller's policy";
     POLICY_FIELD_WIDENS_ENTITY: "policy.field_widens_entity", area 9, Error, Agent,
         "A field's own `policy:` lets in someone its record's grants don't";
     POLICY_MEMBERSHIP_DUPLICATE: "policy.membership_duplicate", area 9, Error, Agent,
-        "Entity declares a membership twice, or gives one of its parts twice";
+        "An entity declares `membership:` twice, or gives its `member:`, `role:` or `requires:` twice";
     POLICY_MEMBERSHIP_MEMBER_REQUIRED: "policy.membership_member_required", area 9, Error, Agent,
-        "Membership doesn't say who holds it";
+        "A `membership:` doesn't say who holds the role in `member:`";
     POLICY_MEMBERSHIP_ROLE_REQUIRED: "policy.membership_role_required", area 9, Error, Agent,
-        "Membership doesn't say which field holds the role";
+        "A `membership:` doesn't say which field holds the role in `role:`";
     POLICY_MEMBERSHIP_SCOPE_REQUIRED: "policy.membership_scope_required", area 9, Error, Agent,
-        "Membership doesn't say what it is held in";
+        "A `membership:` doesn't say what the role is held in";
     POLICY_OUTPUT_FIELD_UNPROVED: "policy.output_field_unproved", area 9, Error, Agent,
         "A query or action lets a caller see a field's value, directly or through what it decides, though not every caller may read that field";
     POLICY_PUBLIC_GRANT_MISSING: "policy.public_grant_missing", area 9, Error, Human,
@@ -769,17 +769,17 @@ rules! {
     POLICY_REQUIREMENTS_INCOMPLETE: "policy.requirements_incomplete", area 9, Error, Human,
         "A membership's `requires:` leaves out one of its roles";
     POLICY_ROLE_FIELD_CREATE_FORBIDDEN: "policy.role_field_create_forbidden", area 9, Error, Agent,
-        "Create sets the user field its grant needs from the request, not the caller";
+        "An action sets the user field a `create:` grant depends on from the request instead of the caller";
     POLICY_ROLE_UNBOUND: "policy.role_unbound", area 9, Error, Agent,
-        "Grant names a role no membership holds";
+        "A grant names a role no membership holds, or the app's tenant has no membership held in it";
     POLICY_SCOPE_AMBIGUOUS: "policy.scope_ambiguous", area 9, Error, Agent,
-        "Grant doesn't say which reference a role or the tenant applies through";
+        "An entity has two references a role or the tenant could apply through, and doesn't say which";
     POLICY_SCOPE_DUPLICATE: "policy.scope_duplicate", area 9, Error, Agent,
-        "A scope or tenant is given twice";
+        "A membership gives `scope:` twice, or a policy gives `tenant:` twice";
     POLICY_SCOPE_MISSING: "policy.scope_missing", area 9, Error, Agent,
         "An entity names a role held in another record, or belongs to the app's tenant, but has no reference to that record";
     POLICY_SUBJECT_DUPLICATE: "policy.subject_duplicate", area 9, Error, Agent,
-        "Grant names the same caller twice";
+        "A grant list names the same caller twice";
     POLICY_SYSTEM_GRANT_MISSING: "policy.system_grant_missing", area 9, Error, Human,
         "A schedule or subscriber reaches something whose list doesn't name `Access.system`, the one way an entity lets background work in";
     PRIVACY_UNAVAILABLE: "privacy.unavailable", area 14, Error, Human,
@@ -899,13 +899,13 @@ rules! {
     QUERY_VALUE_UNSUPPORTED: "query.value_unsupported", area 6, Error, Agent,
         "A query uses a value it would have to work out, or reads inside one that may be absent";
     RATE_LIMITS_COUNTED_IN_MEMORY: "rate_limits.counted_in_memory", area 16, Declinable, Agent,
-        "Deployable built for Workers would count its rate limits in each instance's memory";
+        "A deployable built for Workers would count its rate limits in each instance's memory";
     RATE_LIMITS_STORE_INVALID: "rate_limits.store_invalid", area 16, Error, Agent,
-        "Rate limits' store isn't a connection that can count them";
+        "The `rate_limits:` block names a store that can't count rate limits, or holds something it doesn't take";
     RATE_LIMITS_STORE_REQUIRED: "rate_limits.store_required", area 16, Error, Agent,
-        "Deployable built for Workers has nowhere to count its rate limits";
+        "A deployable built for Workers has nowhere to count its rate limits";
     RATE_LIMITS_WINDOW_UNSUPPORTED: "rate_limits.window_unsupported", area 16, Error, Agent,
-        "A rate limit's window is one its store can't count";
+        "A rate limit counted in Cloudflare's binding has a window other than 10 or 60 seconds";
     RECEIVING_INVALID: "receiving.invalid", area 12, Error, Agent,
         "A queue in `receiving:` doesn't say how its messages are read";
     RECORD_EDITED: "record.edited", area 18, Error, Agent,

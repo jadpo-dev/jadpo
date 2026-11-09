@@ -31,13 +31,21 @@ pub const FILE_UPLOAD: &str = "FileUpload";
 pub const UPLOAD_SLOT: &str = "UploadSlot";
 
 /// An [`UPLOAD_SLOT`]'s parts, in the order its JSON writes them: the
-/// signed address the bytes go to, the token an `Input` attaches them by,
-/// and the most bytes the address takes.
-pub const UPLOAD_SLOT_FIELDS: [(&str, Part); 3] = [
-    ("url", Part::Of(Builtin::Text)),
+/// signed address the bytes go to (none on a slot in parts), the token an
+/// `Input` attaches them by, the most bytes it takes, and on a slot in
+/// parts (area 16, "Large uploads go in parts") the size of each part and
+/// where they go.
+pub const UPLOAD_SLOT_FIELDS: [(&str, Part); 5] = [
+    ("url", Part::Optional(Builtin::Text)),
     ("token", Part::Of(Builtin::Text)),
     ("max_size", Part::Of(Builtin::Int)),
+    ("part_size", Part::Optional(Builtin::Int)),
+    ("parts_url", Part::Optional(Builtin::Text)),
 ];
+
+/// The [`UPLOAD_SLOT`] parts a slot leaves out of its JSON when they don't
+/// apply to it: `url` on a slot in parts, the other two on a plain one.
+pub const UPLOAD_SLOT_LEFT_OUT: [&str; 3] = ["url", "part_size", "parts_url"];
 
 /// What `store.read` gives (area 16).
 pub const FILE_CONTENTS: &str = "FileContents";
@@ -227,6 +235,18 @@ pub const LIST: &str = "list";
 /// a key nothing was uploaded to is `not_found`.
 pub const STAT: &str = "stat";
 
+/// Joins an upload's parts into the file its slot names (area 16, "Large
+/// uploads go in parts"), in order, once every part is there: what an
+/// attach asks before it [`STAT`]s. Input: `key`, `part_size`, `max_size`.
+/// Done already, it does nothing.
+pub const COMPLETE: &str = "complete";
+
+/// [`COMPLETE`]'s failure: a part is missing.
+pub const PARTS_MISSING: &str = "parts_missing";
+
+/// [`COMPLETE`]'s failure: the parts aren't equal.
+pub const PARTS_UNEQUAL: &str = "parts_unequal";
+
 /// What [`STAT`] answers.
 pub const UPLOADED: &str = "FileUploaded";
 
@@ -242,9 +262,84 @@ pub const SLOT_VALID_MS: i64 = 15 * 60 * 1000;
 /// parts"): 100 MB, past which a field gets a slot in parts.
 pub const SINGLE_SLOT_LIMIT: u64 = 100_000_000;
 
+/// The part size of a slot in parts (area 16, "Large uploads go in
+/// parts"): 16 MiB, larger only for a field whose parts would otherwise
+/// number over [`MAX_PARTS`].
+pub const PART_SIZE: u64 = 16 * 1024 * 1024;
+
+/// The most parts a slot has: what S3 and R2 allow in one upload, so a
+/// slot means the same on every store.
+pub const MAX_PARTS: u64 = 10_000;
+
+/// How long a slot in parts is good for: six hours, so that a large file
+/// over a slow connection can finish, well inside the day its bytes stay
+/// for a record to hold.
+pub const PARTS_SLOT_VALID_MS: i64 = 6 * 60 * 60 * 1000;
+
 /// An upload's path, after `/files/<store>/` (area 16, "Uploading"):
 /// `PUT /files/<store>/uploads/<token>`.
 pub const UPLOADS: &str = "uploads";
+
+/// What follows a slot's token on the path of one of its parts:
+/// `PUT /files/<store>/uploads/<token>/parts/<n>`.
+pub const PARTS: &str = "parts";
+
+/// The size of each part of a slot for a field of `max_size`: [`PART_SIZE`],
+/// or the whole number of MiB that keeps its parts within [`MAX_PARTS`].
+pub fn part_size_for(max_size: u64) -> u64 {
+    const MIB: u64 = 1024 * 1024;
+    let needed = max_size
+        .div_ceil(MAX_PARTS)
+        .div_ceil(MIB)
+        .saturating_mul(MIB);
+    needed.max(PART_SIZE)
+}
+
+/// The largest part number of a slot of `max_size` with parts of
+/// `part_size`.
+pub fn part_count(max_size: u64, part_size: u64) -> u64 {
+    max_size.div_ceil(part_size.max(1)).max(1)
+}
+
+/// The most bytes part `number` of a slot of `max_size` with parts of
+/// `part_size` may hold: `None` when no such part can exist, a number
+/// past the last or part 0.
+pub fn part_limit(max_size: u64, part_size: u64, number: u64) -> Option<u64> {
+    if number == 0 || number > part_count(max_size, part_size) {
+        return None;
+    }
+    let before = (number - 1).saturating_mul(part_size);
+    Some(part_size.min(max_size.saturating_sub(before)))
+}
+
+/// Why a slot's parts don't make a file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PartsRefused {
+    /// None were sent, or a number between them is missing.
+    Missing,
+    /// A part but the last isn't exactly the part size, or the last is
+    /// empty or over it.
+    Unequal,
+}
+
+/// Whether parts of `sizes`, in order from part 1, are the equal parts a
+/// slot of `part_size` takes (area 16, "Large uploads go in parts"): every
+/// one but the last exactly that size, and the last between one byte and
+/// that size. `gaps` is whether a part past the first missing number was
+/// sent.
+pub fn parts_fit(sizes: &[u64], gaps: bool, part_size: u64) -> Result<(), PartsRefused> {
+    let Some((last, before)) = sizes.split_last() else {
+        return Err(PartsRefused::Missing);
+    };
+    if gaps {
+        return Err(PartsRefused::Missing);
+    }
+    let equal = before.iter().all(|size| *size == part_size);
+    if !equal || *last == 0 || *last > part_size {
+        return Err(PartsRefused::Unequal);
+    }
+    Ok(())
+}
 
 /// The name of a field's generated slot operation, `sheet` for
 /// `sheet_upload`, when `operation` is written that way.

@@ -1447,10 +1447,12 @@ const FILE_LINK_RECORD_FIELDS: [(&str, crate::Builtin); 4] = [
 ];
 
 /// An upload slot as an API's record lists it.
-const UPLOAD_SLOT_RECORD_FIELDS: [(&str, crate::Builtin); 3] = [
+const UPLOAD_SLOT_RECORD_FIELDS: [(&str, crate::Builtin); 5] = [
     ("url", crate::Builtin::Text),
     ("token", crate::Builtin::Text),
     ("max_size", crate::Builtin::Int),
+    ("part_size", crate::Builtin::Int),
+    ("parts_url", crate::Builtin::Text),
 ];
 
 /// The fields of a built-in object type the boundary carries, which the

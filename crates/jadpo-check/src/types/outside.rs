@@ -171,12 +171,16 @@ pub(super) fn children(node: &Node) -> Vec<SiteId> {
                 content_type,
                 content_encoding,
                 file_name,
+                part,
+                dropped,
             } => {
                 out.push(*slot);
                 out.push(*body);
                 out.extend(*content_type);
                 out.extend(*content_encoding);
                 out.extend(*file_name);
+                out.extend(*part);
+                out.extend(*dropped);
             }
             Expr::Request {
                 params,

@@ -1,5 +1,16 @@
 # `constant.cycle`
 
+A constant's value depends on itself.
+
+## Why Jadpo refuses it
+
+A constant's value is worked out while compiling, from the constants it reads.
+When a chain of those reads leads back to the constant you started with, there
+is no value to start from. Jadpo can't choose where to break the loop, because
+that depends on which number you meant.
+
+## What it looks like
+
 ```jadpo check project=e-constant-cycle expect=constant.cycle
 type Stock = Int {
     min: 0
@@ -22,3 +33,30 @@ error: `large_batch` depends on itself
 
 check failed: 1 error, 1 file
 ```
+
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+## How to fix it
+
+**If one of the constants has a value of its own**, write it there:
+
+```jadpo fragment
+constant small_batch: Stock = 250
+constant large_batch: Stock = 1000
+```
+
+```jadpo check project=e-constant-cycle-fix hidden
+type Stock = Int {
+    min: 0
+}
+
+constant small_batch: Stock = 250
+constant large_batch: Stock = 1000
+```
+
+Each constant now has a value of its own, so neither depends on the other.
+
+## Related
+
+- [Constants](../language/03-logic.md#constants)

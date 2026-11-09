@@ -47,6 +47,13 @@
 //!   already there refuses, so a slot keeps one file and files never
 //!   change, and the folder is synced. What an upload says of itself is
 //!   kept beside it ([`meta_name`]), which no key can name.
+//! - **Uploads in parts.** Each part of a large upload is a file of its
+//!   own in a folder beside its file's name ([`parts_folder`]), written to a
+//!   temporary file and renamed over any part of that number, so a part is
+//!   whole or isn't there, and may be sent again. Attaching joins them
+//!   ([`DiskStore::complete`]) a window at a time into a temporary file
+//!   that is linked into place, then removes them; a store's `delete`, as
+//!   the sweep sends for one never attached, takes them with it.
 //!
 //! Its I/O is blocking: a window is at most a megabyte. A download reads
 //! through `read` a window at a time, signed with the key the store keeps
@@ -62,8 +69,9 @@ use jadpo_drivers::factory::Disk;
 use jadpo_runtime::LocalFuture;
 use jadpo_runtime::capability::{Answer, Call, Capability, Kept, Receiving, Refused};
 use jadpo_std::files::{
-    DELETE, DISCARD, HEAD_BYTES, JOIN, NOT_FOUND, PUT, READ, STAT, STORAGE_FULL, WHOLE_DISK,
-    is_key, key_id, piece_key,
+    COMPLETE, DELETE, DISCARD, HEAD_BYTES, JOIN, MAX_PARTS, NOT_FOUND, PARTS_MISSING,
+    PARTS_UNEQUAL, PUT, PartsRefused, READ, STAT, STORAGE_FULL, WHOLE_DISK, is_key, key_id,
+    part_count, parts_fit, piece_key,
 };
 use jadpo_value::Value;
 
@@ -308,8 +316,10 @@ impl DiskStore {
             Err(error) if names_nothing(&error) => return Answer::Value(Value::Unit),
             Err(_) => return Answer::Unavailable,
         };
-        // What an upload said of itself goes with it.
+        // What an upload said of itself goes with it, and an upload never
+        // joined leaves its parts behind.
         let _ = folder.remove(&meta_name(name));
+        remove_parts(&folder, name);
         match folder.remove(name) {
             Ok(()) => {}
             Err(error) if error.kind() == ErrorKind::NotFound => {
@@ -347,7 +357,127 @@ impl DiskStore {
             file: Some(file),
             written: 0,
             since_floor: 0,
+            whole: None,
+            says: true,
         }))
+    }
+
+    /// Starts keeping part `number` of upload `key`, of at most `expected`
+    /// bytes (area 16, "Large uploads go in parts"): written to a temporary
+    /// file of its own and renamed over any part of that number once
+    /// finished. A file already joined, or a disk that would be left below
+    /// the floor, refuses it.
+    fn receive_part(
+        &self,
+        key: &str,
+        number: u64,
+        expected: u64,
+    ) -> Result<Box<dyn Receiving + 'static>, Refused> {
+        let root = self.root(true).map_err(|error| refused(&error))?;
+        if self.below_floor(&root, expected) {
+            return Err(Refused::Full);
+        }
+        let (folder, name) = DiskStore::shard(&root, key, true).map_err(|error| refused(&error))?;
+        if folder.open(name).is_ok() {
+            return Err(Refused::Taken);
+        }
+        let parts = folder
+            .child(&parts_folder(name), true)
+            .map_err(|error| refused(&error))?;
+        let part_file = number.to_string();
+        let part = part_name(&part_file);
+        let file = parts.create(&part).map_err(|error| refused(&error))?;
+        Ok(Box::new(DiskReceiving {
+            root,
+            floor: self.floor,
+            folder: parts,
+            name: part_file,
+            part,
+            file: Some(file),
+            written: 0,
+            since_floor: 0,
+            whole: Some((folder, name.to_string())),
+            says: number == 1,
+        }))
+    }
+
+    /// Joins the parts of upload `key`, in order, into its file, once every
+    /// part is there and they are equal (area 16, "Large uploads go in
+    /// parts"): copied a window at a time into a temporary file, synced,
+    /// linked into place with what the first part said of it, then the
+    /// parts removed. Joined already, it does nothing.
+    fn complete(&self, key: &str, part_size: u64, max_size: u64) -> Answer {
+        let (folder, name) = match self.folder(key, true) {
+            Ok(found) => found,
+            Err(error) => return written(&error),
+        };
+        if folder.open(name).is_ok() {
+            return Answer::Value(Value::Unit);
+        }
+        let parts = match folder.child(&parts_folder(name), false) {
+            Ok(parts) => parts,
+            Err(error) if names_nothing(&error) => return Answer::Failed(PARTS_MISSING.into()),
+            Err(_) => return Answer::Unavailable,
+        };
+        let mut sizes = Vec::new();
+        let mut files = Vec::new();
+        let mut ended = false;
+        let mut gaps = false;
+        for number in 1..=part_count(max_size, part_size).min(MAX_PARTS) {
+            match parts.open(&number.to_string()) {
+                Ok(_) if ended => {
+                    gaps = true;
+                    break;
+                }
+                Ok(file) => {
+                    sizes.push(file.metadata().map_or(0, |meta| meta.len()));
+                    files.push(file);
+                }
+                Err(error) if names_nothing(&error) => ended = true,
+                Err(_) => return Answer::Unavailable,
+            }
+        }
+        match parts_fit(&sizes, gaps, part_size) {
+            Ok(()) => {}
+            Err(PartsRefused::Missing) => return Answer::Failed(PARTS_MISSING.into()),
+            Err(PartsRefused::Unequal) => return Answer::Failed(PARTS_UNEQUAL.into()),
+        }
+        if self.below_floor(&folder, sizes.iter().sum()) {
+            return Answer::Failed(STORAGE_FULL.into());
+        }
+        let said = read_said(&parts);
+        let staged = part_name(name);
+        let mut hasher = blake3::Hasher::new();
+        let joined = (|| {
+            let mut file = folder.create(&staged)?;
+            for part in &mut files {
+                copy_hashing(part, &mut file, &mut hasher)?;
+            }
+            file.sync_all()?;
+            drop(file);
+            let meta = serde_json::json!({
+                "s": sizes.iter().sum::<u64>(),
+                "h": hasher.finalize().to_hex().as_str(),
+                "n": said.get("n"),
+                "c": said.get("c"),
+            })
+            .to_string();
+            write_beside(&folder, &meta_name(name), meta.as_bytes())?;
+            match folder.link(&staged, name) {
+                // Another attach joined it first: the same file.
+                Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
+                linked => linked?,
+            }
+            folder.sync()
+        })();
+        let _ = folder.remove(&staged);
+        match joined {
+            Ok(()) => {
+                remove_parts(&folder, name);
+                Answer::Value(Value::Unit)
+            }
+            Err(error) => written(&error),
+        }
     }
 
     /// What an upload left under `key`: its size, what it said of itself
@@ -494,6 +624,14 @@ impl DiskStore {
             },
             DELETE => self.delete(key),
             STAT => self.stat(key),
+            COMPLETE => match (input.get("part_size"), input.get("max_size")) {
+                (Some(Value::Int(part_size)), Some(Value::Int(max_size))) => self.complete(
+                    key,
+                    u64::try_from(*part_size).unwrap_or(0),
+                    u64::try_from(*max_size).unwrap_or(0),
+                ),
+                _ => Answer::Misconfigured,
+            },
             JOIN | DISCARD => match (input.get("pieces"), key_id(key)) {
                 (Some(Value::Int(pieces)), Some(id)) => {
                     let pieces = u64::try_from(*pieces).unwrap_or(0);
@@ -521,6 +659,13 @@ struct DiskReceiving {
     file: Option<std::fs::File>,
     written: u64,
     since_floor: u64,
+    /// On a part: the folder its file is in, and that file's name, to be
+    /// refused once the file has been joined. A part replaces one of its
+    /// number; a whole upload never replaces anything.
+    whole: Option<(os::Dir, String)>,
+    /// Whether it keeps what it said of itself beside it: a whole upload
+    /// and a first part.
+    says: bool,
 }
 
 /// How many bytes an upload writes between looks at the disk's free space.
@@ -547,6 +692,11 @@ impl Receiving for DiskReceiving {
         let Some(file) = self.file.take() else {
             return Err(Refused::Unavailable);
         };
+        if let Some((folder, name)) = &self.whole
+            && folder.open(name).is_ok()
+        {
+            return Err(Refused::Taken);
+        }
         let said = serde_json::json!({
             "s": kept.size,
             "h": kept.hash,
@@ -558,18 +708,15 @@ impl Receiving for DiskReceiving {
         let outcome = (|| {
             file.sync_all()?;
             drop(file);
-            let staged = part_name(&meta);
-            let mut beside = self.folder.create(&staged)?;
-            beside.write_all(said.as_bytes())?;
-            beside.sync_all()?;
-            drop(beside);
             // What it said of itself is there before it is.
-            let placed = self
-                .folder
-                .rename(&staged, &meta)
-                .and_then(|()| self.folder.link(&self.part, &self.name));
-            let _ = self.folder.remove(&staged);
-            placed?;
+            if self.says {
+                write_beside(&self.folder, &meta, said.as_bytes())?;
+            }
+            if self.whole.is_some() {
+                self.folder.rename(&self.part, &self.name)?;
+            } else {
+                self.folder.link(&self.part, &self.name)?;
+            }
             self.folder.sync()
         })();
         match outcome {
@@ -587,6 +734,59 @@ impl Drop for DiskReceiving {
     fn drop(&mut self) {
         let _ = self.folder.remove(&self.part);
     }
+}
+
+/// Writes `bytes` to `folder`'s file `name`, whole: a temporary file of its
+/// own, synced and renamed over it.
+fn write_beside(folder: &os::Dir, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+    let staged = part_name(name);
+    let written = (|| {
+        let mut beside = folder.create(&staged)?;
+        beside.write_all(bytes)?;
+        beside.sync_all()?;
+        drop(beside);
+        folder.rename(&staged, name)
+    })();
+    let _ = folder.remove(&staged);
+    written
+}
+
+/// The folder beside file `name` holding its upload's parts until they are
+/// joined: a name no key can spell, as [`is_key`] allows none with a dot.
+fn parts_folder(name: &str) -> String {
+    format!("{name}.parts")
+}
+
+/// What the first part of an upload said of itself, from the folder of its
+/// parts; nothing when it said nothing.
+fn read_said(parts: &os::Dir) -> serde_json::Map<String, serde_json::Value> {
+    let mut text = Vec::new();
+    let read = parts
+        .open(&meta_name("1"))
+        .and_then(|mut file| file.read_to_end(&mut text));
+    if read.is_err() {
+        return serde_json::Map::new();
+    }
+    match serde_json::from_slice(&text) {
+        Ok(serde_json::Value::Object(said)) => said,
+        _ => serde_json::Map::new(),
+    }
+}
+
+/// Removes the parts upload `name` left in `folder`, and their folder; an
+/// upload never in parts has none to remove.
+fn remove_parts(folder: &os::Dir, name: &str) {
+    let parts_name = parts_folder(name);
+    let Ok(parts) = folder.child(&parts_name, false) else {
+        return;
+    };
+    for number in 1..=MAX_PARTS {
+        let _ = parts.remove(&number.to_string());
+    }
+    let _ = parts.remove(&meta_name("1"));
+    drop(parts);
+    let _ = folder.remove_child(&parts_name);
+    let _ = folder.sync();
 }
 
 /// Whether writing `incoming` more bytes to the disk `folder` is on would
@@ -624,6 +824,16 @@ impl Capability for DiskStore {
         expected: u64,
     ) -> Result<Box<dyn Receiving + '_>, Refused> {
         self.receive(key, expected)
+    }
+
+    fn receive_part(
+        &self,
+        _connection: &str,
+        key: &str,
+        part: u64,
+        expected: u64,
+    ) -> Result<Box<dyn Receiving + '_>, Refused> {
+        self.receive_part(key, part, expected)
     }
 
     fn link_key(&self, _connection: &str, make: bool) -> Option<[u8; 32]> {
@@ -715,6 +925,19 @@ impl Capability for DiskFiles {
     ) -> Result<Box<dyn Receiving + '_>, Refused> {
         match self.store(connection) {
             Some(store) => store.receive(key, expected),
+            None => Err(Refused::Unavailable),
+        }
+    }
+
+    fn receive_part(
+        &self,
+        connection: &str,
+        key: &str,
+        part: u64,
+        expected: u64,
+    ) -> Result<Box<dyn Receiving + '_>, Refused> {
+        match self.store(connection) {
+            Some(store) => store.receive_part(key, part, expected),
             None => Err(Refused::Unavailable),
         }
     }
@@ -935,6 +1158,11 @@ mod os {
             Ok(rustix::fs::unlinkat(&self.0, name, AtFlags::empty())?)
         }
 
+        /// Removes the empty folder `name`.
+        pub fn remove_child(&self, name: &str) -> std::io::Result<()> {
+            Ok(rustix::fs::unlinkat(&self.0, name, AtFlags::REMOVEDIR)?)
+        }
+
         pub fn sync(&self) -> std::io::Result<()> {
             Ok(rustix::fs::fsync(&self.0)?)
         }
@@ -1026,6 +1254,10 @@ mod os {
             std::fs::remove_file(self.0.join(name))
         }
 
+        pub fn remove_child(&self, name: &str) -> std::io::Result<()> {
+            std::fs::remove_dir(self.0.join(name))
+        }
+
         pub fn sync(&self) -> std::io::Result<()> {
             Ok(())
         }
@@ -1042,6 +1274,84 @@ mod os {
 
 #[cfg(test)]
 mod tests {
+    /// Parts land whole and may be sent again: the last to finish stands,
+    /// joining puts them in order under the key with the first part's name
+    /// and removes them, a joined file refuses more, and a delete takes
+    /// the parts of an upload never joined.
+    #[test]
+    fn parts_land_join_once_and_go_with_a_delete() {
+        const PART: u64 = 4;
+        const MAX: u64 = 64;
+        let root = root("parts");
+        let store = DiskStore::made_at(root.clone(), 0);
+        let key = jadpo_std::files::key_for(&[3; 16]);
+        let send = |number: u64, bytes: &[u8], name: Option<&str>| {
+            let mut sink = store.receive_part(&key, number, 16).expect("it takes it");
+            sink.write(bytes).expect("written");
+            sink.finish(&Kept {
+                size: bytes.len() as u64,
+                hash: "h",
+                name,
+                claimed: Some("csv"),
+            })
+        };
+        let complete = |store: &DiskStore| store.complete(&key, PART, MAX);
+
+        assert_eq!(complete(&store), Answer::Failed(PARTS_MISSING.into()));
+        // Stopped part-way: nothing, and the number is free to send.
+        {
+            let mut cut = store.receive_part(&key, 1, 16).expect("it takes it");
+            cut.write(b"zz").expect("written");
+        }
+        send(1, b"oldd", Some("a.csv")).expect("a part");
+        send(1, b"abcd", Some("a.csv")).expect("sent again");
+        send(3, b"ij", None).expect("a part");
+        assert_eq!(complete(&store), Answer::Failed(PARTS_MISSING.into()));
+        send(2, b"ef", None).expect("a short middle part");
+        assert_eq!(complete(&store), Answer::Failed(PARTS_UNEQUAL.into()));
+        send(2, b"efgh", None).expect("the middle part again");
+        assert_eq!(complete(&store), Answer::Value(Value::Unit));
+        // Joined twice is joined once.
+        assert_eq!(complete(&store), Answer::Value(Value::Unit));
+
+        assert_eq!(
+            std::fs::read(root.join(&key)).expect("joined"),
+            b"abcdefghij"
+        );
+        let Answer::Value(Value::Record(about)) = store.stat(&key) else {
+            panic!("a stat");
+        };
+        assert_eq!(about.get("name"), Some(&Value::text("a.csv")));
+        assert_eq!(about.get("claimed"), Some(&Value::text("csv")));
+        assert_eq!(about.get("size"), Some(&Value::Int(10)));
+        assert_eq!(
+            about.get("hash"),
+            Some(&Value::text(blake3::hash(b"abcdefghij").to_hex().as_str()))
+        );
+        assert!(walk(&root).iter().all(|path| {
+            !path.to_string_lossy().contains(".parts") && !path.to_string_lossy().ends_with(".part")
+        }));
+        assert_eq!(store.receive_part(&key, 1, 16).err(), Some(Refused::Taken));
+
+        let unjoined = jadpo_std::files::key_for(&[4; 16]);
+        let mut sink = store.receive_part(&unjoined, 2, 16).expect("it takes it");
+        sink.write(b"ab").expect("written");
+        sink.finish(&Kept {
+            size: 2,
+            hash: "h",
+            name: None,
+            claimed: None,
+        })
+        .expect("a part");
+        assert_eq!(store.delete(&unjoined), Answer::Value(Value::Unit));
+        assert!(
+            walk(&root)
+                .iter()
+                .all(|path| !path.to_string_lossy().contains(".parts"))
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// An upload appears only when finished, whole, once: what a client
     /// left part-way is gone, a file already there refuses another, and
     /// what it said of itself goes with it when it is deleted.
