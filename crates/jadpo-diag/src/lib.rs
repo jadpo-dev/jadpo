@@ -235,33 +235,33 @@ rules! {
     CLI_WHY_ARGUMENTS: "cli.why_arguments", area 14, Error, Agent,
         "A `jadpo why` command names no schedule, one the project doesn't declare, or more than one";
     CONFIGURATION_BINDING_EMPTY: "configuration.binding_empty", area 10, Error, Agent,
-        "Setting names an empty environment variable";
+        "A setting's `binding:` names no environment variable";
     CONFIGURATION_BINDING_INVALID: "configuration.binding_invalid", area 10, Error, Agent,
-        "Setting names a variable that is not in capitals";
+        "A setting's `binding:` isn't a variable name of capital letters, digits and `_`, in quotes";
     CONFIGURATION_CLIENT_ADDRESS_DUPLICATE: "configuration.client_address_duplicate", area 10, Error, Agent,
-        "Client address is declared twice";
+        "The app declares `client_address:` twice";
     CONFIGURATION_CLIENT_ADDRESS_HOPS_INVALID: "configuration.client_address_hops_invalid", area 10, Error, Agent,
-        "Client address counts proxies with something that is not a count from 1";
+        "A `client_address:` that counts proxies has no `hops:`, or one that isn't a count from 1";
     CONFIGURATION_CLIENT_ADDRESS_HOPS_UNUSED: "configuration.client_address_hops_unused", area 10, Error, Agent,
-        "Client address gives a count of proxies to a source that counts none";
+        "A `client_address:` gives `hops:` to a source that counts no proxies";
     CONFIGURATION_CLIENT_ADDRESS_INVALID: "configuration.client_address_invalid", area 10, Error, Agent,
-        "Client address is not a block of a source and a count of proxies";
+        "The app's `client_address:` isn't a block of a `source:` and, for some sources, `hops:`";
     CONFIGURATION_CLIENT_ADDRESS_SOURCE_UNKNOWN: "configuration.client_address_source_unknown", area 10, Error, Agent,
-        "Client address names a source that is not one of the four";
+        "A `client_address:` names a `source:` that isn't one of the four `ClientAddressSource` values";
     CONFIGURATION_DEFAULT_INVALID: "configuration.default_invalid", area 10, Error, Agent,
-        "Setting value breaks its type's rules";
+        "A setting's `default:` or `test:` value, or a test's `config:` value, breaks the rules of the setting's type";
     CONFIGURATION_DEFAULT_LITERAL_REQUIRED: "configuration.default_literal_required", area 10, Error, Agent,
-        "Setting value is not a literal";
+        "A setting's `default:` or `test:` value isn't a literal";
     CONFIGURATION_DEFAULT_TYPE: "configuration.default_type", area 10, Error, Agent,
-        "Setting value is the wrong kind of value for its type";
+        "A setting's `default:` or `test:` value, or a test's `config:` value, is the wrong kind of value for its type";
     CONFIGURATION_DUPLICATE_BINDING: "configuration.duplicate_binding", area 10, Error, Agent,
         "Two settings read the same environment variable";
     CONFIGURATION_DUPLICATE_OPTION: "configuration.duplicate_option", area 10, Error, Agent,
-        "Setting option is given twice";
+        "A setting gives one of its options twice, or a test's `config:` gives one setting twice";
     CONFIGURATION_EXPECTED_FIELD: "configuration.expected_field", area 10, Error, Agent,
-        "Configuration holds something that is not a setting";
+        "A `config { }` holds something that isn't a setting";
     CONFIGURATION_FIELD_UNKNOWN: "configuration.field_unknown", area 10, Error, Agent,
-        "Configuration has no setting with this name";
+        "Code or a test names a setting `config { }` doesn't declare";
     CONFIGURATION_LOCAL_CHANGED: "configuration.local_changed", area 14, Error, Human,
         "Something else saved `.env.local` while `jadpo config set` was saving a value in it";
     CONFIGURATION_LOCAL_INVALID_ENCODING: "configuration.local_invalid_encoding", area 14, Error, Human,
@@ -281,21 +281,21 @@ rules! {
     CONFIGURATION_MOVE_TYPE_UNSUPPORTED: "configuration.move_type_unsupported", area 14, Error, Agent,
         "A constant `jadpo config move` was asked to make a setting has a type one environment variable can't hold, such as a list or an object";
     CONFIGURATION_MULTIPLE_DECLARATIONS: "configuration.multiple_declarations", area 10, Error, Agent,
-        "Configuration is declared more than once";
+        "A project declares `config { }` more than once";
     CONFIGURATION_SECRET_DEFAULT: "configuration.secret_default", area 10, Error, Agent,
-        "Secret setting has a value in source";
+        "A secret setting has a value in source, in its `default:`, its `test:` or a test's `config:`";
     CONFIGURATION_SECRET_FLOW: "configuration.secret_flow", area 10, Error, Agent,
         "Your code reads a secret setting somewhere other than the few places where Jadpo keeps it on the server";
     CONFIGURATION_SECRET_INVALID: "configuration.secret_invalid", area 10, Error, Agent,
-        "Secret option is not true or false";
+        "A setting's `secret:` isn't `true` or `false`";
     CONFIGURATION_TEST_VALUE_MISSING: "configuration.test_value_missing", area 10, Error, Agent,
         "A test reaches code that reads a setting, and the setting has no value for tests to use";
     CONFIGURATION_TYPE_UNSUPPORTED: "configuration.type_unsupported", area 10, Error, Agent,
-        "Setting type cannot be read from one variable";
+        "A setting's type can't be read from one environment variable, or a secret setting's type isn't text";
     CONFIGURATION_UNKNOWN_OPTION: "configuration.unknown_option", area 10, Error, Agent,
-        "Setting option is not one a setting takes";
+        "A setting has an option that settings don't take";
     CONFIGURATION_URL_TYPE: "configuration.url_type", area 10, Error, Agent,
-        "Connection address is not a setting of the type its driver needs";
+        "A connection's `url:` isn't a setting of the type its driver needs";
     CONFIGURATION_VALUE_INVALID: "configuration.value_invalid", area 14, Error, Human,
         "A setting's value on this machine, from the environment or `.env.local`, doesn't fit the type `config.jadpo` gives it";
     CONFIGURATION_VALUE_MISSING: "configuration.value_missing", area 14, Error, Human,
@@ -479,21 +479,21 @@ rules! {
     DELIVERIES_WRONG_STATE: "deliveries.wrong_state", area 14, Error, Human,
         "A delivery or schedule run was asked to do something its state rules out, such as cancelling one that has already failed";
     DEPLOYABLE_API_UNKNOWN: "deployable.api_unknown", area 14, Error, Agent,
-        "Deployable serves an API the app doesn't have";
+        "A deployable's `serves:` names an API the app doesn't have";
     DEPLOYABLE_EMPTY: "deployable.empty", area 14, Error, Agent,
-        "Deployable serves nothing and runs nothing";
+        "A deployable serves nothing and runs nothing";
     DEPLOYABLE_INVALID: "deployable.invalid", area 14, Error, Agent,
-        "Deployable is written in a form `deployables:` doesn't take";
+        "A deployable is written in a form `deployables:` doesn't take";
     DEPLOYABLE_SETTLE_UNRUN: "deployable.settle_unrun", area 14, Error, Agent,
-        "Route waits for follow-on work its deployable doesn't run";
+        "A route waits for follow-on work its deployable doesn't run";
     DEPLOYABLE_TARGET_UNKNOWN: "deployable.target_unknown", area 14, Error, Agent,
-        "Deployable's target isn't one Jadpo builds for";
+        "A deployable's `target:` isn't one Jadpo builds for";
     DEPLOYABLE_TARGET_UNSUPPORTED: "deployable.target_unsupported", area 14, Error, Agent,
-        "Deployable reaches a connection its target can't run";
+        "A deployable reaches something its target can't run";
     DEPLOYABLE_TRIGGER_UNKNOWN: "deployable.trigger_unknown", area 14, Error, Agent,
-        "Deployable runs something that isn't a trigger";
+        "A deployable's `runs:` lists something that isn't a trigger";
     DEPLOYABLE_UNSERVED: "deployable.unserved", area 14, Error, Agent,
-        "No deployable serves an API, or runs the background work, the app has";
+        "No deployable serves an API the app has, or runs background work the app has";
     EFFECT_CALL_IN_LOOP: "effect.call_in_loop", area 3, Error, Agent,
         "An outside call is made for each item of a `for` loop, directly or through an action the loop calls";
     EFFECT_FUNCTION_CALLS_ACTION: "effect.function_calls_action", area 3, Error, Agent,
@@ -503,23 +503,23 @@ rules! {
     EFFECT_RECURSIVE_ACTION: "effect.recursive_action", area 3, Error, Human,
         "An action calls itself, or calls other actions that end up calling it again";
     EMAIL_ATTACHMENT_LIMIT: "email.attachment_limit", area 16, Error, Agent,
-        "Email's attachments may exceed what its mail package accepts";
+        "An email's attachments may add up to more than its mail package accepts";
     EMAIL_BROWSER_FAILED: "email.browser_failed", area 14, Error, Human,
         "A `jadpo email open` command couldn't start the browser to open a mail's link";
     EMAIL_CONNECTION_REQUIRED: "email.connection_required", area 16, Error, Agent,
-        "Action emits an email but the application names no email connection";
+        "An action emits an email, or a feature sends one, but the application names no email connection";
     EMAIL_FIELD_UNUSED: "email.field_unused", area 16, Declinable, Agent,
-        "Email's field is written by no template and no subject";
+        "An email or partial has a field no template and no subject writes";
     EMAIL_HEALTH_PROBLEM: "email.health_problem", area 16, Declinable, Agent,
-        "Email's template fails a check of the mail health score";
+        "An email's template fails a check of the mail health score";
     EMAIL_PARTIAL_INVALID: "email.partial_invalid", area 16, Error, Agent,
         "An email template includes a partial that doesn't exist, can't be reached from it, or is given the wrong fields";
     EMAIL_SENT_CONTEXT: "email.sent_context", area 16, Error, Agent,
-        "Reads `email.sent` outside a test";
+        "Code outside a test reads `email.sent`";
     EMAIL_SETTINGS_INVALID: "email.settings_invalid", area 16, Error, Agent,
-        "Application's `email:` or `display_name:` is invalid";
+        "An application's `email:` or `display_name:` setting is invalid";
     EMAIL_TEMPLATE_MISSING: "email.template_missing", area 16, Error, Agent,
-        "Email has no template, or a template no email";
+        "An email has no template, or a template has no email";
     EMAIL_TEMPLATE_NOT_ALLOWED: "email.template_not_allowed", area 16, Error, Agent,
         "An email template calls a function, does arithmetic or builds a value, when it may only read its fields, translate and format";
     EMAIL_TEMPLATE_VALUE_INVALID: "email.template_value_invalid", area 16, Error, Agent,
@@ -631,7 +631,7 @@ rules! {
     INSTALL_IN_USE: "install.in_use", area 14, Error, Agent,
         "A package `jadpo package remove` was asked to remove is still brought in by the app's code";
     INSTALL_LINK_REFUSED: "install.link_refused", area 14, Error, Agent,
-        "Linked package in a CI or production build";
+        "A package is linked to a checkout in a CI run or a production build";
     INSTALL_NOT_IN_REGISTRY: "install.not_in_registry", area 14, Error, Human,
         "The registry has no package of the name you gave, or no such release of it";
     INSTALL_NOT_PROVED: "install.not_proved", area 14, Error, Human,
@@ -643,21 +643,21 @@ rules! {
     LAYOUT_CALL_DIRECTION: "layout.call_direction", area 1, Error, Human,
         "Code in `shared/` uses a declaration that belongs to one domain";
     LAYOUT_FILE_NAME_MISMATCH: "layout.file_name_mismatch", area 1, Error, Agent,
-        "File name does not match its declaration";
+        "A file's name doesn't match the declaration it holds, or the file holds a second declaration that needs its own";
     LAYOUT_PROMOTION_REQUIRED: "layout.promotion_required", area 1, Error, Agent,
-        "Declaration is used beyond the file that holds it";
+        "A declaration is used beyond the file that holds it";
     LAYOUT_ROUTE_PREFIX_MISMATCH: "layout.route_prefix_mismatch", area 1, Error, Agent,
-        "Route group prefix does not match its file name";
+        "A route group's prefix doesn't match its file name";
     LAYOUT_TEST_WITHOUT_SUBJECT: "layout.test_without_subject", area 1, Error, Agent,
-        "Test file has no subject beside it";
+        "A test file has no file of the same name beside it";
     LAYOUT_UNKNOWN_LOCATION: "layout.unknown_location", area 1, Error, Agent,
-        "Jadpo file is outside the fixed layout";
+        "A file is somewhere the project layout has no place for";
     LAYOUT_UNUSED_DECLARATION: "layout.unused_declaration", area 1, Error, Agent,
-        "Shared declaration is not used";
+        "A declaration nothing uses is left in the code";
     LAYOUT_WRONG_FOLDER: "layout.wrong_folder", area 1, Error, Agent,
-        "Declaration is in the wrong folder";
+        "A declaration is in a folder that doesn't hold its kind";
     LIBRARY_SIMILAR_EXISTS: "library.similar_exists", area 1, Declinable, Agent,
-        "A library function already does the same";
+        "A function does the same as a library function that already exists";
     MIGRATION_APPLY_FAILED: "migration.apply_failed", area 14, Error, Human,
         "Applying the project's migrations to a database stopped at a step that failed";
     MIGRATION_BACKFILL_CAN_FAIL: "migration.backfill_can_fail", area 5, Error, Agent,
@@ -825,7 +825,7 @@ rules! {
     PUBLISH_REPOSITORY_REFUSED: "publish.repository_refused", area 14, Error, Human,
         "The package's repository isn't one the registry can fetch: a public git repository reached over HTTPS";
     PUBLISH_SAMPLE_MISSING: "publish.sample_missing", area 14, Error, Agent,
-        "Package's recipes have no sample app with one domain to compile in";
+        "A package with recipes has no sample app with one domain to compile them in";
     PUBLISH_STALE_FILES: "publish.stale_files", area 14, Error, Agent,
         "A commit's `surface.jadpo_record` or changelog list isn't what the package's code gives";
     PUBLISH_TOO_LARGE: "publish.too_large", area 14, Error, Human,
@@ -1283,11 +1283,11 @@ rules! {
     TOOLCHAIN_BUILD_FAILED: "toolchain.build_failed", area 14, Error, Human,
         "The Rust `jadpo build` wrote for a deployable didn't compile, because the machine lacks something the build runs, such as a C compiler, or because of a mistake in Jadpo";
     TOOLCHAIN_EMPTY_PROJECT: "toolchain.empty_project", area 1, Error, Agent,
-        "Project declares nothing";
+        "The project declares nothing";
     TOOLCHAIN_FETCH_FAILED: "toolchain.fetch_failed", area 14, Error, Human,
         "The Rust toolchain or the crates `jadpo build` compiles with couldn't be fetched, usually because the server they come from, or the mirror in its place, can't be reached";
     TOOLCHAIN_NOT_BUILT_YET: "toolchain.not_built_yet", area 3, Error, Agent,
-        "Operation is declared but not built yet";
+        "Code uses something the language declares and this compiler can't run yet";
     TOOLCHAIN_PROJECT_NOT_FOUND: "toolchain.project_not_found", area 14, Error, Agent,
         "You ran a command that works on a project in a folder with no `app.jadpo`, in it or in any folder above it";
     TOOLCHAIN_SCAFFOLD_DESTINATION_EXISTS: "toolchain.scaffold_destination_exists", area 14, Error, Human,
@@ -1303,7 +1303,7 @@ rules! {
     TOOLCHAIN_SOURCE_READ_FAILED: "toolchain.source_read_failed", area 14, Error, Human,
         "A `.jadpo` file in the project couldn't be read, because it isn't UTF-8 text or you aren't allowed to read it";
     TOOLCHAIN_VERSION_INVALID: "toolchain.version_invalid", area 1, Error, Agent,
-        "Application's `jadpo:` is not a major and minor version as text";
+        "An application's `jadpo:` isn't a major and minor version as text";
     TOOLCHAIN_VERSION_NEWER: "toolchain.version_newer", area 1, Error, Human,
         "The project is written for a later Jadpo release line than the `jadpo` checking it, and that `jadpo` can't run the later release instead";
     TOOLCHAIN_VERSION_OLDER: "toolchain.version_older", area 1, Error, Human,
@@ -1315,7 +1315,7 @@ rules! {
     TRANSLATION_FEATURE_OFF: "translation.feature_off", area 10, Error, Agent,
         "A language file words a Jadpo message of a feature the application has off";
     TRANSLATION_FIELD_TYPE: "translation.field_type", area 10, Error, Agent,
-        "A message field is a type a wording can't hold";
+        "A message or failure has a field of a type its wording can't write";
     TRANSLATION_FIELD_UNUSED: "translation.field_unused", area 10, Declinable, Agent,
         "No wording in a language uses one of a message's fields";
     TRANSLATION_FILE_MISSING: "translation.file_missing", area 10, Error, Agent,
@@ -1329,7 +1329,7 @@ rules! {
     TRANSLATION_LOCALE_UNSUPPORTED: "translation.locale_unsupported", area 10, Error, Agent,
         "A language file is for a locale the application does not support";
     TRANSLATION_LOCALES_REQUIRED: "translation.locales_required", area 10, Error, Agent,
-        "Translations without declared locales";
+        "A project has translations or an email, but `app.jadpo` declares no locales";
     TRANSLATION_MEMBER_DUPLICATE: "translation.member_duplicate", area 10, Error, Agent,
         "A member is written twice in a language file";
     TRANSLATION_MEMBER_UNKNOWN: "translation.member_unknown", area 10, Error, Agent,
@@ -1337,13 +1337,13 @@ rules! {
     TRANSLATION_MESSAGE_UNKNOWN: "translation.message_unknown", area 10, Error, Agent,
         "A translation call names no message or enum";
     TRANSLATION_OPTION_UNKNOWN: "translation.option_unknown", area 10, Error, Agent,
-        "An option of translations in app.jadpo is not one it takes";
+        "An application's `translations:` setting has an option it doesn't take";
     TRANSLATION_PLACEHOLDER_STYLE: "translation.placeholder_style", area 10, Error, Agent,
-        "A wording writes an amount of money without its style, or a style on another field";
+        "A wording writes an amount of money or a percentage without its style, or a style on another kind of field";
     TRANSLATION_PLACEHOLDER_UNKNOWN: "translation.placeholder_unknown", area 10, Error, Agent,
         "A wording writes a placeholder, such as `{nom}`, that isn't one of its message's fields";
     TRANSLATION_REVIEW_INVALID: "translation.review_invalid", area 10, Error, Agent,
-        "Translation review is not a TranslationReview";
+        "An application's `review:` setting for translations holds something other than a `TranslationReview`";
     TRANSLATION_SOURCES_INVALID: "translation.sources_invalid", area 10, Error, Agent,
         "A translations folder's sources record cannot be read";
     TRANSLATION_STALE: "translation.stale", area 10, Error, Agent,

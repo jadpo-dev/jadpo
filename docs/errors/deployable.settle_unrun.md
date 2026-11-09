@@ -1,8 +1,19 @@
 # `deployable.settle_unrun`
 
-A route with `settle:` waits for the subscribers of what its action
-emits, so the deployable that serves it runs them. The notes board waits
-for each note to be pinned up:
+A route waits for follow-on work its deployable doesn't run.
+
+## Why Jadpo refuses it
+
+A route with `settle:` holds its answer until the subscribers of what its
+action emits have run. A deployable runs them only when its `runs:` lists
+`Trigger.subscribers`, so a route served anywhere else would wait out its
+whole `within:` on every request, for work the program can't do. Jadpo
+won't move the work for you, because that decides which program carries the
+load.
+
+## What it looks like
+
+A notes board waits for each note to be pinned up:
 
 ```jadpo check project=e-deployable-settle-unrun file=app.jadpo hidden
 application {
@@ -173,7 +184,7 @@ failure note_not_found
     status 404
 ```
 
-and the kiosk serves it, while the worker runs the subscribers:
+The kiosk serves that route, and only the worker runs the subscribers:
 
 ```jadpo check project=e-deployable-settle-unrun expect=deployable.settle_unrun file=app.jadpo
 application {
@@ -203,3 +214,206 @@ error: `POST /notes` waits for follow-on work `kiosk` doesn't run
 
 check failed: 1 error, 11 files
 ```
+
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+## How to fix it
+
+**If the deployable that serves the route can run the work**, add
+`Trigger.subscribers` to its `runs:`:
+
+```jadpo fragment
+        kiosk: {
+            serves: [main]
+            runs: [Trigger.subscribers]
+            target: Target.native
+        }
+```
+
+```jadpo check project=e-deployable-settle-unrun-fix file=app.jadpo hidden
+application {
+    deployables: {
+        kiosk: {
+            serves: [main]
+            runs: [Trigger.subscribers]
+            target: Target.native
+        }
+        worker: {
+            runs: [Trigger.subscribers]
+            target: Target.native
+        }
+    }
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun-fix file=domains/board/types/note_text.jadpo hidden
+/// A note's text.
+type NoteText = Text {
+    max_length: 200
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun-fix file=domains/board/types/new_note.jadpo hidden
+use board/types { NoteText }
+
+/// A note to add.
+type NewNote = Input {
+    text: NoteText
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun-fix file=domains/board/types/note_view.jadpo hidden
+use board/entities { Note }
+use board/types { NoteText }
+
+/// A note as the board shows it.
+type NoteView = Output {
+    id: Note.id
+    text: NoteText
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun-fix file=domains/board/entities/note.jadpo hidden
+use board/types { NoteText }
+
+/// A note on the board.
+entity Note {
+    id: Uuid
+    text: NoteText
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun-fix file=domains/board/events/note_added.jadpo hidden
+use board/types { NoteText }
+
+/// A note was added.
+type NoteAdded = Event {
+    text: NoteText
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun-fix file=domains/board/actions/add_note.jadpo hidden
+use board/entities { Note }
+use board/types { NewNote, NoteView }
+use board/events { NoteAdded }
+
+/// Adds a note.
+action add_note(input: NewNote) -> NoteView {
+    var note: Note = Note.create {
+        set: {
+            text: input.text
+        }
+    }
+    emit NoteAdded {
+        text: input.text
+    }
+    return NoteView {
+        id: note.id
+        text: note.text
+    }
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun-fix file=domains/board/actions/pin_note.jadpo hidden
+use board/types { NoteText }
+
+/// Pins a note up.
+action pin_note(pinned: NoteText) -> Unit {
+    assert pinned == pinned
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun-fix file=domains/board/subscribers/pin_it.jadpo hidden
+use board/actions { pin_note }
+use board/events { NoteAdded }
+
+/// Pins each note up.
+subscriber pin_it {
+    on: NoteAdded
+    run: pin_note(event.text)
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun-fix file=domains/board/queries/note_for.jadpo hidden
+use board/entities { Note, NoteNotFound }
+use board/types { NoteView }
+
+query note_for(note_id: Note.id) fails NoteNotFound -> NoteView {
+    from: Note
+    where: Note.id == note_id
+    missing: NoteNotFound
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun-fix file=domains/board/routes/notes.jadpo hidden
+use board/types { NewNote, NoteView }
+use board/actions { add_note }
+use board/queries { note_for }
+
+/// The notes board.
+routes Notes {
+    prefix: /notes
+
+    /// Adds a note, once it is pinned up.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: NewNote
+        output: NoteView
+        status: SuccessStatus.created
+        run: add_note(input)
+        settle: {
+            answer: note_for(result.id)
+            within: 2s
+        }
+    }
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun-fix file=domains/board/events/events.jadpo_record hidden
+// Generated by Jadpo from the events of domain board; update it with `jadpo records update`, never by hand.
+record events 1
+
+event NoteAdded
+    text: Text { max_length: 200 }
+```
+
+```jadpo check project=e-deployable-settle-unrun-fix file=api/main.jadpo_record hidden migrate=initial
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+POST /notes
+    authentication none
+    input NewNote (body)
+    output NoteView
+    status 201
+    settle within 2s
+    fails note_not_found
+
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+input NewNote
+    text: Text { max_length: 200 }
+
+output NoteView
+    id: Uuid
+    text: Text { max_length: 200 }
+
+failure note_not_found
+    status 404
+```
+
+`POST /notes` now waits up to two seconds for the kiosk to pin the note up.
+
+## Related
+
+- [Declared deployables](../language/14-tooling.md#declared-deployables)
+- [Waiting for follow-on work](../language/07-http.md#waiting-for-follow-on-work)

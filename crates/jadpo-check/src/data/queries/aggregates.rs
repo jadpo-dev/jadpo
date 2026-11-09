@@ -301,7 +301,7 @@ impl Reader<'_> {
                             "A `geo.` condition in an aggregate query isn't built yet".to_string(),
                         )
                         .at(at, "in an aggregate")
-                        .reason("A `geo.` condition's records are found through a GiST index and each is held to Jadpo's own test as the query runs (area 20, \"Queries\"); an aggregate query's totals are worked out by the database, which doesn't decide as the code does.")
+                        .reason("A `geo.` condition's records are found through a GiST index and each is held to Jadpo's own test as the query runs; an aggregate query's totals are worked out by the database, which doesn't decide as the code does.")
                         .next("List the records with a query of their own, and count them in the action"),
                     );
                     continue;

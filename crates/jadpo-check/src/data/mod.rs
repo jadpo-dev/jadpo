@@ -907,7 +907,7 @@ impl Reader<'_> {
                         "An entity's `caches:` isn't built yet",
                     )
                     .at(key_span, "decided, not built")
-                    .reason("A record cache keeps copies in a Redis store (area 5), and this compiler builds no Redis driver yet, so an entity using it couldn't run.")
+                    .reason("A record cache keeps copies in a Redis store, and this compiler builds no Redis driver yet, so an entity using it couldn't run.")
                     .next("Leave `caches:` out for now"),
                 ),
                 // `person: true` (area 15; chunk P1). A field may still be
@@ -1298,7 +1298,7 @@ impl Reader<'_> {
                         format!("An entity stored in Redis (`{name}`) isn't built yet"),
                     )
                     .at(span, "a Redis connection")
-                    .reason("An entity in Redis must declare its expiry (area 5), whose syntax is still an open question, and this compiler builds PostgreSQL stores only.")
+                    .reason("An entity in Redis must declare its expiry, whose syntax is still an open question, and this compiler builds PostgreSQL stores only.")
                     .next(format!("Keep `{entity}` in a PostgreSQL store for now")),
                 );
                 None
@@ -2989,7 +2989,7 @@ fn json_keyed(entity: &str, field: &str, what: &str, at: Span, next: String) -> 
     )
     .at(at, "stored as JSON")
     .reason(format!(
-        "`{entity}.{field}` is stored whole as its JSON in one `jsonb` column (area 5, \"Storage types\"), which PostgreSQL compares by its own rules rather than Jadpo's `==`, and no query compares it yet."
+        "`{entity}.{field}` is stored whole as its JSON in one `jsonb` column, which PostgreSQL compares by its own rules rather than Jadpo's `==`, and no query compares it yet."
     ))
     .next(next)
 }

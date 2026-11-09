@@ -1,14 +1,32 @@
 # `layout.promotion_required`
 
+A declaration is used beyond the file that holds it.
+
+## Why Jadpo refuses it
+
+A declaration used by one file lives in that file, next to what it serves.
+Once a second file uses it, it belongs to neither of them, so it moves to a
+file of its own in the folder for its kind. Then the `use` line says where
+it is, and nothing depends on a file named after something else.
+
+## What it looks like
+
+`snooze_todo.jadpo` declares `SnoozeDays`, and `postpone_all.jadpo` uses it
+too.
+
 ```jadpo check project=e-promotion file=app.jadpo hidden
 application {}
 ```
+
+`domains/planning/actions/postpone_all.jadpo`:
 
 ```jadpo check project=e-promotion file=domains/planning/actions/postpone_all.jadpo
 use planning/actions { SnoozeDays }
 
 action postpone_all(days: SnoozeDays) -> Unit {}
 ```
+
+`domains/planning/actions/snooze_todo.jadpo`:
 
 ```jadpo check project=e-promotion file=domains/planning/actions/snooze_todo.jadpo expect=layout.promotion_required
 type SnoozeDays = Int {
@@ -33,6 +51,9 @@ error: `SnoozeDays` is used beyond this file
 check failed: 1 error, 3 files
 ```
 
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
 Moving to the right folder is not enough: a second declaration in a file
 moves to a file of its own once another file uses it, so every name a `use`
 line brings in is `<folder>/<name>.jadpo`. The edit makes the move, and
@@ -41,6 +62,8 @@ line brings in is `<folder>/<name>.jadpo`. The edit makes the move, and
 ```jadpo check project=e-promotion-file file=app.jadpo hidden
 application {}
 ```
+
+`domains/sales/types/basket.jadpo`:
 
 ```jadpo check project=e-promotion-file file=domains/sales/types/basket.jadpo expect=layout.promotion_required
 type DiscountCode = Text {
@@ -66,6 +89,8 @@ error: `DiscountCode` is used beyond this file
 check failed: 1 error, 3 files
 ```
 
+`domains/sales/actions/apply_code.jadpo`:
+
 ```jadpo check project=e-promotion-file file=domains/sales/actions/apply_code.jadpo
 use sales/types { Basket, DiscountCode }
 
@@ -81,11 +106,15 @@ rename the type first, and `jadpo fmt --layout` refuses the move until then:
 application {}
 ```
 
+`domains/shop/actions/browse_books.jadpo`:
+
 ```jadpo check project=e-promotion-folded file=domains/shop/actions/browse_books.jadpo
 use shop/actions { ListBooks }
 
 action browse_books(filter: ListBooks) -> Unit {}
 ```
+
+`domains/shop/actions/list_books.jadpo`:
 
 ```jadpo check project=e-promotion-folded file=domains/shop/actions/list_books.jadpo expect=layout.promotion_required
 type ListBooks = Input {
@@ -110,3 +139,75 @@ error: `ListBooks` is used beyond this file
 
 check failed: 1 error, 3 files
 ```
+
+## How to fix it
+
+**If you want Jadpo to make the move**, run the formatter. It moves the
+declaration and updates every import:
+
+```sh
+jadpo fmt --layout
+```
+
+```jadpo check project=e-promotion-fix file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-promotion-fix file=domains/planning/types/snooze_days.jadpo hidden
+type SnoozeDays = Int {
+    min: 1
+    max: 30
+}
+```
+
+```jadpo check project=e-promotion-fix file=domains/planning/actions/postpone_all.jadpo hidden
+use planning/types { SnoozeDays }
+
+action postpone_all(days: SnoozeDays) -> Unit {}
+```
+
+```jadpo check project=e-promotion-fix file=domains/planning/actions/snooze_todo.jadpo hidden
+use planning/types { SnoozeDays }
+
+action snooze_todo(days: SnoozeDays) -> Unit {}
+```
+
+`SnoozeDays` now has its own file in `domains/planning/types/`, and both
+actions import it from there.
+
+**If its new file would take another declaration's name**, rename it first,
+as `next:` says. The formatter then makes the move. In
+`domains/shop/types/book_filter.jadpo`:
+
+```jadpo check project=e-promotion-rename file=domains/shop/types/book_filter.jadpo
+type BookFilter = Input {
+    page_size: PageSize {
+        default: 25
+    }
+}
+```
+
+```jadpo check project=e-promotion-rename file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-promotion-rename file=domains/shop/actions/browse_books.jadpo hidden
+use shop/types { BookFilter }
+
+action browse_books(filter: BookFilter) -> Unit {}
+```
+
+```jadpo check project=e-promotion-rename file=domains/shop/actions/list_books.jadpo hidden
+use shop/types { BookFilter }
+
+action list_books(filter: BookFilter) -> Unit {}
+```
+
+The type has a file of its own, whose name is no other declaration's, and
+both actions use it from there.
+
+## Related
+
+- [Sharing and promotion](../language/01-project-layout-and-modules.md#sharing-and-promotion)
+- [How a promotion happens](../language/01-project-layout-and-modules.md#how-a-promotion-happens)
+- [When two names clash](../language/01-project-layout-and-modules.md#when-two-names-clash)

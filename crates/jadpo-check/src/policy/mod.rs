@@ -1667,7 +1667,7 @@ pub fn policy_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
                 problems.push(
                     Diagnostic::new(&rule::TOOLCHAIN_NOT_BUILT_YET, "A policy's `scopes:` isn't built yet")
                         .at(span, "decided, not built")
-                        .reason("`scopes:` narrows what a token issued to another application may do (area 9, question 6). OAuth tokens and declared external-token scope mappings are not built yet; an external method without those mappings carries no policy scopes.")
+                        .reason("`scopes:` narrows what a token issued to another application may do. OAuth tokens and declared external-token scope mappings are not built yet; an external method without those mappings carries no policy scopes.")
                         .next("Leave `scopes:` out for now"),
                 );
                 continue;
