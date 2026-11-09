@@ -2573,7 +2573,7 @@ struct Ways {
 /// Whether `text` is a path on the application's own site, which a
 /// browser can't read as another host: one `/`, then printable ASCII with
 /// no `\`, query or fragment, 2,000 bytes at most.
-fn site_path(text: &str) -> bool {
+pub(crate) fn site_path(text: &str) -> bool {
     text.len() <= 2000
         && text.starts_with('/')
         && !text.starts_with("//")
@@ -2584,7 +2584,7 @@ fn site_path(text: &str) -> bool {
 
 /// The segments of a path written as `/` and one or more segments of
 /// lower-case letters, digits, `-` and `_`: where generated routes go.
-fn fixed_path(text: &str) -> Option<Vec<String>> {
+pub(crate) fn fixed_path(text: &str) -> Option<Vec<String>> {
     let rest = text.strip_prefix('/')?;
     let segments: Vec<String> = rest.split('/').map(str::to_string).collect();
     segments

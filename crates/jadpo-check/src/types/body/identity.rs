@@ -85,6 +85,52 @@ pub(crate) fn sign_in_object_fields(
             ("expires_at", Ty::Prim(Prim::Instant)),
             ("locale", Ty::Named(jadpo_std::LOCALE.to_string())),
         ]),
+        // What the generated privacy routes are sent and answer (area 15).
+        jadpo_std::http::PRIVACY_ASK => Some(vec![
+            ("address", Ty::Prim(Prim::Email)),
+            (
+                "locale",
+                Ty::Named(jadpo_std::LOCALE.to_string()).nullable(),
+            ),
+        ]),
+        jadpo_std::http::PRIVACY_CONFIRMATION => Some(vec![
+            ("token", Ty::Prim(Prim::SignInToken).nullable()),
+            (
+                "kind",
+                Ty::Named(jadpo_std::PrivacyRequestKind::NAME.to_string()),
+            ),
+        ]),
+        jadpo_std::http::PRIVACY_CANCELLATION => {
+            Some(vec![("token", Ty::Prim(Prim::SignInToken).nullable())])
+        }
+        jadpo_std::http::PRIVACY_REQUEST_ACCEPTED => Some(vec![
+            ("request_id", Ty::Prim(Prim::Uuid)),
+            (
+                "kind",
+                Ty::Named(jadpo_std::PrivacyRequestKind::NAME.to_string()),
+            ),
+            ("deadline", Ty::Prim(Prim::Instant)),
+        ]),
+        // A data request's events (area 15, "Deadlines and events").
+        jadpo_std::http::PRIVACY_REQUEST_RECEIVED => Some(vec![
+            ("request_id", Ty::Prim(Prim::Uuid)),
+            ("user_id", user_id(identity)),
+            (
+                "kind",
+                Ty::Named(jadpo_std::PrivacyRequestKind::NAME.to_string()),
+            ),
+            (
+                "source",
+                Ty::Named(jadpo_std::PrivacyRequestSource::NAME.to_string()),
+            ),
+            ("deadline", Ty::Prim(Prim::Instant)),
+        ]),
+        jadpo_std::http::PRIVACY_ERASURE_SCHEDULED => Some(vec![
+            ("request_id", Ty::Prim(Prim::Uuid)),
+            ("user_id", user_id(identity)),
+            ("erases_at", Ty::Prim(Prim::Instant)),
+            ("cancel_link", Ty::Prim(Prim::Url)),
+        ]),
         jadpo_std::http::MAGIC_LINK_REDEEMED => Some(vec![
             ("user_id", user_id(identity)),
             ("return_to", Ty::Prim(Prim::Text)),
@@ -435,6 +481,12 @@ impl Body<'_> {
                 vec![("key_id", "the key's", Ty::Prim(Prim::Uuid))],
                 Ty::Prim(Prim::Unit),
             ),
+            SessionOp::PrivacyRequest
+            | SessionOp::PrivacyConfirm
+            | SessionOp::PrivacyCancel
+            | SessionOp::PrivacyCreateRequest => {
+                return self.privacy_call(op, call, callee, written);
+            }
             SessionOp::MagicLinkRequest
             | SessionOp::MagicLinkRedeem
             | SessionOp::MagicLinkRedeemCode => {
@@ -492,6 +544,161 @@ impl Body<'_> {
                     self.built_on_argument(&value, inferred, &[*prim], written, name);
                 }
                 _ => self.check(&value, ty),
+            }
+        }
+        (
+            result,
+            CallKind::Effect(written.to_string()),
+            Reach::Session(op),
+        )
+    }
+
+    /// `privacy.request(address, locale)`, `.confirm(token, kind)` and
+    /// `.cancel(token)`, the operations `generate_routes: false` leaves the
+    /// application to write its own routes over; and
+    /// `privacy.create_request(user_id, kind, identity_check)`, staff's
+    /// (area 15, "Changing the routes" and "Made by staff"). Only an
+    /// action calls them, and each keeps every protection in the runtime.
+    pub(super) fn privacy_call(
+        &mut self,
+        op: SessionOp,
+        call: &ast::CallExpr,
+        callee: &ast::Expr,
+        written: &str,
+    ) -> (Ty, CallKind, Reach) {
+        let span = self.span(callee);
+        let args: Vec<ast::Arg> = call
+            .arg_list()
+            .iter()
+            .flat_map(|list| list.args())
+            .collect();
+        let failed = |body: &mut Self| {
+            body.args_only(call);
+            (
+                Ty::Error,
+                CallKind::Effect(written.to_string()),
+                Reach::Unknown,
+            )
+        };
+        if self.context != Context::Action {
+            let who = super::capital(self.context.with_a());
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_AUTH_SESSIONS_CONTEXT,
+                    format!("{who} can't call `{written}`"),
+                )
+                .at(span, "outside an action")
+                .reason(format!("`{written}` makes a data request as part of the action that calls it, so only an action calls it; a schedule or subscriber never makes one."))
+                .next(format!("Call `{written}` in the action a route runs")),
+            );
+            return failed(self);
+        }
+        let privacy = crate::privacy::privacy(self.db, self.project);
+        if !privacy.takes_requests() {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                    format!("`{written}` needs `privacy:`"),
+                )
+                .at(span, "no `privacy:`")
+                .reason("The `privacy` operations make data requests, which `application { privacy: }` turns on.")
+                .next("Add `privacy: { generate_routes: false }` to `application { }`"),
+            );
+            return failed(self);
+        }
+        if op != SessionOp::PrivacyCreateRequest && privacy.generate_routes {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                    format!("`{written}` needs `generate_routes: false`"),
+                )
+                .at(span, "the routes are generated")
+                .reason("With its routes generated, the runtime answers data requests itself; `generate_routes: false` leaves the application to write its own over these operations, so each request is made one way.")
+                .next("Add `generate_routes: false` to `privacy:`"),
+            );
+            return failed(self);
+        }
+        if op == SessionOp::PrivacyCreateRequest && !crate::privacy::granted(self.db, self.project)
+        {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::POLICY_BINDING_INVALID,
+                    format!("Nobody is granted `{written}`"),
+                )
+                .at(span, "no line under `actions:` grants it")
+                .reason("A request made on someone's behalf starts an export or an erasure of their data, so `policy.jadpo` must say which role may make one.")
+                .next("Add `privacy.create_request: [<Role>.<value>]` under `actions:` in `policy.jadpo`"),
+            );
+            return failed(self);
+        }
+        let identity = self.identity();
+        let accepted = || {
+            Ty::Opaque(
+                jadpo_std::http::PRIVACY_REQUEST_ACCEPTED.to_string(),
+                Vec::new(),
+            )
+        };
+        let kind = || Ty::Named(jadpo_std::PrivacyRequestKind::NAME.to_string());
+        type Param<'a> = (&'a str, &'a str, Ty);
+        let (params, result): (Vec<Param>, Ty) = match op {
+            SessionOp::PrivacyRequest => (
+                vec![
+                    ("address", "the address, an", Ty::Prim(Prim::Email)),
+                    (
+                        "locale",
+                        "the email's",
+                        Ty::Named(jadpo_std::LOCALE.to_string()),
+                    ),
+                ],
+                Ty::Prim(Prim::Unit),
+            ),
+            SessionOp::PrivacyConfirm => (
+                vec![
+                    ("token", "the link's", Ty::Prim(Prim::SignInToken)),
+                    ("kind", "what they ask, a", kind()),
+                ],
+                accepted(),
+            ),
+            SessionOp::PrivacyCancel => (
+                vec![("token", "the link's", Ty::Prim(Prim::SignInToken))],
+                Ty::Prim(Prim::Unit),
+            ),
+            _ => (
+                vec![
+                    ("user_id", "the person's", user_id(&identity)),
+                    ("kind", "what they ask, a", kind()),
+                    (
+                        "identity_check",
+                        "how you checked who they are, a",
+                        Ty::Prim(Prim::Text),
+                    ),
+                ],
+                accepted(),
+            ),
+        };
+        if args.len() != params.len() || args.iter().any(|arg| arg.name().is_some()) {
+            let at = call
+                .arg_list()
+                .map_or_else(|| self.span(call), |list| self.span(&list));
+            let takes: Vec<String> = params
+                .iter()
+                .map(|(_, whose, ty)| format!("{whose} `{ty}`"))
+                .collect();
+            let takes = crate::and_list(&takes);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_ARGUMENT_COUNT,
+                    format!("`{written}` takes {takes}"),
+                )
+                .at(at, format!("{} given", args.len()))
+                .reason(format!("`{written}` takes {takes}, in that order."))
+                .next(format!("Pass {takes}")),
+            );
+            return failed(self);
+        }
+        for (arg, (_, _, ty)) in args.iter().zip(&params) {
+            if let Some(value) = arg.expr() {
+                self.check(&value, ty);
             }
         }
         (

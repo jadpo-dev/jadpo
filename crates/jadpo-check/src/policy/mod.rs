@@ -1167,11 +1167,31 @@ pub fn root_read(db: &dyn Db, project: Project) -> Arc<RootRead> {
             let written = tree::written(key.syntax());
             let span = node_span(&path, key.syntax());
             let names: Vec<String> = key.names().filter_map(|n| tree::name_text(&n)).collect();
+            // `privacy.create_request`, the generated action staff make a
+            // person's data request through (area 15, "Made by staff"),
+            // only while `privacy:` takes requests.
+            let privacy_line = names.len() == 2
+                && names[0] == jadpo_std::http::PRIVACY
+                && names[1] == "create_request";
+            if privacy_line && !crate::privacy::privacy(db, project).takes_requests() {
+                out.problems.push(binding(
+                    span,
+                    format!("`{written}` needs `privacy:`"),
+                    "no data requests to make",
+                    "`privacy.create_request` is the generated action a data request is made for someone through, which exists only while `application { privacy: }` is written.",
+                    "Add `privacy:` to `application { }`, or remove this line",
+                ));
+                continue;
+            }
             // An action, or a query that needs fewer people than its
             // entity's `read:` (area 9, "Listing a query").
-            let named = match action_named(&lookup, &names) {
-                Some(action) => Some((action, false)),
-                None => query_named(&lookup, &names).map(|query| (query, true)),
+            let named = if privacy_line {
+                Some((jadpo_std::http::PRIVACY_CREATE_REQUEST.to_string(), false))
+            } else {
+                match action_named(&lookup, &names) {
+                    Some(action) => Some((action, false)),
+                    None => query_named(&lookup, &names).map(|query| (query, true)),
+                }
             };
             if named.is_none()
                 && let [bare] = names.as_slice()
@@ -1289,6 +1309,7 @@ pub fn root_read(db: &dyn Db, project: Project) -> Arc<RootRead> {
                 };
                 let resolved = match resolved {
                     Ok(w) if query => query_entry(w, memberships, at, &text, &written),
+                    Ok(w) if privacy_line => privacy_entry(w, memberships, at, &text),
                     other => other,
                 };
                 match resolved {
@@ -1310,6 +1331,34 @@ pub fn root_read(db: &dyn Db, project: Project) -> Arc<RootRead> {
         }
     }
     Arc::new(out)
+}
+
+/// An entry of `privacy.create_request`'s line (area 15, "Made by staff"):
+/// a role held across the whole application, since anyone it lets in may
+/// start an erasure of any person's data.
+#[allow(clippy::result_large_err)]
+fn privacy_entry(
+    who: ActionWho,
+    memberships: &[Membership],
+    at: Span,
+    text: &str,
+) -> Result<ActionWho, Diagnostic> {
+    match &who {
+        ActionWho::Role { membership, .. }
+            if memberships
+                .iter()
+                .any(|m| m.entity == *membership && m.scope.is_none()) =>
+        {
+            Ok(who)
+        }
+        _ => Err(binding(
+            at,
+            format!("`{text}` can't be granted `privacy.create_request`"),
+            "not a role across the application",
+            "`privacy.create_request` starts an export or an erasure of anyone's data, after someone has checked who they are, so only a role held across the whole application may have it.",
+            "Name a role held across the whole application",
+        )),
+    }
 }
 
 /// An entry of the line listing a query (area 9, "Listing a query"): it is

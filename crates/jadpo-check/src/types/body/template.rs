@@ -130,6 +130,7 @@ pub(crate) fn sent_email_fields(ty: &Ty) -> Option<Vec<(&'static str, Ty)>> {
                     "links" | "attachments" => Ty::List(Box::new(text())),
                     "sign_in_token" => Ty::Prim(Prim::SignInToken).nullable(),
                     "sign_in_code" => Ty::Prim(Prim::SignInCode).nullable(),
+                    "privacy_token" => Ty::Prim(Prim::SignInToken).nullable(),
                     _ => text(),
                 };
                 (*field, ty)

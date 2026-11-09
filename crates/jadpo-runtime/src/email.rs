@@ -36,7 +36,10 @@ use crate::{Ctx, Executor, FaultKind, Frame, Outcome};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SignInSent {
     pub token: String,
-    pub code: String,
+    pub code: Option<String>,
+    /// Whether the token is a data request's address check, read back as
+    /// `SentEmail.privacy_token`, rather than a sign-in link's.
+    pub privacy: bool,
 }
 
 /// The message `value`, an email emitted as `email`, is sent as, with the
@@ -49,10 +52,150 @@ pub async fn message(
     email: &EmailPlan,
     value: &Value,
 ) -> Result<(Value, Option<SignInSent>), Outcome> {
-    if let Some(BuiltinEmail::MagicLink(plan)) = &email.builtin {
-        return magic_link(executor, ctx, emails, plan, value).await;
+    match &email.builtin {
+        Some(BuiltinEmail::MagicLink(plan)) => {
+            return magic_link(executor, ctx, emails, plan, value).await;
+        }
+        Some(BuiltinEmail::PrivacyAddressCheck(plan)) => {
+            return Box::pin(privacy_address_check(executor, ctx, emails, plan, value)).await;
+        }
+        None => {}
     }
     Ok((rendered(executor, ctx, emails, email, value).await?, None))
+}
+
+/// Jadpo's own address-check email (area 15, "Self-service by email"), at
+/// levels 1 to 3: its link made now, its lines worded in its locale, its
+/// HTML and text wrapped in the application's layout or a plain document
+/// of Jadpo's. A check used or replaced since sends nothing.
+async fn privacy_address_check(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    emails: &EmailsPlan,
+    plan: &jadpo_std::email::PrivacyAddressCheckEmailPlan,
+    value: &Value,
+) -> Result<(Value, Option<SignInSent>), Outcome> {
+    let minted = match crate::http::privacy::mint(ctx, plan, value).await {
+        Ok(Some(minted)) => minted,
+        Ok(None) => return Err(Outcome::Value(Value::Unit)),
+        Err("unavailable") => return Err(Outcome::Failed(Box::new(crate::unavailable()))),
+        Err(what) => return Err(defect(ctx, what)),
+    };
+    let locale = match value {
+        Value::Record(record) => record.get("locale").cloned().unwrap_or(Value::None),
+        _ => Value::None,
+    };
+    let Value::Variant(chosen) = &locale else {
+        return Err(defect(ctx, "an address-check email with no locale"));
+    };
+    let ordinal = chosen.ordinal;
+    let tag = jadpo_std::LOCALES
+        .get(ordinal as usize)
+        .map_or("en-GB", |(_, tag)| *tag);
+    let expires_in = match jadpo_value::present::duration_words(plan.expires_after_ms, tag) {
+        Ok(words) => words,
+        Err(fault) => return Err(Outcome::Fault(ctx.fault(fault.into(), Frame::ENTRY))),
+    };
+    let mut line = |key: &str, given: &[(&str, &str)]| -> Result<String, Outcome> {
+        let Some(entry) = plan.message(key) else {
+            return Err(defect(
+                ctx,
+                "an address-check email missing one of Jadpo's messages",
+            ));
+        };
+        let args: Vec<Value> = entry
+            .params
+            .iter()
+            .map(|param| {
+                if param.name == jadpo_std::jadpo_text::APP_NAME {
+                    return Value::text(&plan.app_name);
+                }
+                given
+                    .iter()
+                    .find(|(name, _)| *name == param.name)
+                    .map_or(Value::None, |(_, text)| Value::text(text))
+            })
+            .collect();
+        match jadpo_value::present::translate(entry, &locale, &args, &plan.locales) {
+            Ok(Value::Text(text)) => Ok(text.to_string()),
+            Ok(_) => Err(defect(ctx, "an address-check line that isn't text")),
+            Err(fault) => Err(Outcome::Fault(ctx.fault(fault.into(), Frame::ENTRY))),
+        }
+    };
+    let subject = line("privacy_address_check_email", &[])?;
+    let heading = line("privacy_address_check_heading", &[])?;
+    let intro = line(
+        "privacy_address_check_intro",
+        &[("address", &minted.address)],
+    )?;
+    let button = line("privacy_address_check_button", &[])?;
+    let expiry = line(
+        "privacy_address_check_expiry_line",
+        &[("expires_in", &expires_in)],
+    )?;
+    let ignore = line("privacy_address_check_ignore_line", &[])?;
+    let rtl = matches!(
+        jadpo_value::locale::direction(ordinal),
+        Value::Variant(direction) if &*direction.name == jadpo_std::TextDirection::RightToLeft.name()
+    );
+    let direction = if rtl { "rtl" } else { "ltr" };
+    let html = format!(
+        "<div dir=\"{direction}\" style=\"max-width:480px;font-size:16px;line-height:1.5;\">\
+<h1 style=\"margin:0 0 16px;font-size:24px;line-height:1.25;font-weight:600;\">{heading}</h1>\
+<p style=\"margin:0 0 24px;\">{intro}</p>\
+<p style=\"margin:0 0 24px;\"><a href=\"{link}\" style=\"display:inline-block;padding:12px 24px;border-radius:6px;background-color:#1f2937;color:#ffffff;font-weight:600;text-decoration:none;\">{button}</a></p>\
+<p style=\"margin:0 0 8px;font-size:14px;\">{expiry}</p>\
+<p style=\"margin:0;font-size:14px;\">{ignore}</p>\
+</div>",
+        heading = escape_html(&heading),
+        intro = escape_html(&intro),
+        link = escape_html(&minted.link),
+        button = escape_html(&button),
+        expiry = escape_html(&expiry),
+        ignore = escape_html(&ignore),
+    );
+    let text = format!(
+        "{heading}\n\n{intro}\n\n{button}: {link}\n\n{expiry}\n\n{ignore}\n",
+        link = minted.link,
+    );
+    let subject_value = Value::text(&subject);
+    let (html, text) = match (emails.layout_html, emails.layout_text) {
+        (None, None) => (
+            Value::text(&format!(
+                "<!DOCTYPE html>\n<html lang=\"{tag}\" dir=\"{direction}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title}</title></head><body style=\"margin:0;padding:24px;\">{html}</body></html>\n",
+                title = escape_html(&subject),
+            )),
+            Value::text(&text),
+        ),
+        (layout_html, layout_text) => (
+            wrap(executor, ctx, layout_html, html, &subject_value, &locale).await?,
+            wrap(executor, ctx, layout_text, text, &subject_value, &locale).await?,
+        ),
+    };
+    let from = sender(ctx, emails)?;
+    let message = Value::record(
+        MESSAGE,
+        MESSAGE_FIELDS
+            .iter()
+            .zip([
+                from,
+                Value::text(&minted.address),
+                subject_value,
+                html,
+                text,
+                Value::List(Vec::new().into()),
+            ])
+            .map(|(name, value)| (Rc::from(*name), value))
+            .collect(),
+    );
+    Ok((
+        message,
+        Some(SignInSent {
+            token: minted.token,
+            code: None,
+            privacy: true,
+        }),
+    ))
 }
 
 /// The message an email of the application's is sent as, rendered from
@@ -235,7 +378,8 @@ async fn magic_link(
         let value = Value::record(&own.name, filled);
         let sent = SignInSent {
             token: minted.token.clone(),
-            code: minted.code.clone(),
+            code: Some(minted.code.clone()),
+            privacy: false,
         };
         return Ok((
             rendered(executor, ctx, emails, own, &value).await?,
@@ -345,7 +489,8 @@ async fn magic_link(
         message,
         Some(SignInSent {
             token: minted.token,
-            code: minted.code,
+            code: Some(minted.code),
+            privacy: false,
         }),
     ))
 }
@@ -663,6 +808,7 @@ pub fn sent_email(message: &Value) -> Value {
                 Value::List(attachments.into()),
                 field(jadpo_std::email::SIGN_IN_TOKEN),
                 field(jadpo_std::email::SIGN_IN_CODE),
+                field(jadpo_std::email::PRIVACY_TOKEN),
             ])
             .map(|(name, value)| (Rc::from(*name), value))
             .collect(),

@@ -302,6 +302,46 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::http::passkeys::USED.to_string(),
         ),
         (
+            "http::privacy::SWEEP",
+            crate::http::privacy::SWEEP.to_string(),
+        ),
+        (
+            "http::privacy::ENSURE",
+            crate::http::privacy::ENSURE.to_string(),
+        ),
+        (
+            "http::privacy::LOCK",
+            crate::http::privacy::LOCK.to_string(),
+        ),
+        (
+            "http::privacy::ASKED",
+            crate::http::privacy::ASKED.to_string(),
+        ),
+        (
+            "http::privacy::MINT",
+            crate::http::privacy::MINT.to_string(),
+        ),
+        (
+            "http::privacy::BY_TOKEN",
+            crate::http::privacy::BY_TOKEN.to_string(),
+        ),
+        (
+            "http::privacy::USED",
+            crate::http::privacy::USED.to_string(),
+        ),
+        (
+            "http::privacy::CREATE",
+            crate::http::privacy::CREATE.to_string(),
+        ),
+        (
+            "http::privacy::EXISTING",
+            crate::http::privacy::EXISTING.to_string(),
+        ),
+        (
+            "http::privacy::CANCEL",
+            crate::http::privacy::CANCEL.to_string(),
+        ),
+        (
             "http::provider_sign_in::PUT",
             crate::http::provider_sign_in::PUT.to_string(),
         ),

@@ -611,14 +611,21 @@ entity Town {
 }
 
 #[test]
-fn privacy_holds_only_the_erasure_log_yet() {
-    let routes = APP.replace(
+fn privacy_refuses_what_it_does_not_hold_and_what_is_not_built_yet() {
+    let unknown = APP.replace(
         "    privacy: {\n",
         "    privacy: {\n        export_link: \"/data\"\n",
     );
-    assert_eq!(
-        rules(&[("app.jadpo", &routes)]),
-        ["toolchain.not_built_yet"]
+    let found = rules(&[("app.jadpo", &unknown)]);
+    assert!(
+        found.contains(&"data.privacy_setting_invalid".to_string()),
+        "{found:?}"
+    );
+    let delivered_later = APP.replace("    privacy: {\n", "    privacy: {\n        exports: {}\n");
+    let found = rules(&[("app.jadpo", &delivered_later)]);
+    assert!(
+        found.contains(&"toolchain.not_built_yet".to_string()),
+        "{found:?}"
     );
     let not_a_store = APP.replace("store: erasures", "folder: erasures");
     let found = rules(&[("app.jadpo", &not_a_store)]);

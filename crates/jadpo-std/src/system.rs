@@ -553,6 +553,89 @@ pub const SIGN_IN_REQUESTS: SystemTable = SystemTable {
     }],
 };
 
+/// The address checks a data request starts with (area 15, "Self-service
+/// by email"): one row per address, found by its digest, holding the
+/// latest check's link only as a verifier, and the address sealed under
+/// its token, so a confirmed link can name it. Nothing in it is an
+/// address or a link.
+pub const PRIVACY_ADDRESS_CHECKS: SystemTable = SystemTable {
+    table: "jadpo_privacy_address_checks",
+    columns: &[
+        column("id", SqlType::Uuid, false),
+        column("address", SqlType::Text, false),
+        // The latest check, which its email's delivery names; `NULL` once
+        // its link is used.
+        column("request", SqlType::Uuid, true),
+        column("token", SqlType::Text, true),
+        column("sealed", SqlType::Bytes, true),
+        column("requested_at", SqlType::Timestamp, true),
+        column("expires_at", SqlType::Timestamp, true),
+        // The hour the sends are counted in, and how many.
+        column("sends_since", SqlType::Timestamp, true),
+        column("sends", SqlType::Int4, false),
+        // When nothing in the row counts any more.
+        column("kept_until", SqlType::Timestamp, false),
+    ],
+    primary_key: &["id"],
+    unique: &[
+        SystemUnique {
+            columns: &["address"],
+            rule: "system privacy address checks",
+        },
+        SystemUnique {
+            columns: &["request"],
+            rule: "system privacy checks by request",
+        },
+        SystemUnique {
+            columns: &["token"],
+            rule: "system privacy checks by token",
+        },
+    ],
+    foreign_keys: &[],
+    indexes: &[],
+};
+
+/// Every data request (area 15, "Deadlines and events"): what it is, who
+/// made it and how they knew the person, and the person's `id` (never an
+/// address, which is read when it is needed). `open` is set while a
+/// request of its kind for that person is still to happen, so asking
+/// twice gives the same request and cancelling one cancels the one there
+/// is.
+pub const PRIVACY_REQUESTS: SystemTable = SystemTable {
+    table: "jadpo_privacy_requests",
+    columns: &[
+        column("id", SqlType::Uuid, false),
+        column("kind", SqlType::Text, false),
+        column("source", SqlType::Text, false),
+        column("person", SqlType::Uuid, false),
+        column("created_by", SqlType::Text, true),
+        column("identity_check", SqlType::Text, true),
+        column("state", SqlType::Text, false),
+        column("requested_at", SqlType::Timestamp, false),
+        column("deadline", SqlType::Timestamp, false),
+        column("erases_at", SqlType::Timestamp, true),
+        column("cancelled_at", SqlType::Timestamp, true),
+        column("cancel_key", SqlType::Text, true),
+        column("open", SqlType::Text, true),
+    ],
+    primary_key: &["id"],
+    unique: &[
+        SystemUnique {
+            columns: &["open"],
+            rule: "system privacy requests, one open of a kind for a person",
+        },
+        SystemUnique {
+            columns: &["cancel_key"],
+            rule: "system privacy requests by cancel link",
+        },
+    ],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["deadline"],
+        reason: "finding the requests nearing their deadline",
+    }],
+};
+
 /// Sign-ins through a provider under way (area 8, "Providers"; chunk
 /// A7b): each found by its `state`'s digest and taken once, bound to the
 /// browser that started it by its cookie's digest, with where to go
@@ -1017,7 +1100,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 30] = [
+pub const ALL: [&SystemTable; 32] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -1033,6 +1116,8 @@ pub const ALL: [&SystemTable; 30] = [
     &SIGN_IN_REQUESTS,
     &SIGN_IN_LINKS,
     &PROVIDER_SIGN_INS,
+    &PRIVACY_ADDRESS_CHECKS,
+    &PRIVACY_REQUESTS,
     &BATCH_RUNS,
     &BATCH_PROBLEMS,
     &BATCH_CANCELS,

@@ -500,6 +500,9 @@ pub fn access_nodes(db: &dyn Db, project: Project) -> Part {
                 crate::routes::generated::Generating::Provider(name) => {
                     registry.key(Kind::SignInProvider, name, None)
                 }
+                crate::routes::generated::Generating::Privacy { .. } => {
+                    registry.key(Kind::Api, &api, None)
+                }
                 crate::routes::generated::Generating::OpenApi(_)
                 | crate::routes::generated::Generating::Flags(_) => {
                     registry.key(Kind::Api, &api, None)

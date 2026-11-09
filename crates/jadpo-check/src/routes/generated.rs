@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_db::{Db, Project};
 use jadpo_std::AuthenticationMethod;
-use jadpo_std::http::{MagicLinkStep, PasskeyStep, ProviderStep};
+use jadpo_std::http::{MagicLinkStep, PasskeyStep, PrivacyStep, ProviderStep};
 
 use super::served::Served;
 use super::{RouteModel, Segment};
@@ -28,6 +28,12 @@ pub enum Generating {
     /// The magic-link routes under `path:` (area 8, "Magic links"), the
     /// redemption with them when API tokens are declared.
     MagicLink { path: Vec<String>, api_tokens: bool },
+    /// The data-request routes under `path:` (area 15, "Data requests"),
+    /// the self-service ones with `self_service:`.
+    Privacy {
+        path: Vec<String>,
+        self_service: bool,
+    },
     /// A sign-in provider's two routes under `/auth/<name>` (area 8,
     /// "Providers"; chunk A7b), by its connection's name.
     Provider(String),
@@ -104,6 +110,20 @@ impl Generating {
                     path: joined(&step.segments(path)),
                     generated: "magic_link",
                     authentication: "none",
+                })
+                .collect(),
+            Generating::Privacy { path, self_service } => PrivacyStep::ALL
+                .into_iter()
+                .filter(|step| *self_service || !step.self_service())
+                .map(|step| GeneratedRoute {
+                    method: step.method(),
+                    path: joined(&step.segments(path)),
+                    generated: "privacy",
+                    authentication: if step.authentication().needs_caller() {
+                        "user"
+                    } else {
+                        "none"
+                    },
                 })
                 .collect(),
             Generating::Provider(name) => ProviderStep::ALL
@@ -206,6 +226,13 @@ pub fn generating(db: &dyn Db, project: Project) -> BTreeMap<String, Vec<Generat
                 out.push(Generating::MagicLink {
                     path: magic.path.clone(),
                     api_tokens: identity.built(AuthenticationMethod::ApiToken),
+                });
+            }
+            let privacy = crate::privacy::privacy(db, project);
+            if privacy.routes() && signs_in_here {
+                out.push(Generating::Privacy {
+                    path: privacy.path.clone(),
+                    self_service: privacy.self_service.is_some(),
                 });
             }
             if signs_in_here {

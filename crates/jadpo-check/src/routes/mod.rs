@@ -778,6 +778,40 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 continue;
             }
         }
+        // The runtime answers the routes `privacy:` generates (area 15,
+        // "Data requests").
+        {
+            let privacy = crate::privacy::privacy(db, project);
+            let generated = privacy.routes().then_some(()).and_then(|()| {
+                jadpo_std::http::PrivacyStep::ALL.into_iter().find(|step| {
+                    (privacy.self_service.is_some() || !step.self_service())
+                        && route.method == step.method()
+                        && overlaps(
+                            &route.segments,
+                            &step
+                                .segments(&privacy.path)
+                                .into_iter()
+                                .map(Segment::Fixed)
+                                .collect::<Vec<_>>(),
+                        )
+                })
+            });
+            if let Some(step) = generated {
+                out.push(
+                    Diagnostic::new(
+                        &rule::ROUTE_PATH_OVERLAP,
+                        format!("`{}` is the runtime's {}", route.label(), step.label()),
+                    )
+                    .at(span.clone(), "answered by the runtime")
+                    .reason("With `privacy:` in `application { }`, the runtime answers the data-request routes under its `path:` itself, so this route would never run.")
+                    .next(format!(
+                        "Give `{}` in `{group}` another path, or move the data-request routes with `path:`",
+                        route.label()
+                    )),
+                );
+                continue;
+            }
+        }
         // The runtime answers each sign-in provider's routes (area 8,
         // "Providers"; chunk A7b).
         let provider = crate::identity::identity(db, project)
@@ -2852,6 +2886,9 @@ impl Reader<'_> {
         }
         if head == jadpo_std::http::MAGIC_LINKS {
             return SessionOp::magic_link_op(&member);
+        }
+        if head == jadpo_std::http::PRIVACY {
+            return SessionOp::privacy_op(&member);
         }
         let op = SessionOp::key_op(&member)?;
         let identity = crate::identity::identity(self.db, self.project);
