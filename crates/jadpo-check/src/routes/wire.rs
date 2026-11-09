@@ -221,6 +221,11 @@ impl<'g> Wire<'g> {
                     if name == jadpo_std::files::FILE {
                         return Shape::Issued(jadpo_std::files::FILE_LINK);
                     }
+                    // An upload's token is text on the wire (area 16,
+                    // "Uploading").
+                    if name == jadpo_std::files::FILE_UPLOAD {
+                        return Shape::Scalar(jadpo_std::Builtin::Text, merge(&rules));
+                    }
                     return match issued_name(&name) {
                         Some(issued) => Shape::Issued(issued),
                         None => Shape::StdEnum(name),
@@ -512,6 +517,7 @@ pub fn issued_name(name: &str) -> Option<&'static str> {
         jadpo_std::http::ISSUED_KEY,
         jadpo_std::http::DECODE_PROBLEM,
         jadpo_std::files::FILE_LINK,
+        jadpo_std::files::UPLOAD_SLOT,
     ]
     .into_iter()
     .find(|issued| *issued == name)
@@ -583,10 +589,46 @@ fn file_link_schema() -> Value {
     out
 }
 
+/// The JSON Schema of an upload slot (area 16, "Uploading").
+fn upload_slot_schema() -> Value {
+    let mut out = Value::object();
+    out.set(
+        "description",
+        "Where to send a file: a signed address valid for 15 minutes, the token that attaches the upload, and the most bytes the address takes.",
+    );
+    out.set("type", "object");
+    let mut properties = Value::object();
+    properties.set(
+        "url",
+        scalar_schema(jadpo_std::Builtin::Text, &Rules::default()),
+    );
+    properties.set(
+        "token",
+        scalar_schema(jadpo_std::Builtin::Text, &Rules::default()),
+    );
+    let mut size = Value::object();
+    size.set("type", "integer");
+    properties.set("max_size", size);
+    out.set("properties", properties);
+    out.set(
+        "required",
+        vec![
+            Value::from("url"),
+            Value::from("token"),
+            Value::from("max_size"),
+        ],
+    );
+    out.set("additionalProperties", false);
+    out
+}
+
 /// The JSON Schema of a built-in `IssuedToken` or `IssuedKey`.
 pub fn issued_schema(name: &str) -> Value {
     if name == jadpo_std::files::FILE_LINK {
         return file_link_schema();
+    }
+    if name == jadpo_std::files::UPLOAD_SLOT {
+        return upload_slot_schema();
     }
     let mut out = Value::object();
     out.set(

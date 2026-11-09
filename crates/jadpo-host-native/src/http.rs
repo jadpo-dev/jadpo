@@ -8,7 +8,8 @@
 //! rate-limit counters ([`WorkerThread::host`]), so a client is counted
 //! once whichever workers it reaches. hyper reads and writes HTTP/1.1; the
 //! runtime's HTTP component (`jadpo_runtime::http`) answers each request.
-//! A client has 10 seconds to send a request's headers and 30 its body,
+//! A client has 10 seconds to send a request's headers and 30 its body
+//! (an upload 30 for each piece and an hour for all of them),
 //! a write to it may wait at most 30 seconds for it to read ([`Stalled`]),
 //! and the server holds at most [`MAX_CONNECTIONS`] connections open. The
 //! work a response leaves for after it is sent
@@ -53,6 +54,14 @@ use crate::{DRAIN_GRACE, NativeHost, Runtime};
 /// so it may hold the runtime's `Rc` values and its stores.
 pub trait Handler {
     fn handle(&self, request: Request) -> LocalFuture<'_, Response>;
+
+    /// Whether a request to `path` hands its body over unread, a piece at
+    /// a time, as an upload does (area 16, "Uploading"), so it never sits
+    /// whole in memory.
+    fn streams(&self, path: &str) -> bool {
+        let _ = path;
+        false
+    }
 
     /// The work the response it just gave left for after it is sent:
     /// what its host was given ([`crate::NativeHost::take_deferred`]),
@@ -158,6 +167,13 @@ impl AppHandler {
 impl Handler for AppHandler {
     fn handle(&self, request: Request) -> LocalFuture<'_, Response> {
         Box::pin(async move { self.serving.handle(&request).await })
+    }
+
+    fn streams(&self, path: &str) -> bool {
+        jadpo_runtime::http::uploads::store_of(path).is_some_and(|store| {
+            jadpo_runtime::Host::capability(self.host.as_ref(), store)
+                .is_some_and(|files| files.link_key(store, false).is_some())
+        })
     }
 
     fn take_deferred(&self) -> Vec<LocalFuture<'static, ()>> {
@@ -489,10 +505,23 @@ async fn connection(
         async move {
             // A body that can't be read in time, or at all, ends the
             // connection without an answer.
-            let Some(request) = read(request, Some(peer)).await else {
-                return Err(Unread);
+            let takes_stream = handler.streams(request.uri().path());
+            let request = if takes_stream {
+                streamed(request, Some(peer))
+            } else {
+                let Some(request) = read(request, Some(peer)).await else {
+                    return Err(Unread);
+                };
+                request
             };
+            let body = request.stream.clone();
             let response = handler.handle(request).await;
+            // What an upload's client is still sending is read and thrown
+            // away, up to a bound, so it reads the answer rather than a
+            // broken connection.
+            if let Some(body) = body {
+                drain(&body).await;
+            }
             // Started as tasks of their own, which run only once this one,
             // the connection's, has handed the response on and waits:
             // after the response, never before it.
@@ -570,6 +599,15 @@ const HEADER_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How long a client has to send a request's whole body.
 const BODY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How long an upload may wait for its next piece: a client that stops
+/// sending part-way is given up on.
+const UPLOAD_PIECE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How long an upload has from its first byte to its last, whatever its
+/// size: long enough for the largest slot over a slow link, and short
+/// enough that a client dripping bytes can't keep a connection for good.
+const UPLOAD_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 
 /// The most connections the server holds open at once, across its
 /// workers; one past it is closed as it is accepted.
@@ -737,7 +775,86 @@ async fn read(request: hyper::Request<Incoming>, peer: Option<SocketAddr>) -> Op
         body: bytes,
         address: peer.map(|peer| peer.ip().to_string()),
         too_large,
+        stream: None,
     })
+}
+
+/// An upload's body as the runtime takes it, a piece at a time: hyper's,
+/// whose frames are read as they are asked for and whose last read ends
+/// it.
+struct HyperPieces {
+    body: tokio::sync::Mutex<Incoming>,
+    started: tokio::time::Instant,
+}
+
+impl jadpo_runtime::http::BodySource for HyperPieces {
+    fn next(&self) -> LocalFuture<'_, Option<Result<Vec<u8>, ()>>> {
+        Box::pin(async move {
+            let mut body = self.body.lock().await;
+            let left = UPLOAD_TIMEOUT.saturating_sub(self.started.elapsed());
+            let reading = async {
+                loop {
+                    return match body.frame().await {
+                        Some(Ok(frame)) => match frame.into_data() {
+                            Ok(data) => Some(Ok(data.to_vec())),
+                            // A trailer: nothing of the file's.
+                            Err(_) => continue,
+                        },
+                        Some(Err(_)) => Some(Err(())),
+                        None => None,
+                    };
+                }
+            };
+            match tokio::time::timeout(UPLOAD_PIECE_TIMEOUT.min(left), reading).await {
+                Ok(piece) => piece,
+                Err(_) => Some(Err(())),
+            }
+        })
+    }
+}
+
+/// How much of a streamed body past its answer is read and dropped, and
+/// for how long.
+async fn drain(body: &jadpo_runtime::http::BodyStream) {
+    let mut seen = 0usize;
+    let draining = async {
+        while let Some(Ok(piece)) = body.next().await {
+            seen = seen.saturating_add(piece.len());
+            if seen > DRAIN_LIMIT {
+                break;
+            }
+        }
+    };
+    let _ = tokio::time::timeout(Duration::from_secs(5), draining).await;
+}
+
+/// A hyper request as the runtime's, its body left unread and handed over
+/// a piece at a time, for an upload (area 16, "Uploading").
+fn streamed(request: hyper::Request<Incoming>, peer: Option<SocketAddr>) -> Request {
+    let (parts, body) = request.into_parts();
+    let headers = parts
+        .headers
+        .iter()
+        .map(|(name, value)| {
+            (
+                name.as_str().to_string(),
+                String::from_utf8_lossy(value.as_bytes()).into_owned(),
+            )
+        })
+        .collect();
+    Request {
+        method: parts.method.as_str().to_string(),
+        path: parts.uri.path().to_string(),
+        query: parts.uri.query().map(str::to_string),
+        headers,
+        body: Vec::new(),
+        address: peer.map(|peer| peer.ip().to_string()),
+        too_large: false,
+        stream: Some(jadpo_runtime::http::BodyStream::new(Rc::new(HyperPieces {
+            body: tokio::sync::Mutex::new(body),
+            started: tokio::time::Instant::now(),
+        }))),
+    }
 }
 
 /// A response's body: whole, or a model's answer sent event by event as

@@ -1139,14 +1139,23 @@ const FILE_LINK_RECORD_FIELDS: [(&str, crate::Builtin); 4] = [
     ("type", crate::Builtin::Text),
 ];
 
+/// An upload slot as an API's record lists it.
+const UPLOAD_SLOT_RECORD_FIELDS: [(&str, crate::Builtin); 3] = [
+    ("url", crate::Builtin::Text),
+    ("token", crate::Builtin::Text),
+    ("max_size", crate::Builtin::Int),
+];
+
 /// The fields of a built-in object type the boundary carries, which the
 /// runtime builds and a program only reads: `IssuedToken` and `IssuedKey`
-/// (area 8), `DecodeProblem` (area 19) and a file's signed link (area 16).
+/// (area 8), `DecodeProblem` (area 19), and a file's signed link and an
+/// upload slot (area 16).
 pub fn builtin_object_fields(name: &str) -> Option<&'static [(&'static str, crate::Builtin)]> {
     match name {
         ISSUED_TOKEN | ISSUED_KEY => Some(&ISSUED_FIELDS),
         DECODE_PROBLEM => Some(&DECODE_PROBLEM_FIELDS),
         crate::files::FILE_LINK => Some(&FILE_LINK_RECORD_FIELDS),
+        crate::files::UPLOAD_SLOT => Some(&UPLOAD_SLOT_RECORD_FIELDS),
         _ => None,
     }
 }

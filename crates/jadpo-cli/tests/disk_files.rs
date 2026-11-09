@@ -98,8 +98,28 @@ pub(crate) fn bakery(sheets_at: &Path, full_at: &Path) -> Vec<(String, String)> 
             "use app { sheets }\nuse bakery/entities { PriceSheet }\nuse bakery/types { PriceRow, SheetLink, SheetRequest }\nuse bakery/failures { SheetNotKept }\nuse bakery/actions { save_price }\n\n/// Keeps a sheet and answers with the link to it.\naction link_sheet(request: SheetRequest) fails SheetNotKept -> SheetLink {\n    var sheet: File = attempt sheets.put(encoding.to_utf8(request.sheet_text), FileType.csv) {\n        storage_full: SheetNotKept\n    }\n    var reading: BatchRun = csv.read(sheet, as: PriceRow, each: row -> save_price(row))\n    var kept: PriceSheet = PriceSheet.create {\n        set: {\n            supplier: request.supplier\n            sheet: sheet\n            reading: reading\n        }\n    }\n    return SheetLink {\n        supplier: kept.supplier\n        sheet: kept.sheet\n    }\n}\n",
         ),
         (
+            "domains/bakery/types/uploaded_sheet_request.jadpo",
+            "use bakery/types { SupplierName }\n\n/// A sheet a supplier has uploaded.\ntype UploadedSheetRequest = Input {\n    supplier: SupplierName\n    sheet: FileUpload\n}\n",
+        ),
+        (
+            "domains/bakery/entities/uploaded_sheet.jadpo",
+            "use bakery/types { SupplierName }\n\n/// A sheet a supplier sent straight to the store.\nentity UploadedSheet {\n    id: Uuid\n    supplier: SupplierName\n    sheet: File {\n        store: sheets\n        max_size: 64b\n        types: [FileType.csv]\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n}\n",
+        ),
+        (
+            "domains/bakery/types/uploaded_sheet_link.jadpo",
+            "use bakery/entities { UploadedSheet }\n\n/// An uploaded sheet and the link to download it.\ntype UploadedSheetLink = Output {\n    pick: [UploadedSheet.supplier, UploadedSheet.sheet]\n}\n",
+        ),
+        (
+            "domains/bakery/actions/sheet_slot.jadpo",
+            "use bakery/entities { UploadedSheet }\n\n/// Where a supplier sends their sheet.\naction sheet_slot() -> UploadSlot {\n    return UploadedSheet.sheet_upload()\n}\n",
+        ),
+        (
+            "domains/bakery/actions/attach_sheet.jadpo",
+            "use bakery/entities { UploadedSheet }\nuse bakery/types { UploadedSheetLink, UploadedSheetRequest }\n\n/// Keeps a sheet a supplier has uploaded.\naction attach_sheet(request: UploadedSheetRequest) -> UploadedSheetLink {\n    var kept: UploadedSheet = UploadedSheet.create {\n        set: {\n            supplier: request.supplier\n            sheet: request.sheet\n        }\n    }\n    return UploadedSheetLink {\n        supplier: kept.supplier\n        sheet: kept.sheet\n    }\n}\n",
+        ),
+        (
             "domains/bakery/routes/sheets.jadpo",
-            "use bakery/types { SheetLink, SheetRequest, SheetView }\nuse bakery/actions { keep_overflow, keep_prices, link_sheet }\n\n/// The bakery's price sheets.\nroutes Sheets {\n    prefix: /sheets\n\n    /// Keeps a sheet and reads its prices in.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        output: SheetView\n        status: SuccessStatus.created\n        run: keep_prices(input)\n    }\n\n    /// Keeps a sheet in the overflow store.\n    POST /overflow {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        status: SuccessStatus.no_content\n        run: keep_overflow(input)\n    }\n\n    /// Keeps a sheet and answers with the link to it.\n    POST /linked {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        output: SheetLink\n        status: SuccessStatus.created\n        run: link_sheet(input)\n    }\n}\n",
+            "use bakery/types { SheetLink, SheetRequest, SheetView, UploadedSheetLink, UploadedSheetRequest }\nuse bakery/actions { attach_sheet, keep_overflow, keep_prices, link_sheet, sheet_slot }\n\n/// The bakery's price sheets.\nroutes Sheets {\n    prefix: /sheets\n\n    /// Where a supplier sends a sheet.\n    POST /slot {\n        authentication: RouteAuthentication.none\n        output: UploadSlot\n        run: sheet_slot()\n    }\n\n    /// Keeps a sheet a supplier has uploaded.\n    POST /attached {\n        authentication: RouteAuthentication.none\n        input: UploadedSheetRequest\n        output: UploadedSheetLink\n        status: SuccessStatus.created\n        run: attach_sheet(input)\n    }\n\n    /// Keeps a sheet and reads its prices in.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        output: SheetView\n        status: SuccessStatus.created\n        run: keep_prices(input)\n    }\n\n    /// Keeps a sheet in the overflow store.\n    POST /overflow {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        status: SuccessStatus.no_content\n        run: keep_overflow(input)\n    }\n\n    /// Keeps a sheet and answers with the link to it.\n    POST /linked {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        output: SheetLink\n        status: SuccessStatus.created\n        run: link_sheet(input)\n    }\n}\n",
         ),
     ];
     files
@@ -326,6 +346,21 @@ fn jadpo_dev_keeps_files_under_the_project_and_keeps_its_floor() {
     };
     let answer = dev.send("POST", "/sheets/linked", &[], SHEET);
     crate::file_downloads::serves_a_file(&answer.json(), &sent, &store);
+    // An upload, streamed to the disk over real HTTP.
+    let uploaded = |method: &str, path: &str, headers: &[(&str, &str)], body: &[u8]| {
+        let body = String::from_utf8_lossy(body);
+        let reply = dev.send(method, path, headers, &body);
+        let all = crate::file_downloads::HEADERS
+            .iter()
+            .filter_map(|name| {
+                reply
+                    .header(name)
+                    .map(|value| ((*name).to_string(), value.to_string()))
+            })
+            .collect();
+        (reply.status, all, reply.bytes().to_vec())
+    };
+    crate::file_uploads::serves_an_upload(&uploaded, &store);
     let refused = dev.send("POST", "/sheets/overflow", &[], SHEET);
     assert_eq!(refused.status, 503, "{refused:?}");
     assert_eq!(

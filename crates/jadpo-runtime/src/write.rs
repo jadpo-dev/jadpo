@@ -50,10 +50,25 @@ pub(crate) async fn write(
     site: u32,
 ) -> Result<Written, Interrupt> {
     let now = ctx.now();
+    // What a `FileUpload` it attaches becomes (area 16, "Uploading"), in
+    // the place of the token in the inputs the statement is made from.
+    let mut attached: Option<Vec<Value>> = None;
     // A `File` that doesn't fit its field stops the write before anything
     // is sent (area 16, "What a write checks"; chunk B1).
     for check in &plan.files {
-        let file = source_value(ctx, &check.source, inputs, site, now)?;
+        let mut file = source_value(ctx, &check.source, inputs, site, now)?;
+        if let Value::Text(token) = &file {
+            let made = crate::files::attach(ctx, check, token, site).await?;
+            file = made.clone();
+            let inputs = attached.get_or_insert_with(|| inputs.to_vec());
+            if !attach_input(inputs, &check.source, made) {
+                return Err(defect(
+                    ctx,
+                    "an upload set from a place a write can't",
+                    site,
+                ));
+            }
+        }
         // Only the runtime makes a `File`, so anything else is Jadpo's
         // mistake, refused rather than written unchecked.
         if !matches!(file, Value::None | Value::Record(_)) {
@@ -69,6 +84,7 @@ pub(crate) async fn write(
             ));
         }
     }
+    let inputs = attached.as_deref().unwrap_or(inputs);
     let mut params = params_of(ctx, &plan.params, json, inputs, site, now)?;
     // Open the write transaction before consulting checked keys: a nested
     // rollback may have ended the transaction that established them.
@@ -347,6 +363,34 @@ pub(crate) async fn write(
         .await?;
     }
     Ok(Written::Value(written))
+}
+
+/// `file` written where `source` reads from in `inputs`, as the statement
+/// made from them then reads it: whether it was somewhere a write can.
+fn attach_input(inputs: &mut [Value], source: &WriteSource, file: Value) -> bool {
+    match source {
+        WriteSource::Input(at) => match inputs.get_mut(*at as usize) {
+            Some(slot) => {
+                *slot = file;
+                true
+            }
+            None => false,
+        },
+        WriteSource::Field { input, field } => match inputs.get_mut(*input as usize) {
+            Some(Value::Record(record)) => {
+                let mut held = (**record).clone();
+                let Some((_, value)) = held.fields.iter_mut().find(|(name, _)| &**name == field)
+                else {
+                    return false;
+                };
+                *value = file;
+                *record = std::rc::Rc::new(held);
+                true
+            }
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 /// Why `file`, the value a write sets `check`'s field to, isn't one the

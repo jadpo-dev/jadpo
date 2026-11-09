@@ -130,6 +130,7 @@ impl Loaded {
             locales: plan.locales.as_ref(),
             calls: &plan.sites.calls,
             exports: &plan.sites.exports,
+            uploads: &plan.sites.uploads,
             callables: Some(&plan.callables),
             runs: plan.runs,
             #[cfg(feature = "testing")]
@@ -197,6 +198,8 @@ pub struct Plan<'a> {
     pub calls: &'a [CallPlan],
     /// Each person entity's `export` (area 15, "Export").
     pub exports: &'a [jadpo_std::erasure::ExportPlan],
+    /// Each `Entity.field_upload()` (area 16, "Uploading").
+    pub uploads: &'a [jadpo_std::files::UploadPlan],
     /// Each callable's number by its identity key, but a test's (chunk
     /// 8.1e): how the runtime finds one the plan names by its key.
     pub callables: Option<&'a BTreeMap<String, u32>>,
@@ -244,6 +247,7 @@ impl Plan<'static> {
         locales: None,
         calls: &[],
         exports: &[],
+        uploads: &[],
         callables: None,
         runs: Runs::EVERYTHING,
         #[cfg(feature = "testing")]

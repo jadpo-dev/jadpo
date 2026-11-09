@@ -1466,6 +1466,7 @@ ones that write. Other domains call that domain's public actions instead.
 | `Todo.update(todo_id) { set: { ... } }` | changes the record with that `id` in one step (counters, below) |
 | `Todo.delete(todo)` | removes the record, or runs the lifecycle's `delete` transition |
 | `User.disable(user)` | runs a lifecycle transition, named after it |
+| `PriceSheet.sheet_upload()` | for a `File` field, gives an `UploadSlot` a client sends a file to ([Uploading](16-built-in-services.md#uploading)) |
 
 An `update`, `delete` or transition takes either the record the action
 loaded earlier or its `id`. By `id`, it fails with the entity's not-found

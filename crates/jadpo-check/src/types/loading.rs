@@ -159,7 +159,8 @@ pub fn file_loading(db: &dyn Db, project: Project, file: File) -> BTreeMap<Key, 
                 | Fact::Session(_)
                 | Fact::Emits(_)
                 | Fact::Batch(_)
-                | Fact::Runs(_) => {}
+                | Fact::Runs(_)
+                | Fact::Uploads(_) => {}
             }
         }
         out.insert(key, loading);

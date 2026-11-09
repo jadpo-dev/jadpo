@@ -212,6 +212,22 @@ impl Body<'_> {
     /// takes there when nothing else did: a literal's is the type it goes
     /// into.
     pub(super) fn check(&mut self, expr: &Expr, expected: &Ty) {
+        // A route test sends a slot's token as a client does, as text, or
+        // one altered to test the refusal (area 13, "Route tests"); nothing
+        // else makes a `FileUpload` out of text.
+        if self.test
+            && matches!(self.table.structure(expected).strip_nullable(), Ty::Opaque(name, _) if name == jadpo_std::files::FILE_UPLOAD)
+        {
+            let actual = self.infer(expr);
+            if !self
+                .table
+                .assignable(&actual, &Ty::Prim(Prim::Text).nullable())
+                && !self.table.assignable(&actual, expected)
+            {
+                self.mismatch(expr, &actual, expected);
+            }
+            return;
+        }
         self.facts
             .expected
             .insert(node_key(expr.syntax()), expected.clone());

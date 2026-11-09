@@ -498,6 +498,12 @@ impl Types {
                 // number, an `Int` with its range (chunk 5.5n), or its
                 // built-in type with its bounds (chunk 5.5i3).
                 TypeRef::Std(name, args) if args.is_empty() => {
+                    // An upload's token is text on the wire (area 16,
+                    // "Uploading").
+                    if name == jadpo_std::files::FILE_UPLOAD {
+                        current = TypeRef::Builtin(Builtin::Text);
+                        continue;
+                    }
                     let (builtin, own) = jadpo_std::standard::declared(&name)?;
                     rules.push(own);
                     current = TypeRef::Builtin(builtin);

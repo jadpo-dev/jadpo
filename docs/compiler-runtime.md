@@ -5333,6 +5333,22 @@ sent as a body of `stream::ServerEvent::Bytes` chunks, each a capability
 first read before the answer begins so a file gone is a 404. A route
 test follows a link with `request { link: }`
 (`body::Expr::Download`, `downloads::link_test`).
+Uploading a file (chunk B5, `jadpo_runtime::http::uploads`): `Entity.field_upload()`
+is a `Callee::Entity` whose operation `jadpo_std::files::upload_field` names
+a `File` field, planned as `jadpo_std::files::UploadPlan` (`policy::uploads`,
+the entity's `create` and `update` grants as a `Gate`), and signed with no
+store call into a slot's `url` and `token` under a key derived from the
+store's `link_key` apart from its downloads'. `PUT
+/files/<store>/uploads/<token>` is answered ahead of the route trie, its
+body a `Request::stream` the native host (`Handler::streams`) hands over
+unread; counted, hashed and sniffed in the runtime (`jadpo_std::files::type_of`),
+then written through `Capability::receive`'s `Receiving`. A `FileUpload` is a
+`Value::Text`, its codec a `Text`'s; a write's `FileCheck` that finds one
+calls `crate::files::attach`, one `STAT` capability call before the statement,
+which `body::Expr::Write::attaches` makes an outside call to the checker
+(`data.write_before_call`), and rewrites the input to the `File` it makes. A
+route test sends one with `request { upload: }` (`body::Expr::Upload`,
+`uploads::upload_test`).
 Deleting a file's bytes (chunk B3): `jadpo_check::data::held::counters`
 gives each store of files the database whose entities' `File` fields
 name it, which the schema gives `jadpo_std::system::FILES`

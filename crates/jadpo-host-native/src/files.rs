@@ -41,10 +41,16 @@
 //!   folder; a key naming nothing is deleted already, so a repeat acts
 //!   once (chunk B3).
 //!
-//! Its I/O is blocking: a window is at most a megabyte. Uploads come with
-//! the rest of the files capability (roadmap "Remaining built-in services");
-//! a download reads through `read` a window at a time, signed with the key
-//! the store keeps in its folder.
+//! - **Uploads that land whole.** An upload ([`DiskStore::receive`]) goes
+//!   to a temporary file of its own as it arrives, so a client that stops
+//!   leaves nothing; the file is synced and linked into place, which a file
+//!   already there refuses, so a slot keeps one file and files never
+//!   change, and the folder is synced. What an upload says of itself is
+//!   kept beside it ([`meta_name`]), which no key can name.
+//!
+//! Its I/O is blocking: a window is at most a megabyte. A download reads
+//! through `read` a window at a time, signed with the key the store keeps
+//! in its folder.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -54,10 +60,10 @@ use std::rc::Rc;
 
 use jadpo_drivers::factory::Disk;
 use jadpo_runtime::LocalFuture;
-use jadpo_runtime::capability::{Answer, Call, Capability};
+use jadpo_runtime::capability::{Answer, Call, Capability, Kept, Receiving, Refused};
 use jadpo_std::files::{
-    DELETE, DISCARD, JOIN, NOT_FOUND, PUT, READ, STORAGE_FULL, WHOLE_DISK, is_key, key_id,
-    piece_key,
+    DELETE, DISCARD, HEAD_BYTES, JOIN, NOT_FOUND, PUT, READ, STAT, STORAGE_FULL, WHOLE_DISK,
+    is_key, key_id, piece_key,
 };
 use jadpo_value::Value;
 
@@ -164,14 +170,7 @@ impl DiskStore {
     /// Whether writing `incoming` more bytes would leave less of the disk
     /// free than the floor.
     fn below_floor(&self, folder: &os::Dir, incoming: u64) -> bool {
-        if self.floor == 0 {
-            return false;
-        }
-        let Ok((free, total)) = folder.space() else {
-            return false;
-        };
-        let left = free.saturating_sub(u128::from(incoming));
-        left * u128::from(WHOLE_DISK) < total * u128::from(self.floor)
+        below_floor(folder, self.floor, incoming)
     }
 
     fn put(&self, key: &str, bytes: &[u8]) -> Answer {
@@ -309,6 +308,8 @@ impl DiskStore {
             Err(error) if names_nothing(&error) => return Answer::Value(Value::Unit),
             Err(_) => return Answer::Unavailable,
         };
+        // What an upload said of itself goes with it.
+        let _ = folder.remove(&meta_name(name));
         match folder.remove(name) {
             Ok(()) => {}
             Err(error) if error.kind() == ErrorKind::NotFound => {
@@ -320,6 +321,73 @@ impl DiskStore {
             Ok(()) => Answer::Value(Value::Unit),
             Err(_) => Answer::Unavailable,
         }
+    }
+
+    /// Starts keeping an upload as file `key`, of at most `expected`
+    /// bytes (area 16, "Uploading"): written to a temporary file of its
+    /// own. A file already there refuses it, and so does a disk that would
+    /// be left below the floor.
+    fn receive(&self, key: &str, expected: u64) -> Result<Box<dyn Receiving + 'static>, Refused> {
+        let root = self.root(true).map_err(|error| refused(&error))?;
+        if self.below_floor(&root, expected) {
+            return Err(Refused::Full);
+        }
+        let (folder, name) = DiskStore::shard(&root, key, true).map_err(|error| refused(&error))?;
+        if folder.open(name).is_ok() {
+            return Err(Refused::Taken);
+        }
+        let part = part_name(name);
+        let file = folder.create(&part).map_err(|error| refused(&error))?;
+        Ok(Box::new(DiskReceiving {
+            root,
+            floor: self.floor,
+            folder,
+            name: name.to_string(),
+            part,
+            file: Some(file),
+            written: 0,
+            since_floor: 0,
+        }))
+    }
+
+    /// What an upload left under `key`: its size, what it said of itself
+    /// and its first bytes. Nothing was uploaded to a key with no record
+    /// beside it (area 16, "Uploading").
+    fn stat(&self, key: &str) -> Answer {
+        let opened = self.folder(key, false).and_then(|(folder, name)| {
+            let file = folder.open(name)?;
+            let meta = folder.open(&meta_name(name))?;
+            Ok((file, meta))
+        });
+        let (mut file, mut meta) = match opened {
+            Ok(found) => found,
+            Err(error) if names_nothing(&error) => return Answer::Failed(NOT_FOUND.into()),
+            Err(_) => return Answer::Unavailable,
+        };
+        let mut said = Vec::new();
+        let mut head = Vec::with_capacity(HEAD_BYTES);
+        let read = meta.read_to_end(&mut said).and_then(|_| {
+            std::io::Read::by_ref(&mut file)
+                .take(HEAD_BYTES as u64)
+                .read_to_end(&mut head)
+        });
+        let (Ok(_), Ok(size)) = (read, file.metadata().map(|meta| meta.len())) else {
+            return Answer::Unavailable;
+        };
+        let Ok(serde_json::Value::Object(said)) = serde_json::from_slice(&said) else {
+            return Answer::Unavailable;
+        };
+        let text = |name: &str| said.get(name).and_then(serde_json::Value::as_str);
+        let Some(hash) = text("h") else {
+            return Answer::Unavailable;
+        };
+        Answer::Value(jadpo_runtime::files::uploaded(
+            &head,
+            size,
+            hash,
+            text("n"),
+            text("c"),
+        ))
     }
 
     /// Every key of the erasure log kept here (area 15, "What erasure
@@ -423,6 +491,7 @@ impl DiskStore {
                 _ => Answer::Misconfigured,
             },
             DELETE => self.delete(key),
+            STAT => self.stat(key),
             JOIN | DISCARD => match (input.get("pieces"), key_id(key)) {
                 (Some(Value::Int(pieces)), Some(id)) => {
                     let pieces = u64::try_from(*pieces).unwrap_or(0);
@@ -439,10 +508,120 @@ impl DiskStore {
     }
 }
 
+/// An upload the disk is keeping, in its temporary file until
+/// [`Receiving::finish`]; dropped unfinished, the file goes with it.
+struct DiskReceiving {
+    root: os::Dir,
+    floor: u32,
+    folder: os::Dir,
+    name: String,
+    part: String,
+    file: Option<std::fs::File>,
+    written: u64,
+    since_floor: u64,
+}
+
+/// How many bytes an upload writes between looks at the disk's free space.
+const FLOOR_EVERY: u64 = 1 << 20;
+
+impl Receiving for DiskReceiving {
+    fn write(&mut self, bytes: &[u8]) -> Result<(), Refused> {
+        let Some(file) = self.file.as_mut() else {
+            return Err(Refused::Unavailable);
+        };
+        file.write_all(bytes).map_err(|error| refused(&error))?;
+        self.written = self.written.saturating_add(bytes.len() as u64);
+        self.since_floor = self.since_floor.saturating_add(bytes.len() as u64);
+        if self.since_floor >= FLOOR_EVERY {
+            self.since_floor = 0;
+            if below_floor(&self.root, self.floor, 0) {
+                return Err(Refused::Full);
+            }
+        }
+        Ok(())
+    }
+
+    fn finish(mut self: Box<Self>, kept: &Kept<'_>) -> Result<(), Refused> {
+        let Some(file) = self.file.take() else {
+            return Err(Refused::Unavailable);
+        };
+        let said = serde_json::json!({
+            "s": kept.size,
+            "h": kept.hash,
+            "n": kept.name,
+            "c": kept.claimed,
+        })
+        .to_string();
+        let meta = meta_name(&self.name);
+        let outcome = (|| {
+            file.sync_all()?;
+            drop(file);
+            let staged = part_name(&meta);
+            let mut beside = self.folder.create(&staged)?;
+            beside.write_all(said.as_bytes())?;
+            beside.sync_all()?;
+            drop(beside);
+            // What it said of itself is there before it is.
+            let placed = self
+                .folder
+                .rename(&staged, &meta)
+                .and_then(|()| self.folder.link(&self.part, &self.name));
+            let _ = self.folder.remove(&staged);
+            placed?;
+            self.folder.sync()
+        })();
+        match outcome {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => Err(Refused::Taken),
+            Err(error) => {
+                let _ = self.folder.remove(&meta);
+                Err(refused(&error))
+            }
+        }
+    }
+}
+
+impl Drop for DiskReceiving {
+    fn drop(&mut self) {
+        let _ = self.folder.remove(&self.part);
+    }
+}
+
+/// Whether writing `incoming` more bytes to the disk `folder` is on would
+/// leave less of it free than `floor` millionths.
+fn below_floor(folder: &os::Dir, floor: u32, incoming: u64) -> bool {
+    if floor == 0 {
+        return false;
+    }
+    let Ok((free, total)) = folder.space() else {
+        return false;
+    };
+    let left = free.saturating_sub(u128::from(incoming));
+    left * u128::from(WHOLE_DISK) < total * u128::from(floor)
+}
+
+/// Why an upload wasn't kept, from a failed write.
+fn refused(error: &std::io::Error) -> Refused {
+    match error.kind() {
+        ErrorKind::StorageFull | ErrorKind::QuotaExceeded => Refused::Full,
+        ErrorKind::AlreadyExists => Refused::Taken,
+        _ => Refused::Unavailable,
+    }
+}
+
 impl Capability for DiskStore {
     fn call<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, Answer> {
         let answer = self.answer(call);
         Box::pin(async move { answer })
+    }
+
+    fn receive(
+        &self,
+        _connection: &str,
+        key: &str,
+        expected: u64,
+    ) -> Result<Box<dyn Receiving + '_>, Refused> {
+        self.receive(key, expected)
     }
 
     fn link_key(&self, _connection: &str, make: bool) -> Option<[u8; 32]> {
@@ -524,6 +703,18 @@ impl Capability for DiskFiles {
             None => Answer::Failed(NOT_FOUND.into()),
         };
         Box::pin(async move { answer })
+    }
+
+    fn receive(
+        &self,
+        connection: &str,
+        key: &str,
+        expected: u64,
+    ) -> Result<Box<dyn Receiving + '_>, Refused> {
+        match self.store(connection) {
+            Some(store) => store.receive(key, expected),
+            None => Err(Refused::Unavailable),
+        }
     }
 
     fn link_key(&self, connection: &str, make: bool) -> Option<[u8; 32]> {
@@ -609,6 +800,12 @@ fn part_name(name: &str) -> String {
     let _ = getrandom::fill(&mut random);
     let suffix: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
     format!(".{name}.{suffix}.part")
+}
+
+/// The name beside file `name` keeping what its upload said of itself: a
+/// hidden name no key can spell.
+fn meta_name(name: &str) -> String {
+    format!(".{name}.upload")
 }
 
 /// Whether `error` says the key names nothing: no such file, or a link,
@@ -843,6 +1040,126 @@ mod os {
 
 #[cfg(test)]
 mod tests {
+    /// An upload appears only when finished, whole, once: what a client
+    /// left part-way is gone, a file already there refuses another, and
+    /// what it said of itself goes with it when it is deleted.
+    #[test]
+    fn an_upload_lands_whole_once_finished_and_only_once() {
+        let dir = std::env::temp_dir().join(format!("jadpo-disk-upload-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = DiskStore::made_at(dir.clone(), 0);
+        let key = jadpo_std::files::key_for(&[5; 16]);
+        let kept = Kept {
+            size: 11,
+            hash: "abc",
+            name: Some("prices.csv"),
+            claimed: Some("csv"),
+        };
+        let stray = || {
+            walk(&dir)
+                .into_iter()
+                .filter(|path| {
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.ends_with(".part"))
+                })
+                .collect::<Vec<_>>()
+        };
+        // A client that stops part-way leaves nothing.
+        {
+            let mut sink = store.receive(&key, 11).expect("starts");
+            sink.write(b"flour,").expect("written");
+            assert!(!dir.join(&key).exists());
+            assert_eq!(stray().len(), 1);
+        }
+        assert!(stray().is_empty());
+        assert!(!dir.join(&key).exists());
+
+        let mut sink = store.receive(&key, 11).expect("starts");
+        sink.write(b"flour,").expect("written");
+        sink.write(b"1.20\n").expect("written");
+        sink.finish(&kept).expect("kept");
+        assert_eq!(
+            std::fs::read(dir.join(&key)).expect("kept"),
+            b"flour,1.20\n"
+        );
+        assert!(stray().is_empty());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let meta = std::fs::metadata(dir.join(&key)).expect("kept");
+            assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        }
+        // What a store is asked about it.
+        let Answer::Value(Value::Record(about)) = store.stat(&key) else {
+            panic!("an answer");
+        };
+        assert_eq!(about.get("size"), Some(&Value::Int(11)));
+        assert_eq!(about.get("hash"), Some(&Value::text("abc")));
+        assert_eq!(about.get("name"), Some(&Value::text("prices.csv")));
+        assert_eq!(about.get("claimed"), Some(&Value::text("csv")));
+        assert!(
+            matches!(about.get("head"), Some(Value::Bytes(head)) if &**head == b"flour,1.20\n"),
+            "{about:?}"
+        );
+
+        // A slot keeps one file, and the file never changes.
+        assert_eq!(store.receive(&key, 1).err(), Some(Refused::Taken));
+        let other = jadpo_std::files::key_for(&[6; 16]);
+        let mut late = store.receive(&other, 11).expect("starts");
+        late.write(b"rye").expect("written");
+        store.put(&other, b"made meanwhile");
+        assert_eq!(late.finish(&kept).err(), Some(Refused::Taken));
+        assert_eq!(
+            std::fs::read(dir.join(&other)).expect("kept"),
+            b"made meanwhile",
+            "the file there stays"
+        );
+
+        assert!(matches!(store.delete(&key), Answer::Value(_)));
+        assert!(!dir.join(&key).exists());
+        let name = key.rsplit('/').next().expect("a name");
+        let beside = dir
+            .join(key.strip_suffix(name).expect("its folder"))
+            .join(meta_name(name));
+        assert!(!beside.exists(), "what it said of itself goes with it");
+        assert!(matches!(store.stat(&key), Answer::Failed(_)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An upload that wouldn't leave the store's floor free is refused
+    /// before it is read, as a put is.
+    #[test]
+    fn an_upload_below_the_floor_is_refused_before_a_byte_lands() {
+        let dir =
+            std::env::temp_dir().join(format!("jadpo-disk-upload-floor-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = DiskStore::made_at(dir.clone(), WHOLE_DISK - 1);
+        let key = jadpo_std::files::key_for(&[7; 16]);
+        assert_eq!(store.receive(&key, 1).err(), Some(Refused::Full));
+        assert!(!dir.join(&key).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn walk(at: &std::path::Path) -> Vec<std::path::PathBuf> {
+        let mut out = Vec::new();
+        let mut folders = vec![at.to_path_buf()];
+        while let Some(folder) = folders.pop() {
+            let Ok(entries) = std::fs::read_dir(&folder) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                    folders.push(path);
+                } else {
+                    out.push(path);
+                }
+            }
+        }
+        out
+    }
+
     /// A store's link key is made once, kept, and can be neither read
     /// through a planted link nor named by a file's key.
     #[cfg(unix)]

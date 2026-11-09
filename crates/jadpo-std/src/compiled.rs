@@ -46,6 +46,8 @@ pub struct SitesPlan {
     /// Each person entity's `export` (area 15, "Export"), by the number
     /// of its plan.
     pub exports: Vec<crate::erasure::ExportPlan>,
+    /// Each `Entity.field_upload()` (area 16, "Uploading"), by number.
+    pub uploads: Vec<crate::files::UploadPlan>,
 }
 
 /// One outside call's site, decoded (areas 11 and 21).

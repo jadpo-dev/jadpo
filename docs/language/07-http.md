@@ -262,7 +262,9 @@ the rest come in the body
   route doesn't read counts as unknown input too.
 - A `GET` or `DELETE` never reads a body.
 - A body is at most 1 MB, and no setting changes that. A larger one
-  answers 413.
+  answers 413. A file a client sends isn't a request's body to a route: it
+  goes to a [slot's address](16-built-in-services.md#uploading), which holds
+  it to the field's `max_size:`.
 - A body is read only when it is sent as JSON (`Content-Type:
   application/json`, or another `application/…+json` type). So a form a
   browser posts from another site never reaches an action.
