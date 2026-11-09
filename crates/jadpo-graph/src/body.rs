@@ -208,7 +208,8 @@ impl Site {
                 | Expr::Propagate { .. }
                 | Expr::Write { .. }
                 | Expr::Request { .. }
-                | Expr::Download { .. },
+                | Expr::Download { .. }
+                | Expr::Upload { .. },
             ) => true,
             Node::Expr(Expr::Binary { op, .. }) => op.can_fault(),
             Node::Expr(Expr::Unary { op, .. }) => *op == UnaryOp::Negate,
@@ -355,6 +356,9 @@ pub enum Expr {
         /// An `update` or `delete` by `id`: the entity's not-found failure.
         not_found: Option<Key>,
         fallible: Fallible,
+        /// Whether it attaches an upload (area 16, "Uploading"): the store
+        /// is asked before the statement, so it is an outside call too.
+        attaches: bool,
     },
     /// `Post.view_count` in an update by `id`: the value stored when the
     /// write runs, which the database works out (area 6, "Counters").
@@ -389,6 +393,16 @@ pub enum Expr {
     Download {
         link: SiteId,
         range: Option<SiteId>,
+    },
+    /// `request { upload: ... body: ... }` in a route test (area 13): a
+    /// file sent to a slot's address, with the type, encoding and name it
+    /// says it has, answered with a `Response` (`status`, `code`).
+    Upload {
+        slot: SiteId,
+        body: SiteId,
+        content_type: Option<SiteId>,
+        content_encoding: Option<SiteId>,
+        file_name: Option<SiteId>,
     },
     /// `item -> expression`, or `(key, value) -> expression`, given to a
     /// standard operation: its parameters in order.

@@ -22,6 +22,23 @@ use crate::{Builtin, Driver};
 /// A stored file (area 2, "Files").
 pub const FILE: &str = "File";
 
+/// The token of a finished upload, in an `Input` (area 16, "Uploading"):
+/// text on the wire, which an ordinary create or update attaches.
+pub const FILE_UPLOAD: &str = "FileUpload";
+
+/// What `Entity.field_upload()` gives (area 16, "Uploading"): where the
+/// client sends the file, and the token that attaches it.
+pub const UPLOAD_SLOT: &str = "UploadSlot";
+
+/// An [`UPLOAD_SLOT`]'s parts, in the order its JSON writes them: the
+/// signed address the bytes go to, the token an `Input` attaches them by,
+/// and the most bytes the address takes.
+pub const UPLOAD_SLOT_FIELDS: [(&str, Part); 3] = [
+    ("url", Part::Of(Builtin::Text)),
+    ("token", Part::Of(Builtin::Text)),
+    ("max_size", Part::Of(Builtin::Int)),
+];
+
 /// What `store.read` gives (area 16).
 pub const FILE_CONTENTS: &str = "FileContents";
 
@@ -59,6 +76,7 @@ pub fn object_fields(name: &str) -> Option<&'static [(&'static str, Part)]> {
     match name {
         FILE => Some(&FILE_FIELDS[..]),
         FILE_LINK => Some(&FILE_LINK_FIELDS[..]),
+        UPLOAD_SLOT => Some(&UPLOAD_SLOT_FIELDS[..]),
         _ => None,
     }
 }
@@ -201,6 +219,137 @@ pub const DELETE: &str = "delete";
 /// in order, as a list of text. `put` and `read` take such a key too; only
 /// the runtime sends any of them, and no file's key can name one.
 pub const LIST: &str = "list";
+
+/// The capability's operation that says what an upload left under a key
+/// (area 16, "Uploading"): its input is `{ key }`, and it answers with a
+/// [`UPLOADED`] of the file's size, hash, name, the type the client claimed
+/// and its first [`HEAD_BYTES`] bytes, for the attach that checks them;
+/// a key nothing was uploaded to is `not_found`.
+pub const STAT: &str = "stat";
+
+/// What [`STAT`] answers.
+pub const UPLOADED: &str = "FileUploaded";
+
+/// How many of a file's first bytes its type is told from: enough for
+/// every magic number, and for text to be seen to be text.
+pub const HEAD_BYTES: usize = 4096;
+
+/// How long an upload slot's address is good for (area 16, "Uploading"):
+/// fifteen minutes. The bytes it took stay a day for a record to hold.
+pub const SLOT_VALID_MS: i64 = 15 * 60 * 1000;
+
+/// The largest field a single slot serves (area 16, "Large uploads go in
+/// parts"): 100 MB, past which a field gets a slot in parts.
+pub const SINGLE_SLOT_LIMIT: u64 = 100_000_000;
+
+/// An upload's path, after `/files/<store>/` (area 16, "Uploading"):
+/// `PUT /files/<store>/uploads/<token>`.
+pub const UPLOADS: &str = "uploads";
+
+/// The name of a field's generated slot operation, `sheet` for
+/// `sheet_upload`, when `operation` is written that way.
+pub fn upload_field(operation: &str) -> Option<&str> {
+    operation
+        .strip_suffix("_upload")
+        .filter(|field| !field.is_empty())
+}
+
+/// One `Entity.field_upload()` (area 16, "Uploading"): the field's
+/// settings the slot is signed for, and who may ask for one.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct UploadPlan {
+    /// The field, `PriceSheet.sheet`, which the slot's token is good for
+    /// and no other.
+    pub field: String,
+    /// The connection keeping the field's files.
+    pub store: String,
+    /// The most bytes the field holds.
+    pub max_size: u64,
+    /// The `FileType` variants it may be; empty for any.
+    pub types: Vec<String>,
+    /// Who may ask: the entity's `create` and `update` grants as they can
+    /// be told with no record to look at; `None` for anyone at all.
+    pub gate: Option<crate::policy::Gate>,
+}
+
+/// What `first`, a file's first bytes, is, as `FileType`'s variant: its
+/// own magic number when it has one, whatever the client claimed; text
+/// otherwise, which `claimed`, or `listed` when it leaves one possibility,
+/// says which text it is. `listed` holds what the field takes, empty for
+/// any. `None` when it is none of them, no bytes at all included.
+pub fn type_of(first: &[u8], claimed: Option<&str>, listed: &[String]) -> Option<&'static str> {
+    if first.is_empty() {
+        return None;
+    }
+    let takes = |variant: &str| listed.is_empty() || listed.iter().any(|name| name == variant);
+    if let Some(variant) = magic(first) {
+        return takes(variant).then_some(variant);
+    }
+    if !looks_like_text(first) {
+        return None;
+    }
+    let json = first
+        .iter()
+        .copied()
+        .find(|byte| !byte.is_ascii_whitespace())
+        .is_some_and(|byte| {
+            matches!(
+                byte,
+                b'{' | b'[' | b'"' | b'-' | b'0'..=b'9' | b't' | b'f' | b'n'
+            )
+        });
+    let possible: Vec<&'static str> = crate::standard::FILE_TYPES
+        .iter()
+        .map(|(variant, _)| *variant)
+        .filter(|variant| {
+            matches!(*variant, "csv" | "tsv") || (json && matches!(*variant, "json" | "json_lines"))
+        })
+        .filter(|variant| takes(variant))
+        .collect();
+    if let Some(claimed) =
+        claimed.and_then(|claimed| possible.iter().copied().find(|variant| *variant == claimed))
+    {
+        return Some(claimed);
+    }
+    match possible.as_slice() {
+        [only] => Some(only),
+        _ => None,
+    }
+}
+
+/// The variant a file's magic number says it is.
+fn magic(first: &[u8]) -> Option<&'static str> {
+    if first.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        Some("png")
+    } else if first.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpeg")
+    } else if first.get(..4) == Some(&b"RIFF"[..]) && first.get(8..12) == Some(&b"WEBP"[..]) {
+        Some("webp")
+    } else if first.starts_with(b"%PDF-") {
+        Some("pdf")
+    } else {
+        None
+    }
+}
+
+/// Whether `first`, however it was cut short, is UTF-8 with no control
+/// bytes but white space: a text file's first bytes.
+fn looks_like_text(first: &[u8]) -> bool {
+    let bytes = first.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(first);
+    let readable = match std::str::from_utf8(bytes) {
+        Ok(text) => text,
+        // Only a character cut off by the end of the window.
+        Err(error) if error.error_len().is_none() => bytes
+            .get(..error.valid_up_to())
+            .and_then(|valid| std::str::from_utf8(valid).ok())
+            .unwrap_or(""),
+        Err(_) => return false,
+    };
+    !readable.is_empty()
+        && !readable
+            .chars()
+            .any(|ch| ch.is_control() && !matches!(ch, '\n' | '\r' | '\t' | '\u{0C}'))
+}
 
 /// The event a change that leaves a file held by no record keeps in the
 /// outbox (chunk B3), whose generated subscriber deletes the file's bytes
@@ -394,6 +543,48 @@ mod tests {
             Some(FILE_FIELDS.len())
         );
         assert_eq!(object_fields("FileContents"), None);
+    }
+
+    #[test]
+    fn a_files_type_comes_from_its_first_bytes_and_not_from_what_was_claimed() {
+        let png = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0];
+        let listed = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+        assert_eq!(type_of(&png, None, &[]), Some("png"));
+        // The bytes win over the claim, and the field's list holds.
+        assert_eq!(type_of(&png, Some("pdf"), &[]), Some("png"));
+        assert_eq!(type_of(&png, None, &listed(&["csv"])), None);
+        assert_eq!(type_of(b"%PDF-1.7", None, &listed(&["pdf"])), Some("pdf"));
+        assert_eq!(type_of(&[0xFF, 0xD8, 0xFF, 0xE0], None, &[]), Some("jpeg"));
+        assert_eq!(type_of(b"RIFF1234WEBPVP8 ", None, &[]), Some("webp"));
+        // Text: a field that takes only one kind needs no claim.
+        assert_eq!(type_of(b"a,b\n1,2\n", None, &listed(&["csv"])), Some("csv"));
+        // One that takes any needs one, and only one the bytes could be.
+        assert_eq!(type_of(b"a,b\n", None, &[]), None);
+        assert_eq!(type_of(b"a,b\n", Some("csv"), &[]), Some("csv"));
+        assert_eq!(type_of(b"a,b\n", Some("json"), &[]), None);
+        assert_eq!(type_of(b"{\"a\":1}", Some("json"), &[]), Some("json"));
+        assert_eq!(type_of(b"", None, &listed(&["csv"])), None);
+        // A control byte, or bytes that aren't UTF-8, aren't text.
+        assert_eq!(type_of(b"a\0b", Some("csv"), &listed(&["csv"])), None);
+        assert_eq!(type_of(&[0xC3, 0x28], Some("csv"), &listed(&["csv"])), None);
+        // A character cut off by the window's end is still text.
+        assert_eq!(
+            type_of(
+                "caf\u{e9}".as_bytes().split_last().unwrap().1,
+                None,
+                &listed(&["csv"])
+            ),
+            Some("csv")
+        );
+    }
+
+    #[test]
+    fn a_fields_slot_is_named_after_it() {
+        assert_eq!(upload_field("sheet_upload"), Some("sheet"));
+        assert_eq!(upload_field("big_sheet_upload"), Some("big_sheet"));
+        assert_eq!(upload_field("_upload"), None);
+        assert_eq!(upload_field("upload"), None);
+        assert_eq!(upload_field("get"), None);
     }
 
     #[test]

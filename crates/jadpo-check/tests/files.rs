@@ -1132,3 +1132,239 @@ fn a_files_bytes_go_to_a_provider_and_nowhere_else() {
         "{found:?}"
     );
 }
+
+/// A `File` field gives its entity `<field>_upload()` (area 16,
+/// "Uploading"), which takes nothing and gives an `UploadSlot`; a name
+/// that is no `File` field of the entity is an unknown operation.
+#[test]
+fn a_file_fields_slot_is_generated() {
+    let asked = |body: &str| {
+        let source = action(&format!("action asked() -> UploadSlot {{\n{body}\n}}\n"));
+        ids(&[("domains/pantry/actions/asked.jadpo", &source)])
+    };
+    assert_eq!(
+        asked("    return ShelfSheet.sheet_upload()"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        asked("    return ShelfSheet.label_upload()"),
+        ["semantic.unknown_callee"]
+    );
+    assert_eq!(
+        asked("    return ShelfSheet.sheet_upload(1)"),
+        ["type.argument_count"]
+    );
+}
+
+/// A slot is an action's: nothing else may ask for one.
+#[test]
+fn a_function_cant_ask_for_a_slot() {
+    let source =
+        action("function asked() -> UploadSlot {\n    return ShelfSheet.sheet_upload()\n}\n");
+    let found = ids(&[("domains/pantry/functions/asked.jadpo", &source)]);
+    assert!(
+        found
+            .iter()
+            .any(|rule| rule == "effect.function_persistence"),
+        "{found:?}"
+    );
+}
+
+/// A field over 100 MB gets a slot in parts, which isn't built yet, so a
+/// plain slot for one is refused where it is asked for.
+#[test]
+fn a_slot_for_a_field_over_a_hundred_mb_is_not_built_yet() {
+    let entity = "entity BigSheet {\n    id: Uuid\n    sheet: File {\n        store: sheets\n        max_size: 200mb\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n}\n";
+    let source = "use pantry/entities { BigSheet }\n\naction asked() -> UploadSlot {\n    return BigSheet.sheet_upload()\n}\n";
+    assert_eq!(
+        ids(&[
+            ("domains/pantry/entities/big_sheet.jadpo", entity),
+            ("domains/pantry/actions/asked.jadpo", source),
+        ]),
+        ["toolchain.not_built_yet"]
+    );
+}
+
+/// A write takes a `FileUpload` for a `File` field, in `set:` and `patch:`
+/// alike; nothing else turns a token into a stored file.
+#[test]
+fn a_write_attaches_an_upload_and_nothing_else_does() {
+    const UPLOADED: &str = "domains/pantry/types/sheet_upload.jadpo";
+    let upload = "type SheetUpload = Input {\n    sheet: FileUpload\n}\n";
+    let attaching = action(
+        "action attach(input: SheetUpload) -> ShelfSheet {\n    return ShelfSheet.create {\n        set: {\n            sheet: input.sheet\n        }\n    }\n}\n",
+    )
+    .replace("use pantry/types { SheetText, ShelfRow }", "use pantry/types { SheetText, ShelfRow, SheetUpload }");
+    assert_eq!(
+        ids(&[
+            (UPLOADED, upload),
+            ("domains/pantry/actions/attach.jadpo", &attaching),
+        ]),
+        Vec::<String>::new()
+    );
+    // Reading the bytes of a token isn't attaching one.
+    let reading = action(
+        "action read_it(input: SheetUpload) -> FileContents {\n    return sheets.read(input.sheet)\n}\n",
+    )
+    .replace("use pantry/types { SheetText, ShelfRow }", "use pantry/types { SheetText, ShelfRow, SheetUpload }");
+    assert_eq!(
+        ids(&[
+            (UPLOADED, upload),
+            ("domains/pantry/actions/read_it.jadpo", &reading),
+        ]),
+        ["type.mismatch"]
+    );
+}
+
+/// The store is asked before a write that attaches, so the write is held
+/// to what any outside call is: it comes before the action's first write
+/// (area 6, "Several outside calls").
+#[test]
+fn an_upload_is_attached_before_the_actions_first_write() {
+    let upload = "type SheetUpload = Input {\n    sheet: FileUpload\n}\n";
+    let source = action(
+        "action attach(input: SheetUpload, other: ShelfSheet) -> ShelfSheet {\n    var first: ShelfSheet = ShelfSheet.create {\n        set: {\n            sheet: other.sheet\n        }\n    }\n    var second: ShelfSheet = ShelfSheet.create {\n        set: {\n            sheet: input.sheet\n        }\n    }\n    assert first.id != second.id\n    return second\n}\n",
+    )
+    .replace("use pantry/types { SheetText, ShelfRow }", "use pantry/types { SheetText, ShelfRow, SheetUpload }");
+    let found = ids(&[
+        ("domains/pantry/types/sheet_upload.jadpo", upload),
+        ("domains/pantry/actions/attach.jadpo", &source),
+    ]);
+    assert!(
+        found.iter().any(|rule| rule == "data.write_before_call"),
+        "{found:?}"
+    );
+}
+
+/// Only a request carries a token, and only an answer a slot.
+#[test]
+fn a_token_comes_in_and_a_slot_goes_out() {
+    let refused = |name: &str, source: &str| {
+        ids(&[(&format!("domains/pantry/types/{name}.jadpo")[..], source)])
+    };
+    assert_eq!(
+        refused(
+            "given_slot",
+            "type GivenSlot = Input {\n    slot: UploadSlot\n}\n"
+        ),
+        ["type.batch_input"]
+    );
+    assert_eq!(
+        refused(
+            "kept_slot",
+            "type KeptSlot = Output {\n    slot: UploadSlot\n}\n"
+        ),
+        Vec::<String>::new()
+    );
+}
+
+/// The runtime answers a store's uploads before any route, so a route at
+/// one would never run (area 16, "Uploading").
+#[test]
+fn a_route_at_a_stores_uploads_is_refused() {
+    let route = |path: &str| {
+        let routes = format!(
+            "use pantry/actions {{ whoever }}\nuse pantry/entities {{ ShelfSheet }}\n\nroutes Files {{\n    prefix: /files\n\n    GET {path} {{\n        authentication: RouteAuthentication.none\n        status: SuccessStatus.no_content\n        run: whoever(link)\n    }}\n}}\n"
+        );
+        ids(&[
+            (
+                "domains/pantry/actions/whoever.jadpo",
+                "use pantry/entities { ShelfSheet }\n\naction whoever(id: ShelfSheet.id) -> Unit {\n    assert id == id\n}\n",
+            ),
+            ("domains/pantry/routes/files.jadpo", &routes),
+        ])
+        .into_iter()
+        .filter(|rule| rule.starts_with("route."))
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        route("/sheets/uploads/{link: ShelfSheet.id}"),
+        ["route.path_overlap"]
+    );
+    assert_eq!(
+        route("/scans/uploads/{link: ShelfSheet.id}"),
+        Vec::<String>::new()
+    );
+}
+
+/// A route asking for a slot reaches the entity's `create` or `update`
+/// grant: one that grants neither can never answer.
+#[test]
+fn a_route_asking_for_a_slot_needs_a_grant() {
+    let entity = |lists: &str| {
+        format!(
+            "entity Bin {{\n    id: Uuid\n    sheet: File {{\n        store: sheets\n        max_size: 1mb\n    }}\n\n    policy: {{\n{lists}\n    }}\n}}\n"
+        )
+    };
+    let reached = |lists: &str| {
+        ids(&[
+            ("domains/pantry/entities/bin.jadpo", &entity(lists)),
+            (
+                "domains/pantry/actions/ask.jadpo",
+                "use pantry/entities { Bin }\n\naction ask() -> UploadSlot {\n    return Bin.sheet_upload()\n}\n",
+            ),
+            (
+                "domains/pantry/routes/bins.jadpo",
+                "use pantry/actions { ask }\n\nroutes Bins {\n    prefix: /bins\n\n    POST /slot {\n        authentication: RouteAuthentication.none\n        output: UploadSlot\n        run: ask()\n    }\n}\n",
+            ),
+        ])
+        .into_iter()
+        .filter(|rule| rule != "record.out_of_date")
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        reached("        create: [Access.public]\n        read: [Access.public]"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        reached("        update: [Access.public]\n        read: [Access.public]"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        reached("        read: [Access.public]"),
+        ["policy.effect_ungranted"]
+    );
+    assert_eq!(
+        reached("        create: [Access.authenticated]\n        read: [Access.public]"),
+        ["policy.public_grant_missing"]
+    );
+}
+
+/// A slot, and the write that attaches an upload, each use the field's
+/// store, so a deployable that does either has to reach it (area 16,
+/// "Uploading"), and it is listed as one that keeps the deployable on
+/// one server.
+#[test]
+fn asking_for_a_slot_or_attaching_reaches_the_fields_store() {
+    let reached = |name: &str, action_source: &str, route: &str| {
+        let db = jadpo_db::Database::default();
+        let routes = format!(
+            "use pantry/actions {{ {name} }}\nuse pantry/types {{ SheetUpload }}\n\nroutes Bins {{\n    prefix: /bins\n\n{route}\n}}\n"
+        );
+        let mut files: Vec<(&str, &str)> = vec![APP];
+        files.extend_from_slice(BASE);
+        files.push((
+            "domains/pantry/types/sheet_upload.jadpo",
+            "type SheetUpload = Input {\n    sheet: FileUpload\n}\n",
+        ));
+        files.push(("domains/pantry/actions/acted.jadpo", action_source));
+        files.push(("domains/pantry/routes/bins.jadpo", &routes));
+        let project = support::project(&db, Layout::Project, &files);
+        let all = jadpo_check::deployables::reaches(&db, project);
+        all.first()
+            .map(|found| found.connections.keys().cloned().collect::<Vec<String>>())
+            .unwrap_or_default()
+    };
+    let asked = reached(
+        "slot_only",
+        "use pantry/entities { ShelfSheet }\n\naction slot_only() -> UploadSlot {\n    return ShelfSheet.sheet_upload()\n}\n",
+        "    POST /slot {\n        authentication: RouteAuthentication.none\n        output: UploadSlot\n        run: slot_only()\n    }",
+    );
+    assert_eq!(asked, ["sheets"]);
+    let attached = reached(
+        "attach_only",
+        "use pantry/entities { ShelfSheet }\nuse pantry/types { SheetUpload }\n\naction attach_only(input: SheetUpload) -> Unit {\n    var kept: ShelfSheet = ShelfSheet.create {\n        set: {\n            sheet: input.sheet\n        }\n    }\n    assert kept.id == kept.id\n}\n",
+        "    POST / {\n        authentication: RouteAuthentication.none\n        input: SheetUpload\n        status: SuccessStatus.no_content\n        run: attach_only(input)\n    }",
+    );
+    assert_eq!(attached, ["sheets"]);
+}

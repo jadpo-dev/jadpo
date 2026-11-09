@@ -394,7 +394,7 @@ fn serve<P: Executor>(program: P, variables: &BTreeMap<String, String>) {
                 "request"=>{
                     let headers=command["headers"].as_array().map(|hs|hs.iter().map(|h|(h[0].as_str().unwrap().into(),h[1].as_str().unwrap().into())).collect()).unwrap_or_default();
                     let (path, query)=command["path"].as_str().unwrap().split_once('?').unwrap_or((command["path"].as_str().unwrap(),""));
-                    let request=jadpo_runtime::http::Request {query:if query.is_empty(){None}else{Some(query.into())},method:command["method"].as_str().unwrap().into(),path:path.into(),headers,body:command["body"].as_str().unwrap_or("").as_bytes().to_vec(),address:Some("127.0.0.1".into()),too_large:false};
+                    let request=jadpo_runtime::http::Request {query:if query.is_empty(){None}else{Some(query.into())},method:command["method"].as_str().unwrap().into(),path:path.into(),headers,body:command["body"].as_str().unwrap_or("").as_bytes().to_vec(),address:Some("127.0.0.1".into()),too_large:false,stream:None};
                     let response=jadpo_runtime::http::serve_request(&program.app(),&program,&host,&worker,&request).await;
                     deferred.extend(response.deferred);
                     json!({"status":response.status,"headers":response.headers,"body":String::from_utf8(response.body).unwrap()})

@@ -1065,7 +1065,9 @@ impl<'t> Codecs<'t> {
                         let id = self.codec(&crate::types::batch_part(*part));
                         // A link's size goes out as a JSON number: no file
                         // comes near the size where one loses precision.
-                        if name == jadpo_std::files::FILE_LINK && *field == "size" {
+                        if (name == jadpo_std::files::FILE_LINK && *field == "size")
+                            || (name == jadpo_std::files::UPLOAD_SLOT && *field == "max_size")
+                        {
                             self.as_number(id)
                         } else {
                             id
@@ -1244,7 +1246,11 @@ impl<'t> Codecs<'t> {
                     }
                     if let Some(batch) = jadpo_std::batch::OBJECTS
                         .into_iter()
-                        .chain([jadpo_std::files::FILE, jadpo_std::files::FILE_LINK])
+                        .chain([
+                            jadpo_std::files::FILE,
+                            jadpo_std::files::FILE_LINK,
+                            jadpo_std::files::UPLOAD_SLOT,
+                        ])
                         .find(|object| *object == name)
                     {
                         // In what a route sends, a `File` is its signed

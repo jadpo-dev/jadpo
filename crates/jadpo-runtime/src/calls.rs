@@ -104,6 +104,35 @@ pub async fn files(
     }
 }
 
+/// `Entity.field_upload()` at site `at` (area 16, "Uploading"): a slot
+/// for `plan`'s field, to whoever `plan`'s grants let ask, signed for the
+/// next fifteen minutes. Nothing is asked of the store.
+pub async fn upload_slot(
+    ctx: &mut Ctx<'_>,
+    plan: &jadpo_std::files::UploadPlan,
+    at: u32,
+) -> Called {
+    if let Some(gate) = &plan.gate {
+        match crate::admit(ctx, gate, at).await {
+            crate::Stored::Value(_) => {}
+            crate::Stored::Failed(failure) => return Called::Failed(failure),
+            crate::Stored::Fault(fault) => return Called::Fault(fault),
+            crate::Stored::Conflict { .. } => {
+                return Called::defect(ctx, "a slot's grants that refused with a conflict", at);
+            }
+        }
+    }
+    let Some(id) = ctx.new_id() else {
+        return Called::defect(ctx, "a slot's key with no randomness to make it", at);
+    };
+    let key = jadpo_std::files::key_for(&id);
+    let now = ctx.env().clock.now();
+    match crate::http::uploads::slot_value(ctx.host(), plan, key, now) {
+        Some(slot) => Called::Value(slot),
+        None => Called::defect(ctx, "a slot for a store that signs nothing", at),
+    }
+}
+
 // --- providers --------------------------------------------------------------------
 
 /// `connection.resource.operation(input)` at site `at`, as `call` decodes

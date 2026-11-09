@@ -122,7 +122,6 @@ D1 first: the site starts once D1 has merged.
   Split by size (2026-11-08) into the parts below, taken in order,
   each widening `error_format_scope` to the rules it finished; delete it
   once all are.
-- [ ] **D13c10 `query.*`, `record.*` and `visibility.*`** `opus · high`: 28 pages.
 - [ ] **D13c11 `policy.*`, `rate_limits.*`, `connection.*`, `constant.*`, `naming.*` and `import.*`** `opus · high`: 30 pages.
 - [ ] **D13c12 `configuration.*`, `deployable.*`, `toolchain.*`, `install.*`, `publish.*` and `library.*`** `opus · high`: 34 pages.
 - [ ] **D13c13 `translation.*`, `layout.*` and `email.*`** `opus · high`: 33 pages.
@@ -270,18 +269,6 @@ work below (Richard, 2026-11-08).
    The disk driver in production moved here from item 5; the `search`,
    `bot_check` and `scanning` capabilities, image variants, the
    `telemetry:` section and custom metrics stay under item 5.
-   - [ ] **B5 Uploads** `opus · xhigh`: area 16, "Uploading", "Compressed
-     uploads" and "The disk driver" (uploads); area 2, `FileUpload` and
-     `UploadSlot`; area 9, the slot's grant. `Entity.field_upload()`
-     giving a 15-minute `UploadSlot` to a caller with `create` or
-     `update` on the entity; the disk driver's upload route, streamed to
-     a temporary file, `413` at the first byte over `max_size:`, hashed,
-     synced and renamed; a `FileUpload` in an `Input`, attached by an
-     ordinary create or update once the runtime has checked the file is
-     there, its size and its type from its first bytes (`invalid_value`
-     otherwise, B1's check for the rest); a `Content-Encoding` refused.
-     Done when route tests ask for a slot, upload, attach and download on
-     both executors, and each refusal is tested.
    - [ ] **B6 Large uploads in parts** `opus · high`: area 16, "Large
      uploads go in parts". A field over 100 MB gets a multipart slot of
      equal parts, each sent to `PUT /files/<store>/uploads/<slot>/parts/<n>`

@@ -31,6 +31,10 @@ pub(crate) const RESPONSE: &str = "Response";
 /// route's, so its members are the bytes it read (area 13, "Route tests").
 const DOWNLOADED: &str = "FileDownload";
 
+/// The output type a `request { upload: }` carries in its `Response`:
+/// nothing comes back but its status (area 13, "Route tests").
+const SENT: &str = "FileSent";
+
 /// What the walk decided about one request, for the typed body.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct RequestFact {
@@ -88,6 +92,12 @@ impl Body<'_> {
             .find(|(key, _)| tree::name_text(key).as_deref() == Some("link"))
         {
             return self.download_request(record, &link);
+        }
+        if let Some((_, slot)) = tree::members(record.member_list())
+            .into_iter()
+            .find(|(key, _)| tree::name_text(key).as_deref() == Some("upload"))
+        {
+            return self.upload_request(record, &slot);
         }
         let mut method = None;
         let mut path = None;
@@ -521,6 +531,94 @@ impl Body<'_> {
         )
     }
 
+    /// `request { method: HttpMethod.put upload: ... body: ... }`: a file
+    /// sent to a slot's address, as a client sends one (area 16,
+    /// "Uploading"). `upload:` is the `UploadSlot` a response gave, or an
+    /// address as text, to test one that was altered; `content_type:`,
+    /// `content_encoding:` and `file_name:` are what it says of itself.
+    fn upload_request(&mut self, record: &ast::RecordExpr, slot: &ast::Member) -> Ty {
+        let mut ok = true;
+        let mut method = false;
+        let mut body = false;
+        for (key, member) in tree::members(record.member_list()) {
+            let word = tree::name_text(&key).unwrap_or_default();
+            let span = self.span(&key);
+            match word.as_str() {
+                "upload" => {}
+                "method" => {
+                    let is_put = member.value().and_then(|value| dotted(&value)).is_some_and(
+                        |(first, rest)| {
+                            tree::name_ref_text(&first).as_deref() == Some(HttpMethod::NAME)
+                                && matches!(rest.as_slice(), [only] if tree::name_ref_text(only).as_deref() == Some("put"))
+                        },
+                    );
+                    if is_put {
+                        method = true;
+                    } else {
+                        ok = false;
+                        self.request_problem(
+                            span,
+                            "A file is sent to a slot with `method: HttpMethod.put`",
+                        );
+                    }
+                }
+                "body" => {
+                    body = true;
+                    if let Some(value) = member.value() {
+                        self.check(&value, &Ty::Prim(Prim::Bytes));
+                    }
+                }
+                "content_type" | "content_encoding" | "file_name" => {
+                    if let Some(value) = member.value() {
+                        self.check(&value, &Ty::Prim(Prim::Text));
+                    }
+                }
+                other => {
+                    ok = false;
+                    self.request_problem(
+                        span,
+                        &format!(
+                            "A request with `upload:` holds `method:`, `body:`, `content_type:`, `content_encoding:` and `file_name:`, not `{other}:`"
+                        ),
+                    );
+                    self.skip_member(&member);
+                }
+            }
+        }
+        if !method || !body {
+            ok = false;
+            let span = self.span(slot);
+            self.request_problem(
+                span,
+                "A request with `upload:` needs its `method:` and `body:`",
+            );
+        }
+        let Some(value) = slot.value() else {
+            return Ty::Error;
+        };
+        let given = self.infer(&value);
+        let is_slot = matches!(
+            given.strip_nullable(),
+            Ty::Opaque(name, _) if name == jadpo_std::files::UPLOAD_SLOT
+        ) || matches!(given.strip_nullable(), Ty::Prim(Prim::Text));
+        if !given.has_error() && !is_slot {
+            ok = false;
+            let span = self.span(&value);
+            self.request_problem(
+                span,
+                "`upload:` takes an `UploadSlot` from a response's output, or an address as text",
+            );
+        }
+        if !ok || given.has_error() {
+            return Ty::Error;
+        }
+        self.facts.uploads.insert(node_key(record.syntax()));
+        Ty::Opaque(
+            RESPONSE.to_string(),
+            vec![Ty::Opaque(SENT.to_string(), Vec::new())],
+        )
+    }
+
     fn request_problem(&mut self, span: jadpo_diag::Span, message: &str) {
         self.out.push(
             Diagnostic::new(&rule::SEMANTIC_REQUEST_INVALID, message.to_string())
@@ -662,6 +760,13 @@ fn generated_privacy(
 /// A route test's response's fields (`status`, `code`, `output`), with
 /// their types for a response whose output is `args`' one.
 pub(super) fn response_members(args: &[Ty]) -> Vec<(&'static str, Ty)> {
+    // A file sent to a slot's address: its status, and nothing back.
+    if matches!(args.first(), Some(Ty::Opaque(name, _)) if name == SENT) {
+        return vec![
+            ("status", Ty::Prim(Prim::Int)),
+            ("code", Ty::Prim(Prim::Text).nullable()),
+        ];
+    }
     // A file's link followed: the bytes it read in place of an output.
     if matches!(args.first(), Some(Ty::Opaque(name, _)) if name == DOWNLOADED) {
         return vec![

@@ -868,6 +868,29 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             continue;
         }
+        // The runtime answers a store of files' uploads before any route
+        // (area 16, "Uploading").
+        if let [
+            Segment::Fixed(first),
+            Segment::Fixed(store),
+            Segment::Fixed(uploads),
+            _,
+        ] = route.segments.as_slice()
+            && first == jadpo_std::files::DOWNLOADS
+            && uploads == jadpo_std::files::UPLOADS
+            && connections.files().iter().any(|name| name == store)
+        {
+            out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_PATH_OVERLAP,
+                    format!("`{}` is a store's upload address", route.path()),
+                )
+                .at(span.clone(), "answered by the runtime")
+                .reason(format!("The runtime answers `/files/{store}/uploads/<token>` itself, before any route, since `{store}` is a store of files, so this route would never run."))
+                .next(format!("Give `{}` in `{group}` another path", route.label())),
+            );
+            continue;
+        }
         // The runtime answers a store of files' download links before any
         // route (area 16, "Downloading").
         if let [Segment::Fixed(first), Segment::Fixed(store), _] = route.segments.as_slice()
@@ -1132,7 +1155,9 @@ pub fn is_issued(ty: &Ty) -> bool {
         ty,
         Ty::Opaque(name, args)
             if args.is_empty()
-                && (name == jadpo_std::http::ISSUED_TOKEN || name == jadpo_std::http::ISSUED_KEY)
+                && (name == jadpo_std::http::ISSUED_TOKEN
+                    || name == jadpo_std::http::ISSUED_KEY
+                    || name == jadpo_std::files::UPLOAD_SLOT)
     )
 }
 

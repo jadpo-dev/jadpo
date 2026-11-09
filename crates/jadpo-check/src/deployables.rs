@@ -917,6 +917,7 @@ fn reach(
     }
     let ai = crate::ai::settings(db, project).connection.clone();
     let files = crate::data::connections(db, project).files();
+    let model = crate::data::data_model(db, project);
     let mut pending = roots;
     while let Some(key) = pending.pop() {
         if !out.callables.insert(key.clone()) {
@@ -931,9 +932,37 @@ fn reach(
             if let Node::Expr(BodyExpr::Constant { constant }) = &site.node {
                 pending.push(constant.clone());
             }
+            // A write that attaches an upload asks the field's store about
+            // the file (area 16, "Uploading").
+            if let Node::Expr(BodyExpr::Write {
+                attaches: true,
+                entity,
+                ..
+            }) = &site.node
+                && let Some(held) = model.entity(entity.name())
+            {
+                for file in held.fields.iter().filter_map(|field| field.file.as_ref()) {
+                    connection(&mut out, &file.store, Via::Callable(key.clone()));
+                }
+            }
         }
         for (_, callee) in body.calls() {
             match callee {
+                // A field's upload slot is the field's store's (area 16,
+                // "Uploading").
+                Callee::Entity { entity, operation }
+                    if jadpo_std::files::upload_field(operation).is_some() =>
+                {
+                    let field = jadpo_std::files::upload_field(operation).unwrap_or_default();
+                    if let Some(store) = model
+                        .entity(entity.name())
+                        .and_then(|held| held.fields.iter().find(|f| f.name == field))
+                        .and_then(|found| found.file.as_ref())
+                        .map(|file| &file.store)
+                    {
+                        connection(&mut out, store, Via::Callable(key.clone()));
+                    }
+                }
                 Callee::Function(next)
                 | Callee::Action(next)
                 | Callee::Query(next)

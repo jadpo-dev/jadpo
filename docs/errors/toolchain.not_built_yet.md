@@ -34,6 +34,10 @@ be told where the file is kept and be given none of it
 `FileContents` in a route's `output:` or a failure's `client:` is refused too,
 since the answer would hold the whole file as Base64.
 
+A slot for a `File` field over 100 MB is refused where it is asked for, since
+such a field gets a slot in parts, which isn't built yet
+([Large uploads go in parts](../language/16-built-in-services.md#large-uploads-go-in-parts)).
+
 An email's attachments are its `File` fields, one file each, so a `List<File>`,
 a `Set<File>` or a `Map` of them and a `FileContents` on an email or a partial
 are refused, as a `File` on a partial is, since each would compile and never be

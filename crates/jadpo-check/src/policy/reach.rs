@@ -33,6 +33,9 @@ use crate::types::{Fact, body_facts, named};
 pub enum Act {
     /// An entity's records, by entity name, as its own body acts them.
     Entity(String, Effect),
+    /// `Entity.field_upload()`, by entity name: decided by its `create`
+    /// or `update` grant (area 16, "Uploading").
+    Uploads(String),
     /// An action it calls, by name.
     Calls(String),
     /// A query it calls, by name.
@@ -80,6 +83,7 @@ pub fn acts_of<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> BTree
                 }
                 Fact::Action(callee) => Act::Calls(callee.name().to_string()),
                 Fact::Gets(entity) => Act::Entity(entity.clone(), Effect::Read),
+                Fact::Uploads(entity) => Act::Uploads(entity.clone()),
                 Fact::Queries(query) => Act::Queries(query.clone()),
                 Fact::Session(op) => {
                     let identity = crate::identity::identity(db, project);
@@ -313,6 +317,24 @@ fn reached(
                         _ => (own(entity, *effect), None),
                     };
                     push(entity, *effect, grants, line, Some(&current), &mut out);
+                }
+                // A slot's asker needs either grant, as one list.
+                Act::Uploads(entity) => {
+                    any = true;
+                    let mut grants = own(entity, Effect::Create);
+                    for grant in own(entity, Effect::Update) {
+                        if !grants.contains(&grant) {
+                            grants.push(grant);
+                        }
+                    }
+                    push(
+                        entity,
+                        Effect::Create,
+                        grants,
+                        None,
+                        Some(&current),
+                        &mut out,
+                    );
                 }
                 Act::Calls(_) => {}
                 Act::Queries(query) => {

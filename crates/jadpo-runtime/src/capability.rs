@@ -322,6 +322,22 @@ pub trait Capability {
         None
     }
 
+    /// Starts keeping an upload as file `key` of `connection` (area 16,
+    /// "Uploading"), `expected` bytes the most it says it will hold: what
+    /// it is given goes to the file a piece at a time, and it appears
+    /// whole only when finished. Read directly rather than through the
+    /// seam: an upload is a request's, no action's call. Anything but a
+    /// store of files refuses.
+    fn receive(
+        &self,
+        connection: &str,
+        key: &str,
+        expected: u64,
+    ) -> Result<Box<dyn Receiving + '_>, Refused> {
+        let _ = (connection, key, expected);
+        Err(Refused::Unavailable)
+    }
+
     /// The inputs of the calls of `operation` through `connection` it was
     /// sent, in order, one per call however often it asked again: what a
     /// test reads as `.requests` (area 13; area 21, chunk 5.5v3). Only a
@@ -330,6 +346,37 @@ pub trait Capability {
         let _ = (connection, operation);
         Vec::new()
     }
+}
+
+/// Why a store didn't take an upload (area 16, "Uploading").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refused {
+    /// It would leave less free than the store's floor.
+    Full,
+    /// A file is already kept under the key.
+    Taken,
+    /// It couldn't be asked.
+    Unavailable,
+}
+
+/// What a store keeps of an upload beside its bytes (area 16, "Uploading").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Kept<'a> {
+    pub size: u64,
+    pub hash: &'a str,
+    /// The name the client gave it.
+    pub name: Option<&'a str>,
+    /// The `FileType` variant the client claimed, only ever a hint.
+    pub claimed: Option<&'a str>,
+}
+
+/// An upload a store is keeping: dropped unfinished, it leaves nothing.
+pub trait Receiving {
+    /// The next of its bytes.
+    fn write(&mut self, bytes: &[u8]) -> Result<(), Refused>;
+    /// Its last byte has been written: makes it the file, whole, with
+    /// `kept` beside it, or refuses if a file is there already.
+    fn finish(self: Box<Self>, kept: &Kept<'_>) -> Result<(), Refused>;
 }
 
 /// How a logged call ended. Never with its values.

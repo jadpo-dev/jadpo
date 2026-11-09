@@ -423,6 +423,19 @@ fn children(expr: &Expr) -> Vec<SiteId> {
             out.push(*link);
             out.extend(*range);
         }
+        Expr::Upload {
+            slot,
+            body,
+            content_type,
+            content_encoding,
+            file_name,
+        } => {
+            out.push(*slot);
+            out.push(*body);
+            out.extend(*content_type);
+            out.extend(*content_encoding);
+            out.extend(*file_name);
+        }
         Expr::Request {
             params,
             input,

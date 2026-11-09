@@ -594,9 +594,10 @@ details = [
 [[group.page]]
 title = "Files"
 status = ["16-built-in-services: Files"]
-missing = "uploads, downloads, the S3 driver and jadpo files"
+missing = "uploads in parts, the S3 driver and jadpo files"
 topics = [
   "files",
+  "uploading",
 ]
 details = [
   "files-put-read-and-the-disk-driver-in-development",

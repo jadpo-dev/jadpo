@@ -1394,6 +1394,15 @@ pub trait TypeView {
             return false;
         }
         let expected = expected.strip_nullable();
+        // A `File` field set from a stored file or a finished upload
+        // (area 16, "Uploading"): only a write's `set:` and `patch:` ask.
+        if matches!(expected, Ty::Opaque(name, _) if name == super::body::ATTACHED) {
+            return matches!(
+                self.structure(actual).strip_nullable(),
+                Ty::Opaque(name, _)
+                    if name == jadpo_std::files::FILE || name == jadpo_std::files::FILE_UPLOAD
+            );
+        }
         match (actual.strip_nullable(), expected) {
             (Ty::List(a), Ty::List(b)) | (Ty::Set(a), Ty::Set(b)) => {
                 return a == b || a.has_error() || b.has_error();

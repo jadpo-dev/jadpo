@@ -3016,7 +3016,11 @@ pub(crate) fn holds_batch(
     match ty {
         Ty::Opaque(name, args) => jadpo_std::batch::OBJECTS
             .into_iter()
-            .chain([jadpo_std::files::FILE, jadpo_std::files::FILE_CONTENTS])
+            .chain([
+                jadpo_std::files::FILE,
+                jadpo_std::files::FILE_CONTENTS,
+                jadpo_std::files::UPLOAD_SLOT,
+            ])
             .find(|batch| batch == name)
             .or_else(|| args.iter().find_map(|arg| holds_batch(table, arg, seen))),
         Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => holds_batch(table, inner, seen),
@@ -3240,6 +3244,10 @@ pub(crate) fn batch_input(what: &str, batch: &str, span: Span) -> Diagnostic {
         problem
             .reason("Only `store.read` builds a `FileContents`, from the bytes a store kept, so no request can be read as one, and every request to this route would be refused.")
             .next("Take the bytes as `Bytes`, and keep them with `put`")
+    } else if batch == jadpo_std::files::UPLOAD_SLOT {
+        problem
+            .reason("Only the runtime builds an `UploadSlot`, for a client to send a file to. A request sends what a slot gave it back as a `FileUpload`, the slot's token.")
+            .next("Take the token as a field of type `FileUpload`")
     } else if batch == jadpo_std::batch::BATCH_RUN {
         problem
             .reason("Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.")
