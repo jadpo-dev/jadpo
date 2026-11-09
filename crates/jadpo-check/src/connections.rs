@@ -1383,7 +1383,7 @@ impl Reader<'_> {
         out: &mut Vec<Diagnostic>,
     ) -> Option<(String, String)> {
         let shape = "`credential: { key_id: config.<name>  secret: config.<name> }`";
-        let reason = "AWS signs each request with an access key id and its secret access key, so the credential gives both: `key_id:` read from a setting, and `secret:` from a secret setting (area 10, \"Secrets\").";
+        let reason = "AWS signs each request with an access key id and its secret access key, so the credential gives both: `key_id:` read from a setting, and `secret:` from a secret setting.";
         let Some(block) = member.block() else {
             out.push(
                 self.invalid(
@@ -1471,7 +1471,7 @@ impl Reader<'_> {
             "`{}`'s credential must be a secret setting",
             self.connection
         );
-        let reason = "A credential is read from the deployment's environment and never seen by code, so it is a `secret: true` setting, `config.<name>` (area 10, \"Secrets\").";
+        let reason = "A credential is read from the deployment's environment and never seen by code, so it is a `secret: true` setting, `config.<name>`.";
         let Some(field) = self.reads(member) else {
             out.push(
                 self.invalid(headline, span, "a credential written in source")
@@ -1610,7 +1610,7 @@ impl Reader<'_> {
         let span = self.value_span(member);
         let headline = format!("`{}`'s {what} must be a secret setting", self.connection);
         let reason = format!(
-            "A {what} is read from the deployment's environment and never seen by code, so it is a `secret: true` setting, `config.<name>` (area 10, \"Secrets\")."
+            "A {what} is read from the deployment's environment and never seen by code, so it is a `secret: true` setting, `config.<name>`."
         );
         let Some(field) = self.reads(member) else {
             out.push(

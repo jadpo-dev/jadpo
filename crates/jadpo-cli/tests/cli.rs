@@ -904,8 +904,15 @@ fn help_with_a_rule_prints_its_page_offline() {
     assert!(
         output
             .stdout
-            .starts_with("import.unused, area 1, an agent can fix it\nImported name the file does not use.\n\ndomains/bakery/actions/stock_loaf.jadpo\n  use shared/types { Percent, Stock }\n"),
-        "the rule, its facts and summary, then the page's example: {}",
+            .starts_with("import.unused, area 1, an agent can fix it\nA `use` line brings in something the file doesn't use.\n\nWhy Jadpo refuses it\n"),
+        "the rule, its facts and summary, then the page's reason: {}",
+        output.stdout
+    );
+    assert!(
+        output.stdout.contains(
+            "\ndomains/bakery/actions/stock_loaf.jadpo\n  use shared/types { Percent, Stock }\n"
+        ),
+        "then the page's example: {}",
         output.stdout
     );
     assert!(

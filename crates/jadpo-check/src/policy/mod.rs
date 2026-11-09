@@ -774,8 +774,8 @@ pub fn membership_read<'db>(
                 format!("`member: {written}` doesn't point at a user"),
                 "not a reference to the user entity",
                 &match &user {
-                    Some(user) => format!("A role is held by a user, so a membership's `member:` names its reference to `{user}`, the entity the principal's `user:` names (area 8)."),
-                    None => "A role is held by a user, so a membership's `member:` names a reference to the entity the principal's `user:` names, and `app.jadpo` declares no `principal { user: }` (area 8).".to_string(),
+                    Some(user) => format!("A role is held by a user, so a membership's `member:` names its reference to `{user}`, the entity the principal's `user:` names."),
+                    None => "A role is held by a user, so a membership's `member:` names a reference to the entity the principal's `user:` names, and `app.jadpo` declares no `principal { user: }`.".to_string(),
                 },
                 "Name the field that refers to the user who holds the role",
             )),
@@ -1893,14 +1893,14 @@ fn resolve_who(
             let exists = entity.fields.iter().any(|f| f.name == field);
             let reason = match (&user, exists) {
                 (Some(user), true) => format!(
-                    "A field names who may do this when it points at the caller: a reference to `{user}`, the principal's user entity (area 8), typed `{user}.id`. `{}.{field}` isn't.",
+                    "A field names who may do this when it points at the caller: a reference to `{user}`, the principal's user entity, typed `{user}.id`. `{}.{field}` isn't.",
                     entity.name
                 ),
                 (Some(user), false) => format!(
                     "`{}` has no field `{field}`. A field names who may do this when it is a reference to `{user}`, the principal's user entity.",
                     entity.name
                 ),
-                (None, _) => "A field names who may do this when it points at the caller, a reference to the principal's user entity, and `app.jadpo` declares no `principal { }` (area 8).".to_string(),
+                (None, _) => "A field names who may do this when it points at the caller, a reference to the principal's user entity, and `app.jadpo` declares no `principal { }`.".to_string(),
             };
             Err(binding(
                 at.clone(),
