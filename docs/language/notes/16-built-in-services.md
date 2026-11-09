@@ -189,6 +189,16 @@ Why [Built-in services](../16-built-in-services.md) is the way it is: the decisi
   field's limit are checked when `ListParts` is read at the attach, as the
   page's "unequal parts" rule says. *Recommendation: keep; POST policies that
   could limit the size aren't supported on R2.*
+- **The S3 driver: a compressed upload.** Refused at the attach, from the
+  `Content-Encoding` the service stored with the object: any value but none or
+  `identity` is `422` `invalid_value`, and the upload is never copied to the
+  file's key, so the sweep deletes it. Signing can't do this instead: a
+  presigned `PUT` can require a header's value but not its absence, and a
+  client that adds an unsigned `Content-Encoding` still gets it stored. The
+  driver reads the header before any of the body, because a Worker's `fetch()`
+  can try to unpack a body labelled gzip as it is read. A part's `UploadPart` can't set
+  one: an object's encoding is set when its multipart upload is created, which
+  the driver does without one. *Recommendation: keep.*
 - **The S3 driver: the hash of a file a client uploads.** None: nothing reads
   an upload's bytes on the way in, and the service serves its own `ETag`. A
   `File` already keeps a hash optional for files kept before they were

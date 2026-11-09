@@ -437,6 +437,9 @@ async fn attached(
         Err(Unanswered::Failed(code)) if code == NOT_FOUND => {
             return Err(refused(ctx, "no file was uploaded to this slot"));
         }
+        Err(Unanswered::Failed(code)) if code == jadpo_std::files::UPLOAD_COMPRESSED => {
+            return Err(refused(ctx, "the file was sent compressed"));
+        }
         Err(Unanswered::Failure(failure)) => {
             return Err(crate::read::Interrupt::Failed(ctx.fail(*failure, site)));
         }

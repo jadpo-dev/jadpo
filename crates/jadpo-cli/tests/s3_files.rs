@@ -235,6 +235,53 @@ pub(crate) fn runs_on_s3(send: Send<'_>, s3: &FakeS3, key_before: &[String]) {
         body.as_bytes(),
     );
     assert_eq!(refused.0, 422, "{refused:?}");
+    // Sent compressed: S3 keeps the bytes and the label, so the attach reads
+    // the label, refuses it as it does the others, and leaves the upload
+    // where only the sweep reaches it.
+    let asked = send("POST", "/sheets/slot", &[], b"");
+    let slot: serde_json::Value = serde_json::from_slice(&asked.2).expect("a slot");
+    let url = slot["url"].as_str().expect("a url").to_string();
+    let token = slot["token"].as_str().expect("a token").to_string();
+    let key = url
+        .split("/uploads/")
+        .nth(1)
+        .and_then(|rest| rest.split('?').next())
+        .expect("a key")
+        .to_string();
+    let sent = exchange(&url, "PUT", &[("Content-Encoding", "gzip")], BYTES);
+    assert_eq!(sent.0, 200, "{sent:?}");
+    let body = format!(r#"{{"supplier":"Millers","sheet":"{token}"}}"#);
+    let refused = send(
+        "POST",
+        "/sheets/attached",
+        &[("Content-Type", "application/json")],
+        body.as_bytes(),
+    );
+    assert_eq!(refused.0, 422, "{refused:?}");
+    assert!(
+        String::from_utf8_lossy(&refused.2).contains("invalid_value"),
+        "{refused:?}"
+    );
+    assert!(s3.object(&key).is_none(), "never copied to the file's key");
+    assert!(
+        s3.object(&format!("uploads/{key}")).is_some(),
+        "left for the sweep to delete"
+    );
+    // `identity` says it isn't compressed.
+    let asked = send("POST", "/sheets/slot", &[], b"");
+    let slot: serde_json::Value = serde_json::from_slice(&asked.2).expect("a slot");
+    let url = slot["url"].as_str().expect("a url").to_string();
+    let token = slot["token"].as_str().expect("a token").to_string();
+    let sent = exchange(&url, "PUT", &[("Content-Encoding", "identity")], BYTES);
+    assert_eq!(sent.0, 200, "{sent:?}");
+    let body = format!(r#"{{"supplier":"Millers","sheet":"{token}"}}"#);
+    let attached = send(
+        "POST",
+        "/sheets/attached",
+        &[("Content-Type", "application/json")],
+        body.as_bytes(),
+    );
+    assert_eq!(attached.0, 201, "{attached:?}");
     // An upload that never came.
     let asked = send("POST", "/sheets/slot", &[], b"");
     let slot: serde_json::Value = serde_json::from_slice(&asked.2).expect("a slot");

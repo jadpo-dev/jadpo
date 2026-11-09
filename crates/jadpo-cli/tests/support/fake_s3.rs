@@ -23,6 +23,7 @@ pub struct Object {
     pub bytes: Vec<u8>,
     pub content_type: Option<String>,
     pub content_disposition: Option<String>,
+    pub content_encoding: Option<String>,
     pub etag: String,
 }
 
@@ -456,6 +457,9 @@ fn handle(request: &Incoming, shared: &Mutex<State>) -> Got {
             if let Some(disposition) = disposition {
                 headers.push(("content-disposition".to_string(), disposition));
             }
+            if let Some(encoding) = &object.content_encoding {
+                headers.push(("content-encoding".to_string(), encoding.clone()));
+            }
             let total = object.bytes.len();
             let Some(range) = request
                 .header("range")
@@ -528,6 +532,7 @@ fn handle(request: &Incoming, shared: &Mutex<State>) -> Got {
                     bytes: request.body.clone(),
                     content_type: request.header("content-type").map(str::to_string),
                     content_disposition: request.header("content-disposition").map(str::to_string),
+                    content_encoding: request.header("content-encoding").map(str::to_string),
                     etag: etag.clone(),
                 },
             );
@@ -593,6 +598,7 @@ fn handle(request: &Incoming, shared: &Mutex<State>) -> Got {
                         bytes,
                         content_type: upload.content_type.clone(),
                         content_disposition: None,
+                        content_encoding: None,
                         etag: etag.clone(),
                     },
                 );

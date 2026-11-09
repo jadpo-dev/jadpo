@@ -10,6 +10,10 @@
 //!   ever change a file. An upload in parts is one multipart upload, its
 //!   id kept in `uploads/<key>.upload` and what its first part said in
 //!   `uploads/<key>.said`.
+//! - **Compressed uploads.** A presigned `PUT` can't stop a client sending
+//!   a `Content-Encoding`, which the service keeps with the bytes, so the
+//!   attach reads it from a waiting upload's headers and refuses the upload
+//!   before copying it.
 //! - **Addresses.** Downloads and whole uploads are presigned `GET`s and
 //!   `PUT`s; each part is a presigned `UploadPart` the app redirects to.
 //! - **Joining an export's pieces.** Read in order and re-cut into equal
@@ -22,11 +26,12 @@ use jadpo_runtime::capability::{Answer, Call, Capability, DirectFiles, PartFile,
 use jadpo_runtime::http::uploads::{claimed_type, file_name};
 use jadpo_runtime::provider::{Reading, Request, Response};
 use jadpo_runtime::sigv4;
+use jadpo_runtime::stream::Chunk;
 use jadpo_std::HttpMethod;
 use jadpo_std::files::{
     COMPLETE, DELETE, DISCARD, HEAD_BYTES, JOIN, LIST, MAX_PARTS, NOT_FOUND, PART_SIZE,
-    PARTS_MISSING, PARTS_UNEQUAL, PUT, PartsRefused, READ, STAT, is_key, key_id, parts_fit,
-    piece_key,
+    PARTS_MISSING, PARTS_UNEQUAL, PUT, PartsRefused, READ, STAT, UPLOAD_COMPRESSED, is_key, key_id,
+    parts_fit, piece_key,
 };
 use jadpo_value::Value;
 
@@ -200,13 +205,54 @@ impl S3Store {
         let Some(request) = request else {
             return Err(Answer::Misconfigured);
         };
-        match self.fetch.fetch(&request).await {
-            Ok(response) => Ok(response),
-            Err(FetchError::NotSent(_)) => Err(Answer::Unavailable),
-            Err(FetchError::NoAnswer(_)) => Err(Answer::Unknown),
-            Err(FetchError::TimedOut) => Err(Answer::TimedOut),
-            Err(FetchError::Refused(_)) => Err(Answer::Misconfigured),
+        self.fetch.fetch(&request).await.map_err(unanswered)
+    }
+
+    /// The first bytes of a whole upload waiting under `staged`, `None` when
+    /// it isn't there, or `upload_compressed` when it says it is compressed:
+    /// told from its headers before any of its body is read, since a
+    /// Worker's `fetch()` can try to unpack it.
+    async fn waiting(&self, staged: &str) -> Result<Option<Ranged>, Answer> {
+        let range = format!("bytes=0-{}", HEAD_BYTES - 1);
+        let url = self.url(staged);
+        let request = self
+            .signed(
+                HttpMethod::Get,
+                &url,
+                vec![("range".to_string(), range)],
+                None,
+                false,
+            )
+            .ok_or(Answer::Misconfigured)?;
+        let mut opened = self.fetch.open(&request).await.map_err(unanswered)?;
+        match opened.status {
+            200 | 206 | 416 => {}
+            404 => return Ok(None),
+            status => return Err(classified(status)),
         }
+        if opened
+            .headers
+            .iter()
+            .any(|(name, value)| name == "content-encoding" && says_compressed(value))
+        {
+            return Err(Answer::Failed(UPLOAD_COMPRESSED.into()));
+        }
+        let mut body = Vec::new();
+        loop {
+            match opened.body.next().await {
+                Chunk::Bytes(bytes) => body.extend_from_slice(&bytes),
+                Chunk::End => break,
+                Chunk::TimedOut => return Err(Answer::TimedOut),
+                Chunk::Broken => return Err(Answer::Unknown),
+            }
+        }
+        let response = Response {
+            status: opened.status,
+            headers: opened.headers,
+            body,
+        };
+        let size = total_of(&response).unwrap_or(response.body.len() as u64);
+        Ok(Some(Ranged { size, response }))
     }
 
     /// A signed `GET` of `url` with `headers`, the answer whole.
@@ -334,7 +380,7 @@ impl S3Store {
         };
         if found.is_none() {
             let staged = staged_key(key);
-            let waiting = match self.ranged(&staged, 0, HEAD_BYTES as u64).await {
+            let waiting = match self.waiting(&staged).await {
                 Ok(Some(waiting)) => waiting,
                 Ok(None) => return Answer::Failed(NOT_FOUND.into()),
                 Err(answer) => return answer,
@@ -828,6 +874,23 @@ struct Part {
     number: u64,
     size: u64,
     etag: String,
+}
+
+/// What a request that got no answer is to the call.
+fn unanswered(error: FetchError) -> Answer {
+    match error {
+        FetchError::NotSent(_) => Answer::Unavailable,
+        FetchError::NoAnswer(_) => Answer::Unknown,
+        FetchError::TimedOut => Answer::TimedOut,
+        FetchError::Refused(_) => Answer::Misconfigured,
+    }
+}
+
+/// Whether a `Content-Encoding` says its bytes are compressed: anything but
+/// nothing at all or `identity`.
+fn says_compressed(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty() && !value.eq_ignore_ascii_case("identity")
 }
 
 /// A status of a request that did what it asked.
