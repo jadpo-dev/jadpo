@@ -84,7 +84,7 @@ pub(crate) fn served_files(application: &str, config: &str) -> Vec<(String, Stri
         file(
             "domains/desk/entities/member.jadpo",
             format!(
-                "use desk/types {{ Handle }}\n\n/// Someone at the desk.\nentity Member {{\n    id: Uuid\n    handle: Handle {{\n        personal: PersonalData.identifying\n    }}\n\n{policy}\n    person: true\n}}\n"
+                "use desk/types {{ Handle }}\n\n/// Someone at the desk.\nentity Member {{\n    id: Uuid\n    decline data.personal_unread: \"Only erasure is under test\"\n    handle: Handle {{\n        personal: PersonalData.identifying\n    }}\n\n{policy}\n    person: true\n}}\n"
             ),
         ),
         file(

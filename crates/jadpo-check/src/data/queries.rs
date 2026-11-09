@@ -442,7 +442,7 @@ fn query_clean<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> bool 
 
 /// Whether every query read without a problem, so the indexes the queries
 /// ask for are all known.
-pub(super) fn queries_clean(db: &dyn Db, project: Project) -> bool {
+pub fn queries_clean(db: &dyn Db, project: Project) -> bool {
     query_names(db, project)
         .iter()
         .all(|name| query_clean(db, project, Name::new(db, name.clone())))

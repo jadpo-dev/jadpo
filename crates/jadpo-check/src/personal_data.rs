@@ -6,10 +6,10 @@
 //! package's own, what its operations send to its hosts, is what `jadpo
 //! package check` shows ([`package_sends`]).
 //!
-//! The rest of what area 15 lists for each person entity is chunk P8's,
-//! which adds to [`report`]: the sections it writes follow the one here,
-//! and its JSON sits beside `connections`. Whether each connection can
-//! erase its copy is [`crate::provider_erasure`]'s, which reads [`sent`].
+//! What the app holds about each person is [`crate::personal_held`]'s,
+//! whose sections come first and whose JSON sits beside `connections`.
+//! Whether each connection can erase its copy is
+//! [`crate::provider_erasure`]'s, which reads [`sent`].
 
 use std::collections::BTreeMap;
 
@@ -182,17 +182,30 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
     }
     let mut markdown = String::from(
         "# Personal data\n\n\
-         Where the app's personal data goes: each connection a field marked `personal:`, or a value of a standard type that is personal data, is sent through, and the hosts that connection reaches. A value counts as sent when it may be in what goes out, may have decided it, or was sent to a provider whose answer it may be in. Each connection says whether it erases its copy when a person is erased. Written by `jadpo check`.\n\n\
-         Not listed yet: what each store and cache keeps, who may read it and how long it is kept.\n\n",
+         What the app holds about people, who may read it, how long it is kept, what erasing someone does to it and where it goes. Written by `jadpo check`.\n\n\
+         This is most of a record of processing activities (Article 30). Your team adds what the compiler can't know: the purpose of each use, the lawful basis and the organisation's details.\n\n",
+    );
+    let (people, people_json) = crate::personal_held::people(db, project);
+    if people.is_empty() {
+        markdown
+            .push_str("No entity says `person: true`, so no record is held about a person.\n\n");
+    }
+    markdown.push_str(&people);
+    let (no_person, no_person_json) = crate::personal_held::no_person(db, project);
+    markdown.push_str(&no_person);
+    let (stores, stores_json) = crate::personal_held::stores(db, project);
+    markdown.push_str(&stores);
+    markdown.push_str(
+        "## Where personal data goes\n\nEach connection a field marked `personal:`, or a value of a standard type that is personal data, is sent through, and the hosts that connection reaches. A value counts as sent when it may be in what goes out, may have decided it, or was sent to a provider whose answer it may be in. Each connection says whether it erases its copy when a person is erased.\n\n",
     );
     if by_connection.is_empty() {
-        markdown.push_str("No personal data leaves through a connection.\n");
+        markdown.push_str("No personal data leaves through a connection.\n\n");
     }
     let mut connections = Vec::new();
     for (name, sends) in &by_connection {
         let hosts: Vec<&crate::connections::Row> =
             rows.iter().filter(|row| row.connection == *name).collect();
-        markdown.push_str(&format!("## `{name}`\n\n"));
+        markdown.push_str(&format!("### `{name}`\n\n"));
         if hosts.is_empty() {
             // Said only of what is known to stay on the server: any other
             // connection with no host listed isn't said to reach none.
@@ -290,10 +303,17 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
         }
         markdown.push('\n');
     }
-    while markdown.ends_with("\n\n") {
-        markdown.pop();
-    }
+    let (steps, steps_json) = crate::personal_held::step_records(db, project);
+    markdown.push_str(&steps);
+    markdown.push_str(crate::personal_held::OAUTH);
+    let (coverage, coverage_json) = crate::personal_held::coverage();
+    markdown.push_str(&coverage);
     let mut json = Value::object();
+    json.set("people", people_json);
+    if !no_person_json.is_empty() {
+        json.set("belongs_to_no_person", no_person_json);
+    }
+    json.set("stores", stores_json);
     json.set("connections", connections);
     if !waiting.is_empty() {
         json.set(
@@ -309,6 +329,9 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
                 .collect::<Vec<_>>(),
         );
     }
+    json.set("step_records", steps_json);
+    json.set("oauth_grants", Vec::<Value>::new());
+    json.set("coverage", coverage_json);
     Report { markdown, json }
 }
 
@@ -468,7 +491,60 @@ pub fn entries(json: &Value) -> BTreeMap<String, Vec<String>> {
             lines,
         );
     }
+    let list = |key: &str| json.get(key).and_then(Value::as_array).unwrap_or_default();
+    for person in list("people") {
+        out.insert(
+            format!("person {}", text(person, "entity")),
+            crate::personal_held::person_lines(person),
+        );
+    }
+    for store in list("stores") {
+        let where_set = match store.get("setting").and_then(Value::as_str) {
+            Some(setting) => format!("set by `config.{setting}`"),
+            None => "no setting says where it is".to_string(),
+        };
+        out.insert(
+            format!("store {}", text(store, "store")),
+            vec![format!("{}, {where_set}", text(store, "kind"))],
+        );
+    }
+    let keys: Vec<String> = list("keys_in_outbox")
+        .iter()
+        .map(|key| {
+            format!(
+                "`{}` through `{}`",
+                text(key, "key"),
+                text(key, "connection")
+            )
+        })
+        .collect();
+    if !keys.is_empty() {
+        out.insert("keys waiting in the outbox".to_string(), sorted(keys));
+    }
+    let steps: Vec<String> = list("step_records")
+        .iter()
+        .map(|step| format!("`{}`", text(step, "action")))
+        .collect();
+    if !steps.is_empty() {
+        out.insert("step records".to_string(), sorted(steps));
+    }
+    let others: Vec<String> = list("belongs_to_no_person")
+        .iter()
+        .flat_map(|field| {
+            let mut person = Value::object();
+            person.set("fields", vec![field.clone()]);
+            crate::personal_held::person_lines(&person)
+        })
+        .collect();
+    if !others.is_empty() {
+        out.insert("belongs to no person".to_string(), sorted(others));
+    }
     out
+}
+
+fn sorted(mut lines: Vec<String>) -> Vec<String> {
+    lines.sort();
+    lines
 }
 
 /// What an exit is named, in the JSON twin; none for those with no name.

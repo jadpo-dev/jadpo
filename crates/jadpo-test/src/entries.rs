@@ -40,16 +40,7 @@ pub fn compare(program: &Program) -> Result<usize, String> {
     for (number, route) in walked.table.routes.iter().enumerate() {
         let number = u32::try_from(number).unwrap_or(u32::MAX);
         let Some(entry) = typed.entry(number) else {
-            let typed_run = matches!(
-                route.run,
-                Run::Action(_) | Run::Query(_) | Run::Listing { .. }
-            );
-            let reads_or_writes = route.output.is_some()
-                || route
-                    .segments
-                    .iter()
-                    .any(|segment| matches!(segment, Segment::Param { .. }));
-            if typed_run && reads_or_writes {
+            if needs_entry(route) {
                 return Err(format!(
                     "{} is answered without its typed entry",
                     route.label()
@@ -89,6 +80,23 @@ pub fn compare(program: &Program) -> Result<usize, String> {
         }
     }
     Ok(compared)
+}
+
+/// Whether `route` has to be answered with a typed entry: it runs an
+/// action, a query or a listing and reads a placeholder or writes an
+/// output as JSON. What `sends:` sends isn't written as JSON, so its
+/// output asks for no entry.
+fn needs_entry(route: &RoutePlan) -> bool {
+    let typed_run = matches!(
+        route.run,
+        Run::Action(_) | Run::Query(_) | Run::Listing { .. }
+    );
+    let writes_json = route.output.is_some() && route.sends.is_none();
+    let reads_placeholder = route
+        .segments
+        .iter()
+        .any(|segment| matches!(segment, Segment::Param { .. }));
+    typed_run && (writes_json || reads_placeholder)
 }
 
 /// A request as a difference names it.
@@ -690,4 +698,74 @@ fn scalars(builtin: Builtin) -> Vec<Value> {
     };
     out.push(Value::text("x"));
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use jadpo_std::http::{Authentication, Sends};
+    use jadpo_std::{HttpMethod, SuccessStatus};
+
+    use super::*;
+
+    /// `GET /sheet`, which runs an action and writes `output` as JSON.
+    fn route() -> RoutePlan {
+        RoutePlan {
+            key: "route GET /sheet".into(),
+            method: HttpMethod::Get,
+            segments: vec![Segment::Fixed("sheet".into())],
+            api: 0,
+            input: None,
+            output: Some(CodecId(0)),
+            status: SuccessStatus::Ok,
+            deadline_ms: 10_000,
+            run: Run::Action(0),
+            settle: None,
+            stream: false,
+            sends: None,
+            links: false,
+            immutable: false,
+            keys: None,
+            args: Vec::new(),
+            authentication: Authentication::Public,
+            caller: None,
+            confirm: false,
+            rate_limit: None,
+            file: "domains/sheets/routes/sheets.jadpo".into(),
+            line: 1,
+        }
+    }
+
+    fn sends() -> Option<Sends> {
+        Some(Sends {
+            media_type: "text/csv".into(),
+            field: "body".into(),
+        })
+    }
+
+    #[test]
+    fn an_output_written_as_json_needs_an_entry() {
+        assert!(needs_entry(&route()));
+    }
+
+    #[test]
+    fn an_output_sent_raw_needs_no_entry() {
+        let route = RoutePlan {
+            sends: sends(),
+            ..route()
+        };
+        assert!(!needs_entry(&route));
+    }
+
+    #[test]
+    fn a_placeholder_needs_an_entry_even_when_the_output_is_sent_raw() {
+        let route = RoutePlan {
+            sends: sends(),
+            segments: vec![Segment::Param {
+                name: "name".into(),
+                codec: CodecId(0),
+            }],
+            ..route()
+        };
+        assert!(needs_entry(&route));
+    }
 }

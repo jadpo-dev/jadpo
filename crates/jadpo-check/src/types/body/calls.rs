@@ -937,9 +937,14 @@ impl Body<'_> {
             )
             .at(span, kind.with_a())
             .reason(format!(
-                "{} is pure: it computes its result from its arguments alone, so it calls only functions, library functions and the standard library; {} may read and write data.",
+                "{} is pure: it computes its result from its arguments alone, so it calls only functions, library functions and the standard library; {} may {}.",
                 capital(caller),
-                kind.with_a()
+                kind.with_a(),
+                if *kind == ItemKind::Query {
+                    "read data"
+                } else {
+                    "read and write data"
+                }
             ))
             .next(next),
         );

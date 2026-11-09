@@ -221,7 +221,7 @@ fn a_public_read_names_each_field_of_personal_data() {
     write(
         &root,
         "domains/lending/entities/visitor.jadpo",
-        "use lending/types { Handle }\n\nentity Visitor {\n    id: Uuid\n    contact: Email\n    phone: PhoneNumber\n    nickname: Handle {\n        personal: PersonalData.identifying\n    }\n    shelf: Handle\n\n    policy: {\n        read: [Access.public]\n    }\n\n    person: true\n}\n",
+        "use lending/types { Handle }\n\nentity Visitor {\n    id: Uuid\n    contact: Email\n    phone: PhoneNumber\n    decline data.personal_unread: \"Only the notice is under test\"\n    nickname: Handle {\n        personal: PersonalData.identifying\n    }\n    shelf: Handle\n\n    policy: {\n        read: [Access.public]\n    }\n\n    person: true\n}\n",
     );
     migrate(&root);
     assert_eq!(

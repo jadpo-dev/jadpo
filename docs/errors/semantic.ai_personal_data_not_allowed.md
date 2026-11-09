@@ -238,6 +238,7 @@ use clinic/types { ClinicalNote }
 /// A patient of the clinic.
 entity Patient {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     patient_nhs_number: NhsNumber {
         personal: PersonalData.government_id
         to_models: false

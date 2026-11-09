@@ -108,6 +108,12 @@ fn clean_edits_converge(text: &str) {
 }
 
 #[test]
+fn fixing_a_habit_after_use_keeps_the_file_checkable() {
+    check("seed {\n\nuse &&notes\n    notes.add_note(\"Buy milk\")\n}\n");
+    check("seed {\n\nuse ||notes\n    notes.add_note(\"Buy milk\")\n}\n");
+}
+
+#[test]
 fn a_semicolon_after_a_declaration_word_is_not_split() {
     check("package; Postcodes.v3 {\n    jadpo: \"1.0\"\n}\n");
     check("use; shared/types { Pence }\n");

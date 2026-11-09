@@ -290,11 +290,13 @@ fn skip_line(p: &mut Parser<'_>) {
 
 /// `use` starting a line, followed on the same line by a folder or domain:
 /// `use shared/types { Pence }`, `use menu` (area 1, Imports). Anywhere
-/// else `use` is an ordinary word, which naming reserves.
+/// else `use` is an ordinary word, which naming reserves; `use and x` is
+/// that word in an expression, so fixing `use && x` doesn't change its reading.
 pub(crate) fn at_use(p: &Parser<'_>) -> bool {
     p.at_word("use")
         && p.on_new_line()
         && (p.nth(1) == IDENT || p.nth(1).is_keyword())
+        && !matches!(p.nth(1), AND_KW | OR_KW)
         && !p.nth_on_new_line(1)
 }
 

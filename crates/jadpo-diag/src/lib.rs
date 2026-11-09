@@ -125,19 +125,19 @@ rules! {
     AI_USAGE_UNAVAILABLE: "ai.usage_unavailable", area 14, Error, Human,
         "The app's AI usage couldn't be read from its database, because it can't be reached or has no table for it yet";
     API_AUTHENTICATION_INVALID: "api.authentication_invalid", area 7, Error, Agent,
-        "API authentication is not a list of declared sign-in methods";
+        "An API's `authentication:` isn't a list of sign-in methods the application declares";
     API_IDEMPOTENCY_INVALID: "api.idempotency_invalid", area 7, Error, Agent,
-        "API idempotency is not an Idempotency";
+        "An API's `idempotency:` holds something other than `Idempotency.required` or `Idempotency.optional`";
     API_PREFIX_OVERLAP: "api.prefix_overlap", area 7, Error, Agent,
         "Two APIs share a prefix";
     API_PREFIX_REQUIRED: "api.prefix_required", area 7, Error, Agent,
-        "Declared API has no prefix";
+        "A declared API has no `prefix:`, or its prefix isn't a path";
     API_ROUTE_NEEDS_SIGN_IN: "api.route_needs_sign_in", area 7, Error, Human,
         "A route needs a signed-in caller, but its API says `authentication: []`, which accepts no way to sign in";
     API_SERVE_OPENAPI_INVALID: "api.serve_openapi_invalid", area 7, Error, Agent,
         "An API's `serve_openapi:` setting holds something other than `true` or `false`";
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
-        "API setting is not one an API takes";
+        "An API in `apis:` has a setting an API doesn't take";
     CLI_ACCEPTANCE_ARGUMENTS: "cli.acceptance_arguments", area 14, Error, Agent,
         "A `jadpo acceptance` command names no action, one it doesn't have, or no purpose for `new`";
     CLI_AI_ARGUMENTS: "cli.ai_arguments", area 14, Error, Agent,
@@ -406,6 +406,8 @@ rules! {
         "Something other than erasure would remove a person another store refers to, and nothing would apply what that reference's `erase:` says";
     DATA_PERSONAL_UNREACHABLE: "data.personal_unreachable", area 15, Error, Human,
         "A field marked as personal data is on an entity erasing a person never reaches, so it could never be found";
+    DATA_PERSONAL_UNREAD: "data.personal_unread", area 15, Declinable, Agent,
+        "No query, output or action reads a field marked as personal data, so the app holds data it doesn't use";
     DATA_READ_IN_LOOP: "data.read_in_loop", area 6, Error, Agent,
         "A query or another database read, such as a `get`, is inside a `for` loop";
     DATA_REFERENCE_ACROSS_STORES: "data.reference_across_stores", area 5, Error, Human,
@@ -459,11 +461,11 @@ rules! {
     DATA_WRITE_SECTION_UNEXPECTED: "data.write_section_unexpected", area 6, Error, Agent,
         "A write has a section it doesn't take, gives one twice, or gives `conflict:` as anything but a block";
     DECLINE_NO_REASON: "decline.no_reason", area 1, Error, Agent,
-        "Decline gives no reason";
+        "A `decline` line gives no reason, or only a blank one";
     DECLINE_NOT_DECLINABLE: "decline.not_declinable", area 1, Error, Agent,
-        "Decline names a rule that can't be declined";
+        "A `decline` line names a rule that can't be declined, or no rule at all";
     DECLINE_UNUSED: "decline.unused", area 1, Error, Agent,
-        "Decline's rule no longer fires on its declaration";
+        "A `decline` line names a rule that no longer fires on its declaration";
     DELIVERIES_NOT_FOUND: "deliveries.not_found", area 14, Error, Human,
         "The id given to `jadpo deliveries` matches no delivery or schedule run in the database";
     DELIVERIES_UNAVAILABLE: "deliveries.unavailable", area 14, Error, Human,
@@ -487,11 +489,11 @@ rules! {
     DEPLOYABLE_UNSERVED: "deployable.unserved", area 14, Error, Agent,
         "No deployable serves an API, or runs the background work, the app has";
     EFFECT_CALL_IN_LOOP: "effect.call_in_loop", area 3, Error, Agent,
-        "Outside call inside a `for` loop";
+        "An outside call is made for each item of a `for` loop, directly or through an action the loop calls";
     EFFECT_FUNCTION_CALLS_ACTION: "effect.function_calls_action", area 3, Error, Agent,
-        "Function calls an action or query";
+        "A function, or other code that only works out a value, calls an action or a query";
     EFFECT_FUNCTION_PERSISTENCE: "effect.function_persistence", area 3, Error, Agent,
-        "Function reads or writes stored data";
+        "A function, or other code that only works out a value, reads or writes stored data, or calls a store of files, a model or a provider";
     EFFECT_RECURSIVE_ACTION: "effect.recursive_action", area 3, Error, Human,
         "An action calls itself, or calls other actions that end up calling it again";
     EMAIL_ATTACHMENT_LIMIT: "email.attachment_limit", area 16, Error, Agent,
@@ -523,57 +525,57 @@ rules! {
     EVENT_STORE_REQUIRED: "event.store_required", area 12, Error, Human,
         "An action emits an event but writes no database, and the app names no database to keep its events in";
     FAILURE_ATTEMPT_INFALLIBLE: "failure.attempt_infallible", area 3, Error, Agent,
-        "Attempt is used on something that cannot fail";
+        "An `attempt` is on something that can't fail";
     FAILURE_ATTEMPT_REQUIRED: "failure.attempt_required", area 3, Error, Agent,
         "A call that can fail is made as if it can't, with nothing passing its failure on or handling it";
     FAILURE_CODE_FORMAT: "failure.code_format", area 4, Error, Agent,
-        "Failure code is not lower_snake_case";
+        "A failure's `code:` is empty or isn't lower_snake_case";
     FAILURE_CONTEXT_FIELD_OVERLAP: "failure.context_field_overlap", area 4, Error, Agent,
-        "Field is declared for both the client and the log";
+        "A failure declares a field in both `client:` and `internal:`";
     FAILURE_DUPLICATE_CODE: "failure.duplicate_code", area 4, Error, Human,
         "Two failures have the same code, or a failure has a code the runtime already answers with itself";
     FAILURE_DUPLICATE_CONTEXT_FIELD: "failure.duplicate_context_field", area 4, Error, Agent,
-        "Failure field is given twice";
+        "A failure is raised with a field given twice, or with a field `json.read` fills in itself";
     FAILURE_DUPLICATE_DECLARATION: "failure.duplicate_declaration", area 4, Error, Agent,
-        "Failure is listed twice after `fails`";
+        "A failure is listed twice after `fails`";
     FAILURE_DUPLICATE_MAPPING: "failure.duplicate_mapping", area 4, Error, Agent,
-        "Condition is mapped twice";
+        "An `attempt` block or a `conflict:` block maps the same condition twice";
     FAILURE_INVALID_COVERS_NOTHING: "failure.invalid_covers_nothing", area 4, Error, Agent,
-        "Catch-all covers no rule, because every rule that can break has an arm";
+        "An `attempt` block has `invalid:`, but every rule the value can break already has an arm";
     FAILURE_INVALID_OUTSIDE_CONSTRUCTION: "failure.invalid_outside_construction", area 4, Error, Agent,
-        "Catch-all for rules is used on something that is not a construction";
+        "An `attempt` block has `invalid:` on something other than building a value";
     FAILURE_KIND_REQUIRED: "failure.kind_required", area 4, Error, Agent,
         "A failure is declared without a `kind:` saying what sort of failure it is";
     FAILURE_KIND_RUNTIME_ONLY: "failure.kind_runtime_only", area 4, Error, Agent,
-        "Failure kind is raised only by the runtime";
+        "A failure is declared with a kind only the runtime raises";
     FAILURE_MAPPING_KIND: "failure.mapping_kind", area 4, Error, Agent,
-        "Mapped failure's kind does not fit its condition";
+        "A condition is mapped to a failure of the wrong kind";
     FAILURE_MISSING_CONTEXT_FIELD: "failure.missing_context_field", area 4, Error, Agent,
-        "Rejected failure is missing a field";
+        "A failure is raised without a field it declares";
     FAILURE_OUTCOME_DUPLICATE_ARM: "failure.outcome_duplicate_arm", area 3, Error, Agent,
-        "Outcome match handles a failure twice";
+        "A `match` on a call's outcome handles the same failure twice";
     FAILURE_OUTCOME_INFALLIBLE: "failure.outcome_infallible", area 3, Error, Agent,
-        "Outcome match is on a call that cannot fail";
+        "A `match` on a call's outcome is on a call that can't fail";
     FAILURE_OUTCOME_MISSING_ARM: "failure.outcome_missing_arm", area 3, Error, Agent,
-        "Outcome match does not handle every failure";
+        "A `match` on a call's outcome doesn't handle every failure the call can give";
     FAILURE_OUTCOME_PATTERN_INVALID: "failure.outcome_pattern_invalid", area 3, Error, Agent,
-        "Outcome match arm has a pattern for values";
+        "A `match` on a call's outcome has an arm with a pattern for values";
     FAILURE_OUTCOME_SUBJECT_REQUIRED: "failure.outcome_subject_required", area 3, Error, Agent,
-        "Outcome match is not on a call";
+        "A `match` with `success(...)` arms is on a value or a construction, not a call";
     FAILURE_OUTCOME_SUCCESS_DUPLICATE: "failure.outcome_success_duplicate", area 3, Error, Agent,
-        "Outcome match repeats its success arm";
+        "A `match` on a call's outcome has two `success(...)` arms";
     FAILURE_OUTCOME_SUCCESS_MISSING: "failure.outcome_success_missing", area 3, Error, Agent,
-        "Outcome match has no success arm";
+        "A `match` on a call's outcome has no `success(...)` arm";
     FAILURE_OUTCOME_SUCCESS_VALUE_REQUIRED: "failure.outcome_success_value_required", area 3, Error, Agent,
-        "Success arm passes on a failure";
+        "A `match` on a call's outcome has `propagate` in its `success(...)` arm";
     FAILURE_OUTCOME_UNKNOWN_ARM: "failure.outcome_unknown_arm", area 3, Error, Agent,
-        "Outcome arm names a failure the call cannot produce";
+        "A `match` on a call's outcome has an arm for a failure the call can't give";
     FAILURE_OUTCOME_WILDCARD: "failure.outcome_wildcard", area 3, Error, Agent,
-        "Outcome match uses a wildcard";
+        "A `match` on a call's outcome uses `_` for its failures";
     FAILURE_PROPAGATE_PLACEMENT: "failure.propagate_placement", area 3, Error, Agent,
-        "Propagate is used outside a failure arm";
+        "A `propagate` isn't the result of a failure arm of a `match` on a call";
     FAILURE_REJECT_PLACEMENT: "failure.reject_placement", area 3, Error, Agent,
-        "Reject is used inside an expression";
+        "A `reject` is inside an expression";
     FAILURE_RULE_CANNOT_BREAK: "failure.rule_cannot_break", area 4, Error, Agent,
         "An `attempt` block maps a rule to a failure, but the value being built can never break that rule";
     FAILURE_RULE_UNMAPPED: "failure.rule_unmapped", area 4, Error, Agent,
@@ -583,9 +585,9 @@ rules! {
     FAILURE_UNDECLARED_PROPAGATION: "failure.undeclared_propagation", area 4, Error, Agent,
         "A function or action can end with a failure that its `fails` list doesn't name";
     FAILURE_UNKNOWN_CONTEXT_FIELD: "failure.unknown_context_field", area 4, Error, Agent,
-        "Rejected failure has no such field";
+        "A failure is raised with a field it doesn't declare";
     FAILURE_UNKNOWN_MAPPING: "failure.unknown_mapping", area 4, Error, Agent,
-        "Mapping names a condition the operation does not have";
+        "An `attempt` block maps a condition that what it attempts doesn't have";
     FLAG_DECLARATION_INVALID: "flag.declaration_invalid", area 16, Error, Agent,
         "A flag in `flags { }` isn't a `Bool` or an enum of plain variants, or its `default:`, `owner:` or `expires:` is missing or isn't valid";
     FLAG_EXPIRED: "flag.expired", area 16, Error, Human,
@@ -911,73 +913,73 @@ rules! {
     REGISTRY_UNREACHABLE: "registry.unreachable", area 14, Error, Human,
         "The registry couldn't be reached, or answered in a way that can't be read";
     ROUTE_API_UNKNOWN: "route.api_unknown", area 7, Error, Agent,
-        "Route group names an API the application doesn't declare";
+        "A route group names an API the application doesn't declare";
     ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,
-        "Route passes something other than a placeholder, the input or their fields";
+        "A route passes what it runs something it didn't read from the request";
     ROUTE_AUTHENTICATION_INVALID: "route.authentication_invalid", area 7, Error, Human,
         "A route's `authentication:` line holds something other than `RouteAuthentication.none` or `RouteAuthentication.fresh`";
     ROUTE_BINDING_UNUSED: "route.binding_unused", area 7, Error, Agent,
-        "Route reads a placeholder or input it never passes on";
+        "A route reads a placeholder or an `input:` it never passes on";
     ROUTE_CACHE_INVALID: "route.cache_invalid", area 7, Error, Agent,
-        "Route's `cache:` isn't `immutable`, or it keeps an answer a public cache may not hold";
+        "A route's `cache:` isn't `immutable`, or it keeps an answer a public cache may not hold";
     ROUTE_CALLS_PAST_DEADLINE: "route.calls_past_deadline", area 11, Error, Agent,
         "The outside calls a route makes could, at their slowest, take longer than the route is allowed to run";
     ROUTE_CONFIRM_INVALID: "route.confirm_invalid", area 8, Error, Agent,
         "A route's `confirm:` holds something other than `Confirmation.passkey`, or no signed-in person could confirm the route";
     ROUTE_DEADLINE_INVALID: "route.deadline_invalid", area 7, Error, Agent,
-        "Route deadline is not a duration up to 60 seconds";
+        "A route's `deadline:` isn't a duration above zero and at most 60 seconds";
     ROUTE_HEADER_CREDENTIAL: "route.header_credential", area 7, Error, Agent,
         "A route's input reads a header that sign-in or the runtime reads first, such as `Authorization`, a cookie or `Idempotency-Key`";
     ROUTE_HEADER_DUPLICATE: "route.header_duplicate", area 7, Error, Agent,
-        "Two input fields read the same header";
+        "Two fields of an input read the same header";
     ROUTE_HEADER_NAME_INVALID: "route.header_name_invalid", area 7, Error, Agent,
-        "Header name is not a valid HTTP header name";
+        "A field's `header:` isn't a valid HTTP header name";
     ROUTE_HEADER_NOT_SCALAR: "route.header_not_scalar", area 7, Error, Agent,
-        "Header field is not a single value";
+        "A field read from a header isn't a single value";
     ROUTE_INPUT_NOT_INPUT: "route.input_not_input", area 7, Error, Agent,
-        "Route input is not an `Input` type";
+        "A route's `input:` isn't an `Input` type";
     ROUTE_ITEM_DUPLICATE: "route.item_duplicate", area 7, Error, Agent,
-        "Route item is given twice";
+        "A route or a route group gives an item twice";
     ROUTE_ITEM_UNKNOWN: "route.item_unknown", area 7, Error, Agent,
-        "Route or route group item is not one it takes";
+        "A route or a route group has an item it doesn't take";
     ROUTE_OUTPUT_MISMATCH: "route.output_mismatch", area 7, Error, Agent,
-        "Route output is not exactly what it runs returns";
+        "A route says it sends something other than what it runs returns";
     ROUTE_OUTPUT_NOT_OUTPUT: "route.output_not_output", area 7, Error, Agent,
-        "Route output is not an `Output` type";
+        "A route's `output:` isn't an `Output` type";
     ROUTE_OUTPUT_REQUIRED: "route.output_required", area 7, Error, Agent,
-        "Route has no `output:`";
+        "A route doesn't say what it sends, with `output:` or `status: SuccessStatus.no_content`";
     ROUTE_OUTPUT_UNEXPECTED: "route.output_unexpected", area 7, Error, Agent,
-        "A `no_content` route has an output";
+        "A route that answers `SuccessStatus.no_content` has an `output:`";
     ROUTE_PATH_OVERLAP: "route.path_overlap", area 7, Error, Agent,
-        "Two routes could answer the same request";
+        "Two routes could answer the same request, or a route takes a path the runtime answers itself";
     ROUTE_PLACEHOLDER_DUPLICATE: "route.placeholder_duplicate", area 7, Error, Agent,
-        "Placeholder name is used twice in a route's path";
+        "A route's path names a placeholder twice, or names one `input`";
     ROUTE_PLACEHOLDER_TYPE: "route.placeholder_type", area 7, Error, Agent,
-        "Placeholder is not typed with a named scalar or an `X.id`";
+        "A placeholder in a path isn't a whole segment typed with a named scalar or an `X.id`";
     ROUTE_PREFIX_API: "route.prefix_api", area 7, Error, Agent,
-        "Route group prefix does not start with its API's prefix";
+        "A route group's prefix doesn't start with its API's prefix";
     ROUTE_PREFIX_REQUIRED: "route.prefix_required", area 7, Error, Agent,
-        "Route group has no prefix";
+        "A route group has no `prefix:`, or its prefix isn't a path";
     ROUTE_QUERY_FIELD_UNSUPPORTED: "route.query_field_unsupported", area 7, Error, Agent,
-        "Query-string input field is not a scalar, an enum or a list of them";
+        "A field read from the query string isn't a scalar, an enum or a list of them";
     ROUTE_RATE_LIMIT_INVALID: "route.rate_limit_invalid", area 16, Error, Agent,
         "A `rate_limit:` doesn't say how many requests over how long, or says it wrongly";
     ROUTE_RUN_INVALID: "route.run_invalid", area 7, Error, Agent,
-        "Route `run:` is not a call of a named action or query";
+        "A route's `run:` isn't a call of a named action or query";
     ROUTE_RUN_KIND: "route.run_kind", area 7, Error, Agent,
         "A `GET` route runs an action that isn't read-only, or a route of another method runs a query";
     ROUTE_RUN_REQUIRED: "route.run_required", area 7, Error, Agent,
-        "Route does not say what it runs";
+        "A route doesn't say what it runs";
     ROUTE_SECRET_OUTSIDE_BODY: "route.secret_outside_body", area 7, Error, Agent,
         "A route reads a secret value from a URL or a header";
     ROUTE_SENDS_INVALID: "route.sends_invalid", area 7, Error, Agent,
-        "Route's `sends:` isn't a media type, or its `Output` isn't exactly one `Bytes` field";
+        "A route's `sends:` isn't a media type, or what it sends isn't exactly one `Bytes` field";
     ROUTE_SETTLE_INVALID: "route.settle_invalid", area 7, Error, Agent,
-        "Route `settle:` is not an answer query and a wait inside its deadline";
+        "A route's `settle:` isn't an answer query and a wait shorter than its deadline, or the route has nothing to wait for";
     ROUTE_STATUS_INVALID: "route.status_invalid", area 7, Error, Agent,
-        "Route status is not a `SuccessStatus`";
+        "A route's `status:` isn't a `SuccessStatus`";
     ROUTE_STREAM_INVALID: "route.stream_invalid", area 7, Error, Agent,
-        "Streaming route answers with another status or waits with `settle:`";
+        "A route that streams a model's answer says another `status:` or waits with `settle:`";
     RUNS_UNAVAILABLE: "runs.unavailable", area 14, Error, Human,
         "The app's unfinished runs couldn't be read from their database, because it can't be reached or has no table for them yet";
     SCHEDULE_EVERY_INVALID: "schedule.every_invalid", area 12, Error, Agent,
@@ -1884,6 +1886,7 @@ mod tests {
             declinable,
             [
                 "constant.similar_exists",
+                "data.personal_unread",
                 "email.field_unused",
                 "email.health_problem",
                 "library.similar_exists",

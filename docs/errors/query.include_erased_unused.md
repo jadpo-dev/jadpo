@@ -71,6 +71,7 @@ query every_customer() -> List<CustomerRow> {
 ```jadpo check project=e-include-erased-unused-removed hidden
 entity Customer {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email {
         personal: PersonalData.contact
     }
@@ -114,9 +115,11 @@ type PolicyNumber = Text {
 
 entity Customer {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email? {
         personal: PersonalData.contact
     }
+    decline data.personal_unread: "Read by code this example leaves out"
     policy_number: PolicyNumber {
         personal: PersonalData.identifying
         erase: Erasure.retained

@@ -637,3 +637,8 @@ reduced
 # `admin`: ordinary vocabulary, the role an app's administrators hold, and the
 # test server's administrative database (chunk A6)
 admin
+
+# Ordinary English in a report's wording (area 15, "The personal-data report")
+article
+officer
+team

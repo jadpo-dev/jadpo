@@ -140,6 +140,7 @@ type SignedName = Text {
 
 entity User {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email {
         personal: PersonalData.contact
     }
@@ -153,6 +154,7 @@ entity Comment {
         on_delete: OnDelete.cleared
     }
     body: CommentText
+    decline data.personal_unread: "Read by code this example leaves out"
     signed_as: SignedName? {
         personal: PersonalData.identifying
     }
@@ -187,6 +189,7 @@ type SignedName = Text {
 
 entity User {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email {
         personal: PersonalData.contact
     }
@@ -201,6 +204,7 @@ entity Comment {
         erase: Erasure.deleted
     }
     body: CommentText
+    decline data.personal_unread: "Read by code this example leaves out"
     signed_as: SignedName {
         personal: PersonalData.identifying
     }
