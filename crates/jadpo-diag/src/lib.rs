@@ -125,19 +125,19 @@ rules! {
     AI_USAGE_UNAVAILABLE: "ai.usage_unavailable", area 14, Error, Human,
         "The app's AI usage couldn't be read from its database, because it can't be reached or has no table for it yet";
     API_AUTHENTICATION_INVALID: "api.authentication_invalid", area 7, Error, Agent,
-        "API authentication is not a list of declared sign-in methods";
+        "An API's `authentication:` isn't a list of sign-in methods the application declares";
     API_IDEMPOTENCY_INVALID: "api.idempotency_invalid", area 7, Error, Agent,
-        "API idempotency is not an Idempotency";
+        "An API's `idempotency:` holds something other than `Idempotency.required` or `Idempotency.optional`";
     API_PREFIX_OVERLAP: "api.prefix_overlap", area 7, Error, Agent,
         "Two APIs share a prefix";
     API_PREFIX_REQUIRED: "api.prefix_required", area 7, Error, Agent,
-        "Declared API has no prefix";
+        "A declared API has no `prefix:`, or its prefix isn't a path";
     API_ROUTE_NEEDS_SIGN_IN: "api.route_needs_sign_in", area 7, Error, Human,
         "A route needs a signed-in caller, but its API says `authentication: []`, which accepts no way to sign in";
     API_SERVE_OPENAPI_INVALID: "api.serve_openapi_invalid", area 7, Error, Agent,
         "An API's `serve_openapi:` setting holds something other than `true` or `false`";
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
-        "API setting is not one an API takes";
+        "An API in `apis:` has a setting an API doesn't take";
     CLI_ACCEPTANCE_ARGUMENTS: "cli.acceptance_arguments", area 14, Error, Agent,
         "A `jadpo acceptance` command names no action, one it doesn't have, or no purpose for `new`";
     CLI_AI_ARGUMENTS: "cli.ai_arguments", area 14, Error, Agent,
@@ -913,73 +913,73 @@ rules! {
     REGISTRY_UNREACHABLE: "registry.unreachable", area 14, Error, Human,
         "The registry couldn't be reached, or answered in a way that can't be read";
     ROUTE_API_UNKNOWN: "route.api_unknown", area 7, Error, Agent,
-        "Route group names an API the application doesn't declare";
+        "A route group names an API the application doesn't declare";
     ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,
-        "Route passes something other than a placeholder, the input or their fields";
+        "A route passes what it runs something it didn't read from the request";
     ROUTE_AUTHENTICATION_INVALID: "route.authentication_invalid", area 7, Error, Human,
         "A route's `authentication:` line holds something other than `RouteAuthentication.none` or `RouteAuthentication.fresh`";
     ROUTE_BINDING_UNUSED: "route.binding_unused", area 7, Error, Agent,
-        "Route reads a placeholder or input it never passes on";
+        "A route reads a placeholder or an `input:` it never passes on";
     ROUTE_CACHE_INVALID: "route.cache_invalid", area 7, Error, Agent,
-        "Route's `cache:` isn't `immutable`, or it keeps an answer a public cache may not hold";
+        "A route's `cache:` isn't `immutable`, or it keeps an answer a public cache may not hold";
     ROUTE_CALLS_PAST_DEADLINE: "route.calls_past_deadline", area 11, Error, Agent,
         "The outside calls a route makes could, at their slowest, take longer than the route is allowed to run";
     ROUTE_CONFIRM_INVALID: "route.confirm_invalid", area 8, Error, Agent,
         "A route's `confirm:` holds something other than `Confirmation.passkey`, or no signed-in person could confirm the route";
     ROUTE_DEADLINE_INVALID: "route.deadline_invalid", area 7, Error, Agent,
-        "Route deadline is not a duration up to 60 seconds";
+        "A route's `deadline:` isn't a duration above zero and at most 60 seconds";
     ROUTE_HEADER_CREDENTIAL: "route.header_credential", area 7, Error, Agent,
         "A route's input reads a header that sign-in or the runtime reads first, such as `Authorization`, a cookie or `Idempotency-Key`";
     ROUTE_HEADER_DUPLICATE: "route.header_duplicate", area 7, Error, Agent,
-        "Two input fields read the same header";
+        "Two fields of an input read the same header";
     ROUTE_HEADER_NAME_INVALID: "route.header_name_invalid", area 7, Error, Agent,
-        "Header name is not a valid HTTP header name";
+        "A field's `header:` isn't a valid HTTP header name";
     ROUTE_HEADER_NOT_SCALAR: "route.header_not_scalar", area 7, Error, Agent,
-        "Header field is not a single value";
+        "A field read from a header isn't a single value";
     ROUTE_INPUT_NOT_INPUT: "route.input_not_input", area 7, Error, Agent,
-        "Route input is not an `Input` type";
+        "A route's `input:` isn't an `Input` type";
     ROUTE_ITEM_DUPLICATE: "route.item_duplicate", area 7, Error, Agent,
-        "Route item is given twice";
+        "A route or a route group gives an item twice";
     ROUTE_ITEM_UNKNOWN: "route.item_unknown", area 7, Error, Agent,
-        "Route or route group item is not one it takes";
+        "A route or a route group has an item it doesn't take";
     ROUTE_OUTPUT_MISMATCH: "route.output_mismatch", area 7, Error, Agent,
-        "Route output is not exactly what it runs returns";
+        "A route says it sends something other than what it runs returns";
     ROUTE_OUTPUT_NOT_OUTPUT: "route.output_not_output", area 7, Error, Agent,
-        "Route output is not an `Output` type";
+        "A route's `output:` isn't an `Output` type";
     ROUTE_OUTPUT_REQUIRED: "route.output_required", area 7, Error, Agent,
-        "Route has no `output:`";
+        "A route doesn't say what it sends, with `output:` or `status: SuccessStatus.no_content`";
     ROUTE_OUTPUT_UNEXPECTED: "route.output_unexpected", area 7, Error, Agent,
-        "A `no_content` route has an output";
+        "A route that answers `SuccessStatus.no_content` has an `output:`";
     ROUTE_PATH_OVERLAP: "route.path_overlap", area 7, Error, Agent,
-        "Two routes could answer the same request";
+        "Two routes could answer the same request, or a route takes a path the runtime answers itself";
     ROUTE_PLACEHOLDER_DUPLICATE: "route.placeholder_duplicate", area 7, Error, Agent,
-        "Placeholder name is used twice in a route's path";
+        "A route's path names a placeholder twice, or names one `input`";
     ROUTE_PLACEHOLDER_TYPE: "route.placeholder_type", area 7, Error, Agent,
-        "Placeholder is not typed with a named scalar or an `X.id`";
+        "A placeholder in a path isn't a whole segment typed with a named scalar or an `X.id`";
     ROUTE_PREFIX_API: "route.prefix_api", area 7, Error, Agent,
-        "Route group prefix does not start with its API's prefix";
+        "A route group's prefix doesn't start with its API's prefix";
     ROUTE_PREFIX_REQUIRED: "route.prefix_required", area 7, Error, Agent,
-        "Route group has no prefix";
+        "A route group has no `prefix:`, or its prefix isn't a path";
     ROUTE_QUERY_FIELD_UNSUPPORTED: "route.query_field_unsupported", area 7, Error, Agent,
-        "Query-string input field is not a scalar, an enum or a list of them";
+        "A field read from the query string isn't a scalar, an enum or a list of them";
     ROUTE_RATE_LIMIT_INVALID: "route.rate_limit_invalid", area 16, Error, Agent,
         "A `rate_limit:` doesn't say how many requests over how long, or says it wrongly";
     ROUTE_RUN_INVALID: "route.run_invalid", area 7, Error, Agent,
-        "Route `run:` is not a call of a named action or query";
+        "A route's `run:` isn't a call of a named action or query";
     ROUTE_RUN_KIND: "route.run_kind", area 7, Error, Agent,
         "A `GET` route runs an action that isn't read-only, or a route of another method runs a query";
     ROUTE_RUN_REQUIRED: "route.run_required", area 7, Error, Agent,
-        "Route does not say what it runs";
+        "A route doesn't say what it runs";
     ROUTE_SECRET_OUTSIDE_BODY: "route.secret_outside_body", area 7, Error, Agent,
         "A route reads a secret value from a URL or a header";
     ROUTE_SENDS_INVALID: "route.sends_invalid", area 7, Error, Agent,
-        "Route's `sends:` isn't a media type, or its `Output` isn't exactly one `Bytes` field";
+        "A route's `sends:` isn't a media type, or what it sends isn't exactly one `Bytes` field";
     ROUTE_SETTLE_INVALID: "route.settle_invalid", area 7, Error, Agent,
-        "Route `settle:` is not an answer query and a wait inside its deadline";
+        "A route's `settle:` isn't an answer query and a wait shorter than its deadline, or the route has nothing to wait for";
     ROUTE_STATUS_INVALID: "route.status_invalid", area 7, Error, Agent,
-        "Route status is not a `SuccessStatus`";
+        "A route's `status:` isn't a `SuccessStatus`";
     ROUTE_STREAM_INVALID: "route.stream_invalid", area 7, Error, Agent,
-        "Streaming route answers with another status or waits with `settle:`";
+        "A route that streams a model's answer says another `status:` or waits with `settle:`";
     RUNS_UNAVAILABLE: "runs.unavailable", area 14, Error, Human,
         "The app's unfinished runs couldn't be read from their database, because it can't be reached or has no table for them yet";
     SCHEDULE_EVERY_INVALID: "schedule.every_invalid", area 12, Error, Agent,
