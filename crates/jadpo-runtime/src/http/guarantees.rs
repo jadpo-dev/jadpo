@@ -516,6 +516,7 @@ fn table(keys: Option<&str>, required: bool) -> RouteTable {
             stream: false,
             sends: None,
             immutable: false,
+            links: false,
             keys: keys.map(str::to_string),
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Public,

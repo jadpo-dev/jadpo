@@ -216,6 +216,11 @@ impl<'g> Wire<'g> {
                     {
                         return Shape::StdObject(entry, merge(&rules));
                     }
+                    // A `File` is sent as its signed link (area 16,
+                    // "Downloading").
+                    if name == jadpo_std::files::FILE {
+                        return Shape::Issued(jadpo_std::files::FILE_LINK);
+                    }
                     return match issued_name(&name) {
                         Some(issued) => Shape::Issued(issued),
                         None => Shape::StdEnum(name),
@@ -506,6 +511,7 @@ pub fn issued_name(name: &str) -> Option<&'static str> {
         jadpo_std::http::ISSUED_TOKEN,
         jadpo_std::http::ISSUED_KEY,
         jadpo_std::http::DECODE_PROBLEM,
+        jadpo_std::files::FILE_LINK,
     ]
     .into_iter()
     .find(|issued| *issued == name)
@@ -539,8 +545,49 @@ pub fn issued_entry(name: &str) -> jadpo_db::record::Entry {
     entry
 }
 
+/// The JSON Schema of a file's signed link (area 16, "Downloading").
+fn file_link_schema() -> Value {
+    let mut out = Value::object();
+    out.set(
+        "description",
+        "A file as it is sent: a signed link valid for five minutes, with its name, size and type.",
+    );
+    out.set("type", "object");
+    let mut properties = Value::object();
+    properties.set(
+        "url",
+        scalar_schema(jadpo_std::Builtin::Text, &Rules::default()),
+    );
+    let mut name = scalar_schema(jadpo_std::Builtin::Text, &Rules::default());
+    name.set("nullable", true);
+    properties.set("name", name);
+    let mut size = Value::object();
+    size.set("type", "integer");
+    properties.set("size", size);
+    let mut media = Value::object();
+    media.set("type", "string");
+    media.set(
+        "enum",
+        jadpo_std::FILE_TYPES
+            .iter()
+            .map(|(_, media)| Value::from(*media))
+            .collect::<Vec<_>>(),
+    );
+    properties.set("type", media);
+    out.set("properties", properties);
+    out.set(
+        "required",
+        vec![Value::from("url"), Value::from("size"), Value::from("type")],
+    );
+    out.set("additionalProperties", false);
+    out
+}
+
 /// The JSON Schema of a built-in `IssuedToken` or `IssuedKey`.
 pub fn issued_schema(name: &str) -> Value {
+    if name == jadpo_std::files::FILE_LINK {
+        return file_link_schema();
+    }
     let mut out = Value::object();
     out.set(
         "description",

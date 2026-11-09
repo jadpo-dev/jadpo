@@ -54,9 +54,15 @@ pub(crate) async fn export(
                 if at > 0 {
                     object.push(',');
                 }
+                // A `File` goes out as a signed link, as a route sends one
+                // (area 16, "Downloading"), under the codec its field's
+                // planned as.
+                let Some(linked) = crate::http::downloads::Linker::new(ctx).linked(value) else {
+                    return Err(defect(ctx, "a file whose store signs no links", site));
+                };
                 object.push_str(&quoted(name));
                 object.push(':');
-                object.push_str(&json.codecs.write_value(codec, value));
+                object.push_str(&json.codecs.write_value(codec, &linked));
             }
             object.push('}');
             records += 1;

@@ -155,6 +155,10 @@ pub(super) fn children(node: &Node) -> Vec<SiteId> {
                     out.extend(fields.iter().map(|(_, site)| *site));
                 }
             }
+            Expr::Download { link, range } => {
+                out.push(*link);
+                out.extend(*range);
+            }
             Expr::Request {
                 params,
                 input,

@@ -845,7 +845,7 @@ fn body_features(
                 Expr::Field { .. } => {
                     out.insert("expr field");
                 }
-                Expr::Request { .. } => {
+                Expr::Request { .. } | Expr::Download { .. } => {
                     out.insert("expr request");
                 }
                 Expr::Config { .. } => {

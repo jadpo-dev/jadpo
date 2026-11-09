@@ -718,6 +718,27 @@ impl Emitter<'_> {
                 let defect = self.defect("a stored value outside its write", id);
                 quote!({ #defect })
             }
+            Expr::Download { link, range } => {
+                let parts: Vec<SiteId> = std::iter::once(link).chain(range).collect();
+                let values: Vec<TokenStream> = parts.iter().map(|part| self.expr(*part)).collect();
+                let names: Vec<proc_macro2::Ident> = (0..values.len())
+                    .map(|at| format_ident!("a{}", at))
+                    .collect();
+                if let Some(defect) = self.waits_inline() {
+                    return quote!({ #(let #names = #values;)* #defect });
+                }
+                let ran = self.stepped(
+                    quote!(rt::download(cx, p, vec![#(#names),*]).await),
+                    id,
+                    false,
+                );
+                let answered = self.tri(quote!(ran));
+                quote!({
+                    #(let #names = #values;)*
+                    let ran = #ran;
+                    #answered
+                })
+            }
             Expr::Request {
                 route,
                 params,

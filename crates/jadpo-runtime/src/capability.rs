@@ -312,6 +312,16 @@ pub trait Capability {
         Box::pin(async move { crate::stream::Streamed::Whole(self.call(call).await) })
     }
 
+    /// The key that signs store `connection`'s download links (area 16,
+    /// "Downloading"), which a store of files keeps for itself. Read directly
+    /// rather than through the seam: it is no call, and an export holds its
+    /// transaction open while it signs. Made first when `make`, as signing
+    /// a link is and following one isn't. `None` for anything else.
+    fn link_key(&self, connection: &str, make: bool) -> Option<[u8; 32]> {
+        let _ = (connection, make);
+        None
+    }
+
     /// The inputs of the calls of `operation` through `connection` it was
     /// sent, in order, one per call however often it asked again: what a
     /// test reads as `.requests` (area 13; area 21, chunk 5.5v3). Only a

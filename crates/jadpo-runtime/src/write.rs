@@ -600,6 +600,7 @@ mod tests {
             None,
             size,
             file_type,
+            None,
         )
     }
 

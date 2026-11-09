@@ -487,12 +487,11 @@ fn answering(types: &str, output: &str, body: &str) -> Vec<String> {
     .collect()
 }
 
-/// An answer sends a `File` as a signed link, which comes with downloads
-/// (area 16, "Downloading"). Until then a `File` reaching a route's output,
-/// directly or through what it holds, is `toolchain.not_built_yet`, since
-/// the answer would hold the store and key its bytes are kept under.
+/// An answer sends a `File` as a signed link (area 16, "Downloading"), so a
+/// `File` reaching a route's output, directly or through what it holds,
+/// is not refused.
 #[test]
-fn a_file_in_a_routes_output_is_not_built_yet() {
+fn a_file_in_a_routes_output_is_sent_as_a_link() {
     const REFUSED: &str = "toolchain.not_built_yet";
     let kept = "return Sheet {\n        sheet: kept.sheet\n    }";
     for (what, types, output, body) in [
@@ -554,7 +553,7 @@ fn a_file_in_a_routes_output_is_not_built_yet() {
         let found = answering(types, output, body);
         assert_eq!(
             found.iter().filter(|rule| *rule == REFUSED).count(),
-            1,
+            0,
             "{what}: {found:?}"
         );
     }
@@ -570,18 +569,45 @@ fn a_file_in_a_routes_output_is_not_built_yet() {
 }
 
 /// A failure's `client:` fields are sent in its answer, so a `File` there
-/// is refused as one in an output is; its `internal:` ones stay on the
-/// server.
+/// is a signed link as one in an output is; its `internal:` ones stay on
+/// the server.
 #[test]
-fn a_file_in_a_failures_client_fields_is_not_built_yet() {
+fn a_file_in_a_failures_client_fields_is_sent_as_a_link() {
     let failing = |section: &str| {
         let failure = format!(
             "type SheetRefused = Failure {{\n    kind: FailureKind.conflict\n    {section}: {{\n        sheet: File\n    }}\n}}\n"
         );
         ids(&[("domains/pantry/failures/sheet_refused.jadpo", &failure)])
     };
-    assert_eq!(failing("client"), ["toolchain.not_built_yet"]);
+    assert_eq!(failing("client"), Vec::<String>::new());
     assert_eq!(failing("internal"), Vec::<String>::new());
+}
+
+/// The runtime answers a store of files' links before any route, so a
+/// route at one would never run (area 16, "Downloading"); the same path
+/// is an ordinary route when nothing keeps files under that name.
+#[test]
+fn a_route_at_a_stores_download_links_is_refused() {
+    let route = |path: &str| {
+        let routes = format!(
+            "use pantry/actions {{ whoever }}\nuse pantry/entities {{ ShelfSheet }}\n\nroutes Files {{\n    prefix: /files\n\n    GET {path} {{\n        authentication: RouteAuthentication.none\n        status: SuccessStatus.no_content\n        run: whoever(link)\n    }}\n}}\n"
+        );
+        ids(&[
+            (
+                "domains/pantry/actions/whoever.jadpo",
+                "use pantry/entities { ShelfSheet }\n\naction whoever(id: ShelfSheet.id) -> Unit {\n    assert id == id\n}\n",
+            ),
+            ("domains/pantry/routes/files.jadpo", &routes),
+        ])
+        .into_iter()
+        .filter(|rule| rule.starts_with("route."))
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        route("/sheets/{link: ShelfSheet.id}"),
+        ["route.path_overlap"]
+    );
+    assert_eq!(route("/scans/{link: ShelfSheet.id}"), Vec::<String>::new());
 }
 
 /// Only the runtime builds a `File`, and one is the store and key its
