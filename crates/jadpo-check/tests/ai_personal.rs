@@ -132,7 +132,10 @@ fn problems_with(app: &str, files: &[(&str, &str)]) -> Vec<String> {
         .filter(|d| {
             !matches!(
                 d.rule.id,
-                "layout.unused_declaration" | "import.unused" | "semantic.unused_variable"
+                "layout.unused_declaration"
+                    | "import.unused"
+                    | "semantic.unused_variable"
+                    | "data.personal_unread"
             )
         })
         .map(|d| {
@@ -320,7 +323,12 @@ fn a_standard_type_s_own_category_is_checked() {
     );
     let found: Vec<String> = jadpo_check::check(&db, project)
         .iter()
-        .filter(|d| !matches!(d.rule.id, "layout.unused_declaration" | "import.unused"))
+        .filter(|d| {
+            !matches!(
+                d.rule.id,
+                "layout.unused_declaration" | "import.unused" | "data.personal_unread"
+            )
+        })
         .map(|d| format!("{}: {}", d.rule.id, d.message))
         .collect();
     assert_eq!(

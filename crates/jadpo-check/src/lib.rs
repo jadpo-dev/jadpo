@@ -52,6 +52,8 @@ pub mod own_sources;
 pub mod package_code;
 pub mod packages;
 pub mod personal_data;
+pub mod personal_held;
+pub mod personal_reads;
 pub mod persons;
 pub mod policy;
 pub mod polls;
@@ -400,6 +402,7 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         );
         out.extend(prompts::prompt_problems(db, project).iter().cloned());
         out.extend(emails::email_problems(db, project).iter().cloned());
+        out.extend(personal_reads::unread_problems(db, project).iter().cloned());
         out.extend(disk::disk_problems(db, project).iter().cloned());
         out.extend(thresholds::problems(db, project));
         out.extend(data::held::counting_problems(db, project).iter().cloned());
@@ -465,6 +468,15 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .cloned(),
         );
         out = declines::answer(db, project, out, syntax.is_empty());
+        // A marked field nothing reads is said only of a project with
+        // nothing else wrong: a body with an error may hold a read no walk
+        // can see (area 15, "What the compiler checks").
+        if out
+            .iter()
+            .any(|d| d.rule != &jadpo_diag::rule::DATA_PERSONAL_UNREAD)
+        {
+            out.retain(|d| d.rule != &jadpo_diag::rule::DATA_PERSONAL_UNREAD);
+        }
     }
     if !syntax.is_empty() {
         let line = |path: &str, offset: u32| {

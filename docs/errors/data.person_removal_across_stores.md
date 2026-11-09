@@ -130,6 +130,7 @@ application {
 ```jadpo check project=e-person-removal-erase file=domains/accounts/entities/user.jadpo hidden
 entity User {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email {
         personal: PersonalData.contact
     }
@@ -163,6 +164,7 @@ Removing someone now erases them, and their old notes go after the commit.
 ```jadpo check project=e-person-removal-hide file=domains/accounts/entities/user.jadpo
 entity User {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email {
         personal: PersonalData.contact
     }
@@ -258,6 +260,7 @@ application {
 ```jadpo check project=e-person-removal-one-store file=domains/accounts/entities/user.jadpo hidden migrate=initial
 entity User {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email {
         personal: PersonalData.contact
     }

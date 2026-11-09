@@ -103,6 +103,7 @@ type BillingName = Text {
 
 entity User {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email {
         personal: PersonalData.contact
     }
@@ -116,6 +117,7 @@ entity Invoice {
         on_delete: OnDelete.restricted
         erase: Erasure.retained
     }
+    decline data.personal_unread: "Read by code this example leaves out"
     billing_name: BillingName {
         personal: PersonalData.identifying
     }
@@ -154,6 +156,7 @@ type BillingName = Text {
 
 entity User {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email {
         personal: PersonalData.contact
     }
@@ -167,6 +170,7 @@ entity Invoice {
         on_delete: OnDelete.restricted
         erase: Erasure.deleted
     }
+    decline data.personal_unread: "Read by code this example leaves out"
     billing_name: BillingName {
         personal: PersonalData.identifying
     }

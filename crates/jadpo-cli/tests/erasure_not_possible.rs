@@ -99,6 +99,11 @@ fn built(name: &str, send_name: &str, erasure: &str, extra: &str, refused: bool)
     app(&root, extra);
     write(
         &root,
+        "domains/billing/actions/name_of.jadpo",
+        "use billing/entities { User, UserNotFound }\nuse shared/providers/acme_pay\n\n/// What to call a user.\naction name_of(user_id: User.id) fails UserNotFound -> AcmePay.Words {\n    var user: User = attempt User.get(user_id)\n    return user.display_name\n}\n",
+    );
+    write(
+        &root,
         "config.jadpo",
         "config {\n    pay_api_key: Text {\n        secret: true\n    }\n    pay_environment: ProviderEnvironment\n}\n",
     );
@@ -588,6 +593,34 @@ fn the_approval_report_shows_the_reports_difference() {
             .expect("before")
             .flatten()
             .any(|entry| entry.path().join("personal-data.json").exists())
+    );
+}
+
+/// What a person's records hold shows in the review a person at a time, so
+/// a field newly marked is seen before it ships.
+#[test]
+fn the_approval_report_shows_a_person_changing() {
+    let root = project("erasure-approval-person", "user.plan", "", "");
+    branch(&root, "mark-plan");
+    edit(
+        &root,
+        "domains/billing/entities/user.jadpo",
+        "    plan: AcmePay.Words\n",
+        "    plan: AcmePay.Words {\n        personal: PersonalData.identifying\n    }\n",
+    );
+    let output = jadpo(&root, &["approval"]);
+    assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
+    let markdown = fs::read_to_string(root.join("build/review/approval.md")).expect("report");
+    for words in [
+        "person User",
+        "+ `User.plan` (identifying): in `main`, read by `Access.public`, kept until erased",
+    ] {
+        assert!(markdown.contains(words), "{words}\n{markdown}");
+    }
+    assert!(
+        output.stdout.contains("1 person changed"),
+        "{}",
+        output.stdout
     );
 }
 

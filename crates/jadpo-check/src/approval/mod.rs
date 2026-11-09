@@ -205,6 +205,8 @@ fn noun(section: &str, heading: &str) -> &'static str {
         (_, "failure") => "failure",
         (_, "event") => "event",
         (_, "connection") => "connection",
+        ("personal_data", "person") => "person",
+        ("personal_data", "store") => "store",
         ("api", "api") => "API setting",
         (_, "entity") => "entity's grants",
         (_, "field") => "field's grants",
@@ -224,6 +226,7 @@ pub fn plural(noun: &str, n: usize) -> String {
     }
     match noun {
         "entity" => "entities".to_string(),
+        "person" => "people".to_string(),
         "entity's grants" => "entities' grants".to_string(),
         "field's grants" => "fields' grants".to_string(),
         "tenancy" => "tenancies".to_string(),

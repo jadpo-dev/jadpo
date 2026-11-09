@@ -106,6 +106,21 @@ fn field_cell(field: &FieldPolicy, effect: Effect) -> String {
     }
 }
 
+/// Who may read `field` of an entity, as the report on personal data shows
+/// it: the field's own list where it has one, or its record's.
+pub(crate) fn who_reads(policy: Option<&EntityPolicy>, field: &str) -> String {
+    let Some(policy) = policy else {
+        return "nobody".to_string();
+    };
+    match policy.field(field) {
+        Some(field) if field.server_only => "server only".to_string(),
+        Some(field) if field.lists.contains_key(&Effect::Read) => {
+            listed(field.lists.get(&Effect::Read))
+        }
+        _ => cell(policy, Effect::Read),
+    }
+}
+
 fn and_list(items: &[String]) -> String {
     crate::and_list(items)
 }

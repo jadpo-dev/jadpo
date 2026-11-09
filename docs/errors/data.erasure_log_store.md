@@ -89,6 +89,7 @@ application {
 ```jadpo check project=e-erasure-log-store-fix file=domains/accounts/entities/user.jadpo hidden migrate=initial
 entity User {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email {
         personal: PersonalData.contact
     }
@@ -123,6 +124,7 @@ application {
 ```jadpo check project=e-erasure-log-store-files file=domains/accounts/entities/user.jadpo hidden migrate=initial
 entity User {
     id: Uuid
+    decline data.personal_unread: "Read by code this example leaves out"
     email: Email {
         personal: PersonalData.contact
     }

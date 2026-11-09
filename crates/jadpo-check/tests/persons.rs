@@ -60,7 +60,8 @@ entity Attachment {
 fn person(source: &str, entity: &str) -> (jadpo_graph::Node, Vec<String>) {
     let db = Database::default();
     let project = support::project(&db, Layout::Loose, &[("main.jadpo", source)]);
-    let found = jadpo_check::check(&db, project);
+    let mut found = jadpo_check::check(&db, project);
+    found.retain(|problem| problem.rule.id != "data.personal_unread");
     assert!(found.is_empty(), "{found:?}");
     let graph = jadpo_check::graph::graph(&db, project);
     let id = graph
@@ -311,7 +312,8 @@ entity LossReport {
 ",
         )],
     );
-    let found = jadpo_check::check(&db, project);
+    let mut found = jadpo_check::check(&db, project);
+    found.retain(|problem| problem.rule.id != "data.personal_unread");
     assert_eq!(found.len(), 1, "{found:?}");
     let problem = &found[0];
     assert_eq!(problem.rule.id, "data.personal_unreachable");

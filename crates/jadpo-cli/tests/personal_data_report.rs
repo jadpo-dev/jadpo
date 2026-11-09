@@ -89,11 +89,35 @@ fn check_writes_where_personal_data_goes() {
         report,
         "# Personal data
 
-Where the app's personal data goes: each connection a field marked `personal:`, or a value of a standard type that is personal data, is sent through, and the hosts that connection reaches. A value counts as sent when it may be in what goes out, may have decided it, or was sent to a provider whose answer it may be in. Each connection says whether it erases its copy when a person is erased. Written by `jadpo check`.
+What the app holds about people, who may read it, how long it is kept, what erasing someone does to it and where it goes. Written by `jadpo check`.
 
-Not listed yet: what each store and cache keeps, who may read it and how long it is kept.
+This is most of a record of processing activities (Article 30). Your team adds what the compiler can't know: the purpose of each use, the lawful basis and the organisation's details.
 
-## `pay`
+## Person `User`
+
+| Field | Category | Store | Who may read it | Kept for |
+|---|---|---|---|---|
+| `User.display_name` | `identifying` | `main` | `Access.public` | kept until erased |
+
+### Erasing a `User`
+
+| Record | Reached through | Store | What happens |
+|---|---|---|---|
+| `User` | the person | `main` | Deleted. |
+
+## Stores
+
+Each store is one database in one place. An app that must keep data in a region runs one deployment per region, each with its own stores.
+
+| Store | Holds | Where it is set |
+|---|---|---|
+| `main` | database | not set: no setting says where it is |
+
+## Where personal data goes
+
+Each connection a field marked `personal:`, or a value of a standard type that is personal data, is sent through, and the hosts that connection reaches. A value counts as sent when it may be in what goes out, may have decided it, or was sent to a provider whose answer it may be in. Each connection says whether it erases its copy when a person is erased.
+
+### `pay`
 
 - `https://api.acme-pay.example` when `config.pay_environment` is `live`
 - `https://sandbox.acme-pay.example` when `config.pay_environment` is `sandbox`
@@ -104,6 +128,25 @@ Not listed yet: what each store and cache keeps, who may read it and how long it
 |---|---|---|---|
 | `AcmePay.CustomerRequest.notes` | `health`, sensitive | operation `customers.create` | sent |
 | `User.display_name` | `identifying` | operation `customers.create` | sent |
+
+## Step records
+
+An action with several changing calls records each call's answer, encrypted, until the action commits. An answer over 1 MB is a fault.
+
+No action makes several changing calls.
+
+## OAuth grants
+
+No connection holds an OAuth grant: grants aren't built yet.
+
+## What this report covers
+
+- **Covered by the language:** minimisation and storage limitation, access, rectification, by ordinary updates, erasure, portability, privacy by design, records of processing, most of Article 30, security of processing.
+- **Supported, but the app's choice:** restriction and objection, consent.
+- **Not code at all:** the lawful basis, the privacy notice, data protection impact assessments (DPIAs), processor contracts, the data protection officer (DPO).
+- **Still to add:** breach notification, which lists the people whose marked data a breached store or provider held, international transfers, where provider packages declare where data is processed and this report shows it.
+
+This is not legal advice. A privacy professional reviews this report.
 "
     );
     let json: serde_json::Value = serde_json::from_str(
@@ -170,7 +213,7 @@ fn the_report_says_how_each_value_goes_and_where() {
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let report = fs::read_to_string(root.join("build/report/personal-data.md")).expect("report");
     for line in [
-        "## `papers`\n\nKeeps its files on the server's own disk, so it reaches no host.\n",
+        "### `papers`\n\nKeeps its files on the server's own disk, so it reaches no host.\n",
         "| `User.display_name` | `identifying` | a file in the store | sent |",
         "| `User.display_name` | `identifying` | operation `customers.create` | decided what was sent |",
     ] {
@@ -187,15 +230,118 @@ fn an_app_that_sends_nothing_says_so() {
     jadpo(&root, &["records", "update"]);
     assert_eq!(jadpo(&root, &["check"]).code, 0);
     let report = fs::read_to_string(root.join("build/report/personal-data.md")).expect("report");
-    assert!(
-        report.ends_with("No personal data leaves through a connection.\n"),
-        "{report}"
-    );
+    for line in [
+        "No entity says `person: true`, so no record is held about a person.\n",
+        "No personal data leaves through a connection.\n",
+    ] {
+        assert!(report.contains(line), "{line}\n\n{report}");
+    }
     let json: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(root.join("build/report/personal-data.json")).expect("twin"),
     )
     .expect("JSON");
     assert_eq!(json["connections"], serde_json::json!([]));
+}
+
+const HELD_APP: &[(&str, &str)] = &[
+    (
+        "app.jadpo",
+        "application {\n    privacy: {\n        erasure_log: {\n            store: papers\n        }\n    }\n    connections: {\n        main: {\n            driver: Driver.postgres\n            url: config.database_url\n        }\n        papers: {\n            driver: Driver.disk\n            path: \"/var/lib/papers\"\n        }\n    }\n}\n",
+    ),
+    (
+        "config.jadpo",
+        "config {\n    database_url: PostgresUrl {\n        secret: true\n    }\n    invoice_retention: Duration {\n        default: 2190d\n    }\n}\n",
+    ),
+    (
+        "domains/shop/types/note.jadpo",
+        "/// Words someone wrote.\ntype Note = Text {\n    max_length: 200\n}\n",
+    ),
+    (
+        "domains/shop/entities/user.jadpo",
+        "use shop/types { Note }\n\n/// Someone with an account.\nentity User {\n    id: Uuid\n    email: Email\n    medical_note: Note? {\n        personal: PersonalData.health\n    }\n    person: true\n\n    policy: {\n        read: [Access.authenticated]\n    }\n}\n",
+    ),
+    (
+        "domains/shop/entities/order.jadpo",
+        "use shop/entities { User }\nuse shop/types { Note }\n\n/// Something they bought.\nentity Order {\n    id: Uuid\n    buyer_id: User.id {\n        on_delete: OnDelete.cascade\n    }\n    delivery_note: Note {\n        personal: PersonalData.location\n    }\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
+    ),
+    (
+        "domains/shop/entities/invoice.jadpo",
+        "use shop/entities { User }\n\n/// What a person was charged, kept for the tax office.\nentity Invoice {\n    id: Uuid\n    buyer_id: User.id? {\n        on_delete: OnDelete.restricted\n        erase: Erasure.retained\n    }\n    issued_at: Instant\n\n    retention: {\n        after: config.invoice_retention\n        since: issued_at\n    }\n\n    policy: {\n        read: [Access.authenticated]\n    }\n}\n",
+    ),
+    (
+        "domains/shop/queries/recent_orders.jadpo",
+        "use shop/entities { Order, User }\nuse shop/types { Note }\n\n/// An order as a person sees it.\ntype OrderLine = Output {\n    delivery_note: Note\n}\n\n/// A person's recent orders.\nquery recent_orders(buyer: User.id) -> List<OrderLine> {\n    from: Order\n    where: Order.buyer_id == buyer\n    order: [Order.id desc]\n    limit: 20\n}\n",
+    ),
+    (
+        "domains/shop/actions/contact.jadpo",
+        "use shop/entities { User, UserNotFound }\n\n/// What a person gave us.\naction contact(user: User.id) fails UserNotFound -> Email {\n    var person: User = attempt User.get(user)\n    if (person.medical_note != none) {\n        return person.email\n    }\n    return person.email\n}\n",
+    ),
+];
+
+/// For each person the report lists every marked field with its category,
+/// store, who may read it and its retention, and what erasure does to
+/// each record; then each store with what says where it is.
+#[test]
+fn the_report_lists_what_each_person_entity_holds() {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("personal-report-held");
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in HELD_APP {
+        write(&root, path, text);
+    }
+    jadpo(&root, &["migrate", "new", "initial"]);
+    jadpo(&root, &["records", "update"]);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let report = fs::read_to_string(root.join("build/report/personal-data.md")).expect("report");
+    for line in [
+        "## Person `User`\n",
+        "| `User.email` | `contact` (an `Email`) | `main` | `Access.authenticated` | kept until erased |",
+        "| `User.medical_note` | `health`, sensitive | `main` | `Access.authenticated` | kept until erased |",
+        "| `Order.delivery_note` | `location`, sensitive | `main` | `Access.public` | kept until erased |",
+        "### Erasing a `User`\n",
+        "| `User` | the person | `main` | Deleted. |",
+        "| `Order` | `buyer_id` | `main` | Deleted. |",
+        "| `Invoice` | `buyer_id` | `main` | Kept until its retention ends. Clears the reference. |",
+        "| `main` | database | `config.database_url` |",
+        "| `papers` | files | the `path:` its connection gives in `app.jadpo` |",
+    ] {
+        assert!(report.contains(line), "{line}\n\n{report}");
+    }
+    let json: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join("build/report/personal-data.json")).expect("twin"),
+    )
+    .expect("JSON");
+    let person = &json["people"][0];
+    assert_eq!(person["entity"], "User");
+    let email = &person["fields"][0];
+    assert_eq!(email["entity"], "User");
+    assert_eq!(email["field"], "email");
+    assert_eq!(email["categories"][0], "contact");
+    assert_eq!(email["sensitive"], false);
+    assert_eq!(email["store"], "main");
+    assert_eq!(email["read_by"], "`Access.authenticated`");
+    assert_eq!(email["kept_until_erased"], true);
+    assert_eq!(email["caches"], serde_json::json!([]));
+    let medical = &person["fields"][1];
+    assert_eq!(medical["sensitive"], true);
+    assert_eq!(person["erasure"][0]["entity"], "User");
+    assert_eq!(person["erasure"][0]["outcome"], "deleted");
+    let invoice = person["erasure"]
+        .as_array()
+        .expect("erasure")
+        .iter()
+        .find(|row| row["entity"] == "Invoice")
+        .expect("the invoice");
+    assert_eq!(invoice["outcome"], "retained");
+    assert_eq!(invoice["through"][0], "buyer_id");
+    assert_eq!(json["stores"][0]["store"], "main");
+    assert_eq!(json["stores"][0]["setting"], "database_url");
+    assert_eq!(json["stores"][1]["store"], "papers");
+    assert_eq!(json["stores"][1]["kind"], "files");
+    assert_eq!(json["step_records"], serde_json::json!([]));
+    assert_eq!(json["oauth_grants"], serde_json::json!([]));
+    assert_eq!(json["coverage"]["not_code"][0], "the lawful basis");
+    assert_eq!(json["coverage"]["app_choice"][1], "consent");
 }
 
 /// A package's repository: `jadpo package check` shows what its operations

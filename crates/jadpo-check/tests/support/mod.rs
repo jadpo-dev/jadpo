@@ -165,8 +165,18 @@ pub fn project_in_path_order(db: &Database, layout: Layout, files: &[(&str, &str
     )
 }
 
-/// Each problem as `path rule: message`.
+/// Each problem as `path rule: message`, but `data.personal_unread`: these
+/// fixtures are parts of an app, each about something else, so what marks a
+/// field needn't also read it. [`every_problem`] keeps it.
 pub fn problems(layout: Layout, files: &[(&str, &str)]) -> Vec<String> {
+    every_problem(layout, files)
+        .into_iter()
+        .filter(|problem| !problem.contains(" data.personal_unread: "))
+        .collect()
+}
+
+/// Each problem as `path rule: message`.
+pub fn every_problem(layout: Layout, files: &[(&str, &str)]) -> Vec<String> {
     let db = Database::default();
     let project = project(&db, layout, files);
     jadpo_check::check(&db, project)
@@ -188,6 +198,7 @@ pub fn rules(layout: Layout, files: &[(&str, &str)]) -> Vec<String> {
     jadpo_check::check(&db, project)
         .iter()
         .map(|d| d.rule.id.to_string())
+        .filter(|rule| rule != "data.personal_unread")
         .collect()
 }
 

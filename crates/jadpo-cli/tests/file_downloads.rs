@@ -240,7 +240,7 @@ test "a path that names no store is no download" {
         ),
         (
             "domains/accounts/entities/member.jadpo",
-            format!("/// Someone who keeps documents.\nentity Member {{\n    id: Uuid\n    handle: Text {{\n        max_length: 80\n        personal: PersonalData.identifying\n    }}\n\n    person: true\n\n{OPEN}}}\n"),
+            format!("/// Someone who keeps documents.\nentity Member {{\n    id: Uuid\n    decline data.personal_unread: \"Only downloads are under test\"\n    handle: Text {{\n        max_length: 80\n        personal: PersonalData.identifying\n    }}\n\n    person: true\n\n{OPEN}}}\n"),
         ),
         (
             "domains/accounts/entities/scan.jadpo",
