@@ -395,14 +395,18 @@ pub enum Expr {
         range: Option<SiteId>,
     },
     /// `request { upload: ... body: ... }` in a route test (area 13): a
-    /// file sent to a slot's address, with the type, encoding and name it
-    /// says it has, answered with a `Response` (`status`, `code`).
+    /// file, or a part of one when `part` says which, sent to a slot's
+    /// address, with the type, encoding and name it says it has, its
+    /// connection cut before its end when `dropped`, answered with a
+    /// `Response` (`status`, `code`).
     Upload {
         slot: SiteId,
         body: SiteId,
         content_type: Option<SiteId>,
         content_encoding: Option<SiteId>,
         file_name: Option<SiteId>,
+        part: Option<SiteId>,
+        dropped: Option<SiteId>,
     },
     /// `item -> expression`, or `(key, value) -> expression`, given to a
     /// standard operation: its parameters in order.

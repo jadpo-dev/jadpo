@@ -280,13 +280,6 @@ work below (Richard, 2026-11-08).
    The disk driver in production moved here from item 5; the `search`,
    `bot_check` and `scanning` capabilities, image variants, the
    `telemetry:` section and custom metrics stay under item 5.
-   - [ ] **B6 Large uploads in parts** `opus · high`: area 16, "Large
-     uploads go in parts". A field over 100 MB gets a multipart slot of
-     equal parts, each sent to `PUT /files/<store>/uploads/<slot>/parts/<n>`
-     on disk and resendable, joined on attach with B5's checks; the
-     client helper comes with item 7's generated bindings. Done when
-     route tests upload in parts, resend one after a dropped connection
-     and attach, on both executors.
    - [ ] **B7 The S3 driver** `opus · xhigh`: area 16, "Files" (S3-compatible
      services), "Downloading", "Uploading" and "Large uploads go in
      parts"; area 11, "Connecting in `app.jadpo`". `Driver.s3` with

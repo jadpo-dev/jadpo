@@ -534,7 +534,9 @@ impl Body<'_> {
     /// sent to a slot's address, as a client sends one (area 16,
     /// "Uploading"). `upload:` is the `UploadSlot` a response gave, or an
     /// address as text, to test one that was altered; `content_type:`,
-    /// `content_encoding:` and `file_name:` are what it says of itself.
+    /// `content_encoding:` and `file_name:` are what it says of itself;
+    /// `part:` is which part of a slot in parts it is, and `dropped: true`
+    /// ends the body's connection before its last byte.
     fn upload_request(&mut self, record: &ast::RecordExpr, slot: &ast::Member) -> Ty {
         let mut ok = true;
         let mut method = false;
@@ -572,12 +574,22 @@ impl Body<'_> {
                         self.check(&value, &Ty::Prim(Prim::Text));
                     }
                 }
+                "part" => {
+                    if let Some(value) = member.value() {
+                        self.check(&value, &Ty::Prim(Prim::Int));
+                    }
+                }
+                "dropped" => {
+                    if let Some(value) = member.value() {
+                        self.check(&value, &Ty::Prim(Prim::Bool));
+                    }
+                }
                 other => {
                     ok = false;
                     self.request_problem(
                         span,
                         &format!(
-                            "A request with `upload:` holds `method:`, `body:`, `content_type:`, `content_encoding:` and `file_name:`, not `{other}:`"
+                            "A request with `upload:` holds `method:`, `body:`, `content_type:`, `content_encoding:`, `file_name:`, `part:` and `dropped:`, not `{other}:`"
                         ),
                     );
                     self.skip_member(&member);

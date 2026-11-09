@@ -1974,6 +1974,8 @@ impl Lower<'_> {
             content_type: value("content_type").map(|expr| self.expr(&expr)),
             content_encoding: value("content_encoding").map(|expr| self.expr(&expr)),
             file_name: value("file_name").map(|expr| self.expr(&expr)),
+            part: value("part").map(|expr| self.expr(&expr)),
+            dropped: value("dropped").map(|expr| self.expr(&expr)),
         }
     }
 

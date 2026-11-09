@@ -6,6 +6,11 @@
 //! the interpreter's records, in the gate's compiled step (`compiled.rs`,
 //! "a file uploaded").
 //!
+//! A large file goes in parts ("Large uploads go in parts"), each resent
+//! freely, and an ordinary attach joins them: the project's route tests do,
+//! and so, over real HTTP with a connection truly dropped, does
+//! [`serves_an_upload_in_parts`].
+//!
 //! What only a real client can see, the file landing on a real disk and a
 //! body cut off part-way, is [`serves_an_upload`]: over real HTTP from
 //! `jadpo dev` (`disk_files.rs`) and a compiled deployable (`deployable.rs`).
@@ -134,6 +139,14 @@ pub(crate) fn files(path: &str) -> Vec<(String, String)> {
             "use bakery/entities { PriceSheet, PriceSheetNotFound }\nuse bakery/types { NewNotes, SheetView }\n\n/// Attaches uploaded notes to a record read first.\naction add_notes(sheet_id: PriceSheet.id, input: NewNotes) fails PriceSheetNotFound -> SheetView {\n    var sheet: PriceSheet = attempt PriceSheet.get(sheet_id)\n    var kept: PriceSheet = PriceSheet.update(sheet) {\n        set: {\n            notes: input.notes\n        }\n    }\n    return SheetView {\n        id: kept.id\n        supplier: kept.supplier\n        sheet: kept.sheet\n        notes: kept.notes\n    }\n}\n".to_string(),
         ),
         (
+            "domains/bakery/types/archive_view.jadpo",
+            "use bakery/entities { Archive }\n\n/// An archive kept and the link to it.\ntype ArchiveView = Output {\n    pick: [Archive.id, Archive.file]\n}\n".to_string(),
+        ),
+        (
+            "domains/bakery/actions/keep_archive.jadpo",
+            "use bakery/entities { Archive }\nuse bakery/types { ArchiveView, NewUpload }\n\n/// Attaches an archive uploaded in parts.\naction keep_archive(input: NewUpload) -> ArchiveView {\n    var kept: Archive = Archive.create {\n        set: {\n            file: input.upload\n        }\n    }\n    return ArchiveView {\n        id: kept.id\n        file: kept.file\n    }\n}\n".to_string(),
+        ),
+        (
             "domains/bakery/actions/keep_scan.jadpo",
             "use bakery/entities { Scan }\nuse bakery/types { NewUpload, ScanView }\n\n/// Attaches an uploaded scan.\naction keep_scan(input: NewUpload) -> ScanView {\n    var kept: Scan = Scan.create {\n        set: {\n            document: input.upload\n        }\n    }\n    return ScanView {\n        id: kept.id\n    }\n}\n".to_string(),
         ),
@@ -155,9 +168,9 @@ pub(crate) fn files(path: &str) -> Vec<(String, String)> {
         ),
         (
             "domains/bakery/routes/sheets.jadpo",
-            r#"use bakery/actions { add_notes, attachment_slot, keep_attachment, keep_scan, keep_sheet, ledger_slot, notes_slot, scan_slot, sheet_slot }
+            r#"use bakery/actions { add_notes, archive_slot, attachment_slot, keep_archive, keep_attachment, keep_scan, keep_sheet, ledger_slot, notes_slot, scan_slot, sheet_slot }
 use bakery/entities { PriceSheet }
-use bakery/types { KeptView, NewNotes, NewSheet, NewUpload, ScanView, SheetView }
+use bakery/types { KeptView, NewNotes, NewSheet, NewUpload, ScanView, SheetView, ArchiveView }
 
 routes Sheets {
     prefix: /sheets
@@ -183,6 +196,12 @@ routes Sheets {
         authentication: RouteAuthentication.none
         output: UploadSlot
         run: scan_slot()
+    }
+
+    POST /archive-slot {
+        authentication: RouteAuthentication.none
+        output: UploadSlot
+        run: archive_slot()
     }
 
     POST /attachment-slot {
@@ -212,6 +231,14 @@ routes Sheets {
         output: ScanView
         status: SuccessStatus.created
         run: keep_scan(input)
+    }
+
+    POST /archives {
+        authentication: RouteAuthentication.none
+        input: NewUpload
+        output: ArchiveView
+        status: SuccessStatus.created
+        run: keep_archive(input)
     }
 
     POST /attachments {
@@ -609,6 +636,340 @@ test "a slot needs the entity's create or update grant" {
     }
     assert asked.status == 200
 }
+
+test "a large file goes in parts, one resent after a dropped connection, and is attached" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archive-slot"
+    }
+    assert asked.status == 200
+    var part_size: Int? = match asked.output {
+        some(slot) -> slot.part_size
+        none -> none
+    }
+    assert part_size == 16777216
+    var plain_url: Text? = match asked.output {
+        some(slot) -> slot.url
+        none -> none
+    }
+    assert plain_url == none
+    var first_part: Bytes = encoding.to_utf8(text.pad_start("", 16777216, fill: "a"))
+    var first: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 1
+        body: first_part
+        content_type: "text/csv"
+        file_name: "archive.csv"
+    }
+    assert first.status == 204
+    var cut: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 2
+        body: encoding.to_utf8("lost,part\n")
+        dropped: true
+    }
+    assert cut.status == 400
+    assert cut.code == "invalid_request"
+    var resent: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 2
+        body: encoding.to_utf8("end,part\n")
+    }
+    assert resent.status == 204
+    var token: Text = match asked.output {
+        some(slot) -> slot.token
+        none -> ""
+    }
+    var kept: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archives"
+        input: NewUpload {
+            upload: token
+        }
+    }
+    assert kept.status == 201
+    var file: File? = match kept.output {
+        some(view) -> view.file
+        none -> none
+    }
+    var back: Response = request {
+        method: HttpMethod.get
+        link: file
+    }
+    assert back.status == 200
+    assert back.body == bytes.concat(first_part, encoding.to_utf8("end,part\n"))
+}
+
+test "a part resent replaces the one before it" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archive-slot"
+    }
+    var first: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 1
+        body: encoding.to_utf8("old,part\n")
+    }
+    assert first.status == 204
+    var second: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 1
+        body: encoding.to_utf8("new,part\n")
+    }
+    assert second.status == 204
+    var token: Text = match asked.output {
+        some(slot) -> slot.token
+        none -> ""
+    }
+    var kept: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archives"
+        input: NewUpload {
+            upload: token
+        }
+    }
+    assert kept.status == 201
+    var file: File? = match kept.output {
+        some(view) -> view.file
+        none -> none
+    }
+    var back: Response = request {
+        method: HttpMethod.get
+        link: file
+    }
+    assert back.body == encoding.to_utf8("new,part\n")
+}
+
+test "an attach waits for every part" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archive-slot"
+    }
+    var first_part: Bytes = encoding.to_utf8(text.pad_start("", 16777216, fill: "a"))
+    var first: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 1
+        body: first_part
+    }
+    assert first.status == 204
+    var third: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 3
+        body: encoding.to_utf8("end,part\n")
+    }
+    assert third.status == 204
+    var token: Text = match asked.output {
+        some(slot) -> slot.token
+        none -> ""
+    }
+    var early: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archives"
+        input: NewUpload {
+            upload: token
+        }
+    }
+    assert early.status == 422
+    assert early.code == "invalid_value"
+    var middle: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 2
+        body: first_part
+    }
+    assert middle.status == 204
+    var kept: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archives"
+        input: NewUpload {
+            upload: token
+        }
+    }
+    assert kept.status == 201
+}
+
+test "parts that aren't equal can't be attached" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archive-slot"
+    }
+    var short: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 1
+        body: encoding.to_utf8("short,part\n")
+    }
+    assert short.status == 204
+    var second: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 2
+        body: encoding.to_utf8("end,part\n")
+    }
+    assert second.status == 204
+    var token: Text = match asked.output {
+        some(slot) -> slot.token
+        none -> ""
+    }
+    var kept: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archives"
+        input: NewUpload {
+            upload: token
+        }
+    }
+    assert kept.status == 422
+    assert kept.code == "invalid_value"
+}
+
+test "a part over the part size or past the last is too large" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archive-slot"
+    }
+    var over: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 1
+        body: encoding.to_utf8(text.pad_start("", 16777217, fill: "a"))
+    }
+    assert over.status == 413
+    assert over.code == "file_too_large"
+    var past: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 13
+        body: encoding.to_utf8("a,b\n")
+    }
+    assert past.status == 413
+    assert past.code == "file_too_large"
+}
+
+test "a part sent after the file is joined is refused" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archive-slot"
+    }
+    var first: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 1
+        body: encoding.to_utf8("a,b\n")
+    }
+    assert first.status == 204
+    var token: Text = match asked.output {
+        some(slot) -> slot.token
+        none -> ""
+    }
+    var kept: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archives"
+        input: NewUpload {
+            upload: token
+        }
+    }
+    assert kept.status == 201
+    var again: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 1
+        body: encoding.to_utf8("b,c\n")
+    }
+    assert again.status == 409
+    assert again.code == "upload_already_sent"
+}
+
+test "a first part isn't a type the slot takes" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archive-slot"
+    }
+    var sent: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 1
+        body: encoding.to_utf8("%PDF-1.7 not a price sheet")
+        content_type: "text/csv"
+    }
+    assert sent.status == 415
+    assert sent.code == "file_type_refused"
+}
+
+test "a part with a Content-Encoding is refused" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archive-slot"
+    }
+    var sent: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 1
+        body: encoding.to_utf8("a,b\n")
+        content_encoding: "gzip"
+    }
+    assert sent.status == 415
+    assert sent.code == "content_encoding_refused"
+}
+
+test "a slot in parts is good for six hours" {
+    clock: "2026-01-15T12:00:00Z"
+
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archive-slot"
+    }
+    clock.advance(5h)
+    var early: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 1
+        body: encoding.to_utf8("a,b\n")
+    }
+    assert early.status == 204
+    clock.advance(2h)
+    var late: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 2
+        body: encoding.to_utf8("c,d\n")
+    }
+    assert late.status == 403
+    assert late.code == "link_expired"
+}
+
+test "a plain slot's parts and part zero are refused" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/slot"
+    }
+    var plain: Response = request {
+        method: HttpMethod.put
+        upload: asked.output
+        part: 1
+        body: encoding.to_utf8("flour,1.20\n")
+    }
+    assert plain.status == 403
+    assert plain.code == "link_invalid"
+    var archive: Response = request {
+        method: HttpMethod.post
+        path: "/sheets/archive-slot"
+    }
+    var zero: Response = request {
+        method: HttpMethod.put
+        upload: archive.output
+        part: 0
+        body: encoding.to_utf8("a,b\n")
+    }
+    assert zero.status == 403
+    assert zero.code == "link_invalid"
+}
 "#
             .to_string(),
         ),
@@ -622,6 +983,16 @@ test "a slot needs the entity's create or update grant" {
             "max_size: 1kb\n        types: [FileType.pdf]",
         ),
         ("domains/bakery/actions/scan_slot.jadpo", "scan_slot"),
+    );
+    with_file(
+        &mut plain,
+        (
+            "domains/bakery/entities/archive.jadpo",
+            "Archive",
+            "file",
+            "max_size: 200mb\n        types: [FileType.csv]",
+        ),
+        ("domains/bakery/actions/archive_slot.jadpo", "archive_slot"),
     );
     with_file(
         &mut plain,
@@ -782,6 +1153,103 @@ pub(crate) fn serves_an_upload(send: Send<'_>, store: &Path) {
         "attachment; filename*=UTF-8''prices.csv"
     );
     assert!(header(&back, "etag").starts_with('"'), "{back:?}");
+}
+
+/// A large file in parts over `send`, real HTTP to a real disk store at
+/// `store`: a slot in parts asked for at `/sheets/archive-slot`, its first
+/// part sent, the connection truly dropped part-way through the second,
+/// which leaves nothing, that part resent, the record attached at
+/// `/sheets/archived`, and the file downloaded whole.
+pub(crate) fn serves_an_upload_in_parts(address: &str, send: Send<'_>, store: &Path) {
+    use std::io::Write;
+    const PART: usize = 16 * 1024 * 1024;
+    const LAST: &[u8] = b"end,of,sheet\n";
+
+    let asked = send("POST", "/sheets/archive-slot", &[], b"");
+    assert_eq!(asked.0, 200, "{asked:?}");
+    let slot: serde_json::Value = serde_json::from_slice(&asked.2).expect("a slot");
+    assert_eq!(slot["part_size"], serde_json::json!(PART), "{slot}");
+    assert_eq!(slot["max_size"], serde_json::json!(200_000_000), "{slot}");
+    assert!(slot.get("url").is_none(), "{slot}");
+    let parts = slot["parts_url"].as_str().expect("parts_url").to_string();
+    let token = slot["token"].as_str().expect("a token").to_string();
+    assert!(parts.ends_with(&format!("{token}/parts")), "{parts}");
+
+    let first = vec![b'a'; PART];
+    let sent = send(
+        "PUT",
+        &format!("{parts}/1"),
+        &[(
+            "Content-Disposition",
+            "attachment; filename*=UTF-8''archive.csv",
+        )],
+        &first,
+    );
+    assert_eq!(sent.0, 204, "{:?}", (sent.0, &sent.1));
+
+    // The connection goes away with most of the part unsent.
+    {
+        let mut stream = std::net::TcpStream::connect(address).expect("it accepts");
+        write!(
+            stream,
+            "PUT {parts}/2 HTTP/1.1\r\nHost: {address}\r\nContent-Length: 1000\r\nConnection: close\r\n\r\nb,c\n"
+        )
+        .expect("sent");
+        stream.flush().expect("flushed");
+    }
+    assert!(
+        crate::disk_files::eventually(30, || {
+            !walk(store).iter().any(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.ends_with(".part"))
+            })
+        }),
+        "the dropped part left its temporary file behind"
+    );
+
+    let resent = send("PUT", &format!("{parts}/2"), &[], LAST);
+    assert_eq!(resent.0, 204, "{resent:?}");
+
+    let body = format!(r#"{{"supplier":"Millers","sheet":"{token}"}}"#);
+    let attached = send(
+        "POST",
+        "/sheets/archived",
+        &[("Content-Type", "application/json")],
+        body.as_bytes(),
+    );
+    assert_eq!(attached.0, 201, "{attached:?}");
+    let answer: serde_json::Value = serde_json::from_slice(&attached.2).expect("JSON");
+    assert_eq!(
+        answer["sheet"]["size"],
+        serde_json::json!(PART + LAST.len())
+    );
+    assert_eq!(answer["sheet"]["name"], "archive.csv");
+
+    // Joined whole, and the parts have gone.
+    let parts_left: Vec<PathBuf> = walk(store)
+        .into_iter()
+        .filter(|path| {
+            path.components().any(|part| {
+                part.as_os_str()
+                    .to_str()
+                    .is_some_and(|name| name.ends_with(".parts"))
+            })
+        })
+        .collect();
+    assert!(parts_left.is_empty(), "{parts_left:?}");
+    assert_nothing_stray(store);
+
+    let link = answer["sheet"]["url"].as_str().expect("a link").to_string();
+    let back = send("GET", &link, &[], b"");
+    assert_eq!(back.0, 200, "{:?}", (back.0, &back.1));
+    assert_eq!(back.2.len(), PART + LAST.len());
+    assert!(back.2.starts_with(&first));
+    assert!(back.2.ends_with(LAST));
+
+    // The file never changes once joined.
+    let again = send("PUT", &format!("{parts}/2"), &[], b"late\n");
+    assert_eq!(again.0, 409, "{again:?}");
 }
 
 /// Every file below `at`.

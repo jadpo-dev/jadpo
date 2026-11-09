@@ -1093,10 +1093,16 @@ impl Body<'_> {
                 self.unknown_field(issued, &field, &fields, span, false);
                 return Ty::Error;
             };
+            let left_out = issued == jadpo_std::files::UPLOAD_SLOT
+                && jadpo_std::files::UPLOAD_SLOT_LEFT_OUT.contains(&field.as_str());
             self.facts
                 .fields
                 .insert(node_key(node.syntax()), (issued.clone(), vec![field]));
-            return Ty::Prim(*builtin);
+            return if left_out {
+                Ty::Nullable(Box::new(Ty::Prim(*builtin)))
+            } else {
+                Ty::Prim(*builtin)
+            };
         }
         // A batch run, its progress, its summary and its problems (area 12).
         if let Some(object) = super::batches::batch_fields(&through)

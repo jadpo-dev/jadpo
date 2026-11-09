@@ -110,6 +110,22 @@ pub(crate) fn bakery(sheets_at: &Path, full_at: &Path) -> Vec<(String, String)> 
             "use bakery/entities { UploadedSheet }\n\n/// An uploaded sheet and the link to download it.\ntype UploadedSheetLink = Output {\n    pick: [UploadedSheet.supplier, UploadedSheet.sheet]\n}\n",
         ),
         (
+            "domains/bakery/entities/archived_sheet.jadpo",
+            "use bakery/types { SupplierName }\n\n/// A large sheet a supplier sent straight to the store, in parts.\nentity ArchivedSheet {\n    id: Uuid\n    supplier: SupplierName\n    sheet: File {\n        store: sheets\n        max_size: 200mb\n        types: [FileType.csv]\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n}\n",
+        ),
+        (
+            "domains/bakery/types/archived_sheet_link.jadpo",
+            "use bakery/entities { ArchivedSheet }\n\n/// An archived sheet and the link to download it.\ntype ArchivedSheetLink = Output {\n    pick: [ArchivedSheet.supplier, ArchivedSheet.sheet]\n}\n",
+        ),
+        (
+            "domains/bakery/actions/archive_slot.jadpo",
+            "use bakery/entities { ArchivedSheet }\n\n/// Where a supplier sends a large sheet.\naction archive_slot() -> UploadSlot {\n    return ArchivedSheet.sheet_upload()\n}\n",
+        ),
+        (
+            "domains/bakery/actions/attach_archive.jadpo",
+            "use bakery/entities { ArchivedSheet }\nuse bakery/types { ArchivedSheetLink, UploadedSheetRequest }\n\n/// Keeps a large sheet a supplier has uploaded in parts.\naction attach_archive(request: UploadedSheetRequest) -> ArchivedSheetLink {\n    var kept: ArchivedSheet = ArchivedSheet.create {\n        set: {\n            supplier: request.supplier\n            sheet: request.sheet\n        }\n    }\n    return ArchivedSheetLink {\n        supplier: kept.supplier\n        sheet: kept.sheet\n    }\n}\n",
+        ),
+        (
             "domains/bakery/actions/sheet_slot.jadpo",
             "use bakery/entities { UploadedSheet }\n\n/// Where a supplier sends their sheet.\naction sheet_slot() -> UploadSlot {\n    return UploadedSheet.sheet_upload()\n}\n",
         ),
@@ -119,7 +135,7 @@ pub(crate) fn bakery(sheets_at: &Path, full_at: &Path) -> Vec<(String, String)> 
         ),
         (
             "domains/bakery/routes/sheets.jadpo",
-            "use bakery/types { SheetLink, SheetRequest, SheetView, UploadedSheetLink, UploadedSheetRequest }\nuse bakery/actions { attach_sheet, keep_overflow, keep_prices, link_sheet, sheet_slot }\n\n/// The bakery's price sheets.\nroutes Sheets {\n    prefix: /sheets\n\n    /// Where a supplier sends a sheet.\n    POST /slot {\n        authentication: RouteAuthentication.none\n        output: UploadSlot\n        run: sheet_slot()\n    }\n\n    /// Keeps a sheet a supplier has uploaded.\n    POST /attached {\n        authentication: RouteAuthentication.none\n        input: UploadedSheetRequest\n        output: UploadedSheetLink\n        status: SuccessStatus.created\n        run: attach_sheet(input)\n    }\n\n    /// Keeps a sheet and reads its prices in.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        output: SheetView\n        status: SuccessStatus.created\n        run: keep_prices(input)\n    }\n\n    /// Keeps a sheet in the overflow store.\n    POST /overflow {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        status: SuccessStatus.no_content\n        run: keep_overflow(input)\n    }\n\n    /// Keeps a sheet and answers with the link to it.\n    POST /linked {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        output: SheetLink\n        status: SuccessStatus.created\n        run: link_sheet(input)\n    }\n}\n",
+            "use bakery/types { ArchivedSheetLink, SheetLink, SheetRequest, SheetView, UploadedSheetLink, UploadedSheetRequest }\nuse bakery/actions { archive_slot, attach_archive, attach_sheet, keep_overflow, keep_prices, link_sheet, sheet_slot }\n\n/// The bakery's price sheets.\nroutes Sheets {\n    prefix: /sheets\n\n    /// Where a supplier sends a sheet.\n    POST /slot {\n        authentication: RouteAuthentication.none\n        output: UploadSlot\n        run: sheet_slot()\n    }\n\n    /// Where a supplier sends a large sheet, in parts.\n    POST /archive-slot {\n        authentication: RouteAuthentication.none\n        output: UploadSlot\n        run: archive_slot()\n    }\n\n    /// Keeps a large sheet a supplier has uploaded in parts.\n    POST /archived {\n        authentication: RouteAuthentication.none\n        input: UploadedSheetRequest\n        output: ArchivedSheetLink\n        status: SuccessStatus.created\n        run: attach_archive(input)\n    }\n\n    /// Keeps a sheet a supplier has uploaded.\n    POST /attached {\n        authentication: RouteAuthentication.none\n        input: UploadedSheetRequest\n        output: UploadedSheetLink\n        status: SuccessStatus.created\n        run: attach_sheet(input)\n    }\n\n    /// Keeps a sheet and reads its prices in.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        output: SheetView\n        status: SuccessStatus.created\n        run: keep_prices(input)\n    }\n\n    /// Keeps a sheet in the overflow store.\n    POST /overflow {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        status: SuccessStatus.no_content\n        run: keep_overflow(input)\n    }\n\n    /// Keeps a sheet and answers with the link to it.\n    POST /linked {\n        authentication: RouteAuthentication.none\n        input: SheetRequest\n        output: SheetLink\n        status: SuccessStatus.created\n        run: link_sheet(input)\n    }\n}\n",
         ),
     ];
     files
@@ -361,6 +377,11 @@ fn jadpo_dev_keeps_files_under_the_project_and_keeps_its_floor() {
         (reply.status, all, reply.bytes().to_vec())
     };
     crate::file_uploads::serves_an_upload(&uploaded, &store);
+    crate::file_uploads::serves_an_upload_in_parts(
+        &format!("127.0.0.1:{}", dev.port),
+        &uploaded,
+        &store,
+    );
     let refused = dev.send("POST", "/sheets/overflow", &[], SHEET);
     assert_eq!(refused.status, 503, "{refused:?}");
     assert_eq!(

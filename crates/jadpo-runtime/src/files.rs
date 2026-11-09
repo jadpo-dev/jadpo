@@ -43,8 +43,9 @@ use std::rc::Rc;
 
 use jadpo_std::RuleKey;
 use jadpo_std::files::{
-    DELETE, DISCARD, FILE, FILE_RELEASED, FilesPlan, HEAD_BYTES, JOIN, NOT_FOUND, PUT, READ, STAT,
-    STORAGE_FULL, UNHELD_KEPT_MS, UPLOADED, WHOLE_READ_LIMIT, key_for, piece_key, type_of,
+    COMPLETE, DELETE, DISCARD, FILE, FILE_RELEASED, FilesPlan, HEAD_BYTES, JOIN, NOT_FOUND,
+    PARTS_MISSING, PARTS_UNEQUAL, PUT, PartsRefused, READ, STAT, STORAGE_FULL, UNHELD_KEPT_MS,
+    UPLOADED, WHOLE_READ_LIMIT, key_for, parts_fit, piece_key, type_of,
 };
 use jadpo_value::Value;
 
@@ -333,6 +334,17 @@ fn upload_refused(why: &str) -> Failure {
     failure
 }
 
+/// The failure a slot's parts raise when joining them would take a disk
+/// below its floor (area 16, "Large uploads go in parts"): the client's
+/// file is whole, but there is no room to keep it joined.
+fn no_room_to_join() -> Failure {
+    let mut failure = Failure::new("runtime storage_full", "StorageFull", "storage_full");
+    failure.kind = Some("unavailable".to_string());
+    failure.status = Some(503);
+    failure.message = Some("There is no room to keep this file.".to_string());
+    failure
+}
+
 /// Asks the store what the upload `token` names left, and gives the
 /// `File` it is, or stops the write as `invalid_value` (area 16,
 /// "Uploading"): a token for another field, or a file that isn't there,
@@ -364,6 +376,51 @@ async fn attached(
     };
     if slot.field != check.field {
         return Err(refused(ctx, "a token for another field"));
+    }
+    // A slot in parts: joined here, once every part is there, so what is
+    // checked below is the whole file (area 16, "Large uploads go in
+    // parts").
+    if let Some(part_size) = slot.part_size {
+        let input = Value::record(
+            "FileComplete",
+            vec![
+                (Rc::from("key"), Value::text(&slot.key)),
+                (
+                    Rc::from("part_size"),
+                    Value::Int(i64::try_from(part_size).unwrap_or(i64::MAX)),
+                ),
+                (
+                    Rc::from("max_size"),
+                    Value::Int(i64::try_from(slot.max_size).unwrap_or(i64::MAX)),
+                ),
+            ],
+        );
+        match call(ctx, Call::new(&check.store, COMPLETE, input, Repeat::Safe)).await {
+            Ok(_) => {}
+            Err(Unanswered::Failed(code)) if code == PARTS_MISSING || code == NOT_FOUND => {
+                return Err(refused(ctx, "a part of this slot hasn't been sent"));
+            }
+            Err(Unanswered::Failed(code)) if code == PARTS_UNEQUAL => {
+                return Err(refused(ctx, "this slot's parts aren't equal"));
+            }
+            Err(Unanswered::Failed(code)) if code == STORAGE_FULL => {
+                return Err(crate::read::Interrupt::Failed(
+                    ctx.fail(no_room_to_join(), site),
+                ));
+            }
+            Err(Unanswered::Failed(code)) => {
+                return Err(crate::read::Interrupt::Fault(ctx.fault(
+                    FaultKind::Defect(format!("`{}.complete` answered `{code}`", check.store)),
+                    site,
+                )));
+            }
+            Err(Unanswered::Failure(failure)) => {
+                return Err(crate::read::Interrupt::Failed(ctx.fail(*failure, site)));
+            }
+            Err(Unanswered::Fault(kind)) => {
+                return Err(crate::read::Interrupt::Fault(ctx.fault(kind, site)));
+            }
+        }
     }
     let input = Value::record("FileStat", vec![(Rc::from("key"), Value::text(&slot.key))]);
     let answer = match call(ctx, Call::new(&check.store, STAT, input, Repeat::Safe)).await {
@@ -800,6 +857,9 @@ pub struct MemoryFiles {
     files: RefCell<BTreeMap<String, Vec<u8>>>,
     /// What each upload left beside its bytes.
     uploads: RefCell<BTreeMap<String, MemoryUpload>>,
+    /// The parts of each upload in parts not yet joined, and what its
+    /// first part said of the file.
+    parts: RefCell<BTreeMap<String, (MemoryParts, Option<MemoryUpload>)>>,
     read_at_most: Option<usize>,
     full: Cell<bool>,
     reads: Cell<usize>,
@@ -812,6 +872,49 @@ impl MemoryFiles {
     }
 
     /// Reads at most `bytes` at a time.
+    /// Joins the parts of the upload `key`, as the disk driver does: part
+    /// after part, once every one is there and they are equal.
+    fn complete(&self, key: &str, input: &jadpo_value::Record) -> Answer {
+        let Some(Value::Int(part_size)) = input.get("part_size") else {
+            return Answer::Misconfigured;
+        };
+        if self.files.borrow().contains_key(key) {
+            return Answer::Value(Value::Unit);
+        }
+        let mut uploads = self.parts.borrow_mut();
+        let Some((held, about)) = uploads.get(key) else {
+            return Answer::Failed(PARTS_MISSING.into());
+        };
+        let mut sizes = Vec::new();
+        let mut gaps = false;
+        for (expected, (number, bytes)) in (1u64..).zip(held) {
+            if *number != expected {
+                gaps = true;
+                break;
+            }
+            sizes.push(bytes.len() as u64);
+        }
+        match parts_fit(&sizes, gaps, u64::try_from(*part_size).unwrap_or(0)) {
+            Ok(()) => {}
+            Err(PartsRefused::Missing) => return Answer::Failed(PARTS_MISSING.into()),
+            Err(PartsRefused::Unequal) => return Answer::Failed(PARTS_UNEQUAL.into()),
+        }
+        if self.full.get() {
+            return Answer::Failed(STORAGE_FULL.into());
+        }
+        let about = about.as_ref();
+        let whole: Vec<u8> = held.values().flatten().copied().collect();
+        let upload = MemoryUpload {
+            hash: hash_of(&whole),
+            name: about.and_then(|about| about.name.clone()),
+            claimed: about.and_then(|about| about.claimed.clone()),
+        };
+        self.uploads.borrow_mut().insert(key.to_string(), upload);
+        self.files.borrow_mut().insert(key.to_string(), whole);
+        uploads.remove(key);
+        Answer::Value(Value::Unit)
+    }
+
     pub fn reading_at_most(mut self, bytes: usize) -> MemoryFiles {
         self.read_at_most = Some(bytes.max(1));
         self
@@ -840,6 +943,7 @@ impl MemoryFiles {
     /// Forgets every file it holds.
     pub fn clear(&self) {
         self.files.borrow_mut().clear();
+        self.parts.borrow_mut().clear();
     }
 
     /// `bytes` kept as a file of the `FileType` variant `file_type` in
@@ -975,8 +1079,10 @@ impl MemoryFiles {
             DELETE => {
                 self.files.borrow_mut().remove(&**key);
                 self.uploads.borrow_mut().remove(&**key);
+                self.parts.borrow_mut().remove(&**key);
                 Answer::Value(Value::Unit)
             }
+            COMPLETE => self.complete(key, input),
             STAT => {
                 let uploads = self.uploads.borrow();
                 let (Some(about), Some(bytes)) = (
@@ -999,6 +1105,9 @@ impl MemoryFiles {
 }
 
 /// What an upload left beside its bytes, in a test's store.
+/// The parts of an upload a test's store is keeping, by number.
+type MemoryParts = BTreeMap<u64, Vec<u8>>;
+
 #[derive(Debug)]
 struct MemoryUpload {
     hash: String,
@@ -1038,6 +1147,8 @@ struct MemoryReceiving<'a> {
     store: &'a MemoryFiles,
     key: String,
     bytes: Vec<u8>,
+    /// The part it is, when it is one.
+    part: Option<u64>,
 }
 
 impl Receiving for MemoryReceiving<'_> {
@@ -1053,6 +1164,19 @@ impl Receiving for MemoryReceiving<'_> {
         let mut files = self.store.files.borrow_mut();
         if files.contains_key(&self.key) {
             return Err(Refused::Taken);
+        }
+        if let Some(part) = self.part {
+            let mut uploads = self.store.parts.borrow_mut();
+            let (held, about) = uploads.entry(self.key).or_default();
+            if part == 1 {
+                *about = Some(MemoryUpload {
+                    hash: kept.hash.to_string(),
+                    name: kept.name.map(str::to_string),
+                    claimed: kept.claimed.map(str::to_string),
+                });
+            }
+            held.insert(part, self.bytes);
+            return Ok(());
         }
         self.store.uploads.borrow_mut().insert(
             self.key.clone(),
@@ -1089,6 +1213,28 @@ impl Capability for MemoryFiles {
             store: self,
             key: key.to_string(),
             bytes: Vec::new(),
+            part: None,
+        }))
+    }
+
+    fn receive_part(
+        &self,
+        _connection: &str,
+        key: &str,
+        part: u64,
+        _expected: u64,
+    ) -> Result<Box<dyn Receiving + '_>, Refused> {
+        if self.full.get() {
+            return Err(Refused::Full);
+        }
+        if self.files.borrow().contains_key(key) {
+            return Err(Refused::Taken);
+        }
+        Ok(Box::new(MemoryReceiving {
+            store: self,
+            key: key.to_string(),
+            bytes: Vec::new(),
+            part: Some(part),
         }))
     }
 

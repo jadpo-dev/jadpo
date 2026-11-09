@@ -594,7 +594,7 @@ fn upload_slot_schema() -> Value {
     let mut out = Value::object();
     out.set(
         "description",
-        "Where to send a file: a signed address valid for 15 minutes, the token that attaches the upload, and the most bytes the address takes.",
+        "Where to send a file: a signed address valid for 15 minutes, or for a large file the size of each part and the address parts go to, valid for six hours; the token that attaches the upload; and the most bytes it takes.",
     );
     out.set("type", "object");
     let mut properties = Value::object();
@@ -609,14 +609,17 @@ fn upload_slot_schema() -> Value {
     let mut size = Value::object();
     size.set("type", "integer");
     properties.set("max_size", size);
+    let mut part = Value::object();
+    part.set("type", "integer");
+    properties.set("part_size", part);
+    properties.set(
+        "parts_url",
+        scalar_schema(jadpo_std::Builtin::Text, &Rules::default()),
+    );
     out.set("properties", properties);
     out.set(
         "required",
-        vec![
-            Value::from("url"),
-            Value::from("token"),
-            Value::from("max_size"),
-        ],
+        vec![Value::from("token"), Value::from("max_size")],
     );
     out.set("additionalProperties", false);
     out

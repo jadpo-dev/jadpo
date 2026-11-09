@@ -5349,6 +5349,16 @@ which `body::Expr::Write::attaches` makes an outside call to the checker
 (`data.write_before_call`), and rewrites the input to the `File` it makes. A
 route test sends one with `request { upload: }` (`body::Expr::Upload`,
 `uploads::upload_test`).
+A field over 100 MB gets a slot in parts: the token says `part_size`
+(`jadpo_std::files::part_size_for`, 16 MiB, larger only past 10,000 parts),
+`PUT /files/<store>/uploads/<token>/parts/<n>` goes through
+`Capability::receive_part`, whose `Receiving` replaces any part of that
+number, and `attach` sends the capability's keyed `COMPLETE` before its
+`STAT`: the disk driver joins the parts (`DiskStore::complete`) by
+copying them in order into a temporary file linked into place. The disk
+driver's `delete` takes an unjoined upload's parts with it, and
+`UPLOAD_SLOT_FIELDS`' `omitted` places keep what doesn't apply to a slot out
+of its JSON.
 Deleting a file's bytes (chunk B3): `jadpo_check::data::held::counters`
 gives each store of files the database whose entities' `File` fields
 name it, which the schema gives `jadpo_std::system::FILES`
