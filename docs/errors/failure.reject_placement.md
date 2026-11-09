@@ -1,7 +1,16 @@
 # `failure.reject_placement`
 
-`reject` stops the callable, so it starts a statement or ends a `match` arm,
-never part of a value (question 11):
+A `reject` is inside an expression.
+
+## Why Jadpo refuses it
+
+`reject` stops the callable, and every place a callable can stop is at the
+start of a line, where a reader can see it. So `reject` is a statement of its
+own or the result of a `match` arm, and never part of a value.
+
+## What it looks like
+
+main.jadpo:
 
 ```jadpo check project=e-reject-placement expect=failure.reject_placement
 type Count = Int {}
@@ -29,3 +38,40 @@ error: `reject` can only start a statement
 
 check failed: 1 error, 1 file
 ```
+
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
+
+## How to fix it
+
+**If it should stop under a condition**, give it a line of its own under an
+`if`:
+
+```jadpo fragment
+    if (count < 0) {
+        reject CountRefused
+    }
+    return count
+```
+
+```jadpo check project=e-reject-placement-fix-1 hidden
+type Count = Int {}
+
+type CountRefused = Failure {
+    kind: FailureKind.rejected
+}
+
+function capped(count: Count) fails CountRefused -> Count {
+    if (count < 0) {
+        reject CountRefused
+    }
+    return count
+}
+```
+
+A negative count now ends `capped` with `CountRefused`.
+
+## Related
+
+- [Raising a failure: `reject`](../language/04-failures.md#raising-a-failure-reject)
+- [Handling a failure in `match`](../language/04-failures.md#handling-a-failure-in-match)
