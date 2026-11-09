@@ -1539,32 +1539,73 @@ pub fn standard_fields(name: &str) -> Option<&'static [FieldDef]> {
 
 /// The fields of a built-in object an application's type may copy with
 /// `pick:`: `MagicLinkEmail`, which the application's own sign-in email
-/// takes its fields from (area 16, "Built-in emails", level 4).
+/// takes its fields from, and the privacy emails' built-in types (area 16,
+/// "Built-in emails", level 4).
 pub fn builtin_fields(name: &str) -> Option<&'static [FieldDef]> {
-    static FIELDS: std::sync::OnceLock<Vec<FieldDef>> = std::sync::OnceLock::new();
-    (name == jadpo_std::email::MAGIC_LINK_EMAIL_TYPE).then(|| {
-        FIELDS
-            .get_or_init(|| {
-                jadpo_std::email::MAGIC_LINK_EMAIL_TYPE_FIELDS
-                    .iter()
-                    .map(|(field, builtin)| FieldDef {
-                        name: (*field).to_string(),
-                        declared: Ty::Prim(*builtin),
-                        rules: Rules::default(),
-                        optional: false,
-                        default: None,
-                        header: None,
-                        column: None,
-                        wire_name: None,
-                        coding: None,
-                        copied: false,
-                        replaces: None,
-                        generated: false,
-                    })
-                    .collect()
-            })
-            .as_slice()
-    })
+    static MAGIC: std::sync::OnceLock<Vec<FieldDef>> = std::sync::OnceLock::new();
+    static PRIVACY: std::sync::OnceLock<Vec<(&'static str, Vec<FieldDef>)>> =
+        std::sync::OnceLock::new();
+    fn field(name: &str, declared: Ty) -> FieldDef {
+        FieldDef {
+            name: name.to_string(),
+            declared,
+            rules: Rules::default(),
+            optional: false,
+            default: None,
+            header: None,
+            column: None,
+            wire_name: None,
+            coding: None,
+            copied: false,
+            replaces: None,
+            generated: false,
+        }
+    }
+    if name == jadpo_std::email::MAGIC_LINK_EMAIL_TYPE {
+        return Some(
+            MAGIC
+                .get_or_init(|| {
+                    jadpo_std::email::MAGIC_LINK_EMAIL_TYPE_FIELDS
+                        .iter()
+                        .map(|(name, builtin)| field(name, Ty::Prim(*builtin)))
+                        .collect()
+                })
+                .as_slice(),
+        );
+    }
+    if !jadpo_std::email::PRIVACY_EMAIL_TYPES.contains(&name) {
+        return None;
+    }
+    PRIVACY
+        .get_or_init(|| {
+            jadpo_std::email::PRIVACY_EMAIL_TYPES
+                .iter()
+                .map(|email| {
+                    let fields = jadpo_std::email::privacy_type_fields(email)
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|(name, filled)| field(name, filled_ty(*filled)))
+                        .collect();
+                    (*email, fields)
+                })
+                .collect()
+        })
+        .iter()
+        .find(|(email, _)| *email == name)
+        .map(|(_, fields)| fields.as_slice())
+}
+
+/// What a privacy email's built-in field holds, as a type.
+pub(crate) fn filled_ty(filled: jadpo_std::email::Filled) -> Ty {
+    use jadpo_std::email::Filled;
+    match filled {
+        Filled::Of(builtin) => Ty::Prim(builtin),
+        Filled::Kept => Ty::List(Box::new(Ty::Opaque(
+            jadpo_std::privacy::KEPT_RECORD.to_string(),
+            Vec::new(),
+        ))),
+        Filled::Locale => Ty::Named(jadpo_std::LOCALE.to_string()),
+    }
 }
 
 fn standard_field(name: &str, part: jadpo_std::Part) -> FieldDef {

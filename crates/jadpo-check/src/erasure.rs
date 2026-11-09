@@ -228,6 +228,35 @@ impl Erasures {
     }
 }
 
+/// Each entity erasing a `person` keeps because the law says so, by name:
+/// records reached by a reference that says `Erasure.retained`, and the
+/// person's own record when one of their fields says it (area 15,
+/// "Erasures"). In name order.
+pub fn retained_entities(db: &dyn Db, project: Project, person: &str) -> Vec<String> {
+    let found = erasures(db, project);
+    let Some(erasure) = found.people.get(person) else {
+        return Vec::new();
+    };
+    let mut out: BTreeSet<String> = erasure
+        .kept
+        .iter()
+        .filter(|kept| {
+            kept.references
+                .iter()
+                .any(|reference| reference.outcome == Outcome::Retained)
+        })
+        .map(|kept| kept.entity.clone())
+        .collect();
+    for own in &erasure.own {
+        if !own.retained.is_empty()
+            && let Some(entity) = erasure.deleted.get(own.entity)
+        {
+            out.insert(entity.clone());
+        }
+    }
+    out.into_iter().collect()
+}
+
 /// What erasing each person entity does, worked out once for the project
 /// from the entities without positions and their marked fields.
 #[salsa::tracked(returns(ref))]

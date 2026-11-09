@@ -85,6 +85,15 @@ pub(crate) fn sign_in_object_fields(
             ("expires_at", Ty::Prim(Prim::Instant)),
             ("locale", Ty::Named(jadpo_std::LOCALE.to_string())),
         ]),
+        // What a privacy email's built-in types hold (area 16, "Every
+        // built-in email").
+        name if jadpo_std::email::privacy_type_fields(name).is_some() => Some(
+            jadpo_std::email::privacy_type_fields(name)
+                .unwrap_or_default()
+                .iter()
+                .map(|(field, filled)| (*field, crate::types::table::filled_ty(*filled)))
+                .collect(),
+        ),
         // What the generated privacy routes are sent and answer (area 15).
         jadpo_std::http::PRIVACY_ASK => Some(vec![
             ("address", Ty::Prim(Prim::Email)),
@@ -101,6 +110,9 @@ pub(crate) fn sign_in_object_fields(
             ),
         ]),
         jadpo_std::http::PRIVACY_CANCELLATION => {
+            Some(vec![("token", Ty::Prim(Prim::SignInToken).nullable())])
+        }
+        jadpo_std::http::PRIVACY_DOWNLOAD => {
             Some(vec![("token", Ty::Prim(Prim::SignInToken).nullable())])
         }
         jadpo_std::http::PRIVACY_REQUEST_ACCEPTED => Some(vec![
@@ -130,6 +142,26 @@ pub(crate) fn sign_in_object_fields(
             ("user_id", user_id(identity)),
             ("erases_at", Ty::Prim(Prim::Instant)),
             ("cancel_link", Ty::Prim(Prim::Url)),
+        ]),
+        jadpo_std::http::PRIVACY_EXPORT_READY => Some(vec![
+            ("request_id", Ty::Prim(Prim::Uuid)),
+            ("user_id", user_id(identity)),
+            ("download_link", Ty::Prim(Prim::Url)),
+            ("expires_at", Ty::Prim(Prim::Instant)),
+        ]),
+        jadpo_std::http::PRIVACY_ERASURE_COMPLETED => Some(vec![
+            ("request_id", Ty::Prim(Prim::Uuid)),
+            ("user_id", user_id(identity)),
+            ("completed_at", Ty::Prim(Prim::Instant)),
+        ]),
+        jadpo_std::http::PRIVACY_REQUEST_OVERDUE => Some(vec![
+            ("request_id", Ty::Prim(Prim::Uuid)),
+            ("user_id", user_id(identity)),
+            (
+                "kind",
+                Ty::Named(jadpo_std::PrivacyRequestKind::NAME.to_string()),
+            ),
+            ("deadline", Ty::Prim(Prim::Instant)),
         ]),
         jadpo_std::http::MAGIC_LINK_REDEEMED => Some(vec![
             ("user_id", user_id(identity)),
@@ -484,6 +516,7 @@ impl Body<'_> {
             SessionOp::PrivacyRequest
             | SessionOp::PrivacyConfirm
             | SessionOp::PrivacyCancel
+            | SessionOp::PrivacyDownload
             | SessionOp::PrivacyCreateRequest => {
                 return self.privacy_call(op, call, callee, written);
             }
@@ -662,6 +695,13 @@ impl Body<'_> {
             SessionOp::PrivacyCancel => (
                 vec![("token", "the link's", Ty::Prim(Prim::SignInToken))],
                 Ty::Prim(Prim::Unit),
+            ),
+            SessionOp::PrivacyDownload => (
+                vec![("token", "the link's", Ty::Prim(Prim::SignInToken))],
+                Ty::Opaque(
+                    jadpo_std::erasure::PERSONAL_DATA_EXPORT.to_string(),
+                    Vec::new(),
+                ),
             ),
             _ => (
                 vec![

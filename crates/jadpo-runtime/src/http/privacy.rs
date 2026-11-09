@@ -16,15 +16,16 @@
 //!   holds the person's `id`, never an address. Asking again while one of
 //!   its kind is open gives the same request.
 //! - **Each step is in the access records** (`privacy.request_asked`,
-//!   `privacy.request_received`, `privacy.request_cancelled`) and has its
-//!   event, for what subscribes.
+//!   `privacy.request_received`, `privacy.request_cancelled`,
+//!   `privacy.downloaded`) and has its event, for what subscribes.
+//! - **What a request leads to** is left as steps ([`super::privacy_steps`]),
+//!   written with it, so they commit with it and run after.
 
 use std::rc::Rc;
 
 use jadpo_std::http::{
     IdentityPlan, PRIVACY_CHECK_EXPIRES_AFTER_MS, PRIVACY_CHECK_RESEND_AFTER_MS,
-    PRIVACY_CHECKS_PER_HOUR, PRIVACY_COOLING_OFF_MS, PRIVACY_REQUEST_ACCEPTED, PrivacyPlan,
-    PrivacyStep,
+    PRIVACY_CHECKS_PER_HOUR, PRIVACY_REQUEST_ACCEPTED, PrivacyPlan, PrivacyStep,
 };
 use jadpo_std::read::SqlType;
 use jadpo_std::{PrivacyRequestKind, PrivacyRequestSource};
@@ -36,6 +37,7 @@ use super::magic_links::{
     micros, millis, new_token, ok_json, parse_uuid, problem, raised, seal, text, token_bytes,
     unseal, verifier,
 };
+use super::privacy_steps::{self, Timers};
 use super::sign_in_events::{self, SignInEvent};
 use super::{App, Request, Response, runtime_failure};
 use crate::ctx::Caller;
@@ -65,20 +67,20 @@ pub(crate) const ENSURE: &str = "INSERT INTO \"jadpo_privacy_address_checks\" (\
 pub(crate) const LOCK: &str = "SELECT \"id\", \"requested_at\", \"sends_since\", \"sends\" FROM \"jadpo_privacy_address_checks\" WHERE \"address\" = $1 FOR UPDATE";
 
 /// A new check: the earlier link is gone.
-pub(crate) const ASKED: &str = "UPDATE \"jadpo_privacy_address_checks\" SET \"request\" = $2, \"token\" = NULL, \"sealed\" = NULL, \"requested_at\" = $3, \"expires_at\" = $4, \"sends_since\" = $5, \"sends\" = $6, \"kept_until\" = GREATEST(\"kept_until\", $7) WHERE \"id\" = $1";
+pub(crate) const ASKED: &str = "UPDATE \"jadpo_privacy_address_checks\" SET \"request\" = $2, \"token\" = NULL, \"sealed\" = NULL, \"requested_at\" = $3, \"expires_at\" = $4, \"sends_since\" = $5, \"sends\" = $6, \"kept_until\" = GREATEST(\"kept_until\", $7), \"locale\" = $8 WHERE \"id\" = $1";
 
 /// The link of check `$1`, as its email is sent, while it is the latest
 /// and hasn't expired.
 pub(crate) const MINT: &str = "UPDATE \"jadpo_privacy_address_checks\" SET \"token\" = $2, \"sealed\" = $3 WHERE \"request\" = $1 AND \"expires_at\" > $4 RETURNING \"expires_at\"";
 
 /// The check a link's token names, held, while it hasn't expired.
-pub(crate) const BY_TOKEN: &str = "SELECT \"id\", \"sealed\" FROM \"jadpo_privacy_address_checks\" WHERE \"token\" = $1 AND \"expires_at\" > $2 FOR UPDATE";
+pub(crate) const BY_TOKEN: &str = "SELECT \"id\", \"sealed\", \"locale\" FROM \"jadpo_privacy_address_checks\" WHERE \"token\" = $1 AND \"expires_at\" > $2 FOR UPDATE";
 
 /// A link's token, used: gone, with what opens it.
 pub(crate) const USED: &str = "UPDATE \"jadpo_privacy_address_checks\" SET \"request\" = NULL, \"token\" = NULL, \"sealed\" = NULL WHERE \"id\" = $1";
 
 /// A new request, unless one of its kind is open for this person.
-pub(crate) const CREATE: &str = "INSERT INTO \"jadpo_privacy_requests\" (\"id\", \"kind\", \"source\", \"person\", \"created_by\", \"identity_check\", \"state\", \"requested_at\", \"deadline\", \"erases_at\", \"cancel_key\", \"open\") VALUES ($1, $2, $3, $4, $5, $6, 'received', $7, $8, $9, $10, $11) ON CONFLICT (\"open\") DO NOTHING RETURNING \"id\"";
+pub(crate) const CREATE: &str = "INSERT INTO \"jadpo_privacy_requests\" (\"id\", \"kind\", \"source\", \"person\", \"created_by\", \"identity_check\", \"state\", \"requested_at\", \"deadline\", \"erases_at\", \"cancel_key\", \"open\", \"locale\") VALUES ($1, $2, $3, $4, $5, $6, 'received', $7, $8, $9, $10, $11, $12) ON CONFLICT (\"open\") DO NOTHING RETURNING \"id\"";
 
 /// The open request of this kind for this person.
 pub(crate) const EXISTING: &str =
@@ -86,6 +88,12 @@ pub(crate) const EXISTING: &str =
 
 /// An erasure's cancel link, used: the erasure is off and the link gone.
 pub(crate) const CANCEL: &str = "UPDATE \"jadpo_privacy_requests\" SET \"state\" = 'cancelled', \"cancelled_at\" = $2, \"cancel_key\" = NULL, \"open\" = NULL WHERE \"cancel_key\" = $1 AND \"state\" = 'received' AND \"erases_at\" > $2 RETURNING \"id\", \"person\"";
+
+/// An export a link's token names while it can still be downloaded.
+pub(crate) const EXPORT_BY_KEY: &str = "SELECT \"id\", \"person\", \"export_file\" FROM \"jadpo_privacy_requests\" WHERE \"export_key\" = $1 AND \"state\" = 'ready' AND \"export_expires_at\" > $2";
+
+/// An export's link, used: the file gone and the link with it.
+pub(crate) const EXPORT_USED: &str = "UPDATE \"jadpo_privacy_requests\" SET \"state\" = 'downloaded', \"downloaded_at\" = $2, \"export_key\" = NULL WHERE \"id\" = $1 AND \"state\" = 'ready' AND \"export_key\" = $3 RETURNING \"id\"";
 
 const HOUR_MS: i64 = 60 * 60 * 1000;
 
@@ -183,6 +191,7 @@ async fn run(
             site.own(ctx, request, caller, PrivacyRequestKind::Erasure)
                 .await
         }
+        PrivacyStep::Download => site.download(ctx, request).await,
     }
 }
 
@@ -206,6 +215,8 @@ struct Asking<'a> {
     row: [u8; 16],
     request: [u8; 16],
     address: &'a str,
+    /// The language it asked in, by `Locale`'s name.
+    locale: Option<&'a str>,
 }
 
 /// Asks for a check in `transaction`, the generated route's own or the
@@ -276,6 +287,9 @@ async fn ask(
                 micros(since),
                 SqlValue::Int4(sends),
                 micros(expires.max(since.saturating_add(HOUR_MS))),
+                asking.locale.map_or(SqlValue::Null(SqlType::Text), |name| {
+                    SqlValue::Text(name.to_string())
+                }),
             ],
         )
         .await?;
@@ -311,26 +325,19 @@ impl Site<'_> {
 
     /// The email's language: `asked` when the application supports it,
     /// else the best match for `accept`, else its default.
-    fn locale(&self, asked: Option<u32>, accept: Option<&str>) -> Option<u32> {
-        let email = self.executor.plan().events().and_then(|events| {
-            events
-                .plan
-                .emails
-                .email(jadpo_std::email::PRIVACY_ADDRESS_CHECK_EMAIL)
-                .cloned()
-        })?;
-        let Some(jadpo_std::email::BuiltinEmail::PrivacyAddressCheck(mail)) =
-            email.builtin.as_ref()
-        else {
-            return None;
-        };
-        Some(
-            asked
-                .filter(|ordinal| mail.locales.supports(*ordinal))
-                .unwrap_or_else(|| {
-                    jadpo_value::locale::from_accept_language(accept, &mail.locales)
-                }),
-        )
+    fn locale(&self, asked: Option<u32>, accept: Option<&str>) -> u32 {
+        asked
+            .filter(|ordinal| self.privacy.locales.supports(*ordinal))
+            .unwrap_or_else(|| {
+                jadpo_value::locale::from_accept_language(accept, &self.privacy.locales)
+            })
+    }
+
+    /// The name `Locale` gives the language `ordinal` is.
+    fn locale_name(ordinal: u32) -> &'static str {
+        jadpo_std::LOCALES
+            .get(ordinal as usize)
+            .map_or("en_gb", |(name, _)| *name)
     }
 
     /// `POST <path>/requests`.
@@ -355,6 +362,7 @@ impl Site<'_> {
             row,
             request: asked,
             address: &address,
+            locale: Some(Self::locale_name(locale)),
         };
         let steps: Result<Option<i64>, crate::StoreError> = async {
             transaction.execute(SWEEP, &[micros(now)]).await?;
@@ -363,9 +371,6 @@ impl Site<'_> {
                 Ok(sends_email) => sends_email,
             };
             if sends_email {
-                let Some(locale) = locale else {
-                    return Err(crate::StoreError::Unavailable);
-                };
                 let (Some(outbox), Some(delivery)) = (ctx.new_id(), ctx.new_id()) else {
                     return Err(crate::StoreError::Unavailable);
                 };
@@ -441,12 +446,20 @@ impl Site<'_> {
             .begin()
             .await
             .map_err(|_| fail(AUTHENTICATION_UNAVAILABLE, self.request_id))?;
-        let Some(prepared) = prepare(ctx, kind) else {
+        let Some(prepared) = prepare(ctx, kind, self.privacy) else {
             let _ = transaction.rollback().await;
             return Err(fail(AUTHENTICATION_MISCONFIGURED, self.request_id));
         };
-        let confirmed =
-            confirm_in(self.privacy, prepared, transaction.as_mut(), &token, kind).await;
+        let default = Self::locale_name(self.locale(None, request.header("accept-language")));
+        let confirmed = confirm_in(
+            self.privacy,
+            prepared,
+            transaction.as_mut(),
+            &token,
+            kind,
+            default,
+        )
+        .await;
         match confirmed {
             Ok(made) => {
                 let events = made.events();
@@ -460,6 +473,7 @@ impl Site<'_> {
                 .await
                 .map_err(|_| fail(AUTHENTICATION_UNAVAILABLE, self.request_id))?;
                 crate::logging::privacy_received(ctx, &made.log());
+                ctx.defer(Deferred::Deliveries(made.due.clone()));
                 Ok(accepted(&made))
             }
             Err(why) => {
@@ -502,7 +516,6 @@ impl Site<'_> {
         caller: Option<&Caller>,
         kind: PrivacyRequestKind,
     ) -> Result<Response, Stop> {
-        let _ = request;
         let Some(caller) = caller else {
             return Err(fail(AUTHENTICATION_MISCONFIGURED, self.request_id));
         };
@@ -526,8 +539,10 @@ impl Site<'_> {
             person,
             created_by: Some(caller.key.clone()),
             identity_check: None,
+            locale: Self::locale_name(self.locale(None, request.header("accept-language")))
+                .to_string(),
         };
-        let Some(prepared) = prepare(ctx, kind) else {
+        let Some(prepared) = prepare(ctx, kind, self.privacy) else {
             let _ = transaction.rollback().await;
             return Err(fail(AUTHENTICATION_MISCONFIGURED, self.request_id));
         };
@@ -544,7 +559,46 @@ impl Site<'_> {
             .await
             .map_err(|_| fail(AUTHENTICATION_UNAVAILABLE, self.request_id))?;
         crate::logging::privacy_received(ctx, &made.log());
+        ctx.defer(Deferred::Deliveries(made.due.clone()));
         Ok(accepted(&made))
+    }
+
+    /// `POST <path>/exports/download`: the file, used up as it is given.
+    async fn download(&self, ctx: &mut Ctx<'_>, request: &Request) -> Result<Response, Stop> {
+        if !from_own_site(ctx, request) {
+            return Err(fail(CSRF_REJECTED, self.request_id));
+        }
+        let body = json_body(request, self.request_id, &["token"])?;
+        let Some(token) = text(&body, "token") else {
+            return Err(Box::new(problem(self.request_id, "token", "required")));
+        };
+        let events = self
+            .executor
+            .plan()
+            .events()
+            .ok_or_else(|| fail(AUTHENTICATION_MISCONFIGURED, self.request_id))?;
+        let Some(steps) = events.plan.privacy.as_ref() else {
+            return Err(fail(AUTHENTICATION_MISCONFIGURED, self.request_id));
+        };
+        match privacy_steps::download(ctx, steps, &token).await {
+            Ok(document) => {
+                let mut out = ok_json(document);
+                out.headers.push((
+                    "content-disposition".to_string(),
+                    format!(
+                        "attachment; filename=\"{}\"",
+                        jadpo_std::privacy::EXPORT_FILE_NAME
+                    ),
+                ));
+                out.headers
+                    .push(("x-content-type-options".to_string(), "nosniff".to_string()));
+                Ok(out)
+            }
+            Err(privacy_steps::NotDownloaded::Link) => Err(fail(LINK_EXPIRED, self.request_id)),
+            Err(privacy_steps::NotDownloaded::Unavailable) => {
+                Err(fail(AUTHENTICATION_UNAVAILABLE, self.request_id))
+            }
+        }
     }
 }
 
@@ -555,6 +609,8 @@ struct Making {
     person: [u8; 16],
     created_by: Option<String>,
     identity_check: Option<String>,
+    /// The language its emails are written in, by `Locale`'s name.
+    locale: String,
 }
 
 /// A request, new or found.
@@ -568,6 +624,8 @@ struct Made {
     new: bool,
     erases_at: Option<i64>,
     cancel_link: Option<String>,
+    /// Its steps due at once, once it has committed.
+    due: Vec<Delivery>,
 }
 
 impl Made {
@@ -611,11 +669,16 @@ struct Prepared {
     now: i64,
     /// An erasure's cancel link's token, and the browser origin it opens.
     cancel: Option<(String, String)>,
+    /// How long an erasure waits to be cancelled.
+    cooling_off_ms: i64,
+    /// The identities of the steps a new request leaves.
+    timers: Timers,
 }
 
-fn prepare(ctx: &mut Ctx<'_>, kind: PrivacyRequestKind) -> Option<Prepared> {
+fn prepare(ctx: &mut Ctx<'_>, kind: PrivacyRequestKind, privacy: &PrivacyPlan) -> Option<Prepared> {
     let id = ctx.new_id()?;
     let now = ctx.now();
+    let timers = Timers::prepare(ctx, &privacy.store)?;
     let cancel = if kind == PrivacyRequestKind::Erasure {
         let token = new_token(ctx)?;
         let started = ctx.started();
@@ -628,7 +691,13 @@ fn prepare(ctx: &mut Ctx<'_>, kind: PrivacyRequestKind) -> Option<Prepared> {
     } else {
         None
     };
-    Some(Prepared { id, now, cancel })
+    Some(Prepared {
+        id,
+        now,
+        cancel,
+        cooling_off_ms: privacy.cooling_off_ms,
+        timers,
+    })
 }
 
 /// Makes the request, or finds the one of its kind already open for this
@@ -643,10 +712,10 @@ async fn make(
     let (id, now) = (prepared.id, prepared.now);
     let deadline = deadline_after(now);
     let open = format!("{} {}", making.kind.name(), format_uuid(&making.person));
-    let (erases_at, cancel_key, cancel_link) = if let Some((token, origin)) = prepared.cancel {
+    let (erases_at, cancel_key, cancel_link) = if let Some((token, origin)) = &prepared.cancel {
         let link = format!("{origin}{}?token={token}", privacy.cancel_link);
         (
-            Some(now.saturating_add(PRIVACY_COOLING_OFF_MS)),
+            Some(now.saturating_add(prepared.cooling_off_ms)),
             Some(verifier(token.as_bytes())),
             Some(link),
         )
@@ -669,6 +738,7 @@ async fn make(
                 erases_at.map_or(SqlValue::Null(SqlType::Timestamp), micros),
                 text(cancel_key.clone()),
                 SqlValue::Text(open.clone()),
+                SqlValue::Text(making.locale.clone()),
             ],
         )
         .await?;
@@ -686,8 +756,13 @@ async fn make(
             new: false,
             erases_at: None,
             cancel_link: None,
+            due: Vec::new(),
         });
     }
+    let due = prepared
+        .timers
+        .write(transaction, id, making.kind, now, deadline, erases_at)
+        .await?;
     Ok(Made {
         id,
         person: making.person,
@@ -697,6 +772,7 @@ async fn make(
         new: true,
         erases_at,
         cancel_link,
+        due,
     })
 }
 
@@ -707,6 +783,7 @@ async fn confirm_in(
     transaction: &mut dyn crate::Transaction,
     token: &str,
     kind: PrivacyRequestKind,
+    default: &str,
 ) -> Result<Made, Refused> {
     let Some(bytes) = token_bytes(token) else {
         return Err(Refused::Failure(LINK_EXPIRED, None));
@@ -719,9 +796,14 @@ async fn confirm_in(
         )
         .await
         .map_err(Refused::Store)?;
-    let Some([SqlValue::Uuid(row), SqlValue::Bytes(sealed)]) = rows.first().map(Vec::as_slice)
+    let Some([SqlValue::Uuid(row), SqlValue::Bytes(sealed), locale]) =
+        rows.first().map(Vec::as_slice)
     else {
         return Err(Refused::Failure(LINK_EXPIRED, None));
+    };
+    let locale = match locale {
+        SqlValue::Text(name) => name.clone(),
+        _ => default.to_string(),
     };
     let (row, sealed) = (*row, sealed.clone());
     transaction
@@ -752,6 +834,7 @@ async fn confirm_in(
             person: *person,
             created_by: None,
             identity_check: None,
+            locale,
         },
     )
     .await
@@ -799,7 +882,10 @@ fn accepted(made: &Made) -> Response {
 
 /// `PrivacyRequestAccepted` from a generated route's body, as a route test
 /// reads it back.
-pub(crate) fn response_output(body: &[u8]) -> Value {
+pub(crate) fn response_output(step: PrivacyStep, body: &[u8]) -> Value {
+    if step == PrivacyStep::Download {
+        return std::str::from_utf8(body).map_or(Value::None, privacy_steps::document_value);
+    }
     let Ok(serde_json::Value::Object(object)) = serde_json::from_slice::<serde_json::Value>(body)
     else {
         return Value::None;
@@ -859,6 +945,7 @@ pub async fn request_op(
         return defect(ctx, "`privacy.request` called with the wrong arguments", at);
     };
     let locale = site.locale(Some(locale.ordinal), None);
+    let locale_name = Site::locale_name(locale);
     let now = ctx.now();
     let (Some(row), Some(asked)) = (ctx.new_id(), ctx.new_id()) else {
         return raised(
@@ -875,6 +962,7 @@ pub async fn request_op(
         row,
         request: asked,
         address,
+        locale: Some(locale_name),
     };
     let asked_now = match ctx.transaction(&site.plan.store).await {
         Ok(transaction) => ask(transaction, site.privacy, &asking).await,
@@ -892,9 +980,6 @@ pub async fn request_op(
         Err(error) => return raised(ctx, Refused::Store(error), at),
     };
     if sends {
-        let Some(locale) = locale else {
-            return raised(ctx, Refused::Failure(AUTHENTICATION_UNAVAILABLE, None), at);
-        };
         let event = crate::Event {
             key: jadpo_std::email::PRIVACY_ADDRESS_CHECK_EMAIL.to_string(),
             value: email_value(address, locale, asked),
@@ -930,7 +1015,7 @@ pub async fn confirm_op(
     else {
         return defect(ctx, "`privacy.confirm` with an unknown kind", at);
     };
-    let Some(prepared) = prepare(ctx, kind) else {
+    let Some(prepared) = prepare(ctx, kind, site.privacy) else {
         return raised(
             ctx,
             Refused::Failure(AUTHENTICATION_MISCONFIGURED, None),
@@ -938,8 +1023,9 @@ pub async fn confirm_op(
         );
     };
     let privacy = site.privacy;
+    let default = Site::locale_name(site.privacy.locales.default);
     let made = match ctx.transaction(&site.plan.store).await {
-        Ok(transaction) => confirm_in(privacy, prepared, transaction, token, kind).await,
+        Ok(transaction) => confirm_in(privacy, prepared, transaction, token, kind, default).await,
         Err(error) => Err(Refused::Store(error)),
     };
     finish_op(ctx, &site, made, at).await
@@ -972,6 +1058,39 @@ pub async fn cancel_op(
         }
         Ok(None) => raised(ctx, Refused::Failure(LINK_EXPIRED, None), at),
         Err(error) => raised(ctx, Refused::Store(error), at),
+    }
+}
+
+/// `privacy.download(token)`: the export the link names, used up as it is
+/// given.
+pub async fn download_op(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    args: &[Value],
+    at: u32,
+) -> Stored {
+    let [Value::Text(token)] = args else {
+        return defect(
+            ctx,
+            "`privacy.download` called with the wrong arguments",
+            at,
+        );
+    };
+    let steps = executor
+        .plan()
+        .events()
+        .and_then(|events| events.plan.privacy.as_ref());
+    let Some(steps) = steps else {
+        return defect(ctx, "`privacy.download` with no `privacy:`", at);
+    };
+    match privacy_steps::download(ctx, steps, token).await {
+        Ok(document) => Stored::Value(privacy_steps::document_value(&document)),
+        Err(privacy_steps::NotDownloaded::Link) => {
+            raised(ctx, Refused::Failure(LINK_EXPIRED, None), at)
+        }
+        Err(privacy_steps::NotDownloaded::Unavailable) => {
+            raised(ctx, Refused::Failure(AUTHENTICATION_UNAVAILABLE, None), at)
+        }
     }
 }
 
@@ -1034,8 +1153,9 @@ pub async fn create_request_op(
         person: person_id,
         created_by: ctx.caller().map(|caller| caller.key.clone()),
         identity_check: Some(identity_check.to_string()),
+        locale: Site::locale_name(site.privacy.locales.default).to_string(),
     };
-    let Some(prepared) = prepare(ctx, kind) else {
+    let Some(prepared) = prepare(ctx, kind, site.privacy) else {
         return raised(
             ctx,
             Refused::Failure(AUTHENTICATION_MISCONFIGURED, None),
@@ -1092,6 +1212,7 @@ async fn finish_op(
         }
     }
     crate::logging::privacy_received(ctx, &made.log());
+    ctx.defer(Deferred::Deliveries(made.due.clone()));
     Stored::Value(Value::record(
         PRIVACY_REQUEST_ACCEPTED,
         vec![
@@ -1173,6 +1294,8 @@ pub(crate) struct Minted {
     pub address: String,
     pub link: String,
     pub token: String,
+    /// When the link stops working, in milliseconds.
+    pub expires_at: i64,
 }
 
 /// Makes the link of the check `value` names, keeping only its verifier
@@ -1222,13 +1345,14 @@ pub(crate) async fn mint(
         )
         .await
         .map_err(|_| "unavailable")?;
-    if rows.is_empty() {
+    let Some(expires_at) = rows.first().and_then(|row| row.first()).and_then(millis) else {
         return Ok(None);
-    }
+    };
     Ok(Some(Minted {
         address: address.to_string(),
         link: format!("{origin}{}?token={token}", plan.link),
         token,
+        expires_at,
     }))
 }
 

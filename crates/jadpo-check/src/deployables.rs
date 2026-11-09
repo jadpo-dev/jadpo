@@ -710,6 +710,9 @@ pub enum Via {
     /// It counts its routes' rate limits there, the store `rate_limits:`
     /// names (area 16; chunk 8.2m2).
     RateLimits,
+    /// It keeps a data request's exports there, the store `exports:` names
+    /// (area 15, "Exports").
+    Exports,
     /// It keeps or replays the erasure log there, the connection `privacy:
     /// { erasure_log: }` names (area 15; chunk P4c).
     ErasureLog,
@@ -730,6 +733,7 @@ impl Via {
             Via::Batches => "in the batch runs it carries on".to_string(),
             Via::RateLimits => "by counting its routes' rate limits there".to_string(),
             Via::ErasureLog => "by keeping the erasure log there".to_string(),
+            Via::Exports => "by keeping a data request's exports there".to_string(),
             Via::ErasureAt => "by asking its provider to erase people".to_string(),
         }
     }
@@ -803,6 +807,9 @@ fn named_by_the_runtime(db: &dyn Db, project: Project, deployable: &Deployable) 
     }
     if deployable.runs.subscribers {
         out.extend(named(&crate::identity::sign_in_send_action(db, project).0));
+        for (_, action) in &crate::privacy::mail(db, project).send {
+            out.extend(named(&Some(action.clone())));
+        }
         for path in crate::emails::template_paths(db, project) {
             let checked =
                 crate::types::template_body(db, project, crate::lookups::Name::new(db, path));
@@ -898,7 +905,10 @@ fn reach(
         let signs_in_by_email = crate::identity::identity(db, project)
             .magic_links()
             .is_some_and(|magic| magic.send.is_none());
-        if (signs_in_by_email || !crate::emails::analysis(db, project).emails.is_empty())
+        let takes_requests = crate::privacy::privacy(db, project).takes_requests();
+        if (signs_in_by_email
+            || takes_requests
+            || !crate::emails::analysis(db, project).emails.is_empty())
             && let Some(email) = crate::emails::written_connection(db, project)
         {
             connection(&mut out, &email, Via::Email);
@@ -914,6 +924,11 @@ fn reach(
     // a deployable running subscribers keeps it (area 15; chunk P4c).
     if let Some((log, _)) = &crate::privacy::privacy(db, project).log {
         connection(&mut out, log, Via::ErasureLog);
+    }
+    // A delivery keeps a data request's export there, and a route gives it
+    // back (area 15, "Exports").
+    if let Some(exports) = &crate::privacy::privacy(db, project).exports {
+        connection(&mut out, &exports.store, Via::Exports);
     }
     let ai = crate::ai::settings(db, project).connection.clone();
     let files = crate::data::connections(db, project).files();

@@ -1674,6 +1674,67 @@ pub static COMMANDS: &[Command] = &[
         run: commands::deliveries,
     },
     Command {
+        name: "privacy",
+        synonyms: &[],
+        group: "Production",
+        summary: "List data requests",
+        description: "Lists the data requests people have made (area 15): `requests` shows those \
+                      still to finish, the nearest legal deadline first, 20 a page, with what was \
+                      asked, how it started and how it stands. --state lists those in one state and \
+                      --all every request, newest first. An alert says how many are past their \
+                      deadline or within a week of it. It shows no address, only each request's id. \
+                      The database is the one the store's connection's setting gives, or a running \
+                      jadpo dev's, or the one --url names. Times are in UTC.",
+        arguments: &[Argument {
+            name: "action",
+            description: "What to do: requests",
+            required: false,
+            values: Values::Fixed(crate::privacy::ACTIONS),
+        }],
+        flags: &[
+            Flag {
+                name: "--state",
+                value: Some("state"),
+                description: "List those in this state instead",
+                values: crate::privacy::STATES,
+            },
+            Flag {
+                name: "--all",
+                value: None,
+                description: "List every request, newest first",
+                values: &[],
+            },
+            Flag {
+                name: "--page",
+                value: Some("n"),
+                description: "Which page of the list, from 1",
+                values: &[],
+            },
+            Flag {
+                name: "--url",
+                value: Some("url"),
+                description: "The database the requests are in",
+                values: &[],
+            },
+        ],
+        examples: &[
+            Example {
+                description: "See what is still to finish, and how close its deadline is",
+                command: "jadpo privacy requests",
+            },
+            Example {
+                description: "See every erasure a provider has held up",
+                command: "jadpo privacy requests --state stalled",
+            },
+        ],
+        arguments_rule: &rule::CLI_PRIVACY_ARGUMENTS,
+        raises: &[
+            &rule::PRIVACY_UNAVAILABLE,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::privacy,
+    },
+    Command {
         name: "runs",
         synonyms: &[],
         group: "Production",

@@ -871,6 +871,8 @@ pub(super) fn required<'a>(
             Kind::Failure => reachable.contains(&subject.type_name),
             // An email is sent with its subject (area 16; chunk 7.3).
             Kind::Email => true,
+            // The email saying what was kept names it (area 15, "Erasures").
+            Kind::Kept => true,
         })
         .collect()
 }

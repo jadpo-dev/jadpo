@@ -31,6 +31,9 @@ pub enum Kind {
     /// supported locale when a route can answer with it, and sent to
     /// clients with the response's code, never written by the server.
     Failure,
+    /// An entity an erasure keeps by law: worded in its domain's language
+    /// files for the email that lists what was kept (area 15, "Erasures").
+    Kept,
 }
 
 impl Kind {
@@ -41,6 +44,7 @@ impl Kind {
             Kind::Enum => "enum",
             Kind::Email => "email",
             Kind::Failure => "failure",
+            Kind::Kept => "kept record",
         }
     }
 }
@@ -106,7 +110,7 @@ impl Subject {
     /// Whether code can call it: emails are worded for the email's own
     /// machinery and failures for client apps.
     pub fn callable(&self) -> bool {
-        !matches!(self.kind, Kind::Email | Kind::Failure) && !self.broken
+        !matches!(self.kind, Kind::Email | Kind::Failure | Kind::Kept) && !self.broken
     }
 
     pub fn call_params(&self) -> Vec<TranslationParam> {
@@ -236,6 +240,17 @@ pub fn scopes(db: &dyn Db, project: Project) -> Vec<String> {
             found.insert(scope);
         }
     }
+    // A record kept by law is worded in its domain's language files, so
+    // its domain needs them too (area 15, "Erasures").
+    let kept = crate::privacy::kept_entities(db, project);
+    for symbol in all_symbols(symbols(db, project)) {
+        if matches!(symbol.kind, ItemKind::Entity)
+            && kept.contains(&symbol.canonical)
+            && let Some(scope) = scope_of(&symbol.ownership)
+        {
+            found.insert(scope);
+        }
+    }
     found.into_iter().collect()
 }
 
@@ -264,6 +279,16 @@ fn subject_kind(symbol: &Symbol) -> Option<Kind> {
     }
 }
 
+/// The translation key an entity's wording is kept under, for the email
+/// that lists what an erasure kept: its entry in its domain's language
+/// files, `accounts.invoice`.
+pub fn kept_wording_key(db: &dyn Db, project: Project, entity: &str) -> Option<String> {
+    let symbol = all_symbols(symbols(db, project))
+        .find(|symbol| matches!(symbol.kind, ItemKind::Entity) && symbol.canonical == entity)?;
+    let scope = scope_of(&symbol.ownership)?;
+    Some(format!("{scope}.{}", to_snake(bare_name(symbol))))
+}
+
 /// The language files of a scope, in path order.
 pub fn language_files(db: &dyn Db, project: Project, scope: &str) -> Vec<File> {
     let mut found: Vec<File> = project
@@ -287,7 +312,8 @@ pub fn language_files(db: &dyn Db, project: Project, scope: &str) -> Vec<File> {
 pub fn subjects<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Subjects {
     let scope = scope.text(db);
     let mut out = Subjects::default();
-    let mut symbols: Vec<&Symbol> = all_symbols(symbols(db, project))
+    let declared = symbols(db, project);
+    let mut symbols: Vec<&Symbol> = all_symbols(declared)
         .filter(|symbol| scope_of(&symbol.ownership).as_deref() == Some(scope.as_str()))
         .filter(|symbol| subject_kind(symbol).is_some())
         .collect();
@@ -327,6 +353,8 @@ pub fn subjects<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Sub
         let canonical = lookup.canonical_name(&symbol.name);
         let subject = match kind {
             Kind::Enum => enum_subject(&lookup, &canonical, key, symbol, name_span),
+            // Only ever made below, from an entity an erasure keeps.
+            Kind::Kept => None,
             Kind::Message | Kind::Email | Kind::Failure => {
                 let fields = match lookup.def(&canonical) {
                     Some(Def::Fields { fields, .. }) => fields.clone(),
@@ -350,6 +378,46 @@ pub fn subjects<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Sub
             subject.description = crate::graph::text::doc(decl.syntax());
             out.list.push(subject);
         }
+    }
+    // A record kept by law, worded for the email that says so (area 15,
+    // "Erasures"): its entity's entry in its domain's language files.
+    let kept = crate::privacy::kept_entities(db, project);
+    for symbol in all_symbols(declared) {
+        if !matches!(symbol.kind, ItemKind::Entity)
+            || !kept.contains(&symbol.canonical)
+            || scope_of(&symbol.ownership).as_deref() != Some(scope.as_str())
+        {
+            continue;
+        }
+        let key = to_snake(bare_name(symbol));
+        if out.list.iter().any(|seen| seen.key == key) {
+            continue;
+        }
+        let Some(file) = file_at(db, project, Name::new(db, symbol.path.clone())) else {
+            continue;
+        };
+        let Some(source) = tree::source(db, file) else {
+            continue;
+        };
+        let Some(decl) = tree::decl_at(&source, symbol.index) else {
+            continue;
+        };
+        out.list.push(Subject {
+            key,
+            type_name: known_name(symbol),
+            kind: Kind::Kept,
+            symbol: symbol.clone(),
+            name_span: node_span(&symbol.path, decl.syntax()),
+            params: Vec::new(),
+            placeholders: Vec::new(),
+            mode: Mode::Plain,
+            formats: Vec::new(),
+            broken: false,
+            builtin: None,
+            description: Some(
+                "A kind of record an erasure keeps because the law says so, as the email that says what was kept names it.".to_string(),
+            ),
+        });
     }
     out
 }

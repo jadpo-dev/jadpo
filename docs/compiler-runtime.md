@@ -814,7 +814,17 @@ is written from. `erasure::removal_problems` and `write_rules`'
 written (`data.erasure_log_required`), and `schema` adds `jadpo_erasure_log` to
 a database it names, one that may hold no entity. A subscriber's `on:
 PersonErased` is the built-in event's key, its fields in
-`jadpo_std::erasure`. A person entity
+`jadpo_std::erasure`. A data request's work, past the routes
+(`jadpo_runtime::http::privacy`), is `http::privacy_steps`: each piece is an
+outbox row for `jadpo_std::privacy::STEP_EVENT` with one delivery to the
+generated subscriber `privacy requests`, emitted at the time the step is due,
+so an export runs at once, an erasure when its cooling-off ends, the
+deadline's alert and event at their times, and each is retried, shown and
+given up as any delivery is, with no schedule of its own. An erasure runs
+`erasure::apply_in`, the statement `User.erase` runs, in the transaction that
+also moves the request on and writes the step that waits for the erasure's
+generated deliveries, and reads what the email needs first, since nothing can
+say it after. A person entity
 one of whose fields that isn't a reference says `Erasure.retained`
 (`EntityModel::keeps_erased`) is listed in `Erasure::own` with the fields it
 keeps and the marked fields it clears, and its table has a column for

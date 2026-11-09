@@ -186,19 +186,27 @@ pub(crate) fn emit(
 }
 
 /// One store's share of an erasure, about to run.
-struct Applying<'a> {
-    plan: &'a ErasurePlan,
+pub(crate) struct Applying<'a> {
+    pub(crate) plan: &'a ErasurePlan,
     /// Whether the store keeps a record of files, whose commit releases them.
-    keeps_files: bool,
-    part: &'a StoreErasure,
+    pub(crate) keeps_files: bool,
+    pub(crate) part: &'a StoreErasure,
     /// The person's `id`.
-    id: &'a SqlValue,
+    pub(crate) id: &'a SqlValue,
     /// When they were erased.
-    at: i64,
+    pub(crate) at: i64,
     /// The host's time.
-    now: i64,
-    trace: Option<Trace>,
-    depth: u32,
+    pub(crate) now: i64,
+    pub(crate) trace: Option<Trace>,
+    pub(crate) depth: u32,
+}
+
+/// What one store's share of an erasure left in its transaction.
+pub(crate) struct Applied {
+    /// Its `PersonErased` rows' deliveries, for after the commit.
+    pub(crate) deliveries: Vec<Delivery>,
+    /// Those rows, which a data request's completion waits on.
+    pub(crate) outboxes: Vec<[u8; 16]>,
 }
 
 /// Runs one store's share of an erasure, in a transaction of its own at
@@ -210,6 +218,29 @@ async fn apply(
     applying: Applying<'_>,
     new_id: &mut dyn FnMut() -> Option<[u8; 16]>,
 ) -> Result<Vec<Delivery>, StoreError> {
+    let database = host
+        .database(&applying.part.store)
+        .ok_or(StoreError::Unavailable)?;
+    let mut transaction = database.begin_at(Isolation::RepeatableRead).await?;
+    match apply_in(transaction.as_mut(), applying, new_id).await {
+        Ok(applied) => {
+            transaction.commit().await?;
+            Ok(applied.deliveries)
+        }
+        Err(error) => {
+            let _ = transaction.rollback().await;
+            Err(error)
+        }
+    }
+}
+
+/// [`apply`], in a transaction a caller keeps open, for a data request's
+/// erasure to commit with what else it does.
+pub(crate) async fn apply_in(
+    transaction: &mut dyn crate::Transaction,
+    applying: Applying<'_>,
+    new_id: &mut dyn FnMut() -> Option<[u8; 16]>,
+) -> Result<Applied, StoreError> {
     let Applying {
         plan,
         keeps_files,
@@ -220,67 +251,60 @@ async fn apply(
         trace,
         depth,
     } = applying;
-    let database = host.database(&part.store).ok_or(StoreError::Unavailable)?;
     let params = bound(&part.params, id, at)?;
-    let mut transaction = database.begin_at(Isolation::RepeatableRead).await?;
-    let done = async {
-        let rows = transaction.query(&part.sql, &params).await?;
-        let mut events: Vec<Event> = erased_people(&part.people, &rows)
-            .into_iter()
-            .filter_map(|erased| {
-                let person = plan.person(erased.entity)?;
-                (!person.subscribers.is_empty()).then(|| {
-                    event(
-                        erased.entity,
-                        &erased.id,
-                        at,
-                        erased.keys,
-                        person.subscribers.clone(),
-                    )
-                })
+    let rows = transaction.query(&part.sql, &params).await?;
+    let mut events: Vec<Event> = erased_people(&part.people, &rows)
+        .into_iter()
+        .filter_map(|erased| {
+            let person = plan.person(erased.entity)?;
+            (!person.subscribers.is_empty()).then(|| {
+                event(
+                    erased.entity,
+                    &erased.id,
+                    at,
+                    erased.keys,
+                    person.subscribers.clone(),
+                )
             })
-            .collect();
-        if keeps_files {
-            events.extend(crate::files::released(&mut *transaction, now).await?);
-        }
-        let mut sealed = Sealed {
-            outbox: Vec::with_capacity(events.len()),
-            deliveries: Vec::new(),
-        };
-        let fresh = |new_id: &mut dyn FnMut() -> Option<[u8; 16]>| {
-            new_id().ok_or_else(|| StoreError::Fault("no random bytes for an identity".into()))
-        };
-        for event in events {
-            let kept = fresh(new_id)?;
-            for subscriber in &event.subscribers {
-                sealed.deliveries.push(Delivery {
-                    store: part.store.clone(),
-                    id: fresh(new_id)?,
-                    outbox: kept,
-                    subscriber: subscriber.clone(),
-                    event: event.key.clone(),
-                    value: event.value.clone(),
-                    emitted_at: now,
-                    trace,
-                    depth,
-                });
-            }
-            sealed.outbox.push((kept, event.key, event.payload));
-        }
-        outbox::write(&mut *transaction, &sealed, now, trace, depth).await?;
-        Ok::<_, StoreError>(sealed.deliveries)
+        })
+        .collect();
+    let people = events.len();
+    if keeps_files {
+        events.extend(crate::files::released(&mut *transaction, now).await?);
     }
-    .await;
-    match done {
-        Ok(deliveries) => {
-            transaction.commit().await?;
-            Ok(deliveries)
+    let mut sealed = Sealed {
+        outbox: Vec::with_capacity(events.len()),
+        deliveries: Vec::new(),
+    };
+    let fresh = |new_id: &mut dyn FnMut() -> Option<[u8; 16]>| {
+        new_id().ok_or_else(|| StoreError::Fault("no random bytes for an identity".into()))
+    };
+    let mut outboxes = Vec::with_capacity(people);
+    for (at_event, event) in events.into_iter().enumerate() {
+        let kept = fresh(new_id)?;
+        if at_event < people {
+            outboxes.push(kept);
         }
-        Err(error) => {
-            let _ = transaction.rollback().await;
-            Err(error)
+        for subscriber in &event.subscribers {
+            sealed.deliveries.push(Delivery {
+                store: part.store.clone(),
+                id: fresh(new_id)?,
+                outbox: kept,
+                subscriber: subscriber.clone(),
+                event: event.key.clone(),
+                value: event.value.clone(),
+                emitted_at: now,
+                trace,
+                depth,
+            });
         }
+        sealed.outbox.push((kept, event.key, event.payload));
     }
+    outbox::write(&mut *transaction, &sealed, now, trace, depth).await?;
+    Ok(Applied {
+        deliveries: sealed.deliveries,
+        outboxes,
+    })
 }
 
 /// A statement's parameters: the person's `id`, and the time they were

@@ -161,13 +161,22 @@ fn is_hash(hash: &str) -> bool {
 pub(crate) struct Linker<'c> {
     host: &'c dyn Host,
     now: i64,
+    /// How long a link it makes lasts.
+    valid_ms: i64,
 }
 
 impl<'c> Linker<'c> {
     pub(crate) fn new(ctx: &'c Ctx<'_>) -> Linker<'c> {
+        Self::valid_for(ctx, LINK_VALID_MS)
+    }
+
+    /// One whose links last `valid_ms`: an export's, as long as the export
+    /// that holds them (area 15, "Exports").
+    pub(crate) fn valid_for(ctx: &'c Ctx<'_>, valid_ms: i64) -> Linker<'c> {
         Linker {
             host: ctx.host(),
             now: ctx.env().clock.now(),
+            valid_ms,
         }
     }
 
@@ -193,7 +202,7 @@ impl<'c> Linker<'c> {
             size: u64::try_from(size).ok()?,
             media,
             hash: text("hash"),
-            expires: self.now.saturating_add(LINK_VALID_MS),
+            expires: self.now.saturating_add(self.valid_ms),
         };
         let link = sign(&signing_key(self.host, &store, true)?, &said);
         Some(Value::record(

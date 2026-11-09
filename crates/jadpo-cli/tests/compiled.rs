@@ -698,6 +698,30 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             .expect("it checks"),
         ),
         (
+            "data requests with the application's own emails and sending".into(),
+            corpus_project(
+                &crate::privacy_requests::own_mail_files(),
+                "compiled-privacy-own-mail",
+            )
+            .expect("it checks"),
+        ),
+        (
+            "data requests with no mail connection".into(),
+            corpus_project(
+                &crate::privacy_requests::no_mail_files(),
+                "compiled-privacy-no-mail",
+            )
+            .expect("it checks"),
+        ),
+        (
+            "a data request a provider holds up".into(),
+            corpus_project(
+                &crate::privacy_requests::provider_files(),
+                "compiled-privacy-provider",
+            )
+            .expect("it checks"),
+        ),
+        (
             "a kept record".into(),
             corpus_project(&crate::erasure::kept_files(), "compiled-kept-record")
                 .expect("it checks"),

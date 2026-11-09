@@ -1223,6 +1223,7 @@ fn privacy_operation(
             S::Cancel => "Cancels the erasure whose cancel link's token it is given.",
             S::Export => "Makes an export of the signed-in person's own data, ready to download once it is built.",
             S::Erasure => "Makes an erasure of the signed-in person's own data, after its cooling-off period.",
+            S::Download => "Gives the export a download link's token names, once: the file is gone after it.",
         },
     );
     out.set("x-jadpo-generated", true);
@@ -1258,6 +1259,14 @@ fn privacy_operation(
             properties.set(
                 "token",
                 text("The cancel link's token, 64 hexadecimal digits."),
+            );
+            Some((properties, vec![Value::from("token")]))
+        }
+        S::Download => {
+            let mut properties = Value::object();
+            properties.set(
+                "token",
+                text("The download link's token, 64 hexadecimal digits."),
             );
             Some((properties, vec![Value::from("token")]))
         }
@@ -1308,10 +1317,19 @@ fn privacy_operation(
             None,
         ),
         S::Cancel => response("The erasure is cancelled.", None),
+        S::Download => {
+            let mut document = Value::object();
+            document.set("type", "object");
+            document.set(
+                "description",
+                "The person's export: everything held about them.",
+            );
+            response("The export, as a JSON file.", Some(document))
+        }
         _ => response("Accepted: the request has been made.", Some(accepted())),
     };
     responses.set(&status, success);
-    if matches!(step, S::Confirm | S::Cancel) {
+    if matches!(step, S::Confirm | S::Cancel | S::Download) {
         failure_schemas.insert(
             "PrivacyLinkExpired".to_string(),
             envelope(

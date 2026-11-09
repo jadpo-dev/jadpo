@@ -756,6 +756,18 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "makes the `MagicLinkRequest` the application's own sending is given, a value in memory, never sent by the runtime",
     ),
     (
+        "crates/jadpo-runtime/src/http/privacy_steps.rs",
+        "reads how long a data request's records are kept and works out when each ends from the records' own values, in memory, and writes a step's times in its own payload as numbers",
+    ),
+    (
+        "crates/jadpo-runtime/src/email.rs",
+        "fills a privacy email's `Instant` fields, values in memory rendered through the contract's own formatting (area 16, level 5)",
+    ),
+    (
+        "crates/jadpo-cli/src/privacy.rs",
+        "shows a data request's date in a list, for an operator to read, never for a program to take back",
+    ),
+    (
         "crates/jadpo-runtime/src/http/sign_in_events.rs",
         "makes the sign-in events a subscriber's action is given, values in memory; their payload keeps ids and times as the runtime's own text and numbers",
     ),
