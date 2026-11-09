@@ -331,6 +331,3 @@ project still checks. Review the diff and commit it as you would any change.
 
 - Giving a named tenant a fixed value isn't built yet. Name the tenant's
   users with `--users` for now.
-- Erasing a user doesn't yet remove their `id` from `jadpo_flags` and
-  `jadpo_flag_changes`, so a user named with `--users` stays there. Prefer
-  `--percent` where you can.

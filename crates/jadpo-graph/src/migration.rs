@@ -188,10 +188,18 @@ fn kept(table: &Table) -> Table {
 }
 
 /// A copy of `latest` without the retired column or table `name` gives,
-/// `Todo.legacy_flag` or `Todo` by born names: what `jadpo migrate new
-/// --drop` works the next snapshot out from (chunk V3). `Err` says why it
-/// can't be dropped.
-pub fn without_retired(latest: &Schema, name: &str) -> Result<Schema, Undroppable> {
+/// `Todo.legacy_flag` or `Todo` by born names, or the feature flags' two
+/// tables by `jadpo_flags`: what `jadpo migrate new --drop` works the next
+/// snapshot out from (chunk V3). `source` is what the source asks for now.
+/// `Err` says why it can't be dropped.
+pub fn without_retired(
+    latest: &Schema,
+    source: &Schema,
+    name: &str,
+) -> Result<Schema, Undroppable> {
+    if name == jadpo_std::system::FLAGS.table {
+        return without_flag_tables(latest, source);
+    }
     let mut out = latest.clone();
     let holding = |entity: &str| Holds::Entity(entity.to_string());
     let mut found = false;
@@ -236,11 +244,46 @@ pub fn without_retired(latest: &Schema, name: &str) -> Result<Schema, Undroppabl
     }
 }
 
+/// The two tables feature flags keep, the state and the log of its changes
+/// (area 16, "Removing"), which `--drop jadpo_flags` takes together.
+const FLAG_TABLES: [&str; 2] = [
+    jadpo_std::system::FLAGS.table,
+    jadpo_std::system::FLAG_CHANGES.table,
+];
+
+/// `latest` without the feature flags' two tables, wherever it holds them:
+/// refused while `source` still asks for them.
+fn without_flag_tables(latest: &Schema, source: &Schema) -> Result<Schema, Undroppable> {
+    let asked = source
+        .stores
+        .values()
+        .any(|store| store.tables.contains_key(jadpo_std::system::FLAGS.table));
+    if asked {
+        return Err(Undroppable::FlagsDeclared);
+    }
+    let mut out = latest.clone();
+    let mut found = false;
+    for store in out.stores.values_mut() {
+        for table in FLAG_TABLES {
+            found |= store.tables.remove(table).is_some();
+        }
+    }
+    if found {
+        Ok(out)
+    } else {
+        Err(Undroppable::Unknown(
+            jadpo_std::system::FLAGS.table.to_string(),
+        ))
+    }
+}
+
 /// Why a name can't be dropped.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Undroppable {
     /// It is still in use: it is removed from the source first.
     NotRetired(String),
+    /// The project still declares a feature flag, so its tables are in use.
+    FlagsDeclared,
     /// No field or entity of the latest snapshot goes by it.
     Unknown(String),
 }
@@ -852,6 +895,16 @@ pub fn migration_sql(
                         }),
                         _ => plan.columns.push(waiting(need)),
                     },
+                    // `--drop jadpo_flags` asked for this, and an acceptance
+                    // says so: the one system table that goes.
+                    None if FLAG_TABLES.contains(&table.as_str())
+                        && old.is_some_and(|t| matches!(t.holds, Holds::System(_))) =>
+                    {
+                        plan.removals.push(Statement {
+                            sql: table::drop_table(table),
+                            does: "drop table",
+                        });
+                    }
                     None => {
                         let what =
                             old.map_or_else(|| format!("table `{table}`"), |t| t.holds.to_string());
@@ -2169,15 +2222,15 @@ mod tests {
     fn only_what_is_retired_is_dropped() {
         let mut latest = schema(&[("id", "uuid", false, false), ("old", "boolean", true, true)]);
         assert_eq!(
-            without_retired(&latest, "Todo.id"),
+            without_retired(&latest, &Schema::default(), "Todo.id"),
             Err(Undroppable::NotRetired("Todo.id".into()))
         );
         assert_eq!(
-            without_retired(&latest, "Todo"),
+            without_retired(&latest, &Schema::default(), "Todo"),
             Err(Undroppable::NotRetired("Todo".into()))
         );
         assert_eq!(
-            without_retired(&latest, "Nope"),
+            without_retired(&latest, &Schema::default(), "Nope"),
             Err(Undroppable::Unknown("Nope".into()))
         );
         assert_eq!(
@@ -2185,7 +2238,7 @@ mod tests {
             vec![("Todo.old".to_string(), false)],
             "what `--drop` can name"
         );
-        let after = without_retired(&latest, "Todo.old").expect("dropped");
+        let after = without_retired(&latest, &Schema::default(), "Todo.old").expect("dropped");
         assert_eq!(
             decisions_needed(&latest, &after)[0].kind,
             NeededKind::DropField
@@ -2206,7 +2259,7 @@ mod tests {
             .and_then(|store| store.tables.get_mut("todo"))
             .expect("todo");
         table.retired = true;
-        let gone = without_retired(&latest, "Todo").expect("dropped");
+        let gone = without_retired(&latest, &Schema::default(), "Todo").expect("dropped");
         assert_eq!(
             decisions_needed(&latest, &gone)[0].kind,
             NeededKind::DropEntity
@@ -2246,7 +2299,7 @@ mod tests {
         };
         table.columns.insert("copy".into(), copy);
         table.columns.get_mut("scan").expect("scan").retired = true;
-        let after = without_retired(&before, "Todo.scan").expect("dropped");
+        let after = without_retired(&before, &Schema::default(), "Todo.scan").expect("dropped");
         let sql = migration_sql(&before, &after, &|_| Some(Decided::Dropped)).expect("sql");
         let does: Vec<&str> = sql.stores["main"].iter().map(|s| s.does).collect();
         assert_eq!(
@@ -2272,7 +2325,7 @@ mod tests {
             .and_then(|store| store.tables.get_mut("todo"))
             .expect("todo");
         table.retired = true;
-        let gone = without_retired(&retired_table, "Todo").expect("dropped");
+        let gone = without_retired(&retired_table, &Schema::default(), "Todo").expect("dropped");
         let sql = migration_sql(&retired_table, &gone, &|_| Some(Decided::Dropped)).expect("sql");
         let does: Vec<&str> = sql.stores["main"].iter().map(|s| s.does).collect();
         assert_eq!(

@@ -1171,6 +1171,89 @@ fn removing_the_last_flag_leaves_flags_empty_and_its_tables() {
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
 }
 
+/// Dropping the two tables once the last flag has gone is a migration of
+/// its own, with a person's acceptance (area 5, "System tables stay"; area
+/// 16, "Removing"): refused while a flag is declared, and each table named
+/// in the acceptance it asks for.
+#[test]
+fn the_flag_tables_are_dropped_by_a_migration_of_their_own_once_the_last_flag_goes() {
+    let root = removing("drop-tables");
+    let refused = jadpo(
+        &root,
+        &["migrate", "new", "drop_flags", "--drop", "jadpo_flags"],
+    );
+    assert_eq!(refused.code, 2, "{}{}", refused.stdout, refused.stderr);
+    assert!(
+        refused.stderr.contains("still in use"),
+        "{}{}",
+        refused.stdout,
+        refused.stderr
+    );
+    for (flag, keep) in [("layout", "compact"), ("new_checkout", "false")] {
+        let removed = jadpo(&root, &["flags", "remove", flag, "--keep", keep]);
+        assert_eq!(removed.code, 0, "{}{}", removed.stdout, removed.stderr);
+    }
+    // With no flag declared and the tables still there, nothing is due.
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let nothing = jadpo(&root, &["migrate", "new", "none_due"]);
+    assert_eq!(nothing.code, 0, "{}{}", nothing.stdout, nothing.stderr);
+    assert!(
+        !fs::read_dir(root.join("database/migrations"))
+            .expect("migrations")
+            .any(|entry| entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .contains("none_due")),
+        "{}",
+        nothing.stdout
+    );
+    // Tracked, so `jadpo check` can see what this change adds.
+    crate::acceptances::git(&root, &["init", "-q"]);
+    crate::acceptances::git(&root, &["add", "-A"]);
+    crate::acceptances::git(&root, &["commit", "-q", "-m", "The project"]);
+    crate::acceptances::git(&root, &["branch", "-M", "main"]);
+    crate::acceptances::git(&root, &["checkout", "-q", "-b", "change"]);
+    let dropped = jadpo(
+        &root,
+        &["migrate", "new", "drop_flags", "--drop", "jadpo_flags"],
+    );
+    assert_eq!(dropped.code, 0, "{}{}", dropped.stdout, dropped.stderr);
+    let folder = fs::read_dir(root.join("database/migrations"))
+        .expect("migrations")
+        .map(|entry| entry.expect("entry").path())
+        .find(|path| path.to_string_lossy().ends_with("drop_flags"))
+        .expect("the migration");
+    let sql = fs::read_to_string(folder.join("postgres.sql")).expect("sql");
+    assert!(sql.contains("DROP TABLE \"jadpo_flags\""), "{sql}");
+    assert!(sql.contains("DROP TABLE \"jadpo_flag_changes\""), "{sql}");
+    // It waits for a person's acceptance, each table by its store.
+    let updated = jadpo(&root, &["records", "update"]);
+    assert_eq!(updated.code, 0, "{}{}", updated.stdout, updated.stderr);
+    let unaccepted = jadpo(&root, &["check"]);
+    let said = format!("{}{}", unaccepted.stdout, unaccepted.stderr);
+    assert_eq!(unaccepted.code, 1, "{said}");
+    assert!(said.contains("rule: acceptance.missing"), "{said}");
+    assert!(
+        said.contains("main.jadpo_flags") && said.contains("main.jadpo_flag_changes"),
+        "{said}"
+    );
+    let drafted = jadpo(&root, &["acceptance", "new", "drop_flags"]);
+    assert_eq!(drafted.code, 0, "{}{}", drafted.stdout, drafted.stderr);
+    let draft = fs::read_dir(root.join("acceptances"))
+        .expect("acceptances")
+        .map(|entry| fs::read_to_string(entry.expect("entry").path()).expect("a draft"))
+        .next()
+        .expect("a draft");
+    for subject in ["main.jadpo_flags", "main.jadpo_flag_changes"] {
+        assert!(
+            draft.contains(&format!("{subject}: DataChange.table_dropped")),
+            "{draft}"
+        );
+    }
+}
+
 #[test]
 fn a_removal_needs_a_value_of_the_flag_and_a_project_that_checks() {
     let root = removing("remove-refused");

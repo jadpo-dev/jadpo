@@ -304,7 +304,8 @@ it goes too; a test that gave it the kept value loses only that line. The
 command lists every change file by file, and a removal whose result
 wouldn't check is undone, so the project always checks after it. The
 flag's row in the database is left: a row no flag has is never read.
-`flags { }` stays when its last flag goes, with the tables.
+`flags { }` stays when its last flag goes, and the tables stay with it
+until you drop them ([Removing](#removing)).
 
 ### Flags in browsers and apps
 
@@ -5148,10 +5149,18 @@ after, the name the operator's machine gives (`USER`, else `LOGNAME` or
 faked. The screen shows both, as `jadpo deliveries` does. A row is kept
 for good: changes are few, and a flag's history is what a reviewer reads
 when a release went wrong. Its rows, like `jadpo_flags`, hold named
-users' `id`s; a user's erasure removes them from both, which comes with
-erasures ([Erasures](15-personal-data.md#erasures)). A change is made
-only to the row as it was read, so of two operators acting at once, one
-acts and the other is told it changed (`flags.unavailable`).
+users' `id`s; a person's erasure takes their `id` out of both
+([Erasures](15-personal-data.md#erasures)). A change it touches stays,
+without them, and a flag that named only them has no named users left.
+In the store that holds their own record this is part of the statement
+that erases them; when the flags are in another store it follows after
+the commit, as records there do ([Records in another
+store](15-personal-data.md#records-in-another-store)), and the replay at
+every start reaches both, so a restored backup is erased too. It moves
+the row's `set_at` on. A change is made only to the row as it was read,
+so of two operators acting at once, one acts and the other is told it
+changed (`flags.unavailable`), and an operator who read a row before an
+erasure can't write the person back.
 
 There is no production guard and no prompt. Changing a flag is the point
 of a running app's flags; a change is logged, reversible and reaches
@@ -5186,8 +5195,10 @@ doesn't check, and refuses `<value>` that isn't one of the flag's. Then:
   returning, what came after it in the same block can't run and goes.
 - Every other read becomes the kept value, `true` or `Type.variant`.
 - The declaration goes from `flags { }`. When it was the last, `flags {
-  }` stays, empty, so `jadpo_flags` and its log stay: dropping them is a
-  migration of its own, which comes with dropping tables.
+  }` stays, empty, so `jadpo_flags` and its log stay, an erasure still
+  reaches them, and nothing is due. `jadpo migrate new <purpose> --drop
+  jadpo_flags` drops both in a migration of its own, with a person's
+  acceptance ([Removing data](05-data.md#removing-data)).
 - Each test's `flags:` line for it goes, and `flags:` with it when it
   was the last. A test whose value was another and that reached a read
   goes whole; here a read inside an `if` another flag decides is
@@ -5293,7 +5304,7 @@ The errors this page describes are built with the feature they belong to.
 | Rate limits | Partly built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. A generated route's own limits don't appear in OpenAPI's `x-jadpo-rate-limit` or `jadpo routes`, and a magic-link refusal gives `Retry-After` without the `RateLimit` headers. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |
 | Outside calls | Built: the one place in the runtime every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([How every outside call is made safe](#how-every-outside-call-is-made-safe)). |
 | Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` and [`Driver.s3`](#the-s3-driver) connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). A `File` an `Output` or a person's export reaches goes out as a signed link valid for five minutes, served from the disk with single ranges, `If-Range` and an ETag from the file's hash ([Downloading](#downloading)). A client's file reaches a store through a [slot](#uploading): `Entity.field_upload()`, the disk driver's upload address, and a `FileUpload` attached by an ordinary create or update. Not built yet: multipart slots, fields naming one store of files in entities of two databases, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written; and the `jadpo files` commands (`ls`, `show`, `get`, `put` and `copy`). |
-| Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flag rules: declaring, reading, testing](#flag-rules-declaring-reading-testing)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flag rules: changing, listing, removing](#flag-rules-changing-listing-removing)). Not built yet: named tenants, which wait for tenancy to be settled for flags; and a user's erasure reaching their `id` in `jadpo_flags` and `jadpo_flag_changes`, which comes with erasures. |
+| Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flag rules: declaring, reading, testing](#flag-rules-declaring-reading-testing)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flag rules: changing, listing, removing](#flag-rules-changing-listing-removing)). A person's erasure takes their `id` out of `jadpo_flags` and `jadpo_flag_changes`, and `jadpo migrate new --drop jadpo_flags` drops both once the last flag has gone ([The log](#the-log), [Removing](#removing)). Not built yet: named tenants, which wait for tenancy to be settled for flags. |
 | Audit | Partly built: an entity's `audit:`, an entry in the same transaction as each change, `history` with the record's `read` grant and the fields the caller can read, retention by the purge schedule, entries deleted with their record by erasure, `AuditEntryRecorded` to subscribers, and the permissions report's line ([Audit trail](#audit-trail)). Not built yet: what [What the audit trail doesn't keep yet](#what-the-audit-trail-doesnt-keep-yet) lists, each `toolchain.not_built_yet` where it is written, and `publishing`, which comes with outgoing webhooks. |
 | Search | Partly built: on PostgreSQL, `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages. |
 | Documents | Not built yet: the application's `documents:` is `toolchain.not_built_yet` where it is written. |

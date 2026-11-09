@@ -72,6 +72,9 @@ struct EraseParts<'m> {
     /// Each of `people` with keys at providers: each connection's name and
     /// the column holding the key.
     keys: Vec<(usize, Vec<(&'m str, &'m str)>)>,
+    /// The parameter holding the operation's time, when the feature flags'
+    /// two tables are in this store.
+    flags: Option<String>,
 }
 
 impl EraseParts<'_> {
@@ -87,6 +90,7 @@ impl EraseParts<'_> {
             own: &self.own,
             people: &people,
             keys: &self.keys,
+            flags: self.flags.as_deref(),
         })
     }
 
@@ -109,7 +113,7 @@ fn erase_parts<'m>(
     (store, part): (&str, &jadpo_check::erasure::Erasure),
     writing: &mut Writing,
     own: bool,
-    provider_keys: &'m [jadpo_check::provider_erasure::ProviderKey],
+    (provider_keys, flags): (&'m [jadpo_check::provider_erasure::ProviderKey], &[String]),
 ) -> Option<EraseParts<'m>> {
     let retired_in = |table: &str| {
         retired
@@ -270,6 +274,12 @@ fn erase_parts<'m>(
             keys.push((*at, held));
         }
     }
+    // Everyone it erases leaves the feature flags, in the store that keeps
+    // them (area 16, "The log").
+    let flags = flags
+        .iter()
+        .any(|held| held == store)
+        .then(|| writing.param(WriteSource::Now, SqlType::Timestamp));
     Some(EraseParts {
         tables: deleted.iter().map(|entity| entity.table.as_str()).collect(),
         follows,
@@ -277,6 +287,7 @@ fn erase_parts<'m>(
         signed_in,
         audited,
         own: kept_people,
+        flags,
         people,
         keys,
     })
@@ -300,6 +311,7 @@ pub(crate) fn erasure_plan(
     let erasures = jadpo_check::erasure::erasures(db, project);
     let sign_in = crate::purge::sign_in_state(db, project);
     let retired = retired_columns(db, project);
+    let flags_held = stores_holding_flags(db, project);
     let log =
         jadpo_check::privacy::privacy(db, project)
             .log
@@ -329,7 +341,7 @@ pub(crate) fn erasure_plan(
             (store, part),
             &mut writing,
             own,
-            &provider_keys,
+            (&provider_keys, &flags_held),
         )?;
         let sql = if own {
             let by_id = text::equal("id", &id);
@@ -388,11 +400,17 @@ pub(crate) fn erasure_plan(
             .filter(|(name, _)| name.as_str() != store)
             .filter_map(|(name, part)| part_of(person, part, name))
             .collect();
+        let flags = flags_erasures(&flags_held, &person.table);
         let mut subscribers = apps.clone();
         subscribers.extend(
             elsewhere
                 .iter()
-                .map(|part| jadpo_std::erasure::store_subscriber(&part.store)),
+                .chain(&flags)
+                .filter(|part| part.store != store)
+                .map(|part| part.store.as_str())
+                .collect::<std::collections::BTreeSet<&str>>()
+                .into_iter()
+                .map(jadpo_std::erasure::store_subscriber),
         );
         subscribers.extend(
             provider_keys
@@ -410,6 +428,7 @@ pub(crate) fn erasure_plan(
             subscribers,
             own,
             elsewhere,
+            flags,
         });
     }
     let providers = provider_keys
@@ -1229,7 +1248,7 @@ impl Planner<'_> {
             (&store, here),
             &mut writing,
             true,
-            &self.provider_keys,
+            (&self.provider_keys, &self.flag_stores),
         )?;
         let by_id = text::equal("id", &id);
         let granted = self.policy(&mut writing, person, Effect::Delete, &Row::Table)?;
@@ -1525,6 +1544,54 @@ fn retired_columns(
     out
 }
 
+/// The stores whose latest migration holds the feature flags' two tables:
+/// what an erasure reaches, as long as they are there, whether or not a flag
+/// is still declared (area 16, "Removing").
+pub(crate) fn stores_holding_flags(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+) -> Vec<String> {
+    jadpo_check::data::migrations::migrations(db, project)
+        .latest_schema()
+        .stores
+        .iter()
+        .filter(|(_, store)| store.tables.contains_key(jadpo_std::system::FLAGS.table))
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
+/// A person's erasure from the feature flags in each of `stores`, on its
+/// own: `table`, the person's, names nothing here (area 16, "The log").
+fn flags_erasures(stores: &[String], table: &str) -> Vec<jadpo_std::erasure::StoreErasure> {
+    stores
+        .iter()
+        .map(|store| {
+            let mut writing = Writing::default();
+            let id = writing.param(WriteSource::Input(0), SqlType::Uuid);
+            let now = writing.param(WriteSource::Now, SqlType::Timestamp);
+            let sql = text::erase(text::Erase {
+                root: text::EraseRoot::Given(&id),
+                tables: &[table],
+                follows: &[],
+                keeps: &[],
+                signed_in: &[],
+                audited: &[],
+                own: &[],
+                people: &[],
+                keys: &[],
+                flags: Some(&now),
+            });
+            jadpo_std::erasure::StoreErasure {
+                store: store.clone(),
+                sql,
+                params: writing.params.clone(),
+                present: text::flags_naming(),
+                people: Vec::new(),
+            }
+        })
+        .collect()
+}
+
 fn field_columns(
     writing: &mut Writing,
     entity: &EntityModel,
@@ -1618,6 +1685,7 @@ pub(crate) fn plans(
         json,
         sign_in: crate::purge::sign_in_state(db, project),
         retired: retired_columns(db, project),
+        flag_stores: stores_holding_flags(db, project),
         provider_keys: jadpo_check::provider_erasure::provider_keys(db, project),
     };
     let mut out = Vec::new();

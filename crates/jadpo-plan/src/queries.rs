@@ -110,6 +110,9 @@ pub(crate) struct Planner<'a> {
     /// marked fields of, since it can't know which held personal data once
     /// the field has left the source (area 15; chunk P4b).
     pub retired: std::collections::BTreeMap<(String, String), Vec<String>>,
+    /// The stores holding the feature flags' two tables, by the latest
+    /// migration, which a person's erasure takes them out of.
+    pub flag_stores: Vec<String>,
 }
 
 /// One statement being written: its parameters, deduplicated, so a value
@@ -1397,6 +1400,7 @@ pub(crate) fn plans(
         sign_in: Default::default(),
         provider_keys: Default::default(),
         retired: Default::default(),
+        flag_stores: Default::default(),
     };
     let mut query_plans: Vec<QueryPlan> = queries
         .queries

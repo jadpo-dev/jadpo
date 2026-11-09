@@ -726,7 +726,8 @@ environment and then `.env.local`.
 
 `new <purpose> --drop <name>` also removes for good a retired field or
 entity, named as `changes.jadpo` names it, `Todo.legacy_flag` or `Todo`,
-one to a migration ([Removing data](05-data.md#removing-data)). It
+one to a migration ([Removing data](05-data.md#removing-data)), or the
+feature flags' two tables, `jadpo_flags`, once no flag is declared. It
 refuses anything not retired, and while the latest migration waits for
 its decisions. With nothing to migrate, `new` lists what is still retired.
 `apply` lists what each migration it ran removed, and refuses a project
@@ -3829,7 +3830,7 @@ yet, or that other commands replace.
 | `cli.incident_revision_mismatch` | `incident` | Runtime event and local source revisions differ |
 | `cli.inspect_arguments` | `inspect` | A `jadpo inspect` command names a declaration the project doesn't have, or a name two domains share |
 | `cli.lsp_arguments` | `lsp` | A `jadpo lsp` command is given an argument, which it doesn't take |
-| `cli.migrate_arguments` | `migrate` | A `jadpo migrate` command names no action, one it doesn't have, a purpose for an action that takes none, or a `--drop` of what isn't retired |
+| `cli.migrate_arguments` | `migrate` | A `jadpo migrate` command names no action, one it doesn't have, a purpose for an action that takes none, a `--drop` of what isn't retired, or a `--drop` of the flags' tables while a flag is declared |
 | `cli.new_arguments` | `new` | A `jadpo new` command names no project, or more than one |
 | `cli.package_arguments` | `package` | A `jadpo package` command names no action, one it doesn't have, or a package the project doesn't hold |
 | `cli.package_not_openapi` | `package import` | A file given to `jadpo package import` is JSON but not an OpenAPI 3.0 or 3.1 document |

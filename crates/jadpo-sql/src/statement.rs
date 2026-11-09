@@ -1055,6 +1055,10 @@ pub struct Erase<'a> {
     /// each connection that names one on it, the connection's name and the
     /// column holding the key (area 15, "Erasure at providers").
     pub keys: &'a [(usize, Vec<(&'a str, &'a str)>)],
+    /// The parameter holding the operation's time, when the feature flags'
+    /// two tables are in this store: each person it erases leaves them
+    /// (area 16, "The log").
+    pub flags: Option<&'a str>,
 }
 
 /// One person's erasure in one store (area 15, "Erasure"; chunks P3 and
@@ -1088,6 +1092,7 @@ pub fn erase(erasure: Erase<'_>) -> String {
         own,
         people,
         keys,
+        flags,
     } = erasure;
     let mut parts = vec![walk(root, tables, follows)];
     for (i, keep) in keeps.iter().enumerate() {
@@ -1205,6 +1210,9 @@ pub fn erase(erasure: Erase<'_>) -> String {
             erased(*entity)
         ));
     }
+    if let Some(now) = flags {
+        parts.extend(out_of_the_flags(people, now));
+    }
     // Every record found goes, or stays with its marked fields cleared,
     // the person's own last, and those of a person say so.
     let kept = |entity: usize| own.iter().find(|own| own.entity == entity);
@@ -1316,6 +1324,64 @@ pub fn erase(erasure: Erase<'_>) -> String {
     )
 }
 
+/// The parts of a person's erasure that take everyone it erased out of the
+/// feature flags' two tables (area 16, "The log"), by the key they are named
+/// under: the person it starts from, entity 0, with every other of `people`
+/// it reached, as `jadpo flags` writes an `id`, in lowercase. A flag's row
+/// stays, and `set_at` moves on so a change an operator read before this
+/// can't put them back; a change logged stays, without them.
+fn out_of_the_flags(people: &[usize], now: &str) -> [String; 2] {
+    let mut entities = vec![0];
+    entities.extend(people.iter().copied().filter(|entity| *entity != 0));
+    let list: Vec<String> = entities.iter().map(ToString::to_string).collect();
+    let ids = format!(
+        "ARRAY(SELECT {}::text FROM {} WHERE {} IN ({}))",
+        ident("id"),
+        ident("erased"),
+        ident("entity"),
+        list.join(", ")
+    );
+    let (flags, users) = (ident("jadpo_flags"), ident("users"));
+    let set_at = ident("set_at");
+    let state = format!(
+        "{} AS (\n  UPDATE {flags}\n  SET {users} = NULLIF({users} - {ids}, '{{}}'::jsonb),\n    {set_at} = GREATEST({set_at}, {now})\n  WHERE {users} ?| {ids}\n)",
+        ident("flags_state")
+    );
+    let named = |column: &str| format!("{}->'users' ?| {ids}", ident(column));
+    let without = |column: &str| {
+        format!(
+            "{name} = CASE WHEN {held} THEN jsonb_set({name}, '{{users}}', ({name}->'users') - {ids}) ELSE {name} END",
+            name = ident(column),
+            held = named(column)
+        )
+    };
+    let log = format!(
+        "{} AS (\n  UPDATE {}\n  SET {},\n    {}\n  WHERE {} OR {}\n)",
+        ident("flags_log"),
+        ident("jadpo_flag_changes"),
+        without("was"),
+        without("now"),
+        named("was"),
+        named("now")
+    );
+    [state, log]
+}
+
+/// Which of `$1`'s `id`s either of the feature flags' two tables names: what
+/// an erasure's replay asks of the store they are in (area 16, "The log").
+pub fn flags_naming() -> String {
+    let asked = ident("asked");
+    let among = |users: &str| format!("{users} ? {asked}.{asked}::text");
+    format!(
+        "SELECT {asked}.{asked} FROM unnest($1::uuid[]) AS {asked} WHERE EXISTS (SELECT 1 FROM {} WHERE {}) OR EXISTS (SELECT 1 FROM {} WHERE {} OR {})",
+        ident("jadpo_flags"),
+        among(&ident("users")),
+        ident("jadpo_flag_changes"),
+        among(&format!("{}->'users'", ident("was"))),
+        among(&format!("{}->'users'", ident("now")))
+    )
+}
+
 /// Which of `$1`'s `id`s are in `table` (chunk P4c): a person's record, not
 /// yet erased when `kept` says their records stay field by field. What an
 /// erasure's replay asks of their own store.
@@ -1405,5 +1471,16 @@ mod tests {
             after(&[part("due", "$2", true), part("id", "$3", false)]).as_deref(),
             Some("($2 IS NULL OR (\"due\" < $2 OR (\"due\" = $2 AND \"id\" > $3)))")
         );
+    }
+
+    /// Everyone a statement erases leaves the flags: the person it starts
+    /// from and each other person its walk reached, not just the first.
+    #[test]
+    fn an_erasure_takes_each_person_it_reaches_out_of_the_flags() {
+        let [state, log] = out_of_the_flags(&[2, 0, 3], "$2");
+        let among = "ARRAY(SELECT \"id\"::text FROM \"erased\" WHERE \"entity\" IN (0, 2, 3))";
+        assert!(state.contains(among), "{state}");
+        assert!(log.contains(among), "{log}");
+        assert!(state.contains("GREATEST(\"set_at\", $2)"), "{state}");
     }
 }

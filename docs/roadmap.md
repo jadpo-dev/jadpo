@@ -122,7 +122,6 @@ D1 first: the site starts once D1 has merged.
   Split by size (2026-11-08) into the parts below, taken in order,
   each widening `error_format_scope` to the rules it finished; delete it
   once all are.
-- [ ] **D13c13 `translation.*`, `layout.*` and `email.*`** `opus · high`: 33 pages.
 - [ ] **D13c14 `package.*`, `test.*`, `migration.*` and `acceptance.*`** `opus · high`: 28 pages.
 - [ ] **D13c15 `step.*`, `subscriber.*`, `schedule.*`, `prompt.*`, `event.*`, `ai.*` and `receiving.*`** `opus · high`: 18 pages; then `error_format_scope` covers every rule.
 
@@ -274,12 +273,6 @@ work below (Richard, 2026-11-08).
      `Map`) and a `FileContents` on an email; fields naming one store of
      files in entities of two databases. Done when each runs on both
      executors in place of its `toolchain.not_built_yet`.
-   - [ ] **B15 Flags and erasure** `opus · high` after P4c: area 16, "The
-     log", "Removing" and "What is built". A user's erasure reaching their
-     `id` in `jadpo_flags` and `jadpo_flag_changes`, and those tables
-     dropped once the last flag goes. Named tenants wait on tenancy being
-     settled for flags (L3). Done when an erased person leaves no row in
-     either table, on both executors.
    - [ ] **B16 What the audit trail doesn't keep yet** `opus · xhigh`
      area 16, "What the audit trail doesn't keep yet"; area 15,
      "What is built". A `File` field, a field with its own `retention:`, a

@@ -1299,6 +1299,10 @@ A subscriber to it in an app with no person is
 - **History.** An audited record erasure deletes takes its history with
   it, in the same statement
   ([Audit trail](16-built-in-services.md#audit-trail)).
+- **Feature flags.** Their `id` leaves `jadpo_flags` and
+  `jadpo_flag_changes`, where a flag named them, with the erasure or
+  straight after it when the flags are in another store
+  ([The log](16-built-in-services.md#the-log)).
 - **OAuth grants**, the permissions a person gave your app to act for them
   at a provider, are deleted with the person or record that owns them
   ([OAuth grants](11-integrations.md#oauth-grants)).

@@ -802,7 +802,11 @@ fn id_text(value: &Value) -> String {
 
 /// The club's program and a copy of its databases, for `run`.
 fn in_club(name: &str, log: &str, run: impl AsyncFnOnce(&Program, &Club)) {
-    let root = project(name, log);
+    in_project(project(name, log), run);
+}
+
+/// The program at `root` and a copy of its databases, for `run`.
+fn in_project(root: PathBuf, run: impl AsyncFnOnce(&Program, &Club)) {
     let loaded = jadpo_db::load(&root);
     let steps = jadpo_check::data::migrations::store_steps(
         jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
@@ -1462,6 +1466,260 @@ fn a_replay_clears_a_restored_kept_record_and_leaves_an_erased_one() {
 }
 
 /// A plan with no log has nothing to replay, and asks nothing of any store.
+/// The desk with flags, kept in `store`, and its log in `erasures`:
+/// `archive` holds what members leave behind, and `flagged` holds nothing
+/// but the flags.
+fn flagged_desk(name: &str, store: &str) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("erasure-flags-{name}"));
+    let _ = fs::remove_dir_all(&root);
+    let application = format!(
+        "    connections: {{
+        main: {{
+            driver: Driver.postgres
+            url: config.main_url
+        }}
+        archive: {{
+            driver: Driver.postgres
+            url: config.archive_url
+        }}
+        flagged: {{
+            driver: Driver.postgres
+            url: config.flagged_url
+        }}
+        erasures: {{
+            driver: Driver.postgres
+            url: config.erasures_url
+        }}
+    }}
+    flags: {{
+        store: {store}
+    }}
+    privacy: {{
+        erasure_log: {{
+            store: erasures
+        }}
+    }}
+"
+    );
+    let config = "    main_url: PostgresUrl\n    archive_url: PostgresUrl\n    flagged_url: PostgresUrl\n    erasures_url: PostgresUrl\n";
+    let mut files = served_files(&application, config);
+    files.push(("flags.jadpo".to_string(), FLAGS_FILE.to_string()));
+    for (path, text) in files {
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().expect("parent")).expect("folders");
+        fs::write(path, text).expect("write");
+    }
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    let recorded = jadpo(&root, &["records", "update"]);
+    assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
+    root
+}
+
+/// A flag the desk declares; its state is what these tests read.
+pub(crate) const FLAGS_FILE: &str = "flags {
+    /// The new desk page.
+    new_desk: Bool {
+        default: false
+        owner: \"desk\"
+        expires: \"2099-01-31\"
+    }
+}
+";
+
+/// Someone who joined the desk, by `handle`.
+async fn joined(program: &Program, club: &Club, handle: &str) -> String {
+    let input = Value::record(
+        "NewMember",
+        vec![(std::rc::Rc::from("handle"), Value::text(handle))],
+    );
+    id_text(&club.call(program, "join", vec![input]).await)
+}
+
+/// Statements that put Ada and Bob in the flags' two tables: a flag naming
+/// them both, one naming only Ada, and a log of each change.
+pub(crate) fn flag_rows(ada: &str, bob: &str) -> [String; 4] {
+    let both = format!(r#"{{"{ada}":"true","{bob}":"false"}}"#);
+    let only = format!(r#"{{"{ada}":"true"}}"#);
+    let state = |users: &str| format!(r#"{{"value":null,"users":{users},"shares":[]}}"#);
+    [
+        format!(
+            "INSERT INTO jadpo_flags (flag, value, users, shares, set_at) VALUES ('new_desk', NULL, '{both}', NULL, '2026-01-01T00:00:00Z')"
+        ),
+        format!(
+            "INSERT INTO jadpo_flags (flag, value, users, shares, set_at) VALUES ('old_page', 'true', '{only}', NULL, '2026-01-01T00:00:00Z')"
+        ),
+        format!(
+            "INSERT INTO jadpo_flag_changes (id, made_at, flag, action, was, now, operator, role) VALUES (gen_random_uuid(), '2026-01-02T00:00:00Z', 'new_desk', 'set', '{}', '{}', 'sam', 'app_owner')",
+            state(&only),
+            state(&both)
+        ),
+        format!(
+            "INSERT INTO jadpo_flag_changes (id, made_at, flag, action, was, now, operator, role) VALUES (gen_random_uuid(), '2026-01-03T00:00:00Z', 'new_desk', 'reset', '{}', NULL, 'sam', 'app_owner')",
+            state(&both)
+        ),
+    ]
+}
+
+/// Everything the flags' two tables hold, as text.
+pub(crate) const FLAG_STATE: &str = "SELECT flag || ' ' || coalesce(users::text, 'none') || ' ' || set_at::text FROM jadpo_flags ORDER BY flag";
+pub(crate) const FLAG_LOG: &str = "SELECT flag || ' ' || action || ' ' || coalesce(was::text, 'none') || ' ' || coalesce(now::text, 'none') || ' ' || operator FROM jadpo_flag_changes ORDER BY made_at";
+
+async fn assert_only_bob_in_the_flags(club: &Club, store: &str, ada: &str, bob: &str) {
+    let state = club.texts(store, FLAG_STATE).await;
+    let log = club.texts(store, FLAG_LOG).await;
+    for row in state.iter().chain(&log) {
+        assert!(!row.contains(ada), "{row}");
+    }
+    assert_eq!(state.len(), 2, "{state:?}");
+    assert!(state[0].starts_with("new_desk"), "{state:?}");
+    assert!(state[0].contains(bob), "{state:?}");
+    assert!(state[1].starts_with("old_page none"), "{state:?}");
+    assert_eq!(log.len(), 2, "kept for good: {log:?}");
+    assert!(log[0].contains(bob), "{log:?}");
+    assert!(log[1].contains(bob), "{log:?}");
+}
+
+/// A member erased in the store the flags are in leaves no row of theirs in
+/// either table, by the commit: everyone else's named users stay, a flag that
+/// named only them has no named users left, and the log keeps each change
+/// without them.
+#[test]
+fn erasing_a_person_takes_them_out_of_the_flags_with_the_commit() {
+    if !jadpo_test::live() {
+        return;
+    }
+    in_project(flagged_desk("own", "main"), async |program, club| {
+        let ada = joined(program, club, "ada").await;
+        let bob = joined(program, club, "bob").await;
+        for row in flag_rows(&ada, &bob) {
+            club.run("main", &row).await;
+        }
+        let id = Value::uuid(&ada);
+        club.call(program, "close", vec![id]).await;
+        assert_only_bob_in_the_flags(club, "main", &ada, &bob).await;
+        // A change an operator read before the erasure is then told the
+        // flag changed, rather than writing Ada back.
+        let moved = club
+                .texts(
+                    "main",
+                    "SELECT (extract(epoch FROM set_at) * 1000)::bigint::text FROM jadpo_flags WHERE flag = 'new_desk'",
+                )
+                .await;
+        assert_eq!(moved, [T0.to_string()]);
+        // A person who was never named changes nothing.
+        let carol = joined(program, club, "carol").await;
+        club.call(program, "close", vec![Value::uuid(&carol)]).await;
+        assert_only_bob_in_the_flags(club, "main", &ada, &bob).await;
+    });
+}
+
+/// A member whose flags are in a store that also holds records of theirs:
+/// the generated subscriber's statement takes them out with those records.
+#[test]
+fn an_erasure_in_another_store_takes_them_out_of_the_flags_there() {
+    if !jadpo_test::live() {
+        return;
+    }
+    in_project(flagged_desk("archive", "archive"), async |program, club| {
+        let ada = joined(program, club, "ada").await;
+        let bob = joined(program, club, "bob").await;
+        for row in flag_rows(&ada, &bob) {
+            club.run("archive", &row).await;
+        }
+        club.call(program, "close", vec![Value::uuid(&ada)]).await;
+        assert!(
+            club.texts("archive", FLAG_STATE)
+                .await
+                .iter()
+                .any(|row| row.contains(&ada)),
+            "the other store's share runs after the commit"
+        );
+        club.sweep(program).await;
+        assert_only_bob_in_the_flags(club, "archive", &ada, &bob).await;
+    });
+}
+
+/// Flags in a store that holds nothing else of theirs get a delivery of
+/// their own, retried and shown as any other, and the replay reaches them
+/// after a restore of that store alone.
+#[test]
+fn flags_in_a_store_of_their_own_are_erased_after_the_commit_and_replayed() {
+    if !jadpo_test::live() {
+        return;
+    }
+    in_project(flagged_desk("flagged", "flagged"), async |program, club| {
+        let ada = joined(program, club, "ada").await;
+        let bob = joined(program, club, "bob").await;
+        for row in flag_rows(&ada, &bob) {
+            club.run("flagged", &row).await;
+        }
+        club.call(program, "close", vec![Value::uuid(&ada)]).await;
+        assert_eq!(
+                club.texts(
+                    "main",
+                    "SELECT \"subscriber\" FROM \"jadpo_deliveries\" WHERE \"status\" = 'pending' ORDER BY 1",
+                )
+                .await,
+                ["erasure in archive", "erasure in flagged", "erasure log"]
+            );
+        club.sweep(program).await;
+        assert_only_bob_in_the_flags(club, "flagged", &ada, &bob).await;
+
+        // A restore of the flags' store alone: her id is back, and
+        // nothing else of hers.
+        club.run("flagged", "DELETE FROM jadpo_flags").await;
+        club.run("flagged", "DELETE FROM jadpo_flag_changes").await;
+        for row in flag_rows(&ada, &bob) {
+            club.run("flagged", &row).await;
+        }
+        let first = replayed(program, club).await;
+        assert_eq!((first.logged, first.erased), (1, 1), "{first:?}");
+        assert_only_bob_in_the_flags(club, "flagged", &ada, &bob).await;
+        let second = replayed(program, club).await;
+        assert_eq!((second.logged, second.erased), (1, 0), "{second:?}");
+    });
+}
+
+/// With the last flag gone the tables stay, and an erasure still reaches
+/// them, until a migration of their own drops them; after that an erasure
+/// asks nothing of them (area 16, "Removing").
+#[test]
+fn an_erasure_reaches_the_flag_tables_for_as_long_as_they_are_there() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let root = flagged_desk("no-flags", "main");
+    fs::write(root.join("flags.jadpo"), "flags {}\n").expect("write");
+    let recorded = jadpo(&root, &["records", "update"]);
+    assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
+    in_project(root.clone(), async |program, club| {
+        let ada = joined(program, club, "ada").await;
+        let bob = joined(program, club, "bob").await;
+        for row in flag_rows(&ada, &bob) {
+            club.run("main", &row).await;
+        }
+        club.call(program, "close", vec![Value::uuid(&ada)]).await;
+        assert_only_bob_in_the_flags(club, "main", &ada, &bob).await;
+    });
+    let dropped = jadpo(
+        &root,
+        &["migrate", "new", "drop_flags", "--drop", "jadpo_flags"],
+    );
+    assert_eq!(dropped.code, 0, "{}{}", dropped.stdout, dropped.stderr);
+    let recorded = jadpo(&root, &["records", "update"]);
+    assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
+    in_project(root, async |program, club| {
+        let ada = joined(program, club, "ada").await;
+        club.call(program, "close", vec![Value::uuid(&ada)]).await;
+        assert_eq!(
+            club.texts("main", "SELECT \"handle\" FROM \"member\"")
+                .await,
+            Vec::<String>::new()
+        );
+    });
+}
+
 #[test]
 fn a_replay_with_no_log_does_nothing() {
     let plan = jadpo_std::erasure::ErasurePlan::default();

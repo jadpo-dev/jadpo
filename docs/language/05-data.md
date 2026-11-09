@@ -1579,7 +1579,12 @@ column and its type.
 - **System tables stay.** A table of Jadpo's own that nothing asks for any
   more, such as the audit trail's once no entity is audited, stays, with
   nothing to decide and no migration written. It may hold what can't be
-  got back.
+  got back. The one exception is the feature flags' two tables once no
+  flag is declared: `jadpo migrate new <purpose> --drop jadpo_flags` drops
+  both, with an acceptance listing each by its store
+  (`main.jadpo_flags: DataChange.table_dropped`), and is refused while a
+  flag is still declared
+  ([Removing](16-built-in-services.md#removing)).
 - **It can't run without its acceptance.** `jadpo migrate apply` refuses
   a project with a removal no acceptance lists with a reason
   ([`migration.drop_not_accepted`](../errors/migration.drop_not_accepted.md)),
