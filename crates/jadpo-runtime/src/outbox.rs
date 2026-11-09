@@ -359,6 +359,10 @@ impl Events<'_> {
         if event == jadpo_std::email::MAGIC_LINK_EMAIL {
             return crate::http::magic_links::read_payload(payload);
         }
+        // Jadpo's own address-check email (area 15), the same.
+        if event == jadpo_std::email::PRIVACY_ADDRESS_CHECK_EMAIL {
+            return crate::http::privacy::read_payload(payload);
+        }
         // A file held by no record, whose payload is the runtime's too
         // (chunk B3).
         if event == jadpo_std::files::FILE_RELEASED {

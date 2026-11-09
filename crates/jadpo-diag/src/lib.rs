@@ -408,6 +408,10 @@ rules! {
         "A field marked as personal data is on an entity erasing a person never reaches, so it could never be found";
     DATA_PERSONAL_UNREAD: "data.personal_unread", area 15, Declinable, Agent,
         "No query, output or action reads a field marked as personal data, so the app holds data it doesn't use";
+    DATA_PRIVACY_PERSON_REQUIRED: "data.privacy_person_required", area 15, Error, Human,
+        "A data request has no signed-in person to act for, or no address to find them by";
+    DATA_PRIVACY_SETTING_INVALID: "data.privacy_setting_invalid", area 15, Error, Agent,
+        "A setting under `privacy:` isn't one of its settings, or isn't valid";
     DATA_READ_IN_LOOP: "data.read_in_loop", area 6, Error, Agent,
         "A query or another database read, such as a `get`, is inside a `for` loop";
     DATA_REFERENCE_ACROSS_STORES: "data.reference_across_stores", area 5, Error, Human,
@@ -825,19 +829,19 @@ rules! {
     PUBLISH_TYPE_UNREVIEWED: "publish.type_unreviewed", area 14, Error, Agent,
         "A provider package's public type isn't in its `reviewed:` list";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
-        "Aggregate is given the wrong arguments";
+        "An aggregate in a query is missing an argument it needs, or is given one it doesn't take";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,
-        "Aggregate cannot be worked out over this field";
+        "An aggregate in a query is worked out over a field it can't add up, compare or average";
     QUERY_AGGREGATE_UNKNOWN: "query.aggregate_unknown", area 6, Error, Agent,
-        "Aggregate entry is not count, sum, min, max or average";
+        "An `aggregate:` section isn't a block of `count`, `sum`, `min`, `max` or `average` entries";
     QUERY_CONDITION_UNSUPPORTED: "query.condition_unsupported", area 6, Error, Agent,
-        "Query condition is not one an index can serve";
+        "A query's `where:` or `where_present:` line holds a condition the database can't serve";
     QUERY_FROM_NOT_ENTITY: "query.from_not_entity", area 6, Error, Agent,
-        "Query reads something that is not an entity";
+        "A query's `from:` names something that isn't an entity";
     QUERY_GEOMETRY_FIELD: "query.geometry_field", area 6, Error, Agent,
         "A map-layer query's `geometry:` names a field whose type isn't the shape the layer's result type says each feature holds";
     QUERY_GROUP_KEY: "query.group_key", area 6, Error, Agent,
-        "Records cannot be grouped by this";
+        "A query's `group:` section isn't a block of fields and date buckets it can group records by";
     QUERY_INCLUDE_DEPTH: "query.include_depth", area 6, Error, Human,
         "A query's includes nest more than two levels deep: records inside records inside records";
     QUERY_INCLUDE_ERASED_READS: "query.include_erased_reads", area 15, Error, Human,
@@ -845,51 +849,51 @@ rules! {
     QUERY_INCLUDE_ERASED_UNUSED: "query.include_erased_unused", area 15, Error, Agent,
         "A query says `include_erased: true` on an entity that keeps nothing of an erased person";
     QUERY_INCLUDE_RESULT: "query.include_result", area 6, Error, Agent,
-        "Result type has no field of the right shape for an include";
+        "A query's result type has no field of the right shape to hold what an include reads";
     QUERY_INCLUDE_UNKNOWN: "query.include_unknown", area 6, Error, Agent,
-        "Include names no reference to or from the entity";
+        "A query's `include:` isn't a block of references to or from its entity, in the same store";
     QUERY_LIMIT_RANGE: "query.limit_range", area 6, Error, Agent,
         "A query's `limit:` could be less than 1, either as written or because its value's type allows it";
     QUERY_LIMIT_UNBOUNDED: "query.limit_unbounded", area 6, Error, Agent,
-        "Query limit or page size comes from a value with no maximum";
+        "A query's `limit:` or page `size:` has no upper bound";
     QUERY_NEAREST_EXACT: "query.nearest_exact", area 21, Declinable, Agent,
-        "Nearest-neighbour order on a vector too long for an index reads every record";
+        "A query orders by `nearest` on a vector too long for an index, so each call reads every record";
     QUERY_NEAREST_PAGE: "query.nearest_page", area 21, Error, Agent,
-        "Nearest-neighbour query returns a page";
+        "A query ordered by `nearest` returns a page of records";
     QUERY_NEAREST_TYPE: "query.nearest_type", area 21, Error, Agent,
-        "Nearest-neighbour order measures from something it can't";
+        "A query's `nearest` order measures from something it can't, sits beside another order, or doesn't agree with what the query returns";
     QUERY_NEAREST_UNINDEXED: "query.nearest_unindexed", area 21, Error, Agent,
-        "Nearest-neighbour order on a vector with no fixed length";
+        "A query orders by `nearest` on a vector field with no fixed length";
     QUERY_NOT_UNIQUE: "query.not_unique", area 6, Error, Agent,
         "A query that returns one record, or none, picks it by a test that several records could match";
     QUERY_OPTIONAL_VALUE: "query.optional_value", area 6, Error, Agent,
-        "Condition compares with a value that may be absent, or `where_present:` with one that is always there";
+        "A query uses a value that may be absent where it needs one, or `where_present:` with one that is always there";
     QUERY_ORDER_DIRECTION: "query.order_direction", area 6, Error, Agent,
-        "Order field has no `asc` or `desc`";
+        "An entry of a query's `order:` has no direction, or one it can't sort in";
     QUERY_ORDER_FIELD: "query.order_field", area 6, Error, Agent,
         "A query sorts records by a field, such as a `Bool` or an enum, that the database and Jadpo don't order the same way";
     QUERY_OTHER_DOMAIN: "query.other_domain", area 6, Error, Human,
         "A query in one domain reads the records of an entity that belongs to another domain";
     QUERY_PAGE_SETTING: "query.page_setting", area 6, Error, Agent,
-        "Page block is missing a setting or has a wrong one";
+        "A query's `page:` isn't a block holding a `size:` and a `PageCursor` in `after:`";
     QUERY_REPEATED_SECTION: "query.repeated_section", area 6, Error, Agent,
-        "Query section is given twice";
+        "A query gives one of its sections twice, or includes the same field twice";
     QUERY_RESULT_FIELD: "query.result_field", area 6, Error, Agent,
-        "Result type has a field the entity cannot fill";
+        "The fields of a query's result type don't match what the query reads";
     QUERY_RESULT_RULE: "query.result_rule", area 6, Error, Agent,
-        "Query result type has rules across its fields";
+        "A query returns a type that has rules across its fields";
     QUERY_RESULT_TYPE: "query.result_type", area 6, Error, Agent,
-        "Query result is not the entity or a type derived from it";
+        "A query returns something other than its entity or a type its fields can fill";
     QUERY_SECTION_REQUIRED: "query.section_required", area 6, Error, Agent,
         "A query leaves out a section its result type needs, such as `from:`, or the `limit:` that bounds a list";
     QUERY_SECTION_UNEXPECTED: "query.section_unexpected", area 6, Error, Agent,
-        "Query has a section its result does not take";
+        "A query or one of its includes holds a section its result doesn't take";
     QUERY_UNKNOWN_FIELD: "query.unknown_field", area 6, Error, Agent,
-        "Query names a field its entity does not have";
+        "A query names a field its entity doesn't have";
     QUERY_UNKNOWN_SECTION: "query.unknown_section", area 6, Error, Agent,
-        "Query has a section Jadpo does not know";
+        "A query's block holds a section Jadpo doesn't know";
     QUERY_VALUE_UNSUPPORTED: "query.value_unsupported", area 6, Error, Agent,
-        "Query value is computed rather than a parameter, literal or enum value";
+        "A query uses a value it would have to work out, or reads inside one that may be absent";
     RATE_LIMITS_COUNTED_IN_MEMORY: "rate_limits.counted_in_memory", area 16, Declinable, Agent,
         "Deployable built for Workers would count its rate limits in each instance's memory";
     RATE_LIMITS_STORE_INVALID: "rate_limits.store_invalid", area 16, Error, Agent,
@@ -901,7 +905,7 @@ rules! {
     RECEIVING_INVALID: "receiving.invalid", area 12, Error, Agent,
         "A queue in `receiving:` doesn't say how its messages are read";
     RECORD_EDITED: "record.edited", area 18, Error, Agent,
-        "Generated record was edited by hand";
+        "A record file that Jadpo writes holds something Jadpo couldn't have written, or can't be read";
     RECORD_FORMAT_NEWER: "record.format_newer", area 18, Error, Human,
         "A record file in the project was written by a newer Jadpo, in a format this one can't read";
     RECORD_OUT_OF_DATE: "record.out_of_date", area 18, Error, Agent,
@@ -1607,11 +1611,11 @@ rules! {
     VISIBILITY_PRIVATE_CROSS_DOMAIN: "visibility.private_cross_domain", area 1, Error, Human,
         "Code in one domain uses an action, type or other declaration that another domain keeps private, because it isn't marked `public`";
     VISIBILITY_PUBLIC_NOT_ALLOWED: "visibility.public_not_allowed", area 1, Error, Agent,
-        "Declaration can't be public";
+        "A declaration that other domains can't use is marked `public`";
     VISIBILITY_PUBLIC_REACHES_PRIVATE: "visibility.public_reaches_private", area 1, Error, Agent,
-        "Public declaration's signature names one that isn't public";
+        "A public declaration's signature names a type or entity that isn't public";
     VISIBILITY_PUBLIC_UNUSED: "visibility.public_unused", area 1, Error, Agent,
-        "Public declaration no other domain uses";
+        "A declaration is marked `public`, but nothing outside its domain uses it";
 }
 
 /// Looks a rule up by id, for tools that read ids back from JSON.

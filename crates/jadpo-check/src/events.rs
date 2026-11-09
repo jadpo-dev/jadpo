@@ -863,13 +863,22 @@ impl Reader<'_> {
         {
             let identity = crate::identity::identity(self.db, self.project);
             let passkeys = jadpo_std::http::passkey_event(name);
-            let published = if passkeys {
+            let privacy = jadpo_std::http::privacy_event(name);
+            let published = if privacy {
+                crate::privacy::privacy(self.db, self.project).takes_requests()
+            } else if passkeys {
                 identity.passkey.is_some()
             } else {
                 identity.magic_link.is_some()
             };
             if !published {
-                let (label, way, declare) = if passkeys {
+                let (label, way, declare) = if privacy {
+                    (
+                        "no `privacy:`",
+                        "as a person makes a data request".to_string(),
+                        ("privacy:", "`privacy: { self_service: {} }`"),
+                    )
+                } else if passkeys {
                     (
                         "no passkeys",
                         format!(

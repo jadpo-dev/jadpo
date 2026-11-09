@@ -223,6 +223,9 @@ pub enum Run {
     /// "Providers"; chunk A7b): the provider by its place in
     /// [`ProvidersPlan::providers`], which the runtime answers itself.
     Provider(u32, ProviderStep),
+    /// One of the routes `privacy:` generates (area 15, "Data requests"),
+    /// which the runtime answers itself.
+    Privacy(PrivacyStep),
     /// `GET <prefix>/openapi.json` (area 7, "OpenAPI"): the API's own
     /// OpenAPI document, its text as `jadpo check` writes it, which the
     /// runtime answers with as it is.
@@ -241,6 +244,155 @@ pub enum Run {
 
 /// The last segment of each API's generated `GET <prefix>/flags`.
 pub const FLAGS_PATH: &str = "flags";
+
+/// The routes `privacy:` generates (area 15, "Data requests"), each
+/// under its `path:`: asking by email and what that link's page posts,
+/// and the two a signed-in person calls for themselves.
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+pub enum PrivacyStep {
+    /// `POST <path>/requests`: an address asks to make a request.
+    Request,
+    /// `POST <path>/requests/confirm`: the checked link's token and what
+    /// the person wants, which makes the request.
+    Confirm,
+    /// `POST <path>/requests/cancel`: an erasure's cancel link's token.
+    Cancel,
+    /// `POST <path>/export`: the signed-in person's own export.
+    Export,
+    /// `POST <path>/erasure`: the signed-in person's own erasure.
+    Erasure,
+}
+
+impl PrivacyStep {
+    pub const ALL: [PrivacyStep; 5] = [
+        PrivacyStep::Request,
+        PrivacyStep::Confirm,
+        PrivacyStep::Cancel,
+        PrivacyStep::Export,
+        PrivacyStep::Erasure,
+    ];
+
+    pub fn method(self) -> crate::HttpMethod {
+        crate::HttpMethod::Post
+    }
+
+    /// Whether `self_service:` generates it, rather than `privacy:` alone.
+    pub fn self_service(self) -> bool {
+        matches!(
+            self,
+            PrivacyStep::Request | PrivacyStep::Confirm | PrivacyStep::Cancel
+        )
+    }
+
+    /// Its segments after `path:`.
+    pub fn tail(self) -> &'static [&'static str] {
+        match self {
+            PrivacyStep::Request => &["requests"],
+            PrivacyStep::Confirm => &["requests", "confirm"],
+            PrivacyStep::Cancel => &["requests", "cancel"],
+            PrivacyStep::Export => &["export"],
+            PrivacyStep::Erasure => &["erasure"],
+        }
+    }
+
+    /// Its full path's segments under `path`.
+    pub fn segments(self, path: &[String]) -> Vec<String> {
+        path.iter()
+            .cloned()
+            .chain(self.tail().iter().map(|text| text.to_string()))
+            .collect()
+    }
+
+    /// Anyone may ask or confirm by a link; the signed-in routes act on
+    /// the caller's own record, behind a recent sign-in.
+    pub fn authentication(self) -> Authentication {
+        if self.self_service() {
+            Authentication::Public
+        } else {
+            Authentication::Fresh
+        }
+    }
+
+    /// Whatever it does is done later, so each is accepted; a cancelled
+    /// request has nothing to say.
+    pub fn status(self) -> crate::SuccessStatus {
+        match self {
+            PrivacyStep::Cancel => crate::SuccessStatus::NoContent,
+            _ => crate::SuccessStatus::Accepted,
+        }
+    }
+
+    /// What `jadpo routes` and the API record say it runs.
+    pub fn label(self) -> &'static str {
+        match self {
+            PrivacyStep::Request => "data request",
+            PrivacyStep::Confirm => "data request confirmation",
+            PrivacyStep::Cancel => "data request cancellation",
+            PrivacyStep::Export => "own data export",
+            PrivacyStep::Erasure => "own data erasure",
+        }
+    }
+
+    /// What it reads from the body, by the name the API record gives it.
+    pub fn input(self) -> Option<&'static str> {
+        match self {
+            PrivacyStep::Request => Some(PRIVACY_ASK),
+            PrivacyStep::Confirm => Some(PRIVACY_CONFIRMATION),
+            PrivacyStep::Cancel => Some(PRIVACY_CANCELLATION),
+            PrivacyStep::Export | PrivacyStep::Erasure => None,
+        }
+    }
+
+    /// What it answers with, by the name the API record gives it.
+    pub fn output(self) -> Option<&'static str> {
+        match self {
+            PrivacyStep::Request | PrivacyStep::Cancel => None,
+            _ => Some(PRIVACY_REQUEST_ACCEPTED),
+        }
+    }
+}
+
+/// What a route test sends the generated privacy routes, and what they
+/// answer (area 15, "Data requests"), as the API record names them.
+pub const PRIVACY_ASK: &str = "PrivacyAsk";
+pub const PRIVACY_CONFIRMATION: &str = "PrivacyConfirmation";
+pub const PRIVACY_CANCELLATION: &str = "PrivacyCancellation";
+pub const PRIVACY_REQUEST_ACCEPTED: &str = "PrivacyRequestAccepted";
+
+/// `PrivacyRequestAccepted`'s fields, in order.
+pub const PRIVACY_REQUEST_ACCEPTED_FIELDS: [&str; 3] = ["request_id", "kind", "deadline"];
+
+/// The events a data request publishes (area 15, "Deadlines and events"),
+/// which only the runtime emits. An erasure's carries its cancel link,
+/// which the erasure-confirmed email is written from; none carries an
+/// address.
+pub const PRIVACY_REQUEST_RECEIVED: &str = "PrivacyRequestReceived";
+pub const PRIVACY_ERASURE_SCHEDULED: &str = "PrivacyErasureScheduled";
+
+/// `privacy.create_request`, the generated action `actions:` grants.
+pub const PRIVACY_CREATE_REQUEST: &str = "privacy.create_request";
+
+/// How long an address-check link works: as long as a magic link, 15
+/// minutes (area 16, "Every built-in email").
+pub const PRIVACY_CHECK_EXPIRES_AFTER_MS: i64 = 15 * 60 * 1000;
+
+/// The least time between two address checks sent to one address, and
+/// how many one address may be sent in an hour.
+pub const PRIVACY_CHECK_RESEND_AFTER_MS: i64 = 60 * 1000;
+pub const PRIVACY_CHECKS_PER_HOUR: u32 = 5;
+
+/// An erasure's cooling-off period, 14 days by default (area 15,
+/// "Erasures").
+pub const PRIVACY_COOLING_OFF_MS: i64 = 14 * 24 * 60 * 60 * 1000;
+
+/// The default `path:` of the routes `privacy:` generates.
+pub const PRIVACY_PATH: &str = "privacy";
+
+/// The default frontend pages the self-service emails link to.
+pub const PRIVACY_LINK: &str = "/privacy/confirm";
+pub const PRIVACY_CANCEL_LINK: &str = "/privacy/cancel";
 
 /// The routes `sign_in: { passkey: }` generates (area 8, "Passkeys"),
 /// each under its `path:`.
@@ -703,6 +855,25 @@ pub struct MagicLinkPlan {
     pub first_sign_in: Option<u32>,
 }
 
+/// `privacy:`'s data requests, as the runtime answers them (area 15).
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PrivacyPlan {
+    /// The store its tables are in: the user entity's.
+    pub store: String,
+    /// `self_service: { link: }`: the page an address check opens.
+    pub link: String,
+    /// `self_service: { cancel_link: }`: the page a cancel link opens.
+    pub cancel_link: String,
+    /// A person's `id` by the address `$1`, `$2` the time now: their
+    /// `id` and `active:`'s result, as a magic link's lookup gives them.
+    pub lookup: Option<String>,
+    /// The user with `id` `$1`, `$2` the time now, read the same way.
+    pub lookup_id: Option<String>,
+    /// Who may call `privacy.create_request` (`None` when no line grants
+    /// it).
+    pub create_request: Option<crate::policy::Gate>,
+}
+
 /// The built-in `FirstSignIn` (area 8, "A person the app has not seen"):
 /// what `on_first_sign_in:`'s action is given.
 pub const FIRST_SIGN_IN: &str = "FirstSignIn";
@@ -720,12 +891,14 @@ pub const SIGN_IN_CODES_DISABLED: &str = "SignInCodesDisabled";
 /// passkey's, never its credential ID or key.
 pub const PASSKEY_ADDED: &str = "PasskeyAdded";
 pub const PASSKEY_REMOVED: &str = "PasskeyRemoved";
-pub const SIGN_IN_EVENTS: [&str; 5] = [
+pub const SIGN_IN_EVENTS: [&str; 7] = [
     SIGNED_IN,
     SIGN_IN_REFUSED,
     SIGN_IN_CODES_DISABLED,
     PASSKEY_ADDED,
     PASSKEY_REMOVED,
+    PRIVACY_REQUEST_RECEIVED,
+    PRIVACY_ERASURE_SCHEDULED,
 ];
 
 /// The identity key the outbox keeps the built-in sign-in event `name`
@@ -737,6 +910,8 @@ pub fn sign_in_event_key(name: &str) -> Option<&'static str> {
         SIGN_IN_CODES_DISABLED => Some("jadpo.SignInCodesDisabled"),
         PASSKEY_ADDED => Some("jadpo.PasskeyAdded"),
         PASSKEY_REMOVED => Some("jadpo.PasskeyRemoved"),
+        PRIVACY_REQUEST_RECEIVED => Some("jadpo.PrivacyRequestReceived"),
+        PRIVACY_ERASURE_SCHEDULED => Some("jadpo.PrivacyErasureScheduled"),
         _ => None,
     }
 }
@@ -747,12 +922,20 @@ pub fn passkey_event(name: &str) -> bool {
     matches!(name, PASSKEY_ADDED | PASSKEY_REMOVED)
 }
 
+/// Whether the built-in event `name` is a data request's own, which only
+/// `privacy:` publishes.
+pub fn privacy_event(name: &str) -> bool {
+    matches!(name, PRIVACY_REQUEST_RECEIVED | PRIVACY_ERASURE_SCHEDULED)
+}
+
 /// What publishes the built-in event `name`, for a message: `signing in`,
 /// `adding a passkey` or `removing a passkey`.
 pub fn published_by(name: &str) -> &'static str {
     match name {
         PASSKEY_ADDED => "adding a passkey",
         PASSKEY_REMOVED => "removing a passkey",
+        PRIVACY_REQUEST_RECEIVED => "a data request",
+        PRIVACY_ERASURE_SCHEDULED => "a data request for erasure",
         _ => "signing in",
     }
 }
@@ -770,6 +953,13 @@ pub fn test_built_fields(name: &str) -> Option<&'static [&'static str]> {
         SIGN_IN_REFUSED => Some(&["method", "reason", "user_id"]),
         SIGN_IN_CODES_DISABLED => Some(&["user_id", "until"]),
         PASSKEY_ADDED | PASSKEY_REMOVED => Some(&["user_id", "passkey_id"]),
+        // A data request's events, and what a route test sends and is
+        // answered by the generated privacy routes (area 15).
+        PRIVACY_REQUEST_RECEIVED => Some(&["request_id", "user_id", "kind", "source", "deadline"]),
+        PRIVACY_ERASURE_SCHEDULED => Some(&["request_id", "user_id", "erases_at", "cancel_link"]),
+        PRIVACY_ASK => Some(&["address", "locale"]),
+        PRIVACY_CONFIRMATION => Some(&["token", "kind"]),
+        PRIVACY_CANCELLATION => Some(&["token"]),
         // What a route test sends the generated magic-link routes (area 8,
         // "In development and tests").
         MAGIC_LINK_ASK => Some(&["address", "return_to", "locale"]),
@@ -795,7 +985,12 @@ pub fn test_built_fields(name: &str) -> Option<&'static [&'static str]> {
 pub fn magic_link_input(name: &str) -> bool {
     matches!(
         name,
-        MAGIC_LINK_ASK | MAGIC_LINK_CONFIRMATION | MAGIC_LINK_CODE
+        MAGIC_LINK_ASK
+            | MAGIC_LINK_CONFIRMATION
+            | MAGIC_LINK_CODE
+            | PRIVACY_ASK
+            | PRIVACY_CONFIRMATION
+            | PRIVACY_CANCELLATION
     )
 }
 
@@ -809,6 +1004,10 @@ pub fn sign_in_event_named(key: &str) -> Option<&'static str> {
 /// The namespace of magic links' generated operations (area 8, "Writing
 /// the routes yourself").
 pub const MAGIC_LINKS: &str = "magic_links";
+
+/// The namespace of `privacy:`'s generated operations (area 15,
+/// "Changing the routes").
+pub const PRIVACY: &str = "privacy";
 
 /// The namespace only route tests call (area 8, "In development and
 /// tests"; chunk 5.5z2): a software authenticator driving the generated
@@ -939,6 +1138,18 @@ pub enum SessionOp {
     MagicLinkRedeem,
     /// `magic_links.redeem_code(address, code)`: the same for a code.
     MagicLinkRedeemCode,
+    /// `privacy.request(address, locale)` (area 15, "Changing the routes"):
+    /// asks for an address-check email, as `POST <path>/requests` does.
+    PrivacyRequest,
+    /// `privacy.confirm(token, kind)`: uses a checked address's link and
+    /// makes the request, giving a `PrivacyRequestAccepted`.
+    PrivacyConfirm,
+    /// `privacy.cancel(token)`: cancels the erasure its cancel link names.
+    PrivacyCancel,
+    /// `privacy.create_request(user_id, kind, identity_check)` (area 15,
+    /// "Made by staff"): granted in policy, a request made for someone
+    /// staff have identified, giving a `PrivacyRequestAccepted`.
+    PrivacyCreateRequest,
     /// `test_passkeys.register(user, name)` (area 8, "In development and
     /// tests"; chunk 5.5z2): only a test calls it, adding a passkey on a
     /// software authenticator through the generated routes, signed in as
@@ -960,7 +1171,7 @@ pub enum SessionOp {
 }
 
 impl SessionOp {
-    pub const ALL: [SessionOp; 15] = [
+    pub const ALL: [SessionOp; 19] = [
         SessionOp::Start,
         SessionOp::End,
         SessionOp::IssueToken,
@@ -972,6 +1183,10 @@ impl SessionOp {
         SessionOp::MagicLinkRequest,
         SessionOp::MagicLinkRedeem,
         SessionOp::MagicLinkRedeemCode,
+        SessionOp::PrivacyRequest,
+        SessionOp::PrivacyConfirm,
+        SessionOp::PrivacyCancel,
+        SessionOp::PrivacyCreateRequest,
         SessionOp::TestPasskeyRegister,
         SessionOp::TestPasskeySignIn,
         SessionOp::TestPasskeyConfirm,
@@ -991,6 +1206,10 @@ impl SessionOp {
             SessionOp::MagicLinkRequest => "request",
             SessionOp::MagicLinkRedeem => "redeem",
             SessionOp::MagicLinkRedeemCode => "redeem_code",
+            SessionOp::PrivacyRequest => "request",
+            SessionOp::PrivacyConfirm => "confirm",
+            SessionOp::PrivacyCancel => "cancel",
+            SessionOp::PrivacyCreateRequest => "create_request",
             SessionOp::TestPasskeyRegister => "register",
             SessionOp::TestPasskeySignIn | SessionOp::TestProviderSignIn => "sign_in",
             SessionOp::TestPasskeyConfirm => "confirm",
@@ -1004,6 +1223,8 @@ impl SessionOp {
             None
         } else if self.magic_link() {
             Some(MAGIC_LINKS)
+        } else if self.privacy() {
+            Some(PRIVACY)
         } else if self.test_passkey() {
             Some(TEST_PASSKEYS)
         } else if self == SessionOp::TestProviderSignIn {
@@ -1035,6 +1256,24 @@ impl SessionOp {
             SessionOp::MagicLinkRequest
                 | SessionOp::MagicLinkRedeem
                 | SessionOp::MagicLinkRedeemCode
+        )
+    }
+
+    /// The operation `privacy.<name>` names.
+    pub fn privacy_op(name: &str) -> Option<SessionOp> {
+        SessionOp::ALL
+            .into_iter()
+            .find(|op| op.privacy() && op.name() == name)
+    }
+
+    /// Whether it is one of `privacy:`'s generated operations (area 15).
+    pub fn privacy(self) -> bool {
+        matches!(
+            self,
+            SessionOp::PrivacyRequest
+                | SessionOp::PrivacyConfirm
+                | SessionOp::PrivacyCancel
+                | SessionOp::PrivacyCreateRequest
         )
     }
 
@@ -1087,6 +1326,10 @@ impl SessionOp {
             | SessionOp::MagicLinkRequest
             | SessionOp::MagicLinkRedeem
             | SessionOp::MagicLinkRedeemCode
+            | SessionOp::PrivacyRequest
+            | SessionOp::PrivacyConfirm
+            | SessionOp::PrivacyCancel
+            | SessionOp::PrivacyCreateRequest
             | SessionOp::TestPasskeyRegister
             | SessionOp::TestPasskeySignIn
             | SessionOp::TestPasskeyConfirm
@@ -1236,6 +1479,10 @@ pub struct IdentityPlan {
     pub passkeys: Option<PasskeyPlan>,
     /// `sign_in: { magic_link: }` (area 8, "Magic links"), when declared.
     pub magic_links: Option<MagicLinkPlan>,
+    /// `application { privacy: }`'s data requests (area 15, "Data
+    /// requests"), when its routes are on.
+    #[serde(default)]
+    pub privacy: Option<PrivacyPlan>,
     /// `sign_in: { providers: }` (area 8, "Providers"; chunk A7b), when
     /// declared.
     #[serde(default)]

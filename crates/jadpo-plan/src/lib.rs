@@ -899,11 +899,12 @@ impl Plan {
             .map(|(i, (key, _))| (key.clone(), i as u32))
             .collect();
         let gates = policy::gates(db, project, &mut types, &json_types, &|action| {
-            pruning.is_none_or(|_| {
-                found
-                    .iter()
-                    .any(|(key, kind, ..)| *kind == Kind::Action && key.name() == action)
-            })
+            action == jadpo_std::http::PRIVACY_CREATE_REQUEST
+                || pruning.is_none_or(|_| {
+                    found
+                        .iter()
+                        .any(|(key, kind, ..)| *kind == Kind::Action && key.name() == action)
+                })
         });
         let model = jadpo_check::data::data_model(db, project);
         // An entity's purge and retentions run where schedules run.
@@ -1337,6 +1338,15 @@ impl Plan {
                 }
                 identity.providers = None;
             }
+        }
+        // Who may make a data request for someone else (area 15, "Made by
+        // staff"), as its line under `actions:` says.
+        if let Some(privacy) = routes
+            .identity
+            .as_mut()
+            .and_then(|identity| identity.privacy.as_mut())
+        {
+            privacy.create_request = gates.get(jadpo_std::http::PRIVACY_CREATE_REQUEST).cloned();
         }
         // The action `on_first_sign_in:` names, by its callable's number
         // (area 8, "A person the app has not seen"), where a deployable

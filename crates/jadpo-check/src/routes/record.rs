@@ -104,6 +104,9 @@ pub fn record_texts(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
                     Generating::MagicLink { path, api_tokens } => {
                         magic_link_entries(path, *api_tokens)
                     }
+                    Generating::Privacy { path, self_service } => {
+                        privacy_entries(path, *self_service)
+                    }
                     Generating::Provider(name) => provider_entries(name),
                     Generating::OpenApi(served) => vec![openapi_entry(served)],
                     Generating::Flags(served) => vec![flags_entry(db, project, served)],
@@ -399,6 +402,54 @@ fn magic_link_entries(path: &[String], api_tokens: bool) -> Vec<Generated> {
                 )],
                 MagicLinkStep::Request => Vec::new(),
             };
+            Generated {
+                at: (shown, order_of(step.method())),
+                entry,
+                sections,
+            }
+        })
+        .collect()
+}
+
+/// The data-request routes `privacy:` generates under `path` (area 15,
+/// "Data requests"), as the record lists them.
+fn privacy_entries(path: &[String], self_service: bool) -> Vec<Generated> {
+    use jadpo_std::http::{PRIVACY_REQUEST_ACCEPTED, PrivacyStep};
+    PrivacyStep::ALL
+        .into_iter()
+        .filter(|step| self_service || !step.self_service())
+        .map(|step| {
+            let shown: String = step
+                .segments(path)
+                .iter()
+                .map(|text| format!("/{text}"))
+                .collect();
+            let mut entry = Entry::new(format!("{} {shown}", step.method().word()))
+                .with(format!("generated {}", step.label()))
+                .with(if step.authentication().needs_caller() {
+                    "authentication fresh"
+                } else {
+                    "authentication none"
+                });
+            if let Some(input) = step.input() {
+                entry.push(format!("input {input} (body)"));
+            }
+            if let Some(output) = step.output() {
+                entry.push(format!("output {output}"));
+            }
+            entry.push(format!("status {}", step.status().code()));
+            let sections = step
+                .output()
+                .map(|_| {
+                    vec![(
+                        PRIVACY_REQUEST_ACCEPTED.to_string(),
+                        Entry::new(format!("output {PRIVACY_REQUEST_ACCEPTED}"))
+                            .with("request_id: Uuid")
+                            .with("kind: PrivacyRequestKind")
+                            .with("deadline: Instant"),
+                    )]
+                })
+                .unwrap_or_default();
             Generated {
                 at: (shown, order_of(step.method())),
                 entry,

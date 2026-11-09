@@ -3077,6 +3077,11 @@ pub const PASSKEY_CHALLENGES: &str = jadpo_std::system::PASSKEY_CHALLENGES.table
 /// `magic_link:` is declared (area 8, "Magic links").
 pub const SIGN_IN_REQUESTS: &str = jadpo_std::system::SIGN_IN_REQUESTS.table;
 
+/// A data request's tables, beside the people they name, when `privacy:`
+/// takes requests (area 15, "Data requests").
+pub const PRIVACY_REQUESTS: &str = jadpo_std::system::PRIVACY_REQUESTS.table;
+pub const PRIVACY_ADDRESS_CHECKS: &str = jadpo_std::system::PRIVACY_ADDRESS_CHECKS.table;
+
 /// Who first sign-ins linked, beside the users they name, when
 /// `on_first_sign_in:` decides an external token's (area 8, "A person the
 /// app has not seen"; chunk A7).
@@ -3257,6 +3262,20 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
         found.tables.insert(
             PROVIDER_SIGN_INS.to_string(),
             columns::system_table(&system::PROVIDER_SIGN_INS),
+        );
+    }
+    if crate::privacy::privacy(db, project).takes_requests()
+        && let Some(user) =
+            crate::identity::identity(db, project).variant(jadpo_std::http::PrincipalKind::User)
+        && let Some(found) = schema.stores.get_mut(&user.store)
+    {
+        found.tables.insert(
+            PRIVACY_ADDRESS_CHECKS.to_string(),
+            columns::system_table(&system::PRIVACY_ADDRESS_CHECKS),
+        );
+        found.tables.insert(
+            PRIVACY_REQUESTS.to_string(),
+            columns::system_table(&system::PRIVACY_REQUESTS),
         );
     }
     if let Some(store) = crate::identity::identity(db, project).links_store()

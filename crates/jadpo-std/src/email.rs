@@ -30,7 +30,7 @@ pub const SENT_EMAIL: &str = "SentEmail";
 /// sign-in email, the link's token and the code it carries (`none` for
 /// any other), which a route test posts to the confirmation (area 8, "In
 /// development and tests").
-pub const SENT_EMAIL_FIELDS: [&str; 9] = [
+pub const SENT_EMAIL_FIELDS: [&str; 10] = [
     "to",
     "from",
     "subject",
@@ -40,6 +40,7 @@ pub const SENT_EMAIL_FIELDS: [&str; 9] = [
     "attachments",
     "sign_in_token",
     "sign_in_code",
+    "privacy_token",
 ];
 
 /// The fields a caught sign-in email's message carries beside its parts,
@@ -47,6 +48,10 @@ pub const SENT_EMAIL_FIELDS: [&str; 9] = [
 /// link's token and the code, read back as `SentEmail`'s.
 pub const SIGN_IN_TOKEN: &str = "sign_in_token";
 pub const SIGN_IN_CODE: &str = "sign_in_code";
+
+/// The field a caught address-check email's message carries beside its
+/// parts, for a route test to post to the confirmation (area 15).
+pub const PRIVACY_TOKEN: &str = "privacy_token";
 
 /// The fields of the message the runtime sends a driver, in order:
 /// `from`, `to`, `subject`, `html` (`none` without an `.html` template),
@@ -221,6 +226,66 @@ pub enum BuiltinEmail {
     /// HTML and text in its own wording, which the application may
     /// reword (level 2), wrapped in the application's layout (level 3).
     MagicLink(MagicLinkEmailPlan),
+    /// The address-check email of a data request (area 15, "Self-service
+    /// by email"), at level 1, reworded and wrapped as the magic-link
+    /// email is.
+    PrivacyAddressCheck(PrivacyAddressCheckEmailPlan),
+}
+
+/// The built-in type of the privacy address-check email (area 16, "Every
+/// built-in email"), which an application's own email picks from, and the
+/// request its own sending is given.
+pub const PRIVACY_ADDRESS_CHECK_EMAIL: &str = "jadpo.PrivacyAddressCheckEmail";
+pub const PRIVACY_ADDRESS_CHECK_EMAIL_TYPE: &str = "PrivacyAddressCheckEmail";
+pub const PRIVACY_ADDRESS_CHECK_REQUEST: &str = "PrivacyAddressCheckRequest";
+
+/// The fields the runtime keeps the email as: who it goes to, its
+/// language and the check it is for.
+pub const PRIVACY_ADDRESS_CHECK_EMAIL_FIELDS: [&str; 3] = ["to", "locale", "request"];
+
+/// `PrivacyAddressCheckEmail`'s fields, in order, each with the built-in
+/// type it holds.
+pub const PRIVACY_ADDRESS_CHECK_EMAIL_TYPE_FIELDS: [(&str, crate::Builtin); 3] = [
+    ("address", crate::Builtin::Email),
+    ("confirm_link", crate::Builtin::Url),
+    ("expires_in", crate::Builtin::Text),
+];
+
+/// `PrivacyAddressCheckRequest`'s fields, in order.
+pub const PRIVACY_ADDRESS_CHECK_REQUEST_FIELDS: [&str; 4] =
+    ["address", "confirm_link", "expires_at", "locale"];
+
+/// How Jadpo writes and sends the address-check email.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PrivacyAddressCheckEmailPlan {
+    /// The store `jadpo_privacy_address_checks` is in.
+    pub store: String,
+    /// The setting the browser session's `origin:` reads.
+    pub origin: u32,
+    /// The frontend path the link opens.
+    pub link: String,
+    /// How long the link works, in milliseconds.
+    pub expires_after_ms: i64,
+    /// `application { display_name: }`.
+    pub app_name: String,
+    /// Jadpo's messages the email is written with, by key.
+    pub messages: Vec<TranslationEntry>,
+    /// The locales its wording falls back through.
+    pub locales: LocalePlan,
+    /// `email:`, the application's own email (level 4), by its key.
+    pub own: Option<String>,
+    /// `send:`, the action that sends it itself (level 5), by callable
+    /// number: given a `PrivacyAddressCheckRequest`.
+    pub send: Option<u32>,
+}
+
+impl PrivacyAddressCheckEmailPlan {
+    /// The message called `key`, without its `jadpo.`.
+    pub fn message(&self, key: &str) -> Option<&TranslationEntry> {
+        self.messages
+            .iter()
+            .find(|entry| entry.key.strip_prefix("jadpo.") == Some(key))
+    }
 }
 
 /// How Jadpo writes and sends its magic-link email.

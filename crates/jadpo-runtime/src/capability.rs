@@ -621,14 +621,18 @@ impl Capability for Fake {
                 ) {
                     (Value::Record(record), Some(sign_in)) => {
                         let mut fields = record.fields.clone();
-                        fields.push((
-                            Rc::from(jadpo_std::email::SIGN_IN_TOKEN),
-                            Value::text(&sign_in.token),
-                        ));
-                        fields.push((
-                            Rc::from(jadpo_std::email::SIGN_IN_CODE),
-                            Value::text(&sign_in.code),
-                        ));
+                        let token_field = if sign_in.privacy {
+                            jadpo_std::email::PRIVACY_TOKEN
+                        } else {
+                            jadpo_std::email::SIGN_IN_TOKEN
+                        };
+                        fields.push((Rc::from(token_field), Value::text(&sign_in.token)));
+                        if let Some(code) = &sign_in.code {
+                            fields.push((
+                                Rc::from(jadpo_std::email::SIGN_IN_CODE),
+                                Value::text(code),
+                            ));
+                        }
                         Value::record(&record.ty, fields)
                     }
                     (input, _) => input.clone(),
