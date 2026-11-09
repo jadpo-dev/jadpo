@@ -230,7 +230,20 @@ impl Types {
             .iter()
             .map(|(field, part)| (*field, batch_part(*part)))
             .collect();
-        self.typed_shape(name, &fields)
+        let id = self.typed_shape(name, &fields);
+        // A slot leaves out of its JSON what doesn't apply to it (area 16,
+        // "Large uploads go in parts"), read back as `none`.
+        if name == jadpo_std::files::UPLOAD_SLOT
+            && let Some(shape) = self.shapes.get_mut(id.0 as usize)
+        {
+            for field in &mut shape.fields {
+                if jadpo_std::files::UPLOAD_SLOT_LEFT_OUT.contains(&field.name.as_str()) {
+                    field.absent = Some(Constant::None);
+                    field.omittable = true;
+                }
+            }
+        }
+        id
     }
 
     /// The shape of a standard object type from its data entry's parts

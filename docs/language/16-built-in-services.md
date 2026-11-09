@@ -1002,28 +1002,6 @@ files yet. Cloudflare R2, Amazon S3, Backblaze B2, DigitalOcean Spaces and MinIO
 all use it, each with its own host and settings, listed on the driver's
 page. No package wraps the driver with presets.
 
-#### Large uploads go in parts
-
-A field whose `max_size` is over 100 MB gets a multipart slot instead of
-a single address, the same shape on S3, R2 and disk. The slot names a
-part size, with equal parts as R2 requires, and gives an address for each
-part: a signed `UploadPart` address on S3 and R2, and
-`PUT /files/<store>/uploads/<slot>/parts/<n>` on disk. The client sends
-the parts, and may resend any part after a dropped connection. Attaching
-the `FileUpload` completes the upload and runs the same size and type
-checks. A generated client helper hides the parts.
-
-```text
-POST /imports/slot                          an app route calling CustomerImport.sheet_upload()
-<- 200 { "token": "upl_…", "part_size": 16777216, "parts_url": "/files/uploads/upl_…/parts" }
-PUT /files/uploads/upl_…/parts/1            16 MiB
-<- 204
-PUT /files/uploads/upl_…/parts/2            the connection drops; the client resends part 2
-<- 204
-POST /imports { "sheet": "upl_…" }          the ordinary create joins the parts, checks size and type
-<- 201
-```
-
 #### Image variants and scanning
 
 Both come when an app needs them.
@@ -1182,8 +1160,9 @@ slot is signed for its store, so asking for one asks nothing of it.
 
 Sending the file:
 
-- The address is `PUT /files/<store>/uploads/<token>`. It answers `204`
-  once the file is kept. These answers count against the default rate limits
+- The address is `PUT /files/<store>/uploads/<token>`; for a field over 100
+  MB, see [Large uploads go in parts](#large-uploads-go-in-parts). It answers
+  `204` once the file is kept. These answers count against the default rate limits
   as any request does.
 - `Content-Type` may say the file's type, and `Content-Disposition` its name
   (`filename*=UTF-8''…`, RFC 8187), which is the name its signed link and
@@ -1217,6 +1196,65 @@ action's first write, as any outside call does
 ([`data.write_before_call`](../errors/data.write_before_call.md)), and the
 reads before it are a snapshot ([Outside calls hold no
 transaction](06-reads-and-writes.md#outside-calls-hold-no-transaction)).
+
+### Large uploads go in parts
+
+A field whose `max_size` is over 100 MB gets a slot in parts instead of a
+single address: the same `UploadSlot`, on every store, holding `part_size`,
+the size of each part, and `parts_url`, the address its parts go to, in place
+of `url`. A slot in parts is good for six hours from when it was given rather
+than 15 minutes, so a large file on a slow connection can finish:
+
+```json
+{ "token": "upl_eyJrIjoi…", "max_size": 200000000, "part_size": 16777216, "parts_url": "/files/sheets/uploads/upl_eyJrIjoi…/parts" }
+```
+
+The client splits the file into parts of exactly `part_size` bytes, the last
+one no larger, and sends each to
+`PUT /files/<store>/uploads/<token>/parts/<n>`, numbered from 1, in any order
+and as many at once as it likes. A part is 16 MiB, unless the field is so
+large that it would then take more than 10,000 parts, when `part_size` is the
+whole number of MiB that keeps it within them. A part the connection dropped
+on leaves nothing, and any part may be sent again, the last one to finish
+standing:
+
+```text
+POST /imports/slot                          an app route calling CustomerImport.sheet_upload()
+<- 200 { "token": "upl_…", "max_size": 200000000, "part_size": 16777216, "parts_url": "/files/sheets/uploads/upl_…/parts" }
+PUT /files/sheets/uploads/upl_…/parts/1     16 MiB
+<- 204
+PUT /files/sheets/uploads/upl_…/parts/2     the connection drops; the client resends part 2
+<- 204
+POST /imports { "sheet": "upl_…" }          the ordinary create joins the parts, checks size and type
+<- 201
+```
+
+The file's name and the type it claims are read from the first part's
+`Content-Disposition` and `Content-Type`, and the first part's bytes are the
+ones its type is told from. The token is attached as for any upload.
+
+| What a part's address refuses | Answer |
+|---|---|
+| An altered address, one past its six hours, or a part number that isn't a whole number from 1 | `403`, `link_invalid` or `link_expired` |
+| A slot's own address sent parts, or a plain slot's sent part numbers | `403` `link_invalid` |
+| A part over `part_size`, or over what is left of `max_size`, or numbered past the last a field of `max_size` can have | `413` `file_too_large` |
+| A first part whose first bytes aren't a type its field takes | `415` `file_type_refused` |
+| A `Content-Encoding` | `415` `content_encoding_refused` |
+| A part sent once its file is joined | `409` `upload_already_sent` |
+| A disk that would be left below `free_space_floor:` | `503` `storage_full` |
+
+Attaching the `FileUpload` joins the parts, then checks the whole file as any
+upload is checked. A part that hasn't been sent is `invalid_value`, `422`, and
+so are parts that aren't equal: every part but the last must be exactly
+`part_size`, and the last no larger and not empty. The parts are kept, so the
+client can send what is missing and attach again. Joining them on a disk that
+has no room is `503` `storage_full`.
+
+On the disk driver each part goes to a temporary file as it arrives and is
+renamed into place once whole, so a resend replaces it atomically. The parts
+are joined in order into one file, which is linked into place, and removed.
+Parts of an upload never attached are deleted with it after a day ([Deleting
+and erasing](#deleting-and-erasing)).
 
 ### Compressed uploads
 

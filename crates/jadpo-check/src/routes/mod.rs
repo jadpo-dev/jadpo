@@ -875,9 +875,11 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             Segment::Fixed(store),
             Segment::Fixed(uploads),
             _,
+            ..,
         ] = route.segments.as_slice()
             && first == jadpo_std::files::DOWNLOADS
             && uploads == jadpo_std::files::UPLOADS
+            && upload_address(route.segments.as_slice())
             && connections.files().iter().any(|name| name == store)
         {
             out.push(
@@ -886,7 +888,7 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     format!("`{}` is a store's upload address", route.path()),
                 )
                 .at(span.clone(), "answered by the runtime")
-                .reason(format!("The runtime answers `/files/{store}/uploads/<token>` itself, before any route, since `{store}` is a store of files, so this route would never run."))
+                .reason(format!("The runtime answers `/files/{store}/uploads/<token>`, and a large file's `/files/{store}/uploads/<token>/parts/<n>`, itself, before any route, since `{store}` is a store of files, so this route would never run."))
                 .next(format!("Give `{}` in `{group}` another path", route.label())),
             );
             continue;
@@ -1139,6 +1141,17 @@ struct RunSig {
 
 /// What a generated query returns: `List<IssuedToken>` or
 /// `List<IssuedKey>` (area 8).
+/// Whether a route's segments, `files`, a store and `uploads` first, are
+/// a slot's address or the address of one of its parts (area 16,
+/// "Uploading").
+fn upload_address(segments: &[Segment]) -> bool {
+    match segments {
+        [_, _, _, _] => true,
+        [_, _, _, _, Segment::Fixed(parts), _] => parts == jadpo_std::files::PARTS,
+        _ => false,
+    }
+}
+
 fn generated_result(op: SessionOp) -> Ty {
     let name = if op.on_service() {
         jadpo_std::http::ISSUED_KEY

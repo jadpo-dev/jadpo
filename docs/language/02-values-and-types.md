@@ -2189,7 +2189,7 @@ function restock(product: Product, stock: Stock) -> Product {
 | Everything else on this page | Built. |
 | A map literal with entries | Not built yet: it is not designed yet. |
 | `OAuthGrant`, `AnyObject` and the `Document` base | Not built yet: each comes with the features that use it. |
-| `FileUpload` and `UploadSlot` | Built: only the runtime makes an `UploadSlot`, which an action gives a client and a program reads as `url`, `token` and `max_size`. A `FileUpload` is text on the wire, sent in an `Input` and set on a `File` field by a write ([Uploading](16-built-in-services.md#uploading)). |
+| `FileUpload` and `UploadSlot` | Built: only the runtime makes an `UploadSlot`, which an action gives a client and a program reads as `token` and `max_size`, and as optional `url` on a plain slot or `part_size` and `parts_url` on one in parts. A `FileUpload` is text on the wire, sent in an `Input` and set on a `File` field by a write ([Uploading](16-built-in-services.md#uploading)). |
 | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `File` and `FileContents` | Partly built: only the runtime builds one. A program reads the batch types' fields, and an entity field keeps a `BatchRun` or a `File` as its JSON; a program reads no part of a `File` or a `FileContents`, which is `type.field_on_non_record`, and a `File` a route sends goes out as a signed link ([Downloading](16-built-in-services.md#downloading)). |
 
 ## Errors

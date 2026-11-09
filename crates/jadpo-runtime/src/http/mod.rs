@@ -512,8 +512,8 @@ async fn respond(
     {
         return response;
     }
-    if let Some((store, token)) = uploads::path(request)
-        && let Some(response) = uploads::answer(ctx, request, request_id, store, token).await
+    if let Some(address) = uploads::path(request)
+        && let Some(response) = uploads::answer(ctx, request, request_id, address).await
     {
         return response;
     }

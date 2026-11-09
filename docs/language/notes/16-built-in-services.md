@@ -89,7 +89,7 @@ Why [Built-in services](../16-built-in-services.md) is the way it is: the decisi
   it was given for, so a client can't turn a slot for one field into a file
   on another; a mismatch is `invalid_value` rather than a fault, since only a
   client's token is wrong.
-  *Recommendation: keep; multipart slots add `part_size` and `parts_url`.*
+  *Recommendation: keep.*
 - **When a slot's clock runs.** The 15 minutes are the address's. The token
   stays good for as long as the bytes are there, a day, so a client slow to
   come back doesn't lose a file it has already sent. *Recommendation: keep.*
@@ -117,8 +117,40 @@ Why [Built-in services](../16-built-in-services.md) is the way it is: the decisi
   before the statement, as any outside call does: reads before it are a
   snapshot, and a write before it is `data.write_before_call`, so a slow store
   never holds a transaction. *Recommendation: keep.*
-- **Fields over 100 MB.** They need a slot in parts, so a plain slot for one
-  is `toolchain.not_built_yet` where it is asked for, until parts are built.
+- **What a slot in parts holds.** It is the same `UploadSlot`, with `url` left
+  out and `part_size` and `parts_url` added; `token` and `max_size` as any
+  slot. A program reads `url`, `part_size` and `parts_url` as optional.
+  *Recommendation: keep; one type lets an action hand back a slot without
+  asking how large the field is.*
+- **How long a slot in parts is good for.** Six hours, not 15 minutes, since a
+  file of gigabytes on a slow connection can take hours. It stays inside the
+  day an upload's bytes wait for a record, so nothing is swept while it is
+  still being sent. *Recommendation: keep.*
+- **The size of a part.** 16 MiB, the size the page's example shows, unless
+  the field is so large it would take over 10,000 parts, S3's and R2's limit
+  on one upload; then the whole number of MiB that stays within it. A file
+  smaller than one part still goes as one part, the slot having no idea of
+  the file's real size. *Recommendation: keep.*
+- **What a part's address refuses.** A part number that isn't whole digits
+  from 1, with no leading zero, is `link_invalid`; a number past the last a
+  field of `max_size` can have is `file_too_large`, as is a part over
+  `part_size` or over what is left of `max_size`. Equal parts are checked at
+  the attach, when it is known which part is last, and the first part's bytes
+  tell the type at once, since they are the same bytes that will start the
+  file. A `Content-Disposition` and `Content-Type` are taken from the first
+  part only: a part sent later says nothing of the file. *Recommendation:
+  keep.*
+- **The attach joins.** A missing part and unequal parts are `invalid_value`,
+  as any upload that can't be attached is, with the parts kept so the client
+  can resend and attach again; no room to join is `503` `storage_full`, as an
+  address refuses a disk with no room. Joining is one outside call that copies the parts through the
+  disk driver's existing blocking join, so a large file takes a little longer
+  to attach; the disk driver has two copies for a moment, against its floor.
+  *Recommendation: keep; a streamed join can come when one is measured to
+  matter.*
+- **Route tests of parts.** `request { upload: part: }` sends a part, and
+  `dropped: true` ends its connection before its last byte, so a route test
+  can resend after a real cut body on both executors. *Recommendation: keep.*
 - **How long an upload may take.** The native host gives each piece 30
   seconds and the whole upload an hour, so a client that stops or drips bytes
   can't keep a connection for good. *Recommendation: keep; a minimum rate
@@ -180,7 +212,7 @@ Why [Built-in services](../16-built-in-services.md) is the way it is: the decisi
 | Files | A `File` field whose bytes are in a connection providing `files`; direct uploads through a signed slot and signed links in outputs, so policy, erasure and retention reach the bytes; local disk in development and tests; `store.put(bytes, type)` for files the application makes |
 | Files: stores | No presets: S3-compatible services are `Driver.s3` with their settings; `Driver.disk` for production on native only, the manifest recording one server; immutable files under generated sharded keys, streamed uploads synced and renamed, downloads with ranges, ETags, `attachment` and a sandbox policy, `storage_full` and a free-space floor, `jadpo files copy` |
 | Files: contents and formats | Storage and formats separate; `store.read` returns `FileContents` for passing bytes on, which format helpers refuse; rows only through area 12's batch helpers; `json.read` for single documents in memory; gzip only with `max_unpacked_size:`, no archives |
-| Large uploads | Fields over 100 MB get a multipart slot, the same on S3, R2 and disk, parts resendable, completed on attach, with a generated client helper |
+| Large uploads | Fields over 100 MB get a slot in parts, the same on S3, R2 and disk, parts resendable, completed on attach, with a generated client helper; built on disk, the client helper waiting for generated bindings |
 | Image variants and scanning | Variants (`variants: { thumb: 200x200 }`) made by the runtime over any store; the `scanning` capability scans every upload, a file unattachable until it passes; both built when an app needs them; media services stay packages |
 | Outgoing webhooks and field encryption | Both later: outgoing webhooks on `publishing`, typed from the event; encryption with area 15's sensitive fields |
 | Outgoing webhooks' network | One runtime-owned network exception with fixed guards: HTTPS only, no private addresses, no redirects; listed once in the network report |
