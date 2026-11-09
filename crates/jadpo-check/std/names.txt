@@ -41,6 +41,8 @@ File FileContents FileUpload UploadSlot Principal Response Access AiStream
 IssuedToken IssuedKey DecodeProblem FirstSignIn MagicLinkEmail MagicLinkRequest
 MagicLinkRedeemed SignedIn SignInRefused SignInCodesDisabled PasskeyAdded
 PasskeyRemoved TestPasskey SentEmail MagicLinkAsk MagicLinkConfirmation
+PrivacyAsk PrivacyConfirmation PrivacyCancellation PrivacyRequestAccepted
+PrivacyRequestReceived PrivacyErasureScheduled
 MagicLinkCode MagicLinkConfirmed MagicLinkToken TestAccount
 BatchRun BatchProgress RowProblem ImportSummary ExportSummary
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
@@ -85,6 +87,7 @@ flags:
 translations:
 sessions:
 magic_links:
+privacy:
 test_passkeys:
 test_providers:
 batches:

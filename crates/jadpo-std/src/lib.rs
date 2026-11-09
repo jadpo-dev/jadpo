@@ -119,10 +119,10 @@ pub use enums::{
     ClientAddressSource, CodeForm, ComponentStyle, Confirmation, CsvFormat, DeployTarget, Driver,
     Dst, ERASED_AT, EntityChange, Erasure, FieldAccess, FieldChange, Generated, HttpMethod,
     Idempotency, IndexKind, InvalidDay, LOCALE, MembershipScope, MoneyDisplay, MoneyPrecision,
-    MoneySign, Month, OnDelete, ProviderEnvironment, RateLimitKey, Rounding, RouteAuthentication,
-    ScheduleTrigger, SearchLanguage, SignInMethod, SignInRefusal, SuccessStatus, Tenancy,
-    TextDirection, TextFormat, TranslationReview, Trigger, UuidVersion, VectorDistance, Weekday,
-    ZONE, enums, variant_ordinal,
+    MoneySign, Month, OnDelete, PrivacyRequestKind, PrivacyRequestSource, ProviderEnvironment,
+    RateLimitKey, Rounding, RouteAuthentication, ScheduleTrigger, SearchLanguage, SignInMethod,
+    SignInRefusal, SuccessStatus, Tenancy, TextDirection, TextFormat, TranslationReview, Trigger,
+    UuidVersion, VectorDistance, Weekday, ZONE, enums, variant_ordinal,
 };
 pub use format::{BuiltinFormat, Component, FormatLength, FormatPart, TimeFormatSpec};
 pub use isolation::Isolation;

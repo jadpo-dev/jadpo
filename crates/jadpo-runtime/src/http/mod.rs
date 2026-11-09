@@ -57,6 +57,7 @@ pub mod identity;
 pub mod local_issuer;
 pub mod magic_links;
 pub(crate) mod passkeys;
+pub mod privacy;
 pub(crate) mod provider_sign_in;
 pub(crate) mod sign_in_events;
 pub(crate) mod sign_in_links;
@@ -511,8 +512,8 @@ async fn respond(
     {
         return response;
     }
-    if let Some((store, token)) = uploads::path(request)
-        && let Some(response) = uploads::answer(ctx, request, request_id, store, token).await
+    if let Some(address) = uploads::path(request)
+        && let Some(response) = uploads::answer(ctx, request, request_id, address).await
     {
         return response;
     }
@@ -1135,6 +1136,24 @@ async fn run_route(
                 First::Right(()) => runtime_failure(DEADLINE_EXCEEDED, request_id, None),
             }
         }
+        // The runtime answers the data-request routes itself (area 15), with
+        // no idempotency key: a link is used once, and asking twice gives
+        // the same request.
+        (None, Run::Privacy(step)) => {
+            let answered = privacy::answer(
+                app,
+                executor,
+                ctx,
+                request,
+                request_id,
+                *step,
+                caller.as_ref(),
+            );
+            match race(Box::pin(answered), &mut deadline).await {
+                First::Left(response) => response,
+                First::Right(()) => runtime_failure(DEADLINE_EXCEEDED, request_id, None),
+            }
+        }
         // Each API's own OpenAPI document (area 7, "OpenAPI"), as it is.
         (None, Run::OpenApi(document)) => openapi(request, request_id, document),
         // A confirmed route's options (area 8, "Confirm one request with a
@@ -1510,6 +1529,7 @@ async fn run_with_caller(
                 Run::Exchange
                 | Run::Passkey(_)
                 | Run::MagicLink(_)
+                | Run::Privacy(_)
                 | Run::Provider(..)
                 | Run::OpenApi(_)
                 | Run::Confirmation(_)
@@ -2168,6 +2188,17 @@ pub async fn session(
         (SessionOp::MagicLinkRequest, _) => {
             magic_links::request(executor, ctx, plan, args, at).await
         }
+        // `privacy`'s operations (area 15), boxed so this frame stays small.
+        (SessionOp::PrivacyRequest, _) => {
+            Box::pin(privacy::request_op(executor, ctx, plan, args, at)).await
+        }
+        (SessionOp::PrivacyConfirm, _) => {
+            Box::pin(privacy::confirm_op(executor, ctx, plan, args, at)).await
+        }
+        (SessionOp::PrivacyCancel, _) => Box::pin(privacy::cancel_op(ctx, plan, args, at)).await,
+        (SessionOp::PrivacyCreateRequest, _) => {
+            Box::pin(privacy::create_request_op(executor, ctx, plan, args, at)).await
+        }
         (SessionOp::MagicLinkRedeem, _) => magic_links::redeem(executor, ctx, plan, args, at).await,
         (SessionOp::MagicLinkRedeemCode, _) => {
             magic_links::redeem_code(executor, ctx, plan, args, at).await
@@ -2466,8 +2497,8 @@ fn written_request(app: &App<'_>, route: u32, args: &[Value]) -> Option<Request>
                 .headers
                 .push(("content-type".to_string(), "application/json".to_string()));
         }
-    } else if matches!(plan.run, Run::MagicLink(_)) {
-        // A generated magic-link route's built-in input (area 8, "In
+    } else if matches!(plan.run, Run::MagicLink(_) | Run::Privacy(_)) {
+        // A generated magic-link or privacy route's built-in input (area 8, "In
         // development and tests"): its fields as the body names them, a
         // locale by its name and each left `none` out.
         let value = values.next().cloned().unwrap_or(Value::None);
@@ -2585,6 +2616,9 @@ pub fn response_value(
     let output = match plan.map(|plan| (plan.output, &plan.run)) {
         Some((None, Run::MagicLink(step))) if (200..300).contains(&response.status) => {
             magic_link_output(*step, &response.body)
+        }
+        Some((None, Run::Privacy(_))) if (200..300).contains(&response.status) => {
+            privacy::response_output(&response.body)
         }
         Some((Some(codec), _)) if (200..300).contains(&response.status) => {
             jadpo_value::json::parse(raw.as_deref().unwrap_or(&response.body))

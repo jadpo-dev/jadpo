@@ -23,8 +23,8 @@
 use std::rc::Rc;
 
 use jadpo_std::http::{
-    PASSKEY_ADDED, PASSKEY_REMOVED, SIGN_IN_CODES_DISABLED, SIGN_IN_REFUSED, SIGNED_IN,
-    sign_in_event_key,
+    PASSKEY_ADDED, PASSKEY_REMOVED, PRIVACY_ERASURE_SCHEDULED, PRIVACY_REQUEST_RECEIVED,
+    SIGN_IN_CODES_DISABLED, SIGN_IN_REFUSED, SIGNED_IN, sign_in_event_key,
 };
 use jadpo_std::{SignInMethod, SignInRefusal};
 use jadpo_value::Value;
@@ -87,6 +87,24 @@ pub(crate) enum SignInEvent {
     PasskeyAdded { user: [u8; 16], passkey: [u8; 16] },
     /// A person removed one of their passkeys.
     PasskeyRemoved { user: [u8; 16], passkey: [u8; 16] },
+    /// A data request was made (area 15, "Deadlines and events"). Its
+    /// `kind` and `source` by their names.
+    PrivacyRequestReceived {
+        request: [u8; 16],
+        user: [u8; 16],
+        kind: &'static str,
+        source: &'static str,
+        /// Milliseconds.
+        deadline: i64,
+    },
+    /// An erasure is waiting out its cooling-off, with its cancel link.
+    PrivacyErasureScheduled {
+        request: [u8; 16],
+        user: [u8; 16],
+        /// Milliseconds.
+        erases_at: i64,
+        cancel_link: String,
+    },
 }
 
 impl SignInEvent {
@@ -97,6 +115,8 @@ impl SignInEvent {
             SignInEvent::CodesDisabled { .. } => SIGN_IN_CODES_DISABLED,
             SignInEvent::PasskeyAdded { .. } => PASSKEY_ADDED,
             SignInEvent::PasskeyRemoved { .. } => PASSKEY_REMOVED,
+            SignInEvent::PrivacyRequestReceived { .. } => PRIVACY_REQUEST_RECEIVED,
+            SignInEvent::PrivacyErasureScheduled { .. } => PRIVACY_ERASURE_SCHEDULED,
         }
     }
 
@@ -135,6 +155,48 @@ impl SignInEvent {
             SignInEvent::CodesDisabled { user: id, until } => {
                 vec![("user_id", user(id)), ("until", Value::Instant(*until))]
             }
+            SignInEvent::PrivacyRequestReceived {
+                request,
+                user: id,
+                kind,
+                source,
+                deadline,
+            } => vec![
+                ("request_id", user(&Some(*request))),
+                ("user_id", user(&Some(*id))),
+                (
+                    "kind",
+                    Value::variant(
+                        jadpo_std::PrivacyRequestKind::NAME,
+                        jadpo_std::variant_ordinal(jadpo_std::PrivacyRequestKind::NAME, kind)
+                            .unwrap_or_default(),
+                        kind,
+                        Vec::new(),
+                    ),
+                ),
+                (
+                    "source",
+                    Value::variant(
+                        jadpo_std::PrivacyRequestSource::NAME,
+                        jadpo_std::variant_ordinal(jadpo_std::PrivacyRequestSource::NAME, source)
+                            .unwrap_or_default(),
+                        source,
+                        Vec::new(),
+                    ),
+                ),
+                ("deadline", Value::Instant(*deadline)),
+            ],
+            SignInEvent::PrivacyErasureScheduled {
+                request,
+                user: id,
+                erases_at,
+                cancel_link,
+            } => vec![
+                ("request_id", user(&Some(*request))),
+                ("user_id", user(&Some(*id))),
+                ("erases_at", Value::Instant(*erases_at)),
+                ("cancel_link", Value::text(cancel_link)),
+            ],
             SignInEvent::PasskeyAdded { user: id, passkey }
             | SignInEvent::PasskeyRemoved { user: id, passkey } => vec![
                 ("user_id", user(&Some(*id))),
@@ -185,6 +247,30 @@ impl SignInEvent {
             SignInEvent::CodesDisabled { user: id, until } => serde_json::json!({
                 "user_id": user(id),
                 "until": until,
+            }),
+            SignInEvent::PrivacyRequestReceived {
+                request,
+                user: id,
+                kind,
+                source,
+                deadline,
+            } => serde_json::json!({
+                "request_id": user(&Some(*request)),
+                "user_id": user(&Some(*id)),
+                "kind": kind,
+                "source": source,
+                "deadline": deadline,
+            }),
+            SignInEvent::PrivacyErasureScheduled {
+                request,
+                user: id,
+                erases_at,
+                cancel_link,
+            } => serde_json::json!({
+                "request_id": user(&Some(*request)),
+                "user_id": user(&Some(*id)),
+                "erases_at": erases_at,
+                "cancel_link": cancel_link,
             }),
             SignInEvent::PasskeyAdded { user: id, passkey }
             | SignInEvent::PasskeyRemoved { user: id, passkey } => serde_json::json!({
@@ -249,6 +335,50 @@ pub(crate) fn read_payload(key: &str, payload: &str) -> Option<Result<Value, Str
             })
     });
     let event = match name {
+        PRIVACY_REQUEST_RECEIVED => {
+            let request = text("request_id").and_then(super::magic_links::parse_uuid);
+            let kind = text("kind").and_then(|written| {
+                jadpo_std::PrivacyRequestKind::ALL
+                    .iter()
+                    .find(|known| known.name() == written)
+                    .map(|known| known.name())
+            });
+            let source = text("source").and_then(|written| {
+                jadpo_std::PrivacyRequestSource::ALL
+                    .iter()
+                    .find(|known| known.name() == written)
+                    .map(|known| known.name())
+            });
+            let deadline = object.get("deadline").and_then(serde_json::Value::as_i64);
+            match (request, user, kind, source, deadline) {
+                (Some(request), Ok(Some(user)), Some(kind), Some(source), Some(deadline)) => {
+                    SignInEvent::PrivacyRequestReceived {
+                        request,
+                        user,
+                        kind,
+                        source,
+                        deadline,
+                    }
+                }
+                _ => return Some(Err(not())),
+            }
+        }
+        PRIVACY_ERASURE_SCHEDULED => {
+            let request = text("request_id").and_then(super::magic_links::parse_uuid);
+            let erases_at = object.get("erases_at").and_then(serde_json::Value::as_i64);
+            let cancel_link = text("cancel_link").map(str::to_string);
+            match (request, user, erases_at, cancel_link) {
+                (Some(request), Ok(Some(user)), Some(erases_at), Some(cancel_link)) => {
+                    SignInEvent::PrivacyErasureScheduled {
+                        request,
+                        user,
+                        erases_at,
+                        cancel_link,
+                    }
+                }
+                _ => return Some(Err(not())),
+            }
+        }
         SIGNED_IN => match (
             user,
             method,

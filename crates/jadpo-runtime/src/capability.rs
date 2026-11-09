@@ -338,6 +338,23 @@ pub trait Capability {
         Err(Refused::Unavailable)
     }
 
+    /// Starts keeping part `part` of the upload `key` of `connection` (area
+    /// 16, "Large uploads go in parts"), `expected` bytes the most it says
+    /// it will hold: what it is given goes to a temporary file, which
+    /// replaces any part of that number once finished, so a part may be
+    /// sent again. A file already kept under `key` refuses it. Anything but
+    /// a store of files refuses.
+    fn receive_part(
+        &self,
+        connection: &str,
+        key: &str,
+        part: u64,
+        expected: u64,
+    ) -> Result<Box<dyn Receiving + '_>, Refused> {
+        let _ = (connection, key, part, expected);
+        Err(Refused::Unavailable)
+    }
+
     /// The inputs of the calls of `operation` through `connection` it was
     /// sent, in order, one per call however often it asked again: what a
     /// test reads as `.requests` (area 13; area 21, chunk 5.5v3). Only a
@@ -604,14 +621,18 @@ impl Capability for Fake {
                 ) {
                     (Value::Record(record), Some(sign_in)) => {
                         let mut fields = record.fields.clone();
-                        fields.push((
-                            Rc::from(jadpo_std::email::SIGN_IN_TOKEN),
-                            Value::text(&sign_in.token),
-                        ));
-                        fields.push((
-                            Rc::from(jadpo_std::email::SIGN_IN_CODE),
-                            Value::text(&sign_in.code),
-                        ));
+                        let token_field = if sign_in.privacy {
+                            jadpo_std::email::PRIVACY_TOKEN
+                        } else {
+                            jadpo_std::email::SIGN_IN_TOKEN
+                        };
+                        fields.push((Rc::from(token_field), Value::text(&sign_in.token)));
+                        if let Some(code) = &sign_in.code {
+                            fields.push((
+                                Rc::from(jadpo_std::email::SIGN_IN_CODE),
+                                Value::text(code),
+                            ));
+                        }
                         Value::record(&record.ty, fields)
                     }
                     (input, _) => input.clone(),

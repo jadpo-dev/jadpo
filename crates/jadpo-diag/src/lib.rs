@@ -408,6 +408,10 @@ rules! {
         "A field marked as personal data is on an entity erasing a person never reaches, so it could never be found";
     DATA_PERSONAL_UNREAD: "data.personal_unread", area 15, Declinable, Agent,
         "No query, output or action reads a field marked as personal data, so the app holds data it doesn't use";
+    DATA_PRIVACY_PERSON_REQUIRED: "data.privacy_person_required", area 15, Error, Human,
+        "A data request has no signed-in person to act for, or no address to find them by";
+    DATA_PRIVACY_SETTING_INVALID: "data.privacy_setting_invalid", area 15, Error, Agent,
+        "A setting under `privacy:` isn't one of its settings, or isn't valid";
     DATA_READ_IN_LOOP: "data.read_in_loop", area 6, Error, Agent,
         "A query or another database read, such as a `get`, is inside a `for` loop";
     DATA_REFERENCE_ACROSS_STORES: "data.reference_across_stores", area 5, Error, Human,

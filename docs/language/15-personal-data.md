@@ -1767,9 +1767,10 @@ entity holding the purpose and when it was given and withdrawn.
 <!-- topic: data-requests -->
 
 `privacy:` in `app.jadpo` turns on generated routes for a person's
-requests to export or erase their data. Jadpo generates the endpoints
-only, never the pages: your frontend builds the page, and a recipe can
-show you one. There are three ways a request starts.
+requests to export or erase their data, once it says more than
+`erasure_log:`. Jadpo generates the endpoints only, never the pages: your
+frontend builds the page, and a recipe can show you one. There are three
+ways a request starts.
 
 ### Self-service by email
 
@@ -1777,16 +1778,18 @@ show you one. There are three ways a request starts.
 address, without signing in:
 
 1. Your frontend posts the address to `POST /privacy/requests`
-   (`address`). It answers `202` for every address, so it never reveals
-   who has an account, and sends an email to check the address.
+   (`address`, and `locale` if your frontend has chosen a language). It
+   answers `202` for every address, so it never reveals who has an
+   account, and sends an email to check the address.
 2. The email's single-use link opens your frontend's path, set as
    `self_service: { link: "/privacy/confirm" }`, at the browser origin,
    with a token.
 3. That page posts `POST /privacy/requests/confirm` (`token`, and `kind`:
-   `export` or `erasure`) to create the request.
+   `export` or `erasure`) to create the request. It answers `202` with
+   `request_id`, `kind` and `deadline`.
 4. The erasure confirmation email has a cancel link, which opens
    `self_service: { cancel_link: "/privacy/cancel" }`. That page posts
-   `POST /privacy/requests/cancel` (`token`).
+   `POST /privacy/requests/cancel` (`token`), which answers `204`.
 
 Loading a frontend page uses up nothing, so a mail scanner that follows
 the links confirms and cancels nothing.
@@ -1796,15 +1799,21 @@ the links confirms and cancels nothing.
 `POST /privacy/export` and `POST /privacy/erasure` need a recent sign-in
 ([`RouteAuthentication.fresh`](08-identity.md#check-the-caller-again-routeauthenticationfresh))
 and act only on the caller's own record: there is no person id to pass.
-Export answers `202` and delivers a download link when it is ready.
+Each answers `202` with `request_id`, `kind` and `deadline`. Export delivers
+a download link when it is ready. A person who asks for a second erasure
+while one is waiting gets the same request back, so one cancel link cancels
+the one there is.
 
 ### Made by staff
 
 Requests received by email or phone are made through generated actions,
 after staff have checked who the person is. You grant them in
-`policy.jadpo`, as `privacy.create_request: [StaffRole.support]`. Each
-request records who created it and how the person's identity was
-checked. The export still goes to the person's own email, never to the
+`policy.jadpo`, as `privacy.create_request: [StaffRole.support]`, a role
+held across the whole application, since anyone it lets in may start an
+erasure of anyone's data. An action of yours calls
+`privacy.create_request(user_id, kind, identity_check)`, which gives a
+`PrivacyRequestAccepted`. Each request records who created it and how the
+person's identity was checked. The export still goes to the person's own email, never to the
 staff member.
 
 A schedule or subscriber never makes a request. The only erasure that
@@ -1847,10 +1856,12 @@ records.
 
 ### Changing the routes
 
-These routes take `path:` and `routes: false` like every
+These routes take `path:` and `generate_routes: false` like every
 [generated route](07-http.md#generated-routes). They run over generated
-`privacy.request`, `privacy.confirm` and `privacy.cancel` operations,
-which keep every protection.
+`privacy.request(address, locale)`, `privacy.confirm(token, kind)` and
+`privacy.cancel(token)` operations, which keep every protection and which
+an action of yours calls once `generate_routes: false` switches the routes
+off.
 
 ### The privacy emails
 
@@ -1888,7 +1899,10 @@ Reads of ordinary personal data aren't recorded one by one.
 
 An export is `privacy.exported`, written when it starts, and an erasure
 `privacy.erased`, for each person it erased, once it has committed, so an
-erasure that rolls back leaves none. A read of a sensitive field is
+erasure that rolls back leaves none. A data request's steps are
+`privacy.request_asked` (an address asked), `privacy.request_received` (a
+request was made) and `privacy.request_cancelled`, each holding the request's
+`privacy_request_id`, `person_id`, `kind` and `source` where it has them. A read of a sensitive field is
 `privacy.read`, one event for each record it reads, naming the sensitive
 fields it reads. A search of a sensitive field counts as reading it, for
 each record it finds, whether or not the record's output holds it.
@@ -2213,7 +2227,7 @@ This is not legal advice. A privacy professional reviews the report.
 | `include_erased:` on a query | Built: it finds the people erasure keeps a record of too, and is held to what they keep. |
 | `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. A record that belongs to several people keeps its marked fields until the last of them is erased, and another person's own record loses only the reference ([Records that belong to several people](#records-that-belong-to-several-people)). The person's own record stays field by field, hidden, where one of their fields says so ([The person's own record](#the-persons-own-record)). The bytes of each `File` it deletes or clears go once it commits ([Files](16-built-in-services.md#deleting-and-erasing)), and an audited record it deletes takes its history with it. Records in another store go by a generated subscriber once it commits, retried and shown ([Records in another store](#records-in-another-store)); it emits [`PersonErased`](#who-was-erased-personerased) in its transaction; and each person erased has an entry in the log, replayed at every start, on `jadpo dev`, a native deployable and a Worker ([What erasure doesn't rewrite](#what-erasure-doesnt-rewrite)). Not built yet: one that would keep an audited record, whose history still refers to the person ([Audit trail](16-built-in-services.md#audit-trail)), `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial; and caches. Each provider a connection's `erasure:` names is asked to erase the person after the commit, by a generated subscriber ([Erasure at providers](#erasure-at-providers)). |
 | `User.export(id)` | Partly built. Built: `PersonalDataExport`, its JSON document and its count of records, for a caller with read on the person's record: the person, every record erasure deletes with them and every record kept that refers to one, hidden or not, in every store, each with the API's field names and no credential, with each entity's retention and the connections it leaves through, interpreted and compiled. After a test's erasure commits and delivers, the runtime checks the person's export holds nothing, a fault if it doesn't. A `File` field is exported as its signed link ([Downloading](16-built-in-services.md#downloading)). Not built yet: a `File` held inside a structured value, `toolchain.not_built_yet` where `export` is written; and routes that send an export ([Data requests](#data-requests)). |
-| `privacy:` in `application { }` | Partly built: `erasure_log: { store: }`. Everything else in it is `toolchain.not_built_yet` where it is written. Nor is `jadpo privacy requests`, which lists the requests it starts. |
+| `privacy:` in `application { }` and its routes | Partly built. Built: `erasure_log: { store: }`; `self_service:`, `path:` and `generate_routes:`; `POST /privacy/requests`, `/requests/confirm` and `/requests/cancel` with the address-check email; signed-in `POST /privacy/export` and `/privacy/erasure`; `privacy.create_request`, `privacy.request`, `.confirm` and `.cancel`; each request a record with its deadline and its events, interpreted and compiled. `emails: { address_check: }` holds no `email:` or `send:` yet. Not built yet, `toolchain.not_built_yet` where each is written: `emails:`'s other entries and `exports:`. The exports, erasures and emails a request leads to, and `jadpo privacy requests`, aren't built yet. |
 | Encrypted fields | Built: `encrypted: true`, key-type, `TotpSecret` and `SecretText` fields, sealed on write and opened on read, interpreted, compiled and on Workers; each refusal above; rotation through `_PREVIOUS`, with `field_encryption.reseal` and `jadpo config rotation`. |
 | The personal-data report | Partly built: `jadpo check` writes `build/report/personal-data.md` and `.json`, for a project with no errors: for each person entity, every marked field with its category, store, who may read it and its retention or "kept until erased", what erasure does to each record, and the queries that say `include_erased: true`; each store with the setting that says where it is; [where personal data goes](#where-personal-data-goes), with whether each connection's copy is erased or kept for an accepted reason; keys waiting in the outbox; step records; and what the language covers. `jadpo package check` shows what a package sends, and the approval review shows the report's difference from the before side's, a person, a store and a connection at a time. Not built yet: caches and OAuth grants, which it lists as none, since neither exists. |
 | `erasure:` on a package and on a connection | Partly built. Built: each is read and checked, and a connection that receives personal data and can't erase it needs an `ErasureNotPossible` acceptance ([Erasure at providers](#erasure-at-providers)). Not built yet: calling the package's `erasure:`, so a connection that declares one is not yet asked to erase anyone. |
@@ -2242,6 +2256,8 @@ it and the compiler's real output from `jadpo check`.
 - [`data.person_removal_across_stores`](../errors/data.person_removal_across_stores.md)
 - [`data.personal_unread`](../errors/data.personal_unread.md)
 - [`data.personal_unreachable`](../errors/data.personal_unreachable.md)
+- [`data.privacy_person_required`](../errors/data.privacy_person_required.md)
+- [`data.privacy_setting_invalid`](../errors/data.privacy_setting_invalid.md)
 - [`data.reference_across_stores`](../errors/data.reference_across_stores.md)
 - [`data.retention_field_required`](../errors/data.retention_field_required.md)
 - [`data.retention_held`](../errors/data.retention_held.md)

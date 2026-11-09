@@ -2066,9 +2066,10 @@ fn a_deployable_keeps_a_disk_stores_files_at_its_path() {
     let _ = fs::remove_dir_all(&kept);
     let (sheets, full) = (kept.join("sheets"), kept.join("full"));
     crate::disk_files::write_all(&root, &crate::disk_files::bakery(&sheets, &full));
-    if !root.join("database").exists() {
-        jadpo(&root, &["migrate", "new", "initial"]);
-    }
+    // Made afresh each run, so a cached project's old migration can't
+    // disagree with entities this test has since gained.
+    let _ = fs::remove_dir_all(root.join("database"));
+    jadpo(&root, &["migrate", "new", "initial"]);
     jadpo(&root, &["records", "update"]);
     let output = run(
         &["build".to_string(), "--json".to_string()],
@@ -2166,6 +2167,7 @@ fn a_deployable_keeps_a_disk_stores_files_at_its_path() {
     };
     crate::file_uploads::serves_an_upload(&uploaded, &sheets);
     crate::file_uploads::a_chunked_upload_stops_at_its_limit(&address, &uploaded, &sheets);
+    crate::file_uploads::serves_an_upload_in_parts(&address, &uploaded, &sheets);
 
     let (status, body) = exchange(
         &address,

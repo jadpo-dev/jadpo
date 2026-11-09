@@ -95,6 +95,7 @@ mod personal_unread;
 mod persons;
 mod policy;
 mod postal;
+mod privacy_requests;
 mod project;
 mod prompt_policy;
 mod prompts;

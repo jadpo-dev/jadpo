@@ -314,6 +314,45 @@ fn instant(at: i64) -> Json {
     }
 }
 
+/// A data request, as its access record names it.
+pub(crate) struct PrivacyLogged {
+    pub request: String,
+    pub person: String,
+    pub kind: &'static str,
+    pub source: &'static str,
+    /// Whether it was made now, rather than an open one found again.
+    pub new: bool,
+}
+
+/// An address asked for a data request (area 15, "Protection"): that it
+/// happened, never the address.
+pub(crate) fn privacy_asked(ctx: &Ctx<'_>) {
+    ctx.host()
+        .log("privacy.request_asked", access(ctx, "person"));
+}
+
+/// A data request was made, or found open.
+pub(crate) fn privacy_received(ctx: &Ctx<'_>, logged: &PrivacyLogged) {
+    let mut fields = access(ctx, "person");
+    fields.insert(
+        "privacy_request_id".to_string(),
+        logged.request.clone().into(),
+    );
+    fields.insert("person_id".to_string(), logged.person.clone().into());
+    fields.insert("kind".to_string(), logged.kind.into());
+    fields.insert("source".to_string(), logged.source.into());
+    fields.insert("new".to_string(), logged.new.into());
+    ctx.host().log("privacy.request_received", fields);
+}
+
+/// An erasure was cancelled through its link.
+pub(crate) fn privacy_cancelled(ctx: &Ctx<'_>, request: &str, person: &str) {
+    let mut fields = access(ctx, "person");
+    fields.insert("privacy_request_id".to_string(), request.to_string().into());
+    fields.insert("person_id".to_string(), person.to_string().into());
+    ctx.host().log("privacy.request_cancelled", fields);
+}
+
 /// An export of the person of `entity` with `id` was asked for.
 pub(crate) fn exported(ctx: &Ctx<'_>, entity: &str, id: Option<&str>) {
     let mut fields = access(ctx, entity);

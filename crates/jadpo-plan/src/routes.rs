@@ -547,6 +547,45 @@ pub(crate) fn table(
             });
         }
     }
+    // The data-request routes the runtime answers (area 15, "Data
+    // requests"), in the same API.
+    let privacy = jadpo_check::privacy::privacy(db, project);
+    if privacy.routes()
+        && let Some(api) = passkey_api
+        && serving(&out.apis[api].name)
+    {
+        for step in jadpo_std::http::PrivacyStep::ALL {
+            if step.self_service() && privacy.self_service.is_none() {
+                continue;
+            }
+            let segments = step.segments(&privacy.path);
+            out.routes.push(RoutePlan {
+                key: format!("route {} /{}", step.method().word(), segments.join("/")),
+                method: step.method(),
+                segments: segments.into_iter().map(Segment::Fixed).collect(),
+                api: api as u32,
+                input: None,
+                output: None,
+                status: step.status(),
+                deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
+                run: Run::Privacy(step),
+                settle: None,
+                stream: false,
+                sends: None,
+                links: false,
+                immutable: false,
+                keys: None,
+                args: Vec::new(),
+                authentication: step.authentication(),
+                caller: (step.authentication().needs_caller())
+                    .then_some(jadpo_std::http::PrincipalKind::User),
+                confirm: false,
+                rate_limit: None,
+                file: "generated".to_string(),
+                line: 0,
+            });
+        }
+    }
     // Each API's own OpenAPI document (area 7, "OpenAPI"), as `jadpo
     // check` writes it to `build/openapi/<api>.json`.
     let served = jadpo_check::routes::served::served(db, project);
@@ -739,6 +778,12 @@ impl<'t> Codecs<'t> {
 
     /// An `Int` codec's twin that writes a JSON number.
     fn as_number(&mut self, id: CodecId) -> CodecId {
+        if let Some(Codec::Nullable(inner)) = self.codecs.get(id.0 as usize).cloned() {
+            let inner = self.as_number(inner);
+            let number = CodecId(self.codecs.len() as u32);
+            self.codecs.push(Codec::Nullable(inner));
+            return number;
+        }
         let Some(Codec::Scalar {
             builtin, validator, ..
         }) = self.codecs.get(id.0 as usize).cloned()
@@ -1027,7 +1072,8 @@ impl<'t> Codecs<'t> {
                         // A link's size goes out as a JSON number: no file
                         // comes near the size where one loses precision.
                         if (name == jadpo_std::files::FILE_LINK && *field == "size")
-                            || (name == jadpo_std::files::UPLOAD_SLOT && *field == "max_size")
+                            || (name == jadpo_std::files::UPLOAD_SLOT
+                                && matches!(*field, "max_size" | "part_size"))
                         {
                             self.as_number(id)
                         } else {

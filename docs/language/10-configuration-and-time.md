@@ -2739,6 +2739,7 @@ key in the `jadpo: { }` group, and a failure's is its code:
 | Locales | the app declares `locales { }` | `text_direction`, the wording of `TextDirection` |
 | Magic links | the app signs people in with [magic links](08-identity.md#magic-links) | the messages in [Built-in emails](16-built-in-services.md#built-in-emails) |
 | Magic-link routes | the app writes its own magic-link routes (`generate_routes: false`, [Magic links](08-identity.md#magic-links)) | `sign_in_return_invalid` |
+| Data requests | the app takes [data requests](15-personal-data.md#data-requests) | `privacy_link_expired`, `privacy_person_not_found`, and the address-check email's messages ([Built-in emails](16-built-in-services.md#built-in-emails)) |
 | Passkeys | the app signs users in with [passkeys](08-identity.md#passkeys) | `passkey_challenge_expired`, `passkey_rejected`, `passkey_already_registered`, `passkey_limit_reached`, `passkey_not_found` |
 | Confirming a request | a route asks for a passkey's confirmation ([Confirm one request with a passkey](08-identity.md#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)) | `confirmation_required` |
 | External identity tokens | an API accepts external identity tokens ([Ways to sign in](08-identity.md#ways-to-sign-in)) | `authentication_misconfigured` |

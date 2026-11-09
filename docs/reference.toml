@@ -377,7 +377,7 @@ status = [
   "15-personal-data: `privacy:` in",
   "15-personal-data: The personal-data report",
 ]
-missing = "exporting a person's data, `privacy:`, jadpo privacy requests and most of the report"
+missing = "exporting a person's data, the exports and erasures behind `privacy:`, jadpo privacy requests and most of the report"
 topics = [
   "personal-data",
   "marking-personal-fields",

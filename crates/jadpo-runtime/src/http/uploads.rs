@@ -18,15 +18,22 @@
 //!   bytes, and only then made the file, whole. A body that says it is
 //!   compressed is refused before a byte is read. A slot is one file: once
 //!   its file has landed, sending another is `409`.
+//! - **Parts.** A field over 100 MB gets a slot in parts (area 16, "Large
+//!   uploads go in parts"): `PUT /files/<store>/uploads/<token>/parts/<n>`,
+//!   each part kept whole or not at all and sent again freely. The token
+//!   says the part size, so the address needs no record of the slot; a
+//!   store only ever keeps complete parts.
 //! - **The attach.** A `FileUpload` set on a `File` field names the slot's
-//!   token; [`crate::files::attach`] checks it before the write, the one
-//!   check for a field, however the bytes reached the store.
+//!   token; [`crate::files::attach`] joins a slot's parts, then checks it
+//!   before the write, the one check for a field, however the bytes reached
+//!   the store.
 
 use std::rc::Rc;
 use std::sync::Arc;
 
 use jadpo_std::files::{
-    DOWNLOADS, HEAD_BYTES, SLOT_VALID_MS, UPLOAD_SLOT, UPLOADS, is_key, type_of,
+    DOWNLOADS, HEAD_BYTES, PARTS, PARTS_SLOT_VALID_MS, SINGLE_SLOT_LIMIT, SLOT_VALID_MS,
+    UPLOAD_SLOT, UPLOADS, is_key, part_limit, part_size_for, type_of,
 };
 use jadpo_value::Value;
 
@@ -99,6 +106,8 @@ pub(crate) struct Slot {
     pub(crate) types: Vec<String>,
     /// When its address stops being good.
     pub(crate) expires: i64,
+    /// The size of each part, on a slot in parts.
+    pub(crate) part_size: Option<u64>,
 }
 
 /// `upl_<payload>.<tag>` for `slot`, signed with `key`.
@@ -109,6 +118,7 @@ fn sign(key: &[u8; 32], slot: &Slot) -> String {
         "m": slot.max_size,
         "t": slot.types,
         "e": slot.expires,
+        "p": slot.part_size,
     })
     .to_string();
     let body = base64url(payload.as_bytes());
@@ -140,6 +150,10 @@ fn open(key: &[u8; 32], token: &str) -> Option<Slot> {
             .map(|item| item.as_str().map(str::to_string))
             .collect::<Option<Vec<_>>>()?,
         expires: said.get("e")?.as_i64()?,
+        part_size: match said.get("p") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(size) => Some(size.as_u64().filter(|size| *size > 0)?),
+        },
     })
 }
 
@@ -149,56 +163,100 @@ pub(crate) fn token_slot(host: &dyn Host, store: &str, token: &str) -> Option<Sl
 }
 
 /// A new slot for `plan`'s field, its file to be kept under `key`, good
-/// until `now` and fifteen minutes: the `UploadSlot` an action hands the
-/// client. `None` when the store signs nothing.
+/// for fifteen minutes from `now`, or six hours when the field is over 100
+/// MB and so sent in parts: the `UploadSlot` an action hands the client.
+/// `None` when the store signs nothing.
 pub(crate) fn slot_value(
     host: &dyn Host,
     plan: &jadpo_std::files::UploadPlan,
     key: String,
     now: i64,
 ) -> Option<Value> {
+    let part_size = (plan.max_size > SINGLE_SLOT_LIMIT).then(|| part_size_for(plan.max_size));
+    let valid = if part_size.is_some() {
+        PARTS_SLOT_VALID_MS
+    } else {
+        SLOT_VALID_MS
+    };
     let slot = Slot {
         key,
         field: plan.field.clone(),
         max_size: plan.max_size,
         types: plan.types.clone(),
-        expires: now.saturating_add(SLOT_VALID_MS),
+        expires: now.saturating_add(valid),
+        part_size,
     };
     let token = sign(&derived_key(host, &plan.store, true, CONTEXT)?, &slot);
-    Some(Value::record(
-        UPLOAD_SLOT,
-        vec![
-            (
-                Rc::from("url"),
-                Value::text(&format!("/{DOWNLOADS}/{}/{UPLOADS}/{token}", plan.store)),
-            ),
-            (Rc::from("token"), Value::text(&token)),
-            (
-                Rc::from("max_size"),
-                Value::Int(i64::try_from(plan.max_size).unwrap_or(i64::MAX)),
-            ),
-        ],
-    ))
+    let address = format!("/{DOWNLOADS}/{}/{UPLOADS}/{token}", plan.store);
+    let (url, part, parts) = match part_size {
+        Some(size) => (
+            Value::None,
+            Value::Int(i64::try_from(size).unwrap_or(i64::MAX)),
+            Value::text(&format!("{address}/{PARTS}")),
+        ),
+        None => (Value::text(&address), Value::None, Value::None),
+    };
+    let fields = vec![
+        (Rc::from("url"), url),
+        (Rc::from("token"), Value::text(&token)),
+        (
+            Rc::from("max_size"),
+            Value::Int(i64::try_from(plan.max_size).unwrap_or(i64::MAX)),
+        ),
+        (Rc::from("part_size"), part),
+        (Rc::from("parts_url"), parts),
+    ];
+    // What doesn't apply to it is left out of its JSON rather than sent as
+    // `null` (area 16, "Large uploads go in parts").
+    let omitted: Vec<u32> = (0u32..)
+        .zip(&fields)
+        .filter(|(_, (_, value))| *value == Value::None)
+        .map(|(place, _)| place)
+        .collect();
+    Some(Value::Record(Rc::new(jadpo_value::Record {
+        ty: Rc::from(UPLOAD_SLOT),
+        fields,
+        omitted: (!omitted.is_empty()).then(|| Rc::from(omitted)),
+    })))
 }
 
-/// Whether `path` is an upload's address, whatever store it names: what a
-/// host asks before it reads a request's body.
-fn split(path: &str) -> Option<(&str, &str)> {
+/// An upload's address, whatever store it names: the store, the token and,
+/// on a part's address, what the path says its number is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Address<'a> {
+    pub(super) store: &'a str,
+    pub(super) token: &'a str,
+    pub(super) part: Option<&'a str>,
+}
+
+/// Whether `path` is an upload's address: what a host asks before it reads
+/// a request's body.
+fn split(path: &str) -> Option<Address<'_>> {
     let rest = path.strip_prefix('/')?.strip_prefix(DOWNLOADS)?;
     let rest = rest.strip_prefix('/')?;
     let (store, rest) = rest.split_once('/')?;
-    let token = rest.strip_prefix(UPLOADS)?.strip_prefix('/')?;
-    (!store.is_empty() && !token.is_empty() && !token.contains('/')).then_some((store, token))
+    let rest = rest.strip_prefix(UPLOADS)?.strip_prefix('/')?;
+    let (token, part) = match rest.split_once('/') {
+        Some((token, tail)) => {
+            let number = tail.strip_prefix(PARTS)?.strip_prefix('/')?;
+            if number.is_empty() || number.contains('/') {
+                return None;
+            }
+            (token, Some(number))
+        }
+        None => (rest, None),
+    };
+    (!store.is_empty() && !token.is_empty()).then_some(Address { store, token, part })
 }
 
 /// The store of an upload's path, for a host to ask whether it keeps files
 /// before it reads the body.
 pub fn store_of(path: &str) -> Option<&str> {
-    split(path).map(|(store, _)| store)
+    split(path).map(|address| address.store)
 }
 
-/// The store and token of an upload's path, as sent.
-pub(super) fn path(request: &Request) -> Option<(&str, &str)> {
+/// An upload's path, as sent.
+pub(super) fn path(request: &Request) -> Option<Address<'_>> {
     split(&request.path)
 }
 
@@ -265,32 +323,40 @@ fn claimed_type(header: Option<&str>) -> Option<&'static str> {
         .map(|(variant, _)| *variant)
 }
 
-/// The answer to a request at `token` of `store`, when `store` keeps files;
+/// The answer to a request at `address`, when its store keeps files;
 /// `None` when no store has that name, so the routes are looked through as
 /// for any other path.
 pub(super) fn answer<'a>(
     ctx: &'a Ctx<'_>,
     request: &'a Request,
     request_id: &'a str,
-    store: &'a str,
-    token: &'a str,
+    address: Address<'a>,
 ) -> LocalFuture<'a, Option<Response>> {
     Box::pin(async move {
-        let key = derived_key(ctx.host(), store, false, CONTEXT)?;
-        let mut response = answered(ctx, request, request_id, store, token, &key).await;
-        response.route = Some(Arc::from(format!(
-            "PUT /{DOWNLOADS}/{{store}}/{UPLOADS}/{{slot}}"
-        )));
+        let key = derived_key(ctx.host(), address.store, false, CONTEXT)?;
+        let mut response = answered(ctx, request, request_id, address, &key).await;
+        response.route = Some(Arc::from(if address.part.is_some() {
+            format!("PUT /{DOWNLOADS}/{{store}}/{UPLOADS}/{{slot}}/{PARTS}/{{part}}")
+        } else {
+            format!("PUT /{DOWNLOADS}/{{store}}/{UPLOADS}/{{slot}}")
+        }));
         Some(response)
     })
+}
+
+/// A part's number as its address writes it: digits with no leading zero.
+fn part_number(text: &str) -> Option<u64> {
+    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) || text.starts_with('0') {
+        return None;
+    }
+    text.parse().ok()
 }
 
 async fn answered(
     ctx: &Ctx<'_>,
     request: &Request,
     request_id: &str,
-    store: &str,
-    token: &str,
+    address: Address<'_>,
     key: &[u8; 32],
 ) -> Response {
     // Counted against its address before anything in it is read, as any
@@ -318,12 +384,26 @@ async fn answered(
             return response;
         }
     }
-    let Some(slot) = open(key, token) else {
+    let Some(slot) = open(key, address.token) else {
         return runtime_failure(LINK_INVALID, request_id, None);
     };
     if ctx.env().clock.now() > slot.expires {
         return runtime_failure(LINK_EXPIRED, request_id, None);
     }
+    // A slot's own address, or one of its parts': never the other's.
+    let (part, limit) = match (slot.part_size, address.part) {
+        (None, None) => (None, slot.max_size),
+        (Some(size), Some(text)) => {
+            let Some(number) = part_number(text) else {
+                return runtime_failure(LINK_INVALID, request_id, None);
+            };
+            let Some(limit) = part_limit(slot.max_size, size, number) else {
+                return runtime_failure(FILE_TOO_LARGE, request_id, None);
+            };
+            (Some(number), limit)
+        }
+        _ => return runtime_failure(LINK_INVALID, request_id, None),
+    };
     // Nothing is read of a body that says it is compressed, so a small
     // upload can't unpack to gigabytes (area 16, "Compressed uploads").
     if request.header("content-encoding").is_some() {
@@ -332,12 +412,19 @@ async fn answered(
     let declared = request
         .header("content-length")
         .and_then(|length| length.parse::<u64>().ok());
-    if declared.is_some_and(|length| length > slot.max_size) {
+    if declared.is_some_and(|length| length > limit) {
         return runtime_failure(FILE_TOO_LARGE, request_id, None);
     }
     let name = file_name(request.header("content-disposition"));
     let claimed = claimed_type(request.header("content-type"));
-    match received(ctx, request, store, &slot, declared, name, claimed).await {
+    let sent = Sent {
+        part,
+        limit,
+        declared,
+        name,
+        claimed,
+    };
+    match received(ctx, request, address.store, &slot, sent).await {
         Ok(()) => Response {
             status: 204,
             ..Response::default()
@@ -346,17 +433,37 @@ async fn answered(
     }
 }
 
-/// Keeps what `request` sends as `slot`'s file: counted, hashed, its type
-/// told, then made whole. Why it wasn't, otherwise, with nothing kept.
+/// What a request says of the file, or the part, it sends.
+struct Sent {
+    /// The part's number, when it sends one.
+    part: Option<u64>,
+    /// The most bytes it may hold.
+    limit: u64,
+    /// What its `Content-Length` says.
+    declared: Option<u64>,
+    name: Option<String>,
+    claimed: Option<&'static str>,
+}
+
+/// Keeps what `request` sends as `slot`'s file, or the part of it `sent`
+/// names: counted, hashed, its type told, then made whole. Why it wasn't,
+/// otherwise, with nothing kept. A file's type is told from its first
+/// bytes, so only a part 1 is checked for it.
 async fn received(
     ctx: &Ctx<'_>,
     request: &Request,
     store: &str,
     slot: &Slot,
-    declared: Option<u64>,
-    name: Option<String>,
-    claimed: Option<&'static str>,
+    sent: Sent,
 ) -> Result<(), (u16, &'static str, &'static str)> {
+    let Sent {
+        part,
+        limit,
+        declared,
+        name,
+        claimed,
+    } = sent;
+
     let Some(driver) = ctx.host().capability(store) else {
         return Err(STORE_UNAVAILABLE);
     };
@@ -369,8 +476,12 @@ async fn received(
     {
         return Err(STORE_UNAVAILABLE);
     }
-    let incoming = declared.unwrap_or(slot.max_size);
-    let mut sink = match driver.receive(store, &slot.key, incoming) {
+    let incoming = declared.unwrap_or(limit);
+    let opened = match part {
+        Some(number) => driver.receive_part(store, &slot.key, number, incoming),
+        None => driver.receive(store, &slot.key, incoming),
+    };
+    let mut sink = match opened {
         Ok(sink) => sink,
         Err(Refused::Full) => return Err(STORAGE_FULL),
         Err(Refused::Taken) => return Err(ALREADY_SENT),
@@ -379,7 +490,9 @@ async fn received(
     let mut hasher = blake3::Hasher::new();
     let mut size = 0u64;
     let mut head: Vec<u8> = Vec::new();
-    let mut checked = false;
+    // Only a file's first bytes tell its type, so a later part has none to
+    // check.
+    let mut checked = matches!(part, Some(number) if number > 1);
     let mut whole = Pieces::of(request);
     loop {
         let piece = match whole.next().await {
@@ -391,7 +504,7 @@ async fn received(
             continue;
         }
         size = size.saturating_add(piece.len() as u64);
-        if size > slot.max_size {
+        if size > limit {
             return Err(FILE_TOO_LARGE);
         }
         hasher.update(&piece);
@@ -456,11 +569,23 @@ impl<'r> Pieces<'r> {
     }
 }
 
+/// A body that gives its bytes and then ends before its end, as a client
+/// that goes away does: a route test's `dropped: true`.
+struct Dropped(std::cell::RefCell<Option<Vec<u8>>>);
+
+impl super::BodySource for Dropped {
+    fn next(&self) -> LocalFuture<'_, Option<Result<Vec<u8>, ()>>> {
+        let piece = self.0.borrow_mut().take();
+        Box::pin(async move { Some(piece.ok_or(())) })
+    }
+}
+
 /// A route test's `request { upload: ... }` (area 13, "Route tests"): the
 /// file's request, through the HTTP component, as a client sends it. `args`
-/// are the slot (an `UploadSlot` or its address as text), the body, and
-/// its `Content-Type`, `Content-Encoding` and file name, each `none` when
-/// not said.
+/// are the slot (an `UploadSlot` or its address as text), the body, its
+/// `Content-Type`, `Content-Encoding` and file name, the part it is and
+/// whether its connection is dropped before its end, each `none` when not
+/// said.
 pub fn upload_test<'a, 'b, 'p>(
     app: &'a super::App<'b>,
     executor: &'a dyn crate::Executor,
@@ -477,14 +602,30 @@ async fn sent_in_test(
     ctx: &mut Ctx<'_>,
     args: &[Value],
 ) -> Result<Value, Box<crate::Fault>> {
-    let path = match args.first() {
-        Some(Value::Text(path)) => Some(path.to_string()),
-        Some(Value::Record(record)) => match record.get("url") {
-            Some(Value::Text(url)) => Some(url.to_string()),
-            _ => None,
-        },
+    let part = match args.get(5) {
+        Some(Value::Int(part)) => Some(*part),
         _ => None,
     };
+    let path = match args.first() {
+        Some(Value::Text(path)) => Some(path.to_string()),
+        Some(Value::Record(record)) => {
+            let address = |name: &str| match record.get(name) {
+                Some(Value::Text(url)) => Some(url.to_string()),
+                _ => None,
+            };
+            address("url").or_else(|| address("parts_url"))
+        }
+        _ => None,
+    };
+    let path = path.map(|path| match (part, args.first()) {
+        (Some(part), Some(Value::Record(record)))
+            if matches!(record.get("parts_url"), Some(Value::Text(_))) =>
+        {
+            format!("{path}/{part}")
+        }
+        (Some(part), _) => format!("{path}/{PARTS}/{part}"),
+        (None, _) => path,
+    });
     let (Some(path), Some(Value::Bytes(body))) = (path, args.get(1)) else {
         return Err(ctx.fault(
             crate::FaultKind::Defect("an upload given no slot or no body".to_string()),
@@ -509,11 +650,17 @@ async fn sent_in_test(
         );
     }
     headers.push(("content-length".to_string(), body.len().to_string()));
+    let dropped = matches!(args.get(6), Some(Value::Bool(true)));
     let request = Request {
         method: "PUT".to_string(),
         path,
         headers,
-        body: body.to_vec(),
+        body: if dropped { Vec::new() } else { body.to_vec() },
+        stream: dropped.then(|| {
+            super::BodyStream::new(Rc::new(Dropped(std::cell::RefCell::new(Some(
+                body.to_vec(),
+            )))))
+        }),
         ..Request::default()
     };
     let id = super::request_id(ctx, u64::from(ctx.actions()));
@@ -544,6 +691,7 @@ mod tests {
             max_size: 5_000,
             types: vec!["csv".to_string()],
             expires: 1_000,
+            part_size: None,
         }
     }
 
@@ -569,6 +717,26 @@ mod tests {
     }
 
     #[test]
+    fn a_token_carries_a_slot_in_parts() {
+        let key = [1u8; 32];
+        let mut parts = slot();
+        parts.part_size = Some(16 * 1024 * 1024);
+        let token = sign(&key, &parts);
+        assert_eq!(open(&key, &token), Some(parts));
+        // A plain slot's token never reads as one in parts.
+        assert_eq!(open(&key, &sign(&key, &slot())).unwrap().part_size, None);
+    }
+
+    #[test]
+    fn a_part_number_is_digits_from_one_with_no_leading_zero() {
+        assert_eq!(part_number("1"), Some(1));
+        assert_eq!(part_number("120"), Some(120));
+        for wrong in ["0", "01", "-1", "1a", "", "99999999999999999999999"] {
+            assert_eq!(part_number(wrong), None, "{wrong}");
+        }
+    }
+
+    #[test]
     fn a_signed_token_names_only_what_a_store_can_keep() {
         let key = [1u8; 32];
         let mut hostile = slot();
@@ -580,13 +748,28 @@ mod tests {
     fn an_upload_path_is_a_store_and_a_token() {
         assert_eq!(
             split("/files/sheets/uploads/upl_a.b"),
-            Some(("sheets", "upl_a.b"))
+            Some(Address {
+                store: "sheets",
+                token: "upl_a.b",
+                part: None
+            })
+        );
+        assert_eq!(
+            split("/files/sheets/uploads/upl_a.b/parts/12"),
+            Some(Address {
+                store: "sheets",
+                token: "upl_a.b",
+                part: Some("12")
+            })
         );
         assert_eq!(store_of("/files/sheets/uploads/upl_a.b"), Some("sheets"));
         for path in [
             "/files/sheets/upl_a.b",
             "/files/sheets/uploads/",
             "/files/sheets/uploads/a/b",
+            "/files/sheets/uploads/a/parts",
+            "/files/sheets/uploads/a/parts/",
+            "/files/sheets/uploads/a/parts/1/2",
             "/files//uploads/a",
             "/other/sheets/uploads/a",
         ] {

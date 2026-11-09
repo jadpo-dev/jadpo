@@ -223,6 +223,7 @@ pub fn document(
     let here = super::served::sign_in_api(db, project).as_deref() == Some(api);
     let passkeys = identity.passkeys().filter(|_| here);
     let magic_links = identity.magic_link_routes().filter(|_| here);
+    let signs_in = here;
     let providers: &[crate::sign_in_providers::Provider] =
         if here { &identity.providers } else { &[] };
     let webhooks = crate::webhooks::declared_in(db, project, api);
@@ -358,6 +359,23 @@ pub fn document(
                 &step.method().word().to_ascii_lowercase(),
                 magic_link_operation(step, &mut failure_schemas),
             );
+        }
+    }
+    let privacy = crate::privacy::privacy(db, project);
+    if privacy.routes() && signs_in {
+        for step in jadpo_std::http::PrivacyStep::ALL {
+            if !step.self_service() || privacy.self_service.is_some() {
+                let path: String = step
+                    .segments(&privacy.path)
+                    .iter()
+                    .map(|text| format!("/{text}"))
+                    .collect();
+                let entry = paths.entry(path).or_insert_with(Value::object);
+                entry.set(
+                    &step.method().word().to_ascii_lowercase(),
+                    privacy_operation(step, &mut failure_schemas),
+                );
+            }
         }
     }
     for provider in providers {
@@ -1172,6 +1190,152 @@ fn provider_operation(
             );
         }
     }
+    out.set("responses", responses);
+    out
+}
+
+/// A generated data-request route's operation (area 15, "Data requests").
+fn privacy_operation(
+    step: jadpo_std::http::PrivacyStep,
+    failure_schemas: &mut BTreeMap<String, Value>,
+) -> Value {
+    use jadpo_std::http::PrivacyStep as S;
+    let text = |description: &str| {
+        let mut out = Value::object();
+        out.set("type", "string");
+        out.set("description", description);
+        out
+    };
+    let mut out = Value::object();
+    out.set(
+        "operationId",
+        format!(
+            "{}_{}",
+            step.method().word().to_ascii_lowercase(),
+            step.label().replace([' ', '-'], "_")
+        ),
+    );
+    out.set(
+        "description",
+        match step {
+            S::Request => "Sends an email to check the address, once the request commits, when an account has it. The answer is the same for every address.",
+            S::Confirm => "Takes a checked link's token and what the person wants, once, and makes the request.",
+            S::Cancel => "Cancels the erasure whose cancel link's token it is given.",
+            S::Export => "Makes an export of the signed-in person's own data, ready to download once it is built.",
+            S::Erasure => "Makes an erasure of the signed-in person's own data, after its cooling-off period.",
+        },
+    );
+    out.set("x-jadpo-generated", true);
+    out.set("x-jadpo-changes", true);
+    if !step.authentication().needs_caller() {
+        out.set("security", Vec::<Value>::new());
+    }
+    let kind = || {
+        let mut kind = text("What the person wants: `export` or `erasure`.");
+        kind.set("enum", vec![Value::from("export"), Value::from("erasure")]);
+        kind
+    };
+    let schema = match step {
+        S::Request => {
+            let mut properties = Value::object();
+            let mut address = text("The address to check.");
+            address.set("format", "email");
+            properties.set("address", address);
+            properties.set(
+                "locale",
+                text("The email's language, when the application supports it; otherwise the request's `Accept-Language` decides."),
+            );
+            Some((properties, vec![Value::from("address")]))
+        }
+        S::Confirm => {
+            let mut properties = Value::object();
+            properties.set("token", text("The link's token, 64 hexadecimal digits."));
+            properties.set("kind", kind());
+            Some((properties, vec![Value::from("token"), Value::from("kind")]))
+        }
+        S::Cancel => {
+            let mut properties = Value::object();
+            properties.set(
+                "token",
+                text("The cancel link's token, 64 hexadecimal digits."),
+            );
+            Some((properties, vec![Value::from("token")]))
+        }
+        S::Export | S::Erasure => None,
+    };
+    if let Some((properties, required)) = schema {
+        let mut schema = Value::object();
+        schema.set("type", "object");
+        schema.set("properties", properties);
+        schema.set("required", required);
+        schema.set("additionalProperties", false);
+        let mut json = Value::object();
+        json.set("schema", schema);
+        let mut content = Value::object();
+        content.set("application/json", json);
+        let mut request = Value::object();
+        request.set("required", true);
+        request.set("content", content);
+        out.set("requestBody", request);
+    }
+    let mut responses = Value::object();
+    let status = step.status().code().to_string();
+    let accepted = || {
+        let mut properties = Value::object();
+        properties.set("request_id", text("The request's `id`."));
+        properties.set("kind", kind());
+        let mut deadline =
+            text("When the request must be finished by: one month after it was made.");
+        deadline.set("format", "date-time");
+        properties.set("deadline", deadline);
+        let mut out = Value::object();
+        out.set("type", "object");
+        out.set("properties", properties);
+        out.set(
+            "required",
+            vec![
+                Value::from("request_id"),
+                Value::from("kind"),
+                Value::from("deadline"),
+            ],
+        );
+        out.set("additionalProperties", false);
+        out
+    };
+    let success = match step {
+        S::Request => response(
+            "Accepted: an email is sent if an account has the address.",
+            None,
+        ),
+        S::Cancel => response("The erasure is cancelled.", None),
+        _ => response("Accepted: the request has been made.", Some(accepted())),
+    };
+    responses.set(&status, success);
+    if matches!(step, S::Confirm | S::Cancel) {
+        failure_schemas.insert(
+            "PrivacyLinkExpired".to_string(),
+            envelope(
+                "privacy_link_expired",
+                "The link expired, was used or replaced, or is unknown.",
+                None,
+            ),
+        );
+        responses.set(
+            "401",
+            response(
+                "Fails with `privacy_link_expired`.",
+                Some(reference("PrivacyLinkExpired")),
+            ),
+        );
+    }
+    responses.set("400", shared_response("InvalidRequest"));
+    responses.set("413", shared_response("RequestTooLarge"));
+    responses.set("422", shared_response("InvalidInput"));
+    if step == S::Request {
+        responses.set("429", shared_response("RateLimited"));
+    }
+    responses.set("500", shared_response("InternalFault"));
+    responses.set("504", shared_response("DeadlineExceeded"));
     out.set("responses", responses);
     out
 }

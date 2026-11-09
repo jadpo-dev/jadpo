@@ -10,7 +10,8 @@ use jadpo_db::{Db, Project};
 use jadpo_graph::Key;
 use jadpo_std::email::{
     BuiltinEmail, EmailPlan, EmailsPlan, MAGIC_LINK_EMAIL, MAGIC_LINK_EMAIL_FIELDS,
-    MagicLinkEmailPlan, MailInput, PackageEmail, Sender,
+    MagicLinkEmailPlan, MailInput, PRIVACY_ADDRESS_CHECK_EMAIL, PRIVACY_ADDRESS_CHECK_EMAIL_FIELDS,
+    PackageEmail, PrivacyAddressCheckEmailPlan, Sender,
 };
 use jadpo_std::subscriber::{SubscriberPlan, Target, TenantFrom};
 use jadpo_std::translation::TranslationParam;
@@ -104,6 +105,10 @@ pub(crate) fn plan(
         }
         emails.push(builtin);
     }
+    // Jadpo's own address-check email (area 15, "Self-service by email").
+    if let Some(builtin) = privacy_address_check_email(db, project, &translations, setting) {
+        emails.push(builtin);
+    }
     emails.sort_by(|a, b| a.0.key.cmp(&b.0.key));
     let files: Vec<String> = emails.iter().map(|(_, path)| path.clone()).collect();
     let emails: Vec<EmailPlan> = emails.into_iter().map(|(email, _)| email).collect();
@@ -168,7 +173,7 @@ pub(crate) fn plan(
                 // Where it isn't sent, the action isn't held either.
                 Some(BuiltinEmail::MagicLink(magic)) if running => magic.send.zip(send.clone()),
                 Some(BuiltinEmail::MagicLink(_)) => send.clone().map(|key| (u32::MAX, key)),
-                None => None,
+                Some(BuiltinEmail::PrivacyAddressCheck(_)) | None => None,
             };
             let (target, store, connections) = match (sends_itself, &plan.connection) {
                 (Some((callable, key)), _) => (
@@ -271,6 +276,104 @@ fn sign_in_send(db: &dyn Db, project: Project) -> Option<Key> {
         .as_ref()?;
     let lookup = jadpo_check::lookups::Lookup::new(db, project);
     jadpo_check::graph::declaration_key(&lookup, name)
+}
+
+/// Jadpo's own address-check email, with the file `privacy:` is written
+/// in, when requests by email are on (area 15, "Self-service by email"):
+/// the browser session's origin read from a setting, the application's
+/// `display_name:` and Jadpo's wording.
+fn privacy_address_check_email(
+    db: &dyn Db,
+    project: Project,
+    translations: &jadpo_std::translation::TranslationPlan,
+    setting: &dyn Fn(&str) -> Option<u32>,
+) -> Option<(EmailPlan, String)> {
+    let privacy = jadpo_check::privacy::privacy(db, project);
+    if privacy.self_service.is_none() && privacy.generate_routes {
+        return None;
+    }
+    if !privacy.takes_requests() {
+        return None;
+    }
+    let identity = jadpo_check::identity::identity(db, project);
+    let store = identity
+        .variant(jadpo_std::http::PrincipalKind::User)?
+        .store
+        .clone();
+    let origin = identity
+        .method(jadpo_std::AuthenticationMethod::BrowserSession)?
+        .origin
+        .as_deref()
+        .and_then(setting)?;
+    let app_name = jadpo_check::emails::settings(db, project)
+        .display_name
+        .clone()?;
+    let messages: Vec<_> = translations
+        .entries
+        .iter()
+        .filter(|entry| {
+            entry
+                .key
+                .strip_prefix("jadpo.")
+                .and_then(jadpo_std::jadpo_text::message_named)
+                .is_some_and(|message| {
+                    message.feature == jadpo_std::jadpo_text::Feature::Privacy
+                        && message.kind == jadpo_std::jadpo_text::Kind::Message
+                })
+        })
+        .cloned()
+        .collect();
+    let subject = messages
+        .iter()
+        .find(|entry| entry.key == "jadpo.privacy_address_check_email")
+        .cloned()?;
+    let locales = jadpo_check::locales::locales(db, project)
+        .plan
+        .clone()
+        .unwrap_or_else(|| {
+            let en_gb = jadpo_std::locale_ordinal("en_gb").unwrap_or_default();
+            jadpo_std::LocalePlan {
+                default: en_gb,
+                supported: vec![en_gb],
+                in_progress: Vec::new(),
+            }
+        });
+    let link = privacy.self_service.as_ref().map_or_else(
+        || jadpo_std::http::PRIVACY_LINK.to_string(),
+        |found| found.link.clone(),
+    );
+    let file = privacy
+        .span
+        .as_ref()
+        .map_or_else(|| "app.jadpo".to_string(), |span| span.path.clone());
+    Some((
+        EmailPlan {
+            key: PRIVACY_ADDRESS_CHECK_EMAIL.to_string(),
+            name: PRIVACY_ADDRESS_CHECK_EMAIL.to_string(),
+            fields: PRIVACY_ADDRESS_CHECK_EMAIL_FIELDS
+                .iter()
+                .map(|f| f.to_string())
+                .collect(),
+            html: None,
+            text: None,
+            subject: Some(subject),
+            attachments: Vec::new(),
+            builtin: Some(BuiltinEmail::PrivacyAddressCheck(
+                PrivacyAddressCheckEmailPlan {
+                    store,
+                    origin,
+                    link,
+                    expires_after_ms: jadpo_std::http::PRIVACY_CHECK_EXPIRES_AFTER_MS,
+                    app_name,
+                    messages,
+                    locales,
+                    own: None,
+                    send: None,
+                },
+            )),
+        },
+        file,
+    ))
 }
 
 /// Jadpo's own magic-link email, with the file `sign_in:` is written in,

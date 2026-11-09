@@ -3058,7 +3058,7 @@ with the stamp's fields (`build`, `commit`, `modified`, `compiler`,
   behind it, such as `misconfigured`, is logged too, with its code as its
   classification and the connection whose call failed;
 - `failure.rejected`, for each failure ([Logging](04-failures.md#logging));
-- `privacy.exported`, `privacy.erased` and `privacy.read`, the
+- `privacy.exported`, `privacy.erased`, `privacy.read`, `privacy.request_asked`, `privacy.request_received` and `privacy.request_cancelled`, the
   [access records](15-personal-data.md#access-records);
 - `runtime.stopped`.
 
@@ -3603,7 +3603,7 @@ binary's: `runtime.startup_failed`, `runtime.waiting`,
 `runtime.erasures_replayed`, `runtime.started`,
 `runtime.ticked` after each tick of its cron, `operation.failed` for a
 fault behind a 500 with its `.jadpo` frames, `failure.rejected`,
-`privacy.exported`, `privacy.erased`, `privacy.read`, and `queue.retried`
+`privacy.exported`, `privacy.erased`, `privacy.read`, `privacy.request_asked`, `privacy.request_received`, `privacy.request_cancelled`, and `queue.retried`
 for a batch with a message retried. A Worker and a native binary start, compare
 their stores and log through the same code, so they say the same things
 alike.
