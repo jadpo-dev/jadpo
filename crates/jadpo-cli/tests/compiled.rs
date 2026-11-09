@@ -689,6 +689,14 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             corpus_project(&crate::erasure::files(), "compiled-erasure").expect("it checks"),
         ),
         (
+            "data requests".into(),
+            corpus_project(
+                &crate::privacy_requests::files(),
+                "compiled-privacy-requests",
+            )
+            .expect("it checks"),
+        ),
+        (
             "a kept record".into(),
             corpus_project(&crate::erasure::kept_files(), "compiled-kept-record")
                 .expect("it checks"),

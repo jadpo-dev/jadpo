@@ -747,7 +747,7 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     ("packageDigest", "A locked package's digest"),
     (
         "generated",
-        "What generates a route the runtime answers: health, openapi, exchange, passkey, magic_link or webhook",
+        "What generates a route the runtime answers: health, openapi, exchange, passkey, magic_link, privacy or webhook",
     ),
     (
         "authentication",

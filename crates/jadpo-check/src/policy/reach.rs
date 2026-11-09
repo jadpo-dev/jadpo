@@ -128,6 +128,11 @@ pub fn session_act(op: SessionOp, user: Option<&str>, service: Option<&str>) -> 
         | SessionOp::MagicLinkRequest
         | SessionOp::MagicLinkRedeem
         | SessionOp::MagicLinkRedeemCode
+        // A data request is the runtime's own record.
+        | SessionOp::PrivacyRequest
+        | SessionOp::PrivacyConfirm
+        | SessionOp::PrivacyCancel
+        | SessionOp::PrivacyCreateRequest
         // `test_passkeys` signs in and confirms through the generated
         // routes, from a test only.
         | SessionOp::TestPasskeyRegister

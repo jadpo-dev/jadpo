@@ -113,6 +113,7 @@ mod personal_data_export;
 mod personal_data_report;
 mod policy;
 mod pooled_statements;
+mod privacy_requests;
 mod provider_calls;
 mod provider_failures;
 mod provider_fakes;

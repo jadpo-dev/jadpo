@@ -495,6 +495,7 @@ impl Body<'_> {
             if let Ownership::Package(_) = self.ownership
                 && (head == "sessions"
                     || head == jadpo_std::http::MAGIC_LINKS
+                    || head == jadpo_std::http::PRIVACY
                     || head == jadpo_std::http::TEST_PASSKEYS
                     || head == jadpo_std::http::TEST_PROVIDERS)
             {
@@ -507,6 +508,11 @@ impl Body<'_> {
                 && let Some(op) = jadpo_std::http::SessionOp::from_name(member)
             {
                 return self.session_call(op, call, callee, &written);
+            }
+            if head == jadpo_std::http::PRIVACY
+                && let Some(op) = jadpo_std::http::SessionOp::privacy_op(member)
+            {
+                return self.privacy_call(op, call, callee, &written);
             }
             if head == jadpo_std::http::MAGIC_LINKS
                 && let Some(op) = jadpo_std::http::SessionOp::magic_link_op(member)

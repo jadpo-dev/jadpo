@@ -239,7 +239,8 @@ impl Body<'_> {
         let label = format!("{} {path}", method.word());
         let found = crate::routes::route_at(self.db, self.project, Name::new(self.db, label))
             .clone()
-            .or_else(|| generated_magic_link(self.db, self.project, method, &path));
+            .or_else(|| generated_magic_link(self.db, self.project, method, &path))
+            .or_else(|| generated_privacy(self.db, self.project, method, &path));
         let Some(route) = found else {
             let groups = crate::routes::groups(self.db, self.project);
             let paths: Vec<String> = groups
@@ -610,6 +611,51 @@ fn generated_magic_link(
             .output()
             .map(|output| Ty::Opaque(output.to_string(), Vec::new())),
         needs_caller: false,
+    })
+}
+
+/// The routes `privacy:` generates (area 15, "Data requests"), which a
+/// route test calls as it calls one of the app's own, named by its graph
+/// node and taking the built-in input the API record names. The two a
+/// signed-in person calls need a caller; the rest are open to anyone.
+fn generated_privacy(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    method: HttpMethod,
+    path: &str,
+) -> Option<crate::routes::RouteShape> {
+    use jadpo_std::http::PrivacyStep;
+    let generated = crate::routes::generated::generating(db, project);
+    let (path_segments, self_service) =
+        generated.values().flatten().find_map(|what| match what {
+            crate::routes::generated::Generating::Privacy { path, self_service } => {
+                Some((path.clone(), *self_service))
+            }
+            _ => None,
+        })?;
+    let step = PrivacyStep::ALL.into_iter().find(|step| {
+        (self_service || !step.self_service())
+            && step.method() == method
+            && format!("/{}", step.segments(&path_segments).join("/")) == path
+    })?;
+    let label = format!("{} {path}", method.word());
+    Some(crate::routes::RouteShape {
+        key: crate::graph::registry(db, project).key(
+            jadpo_graph::Kind::GeneratedRoute,
+            &label,
+            None,
+        ),
+        method,
+        segments: step
+            .segments(&path_segments)
+            .into_iter()
+            .map(Segment::Fixed)
+            .collect(),
+        input: step.input().map(str::to_string),
+        output: step
+            .output()
+            .map(|output| Ty::Opaque(output.to_string(), Vec::new())),
+        needs_caller: step.authentication().needs_caller(),
     })
 }
 

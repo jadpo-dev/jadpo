@@ -744,6 +744,14 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "gives `clock.now` as an instant (chunk 7.0b)",
     ),
     (
+        "crates/jadpo-check/src/privacy.rs",
+        "reads which field an address is kept in; finding a person by an `Email` is the language's rule, not encoding one",
+    ),
+    (
+        "crates/jadpo-runtime/src/http/privacy.rs",
+        "answers a data request with its id and deadline through the contract's own `Value`s, the same values a route's output is written from",
+    ),
+    (
         "crates/jadpo-runtime/src/http/magic_links.rs",
         "makes the `MagicLinkRequest` the application's own sending is given, a value in memory, never sent by the runtime",
     ),

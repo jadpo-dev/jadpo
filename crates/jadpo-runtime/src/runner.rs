@@ -699,7 +699,9 @@ async fn attempt(
     // keys of its own, and a provider that replays a key's first answer
     // still sends the link that works. Its key doesn't survive a retry,
     // so no record of its steps is kept (chunk 7.9a).
-    if subscriber.event == jadpo_std::email::MAGIC_LINK_EMAIL {
+    if subscriber.event == jadpo_std::email::MAGIC_LINK_EMAIL
+        || subscriber.event == jadpo_std::email::PRIVACY_ADDRESS_CHECK_EMAIL
+    {
         ctx.set_resumable(None);
         let Some(fresh) = ctx.new_id() else {
             let state = retried("unavailable", Some("unavailable")).await;
@@ -926,8 +928,10 @@ async fn attempt(
                 .plan
                 .emails
                 .email(&subscriber.event)
-                .and_then(|email| email.builtin.as_ref())
-                .map(|jadpo_std::email::BuiltinEmail::MagicLink(plan)| plan.clone());
+                .and_then(|email| match email.builtin.as_ref() {
+                    Some(jadpo_std::email::BuiltinEmail::MagicLink(plan)) => Some(plan.clone()),
+                    _ => None,
+                });
             let made = match &plan {
                 Some(plan) => {
                     crate::http::magic_links::request_value(ctx, plan, &delivery.value).await

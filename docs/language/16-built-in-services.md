@@ -2133,8 +2133,9 @@ email, rendered whole once its action commits, so a template that can't
 be rendered fails the test. A test reads what it has sent so far as
 `email.sent`, a `List<SentEmail>`. Each has its `to`, `from`, `subject`,
 `html` and `text` (`none` without that template), every link in it
-(`links`), its attachments' file names (`attachments`), and the sign-in
-email's token and code (`sign_in_token`, `sign_in_code`). Only a test
+(`links`), its attachments' file names (`attachments`), the sign-in
+email's token and code (`sign_in_token`, `sign_in_code`) and the privacy
+address check's token (`privacy_token`). Only a test
 can read `email.sent` (`email.sent_context`). The mail is caught whole
 whichever connection `email:` names, a mail package's included.
 
@@ -2533,8 +2534,9 @@ Jadpo sends some emails itself: the magic-link email
 ([Magic links](08-identity.md#magic-links)) and the privacy emails
 ([Data requests](15-personal-data.md#data-requests)). Each works with
 nothing written, and your app can change as much of it as it needs, in
-five levels. Each level keeps the ones below it. The privacy emails aren't
-built yet; they come with data requests.
+five levels. Each level keeps the ones below it. Of the privacy emails, the
+address check is built at levels 1 to 3; the others, and its levels 4 and
+5, are not.
 
 Every email, built in or your app's own, goes through your app's one
 `email:` setting in `application { }`. It names a connection that
@@ -2628,6 +2630,20 @@ They are on once you declare `magic_link:`. Then they are listed,
 required in your app's other locales and rewordable, the email is
 written with them, and the failures' wording is in the per-locale
 failure export.
+
+The privacy address-check email uses these messages, on once `privacy:`'s
+routes are:
+
+| Message | Fields | `en_gb` wording |
+|---|---|---|
+| `privacy_address_check_email` (the subject) | | "Confirm your data request with {app_name}" |
+| `privacy_address_check_heading` | | "Confirm your data request" |
+| `privacy_address_check_intro` | `address: Email` | "Someone asked to see or erase the data held about {address}." |
+| `privacy_address_check_button` | | "Confirm" |
+| `privacy_address_check_expiry_line` | `expires_in: PresentationText` | "The link works for {expires_in}." |
+| `privacy_address_check_ignore_line` | | "If you didn't ask, you can ignore this email." |
+| `privacy_link_expired` | | "This link has expired or has been used. Ask again." |
+| `privacy_person_not_found` | | "We can't find that person." |
 
 [Passkeys](08-identity.md#passkeys) bring no email, only the wording of
 their failures, which a client app shows. These messages are on, listed,

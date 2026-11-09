@@ -1777,6 +1777,7 @@ mod tests {
             origin: None,
             passkeys: None,
             magic_links: None,
+            privacy: None,
             providers: None,
         }
     }

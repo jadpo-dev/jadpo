@@ -54,6 +54,9 @@ pub enum Feature {
     /// A route's `confirm: Confirmation.passkey` (area 8, "Confirm one
     /// request with a passkey"): the failure of a request not confirmed.
     Confirmation,
+    /// Data requests (area 15): the address-check email and their
+    /// failures, on once `privacy:`'s routes are.
+    Privacy,
 }
 
 impl Feature {
@@ -73,6 +76,7 @@ impl Feature {
             Feature::MagicLinkRoutes => "Magic-link routes",
             Feature::Providers => "Sign-in providers",
             Feature::Confirmation => "Confirming a request",
+            Feature::Privacy => "Data requests",
         }
     }
 
@@ -91,6 +95,7 @@ impl Feature {
             Feature::MagicLinkRoutes => "magic_link_routes",
             Feature::Providers => "providers",
             Feature::Confirmation => "confirmation",
+            Feature::Privacy => "privacy",
         }
     }
 
@@ -109,10 +114,11 @@ impl Feature {
             Feature::MagicLinkRoutes => "the application writes its own magic-link routes",
             Feature::Providers => "the application signs users in through a provider",
             Feature::Confirmation => "a route asks for a passkey's confirmation",
+            Feature::Privacy => "the application takes data requests",
         }
     }
 
-    pub const ALL: [Feature; 12] = [
+    pub const ALL: [Feature; 13] = [
         Feature::Requests,
         Feature::SignIn,
         Feature::UserSignIn,
@@ -125,6 +131,7 @@ impl Feature {
         Feature::MagicLinkRoutes,
         Feature::Providers,
         Feature::Confirmation,
+        Feature::Privacy,
     ];
 }
 
@@ -259,7 +266,7 @@ impl Message {
 }
 
 /// Every message, in the order `jadpo translations builtin` lists a feature's.
-pub static MESSAGES: [Message; 40] = [
+pub static MESSAGES: [Message; 48] = [
     failure(
         "invalid_request",
         Feature::Requests,
@@ -510,6 +517,60 @@ pub static MESSAGES: [Message; 40] = [
         Feature::Confirmation,
         "A request that needs the person's passkey came without one of theirs, for another request, used already or too late.",
         "Confirm this with your passkey to go on.",
+    ),
+    message(
+        "privacy_address_check_email",
+        Feature::Privacy,
+        &[],
+        "The subject of the email that checks an address before a data request.",
+        "Confirm your data request with {app_name}",
+    ),
+    message(
+        "privacy_address_check_heading",
+        Feature::Privacy,
+        &[],
+        "The heading of the address-check email.",
+        "Confirm your data request",
+    ),
+    message(
+        "privacy_address_check_intro",
+        Feature::Privacy,
+        &[("address", ParamKind::Text)],
+        "Says which address asked for a data request.",
+        "Someone asked to see or erase the data held about {address}.",
+    ),
+    message(
+        "privacy_address_check_button",
+        Feature::Privacy,
+        &[],
+        "The link's button in the address-check email.",
+        "Confirm",
+    ),
+    message(
+        "privacy_address_check_expiry_line",
+        Feature::Privacy,
+        &[("expires_in", ParamKind::Text)],
+        "Says how long the address-check link works.",
+        "The link works for {expires_in}.",
+    ),
+    message(
+        "privacy_address_check_ignore_line",
+        Feature::Privacy,
+        &[],
+        "Tells someone who did not ask to ignore the email.",
+        "If you didn't ask, you can ignore this email.",
+    ),
+    failure(
+        "privacy_link_expired",
+        Feature::Privacy,
+        "A data request's link has expired, been used or been replaced.",
+        "This link has expired or has been used. Ask again.",
+    ),
+    failure(
+        "privacy_person_not_found",
+        Feature::Privacy,
+        "A request was made for someone the application holds nothing about.",
+        "We can't find that person.",
     ),
 ];
 

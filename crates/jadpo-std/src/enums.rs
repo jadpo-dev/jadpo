@@ -594,6 +594,28 @@ std_enum! {
 }
 
 std_enum! {
+    /// What a person asks of their data (area 15, "Data requests").
+    PrivacyRequestKind: "PrivacyRequestKind" {
+        /// A copy of everything held about them.
+        Export: "export",
+        /// Everything held about them, erased.
+        Erasure: "erasure",
+    }
+}
+
+std_enum! {
+    /// How a data request started (area 15, "Data requests").
+    PrivacyRequestSource: "PrivacyRequestSource" {
+        /// By email address, through the address-check email.
+        SelfService: "self_service",
+        /// Signed in, through a fresh sign-in.
+        SignedIn: "signed_in",
+        /// Made on someone's behalf, after checking who they are.
+        Assisted: "assisted",
+    }
+}
+
+std_enum! {
     /// Why a sign-in was refused (area 8, "Events"): what `SignInRefused`
     /// says and the log keeps, while the person sees only the refusal's
     /// own failure.
@@ -880,6 +902,11 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         ),
         (SignInMethod::NAME, SignInMethod::NAMES.to_vec()),
         (SignInRefusal::NAME, SignInRefusal::NAMES.to_vec()),
+        (PrivacyRequestKind::NAME, PrivacyRequestKind::NAMES.to_vec()),
+        (
+            PrivacyRequestSource::NAME,
+            PrivacyRequestSource::NAMES.to_vec(),
+        ),
         (
             ClientAddressSource::NAME,
             ClientAddressSource::NAMES.to_vec(),
@@ -959,6 +986,8 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         AuthenticationStrength::NAME => position(AuthenticationStrength::NAMES),
         SignInMethod::NAME => position(SignInMethod::NAMES),
         SignInRefusal::NAME => position(SignInRefusal::NAMES),
+        PrivacyRequestKind::NAME => position(PrivacyRequestKind::NAMES),
+        PrivacyRequestSource::NAME => position(PrivacyRequestSource::NAMES),
         ClientAddressSource::NAME => position(ClientAddressSource::NAMES),
         Access::NAME => position(Access::NAMES),
         Tenancy::NAME => position(Tenancy::NAMES),

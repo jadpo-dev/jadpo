@@ -143,8 +143,73 @@ impl Planner<'_> {
                     first_sign_in: None,
                 })
             }),
+            privacy: self.privacy_plan(db, project, identity, user),
             providers: self.providers_plan(identity),
         })
+    }
+
+    /// `privacy:`'s data requests (area 15, "Data requests"): a person
+    /// found by address or `id`, active or not, since someone disabled
+    /// can still ask for their data; and their tables' store.
+    fn privacy_plan(
+        &self,
+        db: &dyn Db,
+        project: Project,
+        identity: &jadpo_check::identity::Identity,
+        user: Option<&jadpo_check::identity::Variant>,
+    ) -> Option<jadpo_std::http::PrivacyPlan> {
+        let privacy = jadpo_check::privacy::privacy(db, project);
+        if !privacy.takes_requests() {
+            return None;
+        }
+        let user = user?;
+        let lookup = jadpo_check::privacy::address_field(identity, user)
+            .and_then(|address| self.person_lookup(user, Some(address)));
+        let (link, cancel_link) = match &privacy.self_service {
+            Some(found) => (found.link.clone(), found.cancel_link.clone()),
+            None => (
+                jadpo_std::http::PRIVACY_LINK.to_string(),
+                jadpo_std::http::PRIVACY_CANCEL_LINK.to_string(),
+            ),
+        };
+        Some(jadpo_std::http::PrivacyPlan {
+            store: user.store.clone(),
+            link,
+            cancel_link,
+            lookup,
+            lookup_id: self.person_lookup(user, None),
+            // Numbered once the action gates are (`crate::Plan`).
+            create_request: None,
+        })
+    }
+
+    /// How a data request finds its person, by the field `address` names
+    /// or by `id`: unlike a sign-in's, whether they are active doesn't
+    /// count, and neither does policy, since a request is the person's
+    /// own or staff's, which their own line decides.
+    fn person_lookup(
+        &self,
+        variant: &jadpo_check::identity::Variant,
+        address: Option<&str>,
+    ) -> Option<String> {
+        let entity = self.model.entity(&variant.entity)?;
+        let column = match address {
+            Some(address) => entity
+                .fields
+                .iter()
+                .find(|f| f.name == address)?
+                .born
+                .clone(),
+            None => "id".to_string(),
+        };
+        let mut bind = Lookup;
+        let wheres = self.access(&mut bind, entity, Reach::Read)?;
+        Some(statements::user_by(
+            &entity.table,
+            &column,
+            &statements::active(None),
+            &wheres,
+        ))
     }
 
     /// How a magic link finds its user, by the field `address` names or,

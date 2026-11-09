@@ -124,9 +124,6 @@ pub(crate) const WRONG: &str = "UPDATE \"jadpo_sign_in_requests\" SET \"wrong_co
 const HOUR_MS: i64 = 60 * 60 * 1000;
 const DAY_MS: i64 = 24 * HOUR_MS;
 
-/// Why a step stopped: the response that says so.
-type Stop = Box<Response>;
-
 fn stop(failure: (u16, &str, &str), request_id: &str) -> Stop {
     Box::new(runtime_failure(failure, request_id, None))
 }
@@ -211,7 +208,7 @@ async fn run(
 }
 
 /// A 422 naming one field and its rule.
-fn problem(request_id: &str, field: &str, rule: &str) -> Response {
+pub(crate) fn problem(request_id: &str, field: &str, rule: &str) -> Response {
     invalid_input(
         request_id,
         &[Problem {
@@ -247,7 +244,7 @@ struct Confirmed {
 
 /// Why a step was refused, which a generated route answers and an
 /// operation raises alike (chunk 7.3b3).
-enum Refused {
+pub(crate) enum Refused {
     /// A runtime failure (its status, code and message), with the seconds
     /// to wait before trying again when it says.
     Failure((u16, &'static str, &'static str), Option<i64>),
@@ -256,6 +253,75 @@ enum Refused {
     /// `on_first_sign_in:`'s action faulted.
     Fault(Box<crate::Fault>),
 }
+
+/// The body of a route Jadpo answers itself: a JSON object of text members,
+/// each one of `allowed`, `null` counting as left out.
+pub(crate) fn json_body(
+    request: &Request,
+    request_id: &str,
+    allowed: &[&str],
+) -> Result<serde_json::Map<String, serde_json::Value>, Stop> {
+    let json = request.header("content-type").is_some_and(|value| {
+        let essence = value
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        essence == "application/json"
+            || (essence.starts_with("application/") && essence.ends_with("+json"))
+    });
+    if !json {
+        return Err(Box::new(runtime_failure(
+            super::BODY_NOT_JSON,
+            request_id,
+            None,
+        )));
+    }
+    let Ok(serde_json::Value::Object(object)) =
+        serde_json::from_slice::<serde_json::Value>(&request.body)
+    else {
+        return Err(Box::new(problem(request_id, "", "type")));
+    };
+    let mut problems = Vec::new();
+    for (key, value) in &object {
+        if !allowed.contains(&key.as_str()) {
+            problems.push(Problem {
+                field: key.clone(),
+                rule: "unknown_field".to_string(),
+            });
+        } else if !matches!(
+            value,
+            serde_json::Value::String(_) | serde_json::Value::Null
+        ) {
+            problems.push(Problem {
+                field: key.clone(),
+                rule: "type".to_string(),
+            });
+        }
+    }
+    if problems.is_empty() {
+        Ok(object)
+    } else {
+        Err(Box::new(invalid_input(request_id, &problems)))
+    }
+}
+
+/// The `address` a body gives, required, an email address.
+pub(crate) fn email_address(
+    body: &serde_json::Map<String, serde_json::Value>,
+    request_id: &str,
+) -> Result<String, Stop> {
+    match text(body, "address") {
+        None => Err(Box::new(problem(request_id, "address", "required"))),
+        Some(address) if address.len() <= 254 && jadpo_std::is_email(&address) => Ok(address),
+        Some(_) => Err(Box::new(problem(request_id, "address", "format"))),
+    }
+}
+
+/// What the runtime gives a refused generated route: boxed, so a step's
+/// frame stays small.
+pub(crate) type Stop = Box<Response>;
 
 fn refused(failure: (u16, &'static str, &'static str)) -> Refused {
     Refused::Failure(failure, None)
@@ -419,7 +485,9 @@ impl Site<'_> {
             .plan()
             .events()
             .and_then(|events| events.plan.emails.email(MAGIC_LINK_EMAIL).cloned())?;
-        let jadpo_std::email::BuiltinEmail::MagicLink(mail) = email.builtin.as_ref()?;
+        let Some(jadpo_std::email::BuiltinEmail::MagicLink(mail)) = email.builtin.as_ref() else {
+            return None;
+        };
         Some(
             asked
                 .filter(|ordinal| mail.locales.supports(*ordinal))
@@ -429,62 +497,18 @@ impl Site<'_> {
         )
     }
 
-    /// The body: a JSON object of text members, each one of `allowed`,
-    /// `null` counting as left out.
+    /// The body, read as [`json_body`] reads it.
     fn body(
         &self,
         request: &Request,
         allowed: &[&str],
     ) -> Result<serde_json::Map<String, serde_json::Value>, Stop> {
-        let json = request.header("content-type").is_some_and(|value| {
-            let essence = value
-                .split(';')
-                .next()
-                .unwrap_or("")
-                .trim()
-                .to_ascii_lowercase();
-            essence == "application/json"
-                || (essence.starts_with("application/") && essence.ends_with("+json"))
-        });
-        if !json {
-            return Err(self.fail(super::BODY_NOT_JSON));
-        }
-        let Ok(serde_json::Value::Object(object)) =
-            serde_json::from_slice::<serde_json::Value>(&request.body)
-        else {
-            return Err(Box::new(problem(self.request_id, "", "type")));
-        };
-        let mut problems = Vec::new();
-        for (key, value) in &object {
-            if !allowed.contains(&key.as_str()) {
-                problems.push(Problem {
-                    field: key.clone(),
-                    rule: "unknown_field".to_string(),
-                });
-            } else if !matches!(
-                value,
-                serde_json::Value::String(_) | serde_json::Value::Null
-            ) {
-                problems.push(Problem {
-                    field: key.clone(),
-                    rule: "type".to_string(),
-                });
-            }
-        }
-        if problems.is_empty() {
-            Ok(object)
-        } else {
-            Err(Box::new(invalid_input(self.request_id, &problems)))
-        }
+        json_body(request, self.request_id, allowed)
     }
 
     /// An address the body gives as `address`, required.
     fn address(&self, body: &serde_json::Map<String, serde_json::Value>) -> Result<String, Stop> {
-        match text(body, "address") {
-            None => Err(Box::new(problem(self.request_id, "address", "required"))),
-            Some(address) if address.len() <= 254 && jadpo_std::is_email(&address) => Ok(address),
-            Some(_) => Err(Box::new(problem(self.request_id, "address", "format"))),
-        }
+        email_address(body, self.request_id)
     }
 
     // --- asking ------------------------------------------------------------------
@@ -1287,7 +1311,7 @@ fn defect(ctx: &mut Ctx<'_>, what: &str, site: u32) -> Stored {
 /// What an operation's refusal raises at site `site`: the same failure,
 /// code and status the generated routes answer with, never naming the
 /// token, the code or the address.
-fn raised(ctx: &mut Ctx<'_>, refused: Refused, site: u32) -> Stored {
+pub(crate) fn raised(ctx: &mut Ctx<'_>, refused: Refused, site: u32) -> Stored {
     match refused {
         Refused::Failure((status, code, message), wait) => {
             let name: String = code
@@ -1446,7 +1470,7 @@ pub async fn redeem_code(
 }
 
 /// 429 `rate_limited`, waiting `wait_ms`.
-fn limited(request_id: &str, wait_ms: i64) -> Response {
+pub(crate) fn limited(request_id: &str, wait_ms: i64) -> Response {
     let mut response = runtime_failure(RATE_LIMITED, request_id, None);
     let seconds = (wait_ms + 999) / 1000;
     response
@@ -1455,7 +1479,7 @@ fn limited(request_id: &str, wait_ms: i64) -> Response {
     response
 }
 
-fn ok_json(body: String) -> Response {
+pub(crate) fn ok_json(body: String) -> Response {
     Response {
         status: 200,
         headers: vec![("content-type".to_string(), "application/json".to_string())],
@@ -1465,7 +1489,7 @@ fn ok_json(body: String) -> Response {
 }
 
 /// A text member, `null` and left out alike.
-fn text(body: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<String> {
+pub(crate) fn text(body: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<String> {
     match body.get(key) {
         Some(serde_json::Value::String(text)) => Some(text.clone()),
         _ => None,
@@ -1483,7 +1507,7 @@ pub(crate) fn site_path(path: &str) -> bool {
 }
 
 /// A locale by its variant name (`fr_fr`) or its BCP 47 tag (`fr-FR`).
-fn locale_named(asked: &str) -> Option<u32> {
+pub(crate) fn locale_named(asked: &str) -> Option<u32> {
     jadpo_std::locale_ordinal(asked).or_else(|| {
         jadpo_std::LOCALES
             .iter()
@@ -1493,7 +1517,7 @@ fn locale_named(asked: &str) -> Option<u32> {
 }
 
 /// What an address is counted as: the digest of it in lower case.
-fn address_digest(address: &str) -> String {
+pub(crate) fn address_digest(address: &str) -> String {
     verifier(format!("address {}", address.to_lowercase()).as_bytes())
 }
 
@@ -1512,7 +1536,7 @@ fn code_verifier(request: &[u8; 16], code: &str) -> String {
 }
 
 /// The BLAKE3 digest of `bytes`, in hexadecimal.
-fn verifier(bytes: &[u8]) -> String {
+pub(crate) fn verifier(bytes: &[u8]) -> String {
     blake3::hash(bytes).to_hex().to_string()
 }
 
@@ -1521,7 +1545,7 @@ fn constant_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 /// The 32 bytes a link's token is, as 64 lower-case hexadecimal digits.
-fn token_bytes(token: &str) -> Option<[u8; 32]> {
+pub(crate) fn token_bytes(token: &str) -> Option<[u8; 32]> {
     if token.len() != 64
         || !token
             .bytes()
@@ -1534,7 +1558,7 @@ fn token_bytes(token: &str) -> Option<[u8; 32]> {
 }
 
 /// 32 random bytes as 64 hexadecimal digits, never on a recording's tape.
-fn new_token(ctx: &mut Ctx<'_>) -> Option<String> {
+pub(crate) fn new_token(ctx: &mut Ctx<'_>) -> Option<String> {
     let mut bytes = [0u8; 32];
     if !ctx.secret_random_bytes(&mut bytes) {
         return None;
@@ -1569,7 +1593,7 @@ fn stream(token: &[u8; 32], length: usize) -> Vec<u8> {
 }
 
 /// `address` sealed under `token`, which only the link opens.
-fn seal(token: &[u8; 32], address: &str) -> Vec<u8> {
+pub(crate) fn seal(token: &[u8; 32], address: &str) -> Vec<u8> {
     let bytes = address.as_bytes();
     stream(token, bytes.len())
         .iter()
@@ -1578,7 +1602,7 @@ fn seal(token: &[u8; 32], address: &str) -> Vec<u8> {
         .collect()
 }
 
-fn unseal(token: &[u8; 32], sealed: &[u8]) -> Option<String> {
+pub(crate) fn unseal(token: &[u8; 32], sealed: &[u8]) -> Option<String> {
     let bytes: Vec<u8> = stream(token, sealed.len())
         .iter()
         .zip(sealed)
@@ -1604,12 +1628,12 @@ pub(crate) fn cookie_value<'r>(request: &'r Request, name: &str) -> Option<&'r s
     found.next().is_none().then_some(first)
 }
 
-fn micros(millis: i64) -> SqlValue {
+pub(crate) fn micros(millis: i64) -> SqlValue {
     SqlValue::Timestamp(millis.saturating_mul(1000))
 }
 
 /// A `timestamptz` column's value in milliseconds.
-fn millis(value: &SqlValue) -> Option<i64> {
+pub(crate) fn millis(value: &SqlValue) -> Option<i64> {
     match value {
         SqlValue::Timestamp(micros) => Some(micros.div_euclid(1000)),
         _ => None,
