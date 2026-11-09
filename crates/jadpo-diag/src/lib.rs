@@ -503,23 +503,23 @@ rules! {
     EFFECT_RECURSIVE_ACTION: "effect.recursive_action", area 3, Error, Human,
         "An action calls itself, or calls other actions that end up calling it again";
     EMAIL_ATTACHMENT_LIMIT: "email.attachment_limit", area 16, Error, Agent,
-        "Email's attachments may exceed what its mail package accepts";
+        "An email's attachments may add up to more than its mail package accepts";
     EMAIL_BROWSER_FAILED: "email.browser_failed", area 14, Error, Human,
         "A `jadpo email open` command couldn't start the browser to open a mail's link";
     EMAIL_CONNECTION_REQUIRED: "email.connection_required", area 16, Error, Agent,
-        "Action emits an email but the application names no email connection";
+        "An action emits an email, or a feature sends one, but the application names no email connection";
     EMAIL_FIELD_UNUSED: "email.field_unused", area 16, Declinable, Agent,
-        "Email's field is written by no template and no subject";
+        "An email or partial has a field no template and no subject writes";
     EMAIL_HEALTH_PROBLEM: "email.health_problem", area 16, Declinable, Agent,
-        "Email's template fails a check of the mail health score";
+        "An email's template fails a check of the mail health score";
     EMAIL_PARTIAL_INVALID: "email.partial_invalid", area 16, Error, Agent,
         "An email template includes a partial that doesn't exist, can't be reached from it, or is given the wrong fields";
     EMAIL_SENT_CONTEXT: "email.sent_context", area 16, Error, Agent,
-        "Reads `email.sent` outside a test";
+        "Code outside a test reads `email.sent`";
     EMAIL_SETTINGS_INVALID: "email.settings_invalid", area 16, Error, Agent,
-        "Application's `email:` or `display_name:` is invalid";
+        "An application's `email:` or `display_name:` setting is invalid";
     EMAIL_TEMPLATE_MISSING: "email.template_missing", area 16, Error, Agent,
-        "Email has no template, or a template no email";
+        "An email has no template, or a template has no email";
     EMAIL_TEMPLATE_NOT_ALLOWED: "email.template_not_allowed", area 16, Error, Agent,
         "An email template calls a function, does arithmetic or builds a value, when it may only read its fields, translate and format";
     EMAIL_TEMPLATE_VALUE_INVALID: "email.template_value_invalid", area 16, Error, Agent,
@@ -643,19 +643,19 @@ rules! {
     LAYOUT_CALL_DIRECTION: "layout.call_direction", area 1, Error, Human,
         "Code in `shared/` uses a declaration that belongs to one domain";
     LAYOUT_FILE_NAME_MISMATCH: "layout.file_name_mismatch", area 1, Error, Agent,
-        "File name does not match its declaration";
+        "A file's name doesn't match the declaration it holds, or the file holds a second declaration that needs its own";
     LAYOUT_PROMOTION_REQUIRED: "layout.promotion_required", area 1, Error, Agent,
-        "Declaration is used beyond the file that holds it";
+        "A declaration is used beyond the file that holds it";
     LAYOUT_ROUTE_PREFIX_MISMATCH: "layout.route_prefix_mismatch", area 1, Error, Agent,
-        "Route group prefix does not match its file name";
+        "A route group's prefix doesn't match its file name";
     LAYOUT_TEST_WITHOUT_SUBJECT: "layout.test_without_subject", area 1, Error, Agent,
-        "Test file has no subject beside it";
+        "A test file has no file of the same name beside it";
     LAYOUT_UNKNOWN_LOCATION: "layout.unknown_location", area 1, Error, Agent,
-        "Jadpo file is outside the fixed layout";
+        "A file is somewhere the project layout has no place for";
     LAYOUT_UNUSED_DECLARATION: "layout.unused_declaration", area 1, Error, Agent,
-        "Shared declaration is not used";
+        "A declaration nothing uses is left in the code";
     LAYOUT_WRONG_FOLDER: "layout.wrong_folder", area 1, Error, Agent,
-        "Declaration is in the wrong folder";
+        "A declaration is in a folder that doesn't hold its kind";
     LIBRARY_SIMILAR_EXISTS: "library.similar_exists", area 1, Declinable, Agent,
         "A function does the same as a library function that already exists";
     MIGRATION_APPLY_FAILED: "migration.apply_failed", area 14, Error, Human,
@@ -1315,7 +1315,7 @@ rules! {
     TRANSLATION_FEATURE_OFF: "translation.feature_off", area 10, Error, Agent,
         "A language file words a Jadpo message of a feature the application has off";
     TRANSLATION_FIELD_TYPE: "translation.field_type", area 10, Error, Agent,
-        "A message field is a type a wording can't hold";
+        "A message or failure has a field of a type its wording can't write";
     TRANSLATION_FIELD_UNUSED: "translation.field_unused", area 10, Declinable, Agent,
         "No wording in a language uses one of a message's fields";
     TRANSLATION_FILE_MISSING: "translation.file_missing", area 10, Error, Agent,
@@ -1329,7 +1329,7 @@ rules! {
     TRANSLATION_LOCALE_UNSUPPORTED: "translation.locale_unsupported", area 10, Error, Agent,
         "A language file is for a locale the application does not support";
     TRANSLATION_LOCALES_REQUIRED: "translation.locales_required", area 10, Error, Agent,
-        "Translations without declared locales";
+        "A project has translations or an email, but `app.jadpo` declares no locales";
     TRANSLATION_MEMBER_DUPLICATE: "translation.member_duplicate", area 10, Error, Agent,
         "A member is written twice in a language file";
     TRANSLATION_MEMBER_UNKNOWN: "translation.member_unknown", area 10, Error, Agent,
@@ -1337,13 +1337,13 @@ rules! {
     TRANSLATION_MESSAGE_UNKNOWN: "translation.message_unknown", area 10, Error, Agent,
         "A translation call names no message or enum";
     TRANSLATION_OPTION_UNKNOWN: "translation.option_unknown", area 10, Error, Agent,
-        "An option of translations in app.jadpo is not one it takes";
+        "An application's `translations:` setting has an option it doesn't take";
     TRANSLATION_PLACEHOLDER_STYLE: "translation.placeholder_style", area 10, Error, Agent,
-        "A wording writes an amount of money without its style, or a style on another field";
+        "A wording writes an amount of money or a percentage without its style, or a style on another kind of field";
     TRANSLATION_PLACEHOLDER_UNKNOWN: "translation.placeholder_unknown", area 10, Error, Agent,
         "A wording writes a placeholder, such as `{nom}`, that isn't one of its message's fields";
     TRANSLATION_REVIEW_INVALID: "translation.review_invalid", area 10, Error, Agent,
-        "Translation review is not a TranslationReview";
+        "An application's `review:` setting for translations holds something other than a `TranslationReview`";
     TRANSLATION_SOURCES_INVALID: "translation.sources_invalid", area 10, Error, Agent,
         "A translations folder's sources record cannot be read";
     TRANSLATION_STALE: "translation.stale", area 10, Error, Agent,

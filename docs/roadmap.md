@@ -122,7 +122,6 @@ D1 first: the site starts once D1 has merged.
   Split by size (2026-11-08) into the parts below, taken in order,
   each widening `error_format_scope` to the rules it finished; delete it
   once all are.
-- [ ] **D13c13 `translation.*`, `layout.*` and `email.*`** `opus · high`: 33 pages.
 - [ ] **D13c14 `package.*`, `test.*`, `migration.*` and `acceptance.*`** `opus · high`: 28 pages.
 - [ ] **D13c15 `step.*`, `subscriber.*`, `schedule.*`, `prompt.*`, `event.*`, `ai.*` and `receiving.*`** `opus · high`: 18 pages; then `error_format_scope` covers every rule.
 
