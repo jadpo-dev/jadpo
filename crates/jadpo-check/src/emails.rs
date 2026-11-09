@@ -578,7 +578,7 @@ pub fn smtp_connections(db: &dyn Db, project: Project) -> SmtpConnections {
                             let Some(field) = value.value().as_ref().and_then(reads) else {
                                 out.problems.push(
                                     invalid(format!("`{connection}`'s `{part_name}:` must be a setting"), part_span, "written in source")
-                                        .reason("A credential is read from the deployment's environment, so each part is a setting, `config.<name>`, and the password a `secret: true` one (area 10, \"Secrets\").")
+                                        .reason("A credential is read from the deployment's environment, so each part is a setting, `config.<name>`, and the password a `secret: true` one.")
                                         .next(format!("Declare `smtp_{part_name}: Text` in `config.jadpo`, and write `{part_name}: config.smtp_{part_name}`")),
                                 );
                                 continue;
@@ -589,7 +589,7 @@ pub fn smtp_connections(db: &dyn Db, project: Project) -> SmtpConnections {
                             if part_name == "password" && !found.secret {
                                 out.problems.push(
                                     invalid(format!("`{connection}`'s password must be a secret setting"), part_span, &format!("`{field}` isn't secret"))
-                                        .reason("A password is read from the deployment's environment and never seen by code, so it is a `secret: true` setting (area 10, \"Secrets\").")
+                                        .reason("A password is read from the deployment's environment and never seen by code, so it is a `secret: true` setting.")
                                         .next(format!("Add `secret: true` to `{field}` in `config.jadpo`")),
                                 );
                                 continue;

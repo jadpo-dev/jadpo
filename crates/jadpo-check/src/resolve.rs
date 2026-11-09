@@ -1549,7 +1549,7 @@ impl Names<'_> {
                     .reason(format!(
                         "The dot names who owns what you call, and `{member}` belongs to `{qualifier}` itself, so code there calls it by its bare name."
                     ))
-                    .next(format!("Call `{member}(...)` without `{qualifier}.`"))
+                    .next(format!("Remove `{qualifier}.` and import `{member}` on a `use` line; `jadpo fmt` adds it"))
                     .edit(Span::new(self.path, qualifier_span.start, end), ""),
                 );
                 return;
