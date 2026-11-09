@@ -232,7 +232,13 @@ impl Reader<'_> {
         }
         let (bound, ty) = self.value(scope, &value, &Ty::Prim(Prim::Int))?;
         if self.lookup.is_nullable(&ty) {
-            self.optional_in_where(scope, &value);
+            self.optional_outside_where(
+                scope,
+                &value,
+                &format!("`{what}:` needs a value on every call"),
+                "Every list is bounded on every call, so what bounds it is always there; `where_present:` is for a filter a call may leave out.",
+                "Pass a value that is always there",
+            );
             return None;
         }
         if self.lookup.representation(&ty) != Some(Prim::Int) {

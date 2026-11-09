@@ -700,6 +700,28 @@ impl Reader<'_> {
         );
     }
 
+    /// `value` may be absent where a query needs one on every call, in a
+    /// section that `where_present:` can't stand in for.
+    pub(super) fn optional_outside_where(
+        &mut self,
+        scope: &Scope<'_>,
+        value: &Expr,
+        needs: &str,
+        reason: &str,
+        next: &str,
+    ) {
+        let written = shown(value.syntax());
+        self.out.push(
+            Diagnostic::new(
+                &rule::QUERY_OPTIONAL_VALUE,
+                format!("`{written}` may be absent, and {needs}"),
+            )
+            .at(Self::span(scope.path, value), "may be `none`")
+            .reason(reason.to_string())
+            .next(next.to_string()),
+        );
+    }
+
     pub(super) fn mismatch(&mut self, scope: &Scope<'_>, value: &Expr, actual: &Ty, expected: &Ty) {
         let written = shown(value.syntax());
         self.out.push(
