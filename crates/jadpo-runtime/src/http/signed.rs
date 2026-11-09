@@ -359,7 +359,7 @@ fn unhex16(text: &str) -> Option<[u8; 16]> {
 const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 /// `bytes` in base64url, without padding.
-fn base64url(bytes: &[u8]) -> String {
+pub(crate) fn base64url(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let n = chunk.iter().enumerate().fold(0u32, |n, (at, byte)| {
@@ -375,7 +375,7 @@ fn base64url(bytes: &[u8]) -> String {
 
 /// The bytes base64url text without padding holds; `None` when it isn't
 /// such text.
-fn unbase64url(text: &str) -> Option<Vec<u8>> {
+pub(crate) fn unbase64url(text: &str) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(text.len() * 3 / 4);
     let digits: Vec<u32> = text
         .bytes()

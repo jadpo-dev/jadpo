@@ -659,7 +659,8 @@ test "a body cut into segments" {
 /// recursion to the limits; with a `File` held to its field (chunk B1),
 /// a person's erasure (chunk P3, `crate::erasure`), a file's bytes
 /// deleted once no record holds them, the bytes each store keeps among
-/// the records (chunk B3, `crate::file_deletes`), and the audit trail
+/// the records (chunk B3, `crate::file_deletes`), a file downloaded (chunk
+/// B4, `crate::file_downloads`), and the audit trail
 /// (chunk B11, `crate::audit`).
 fn parity_projects() -> Vec<(String, PathBuf)> {
     let caught: Vec<(String, String)> = PACKAGE_CAUGHT
@@ -725,6 +726,14 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             "a file's bytes deleted".into(),
             corpus_project(&crate::file_deletes::files(), "compiled-file-deletes")
                 .expect("it checks"),
+        ),
+        (
+            "a file downloaded".into(),
+            corpus_project(
+                &crate::file_downloads::files("/var/lib/bakery/sheets"),
+                "compiled-file-downloads",
+            )
+            .expect("it checks"),
         ),
         (
             "an audit trail".into(),

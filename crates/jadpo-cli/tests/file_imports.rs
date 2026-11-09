@@ -957,6 +957,7 @@ fn a_whole_read_gives_the_bytes_and_a_full_store_fails_as_mapped() {
             None,
             jadpo_std::files::WHOLE_READ_LIMIT as i64 + 1,
             "csv",
+            None,
         );
         let (refused, _) = stand.call(program, "sheet_bytes", vec![large]).await;
         assert!(

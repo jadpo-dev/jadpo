@@ -437,6 +437,8 @@ impl Reply {
 pub enum ServerEvent {
     /// The next part of the answer.
     Piece(String),
+    /// Some of a file's bytes, sent as they are (area 16, "Downloading").
+    Bytes(Vec<u8>),
     /// The answer is whole.
     Done,
     /// It stopped before it was whole, with the runtime's failure: its
@@ -452,6 +454,7 @@ impl ServerEvent {
     /// blank line.
     pub fn written(&self, request_id: &str) -> Vec<u8> {
         let (name, data) = match self {
+            ServerEvent::Bytes(bytes) => return bytes.clone(),
             ServerEvent::Piece(text) => {
                 let mut data = String::from("{\"text\":");
                 jadpo_value::json::write_string(text, &mut data);
@@ -470,7 +473,7 @@ impl ServerEvent {
 
     /// Whether it is the last.
     pub fn ends(&self) -> bool {
-        !matches!(self, ServerEvent::Piece(_))
+        !matches!(self, ServerEvent::Piece(_) | ServerEvent::Bytes(_))
     }
 }
 

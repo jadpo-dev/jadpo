@@ -54,7 +54,7 @@ and a conformance suite that a package filling it must pass.
 
 The table gives each capability's whole job, and not all of it works yet.
 `documents`, `bot_check`, `scanning` and `publishing` aren't built, and `files`
-has only its disk driver, with no signed links or upload slots
+has only its disk driver, with signed links but no upload slots
 ([What is built](#what-is-built)).
 
 ## Feature flags
@@ -936,13 +936,64 @@ A deployable built for Workers that uses `Driver.disk` is refused
 ([`deployable.target_unsupported`](../errors/deployable.target_unsupported.md)).
 `jadpo dev`'s disk driver answers a full disk with `storage_full`.
 
+### Downloading
+
+An `Output` that picks a `File` field sends a signed link valid for five
+minutes, with the file's name, size and type. The read has already passed
+policy, field restrictions included, so there is no separate download
+operation to protect. A `File` in a failure's `client:` field goes out the
+same way.
+
+The link goes out as an object. `url` is relative, since your app's own
+origin serves it:
+
+```json
+{ "url": "/files/sheets/eyJrIjoi…", "name": null, "size": 1234, "type": "text/csv" }
+```
+
+`name` is `null` for a file `store.put` made, which has no name of its own. A
+person's [export](15-personal-data.md#export) holds the same object for each
+`File` field it reaches.
+
+The link is `GET /files/<store>/<link>`: `<link>` is a signed value naming
+the file, what it holds and when the link expires, so answering one reads no
+record. A link names one file in one store: it is good for nothing else,
+and an altered or expired link is `403`, `link_invalid` or `link_expired`.
+It holds the file's name, so don't put it where a name shouldn't be seen,
+and a client should ask for a new one rather than keep it. A file whose
+bytes have gone answers `404` `file_not_found`. These answers count against
+the default rate limits as any request does.
+
+A route that repeats its answer for an `Idempotency-Key` repeats the link it
+first gave, which may have expired by then.
+
+On the disk driver your app serves downloads from its own origin. It
+answers single-range `Range` requests and `If-Range`, with an ETag from the
+file's hash, and reads in fixed sizes, so a 2 GB download uses the memory a
+2 KB one does. A `Range` that isn't one well-formed range of bytes, a list
+of several among them, is read as no `Range` at all, so the whole file comes
+once. A well-formed range past the end of the file is `416`. A file kept
+before files were hashed has no ETag, and a `Range` with `If-Range` is then
+answered whole. Because the origin is your app's own, every download is sent
+with `Content-Disposition: attachment` (except for `png`, `jpeg` and `webp`
+images, which are `inline`), `X-Content-Type-Options: nosniff` and
+`Content-Security-Policy: sandbox`. The client's file name only ever goes in
+`filename*` (RFC 6266), and a file with no name is saved as `download.` and
+its type's extension.
+
+The key that signs a store's links is the store's own: 32 random bytes in
+`link-key` in its folder, made the first time a link is needed, the app's
+user's alone, which no file's key can name. Following a link makes none.
+Deleting it ends every link the store has given, and the next link makes
+another.
+
 ### Not built yet
 
 The rest of this topic is the design for what comes next, and none of it
-works today. Today your app writes files with `put` and keeps them on the disk
-driver. A client's file can reach your app only inside a request, within the
-1 MB limit on a request body ([What is refused](07-http.md#what-is-refused)),
-and a client can't fetch a file back.
+works today. Today your app writes files with `put`, keeps them on the disk
+driver and sends them back by [signed link](#downloading). A client's file
+can reach your app only inside a request, within the 1 MB limit on a request
+body ([What is refused](07-http.md#what-is-refused)).
 
 #### The S3 driver
 
@@ -1006,26 +1057,6 @@ An upload sent with a `Content-Encoding` is refused. A gzip file, such as
 going past that size fails the file, so a small upload can't unpack to
 gigabytes. That reading is built ([Reading gzip](#reading-gzip)). Jadpo
 unpacks no other compression and no archives, such as zip.
-
-#### Downloading
-
-An `Output` that picks a `File` field sends a signed link valid for five
-minutes, with the file's name, size and type. The read has already passed
-policy, field restrictions included, so there is no separate download
-operation to protect.
-
-Downloads aren't built yet. Until they are, a `File` in a route's `output:`
-is `toolchain.not_built_yet`, directly or through what it holds
-([What a `File` holds](#what-a-file-holds)).
-
-On the disk driver your app serves downloads from its own origin. It
-answers single-range `Range` requests and `If-Range`, with an ETag from the
-file's hash, and reads in fixed sizes, so a 2 GB download uses the memory a
-2 KB one does. Because the origin is your app's own, every download is sent
-with `Content-Disposition: attachment` (except for an allow-list of image
-types), `X-Content-Type-Options: nosniff` and
-`Content-Security-Policy: sandbox`. The client's file name only ever goes in
-`filename*` (RFC 6266).
 
 #### Image variants and scanning
 
@@ -4337,8 +4368,9 @@ them).
 ### What a `File` holds
 
 A `File` holds the connection its bytes are in, the key the runtime made
-for them, its name (none for one `store.put` made), its size and its
-`FileType`. It is kept as its JSON in a `jsonb` column.
+for them, its name (none for one `store.put` made), its size, its
+`FileType` and the hash of its bytes. It is kept as its JSON in a `jsonb`
+column.
 
 Only the runtime builds one: `File { ... }` is `type.not_record`.
 
@@ -4347,10 +4379,9 @@ file. It is `type.batch_input` in an `Input` or a route's placeholder, in an
 operation's `output:` or `wire_output:`, in a webhook's event, and in an event
 a queue lists.
 
-A route sends a `File` as a signed link, which comes with
-[downloads](#downloading). Until those are built, a `File` in a route's
-`output:` or a failure's `client:` is `toolchain.not_built_yet`. A failure's
-`internal:` fields stay on the server and may hold one.
+A route sends a `File` as a [signed link](#downloading), in its `output:` and
+in a failure's `client:` alike. A failure's `internal:` fields stay on the
+server and may hold one.
 
 Sending a file to a provider isn't built. A `File` in an operation's `input:`
 or a webhook's `reply:` is `toolchain.not_built_yet`, since the provider would
@@ -4941,7 +4972,7 @@ The errors this page describes are built with the feature they belong to.
 | The dev inbox and the health score | Partly built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
 | Rate limits | Partly built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. A generated route's own limits don't appear in OpenAPI's `x-jadpo-rate-limit` or `jadpo routes`, and a magic-link refusal gives `Retry-After` without the `RateLimit` headers. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |
 | Outside calls | Built: the one place in the runtime every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([How every outside call is made safe](#how-every-outside-call-is-made-safe)). |
-| Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). Not built yet: upload slots, multipart ones included, downloads, fields naming one store of files in entities of two databases, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written; and the `jadpo files` commands (`ls`, `show`, `get`, `put` and `copy`). |
+| Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). A `File` an `Output` or a person's export reaches goes out as a signed link valid for five minutes, served from the disk with single ranges, `If-Range` and an ETag from the file's hash ([Downloading](#downloading)). Not built yet: upload slots, multipart ones included, fields naming one store of files in entities of two databases, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written; and the `jadpo files` commands (`ls`, `show`, `get`, `put` and `copy`). |
 | Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flag rules: declaring, reading, testing](#flag-rules-declaring-reading-testing)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flag rules: changing, listing, removing](#flag-rules-changing-listing-removing)). Not built yet: named tenants, which wait for tenancy to be settled for flags; and a user's erasure reaching their `id` in `jadpo_flags` and `jadpo_flag_changes`, which comes with erasures. |
 | Audit | Partly built: an entity's `audit:`, an entry in the same transaction as each change, `history` with the record's `read` grant and the fields the caller can read, retention by the purge schedule, entries deleted with their record by erasure, `AuditEntryRecorded` to subscribers, and the permissions report's line ([Audit trail](#audit-trail)). Not built yet: what [What the audit trail doesn't keep yet](#what-the-audit-trail-doesnt-keep-yet) lists, each `toolchain.not_built_yet` where it is written, and `publishing`, which comes with outgoing webhooks. |
 | Search | Partly built: on PostgreSQL, `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages. |

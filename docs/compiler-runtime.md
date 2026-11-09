@@ -5316,6 +5316,23 @@ store's keys, `path:` against `Project::folder` (the project's folder
 with links resolved) and `free_space_floor:`; `jadpo_cli::stamp` lists
 each deployable's reached disk stores as the manifest's `one_server`
 (chunk B2).
+Downloading a file (chunk B4, `jadpo_runtime::http::downloads`): a
+`File` an `Output` holds is written as a `jadpo_std::files::FILE_LINK`
+through the route table's codecs (`Codecs::sending_links`), the value
+rewritten by `downloads::Linker` before writing for a route whose plan
+says it holds one (`RoutePlan::links`) and for each failure's client
+fields; a person's export writes its `File` fields through the link's
+own codec. `GET /files/<store>/<link>` is answered ahead of the route
+trie for a store whose driver gives a key
+(`Capability::link_key`), the link signed with BLAKE3 under a key
+derived from the store's own (`link-key` in its folder, made with
+`linkat` so concurrent workers agree) and the store's name; a `File`'s
+hash comes from its put or the join an export ends with. The bytes are
+sent as a body of `stream::ServerEvent::Bytes` chunks, each a capability
+`read` of a 64 KiB window on the host the stream is attached to, the
+first read before the answer begins so a file gone is a 404. A route
+test follows a link with `request { link: }`
+(`body::Expr::Download`, `downloads::link_test`).
 Deleting a file's bytes (chunk B3): `jadpo_check::data::held::counters`
 gives each store of files the database whose entities' `File` fields
 name it, which the schema gives `jadpo_std::system::FILES`

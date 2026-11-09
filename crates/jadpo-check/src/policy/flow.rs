@@ -2172,7 +2172,7 @@ impl Walk<'_> {
                 }
                 out
             }
-            Expr::Request { .. } => Prov::default(),
+            Expr::Request { .. } | Expr::Download { .. } => Prov::default(),
             // It runs once for each item, so what it gives keeps no
             // turn's own record.
             Expr::Inline { body, .. } => match body {

@@ -207,7 +207,8 @@ impl Site {
                 Expr::Reject { .. }
                 | Expr::Propagate { .. }
                 | Expr::Write { .. }
-                | Expr::Request { .. },
+                | Expr::Request { .. }
+                | Expr::Download { .. },
             ) => true,
             Node::Expr(Expr::Binary { op, .. }) => op.can_fault(),
             Node::Expr(Expr::Unary { op, .. }) => *op == UnaryOp::Negate,
@@ -381,6 +382,13 @@ pub enum Expr {
         /// A10); by magic link with one factor when left out.
         sign_in: Option<SiteId>,
         strength: Option<SiteId>,
+    },
+    /// `request { link: ... }` in a route test (area 13): a file's signed
+    /// link followed, with the `Range` it sends, answered with a `Response`
+    /// (`status`, `code`, `body`).
+    Download {
+        link: SiteId,
+        range: Option<SiteId>,
     },
     /// `item -> expression`, or `(key, value) -> expression`, given to a
     /// standard operation: its parameters in order.

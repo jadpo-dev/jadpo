@@ -1055,17 +1055,6 @@ impl Decls<'_> {
                             .push(batch_input(&format!("`{host}.{name}`"), batch, span));
                         continue;
                     }
-                    // A `File` goes out as a signed link, which comes with
-                    // downloads (area 16, "Downloading").
-                    if self.sent && held_file(self.table, &declared, &mut Vec::new()).is_some() {
-                        let span = self.span(value.syntax());
-                        self.out.push(file_sent(
-                            &format!("`{host}`'s `client:`"),
-                            &format!("{host}.{name}"),
-                            span,
-                        ));
-                        continue;
-                    }
                     if self.sent && held_contents(self.table, &declared, &mut Vec::new()).is_some()
                     {
                         let span = self.span(value.syntax());
@@ -3169,20 +3158,6 @@ fn is_file_name(held: &str) -> bool {
 }
 
 /// `toolchain.not_built_yet`: `held`, in an answer a route sends, at
-/// `span`: its `output:`, or a failure's `client:` field.
-pub(crate) fn file_sent(what: &str, held: &str, span: Span) -> Diagnostic {
-    Diagnostic::new(
-        &rule::TOOLCHAIN_NOT_BUILT_YET,
-        format!("{what} sends a `File`, in `{held}`, and sending one isn't built yet"),
-    )
-    .at(span, "decided, not built")
-    .reason("A route sends a `File` as a signed link, which comes with downloads. Until they are built, the answer would hold the store and key the file is kept under, and the API's OpenAPI document couldn't describe it.")
-    .next(format!(
-        "Leave `{held}` out of what the route sends, and send the fields a client needs"
-    ))
-}
-
-/// `toolchain.not_built_yet`: `held`, in what `what` sends a provider, at
 /// `span`: an operation's `input:`, or a webhook's `reply:`.
 pub(crate) fn file_sent_to_provider(what: &str, held: &str, span: Span) -> Diagnostic {
     Diagnostic::new(
@@ -3222,7 +3197,7 @@ pub(crate) fn contents_sent(what: &str, held: &str, span: Span) -> Diagnostic {
         format!("{what} sends a file's bytes, in `{held}`, and sending them isn't built yet"),
     )
     .at(span, "decided, not built")
-    .reason("A route sends a file as a signed link, which comes with downloads. Until they are built, the answer would hold the whole file as Base64 in its JSON, which nothing has decided a client gets.")
+    .reason("A route sends a stored `File` as a signed link, not its bytes. An answer holding a `FileContents` would hold the whole file as Base64 in its JSON, which nothing has decided a client gets.")
     .next(format!(
         "Leave `{held}` out of the answer, and send the fields the client needs"
     ))

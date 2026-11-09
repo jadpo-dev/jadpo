@@ -434,6 +434,7 @@ mod tests {
             stream: false,
             sends: None,
             immutable: false,
+            links: false,
             keys: Some("main".into()),
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Public,

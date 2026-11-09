@@ -249,6 +249,9 @@ pub(crate) struct Facts {
     pub constants: BTreeMap<NodeKey, (Option<String>, String)>,
     /// Each `request { ... }` in a route test (area 13).
     pub requests: BTreeMap<NodeKey, super::request::RequestFact>,
+    /// Each `request { link: }` in a route test (area 13): a file's link
+    /// followed, which names no route.
+    pub downloads: std::collections::BTreeSet<NodeKey>,
     /// Each answer a test's `fakes:` scripts, by its expression (area 13;
     /// chunk 7.2d).
     pub fakes: BTreeMap<NodeKey, super::fakes::FakeFact>,

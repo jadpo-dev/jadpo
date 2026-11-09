@@ -100,6 +100,8 @@ pub(crate) enum Target {
         way: bool,
         strong: bool,
     },
+    /// A route test's `request { link: }` (area 13).
+    Download,
     /// `sessions.start` or `sessions.end` (area 8).
     Session(jadpo_std::http::SessionOp),
     /// `batches.each`, by the number its site decodes, or with `None`
@@ -1283,6 +1285,7 @@ impl<'p> Machine<'p> {
                     | Target::Export(_)
                     | Target::Write(_)
                     | Target::Request { .. }
+                    | Target::Download
                     | Target::Session(_)
                     | Target::Batch(..)
                     | Target::Files(..)
@@ -1967,6 +1970,18 @@ impl<'p> Machine<'p> {
             Expr::Call { callee, args, .. } => return self.call(ctx, id, callee, args),
             // A route test's request (area 13): its placeholders and input
             // worked out, then the runtime's HTTP component answers it.
+            Expr::Download { link, range } => {
+                let parts: Vec<SiteId> = std::iter::once(*link).chain(*range).collect();
+                self.tasks.push(Task::Invoke {
+                    target: Target::Download,
+                    count: parts.len(),
+                    at: id,
+                    then: None,
+                });
+                for site in parts.into_iter().rev() {
+                    self.tasks.push(Task::Expr(site));
+                }
+            }
             Expr::Request {
                 route,
                 params,

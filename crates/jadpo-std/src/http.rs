@@ -1131,13 +1131,22 @@ pub const DECODE_PROBLEM_FIELDS: [(&str, crate::Builtin); 2] = [
     ("rule", crate::Builtin::Text),
 ];
 
+/// A file's signed link as an API's record lists it.
+const FILE_LINK_RECORD_FIELDS: [(&str, crate::Builtin); 4] = [
+    ("url", crate::Builtin::Text),
+    ("name", crate::Builtin::Text),
+    ("size", crate::Builtin::Int),
+    ("type", crate::Builtin::Text),
+];
+
 /// The fields of a built-in object type the boundary carries, which the
 /// runtime builds and a program only reads: `IssuedToken` and `IssuedKey`
-/// (area 8), and `DecodeProblem` (area 19).
+/// (area 8), `DecodeProblem` (area 19) and a file's signed link (area 16).
 pub fn builtin_object_fields(name: &str) -> Option<&'static [(&'static str, crate::Builtin)]> {
     match name {
         ISSUED_TOKEN | ISSUED_KEY => Some(&ISSUED_FIELDS),
         DECODE_PROBLEM => Some(&DECODE_PROBLEM_FIELDS),
+        crate::files::FILE_LINK => Some(&FILE_LINK_RECORD_FIELDS),
         _ => None,
     }
 }
@@ -1440,6 +1449,10 @@ pub struct RoutePlan {
     /// route test reads the body back through.
     #[serde(default)]
     pub sends: Option<Sends>,
+    /// Whether what it answers can hold a `File`, each sent as its signed
+    /// link (area 16, "Downloading"): so an answer with none is written
+    /// as it is.
+    pub links: bool,
     /// `cache: immutable`: its 200 says a public cache may keep it for
     /// good ([`CACHE_IMMUTABLE`]; chunk G3).
     #[serde(default)]

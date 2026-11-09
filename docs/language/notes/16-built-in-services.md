@@ -66,6 +66,23 @@ Why [Built-in services](../16-built-in-services.md) is the way it is: the decisi
 - **Resend as the second mail connection.** Resend was chosen over
   Postmark, whose credential header no `CredentialScheme` sends yet.
 
+- **Who signs a download link.** A store of files keeps the key its links
+  are signed with in its own folder (`link-key`, made on first use, the app's
+  user's alone), since the disk driver is one server and needs no setting.
+  A key in the same place as the files gives anyone who could forge a link
+  no more than they had. A link is a relative address, since the origin is
+  the app's own and a `Host` header isn't to be trusted.
+- **What a `Range` it won't serve is.** The pages say single ranges only.
+  A list of ranges, overlapping or not, is read as no `Range` (RFC 9110
+  lets a server ignore one), so the whole file is sent once and a list can't
+  ask for a piece many times over. Malformed ones are treated the same; a
+  well-formed range past the end is `416`.
+- **The file's hash.** A `File` keeps it from the put, or from the join an
+  export ends with, so a ranged read never hashes the whole file to make
+  its ETag. A `File` kept before files were hashed has none, and no ETag.
+- **Refusals.** An expired or altered link is `403`, `link_expired` or
+  `link_invalid`, as a signed S3 link is.
+
 ## Carried to later areas
 
 | Item | Area | Status |
@@ -163,7 +180,6 @@ Why [Built-in services](../16-built-in-services.md) is the way it is: the decisi
 | Rules generated (chunk B13) | `build/monitoring/prometheus.yaml`, an alert per across-request limit and floor, and `build/monitoring/openslo.yaml`, an `Occurrences` SLO per percentile and `server_failures:` over a rolling `within:`, a percentile being the share done within its duration; conditions (`oldest_waiting:`, floors) in Prometheus only. They read OpenTelemetry's `http.server.request.duration` for routes and Jadpo's `jadpo.run.duration`, `jadpo.delivery.oldest_waiting` and `jadpo.files.free`, which the `telemetry:` section must send, each duration histogram with a bucket at every threshold's duration |
 | Settled for the build | `store.read` capped at the 10 MB whole-read limit, a larger `max_size` a compile error pointing at the format helpers or `batches.each`; `store.put` a keyed step in a multi-step action; variants read as `field.variants.<name>`; metrics `Counter`, `Measure` and `Gauge`, labels only enums and `Bool`; `telemetry.note(name: value)` with text, numbers, `Bool` or enums; `send:` default traces and metrics on, logs from `LogLevel.warn`; `documents: { layout: }` names the shared document layout; engine-backed `matches` queries take only equality on indexed fields |
 | A file that doesn't fit its field | Every create, update and patch that sets a `File` field checks the file's store, type and size against the field's `store:`, `types:` and `max_size:` before its statement runs, store first, then type, then size; a mismatch is the defect `file_refused`, with nothing the action wrote kept. A fault, not a failure, since only the runtime makes a `File`, from what the action gave `put`, as a whole read past 10 MB of a `File` whose field isn't known is one; a client's upload breaking the same settings is `invalid_value` when uploads come (chunk B1) |
-| A `File` at a route, until downloads are built (chunk A24, 2026-11-04) | Refused at the route's `output:` and in a failure's `client:`, `toolchain.not_built_yet`, since the answer held the store and key and OpenAPI gave `{"enum": []}`. Refused in an `Input` and a placeholder, `type.batch_input`, since a request could name any file: a made-up `File` was kept by a route before this. A failure's `internal:` fields stay allowed |
 | A `File` at a provider, until sending one is built (chunk A25, 2026-11-05) | Refused in an operation's `input:` and a webhook's `reply:`, `toolchain.not_built_yet`, since both were written as the `File`'s record: a provider received the store and key, and a signed webhook was answered with them. Refused in an operation's `output:` and `wire_output:`, a webhook's event and an event a queue lists, `type.batch_input`, since a provider or a sender could name any file. All use `held_file`, as a route's output does, and a prompt's field uses it too, because a placeholder holding an `Object` is written as its JSON. Anything that sends values out when it is built, `publishing:`, outgoing webhooks and `documents:`, needs the same check |
 | A `File`'s parts (chunk A26, 2026-11-05) | Reading any part is `type.field_on_non_record`, in code and in a template, since nothing could run it: code would stop with a fault and a template would write nothing. The same goes for `FileContents`. Other built-in values read through the same unchecked path; only these two are refused |
 | An attachment's name (chunk A26, 2026-11-05) | A file's own name, or else the email's field and the file's type, `invoice.pdf`: Richard's choice, so that a recipient sees nothing of the key |

@@ -99,8 +99,9 @@ pub(crate) fn table(
     let apis = routes::api_table(db, project);
     let identity = jadpo_check::identity::identity(db, project);
     let lookup = jadpo_check::lookups::Lookup::new(db, project);
-    let mut codecs =
-        Codecs::new(types).supporting(jadpo_check::locales::locales(db, project).plan.clone());
+    let mut codecs = Codecs::new(types)
+        .supporting(jadpo_check::locales::locales(db, project).plan.clone())
+        .sending_links();
     let mut out = RouteTable {
         apis: apis
             .apis
@@ -321,6 +322,10 @@ pub(crate) fn table(
             stream,
             sends: route.sends.clone(),
             immutable: route.immutable,
+            links: route
+                .output
+                .as_ref()
+                .is_some_and(|ty| jadpo_check::types::holds_file(&lookup, ty)),
             keys,
             args,
             authentication: route.authentication,
@@ -365,6 +370,7 @@ pub(crate) fn table(
             settle: None,
             stream: false,
             sends: None,
+            links: false,
             immutable: false,
             keys: None,
             args: Vec::new(),
@@ -403,6 +409,7 @@ pub(crate) fn table(
             settle: None,
             stream: false,
             sends: None,
+            links: false,
             immutable: false,
             keys: None,
             args: Vec::new(),
@@ -453,6 +460,7 @@ pub(crate) fn table(
                 settle: None,
                 stream: false,
                 sends: None,
+                links: false,
                 immutable: false,
                 keys: None,
                 args: Vec::new(),
@@ -487,6 +495,7 @@ pub(crate) fn table(
                     settle: None,
                     stream: false,
                     sends: None,
+                    links: false,
                     immutable: false,
                     keys: None,
                     args: Vec::new(),
@@ -525,6 +534,7 @@ pub(crate) fn table(
                 settle: None,
                 stream: false,
                 sends: None,
+                links: false,
                 immutable: false,
                 keys: None,
                 args: Vec::new(),
@@ -571,6 +581,7 @@ pub(crate) fn table(
                 settle: None,
                 stream: false,
                 sends: None,
+                links: false,
                 immutable: false,
                 keys: None,
                 args: Vec::new(),
@@ -618,6 +629,7 @@ pub(crate) fn table(
             settle: None,
             stream: false,
             sends: None,
+            links: false,
             immutable: false,
             keys: None,
             args: Vec::new(),
@@ -665,6 +677,8 @@ pub(crate) struct Codecs<'t> {
     /// `Locale` on the wire is one of these or an invalid value (area 10,
     /// "Locales").
     locales: Option<jadpo_std::LocalePlan>,
+    /// Whether a `File` is written as its signed link: what a route sends.
+    links: bool,
 }
 
 /// What a type is made of, for its codec.
@@ -707,13 +721,37 @@ impl<'t> Codecs<'t> {
             codecs: Vec::new(),
             ids: HashMap::new(),
             locales: None,
+            links: false,
         }
+    }
+
+    /// Writes a `File` as its signed link, as a route sends one.
+    pub(crate) fn sending_links(mut self) -> Codecs<'t> {
+        self.links = true;
+        self
     }
 
     /// Reads a `Locale` as one of `locales` only.
     pub(crate) fn supporting(mut self, locales: Option<jadpo_std::LocalePlan>) -> Codecs<'t> {
         self.locales = locales;
         self
+    }
+
+    /// An `Int` codec's twin that writes a JSON number.
+    fn as_number(&mut self, id: CodecId) -> CodecId {
+        let Some(Codec::Scalar {
+            builtin, validator, ..
+        }) = self.codecs.get(id.0 as usize).cloned()
+        else {
+            return id;
+        };
+        let number = CodecId(self.codecs.len() as u32);
+        self.codecs.push(Codec::Scalar {
+            builtin,
+            validator,
+            int_as_number: true,
+        });
+        number
     }
 
     /// Every codec numbered, by number.
@@ -984,7 +1022,16 @@ impl<'t> Codecs<'t> {
                 let fields = jadpo_std::batch::kept_fields(name)
                     .unwrap_or_default()
                     .iter()
-                    .map(|(_, part)| self.codec(&crate::types::batch_part(*part)))
+                    .map(|(field, part)| {
+                        let id = self.codec(&crate::types::batch_part(*part));
+                        // A link's size goes out as a JSON number: no file
+                        // comes near the size where one loses precision.
+                        if name == jadpo_std::files::FILE_LINK && *field == "size" {
+                            self.as_number(id)
+                        } else {
+                            id
+                        }
+                    })
                     .collect();
                 Codec::Object {
                     shape,
@@ -1158,9 +1205,14 @@ impl<'t> Codecs<'t> {
                     }
                     if let Some(batch) = jadpo_std::batch::OBJECTS
                         .into_iter()
-                        .chain([jadpo_std::files::FILE])
+                        .chain([jadpo_std::files::FILE, jadpo_std::files::FILE_LINK])
                         .find(|object| *object == name)
                     {
+                        // In what a route sends, a `File` is its signed
+                        // link (area 16, "Downloading").
+                        if self.links && batch == jadpo_std::files::FILE {
+                            return Made::Batch(jadpo_std::files::FILE_LINK);
+                        }
                         return Made::Batch(batch);
                     }
                     return match routes::wire::issued_name(&name) {
