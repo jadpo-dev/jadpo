@@ -366,6 +366,34 @@ fn events_plan(
             subscriber.elsewhere()
         });
     }
+    // A data request's steps, each a delivery due when the step is: tried
+    // for as long as a request may take, then left for an operator (area
+    // 15, "Data requests").
+    let privacy = privacy_steps(db, project, setting);
+    if let Some(steps) = &privacy {
+        let subscriber = SubscriberPlan {
+            key: jadpo_std::privacy::STEPS_SUBSCRIBER.to_string(),
+            name: "carry out data requests".to_string(),
+            event: jadpo_std::privacy::STEP_EVENT.to_string(),
+            target: Target::PrivacySteps {
+                exports: steps.exports.as_ref().map(|exports| exports.store.clone()),
+            },
+            attempts: jadpo_std::erasure::ATTEMPTS,
+            within_ms: jadpo_std::erasure::WITHIN_MS,
+            // It reaches every tenant's records, as erasure does.
+            tenant: TenantFrom::Untenanted,
+            store: None,
+            connections: Vec::new(),
+            through: None,
+            file: "app.jadpo".to_string(),
+            line: 1,
+        };
+        subscribers.push(if running {
+            subscriber
+        } else {
+            subscriber.elsewhere()
+        });
+    }
     subscribers.sort_by(|a, b| a.key.cmp(&b.key));
     jadpo_std::subscriber::EventsPlan {
         subscribers,
@@ -375,7 +403,70 @@ fn events_plan(
         emails,
         files,
         erasure,
+        privacy,
     }
+}
+
+/// What a data request's steps need (area 15, "Data requests"), when the
+/// application takes them.
+fn privacy_steps(
+    db: &dyn Db,
+    project: Project,
+    setting: &dyn Fn(&str) -> Option<u32>,
+) -> Option<jadpo_std::privacy::PrivacySteps> {
+    use jadpo_std::http::PrincipalKind;
+    let privacy = jadpo_check::privacy::privacy(db, project);
+    if !privacy.takes_requests() {
+        return None;
+    }
+    let identity = jadpo_check::identity::identity(db, project);
+    let user = identity.variant(PrincipalKind::User)?;
+    let model = jadpo_check::data::data_model(db, project);
+    let entity = model.entity(&user.entity)?;
+    let address = jadpo_check::privacy::address_field(identity, user)
+        .and_then(|name| entity.fields.iter().find(|field| field.name == name))
+        .map(|field| jadpo_sql::identity::address_by_id(&entity.table, &field.born));
+    let translations = jadpo_check::translations::plan(db, project);
+    let kept = jadpo_check::privacy::kept_entities(db, project)
+        .iter()
+        .filter_map(|name| {
+            let key = jadpo_check::translations::kept_wording_key(db, project, name)?;
+            let (_, wording) = translations.entry(&key)?;
+            Some(jadpo_std::privacy::Kept {
+                entity: name.clone(),
+                wording: wording.clone(),
+            })
+        })
+        .collect();
+    Some(jadpo_std::privacy::PrivacySteps {
+        store: user.store.clone(),
+        person: user.entity.clone(),
+        address,
+        exports: privacy
+            .exports
+            .as_ref()
+            .map(|exports| jadpo_std::privacy::Exports {
+                store: exports.store.clone(),
+                keep_ms: exports.keep_ms,
+                link: exports.link.clone(),
+            }),
+        origin: identity
+            .method(jadpo_std::AuthenticationMethod::BrowserSession)
+            .and_then(|method| method.origin.as_deref())
+            .and_then(setting),
+        locales: jadpo_check::locales::locales(db, project)
+            .plan
+            .clone()
+            .unwrap_or_else(|| {
+                let en_gb = jadpo_std::locale_ordinal("en_gb").unwrap_or_default();
+                jadpo_std::LocalePlan {
+                    default: en_gb,
+                    supported: vec![en_gb],
+                    in_progress: Vec::new(),
+                }
+            }),
+        kept,
+    })
 }
 
 /// The schedule table (area 12, chunk 6.2): each schedule that reads
@@ -865,7 +956,19 @@ impl Plan {
                 _ => None,
             })
             .collect();
-        let keep_export = |key: &Key| pruning.is_none() || exported.contains(key);
+        // A data request's export and erasure read the person's records
+        // whether or not the application's own code ever does (area 15).
+        let requested: Option<Key> = jadpo_check::privacy::privacy(db, project)
+            .takes_requests()
+            .then(|| {
+                let identity = jadpo_check::identity::identity(db, project);
+                let user = identity.variant(jadpo_std::http::PrincipalKind::User)?;
+                types.named(&user.entity)
+            })
+            .flatten();
+        let keep_export = |key: &Key| {
+            pruning.is_none() || exported.contains(key) || requested.as_ref() == Some(key)
+        };
         let exports = export::plans(
             db,
             project,

@@ -89,6 +89,7 @@ mod num;
 mod operations;
 pub mod percentage;
 pub mod policy;
+pub mod privacy;
 pub mod prompt;
 pub mod provider;
 pub mod quantity;

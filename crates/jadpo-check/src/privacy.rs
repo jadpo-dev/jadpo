@@ -6,9 +6,8 @@
 //! generated routes for a person's requests. Anything under `privacy:`
 //! but the log turns those routes on. `self_service:` adds the routes
 //! anyone can use by email address, `path:` and `generate_routes:` move or
-//! switch them off, and `emails:` is built only as far as the address
-//! check's levels; the rest of it, and `exports:`, are
-//! `toolchain.not_built_yet` where they are written.
+//! switch them off, `exports:` says where exports are kept, `erasures:`
+//! how long an erasure waits, and `emails:` how each email is sent.
 
 use std::sync::Arc;
 
@@ -18,13 +17,12 @@ use jadpo_std::http::PrincipalKind;
 use jadpo_syntax::ast::{self, AstNode};
 
 use crate::data::ConnectionKind;
+use crate::identity::FirstSignIn;
 use crate::tree::{self, name_text, node_span};
 use crate::types::{Const, TypeView};
 
 /// The section's name.
 pub const PRIVACY: &str = "privacy";
-/// Why the rest of it isn't accepted.
-const NOT_BUILT: &str = "Delivering an export and carrying out an erasure aren't built yet: accepted, nothing would deliver what this setting describes.";
 
 /// `self_service:`: the frontend pages the emails link to.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,6 +45,14 @@ pub struct Privacy {
     pub on: bool,
     /// `self_service:`, when written.
     pub self_service: Option<SelfService>,
+    /// `exports:`, when it reads.
+    pub exports: Option<Exports>,
+    /// Whether it says `exports:` at all, read cleanly or not.
+    pub exports_written: bool,
+    /// `erasures: { cooling_off: }`, in milliseconds.
+    pub cooling_off_ms: i64,
+    /// `emails:`, each entry that says how its email is sent.
+    pub emails: Vec<OwnMail>,
     /// `path:`'s segments, `/privacy` unless it says.
     pub path: Vec<String>,
     /// `generate_routes:`: `false` generates no routes, and the
@@ -58,7 +64,35 @@ pub struct Privacy {
     pub problems: Vec<Diagnostic>,
 }
 
+/// `exports:`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Exports {
+    /// The store of files the encrypted files are kept in.
+    pub store: String,
+    /// How long a link and its file last, in milliseconds.
+    pub keep_ms: i64,
+    /// The frontend page a link opens.
+    pub link: String,
+}
+
+/// One entry of `emails:`: how one email is sent, as written.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OwnMail {
+    /// `address_check`, `export_ready`, `erasure_confirmed` or
+    /// `erasure_completed`.
+    pub setting: String,
+    /// `email:`, the application's own email (level 4).
+    pub email: Option<FirstSignIn>,
+    /// `send:`, the action that sends it itself (level 5).
+    pub send: Option<FirstSignIn>,
+}
+
 impl Privacy {
+    /// `emails:`'s entry for the email called `setting`, when it has one.
+    pub fn mail(&self, setting: &str) -> Option<&OwnMail> {
+        self.emails.iter().find(|mail| mail.setting == setting)
+    }
+
     /// Whether its data requests are on: routes or operations.
     pub fn takes_requests(&self) -> bool {
         self.on
@@ -76,6 +110,7 @@ pub fn privacy(db: &dyn Db, project: Project) -> Arc<Privacy> {
     let mut out = Privacy {
         path: vec![jadpo_std::http::PRIVACY_PATH.to_string()],
         generate_routes: true,
+        cooling_off_ms: jadpo_std::http::PRIVACY_COOLING_OFF_MS,
         ..Privacy::default()
     };
     let Some(file) = project
@@ -125,16 +160,20 @@ pub fn privacy(db: &dyn Db, project: Project) -> Arc<Privacy> {
                         out.on = true;
                         emails(path, &entry, &mut out);
                     }
-                    // Named on the page, delivered with the exports.
                     "exports" => {
                         out.on = true;
-                        out.problems.push(not_built(at, &name));
+                        out.exports_written = true;
+                        exports(db, project, path, &entry, &mut out);
+                    }
+                    "erasures" => {
+                        out.on = true;
+                        erasures(path, &entry, &mut out);
                     }
                     _ => {
                         out.problems.push(unknown(
                             at,
                             format!("`{name}` isn't a setting of `privacy:`"),
-                            "`privacy:` says where the erasure log is kept and how a person makes a data request: `erasure_log:`, `self_service:`, `path:`, `generate_routes:`, `emails:` and `exports:`.",
+                            "`privacy:` says where the erasure log is kept and how a person makes a data request: `erasure_log:`, `self_service:`, `path:`, `generate_routes:`, `exports:`, `erasures:` and `emails:`.",
                             format!("Remove `{name}:`"),
                         ));
                     }
@@ -143,16 +182,6 @@ pub fn privacy(db: &dyn Db, project: Project) -> Arc<Privacy> {
         }
     }
     Arc::new(out)
-}
-
-fn not_built(at: Span, name: &str) -> Diagnostic {
-    Diagnostic::new(
-        &rule::TOOLCHAIN_NOT_BUILT_YET,
-        format!("`privacy: {{ {name}: }}` isn't built yet"),
-    )
-    .at(at, "decided, not built")
-    .reason(NOT_BUILT)
-    .next(format!("Remove `{name}:` for now"))
 }
 
 fn unknown(at: Span, title: String, reason: &str, next: String) -> Diagnostic {
@@ -241,33 +270,320 @@ fn generate_routes(_path: &str, at: Span, entry: &ast::Member, out: &mut Privacy
     }
 }
 
-/// `emails: { address_check: { } }`: the others are delivered with the
-/// exports and erasures they tell a person about.
+/// The name of each email `emails:` takes an entry for, with the built-in
+/// types of each: what `email:` picks from and what `send:` is given.
+const MAILS: [(&str, &str, &str); 4] = [
+    (
+        "address_check",
+        jadpo_std::email::PRIVACY_ADDRESS_CHECK_EMAIL_TYPE,
+        jadpo_std::email::PRIVACY_ADDRESS_CHECK_REQUEST,
+    ),
+    ("export_ready", "PrivacyExportEmail", "PrivacyExportRequest"),
+    (
+        "erasure_confirmed",
+        "PrivacyErasureConfirmedEmail",
+        "PrivacyErasureConfirmedRequest",
+    ),
+    (
+        "erasure_completed",
+        "PrivacyErasureCompletedEmail",
+        "PrivacyErasureCompletedRequest",
+    ),
+];
+
+/// `emails: { address_check: { } export_ready: { } ... }`, each entry
+/// taking `email:` or `send:`, never both.
 fn emails(path: &str, entry: &ast::Member, out: &mut Privacy) {
-    const OTHERS: [&str; 3] = ["export_ready", "erasure_confirmed", "erasure_completed"];
     for (setting, value) in tree::members(entry.block()) {
         let at = node_span(path, setting.syntax());
         let word = name_text(&setting).unwrap_or_default();
-        if word == "address_check" {
-            if let Some((own, _)) = tree::members(value.block()).first() {
-                let word = name_text(own).unwrap_or_default();
-                out.problems.push(not_built(
-                    node_span(path, own.syntax()),
-                    &format!("emails: {{ address_check: {{ {word}"),
-                ));
-            }
-        } else if OTHERS.contains(&word.as_str()) {
-            out.problems
-                .push(not_built(at, &format!("emails: {{ {word}")));
-        } else {
+        if !MAILS.iter().any(|(name, _, _)| *name == word) {
             out.problems.push(unknown(
                 at,
                 format!("`{word}` isn't a privacy email"),
                 "`emails:` holds `address_check:`, `export_ready:`, `erasure_confirmed:` and `erasure_completed:`.",
                 format!("Remove `{word}:`"),
             ));
+            continue;
+        }
+        let mut mail = OwnMail {
+            setting: word.clone(),
+            email: None,
+            send: None,
+        };
+        for (own, written) in tree::members(value.block()) {
+            let name = name_text(&own).unwrap_or_default();
+            if name != "email" && name != "send" {
+                out.problems.push(unknown(
+                    node_span(path, own.syntax()),
+                    format!("`{name}` isn't a setting of `{word}:`"),
+                    "Each privacy email takes `email:`, the application's own email, or `send:`, an action of the application's that sends it.",
+                    format!("Remove `{name}:`"),
+                ));
+                continue;
+            }
+            let span = written.value().map_or_else(
+                || node_span(path, own.syntax()),
+                |v| node_span(path, v.syntax()),
+            );
+            let names: Option<Vec<String>> = written.value().as_ref().and_then(|value| {
+                tree::dotted(value).map(|(first, rest)| {
+                    std::iter::once(first)
+                        .chain(rest)
+                        .filter_map(|name| tree::name_ref_text(&name))
+                        .collect()
+                })
+            });
+            let Some(names) = names.filter(|names: &Vec<String>| (1..=2).contains(&names.len()))
+            else {
+                let (what, form) = if name == "email" {
+                    ("an email type", "<domain>.<Email>")
+                } else {
+                    ("an action", "<domain>.<action>")
+                };
+                out.problems.push(invalid(
+                    span,
+                    format!("`{name}:` must name {what}"),
+                    "`email:` names an `EmailMessage` type of the application's, `send:` an action of the application's.",
+                    &format!("Write `{form}`"),
+                ));
+                continue;
+            };
+            let named = FirstSignIn { names, span };
+            if name == "email" {
+                mail.email = Some(named);
+            } else {
+                mail.send = Some(named);
+            }
+        }
+        if mail.email.is_some() && mail.send.is_some() {
+            out.problems.push(invalid(
+                at,
+                format!("`{word}:` has both `email:` and `send:`"),
+                "`email:` names an email of the application's that Jadpo fills and sends; `send:` names an action that sends it some other way. One email is sent one way.",
+                "Keep `email:` or `send:`, not both",
+            ));
+            continue;
+        }
+        out.emails.push(mail);
+    }
+}
+
+/// A duration written in place, from `least` to `most` milliseconds.
+fn duration_of(entry: &ast::Member, least: i64, most: i64) -> Option<i64> {
+    let written = entry
+        .value()
+        .as_ref()
+        .map(|value| tree::written(value.syntax()))
+        .unwrap_or_default();
+    jadpo_std::Dur::parse(&written)
+        .and_then(|dur| i64::try_from(dur.millis).ok())
+        .filter(|millis| (least..=most).contains(millis))
+}
+
+/// `exports: { store: keep: link: }`: where a request's encrypted export
+/// is kept, how long it and its link last, and the page the link opens.
+fn exports(db: &dyn Db, project: Project, path: &str, entry: &ast::Member, out: &mut Privacy) {
+    let mut found = Exports {
+        store: String::new(),
+        keep_ms: jadpo_std::http::PRIVACY_EXPORT_KEEP_MS,
+        link: jadpo_std::http::PRIVACY_EXPORT_LINK.to_string(),
+    };
+    let mut named = false;
+    let mut clean = true;
+    for (setting, value) in tree::members(entry.block()) {
+        let at = node_span(path, setting.syntax());
+        let word = name_text(&setting).unwrap_or_default();
+        match word.as_str() {
+            "store" => {
+                named = true;
+                let written = value
+                    .value()
+                    .map(|value| tree::written(value.syntax()))
+                    .unwrap_or_default();
+                let connections = crate::data::connections(db, project);
+                if connections.kind(&written) == Some(ConnectionKind::Files) {
+                    found.store = written;
+                } else {
+                    clean = false;
+                    let stores = connections.files();
+                    let span = value
+                        .value()
+                        .map_or_else(|| at.clone(), |v| node_span(path, v.syntax()));
+                    let mut problem = invalid(
+                        span.clone(),
+                        format!("`store: {written}` isn't a store of files"),
+                        "`exports: { store: }` names the connection a person's encrypted export is kept in until its link ends: a store of files.",
+                        "Name a connection whose `driver:` keeps files",
+                    );
+                    if let Some(near) = nearest(&written, stores.iter().map(String::as_str)) {
+                        problem = problem
+                            .next(format!("Use `{near}` instead of `{written}`"))
+                            .edit(span, near);
+                    }
+                    out.problems.push(problem);
+                }
+            }
+            "keep" => {
+                match duration_of(
+                    &value,
+                    jadpo_std::http::PRIVACY_EXPORT_KEEP_MIN_MS,
+                    jadpo_std::http::PRIVACY_EXPORT_KEEP_MAX_MS,
+                ) {
+                    Some(millis) => found.keep_ms = millis,
+                    None => {
+                        clean = false;
+                        out.problems.push(invalid(
+                            at,
+                            "`keep:` must be a duration from `1d` to `30d`".to_string(),
+                            "`keep:` is how long an export's link and its file last: long enough for a person to see the email, and no longer than the data needs to sit outside the application.",
+                            "Write a duration such as `7d`",
+                        ));
+                    }
+                }
+            }
+            "link" => {
+                let text =
+                    value
+                        .value()
+                        .as_ref()
+                        .map(Const::from_expr)
+                        .and_then(|given| match given {
+                            Const::Str(text) if crate::identity::site_path(&text) => Some(text),
+                            _ => None,
+                        });
+                match text {
+                    Some(text) => found.link = text,
+                    None => {
+                        clean = false;
+                        out.problems.push(invalid(
+                            at,
+                            "`link:` must be a page on your site, written as a path".to_string(),
+                            "`link:` is the frontend page an export's link opens: a path starting with `/`, with no query.",
+                            "Write a path such as \"/privacy/download\"",
+                        ));
+                    }
+                }
+            }
+            _ => {
+                clean = false;
+                out.problems.push(unknown(
+                    at,
+                    format!("`{word}` isn't a setting of `exports:`"),
+                    "`exports:` says where a person's exports are kept: `store:`, how long they last, `keep:`, and the page their link opens, `link:`.",
+                    format!("Remove `{word}:`"),
+                ));
+            }
         }
     }
+    if named && clean {
+        out.exports = Some(found);
+    } else if !named && clean {
+        out.problems.push(invalid(
+            node_span(path, entry.syntax()),
+            "`exports:` doesn't say which store keeps them".to_string(),
+            "A person's encrypted export is kept in a store of files until its link ends, so `exports:` names one.",
+            "Write `exports: { store: <connection> }`",
+        ));
+    }
+}
+
+/// `erasures: { cooling_off: }`: how long an erasure waits to be cancelled.
+fn erasures(path: &str, entry: &ast::Member, out: &mut Privacy) {
+    for (setting, value) in tree::members(entry.block()) {
+        let at = node_span(path, setting.syntax());
+        let word = name_text(&setting).unwrap_or_default();
+        if word != "cooling_off" {
+            out.problems.push(unknown(
+                at,
+                format!("`{word}` isn't a setting of `erasures:`"),
+                "`erasures:` says how long an erasure waits before it runs: `cooling_off:`.",
+                format!("Remove `{word}:`"),
+            ));
+            continue;
+        }
+        match duration_of(
+            &value,
+            jadpo_std::http::PRIVACY_COOLING_OFF_MIN_MS,
+            jadpo_std::http::PRIVACY_COOLING_OFF_MAX_MS,
+        ) {
+            Some(millis) => out.cooling_off_ms = millis,
+            None => out.problems.push(invalid(
+                at,
+                "`cooling_off:` must be a duration from `1d` to `21d`".to_string(),
+                "`cooling_off:` is how long a person has to cancel their erasure: at least a day to see the email, and at most 21 days, which leaves the providers a week of the shortest legal month to confirm.",
+                "Write a duration such as `14d`",
+            )),
+        }
+    }
+}
+
+/// How each email is sent, each `email:` and `send:` checked against the
+/// built-in type it is filled from: the canonical name of the application's
+/// own email and action for each entry that names one.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Mail {
+    /// `email:`, by entry: the application's own email's canonical name.
+    pub own: Vec<(String, String)>,
+    /// `send:`, by entry: the action's canonical name.
+    pub send: Vec<(String, String)>,
+    pub problems: Vec<Diagnostic>,
+}
+
+impl Mail {
+    /// The application's own email for entry `setting`.
+    pub fn own_of(&self, setting: &str) -> Option<&str> {
+        self.own
+            .iter()
+            .find(|(name, _)| name == setting)
+            .map(|(_, email)| email.as_str())
+    }
+
+    /// The action that sends entry `setting`.
+    pub fn send_of(&self, setting: &str) -> Option<&str> {
+        self.send
+            .iter()
+            .find(|(name, _)| name == setting)
+            .map(|(_, action)| action.as_str())
+    }
+}
+
+/// Every `email:` and `send:` under `emails:`, checked.
+#[salsa::tracked(returns(ref))]
+pub fn mail(db: &dyn Db, project: Project) -> Mail {
+    let found = privacy(db, project);
+    let lookup = crate::lookups::Lookup::new(db, project);
+    let mut out = Mail::default();
+    for own in &found.emails {
+        let Some((_, email_type, request_type)) =
+            MAILS.iter().find(|(name, _, _)| *name == own.setting)
+        else {
+            continue;
+        };
+        if let Some(written) = &own.email {
+            match crate::identity::own_email_named(
+                &lookup,
+                written,
+                email_type,
+                &rule::DATA_PRIVACY_SETTING_INVALID,
+            ) {
+                Ok(canonical) => out.own.push((own.setting.clone(), canonical)),
+                Err(problem) => out.problems.push(*problem),
+            }
+        }
+        if let Some(written) = &own.send {
+            match crate::identity::send_action_named(
+                &lookup,
+                written,
+                request_type,
+                &rule::DATA_PRIVACY_SETTING_INVALID,
+            ) {
+                Ok(canonical) => out.send.push((own.setting.clone(), canonical)),
+                Err(problem) => out.problems.push(*problem),
+            }
+        }
+    }
+    out
 }
 
 /// What `privacy:`'s data requests need from the rest of the application
@@ -312,7 +628,59 @@ pub fn request_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             "Add `person: true` to the entity",
         ));
     }
-    if found.self_service.is_some() || !found.generate_routes {
+    let mail = mail(db, project);
+    out.extend(mail.problems.iter().cloned());
+    // What a request can't carry out in full, refused where it is turned
+    // on, as `User.erase` and `User.export` are where they are written.
+    if let Some(erasure) = crate::erasure::erasures(db, project)
+        .people
+        .get(&user.entity)
+    {
+        let mut unbuilt = |first: &str, what: &str| {
+            out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!("A data request can't {what} a `{}` yet", user.entity),
+                )
+                .at(span.clone(), "decided, not built")
+                .reason(format!(
+                    "{first}, which a data request can't do in full yet: accepted, the person would be told it was done while data of theirs remained."
+                ))
+                .next("Remove `privacy:` for now, or take the field out of what the person's records reach"),
+            );
+        };
+        if let Some(first) = erasure.unbuilt.first() {
+            unbuilt(first, "erase");
+        }
+        if let Some(first) = erasure.export_unbuilt.first() {
+            unbuilt(first, "export");
+        }
+    }
+    if !found.log_written {
+        out.push(
+            Diagnostic::new(
+                &rule::DATA_ERASURE_LOG_REQUIRED,
+                "`privacy:` erases people, and the application names no erasure log",
+            )
+            .at(span.clone(), "no `erasure_log:`")
+            .reason(
+                "Restoring a backup would bring back everyone erased since it was taken. The log is what erases them again as the app starts, so it is kept where the restore can't take it back: a database that holds no person's records, or a store of files.",
+            )
+            .next("Add `erasure_log: { store: <connection> }` to `privacy:`, naming a connection for it"),
+        );
+    }
+    if !found.exports_written {
+        out.push(invalid(
+            span.clone(),
+            "`privacy:` doesn't say where exports are kept".to_string(),
+            "A person's export is kept encrypted in a store of files until its link ends, so a `privacy:` that takes requests names one.",
+            "Add `exports: { store: <connection> }` to `privacy:`, naming a store of files",
+        ));
+    }
+    let settings = crate::emails::settings(db, project);
+    let sends_mail = settings.connection.is_some() || !mail.send.is_empty();
+    let asks_by_address = found.self_service.is_some() || !found.generate_routes;
+    if asks_by_address || sends_mail {
         let address = address_field(identity, user);
         let field = address.and_then(|name| entity.fields.iter().find(|f| f.name == name));
         let lookup = crate::lookups::Lookup::new(db, project);
@@ -322,52 +690,85 @@ pub fn request_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         });
         if !email {
             out.push(person_required(
-                format!("`privacy: {{ self_service: }}` can't find `{}` by address", user.entity),
-                "no address to find them by".to_string(),
-                "A request by email finds its person by address, the field `magic_link:` names or the user's own `subject:`, and neither is an `Email`.".to_string(),
+                format!("`privacy:` can't reach `{}` by address", user.entity),
+                "no address to reach them at".to_string(),
+                "A data request finds its person by address and its emails go to one, the field `magic_link:` names or the user's own `subject:`, and neither is an `Email`.".to_string(),
                 "Make the user's `subject:` an `Email` field",
             ));
         }
-        if identity
-            .method(jadpo_std::AuthenticationMethod::BrowserSession)
-            .and_then(|method| method.origin.as_ref())
-            .is_none()
-        {
-            out.push(
-                Diagnostic::new(
-                    &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
-                    "`self_service:` needs a browser session's origin",
-                )
-                .at(span.clone(), "no origin for its links")
-                .reason("The address-check and cancel emails' links open your frontend's pages at the browser origin, which `browser_session: { origin: }` gives.")
-                .next("Add `browser_session: { cookie: \"<name>\"  origin: config.<setting> }` to `authentication { }`"),
-            );
-        }
-        let settings = crate::emails::settings(db, project);
-        if settings.connection.is_none() {
+    }
+    if identity
+        .method(jadpo_std::AuthenticationMethod::BrowserSession)
+        .and_then(|method| method.origin.as_ref())
+        .is_none()
+    {
+        out.push(
+            Diagnostic::new(
+                &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                "`privacy:` needs a browser session's origin",
+            )
+            .at(span.clone(), "no origin for its links")
+            .reason("The links a data request sends, to check an address, to cancel an erasure and to download an export, open your frontend's pages at the browser origin, which `browser_session: { origin: }` gives.")
+            .next("Add `browser_session: { cookie: \"<name>\"  origin: config.<setting> }` to `authentication { }`"),
+        );
+    }
+    if asks_by_address && settings.connection.is_none() && mail.send_of("address_check").is_none() {
+        out.push(
+            Diagnostic::new(
+                &rule::EMAIL_CONNECTION_REQUIRED,
+                "`self_service:` sends email, but nothing sends email",
+            )
+            .at(span.clone(), "no email connection")
+            .reason("The address check is an email, sent through the connection `application { email: }` names, from the address its `from:` gives; `app.jadpo` names none.")
+            .next("Declare a connection with `driver: Driver.smtp` in `connections:`, and add `email: { connection: <its name>  from: config.mail_sender }` to `application { }` in `app.jadpo`"),
+        );
+    }
+    if settings.connection.is_none() && mail.send_of("export_ready").is_none() {
+        let hears = crate::events::subscribers(db, project).iter().any(|model| {
+            model.event.as_str()
+                == jadpo_std::http::sign_in_event_key(jadpo_std::http::PRIVACY_EXPORT_READY)
+                    .unwrap_or_default()
+                && model.package.is_none()
+        });
+        if !hears {
             out.push(
                 Diagnostic::new(
                     &rule::EMAIL_CONNECTION_REQUIRED,
-                    "`self_service:` sends email, but nothing sends email",
+                    "Nothing delivers a person's export",
                 )
-                .at(span.clone(), "no email connection")
-                .reason("The address check is an email, sent through the connection `application { email: }` names, from the address its `from:` gives; `app.jadpo` names none.")
-                .next("Declare a connection with `driver: Driver.smtp` in `connections:`, and add `email: { connection: <its name>  from: config.mail_sender }` to `application { }` in `app.jadpo`"),
-            );
-        }
-        if settings.display_name.is_none() {
-            out.push(
-                Diagnostic::new(
-                    &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
-                    "`self_service:` needs the application's `display_name:`",
-                )
-                .at(span, "no `display_name:`")
-                .reason("Jadpo's address-check email names the application by `application { display_name: }`, the name its readers know it by.")
-                .next("Add `display_name: \"<name>\"` to `application { }` in `app.jadpo`"),
+                .at(span.clone(), "no email connection and no subscriber")
+                .reason("An export is delivered as a link, and with no email connection no email carries it, so a subscriber must deliver `PrivacyExportReady` or the person never receives what they asked for.")
+                .next("Add a `subscriber` on `PrivacyExportReady`, or declare an `email:` connection in `app.jadpo`"),
             );
         }
     }
+    if settings.connection.is_some() && settings.display_name.is_none() {
+        out.push(
+            Diagnostic::new(
+                &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                "`privacy:` needs the application's `display_name:`",
+            )
+            .at(span, "no `display_name:`")
+            .reason("Jadpo's privacy emails name the application by `application { display_name: }`, the name their readers know it by.")
+            .next("Add `display_name: \"<name>\"` to `application { }` in `app.jadpo`"),
+        );
+    }
     out
+}
+
+/// Each entity a data request's erasure keeps because a field or reference
+/// says `Erasure.retained`, by name: the entities whose domain words them
+/// for the completion email.
+#[salsa::tracked(returns(ref))]
+pub fn kept_entities(db: &dyn Db, project: Project) -> Vec<String> {
+    if !privacy(db, project).takes_requests() {
+        return Vec::new();
+    }
+    let identity = crate::identity::identity(db, project);
+    let Some(user) = identity.variant(PrincipalKind::User) else {
+        return Vec::new();
+    };
+    crate::erasure::retained_entities(db, project, &user.entity)
 }
 
 /// The field a request by email finds its person by: `magic_link:`'s

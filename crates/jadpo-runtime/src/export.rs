@@ -33,6 +33,40 @@ pub(crate) async fn export(
     if !matches!(found, Found::Value(Value::Record(_))) {
         return Ok(built(nothing(), 0));
     }
+    let (document, records) =
+        document_of(ctx, plan, json, args, site, jadpo_std::files::LINK_VALID_MS).await?;
+    Ok(built(document, records))
+}
+
+/// A data request's export of the person with `id` (area 15, "Exports"):
+/// as `User.export` gives it, a request having already settled who may
+/// have it, every `File` in it a link that works for `valid_ms`, as long
+/// as the export's own.
+pub(crate) async fn for_request(
+    ctx: &mut Ctx<'_>,
+    plan: &ExportPlan,
+    json: JsonCodecs<'_>,
+    id: &Value,
+    valid_ms: i64,
+) -> Result<String, Interrupt> {
+    let person = match jadpo_value::standard::from(id) {
+        Ok(Value::Text(text)) => Some(text.to_string()),
+        _ => None,
+    };
+    crate::logging::exported(ctx, &plan.entity, person.as_deref());
+    let (document, _) = document_of(ctx, plan, json, std::slice::from_ref(id), 0, valid_ms).await?;
+    Ok(document)
+}
+
+/// The export's JSON document and how many records it holds.
+async fn document_of(
+    ctx: &mut Ctx<'_>,
+    plan: &ExportPlan,
+    json: JsonCodecs<'_>,
+    args: &[Value],
+    site: u32,
+    valid_ms: i64,
+) -> Result<(String, i64), Interrupt> {
     // One list an entity, in the order their first records were read.
     let mut lists: Vec<(String, Vec<String>)> = Vec::new();
     let mut records: i64 = 0;
@@ -64,7 +98,8 @@ pub(crate) async fn export(
                 // A `File` goes out as a signed link, as a route sends one
                 // (area 16, "Downloading"), under the codec its field's
                 // planned as.
-                let Some(linked) = crate::http::downloads::Linker::new(ctx).linked(value) else {
+                let linker = crate::http::downloads::Linker::valid_for(ctx, valid_ms);
+                let Some(linked) = linker.linked(value) else {
                     return Err(defect(ctx, "a file whose store signs no links", site));
                 };
                 object.push_str(&quoted(name));
@@ -98,7 +133,7 @@ pub(crate) async fn export(
         .collect();
     document.push_str(&kinds.join(","));
     document.push_str("]}");
-    Ok(built(document, records))
+    Ok((document, records))
 }
 
 /// How long one kind of data is kept and which recipients receive it.

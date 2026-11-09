@@ -1005,6 +1005,7 @@ sees](12-jobs-and-events.md#what-an-operator-sees)).
 |---|---|
 | `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries |
 | `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` |
+| `jadpo privacy` | Lists a person's data requests |
 
 ### `jadpo deliveries`
 
@@ -1061,6 +1062,30 @@ The database is `--url`'s, the connection's setting's, or a running
 nearest.
 
 Not built yet: `jadpo deliveries` doesn't list batch runs.
+
+### `jadpo privacy`
+
+`jadpo privacy requests` lists the data requests people have made
+([Data requests](15-personal-data.md#data-requests)). It takes `--json`.
+
+Alone, it lists those still to finish, the nearest legal deadline first, 20
+to a page (`--page`): each request's id, whether it is an export or an
+erasure, how it started (`email`, `signed in` or `staff`), how it stands
+and when it is due. `--state` lists those in one state, and `--all` every
+request, newest first. An export's states are `received`, `ready`,
+`downloaded` and `expired`, an erasure's `received`, `erasing`, `stalled`,
+`completed` and `cancelled`. `stalled` means a provider gave up, and the
+request is waiting for an operator: `jadpo deliveries` shows what it is
+waiting for.
+
+Above the footer an alert line says how many are past their deadline or
+within a week of it. The list shows no address, only each request's id;
+`--json` adds who made it, how their identity was checked and the person's
+`id`.
+
+The database is `--url`'s, the connection's setting's, or a running
+`jadpo dev`'s. A database it can't read is `privacy.unavailable`, and an
+unknown state or action `cli.privacy_arguments`.
 
 ## Commands for packages
 <!-- topic: commands-for-packages -->
@@ -3810,6 +3835,7 @@ yet, or that other commands replace.
 | `cli.package_not_openapi` | `package import` | A file given to `jadpo package import` is JSON but not an OpenAPI 3.0 or 3.1 document |
 | `cli.package_unreadable` | `package import` | A file given to `jadpo package import` isn't there, can't be read, or isn't JSON |
 | `cli.presentation_arguments` | any command | A `--color` flag holds something other than `auto`, `always` or `never`, or nothing |
+| `cli.privacy_arguments` | `privacy` | A `jadpo privacy` command names an action it doesn't have, or a state or page `requests` doesn't list |
 | `cli.project_required` | any command | Command requires a project path |
 | `cli.records_arguments` | `records` | A `jadpo records` command names an action other than `update` |
 | `cli.routes_arguments` | `routes` | A `jadpo routes` command is given an argument, which it doesn't take |
@@ -3860,6 +3886,7 @@ against one.
 | `migration.extension_missing` | `migrate apply`, `seed`, `dev`, `test` | The project's migrations need a PostgreSQL extension, such as pgvector, that the database server doesn't offer or that the role applying them can't create |
 | `migration.extension_outdated` | `migrate apply`, `seed`, `dev`, `test` | The database server's PostgreSQL extension, such as pgvector, is older than the project's migrations and queries need |
 | `migration.store_diverged` | `migrate apply`, `seed`, `dev` | The migrations a database has applied don't match the project's: one has changed since it ran, the project doesn't have one, or one comes out of order |
+| `privacy.unavailable` | `privacy` | The app's data requests couldn't be read from their database, because it can't be reached or has no table for them yet |
 | `runs.unavailable` | `runs unfinished` | The app's unfinished runs couldn't be read from their database, because it can't be reached or has no table for them yet |
 | `schedules.lease_held` | `schedules run`, `deliveries retry` | A schedule was run by hand while another run of it still holds its lease, so it wasn't run again |
 | `schedules.no_tick` | `schedules run`, `deliveries retry` | A schedule was run by hand against a deployment, and no tick of the app picked the run up in time, so nothing ran |

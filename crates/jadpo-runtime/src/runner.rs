@@ -804,6 +804,21 @@ async fn attempt(
                 },
             }
         }
+        // One step of a data request (area 15, "Data requests"), settled
+        // as any delivery is.
+        Target::PrivacySteps { .. } => {
+            let stepping = crate::http::privacy_steps::deliver(executor, ctx, &delivery);
+            match within {
+                Some(stop) => match race(stepping, stop).await {
+                    First::Left(outcome) => Ok(outcome),
+                    First::Right(()) => Err(Cut::ShuttingDown),
+                },
+                None => match race(stepping, budget.cut()).await {
+                    First::Left(outcome) => Ok(outcome),
+                    First::Right(cut) => Err(cut),
+                },
+            }
+        }
         // A file held by no record (area 16, "Deleting and erasing";
         // chunk B3): its bytes deleted under its key, which a repeat sends
         // again safely, then recorded gone, so none may hold it again.
@@ -840,9 +855,7 @@ async fn attempt(
         Target::Email { connection } => {
             let emails = &events.plan.emails;
             let rendered = match emails.email(&subscriber.event) {
-                Some(email) => {
-                    crate::email::message(executor, ctx, emails, email, &delivery.value).await
-                }
+                Some(email) => crate::email::message(executor, ctx, emails, email, &delivery).await,
                 None => Err(Outcome::Fault(ctx.fault(
                     FaultKind::Defect("an email this build doesn't have".into()),
                     Frame::ENTRY,
@@ -958,6 +971,36 @@ async fn attempt(
                 }
             }
         }
+        // A privacy email the application sends itself (area 16, "Built-in
+        // emails", level 5): its action is given the request made now, or
+        // nothing runs when the person can't be reached any more.
+        Target::Action { callable, .. }
+            if subscriber.key.starts_with("email ")
+                && (jadpo_std::email::PrivacyNotice::with_key(&subscriber.event).is_some()
+                    || subscriber.event == jadpo_std::email::PRIVACY_ADDRESS_CHECK_EMAIL) =>
+        {
+            let made = Box::pin(crate::email::privacy_request(
+                executor,
+                ctx,
+                &subscriber.event,
+                &delivery,
+            ))
+            .await;
+            match made {
+                Err(outcome) => Ok(outcome),
+                Ok(None) => Ok(Outcome::Value(Value::Unit)),
+                Ok(Some(request)) => {
+                    let job = Job {
+                        callable: *callable,
+                        args: vec![request],
+                        system: System {
+                            tenant: outbox::tenant(subscriber, &delivery.value),
+                        },
+                    };
+                    run_job(executor, ctx, &delivery, subscriber, job, budget, within).await
+                }
+            }
+        }
         Target::Action { callable, args } => {
             let Some(args) = outbox::arguments(args, &delivery.value) else {
                 settle(FAILED, None, Some(failure_json("internal_fault", None))).await;
@@ -993,6 +1036,15 @@ async fn attempt(
         }
     };
     ctx.set_resumable(None);
+    // The address the completion email went to is gone once it has gone
+    // (area 15, "Erasures").
+    if matches!(&ran, Ok(Outcome::Value(_)))
+        && subscriber.event == jadpo_std::email::PrivacyNotice::ErasureCompleted.key()
+        && subscriber.key.starts_with("email ")
+    {
+        crate::http::privacy_steps::forget_address(ctx.host(), &delivery.store, delivery.outbox)
+            .await;
+    }
     // Whether a call the run made may have acted outside in a way sending
     // it again would repeat: then the delivery is never given back nor
     // retried, but parked for an operator (area 16).

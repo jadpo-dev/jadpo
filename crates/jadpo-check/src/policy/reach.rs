@@ -136,6 +136,7 @@ pub fn session_act(op: SessionOp, user: Option<&str>, service: Option<&str>) -> 
         | SessionOp::PrivacyRequest
         | SessionOp::PrivacyConfirm
         | SessionOp::PrivacyCancel
+        | SessionOp::PrivacyDownload
         | SessionOp::PrivacyCreateRequest
         // `test_passkeys` signs in and confirms through the generated
         // routes, from a test only.

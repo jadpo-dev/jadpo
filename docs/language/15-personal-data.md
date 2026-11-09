@@ -1386,8 +1386,9 @@ are erased the same way.
   once every provider has confirmed. A delivery that gives up is parked
   for an operator and shown in
   [`jadpo deliveries`](12-jobs-and-events.md#what-an-operator-sees), and in
-  the privacy request's state and `jadpo privacy requests`, neither built
-  yet. It is never left quietly incomplete. A provider that answers that it
+  the privacy request's state, `stalled`, and
+  [`jadpo privacy requests`](14-tooling.md#jadpo-privacy). It is never left
+  quietly incomplete. A provider that answers that it
   doesn't know the person has confirmed, as a retry after a lost answer
   finds them gone, and a person with no key at a provider isn't asked about
   there.
@@ -1825,20 +1826,59 @@ An export is delivered as a single-use download link that expires after 7
 days, never as an attachment. The file is encrypted at rest and deleted
 when the link expires, and every download is in the access records. You
 set where the files are kept in `privacy: { exports: { store: keep: } }`.
+`store:` names a store of files, and every application that takes requests
+names one. `keep:` says how long a link and its file last, 7 days unless it
+says, from `1d` to `30d`.
+
+The link opens your frontend's page, set as `exports: { link: }`,
+`/privacy/download` unless it says, with a token. That page posts
+`POST /privacy/exports/download` (`token`), which answers the file and
+uses the link up, so a mail scanner that follows the link spends nothing.
+The file is encrypted under a key made from the token, which is kept only
+as a digest, so neither the store nor the database can open it. A file a
+person's records hold is exported as a link that lasts as long as this one
+does. A used link, one that has ended and one that was never a link all
+answer `privacy_link_expired`. The file goes as the link is used, and in any
+case as it ends.
+
+An application that writes its own routes calls `privacy.download(token)`,
+which gives a `PersonalDataExport`, used up the same way.
 
 ### Erasures
 
 An erasure waits out a cooling-off period your app sets, 14 days by
-default, and the confirmation email has a cancel link. The completion
-email says what was kept and why, since the person must be told. So an
-entity marked `Erasure.retained` needs a wording in its domain's language
-files, which the email lists.
+default, in `privacy: { erasures: { cooling_off: } }`, from `1d` to `21d`,
+and the confirmation email has a cancel link. When the period ends the
+person is erased as [`erase`](#erasing-someone) erases them, each provider
+is asked, and the request waits for every one of them. The completion
+email says what was kept and why, since the person must be told, and goes
+once every provider has confirmed. So an entity marked `Erasure.retained`
+needs a wording in its domain's language files, which the email lists, by
+the entity's name in `lower_snake_case`:
+
+```jadpo fragment
+// domains/accounts/translations/en_gb.jadpo
+translations {
+    invoice: "Invoices, which tax law makes us keep"
+}
+```
+
+Missing it is `translation.wording_missing`. An application that takes
+requests names an [erasure log](#what-erasure-doesnt-rewrite) too, since
+the runtime erases someone for it
+([`data.erasure_log_required`](../errors/data.erasure_log_required.md)).
+Once a person is erased their address can't be read, so it goes into the
+outbox until the completion email has gone out, as a provider's key does,
+and nothing else holds it.
 
 ### Deadlines and events
 
 Every request is a record with its one-month legal deadline.
-`jadpo privacy requests` and the console, neither built yet, list them,
-and one nearing its deadline raises an alert.
+[`jadpo privacy requests`](14-tooling.md#jadpo-privacy) lists them, and the
+console, not built yet, will. One still open a week before its deadline
+raises an alert, a log event `privacy.alert` with `alert:
+request_nearing_deadline`, once. One still open when its deadline passes
+raises `request_overdue` the same way and emits `PrivacyRequestOverdue`.
 
 Each step emits an event: `PrivacyRequestReceived`, `PrivacyExportReady`
 (with the download link), `PrivacyErasureScheduled`,
@@ -1846,7 +1886,22 @@ Each step emits an event: `PrivacyRequestReceived`, `PrivacyExportReady`
 emails are subscribers to these events. Your app can add its own, to
 post to Slack or a CRM, say, or replace the emails. With no mail
 connection, the compiler requires a subscriber that delivers
-`PrivacyExportReady`.
+`PrivacyExportReady`
+([`email.connection_required`](../errors/email.connection_required.md)).
+
+| Event | Its fields besides `request_id` and `user_id` |
+|---|---|
+| `PrivacyRequestReceived` | `kind`, `source`, `deadline` |
+| `PrivacyExportReady` | `download_link: Url`, `expires_at: Instant` |
+| `PrivacyErasureScheduled` | `erases_at: Instant`, `cancel_link: Url` |
+| `PrivacyErasureCompleted` | `completed_at: Instant` |
+| `PrivacyRequestOverdue` | `kind`, `deadline` |
+
+Each piece of this work is kept as a delivery, due when it is: an export at
+once, an erasure when its cooling-off ends, the deadline's alert and event
+at their times. So each is retried and shown as any delivery is
+([Retries and giving up](12-jobs-and-events.md#retries-and-giving-up)), and
+`clock.advance` reaches them in a test.
 
 ### Protection
 
@@ -2226,8 +2281,8 @@ This is not legal advice. A privacy professional reviews the report.
 | `erase:` on a reference or the person's own field | Built: each problem under [Erasure](#erasure) and "Erasure is complete" is an error where it is written, and a reference to a person from another store, which says `erase:` and no `on_delete:` ([Records in another store](#records-in-another-store)). |
 | `include_erased:` on a query | Built: it finds the people erasure keeps a record of too, and is held to what they keep. |
 | `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. A record that belongs to several people keeps its marked fields until the last of them is erased, and another person's own record loses only the reference ([Records that belong to several people](#records-that-belong-to-several-people)). The person's own record stays field by field, hidden, where one of their fields says so ([The person's own record](#the-persons-own-record)). The bytes of each `File` it deletes or clears go once it commits ([Files](16-built-in-services.md#deleting-and-erasing)), and an audited record it deletes takes its history with it. Records in another store go by a generated subscriber once it commits, retried and shown ([Records in another store](#records-in-another-store)); it emits [`PersonErased`](#who-was-erased-personerased) in its transaction; and each person erased has an entry in the log, replayed at every start, on `jadpo dev`, a native deployable and a Worker ([What erasure doesn't rewrite](#what-erasure-doesnt-rewrite)). Not built yet: one that would keep an audited record, whose history still refers to the person ([Audit trail](16-built-in-services.md#audit-trail)), `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial; and caches. Each provider a connection's `erasure:` names is asked to erase the person after the commit, by a generated subscriber ([Erasure at providers](#erasure-at-providers)). |
-| `User.export(id)` | Partly built. Built: `PersonalDataExport`, its JSON document and its count of records, for a caller with read on the person's record: the person, every record erasure deletes with them and every record kept that refers to one, hidden or not, in every store, each with the API's field names and no credential, with each entity's retention and the connections it leaves through, interpreted and compiled. After a test's erasure commits and delivers, the runtime checks the person's export holds nothing, a fault if it doesn't. A `File` field is exported as its signed link ([Downloading](16-built-in-services.md#downloading)). Not built yet: a `File` held inside a structured value, `toolchain.not_built_yet` where `export` is written; and routes that send an export ([Data requests](#data-requests)). |
-| `privacy:` in `application { }` and its routes | Partly built. Built: `erasure_log: { store: }`; `self_service:`, `path:` and `generate_routes:`; `POST /privacy/requests`, `/requests/confirm` and `/requests/cancel` with the address-check email; signed-in `POST /privacy/export` and `/privacy/erasure`; `privacy.create_request`, `privacy.request`, `.confirm` and `.cancel`; each request a record with its deadline and its events, interpreted and compiled. `emails: { address_check: }` holds no `email:` or `send:` yet. Not built yet, `toolchain.not_built_yet` where each is written: `emails:`'s other entries and `exports:`. The exports, erasures and emails a request leads to, and `jadpo privacy requests`, aren't built yet. |
+| `User.export(id)` | Partly built. Built: `PersonalDataExport`, its JSON document and its count of records, for a caller with read on the person's record: the person, every record erasure deletes with them and every record kept that refers to one, hidden or not, in every store, each with the API's field names and no credential, with each entity's retention and the connections it leaves through, interpreted and compiled. After a test's erasure commits and delivers, the runtime checks the person's export holds nothing, a fault if it doesn't. A `File` field is exported as its signed link ([Downloading](16-built-in-services.md#downloading)). Not built yet: a `File` held inside a structured value, `toolchain.not_built_yet` where `export` is written and where `privacy:` is. |
+| `privacy:` in `application { }` and its routes | Built, interpreted and compiled: `erasure_log: { store: }`; `self_service:`, `path:` and `generate_routes:`; `exports:`, `erasures:` and `emails:`; `POST /privacy/requests`, `/requests/confirm`, `/requests/cancel` and `/exports/download`; signed-in `POST /privacy/export` and `/privacy/erasure`; `privacy.create_request`, `.request`, `.confirm`, `.cancel` and `.download`; each request a record with its deadline and its events; an export kept encrypted and given once; an erasure after its cooling-off, its cancel link and a completion email saying what was kept once every provider has confirmed; the alert and `PrivacyRequestOverdue` at the deadline; every email at its five levels; and `jadpo privacy requests`. A `File` a person's records hold is exported as a link that lasts as long as the export's. Keeping exports needs a store of files, which today means the disk driver, on the native target only. |
 | Encrypted fields | Built: `encrypted: true`, key-type, `TotpSecret` and `SecretText` fields, sealed on write and opened on read, interpreted, compiled and on Workers; each refusal above; rotation through `_PREVIOUS`, with `field_encryption.reseal` and `jadpo config rotation`. |
 | The personal-data report | Partly built: `jadpo check` writes `build/report/personal-data.md` and `.json`, for a project with no errors: for each person entity, every marked field with its category, store, who may read it and its retention or "kept until erased", what erasure does to each record, and the queries that say `include_erased: true`; each store with the setting that says where it is; [where personal data goes](#where-personal-data-goes), with whether each connection's copy is erased or kept for an accepted reason; keys waiting in the outbox; step records; and what the language covers. `jadpo package check` shows what a package sends, and the approval review shows the report's difference from the before side's, a person, a store and a connection at a time. Not built yet: caches and OAuth grants, which it lists as none, since neither exists. |
 | `erasure:` on a package and on a connection | Partly built. Built: each is read and checked, and a connection that receives personal data and can't erase it needs an `ErasureNotPossible` acceptance ([Erasure at providers](#erasure-at-providers)). Not built yet: calling the package's `erasure:`, so a connection that declares one is not yet asked to erase anyone. |

@@ -139,6 +139,18 @@ pub fn user_by(entity_table: &str, column: &str, active: &str, wheres: &[String]
     )
 }
 
+/// A person's address by their `id` `$1` (area 15, "Data requests"), read
+/// when an email needs it: active or not, since someone disabled still gets
+/// the data they asked for.
+pub fn address_by_id(entity_table: &str, column: &str) -> String {
+    format!(
+        "SELECT {column} FROM {entity_table} WHERE {id} = $1 LIMIT 1",
+        column = ident(column),
+        entity_table = ident(entity_table),
+        id = ident("id"),
+    )
+}
+
 /// How an external token finds its user once `on_first_sign_in:` may
 /// have linked one (area 8, "A person the app has not seen"; chunk A7), in
 /// one read: the user whose `subject` column is `$1`, else the one

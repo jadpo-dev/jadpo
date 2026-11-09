@@ -22,6 +22,9 @@ pub struct EventsPlan {
     /// whose target is [`Target::ErasureIn`], and the log one whose target
     /// is [`Target::ErasureLog`].
     pub erasure: crate::erasure::ErasurePlan,
+    /// What a data request's steps need (area 15, "Data requests"): its
+    /// subscriber's target is [`Target::PrivacySteps`].
+    pub privacy: Option<crate::privacy::PrivacySteps>,
 }
 
 impl EventsPlan {
@@ -121,6 +124,7 @@ impl SubscriberPlan {
                 vec![connection.clone()]
             }
             Target::ErasureAt { connection } => vec![connection.clone()],
+            Target::PrivacySteps { exports } => exports.iter().cloned().collect(),
             Target::ErasureLog(crate::erasure::ErasureLog::Database { .. })
             | Target::ErasureIn { .. }
             | Target::Elsewhere => Vec::new(),
@@ -197,6 +201,11 @@ pub enum Target {
     /// [`crate::erasure::ProviderErasure`]'s operation, retried until the
     /// provider confirms.
     ErasureAt { connection: String },
+    /// One step of a data request (area 15, "Data requests"): the event is
+    /// [`crate::privacy::STEP_EVENT`], due when the step is, and a repeat
+    /// finds the request has moved on and does nothing. `exports` is the
+    /// store of files its exports are kept in.
+    PrivacySteps { exports: Option<String> },
     /// Delivered by another deployable, one that runs the app's
     /// subscribers (area 14, "Declared deployables"; roadmap chunk
     /// 8.1o3): a deployable that doesn't run them still lists each, so an

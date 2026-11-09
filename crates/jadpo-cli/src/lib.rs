@@ -57,6 +57,7 @@ mod package_recipe;
 mod package_record;
 mod package_release;
 mod package_search;
+mod privacy;
 mod provider_review;
 mod records;
 mod registry;
