@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 
 use jadpo_cli::{Output, run};
 use jadpo_host_native::Runtime;
-use jadpo_interp::Program;
+use jadpo_interp::{Program, on_large_stack};
 use jadpo_runtime::schedules::{Ran, Skipped, tick};
 use jadpo_runtime::{Caller, Executor, Outcome, SqlValue};
 use jadpo_std::http::PrincipalKind;
@@ -551,8 +551,15 @@ fn signed_in(person: &Value) -> Value {
 pub(crate) const T0: i64 = 1_792_400_400_000;
 pub(crate) const MINUTE: i64 = 60_000;
 
+// A tick runs the interpreter, whose frames outgrow a test thread's 2 MiB,
+// so the tests that tick use the stack a deployment's tick has.
 #[test]
 fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
+    on_large_stack(a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps_on_its_stack)
+        .expect("a thread");
+}
+
+fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps_on_its_stack() {
     let root = project("ticks");
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
@@ -843,6 +850,11 @@ fn without_trace(text: &str) -> String {
 
 #[test]
 fn schedules_are_listed_explained_paused_resumed_run_and_paged() {
+    on_large_stack(schedules_are_listed_explained_paused_resumed_run_and_paged_on_its_stack)
+        .expect("a thread");
+}
+
+fn schedules_are_listed_explained_paused_resumed_run_and_paged_on_its_stack() {
     let root = watched_project("watch");
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
@@ -1283,6 +1295,10 @@ fn a_project_with_no_schedules_says_so() {
 /// it holds.
 #[test]
 fn two_instances_ticking_raise_an_alert_once() {
+    on_large_stack(two_instances_ticking_raise_an_alert_once_on_its_stack).expect("a thread");
+}
+
+fn two_instances_ticking_raise_an_alert_once_on_its_stack() {
     let root = watched_project("raised-6.9");
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
@@ -1594,6 +1610,11 @@ pub(crate) fn until_count(runtime: &Runtime, host: &Harness, sql: &str, want: i6
 
 #[test]
 fn a_run_on_a_deployment_is_requested_and_the_apps_own_tick_runs_it() {
+    on_large_stack(a_run_on_a_deployment_is_requested_and_the_apps_own_tick_runs_it_on_its_stack)
+        .expect("a thread");
+}
+
+fn a_run_on_a_deployment_is_requested_and_the_apps_own_tick_runs_it_on_its_stack() {
     let files: Vec<(&str, &str)> = FILES.iter().copied().chain([BELL_CHECK]).collect();
     let root = deployed_project("requested", &files);
     let recorded = jadpo(&root, &["records", "update"]);
@@ -1800,6 +1821,11 @@ fn a_requested_run_no_tick_picks_up_is_withdrawn() {
 /// skips until the hour, while a failed or capped pass remains eligible.
 #[test]
 fn hourly_housekeeping_contends_retries_and_preserves_retention() {
+    on_large_stack(hourly_housekeeping_contends_retries_and_preserves_retention_on_its_stack)
+        .expect("a thread");
+}
+
+fn hourly_housekeeping_contends_retries_and_preserves_retention_on_its_stack() {
     let root = project("hourly-housekeeping");
     if !jadpo_test::live() {
         return;
