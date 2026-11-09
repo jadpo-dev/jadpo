@@ -1214,6 +1214,20 @@ pub async fn request(
         .map_err(Stop::Fault)
 }
 
+/// A route test's `request { link: }`, `args` the link and the `Range` it
+/// sends, if it sends one (area 13).
+pub async fn download(cx: &mut Ctx<'_>, p: &Program, args: Vec<Value>) -> Ran {
+    crate::http::downloads::link_test(
+        &p.app(),
+        p,
+        cx,
+        args.first().unwrap_or(&Value::None),
+        args.get(1),
+    )
+    .await
+    .map_err(Stop::Fault)
+}
+
 /// After a test's step at site `at`, which gave `ran`: what it emitted
 /// delivered before the test's next statement (area 13, "Caches and
 /// events"; chunk 6.11), and what its clock brought due when `advanced`.

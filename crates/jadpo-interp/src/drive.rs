@@ -83,6 +83,15 @@ async fn body(
                         way,
                         strong,
                     } => request(program, ctx, route, &args, [keyed, signed, way, strong]).await,
+                    Target::Download => jadpo_runtime::http::downloads::link_test(
+                        &program.app(),
+                        program,
+                        ctx,
+                        args.first().unwrap_or(&Value::None),
+                        args.get(1),
+                    )
+                    .await
+                    .map_err(Stop::Fault),
                     Target::Session(op) => session(program, ctx, op, &args, at.0).await,
                     Target::Batch(op, number) => batch(program, ctx, op, number, &args, at.0).await,
                     // A store's put or read, a provider's operation and a
@@ -215,6 +224,7 @@ fn store<'a, 'p: 'a>(
             Target::Write(id) => plan.write(id).map(|write| StoreOp::Write(&write.plan)),
             Target::Callable(_)
             | Target::Request { .. }
+            | Target::Download
             | Target::Session(_)
             | Target::Batch(..)
             | Target::Files(..)
@@ -234,6 +244,7 @@ fn store<'a, 'p: 'a>(
                 Target::Write(_) => "a write with no plan",
                 Target::Callable(_)
                 | Target::Request { .. }
+                | Target::Download
                 | Target::Session(_)
                 | Target::Batch(..)
                 | Target::Files(..)

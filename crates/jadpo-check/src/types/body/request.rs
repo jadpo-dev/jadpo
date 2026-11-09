@@ -27,6 +27,10 @@ use crate::tree::{self, dotted};
 /// The type a request gives: `Response`, carrying the route's output.
 pub(crate) const RESPONSE: &str = "Response";
 
+/// The output type a `request { link: }` carries in its `Response`: not a
+/// route's, so its members are the bytes it read (area 13, "Route tests").
+const DOWNLOADED: &str = "FileDownload";
+
 /// What the walk decided about one request, for the typed body.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct RequestFact {
@@ -78,6 +82,12 @@ impl Body<'_> {
             );
             self.skip_members(record);
             return Ty::Error;
+        }
+        if let Some((_, link)) = tree::members(record.member_list())
+            .into_iter()
+            .find(|(key, _)| tree::name_text(key).as_deref() == Some("link"))
+        {
+            return self.download_request(record, &link);
         }
         let mut method = None;
         let mut path = None;
@@ -433,6 +443,83 @@ impl Body<'_> {
         )
     }
 
+    /// `request { method: HttpMethod.get link: ... range: ... }`: a file's
+    /// signed link, as a client follows it (area 16, "Downloading"). `link:`
+    /// is the `File` an output holds, or a link written as text, to test
+    /// one that was altered.
+    fn download_request(&mut self, record: &ast::RecordExpr, link: &ast::Member) -> Ty {
+        let mut ok = true;
+        let mut method = false;
+        for (key, member) in tree::members(record.member_list()) {
+            let word = tree::name_text(&key).unwrap_or_default();
+            let span = self.span(&key);
+            match word.as_str() {
+                "link" => {}
+                "method" => {
+                    let is_get = member.value().and_then(|value| dotted(&value)).is_some_and(
+                        |(first, rest)| {
+                            tree::name_ref_text(&first).as_deref() == Some(HttpMethod::NAME)
+                                && matches!(rest.as_slice(), [only] if tree::name_ref_text(only).as_deref() == Some("get"))
+                        },
+                    );
+                    if is_get {
+                        method = true;
+                    } else {
+                        ok = false;
+                        self.request_problem(
+                            span,
+                            "A file's link is followed with `method: HttpMethod.get`",
+                        );
+                    }
+                }
+                "range" => {
+                    if let Some(value) = member.value() {
+                        self.check(&value, &Ty::Prim(Prim::Text));
+                    }
+                }
+                other => {
+                    ok = false;
+                    self.request_problem(
+                        span,
+                        &format!(
+                            "A request with `link:` holds `method:` and `range:`, not `{other}:`"
+                        ),
+                    );
+                    self.skip_member(&member);
+                }
+            }
+        }
+        if !method {
+            ok = false;
+            let span = self.span(link);
+            self.request_problem(span, "A request needs its `method:`");
+        }
+        let Some(value) = link.value() else {
+            return Ty::Error;
+        };
+        let linked = self.infer(&value);
+        let is_file = matches!(
+            linked.strip_nullable(),
+            Ty::Opaque(name, _) if name == jadpo_std::files::FILE
+        ) || matches!(linked.strip_nullable(), Ty::Prim(Prim::Text));
+        if !linked.has_error() && !is_file {
+            ok = false;
+            let span = self.span(&value);
+            self.request_problem(
+                span,
+                "`link:` takes a `File` from a response's output, or a link as text",
+            );
+        }
+        if !ok || linked.has_error() {
+            return Ty::Error;
+        }
+        self.facts.downloads.insert(node_key(record.syntax()));
+        Ty::Opaque(
+            RESPONSE.to_string(),
+            vec![Ty::Opaque(DOWNLOADED.to_string(), Vec::new())],
+        )
+    }
+
     fn request_problem(&mut self, span: jadpo_diag::Span, message: &str) {
         self.out.push(
             Diagnostic::new(&rule::SEMANTIC_REQUEST_INVALID, message.to_string())
@@ -529,6 +616,14 @@ fn generated_magic_link(
 /// A route test's response's fields (`status`, `code`, `output`), with
 /// their types for a response whose output is `args`' one.
 pub(super) fn response_members(args: &[Ty]) -> Vec<(&'static str, Ty)> {
+    // A file's link followed: the bytes it read in place of an output.
+    if matches!(args.first(), Some(Ty::Opaque(name, _)) if name == DOWNLOADED) {
+        return vec![
+            ("status", Ty::Prim(Prim::Int)),
+            ("code", Ty::Prim(Prim::Text).nullable()),
+            ("body", Ty::Prim(Prim::Bytes).nullable()),
+        ];
+    }
     // A streaming route's: the text of each `piece` event in place of an
     // output, and `code` the `error` event's (area 7, "Streaming a
     // model's answer"; chunk 5.5v6).

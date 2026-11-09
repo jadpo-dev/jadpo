@@ -640,7 +640,6 @@ pub fn entity_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
             audit_retention: None,
         },
         retentions: Vec::new(),
-        sensitive: Vec::new(),
         out: Vec::new(),
     };
     let model = reader.entity(&symbol.path, &decl)?;
@@ -825,9 +824,6 @@ struct Reader<'a> {
     /// (area 15; chunk P2): the field's name, the key's place and the
     /// block.
     retentions: Vec<(String, Span, ast::Member)>,
-    /// Each field marked with a sensitive category of personal data (area
-    /// 15), with the category, which a search can't read yet (chunk B12).
-    sensitive: Vec<(String, String)>,
     out: Vec<Diagnostic>,
 }
 
@@ -1067,7 +1063,6 @@ impl Reader<'_> {
                 self.lookup,
                 path,
                 &entity,
-                &self.sensitive,
                 &member,
                 &key_span,
                 &mut self.out,
@@ -1750,17 +1745,6 @@ impl Reader<'_> {
                 // A field's own grants narrow its entity's (area 9, "Field
                 // restrictions"), read by `crate::policy`.
                 "policy" => {}
-                // A sensitive category, which a search can't read yet
-                // (area 15; chunk B12). The category itself is checked
-                // where `crate::ai_personal` reads it.
-                "personal" => {
-                    if let [host, category] = names.as_slice()
-                        && host == jadpo_std::ai::PERSONAL_DATA_ENUM
-                        && crate::ai_personal::is_sensitive(category)
-                    {
-                        self.sensitive.push((name.to_string(), category.clone()));
-                    }
-                }
                 // Read once every field is (area 15; chunk P2).
                 "retention" => {
                     self.retentions

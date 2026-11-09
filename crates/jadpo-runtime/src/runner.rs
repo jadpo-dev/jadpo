@@ -787,6 +787,21 @@ async fn attempt(
                 )),
             }
         }
+        // A person's erasure asked of a provider, after the main commit
+        // (area 15, "Erasure at providers"), settled as any delivery is.
+        Target::ErasureAt { connection } => {
+            let asking = crate::erasure::at_provider(executor, ctx, connection, &delivery);
+            match within {
+                Some(stop) => match race(asking, stop).await {
+                    First::Left(outcome) => Ok(outcome),
+                    First::Right(()) => Err(Cut::ShuttingDown),
+                },
+                None => match race(asking, budget.cut()).await {
+                    First::Left(outcome) => Ok(outcome),
+                    First::Right(cut) => Err(cut),
+                },
+            }
+        }
         // A file held by no record (area 16, "Deleting and erasing";
         // chunk B3): its bytes deleted under its key, which a repeat sends
         // again safely, then recorded gone, so none may hold it again.
@@ -1009,6 +1024,9 @@ async fn attempt(
     if matches!(&outcome, Outcome::Fault(fault) if fault.kind == FaultKind::Crashed) {
         crate::lease::release(database, &lease, now).await;
         return Some((outcome, GIVEN_BACK));
+    }
+    if let Outcome::Failed(failure) = &outcome {
+        crate::logging::rejected(ctx, failure, None);
     }
     let after = outbox::after(&outcome);
     let after = if acted { after.once_acted() } else { after };
@@ -1697,6 +1715,7 @@ impl<'c, 'p> Batch<'c, 'p> {
             return Err(StoreError::ConcurrentChange);
         }
         transaction.commit().await?;
+        crate::boundary::confirm_erased(ctx, boundary.take_erased());
         crate::boundary::committed(ctx, boundary.take_sealed());
         Ok(())
     }

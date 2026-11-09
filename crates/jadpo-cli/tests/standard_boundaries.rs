@@ -580,6 +580,10 @@ const BOUNDARIES: &[(&str, Option<&str>)] = &[
 /// anywhere else, a new crate's above all, fails here.
 const MAY_ENCODE: &[(&str, &str)] = &[
     (
+        "crates/jadpo-runtime/src/logging.rs",
+        "writes a log event: an access record's time through the contract's `text.from`, and a value by the rule a log follows",
+    ),
+    (
         "crates/jadpo-value/src/",
         "the shared leaf: the contract itself (`standard`) and the operations on values; its JSON stays a boundary",
     ),

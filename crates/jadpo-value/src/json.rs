@@ -1709,6 +1709,7 @@ mod tests {
             absent,
             none_left_out: false,
             section: None,
+            hashed: false,
             wire: None,
         };
         let shape = Shape::new(&ShapePlan {

@@ -545,6 +545,17 @@ pub trait Host {
         drop(work);
     }
 
+    /// Writes the log event `event` with `fields` (area 4, "Logging"):
+    /// through the deployable's log on a host that keeps one, into a test's
+    /// record so both executors' events are compared, and otherwise
+    /// nowhere.
+    fn log(&self, event: &str, fields: serde_json::Map<String, serde_json::Value>) {
+        #[cfg(feature = "testing")]
+        crate::record::logged(self.record(), event, fields);
+        #[cfg(not(feature = "testing"))]
+        let _ = (event, fields);
+    }
+
     /// The value of the environment variable `name` (area 10): the
     /// platform's environment, or on Workers a binding. `None` when it
     /// isn't set, or for a host with no environment, as a test's, whose
@@ -684,6 +695,10 @@ impl<H: Host + ?Sized> Host for &H {
 
     fn hand_on(&self, work: crate::runner::HandOn) {
         (**self).hand_on(work);
+    }
+
+    fn log(&self, event: &str, fields: serde_json::Map<String, serde_json::Value>) {
+        (**self).log(event, fields);
     }
 
     fn variable(&self, name: &str) -> Option<String> {

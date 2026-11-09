@@ -203,16 +203,36 @@ work below (Richard, 2026-11-08).
 - [ ] **U1 The review web view** **needs a maintainer**: Richard plans it and
   its design first (2026-11-08), then `opus · high`: area 17, "Reviewing a change"
   and "The web view". A static page in `build/review/` written by `jadpo
-  approval`, from the report's JSON: the change at a high level in the
-  report's order, the graph of the change as a flow chart, each path opened
-  to see what surrounds it, what the change newly reaches, and links from
-  every line to its source. No accounts and no approvals; acceptances stay
-  files. Done when a change to the
-  golden todo opens as this page and CI can publish it beside the pull
-  request.
-- [ ] **U2 What changed between an agent's revisions** `opus · high` after
-  U1: area 17, "The web view". The differences between an agent's successive
-  revisions of a change, added to the page.
+  approval`, from the report's JSON: decisions first, each with its state and
+  the command that writes its acceptance, then the change in the report's
+  order, the graph of the change as a flow chart, each path opened to see what
+  surrounds it, what the change newly reaches, and links from every line to
+  its source. A button copies the selected nodes' keys and the reviewer's
+  request for a coding agent, and nothing written in the change. No accounts
+  and no approvals; acceptances stay files. Done when a change to the golden
+  todo opens as this page and CI can publish it beside the pull request.
+- [ ] **U2 `jadpo review <pr>`** `opus · high` after U1: area 17, "The web
+  view". Fetches a pull request into a worktree of its own, never touching
+  the developer's checkout or uncommitted work, runs the report and opens the
+  page. The base branch's `jadpo` release produces the report, since a pull
+  request can change its project's `jadpo:` line and `jadpo.lock`, and the
+  page says when it does. First check that a pull request's `jadpo.lock`
+  live-checkout link can't read outside the worktree.
+- [ ] **U3 Watching a change, and what changed between revisions** **needs a
+  maintainer** to decide whether the view stays a file or gains a small local
+  server, after U2: area 17, "The web view". The page follows the worktree
+  while an agent edits it: the report re-run when edits go quiet, the last
+  good report kept with "source has errors" over it, and what changed since
+  you last looked between an agent's successive revisions.
+- [ ] **U4 Handing a question to a coding agent** **needs a maintainer** to
+  decide whether Jadpo launches agents at all, after U3: an agent adapter per
+  tool, carrying node keys and the reviewer's words only, and copy-only for a
+  pull request from a fork, since descriptions, pull request text and code are
+  written by whoever opened it.
+- [ ] **U5 A review link from GitHub** **needs a maintainer**, only if people
+  ask for it, after U4: a launcher registered for `jadpo-review://` that
+  treats every link as untrusted, and how GitHub reaches it, which may need an
+  https page on jadpo.dev because GitHub may not link a custom scheme.
 
 ## After the first build, in order
 
@@ -220,34 +240,7 @@ work below (Richard, 2026-11-08).
    (area 19, "Encrypted fields" and "Language gaps this page depends on")
    and `crypto.verify_totp`: split by size (2026-10-31) into P1 to P12,
    taken in order.
-   - [ ] **P6 Erasure at providers** `opus · high` after P4c and V6: area
-     15, "Erasure at providers"; area 11, "Erasure at providers". Each
-     connection's key copied into `PersonErased` before the person's
-     records go, a generated subscriber calling the package's `erasure:`
-     operation after commit and retrying until it confirms, a delivery
-     that gives up parked and shown, and a key that is personal data
-     kept only in the outbox until it is delivered. V6 read the
-     declarations and built `ErasureNotPossible`; this takes away the
-     personal-data report's line saying Jadpo doesn't call a provider's
-     `erasure:` yet. Done when a test
-     erasing a person sees each fake provider's erasure called once,
-     after the commit.
-   - [ ] **P7 Marked fields in logs and access records** `opus · high`
-     area 15, "Marked fields in logs", "Sensitive fields" and
-     "Access records"; area 4, "Logging"; area 19's standard types that
-     are personal data, treated as marked there. Every marked field
-     logged as a keyed hash of its canonical text, whatever its type and
-     in a failure's context too, the same on both executors; every
-     export, erasure and read of a sensitive field recorded, without
-     values, as a long-kept log event; and an audited entity's marked
-     field kept in its history as that hash, lifting B11's
-     `toolchain.not_built_yet` (area 16, "What the audit trail doesn't
-     keep yet"). The hosts' `failure.rejected` event is built here, since
-     no failure is logged yet (area 4, "Logging"), and with the access
-     records a field of a sensitive category becomes searchable (area
-     16, "Search and personal data"). Done when log and access-record
-     tests show both on both executors.
-   - [ ] **P8 The personal-data report** `opus · high` after V5 and P7:
+   - [ ] **P8 The personal-data report** `opus · high` after V5:
      area 15, "The personal-data report", "Where data is stored", "What
      this does not cover" and "What the compiler checks" (a marked field
      nothing reads, declinable). V5 starts the report with the
@@ -268,8 +261,8 @@ work below (Richard, 2026-11-08).
      SHA-1, RFC 6238's default, and points two-factor codes at a package.
      Done when each is checked against its standard's known answers on
      both executors and built for WebAssembly.
-   - [ ] **P11 Data requests: the routes** `opus · xhigh` after
-     P7: area 15, "Data requests" ("Self-service by email", "Signed in",
+   - [ ] **P11 Data requests: the routes** `opus · xhigh`:
+     area 15, "Data requests" ("Self-service by email", "Signed in",
      "Made by staff", "Protection" and "Changing the routes"); area 7,
      "Generated routes"; area 16, "Rate limits". `privacy:` in
      `application { }`; `POST /privacy/requests`, `/confirm` and
@@ -300,17 +293,6 @@ work below (Richard, 2026-11-08).
    The disk driver in production moved here from item 5; the `search`,
    `bot_check` and `scanning` capabilities, image variants, the
    `telemetry:` section and custom metrics stay under item 5.
-   - [ ] **B4 Downloads** `opus · high`: area 16, "Downloading" and "The
-     disk driver" (downloads). An `Output` that picks a `File` field
-     sends a signed link valid for five minutes with the file's name,
-     size and type; the disk driver serves it from the app's own origin,
-     single ranges and `If-Range` with an ETag from the file's hash,
-     `Content-Disposition: attachment` but for the image allow-list,
-     `nosniff` and `sandbox`, read in fixed windows. Done when route
-     tests download a file whole and by range on both executors, and an
-     expired or altered link is refused. Lifts `User.export`'s
-     `toolchain.not_built_yet` on a person reaching a `File` field: a
-     `File` in `PersonalDataExport` becomes this signed link.
    - [ ] **B5 Uploads** `opus · xhigh`: area 16, "Uploading", "Compressed
      uploads" and "The disk driver" (uploads); area 2, `FileUpload` and
      `UploadSlot`; area 9, the slot's grant. `Entity.field_upload()`
@@ -349,10 +331,14 @@ work below (Richard, 2026-11-08).
      with the design skills first. Done when tests read fixture files and
      see each failure on both executors, and `jadpo files copy` moves a
      disk store's files to S3.
-   - [ ] **B14 Where else a `File` goes** `opus · high` after B4 and B5:
+   - [ ] **B14 Where else a `File` goes** `opus · high` after B5:
      area 16, "What a `File` holds", "Attachments", "`store.read(file)`"
      and "Deleting and erasing"; area 11, "Types". A `File` in an
      operation's `input:` or a webhook's `reply:`, sent as its bytes;
+     a `File` held inside a structured value that a person's export
+     reaches (area 15, "Export"), as its signed link;
+     a `File` held inside a structured value that a person's export
+     reaches (area 15, "Export"), as its signed link;
      several attachments from one field (`List<File>`, `Set<File>`, a
      `Map`) and a `FileContents` on an email; fields naming one store of
      files in entities of two databases. Done when each runs on both
@@ -364,13 +350,12 @@ work below (Richard, 2026-11-08).
      settled for flags (L3). Done when an erased person leaves no row in
      either table, on both executors.
    - [ ] **B16 What the audit trail doesn't keep yet** `opus · xhigh`
-     after P7: area 16, "What the audit trail doesn't keep yet"; area 15,
+     area 16, "What the audit trail doesn't keep yet"; area 15,
      "What is built". A `File` field, a field with its own `retention:`, a
      person's record removed other than by erasure, a `delete` whose
      cascade changes an audited record, and an erasure that keeps an
      audited record. The pages don't yet say how each is kept or removed,
-     so **needs a maintainer** for that decision first; P7 lifts only the
-     marked-field case.
+     so **needs a maintainer** for that decision first.
    - [ ] **B17 Rate limits in the documents** `opus · high`: area 16, "What
      is built"; area 7, "The `x-jadpo` fields". A generated route's own
      limits in OpenAPI's `x-jadpo-rate-limit` and `jadpo routes`, and the

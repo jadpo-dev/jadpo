@@ -1877,6 +1877,7 @@ dependencies = [
 name = "jadpo-host-native"
 version = "0.4.1"
 dependencies = [
+ "blake3",
  "bytes",
  "getrandom 0.4.3",
  "http-body-util",

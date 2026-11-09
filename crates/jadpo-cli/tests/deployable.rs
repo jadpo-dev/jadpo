@@ -66,7 +66,7 @@ use std::time::{Duration, Instant};
 
 use jadpo_cli::run;
 use jadpo_term::Environment;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::support::probes;
 
@@ -624,6 +624,17 @@ fn next(lines: &Receiver<Value>, seconds: u64) -> Value {
 
 /// The first tick logged that `wanted` holds of, within `seconds`,
 /// passing over any other line.
+/// The next event that isn't a failure's own `failure.rejected`, which any
+/// refused request adds to the log before what the test is waiting for.
+fn next_after_failures(lines: &Receiver<Value>, seconds: u64) -> Value {
+    loop {
+        let event = next(lines, seconds);
+        if event["event"] != "failure.rejected" {
+            return event;
+        }
+    }
+}
+
 fn ticked(lines: &Receiver<Value>, seconds: u64, wanted: impl Fn(&Value) -> bool) -> Value {
     let until = Instant::now() + Duration::from_secs(seconds);
     loop {
@@ -657,13 +668,28 @@ fn exchange(address: &str, method: &str, path: &str, body: &str) -> (u16, String
 
 /// [`exchange`], with the answer's head as well.
 fn exchanged(address: &str, method: &str, path: &str, body: &str) -> (u16, String, String) {
+    exchanged_with(address, method, path, &[], body)
+}
+
+/// [`exchanged`], with `headers` sent as well.
+fn exchanged_with(
+    address: &str,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &str,
+) -> (u16, String, String) {
     let mut stream = TcpStream::connect(address).expect("it accepts");
     stream
         .set_read_timeout(Some(Duration::from_secs(20)))
         .expect("a timeout");
+    let extra: String = headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect();
     write!(
         stream,
-        "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n{body}",
         body.len()
     )
     .expect("sent");
@@ -984,7 +1010,7 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
         answer.starts_with("HTTP/1.1 201") || answer.starts_with("HTTP/1.1 202"),
         "{answer}"
     );
-    let last = next(&lines, 30);
+    let last = next_after_failures(&lines, 30);
     assert_eq!(last["event"], "runtime.stopped", "{last}");
     stamped(&last, built, app);
     assert_eq!(ended(&mut child, 30), Some(0));
@@ -1059,7 +1085,7 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
         .args(["-TERM", &child.id().to_string()])
         .status()
         .expect("kill runs");
-    assert_eq!(next(&lines, 30)["event"], "runtime.stopped");
+    assert_eq!(next_after_failures(&lines, 30)["event"], "runtime.stopped");
     assert_eq!(ended(&mut child, 30), Some(0));
 
     // The office lists the repair's notes but doesn't book, and runs its
@@ -1135,7 +1161,7 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
         .args(["-TERM", &child.id().to_string()])
         .status()
         .expect("kill runs");
-    assert_eq!(next(&lines, 30)["event"], "runtime.stopped");
+    assert_eq!(next_after_failures(&lines, 30)["event"], "runtime.stopped");
     assert_eq!(ended(&mut child, 30), Some(0));
 
     // Ticked by another scheduler (area 12, question 16; chunk 8.2g): the
@@ -1173,7 +1199,7 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
         .args(["-TERM", &child.id().to_string()])
         .status()
         .expect("kill runs");
-    assert_eq!(next(&lines, 30)["event"], "runtime.stopped");
+    assert_eq!(next_after_failures(&lines, 30)["event"], "runtime.stopped");
     assert_eq!(ended(&mut child, 30), Some(0));
 
     // A tick reads its settings as serving does.
@@ -1891,6 +1917,130 @@ fn a_deployable_erases_across_stores_and_replays_the_log_as_it_starts() {
     assert_eq!(ended(&mut child, 30), Some(0));
 }
 
+/// A native deployable logs each failure as `failure.rejected`, a marked
+/// field held only as a hash under `JADPO_LOG_HASH_KEY`, and a read of a
+/// sensitive field as an access record (area 4, "Logging"; area 15,
+/// "Marked fields in logs" and "Access records"): the same event the
+/// runtime wrote into a test's record, from a real server's standard
+/// output.
+#[test]
+fn a_deployable_logs_marked_fields_hashed_and_access_records() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let root = target
+        .parent()
+        .unwrap_or(target)
+        .join("jadpo-compiled/deployable/marked-logs");
+    let _ = fs::remove_dir_all(root.join("database"));
+    for (path, text) in crate::marked_logs::files() {
+        let text = if path == "app.jadpo" {
+            text.replace(
+                "main: {\n            driver: Driver.postgres\n",
+                "main: {\n            driver: Driver.postgres\n            url: config.main_url\n",
+            )
+            .replace(
+                "erasures: {\n            driver: Driver.postgres\n",
+                "erasures: {\n            driver: Driver.postgres\n            url: config.erasures_url\n",
+            )
+        } else {
+            text
+        };
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().expect("parent")).expect("folders");
+        fs::write(path, text).expect("source");
+    }
+    fs::write(
+        root.join("config.jadpo"),
+        "config {\n    main_url: PostgresUrl\n    erasures_url: PostgresUrl\n}\n",
+    )
+    .expect("config");
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let built = jadpo(&root, &["build", "--json"]);
+    assert_eq!(built.code, 0, "{}{}", built.stdout, built.stderr);
+    let server = jadpo_test::postgres::Server::start().expect("server");
+    let main = server.create_database("marked_main").expect("main");
+    let erasures = server.create_database("marked_log").expect("the log");
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    apply(&main, &steps["main"]);
+    apply(&erasures, &steps["erasures"]);
+    let (main_url, erasures_url) = (as_url(&main), as_url(&erasures));
+    let key = "a key only this test knows, long enough";
+    let settings = [
+        ("PORT", "0"),
+        ("MAIN_URL", main_url.as_str()),
+        ("ERASURES_URL", erasures_url.as_str()),
+        ("JADPO_LOG_HASH_KEY", key),
+    ];
+    let id = "0192f3a4-0000-7000-8000-000000000001";
+    rows(
+        &main,
+        &format!(
+            "INSERT INTO patient (id, handle, born_on, condition) VALUES ('{id}', 'ann', '1990-03-01', 'asthma')"
+        ),
+    );
+    let binary = root.join("build/target/app/app");
+    let (mut child, lines) = start(&binary, &settings);
+    let started = next(&lines, 60);
+    assert_eq!(started["event"], "runtime.started", "{started}");
+    assert_eq!(started["log_hash_key"], "variable", "{started}");
+    let address = started["address"].as_str().expect("an address").to_string();
+    let body = format!(r#"{{"patient_id":"{id}","note":"a line about ann"}}"#);
+    let (status, answered) = exchange(&address, "POST", "/care/check", &body);
+    assert_eq!(status, 409, "{answered}");
+    let wanted = |name: &str| loop {
+        let event = next(&lines, 30);
+        if event["event"] == name {
+            return event;
+        }
+    };
+    let read = wanted("privacy.read");
+    assert_eq!(read["entity"], "Patient", "{read}");
+    assert_eq!(read["fields"], json!(["condition"]), "{read}");
+    assert_eq!(read["person_id"], id, "{read}");
+    assert_eq!(read["kept"], "long", "{read}");
+    assert_eq!(read["by"], "no_caller", "{read}");
+    assert!(!read.to_string().contains("asthma"), "{read}");
+    let rejected = wanted("failure.rejected");
+    let hash = |text: &str| {
+        let mac = jadpo_value::crypto::mac(key.as_bytes(), &[text.as_bytes()]);
+        let hex: String = mac.iter().map(|byte| format!("{byte:02x}")).collect();
+        format!("hmac-sha256:{hex}")
+    };
+    assert_eq!(rejected["code"], "check_failed", "{rejected}");
+    assert_eq!(
+        rejected["trace"],
+        json!(["action check", "route POST /care/check"]),
+        "{rejected}"
+    );
+    assert_eq!(
+        rejected["internal"]["born_on"],
+        hash("1990-03-01"),
+        "{rejected}"
+    );
+    assert_eq!(
+        rejected["internal"]["note"],
+        hash("a line about ann"),
+        "{rejected}"
+    );
+    assert_eq!(rejected["internal"]["patient_id"], id, "{rejected}");
+    assert_eq!(rejected["internal"]["visits"], 3, "{rejected}");
+    let line = rejected.to_string();
+    assert!(
+        !line.contains("1990-03-01") && !line.contains("about ann"),
+        "{line}"
+    );
+    terminate(&child);
+    assert_eq!(ended(&mut child, 30), Some(0));
+}
+
 /// A native deployable keeps a `Driver.disk` store's files at its `path:`
 /// (area 16, "The disk driver"; chunk B2): the folder made the app's
 /// user's alone as it starts, a put sheet landing there under its key,
@@ -1978,6 +2128,22 @@ fn a_deployable_keeps_a_disk_stores_files_at_its_path() {
         crate::disk_files::eventually(30, || count(&connection, "price_line") == 2),
         "the sheet's two prices were read back in from the disk"
     );
+
+    // A download, served from the disk by the compiled program.
+    let (status, body) = exchange(&address, "POST", "/sheets/linked", crate::disk_files::SHEET);
+    assert_eq!(status, 201, "{body}");
+    let answered: Value = serde_json::from_str(&body).expect("JSON");
+    let sent = |method: &str, path: &str, headers: &[(&str, &str)]| {
+        let (status, head, body) = exchanged_with(&address, method, path, headers, "");
+        let all = head
+            .lines()
+            .skip(1)
+            .filter_map(|line| line.split_once(": "))
+            .map(|(name, value)| (name.to_ascii_lowercase(), value.to_string()))
+            .collect();
+        (status, all, body.into_bytes())
+    };
+    crate::file_downloads::serves_a_file(&answered, &sent, &sheets);
 
     let (status, body) = exchange(
         &address,

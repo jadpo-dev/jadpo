@@ -62,6 +62,9 @@ pub struct Types {
     shape_ids: HashMap<Key, ShapeId>,
     failures: Vec<FailurePlan>,
     failure_ids: HashMap<Key, FailureId>,
+    /// Each failure field that holds personal data, by its identity key:
+    /// its log event keeps it only as a keyed hash (area 15).
+    hashed_failure_fields: std::collections::BTreeSet<String>,
     /// The folders of the provider packages, each with its `/`: their
     /// types are read from JSON open to members they don't declare (area
     /// 11, chunk 7.2c).
@@ -85,6 +88,7 @@ impl Types {
             shape_ids: HashMap::new(),
             failures: Vec::new(),
             failure_ids: HashMap::new(),
+            hashed_failure_fields: Default::default(),
             providers: Vec::new(),
             sign_in_providers: Vec::new(),
         }
@@ -103,6 +107,14 @@ impl Types {
     /// own.
     pub(crate) fn sign_in_providers(&self) -> &[String] {
         &self.sign_in_providers
+    }
+
+    pub(crate) fn with_hashed_failure_fields(
+        mut self,
+        fields: std::collections::BTreeSet<String>,
+    ) -> Types {
+        self.hashed_failure_fields = fields;
+        self
     }
 
     pub(crate) fn with_providers(mut self, folders: Vec<String>) -> Types {
@@ -264,6 +276,7 @@ impl Types {
                 omittable: false,
                 none_left_out: false,
                 section: None,
+                hashed: false,
                 wire: None,
             })
             .collect();
@@ -348,6 +361,7 @@ impl Types {
                 omittable: false,
                 none_left_out: false,
                 section: None,
+                hashed: false,
                 wire: None,
             })
             .collect();
@@ -382,6 +396,7 @@ impl Types {
                 omittable: false,
                 none_left_out: false,
                 section: None,
+                hashed: false,
                 wire: None,
             })
             .collect();
@@ -946,6 +961,8 @@ impl Types {
                         omittable,
                         none_left_out,
                         section: *section,
+                        hashed: *section != Some(jadpo_std::types::Section::Client)
+                            && self.hashed_failure_fields.contains(node.key.as_str()),
                         wire: wire_name.clone(),
                     })
                 }
@@ -1099,6 +1116,7 @@ fn standard_variant_fields(key: &Key) -> Vec<FieldPlan> {
             omittable: false,
             none_left_out: false,
             section: None,
+            hashed: false,
             wire: None,
         })
         .collect()

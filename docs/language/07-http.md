@@ -949,9 +949,8 @@ its own, or in memory, never in the action's transaction. Signing a caller
 in reads and changes nothing. A `GET` keeps no `Idempotency-Key`, so a model
 or a provider that changes nothing is sent none of the keys derived from
 one. Reads leave no record: the audit trail only records changes, and the
-[access records](15-personal-data.md#access-records) aren't built yet; when
-they are, they go in a statement of their own for a query and an action
-alike.
+[access records](15-personal-data.md#access-records) are log events, so
+they go in no statement at all.
 
 The runtime holds what a `GET` runs to the same line, its query or its action.
 Its transaction is begun `READ ONLY`, so PostgreSQL itself refuses a write.
@@ -2151,6 +2150,7 @@ where an app uses it.
 | Serving a request | Built: the runtime's HTTP component routes a request, decodes and checks its input (each problem as `{ field, rule }`), runs the action or query, and answers with the output or the failure envelope, its `request_id` and `x-request-id`, with the status the failure's kind sets; it answers `HEAD` and `OPTIONS` itself and counts the default rate limits. It reads a body only as JSON, and refuses a query string or body a route doesn't read, a header it can't read and a body over 1 MB. |
 | Deadlines and concurrent changes | Built: the runtime stops a route at its deadline without committing, even work that never waits, and runs an action again on a concurrent change found as it commits. |
 | Health endpoints | Built: `/health/live` and `/health/ready`. |
+| File downloads | Built: `GET /files/<store>/<link>` for a store of files whose driver has no links of its own, answered ahead of any route ([Downloading](16-built-in-services.md#downloading)); a route whose path it would answer is `route.path_overlap`. |
 | Idempotent writes | Built: the runtime keeps each write's `Idempotency-Key` with its response. |
 | Commands | Built: `jadpo dev` serves the routes and reloads on save, `jadpo routes` lists them and `jadpo api update` writes the records, each `api/<api>.jadpo_record` in the record format with no `version:` line; the OpenAPI version is a hash of it. |
 | Native connection limits | Built: natively, a client has 10 seconds for its headers and 30 for its body, a write waits at most 30 seconds for it to read, and the server holds at most 1,024 connections and 10 database connections per store per worker. |

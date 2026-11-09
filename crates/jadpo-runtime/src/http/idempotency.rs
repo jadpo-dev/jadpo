@@ -400,6 +400,7 @@ mod tests {
                     absent: Some(jadpo_std::Constant::None),
                     none_left_out: false,
                     section: None,
+                    hashed: false,
                     wire: None,
                 })
                 .collect(),
@@ -433,6 +434,7 @@ mod tests {
             stream: false,
             sends: None,
             immutable: false,
+            links: false,
             keys: Some("main".into()),
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Public,

@@ -9260,12 +9260,9 @@ on:
 }
 ```
 
-> Not built yet: the runtime's hosts don't write the `failure.rejected`
-> event ([Logging](04-failures.md#logging)). Until they do, a failure's
-> log is its report, with the problem among the fields it is declared
-> in. The event, once written, holds a `DecodeProblem` as itself, not as
-> a keyed hash, since a problem never holds a value. There is no XML
-> format namespace yet.
+> The hosts' `failure.rejected` event holds a `DecodeProblem` as itself,
+> not as a keyed hash, since a problem never holds a value
+> ([Logging](04-failures.md#logging)). There is no XML format namespace yet.
 
 ## Colour
 <!-- topic: colour -->
@@ -10511,8 +10508,9 @@ example and its 999 test range, Vocalink's modulus checking test cases
 and GLEIF's LEIs. Where a scheme publishes none, they are made up to the
 rules. Each type's entry says which.
 
-Personal data's handling of these categories isn't built yet; see
-[What is built](#what-is-built).
+Its handling is [Personal data's](15-personal-data.md#what-is-built): a
+field of one of these types is hashed in logs, and its reads are recorded
+when its category is sensitive.
 
 ## Cards and identity documents
 <!-- topic: cards-and-identity-documents -->

@@ -130,6 +130,11 @@ pub struct AuditedField {
     /// Whether it is kept sealed (area 15, "Encrypted fields"; chunk P9):
     /// the history says that it changed, and never what it holds.
     pub sealed: bool,
+    /// Whether it is personal data, kept as a keyed hash: the history shows
+    /// that it changed, not what it was (area 16, "What the audit trail
+    /// doesn't keep yet").
+    #[serde(default)]
+    pub hashed: bool,
 }
 
 /// What `Entity.history(id)` reads: a page of the record's entries, newest

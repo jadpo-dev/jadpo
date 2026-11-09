@@ -50,6 +50,7 @@ pub(crate) fn plans(
         json,
         sign_in: Default::default(),
         retired: Default::default(),
+        provider_keys: Default::default(),
     };
     let mut out: Vec<(Key, ExportPlan)> = model
         .entities
@@ -211,6 +212,7 @@ impl Planner<'_> {
                 },
                 includes: Vec::new(),
                 versions: None,
+                sensitive: None,
             },
             page: None,
             missing: None,
@@ -244,8 +246,22 @@ impl Planner<'_> {
                 .types
                 .graph()
                 .named(Kind::Field, &format!("{}.{}", entity.name, field.name))?;
-            let number =
-                self.json_number(TypeRef::Field(self.types.graph().node(id).key.clone()))?;
+            // A `File` is exported as its signed link (area 16,
+            // "Downloading"), written by the link's codec.
+            let number = match &field.file {
+                Some(_) => {
+                    let link = TypeRef::Std(jadpo_std::files::FILE_LINK.to_string(), Vec::new());
+                    let nullable = matches!(field.ty, jadpo_check::types::Ty::Nullable(_));
+                    self.json_number(if nullable {
+                        TypeRef::Nullable(Box::new(link))
+                    } else {
+                        link
+                    })?
+                }
+                None => {
+                    self.json_number(TypeRef::Field(self.types.graph().node(id).key.clone()))?
+                }
+            };
             fields.push((field.name.clone(), number));
         }
         let mut statement = Statement::default();
@@ -286,6 +302,7 @@ impl Planner<'_> {
                     },
                     includes: Vec::new(),
                     versions: None,
+                    sensitive: None,
                 },
                 page: None,
                 missing: None,

@@ -135,3 +135,12 @@ maintainer to overrule:
   operation lists what the caught mail was sent, as its fake keeps it; a
   connection that fills `ai` has nothing here, since `ai.<prompt>.requests`
   reads those by prompt.
+
+## Following a file's link in a route test
+
+`request { link: <File or text>, range: <text> }` follows a signed link as a
+client does, through the HTTP component, so a route test can download a file
+on both executors, whole and by range, and see an expired or altered one
+refused. `link:` takes text as well as a `File` so a test can send a link it
+altered, since no test can read a `File`'s parts. It names no route, and its
+`Response` holds `status`, `code` and `body` rather than `output`.

@@ -49,6 +49,7 @@ impl Planner<'_> {
                 name: field.name.clone(),
                 json: self.json_codec(entity, field),
                 sealed: field.sealed.is_some(),
+                hashed: self.personal_category(entity, &field.name).is_some(),
             });
         }
         let columns: Vec<String> = entity
@@ -159,6 +160,7 @@ pub(crate) fn histories(
         action: None,
         json,
         sign_in: Default::default(),
+        provider_keys: Default::default(),
         retired: Default::default(),
     };
     let mut out: Vec<(Key, HistoryPlan)> = model

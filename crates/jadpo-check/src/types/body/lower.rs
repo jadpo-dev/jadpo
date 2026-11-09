@@ -468,7 +468,11 @@ impl Lower<'_> {
             ),
             // `create`, `update` and `delete` write a record, and a
             // route test's request goes through the HTTP boundary.
-            typed::Node::Expr(typed::Expr::Write { .. } | typed::Expr::Request { .. }) => true,
+            typed::Node::Expr(
+                typed::Expr::Write { .. }
+                | typed::Expr::Request { .. }
+                | typed::Expr::Download { .. },
+            ) => true,
             typed::Node::Expr(typed::Expr::Now | typed::Expr::SentEmails) => true,
             _ => false,
         }
@@ -1845,6 +1849,9 @@ impl Lower<'_> {
     /// `Type { ... }` or `Enum.variant { ... }`.
     fn record(&mut self, record: &ast::RecordExpr) -> typed::Expr {
         let key = node_key(record.syntax());
+        if self.facts.downloads.contains(&key) {
+            return self.download(record);
+        }
         if let Some(fact) = self.facts.requests.get(&key).cloned() {
             return self.request(&fact, record);
         }
@@ -1916,6 +1923,28 @@ impl Lower<'_> {
             callee,
             fields,
             fallible,
+        }
+    }
+
+    /// A route test's `request { link: }` (area 13): a file's link
+    /// followed, and the `Range` it sends.
+    fn download(&mut self, record: &ast::RecordExpr) -> typed::Expr {
+        let members = crate::tree::members(record.member_list());
+        let value = |name: &str| {
+            members
+                .iter()
+                .find(|(key, _)| crate::tree::name_text(key).as_deref() == Some(name))
+                .and_then(|(_, member)| member.value())
+        };
+        let Some(link) = value("link") else {
+            return typed::Expr::Unchecked;
+        };
+        if let Some(method) = value("method") {
+            self.scan(method.syntax());
+        }
+        typed::Expr::Download {
+            link: self.expr(&link),
+            range: value("range").map(|expr| self.expr(&expr)),
         }
     }
 

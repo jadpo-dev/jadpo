@@ -659,7 +659,8 @@ test "a body cut into segments" {
 /// recursion to the limits; with a `File` held to its field (chunk B1),
 /// a person's erasure (chunk P3, `crate::erasure`), a file's bytes
 /// deleted once no record holds them, the bytes each store keeps among
-/// the records (chunk B3, `crate::file_deletes`), and the audit trail
+/// the records (chunk B3, `crate::file_deletes`), a file downloaded (chunk
+/// B4, `crate::file_downloads`), and the audit trail
 /// (chunk B11, `crate::audit`).
 fn parity_projects() -> Vec<(String, PathBuf)> {
     let caught: Vec<(String, String)> = PACKAGE_CAUGHT
@@ -698,6 +699,14 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
                 .expect("it checks"),
         ),
         (
+            "an erasure at providers".into(),
+            corpus_project(
+                &crate::erasure_providers::files(),
+                "compiled-erasure-providers",
+            )
+            .expect("it checks"),
+        ),
+        (
             "an erasure logged in a store of files".into(),
             corpus_project(
                 &crate::erasure_stores::files_with_log("scans"),
@@ -719,8 +728,21 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
                 .expect("it checks"),
         ),
         (
+            "a file downloaded".into(),
+            corpus_project(
+                &crate::file_downloads::files("/var/lib/bakery/sheets"),
+                "compiled-file-downloads",
+            )
+            .expect("it checks"),
+        ),
+        (
             "an audit trail".into(),
             corpus_project(&crate::audit::files(), "compiled-audit").expect("it checks"),
+        ),
+        (
+            "marked fields in logs".into(),
+            corpus_project(&crate::marked_logs::files(), "compiled-marked-logs")
+                .expect("it checks"),
         ),
         (
             "a GET running actions".into(),
@@ -862,6 +884,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "a person's export",
         "a file's bytes deleted",
         "an audit trail",
+        "marked fields in logs",
         "examples 11-cake-shop",
         "examples 12-recipe-book",
         "examples 15-parcel-tracker",

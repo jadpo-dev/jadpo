@@ -1085,10 +1085,13 @@ async fn run_action(
         Outcome::Value(_) => Ran::Succeeded {
             events: ctx.background().emitted(),
         },
-        Outcome::Failed(failure) => Ran::Failed {
-            code: failure.code.clone(),
-            kind: failure.kind.clone(),
-        },
+        Outcome::Failed(failure) => {
+            crate::logging::rejected(ctx, failure, None);
+            Ran::Failed {
+                code: failure.code.clone(),
+                kind: failure.kind.clone(),
+            }
+        }
         Outcome::Fault(fault) => Ran::Failed {
             code: fault.kind.classification().to_string(),
             kind: None,

@@ -76,6 +76,9 @@ pub enum Through {
     Email(String),
     /// A webhook's reply, by the action that answers it.
     Reply(String),
+    /// A failure's internal field, by its identity key: never listed, only
+    /// followed for its log event ([`FAILURE_CONTEXT`]).
+    Failure(String),
 }
 
 impl Through {
@@ -88,6 +91,7 @@ impl Through {
             Through::Embedding => "an embedding".to_string(),
             Through::Email(name) => format!("email {name}"),
             Through::Reply(name) => format!("reply {name}"),
+            Through::Failure(field) => format!("failure field {field}"),
         }
     }
 
@@ -101,9 +105,15 @@ impl Through {
             Through::Embedding => "embedding",
             Through::Email(_) => "email",
             Through::Reply(_) => "reply",
+            Through::Failure(_) => "failure",
         }
     }
 }
+
+/// Not a way out of the app: the connection of an [`Exit`] standing for a
+/// failure's internal field, whose log event hashes what holds personal
+/// data ([`failure_fields_holding`]).
+pub(super) const FAILURE_CONTEXT: &str = "#failure-context";
 
 /// One way out of the app.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -158,6 +168,15 @@ pub fn strongest(left: &BTreeSet<Left>) -> impl Iterator<Item = &Left> {
 }
 
 impl Walk<'_> {
+    /// `prov` is the value of failure field `field`, an internal one.
+    pub(super) fn failure_context(&mut self, flow: &Flow<'_>, field: &Key, prov: &Prov) {
+        let exit = Exit {
+            connection: FAILURE_CONTEXT.to_string(),
+            through: Through::Failure(field.as_str().to_string()),
+        };
+        self.sends(flow, &exit, prov, &[]);
+    }
+
     /// `prov` leaves by `exit`, with what `declared` holds: each holder of
     /// personal data in it, or that decided it, and each parameter's part
     /// for the callers to follow.
@@ -637,6 +656,32 @@ pub(super) fn flow_of<'a>(db: &'a dyn Db, project: Project) -> Flow<'a> {
 /// Everything that leaves the app through its connections.
 #[salsa::tracked(returns(ref))]
 pub fn left(db: &dyn Db, project: Project) -> BTreeSet<Left> {
+    walked(db, project)
+        .iter()
+        .filter(|(exit, _, _)| exit.connection != FAILURE_CONTEXT)
+        .cloned()
+        .collect()
+}
+
+/// Each failure's internal field, by its identity key, whose value holds
+/// personal data (area 15, "Marked fields in logs"): a marked field or a
+/// standard type that is personal data, followed as it is to a
+/// connection. A field holding only what decided it holds none of it.
+#[salsa::tracked(returns(ref))]
+pub fn failure_fields_holding(db: &dyn Db, project: Project) -> BTreeSet<String> {
+    walked(db, project)
+        .iter()
+        .filter_map(|(exit, _, how)| match &exit.through {
+            Through::Failure(field) if !how.decided => Some(field.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Everything the walk followed out of the app, and each failure's
+/// internal field that holds personal data ([`FAILURE_CONTEXT`]).
+#[salsa::tracked(returns(ref))]
+fn walked(db: &dyn Db, project: Project) -> BTreeSet<Left> {
     let flow = flow_of(db, project);
     let mut out = BTreeSet::new();
     // Every action and function of the app's, each with what it calls. A
@@ -847,5 +892,6 @@ pub fn package_left<'db>(db: &'db dyn Db, project: Project, folder: Name<'db>) -
             }
         }
     }
+    out.retain(|(exit, _, _)| exit.connection != FAILURE_CONTEXT);
     out
 }

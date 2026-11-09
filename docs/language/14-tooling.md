@@ -3041,7 +3041,9 @@ with the stamp's fields (`build`, `commit`, `modified`, `compiler`,
 - `runtime.erasures_replayed`, with how many entries the erasure log holds and
   how many times the replay found someone still there, only when it did;
 - `runtime.started`, with the address, workers, `trigger` (`native` or
-  `external`) and each connection whose driver wasn't built (`unbuilt`);
+  `external`), each connection whose driver wasn't built (`unbuilt`) and where
+  the log's hashes get their key (`log_hash_key`, `variable` or
+  `per_process`);
 - `runtime.ticked`, after each tick, the server's own timer's as well as a
   `tick` command's: `ran`, each schedule it ran or skipped by name with
   its outcome, `deliveries`, `received`, `polled`, `deleted`, `alerts`,
@@ -3055,6 +3057,9 @@ with the stamp's fields (`build`, `commit`, `modified`, `compiler`,
   form's address; otherwise they are `false` and `null`. A 500 with no fault
   behind it, such as `misconfigured`, is logged too, with its code as its
   classification and the connection whose call failed;
+- `failure.rejected`, for each failure ([Logging](04-failures.md#logging));
+- `privacy.exported`, `privacy.erased` and `privacy.read`, the
+  [access records](15-personal-data.md#access-records);
 - `runtime.stopped`.
 
 The rest of a deployable's log comes with telemetry ([Built-in
@@ -3597,8 +3602,9 @@ It logs one JSON object a line on the console, which Workers Logs and
 binary's: `runtime.startup_failed`, `runtime.waiting`,
 `runtime.erasures_replayed`, `runtime.started`,
 `runtime.ticked` after each tick of its cron, `operation.failed` for a
-fault behind a 500 with its `.jadpo` frames, and `queue.retried` for a
-batch with a message retried. A Worker and a native binary start, compare
+fault behind a 500 with its `.jadpo` frames, `failure.rejected`,
+`privacy.exported`, `privacy.erased`, `privacy.read`, and `queue.retried`
+for a batch with a message retried. A Worker and a native binary start, compare
 their stores and log through the same code, so they say the same things
 alike.
 

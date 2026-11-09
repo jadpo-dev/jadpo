@@ -252,7 +252,7 @@ pub fn erasures(db: &dyn Db, project: Project) -> Arc<Erasures> {
         .map(|person| {
             let mut erasure = erasure_of(model, &person.name, None, &marked);
             erasure.reach = reach_of(model, &person.name);
-            erasure.export_unbuilt = export_unbuilt(model, &erasure, &person.name);
+            erasure.export_unbuilt = export_unbuilt(&lookup, model, &erasure, &person.name);
             erasure.stores = stores_of(model, person)
                 .into_iter()
                 .map(|store| {
@@ -266,23 +266,35 @@ pub fn erasures(db: &dyn Db, project: Project) -> Arc<Erasures> {
     Arc::new(Erasures { people })
 }
 
-/// Each `File` field among what an export of `person` reads: the fields of
+/// Each field among what an export of `person` reads that holds a `File`
+/// other than as its own value, inside a structured value: the fields of
 /// the entities erasure reaches, and of the records that keep a reference
-/// to one that aren't another person's own.
-fn export_unbuilt(model: &DataModel, erasure: &Erasure, person: &str) -> Vec<String> {
+/// to one that aren't another person's own. A `File` field of its own is
+/// exported as a signed link (area 16, "Downloading").
+fn export_unbuilt(
+    lookup: &Lookup<'_>,
+    model: &DataModel,
+    erasure: &Erasure,
+    person: &str,
+) -> Vec<String> {
     exported_entities(model, erasure)
         .into_iter()
         .flat_map(|entity| {
             entity
                 .fields
                 .iter()
-                .filter(|field| field.file.is_some())
+                .filter(|field| {
+                    field.file.is_none()
+                        && crate::types::decl::held_file(lookup, &field.ty, &mut Vec::new())
+                            .is_some()
+                })
                 .map(|field| {
                     format!(
-                        "`{}.{}` is among what an export of a `{person}` holds",
+                        "`{}.{}`, among what an export of a `{person}` holds, keeps a `File` inside a structured value",
                         entity.name, field.name
                     )
                 })
+                .collect::<Vec<_>>()
         })
         .collect()
 }
@@ -315,13 +327,14 @@ pub fn exported_fields<'m>(lookup: &Lookup<'_>, entity: &'m EntityModel) -> Vec<
         .iter()
         .filter(|field| {
             let mut seen = BTreeSet::new();
-            crate::types::json_form::no_json_form(
-                lookup,
-                &field.ty,
-                &mut seen,
-                crate::types::json_form::JsonUse::Write,
-            )
-            .is_none()
+            field.file.is_some()
+                || crate::types::json_form::no_json_form(
+                    lookup,
+                    &field.ty,
+                    &mut seen,
+                    crate::types::json_form::JsonUse::Write,
+                )
+                .is_none()
         })
         .collect()
 }

@@ -592,6 +592,7 @@ pub fn flag_arguments(db: &dyn Db, project: Project) -> Vec<(Key, String, Span)>
 /// segment, with one method, are two answers to one request.
 #[salsa::tracked(returns(ref))]
 pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    let connections = crate::data::connections(db, project);
     let mut routes: Vec<(String, &RouteModel, Span)> = Vec::new();
     let names = group_names(db, project);
     let reads: Vec<&GroupRead> = names
@@ -829,6 +830,23 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 )
                 .at(span.clone(), "answered by the runtime")
                 .reason("The runtime answers `/health/live` and `/health/ready` itself, before any route, so this route would never run.")
+                .next(format!("Give `{}` in `{group}` another path", route.label())),
+            );
+            continue;
+        }
+        // The runtime answers a store of files' download links before any
+        // route (area 16, "Downloading").
+        if let [Segment::Fixed(first), Segment::Fixed(store), _] = route.segments.as_slice()
+            && first == jadpo_std::files::DOWNLOADS
+            && connections.files().iter().any(|name| name == store)
+        {
+            out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_PATH_OVERLAP,
+                    format!("`{}` is a store's download link", route.path()),
+                )
+                .at(span.clone(), "answered by the runtime")
+                .reason(format!("The runtime answers `/files/{store}/<link>` itself, before any route, since `{store}` is a store of files, so this route would never run."))
                 .next(format!("Give `{}` in `{group}` another path", route.label())),
             );
             continue;
@@ -2610,19 +2628,6 @@ impl Reader<'_> {
         }
         let ty = self.lookup.resolve(&TypeRef::from_expr(&value));
         if ty.has_error() {
-            return None;
-        }
-        // A `File` goes out as a signed link, which comes with downloads
-        // (area 16, "Downloading").
-        // One with no field to name isn't an `Output`, refused below.
-        if let Some(held) = crate::types::decl::held_file(self.lookup, &ty, &mut Vec::new())
-            && held.contains('.')
-        {
-            self.out.push(crate::types::decl::file_sent(
-                &format!("`{ty}`"),
-                &held,
-                span,
-            ));
             return None;
         }
         if let Some(held) = crate::types::decl::held_contents(self.lookup, &ty, &mut Vec::new())

@@ -9,6 +9,12 @@
 //! generic ones. A type already reported as wrong is `Error`, which absorbs
 //! every later check, so one mistake gives one error.
 
+/// Whether a value of `ty` holds a `File`, however deep: what a route's
+/// answer sends as a signed link (area 16, "Downloading").
+pub fn holds_file(lookup: &crate::lookups::Lookup<'_>, ty: &ty::Ty) -> bool {
+    decl::held_file(lookup, ty, &mut Vec::new()).is_some()
+}
+
 pub(crate) mod across;
 mod body;
 mod connections;

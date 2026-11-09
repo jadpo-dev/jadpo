@@ -43,6 +43,7 @@ fn route(method: HttpMethod, path: &str, run: Run) -> RoutePlan {
         stream: false,
         sends: None,
         immutable: false,
+        links: false,
         keys: None,
         args: Vec::new(),
         authentication: Authentication::Public,

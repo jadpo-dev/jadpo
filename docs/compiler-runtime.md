@@ -2608,7 +2608,8 @@ to them, whose statement starts from the `id` as a parameter
 (`EraseRoot::Given`) and whose first table names nothing, each with `present`,
 which of an array of `id`s that store holds anything of; and the log. Each
 such store has a generated subscriber, `erasure in <store>`
-(`Target::ErasureIn`), and the log one, `erasure log` (`Target::ErasureLog`),
+(`Target::ErasureIn`), the log one, `erasure log` (`Target::ErasureLog`), each
+connection with a key one, `erasure at <connection>` (`Target::ErasureAt`),
 tried for a month (`jadpo_std::erasure::{ATTEMPTS, WITHIN_MS}`), then `failed`,
 so `jadpo deliveries` shows them as any other. `erasure::apply_delivery` runs
 the statement in a transaction of its own at repeatable read, at the time the
@@ -2639,6 +2640,18 @@ delivery retried, shown and retried by an operator, and restores each store to
 see the replay erase again and a second one find nothing; its tests run compiled
 with the interpreter's records in the gate's compiled step, and a deployable's
 start in `deployable.rs`.
+
+**Logs and access records.** `jadpo_runtime::logging` writes what the
+runtime records about a person's data through `Host::log`: a deployable's
+standard output or console, or a test's record so the two executors'
+events are compared line by line. `Hasher` keys a value's hash with the
+record's key in a test, `JADPO_LOG_HASH_KEY`, else one drawn per process.
+A plan's `FailurePlan` field says it is `hashed` when the flow walk finds
+personal data reaches it, by the same walk that follows values to a
+connection (`exits::failure_fields_holding`); a `Select` carries
+`SensitiveRead` for a sensitive field it selects or searches, with the
+columns that name the record and its person, and an access record is one
+event per row.
 
 **The audit trail.** `jadpo-plan`'s `Planner::audit` gives each write of
 an audited entity a `jadpo_std::audit::AuditPlan`: the fields an entry
@@ -5303,6 +5316,23 @@ store's keys, `path:` against `Project::folder` (the project's folder
 with links resolved) and `free_space_floor:`; `jadpo_cli::stamp` lists
 each deployable's reached disk stores as the manifest's `one_server`
 (chunk B2).
+Downloading a file (chunk B4, `jadpo_runtime::http::downloads`): a
+`File` an `Output` holds is written as a `jadpo_std::files::FILE_LINK`
+through the route table's codecs (`Codecs::sending_links`), the value
+rewritten by `downloads::Linker` before writing for a route whose plan
+says it holds one (`RoutePlan::links`) and for each failure's client
+fields; a person's export writes its `File` fields through the link's
+own codec. `GET /files/<store>/<link>` is answered ahead of the route
+trie for a store whose driver gives a key
+(`Capability::link_key`), the link signed with BLAKE3 under a key
+derived from the store's own (`link-key` in its folder, made with
+`linkat` so concurrent workers agree) and the store's name; a `File`'s
+hash comes from its put or the join an export ends with. The bytes are
+sent as a body of `stream::ServerEvent::Bytes` chunks, each a capability
+`read` of a 64 KiB window on the host the stream is attached to, the
+first read before the answer begins so a file gone is a 404. A route
+test follows a link with `request { link: }`
+(`body::Expr::Download`, `downloads::link_test`).
 Deleting a file's bytes (chunk B3): `jadpo_check::data::held::counters`
 gives each store of files the database whose entities' `File` fields
 name it, which the schema gives `jadpo_std::system::FILES`

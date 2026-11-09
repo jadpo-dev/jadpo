@@ -843,7 +843,7 @@ impl Body<'_> {
                 )
                 .at(head_span.clone(), "decided, not built")
                 .reason(format!(
-                    "{first}, and a `File` field is exported as a link, which comes with downloads: accepted, the export would leave out a file of theirs."
+                    "{first}, and a `File` inside a structured value has no link to export it as yet: accepted, the export would leave out a file of theirs."
                 ))
                 .next(format!("Read the `{entity}`'s records with queries of your own for now")),
             );

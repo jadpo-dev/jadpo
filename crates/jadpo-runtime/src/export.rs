@@ -22,6 +22,13 @@ pub(crate) async fn export(
     args: &[Value],
     site: u32,
 ) -> Result<Value, Interrupt> {
+    let person = args
+        .first()
+        .and_then(|id| match jadpo_value::standard::from(id) {
+            Ok(Value::Text(text)) => Some(text.to_string()),
+            _ => None,
+        });
+    crate::logging::exported(ctx, &plan.entity, person.as_deref());
     let found = read_detached(ctx, &plan.access, json, args, site).await?;
     if !matches!(found, Found::Value(Value::Record(_))) {
         return Ok(built(nothing(), 0));
@@ -54,9 +61,15 @@ pub(crate) async fn export(
                 if at > 0 {
                     object.push(',');
                 }
+                // A `File` goes out as a signed link, as a route sends one
+                // (area 16, "Downloading"), under the codec its field's
+                // planned as.
+                let Some(linked) = crate::http::downloads::Linker::new(ctx).linked(value) else {
+                    return Err(defect(ctx, "a file whose store signs no links", site));
+                };
                 object.push_str(&quoted(name));
                 object.push(':');
-                object.push_str(&json.codecs.write_value(codec, value));
+                object.push_str(&json.codecs.write_value(codec, &linked));
             }
             object.push('}');
             records += 1;

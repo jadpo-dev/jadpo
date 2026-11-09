@@ -28,18 +28,54 @@ pub const FILE_CONTENTS: &str = "FileContents";
 /// A `File`'s parts as the runtime keeps them, in the order its JSON writes
 /// them: the connection holding its bytes, the key the runtime made for
 /// them, the name it was given (none for one the application put), its
-/// size in bytes and its type. A program reads none of them yet.
-pub const FILE_FIELDS: [(&str, Part); 5] = [
+/// size in bytes, its type, and the hash of its bytes (none for a file
+/// kept before files were hashed), which its ETag is made from. A program
+/// reads none of them yet.
+pub const FILE_FIELDS: [(&str, Part); 6] = [
     ("store", Part::Of(Builtin::Text)),
     ("key", Part::Of(Builtin::Text)),
     ("name", Part::Optional(Builtin::Text)),
     ("size", Part::Of(Builtin::Int)),
     ("type", Part::Enum(crate::standard::FILE_TYPE)),
+    ("hash", Part::Optional(Builtin::Text)),
 ];
 
-/// The fields of the file type called `name`, when it is `File`.
+/// What a `File` becomes where it leaves the server (area 16, "Downloading"):
+/// a signed link valid for five minutes, with the file's name, size and type.
+pub const FILE_LINK: &str = "FileLink";
+
+/// A [`FILE_LINK`]'s parts, in the order its JSON writes them. The store and
+/// key a `File` holds aren't among them: they are in `url`'s signature.
+pub const FILE_LINK_FIELDS: [(&str, Part); 4] = [
+    ("url", Part::Of(Builtin::Text)),
+    ("name", Part::Optional(Builtin::Text)),
+    ("size", Part::Of(Builtin::Int)),
+    ("type", Part::Enum(crate::standard::FILE_TYPE)),
+];
+
+/// The fields of the file type called `name`, when it is `File` or
+/// [`FILE_LINK`].
 pub fn object_fields(name: &str) -> Option<&'static [(&'static str, Part)]> {
-    (name == FILE).then_some(&FILE_FIELDS[..])
+    match name {
+        FILE => Some(&FILE_FIELDS[..]),
+        FILE_LINK => Some(&FILE_LINK_FIELDS[..]),
+        _ => None,
+    }
+}
+
+/// How long a file's signed link is good for (area 16, "Downloading"):
+/// five minutes.
+pub const LINK_VALID_MS: i64 = 5 * 60 * 1000;
+
+/// A download's path begins here: `GET /files/<store>/<link>` (area 16,
+/// "Downloading").
+pub const DOWNLOADS: &str = "files";
+
+/// Whether a file of `FileType`'s media type `media` may be shown in place
+/// rather than saved (area 16, "Downloading"): an allow-list of image types
+/// a browser can't run anything from. No SVG, which can hold scripts.
+pub fn shown_inline(media: &str) -> bool {
+    matches!(media, "image/png" | "image/jpeg" | "image/webp")
 }
 
 /// What a file of `FileType`'s variant `file_type` ends in, as an
@@ -138,8 +174,9 @@ pub const READ: &str = "read";
 /// The capability's operation that joins a written file's pieces into the
 /// file (area 12, "How an export's run is kept"; chunk 6.4b2): its input
 /// is `{ key, pieces, type }`, the pieces kept under [`piece_key`] of
-/// `key` from 0, and it answers `Unit` once the file is whole under `key`
-/// and its pieces are gone, or `storage_full`; one with a piece missing,
+/// `key` from 0, and it answers the hash of the whole file, as text, once
+/// the file is whole under `key` and its pieces are gone, or `storage_full`;
+/// one with a piece missing,
 /// and no file under `key` already, is `not_found`. Joining a file that is
 /// already whole does nothing, so a repeat acts once.
 pub const JOIN: &str = "join";

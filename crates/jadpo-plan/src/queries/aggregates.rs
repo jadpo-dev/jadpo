@@ -151,6 +151,7 @@ impl Planner<'_> {
                     includes: Vec::new(),
                     // A group's rows name no record.
                     versions: None,
+                    sensitive: None,
                 },
                 page: None,
                 missing: None,

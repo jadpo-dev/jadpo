@@ -4,8 +4,7 @@
 //! records with `where: Entity matches phrase`, a `SearchText`, and with
 //! no `order:` gives the best matches first. Each search field must be one
 //! every caller may read, as a condition's must (area 9). What isn't
-//! built is refused where it is written: an engine's `store:`, and a
-//! field of a sensitive category (area 15), which needs access records.
+//! built is refused where it is written: an engine's `store:`.
 
 use jadpo_db::{Database, Layout};
 
@@ -218,8 +217,11 @@ fn search_settings_are_checked() {
     }
 }
 
+/// Personal data may be searched, a sensitive category included: its
+/// reads are recorded in the access records (area 16, "Search and personal
+/// data").
 #[test]
-fn a_sensitive_field_is_not_searched_yet() {
+fn a_sensitive_field_may_be_searched() {
     let source = format!(
         "{TYPES}
 entity Patient {{
@@ -236,21 +238,13 @@ entity Patient {{
 }}
 "
     );
-    let found: Vec<String> = problems(&source)
-        .into_iter()
-        .filter(|p| !p.contains("data.personal_unreachable"))
-        .collect();
-    assert_eq!(
-        found,
-        ["toolchain.not_built_yet: Searching `Patient.history`, `health` data, isn't built yet"]
-    );
-    // Personal data of a category that isn't sensitive may be searched.
-    let named = source.replace("PersonalData.health", "PersonalData.identifying");
-    let found: Vec<String> = problems(&named)
-        .into_iter()
-        .filter(|p| !p.contains("data.personal_unreachable"))
-        .collect();
-    assert_eq!(found, CLEAN);
+    for category in ["PersonalData.health", "PersonalData.identifying"] {
+        let found: Vec<String> = problems(&source.replace("PersonalData.health", category))
+            .into_iter()
+            .filter(|p| !p.contains("data.personal_unreachable"))
+            .collect();
+        assert_eq!(found, CLEAN);
+    }
 }
 
 #[test]
