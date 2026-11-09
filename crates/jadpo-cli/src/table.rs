@@ -649,7 +649,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--drop",
                 value: Some("name"),
-                description: "A retired field or entity to remove",
+                description: "A retired field or entity, or jadpo_flags",
                 values: &[],
             },
         ],

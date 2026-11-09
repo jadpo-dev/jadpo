@@ -1774,6 +1774,149 @@ fn terminate(child: &Child) {
         .expect("kill runs");
 }
 
+/// A compiled deployable takes an erased person out of both flag tables
+/// (area 16, "The log"): with the flags beside the member, by the response.
+#[test]
+fn a_deployable_takes_an_erased_person_out_of_the_flag_tables() {
+    erased_from_the_flags_in("main");
+}
+
+/// With the flags in another store, by the generated subscriber.
+#[test]
+fn a_deployable_takes_an_erased_person_out_of_flag_tables_in_another_store() {
+    erased_from_the_flags_in("archive");
+}
+
+/// A member erased through a compiled deployable's routes, with the flags
+/// in `store`, has no row of theirs in either table, and the other member
+/// named in them keeps theirs.
+fn erased_from_the_flags_in(store: &str) {
+    if !jadpo_test::live() {
+        return;
+    }
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let root = target
+        .parent()
+        .unwrap_or(target)
+        .join(format!("jadpo-compiled/deployable/erasure-flags-{store}"));
+    let _ = fs::remove_dir_all(root.join("database"));
+    let application = format!(
+        "    connections: {{
+        main: {{
+            driver: Driver.postgres
+            url: config.main_url
+        }}
+        archive: {{
+            driver: Driver.postgres
+            url: config.archive_url
+        }}
+        erasures: {{
+            driver: Driver.postgres
+            url: config.erasures_url
+        }}
+    }}
+    flags: {{
+        store: {store}
+    }}
+    privacy: {{
+        erasure_log: {{
+            store: erasures
+        }}
+    }}
+"
+    );
+    let config =
+        "    main_url: PostgresUrl\n    archive_url: PostgresUrl\n    erasures_url: PostgresUrl\n";
+    let mut files = crate::erasure_stores::served_files(&application, config);
+    files.push((
+        "flags.jadpo".to_string(),
+        crate::erasure_stores::FLAGS_FILE.to_string(),
+    ));
+    for (path, text) in files {
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().expect("parent")).expect("folders");
+        fs::write(path, text).expect("source");
+    }
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let built = jadpo(&root, &["build", "--json"]);
+    assert_eq!(built.code, 0, "{}{}", built.stdout, built.stderr);
+    let server = jadpo_test::postgres::Server::start().expect("server");
+    let main = server
+        .create_database(&format!("flagged_{store}_main"))
+        .expect("main");
+    let archive = server
+        .create_database(&format!("flagged_{store}_archive"))
+        .expect("archive");
+    let erasures = server
+        .create_database(&format!("flagged_{store}_log"))
+        .expect("the log");
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    apply(&main, &steps["main"]);
+    apply(&archive, &steps["archive"]);
+    apply(&erasures, &steps["erasures"]);
+    let (main_url, archive_url, erasures_url) =
+        (as_url(&main), as_url(&archive), as_url(&erasures));
+    let settings = [
+        ("PORT", "0"),
+        ("MAIN_URL", main_url.as_str()),
+        ("ARCHIVE_URL", archive_url.as_str()),
+        ("ERASURES_URL", erasures_url.as_str()),
+    ];
+    let binary = root.join("build/target/app/app");
+    let (mut child, lines) = start(&binary, &settings);
+    let started = next(&lines, 60);
+    assert_eq!(started["event"], "runtime.started", "{started}");
+    let address = started["address"].as_str().expect("an address").to_string();
+    let joined = |handle: &str| {
+        let (status, body) = exchange(
+            &address,
+            "POST",
+            "/members",
+            &format!(r#"{{"handle":"{handle}"}}"#),
+        );
+        assert_eq!(status, 201, "{body}");
+        let joined: Value = serde_json::from_str(&body).expect("JSON");
+        joined["id"].as_str().expect("an id").to_string()
+    };
+    let (ada, bob) = (joined("ada"), joined("bob"));
+    let flags = if store == "main" { &main } else { &archive };
+    for row in crate::erasure_stores::flag_rows(&ada, &bob) {
+        rows(flags, &row);
+    }
+    let (status, body) = exchange(&address, "POST", &format!("/members/{ada}/close"), "");
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(count(&main, "member"), 1, "gone with the response");
+    // In another store its subscriber runs after the response.
+    let waited = std::time::Instant::now();
+    let names = |sql: &str| rows(flags, sql).concat().join("").contains(&ada);
+    while names(crate::erasure_stores::FLAG_STATE) || names(crate::erasure_stores::FLAG_LOG) {
+        assert!(
+            store != "main" && waited.elapsed() < Duration::from_secs(30),
+            "not applied: {:?}",
+            rows(
+                &main,
+                "SELECT subscriber, status, last_failure::text FROM jadpo_deliveries"
+            )
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let state = rows(flags, crate::erasure_stores::FLAG_STATE);
+    let log = rows(flags, crate::erasure_stores::FLAG_LOG);
+    assert_eq!(state.len(), 2, "{state:?}");
+    assert!(state[0][0].contains(&bob), "{state:?}");
+    assert!(state[1][0].starts_with("old_page none"), "{state:?}");
+    assert_eq!(log.len(), 2, "{log:?}");
+    assert!(log[0][0].contains(&bob), "{log:?}");
+    terminate(&child);
+    assert_eq!(ended(&mut child, 30), Some(0));
+}
+
 /// A native deployable replays the erasure log before it listens (area 15,
 /// "What erasure doesn't rewrite"; chunk P4c): a member erased through its
 /// routes is gone from `main`, then from the archive and logged by the

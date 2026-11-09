@@ -162,6 +162,7 @@ pub(crate) fn histories(
         sign_in: Default::default(),
         provider_keys: Default::default(),
         retired: Default::default(),
+        flag_stores: Default::default(),
     };
     let mut out: Vec<(Key, HistoryPlan)> = model
         .entities
