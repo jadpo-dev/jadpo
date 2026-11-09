@@ -746,6 +746,7 @@ pub(crate) fn uploads(
         sign_in: Default::default(),
         provider_keys: Default::default(),
         retired: Default::default(),
+        flag_stores: Default::default(),
     };
     wanted
         .iter()
@@ -798,6 +799,7 @@ pub(crate) fn gates(
         sign_in: Default::default(),
         provider_keys: Default::default(),
         retired: Default::default(),
+        flag_stores: Default::default(),
     };
     access
         .root

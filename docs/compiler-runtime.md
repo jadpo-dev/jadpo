@@ -3801,6 +3801,17 @@ flags take; then imports, formatting and `check`, undone on any error.
 document (record, graph node, OpenAPI operation and `routes` listing from
 `served::flags_served`), planned as `Run::Flags` of the `client: true`
 flags' numbers and answered by the HTTP component through `Ctx::flag`.
+A person's erasure reaches the two tables where the latest migration holds
+them (`writes::stores_holding_flags`), whether or not a flag is still
+declared: `jadpo_sql::statement::erase`'s `flags_state` and `flags_log`
+parts in each statement of that store, keyed by the people its walk found,
+and otherwise `PersonPlan::flags`, a statement of those two parts alone,
+which `erasure in <store>` runs when the flags are the only thing of theirs
+in that store and the replay always runs (`flags_naming` is its `present`,
+so a person whose record is gone is still found). `jadpo_check::flags::store`
+is `None` with no flag declared, so the schema stops asking for the tables,
+which `next_snapshot` keeps as any system table; `migrate new --drop
+jadpo_flags` (`jadpo_graph::migration::without_flag_tables`) drops both.
 
 **Monitoring thresholds** (area 16, "What Jadpo generates from
 thresholds"). `jadpo_check::thresholds` reads each domain's `thresholds {

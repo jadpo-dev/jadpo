@@ -698,7 +698,9 @@ fn database_list(databases: &[String]) -> String {
 /// flag and one is named or is the only database. `flags:` still being
 /// written asks for no table yet.
 pub fn store(db: &dyn Db, project: Project) -> Option<String> {
-    flags(db, project).declared.as_ref()?;
+    if flags(db, project).flags.is_empty() {
+        return None;
+    }
     let settings = settings(db, project);
     if !settings.problems.is_empty() {
         return None;

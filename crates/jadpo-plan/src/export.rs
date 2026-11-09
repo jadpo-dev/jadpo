@@ -50,6 +50,7 @@ pub(crate) fn plans(
         json,
         sign_in: Default::default(),
         retired: Default::default(),
+        flag_stores: Default::default(),
         provider_keys: Default::default(),
     };
     let mut out: Vec<(Key, ExportPlan)> = model

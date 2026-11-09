@@ -192,7 +192,7 @@ fn new(call: &Call) -> Reply {
         )
     } else {
         let latest_schema = set.latest_schema();
-        let kept = match drop.map(|name| without_retired(&latest_schema, name)) {
+        let kept = match drop.map(|name| without_retired(&latest_schema, source, name)) {
             Some(Ok(kept)) => kept,
             Some(Err(why)) => return Reply::failed(undroppable(&why)),
             None => latest_schema.clone(),
@@ -309,6 +309,11 @@ fn undroppable(why: &Undroppable) -> Diagnostic {
             format!("`{name}` isn't retired"),
             "Removing data takes two migrations: the first retires it, keeping its data while code stops using it, and a later one drops it.".to_string(),
             format!("Remove `{name}` from the source and run `jadpo migrate new` to retire it first"),
+        ),
+        Undroppable::FlagsDeclared => arguments(
+            "`jadpo_flags` is still in use: the project still declares a flag".to_string(),
+            "The flags' two tables can be dropped only once no flag is declared, since a flag's state and its history are in them.".to_string(),
+            "Remove each flag with `jadpo flags remove <flag> --keep <value>`, then ask for the drop".to_string(),
         ),
         Undroppable::Unknown(name) => arguments(
             format!("`{name}` is no retired field or entity"),

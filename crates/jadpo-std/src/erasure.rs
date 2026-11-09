@@ -190,12 +190,27 @@ pub struct PersonPlan {
     pub own: StoreErasure,
     /// In each other store whose records refer to one of these.
     pub elsewhere: Vec<StoreErasure>,
+    /// In each store that holds the feature flags' two tables: taking the
+    /// person out of them and nothing else, as a store with nothing of
+    /// theirs but the flags needs, and as a replay does whether or not
+    /// their record is still there.
+    #[serde(default)]
+    pub flags: Vec<StoreErasure>,
 }
 
 impl PersonPlan {
-    /// Its erasure in `store`, not its own, when it holds records of theirs.
+    /// Its erasure in `store`, not its own, when it holds records of
+    /// theirs, or the flags: the statement a delivery of `erasure in
+    /// <store>` runs.
     pub fn elsewhere(&self, store: &str) -> Option<&StoreErasure> {
-        self.elsewhere.iter().find(|part| part.store == store)
+        self.elsewhere
+            .iter()
+            .find(|part| part.store == store)
+            .or_else(|| {
+                self.flags
+                    .iter()
+                    .find(|part| part.store == store && part.store != self.own.store)
+            })
     }
 }
 

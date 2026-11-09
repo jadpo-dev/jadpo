@@ -743,7 +743,10 @@ async fn replay_page(
         if ids.is_empty() {
             continue;
         }
-        for part in std::iter::once(&person.own).chain(&person.elsewhere) {
+        let parts = std::iter::once(&person.own)
+            .chain(&person.elsewhere)
+            .chain(&person.flags);
+        for part in parts {
             // A deployable that holds no connection to it replays nothing
             // there; the one that does replays it as it starts.
             let Some(database) = host.database(&part.store) else {

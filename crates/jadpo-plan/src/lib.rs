@@ -318,7 +318,18 @@ fn events_plan(
     let generated = erasure
         .people
         .iter()
-        .flat_map(|person| person.elsewhere.iter().map(|part| part.store.clone()))
+        .flat_map(|person| {
+            person
+                .elsewhere
+                .iter()
+                .chain(
+                    person
+                        .flags
+                        .iter()
+                        .filter(|part| part.store != person.own.store),
+                )
+                .map(|part| part.store.clone())
+        })
         .collect::<std::collections::BTreeSet<String>>()
         .into_iter()
         .map(|store| {
