@@ -1514,13 +1514,12 @@ impl Plan {
         );
         let build = graph.digest();
         // The key a record of several changing calls is sealed with, which
-        // a deployable keeps only when it keeps such an action.
+        // a plan keeps only when it keeps such an action, the whole app's
+        // as a deployable's.
         let steps_key = jadpo_check::types::steps_settings(db, project)
             .encryption_key
             .as_ref()
-            .filter(|_| {
-                pruning.is_none() || callables.iter().any(|callable| callable.record.is_some())
-            })
+            .filter(|_| callables.iter().any(|callable| callable.record.is_some()))
             .and_then(|name| setting_number(name));
         routes.client_address = jadpo_check::client_address::client_address(db, project)
             .plan
