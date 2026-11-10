@@ -687,7 +687,7 @@ fn no_type(path: &str, text: &str) -> Diagnostic {
         "no type beside it",
     )
     .reason(format!(
-        "A prompt's text sits beside its `type X = Prompt {{ ... }}`, named after it, so nothing sends `{file}` until a `{type_name}` is declared in `{}{stem}.jadpo`.",
+        "A prompt's text sits beside its `type X = Prompt {{ ... }}`, named after it, so nothing sends `{file}` until `{type_name}` is declared in `{}{stem}.jadpo`.",
         folder_of(path)
     ))
     .next(format!(

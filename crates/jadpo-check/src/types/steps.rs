@@ -1427,7 +1427,7 @@ pub fn steps_settings(db: &dyn Db, project: Project) -> Arc<StepsRead> {
                     out.problems.push(
                         Diagnostic::new(&rule::STEP_SETTINGS_INVALID, message)
                             .at(span, label)
-                            .reason("The key a record's answers are encrypted with comes only from secret configuration (area 10): a `SigningKey` setting, read as `config.<name>`.")
+                            .reason("The key a record's answers are encrypted with comes only from secret configuration: a `SigningKey` setting, read as `config.<name>`.")
                             .next(declare),
                     );
                     continue;
@@ -1442,7 +1442,7 @@ pub fn steps_settings(db: &dyn Db, project: Project) -> Arc<StepsRead> {
                                 format!("`encryption_key:` reads `{read}`, which isn't a `SigningKey`"),
                             )
                             .at(span, format!("`{read}` is `{}`", found.ty))
-                            .reason("A record's answers are encrypted with a `SigningKey` setting: secret, at least 32 characters, and replaced by moving the old value to the variable with `_PREVIOUS` after its name (area 10), as grants' `encryption_key:` is.")
+                            .reason("A record's answers are encrypted with a `SigningKey` setting: secret, at least 32 characters, and replaced by moving the old value to the variable with `_PREVIOUS` after its name, as grants' `encryption_key:` is.")
                             .next(format!("Declare `{read}: SigningKey` in `config.jadpo`")),
                         );
                         continue;
