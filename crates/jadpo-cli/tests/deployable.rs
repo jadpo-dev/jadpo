@@ -1422,6 +1422,74 @@ fn a_deployable_counts_a_routes_own_limit_as_dev_does() {
     assert_eq!(ended(&mut child, 30), Some(0));
 }
 
+/// A refused magic link or address check says which limit it was over, as
+/// on `jadpo dev` (`generated_limits.rs`): `generate_routes`' own routes,
+/// and the app's own routes over the same operations.
+#[test]
+fn a_deployable_says_a_generated_routes_limit_as_dev_does() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let base = target
+        .parent()
+        .unwrap_or(target)
+        .join("jadpo-compiled/deployable/generated-limits");
+    type Files = fn(&Path) -> Vec<(String, String)>;
+    let projects: [(&str, Files); 2] = [
+        ("generated", super::generated_limits::generated_files),
+        ("own", super::generated_limits::own_files),
+    ];
+    for (name, files) in projects {
+        let root = base.join(name);
+        let vault = base.join(format!("{name}-vault"));
+        let files = super::generated_limits::with_a_database_setting(files(&vault));
+        super::generated_limits::write_all(&root, &files);
+        // Made afresh each run, so a cached project's old migration can't
+        // disagree with what this test has since gained.
+        let _ = fs::remove_dir_all(root.join("database"));
+        jadpo(&root, &["migrate", "new", "initial"]);
+        jadpo(&root, &["records", "update"]);
+        let built = run(
+            &["build".to_string(), "--json".to_string()],
+            &at(&root, &shared_cache()),
+        );
+        assert_eq!(built.code, 0, "{}{}", built.stdout, built.stderr);
+        let server = jadpo_test::postgres::Server::start().expect("a server");
+        let connection = server
+            .create_database(&format!("limits_{name}"))
+            .expect("a database");
+        apply(&connection, &migrations(&root));
+        let url = as_url(&connection);
+        let settings = [
+            ("DATABASE_URL", url.as_str()),
+            ("HOST", "127.0.0.1"),
+            ("PORT", "0"),
+        ];
+        let binary = root.join("build/target/app/app");
+        let (mut child, lines) = start(&binary, &settings);
+        let started = next(&lines, 60);
+        assert_eq!(started["event"], "runtime.started", "{started}");
+        let address = started["address"]
+            .as_str()
+            .expect("its address")
+            .to_string();
+        let send = |method: &str, path: &str, body: &str| {
+            let headers = [("Origin", "https://notes.example")];
+            let (status, head, _) = exchanged_with(&address, method, path, &headers, body);
+            (status, head)
+        };
+        if name == "own" {
+            super::generated_limits::own_routes_say_their_limit(send);
+        } else {
+            super::generated_limits::generated_routes_say_their_limit(send);
+            super::generated_limits::file_addresses_say_their_limit(send);
+        }
+        terminate(&child);
+        assert_eq!(ended(&mut child, 30), Some(0));
+    }
+}
+
 /// The folders `depth` levels below `folder`, but those whose names start
 /// with a dot.
 fn within(folder: &Path, depth: usize) -> Vec<PathBuf> {

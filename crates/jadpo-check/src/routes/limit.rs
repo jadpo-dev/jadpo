@@ -5,13 +5,15 @@
 
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_std::http::{
-    ADDRESS_LIMIT, Authentication, CALLER_LIMIT, LONGEST_LIMIT_WINDOW_MS, RateLimit,
-    RouteRateLimit, SHORTEST_LIMIT_WINDOW_MS,
+    ADDRESS_LIMIT, Authentication, CALLER_LIMIT, LONGEST_LIMIT_WINDOW_MS, MagicLinkStep,
+    PRIVACY_CHECK_RESEND_AFTER_MS, PRIVACY_CHECKS_PER_HOUR, PrivacyStep, RateLimit, RouteRateLimit,
+    SHORTEST_LIMIT_WINDOW_MS,
 };
 use jadpo_std::{Dur, RateLimitKey};
 use jadpo_syntax::ast::{self, AstNode};
 
 use super::{Apis, GroupModel, RouteModel};
+use crate::identity::MagicLink;
 use crate::tree::{self, name_text, node_span};
 
 /// What a `rate_limit:` holds.
@@ -206,16 +208,49 @@ pub fn limit_of(apis: &Apis, group: &GroupModel, route: &RouteModel) -> Option<R
     })
 }
 
+/// A limit a route Jadpo answers keeps beside the requests it counts
+/// (area 16, "What a limit you write changes"): how many sends to one
+/// email address, or how many wrong codes for one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Also {
+    pub limit: RateLimit,
+    /// What it counts when that isn't requests: `wrong_codes`.
+    pub counts: Option<&'static str>,
+}
+
+/// What a route is limited to, as OpenAPI and `jadpo routes` say it.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Shown {
+    pub limit: Limit,
+    pub also: Vec<Also>,
+}
+
+impl From<Limit> for Shown {
+    fn from(limit: Limit) -> Shown {
+        Shown {
+            limit,
+            also: Vec::new(),
+        }
+    }
+}
+
 /// What `route` is limited to, its own limit or the default one, for
 /// OpenAPI and `jadpo routes`.
-pub fn shown(apis: &Apis, group: &GroupModel, route: &RouteModel) -> Limit {
+pub fn shown(apis: &Apis, group: &GroupModel, route: &RouteModel) -> Shown {
     if let Some(own) = limit_of(apis, group, route) {
         return Limit {
             limit: own.limit,
             by: own.by,
-        };
+        }
+        .into();
     }
-    match route.authentication {
+    defaults(route.authentication).into()
+}
+
+/// The default limit of a route that `authentication` lets in: its
+/// caller's, or its address's while no one is signed in.
+pub fn defaults(authentication: Authentication) -> Limit {
+    match authentication {
         Authentication::Public => Limit {
             limit: ADDRESS_LIMIT,
             by: RateLimitKey::Ip,
@@ -227,15 +262,83 @@ pub fn shown(apis: &Apis, group: &GroupModel, route: &RouteModel) -> Limit {
     }
 }
 
+/// What a route the runtime answers is limited to: an API's limit never
+/// reaches it, so the defaults for who may call it, and what it counts
+/// beside them.
+pub fn generated(authentication: Authentication, also: Vec<Also>) -> Shown {
+    Shown {
+        limit: defaults(authentication),
+        also,
+    }
+}
+
+/// One send to an email address per `resend_after_ms`, and `sends` an hour.
+fn sends(resend_after_ms: i64, sends: u32) -> Vec<Also> {
+    vec![
+        Also {
+            limit: RateLimit {
+                requests: 1,
+                window_ms: u32::try_from(resend_after_ms).unwrap_or(u32::MAX),
+            },
+            counts: None,
+        },
+        Also {
+            limit: RateLimit {
+                requests: sends,
+                window_ms: 60 * 60 * 1000,
+            },
+            counts: None,
+        },
+    ]
+}
+
+/// A magic-link route's limits: `magic`'s sends, or its wrong codes.
+pub fn magic_link(step: MagicLinkStep, magic: &MagicLink) -> Shown {
+    let also = match step {
+        MagicLinkStep::Request => sends(magic.resend_after_ms, magic.codes_per_hour),
+        MagicLinkStep::Confirm | MagicLinkStep::Redeem => vec![Also {
+            limit: RateLimit {
+                requests: magic.failed_codes_per_day,
+                window_ms: 24 * 60 * 60 * 1000,
+            },
+            counts: Some("wrong_codes"),
+        }],
+    };
+    generated(step.authentication(), also)
+}
+
+/// A data-request route's limits: its address check's sends, which are
+/// fixed (area 15, "Data requests").
+pub fn privacy(step: PrivacyStep) -> Shown {
+    let also = if step == PrivacyStep::Request {
+        sends(PRIVACY_CHECK_RESEND_AFTER_MS, PRIVACY_CHECKS_PER_HOUR)
+    } else {
+        Vec::new()
+    };
+    generated(step.authentication(), also)
+}
+
 /// `requests` over `within`, by what: `5/1h ip`, as `jadpo routes` shows a
-/// limit.
-pub fn words(limit: &Limit) -> String {
-    format!(
+/// limit, and each of its other limits after it.
+pub fn words(shown: &Shown) -> String {
+    let mut out = format!(
         "{}/{} {}",
-        limit.limit.requests,
-        within(limit.limit),
-        limit.by.name()
-    )
+        shown.limit.limit.requests,
+        within(shown.limit.limit),
+        shown.limit.by.name()
+    );
+    for also in &shown.also {
+        let counts = also
+            .counts
+            .map(|counts| format!(" {}", counts.replace('_', " ")))
+            .unwrap_or_default();
+        out.push_str(&format!(
+            ", {}/{} email{counts}",
+            also.limit.requests,
+            within(also.limit)
+        ));
+    }
+    out
 }
 
 /// A limit's window as it is written: `1h`, `90s`.

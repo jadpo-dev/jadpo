@@ -47,7 +47,7 @@ use std::rc::Rc;
 use jadpo_std::email::{MAGIC_LINK_EMAIL, MagicLinkEmailPlan};
 use jadpo_std::http::{
     API_TOKEN_PREFIX, FIRST_SIGN_IN, IdentityPlan, MAGIC_LINK_REDEEMED, MagicLinkPlan,
-    MagicLinkStep, RETURN_TO_MAX, SESSION_LIFETIME_MS,
+    MagicLinkStep, RETURN_TO_MAX, RateLimit, SESSION_LIFETIME_MS,
 };
 use jadpo_std::read::SqlType;
 use jadpo_std::{SignInMethod, SignInRefusal};
@@ -59,7 +59,8 @@ use super::identity::{
 };
 use super::sign_in_events::{self, SignInEvent};
 use super::{
-    App, INTERNAL_FAULT, Problem, RATE_LIMITED, Request, Response, invalid_input, runtime_failure,
+    App, INTERNAL_FAULT, Problem, RATE_LIMITED, Request, Response, invalid_input, limit_headers,
+    runtime_failure,
 };
 use crate::ctx::{Binding, SessionEffect, SignInRefused, System};
 use crate::outbox::{Delivery, Sealed};
@@ -248,6 +249,9 @@ pub(crate) enum Refused {
     /// A runtime failure (its status, code and message), with the seconds
     /// to wait before trying again when it says.
     Failure((u16, &'static str, &'static str), Option<i64>),
+    /// Refused for being over `RateLimit`: the failure and the seconds to
+    /// wait, which the `RateLimit` headers say beside it.
+    Limited((u16, &'static str, &'static str), i64, RateLimit),
     /// The running action's transaction couldn't go on.
     Store(crate::StoreError),
     /// `on_first_sign_in:`'s action faulted.
@@ -350,7 +354,7 @@ struct Asking<'a> {
 enum Asked {
     /// Over `resend_after:` or `codes_per_hour:`: wait this many
     /// milliseconds, whether or not an account has the address.
-    Limited(i64),
+    Limited(i64, RateLimit),
     /// Kept as the address's only valid request, with an email to send
     /// when an account has the address or a first sign-in may make one.
     Kept { sends_email: bool },
@@ -395,13 +399,16 @@ async fn ask(
     if let Some(at) = millis(requested_at) {
         let next = at.saturating_add(magic.resend_after_ms);
         if next > now {
-            return Ok(Asked::Limited(next - now));
+            return Ok(Asked::Limited(next - now, one_send(magic.resend_after_ms)));
         }
     }
     let (since, sends) = match millis(sends_since) {
         Some(since) if since.saturating_add(HOUR_MS) > now => {
             if u32::try_from(*sends).unwrap_or(u32::MAX) >= magic.codes_per_hour {
-                return Ok(Asked::Limited(since.saturating_add(HOUR_MS) - now));
+                return Ok(Asked::Limited(
+                    since.saturating_add(HOUR_MS) - now,
+                    per_hour(magic.codes_per_hour),
+                ));
             }
             (since, sends.saturating_add(1))
         }
@@ -455,6 +462,14 @@ impl Site<'_> {
                         .headers
                         .push(("retry-after".to_string(), wait.to_string()));
                 }
+                Box::new(response)
+            }
+            Refused::Limited(failure, wait, limit) => {
+                let mut response = runtime_failure(failure, self.request_id, None);
+                response
+                    .headers
+                    .push(("retry-after".to_string(), wait.to_string()));
+                limit_headers(&mut response, wait.unsigned_abs(), limit);
                 Box::new(response)
             }
             Refused::Store(_) => stop(AUTHENTICATION_UNAVAILABLE, self.request_id),
@@ -559,8 +574,8 @@ impl Site<'_> {
         let steps: Result<Option<Response>, crate::StoreError> = async {
             transaction.execute(SWEEP, &[micros(now)]).await?;
             let sends_email = match ask(transaction.as_mut(), self.magic, &asking).await? {
-                Asked::Limited(wait) => {
-                    return Ok(Some(limited(self.request_id, wait)));
+                Asked::Limited(wait, limit) => {
+                    return Ok(Some(limited(self.request_id, wait, limit)));
                 }
                 Asked::Kept { sends_email } => sends_email,
             };
@@ -671,8 +686,8 @@ impl Site<'_> {
             Err(error) => Err(error),
         };
         match asked_now.map_err(Refused::Store)? {
-            Asked::Limited(wait) => {
-                return Err(Refused::Failure(RATE_LIMITED, Some(seconds(wait))));
+            Asked::Limited(wait, limit) => {
+                return Err(Refused::Limited(RATE_LIMITED, seconds(wait), limit));
             }
             Asked::Kept { sends_email: false } => {}
             Asked::Kept { sends_email: true } => {
@@ -1090,7 +1105,14 @@ impl Site<'_> {
                     SignInRefusal::CodesDisabled,
                     Some(address),
                     None,
-                    Refused::Failure(CODES_DISABLED, Some(seconds(today + DAY_MS - now))),
+                    Refused::Limited(
+                        CODES_DISABLED,
+                        seconds(today + DAY_MS - now),
+                        RateLimit {
+                            requests: self.magic.failed_codes_per_day,
+                            window_ms: DAY_MS as u32,
+                        },
+                    ),
                 )
                 .await);
         }
@@ -1308,35 +1330,49 @@ fn defect(ctx: &mut Ctx<'_>, what: &str, site: u32) -> Stored {
     Stored::Fault(ctx.fault(FaultKind::Defect(what.to_string()), site))
 }
 
+/// The failure a refusal raises at `site`, with how long to wait and the
+/// limit it was over when it says.
+fn failed(
+    ctx: &mut Ctx<'_>,
+    (status, code, message): (u16, &str, &str),
+    wait: Option<i64>,
+    limit: Option<RateLimit>,
+    site: u32,
+) -> Stored {
+    let name: String = code
+        .split('_')
+        .map(|word| {
+            let mut chars = word.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first.to_ascii_uppercase().to_string() + chars.as_str()
+            })
+        })
+        .collect();
+    let mut failure = crate::Failure::new(format!("runtime {code}"), name, code);
+    failure.kind = match status {
+        401 => Some("unauthenticated"),
+        403 => Some("not_permitted"),
+        422 => Some("invalid_value"),
+        429 => Some("rate_limited"),
+        503 => Some("unavailable"),
+        _ => None,
+    }
+    .map(str::to_string);
+    failure.status = Some(status);
+    failure.message = Some(message.to_string());
+    failure.retry_after = wait;
+    failure.rate_limit = limit;
+    Stored::Failed(ctx.fail(failure, site))
+}
+
 /// What an operation's refusal raises at site `site`: the same failure,
 /// code and status the generated routes answer with, never naming the
 /// token, the code or the address.
 pub(crate) fn raised(ctx: &mut Ctx<'_>, refused: Refused, site: u32) -> Stored {
     match refused {
-        Refused::Failure((status, code, message), wait) => {
-            let name: String = code
-                .split('_')
-                .map(|word| {
-                    let mut chars = word.chars();
-                    chars.next().map_or_else(String::new, |first| {
-                        first.to_ascii_uppercase().to_string() + chars.as_str()
-                    })
-                })
-                .collect();
-            let mut failure = crate::Failure::new(format!("runtime {code}"), name, code);
-            failure.kind = match status {
-                401 => Some("unauthenticated"),
-                403 => Some("not_permitted"),
-                422 => Some("invalid_value"),
-                429 => Some("rate_limited"),
-                503 => Some("unavailable"),
-                _ => None,
-            }
-            .map(str::to_string);
-            failure.status = Some(status);
-            failure.message = Some(message.to_string());
-            failure.retry_after = wait;
-            Stored::Failed(ctx.fail(failure, site))
+        Refused::Failure(failure, wait) => failed(ctx, failure, wait, None, site),
+        Refused::Limited(failure, wait, limit) => {
+            failed(ctx, failure, Some(wait), Some(limit), site)
         }
         Refused::Store(error) => match crate::read::refused(ctx, error, site) {
             crate::read::Interrupt::Failed(failure) => Stored::Failed(failure),
@@ -1470,13 +1506,30 @@ pub async fn redeem_code(
 }
 
 /// 429 `rate_limited`, waiting `wait_ms`.
-pub(crate) fn limited(request_id: &str, wait_ms: i64) -> Response {
+pub(crate) fn limited(request_id: &str, wait_ms: i64, limit: RateLimit) -> Response {
     let mut response = runtime_failure(RATE_LIMITED, request_id, None);
-    let seconds = (wait_ms + 999) / 1000;
+    let seconds = ((wait_ms + 999) / 1000).max(1);
     response
         .headers
-        .push(("retry-after".to_string(), seconds.max(1).to_string()));
+        .push(("retry-after".to_string(), seconds.to_string()));
+    limit_headers(&mut response, seconds.unsigned_abs(), limit);
     response
+}
+
+/// The limit of one send per `resend_after_ms`, for a refusal's headers.
+pub(crate) fn one_send(resend_after_ms: i64) -> RateLimit {
+    RateLimit {
+        requests: 1,
+        window_ms: u32::try_from(resend_after_ms).unwrap_or(u32::MAX),
+    }
+}
+
+/// The limit of `sends` an hour, for a refusal's headers.
+pub(crate) fn per_hour(sends: u32) -> RateLimit {
+    RateLimit {
+        requests: sends,
+        window_ms: HOUR_MS as u32,
+    }
 }
 
 pub(crate) fn ok_json(body: String) -> Response {

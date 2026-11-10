@@ -633,8 +633,18 @@ async fn counted(ctx: &Ctx<'_>, key: &str, limit: RateLimit, request_id: &str) -
 /// draft (area 7, "Rate-limited requests").
 fn rate_limited(request_id: &str, retry_after: u64, limit: RateLimit) -> Response {
     let mut response = runtime_failure(RATE_LIMITED, request_id, None);
+    response
+        .headers
+        .push(("retry-after".to_string(), retry_after.to_string()));
+    limit_headers(&mut response, retry_after, limit);
+    response.counted = true;
+    response
+}
+
+/// The headers of the IETF draft for a refusal over `limit`: what the
+/// limit is, and none left for `wait` seconds.
+pub(crate) fn limit_headers(response: &mut Response, wait: u64, limit: RateLimit) {
     response.headers.extend([
-        ("retry-after".to_string(), retry_after.to_string()),
         (
             "ratelimit-policy".to_string(),
             format!(
@@ -643,13 +653,8 @@ fn rate_limited(request_id: &str, retry_after: u64, limit: RateLimit) -> Respons
                 limit.window_ms / 1000
             ),
         ),
-        (
-            "ratelimit".to_string(),
-            format!("\"default\";r=0;t={retry_after}"),
-        ),
+        ("ratelimit".to_string(), format!("\"default\";r=0;t={wait}")),
     ]);
-    response.counted = true;
-    response
 }
 
 async fn route_request(
@@ -2155,9 +2160,13 @@ pub(crate) fn declared_failure(app: &App<'_>, failure: &Failure, request_id: &st
     // A built-in failure that says when to try again: `rate_limited` or
     // `sign_in_codes_disabled` from magic links' operations (chunk 7.3b3).
     if let Some(seconds) = failure.retry_after {
+        let seconds = seconds.max(1);
         response
             .headers
-            .push(("retry-after".to_string(), seconds.max(1).to_string()));
+            .push(("retry-after".to_string(), seconds.to_string()));
+        if let Some(limit) = failure.rate_limit {
+            limit_headers(&mut response, seconds.unsigned_abs(), limit);
+        }
     }
     response
 }

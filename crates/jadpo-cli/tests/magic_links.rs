@@ -1130,6 +1130,13 @@ fn sends_are_limited_alike_for_every_address() {
         let soon = live.ask(&mut browser, address);
         refused(&soon, 429, "rate_limited");
         assert_eq!(soon.header("retry-after"), Some("60"));
+        // The limit it was over: one send a minute (area 7, "Rate-limited
+        // requests").
+        assert_eq!(
+            soon.header("ratelimit-policy"),
+            Some("\"default\";q=1;w=60")
+        );
+        assert_eq!(soon.header("ratelimit"), Some("\"default\";r=0;t=60"));
     }
     // `codes_per_hour: 3`.
     live.at(START + 2 * MINUTE);
@@ -1137,10 +1144,17 @@ fn sends_are_limited_alike_for_every_address() {
     live.at(START + 4 * MINUTE);
     assert_eq!(live.ask(&mut browser, "cy@example.com").status, 202);
     live.at(START + 6 * MINUTE);
-    refused(
-        &live.ask(&mut browser, "cy@example.com"),
-        429,
-        "rate_limited",
+    let hourly = live.ask(&mut browser, "cy@example.com");
+    refused(&hourly, 429, "rate_limited");
+    assert_eq!(
+        hourly.header("ratelimit-policy"),
+        Some("\"default\";q=3;w=3600")
+    );
+    assert_eq!(
+        hourly.header("ratelimit").map(str::to_string),
+        hourly
+            .header("retry-after")
+            .map(|wait| format!("\"default\";r=0;t={wait}"))
     );
     live.at(START + 61 * MINUTE);
     assert_eq!(live.ask(&mut browser, "cy@example.com").status, 202);
@@ -1202,6 +1216,10 @@ fn past_the_days_wrong_codes_codes_stop_but_links_work() {
     );
     refused(&disabled, 429, "sign_in_codes_disabled");
     assert!(disabled.header("retry-after").is_some());
+    assert_eq!(
+        disabled.header("ratelimit-policy"),
+        Some("\"default\";q=5;w=86400")
+    );
     assert_eq!(Live::reason(&disabled).as_deref(), Some("codes_disabled"));
     let linked = live.confirm(&mut browser, &format!("{{\"token\":\"{}\"}}", mail.token()));
     assert_eq!(linked.status, 200, "{}", text(&linked));
@@ -1707,6 +1725,11 @@ fn the_apps_own_routes_keep_the_limits_and_wrong_codes() {
         let again = live.ask_own(&mut browser, address, "/");
         refused(&again, 429, "rate_limited");
         assert_eq!(again.header("retry-after"), Some("60"), "{address}");
+        assert_eq!(
+            again.header("ratelimit-policy"),
+            Some("\"default\";q=1;w=60"),
+            "{address}"
+        );
     }
     let six = live.last_mail("nobody@example.com").code();
     let six_bo = live
