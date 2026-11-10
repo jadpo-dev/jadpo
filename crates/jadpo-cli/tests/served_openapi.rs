@@ -163,7 +163,7 @@ fn jadpo_routes_lists_it_as_generated() {
     assert!(
         listed
             .stdout
-            .contains("GET   /v1/openapi.json  generated openapi  none             generated"),
+            .contains("GET   /v1/openapi.json  generated openapi  none  120/1m ip  generated"),
         "{}",
         listed.stdout
     );

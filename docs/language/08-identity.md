@@ -1744,7 +1744,8 @@ POST /auth/magic-link
 - Sends to one address are limited, counted the same whether or not an
   account has it: one every `resend_after:`, and `codes_per_hour:` an
   hour. Over either limit the answer is the built-in `rate_limited` (429,
-  with `Retry-After`), the same for unknown addresses.
+  with `Retry-After` and the [`RateLimit` headers](07-http.md#rate-limited-requests)
+  for the limit it was over), the same for unknown addresses.
 - Each send makes the earlier link and code for that address stop
   working. Only the latest is ever valid.
 
@@ -1829,7 +1830,7 @@ no code.
 
 When an address reaches `failed_codes_per_day:` wrong guesses in a day
 (UTC), codes stop working for it until the next day
-(`sign_in_codes_disabled`), while links still work. Nothing locks an
+(`sign_in_codes_disabled`, with the same headers), while links still work. Nothing locks an
 account, so an attacker can't lock a person out.
 
 ### Only in the browser that asked: `same_browser:`

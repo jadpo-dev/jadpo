@@ -163,7 +163,8 @@ POSTGRES = [
     # setting among them (area 10).
     ('live PostgreSQL: passkeys, magic links and configuration',
      [('jadpo-cli', 'passkeys'), ('jadpo-cli', 'passkey_tokens'), ('jadpo-cli', 'magic_links'),
-      ('jadpo-cli', 'privacy_requests'), ('jadpo-cli', 'config')], []),
+      ('jadpo-cli', 'privacy_requests'), ('jadpo-cli', 'generated_limits'),
+      ('jadpo-cli', 'config')], []),
     # Queries, `get` and `create` run through `jadpo test`, and
     # aggregate queries against what code works out (area 6).
     ('live PostgreSQL: queries', [('jadpo-cli', 'queries'), ('jadpo-cli', 'aggregates')], []),

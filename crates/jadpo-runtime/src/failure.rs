@@ -45,6 +45,9 @@ pub struct Failure {
     /// wait, which a route's response gives as `Retry-After`: magic links'
     /// `rate_limited` and `sign_in_codes_disabled` (chunk 7.3b3).
     pub retry_after: Option<i64>,
+    /// For such a failure, the limit it was over, which the response gives
+    /// in the `RateLimit` headers (area 7, "Rate-limited requests").
+    pub rate_limit: Option<jadpo_std::http::RateLimit>,
 }
 
 impl Failure {
@@ -69,6 +72,7 @@ impl Failure {
             frames: Vec::new(),
             cause: None,
             retry_after: None,
+            rate_limit: None,
         }
     }
 
