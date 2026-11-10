@@ -107,17 +107,17 @@ macro_rules! rules {
 
 rules! {
     ACCEPTANCE_BASE_MISSING: "acceptance.base_missing", area 14, Error, Agent,
-        "Base commit the change is compared with isn't in this clone";
+        "This clone doesn't hold the commit on the default branch that the change is compared with";
     ACCEPTANCE_EDITED: "acceptance.edited", area 14, Error, Agent,
-        "Acceptance already on the before side was edited";
+        "An acceptance already on the default branch was edited";
     ACCEPTANCE_INVALID: "acceptance.invalid", area 14, Error, Agent,
-        "Acceptance file isn't written as an acceptance";
+        "An acceptance file holds something other than one `acceptance { changes: { ... } }`";
     ACCEPTANCE_MISSING: "acceptance.missing", area 14, Error, Human,
         "A change could break someone else or widen who can do what, and no acceptance this change adds says a person agreed to it";
     ACCEPTANCE_NO_REASON: "acceptance.no_reason", area 14, Error, Human,
         "An acceptance this change adds has no `///` line above `acceptance` saying why a person accepted the changes it lists";
     ACCEPTANCE_UNMATCHED: "acceptance.unmatched", area 14, Error, Agent,
-        "Acceptance lists a change this change doesn't make";
+        "An acceptance lists a change that this change doesn't make";
     AI_CONNECTION_REQUIRED: "ai.connection_required", area 21, Error, Agent,
         "Action asks a model but the application names no `ai:` connection";
     AI_SETTINGS_INVALID: "ai.settings_invalid", area 21, Error, Agent,
@@ -661,15 +661,15 @@ rules! {
     MIGRATION_APPLY_FAILED: "migration.apply_failed", area 14, Error, Human,
         "Applying the project's migrations to a database stopped at a step that failed";
     MIGRATION_BACKFILL_CAN_FAIL: "migration.backfill_can_fail", area 5, Error, Agent,
-        "Computed backfill can fail";
+        "A migration fills a field with a backfill that can fail";
     MIGRATION_BACKFILL_OUTSIDE_ROW: "migration.backfill_outside_row", area 5, Error, Agent,
-        "Computed backfill reads more than its row";
+        "A migration's backfill reads something other than the record it fills";
     MIGRATION_DECISION_INVALID: "migration.decision_invalid", area 5, Error, Agent,
-        "Migration decision does not fit its change";
+        "A migration's decision doesn't fit the change it is about";
     MIGRATION_DECISION_REQUIRED: "migration.decision_required", area 5, Error, Human,
         "A migration needs your decision, such as a value for records already stored, and its `changes.jadpo` doesn't give one yet";
     MIGRATION_DECISION_UNKNOWN: "migration.decision_unknown", area 5, Error, Agent,
-        "Migration decides about something that is not changing";
+        "A migration decides about something that isn't changing";
     MIGRATION_DROP_NOT_ACCEPTED: "migration.drop_not_accepted", area 14, Error, Human,
         "A migration removes data, and no acceptance in the project says a person agreed to it";
     MIGRATION_EXTENSION_MISSING: "migration.extension_missing", area 14, Error, Human,
@@ -683,7 +683,7 @@ rules! {
     MIGRATION_STORE_DIVERGED: "migration.store_diverged", area 14, Error, Human,
         "The migrations a database has applied don't match the project's: one has changed since it ran, the project doesn't have one, or one comes out of order";
     MIGRATION_UNFINISHED: "migration.unfinished", area 5, Error, Agent,
-        "Latest migration is not finished";
+        "A migration's decisions are written, but its SQL wasn't written from them";
     NAMING_FOLDED_COLLISION: "naming.folded_collision", area 1, Error, Agent,
         "Two names in the project become the same file name";
     NAMING_GENERIC_NAME: "naming.generic_name", area 1, Error, Agent,
@@ -691,19 +691,19 @@ rules! {
     NAMING_ROUND_TRIP: "naming.round_trip", area 1, Error, Agent,
         "An `UpperCamelCase` name has consecutive capitals, so it doesn't convert to its file name and back unchanged";
     PACKAGE_ACTION_INVALID: "package.action_invalid", area 11, Error, Agent,
-        "Package action does what package code may not";
+        "A package's action does something package code may not";
     PACKAGE_ADVISORY: "package.advisory", area 14, Error, Human,
         "An advisory is against a declaration of an installed package that the app reaches";
     PACKAGE_DIGEST_MISMATCH: "package.digest_mismatch", area 11, Error, Human,
         "The files of an installed package in `packages/` have been changed, added or removed since it was installed";
     PACKAGE_EMAILS_FOLDER: "package.emails_folder", area 11, Error, Agent,
-        "Package holds email templates";
+        "A package holds email templates";
     PACKAGE_INDEX_INVALID: "package.index_invalid", area 11, Error, Agent,
-        "Package's index is missing, or holds what an index can't";
+        "A package's index is missing, or holds something an index can't";
     PACKAGE_LICENCE_NOT_ALLOWED: "package.licence_not_allowed", area 11, Error, Human,
         "An installed package says its licence is proprietary, but it wasn't installed from a git repository";
     PACKAGE_NAME_MISMATCH: "package.name_mismatch", area 11, Error, Agent,
-        "Package's index names another package than its folder";
+        "A package's index gives a different name from its folder";
     PACKAGE_NAME_TAKEN: "package.name_taken", area 11, Error, Human,
         "A package has the same name as one of the app's domains, libraries, declarations or other packages";
     PACKAGE_NOT_INSTALLED: "package.not_installed", area 11, Error, Human,
@@ -711,29 +711,29 @@ rules! {
     PACKAGE_NOT_LOCKED: "package.not_locked", area 11, Error, Human,
         "A package sits in `packages/`, but `jadpo.lock` has no line for it, so it was copied in rather than installed";
     PACKAGE_NOT_PUBLIC: "package.not_public", area 11, Error, Agent,
-        "Code uses a package's declaration that isn't public";
+        "Code uses a declaration of a package that the package doesn't mark `public`";
     PACKAGE_OPERATION_INVALID: "package.operation_invalid", area 11, Error, Agent,
-        "Provider operation holds what it can't, or lacks what it needs";
+        "A provider package's operation holds something it can't, or lacks something it needs";
     PACKAGE_OWN_SOURCE_INVALID: "package.own_source_invalid", area 11, Error, Agent,
         "Application's `packages:` lists your company's git locations wrongly";
     PACKAGE_PROVIDER_INVALID: "package.provider_invalid", area 11, Error, Agent,
-        "Provider file holds what it can't, or lacks `protocol:`";
+        "A provider file holds something it can't, or lacks `protocol:`";
     PACKAGE_PROVIDER_MISSING: "package.provider_missing", area 11, Error, Agent,
-        "Package has resources but no `provider.jadpo`";
+        "A package has resources but no `provider.jadpo`";
     PACKAGE_PROVIDER_TRANSLATIONS: "package.provider_translations", area 11, Error, Agent,
-        "Provider package carries translations";
+        "A provider package carries translations";
     PACKAGE_RESERVED_NAME: "package.reserved_name", area 11, Error, Agent,
-        "App's own integration takes a provider's reserved name";
+        "An app's own integration takes a name kept for an official package";
     PACKAGE_STANDARD_CANDIDATE: "package.standard_candidate", area 11, Declinable, Agent,
-        "Provider field looks like a standard type the package doesn't use, or like personal data it doesn't mark";
+        "A provider package's field looks like a standard type the package doesn't use, or like personal data it doesn't mark";
     PACKAGE_VERSION_NEEDED: "package.version_needed", area 11, Error, Agent,
         "Your code names something through a package that the app holds in two versions, without saying which version it means";
     PACKAGE_VERSION_UNNEEDED: "package.version_unneeded", area 11, Error, Agent,
-        "Name written through a package held in one version carries a version";
+        "A name written through a package held in one version carries that version";
     PACKAGE_WIRE_INVALID: "package.wire_invalid", area 11, Error, Agent,
-        "Field says how it is sent in a way it can't";
+        "A provider package's field or failure says how it is sent in a way it can't";
     PACKAGE_WIRE_NAME_INVALID: "package.wire_name_invalid", area 11, Error, Agent,
-        "Wire name outside a provider package, or one the type already uses";
+        "A `wire_name:` is outside a provider package, or repeats or empties a spelling";
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
         "A grant, a membership or a `tenant:` names something that can't say who is allowed or where";
     POLICY_CALL_UNGRANTED: "policy.call_ungranted", area 9, Security, Human,
@@ -1257,23 +1257,23 @@ rules! {
     TEST_FAILED: "test.failed", area 14, Error, Agent,
         "A test failed under `jadpo test`, or among a package's own tests under `jadpo package check`";
     TEST_FAKE_EXHAUSTED: "test.fake_exhausted", area 13, Error, Agent,
-        "Test called a faked operation more times than its fakes script";
+        "A test called a faked operation more times than its `fakes:` gives answers";
     TEST_FAKE_UNUSED: "test.fake_unused", area 13, Error, Agent,
         "A test passed otherwise, but its `fakes:` scripted more answers for a provider operation than the code called it for";
     TEST_FAULT: "test.fault", area 13, Error, Agent,
-        "Test stopped on a fault";
+        "A test stopped because the code it ran hit a fault";
     TEST_NO_TESTS: "test.no_tests", area 14, Error, Agent,
         "A `jadpo test` command found no test to run: the project has none, or none matches the path, line, name, kind or `--failed` it gives";
     TEST_RECORDING_UNDECODABLE: "test.recording_undecodable", area 11, Error, Agent,
         "A saved answer from an outside service doesn't fit the types your integration reads that answer as";
     TEST_ROUND_TRIP_FAILED: "test.round_trip_failed", area 11, Error, Agent,
-        "Field's decode and encode don't round-trip a recorded value";
+        "A field's `encode:` doesn't give back what its `decode:` read from a recording";
     TEST_RUNTIME_START_FAILED: "test.runtime_start_failed", area 14, Error, Human,
         "The tests couldn't start, because the machine couldn't give `jadpo test` the thread with a large stack they run on, usually for lack of memory";
     TEST_SUBSCRIBER_FAILED: "test.subscriber_failed", area 13, Error, Agent,
-        "Subscriber failed for good during a test";
+        "A subscriber failed for good during a test, or its rerun no longer matched the record of its steps";
     TEST_UNEXPECTED_FAILURE: "test.unexpected_failure", area 13, Error, Agent,
-        "Test ended in a failure it did not expect";
+        "A test ended in a failure it didn't check for";
     THRESHOLD_DECLARATION_INVALID: "threshold.declaration_invalid", area 16, Error, Agent,
         "A threshold in `thresholds { }` doesn't watch one thing, gives a limit that doesn't apply to it, or gives a value a limit can't take";
     THRESHOLD_SUBJECT_UNKNOWN: "threshold.subject_unknown", area 16, Error, Agent,

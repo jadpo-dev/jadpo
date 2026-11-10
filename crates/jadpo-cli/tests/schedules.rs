@@ -1158,25 +1158,24 @@ until it ends
         &["schedules", "history", "chore_census"],
     );
     assert_eq!(history.code, 0, "{}{}", history.stdout, history.stderr);
+    // A run by hand takes real time, which can widen the `took` column, so
+    // the table is compared with its spacing collapsed.
+    let spaced = squeezed(&history.stdout);
     assert!(
-        history.stdout.starts_with(
+        spaced.starts_with(&squeezed(
             "2026-10-19
   due (UTC)  started    took  outcome
   15:00      15:00:00   0 ms  ✓ succeeded  1 event
 "
-        ),
+        )),
         "{}",
         history.stdout
     );
     assert!(
-        history
-            .stdout
-            .contains("\n  12:20      12:20:00  5 min  ✗ failed     lease_expired\n")
-            && history.stdout.contains("\n  –          12:16:00  ")
-            && history.stdout.contains("✓ succeeded  1 event · by hand\n")
-            && history
-                .stdout
-                .contains("\n  12:15      –             –  – skipped    paused\n"),
+        spaced.contains("\n12:20 12:20:00 5 min ✗ failed lease_expired\n")
+            && spaced.contains("\n– 12:16:00 ")
+            && spaced.contains("✓ succeeded 1 event · by hand\n")
+            && spaced.contains("\n12:15 – – – skipped paused\n"),
         "{}",
         history.stdout
     );
@@ -1878,4 +1877,13 @@ fn hourly_housekeeping_contends_retries_and_preserves_retention_on_its_stack() {
         assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE lease_id IS NULL AND last_cleaned_at IS NOT NULL").await,1);
 
     });
+}
+
+/// Each line with its runs of spaces made one and its edges trimmed.
+fn squeezed(text: &str) -> String {
+    text.lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + if text.ends_with('\n') { "\n" } else { "" }
 }
