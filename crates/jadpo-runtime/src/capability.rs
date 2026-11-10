@@ -355,6 +355,16 @@ pub trait Capability {
         Err(Refused::Unavailable)
     }
 
+    /// How this store of files gives addresses of its own, when it gives
+    /// any (area 16, "The S3 driver"): a client downloads from and uploads
+    /// to the store itself, and nothing goes through the app's own origin.
+    /// `None` for a store whose files go through the app, as the disk
+    /// driver's do, and for anything but a store of files.
+    fn direct(&self, connection: &str) -> Option<&dyn DirectFiles> {
+        let _ = connection;
+        None
+    }
+
     /// The inputs of the calls of `operation` through `connection` it was
     /// sent, in order, one per call however often it asked again: what a
     /// test reads as `.requests` (area 13; area 21, chunk 5.5v3). Only a
@@ -363,6 +373,48 @@ pub trait Capability {
         let _ = (connection, operation);
         Vec::new()
     }
+}
+
+/// What a store gives of its own addresses (area 16, "The S3 driver"): each
+/// signed to expire at `expires_ms`, at `now_ms` on the program's clock.
+pub trait DirectFiles {
+    /// A signed link to download file `key` straight from the store, sent
+    /// with `media` as its type and `disposition` as how it is offered.
+    /// `None` when it can't be signed.
+    fn download(
+        &self,
+        key: &str,
+        media: &str,
+        disposition: &str,
+        expires_ms: i64,
+        now_ms: i64,
+    ) -> Option<String>;
+
+    /// A signed address a client sends the whole of file `key` to. `None`
+    /// when it can't be signed.
+    fn upload(&self, key: &str, expires_ms: i64, now_ms: i64) -> Option<String>;
+
+    /// A signed address a client sends part `part` of file `key` to, what
+    /// the part's request said of the file noted for the first part. Asks
+    /// the store, so it is awaited: a file already whole under `key`
+    /// refuses it.
+    fn part<'a>(
+        &'a self,
+        key: &'a str,
+        part: u64,
+        file: PartFile<'a>,
+        expires_ms: i64,
+        now_ms: i64,
+    ) -> LocalFuture<'a, Result<String, Refused>>;
+}
+
+/// What a part's request says of the file, read from its first part (area
+/// 16, "Large uploads go in parts").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PartFile<'a> {
+    pub name: Option<&'a str>,
+    /// The `FileType` variant the client claimed.
+    pub claimed: Option<&'a str>,
 }
 
 /// Why a store didn't take an upload (area 16, "Uploading").

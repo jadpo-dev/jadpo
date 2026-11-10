@@ -1101,6 +1101,15 @@ pub fn target_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         }
         for (name, via) in &reached.connections {
             let refusal = match (target, kinds.kind(name)) {
+                (DeployTarget::Wasm, Some(ConnectionKind::Files))
+                    if crate::data::files_connections(db, project)
+                        .iter()
+                        .any(|store| {
+                            store.name == *name && store.driver == jadpo_std::Driver::S3
+                        }) =>
+                {
+                    None
+                }
                 (DeployTarget::Wasm, Some(ConnectionKind::Files)) => Some(Refusal {
                     message: format!(
                         "`{}` can't use `{name}` on Workers, which has no disk",
@@ -1113,7 +1122,7 @@ pub fn target_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                         via.words()
                     ),
                     next: format!(
-                        "Keep `{name}`'s files through a package over S3's API, such as Cloudflare R2, or use them from a `Target.native` deployable"
+                        "Keep `{name}`'s files in a `Driver.s3` connection, such as Cloudflare R2, or use them from a `Target.native` deployable"
                     ),
                 }),
                 (DeployTarget::Wasm, Some(ConnectionKind::Package)) => {

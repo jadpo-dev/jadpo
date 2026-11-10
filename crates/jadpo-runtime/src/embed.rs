@@ -176,6 +176,7 @@ async fn embedded(
                     ("user-agent".to_string(), "jadpo".to_string()),
                 ],
                 body: Some(request_body(&model, &texts)),
+                raw_body: None,
                 timeout_ms: site.timeout_ms,
                 reading: Reading {
                     error_code: Some("error.code".to_string()),

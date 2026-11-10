@@ -450,8 +450,8 @@ sent. [Send an email](12-send-an-email.md) shows how to send one.
 - A route that lets someone download a stored file isn't built yet, and neither is
   a signed link to one. Send the file as an email attachment, or read it where the
   disk store keeps it.
-- The S3 driver isn't built yet, so the disk store, on one native server, is the only
-  place an export can go.
+- The disk store keeps an export on one native server; an export can go to a
+  [`Driver.s3` bucket](../language/16-built-in-services.md#the-s3-driver) instead.
 - `jadpo files`, the command for listing and fetching a store's files, isn't built yet.
   Use the store's folder, as above.
 - `jadpo batches`, the command for listing and cancelling runs, isn't built yet. Keep

@@ -280,6 +280,7 @@ impl WorkersHost {
         Supplies::on(Target::Workers)
             .with_transport(Rc::new(transport))
             .with_fetch(Rc::new(WorkersFetch::counted(Rc::clone(&self.opening))))
+            .with_clock(Rc::new(|| js_sys::Date::now() as i64))
     }
 
     /// The invocation's places for connections being opened.

@@ -127,6 +127,22 @@ pub async fn upload_slot(
     };
     let key = jadpo_std::files::key_for(&id);
     let now = ctx.env().clock.now();
+    // A store with addresses of its own hears nothing before the bytes
+    // land, so its file is recorded as held by none now, for the sweep to
+    // find if it is never attached (area 16, "Uploading").
+    if ctx
+        .host()
+        .capability(&plan.store)
+        .is_some_and(|driver| driver.direct(&plan.store).is_some())
+        && Box::pin(crate::files::keep_unheld(ctx, &plan.store, &key))
+            .await
+            .is_err()
+    {
+        return Called::Failed(Box::new(crate::Failure {
+            frames: ctx.frames(),
+            ..crate::unavailable()
+        }));
+    }
     match crate::http::uploads::slot_value(ctx.host(), plan, key, now) {
         Some(slot) => Called::Value(slot),
         None => Called::defect(ctx, "a slot for a store that signs nothing", at),

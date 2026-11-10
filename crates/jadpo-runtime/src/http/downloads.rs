@@ -204,14 +204,25 @@ impl<'c> Linker<'c> {
             hash: text("hash"),
             expires: self.now.saturating_add(self.valid_ms),
         };
-        let link = sign(&signing_key(self.host, &store, true)?, &said);
+        // A store with addresses of its own signs the link itself, and the
+        // client's download never comes back through this origin.
+        let url = match self.host.capability(&store)?.direct(&store) {
+            Some(direct) => direct.download(
+                &said.key,
+                said.media,
+                &disposition(&said),
+                said.expires,
+                self.now,
+            )?,
+            None => format!(
+                "/{DOWNLOADS}/{store}/{}",
+                sign(&signing_key(self.host, &store, true)?, &said)
+            ),
+        };
         Some(Value::record(
             FILE_LINK,
             vec![
-                (
-                    Rc::from("url"),
-                    Value::text(&format!("/{DOWNLOADS}/{store}/{link}")),
-                ),
+                (Rc::from("url"), Value::text(&url)),
                 (
                     Rc::from("name"),
                     name.as_deref().map_or(Value::None, Value::text),

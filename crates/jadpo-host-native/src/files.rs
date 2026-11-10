@@ -514,7 +514,7 @@ impl DiskStore {
         Answer::Value(jadpo_runtime::files::uploaded(
             &head,
             size,
-            hash,
+            Some(hash),
             text("n"),
             text("c"),
         ))

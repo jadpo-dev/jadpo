@@ -145,7 +145,14 @@ pub fn deployables(
             one_server: reached
                 .connections
                 .keys()
-                .filter(|name| kinds.kind(name) == Some(jadpo_check::data::ConnectionKind::Files))
+                .filter(|name| {
+                    kinds.kind(name) == Some(jadpo_check::data::ConnectionKind::Files)
+                        && jadpo_check::data::files_connections(db, project)
+                            .iter()
+                            .any(|store| {
+                                store.name == **name && store.driver == jadpo_std::Driver::Disk
+                            })
+                })
                 .cloned()
                 .collect(),
             build: stores.as_ref().and_then(|stores| {

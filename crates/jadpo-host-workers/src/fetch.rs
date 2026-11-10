@@ -159,7 +159,9 @@ async fn send(
     let init = RequestInit::new();
     init.set_method(request.method.word());
     init.set_headers(&headers);
-    if let Some(body) = &request.body {
+    if let Some(bytes) = &request.raw_body {
+        init.set_body(&Uint8Array::from(bytes.as_slice()).into());
+    } else if let Some(body) = &request.body {
         init.set_body(&JsValue::from_str(body));
     }
     init.set_redirect(RequestRedirect::Manual);
@@ -428,6 +430,7 @@ impl WorkersOutbound {
                     url: url.to_string(),
                     headers: vec![("accept".into(), "*/*".into())],
                     body: None,
+                    raw_body: None,
                     timeout_ms,
                     reading: Reading::default(),
                     repeatable: true,
@@ -443,6 +446,7 @@ impl WorkersOutbound {
                         ),
                     ],
                     body: Some(form.to_string()),
+                    raw_body: None,
                     timeout_ms,
                     reading: Reading::default(),
                     repeatable: false,

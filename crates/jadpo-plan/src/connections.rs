@@ -35,6 +35,7 @@ pub(crate) fn table(
     let databases = jadpo_check::databases::database_connections(db, project);
     let files = jadpo_check::data::files_connections(db, project);
     let smtp = &jadpo_check::emails::smtp_connections(db, project).list;
+    let s3 = &jadpo_check::s3::s3_connections(db, project).list;
     let models = &jadpo_check::ai::model_connections(db, project).list;
     let queues = &jadpo_check::receiving::cloudflare_queues(db, project).list;
     let limits = &jadpo_check::rate_limits::binding_connections(db, project).list;
@@ -55,6 +56,28 @@ pub(crate) fn table(
                     },
                 },
                 ConnectionKind::Redis => ConnectionDriver::Redis { url: url(name) },
+                ConnectionKind::Files
+                    if files.iter().any(|store| {
+                        store.name == *name && store.driver == jadpo_std::Driver::S3
+                    }) =>
+                {
+                    let bucket = s3.iter().find(|bucket| bucket.name == *name)?;
+                    let said = |written: &jadpo_check::s3::S3Text| match written {
+                        jadpo_check::s3::S3Text::Setting(field) => {
+                            setting(field).map(jadpo_std::connections::Said::Setting)
+                        }
+                        jadpo_check::s3::S3Text::Written(text) => {
+                            Some(jadpo_std::connections::Said::Written(text.clone()))
+                        }
+                    };
+                    ConnectionDriver::S3(Box::new(jadpo_std::connections::S3Bucket {
+                        host: said(bucket.host.as_ref()?)?,
+                        region: said(bucket.region.as_ref()?)?,
+                        bucket: said(bucket.bucket.as_ref()?)?,
+                        key_id: setting(bucket.key_id.as_deref()?)?,
+                        secret: setting(bucket.secret.as_deref()?)?,
+                    }))
+                }
                 ConnectionKind::Files => {
                     let store = files.iter().find(|store| store.name == *name);
                     ConnectionDriver::Disk {

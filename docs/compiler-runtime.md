@@ -159,7 +159,7 @@ Rust 1.88 or later).
 | `jadpo-codegen` | Rust source from graph and plan, one crate per project (§2.5, "Compiled code"); drives cargo | |
 | `jadpo-value` | Runtime values, operators, JSON codecs, validation, standard-library implementations | yes |
 | `jadpo-runtime` | Everything in §2.6, behind a `Host` trait | yes |
-| `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL, the package driver (JSON over HTTP) and SMTP; Redis and S3 are not built yet | yes |
+| `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL, the package driver (JSON over HTTP), the S3 driver over the same HTTP, and SMTP; Redis is not built yet | yes |
 | `jadpo-host-native` | tokio and hyper: the HTTP listener, timers, the background work a response leaves, the disk driver `jadpo dev` keeps files with, HTTP for the package driver; the inbox with email | |
 | `jadpo-host-workers` | wasm-bindgen and Jadpo's own bindings to Workers: `connect()` sockets, `fetch()`, timers, `waitUntil`, bindings (§2.6, "The Workers host"); with `testing`, a test Worker's handler (§2.6, "Route tests on workerd") | yes |
 | `jadpo-term` | The [CLI design language](cli-design-language.md): rich, plain and JSON output | |

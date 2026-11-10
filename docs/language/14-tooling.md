@@ -3222,7 +3222,7 @@ services](11-integrations.md)):
 
 | Target | Refused | Use instead |
 |---|---|---|
-| Workers | The disk | A package over S3's API, such as Cloudflare R2 |
+| Workers | The disk | `Driver.s3`, such as Cloudflare R2 |
 | Workers | A service Jadpo runs without `host:` | `host:`, with where it is hosted |
 | Workers | SMTP on port 25 | Port 587 |
 | Native | A Cloudflare queue, which only a Worker receives | A package over Cloudflare's HTTP pull API |

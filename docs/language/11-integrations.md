@@ -25,7 +25,7 @@ write for each:
 |---|---|
 | A database | One connection in `app.jadpo`, to PostgreSQL |
 | To send email | A connection to a mail server or a mail service such as Resend, and a type for each email |
-| To keep uploaded files | A connection to one server's disk, and a `File` field. Storing files in S3 isn't built yet |
+| To keep uploaded files | A connection to one server's disk, or to an S3-compatible service, and a `File` field |
 | To call a company's API, such as a courier's | A *provider package*, which describes that API; a connection to it; a call in an action |
 | To hear back from that company | A webhook secret on that connection, and a subscriber |
 | To share pure helpers between apps, such as a postcode parser | A *library package*, which needs no connection |
@@ -346,7 +346,7 @@ the app's process: jadpo dev's interpreter, or a native or Workers deployable
 | Provider package's calls | Faked by default, from its recordings or generated answers; operations named in `development: { sandbox: }` go to the sandbox, never live ([Provider calls in development](#provider-calls-in-development)) | Always faked; a test scripts answers with `fakes:` ([Tests and fakes](#tests-and-fakes)) | HTTPS to the live or sandbox host the connection's `environment:` picks, or to its `host:` | The same, through the Worker's `fetch` |
 | Database, `Driver.postgres` | The address its setting gives, else a disposable PostgreSQL started from the machine's PostgreSQL tools | A copy per test on a disposable PostgreSQL, or on `JADPO_TEST_DATABASE_URL`'s server | The operator's PostgreSQL | The operator's PostgreSQL, through Hyperdrive |
 | Email, by SMTP or a mail package | Caught in the dev inbox | Caught in `email.sent` | The SMTP server, or the mail package's API | The same; SMTP on port 587 only |
-| Files | The disk driver, in `.jadpo/files/` | An in-memory store | The disk driver, on one server | None yet: Workers has no disk, and the S3 driver isn't built |
+| Files | The disk driver, in `.jadpo/files/` | An in-memory store | The disk driver, on one server | The S3 driver; Workers has no disk |
 
 `jadpo check` refuses a deployable whose target can't run a connection
 it reaches, naming what to use instead: on Workers the disk and SMTP on
@@ -361,7 +361,7 @@ deployable is a Worker. Neither is an image.
 ### What is built of these
 
 Of what this page describes, these aren't built yet: running a service in a
-container; the Redis and S3 drivers; OAuth grants; the `cache`, `publishing`,
+container; the Redis driver; OAuth grants; the `cache`, `publishing`,
 `documents`, `bot_check` and `scanning` capabilities; an outside engine for
 `search`; importers other than `openapi`; and choosing
 a provider when deploying.
@@ -897,10 +897,10 @@ names. A failure can instead say the status its provider refuses with,
 
 **Built-in drivers are configured in `app.jadpo`, never packaged.** A
 driver is native code in Jadpo's runtime that speaks one protocol.
-PostgreSQL, SMTP and OpenID Connect are drivers, and Redis and S3 will be. A
+PostgreSQL, SMTP, S3 and OpenID Connect are drivers, and Redis will be. A
 vendor that speaks one of them is that driver with the vendor's settings: Neon
 is the PostgreSQL driver with its pooling mode, Gmail is the SMTP driver with
-its host and port, and Cloudflare R2 will be `driver: Driver.s3` with its host
+its host and port, and Cloudflare R2 is `driver: Driver.s3` with its host
 and `region: "auto"`. A vendor with storage and an API is a driver
 connection plus a package. A driver for one vendor comes in a Jadpo
 release only where a flow needs native code.
@@ -918,8 +918,6 @@ avatars: {
     }
 }
 ```
-
-`Driver.s3` isn't built yet, so this is its design and doesn't compile today.
 
 - **Each driver's page lists the settings for common services**, so an
   agent looks them up rather than guessing: R2, Backblaze B2,
@@ -5863,7 +5861,7 @@ support can't arise.
 |---|---|---|---|
 | `database` | Entities ([Entities, stores and migrations](05-data.md)) | PostgreSQL; D1 later | No |
 | `cache` | `caches:` ([Caches](05-data.md#caches)) | Redis (Upstash, Valkey and ElastiCache through it, on Workers too); in memory, a warning in production and an error on Workers | No |
-| `files` | `File` fields, `store.read` and `store.put` ([Files](16-built-in-services.md#files)) | Disk, native only, one server; S3 (R2, B2, MinIO and the rest through its settings), not built yet | Only one that does the whole job |
+| `files` | `File` fields, `store.read` and `store.put` ([Files](16-built-in-services.md#files)) | Disk, native only, one server; S3 (R2, B2, MinIO and the rest through its settings) | Only one that does the whole job |
 | `email` | `type X = EmailMessage`, emitted, and Jadpo's own emails ([Email](16-built-in-services.md#email)) | SMTP; the local inbox | Yes |
 | `publishing` | Chosen public events sent outward after commit; outgoing webhooks | The local log; outgoing webhooks | Yes |
 | `receiving` | Queue messages arriving as events | Cloudflare Queues on Workers; Kafka later | Yes (SQS, Pub/Sub pull) |

@@ -2,6 +2,7 @@
 
 pub mod fake_hq;
 pub mod fake_provider;
+pub mod fake_s3;
 pub mod fake_smtp;
 pub mod fake_sqs;
 pub mod probes;

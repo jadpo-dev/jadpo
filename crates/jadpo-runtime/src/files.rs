@@ -422,11 +422,23 @@ async fn attached(
             }
         }
     }
-    let input = Value::record("FileStat", vec![(Rc::from("key"), Value::text(&slot.key))]);
+    let input = Value::record(
+        "FileStat",
+        vec![
+            (Rc::from("key"), Value::text(&slot.key)),
+            (
+                Rc::from("max_size"),
+                Value::Int(i64::try_from(slot.max_size).unwrap_or(i64::MAX)),
+            ),
+        ],
+    );
     let answer = match call(ctx, Call::new(&check.store, STAT, input, Repeat::Safe)).await {
         Ok(answer) => answer,
         Err(Unanswered::Failed(code)) if code == NOT_FOUND => {
             return Err(refused(ctx, "no file was uploaded to this slot"));
+        }
+        Err(Unanswered::Failed(code)) if code == jadpo_std::files::UPLOAD_COMPRESSED => {
+            return Err(refused(ctx, "the file was sent compressed"));
         }
         Err(Unanswered::Failure(failure)) => {
             return Err(crate::read::Interrupt::Failed(ctx.fail(*failure, site)));
@@ -1096,7 +1108,7 @@ impl MemoryFiles {
                 Answer::Value(uploaded(
                     bytes.get(..bytes.len().min(HEAD_BYTES)).unwrap_or_default(),
                     bytes.len() as u64,
-                    &about.hash,
+                    Some(&about.hash),
                     about.name.as_deref(),
                     about.claimed.as_deref(),
                 ))
@@ -1122,7 +1134,7 @@ struct MemoryUpload {
 pub fn uploaded(
     head: &[u8],
     size: u64,
-    hash: &str,
+    hash: Option<&str>,
     name: Option<&str>,
     claimed: Option<&str>,
 ) -> Value {
@@ -1133,7 +1145,7 @@ pub fn uploaded(
                 Rc::from("size"),
                 Value::Int(i64::try_from(size).unwrap_or(i64::MAX)),
             ),
-            (Rc::from("hash"), Value::text(hash)),
+            (Rc::from("hash"), hash.map_or(Value::None, Value::text)),
             (Rc::from("name"), name.map_or(Value::None, Value::text)),
             (
                 Rc::from("claimed"),

@@ -234,7 +234,7 @@ pub fn files_connections(db: &dyn Db, project: Project) -> Vec<jadpo_std::files:
                     .unwrap_or(jadpo_std::files::DEFAULT_FREE_SPACE_FLOOR);
                 out.push(jadpo_std::files::FilesConnection {
                     name,
-                    driver: Driver::Disk,
+                    driver: files_driver(entry.block()).unwrap_or(Driver::Disk),
                     path,
                     floor,
                 });
@@ -242,6 +242,21 @@ pub fn files_connections(db: &dyn Db, project: Project) -> Vec<jadpo_std::files:
         }
     }
     out
+}
+
+/// The built-in driver of a connection that keeps files, `Driver.disk` or
+/// `Driver.s3`, as its entry writes it.
+pub(crate) fn files_driver(list: Option<ast::MemberList>) -> Option<Driver> {
+    for (setting, member) in tree::members(list) {
+        if tree::name_text(&setting).as_deref() == Some("driver") {
+            let names = member.value().as_ref().map(path_names).unwrap_or_default();
+            return match names.as_slice() {
+                [host, variant] if host == Driver::NAME => Driver::from_name(variant),
+                _ => None,
+            };
+        }
+    }
+    None
 }
 
 pub(crate) fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
@@ -254,7 +269,7 @@ pub(crate) fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
                     [host, variant] if host == Driver::NAME => match Driver::from_name(variant) {
                         Some(Driver::Postgres) => ConnectionKind::Postgres,
                         Some(Driver::Redis) => ConnectionKind::Redis,
-                        Some(Driver::Disk) => ConnectionKind::Files,
+                        Some(Driver::Disk | Driver::S3) => ConnectionKind::Files,
                         Some(Driver::Smtp) => ConnectionKind::Smtp,
                         Some(Driver::OpenaiCompatible) => ConnectionKind::Model,
                         Some(Driver::CloudflareQueues) => ConnectionKind::CloudflareQueue,

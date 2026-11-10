@@ -188,13 +188,23 @@ pub(crate) fn slot_value(
     };
     let token = sign(&derived_key(host, &plan.store, true, CONTEXT)?, &slot);
     let address = format!("/{DOWNLOADS}/{}/{UPLOADS}/{token}", plan.store);
+    let direct = host.capability(&plan.store)?.direct(&plan.store);
     let (url, part, parts) = match part_size {
         Some(size) => (
             Value::None,
             Value::Int(i64::try_from(size).unwrap_or(i64::MAX)),
             Value::text(&format!("{address}/{PARTS}")),
         ),
-        None => (Value::text(&address), Value::None, Value::None),
+        // A store with addresses of its own takes the file at a signed
+        // address of its own, not through this origin.
+        None => match direct {
+            Some(direct) => (
+                Value::text(&direct.upload(&slot.key, slot.expires, now)?),
+                Value::None,
+                Value::None,
+            ),
+            None => (Value::text(&address), Value::None, Value::None),
+        },
     };
     let fields = vec![
         (Rc::from("url"), url),
@@ -263,7 +273,7 @@ pub(super) fn path(request: &Request) -> Option<Address<'_>> {
 /// A file's name as the client gave it, from its `Content-Disposition`
 /// (`filename*`, else `filename`): the last part of a path, with no
 /// control characters and no more than 255 bytes, or `None`.
-fn file_name(header: Option<&str>) -> Option<String> {
+pub fn file_name(header: Option<&str>) -> Option<String> {
     let header = header?;
     let param = |wanted: &str| {
         header.split(';').skip(1).find_map(|part| {
@@ -315,7 +325,7 @@ fn percent_decode(text: &str) -> Option<Vec<u8>> {
 }
 
 /// `FileType`'s variant a `Content-Type` names, if any.
-fn claimed_type(header: Option<&str>) -> Option<&'static str> {
+pub fn claimed_type(header: Option<&str>) -> Option<&'static str> {
     let essence = header?.split(';').next()?.trim().to_ascii_lowercase();
     jadpo_std::FILE_TYPES
         .iter()
@@ -417,6 +427,37 @@ async fn answered(
     }
     let name = file_name(request.header("content-disposition"));
     let claimed = claimed_type(request.header("content-type"));
+    // A store with addresses of its own takes the bytes itself: a slot's
+    // part is redirected there, and a plain slot was never given this
+    // address (area 16, "The S3 driver").
+    if let Some(direct) = ctx
+        .host()
+        .capability(address.store)
+        .and_then(|driver| driver.direct(address.store))
+    {
+        let Some(number) = part else {
+            return runtime_failure(LINK_INVALID, request_id, None);
+        };
+        let file = crate::capability::PartFile {
+            name: name.as_deref(),
+            claimed,
+        };
+        let now = ctx.env().clock.now();
+        return match direct
+            .part(&slot.key, number, file, slot.expires, now)
+            .await
+        {
+            Ok(location) => Response {
+                status: 307,
+                headers: vec![
+                    ("location".to_string(), location),
+                    ("cache-control".to_string(), "no-store".to_string()),
+                ],
+                ..Response::default()
+            },
+            Err(refused) => runtime_failure(refused_answer(refused), request_id, None),
+        };
+    }
     let sent = Sent {
         part,
         limit,

@@ -315,6 +315,7 @@ fn verified(
         url: &format!("http://{host}{path}"),
         headers: &given,
         body,
+        payload: None,
     };
     let signer = jadpo_runtime::sigv4::Signer {
         key_id,
@@ -327,7 +328,7 @@ fn verified(
 }
 
 /// `YYYYMMDDTHHMMSSZ` in milliseconds since 1970.
-fn date_ms(stamp: &str) -> Option<i64> {
+pub fn date_ms(stamp: &str) -> Option<i64> {
     let digits = |from: usize, to: usize| stamp.get(from..to)?.parse::<i64>().ok();
     let (year, month, day) = (digits(0, 4)?, digits(4, 6)?, digits(6, 8)?);
     let (hour, minute, second) = (digits(9, 11)?, digits(11, 13)?, digits(13, 15)?);

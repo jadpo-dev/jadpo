@@ -756,8 +756,12 @@ fn outgoing(request: &Request, target: &Target) -> Result<hyper::Request<Full<By
     for (name, value) in &request.headers {
         built = built.header(name.as_str(), value.as_str());
     }
-    let body = request.body.clone().unwrap_or_default();
-    if request.body.is_some() {
+    let body: Vec<u8> = match (&request.raw_body, &request.body) {
+        (Some(bytes), _) => bytes.clone(),
+        (None, Some(body)) => body.clone().into_bytes(),
+        (None, None) => Vec::new(),
+    };
+    if request.raw_body.is_some() || request.body.is_some() {
         built = built.header(header::CONTENT_LENGTH, body.len());
     }
     built
@@ -922,6 +926,7 @@ mod tests {
             url,
             headers: vec![("Authorization".into(), "Bearer test-token".into())],
             body: Some("{\"slot\":\"am\"}".into()),
+            raw_body: None,
             timeout_ms: 5000,
             reading: Reading::default(),
             repeatable: false,
