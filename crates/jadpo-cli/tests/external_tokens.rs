@@ -303,6 +303,7 @@ impl Outbound for LocalProvider {
                 url: format!("https://localhost:{}/{path}", self.port),
                 headers: Vec::new(),
                 body: None,
+                raw_body: None,
                 timeout_ms,
                 reading: Default::default(),
                 repeatable: true,

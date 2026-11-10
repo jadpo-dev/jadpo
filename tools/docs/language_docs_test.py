@@ -1463,13 +1463,13 @@ class ErrorFormat(unittest.TestCase):
                          'e.f': {'area': 3, 'decides': 'human'}, 'g.h': {'area': 3, 'decides': 'agent'},
                          'cli.y': {'area': command, 'decides': 'agent'},
                          'seed.failed': {'area': command, 'decides': 'agent'},
-                         'acceptance.edited': {'area': command, 'decides': 'agent'},
+                         'schedule.ambiguous': {'area': command, 'decides': 'agent'},
                          'subscriber.empty': {'area': command, 'decides': 'agent'},
                          'install.in_use': {'area': command, 'decides': 'agent'},
                          'type.absent_field': {'area': 2, 'decides': 'agent'},
                          'type.foreign_type': {'area': 2, 'decides': 'agent'},
                          'type.optional_outside_input': {'area': 2, 'decides': 'agent'}}
-            commands = [{'name': 'check', 'rules': ['acceptance.edited']},
+            commands = [{'name': 'check', 'rules': ['schedule.ambiguous']},
                         {'name': 'seed', 'rules': ['seed.failed']},
                         {'name': 'package', 'rules': ['install.in_use']}]
             # The command line's own rules, and every other rule only a

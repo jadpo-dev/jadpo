@@ -1,18 +1,20 @@
 # `package.wire_invalid`
 
-> A provider package's field says how it is sent
-> with `wire:`, one of the built-in encodings, or with its package's own
-> `decode:` and `encode:` functions, given together. Either is refused
-> outside a provider package, both on one field, an encoding that doesn't
-> hold the field's type or `Wire.minor_units` without the field's one
-> currency, and a function that isn't the package's or doesn't take and
-> give the right types. `wire_parts:` is refused on a type
-> not made of parts, beside another way of sending the field, with a part
-> left out, unknown or given twice, or a spelling that isn't text. A
-> failure's `wire_status:` is refused outside a provider package, and
-> where it isn't a `4xx` the driver reads as a failure.
+A provider package's field or failure says how it is sent in a way it can't.
 
-An encoding holds the types its provider sends that way:
+## Why Jadpo refuses it
+
+A provider package's field says how it is sent with `wire:`, one of the
+built-in encodings, or with its package's own `decode:` and `encode:`
+functions, given together, or `wire_parts:` for a value sent in parts. The
+runtime reads and writes the provider's answer from those, so each has to
+be possible: an encoding has to hold the field's type, a function has to
+take and give the right types, and a failure's `wire_status:` has to be a
+`4xx` the driver reads as a failure.
+
+## What it looks like
+
+`Wire.unix_seconds` holds an `Instant`, and this field is `Text`:
 
 ```jadpo check project=e72c2-wire file=app.jadpo hidden
 application {}
@@ -35,6 +37,8 @@ provider {
     }
 }
 ```
+
+`shared/providers/acme_couriers/v1/types/parcel.jadpo`:
 
 ```jadpo check project=e72c2-wire file=shared/providers/acme_couriers/v1/types/parcel.jadpo expect=package.wire_invalid
 /// A parcel and where it is.
@@ -59,6 +63,9 @@ error: `Wire.unix_seconds` sends an `Instant`, and `collected_on` is a `Text`
 
 check failed: 1 error, 4 files
 ```
+
+`(agent)` at the end of the `next:` line means your coding agent can make
+the fix itself.
 
 A failure's `wire_status:` is the status its provider refuses with. A
 `401` or `403` is read as the credential refused, and a `408` or `429` as
@@ -87,6 +94,8 @@ provider {
 }
 ```
 
+`shared/providers/postcodes_io/v1/failures/too_many_requests.jadpo`:
+
 ```jadpo check project=e72f-wire-status file=shared/providers/postcodes_io/v1/failures/too_many_requests.jadpo expect=package.wire_invalid
 /// postcodes.io is asked too often.
 public type TooManyRequests = Failure {
@@ -108,3 +117,124 @@ error: A provider's `429` is never one of its failures
 
 check failed: 1 error, 4 files
 ```
+
+Either way of saying it used outside a provider package, both on one field,
+`Wire.minor_units` without the field's one currency, and a `wire_parts:`
+with a part left out, unknown or given twice are this error too, each with
+its own message.
+
+## How to fix it
+
+**If the field is the type the encoding holds**, make it that type:
+
+```jadpo check project=e72c2-wire-fix file=shared/providers/acme_couriers/v1/types/parcel.jadpo
+/// A parcel and where it is.
+public type Parcel = Object {
+    status: Text
+    collected_on: Instant {
+        wire: Wire.unix_seconds
+    }
+}
+```
+
+```jadpo check project=e72c2-wire-fix file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72c2-wire-fix file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72c2-wire-fix file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+    }
+}
+```
+
+The package reads the number as an `Instant`.
+
+**If the provider sends it as plain text**, remove `wire:`:
+
+```jadpo check project=e72c2-wire-fix-2 file=shared/providers/acme_couriers/v1/types/parcel.jadpo
+/// A parcel and where it is.
+public type Parcel = Object {
+    status: Text
+    collected_on: Text
+}
+```
+
+```jadpo check project=e72c2-wire-fix-2 file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72c2-wire-fix-2 file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72c2-wire-fix-2 file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+    }
+}
+```
+
+The field is sent as the contract writes it.
+
+**If the provider refuses with another status**, write that one:
+
+```jadpo check project=e72f-wire-status-fix file=shared/providers/postcodes_io/v1/failures/too_many_requests.jadpo
+/// postcodes.io is asked too often.
+public type TooManyRequests = Failure {
+    kind: FailureKind.rate_limited
+    wire_status: 409
+}
+```
+
+```jadpo check project=e72f-wire-status-fix file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72f-wire-status-fix file=shared/providers/postcodes_io/v1/package.jadpo hidden
+/// postcodes.io's UK postcode lookups.
+package PostcodesIo.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72f-wire-status-fix file=shared/providers/postcodes_io/v1/provider.jadpo hidden
+/// postcodes.io's public API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.postcodes.io"
+    }
+    error_code: "error"
+}
+```
+
+A `409` is read as `TooManyRequests`. If the provider really answers `429`,
+delete the failure: Jadpo reads that status as a call that did nothing, and
+sends it again.
+
+## Related
+
+- [The built-in encodings: `wire:`](../language/11-integrations.md#the-built-in-encodings-wire)
+- [A field's own functions: `decode:` and `encode:`](../language/11-integrations.md#a-fields-own-functions-decode-and-encode)
+- [Parts sent separately: `wire_parts:`](../language/11-integrations.md#parts-sent-separately-wire_parts)
+- [A provider's failures](../language/11-integrations.md#a-providers-failures)

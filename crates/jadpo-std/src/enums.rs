@@ -357,6 +357,9 @@ std_enum! {
         /// The server's own disk, the `files` capability on the native
         /// target (area 16, "The disk driver"; chunk 6.4b).
         Disk: "disk",
+        /// Any S3-compatible service, the `files` capability on every
+        /// target (area 16, "The S3 driver").
+        S3: "s3",
         /// An SMTP server, the `email` capability (area 16, "Email"; chunk
         /// 7.3).
         Smtp: "smtp",

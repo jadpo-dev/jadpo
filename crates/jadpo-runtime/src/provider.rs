@@ -134,6 +134,9 @@ pub struct Request {
     pub headers: Vec<(String, String)>,
     /// The JSON body, for an operation that isn't a `GET` or `DELETE`.
     pub body: Option<String>,
+    /// A body of bytes as sent, when it isn't JSON: what the S3 driver
+    /// puts. Sent in place of `body`.
+    pub raw_body: Option<Vec<u8>>,
     /// How long it waits for its answer.
     pub timeout_ms: u64,
     pub reading: Reading,
@@ -176,6 +179,16 @@ pub struct Response {
     pub status: u16,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
+}
+
+impl Response {
+    /// The value of header `name`, in lowercase as headers are kept.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(header, _)| header == name)
+            .map(|(_, value)| value.as_str())
+    }
 }
 
 impl fmt::Debug for Response {
@@ -1443,6 +1456,7 @@ fn request(
                     url: &url,
                     headers: &signed,
                     body: body.as_deref().unwrap_or_default().as_bytes(),
+                    payload: None,
                 };
                 // Signed at the host's time, which AWS checks, never a
                 // record's fixed `clock.now` (chunk 7.9a).
@@ -1498,6 +1512,7 @@ fn request(
             url,
             headers,
             body,
+            raw_body: None,
             timeout_ms: plan.timeout_ms,
             reading,
             // Set when the call takes it.
@@ -1972,6 +1987,7 @@ mod tests {
             url: "https://api.example/v1/bookings?q=secret".into(),
             headers: vec![("Authorization".into(), "Bearer sk_live".into())],
             body: Some("{\"postcode\":\"N1\"}".into()),
+            raw_body: None,
             timeout_ms: 1000,
             reading,
             repeatable: false,

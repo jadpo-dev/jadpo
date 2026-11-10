@@ -235,6 +235,10 @@ pub const LIST: &str = "list";
 /// a key nothing was uploaded to is `not_found`.
 pub const STAT: &str = "stat";
 
+/// [`STAT`]'s failure: the upload waiting under the key says it is
+/// compressed, so it is never made the file (area 16, "Compressed uploads").
+pub const UPLOAD_COMPRESSED: &str = "upload_compressed";
+
 /// Joins an upload's parts into the file its slot names (area 16, "Large
 /// uploads go in parts"), in order, once every part is there: what an
 /// attach asks before it [`STAT`]s. Input: `key`, `part_size`, `max_size`.

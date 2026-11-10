@@ -576,12 +576,10 @@ fn a_failed_send_is_retried_then_keeps_the_entries() {
     assert_eq!(hq.requests().len(), 1);
 
     // Nobody listening: the entries stay.
-    let url = {
-        let gone = FakeHq::start(1);
-        gone.url.clone()
-    };
+    // Port 1, because a port freed here can be taken by a parallel test's fake.
+    let url = "http://127.0.0.1:1";
     let root = ignored_shop("unreachable", &FakeHq::start(1));
-    let output = jadpo_with(&root, &["suggest", "share"], &[("JADPO_SUGGEST_HQ", &url)]);
+    let output = jadpo_with(&root, &["suggest", "share"], &[("JADPO_SUGGEST_HQ", url)]);
     assert!(
         output.stderr.contains("suggest.share_failed"),
         "{}",

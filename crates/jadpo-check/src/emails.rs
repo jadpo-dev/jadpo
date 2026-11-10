@@ -274,7 +274,7 @@ fn folder_of(path: &str) -> &str {
 }
 
 /// The `application { }` block's members, with the file they are in.
-fn application(db: &dyn Db, project: Project) -> Vec<(String, ast::Name, ast::Member)> {
+pub(crate) fn application(db: &dyn Db, project: Project) -> Vec<(String, ast::Name, ast::Member)> {
     singletons(db, project, "application")
         .into_iter()
         .flat_map(|found| {
@@ -290,7 +290,7 @@ fn settings_invalid(title: impl Into<String>, span: Span, label: &str) -> Diagno
 }
 
 /// `config.<name>` as the name it reads.
-fn reads(value: &ast::Expr) -> Option<String> {
+pub(crate) fn reads(value: &ast::Expr) -> Option<String> {
     let (first, rest) = tree::dotted(value)?;
     if tree::name_ref_text(&first).as_deref() != Some("config") || rest.len() != 1 {
         return None;
@@ -299,7 +299,7 @@ fn reads(value: &ast::Expr) -> Option<String> {
 }
 
 /// The text a literal is, `"..."`.
-fn literal_text(value: &ast::Expr) -> Option<String> {
+pub(crate) fn literal_text(value: &ast::Expr) -> Option<String> {
     match crate::types::Const::from_expr(value) {
         crate::types::Const::Str(text) => Some(text),
         _ => None,
@@ -989,6 +989,12 @@ pub fn email_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     out.extend(settings(db, project).problems.iter().cloned());
     out.extend(smtp_connections(db, project).problems.iter().cloned());
+    out.extend(
+        crate::s3::s3_connections(db, project)
+            .problems
+            .iter()
+            .cloned(),
+    );
     let analysis = analysis(db, project);
     out.extend(analysis.problems.iter().cloned());
     for path in template_paths(db, project) {

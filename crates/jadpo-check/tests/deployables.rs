@@ -742,3 +742,24 @@ fn a_client_address_other_than_cloudflares_is_refused_for_a_worker() {
         ["app.jadpo configuration.client_address_hops_invalid: `forwarded_for` needs `hops:`"]
     );
 }
+
+#[test]
+fn a_worker_may_keep_files_in_s3_where_it_may_not_on_disk() {
+    let on_disk = app(&declared(NATIVE, WASM), "");
+    let in_s3 = on_disk.replace(
+        "            driver: Driver.disk\n            path: \"/var/lib/cafe/sheets\"\n",
+        "            driver: Driver.s3\n            host: \"https://cafe.r2.cloudflarestorage.com\"\n            region: \"auto\"\n            bucket: \"sheets\"\n            credential: {\n                key_id: config.files_key_id\n                secret: config.files_secret\n            }\n",
+    );
+    let config = (
+        "config.jadpo",
+        "config {\n    files_key_id: Text\n    files_secret: Text {\n        secret: true\n    }\n}\n",
+    );
+    assert_eq!(problems_with(&in_s3, &[config]), CLEAN);
+    // The same store on disk is refused, naming the driver it can use.
+    assert_eq!(
+        problems_with(&on_disk, &[config]),
+        [
+            "app.jadpo deployable.target_unsupported: `office` can't use `sheets` on Workers, which has no disk"
+        ]
+    );
+}

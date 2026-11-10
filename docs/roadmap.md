@@ -122,7 +122,6 @@ D1 first: the site starts once D1 has merged.
   Split by size (2026-11-08) into the parts below, taken in order,
   each widening `error_format_scope` to the rules it finished; delete it
   once all are.
-- [ ] **D13c14 `package.*`, `test.*`, `migration.*` and `acceptance.*`** `opus · high`: 28 pages.
 - [ ] **D13c15 `step.*`, `subscriber.*`, `schedule.*`, `prompt.*`, `event.*`, `ai.*` and `receiving.*`** `opus · high`: 18 pages; then `error_format_scope` covers every rule.
 
 ## Phase 10 — Golden todo
@@ -252,16 +251,6 @@ work below (Richard, 2026-11-08).
    The disk driver in production moved here from item 5; the `search`,
    `bot_check` and `scanning` capabilities, image variants, the
    `telemetry:` section and custom metrics stay under item 5.
-   - [ ] **B7 The S3 driver** `opus · xhigh`: area 16, "Files" (S3-compatible
-     services), "Downloading", "Uploading" and "Large uploads go in
-     parts"; area 11, "Connecting in `app.jadpo`". `Driver.s3` with
-     `host:`, `region:`, `bucket:` and `credential:`, natively and on
-     Workers: put, read, join, discard and delete signed with SigV4,
-     downloads as presigned `GET` links, upload slots as presigned `PUT`s
-     and multipart `UploadPart`s in R2's equal parts. The registry's
-     archives can then leave PostgreSQL. Done when it passes the disk
-     driver's tests against a stand-in S3 server, interpreted, compiled
-     and on workerd.
    - [ ] **B8 Files in tests and `jadpo files`** `opus · high`: area 13,
      "Files" (fakes); area 14, the files commands; area 16, "The disk
      driver" (commands). `fixture_file("customers.csv", store:)` from a

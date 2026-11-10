@@ -523,7 +523,7 @@ pub(crate) fn apply(connection: &str, migrations: &[jadpo_std::Migration]) {
 
 /// A test owns its server even if an assertion or readiness check panics.
 /// Killing and waiting also closes inherited gate output pipes.
-struct OwnedChild(Child);
+pub(crate) struct OwnedChild(Child);
 impl std::ops::Deref for OwnedChild {
     type Target = Child;
     fn deref(&self) -> &Child {
@@ -571,7 +571,7 @@ fn an_owned_deployable_is_stopped_and_reaped_when_a_test_panics() {
 
 /// The deployable at `binary` started with only `variables` in its
 /// environment, and its log lines as they come.
-fn start(binary: &Path, variables: &[(&str, &str)]) -> (OwnedChild, Receiver<Value>) {
+pub(crate) fn start(binary: &Path, variables: &[(&str, &str)]) -> (OwnedChild, Receiver<Value>) {
     start_with(binary, &[], variables)
 }
 
@@ -610,7 +610,7 @@ fn start_with(
 
 /// The next log event but a tick's, within `seconds`: a server logs each
 /// tick its timer runs (chunk 8.4c), whenever the timer comes round.
-fn next(lines: &Receiver<Value>, seconds: u64) -> Value {
+pub(crate) fn next(lines: &Receiver<Value>, seconds: u64) -> Value {
     let until = Instant::now() + Duration::from_secs(seconds);
     loop {
         let event = lines
@@ -648,7 +648,7 @@ fn ticked(lines: &Receiver<Value>, seconds: u64, wanted: impl Fn(&Value) -> bool
 }
 
 /// Waits for `child` to end, within `seconds`: its exit code.
-fn ended(child: &mut Child, seconds: u64) -> Option<i32> {
+pub(crate) fn ended(child: &mut Child, seconds: u64) -> Option<i32> {
     for _ in 0..seconds * 20 {
         if let Some(status) = child.try_wait().expect("its status") {
             return status.code();
@@ -661,7 +661,7 @@ fn ended(child: &mut Child, seconds: u64) -> Option<i32> {
 
 /// One HTTP/1.1 exchange with the server at `address`: the status and the
 /// body.
-fn exchange(address: &str, method: &str, path: &str, body: &str) -> (u16, String) {
+pub(crate) fn exchange(address: &str, method: &str, path: &str, body: &str) -> (u16, String) {
     let (status, _, body) = exchanged(address, method, path, body);
     (status, body)
 }
@@ -672,7 +672,7 @@ fn exchanged(address: &str, method: &str, path: &str, body: &str) -> (u16, Strin
 }
 
 /// [`exchanged`], with `headers` sent as well.
-fn exchanged_with(
+pub(crate) fn exchanged_with(
     address: &str,
     method: &str,
     path: &str,

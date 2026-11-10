@@ -246,6 +246,15 @@ pub fn supplies() -> Supplies {
     Supplies::on(jadpo_runtime::http::address::Target::Native)
         .with_transport(Rc::new(NativeTransport))
         .with_fetch(Rc::new(fetch::NativeFetch::new()))
+        .with_clock(Rc::new(system_now_ms))
+}
+
+/// The system clock, in milliseconds since 1970: what the S3 driver signs
+/// its requests for.
+fn system_now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(0))
 }
 
 /// What a native deployable gives the driver factory: [`supplies`] and the

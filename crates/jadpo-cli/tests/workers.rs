@@ -53,9 +53,10 @@ mod limits;
 mod newsroom;
 /// Cloudflare Queues' consumer (chunk 8.2k).
 mod queues;
+/// A route that sends raw bytes (chunk G3).
+mod s3;
 /// A sealed field and its key's rotation (chunk P9).
 mod sealed;
-/// A route that sends raw bytes (chunk G3).
 mod sends;
 
 /// `jadpo` with `args` in `root`, which must succeed.
@@ -239,6 +240,8 @@ struct Workerd {
     port: u16,
     cron: u16,
     log: PathBuf,
+    /// The last answer's head, as it came.
+    last_head: std::sync::Mutex<String>,
 }
 
 /// The test's cron: each request runs the bound Worker's `scheduled`
@@ -488,6 +491,7 @@ impl Workerd {
                 port,
                 cron,
                 log,
+                last_head: std::sync::Mutex::default(),
             };
             match worker.listening() {
                 Ok(()) => return worker,
@@ -631,6 +635,7 @@ impl Workerd {
         while !raw.ends_with(b"\r\n\r\n") && stream.read(&mut byte).unwrap_or(0) == 1 {
             raw.push(byte[0]);
         }
+        *self.last_head.lock().expect("the last head") = String::from_utf8_lossy(&raw).into_owned();
         let head = String::from_utf8_lossy(&raw).to_ascii_lowercase();
         let status = head
             .split_whitespace()

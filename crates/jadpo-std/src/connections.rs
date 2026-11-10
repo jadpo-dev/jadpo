@@ -100,6 +100,9 @@ pub enum ConnectionDriver {
         #[serde(default = "default_floor")]
         floor: u32,
     },
+    /// `Driver.s3`, a store of files on any S3-compatible service (area
+    /// 16, "The S3 driver").
+    S3(Box<S3Bucket>),
     /// `Driver.smtp`, the `email` capability's built-in driver (area 16,
     /// "Email"; chunk 7.3).
     Smtp(SmtpServer),
@@ -135,6 +138,7 @@ impl ConnectionDriver {
             }
             ConnectionDriver::Postgres { .. }
             | ConnectionDriver::Redis { .. }
+            | ConnectionDriver::S3(_)
             | ConnectionDriver::Smtp(_)
             | ConnectionDriver::OpenAiCompatible { .. }
             | ConnectionDriver::Package(_) => EVERY_TARGET.to_vec(),
@@ -148,6 +152,7 @@ impl ConnectionDriver {
             ConnectionDriver::Postgres { .. } => "Driver.postgres",
             ConnectionDriver::Redis { .. } => "Driver.redis",
             ConnectionDriver::Disk { .. } => "Driver.disk",
+            ConnectionDriver::S3(_) => "Driver.s3",
             ConnectionDriver::Smtp(_) => "Driver.smtp",
             ConnectionDriver::OpenAiCompatible { .. } => "Driver.openai_compatible",
             ConnectionDriver::CloudflareQueues(_) => "Driver.cloudflare_queues",
@@ -168,6 +173,16 @@ impl ConnectionDriver {
                 [*url, authority].into_iter().flatten().collect()
             }
             ConnectionDriver::Redis { url } => url.iter().copied().collect(),
+            ConnectionDriver::S3(bucket) => [
+                bucket.host.setting(),
+                bucket.region.setting(),
+                bucket.bucket.setting(),
+                Some(bucket.key_id),
+                Some(bucket.secret),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
             ConnectionDriver::Smtp(server) => {
                 let host = match server.host {
                     SmtpHost::Setting(at) => Some(at),
@@ -218,6 +233,38 @@ pub enum DatabaseTls {
     Off,
 }
 
+/// One of a connection's settings that is either written out or read
+/// from a setting, by its number.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Said {
+    Written(String),
+    Setting(u32),
+}
+
+impl Said {
+    /// The setting it reads, when it reads one.
+    pub fn setting(&self) -> Option<u32> {
+        match self {
+            Said::Setting(at) => Some(*at),
+            Said::Written(_) => None,
+        }
+    }
+}
+
+/// The bucket a connection with `driver: Driver.s3` keeps its files in
+/// (area 16, "The S3 driver"): the service's address, its region and the
+/// bucket's name, each written or read from a setting, and the key id and
+/// secret access key of `credential: { key_id: secret: }` by their
+/// settings' numbers, the secret one never read by code.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct S3Bucket {
+    pub host: Said,
+    pub region: Said,
+    pub bucket: Said,
+    pub key_id: u32,
+    pub secret: u32,
+}
+
 /// The server a connection with `driver: Driver.smtp` reaches (area 11's
 /// settings, chosen in chunk 7.3).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -264,8 +311,9 @@ pub fn packages(table: &[Connection]) -> impl Iterator<Item = (u32, &str, &Conne
 }
 
 /// The stores of files in `table` (area 16): every `Driver.disk`
-/// connection, with the folder its `path:` names and its free-space
-/// floor, in millionths of the disk.
+/// connection, with the folder its `path:` names and its free-space floor,
+/// in millionths of the disk, and every `Driver.s3` connection, with
+/// neither.
 pub fn files(table: &[Connection]) -> impl Iterator<Item = (&str, Option<&str>, u32)> {
     table
         .iter()
@@ -273,6 +321,7 @@ pub fn files(table: &[Connection]) -> impl Iterator<Item = (&str, Option<&str>, 
             ConnectionDriver::Disk { path, floor } => {
                 Some((connection.name.as_str(), path.as_deref(), *floor))
             }
+            ConnectionDriver::S3(_) => Some((connection.name.as_str(), None, 0)),
             _ => None,
         })
 }

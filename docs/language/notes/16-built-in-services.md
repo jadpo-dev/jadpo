@@ -156,6 +156,78 @@ Why [Built-in services](../16-built-in-services.md) is the way it is: the decisi
   can't keep a connection for good. *Recommendation: keep; a minimum rate
   would be a setting nothing needs yet.*
 
+- **The S3 driver: where a whole upload waits.** A presigned `PUT` goes to
+  `uploads/<key>` and the attach copies it to the file's key with
+  `x-amz-copy-source-if-match`, then deletes the staging object, so a slot's
+  address, still valid for up to 15 minutes, can never change a file already
+  attached, with no client cooperation and no conditional-write support
+  needed from the service (R2, MinIO and S3 have `If-None-Match`, but it has
+  to be sent by the client, and not every S3-compatible service honours it).
+  *Recommendation: keep.*
+- **The S3 driver: a part's name and type, and its multipart upload.** A
+  `PUT .../parts/<n>` to the app's own origin answers `307` with a presigned
+  `UploadPart`, keeping the address the page gives every store. A signed
+  `UploadPart` can't carry a file's name or claimed type, so the driver reads
+  them from the first part's own `Content-Disposition` and `Content-Type` at
+  that redirect and writes them to `uploads/<key>.said` beside the file, which
+  the attach reads back. `UploadPart` also needs a multipart upload whose id
+  exists before any part can be signed, and parts come in any order, so the
+  first request for any part creates it and writes the id to
+  `uploads/<key>.upload` with `If-None-Match: *`; a second racing it aborts
+  its own and uses the winner's. (A slot's token can't carry the id, since
+  making a slot asks nothing of the store.) A client following the redirect
+  resends the part to the service, so its body is sent twice only when a
+  client doesn't use `Expect: 100-continue` or a helper that asks for the
+  address first; the generated client helper can do the latter when it
+  comes. *Recommendation: keep; a part's address stays the same across
+  stores.*
+- **The S3 driver: what the address can't refuse.** A presigned `PUT` can't
+  count or read a body, so over-limit bodies, wrong types and
+  `Content-Encoding` are refused at the attach (`422` `invalid_value`), not at
+  the address, and aren't copied to the file's key. A part's bytes also go
+  straight to the store unchecked: `parts_fit`'s equal-parts rule and the
+  field's limit are checked when `ListParts` is read at the attach, as the
+  page's "unequal parts" rule says. *Recommendation: keep; POST policies that
+  could limit the size aren't supported on R2.*
+- **The S3 driver: a compressed upload.** Refused at the attach, from the
+  `Content-Encoding` the service stored with the object: any value but none or
+  `identity` is `422` `invalid_value`, and the upload is never copied to the
+  file's key, so the sweep deletes it. Signing can't do this instead: a
+  presigned `PUT` can require a header's value but not its absence, and a
+  client that adds an unsigned `Content-Encoding` still gets it stored. The
+  driver reads the header before any of the body, because a Worker's `fetch()`
+  can try to unpack a body labelled gzip as it is read. A part's `UploadPart` can't set
+  one: an object's encoding is set when its multipart upload is created, which
+  the driver does without one. *Recommendation: keep.*
+- **The S3 driver: the hash of a file a client uploads.** None: nothing reads
+  an upload's bytes on the way in, and the service serves its own `ETag`. A
+  `File` already keeps a hash optional for files kept before they were
+  hashed. *Recommendation: keep.*
+- **The S3 driver: recording an upload nobody attaches.** An upload that goes
+  straight to the store tells the app nothing, so the file's row in
+  `jadpo_files` (held by none) is written when the slot is made, the way a
+  disk upload writes it as its bytes land, and the sweep deletes the staging
+  object, what was said of it and any multipart upload after a day.
+  *Recommendation: keep.*
+- **The S3 driver: what signs a store's slots.** A key derived from the
+  connection's secret access key and bucket name with BLAKE3, so the store
+  keeps nothing of its own; rotating the credential ends the slots made under
+  the old one. *Recommendation: keep.*
+- **The S3 driver: a credential is two settings.** `credential:` has
+  `key_id:` and `secret:`, each `config.<name>`, the secret a `secret: true`
+  setting, by the example area 11 already gave; every S3-compatible service
+  needs both. `host:`, `region:` and `bucket:` are required, so `jadpo check`
+  has nothing to warn of for a recognised host that is missing a setting.
+  *Recommendation: keep.*
+- **The S3 driver: `jadpo dev` and `jadpo test`.** As for any store of files,
+  `jadpo dev` keeps a `Driver.s3` connection's files on the local disk and
+  `jadpo test` in memory: nothing reaches a bucket without a deployable.
+  *Recommendation: keep.*
+- **The S3 driver: joining an export's pieces.** Each piece is read in order
+  and re-cut into 16 MiB parts, since R2 needs every part but the last the
+  same size and pieces are a page's rows. A file that fits one part is
+  written with one `PutObject`. *Recommendation: keep.*
+
 ## Carried to later areas
 
 | Item | Area | Status |

@@ -54,7 +54,9 @@ pub fn disk_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 let Some(connection) = name_text(&name) else {
                     continue;
                 };
-                if crate::data::connection_kind(entry.block()) != ConnectionKind::Files {
+                if crate::data::connection_kind(entry.block()) != ConnectionKind::Files
+                    || crate::data::files_driver(entry.block()) != Some(jadpo_std::Driver::Disk)
+                {
                     continue;
                 }
                 for (setting, option) in tree::members(entry.block()) {

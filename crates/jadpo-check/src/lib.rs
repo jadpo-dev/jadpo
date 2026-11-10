@@ -70,6 +70,7 @@ pub mod release;
 mod resolve;
 pub mod review;
 pub mod routes;
+pub mod s3;
 pub mod schedules;
 pub mod setting_move;
 pub mod sign_in_providers;

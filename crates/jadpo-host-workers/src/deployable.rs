@@ -176,7 +176,7 @@ async fn respond(
     if !ready(deployable, &host, &isolate).await {
         return http::unavailable(&host);
     }
-    let Some(request) = read(request).await else {
+    let Some(request) = read(request, &host).await else {
         return http::unreadable(&host);
     };
     serving(&isolate, Rc::new(host)).handle(&request).await
@@ -390,10 +390,27 @@ async fn stores_current(deployable: &Deployable, host: &WorkersHost, log: &Log) 
 /// large and never held, so the runtime answers 413. On Workers there is
 /// no connection's address: the client's comes from `CF-Connecting-IP`.
 /// `None` when it can't be read.
-async fn read(request: JsValue) -> Option<Request> {
+async fn read(request: JsValue, host: &WorkersHost) -> Option<Request> {
     let request = request.dyn_into::<web_sys::Request>().ok()?;
     let (path, query) = target(&request.url());
     let headers = crate::fetch::listed(&request.headers());
+    // A store with addresses of its own redirects a part's bytes there, so
+    // nothing is read of them here (area 16, "The S3 driver").
+    if jadpo_runtime::http::uploads::store_of(&path).is_some_and(|store| {
+        jadpo_runtime::Host::capability(host, store)
+            .is_some_and(|files| files.direct(store).is_some())
+    }) {
+        return Some(Request {
+            method: request.method(),
+            path,
+            query,
+            headers,
+            body: Vec::new(),
+            address: None,
+            too_large: false,
+            stream: None,
+        });
+    }
     let declared = headers
         .iter()
         .find(|(name, _)| name == "content-length")

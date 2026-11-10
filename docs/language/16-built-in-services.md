@@ -676,8 +676,8 @@ of them is a compile error naming the feature.
 To keep a file, such as a price sheet a supplier sends, give an entity a
 field of type `File`. The record holds the file's key, name, size and
 type, and the bytes live in a store of files. A store is a connection that
-provides the `files` capability, which today is the built-in disk driver,
-on the native target ([The disk driver](#the-disk-driver)).
+provides the `files` capability: the built-in [disk driver](#the-disk-driver)
+on the native target, or the [S3 driver](#the-s3-driver) on any target.
 
 A bakery keeps its price sheets in a folder on its server. `app.jadpo`
 names the store:
@@ -945,6 +945,96 @@ A deployable built for Workers that uses `Driver.disk` is refused
 ([`deployable.target_unsupported`](../errors/deployable.target_unsupported.md)).
 `jadpo dev`'s disk driver answers a full disk with `storage_full`.
 
+### The S3 driver
+
+`driver: Driver.s3` keeps files in a bucket on any S3-compatible service,
+on the native target and on Workers. `app.jadpo` names the bucket and where
+its credential comes from:
+
+```jadpo check project=files-s3 file=app.jadpo
+application {
+    connections: {
+        uploads: {
+            driver: Driver.s3
+            host: config.uploads_host
+            region: "auto"
+            bucket: "acme-uploads"
+            credential: {
+                key_id: config.uploads_key_id
+                secret: config.uploads_secret
+            }
+        }
+    }
+}
+```
+
+`config.jadpo` declares the settings, the secret one `secret: true`, read from
+each deployment's environment and never seen by code or written to a log:
+
+```jadpo check project=files-s3 file=config.jadpo
+config {
+    uploads_host: Url
+    uploads_key_id: Text
+    uploads_secret: Text {
+        secret: true
+    }
+}
+```
+
+A wrong or missing setting is
+[`connection.key_missing`](../errors/connection.key_missing.md),
+[`connection.key_invalid`](../errors/connection.key_invalid.md) or
+[`connection.value_invalid`](../errors/connection.value_invalid.md).
+
+`host:` is the service's whole address, with `https://` and nothing after its
+name; `http://` only for this machine. `region:` and `bucket:` are text
+written out or a setting. There are no presets: each service is the driver
+with its own settings.
+
+| Service | `host:` | `region:` |
+|---|---|---|
+| Cloudflare R2 | `https://<account>.r2.cloudflarestorage.com` | `auto` |
+| Amazon S3 | `https://s3.<region>.amazonaws.com` | the bucket's region |
+| Backblaze B2 | `https://s3.<region>.backblazeb2.com` | the bucket's region |
+| DigitalOcean Spaces | `https://<region>.digitaloceanspaces.com` | the region, `nyc3` |
+| MinIO | `http://localhost:9000`, or its `https://` address | `us-east-1`, unless it was set up otherwise |
+
+Requests are signed with AWS Signature Version 4. `put`, `read` and an
+export's pieces go from your app to the service, signed there. Downloads and
+uploads don't pass through your app at all: a download link is a presigned
+`GET` to the service, and an upload slot's address is a presigned `PUT`, so
+the file goes from the client to the bucket. The bucket's CORS settings must
+let a browser client do that.
+
+- **Signed addresses are the service's.** What refuses one, an expired or
+  altered address among them, is the service's own answer, not Jadpo's, and a
+  download's headers are the ones the link asks the service to send.
+- **What's checked at the attach.** A presigned address can't count bytes or
+  read them as they go, so a body over `max_size:`, one of a type its field
+  doesn't take and one sent compressed all reach the bucket and are refused
+  at the attach, `422` `invalid_value`, nothing kept in the record. The bytes
+  are never promoted to the file's key, and are swept after a day as any
+  never-attached upload is.
+- **Files never change.** A whole upload waits under its slot and is copied
+  into the file's key by the attach, so a slot's address, still good until its
+  15 minutes are up, can't change a file already attached.
+- **Files in parts.** A slot in parts is the same on this driver as on the disk:
+  each part goes to `PUT /files/<store>/uploads/<token>/parts/<n>`. Here that
+  address answers `307` with the presigned `UploadPart` the part's bytes go to,
+  so the client needs nothing but to follow it and resend; a client's first
+  part's `Content-Disposition` and `Content-Type` are read at the redirect, since
+  a part sent straight to the bucket can't say them.
+- **Hashes.** A file a client uploads has no hash of its own on this driver,
+  since nothing reads its bytes on the way in; the service's own `ETag` serves a
+  download's ranges and `If-Range`.
+- **Exports.** An export's pieces are joined into one file by reading each
+  and sending it on as equal parts, which every S3-compatible service accepts;
+  a Worker reads the pieces through its subrequests, so a Worker holding very
+  many pieces of a very large export can run out of them.
+
+Moving between stores, and off one server, is what `jadpo files copy` will do
+once it's built.
+
 ### Downloading
 
 An `Output` that picks a `File` field sends a signed link valid for five
@@ -999,17 +1089,7 @@ another.
 ### Not built yet
 
 The rest of this topic is the design for what comes next, and none of it
-works today. Today your app writes files with `put`, keeps them on the disk
-driver, sends them back by [signed link](#downloading) and takes them from
-clients through a [slot](#uploading).
-
-#### The S3 driver
-
-`driver: Driver.s3` is the built-in driver for any S3-compatible service. A
-`File` field naming one today is `data.file_field_invalid`, since it keeps no
-files yet. Cloudflare R2, Amazon S3, Backblaze B2, DigitalOcean Spaces and MinIO will
-all use it, each with its own host and settings, listed on the driver's
-page. No package wraps the driver with presets.
+works today.
 
 #### Image variants and scanning
 
@@ -1169,8 +1249,9 @@ slot is signed for its store, so asking for one asks nothing of it.
 
 Sending the file:
 
-- The address is `PUT /files/<store>/uploads/<token>`; for a field over 100
-  MB, see [Large uploads go in parts](#large-uploads-go-in-parts). It answers
+- The address is `PUT /files/<store>/uploads/<token>`, or, on the S3 driver, the
+  presigned address the slot's `url` gives ([The S3 driver](#the-s3-driver)); for
+  a field over 100 MB, see [Large uploads go in parts](#large-uploads-go-in-parts). It answers
   `204` once the file is kept. These answers count against the default rate limits
   as any request does.
 - `Content-Type` may say the file's type, and `Content-Disposition` its name
@@ -5226,7 +5307,7 @@ The errors this page describes are built with the feature they belong to.
 | The dev inbox and the health score | Partly built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
 | Rate limits | Partly built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |
 | Outside calls | Built: the one place in the runtime every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([How every outside call is made safe](#how-every-outside-call-is-made-safe)). |
-| Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). A `File` an `Output` or a person's export reaches goes out as a signed link valid for five minutes, served from the disk with single ranges, `If-Range` and an ETag from the file's hash ([Downloading](#downloading)). A client's file reaches a store through a [slot](#uploading): `Entity.field_upload()`, the disk driver's upload address, and a `FileUpload` attached by an ordinary create or update. Not built yet: multipart slots, fields naming one store of files in entities of two databases, the S3 driver, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written; and the `jadpo files` commands (`ls`, `show`, `get`, `put` and `copy`). |
+| Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` and [`Driver.s3`](#the-s3-driver) connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). A `File` an `Output` or a person's export reaches goes out as a signed link valid for five minutes, served from the disk with single ranges, `If-Range` and an ETag from the file's hash ([Downloading](#downloading)). A client's file reaches a store through a [slot](#uploading): `Entity.field_upload()`, the disk driver's upload address, and a `FileUpload` attached by an ordinary create or update. Not built yet: multipart slots, fields naming one store of files in entities of two databases, `fixture_file` and telling the store to fail from a test, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written; and the `jadpo files` commands (`ls`, `show`, `get`, `put` and `copy`). |
 | Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flag rules: declaring, reading, testing](#flag-rules-declaring-reading-testing)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flag rules: changing, listing, removing](#flag-rules-changing-listing-removing)). A person's erasure takes their `id` out of `jadpo_flags` and `jadpo_flag_changes`, and `jadpo migrate new --drop jadpo_flags` drops both once the last flag has gone ([The log](#the-log), [Removing](#removing)). Not built yet: named tenants, which wait for tenancy to be settled for flags. |
 | Audit | Partly built: an entity's `audit:`, an entry in the same transaction as each change, `history` with the record's `read` grant and the fields the caller can read, retention by the purge schedule, entries deleted with their record by erasure, `AuditEntryRecorded` to subscribers, and the permissions report's line ([Audit trail](#audit-trail)). Not built yet: what [What the audit trail doesn't keep yet](#what-the-audit-trail-doesnt-keep-yet) lists, each `toolchain.not_built_yet` where it is written, and `publishing`, which comes with outgoing webhooks. |
 | Search | Partly built: on PostgreSQL, `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages. |

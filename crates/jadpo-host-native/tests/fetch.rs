@@ -268,6 +268,7 @@ fn get(url: String, timeout_ms: u64) -> Request {
         url,
         headers: vec![("Accept".into(), "application/json".into())],
         body: None,
+        raw_body: None,
         timeout_ms,
         reading: Reading::default(),
         repeatable: true,
