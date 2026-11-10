@@ -552,7 +552,12 @@
         },
         "security": [],
         "x-jadpo-changes": false,
-        "x-jadpo-generated": true
+        "x-jadpo-generated": true,
+        "x-jadpo-rate-limit": {
+          "by": "ip",
+          "requests": 120,
+          "within": "1m"
+        }
       }
     },
     "/todos": {

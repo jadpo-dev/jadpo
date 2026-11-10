@@ -658,7 +658,7 @@ fn jadpo_routes_lists_each_connections_webhook() {
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
     assert_eq!(
         out.stdout,
-        "webhooks  /webhooks\n  POST  /webhooks/mail      generated webhook  signature  generated\n  POST  /webhooks/payments  generated webhook  signature  generated\n\n2 routes: 1 API\n"
+        "webhooks  /webhooks\n  POST  /webhooks/mail      generated webhook  signature  120/1m ip  generated\n  POST  /webhooks/payments  generated webhook  signature  120/1m ip  generated\n\n2 routes: 1 API\n"
     );
 }
 
@@ -973,8 +973,9 @@ fn a_declared_webhooks_api_lists_each_webhook_and_keeps_its_paths() {
     assert!(operation["responses"]["401"].is_object(), "{operation}");
     let out = jadpo(&root, &["routes"]);
     assert!(
-        out.stdout
-            .contains("  POST  /hooks/payments      generated webhook  signature  generated\n"),
+        out.stdout.contains(
+            "  POST  /hooks/payments      generated webhook  signature  120/1m ip  generated\n"
+        ),
         "{}",
         out.stdout
     );

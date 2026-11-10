@@ -244,7 +244,7 @@ fn a_refused_own_route_says_its_limit_on_jadpo_dev() {
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
     jadpo(&root, &["records", "update"]);
     let dev = Dev::start(&root);
-    own_routes_say_their_limit(&through(&dev));
+    own_routes_say_their_limit(through(&dev));
 }
 
 /// What `route` is limited to in `jadpo routes --json`.

@@ -1435,7 +1435,8 @@ fn a_deployable_says_a_generated_routes_limit_as_dev_does() {
         .parent()
         .unwrap_or(target)
         .join("jadpo-compiled/deployable/generated-limits");
-    let projects: [(&str, fn(&Path) -> Vec<(String, String)>); 2] = [
+    type Files = fn(&Path) -> Vec<(String, String)>;
+    let projects: [(&str, Files); 2] = [
         ("generated", super::generated_limits::generated_files),
         ("own", super::generated_limits::own_files),
     ];
@@ -1479,10 +1480,10 @@ fn a_deployable_says_a_generated_routes_limit_as_dev_does() {
             (status, head)
         };
         if name == "own" {
-            super::generated_limits::own_routes_say_their_limit(&send);
+            super::generated_limits::own_routes_say_their_limit(send);
         } else {
-            super::generated_limits::generated_routes_say_their_limit(&send);
-            super::generated_limits::file_addresses_say_their_limit(&send);
+            super::generated_limits::generated_routes_say_their_limit(send);
+            super::generated_limits::file_addresses_say_their_limit(send);
         }
         terminate(&child);
         assert_eq!(ended(&mut child, 30), Some(0));
