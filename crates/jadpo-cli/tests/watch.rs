@@ -16,7 +16,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use jadpo_cli::watch::{Frame, WatchArgs, Watcher, serve_to};
+use jadpo_cli::keys::{Key, Keys};
+use jadpo_cli::watch::{Frame, Pressed, WatchArgs, Watcher, serve_to};
 use jadpo_cli::{Session, run};
 use jadpo_db::Database;
 use jadpo_term::{ColorChoice, Environment};
@@ -759,7 +760,7 @@ fn every_state_in_a_terminal() {
 ✓ 8 passed  4 pure tests · 4 action tests
 "#,
             r#"
-watching 12 files  ctrl-c quit"#,
+watching 12 files  enter rerun  a run all  q quit"#,
         ),
         frame(
             true,
@@ -769,7 +770,7 @@ watching 12 files  ctrl-c quit"#,
 ✓ 4 passed  4 of 8 tests
 "#,
             r#"
-watching 12 files  ctrl-c quit"#,
+watching 12 files  enter rerun  a run all  q quit"#,
         ),
         frame(
             true,
@@ -792,14 +793,14 @@ watching 12 files  ctrl-c quit"#,
 ✗ 1 failed  1 of 8 tests
 "#,
             r#"
-watching 12 files · 1 failing  ctrl-c quit"#,
+watching 12 files · 1 failing  enter rerun  a run all  f run failed  q quit"#,
         ),
         frame(
             true,
             r#"── 14:03:40 · saved domains/north/types/north_amount.jadpo · nothing to rerun ──
 "#,
             r#"
-watching 12 files · 1 failing  ctrl-c quit"#,
+watching 12 files · 1 failing  enter rerun  a run all  f run failed  q quit"#,
         ),
         frame(
             true,
@@ -831,7 +832,7 @@ watching 12 files · 1 failing  ctrl-c quit"#,
 ✗ tests not run  2 errors · 12 files
 "#,
             r#"
-watching 12 files · 1 failing  ctrl-c quit"#,
+watching 12 files · 1 failing  enter rerun  a run all  f run failed  q quit"#,
         ),
         frame(
             true,
@@ -854,7 +855,7 @@ watching 12 files · 1 failing  ctrl-c quit"#,
 ✗ 1 failed  2 passed · 3 of 8 tests
 "#,
             r#"
-watching 12 files · 1 failing  ctrl-c quit"#,
+watching 12 files · 1 failing  enter rerun  a run all  f run failed  q quit"#,
         ),
         frame(
             true,
@@ -864,7 +865,7 @@ watching 12 files · 1 failing  ctrl-c quit"#,
 ✓ 1 passed  1 of 8 tests
 "#,
             r#"
-watching 12 files  ctrl-c quit"#,
+watching 12 files  enter rerun  a run all  q quit"#,
         ),
         frame(
             true,
@@ -875,7 +876,7 @@ watching 12 files  ctrl-c quit"#,
 ✓ 4 passed  4 of 8 tests
 "#,
             r#"
-watching 12 files  ctrl-c quit"#,
+watching 12 files  enter rerun  a run all  q quit"#,
         ),
     ];
     let frames = states(terminal(), &root);
@@ -897,7 +898,7 @@ watching 12 files  ctrl-c quit"#,
         frames[3].stderr
     );
     assert!(
-        frames[3].stderr.contains("\x1b[1mctrl-c\x1b[0m"),
+        frames[3].stderr.contains("\x1b[1menter\x1b[0m"),
         "{:?}",
         frames[3].stderr
     );
@@ -1057,6 +1058,7 @@ fn the_session_ends_when_its_output_closes() {
             &mut Capture::default(),
             &|| "12:00:00".to_string(),
             &|| false,
+            None,
         );
         let _ = done.send(code);
     });
@@ -1195,6 +1197,7 @@ fn a_save_shows_the_tests_it_reaches_within_the_target() {
                 &mut err,
                 &|| "12:00:00".to_string(),
                 &|| stop.load(Ordering::Relaxed),
+                None,
             )
         })
     };
@@ -1247,5 +1250,89 @@ fn a_save_shows_the_tests_it_reaches_within_the_target() {
         slowest < CEILING,
         "a save took {} ms to show its results",
         slowest.as_millis()
+    );
+}
+
+#[test]
+fn keys_rerun_run_all_and_run_the_failures_between_saves() {
+    let root = small("keys");
+    let args = args(&root, false);
+    let env = terminal();
+    let (mut watcher, _) = Watcher::start(&args, &env, Database::default()).expect("starts");
+    assert!(watcher.reads_keys());
+    let ran = |pressed: Pressed| match pressed {
+        Pressed::Ran(frame) => stripped(frame),
+        other => panic!("a run: {other:?}"),
+    };
+    // `f` with nothing failing does nothing, and isn't offered.
+    assert_eq!(watcher.press(Key::Char('f'), "14:02:00"), Pressed::Nothing);
+    edit(&root, SMALL_TESTS, "== 4", "== 5");
+    watcher
+        .update(saved(SMALL_TESTS), "14:02:10")
+        .expect("a change");
+    let failed = ran(watcher.press(Key::Char('f'), "14:02:31"));
+    assert!(
+        failed
+            .stdout
+            .starts_with("── 14:02:31 · run failed · 1 test ──\n\n✗ failed  north step 1 adds\n"),
+        "{}",
+        failed.stdout
+    );
+    assert_eq!(
+        failed.stderr,
+        "\nwatching 12 files · 1 failing  enter rerun  a run all  f run failed  q quit"
+    );
+    let all = ran(watcher.press(Key::Char('a'), "14:03:00"));
+    assert!(
+        all.stdout
+            .starts_with("── 14:03:00 · run all · 8 tests ──\n"),
+        "{}",
+        all.stdout
+    );
+    // `enter` reruns what the last run ran.
+    let again = ran(watcher.press(Key::Enter, "14:03:30"));
+    assert!(
+        again
+            .stdout
+            .starts_with("── 14:03:30 · rerun · 8 tests ──\n"),
+        "{}",
+        again.stdout
+    );
+    assert_eq!(watcher.press(Key::Char('x'), "14:04:00"), Pressed::Nothing);
+    assert_eq!(watcher.press(Key::Char('q'), "14:04:00"), Pressed::Quit);
+    assert_eq!(watcher.press(Key::Interrupt, "14:04:00"), Pressed::Quit);
+    // Piped into, or with `--json`, keys aren't read and ctrl-c quits.
+    let piped = Environment::empty()
+        .with_terminals(false, true, true)
+        .with_var("TERM", "xterm-256color");
+    let (mut watcher, first) = Watcher::start(&args, &piped, Database::default()).expect("starts");
+    assert!(!watcher.reads_keys());
+    assert_eq!(
+        stripped(first).stderr,
+        "\nwatching 12 files · 1 failing  ctrl-c quit"
+    );
+    assert_eq!(watcher.press(Key::Char('a'), "14:05:00"), Pressed::Nothing);
+}
+
+#[test]
+fn a_session_quits_on_its_key() {
+    let root = small("quit");
+    let keys = Keys::script([Key::Char('a'), Key::Char('q')]);
+    let mut out = Capture::default();
+    let mut err = Capture::default();
+    let code = serve_to(
+        &args(&root, false),
+        &terminal(),
+        &mut out,
+        &mut err,
+        &|| "12:00:00".to_string(),
+        &|| false,
+        Some(&keys),
+    );
+    assert_eq!(code, 0);
+    let shown = strip_ansi(&out.text());
+    assert!(
+        shown.contains("── 12:00:00 · run all · 8 tests ──"),
+        "{shown}"
     );
 }

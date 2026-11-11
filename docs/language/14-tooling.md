@@ -183,7 +183,20 @@ To run fewer tests:
 reruns the tests that reach something whose digest, a hash of its code,
 changed since the last run, within the path, name and kind you gave. While
 the build is broken it shows the errors and runs nothing. With `--json` it
-writes one envelope per line. Ctrl-c quits.
+writes one envelope per line. In a terminal, `enter` reruns the last run's
+tests, `a` runs them all and `f` the failing ones; `q` or ctrl-c quits.
+
+`jadpo test --affected` runs the tests that reach what changed since the
+merge base with `main`, measured as `--watch` measures a save: the tests
+reaching any node whose digest differs from that commit's, the commit
+found as `jadpo check` finds its before side ([`jadpo
+check`](#jadpo-check)); on `main` itself, the previous commit. Run it
+before pushing, or in CI.
+
+`jadpo test --interactive` opens a keyboard view of every test: search,
+move between tests, run a file, one test or all, rerun failures, read a
+failure's report and turn watching on and off
+([Running tests](13-testing.md#running-tests)). It needs a terminal.
 
 `--keep-failed` keeps a failed test's database and names it in the report.
 
@@ -295,12 +308,6 @@ work](12-jobs-and-events.md#running-background-work)).
 
 Not built yet:
 
-- `jadpo test --affected`, which runs the tests a change reaches,
-  measured against the merge-base with `main`.
-- `jadpo test --interactive`, a keyboard view of every test: search,
-  move between tests, run a file, one test or all, rerun failures and
-  turn watching on and off ([Testing](13-testing.md)). The flag says
-  `toolchain.not_built_yet`.
 - The trace `--keep-failed` keeps, which comes with
   [Debugging](17-debugging-and-review.md).
 - `jadpo dev` starting the services the app's connections declare

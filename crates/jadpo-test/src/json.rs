@@ -106,6 +106,7 @@ fn selection(selection: &Selection, full: bool) -> Json {
                 Json::Null
             },
         ),
+        ("affected", selection.affected.as_ref().into()),
     ])
 }
 
@@ -382,7 +383,7 @@ pub fn schema() -> Json {
                 ),
                 (
                     "selection",
-                    "What was asked for: path, line, name, kind, failed",
+                    "What was asked for: path, line, name, kind, failed, and affected, the base --affected measured the change against (origin/main at 1a2b3c4)",
                 ),
                 (
                     "counts",
@@ -418,6 +419,17 @@ pub fn schema() -> Json {
                     "gone",
                     "How many tests failed last time and are no longer in the project; 0 when none failed",
                 ),
+                ("tests", "Empty"),
+            ]),
+        ),
+        (
+            "nothingReached",
+            fields(&[
+                (
+                    "selection",
+                    "{ affected: the base the change was measured against }",
+                ),
+                ("reached", "0: no test asked for reaches what changed"),
                 ("tests", "Empty"),
             ]),
         ),

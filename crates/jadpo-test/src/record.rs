@@ -1,8 +1,9 @@
 //! The last run's failures, kept in `build/test/last-run.json` so
-//! `jadpo test --failed` can rerun them (area 13, "Running tests"). Each
-//! run updates the record for the tests it ran: a test that passed leaves
-//! it, one that failed joins it, and the tests it didn't run keep their
-//! place, as long as they still exist. Only a project keeps a record;
+//! `jadpo test --failed` can rerun them (area 13, "Running tests"), and
+//! its passes, so the keyboard view shows each test's last result. Each
+//! run updates the record for the tests it ran: a test that passed moves
+//! to `passed`, one that failed to `failed`, and the tests it didn't run
+//! keep their place, as long as they still exist. Only a project keeps a record;
 //! loose files have no `build/`.
 
 use std::collections::BTreeSet;
@@ -52,32 +53,64 @@ pub(crate) fn read(root: &Path, project: bool) -> Result<BTreeSet<String>, Box<D
         .unwrap_or_default())
 }
 
+/// The keys of the tests that failed and that passed the last time each
+/// ran, by the record; empty when there is none.
+pub(crate) fn results(root: &Path) -> (BTreeSet<String>, BTreeSet<String>) {
+    let Ok(text) = std::fs::read_to_string(root.join(RECORD)) else {
+        return Default::default();
+    };
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Default::default();
+    };
+    let keys = |field: &str| -> BTreeSet<String> {
+        parsed[field]
+            .as_array()
+            .map(|tests| {
+                tests
+                    .iter()
+                    .filter_map(|test| test["key"].as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    (keys("failed"), keys("passed"))
+}
+
 /// Updates the record with `results`. A record that can't be written
 /// only costs the next `--failed`, so failing to write it is silent.
 pub(crate) fn write(root: &Path, tests: &[Test], results: &[TestResult]) {
-    let mut failed = read(root, true).unwrap_or_default();
+    let (mut failed, mut passed) = self::results(root);
     for result in results {
         if result.failure.is_some() {
             failed.insert(result.test.key.clone());
+            passed.remove(&result.test.key);
         } else {
             failed.remove(&result.test.key);
+            passed.insert(result.test.key.clone());
         }
     }
-    let entries: Vec<Json> = tests
-        .iter()
-        .filter(|test| failed.contains(&test.key))
-        .map(|test| {
-            Json::object([
-                ("key", Json::from(&test.key)),
-                ("name", Json::from(&test.name)),
-                ("file", Json::from(&test.file)),
-                ("line", test.line.into()),
-            ])
-        })
-        .collect();
+    let entries = |keys: &BTreeSet<String>| -> Json {
+        Json::Array(
+            tests
+                .iter()
+                .filter(|test| keys.contains(&test.key))
+                .map(|test| {
+                    Json::object([
+                        ("key", Json::from(&test.key)),
+                        ("name", Json::from(&test.name)),
+                        ("file", Json::from(&test.file)),
+                        ("line", test.line.into()),
+                    ])
+                })
+                .collect(),
+        )
+    };
+    // The tests that passed are kept too, for the keyboard view's last
+    // results (chunk T3).
     let document = Json::object([
         ("schemaVersion", Json::Int(SCHEMA_VERSION)),
-        ("failed", Json::Array(entries)),
+        ("failed", entries(&failed)),
+        ("passed", entries(&passed)),
     ]);
     let path = root.join(RECORD);
     if let Some(folder) = path.parent()

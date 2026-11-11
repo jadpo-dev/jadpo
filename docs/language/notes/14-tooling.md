@@ -166,3 +166,29 @@ this list changed a rule.
   whose `deploy --dry-run` accepts the file, are pinned in
   `tools/fixtures/workers/`. The Rust toolchain is fetched from Rust's dist
   server.
+
+## `jadpo test --affected` (chunk T3)
+
+Decisions the page didn't make, recommended here and open for a
+maintainer to overrule:
+
+- **The base is the before side's commit**, found exactly as `jadpo check`
+  finds it: the merge base with the default branch, and on the default
+  branch itself the previous commit. "The merge-base with `main`" would
+  give nothing to run on `main`, and the decision above says the before
+  side is the one diffs use. There is no `--before` for `jadpo test`;
+  the pages don't offer one.
+- **No test reached passes.** It prints `nothing to run  no test reaches
+  what changed since <base>` and exits 0, as `--failed` with nothing to
+  rerun does; its JSON is `{ selection: { affected }, reached: 0, tests:
+  [] }`. A run that did run says `since <base>` in its footer, and
+  `selection.affected` names the base.
+- **A project new since the base** has nothing there to compare, so every
+  test reaches the change and all run.
+- **No base commit is a usage error.** Outside git, before the first
+  commit, with no default branch, with no history shared with it, or for a
+  project git ignores, it is `cli.test_arguments` (exit 2), its next step
+  `jadpo test`; a base a shallow clone doesn't hold names `git fetch
+  --unshallow`, as `jadpo check` does.
+- **With `--watch`**, the first run is what the branch changed reaches;
+  each save after is measured from the last run, as always.

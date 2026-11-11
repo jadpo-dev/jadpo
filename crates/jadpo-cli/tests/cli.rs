@@ -475,6 +475,8 @@ fn help_json_is_the_whole_command_reference() {
             ("--failed", &serde_json::Value::Null),
             ("--seed", &serde_json::json!("n")),
             ("--watch", &serde_json::Value::Null),
+            ("--affected", &serde_json::Value::Null),
+            ("--interactive", &serde_json::Value::Null),
             ("--keep-failed", &serde_json::Value::Null),
         ]
     );

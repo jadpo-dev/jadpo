@@ -2124,7 +2124,19 @@ a focused test is never committed by accident.
 
 `jadpo test --watch` reruns, on every save, the tests the change reaches.
 It finds them with the compiler's own dependency graph
-([`jadpo test`](14-tooling.md#jadpo-test)).
+([`jadpo test`](14-tooling.md#jadpo-test)). In a terminal, keys run tests
+between saves: `enter` reruns the tests the last run ran, `a` runs every
+test asked for, `f` the tests failing now, and `q` or ctrl-c quits.
+
+### The tests a change reaches: `--affected`
+
+`jadpo test --affected` runs the tests that reach what changed since the
+merge base with the default branch, the same base a pull request's diff
+uses; on the default branch itself, since the previous commit. Changes not
+yet committed count. It narrows whatever else is asked for: a path,
+`--name`, `--kind`, `--failed`. When no test reaches the change, nothing
+runs and the run passes. Outside git, or before the first commit, there is
+nothing to compare with, and the command says so.
 
 ### Interactive mode: `--interactive`
 
@@ -2133,6 +2145,11 @@ the app, grouped by domain and file, with each test's last result. You
 type to search files and tests; run a file, a single test or everything;
 rerun failures; open a failure's full report; and turn watch mode on and
 off. It needs a terminal, so agents use the flags above and `--json`.
+
+The keys are the ones every view uses: `/` searches, `enter` runs the
+selected file or test, `a` runs everything, `f` the failing tests, `o`
+opens the selected test's report, `w` turns watching on and off, `esc`
+goes back and `q` quits. `--interactive --watch` opens with watching on.
 
 ### Paths in the output
 
@@ -2145,12 +2162,9 @@ the project as it was typed (`examples/07-testing/domains/…`).
 The editor shows a run button above each test and the last result beside
 it, through the language server.
 
-Interactive mode isn't built yet: `--interactive` says
-`toolchain.not_built_yet`. Use the flags above, or `--watch`, for now.
-
-Not built yet: `--affected`, which runs the tests a change reaches. Nor are
-the tests the compiler is to generate from facts it already has, run with
-your tests and shown in the report under the route they test:
+Not built yet: the tests the compiler is to generate from facts it
+already has, run with your tests and shown in the report under the route
+they test:
 
 - every route refuses bad input with `{ field, rule }` details;
 - every declared failure reaches the client in the right envelope and
@@ -2449,11 +2463,12 @@ Not built yet: caches, which need the Redis driver.
 | Database | Built: `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
 | Caller | Built: `Principal.user(user)` and `Principal.service(service)` in tests, fixtures and seeds; a call passing a caller runs as that caller, one passing none runs without policy. |
 | Placement | Built: a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. |
-| Watch mode | Partly built: `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run, or says `errors fixed` when no test reaches it; a removed file is a change like any other. Run from outside the project, its paths start with the project as typed. It ends when nothing reads its output any more, as when piped into `head`. A save shows its results in about 0.1 s on a 230-file project, and the gate fails above 1.25 s. The keys in the interactive screen (`enter`, `a`, `f`) wait for `--interactive`, which says `toolchain.not_built_yet`; ctrl-c quits. |
+| Watch mode | Partly built: `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run, or says `errors fixed` when no test reaches it; a removed file is a change like any other. Run from outside the project, its paths start with the project as typed. It ends when nothing reads its output any more, as when piped into `head`. A save shows its results in about 0.1 s on a 230-file project, and the gate fails above 1.25 s. In a terminal, `enter` reruns the last run's tests, `a` runs every test asked for and `f` the failing ones, each under a rule naming the key, and `q` or ctrl-c quits; with `--json` or no terminal on standard input, no key is read. |
+| `--affected` | Built: the tests that reach any node whose digest differs from the base commit's, found through the same before side as `jadpo check`'s diffs: the merge base with the default branch, or on it the previous commit. Uncommitted changes count, a project new since the base runs every test, and no test reached is `nothing to run`, which passes. With no base commit (outside git, no commit yet, no default branch) it is `cli.test_arguments`; a base the clone doesn't hold names `git fetch --unshallow`. With `--watch`, the first run is what the branch changed reaches. |
 | Fixtures | Built: a fixture is checked like an action and called by name from tests, fixtures and seeds; an action calling one is `semantic.not_callable`. A `public` fixture is called through its domain from other domains' tests, fixtures and seeds and from root `tests/`; a private one from there is `visibility.private_cross_domain`. Seeds are checked like tests and run with `jadpo seed` ([Seeds](05-data.md#seeds)). |
 | Data builders, `assert emitted` | Not built yet. |
 | The trace `--keep-failed` keeps, for `jadpo trace` | Not built yet: it comes with [Debugging and review](17-debugging-and-review.md). |
-| Interactive mode | Not built yet: `jadpo test --interactive` says `toolchain.not_built_yet`. |
+| Interactive mode | Built: `jadpo test --interactive` opens the keyboard view on the alternate screen: each domain and file with its tests and their last results (the project's record keeps passes as well as failures), search as you type, `enter` on a file or test, `a`, `f`, `o` for a failure's report as `jadpo test` prints it, `w` to watch, on the same long-lived session as `--watch`. A build with errors shows them in the view. On quit, the last run's footer is left in the scrollback. It refuses `--json`, a missing terminal, and a path, `--name`, `--kind`, `--failed` or `--affected`, as `cli.test_arguments`. |
 | Generated tests | Partly built: every person a test erases is checked once its deliveries are done, and an [`export`](15-personal-data.md#export) of them that holds anything ends the test as a fault. Not built yet: a generated test for a person entity no test erases, which waits for data builders, and the rest of this list ("In the editor"). |
 | Caches in tests | Not built yet: caches need the Redis driver. |
 | Golden application contract | Built: the shared black-box harness in `benchmarks/contract/` executes all 44 versioned application cases interpreted, on generated native code and on compiled workerd, with real credential verification, raw invalid inputs, physical SQL observation, persisted-state assertions, controlled clocks and provider faults. These checks supplement authored Jadpo tests; they add no application-facing test controls. Full-gate ownership is interpreted and native in `compiled`, workerd in `wasm32`, and verifier negative controls in `lint`. |

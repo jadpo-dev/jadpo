@@ -34,6 +34,8 @@ pub enum Session {
     Lsp(PathBuf),
     /// `jadpo test --watch`, until it is stopped.
     Watch(Box<WatchArgs>),
+    /// `jadpo test --interactive`, until it is quit.
+    Interactive(Box<crate::interactive::InteractiveArgs>),
     /// `jadpo dev`, until it is stopped.
     Dev(Box<crate::dev::DevArgs>),
     /// `jadpo config set`, which asks for the value at a prompt.
@@ -264,6 +266,18 @@ pub(crate) fn finish(
                 stderr: String::new(),
                 code: 0,
                 session: Some(Session::Watch(args)),
+            };
+        }
+        Reply::Session(Session::Interactive(mut args)) => {
+            if let Some(refusal) = crate::interactive::refusal(env, json, choice) {
+                return finish(name, Reply::failed(refusal), env, json, choice, asked);
+            }
+            args.choice = choice;
+            return Output {
+                stdout: String::new(),
+                stderr: String::new(),
+                code: 0,
+                session: Some(Session::Interactive(args)),
             };
         }
         Reply::Session(Session::ConfigSet(mut args)) => {
