@@ -82,8 +82,8 @@ error: `items_on_list` couldn't be planned
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop
-and ask you, because the choice is yours: which PostgreSQL to install or
-run, and which server Jadpo may make databases on.
+and ask you which fix you want, because the choice is yours to make: which
+PostgreSQL to install or run, and which server Jadpo may make databases on.
 
 ## How to fix it
 
