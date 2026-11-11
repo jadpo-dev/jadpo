@@ -1,6 +1,6 @@
 # `cli.test_arguments`
 
-A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use; asks for `--affected` with no base commit to compare with; or asks for `--interactive` without a terminal, with `--json`, or with a path or filter of its own.
+A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use, or asks for `--affected` with nothing to compare with or `--interactive` where it can't open.
 
 ## Why Jadpo refuses it
 

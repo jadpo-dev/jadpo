@@ -3991,7 +3991,7 @@ yet, or that other commands replace.
 | `cli.signal_handler_failed` | any command | Shutdown handler could not be installed |
 | `cli.sql_arguments` | `sql` | A `jadpo sql` command names no query or action, one the project doesn't declare, or an action that writes nothing |
 | `cli.suggest_arguments` | `suggest` | A `jadpo suggest` command names an action it doesn't have, or a suggestion the last scan didn't find |
-| `cli.test_arguments` | `test` | A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use |
+| `cli.test_arguments` | `test` | A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use, or asks for `--affected` with nothing to compare with or `--interactive` where it can't open |
 | `cli.toolchain_arguments` | `toolchain` | A `jadpo toolchain` command names an action it doesn't have, or a release that isn't kept |
 | `cli.translations_arguments` | `translations` | A `jadpo translations` command names no action, one it doesn't have, or a locale the project doesn't translate into |
 | `cli.unknown_command` | any command | A `jadpo` command line starts with a command Jadpo doesn't have, or asks `jadpo help` about a command or rule it doesn't have |

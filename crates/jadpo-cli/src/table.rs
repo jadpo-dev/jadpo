@@ -355,7 +355,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--affected",
                 value: None,
-                description: "Run the tests that reach what changed since main",
+                description: "Run the tests a change since main reaches",
                 values: &[],
             },
             Flag {
