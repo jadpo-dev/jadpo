@@ -208,6 +208,8 @@ rules! {
         "A `jadpo privacy` command names an action it doesn't have, or a state or page `requests` doesn't list";
     CLI_RECORDS_ARGUMENTS: "cli.records_arguments", area 14, Error, Agent,
         "A `jadpo records` command names an action other than `update`";
+    CLI_RENAME_ARGUMENTS: "cli.rename_arguments", area 14, Error, Agent,
+        "A `jadpo rename` command names a declaration or field the project doesn't have, one it doesn't rename, or a new name that is taken or isn't one";
     CLI_ROUTES_ARGUMENTS: "cli.routes_arguments", area 14, Error, Agent,
         "A `jadpo routes` command is given an argument, which it doesn't take";
     CLI_RUNS_ARGUMENTS: "cli.runs_arguments", area 14, Error, Agent,
@@ -644,6 +646,8 @@ rules! {
         "The package you are installing has code that offers something different from its committed `surface.jadpo_record`";
     INSTALL_YANKED: "install.yanked", area 14, Error, Human,
         "The release you asked for has been yanked, so it can't be newly installed";
+    LAYOUT_ASSET_UNREFERENCED: "layout.asset_unreferenced", area 1, Error, Agent,
+        "A file that isn't Jadpo sits in a code folder, and no declaration uses it";
     LAYOUT_CALL_DIRECTION: "layout.call_direction", area 1, Error, Human,
         "Code in `shared/` uses a declaration that belongs to one domain";
     LAYOUT_FILE_NAME_MISMATCH: "layout.file_name_mismatch", area 1, Error, Agent,

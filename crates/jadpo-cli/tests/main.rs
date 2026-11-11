@@ -134,6 +134,7 @@ mod records;
 mod registry_commands;
 mod released;
 mod removals;
+mod rename;
 mod reserved_names;
 mod retention;
 mod round_trips;

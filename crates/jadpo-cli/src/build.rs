@@ -1285,6 +1285,63 @@ fn write_failed(path: &str, error: &std::io::Error) -> Diagnostic {
 mod tests {
     use super::*;
 
+    /// Area 7, "Failure wording for client apps", and area 14, "What
+    /// `jadpo build` writes": beside the binary, each API it serves has its
+    /// OpenAPI document and its `<api>.failures.<locale>.json`, copied from
+    /// what the check wrote; an API it doesn't serve has neither, and
+    /// nothing else is left in the folder.
+    #[test]
+    fn a_build_carries_each_served_apis_document_and_failure_wording() {
+        let root = std::env::temp_dir().join(format!(
+            "jadpo-documents-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let written: Vec<String> = [
+            "build/openapi/admin.json",
+            "build/openapi/admin.failures.en_gb.json",
+            "build/openapi/main.json",
+            "build/openapi/main.failures.en_gb.json",
+            "build/openapi/main.failures.fr_fr.json",
+        ]
+        .iter()
+        .map(|path| path.to_string())
+        .collect();
+        for path in &written {
+            let file = root.join(path);
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("folders");
+            std::fs::write(&file, format!("{{\"from\": \"{path}\"}}\n")).expect("written");
+        }
+        let stale = root.join("build/target/app/openapi/old.failures.en_gb.json");
+        std::fs::create_dir_all(stale.parent().expect("a folder")).expect("folders");
+        std::fs::write(&stale, "{}\n").expect("written");
+        let copied = documents(
+            &root,
+            &written,
+            &["main".to_string()],
+            "build/target/app/openapi",
+        )
+        .expect("copied");
+        assert_eq!(
+            copied,
+            [
+                "build/target/app/openapi/main.failures.en_gb.json",
+                "build/target/app/openapi/main.failures.fr_fr.json",
+                "build/target/app/openapi/main.json",
+            ]
+        );
+        for path in &copied {
+            let name = path.rsplit('/').next().expect("a name");
+            assert_eq!(
+                std::fs::read_to_string(root.join(path)).expect("read"),
+                std::fs::read_to_string(root.join("build/openapi").join(name)).expect("read")
+            );
+        }
+        assert!(!stale.exists(), "the folder holds only this build's files");
+        std::fs::remove_dir_all(&root).expect("removed");
+    }
+
     /// Builds writing one locale set's data at once (chunk 8.4g) each
     /// read the one folder, whole, named by its digest, and leave nothing
     /// half written behind; another set has a folder of its own.

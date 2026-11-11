@@ -115,7 +115,7 @@ D1 first: the site starts once D1 has merged.
   and feature requests read, answered and turned into pull requests by an
   agent that holds no secrets and cannot merge or release, since issue text
   is anyone's; its pull requests pass the same gate and review.
-- [ ] **D8b Rename in the editor** `opus · high`: area 14, "Editor support". Waits: `jadpo rename` and the identity registry (after the first build, items 6 and 7).
+- [ ] **D8b Rename in the editor** `opus · high`: area 14, "Editor support", through `jadpo_check::rename`, the code `jadpo rename` runs.
 
 ## Phase 10 — Golden todo
 
@@ -262,15 +262,8 @@ work below (Richard, 2026-11-08).
      query cost in review, metrics for each flag value's path, and
      `jadpo replay`. Done when a request's number draws its route on both
      executors and a replay gives the same results.
-4. Tooling completeness (area 14): interactive tests, `rename` (refusing a
-   name already in use, 2026-10-16), full completion.
-   - [ ] **T1 `jadpo rename`** `opus · xhigh`: area 14, "Commands for
-     looking into and changing code"; area 18, "Stable identity"; area 5,
-     "Migrations". Renames a declaration or field everywhere, keeps its
-     stored data by writing the identity registry, and refuses a name in
-     use; `jadpo migrate new` stops refusing a rename. D8b follows. Done
-     when renaming a stored field keeps its rows on both executors.
-   - [ ] **T2 `jadpo domain`** `opus · high` after T1: area 14, "Tools for
+4. Tooling completeness (area 14): interactive tests, full completion.
+   - [ ] **T2 `jadpo domain`** `opus · high`: area 14, "Tools for
      agents"; area 1, "Domains"; area 18, "Keys" and "Acceptances". `rename`,
      `split` and `merge`, moving files and every call, so a domain renamed
      no longer reads as one created. Designed with the design skills
@@ -291,12 +284,6 @@ work below (Richard, 2026-11-08).
      impact` first, the parallel-workspace routine, and the rule for a fixed
      value. Generated CI also belongs here, once a page says what generates it
      (L3).
-   - [ ] **T6 Small promises from the pages** `opus · high`: area 7, "What
-     is built"; area 10, "Where translations live"; area 1, "What is built";
-     area 14, "`jadpo migrate`". `jadpo build` writing
-     `<api>.failures.<locale>.json`; `layout.promotion_required` covering
-     messages; `layout.asset_unreferenced`; and `jadpo migrate new` asking for
-     a missing purpose, which comes with prompts.
    - [ ] **T7 Records in the editor** `opus · high`: area 18, "Records in
      git and in your editor" and "What is built". `jadpo check` building
      the base commit, as `jadpo approval` does, to tell a careful hand edit of
@@ -394,7 +381,7 @@ work below (Richard, 2026-11-08).
       `toolchain.not_built_yet`.
     - [ ] **Q6 A database only when something needs one** `opus · high`, with
       the first feature that can run without one: area 5, "Stores".
-    - [ ] **Q7 A standard type swapped under stored data** `opus · high` after T1:
+    - [ ] **Q7 A standard type swapped under stored data** `opus · high`:
       area 19, "Reference lists ship with Jadpo" and "Names each release adds";
       area 18, "Acceptances". The data migration and acceptances for a
       `type.standard_exists` or `type.standard_clash` swap of a type already

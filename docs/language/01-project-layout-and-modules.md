@@ -668,8 +668,9 @@ the name. If the type is promoted to its own file, the rule applies again.
 A clash is `semantic.duplicate_declaration`. It says whether the two are a
 copy (use the existing one, or move it to `shared/`) or two things with
 one name (rename one). It never invents a name, and it lists the names in
-use that contain the same word. `jadpo rename` refuses a new name already
-in use before editing anything.
+use that contain the same word. [`jadpo rename`](14-tooling.md#jadpo-rename)
+refuses a new name already in use before editing anything, listing them
+the same way.
 
 An agent working in parallel with others merges `main` before pushing,
 runs `jadpo check` (it builds nothing, so it is quick), fixes any clash,
@@ -685,9 +686,14 @@ route, schedule) is known from what it calls, so it isn't a folder;
 
 Files that aren't Jadpo (provider contracts, email templates, search
 mappings) sit beside the file that uses them, and that file must refer to
-them.
-
-Not built yet: `jadpo rename`.
+them. In `domains/` and `shared/` a file no declaration refers to is
+`layout.asset_unreferenced`: today an email's templates and a prompt's
+text are referred to by the declaration they are named after, the shared
+email layout by every email, and a prompt's recordings by the prompt whose
+folder they are in. A template or a prompt's text beside no declaration of
+its name is reported by its own rule, `email.template_missing` or
+`prompt.section_missing`, whose fix declares the type. A package's files
+are its own ([The package format](11-integrations.md#the-package-format)).
 
 ## Sharing and promotion
 <!-- topic: sharing-and-promotion -->
@@ -756,7 +762,9 @@ domain, so the move writes one line there, and it reads as a move, not as
 a removal and an addition. `layout.promotion_required`'s edits for a type
 moving to `shared/types/` add that line, so `jadpo fmt --layout` writes it.
 A failure raised by a second domain gets no edit, so moving it by hand
-writes no line. A library keeps its name in `shared/`, so its functions'
+writes no line. A message's edits take its wording with it
+([Where translations live](10-configuration-and-time.md#where-translations-live)),
+and a file a move empties is removed. A library keeps its name in `shared/`, so its functions'
 keys need none.
 
 A move whose new file would carry another declaration's name too gets no
@@ -1182,7 +1190,7 @@ The compiler builds this layout, with each rule's real output under
 |---|---|
 | Root, domains and their folders | Partly built: a file where the layout has no place for it is `layout.unknown_location`, and a declaration in the wrong folder `layout.wrong_folder`; a folder or file with no `app.jadpo` above it is checked as loose files. A domain created needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: `jadpo domain rename`, `split` and `merge`; the `documents` capability, so a file in `documents/` is `layout.unknown_location` until it is. |
 | Files and names | Built: one primary declaration per file, named after it; names unique project-wide; the round-trip and folded-collision rules, with the exception for a type folding to its callable's name. |
-| Names per domain | Partly built: private functions and types unique only within their domain, each domain's code reading its own; their identity keys carrying the domain, with promotion to `shared/` writing a registry line; `semantic.duplicate_declaration` saying copy or clash and listing the names in use with the same words. `jadpo rename` is not built yet ([Commands for looking into and changing code](14-tooling.md#commands-for-looking-into-and-changing-code)). |
+| Names per domain | Partly built: private functions and types unique only within their domain, each domain's code reading its own; their identity keys carrying the domain, with promotion to `shared/` writing a registry line; `semantic.duplicate_declaration` saying copy or clash and listing the names in use with the same words; `jadpo rename` refusing a name in use ([`jadpo rename`](14-tooling.md#jadpo-rename)). |
 | Order independence | Built: declaration and file order never matter. |
 | Domains, `public` and calls | Built: owner-qualified calls and per-declaration `public`, with `visibility.private_cross_domain`, `visibility.public_not_allowed` and `visibility.public_unused`. |
 | Reserved words | Built: a reserved word names only a field or an enum variant ([Names from reserved words](02-values-and-types.md#names-from-reserved-words)). |
@@ -1193,7 +1201,7 @@ The compiler builds this layout, with each rule's real output under
 | Imports | Built: `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
 | A file holds only what its primary declaration uses | Built: `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another. |
 | Definition before use | Built: `jadpo fmt` writes each file's declarations before the first one that uses them, and `jadpo fmt --check` fails on a file out of that order. |
-| Referenced assets | Not built yet: `layout.asset_unreferenced` waits for the ways [External services](11-integrations.md) and [Built-in services](16-built-in-services.md) refer to files that aren't Jadpo. |
+| Referenced assets | Built: `layout.asset_unreferenced` for a file in `domains/` or `shared/` that isn't Jadpo and that no declaration refers to, with the ways [Built-in services](16-built-in-services.md#email) and [AI](21-ai.md) refer to one ([Tests and other files](#tests-and-other-files)). Each way still to be built, such as documents' templates and search mappings, refers to its files when it is. |
 | Jadpo version | Built: `application { jadpo: "X.Y" }`, with `toolchain.version_newer` refusing a project on a later line, `toolchain.version_older` one on an earlier line, each naming the release to install, and `toolchain.version_invalid`; the installed `jadpo` runs the release the line or `jadpo.lock`'s pin names ([Which jadpo runs](14-tooling.md#which-jadpo-runs)). `jadpo new` writes the line of the `jadpo` that ran it. |
 | `application { }`'s sections | Partly built: the one list of sections ([What `application { }` holds](#what-application---holds)), `semantic.application_section_unknown` for any other, with the edit to the section a near miss meant. Not built yet: the seven more it names, each `toolchain.not_built_yet` where it is written. |
 | Packages | Built: the root `packages/` and `jadpo.lock`, `shared/providers/`, packages checked as `shared/` is, `use packages/<name>`, and the reachable-from-public rule (`visibility.public_reaches_private`) in domains and packages; [External services](11-integrations.md) records the choices. |
@@ -1235,6 +1243,7 @@ rules off; the layout examples are small projects.
 - [`layout.wrong_folder`](../errors/layout.wrong_folder.md)
 - [`layout.file_name_mismatch`](../errors/layout.file_name_mismatch.md)
 - [`layout.promotion_required`](../errors/layout.promotion_required.md)
+- [`layout.asset_unreferenced`](../errors/layout.asset_unreferenced.md)
 - [`layout.unused_declaration`](../errors/layout.unused_declaration.md)
 - [`layout.test_without_subject`](../errors/layout.test_without_subject.md)
 - [`layout.route_prefix_mismatch`](../errors/layout.route_prefix_mismatch.md)

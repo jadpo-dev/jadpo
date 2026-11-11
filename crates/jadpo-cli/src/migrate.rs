@@ -7,8 +7,32 @@
 //! given a database, which it has applied.
 //!
 //! The screens follow the CLI design language's drawn `jadpo migrate new`.
+//!
+//! The prompt for a missing purpose (area 14, "`jadpo migrate`"), designed
+//! before it was built (impeccable's shape pass against the CLI design
+//! language, run unattended, so its assumptions are marked):
+//!
+//! - *Job.* Someone at a terminal runs `jadpo migrate new` before they have
+//!   named the change, and names it without starting again. Mode: operate.
+//!   The migration's folder carries the name for good, so the question
+//!   asks what the migration does, not for a file name.
+//! - One prompt on standard error, as `jadpo package new`'s: `?`, the
+//!   question in bold, and a muted hint saying the form and what enter
+//!   takes, the purpose the changes suggest, so the common answer is one
+//!   key (assumption: offering it beats an empty default, since the
+//!   suggestion is what the error without a terminal names anyway).
+//! - An answer no folder can be named after is refused on its own line,
+//!   `✗`, naming the lower_snake_case form, and asked again; nothing is
+//!   written until the answer is good. Answered, the prompt collapses to
+//!   `✓ What does this migration do?  add_priority`, and the screen that
+//!   follows is `jadpo migrate new <purpose>`'s.
+//! - *States.* No terminal, `--json`, or the input ending: no prompt, and
+//!   the error naming the purpose to use. Nothing to migrate, an
+//!   unfinished migration or a project with errors: those screens, never
+//!   the prompt.
 
 use std::collections::BTreeMap;
+use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use jadpo_check::acceptances::{data as removed, words};
@@ -24,11 +48,14 @@ use jadpo_graph::migration::{
     migration_sql, next_snapshot, removals, retired, without_retired,
 };
 use jadpo_graph::schema::{Change, Holds, Schema};
-use jadpo_term::{Block, ChangeMark, Fact, Json, Outcome, Screen};
+use jadpo_term::{
+    Block, ChangeMark, ColorChoice, Environment, Fact, Json, Mode, Outcome, Screen, Stream, Style,
+    Symbol,
+};
 
 use crate::database::Address;
 use crate::fmt::project_not_found;
-use crate::run::{Call, Reply};
+use crate::run::{Call, Reply, Session};
 
 pub fn migrate(call: &Call) -> Reply {
     match call.arguments.first().map(String::as_str) {
@@ -210,11 +237,17 @@ fn new(call: &Call) -> Reply {
                 } else {
                     records::purpose(&changes, &next)
                 };
-                return Reply::failed(arguments(
-                    "`jadpo migrate new` needs a purpose".to_string(),
-                    "A migration's folder is named after what it does, so the history reads as a list of changes.".to_string(),
-                    format!("Add one, such as `jadpo migrate new {suggested}`"),
-                ));
+                // At a terminal it is asked for (area 14, "`jadpo migrate`").
+                let environment = &call.environment;
+                if environment.stdin_terminal && environment.stderr_terminal {
+                    return Reply::Session(Session::MigrateNew(Box::new(NewArgs {
+                        cwd,
+                        drop: drop.map(str::to_string),
+                        suggested,
+                        choice: ColorChoice::Auto,
+                    })));
+                }
+                return Reply::failed(needs_purpose(&suggested));
             }
         };
         if !valid_purpose(&purpose) {
@@ -428,6 +461,145 @@ fn and_list(items: &[String]) -> String {
         [only] => only.clone(),
         [init @ .., last] => format!("{} and {last}", init.join(", ")),
     }
+}
+
+/// `jadpo migrate new` without a purpose where no one can be asked.
+pub(crate) fn needs_purpose(suggested: &str) -> Diagnostic {
+    arguments(
+        "`jadpo migrate new` needs a purpose".to_string(),
+        "A migration's folder is named after what it does, so the history reads as a list of changes.".to_string(),
+        format!("Add one, such as `jadpo migrate new {suggested}`"),
+    )
+}
+
+/// What `jadpo migrate new` without a purpose asks with at a terminal: the
+/// folder it runs in, the drop it was asked for and the purpose it offers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NewArgs {
+    pub cwd: PathBuf,
+    pub drop: Option<String>,
+    /// The purpose the changes suggest, `initial` for the first migration,
+    /// which enter takes.
+    pub suggested: String,
+    pub choice: ColorChoice,
+}
+
+/// `jadpo migrate new` at a terminal: asks what the migration does, then
+/// writes it as `jadpo migrate new <purpose>` would.
+pub fn serve(args: &NewArgs, env: &Environment) -> u8 {
+    let style = Style::detect(env, false, args.choice, Stream::Stderr);
+    let Some(purpose) = ask_purpose(
+        &mut std::io::stdin().lock(),
+        &mut std::io::stderr(),
+        &style,
+        &args.suggested,
+    ) else {
+        // The input ended: nothing is written, and the screen says how to
+        // name it without a prompt.
+        let output = crate::run::finish(
+            Some("migrate"),
+            Reply::failed(needs_purpose(&args.suggested)),
+            env,
+            false,
+            args.choice,
+            &crate::run::Asked::default(),
+        );
+        let _ = std::io::stderr().write_all(output.stderr.as_bytes());
+        return output.code;
+    };
+    let output = written(args, &purpose, env);
+    let _ = std::io::stdout().write_all(output.stdout.as_bytes());
+    let _ = std::io::stderr().write_all(output.stderr.as_bytes());
+    output.code
+}
+
+/// What `jadpo migrate new <purpose>` writes and shows, for the purpose
+/// answered at the prompt.
+pub fn written(args: &NewArgs, purpose: &str, env: &Environment) -> crate::Output {
+    let call = Call {
+        arguments: vec!["new".to_string(), purpose.to_string()],
+        flags: Vec::new(),
+        values: args
+            .drop
+            .iter()
+            .map(|name| ("--drop", name.clone()))
+            .collect(),
+        cwd: Some(args.cwd.clone()),
+        environment: env.clone(),
+    };
+    crate::run::finish(
+        Some("migrate"),
+        migrate(&call),
+        env,
+        false,
+        args.choice,
+        &crate::run::Asked::default(),
+    )
+}
+
+/// Asks what the migration does until it has a purpose a folder can be
+/// named after: enter takes `suggested`, and the input ending gives
+/// nothing. Answered, the prompt collapses to `✓ question  answer` where
+/// the cursor can move.
+pub fn ask_purpose(
+    input: &mut impl BufRead,
+    output: &mut impl Write,
+    style: &Style,
+    suggested: &str,
+) -> Option<String> {
+    const QUESTION: &str = "What does this migration do?";
+    let paint = |symbol: Symbol, text: &str| match (style.color, symbol.token()) {
+        (Some(depth), Some(token)) => {
+            format!("\x1b[{}m{text}\x1b[0m", token.sgr(depth, style.theme))
+        }
+        _ => text.to_string(),
+    };
+    let muted = |text: &str| paint(Symbol::Separator, text);
+    let glyph = |symbol: Symbol| paint(symbol, symbol.text(style.symbols));
+    let question = if style.bold {
+        format!("\x1b[1m{QUESTION}\x1b[0m")
+    } else {
+        QUESTION.to_string()
+    };
+    let answer = loop {
+        let _ = write!(
+            output,
+            "{} {question}  {}  ",
+            glyph(Symbol::Prompt),
+            muted(&format!("lower_snake_case words; enter takes {suggested}"))
+        );
+        let _ = output.flush();
+        let mut line = String::new();
+        match input.read_line(&mut line) {
+            Ok(0) | Err(_) => {
+                let _ = writeln!(output);
+                return None;
+            }
+            Ok(_) => {}
+        }
+        let typed = line.trim();
+        if typed.is_empty() {
+            break suggested.to_string();
+        }
+        if valid_purpose(typed) {
+            break typed.to_string();
+        }
+        let _ = writeln!(
+            output,
+            "{} `{typed}` isn't a purpose a folder can be named after; write it as `{}`",
+            glyph(Symbol::Failure),
+            snake(typed)
+        );
+    };
+    if style.mode == Mode::Rich {
+        // The line up, wiped, and the record of what was answered in its place.
+        let _ = writeln!(
+            output,
+            "\x1b[1A\r\x1b[2K{} {QUESTION}  {answer}",
+            glyph(Symbol::Success),
+        );
+    }
+    Some(answer)
 }
 
 pub(crate) fn valid_purpose(purpose: &str) -> bool {

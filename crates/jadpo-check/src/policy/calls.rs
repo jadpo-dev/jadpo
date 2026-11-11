@@ -164,6 +164,7 @@ fn facts(
         ActionWho::Field { .. } | ActionWho::Role { .. } => {
             let line = ActionGrants {
                 action: String::new(),
+                born: String::new(),
                 written: String::new(),
                 who: vec![who.clone()],
                 written_who: Vec::new(),
