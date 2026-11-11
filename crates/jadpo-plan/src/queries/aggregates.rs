@@ -60,7 +60,7 @@ impl Planner<'_> {
         }
         let mut conditions: Vec<String> = Vec::new();
         for line in &query.filter {
-            conditions.push(jadpo_sql::condition(&mut statement, entity, line, false)?);
+            conditions.push(self.condition(&mut statement, entity, line, false)?);
         }
         let reach = if query.include_erased {
             Reach::Erased

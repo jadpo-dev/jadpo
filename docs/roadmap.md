@@ -333,14 +333,8 @@ work below (Richard, 2026-11-08).
 
 10. Data and queries (areas 5, 6, 19 and 20), added by the audit of
     2026-11-08. Each keeps every test passing on both executors.
-    - [ ] **Q1 Comparing standard types, money and held values in a query**
-      `opus · xhigh`: area 5, "A stored value is checked when it is read"
-      and "Migrating structured values"; area 6, "Operations in conditions";
-      area 19, "SQL literals" and "Money in a translated message". Comparing and
-      ordering by a standard type held in named columns, a standard collection,
-      an amount of money or a range, and a condition on a field kept as JSON.
     - [ ] **Q2 Unique rules, indexes and one-step updates over held values**
-      `opus · xhigh` after Q1: area 5, "Migrating structured values" and "Special
+      `opus · xhigh`: area 5, "Migrating structured values" and "Special
       kinds of index"; area 19, "Money in a translated message". A `unique:` or
       index over a structured value, a one-step update working one out, other
       index kinds than geographic and HNSW.

@@ -59,6 +59,9 @@ pub enum Held {
     /// A `double precision` the database works out: the distance pgvector
     /// gives (area 21, chunk 5.5v1b).
     Double,
+    /// An amount of money in its two columns, its minor units and its
+    /// currency's code, which a form takes as [`Arg::Parts`].
+    Money,
 }
 
 /// One argument of an operation, in the operation's parameter order.

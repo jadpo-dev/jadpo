@@ -109,18 +109,34 @@ impl Reader<'_> {
                             | Prim::Quantity(_)
                             | Prim::Percentage
                     )
-                );
+                )
+                // An ordered standard type in named columns, sorted by them
+                // in turn, or money in one currency, by its minor units.
+                || (field.compound.is_some() && self.kept_sortable(field));
             if !sortable {
+                let reason = match field.compound_entry() {
+                    Some(entry) if entry.name == "Money" => format!(
+                        "A query sorts amounts of money in one currency, by their minor units, as code orders them; `{written}`'s type doesn't fix its currency, so its records may be in several."
+                    ),
+                    Some(_) => format!(
+                        "A query sorts a standard type kept in several columns only where it is ordered by them in turn, as a `YearMonth` or a `LocalTime` is; `{written}` is `{}`, which isn't.",
+                        field.ty
+                    ),
+                    None => format!(
+                        "A query sorts by numbers, times, dates, durations, quantities, percentages, text and identities, which the database and Jadpo order the same way; `{written}` is `{}`.",
+                        field.ty
+                    ),
+                };
                 self.out.push(
                     Diagnostic::new(
                         &rule::QUERY_ORDER_FIELD,
                         format!("Records can't be sorted by `{written}`"),
                     )
-                    .at(item_span.clone(), format!("`{}`", field_type_name(&field.ty)))
-                    .reason(format!(
-                        "A query sorts by numbers, times, dates, durations, quantities, percentages, text and identities, which the database and Jadpo order the same way; `{written}` is `{}`.",
-                        field.ty
-                    ))
+                    .at(
+                        item_span.clone(),
+                        format!("`{}`", field_type_name(&field.ty)),
+                    )
+                    .reason(reason)
                     .next("Sort by another field"),
                 );
                 continue;

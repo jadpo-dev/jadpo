@@ -88,6 +88,7 @@ mod interactive;
 mod json_columns;
 mod json_migrations;
 mod jwk_upgrade;
+mod kept_conditions;
 mod launcher;
 mod leaving;
 mod lifecycle;

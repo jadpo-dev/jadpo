@@ -800,6 +800,13 @@ reference's own index goes once a query's index starts with its column.
 - **Geometry.** A geometry field a `geo.` condition tests gets a GiST
   index, and a `Point` field a box filter tests gets one on the point cast
   to `geometry` ([Indexes](20-geospatial.md#indexes) under Geospatial).
+- **Values kept in several columns or as JSON.** A field stored in named
+  columns that is tested with `==` or `in` puts each of them in the
+  index, in its layout's order, and one it sorts by the columns it sorts
+  by (an amount of money's minor units). One kept
+  whole as its JSON puts none: a B-tree's entry holds about 2.7 kB, and a
+  stored value may be 1 MiB, so such an index would refuse a large write.
+  The other fields' index still serves the query.
 
 A derived index records why it exists: the first query, alphabetically,
 that needs it. The migration diff compares only what defines the index:
@@ -1107,11 +1114,13 @@ the record's key (`it read a stored …`).
 places, so ranges, lengths and patterns are the rules such a row can
 break.
 
+A query compares a stored value as code compares it, part for part in
+named columns and as its JSON in a `jsonb` column
+([Values kept in several columns or as JSON](06-reads-and-writes.md#values-kept-in-several-columns-or-as-json)).
+
 Not built yet: a new `pattern:` on a stored field, since PostgreSQL's
-regular expressions aren't Jadpo's (`jadpo migrate new` says so);
-comparing or ordering by a standard type stored in named columns, or by a
-standard collection, in a query; and `CHECK` constraints holding fields'
-rules in the database.
+regular expressions aren't Jadpo's (`jadpo migrate new` says so); and
+`CHECK` constraints holding fields' rules in the database.
 
 ## Structured values
 <!-- topic: structured-values -->
@@ -1190,13 +1199,20 @@ what was written, but it reads back `==`.
 - **`none` is the column's `NULL`,** never JSON's `null`. A JSON `null` in
   the column is a row written outside Jadpo, and a fault. Inside the
   value, a part that is `none` is JSON's `null`, as the wire writes it.
-- **No query compares or sorts one,** as for the standard collections; the
-  field is read whole wherever its record is. An order by one is
-  `query.order_field`. A lifecycle tests one only with `== none` or `!=
-  none`, and a transition or `initial:` sets one only to `none`
-  (`data.lifecycle_condition`, `data.lifecycle_value`), since PostgreSQL
-  compares `jsonb` by its own rules rather than Jadpo's `==`. Any other
-  value is written by an action, through the codec.
+- **A query compares one as its JSON, and sorts by none.** `==`, `!=` and
+  `in` compare the column with a parameter or an enum value, which the
+  codec writes when the query runs as a write keeps it, so two values are
+  equal exactly when their JSON is
+  ([Values kept in several columns or as JSON](06-reads-and-writes.md#values-kept-in-several-columns-or-as-json)).
+  A type holding a decimal without `scale:` isn't compared, since its JSON
+  keeps the places `==` ignores. An order by one is `query.order_field`.
+  The field is read whole wherever its record is.
+- **A lifecycle sets and tests one only as `none`.** A lifecycle tests one
+  only with `== none` or `!= none`, and a transition or `initial:` sets
+  one only to `none` (`data.lifecycle_condition`,
+  `data.lifecycle_value`), since its conditions and values are written as
+  SQL literals, which hold no JSON. Any other value is written by an
+  action, through the codec.
 - **An id inside is a value, not a reference.** A `User.id` inside a
   stored value has no foreign key and no `on_delete:`, as an event's
   payload has none ([Background work](12-jobs-and-events.md)). A link the
@@ -1363,9 +1379,8 @@ and leaves the rest as they are.
   result says `1200 rows checked in 2 batches in Jadpo` or `3 rows
   rewritten in 2 batches in Jadpo`, and `--json` gives each its `work`.
 
-Not built yet: a condition on a structured field (`toolchain.not_built_yet`);
-a `unique:` or index over one (`toolchain.not_built_yet`), since PostgreSQL
-compares `jsonb` by its own rules; and an update by `id` that works a
+Not built yet: a `unique:` or index over a structured field
+(`toolchain.not_built_yet`); and an update by `id` that works a
 structured value out in the database rather than setting one it is given
 (`toolchain.not_built_yet`, as for money).
 
@@ -2072,10 +2087,10 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | PostgreSQL over TLS and through Hyperdrive | Partly built: both connect. Not built yet: checking a Hyperdrive configuration's caching on a real deploy. |
 | D1, and actions on it as reads first and one checked batch of writes | Not built yet. |
 | Lifecycles | Built. |
-| Structured values stored as JSON, and their migrations | Partly built: each is stored whole, read back and migrated. Not built yet: conditions on them, a `unique:` or index over them, and an update by `id` that works one out in the database. |
+| Structured values stored as JSON, and their migrations | Partly built: each is stored whole, read back, migrated and compared in a query. Not built yet: a `unique:` or index over them, and an update by `id` that works one out in the database. |
 | The check of every stored value on read | Built. |
 | `CHECK` constraints holding fields' rules in the database | Not built yet. |
-| Standard types stored in named columns, and the standard collections | Partly built: each is stored and read back. Not built yet: comparing or ordering by them in a query. |
+| Standard types stored in named columns, and the standard collections | Built: each is stored, read back, and compared and ordered in a query as code compares and orders it. |
 | Manifest nodes | Built: a node for each entity's placement, unique rule, index and reference, with `references` edges between entities, one for each system table and migration snapshot, and one for each lifecycle and transition (`lifecycle Todo`, `transition Todo.delete`, with its `when:`, whether it can refuse a record and the fields it sets). |
 | Removing data | Built: retiring a field or an entity, moving an entity to another store and `--drop`, each needing its [acceptance](18-records-and-manifest.md#acceptances) ([Removing data](#removing-data)). Copying an entity's records to its new store is yours to do. |
 | Other schema changes in `jadpo migrate new` | Not built yet: a new `pattern:` on a stored field, and other column type changes. Turning `encrypted:` on or off is refused for good: it needs a data migration ([Encrypted fields](15-personal-data.md#encrypted-fields)). |

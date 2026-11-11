@@ -68,26 +68,57 @@ pub(crate) fn wanted_columns(
     (out, equal)
 }
 
-/// Of the columns `born` (the fields `fields`), the text columns sorted
-/// after those tested for equality, which an index keeps in code-point
-/// order as the read sorts them, and the columns tested for equality.
-pub(crate) fn sorted_and_tested(
+/// The columns an index for a read of `fields` holds, the first `equal`
+/// of them tested for equality: each field's own column, every column of
+/// a standard type kept in several that is compared and those its order
+/// reads of one sorted by, and none of a value kept whole as its JSON, since a B-tree's entry holds about 2.7 kB, far less than a stored
+/// value may (area 5, "Indexes"). With the text columns sorted after those
+/// tested for equality, which an index keeps in code-point order as the
+/// read sorts them, and the columns tested for equality. `None` when a
+/// field isn't the entity's.
+pub(crate) fn index_columns(
     lookup: &Lookup<'_>,
     entity: &EntityModel,
     fields: &[String],
-    born: &[String],
     equal: usize,
-) -> (Vec<String>, Vec<String>) {
-    let collate: Vec<String> = born[equal..]
-        .iter()
-        .zip(&fields[equal..])
-        .filter(|(_, name)| {
-            lookup.representation(&Ty::Field(entity.name.clone(), vec![(*name).clone()]))
+) -> Option<(Vec<String>, Vec<String>, Vec<String>)> {
+    let mut born = Vec::new();
+    let mut collate = Vec::new();
+    let mut tested = Vec::new();
+    for (at, name) in fields.iter().enumerate() {
+        let field = entity.fields.iter().find(|field| field.name == *name)?;
+        let columns: Vec<String> = match (field.json.is_some(), field.compound) {
+            (true, _) => Vec::new(),
+            // Compared, every column; sorted, the columns its order reads,
+            // an amount's minor units alone.
+            (false, Some(entry)) => {
+                let all: Vec<String> = field
+                    .columns()
+                    .into_iter()
+                    .map(|(column, _)| column)
+                    .collect();
+                if at < equal {
+                    all
+                } else {
+                    jadpo_sql::ordered_parts(entry)
+                        .into_iter()
+                        .filter_map(|part| all.get(part as usize).cloned())
+                        .collect()
+                }
+            }
+            (false, None) => vec![field.born.clone()],
+        };
+        if at < equal {
+            tested.extend(columns.iter().cloned());
+        } else if field.compound.is_none()
+            && lookup.representation(&Ty::Field(entity.name.clone(), vec![name.clone()]))
                 == Some(jadpo_std::Builtin::Text)
-        })
-        .map(|(column, _)| column.clone())
-        .collect();
-    (collate, born[..equal].to_vec())
+        {
+            collate.extend(columns.iter().cloned());
+        }
+        born.extend(columns);
+    }
+    Some((born, collate, tested))
 }
 
 /// The key or index of `table` that serves a read of the columns `born`:
@@ -212,18 +243,14 @@ impl Reader<'_> {
     fn index(&self, entity: &str, wanted: &[String], equal: usize) -> Option<String> {
         let entity = self.model.entity(entity)?;
         let table = self.table(entity)?;
-        let born: Vec<String> = wanted
-            .iter()
-            .filter_map(|f| entity.fields.iter().find(|field| field.name == *f))
-            .map(|field| field.born.clone())
-            .collect();
-        let found = (!born.is_empty() && born.len() == wanted.len())
-            .then(|| {
-                let (collate, tested) =
-                    sorted_and_tested(self.lookup, entity, wanted, &born, equal);
-                serving(table, &born, &collate, &tested)
-            })
-            .flatten();
+        let columns = index_columns(self.lookup, entity, wanted, equal);
+        let born = columns
+            .as_ref()
+            .map(|(born, _, _)| born.clone())
+            .unwrap_or_default();
+        let found = columns
+            .filter(|(born, _, _)| !born.is_empty())
+            .and_then(|(born, collate, tested)| serving(table, &born, &collate, &tested));
         // A search, an operation or a nearest-neighbour order is served by
         // an index of its own, made for this query.
         found.or_else(|| {
