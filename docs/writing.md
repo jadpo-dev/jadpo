@@ -527,12 +527,9 @@ An error page has the parts above, in order: its sections, the catalogue
 summary as its first sentence, an example of the error with its output,
 the marker in the standard wording, each fix as "**If …**" with its code,
 a fragment compiled by the hidden block after it, and what the fix
-changes, and at least one related topic. Pages whose rule a person
-decides, that the user layer or a teaching example names, that is about
-the command line itself (`cli.*`), or that only a command raises (a rule
-of area 14 a command lists in `jadpo help --json` and `jadpo check`
-doesn't), must have them; the others are being brought to the format. It reads like a user
-page, so the rules below hold for it too, but for the fix's fragments.
+changes, and at least one related topic. Every error page must have
+them. It reads like a user page, so the rules below hold for it too, but
+for the fix's fragments.
 
 `python3 tools/docs/language_docs.py --check`, part of the gate, fails a
 user page that:

@@ -799,3 +799,51 @@ mod tests {
         assert_eq!(extension("nope"), None);
     }
 }
+
+/// An address the runtime answers for a store of files, ahead of every
+/// route (area 16, "Uploading" and "Downloading").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileAddress {
+    /// `PUT /files/<store>/uploads/<token>`: a slot's file.
+    Upload,
+    /// `PUT /files/<store>/uploads/<token>/parts/<n>`: one part of a large
+    /// file.
+    UploadPart,
+    /// `GET /files/<store>/<link>`: a file's signed link.
+    Download,
+}
+
+impl FileAddress {
+    pub const ALL: [FileAddress; 3] = [
+        FileAddress::Upload,
+        FileAddress::UploadPart,
+        FileAddress::Download,
+    ];
+
+    pub fn method(self) -> crate::HttpMethod {
+        match self {
+            FileAddress::Download => crate::HttpMethod::Get,
+            _ => crate::HttpMethod::Put,
+        }
+    }
+
+    /// Its path for `store`, each placeholder in braces.
+    pub fn path(self, store: &str) -> String {
+        match self {
+            FileAddress::Upload => format!("/{DOWNLOADS}/{store}/{UPLOADS}/{{token}}"),
+            FileAddress::UploadPart => {
+                format!("/{DOWNLOADS}/{store}/{UPLOADS}/{{token}}/{PARTS}/{{part}}")
+            }
+            FileAddress::Download => format!("/{DOWNLOADS}/{store}/{{link}}"),
+        }
+    }
+
+    /// What `jadpo routes` says it runs.
+    pub fn label(self) -> &'static str {
+        match self {
+            FileAddress::Upload => "file upload",
+            FileAddress::UploadPart => "file upload part",
+            FileAddress::Download => "file download",
+        }
+    }
+}

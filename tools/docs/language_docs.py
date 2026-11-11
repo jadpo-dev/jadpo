@@ -820,18 +820,15 @@ class ErrorPage(Page):
     def area(self):
         return int(self.catalogue.get(self.rule, {}).get('area', 0))
 
-    # Whether the page must have the parts docs/writing.md, "How an error
-    # page reads", gives it; load_pages sets it from error_format_scope.
-    format_required = False
-
     def check(self, bless=False):
         super().check(bless)
         self.check_rule()
-        if self.format_required or ERROR_PARTS[0] in self.body.split('\n'):
-            self.problems.extend(error_format_problems(self))
-            # It reads like a user page, but shows a fix's changed lines
-            # as a fragment its hidden block compiles.
-            self.problems.extend(p for p in user_page_problems(self) if 'holds no `fragment`' not in p)
+        # Every page has the parts docs/writing.md, "How an error page
+        # reads", gives it.
+        self.problems.extend(error_format_problems(self))
+        # It reads like a user page, but shows a fix's changed lines as a
+        # fragment its hidden block compiles.
+        self.problems.extend(p for p in user_page_problems(self) if 'holds no `fragment`' not in p)
 
     def check_rule(self):
         """The page names a rule of the catalogue, is headed by it, and
@@ -870,71 +867,10 @@ MARKER_WORDING = {
 NEXT_MARKER = re.compile(r'^\s*next: .*\((human|agent)\)\s*$', re.MULTILINE)
 # Where one sentence ends and another starts, outside code.
 SENTENCE_BREAK = re.compile(r'[.?!] +[A-Z]')
-# A rule named on a page: linked, shown on a `rule:` line, or expected.
-RULE_NAMED = re.compile(r'(?:errors/|rule: |expect=)([a-z_]+\.[a-z_]+)')
-# A rule named in a teaching example's README, in backticks or linked.
-EXAMPLE_RULE = re.compile(r'(?:`|errors/)([a-z_]+\.[a-z_]+)(?:`|\.md)')
 # Whether the sentence under an error page's heading must be its rule's
 # catalogue summary; a writer's own run before the compiler is rebuilt
 # turns it off.
 CHECK_SUMMARIES = True
-# The prefix of the rules about the command line itself: its commands,
-# flags and arguments.
-COMMAND_LINE = 'cli.'
-# The beginnings of the rule names whose pages D13c has brought to the
-# format (docs/roadmap.md, D13c); each part adds its own.
-# 'type.se' stays out, for type.secret_exposed; its page isn't brought to
-# the format yet.
-BROUGHT_TO_FORMAT = ('type.a', 'type.b', 'type.c', 'type.d', 'type.e',
-                     'type.f', 'type.g', 'type.h', 'type.i', 'type.j', 'type.k',
-                     'type.l', 'type.m', 'type.n',
-                     'type.o', 'type.p', 'type.r', 'type.set', 'type.si', 'type.st', 'type.su',
-                     'type.t', 'type.u', 'type.v',
-                     'data.', 'semantic.', 'route.', 'api.', 'failure.', 'decline.', 'effect.',
-                     'query.', 'record.', 'visibility.',
-                     'policy.', 'rate_limits.', 'connection.', 'constant.', 'naming.', 'import.',
-                     'configuration.', 'deployable.', 'toolchain.', 'install.', 'publish.', 'library.',
-                     'translation.', 'layout.', 'email.',
-                     'package.', 'test.', 'migration.', 'acceptance.',
-                     'syntax.m', 'syntax.n', 'syntax.o', 'syntax.p', 'syntax.r', 'syntax.s', 'syntax.t',
-                     'syntax.u', 'syntax.v',
-                     'syntax.a', 'syntax.b', 'syntax.c', 'syntax.d', 'syntax.e', 'syntax.f',
-                     'syntax.g', 'syntax.h', 'syntax.i', 'syntax.j', 'syntax.k', 'syntax.l')
-# The command that checks source; a rule it raises is shown by a check
-# block, not a command's run.
-CHECK_COMMAND = 'check'
-
-
-def command_errors(catalogue, commands):
-    """The rules only a command raises: those of area 14 that a command
-    lists among the rules it raises (`jadpo help --json`), but for those
-    `jadpo check` lists."""
-    listed = {rule for command in commands for rule in command.get('rules', [])}
-    checked = {rule for command in commands if command.get('name') == CHECK_COMMAND
-               for rule in command.get('rules', [])}
-    return {rule for rule, entry in catalogue.items()
-            if entry.get('area') == COMMAND_AREA and rule in listed - checked}
-
-
-def error_format_scope(catalogue, root=ROOT, commands=()):
-    """The rules whose pages must have the parts docs/writing.md, "How an
-    error page reads", gives them: those the primer, the Learn path, the
-    guides or a teaching example's README names, those whose next step a
-    person decides, the command line's own (`cli.*`), and every other rule
-    only a command raises, and those D13c has brought to the format
-    (BROUGHT_TO_FORMAT). Every other page follows once D13c is built."""
-    named = set()
-    for path in [root / 'docs/primer.md', *sorted((root / 'docs/learn').glob('*.md')),
-                 *sorted((root / 'docs/guides').glob('*.md'))]:
-        if path.exists():
-            named |= set(RULE_NAMED.findall(path.read_text()))
-    for path in sorted((root / 'examples').glob('*/README.md')):
-        named |= set(EXAMPLE_RULE.findall(path.read_text()))
-    named |= {rule for rule, entry in catalogue.items()
-              if entry.get('decides') == 'human' or rule.startswith(COMMAND_LINE)}
-    named |= command_errors(catalogue, commands)
-    named |= {rule for rule in catalogue if rule.startswith(BROUGHT_TO_FORMAT)}
-    return named & catalogue.keys()
 
 
 def prose_paragraphs(lines, start, end):
@@ -3076,17 +3012,13 @@ def time_limit(what):
         signal.signal(signal.SIGALRM, previous)
 
 
-def load_pages(catalogue, root=ROOT, commands=()):
+def load_pages(catalogue, root=ROOT):
     """The area pages, their design notes by page name, and the error
-    pages; `commands`, `jadpo help --json`'s, say which rules only a
-    command raises."""
+    pages."""
     docs = root / 'docs/language'
     pages = [Page(p, catalogue) for p in sorted(docs.glob('[0-9][0-9]-*.md'))]
     notes = {p.name: Notes(p, catalogue) for p in sorted((docs / 'notes').glob('[0-9][0-9]-*.md'))}
     errors = [ErrorPage(p, catalogue) for p in sorted((root / 'docs/errors').glob('*.md'))]
-    scope = error_format_scope(catalogue, root, commands)
-    for page in errors:
-        page.format_required = page.rule in scope
     return pages, notes, errors
 
 
@@ -3102,7 +3034,7 @@ def main():
     args = parser.parse_args()
     help_data = load_help()
     catalogue = {rule['id']: rule for rule in help_data['rules']}
-    pages, notes, errors = load_pages(catalogue, commands=help_data.get('commands', []))
+    pages, notes, errors = load_pages(catalogue)
     learn = load_learn(catalogue)
     guides = load_guides(catalogue)
     failed = False

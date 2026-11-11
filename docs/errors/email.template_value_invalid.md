@@ -68,7 +68,7 @@ error: `{{ joined_at }}` can't be written out
 1 | <p>Welcome, {{ name }}. You joined on {{ joined_at }}.</p>
   |                                          ^^^^^^^^^ this is `Instant`
   reason: A template writes out text (`Text`, `PresentationText`, or a type built on one), a number (`Int` or `Decimal`), or an enum whose values have wording, and `Html` as it is; `joined_at` is `Instant`.
-  next: Format it with `text.format(...)` (area 19), which writes it in the email's locale (agent)
+  next: Format it with `text.format(...)`, which writes it in the email's locale (agent)
   rule: email.template_value_invalid
   help: https://jadpo.dev/docs/errors/email.template_value_invalid
 

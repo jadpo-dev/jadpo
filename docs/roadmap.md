@@ -116,13 +116,6 @@ D1 first: the site starts once D1 has merged.
   agent that holds no secrets and cannot merge or release, since issue text
   is anyone's; its pull requests pass the same gate and review.
 - [ ] **D8b Rename in the editor** `opus · high`: area 14, "Editor support". Waits: `jadpo rename` and the identity registry (after the first build, items 6 and 7).
-- [ ] **D13c The rest of the error pages** `opus · high`: every other page
-  in `docs/errors/` to the format, each rule's catalogue summary its
-  page's first sentence; `error_format_scope` then covers every page.
-  Split by size (2026-11-08) into the parts below, taken in order,
-  each widening `error_format_scope` to the rules it finished; delete it
-  once all are.
-- [ ] **D13c15 `step.*`, `subscriber.*`, `schedule.*`, `prompt.*`, `event.*`, `ai.*` and `receiving.*`** `opus · high`: 18 pages; then `error_format_scope` covers every rule.
 
 ## Phase 10 — Golden todo
 
@@ -270,11 +263,6 @@ work below (Richard, 2026-11-08).
      cascade changes an audited record, and an erasure that keeps an
      audited record. The pages don't yet say how each is kept or removed,
      so **needs a maintainer** for that decision first.
-   - [ ] **B17 Rate limits in the documents** `opus · high`: area 16, "What
-     is built"; area 7, "The `x-jadpo` fields". A generated route's own
-     limits in OpenAPI's `x-jadpo-rate-limit` and `jadpo routes`, and the
-     `RateLimit` headers on a magic-link refusal. Redis's store is Q8;
-     turning a limit off is L3.
 3. Debugging and review (area 17): `why` for anything but a schedule,
    `jadpo trace` and the timelines (the trace `--keep-failed` keeps, each
    step's state, an email's link to its trace), `test new --from` and
