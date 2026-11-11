@@ -1,5 +1,6 @@
 //! Shared by the CLI's snapshot tests.
 
+pub mod fake_hooks;
 pub mod fake_hq;
 pub mod fake_provider;
 pub mod fake_s3;

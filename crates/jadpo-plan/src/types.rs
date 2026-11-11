@@ -140,6 +140,33 @@ impl Types {
         &self.graph
     }
 
+    /// The app's own object types, outside every package, each by the
+    /// name its records carry, in name order: what an `AnyObject` may
+    /// hold (areas 2 and 11, "Types").
+    pub(crate) fn app_objects(&self) -> Vec<(String, Key)> {
+        let mut found: Vec<(String, Key)> = self
+            .graph
+            .nodes()
+            .iter()
+            .filter(|node| {
+                matches!(
+                    node.detail,
+                    Detail::Type {
+                        base: Base::Object,
+                        ..
+                    }
+                ) && node
+                    .place
+                    .as_ref()
+                    .is_some_and(|place| jadpo_db::package_at(&place.file).is_none())
+            })
+            .map(|node| (self.name(&node.key).to_string(), node.key.clone()))
+            .collect();
+        found.sort();
+        found.dedup_by(|a, b| a.0 == b.0);
+        found
+    }
+
     fn node(&self, key: &Key) -> Option<&Node> {
         self.graph.get(key)
     }

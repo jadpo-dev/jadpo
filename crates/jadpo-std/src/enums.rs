@@ -379,6 +379,10 @@ std_enum! {
         /// or Microsoft, named by `sign_in: { providers: }` (area 8,
         /// "Providers"; chunk A7b).
         Oidc: "oidc",
+        /// One address the app's chosen public events are posted to,
+        /// signed, the `publishing` capability (area 12, "Where events
+        /// travel"; area 16, "Outgoing webhooks").
+        Webhook: "webhook",
     }
 }
 

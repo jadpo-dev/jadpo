@@ -180,7 +180,18 @@ pub(crate) fn histories(
 /// to, in key order: an application's own, since no package's subscriber
 /// hears an event its app emits.
 pub(crate) fn subscribers(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Vec<String> {
-    subscribers_of(db, project, jadpo_std::audit::AUDIT_EVENT_KEY)
+    let mut out = subscribers_of(db, project, jadpo_std::audit::AUDIT_EVENT_KEY);
+    // Each connection `publishing:` sends it through hears it too (area
+    // 16, "Sending audit entries elsewhere").
+    out.extend(
+        jadpo_check::published::publishing(db, project)
+            .of_event(jadpo_std::audit::AUDIT_EVENT_KEY)
+            .map(|(connection, _)| {
+                jadpo_std::publishing::subscriber(connection, jadpo_std::audit::AUDIT_EVENT_KEY)
+            }),
+    );
+    out.sort();
+    out
 }
 
 /// The identity keys of an application's own subscribers of the built-in

@@ -825,6 +825,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "shows when a flag's state last changed to an operator, its own time, never an app's value (chunk B10)",
     ),
     (
+        "crates/jadpo-cli/src/batches.rs",
+        "shows a batch run's own times (started, last page, ended, likely finish) to an operator, never an app's value (chunk J1)",
+    ),
+    (
         "crates/jadpo-cli/src/runs.rs",
         "shows an unfinished run's own start time to an operator, never an app's value (chunk 7.5c)",
     ),

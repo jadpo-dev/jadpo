@@ -24,6 +24,12 @@
 //!   has lapsed, a day after its last run, is an item of its own,
 //!   `unfinished`, which is shown and abandoned.
 //!
+//! - Batch runs are listed too: a failed one by default, until `dismiss`
+//!   sets it aside, and with `--state` those running or cancelled; `show`
+//!   gives a run's progress and problems as `jadpo batches show` does, and
+//!   `cancel` stops a running one after the batch in hand, as `jadpo
+//!   batches cancel` does.
+//!
 //! Each action changes the item only from the state it was read in, and
 //! writes, in the same statement, a row of `jadpo_operator_actions` with
 //! who did it: the name the machine gives (`USER`), and the database role
@@ -330,6 +336,7 @@ impl Project {
         let runs = jadpo_std::system::SCHEDULE_RUNS.table;
         let steps = jadpo_std::system::STEP_RECORDS.table;
         let messages = jadpo_std::system::PARKED_MESSAGES.table;
+        let batches = jadpo_std::system::BATCH_RUNS.table;
         let stores = schema
             .stores
             .iter()
@@ -341,10 +348,13 @@ impl Project {
                         runs: store.tables.contains_key(runs),
                         steps: store.tables.contains_key(steps),
                         messages: store.tables.contains_key(messages),
+                        batches: store.tables.contains_key(batches),
                     },
                 )
             })
-            .filter(|(_, holds)| holds.deliveries || holds.runs || holds.steps || holds.messages)
+            .filter(|(_, holds)| {
+                holds.deliveries || holds.runs || holds.steps || holds.messages || holds.batches
+            })
             .collect();
         let schedules = jadpo_check::schedules::schedules(&loaded.db, loaded.project)
             .iter()
@@ -526,6 +536,7 @@ fn subject(project: &Project, item: &Item) -> String {
         Kind::ScheduleRun => format!("`{}`", project.schedule_name(&item.target)),
         Kind::Request => format!("`{}`'s steps", bare(&item.target)),
         Kind::Message => format!("the message from `{}`", item.target),
+        Kind::Batch => format!("`{}`", crate::batches::call_words(&item.target).0),
     }
 }
 
@@ -545,6 +556,8 @@ fn item_cell(project: &Project, item: &Item) -> String {
             Some(event) => format!("queue {} · {}", item.target, bare(event)),
             None => format!("queue {}", item.target),
         },
+        // A batch run: the callable that started it.
+        Kind::Batch => format!("batch {}", crate::batches::call_words(&item.target).0),
     }
 }
 
@@ -560,6 +573,7 @@ fn state_cell(state: &str) -> Cell {
         DIVERGED => Cell::state(Symbol::Decision, "diverged"),
         UNFINISHED => Cell::state(Symbol::Decision, "unfinished"),
         ABANDONED => Cell::state(Symbol::Skipped, "abandoned"),
+        jadpo_runtime::batches::operator::FINISHED => Cell::state(Symbol::Success, "finished"),
         other => Cell::state(Symbol::Skipped, other.replace('_', " ")),
     }
 }
@@ -579,6 +593,7 @@ fn state_words(state: &str) -> &'static str {
         ABANDONED => "was abandoned",
         runtime::SUCCEEDED => "succeeded",
         runtime::RESOLVED => "was resolved as done",
+        jadpo_runtime::batches::operator::FINISHED => "finished",
         _ => "was followed by a later run",
     }
 }
@@ -598,6 +613,21 @@ fn when_header(state: Option<&str>) -> &'static str {
 }
 
 fn when_cell(item: &Item, now: i64) -> String {
+    // A batch run: when it ended, or started while it runs, and how far it
+    // got; once an operator set it aside, when and who.
+    if item.kind == Kind::Batch {
+        if let (DISMISSED | CANCELLED, Some(acted)) = (item.state.as_str(), &item.acted) {
+            return format!("{} · {}", clock(acted.at, now), acted.operator);
+        }
+        let at = item.last_tried.map(|at| clock(at, now)).unwrap_or_default();
+        return match item.batch {
+            Some(counts) => format!(
+                "{at} · {}",
+                crate::batches::progress_words(counts.items_done, counts.total, false)
+            ),
+            None => at,
+        };
+    }
     let code = item.code.as_deref();
     match item.state.as_str() {
         PENDING => match (item.kind, item.next_attempt) {
@@ -647,29 +677,49 @@ fn item_json(project: &Project, store: &str, item: &Item) -> Json {
             "subscriber",
             match item.kind {
                 Kind::Delivery => Json::from(item.target.as_str()),
-                Kind::ScheduleRun | Kind::Request | Kind::Message => Json::Null,
+                Kind::ScheduleRun | Kind::Request | Kind::Message | Kind::Batch => Json::Null,
             },
         ),
         (
             "schedule",
             match item.kind {
                 Kind::ScheduleRun => Json::from(project.schedule_name(&item.target).as_str()),
-                Kind::Delivery | Kind::Request | Kind::Message => Json::Null,
+                Kind::Delivery | Kind::Request | Kind::Message | Kind::Batch => Json::Null,
             },
         ),
         (
             "action",
             match item.kind {
                 Kind::Request => Json::from(item.target.as_str()),
-                Kind::Delivery | Kind::ScheduleRun | Kind::Message => Json::Null,
+                Kind::Delivery | Kind::ScheduleRun | Kind::Message | Kind::Batch => Json::Null,
             },
         ),
         (
             "queue",
             match item.kind {
                 Kind::Message => Json::from(item.target.as_str()),
-                Kind::Delivery | Kind::ScheduleRun | Kind::Request => Json::Null,
+                Kind::Delivery | Kind::ScheduleRun | Kind::Request | Kind::Batch => Json::Null,
             },
+        ),
+        (
+            "batch",
+            match item.kind {
+                Kind::Batch => Json::from(item.target.as_str()),
+                _ => Json::Null,
+            },
+        ),
+        (
+            "progress",
+            item.batch.map_or(Json::Null, |counts| {
+                Json::object([
+                    ("itemsDone", Json::from(counts.items_done)),
+                    (
+                        "estimatedTotal",
+                        counts.total.map_or(Json::Null, Json::from),
+                    ),
+                    ("problems", Json::from(counts.problems)),
+                ])
+            }),
         ),
         (
             "event",
@@ -1130,8 +1180,9 @@ fn list_screen(
                     format!("jadpo deliveries retry {id}"),
                     "reads it again, once the package or the app is fixed",
                 ),
+                Kind::Batch => (format!("jadpo batches show {id}"), "says why it failed"),
             }),
-            PENDING if item.kind != Kind::Message => {
+            PENDING if !matches!(item.kind, Kind::Message | Kind::Batch) => {
                 Some((format!("jadpo deliveries cancel {id}"), "stops it running"))
             }
             DIVERGED => Some((
@@ -1245,7 +1296,7 @@ fn record_of(
     item: &Item,
 ) -> Result<Option<(String, Address, Record)>, Reply> {
     match item.kind {
-        Kind::ScheduleRun | Kind::Message => Ok(None),
+        Kind::ScheduleRun | Kind::Message | Kind::Batch => Ok(None),
         Kind::Request => {
             let id = item.id;
             let found = with_database(store, url, |database| {
@@ -1459,6 +1510,20 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
                 (Kind::Message, _) => {
                     runtime::act_on_message(database, &host, &item, action, &operator, now).await
                 }
+                // A batch run (`jadpo batches cancel`), or a failed one
+                // set aside.
+                (Kind::Batch, Action::Cancel) => {
+                    jadpo_runtime::batches::operator::cancel(
+                        database, &host, &item.id, &operator, now,
+                    )
+                    .await
+                }
+                (Kind::Batch, _) => {
+                    jadpo_runtime::batches::operator::dismiss(
+                        database, &host, &item.id, &operator, now,
+                    )
+                    .await
+                }
             }
         })
     });
@@ -1528,6 +1593,10 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
             format!("Queued `{id}` for retry: the app's next tick reads {subject} again")
         }
         (Kind::Message, _) => format!("Dismissed `{id}`: {subject} won't be kept"),
+        (Kind::Batch, Action::Cancel) => {
+            format!("Asked `{id}` to stop: {subject} stops after the batch in hand")
+        }
+        (Kind::Batch, _) => format!("Dismissed `{id}`: the failed run of {subject}"),
         (Kind::ScheduleRun, Action::Cancel) => {
             format!("Cancelled `{id}`: the run asked of {subject} won't happen")
         }
@@ -1596,6 +1665,30 @@ fn show(call: &Call, project: &Project, written: &str, suffix: &str) -> Reply {
         Ok(found) => found,
         Err(reply) => return reply,
     };
+    // A batch run is shown as `jadpo batches show` shows it.
+    if item.kind == Kind::Batch {
+        let kept = match crate::batches::kept(&store, &url, &item.id) {
+            Ok(Some(kept)) => kept,
+            Ok(None) => {
+                return Reply::failed(
+                    Diagnostic::new(
+                        &rule::DELIVERIES_NOT_FOUND,
+                        format!("No delivery or schedule run has the id `{written}`"),
+                    )
+                    .reason("The batch run it named was deleted while it was being read, 30 days after it ended.")
+                    .next("Run `jadpo deliveries` to see them, with their ids"),
+                );
+            }
+            Err(reply) => return reply,
+        };
+        let problems = match crate::batches::first_problems(&store, &url, &kept) {
+            Ok(problems) => problems,
+            Err(reply) => return reply,
+        };
+        let pages = crate::batches::problem_pages(&kept);
+        let (screen, data) = crate::batches::show_screen(&store, &kept, &problems, (1, pages), now);
+        return Reply::screen(screen, data);
+    }
     let record = match record_of(&databases, &store, &url, &item) {
         Ok(record) => record.map(|(_, _, record)| record),
         Err(reply) => return reply,
@@ -1850,7 +1943,40 @@ fn wrong_state(project: &Project, item: &Item, action: Action, id: &str) -> Diag
                 first.to_ascii_uppercase().to_string() + chars.as_str()
             })
         }
+        Kind::Batch => format!("This batch run of {}", subject(project, item)),
     };
+    if item.kind == Kind::Batch {
+        let (message, next) = match (action, item.state.as_str()) {
+            (Action::Cancel, _) => (
+                format!("`{id}` isn't running, so there is nothing to cancel"),
+                format!("Run `jadpo batches show {id}` to see how it ended"),
+            ),
+            (Action::Dismiss, _) => (
+                format!("`{id}` hasn't failed, so there is nothing to dismiss"),
+                format!("Run `jadpo batches show {id}` to see where it is"),
+            ),
+            (_, RUNNING) => (
+                format!("`{id}` is a batch run, which is only cancelled or dismissed"),
+                format!("Wait for it to end, or run `jadpo deliveries cancel {id}`"),
+            ),
+            (_, FAILED) => (
+                format!("`{id}` is a batch run, which is only cancelled or dismissed"),
+                format!(
+                    "Fix the cause and start it again from the app, then run `jadpo deliveries dismiss {id}`"
+                ),
+            ),
+            _ => (
+                format!("`{id}` is a batch run, which is only cancelled or dismissed"),
+                format!("Run `jadpo batches show {id}` to see how it ended"),
+            ),
+        };
+        return Diagnostic::new(&rule::DELIVERIES_WRONG_STATE, message)
+            .reason(format!(
+                "{what} {}. A batch run that is going is stopped after the batch in hand with `cancel`; one that failed ended for good, and is set aside with `dismiss` once the app has started it again.",
+                state_words(&item.state)
+            ))
+            .next(next);
+    }
     if item.kind == Kind::Message && !matches!(action, Action::Retry | Action::Dismiss) {
         return Diagnostic::new(
             &rule::DELIVERIES_WRONG_STATE,

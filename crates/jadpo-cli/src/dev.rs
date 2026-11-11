@@ -176,6 +176,46 @@ enum Event {
     /// A delivery whose action reached steps under a record, as an attempt
     /// at it ended (chunk 7.5f).
     Delivery(StepsLine),
+    /// An event published outward, logged in place of being sent (area
+    /// 12, "Where events travel"): its id, the type it is named by
+    /// outside and its connection, never its payload.
+    Published {
+        id: String,
+        type_name: String,
+        connection: String,
+    },
+}
+
+/// `jadpo dev`'s stand-in for every connection that publishes events
+/// outward: each event is logged on the screen and delivered, and nothing
+/// leaves the machine (area 11, "Nothing leaves the machine in `jadpo
+/// dev`").
+struct PublishLog(Arc<Shared>);
+
+impl jadpo_runtime::capability::Capability for PublishLog {
+    fn call<'a>(
+        &'a self,
+        call: &'a jadpo_runtime::capability::Call,
+    ) -> jadpo_runtime::LocalFuture<'a, jadpo_runtime::capability::Answer> {
+        Box::pin(async move {
+            let Some(published) = jadpo_runtime::publishing::Published::from_value(&call.input)
+            else {
+                return jadpo_runtime::capability::Answer::Misconfigured;
+            };
+            if let Ok(log) = self.0.log.lock() {
+                let _ = log.send(Event::Published {
+                    id: published.id,
+                    type_name: published.type_name,
+                    connection: call.connection.clone(),
+                });
+            }
+            jadpo_runtime::capability::Answer::Value(jadpo_value::Value::Unit)
+        })
+    }
+
+    fn source(&self) -> jadpo_runtime::capability::Source {
+        jadpo_runtime::capability::Source::Fake
+    }
 }
 
 /// A delivery's attempt with steps, for its line (chunk 7.5f).
@@ -386,7 +426,49 @@ impl Out<'_> {
                 }
             }
             Event::Delivery(line) => self.delivery(line),
+            Event::Published {
+                id,
+                type_name,
+                connection,
+            } => self.published(id, type_name, connection),
         }
+    }
+
+    /// An event published outward (area 12, "Where events travel"), as a
+    /// mail the inbox caught is: the end of its id, `publish` and its
+    /// type, `logged` in success's colour, and the connection it would
+    /// have left through, muted.
+    fn published(&mut self, id: &str, type_name: &str, connection: &str) {
+        if self.json {
+            let data = Json::object([
+                ("event", "published".into()),
+                ("id", Json::from(id)),
+                ("type", Json::from(type_name)),
+                ("connection", Json::from(connection)),
+            ]);
+            self.json(data, &[], &BTreeMap::new());
+            return;
+        }
+        let state = if self.style.mode == jadpo_term::Mode::Rich {
+            self.paint(
+                Token::Success,
+                &format!(
+                    "{} logged",
+                    jadpo_term::Symbol::Success.text(self.style.symbols)
+                ),
+            )
+        } else {
+            self.paint(Token::Success, "logged")
+        };
+        let short: String = id.chars().filter(char::is_ascii_hexdigit).collect();
+        let short = short
+            .get(short.len().saturating_sub(8)..)
+            .unwrap_or_default();
+        let label = format!("publish {type_name}");
+        let to = self.paint(Token::Muted, &format!("to {connection}"));
+        let text = format!("{short:<8}  {label:<34} {state}   {to}\n");
+        let _ = self.out.write_all(text.as_bytes());
+        let _ = self.out.flush();
     }
 
     /// A delivery whose action reached steps under a record (chunk 7.5f):
@@ -1033,13 +1115,21 @@ pub fn serve_to(
         // connection is asked for, since saving the project changes them:
         // the inbox first, so a mail package's connection is caught too.
         let chosen = Arc::clone(&make_shared);
+        // Every event published outward, logged in place of being sent.
+        let publish: Rc<dyn jadpo_runtime::capability::Capability> =
+            Rc::new(PublishLog(Arc::clone(&make_shared)));
         let host = jadpo_runtime::capability::Faked::new(native).choosing(
-            vec![catcher, fakes],
+            vec![catcher, fakes, publish],
             move |connection| {
                 let current = lock_current(&chosen);
                 let plan = current.plan();
                 if plan.events().emails.connection.as_deref() == Some(connection) {
                     return Some(0);
+                }
+                if jadpo_std::connections::webhooks(plan.connections())
+                    .any(|name| name == connection)
+                {
+                    return Some(2);
                 }
                 plan.package_connection(connection).is_some().then_some(1)
             },
@@ -1541,6 +1631,29 @@ fn start_config(
                 crate::dev_calls::stand_in(&types(&field.name)),
             );
         }
+    }
+    // A webhook connection's settings that nothing gives: every event it
+    // publishes is logged, so its address is never reached.
+    for at in prepared
+        .plan()
+        .connections()
+        .iter()
+        .filter_map(|connection| match &connection.driver {
+            jadpo_std::connections::ConnectionDriver::Webhook(target) => Some(target),
+            _ => None,
+        })
+        .flat_map(|target| target.url.setting().into_iter().chain([target.secret]))
+    {
+        let Some(field) = plan.fields.get(at as usize) else {
+            continue;
+        };
+        if field.default.is_some() || layered.variable(&field.variable).is_some() {
+            continue;
+        }
+        placeholders.insert(
+            field.variable.clone(),
+            crate::dev_calls::stand_in(&types(&field.name)),
+        );
     }
     let stand_in = |name: &str| {
         layered

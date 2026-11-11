@@ -26,7 +26,7 @@ error: `revocation_dela` isn't something `application { }` holds
   |
 2 |     revocation_dela: 5m
   |     ^^^^^^^^^^^^^^^ not a section
-  reason: `application { }` holds only the sections the language decides: `jadpo`, `display_name`, `revocation_delay`, `connections`, `packages`, `deployables`, `apis`, `client_address`, `translations`, `rate_limits`, `flags`, `email`, `events`, `schedules`, `steps`, `receiving`, `ai`, `field_encryption_key` and `privacy`. A section it doesn't know would otherwise be dropped without a word. Did you mean `revocation_delay`?
+  reason: `application { }` holds only the sections the language decides: `jadpo`, `display_name`, `revocation_delay`, `connections`, `packages`, `deployables`, `apis`, `client_address`, `translations`, `rate_limits`, `flags`, `email`, `events`, `schedules`, `steps`, `receiving`, `publishing`, `ai`, `field_encryption_key` and `privacy`. A section it doesn't know would otherwise be dropped without a word. Did you mean `revocation_delay`?
   next: Use `revocation_delay` instead of `revocation_dela` (agent)
   rule: semantic.application_section_unknown
   help: https://jadpo.dev/docs/errors/semantic.application_section_unknown
@@ -51,7 +51,7 @@ error: `colour_scheme` isn't something `application { }` holds
   |
 2 |     colour_scheme: "dark"
   |     ^^^^^^^^^^^^^ not a section
-  reason: `application { }` holds only the sections the language decides: `jadpo`, `display_name`, `revocation_delay`, `connections`, `packages`, `deployables`, `apis`, `client_address`, `translations`, `rate_limits`, `flags`, `email`, `events`, `schedules`, `steps`, `receiving`, `ai`, `field_encryption_key` and `privacy`. A section it doesn't know would otherwise be dropped without a word.
+  reason: `application { }` holds only the sections the language decides: `jadpo`, `display_name`, `revocation_delay`, `connections`, `packages`, `deployables`, `apis`, `client_address`, `translations`, `rate_limits`, `flags`, `email`, `events`, `schedules`, `steps`, `receiving`, `publishing`, `ai`, `field_encryption_key` and `privacy`. A section it doesn't know would otherwise be dropped without a word.
   next: Remove `colour_scheme` from `application { }`, or move it where it belongs (agent)
   rule: semantic.application_section_unknown
   help: https://jadpo.dev/docs/errors/semantic.application_section_unknown

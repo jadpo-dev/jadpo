@@ -138,6 +138,8 @@ rules! {
         "An API's `serve_openapi:` setting holds something other than `true` or `false`";
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
         "An API in `apis:` has a setting an API doesn't take";
+    BATCHES_UNAVAILABLE: "batches.unavailable", area 14, Error, Human,
+        "The app's batch runs couldn't be read or cancelled in their database, because it can't be reached or has no table for them yet";
     CLI_ACCEPTANCE_ARGUMENTS: "cli.acceptance_arguments", area 14, Error, Agent,
         "A `jadpo acceptance` command names no action, one it doesn't have, or no purpose for `new`";
     CLI_AI_ARGUMENTS: "cli.ai_arguments", area 14, Error, Agent,
@@ -146,6 +148,8 @@ rules! {
         "A `jadpo api` command names no action, one it doesn't have, or more than `update`";
     CLI_APPROVAL_ARGUMENTS: "cli.approval_arguments", area 14, Error, Agent,
         "A `jadpo approval` command is given an argument it doesn't take, names a `--before` git doesn't know, or has nothing to compare with";
+    CLI_BATCHES_ARGUMENTS: "cli.batches_arguments", area 14, Error, Agent,
+        "A `jadpo batches` command names an action it doesn't have, no id or an id no batch run has, or a state or page it doesn't list";
     CLI_BUILD_ARGUMENTS: "cli.build_arguments", area 14, Error, Agent,
         "A `jadpo build` command names a deployable the app doesn't have, or more than one";
     CLI_CALLS_ARGUMENTS: "cli.calls_arguments", area 14, Error, Agent,
@@ -844,6 +848,8 @@ rules! {
         "A commit's release is past the size limit";
     PUBLISH_TYPE_UNREVIEWED: "publish.type_unreviewed", area 14, Error, Agent,
         "A provider package's public type isn't in its `reviewed:` list";
+    PUBLISHING_INVALID: "publishing.invalid", area 12, Error, Agent,
+        "A connection in `publishing:` isn't one events are published through, or lists an event that can't leave the app";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "An aggregate in a query is missing an argument it needs, or is given one it doesn't take";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,
@@ -1376,6 +1382,8 @@ rules! {
         "A member is written in the wrong shape for what it words";
     TYPE_ABSENT_FIELD: "type.absent_field", area 2, Error, Agent,
         "An `omit:` or `optional:` line names a field that the lines above it don't bring into the type";
+    TYPE_ANY_OBJECT_OUTSIDE_INPUT: "type.any_object_outside_input", area 2, Error, Agent,
+        "A type is written `AnyObject` anywhere but in a provider package's object type's field, or an operation's answer, an event or a reply holds one";
     TYPE_ARGUMENT_COUNT: "type.argument_count", area 3, Error, Agent,
         "A call passes more or fewer values than the function or action it calls has parameters";
     TYPE_ARGUMENT_EMPTY: "type.argument_empty", area 19, Error, Agent,

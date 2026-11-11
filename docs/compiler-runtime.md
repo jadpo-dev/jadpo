@@ -2430,7 +2430,8 @@ address with `sslmode` or another `ssl…` setting
 `PostgresUrl`'s check (`configuration.value_invalid` with
 `config::TLS_RULE`, as the app starts and in `jadpo config check`) and by
 `jadpo migrate`. The CLI's commands that open a database (`jadpo
-migrate`, `schedules`, `runs`, `deliveries`, `ai usage`, `jadpo dev`)
+migrate`, `schedules`, `runs`, `deliveries`, `batches`, `ai usage`,
+`jadpo dev`)
 open it as its connection says (`jadpo_cli`'s `database::Address`),
 reading the authority's setting as they read the address. SCRAM's channel
 binding is left off, as tokio-postgres never sees the TLS; the
@@ -5378,6 +5379,46 @@ AWS's place through `Outward::reaching`, built only with
 `jadpo-host-native`'s `test-outbound` feature, given to the harness with
 `Harness::outbound`.
 
+**Publishing events outward** (area 12, "Where events travel"; area 16,
+"Outgoing webhooks"). `jadpo_check::published` reads each connection
+with `driver: Driver.webhook` (`webhook_connections`: `url:`, a `Url`
+setting or a sendable address, and `secret:`, a secret setting) and
+`application { publishing: }` (`publishing`: each connection's events,
+a domain's `public` event or `AuditEntryRecorded` while an entity is
+audited, with no file held, each named outside by its `wire_name:` or
+`jadpo_std::publishing::default_type`, its key without the kind). The
+plan's connections table holds the connection as
+`ConnectionDriver::Webhook(WebhookTarget)`, and the events plan a
+generated subscriber for each event and connection
+(`jadpo_std::publishing::subscriber`, `publish <connection> <event key>`)
+whose target is `Target::Publish`, with the subscriber defaults' retry
+budget and no store, its record alone saying it was sent; an audited
+entity's `HistoryPlan` lists the ones that hear `AuditEntryRecorded`, so
+an entry is emitted when only publishing listens. `runner::attempt`
+makes a `jadpo_runtime::publishing::Published` from the delivery: the
+outbox row's id, the type, `jadpo_std::publishing::body` around the
+payload written again with the event's codec (an audit entry's by
+`audit::published_data`), and a new span of the event's trace; and sends
+it as one keyed `publish` call through the seam, so a retry is safe and
+an answer that may have acted is retried rather than parked. The driver,
+`jadpo_drivers::webhook::Webhook`, built by the factory over the host's
+`Fetch` and clock natively and on Workers, posts it signed as Standard
+Webhooks signs (`publishing::signature`, the HMAC of
+`<id>.<seconds>.<body>`) and classifies the answer: a `2xx` delivered;
+`408`, `429`, a `5xx`, a request that never left or whose answer never
+came, `unavailable`; a redirect, `401` or `403`, `misconfigured`; any other
+refusal the failure `refused`. A test's host catches each event
+(`test_run::Caught`), and `jadpo dev` logs it (`PublishLog`) and gives
+the connection's settings stand-ins, so neither sends. The flow's walk
+records an `emit` of a published event as an exit through each
+connection (`Through::Published`), so personal data in it reaches the
+personal-data report and needs `ErasureNotPossible`; a deployable that
+runs subscribers reaches the connection (`Via::Publishing`) and keeps
+each published event's codec. Each API's OpenAPI document carries
+`x-jadpo-events` (`openapi::published_events`). Addresses customers
+register, and the runtime-owned network exception that would guard them,
+aren't built.
+
 **Files and a file's run** (area 16; area 12, "How a file's run is kept"). The `files` capability's
 first part is on the seam: `jadpo_runtime::files` sends a store's `put`
 (a keyed call, its key `jadpo_std::files::key_for` made from the
@@ -5568,7 +5609,14 @@ holds. `jadpo_batch_runs.estimated_total` is written by `ADVANCE` (a
 `NULL` keeps the last): a query's run's from `read::count`, its first
 page's statement under `count(*)` with its limit `NULL`, behind a
 savepoint; a file's from its items over how far into its text they end.
-`batches.status` gives it, and the items done once finished.
+`batches.status` gives it, and the items done once finished. `jadpo
+batches` reads the same rows through `batches::operator` (its list, a
+run by its id's last digits, a page of problems), works the estimated
+finish out from the run's rate between `started_at` and `stepped_at`,
+and cancels with one statement that writes the cancel row and its
+`jadpo_operator_actions` row (kind `batch_run`) together, only while the
+run is `running` and no cancel is asked; `jadpo deliveries` lists the
+runs as `Kind::Batch` items, a failed one until its `dismiss` log row.
 `type.batch_order_updatable` is the checker's, at `from:`'s query
 (`Body::batch_order`), declinable.
 

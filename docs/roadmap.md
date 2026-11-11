@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-11-08. This page is the only list of outstanding work: the
+**Updated:** 2026-11-11. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record language decisions on the [area pages](language/README.md)
 and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
@@ -281,12 +281,15 @@ work below (Richard, 2026-11-08).
    apps (`jadpo package add` from a folder or a URL) and the cross-app break
    check; choosing a provider when deploying,
    when an app other people run needs it.
-   - [ ] **C1 Publishing events outward and outgoing webhooks** `opus ·
-     xhigh`: area 12, "Where events travel" and "Running background work";
-     area 16, "Outgoing webhooks" and "Sending audit entries elsewhere";
-     area 7, "The `x-jadpo` fields". `publishing:`, its capability, and
-     `x-jadpo-events`. Done when a chosen public event reaches a subscriber
-     outside the app on both executors, signed and retried.
+   - [ ] **C1b Outgoing webhooks to customers' addresses** `opus · xhigh`
+     **needs a maintainer** before it starts: area 16, "Outgoing webhooks";
+     area 11, "The network report". How a customer registers an address and
+     chooses its events, and how each address's signing secret is made, kept
+     and rotated, are security decisions the pages don't make; then the
+     runtime-owned network exception (HTTPS only, public addresses checked
+     at every attempt, no redirects), listed once in the network report.
+     Done when an event reaches an address a customer registered, signed
+     with that address's own secret, and a private address is refused.
    - [ ] **K1 Importers other than OpenAPI** `opus · high`, when first
      needed: area 11, "An importer" and "Installing safely"; area 14,
      "Commands for packages". `smithy`, `postman`, `har` (a capture's
@@ -298,9 +301,6 @@ work below (Richard, 2026-11-08).
      placeholder in a host (`{project_ref}`), defaults for package settings,
      and a field read by `decode:` or `encode:` on a webhook's event.
      Twilio's XML waits on an XML byte format (L2).
-   - [ ] **K3 `AnyObject`** `opus · high`: area 2, "Other built-in types";
-     area 11, "Types". A package input taking any of the app's object types as
-     JSON, as Postmark's template variables and Stripe's metadata need.
    - [ ] **K4 Capability mappings and conformance suites** `opus · high`:
      area 11, "How a package provides a capability", "Proving a package
      works" and "Mistakes not reported yet"; area 21, "The conformance
@@ -372,11 +372,6 @@ work below (Richard, 2026-11-08).
       20, "What is built".
 11. Background work and tests (areas 12 and 13), added by the audit of
     2026-11-08.
-    - [ ] **J1 `jadpo batches`** `opus · high`: area 14, "Commands for
-      services, calls, email and stored data" and "`jadpo runs unfinished`";
-      area 12, "What `batches.status` shows". `list`, `show` and
-      `cancel`, and `jadpo deliveries` listing batch runs. Designed with the
-      design skills first.
     - [ ] **J2 Batches over more** `opus · high`: area 12, "Walking records
       or a provider's list: `batches.each`", "How a run is kept" and "How a
       file's run is kept"; area 11, "Pages of results". A provider's list operation as
