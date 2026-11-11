@@ -17,6 +17,7 @@ pub use crate::config::config;
 pub use crate::declines::declines;
 pub use crate::deliveries::deliveries;
 pub use crate::dev::dev;
+pub use crate::domain::domain;
 pub use crate::email::email;
 pub use crate::files::files;
 pub use crate::fix::fix;

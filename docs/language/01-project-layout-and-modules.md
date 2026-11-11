@@ -523,8 +523,9 @@ around.
 Split a domain only along a seam the compiler shows has no references
 across it ("these 12 entities never reference these 9"). A large domain
 whose parts depend on each other stays large: size alone is not a reason
-to split. `jadpo domain rename`, `split` and `merge` do the moves and update
-every call.
+to split. [`jadpo domain rename`, `split` and
+`merge`](14-tooling.md#jadpo-domain) do the moves and update every call;
+a split refuses a seam with a reference across it, naming each.
 
 A domain contains only these folders, each named after its declaration
 keyword, and only when they have files. There are no subfolders; that is
@@ -553,9 +554,12 @@ A domain created is a boundary other code is shaped around, so it needs
 a person's [acceptance](18-records-and-manifest.md#acceptances),
 `billing: DomainChange.created`, in the change that adds its folder.
 
-Not built yet: `jadpo domain rename`, `split` and `merge`, so a domain
-renamed by hand shows as one created; and the `documents` capability, so
-until it is, a file in `documents/` is `layout.unknown_location`.
+A domain renamed with `jadpo domain rename` keeps its identity, so it
+needs `billing: DomainChange.renamed`; one renamed by hand, by moving its
+folder, shows as one created.
+
+Not built yet: the `documents` capability, so until it is, a file in
+`documents/` is `layout.unknown_location`.
 
 ## Files and names
 <!-- topic: files-and-names -->
@@ -1179,7 +1183,7 @@ The compiler builds this layout, with each rule's real output under
 
 | Feature | Status |
 |---|---|
-| Root, domains and their folders | Partly built: a file where the layout has no place for it is `layout.unknown_location`, and a declaration in the wrong folder `layout.wrong_folder`; a folder or file with no `app.jadpo` above it is checked as loose files. A domain created needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: `jadpo domain rename`, `split` and `merge`; the `documents` capability, so a file in `documents/` is `layout.unknown_location` until it is. |
+| Root, domains and their folders | Partly built: a file where the layout has no place for it is `layout.unknown_location`, and a declaration in the wrong folder `layout.wrong_folder`; a folder or file with no `app.jadpo` above it is checked as loose files. A domain created or renamed needs an [acceptance](18-records-and-manifest.md#acceptances), and [`jadpo domain rename`, `split` and `merge`](14-tooling.md#jadpo-domain) move one. Not built yet: the `documents` capability, so a file in `documents/` is `layout.unknown_location` until it is. |
 | Files and names | Built: one primary declaration per file, named after it; names unique project-wide; the round-trip and folded-collision rules, with the exception for a type folding to its callable's name. |
 | Names per domain | Partly built: private functions and types unique only within their domain, each domain's code reading its own; their identity keys carrying the domain, with promotion to `shared/` writing a registry line; `semantic.duplicate_declaration` saying copy or clash and listing the names in use with the same words; `jadpo rename` refusing a name in use ([`jadpo rename`](14-tooling.md#jadpo-rename)). |
 | Order independence | Built: declaration and file order never matter. |

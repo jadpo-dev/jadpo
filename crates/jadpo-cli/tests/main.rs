@@ -52,6 +52,7 @@ mod dev_provider_calls;
 mod dev_provider_sign_in;
 mod dev_tokens;
 mod disk_files;
+mod domain;
 mod driver_factory;
 mod emails;
 mod encrypted_fields;

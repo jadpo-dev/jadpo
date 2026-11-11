@@ -350,6 +350,20 @@ mod tests {
     }
 
     #[test]
+    fn a_domains_line_carries_what_is_named_after_it() {
+        // `domain billing -> payments` is one line; a field of a type in
+        // it, renamed itself, is read back under the domain's name now.
+        let text =
+            format!("{HEADER}\ndomain billing -> payments\nfield billing.Address.street -> road\n");
+        let renames = lines(&[
+            ("domain payments", "billing"),
+            ("field payments.Address.road", "billing.Address.street"),
+        ]);
+        assert_eq!(parse_identities(&text), Ok(renames.clone()));
+        assert_eq!(write_identities(&renames), text);
+    }
+
+    #[test]
     fn two_renames_of_one_thing_are_refused() {
         let text = format!("{HEADER}\nentity Todo -> Task\nentity Todo -> Job\n");
         assert_eq!(parse_identities(&text).map_err(|(at, _)| at), Err(4));

@@ -539,6 +539,23 @@ checks, undoing a rename that adds an error. A listed action's policy
 line is found by its born name as well as its name now, since routes and
 callers name it by key.
 
+**Moving a domain.** `jadpo_check::domain_move` is `jadpo domain`'s code,
+built on `rename`'s steps (`format_as_before`, `rewrite_records`,
+`added_errors`): `plan` reads every place the domain's node is written
+through `graph::node_references` (a `use` path, a qualifier in a body, a
+root policy line, and now a bare name in a list, `domains: [planning]`),
+decides each edit by where the file ends up and what the qualified name
+refers to, the files that move (sources, records and other files, by
+role) and the registry's lines; a split's seam is read from each file's
+`file_part` edges. `apply` edits, moves, fixes imports, drops `public`
+from what a merge leaves offered to no one, writes the registry and the
+view records and checks, undoing a move that adds an error;
+`Loaded::set_other` moves a file held by its presence alone. The graph's
+`Registry::born` follows a `domain` line for a name that carries its
+domain, so a renamed domain is one line. `acceptances::moves` reads the
+before side's access record, event records and thresholds in today's
+names, so a move asks only for the `DomainChange` it is.
+
 **Types.** Nominal and bidirectional: the expected type flows into
 literals (area 2). Widening is the only implicit conversion; the standard
 library's signatures are the only generics. An `Error` type absorbs

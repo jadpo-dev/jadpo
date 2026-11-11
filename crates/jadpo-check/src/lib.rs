@@ -28,6 +28,7 @@ pub mod databases;
 pub mod declines;
 pub mod deployables;
 pub mod disk;
+pub mod domain_move;
 pub mod emails;
 pub mod erasure;
 pub mod events;

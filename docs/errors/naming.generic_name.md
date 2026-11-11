@@ -62,7 +62,7 @@ error: `utils` is too generic for a domain
 1 | action tidy() -> Unit {}
   | ^ says nothing about what it holds
   reason: Domains and libraries are named after what they hold, because the name appears in every call; `common`, `core`, `helpers`, `misc` and `utils` say nothing.
-  next: Rename `domains/utils/` after the business area it covers (agent)
+  next: Run `jadpo domain rename utils <new-name>` with the name of the business area it covers (agent)
   rule: naming.generic_name
   help: https://jadpo.dev/docs/errors/naming.generic_name
 
@@ -105,17 +105,16 @@ function lives and what it is about.
 When its functions do unrelated jobs, split them into libraries named
 after each job, such as `rounding` and `pricing`.
 
-**If it is a domain**, rename its folder after the business area it
-covers, such as `ordering` or `planning`, and change each `use utils/...`
-line and `utils.` call to match:
+**If it is a domain**, rename it after the business area it covers, such
+as `ordering` or `planning`:
 
 ```sh
-git mv domains/utils domains/housekeeping
+jadpo domain rename utils housekeeping
 ```
 
-Until `jadpo domain rename` is built, a renamed domain shows as a new
-one, so the change needs your acceptance, `housekeeping:
-DomainChange.created`.
+Its folder, each `use utils/...` line and each `utils.` call take the new
+name, and the domain keeps its identity. Once the project has a commit,
+the change needs your acceptance, `housekeeping: DomainChange.renamed`.
 
 ## Related
 

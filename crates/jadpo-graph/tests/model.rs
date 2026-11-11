@@ -54,6 +54,62 @@ fn the_registry_maps_names_now_to_born_names_and_children_follow() {
 }
 
 #[test]
+fn what_carries_its_domain_follows_the_domains_line() {
+    let mut registry = Registry::new();
+    registry.rename(Kind::Domain, "plans", "planning");
+    assert_eq!(
+        registry.key(Kind::Domain, "plans", None).as_str(),
+        "domain planning"
+    );
+    // A domain's types, functions and their members follow its one line.
+    assert_eq!(
+        registry.key(Kind::Type, "plans.Address", None).as_str(),
+        "type planning.Address"
+    );
+    assert_eq!(
+        registry
+            .key(
+                Kind::Field,
+                "plans.Address.street",
+                Some(("plans.Address", "planning.Address"))
+            )
+            .as_str(),
+        "field planning.Address.street"
+    );
+    assert_eq!(
+        registry
+            .key(Kind::Function, "plans.format_address", None)
+            .as_str(),
+        "function planning.format_address"
+    );
+    // A name that carries no domain doesn't.
+    assert_eq!(
+        registry.key(Kind::Action, "plans", None).as_str(),
+        "action plans"
+    );
+    // A line of its own wins, as one moved to another domain has.
+    registry.rename(Kind::Type, "reminders.Address", "planning.Address");
+    assert_eq!(
+        registry.key(Kind::Type, "reminders.Address", None).as_str(),
+        "type planning.Address"
+    );
+    // And back from the key to the name now.
+    assert_eq!(
+        registry.now_of(&Key::new(Kind::Type, "planning.Address")),
+        "reminders.Address"
+    );
+    assert_eq!(
+        registry.now_of(&Key::new(Kind::Type, "planning.Count")),
+        "plans.Count"
+    );
+    assert_eq!(
+        registry.now_of(&Key::new(Kind::Domain, "planning")),
+        "plans"
+    );
+    assert_eq!(registry.now_of(&Key::new(Kind::Action, "greet")), "greet");
+}
+
+#[test]
 fn building_sorts_by_key_keeps_the_first_of_a_key_and_drops_dangling_edges() {
     let mut builder = Builder::new();
     let mut first = node(Kind::Type, "Count");
