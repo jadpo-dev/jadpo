@@ -225,7 +225,7 @@ rules! {
     CLI_SUGGEST_ARGUMENTS: "cli.suggest_arguments", area 14, Error, Agent,
         "A `jadpo suggest` command names an action it doesn't have, or a suggestion the last scan didn't find";
     CLI_TEST_ARGUMENTS: "cli.test_arguments", area 14, Error, Agent,
-        "A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use";
+        "A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use, or asks for `--affected` with nothing to compare with or `--interactive` where it can't open";
     CLI_TOOLCHAIN_ARGUMENTS: "cli.toolchain_arguments", area 14, Error, Agent,
         "A `jadpo toolchain` command names an action it doesn't have, or a release that isn't kept";
     CLI_TRANSLATIONS_ARGUMENTS: "cli.translations_arguments", area 14, Error, Agent,

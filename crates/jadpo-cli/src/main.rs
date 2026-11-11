@@ -59,6 +59,10 @@ fn main() -> ExitCode {
         Some(Session::Watch(args)) => {
             ExitCode::from(jadpo_cli::watch::serve(&args, &Environment::from_process()))
         }
+        Some(Session::Interactive(args)) => ExitCode::from(jadpo_cli::interactive::serve(
+            &args,
+            &Environment::from_process(),
+        )),
         Some(Session::Verifier(args)) => ExitCode::from(jadpo_cli::verifier::serve(
             &args,
             &Environment::from_process(),

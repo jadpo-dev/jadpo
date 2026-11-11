@@ -147,12 +147,7 @@ pub struct Planned {
     pub reason: &'static str,
 }
 
-pub static PLANNED_FLAGS: &[Planned] = &[Planned {
-    command: "test",
-    name: "--interactive",
-    what: "Interactive tests",
-    reason: "`--interactive` opens a keyboard view of every test (area 13), which comes with the rest of area 14's tooling.",
-}];
+pub static PLANNED_FLAGS: &[Planned] = &[];
 
 /// The planned flag of `command` called `name`.
 pub fn planned(command: &str, name: &str) -> Option<&'static Planned> {
@@ -313,7 +308,13 @@ pub static COMMANDS: &[Command] = &[
                       app.jadpo and every test runs; a file runs its tests, a folder the tests under it, \
                       and <file>:<line> the test at that line. The project must check without errors \
                       first. With --watch, it keeps running: each save reruns the tests the change \
-                      reaches, through the compiler's graph, within the path, name and kind given. \
+                      reaches, through the compiler's graph, within the path, name and kind given; in \
+                      a terminal, enter reruns the last run, a runs everything and f the failing tests. \
+                      With --affected, only the tests that reach what changed since the merge base with \
+                      the default branch run (on the default branch, since the previous commit), \
+                      uncommitted changes included. --interactive opens a keyboard view of every test, \
+                      grouped by domain and file with each one's last result, to search, run and read \
+                      failures in; it needs a terminal. \
                       Every recording of the app's own integrations in shared/providers/ is read by its \
                       operation's decoders as a test of its own.",
         arguments: &[Argument {
@@ -354,6 +355,18 @@ pub static COMMANDS: &[Command] = &[
                 values: &[],
             },
             Flag {
+                name: "--affected",
+                value: None,
+                description: "Run the tests a change since main reaches",
+                values: &[],
+            },
+            Flag {
+                name: "--interactive",
+                value: None,
+                description: "Search and run tests from the keyboard",
+                values: &[],
+            },
+            Flag {
                 name: "--keep-failed",
                 value: None,
                 description: "Keep a failed test's database to inspect",
@@ -376,6 +389,14 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "Rerun the tests each save reaches, until ctrl-c",
                 command: "jadpo test --watch",
+            },
+            Example {
+                description: "Run the tests your branch's changes reach, before you push",
+                command: "jadpo test --affected",
+            },
+            Example {
+                description: "Search, run and rerun tests from the keyboard",
+                command: "jadpo test --interactive",
             },
             Example {
                 description: "Print the results as data for tools",

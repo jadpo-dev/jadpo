@@ -73,7 +73,7 @@ pub use outcome::{
     ShownLine, ShownPart, StackFrame, TestFailure,
 };
 pub use record::RECORD;
-pub use screen::screen;
+pub use screen::{footer, reports, screen};
 
 /// What a test calls, which decides what it proves (area 13, "Kinds of
 /// test").
@@ -161,6 +161,21 @@ pub struct Options {
     /// rather than shortened (chunk A14), and all PostgreSQL said when the
     /// test database can't start (chunk A13).
     pub full: bool,
+    /// `--affected`: only the tests that reach what changed since this
+    /// base, within what else was asked for.
+    pub since: Option<Arc<Since>>,
+}
+
+/// What `--affected` measures a change against (area 14, "What
+/// `--affected` measures against"): the project's files at the base
+/// commit, read through the same before side as diffs. Empty files mean
+/// the project is new since then, so every test reaches the change.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Since {
+    /// How the base was found, as `jadpo check` says it: `origin/main at
+    /// 1a2b3c4`.
+    pub described: String,
+    pub files: jadpo_db::FileSet,
 }
 
 /// How a request to run tests ended.
@@ -184,6 +199,11 @@ pub enum Ran {
     /// test that did is gone from the project now (`gone` counts them).
     NothingToRerun {
         gone: usize,
+    },
+    /// `--affected`, and no test asked for reaches what changed since the
+    /// base `since` describes.
+    NothingReached {
+        since: String,
     },
     /// The test database's server refused `store`'s migrations for an
     /// extension it doesn't have, or has too old, so no test that needs a
@@ -310,6 +330,9 @@ pub struct Selection {
     pub name: Option<String>,
     pub kind: Option<TestKind>,
     pub failed: bool,
+    /// `--affected`: the base the change was measured against, as
+    /// [`Since::described`] says it.
+    pub affected: Option<String>,
 }
 
 #[derive(Debug)]
@@ -402,7 +425,44 @@ fn execute(
         Ok(checked) => checked,
         Err(ran) => return ran,
     };
-    choose_and_run(&loaded, &checked, &target, &options, None, started, maker)
+    let Some(since) = &options.since else {
+        return choose_and_run(&loaded, &checked, &target, &options, None, started, maker);
+    };
+    let only = reached_since(&loaded, since);
+    let ran = choose_and_run(
+        &loaded,
+        &checked,
+        &target,
+        &options,
+        Some(&only),
+        started,
+        maker,
+    );
+    nothing_reached(ran, since)
+}
+
+/// The keys of the tests that reach what changed since `since`: every
+/// node whose digest differs from the base's, as watch mode finds a save's
+/// (area 14, "What `--affected` measures against").
+pub(crate) fn reached_since(
+    loaded: &jadpo_db::Loaded,
+    since: &Since,
+) -> std::collections::BTreeSet<String> {
+    let now = Arc::clone(jadpo_check::graph::graph(&loaded.db, loaded.project));
+    let base = jadpo_db::load_files(loaded.root.clone(), &since.files);
+    let before = Arc::clone(jadpo_check::graph::graph(&base.db, base.project));
+    watch::affected(&now, &before)
+}
+
+/// A run under `--affected` that ran nothing: no test asked for reaches
+/// the change.
+pub(crate) fn nothing_reached(ran: Ran, since: &Since) -> Ran {
+    match ran {
+        Ran::Done(run) if run.results.is_empty() => Ran::NothingReached {
+            since: since.described.clone(),
+        },
+        ran => ran,
+    }
 }
 
 /// A project that checked without errors, ready to run: its prepared
@@ -526,6 +586,7 @@ pub(crate) fn choose_and_run(
         name: options.name.clone(),
         kind: options.kind,
         failed: options.failed,
+        affected: options.since.as_ref().map(|since| since.described.clone()),
     };
     let mut chosen = match select::choose(tests, &selection, last.as_ref(), project) {
         Ok(chosen) => chosen,

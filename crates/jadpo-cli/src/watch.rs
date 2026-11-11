@@ -10,6 +10,14 @@
 //! loop that finds saves and writes the frames. With `--json`, each step
 //! is one envelope on one line, as streaming commands write them, and
 //! nothing goes to stderr. Ctrl-C ends the session.
+//!
+//! In a terminal, keys run tests between saves (CLI design language,
+//! "Keys"): `enter` reruns the tests the last run ran, `a` runs every test
+//! asked for and `f` the ones failing now, each run under a rule naming
+//! the key as a save's names the file; `q` and ctrl-c quit. The key bar
+//! lists them, `f` only while a test is failing. Without a terminal on
+//! standard input, or with `--json`, no key is read and the bar says
+//! ctrl-c quits.
 
 use std::io::Write;
 
@@ -18,7 +26,9 @@ use jadpo_term::{
     envelope, short_envelope, shown_path,
 };
 use jadpo_test::Options;
-use jadpo_test::watch::{Edit, EditKind, Event, Poller, Watch};
+use jadpo_test::watch::{Edit, EditKind, Event, Pick, Poller, Watch};
+
+use crate::keys::{Key, Keys, Raw};
 
 use crate::test::{reply, view};
 
@@ -55,6 +65,20 @@ pub struct Watcher {
     live: bool,
     /// The waiting line last written where it can't be erased.
     shown: Option<String>,
+    /// Keys run tests: standard input is a terminal and the waiting line
+    /// is drawn for one.
+    keys: bool,
+}
+
+/// What a key pressed under `--watch` did.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Pressed {
+    /// It ran tests, which this frame shows.
+    Ran(Frame),
+    /// `q` or ctrl-c: the session ends.
+    Quit,
+    /// Nothing: a key with no meaning here, or `f` with nothing failing.
+    Nothing,
 }
 
 impl Watcher {
@@ -108,32 +132,65 @@ impl Watcher {
                 ));
             }
         };
+        let err = Style::detect(env, false, args.choice, Stream::Stderr);
         let mut watcher = Watcher {
             watch,
             out: Style::detect(env, false, args.choice, Stream::Stdout),
-            err: Style::detect(env, false, args.choice, Stream::Stderr),
+            err,
             json: args.json,
             full: args.options.full,
             live: false,
             shown: None,
+            keys: !args.json && env.stdin_terminal && err.mode == jadpo_term::Mode::Rich,
         };
-        let frame = watcher.frame(event, None);
+        let frame = watcher.frame(event, None, None);
         Ok((watcher, frame))
+    }
+
+    /// Whether keys run tests in this session.
+    pub fn reads_keys(&self) -> bool {
+        self.keys
+    }
+
+    /// Reads no keys after all: the terminal couldn't be put in the mode
+    /// that reads them.
+    pub fn without_keys(&mut self) {
+        self.keys = false;
+    }
+
+    /// Runs what `key` asks for: `enter` the tests the last run ran, `a`
+    /// every test asked for, `f` the failing ones.
+    pub fn press(&mut self, key: Key, time: &str) -> Pressed {
+        if !self.keys {
+            return Pressed::Nothing;
+        }
+        let (pick, label) = match key {
+            Key::Char('q') | Key::Interrupt => return Pressed::Quit,
+            Key::Enter => (Pick::Again, "rerun"),
+            Key::Char('a') => (Pick::All, "run all"),
+            Key::Char('f') => (Pick::Failing, "run failed"),
+            _ => return Pressed::Nothing,
+        };
+        match self.watch.run(pick) {
+            Some(event) => Pressed::Ran(self.frame(event, Some(time), Some(label))),
+            None => Pressed::Nothing,
+        }
     }
 
     /// Runs what `edits` reach. `None` when the saves changed nothing the
     /// project holds, such as a save of the same text.
     pub fn update(&mut self, edits: Vec<Edit>, time: &str) -> Option<Frame> {
         let event = self.watch.apply(edits)?;
-        Some(self.frame(event, Some(time)))
+        Some(self.frame(event, Some(time), None))
     }
 
     pub fn watch(&self) -> &Watch {
         &self.watch
     }
 
-    /// The frame for one step; `time` is `None` for the first run.
-    fn frame(&mut self, event: Event, time: Option<&str>) -> Frame {
+    /// The frame for one step; `time` is `None` for the first run, and
+    /// `key` names the key that ran it.
+    fn frame(&mut self, event: Event, time: Option<&str>, key: Option<&str>) -> Frame {
         if self.json {
             return Frame {
                 erase: false,
@@ -142,8 +199,12 @@ impl Watcher {
             };
         }
         let mut screen = Screen::new();
-        if let Some(time) = time {
-            screen.push(rule(&event, time, self.watch.shown_root().as_deref()));
+        match (time, key) {
+            (Some(time), Some(key)) => screen.push(key_rule(&event, time, key)),
+            (Some(time), None) => {
+                screen.push(rule(&event, time, self.watch.shown_root().as_deref()))
+            }
+            (None, _) => {}
         }
         match event.ran {
             Some(ran) => {
@@ -161,7 +222,7 @@ impl Watcher {
             )),
             None => {}
         }
-        let waiting = Screen::new().with(key_bar(event.files, event.failing));
+        let waiting = Screen::new().with(key_bar(event.files, event.failing, self.keys));
         let waiting = waiting.render(&self.err);
         let waiting = waiting.trim_end_matches('\n');
         // A blank line before every block of results: the live line's own
@@ -233,8 +294,25 @@ fn rule(event: &Event, time: &str, root: Option<&str>) -> Block {
     }
 }
 
-/// `watching 41 files · 1 failing  ctrl-c quit`.
-fn key_bar(files: usize, failing: usize) -> Block {
+/// `── 14:02:31 · run all · 8 tests ──`: a run a key started, named by
+/// the key's action and how many tests it ran.
+fn key_rule(event: &Event, time: &str, key: &str) -> Block {
+    let mut words = vec![time.to_string(), key.to_string()];
+    if let Some(jadpo_test::Ran::Done(run)) = &event.ran {
+        let n = run.results.len();
+        words.push(format!("{n} {}", if n == 1 { "test" } else { "tests" }));
+    }
+    Block::Rule {
+        long: words.clone(),
+        short: words,
+        changes: Vec::new(),
+        plain: "watch".to_string(),
+    }
+}
+
+/// `watching 41 files · 1 failing  enter rerun  a run all  f run failed
+/// q quit`, or with no keys, `ctrl-c quit`.
+fn key_bar(files: usize, failing: usize, keys: bool) -> Block {
     let mut facts = vec![Fact::plain(format!(
         "{files} {}",
         if files == 1 { "file" } else { "files" }
@@ -242,10 +320,21 @@ fn key_bar(files: usize, failing: usize) -> Block {
     if failing > 0 {
         facts.push(Fact::problem(format!("{failing} failing")));
     }
+    let pair = |key: &str, action: &str| (key.to_string(), action.to_string());
+    let keys = if keys {
+        let mut keys = vec![pair("enter", "rerun"), pair("a", "run all")];
+        if failing > 0 {
+            keys.push(pair("f", "run failed"));
+        }
+        keys.push(pair("q", "quit"));
+        keys
+    } else {
+        vec![pair("ctrl-c", "quit")]
+    };
     Block::KeyBar {
         label: "watching".to_string(),
         facts,
-        keys: vec![("ctrl-c".to_string(), "quit".to_string())],
+        keys,
     }
 }
 
@@ -326,17 +415,28 @@ pub fn write(frame: &Frame, out: &mut dyn Write, err: &mut dyn Write) -> std::io
 /// ends on its own, which is 1 or 2 only for a mistake in what to run.
 pub fn serve(args: &WatchArgs, env: &Environment) -> u8 {
     let offset = local_offset();
-    serve_to(
+    // Keys are read only where the key bar offers them; the terminal is
+    // given back as it was when the session ends.
+    let reads = !args.json
+        && env.stdin_terminal
+        && Style::detect(env, false, args.choice, Stream::Stderr).mode == jadpo_term::Mode::Rich;
+    let raw = if reads { Raw::enter() } else { None };
+    let keys = raw.as_ref().map(|_| Keys::reading(std::io::stdin()));
+    let code = serve_to(
         args,
         env,
         &mut std::io::stdout(),
         &mut std::io::stderr(),
         &|| clock(offset),
         &|| false,
-    )
+        keys.as_ref(),
+    );
+    drop(raw);
+    code
 }
 
-/// [`serve`] on any streams, with any clock, until `stop` says so.
+/// [`serve`] on any streams, with any clock and keys, until `stop` says
+/// so or a key quits.
 pub fn serve_to(
     args: &WatchArgs,
     env: &Environment,
@@ -344,6 +444,7 @@ pub fn serve_to(
     err: &mut dyn Write,
     clock: &dyn Fn() -> String,
     stop: &dyn Fn() -> bool,
+    keys: Option<&Keys>,
 ) -> u8 {
     if write(&Watcher::header(args, env, &clock()), out, err).is_err() {
         return 0;
@@ -355,6 +456,9 @@ pub fn serve_to(
             return code;
         }
     };
+    if keys.is_none() {
+        watcher.without_keys();
+    }
     let mut poller = Poller::new(watcher.watch().root(), watcher.watch().is_project());
     if write(&frame, out, err).is_err() {
         return 0;
@@ -371,14 +475,44 @@ pub fn serve_to(
     {
         return 0;
     }
-    while let Some(edits) = poller.wait(stop) {
-        if let Some(frame) = watcher.update(edits, &clock())
+    let waiting = || stop() || keys.is_some_and(Keys::pending);
+    loop {
+        if let Some(edits) = poller.wait(&waiting) {
+            if let Some(frame) = watcher.update(edits, &clock())
+                && write(&frame, out, err).is_err()
+            {
+                return 0;
+            }
+            continue;
+        }
+        let Some(keys) = keys.filter(|_| !stop()) else {
+            return 0;
+        };
+        // A save not yet looked at runs first, so the key's run sees it.
+        let edits = poller.scan();
+        if !edits.is_empty()
+            && let Some(frame) = watcher.update(edits, &clock())
             && write(&frame, out, err).is_err()
         {
             return 0;
         }
+        match watcher.press(keys.next(), &clock()) {
+            Pressed::Quit => {
+                // The live line ends, so the shell's prompt starts a line.
+                if watcher.live {
+                    let _ = err.write_all(b"\n");
+                    let _ = err.flush();
+                }
+                return 0;
+            }
+            Pressed::Ran(frame) => {
+                if write(&frame, out, err).is_err() {
+                    return 0;
+                }
+            }
+            Pressed::Nothing => {}
+        }
     }
-    0
 }
 
 /// The time of day now, in the local zone, as `14:02:31`.
@@ -409,7 +543,7 @@ pub(crate) fn local_offset() -> i64 {
 }
 
 /// The time of day now as `14:02:31`.
-fn clock(offset: i64) -> String {
+pub(crate) fn clock(offset: i64) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_secs() as i64);
