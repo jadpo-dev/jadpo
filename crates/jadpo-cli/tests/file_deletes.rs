@@ -29,7 +29,7 @@ use std::rc::Rc;
 
 use jadpo_cli::{Output, run};
 use jadpo_host_native::Runtime;
-use jadpo_interp::Program;
+use jadpo_interp::{Program, on_large_stack};
 use jadpo_runtime::capability::{Capability, Faked};
 use jadpo_runtime::files::MemoryFiles;
 use jadpo_runtime::runner::{Deferred, run_deferred};
@@ -871,5 +871,397 @@ fn bytes_held_from_two_databases_go_once_neither_holds_them() {
                 .await
                 .contains(&(second_key.clone(), -2))
         );
+    });
+}
+
+/// A `File` held inside a structured value (area 16, "Deleting and
+/// erasing"): the bakery's sheet bundles, each keeping sheets in a
+/// `List<File>` and one on its cover, an object's field, beside the price
+/// sheets whose `File` field names the same store. A file only a bundle
+/// holds is held like any other: kept past a put's day, and deleted once
+/// the list lets go of it or the bundle goes. Its tests run interpreted
+/// here, and compiled with the interpreter's records in the gate's
+/// compiled step (`compiled.rs`, "a file held inside a structured value").
+pub(crate) fn nested_files() -> Vec<(String, String)> {
+    let put = "    var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {\n        storage_full: SheetNotKept\n    }\n";
+    let mut files: Vec<(String, String)> = files()
+        .into_iter()
+        .filter(|(path, _)| !path.ends_with(".test.jadpo"))
+        .collect();
+    // A second store of files, `notes`, that no `File` field names.
+    for (path, text) in &mut files {
+        if path == "app.jadpo" {
+            *text = text.replace(
+                "    }\n}\n",
+                "        notes: {\n            driver: Driver.disk\n            path: \"/var/lib/bakery/notes\"\n        }\n    }\n}\n",
+            );
+        }
+    }
+    files.extend([
+        (
+            "domains/bakery/actions/keep_note.jadpo".to_string(),
+            "use app { notes }\nuse bakery/entities { SheetBundle }\nuse bakery/types { SheetText }\nuse bakery/failures { SheetNotKept }\n\n/// Keeps a note, in a store no `File` field names, in a new bundle's list.\naction keep_note(note_text: SheetText) fails SheetNotKept -> SheetBundle {\n    var note: File = attempt notes.put(encoding.to_utf8(note_text), FileType.csv) {\n        storage_full: SheetNotKept\n    }\n    return SheetBundle.create {\n        set: {\n            sheets: [note]\n            cover: none\n        }\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/bakery/types/cover.jadpo".to_string(),
+            "/// A bundle's cover: its title and the sheet on it.\ntype Cover = Object {\n    title: Text\n    sheet: File\n}\n".to_string(),
+        ),
+        (
+            "domains/bakery/entities/sheet_bundle.jadpo".to_string(),
+            "use bakery/types { Cover }\n\n/// Sheets kept together, in a list or on a cover.\nentity SheetBundle {\n    id: Uuid\n    sheets: List<File>\n    cover: Cover?\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n        delete: [Access.public]\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/bakery/actions/keep_listed.jadpo".to_string(),
+            format!("use app {{ sheets }}\nuse bakery/entities {{ SheetBundle }}\nuse bakery/types {{ SheetText }}\nuse bakery/failures {{ SheetNotKept }}\n\n/// Keeps a sheet in a new bundle's list.\naction keep_listed(sheet_text: SheetText) fails SheetNotKept -> SheetBundle {{\n{put}    return SheetBundle.create {{\n        set: {{\n            sheets: [sheet]\n            cover: none\n        }}\n    }}\n}}\n"),
+        ),
+        (
+            "domains/bakery/actions/keep_covered.jadpo".to_string(),
+            format!("use app {{ sheets }}\nuse bakery/entities {{ SheetBundle }}\nuse bakery/types {{ Cover, SheetText }}\nuse bakery/failures {{ SheetNotKept }}\n\n/// Keeps a sheet on a new bundle's cover.\naction keep_covered(sheet_text: SheetText) fails SheetNotKept -> SheetBundle {{\n{put}    return SheetBundle.create {{\n        set: {{\n            sheets: []\n            cover: Cover {{\n                title: \"Prices\"\n                sheet: sheet\n            }}\n        }}\n    }}\n}}\n"),
+        ),
+        (
+            "domains/bakery/actions/empty_bundle.jadpo".to_string(),
+            "use bakery/entities { SheetBundle, SheetBundleNotFound }\n\n/// Takes every sheet out of a bundle.\naction empty_bundle(bundle_id: SheetBundle.id) fails SheetBundleNotFound -> SheetBundle {\n    return attempt SheetBundle.update(bundle_id) {\n        set: {\n            sheets: []\n            cover: none\n        }\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/bakery/actions/forget_bundle.jadpo".to_string(),
+            "use bakery/entities { SheetBundle, SheetBundleNotFound }\n\n/// Deletes a bundle.\naction forget_bundle(bundle_id: SheetBundle.id) fails SheetBundleNotFound -> Unit {\n    attempt SheetBundle.delete(bundle_id)\n}\n".to_string(),
+        ),
+        (
+            "domains/bakery/actions/keep_listed.test.jadpo".to_string(),
+            NESTED_TESTS.to_string(),
+        ),
+    ]);
+    files
+}
+
+/// What every executor runs: a file a bundle's list or cover holds stays
+/// while it does, and goes once it lets go.
+const NESTED_TESTS: &str = r#"use bakery/actions { empty_bundle, forget_bundle, keep_covered }
+use bakery/entities { SheetBundle, SheetBundleNotFound }
+
+test "a sheet only a bundle's list holds stays while it does" {
+    var listed: SheetBundle = attempt keep_listed("flour,1.20")
+    var kept: SheetBundle = attempt SheetBundle.get(listed.id)
+    assert kept.sheets == listed.sheets
+}
+
+test "emptying a bundle's list deletes the sheet it held" {
+    var listed: SheetBundle = attempt keep_listed("rye,2.40")
+    var emptied: SheetBundle = attempt empty_bundle(listed.id)
+    assert emptied.sheets == []
+}
+
+test "a sheet on a cover goes with its bundle" {
+    var covered: SheetBundle = attempt keep_covered("spelt,3.10")
+    attempt forget_bundle(covered.id)
+    assert SheetBundle.get(covered.id) fails SheetBundleNotFound
+}
+"#;
+
+fn nested_project(name: &str) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("file-deletes-nested-{name}"));
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in nested_files() {
+        write(&root, &path, &text);
+    }
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
+    }
+    root
+}
+
+/// The bundles' table counts the files its list and cover hold, each
+/// argument saying where in the value they are.
+#[test]
+fn a_file_held_inside_a_structured_value_passes_its_tests() {
+    let root = nested_project("tests");
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let migrations = root.join("database/migrations");
+    let folder = fs::read_dir(&migrations)
+        .expect("migrations")
+        .filter_map(Result::ok)
+        .next()
+        .expect("one migration")
+        .path();
+    let sql = fs::read_to_string(folder.join("postgres.sql")).expect("its sql");
+    assert!(
+        sql.contains(
+            "CREATE OR REPLACE FUNCTION \"jadpo_files_within\"(held jsonb, at jsonb, types jsonb)"
+        ),
+        "{sql}"
+    );
+    assert!(
+        sql.contains("CREATE TRIGGER \"jadpo_files\" AFTER INSERT OR UPDATE OF \"sheets\", \"cover\" OR DELETE ON \"sheet_bundle\" FOR EACH ROW EXECUTE FUNCTION \"jadpo_files_held\"('{\"column\":\"sheets\",\"at\":{\"items\":\"file\"}}', '{\"column\":\"cover\",\"at\":{\"named\":\"Cover\"},\"types\":{\"Cover\":{\"fields\":{\"sheet\":\"file\"}}}}')"),
+        "{sql}"
+    );
+    if !jadpo_test::live() {
+        return;
+    }
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(tested.stdout.contains("3 passed"), "{}", tested.stdout);
+}
+
+// A tick runs the interpreter, whose frames outgrow a test thread's 2 MiB,
+// so the tests that tick use the stack a deployment's tick has.
+#[test]
+fn a_file_held_inside_a_structured_value_stays_until_it_lets_go() {
+    on_large_stack(a_file_held_inside_a_structured_value_stays_until_it_lets_go_on_its_stack)
+        .expect("a thread");
+}
+
+/// Bytes only a bundle's list or cover holds outlast a put's day, as
+/// bytes a `File` field holds do; emptying the list lets go of its sheet,
+/// and deleting the bundle of its cover's, and each one's bytes go. A
+/// file of a store no `File` field names is never deleted.
+fn a_file_held_inside_a_structured_value_stays_until_it_lets_go_on_its_stack() {
+    let root = nested_project("held");
+    if !jadpo_test::live() {
+        return;
+    }
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let program = &program;
+    let bakery = Bakery::new(&url);
+    let notes = Rc::new(MemoryFiles::new());
+    let host = bakery
+        .host()
+        .with("notes", Rc::clone(&notes) as Rc<dyn Capability>);
+    Runtime::new().expect("runtime").block_on(async {
+        let in_list = |bundle: &Value| match field(bundle, "sheets") {
+            Value::List(items) => match items.first().map(|file| field(file, "key")) {
+                Some(Value::Text(key)) => key.to_string(),
+                other => panic!("not a key: {other:?}"),
+            },
+            other => panic!("not a list: {other:?}"),
+        };
+        let on_cover = |bundle: &Value| match field(&field(&field(bundle, "cover"), "sheet"), "key")
+        {
+            Value::Text(key) => key.to_string(),
+            other => panic!("not a key: {other:?}"),
+        };
+        let listed = done(
+            program,
+            &bakery,
+            &host,
+            "keep_listed",
+            vec![Value::text("flour,1.20")],
+        )
+        .await;
+        let covered = done(
+            program,
+            &bakery,
+            &host,
+            "keep_covered",
+            vec![Value::text("rye,2.40")],
+        )
+        .await;
+        let (listed_key, covered_key) = (in_list(&listed), on_cover(&covered));
+        let mut held = vec![(listed_key.clone(), 1), (covered_key.clone(), 1)];
+        held.sort();
+        assert_eq!(bakery.holders().await, held);
+
+        // A day after their puts, the tick leaves them: the bundles hold
+        // them.
+        bakery.harness.set_now(T0 + DAY + MINUTE);
+        let day = tick(program, &host, T0 + DAY + MINUTE).await;
+        assert!(day.problems.is_empty(), "{:?}", day.problems);
+        assert_eq!(day.files, 0, "{day:?}");
+        let mut kept = vec![listed_key.clone(), covered_key.clone()];
+        kept.sort();
+        assert_eq!(bakery.kept(), kept);
+
+        // Emptying the list lets go of its sheet: its bytes go once the
+        // update commits.
+        done(
+            program,
+            &bakery,
+            &host,
+            "empty_bundle",
+            vec![field(&listed, "id")],
+        )
+        .await;
+        assert_eq!(bakery.kept(), std::slice::from_ref(&covered_key));
+        // Deleting the bundle lets go of its cover's.
+        done(
+            program,
+            &bakery,
+            &host,
+            "forget_bundle",
+            vec![field(&covered, "id")],
+        )
+        .await;
+        assert!(bakery.kept().is_empty(), "{:?}", bakery.kept());
+        let mut gone = vec![(listed_key, -2), (covered_key, -2)];
+        gone.sort();
+        assert_eq!(bakery.holders().await, gone.clone());
+
+        // A note in `notes`, which no `File` field names: nothing deletes
+        // its store's bytes, so letting go of it leaves them, with no row
+        // and no delivery.
+        let noted = done(
+            program,
+            &bakery,
+            &host,
+            "keep_note",
+            vec![Value::text("oats,0.90")],
+        )
+        .await;
+        let note_key = in_list(&noted);
+        done(
+            program,
+            &bakery,
+            &host,
+            "empty_bundle",
+            vec![field(&noted, "id")],
+        )
+        .await;
+        assert_eq!(notes.keys(), [note_key]);
+        assert_eq!(bakery.holders().await, gone);
+        bakery.harness.set_now(T0 + 3 * DAY);
+        let later = tick(program, &host, T0 + 3 * DAY).await;
+        assert!(later.problems.is_empty(), "{:?}", later.problems);
+        assert_eq!(later.files, 0, "{later:?}");
+        let failed = bakery
+            .harness
+            .count("SELECT count(*) FROM \"jadpo_deliveries\" WHERE \"status\" <> 'succeeded'")
+            .await;
+        assert_eq!(failed, 0);
+    });
+}
+
+/// A structured value's `File` in a database with no `File` field of its
+/// own (area 16, "Deleting and erasing"): the bakery's sheets in `main`,
+/// and in `archive` bundles keeping them only in a `List<File>`, which
+/// names no store, so `archive` counts its records' holders of every
+/// store of files. Its tests run interpreted here, and compiled with the
+/// interpreter's records in the gate's compiled step (`compiled.rs`, "a
+/// file a structured value holds in a second database").
+pub(crate) fn nested_two_database_files() -> Vec<(String, String)> {
+    let mut files: Vec<(String, String)> = two_database_files()
+        .into_iter()
+        .filter(|(path, _)| {
+            !path.ends_with(".test.jadpo")
+                && !path.contains("archived_sheet")
+                && !path.contains("archive_sheet")
+                && !path.contains("forget_archived")
+                && !path.contains("restore_sheet")
+        })
+        .collect();
+    files.extend([
+        (
+            "domains/bakery/entities/archived_bundle.jadpo".to_string(),
+            "/// Sheets kept together in the archive.\nentity ArchivedBundle {\n    id: Uuid\n    sheets: List<File>\n\n    store: archive\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        delete: [Access.public]\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/bakery/actions/archive_bundle.jadpo".to_string(),
+            "use bakery/entities { ArchivedBundle, PriceSheet }\n\n/// Keeps a copy of a sheet's file in an archived bundle.\naction archive_bundle(from: PriceSheet) -> ArchivedBundle {\n    var sheets: List<File> = match from.sheet {\n        some(sheet) -> [sheet]\n        none -> []\n    }\n    return ArchivedBundle.create {\n        set: {\n            sheets: sheets\n        }\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/bakery/actions/forget_bundle.jadpo".to_string(),
+            "use bakery/entities { ArchivedBundle, ArchivedBundleNotFound }\n\n/// Deletes an archived bundle.\naction forget_bundle(bundle_id: ArchivedBundle.id) fails ArchivedBundleNotFound -> Unit {\n    attempt ArchivedBundle.delete(bundle_id)\n}\n".to_string(),
+        ),
+        (
+            "domains/bakery/actions/archive_bundle.test.jadpo".to_string(),
+            NESTED_TWO_DATABASE_TESTS.to_string(),
+        ),
+    ]);
+    files
+}
+
+/// What every executor runs over two databases: bytes an archived
+/// bundle's list holds stay once `main` lets go.
+const NESTED_TWO_DATABASE_TESTS: &str = r#"use bakery/actions { add_supplier, forget_bundle, forget_sheet, keep_sheet }
+use bakery/entities { ArchivedBundle, PriceSheet, PriceSheetNotFound, Supplier }
+
+test "bytes an archived bundle holds stay once a sheet lets go" {
+    var millers: Supplier = add_supplier("Millers")
+    var kept: PriceSheet = attempt keep_sheet(millers.id, "flour,1.20")
+    var bundled: ArchivedBundle = archive_bundle(kept)
+    attempt forget_sheet(kept.id)
+    assert PriceSheet.get(kept.id) fails PriceSheetNotFound
+    attempt forget_bundle(bundled.id)
+}
+"#;
+
+#[test]
+fn a_file_a_structured_value_holds_in_a_second_database_stays_until_it_lets_go() {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("file-deletes-nested-b14");
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in nested_two_database_files() {
+        write(&root, &path, &text);
+    }
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
+    }
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    if !jadpo_test::live() {
+        return;
+    }
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(tested.stdout.contains("1 passed"), "{}", tested.stdout);
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let mut stores = std::collections::BTreeMap::new();
+    for (store, (_, url)) in &copy.stores {
+        stores.insert(
+            store.clone(),
+            jadpo_host_native::postgres(url).expect("a store"),
+        );
+    }
+    let (_, main) = copy.stores.get("main").expect("main");
+    let bakery = TwoBakeries {
+        clock: Harness::postgres(main).at(T0).random_from(0),
+        stores,
+        files: MemoryFiles::new(),
+    };
+    let program = &program;
+    Runtime::new().expect("runtime").block_on(async {
+        let millers = bakery
+            .done(program, "add_supplier", vec![Value::text("Millers")])
+            .await;
+        let kept = bakery
+            .done(
+                program,
+                "keep_sheet",
+                vec![field(&millers, "id"), Value::text("flour,1.20")],
+            )
+            .await;
+        let key = key_of(&kept);
+        let bundled = bakery
+            .done(program, "archive_bundle", vec![kept.clone()])
+            .await;
+        assert_eq!(bakery.holders("archive").await, [(key.clone(), 1)]);
+
+        // `main` lets go: the archived bundle still holds the bytes.
+        bakery
+            .done(program, "forget_sheet", vec![field(&kept, "id")])
+            .await;
+        assert_eq!(bakery.files.keys(), std::slice::from_ref(&key));
+        assert_eq!(bakery.holders("main").await, []);
+
+        // The bundle goes too: so do the bytes, gone in both records.
+        bakery
+            .done(program, "forget_bundle", vec![field(&bundled, "id")])
+            .await;
+        assert!(bakery.files.keys().is_empty(), "{:?}", bakery.files.keys());
+        assert_eq!(bakery.holders("main").await, [(key.clone(), -2)]);
+        assert_eq!(bakery.holders("archive").await, [(key, -2)]);
     });
 }

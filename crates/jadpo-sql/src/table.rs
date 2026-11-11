@@ -553,16 +553,131 @@ pub fn create_extension(name: &str) -> String {
     format!("CREATE EXTENSION IF NOT EXISTS {}", ident(name))
 }
 
+/// A column whose rows hold stored files (area 16, "Deleting and
+/// erasing"): a `File` column, or one keeping a structured value as its
+/// JSON with files inside, however deep, with where they are in it.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Held {
+    pub column: String,
+    /// For a structured value, where its files are, as JSON text
+    /// (`jadpo_graph::stored_json::files_within`): `None` for a `File`.
+    pub within: Option<String>,
+}
+
+impl Held {
+    /// A `File` column.
+    pub fn file(column: impl Into<String>) -> Held {
+        Held {
+            column: column.into(),
+            within: None,
+        }
+    }
+
+    /// The trigger's argument for it: a `File` column's name, or the
+    /// structured value's `{"column", "at", "types"}`.
+    fn argument(&self) -> String {
+        match &self.within {
+            None => self.column.clone(),
+            Some(within) => {
+                // `within` is an object's JSON, `{...}`, which the column's
+                // name, an identifier, joins as its first member.
+                let rest = within.strip_prefix('{').unwrap_or(within);
+                let comma = if rest.starts_with('}') { "" } else { "," };
+                format!("{{\"column\":\"{}\"{comma}{rest}", self.column)
+            }
+        }
+    }
+
+    /// Each file a row of `table` holds in it, as a `"held"` column.
+    fn files_of(&self, table: &str) -> String {
+        match &self.within {
+            None => format!(
+                "SELECT {} AS \"held\" FROM {}",
+                ident(&self.column),
+                ident(table)
+            ),
+            Some(within) => {
+                let within = text_literal(within);
+                format!(
+                    "SELECT \"held\" FROM {table}, LATERAL {walk}({table}.{column}, {within}::jsonb -> 'at', {within}::jsonb -> 'types') AS \"held\"",
+                    table = ident(table),
+                    walk = ident(FILES_WITHIN),
+                    column = ident(&self.column),
+                )
+            }
+        }
+    }
+}
+
+/// The function that walks a structured value for the files it holds
+/// (area 16, "Deleting and erasing"): given the value, where its files
+/// are and the named types that hold them
+/// (`jadpo_graph::stored_json::files_within`), each `File` inside it, a
+/// `null` or a part of another shape giving none.
+pub const FILES_WITHIN: &str = "jadpo_files_within";
+
+/// Creates [`FILES_WITHIN`].
+pub fn create_files_within() -> String {
+    format!(
+        "CREATE OR REPLACE FUNCTION {name}(held jsonb, at jsonb, types jsonb) RETURNS SETOF jsonb LANGUAGE plpgsql IMMUTABLE AS $jadpo$
+DECLARE
+    part record;
+BEGIN
+    IF held IS NULL OR at IS NULL OR jsonb_typeof(held) = 'null' THEN
+        RETURN;
+    END IF;
+    IF jsonb_typeof(at) = 'string' THEN
+        IF at = '\"file\"'::jsonb AND jsonb_typeof(held) = 'object' THEN
+            RETURN NEXT held;
+        END IF;
+        RETURN;
+    END IF;
+    IF at ? 'named' THEN
+        RETURN QUERY SELECT * FROM {name}(held, types -> (at ->> 'named'), types);
+    ELSIF at ? 'items' THEN
+        IF jsonb_typeof(held) = 'array' THEN
+            FOR part IN SELECT value FROM jsonb_array_elements(held) LOOP
+                RETURN QUERY SELECT * FROM {name}(part.value, at -> 'items', types);
+            END LOOP;
+        END IF;
+    ELSIF at ? 'values' THEN
+        IF jsonb_typeof(held) = 'object' THEN
+            FOR part IN SELECT value FROM jsonb_each(held) LOOP
+                RETURN QUERY SELECT * FROM {name}(part.value, at -> 'values', types);
+            END LOOP;
+        END IF;
+    ELSIF at ? 'fields' THEN
+        IF jsonb_typeof(held) = 'object' THEN
+            FOR part IN SELECT key, value FROM jsonb_each(at -> 'fields') LOOP
+                RETURN QUERY SELECT * FROM {name}(held -> part.key, part.value, types);
+            END LOOP;
+        END IF;
+    ELSIF at ? 'variants' THEN
+        IF jsonb_typeof(held) = 'object' AND jsonb_typeof(held -> 'tag') = 'string' THEN
+            FOR part IN SELECT key, value FROM jsonb_each(COALESCE(at -> 'variants' -> (held ->> 'tag'), '{{}}'::jsonb)) LOOP
+                RETURN QUERY SELECT * FROM {name}(held -> part.key, part.value, types);
+            END LOOP;
+        END IF;
+    END IF;
+END
+$jadpo$",
+        name = ident(FILES_WITHIN)
+    )
+}
+
 /// The function each entity table's `jadpo_files` trigger runs (area 16,
-/// "Deleting and erasing"; chunk B3), made once in a store that keeps
-/// `jadpo_files`: for each `File` column the trigger names, a file the row
-/// now holds and didn't counts one more holder, refused once its bytes are
-/// being deleted or are gone, and a file it held and doesn't counts one
-/// fewer, its `since` cleared so the commit's end leaves the event that
-/// deletes its bytes once none holds it. Its `RETURN NULL` changes no row.
+/// "Deleting and erasing"; chunk B3), made in a store that keeps
+/// `jadpo_files`: across the columns the trigger names, `File` columns and
+/// structured values with files inside, however deep ([`FILES_WITHIN`]),
+/// each file the row now holds more often than it did counts as many
+/// holders more, refused once its bytes are being deleted or are gone, and
+/// each it holds less often counts as many fewer, its `since` cleared so
+/// the commit's end leaves the event that deletes its bytes once none
+/// holds it. Files are counted in key order, so two writes wait for each
+/// other rather than deadlocking. Its `RETURN NULL` changes no row.
 pub const FILES_FUNCTION: &str = "jadpo_files_held";
 
-/// The trigger's name on each table with a `File` column.
+/// The trigger's name on each table with a column holding files.
 pub const FILES_TRIGGER: &str = "jadpo_files";
 
 /// Creates [`FILES_FUNCTION`].
@@ -570,64 +685,82 @@ pub fn create_files_function() -> String {
     format!(
         "CREATE OR REPLACE FUNCTION {}() RETURNS trigger LANGUAGE plpgsql AS $jadpo$
 DECLARE
+    argument text;
     field_name text;
-    held_before jsonb;
-    held_after jsonb;
+    within jsonb;
+    row_before jsonb;
+    row_after jsonb;
+    held_before jsonb[] := '{{}}';
+    held_after jsonb[] := '{{}}';
+    change record;
 BEGIN
-    FOREACH field_name IN ARRAY TG_ARGV LOOP
-        held_before := NULL;
-        held_after := NULL;
-        IF TG_OP <> 'INSERT' THEN
-            held_before := to_jsonb(OLD) -> field_name;
+    IF TG_OP <> 'INSERT' THEN
+        row_before := to_jsonb(OLD);
+    END IF;
+    IF TG_OP <> 'DELETE' THEN
+        row_after := to_jsonb(NEW);
+    END IF;
+    FOREACH argument IN ARRAY TG_ARGV LOOP
+        IF left(argument, 1) = '{{' THEN
+            within := argument::jsonb;
+            field_name := within ->> 'column';
+        ELSE
+            within := '{{\"at\": \"file\"}}'::jsonb;
+            field_name := argument;
         END IF;
-        IF TG_OP <> 'DELETE' THEN
-            held_after := to_jsonb(NEW) -> field_name;
-        END IF;
-        IF jsonb_typeof(held_before) IS DISTINCT FROM 'object' THEN
-            held_before := NULL;
-        END IF;
-        IF jsonb_typeof(held_after) IS DISTINCT FROM 'object' THEN
-            held_after := NULL;
-        END IF;
-        IF held_before IS NOT NULL AND held_after IS NOT NULL
-            AND held_before ->> 'store' = held_after ->> 'store'
-            AND held_before ->> 'key' = held_after ->> 'key' THEN
-            CONTINUE;
-        END IF;
-        IF held_after IS NOT NULL THEN
+        held_before := held_before || ARRAY(SELECT {walk}(row_before -> field_name, within -> 'at', within -> 'types'));
+        held_after := held_after || ARRAY(SELECT {walk}(row_after -> field_name, within -> 'at', within -> 'types'));
+    END LOOP;
+    FOR change IN
+        SELECT \"file\" ->> 'store' AS \"store\", \"file\" ->> 'key' AS \"key\", sum(\"n\") AS \"n\"
+        FROM (
+            SELECT \"file\", 1 AS \"n\" FROM unnest(held_after) AS \"file\"
+            UNION ALL
+            SELECT \"file\", -1 AS \"n\" FROM unnest(held_before) AS \"file\"
+        ) AS \"each\"
+        WHERE \"file\" ->> 'store' IS NOT NULL AND \"file\" ->> 'key' IS NOT NULL
+        GROUP BY 1, 2
+        HAVING sum(\"n\") <> 0
+        ORDER BY 1, 2
+    LOOP
+        IF change.\"n\" > 0 THEN
             INSERT INTO \"jadpo_files\" (\"store\", \"key\", \"holders\", \"since\")
-                VALUES (held_after ->> 'store', held_after ->> 'key', 1, NULL)
+                VALUES (change.\"store\", change.\"key\", change.\"n\", NULL)
                 ON CONFLICT (\"store\", \"key\") DO UPDATE
-                SET \"holders\" = \"jadpo_files\".\"holders\" + 1, \"since\" = NULL
+                SET \"holders\" = \"jadpo_files\".\"holders\" + EXCLUDED.\"holders\", \"since\" = NULL
                 WHERE \"jadpo_files\".\"holders\" >= 0;
             IF NOT FOUND THEN
-                RAISE EXCEPTION 'a File whose bytes are deleted can''t be kept in a record (%)', held_after ->> 'key';
+                RAISE EXCEPTION 'a File whose bytes are deleted can''t be kept in a record (%)', change.\"key\";
             END IF;
-        END IF;
-        IF held_before IS NOT NULL THEN
-            UPDATE \"jadpo_files\" SET \"holders\" = \"holders\" - 1, \"since\" = NULL
-                WHERE \"store\" = held_before ->> 'store'
-                AND \"key\" = held_before ->> 'key'
+        ELSE
+            UPDATE \"jadpo_files\" SET \"holders\" = GREATEST(\"holders\" + change.\"n\", 0), \"since\" = NULL
+                WHERE \"store\" = change.\"store\"
+                AND \"key\" = change.\"key\"
                 AND \"holders\" > 0;
         END IF;
     END LOOP;
     RETURN NULL;
 END
 $jadpo$",
-        ident(FILES_FUNCTION)
+        ident(FILES_FUNCTION),
+        walk = ident(FILES_WITHIN),
     )
 }
 
-/// Counts the holders of the files `columns` of `table` hold, its `File`
-/// columns in order, as its rows change (chunk B3): one trigger after
-/// each insert, each update of those columns and each delete, cascades
-/// included.
-pub fn create_files_trigger(table: &str, columns: &[String]) -> String {
-    let arguments: Vec<String> = columns.iter().map(|column| text_literal(column)).collect();
+/// Counts the holders of the files `columns` of `table` hold, in the
+/// order its columns stand, as its rows change (chunk B3): one trigger
+/// after each insert, each update of those columns and each delete,
+/// cascades included.
+pub fn create_files_trigger(table: &str, columns: &[Held]) -> String {
+    let names: Vec<String> = columns.iter().map(|held| held.column.clone()).collect();
+    let arguments: Vec<String> = columns
+        .iter()
+        .map(|held| text_literal(&held.argument()))
+        .collect();
     format!(
         "CREATE TRIGGER {} AFTER INSERT OR UPDATE OF {} OR DELETE ON {} FOR EACH ROW EXECUTE FUNCTION {}({})",
         ident(FILES_TRIGGER),
-        idents(columns),
+        idents(&names),
         ident(table),
         ident(FILES_FUNCTION),
         arguments.join(", ")
@@ -646,11 +779,8 @@ pub fn drop_files_trigger(table: &str) -> String {
 
 /// Counts the files `columns` of `table`'s rows already hold, as a store
 /// that starts keeping `jadpo_files` finds them (chunk B3).
-pub fn count_held_files(table: &str, columns: &[String]) -> String {
-    let held: Vec<String> = columns
-        .iter()
-        .map(|column| format!("SELECT {} AS \"held\" FROM {}", ident(column), ident(table)))
-        .collect();
+pub fn count_held_files(table: &str, columns: &[Held]) -> String {
+    let held: Vec<String> = columns.iter().map(|held| held.files_of(table)).collect();
     format!(
         "INSERT INTO \"jadpo_files\" (\"store\", \"key\", \"holders\") SELECT \"held\" ->> 'store', \"held\" ->> 'key', count(*) FROM ({}) AS \"kept\" WHERE jsonb_typeof(\"held\") = 'object' GROUP BY 1, 2 ON CONFLICT (\"store\", \"key\") DO UPDATE SET \"holders\" = \"jadpo_files\".\"holders\" + EXCLUDED.\"holders\"",
         held.join(" UNION ALL ")
@@ -662,11 +792,8 @@ pub fn count_held_files(table: &str, columns: &[String]) -> String {
 /// file left with none is deleted by the tick, as any held by none is, so
 /// `since` is cleared, as the trigger's function does; a file being deleted
 /// or gone has a count below zero, which stays.
-pub fn release_held_files(table: &str, columns: &[String]) -> String {
-    let held: Vec<String> = columns
-        .iter()
-        .map(|column| format!("SELECT {} AS \"held\" FROM {}", ident(column), ident(table)))
-        .collect();
+pub fn release_held_files(table: &str, columns: &[Held]) -> String {
+    let held: Vec<String> = columns.iter().map(|held| held.files_of(table)).collect();
     format!(
         "UPDATE \"jadpo_files\" AS \"f\" SET \"holders\" = GREATEST(\"f\".\"holders\" - \"gone\".\"holders\", 0), \"since\" = NULL FROM (SELECT \"held\" ->> 'store' AS \"store\", \"held\" ->> 'key' AS \"key\", count(*) AS \"holders\" FROM ({}) AS \"kept\" WHERE jsonb_typeof(\"held\") = 'object' GROUP BY 1, 2) AS \"gone\" WHERE \"f\".\"store\" = \"gone\".\"store\" AND \"f\".\"key\" = \"gone\".\"key\" AND \"f\".\"holders\" > 0",
         held.join(" UNION ALL ")

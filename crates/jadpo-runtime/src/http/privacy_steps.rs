@@ -895,7 +895,10 @@ async fn erase(
     let Some(person_plan) = erasure.person(&steps.person).cloned() else {
         return defect(ctx, "an erasure of someone with no plan to erase them");
     };
-    let keeps_files = started.files().keeps(&person_plan.own.store);
+    let files = started
+        .files()
+        .keeps(&person_plan.own.store)
+        .then(|| started.files());
     let Some(ids) = pair(ctx) else {
         return defect(ctx, "an erasure with no randomness");
     };
@@ -934,7 +937,7 @@ async fn erase(
             transaction.as_mut(),
             crate::erasure::Applying {
                 plan: erasure,
-                keeps_files,
+                files,
                 part: &person_plan.own,
                 id: &SqlValue::Uuid(state.person),
                 at: now,
