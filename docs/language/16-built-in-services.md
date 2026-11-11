@@ -2111,9 +2111,16 @@ less free than its floor, as puts start answering `storage_full`.
   ThresholdChange.lowered`. A new threshold, a lower limit and a higher
   floor need nothing.
 - **Per build.** Thresholds belong to a build.
+- **Where `queries:` starts.** The query report, `build/report/queries.md`
+  ([The `build/` folder](14-tooling.md#the-build-folder)), gives each
+  route, action, schedule and subscriber the most queries one request or
+  run of it sends. Where no threshold watching it sets `queries:`, it says
+  start at `queries: 2`; where one does, it names the threshold, and says
+  when the limit is below what the code can send. It writes nothing into
+  your monitoring file: a threshold is only what you write.
 
-Not built yet: starting values worked out from the query report and from
-production, an agent proposing changes from what it observes through the MCP
+Not built yet: starting values worked out from production, an agent
+proposing changes from what it observes through the MCP
 server ([The developer console and MCP](17-debugging-and-review.md#the-developer-console-and-mcp)),
 and metrics for each flag value's path ([Path IDs](#path-ids)).
 
@@ -5345,7 +5352,7 @@ The errors this page describes are built with the feature they belong to.
 | Outgoing webhooks | Not built yet. |
 | The `telemetry:` section | Not built yet: it is `toolchain.not_built_yet` where it is written. Nor is telemetry in the developer console, or `jadpo traces`, `jadpo metrics` and `jadpo logs`, which read it in development. |
 | Path IDs | Not built yet for requests. Each body's ways are numbered, and the gate compares the paths each test's bodies took when it runs them interpreted and compiled, but no request carries a `path` or a `path_key`, and `jadpo path` isn't built. |
-| Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([What Jadpo generates from thresholds](#what-jadpo-generates-from-thresholds)). Not built yet: acting on the per-request limits, which comes with the `telemetry:` section, starting values from the query report and production, and an agent's proposals through MCP. |
+| Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([What Jadpo generates from thresholds](#what-jadpo-generates-from-thresholds)). A route's, action's, schedule's or subscriber's most queries per request, where its `queries:` starts, in the query report. Not built yet: acting on the per-request limits, which comes with the `telemetry:` section, starting values from production, and an agent's proposals through MCP. |
 
 ## Errors
 

@@ -268,11 +268,6 @@ work below (Richard, 2026-11-08).
      The keyboard view, its `enter`, `a` and `f` keys under `--watch`, and
      the tests a change reaches against the merge-base with `main`.
      Designed with the design skills first.
-   - [ ] **T4 The schema and query reports** `opus · high`: area 14, "The
-     `build/` folder"; area 16, "Setting and changing them". Those two
-     reports, `diagnostics/`, `inventory/`, `audit/` and `compatibility/`,
-     `jadpo sql --explain`, and a threshold's starting values from the query
-     report. Designed with the design skills first.
    - [ ] **T5 The agent skill's last three parts** `opus · high` after A17:
      area 14, "Tools for agents". Reading the catalogues and running `jadpo
      impact` first, the parallel-workspace routine, and the rule for a fixed

@@ -139,12 +139,53 @@ fn a_missing_or_unknown_query_lists_the_ones_there_are() {
         unknown.stderr
     );
     assert!(unknown.stderr.contains("rule: cli.sql_arguments"));
-    let explain = jadpo(&root, &["sql", "notes_by_author", "--explain"]);
-    assert_eq!(explain.code, 1);
+    // An action's writes have no plan to choose.
+    let explain = jadpo(&root, &["sql", "archive_note", "--explain"]);
+    assert_eq!(explain.code, 2);
     assert!(
-        explain.stderr.contains("rule: toolchain.not_built_yet"),
+        explain
+            .stderr
+            .contains("`--explain` plans a query, and `archive_note` is an action"),
         "{}",
         explain.stderr
+    );
+    assert!(explain.stderr.contains("rule: cli.sql_arguments"));
+}
+
+/// `--explain` plans each statement on a disposable database at the
+/// latest migration and shows PostgreSQL's plan under it.
+#[test]
+fn explain_shows_postgresqls_plan_under_each_statement() {
+    let root = project("explain");
+    if !jadpo_test::live() {
+        return;
+    }
+    let out = jadpo(&root, &["sql", "notes_by_author", "--explain"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stdout.contains(
+            "  plan: PostgreSQL's generic plan, for any values, on an empty database at the latest migration, below\n\n  Limit\n"
+        ),
+        "{}",
+        out.stdout
+    );
+    // Each include's plan, said once what it is.
+    assert!(
+        out.stdout
+            .contains("  plan: PostgreSQL's generic plan, below\n\n"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("author_pkey"), "{}", out.stdout);
+    let json = jadpo(&root, &["sql", "notes_by_author", "--explain", "--json"]);
+    let value: serde_json::Value = serde_json::from_str(&json.stdout).expect("json");
+    let statements = &value["data"]["statements"];
+    assert_eq!(statements[0]["plan"][0], "Limit", "{value}");
+    assert!(
+        statements[1]["plan"]
+            .as_array()
+            .is_some_and(|lines| !lines.is_empty()),
+        "{value}"
     );
 }
 

@@ -164,6 +164,80 @@ pub fn remove_personal_data(root: &Path) {
 const PERSONAL_DATA_MD: &str = "build/report/personal-data.md";
 const PERSONAL_DATA_JSON: &str = "build/report/personal-data.json";
 
+/// The tools' views of the graph (area 14, "The `build/` folder"):
+/// `build/inventory/`, `build/audit/` and `build/compatibility/`, written
+/// whether or not there are errors, as the manifest they are made from is.
+pub fn views(graph: &Graph) -> Vec<(String, String)> {
+    jadpo_graph::views::views(graph)
+        .into_iter()
+        .map(|(path, value)| (path, value.to_document()))
+        .collect()
+}
+
+/// The error catalogue (area 14, "The `build/` folder"):
+/// `build/diagnostics/errors.json`, every error the check found, each as
+/// `jadpo check --json --full` gives it, so an agent reads the project's
+/// errors without running the check again. Empty when there are none.
+pub fn diagnostics(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    diagnostics: &[Diagnostic],
+) -> (String, String) {
+    let sources = jadpo_db::source_texts(db, project);
+    let document = jadpo_term::Json::object([
+        (
+            "format",
+            jadpo_term::Json::Int(jadpo_graph::manifest::FORMAT),
+        ),
+        ("errors", jadpo_term::Json::Int(diagnostics.len() as i64)),
+        (
+            "diagnostics",
+            jadpo_term::Json::array(
+                diagnostics
+                    .iter()
+                    .map(|diagnostic| jadpo_term::diagnostic_json(diagnostic, &sources)),
+            ),
+        ),
+    ]);
+    (DIAGNOSTICS.to_string(), document.to_document())
+}
+
+const DIAGNOSTICS: &str = "build/diagnostics/errors.json";
+
+/// The schema and query reports (areas 5, 6 and 14; chunk T4):
+/// `build/report/database.md` and `queries.md`, each with a `.json` twin,
+/// for a project with no errors, since a query or a body that doesn't
+/// check leaves the counts unknown.
+pub fn database_and_queries(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    graph: &Graph,
+) -> Vec<(String, String)> {
+    let database = jadpo_check::data::report::database(db, project);
+    let queries = crate::query_report::report(db, project, graph);
+    vec![
+        (DATABASE[0].to_string(), database.markdown),
+        (DATABASE[1].to_string(), database.json.to_document()),
+        (DATABASE[2].to_string(), queries.markdown),
+        (DATABASE[3].to_string(), queries.json.to_document()),
+    ]
+}
+
+/// Removes the schema and query reports a project with errors can't
+/// write, so none left from before says less than the code does.
+pub fn remove_database_and_queries(root: &Path) {
+    for path in DATABASE {
+        let _ = std::fs::remove_file(root.join(path));
+    }
+}
+
+const DATABASE: [&str; 4] = [
+    "build/report/database.md",
+    "build/report/database.json",
+    "build/report/queries.md",
+    "build/report/queries.json",
+];
+
 /// What the manifest says of the check that wrote it (area 18): the
 /// compiler, how many errors it found, the commit the project is at and
 /// whether its tree was modified, and each deployable's target and build

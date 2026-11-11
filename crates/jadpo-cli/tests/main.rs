@@ -31,6 +31,7 @@ mod batch_tenants;
 mod batches;
 mod binary;
 mod build;
+mod build_reports;
 mod call_snapshots;
 mod capability_deliveries;
 mod check;
