@@ -403,3 +403,99 @@ fn a_cap_on_calls_from_workers_is_said_to_count_per_instance() {
         "{document}"
     );
 }
+
+/// A teaching example copied to a folder of its own.
+fn example(name: &str, copy: &str) -> PathBuf {
+    let root = folder(copy);
+    let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+    crate::deployable::copy_folder(&examples.join(name), &root);
+    let _ = fs::remove_dir_all(root.join("build"));
+    root
+}
+
+/// Area 1, "Tests and other files": a file that isn't Jadpo sits beside
+/// the declaration that uses it, named after it, so one in a code folder
+/// nothing refers to is `layout.asset_unreferenced`. An email's templates
+/// and the shared layout, a partial's, a prompt's text and its recordings
+/// are referred to; a template or a prompt's text beside no declaration is
+/// its own rule's, and is reported once.
+#[test]
+fn a_file_that_isnt_jadpo_and_that_nothing_uses_is_an_error() {
+    let rules = |output: &Output| -> Vec<String> {
+        let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
+        let mut found: Vec<String> = document["diagnostics"]
+            .as_array()
+            .expect("diagnostics")
+            .iter()
+            .map(|d| {
+                format!(
+                    "{} {}",
+                    d["rule"].as_str().unwrap_or(""),
+                    d["location"]["path"].as_str().unwrap_or("")
+                )
+            })
+            .collect();
+        found.sort();
+        found
+    };
+    let guest_house = example("27-guest-house", "assets-emails");
+    let clean = jadpo(&guest_house, &["check"]);
+    assert_eq!(clean.code, 0, "{}", clean.stdout);
+    write(
+        &guest_house,
+        "domains/lodging/emails/old_welcome.html",
+        "<p>Hello</p>\n",
+    );
+    write(&guest_house, "domains/lodging/actions/notes.md", "Notes.\n");
+    let output = jadpo(&guest_house, &["check"]);
+    assert_eq!(output.code, 1, "{}", output.stdout);
+    assert!(
+        output.stdout.contains(
+            "error: `notes.md` isn't used by any declaration\n --> domains/lodging/actions/notes.md\n  reason: A code folder holds Jadpo and the files its declarations use: an email's templates beside it in `emails/`, and a prompt's text and recordings beside it in `prompts/`. Nothing uses `notes.md`.\n  next: Move it out of `domains/`, or delete it if nothing needs it (agent)\n  rule: layout.asset_unreferenced\n"
+        ),
+        "{}",
+        output.stdout
+    );
+    let output = jadpo(&guest_house, &["check", "--json"]);
+    assert_eq!(
+        rules(&output),
+        [
+            "email.template_missing domains/lodging/emails/old_welcome.html",
+            "layout.asset_unreferenced domains/lodging/actions/notes.md",
+        ],
+        "{}",
+        output.stdout
+    );
+
+    let helpline = example("22-plant-helpline", "assets-prompts");
+    let clean = jadpo(&helpline, &["check"]);
+    assert_eq!(clean.code, 0, "{}", clean.stdout);
+    write(
+        &helpline,
+        "domains/helpline/prompts/old_answer.prompt",
+        "# Instructions\n\nAnswer.\n\n# Request\n\nNothing.\n",
+    );
+    write(
+        &helpline,
+        "domains/helpline/prompts/recordings/nothing_here/first.json",
+        "{}\n",
+    );
+    let output = jadpo(&helpline, &["check"]);
+    assert!(
+        output.stdout.contains(
+            "error: `first.json` isn't used by any declaration\n --> domains/helpline/prompts/recordings/nothing_here/first.json\n  reason: A recording sits in `recordings/<prompt>/` beside the prompt it records, so `first.json` belongs to `NothingHere` in `domains/helpline/prompts/nothing_here.jadpo`, and no prompt there is called that.\n  next: Move it to the recordings of the prompt it records, or delete it if nothing will use it (agent)\n"
+        ),
+        "{}",
+        output.stdout
+    );
+    let output = jadpo(&helpline, &["check", "--json"]);
+    assert_eq!(
+        rules(&output),
+        [
+            "layout.asset_unreferenced domains/helpline/prompts/recordings/nothing_here/first.json",
+            "prompt.section_missing domains/helpline/prompts/old_answer.prompt",
+        ],
+        "{}",
+        output.stdout
+    );
+}

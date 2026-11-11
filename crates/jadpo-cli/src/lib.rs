@@ -41,7 +41,7 @@ mod inspect;
 mod install;
 pub mod launcher;
 mod local;
-mod migrate;
+pub mod migrate;
 mod new;
 mod package;
 mod package_audit;

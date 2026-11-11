@@ -640,6 +640,8 @@ rules! {
         "The package you are installing has code that offers something different from its committed `surface.jadpo_record`";
     INSTALL_YANKED: "install.yanked", area 14, Error, Human,
         "The release you asked for has been yanked, so it can't be newly installed";
+    LAYOUT_ASSET_UNREFERENCED: "layout.asset_unreferenced", area 1, Error, Agent,
+        "A file that isn't Jadpo sits in a code folder, and no declaration uses it";
     LAYOUT_CALL_DIRECTION: "layout.call_direction", area 1, Error, Human,
         "Code in `shared/` uses a declaration that belongs to one domain";
     LAYOUT_FILE_NAME_MISMATCH: "layout.file_name_mismatch", area 1, Error, Agent,

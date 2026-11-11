@@ -1942,9 +1942,16 @@ A domain's translations live in `domains/<domain>/translations/`, as its
 emails live in `emails/`. A message a second domain uses moves to
 `shared/translations/`, as anything two domains use does
 ([Sharing and promotion](01-project-layout-and-modules.md#sharing-and-promotion)).
-You move it by hand for now: `layout.promotion_required` doesn't cover
-messages yet, so another domain's call of a message is
-`visibility.private_cross_domain` until you do.
+Another domain may call a message only when it is `public`, as for a type;
+a call of a private one is `visibility.private_cross_domain`. Once a public
+message is called from a second domain it is `layout.promotion_required`,
+and its edit, applied by the editor or `jadpo fmt --layout`, makes the
+move: the type to `shared/translations/`, its wording out of each language
+file into the shared one of the same locale, its lines of
+`sources.jadpo_record` into the shared record, so each translation keeps
+what it was made from, and every call, in code, tests and email templates,
+to `translations.shared.<message>`. A message whose fields name one
+domain's type moves once that type has.
 
 The root `translations/` folder holds only your app's wording for text it
 didn't write: Jadpo's own ([Jadpo's and packages' text](#jadpos-and-packages-text))
@@ -3776,7 +3783,7 @@ is in [Personal data](15-personal-data.md#retention).
 | Library packages' translations | Built: a package's `translations/`, `Postcodes.translations.<message>(...)`, the root file's package groups and their record lines, and a package's messages in its surface and the publishing bar. |
 | Locale data a deployable carries | Built: its supported locales' only, with the text a `Locale` the app doesn't support is written in (see [Locales](#locales)). |
 | Unaccepted wording in the approval report | Built: [`jadpo approval`](17-debugging-and-review.md#wording-not-yet-accepted) lists it, as `jadpo translations missing` does. |
-| Moving a message to `shared/translations/` | Not built yet as a promotion: `layout.promotion_required` doesn't cover messages, so move the message by hand. |
+| Moving a message to `shared/translations/` | Built: `layout.promotion_required` for a public message a second domain calls, whose edit moves its type, its wording, its record lines and its calls ([Where translations live](#where-translations-live)). |
 | Other members of `clock`, `translations`, `sessions` and `oauth` | Not built yet: a member these pages don't describe is `toolchain.not_built_yet` until its area is built. |
 
 ## Errors
