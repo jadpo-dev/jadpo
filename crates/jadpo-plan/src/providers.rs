@@ -255,10 +255,20 @@ pub(crate) fn plan(
                     number: number(TypeRef::Node(event.key.clone())),
                     // Answered by the app's action, its reply encoded with
                     // the package's type (chunk 7.7b).
-                    reply: event.reply.as_ref().and_then(|(reply, _, _)| {
+                    // A `File` it holds is sent as its bytes (chunk B14).
+                    reply: event.reply.as_ref().and_then(|(reply, _, canonical)| {
+                        let ty = TypeRef::Node(reply.clone());
+                        let sent = jadpo_check::types::holds_file(
+                            &lookup,
+                            &jadpo_check::types::Ty::Named(canonical.clone()),
+                        );
                         Some(WebhookReply {
                             action: route.answering(&event.key)?.as_str().to_string(),
-                            number: number(TypeRef::Node(reply.clone())),
+                            number: number(if sent {
+                                crate::routes::files_as_bytes(ty)
+                            } else {
+                                ty
+                            }),
                         })
                     }),
                 })
@@ -471,10 +481,15 @@ fn operation_plan(
     at: u32,
     keyed: bool,
 ) -> OperationPlan {
-    let input = operation
-        .input
-        .as_ref()
-        .map(|(ty, _)| number(jadpo_check::graph::type_ref(lookup, ty)));
+    // A `File` the input holds is sent as its bytes (chunk B14).
+    let input = operation.input.as_ref().map(|(ty, _)| {
+        let written = jadpo_check::graph::type_ref(lookup, ty);
+        number(if jadpo_check::types::holds_file(lookup, ty) {
+            crate::routes::files_as_bytes(written)
+        } else {
+            written
+        })
+    });
     let output = match &operation.output {
         jadpo_check::types::Ty::Prim(jadpo_check::types::Prim::Unit) => None,
         ty => Some(number(jadpo_check::graph::type_ref(lookup, ty))),

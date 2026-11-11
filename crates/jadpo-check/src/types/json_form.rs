@@ -27,6 +27,11 @@ pub(crate) enum JsonUse {
     /// its own may, and is made of `Object`s rather than a boundary's
     /// `Input` or `Output`.
     Store,
+    /// A field a person's export writes out (area 15, "Export"; chunk
+    /// B14): written as `json.write` writes, but for a `File`, however
+    /// deep, which goes out as its signed link, and an `ExportSummary`,
+    /// which holds one.
+    Export,
 }
 
 /// The first type inside `ty` that has no JSON form for `used`, with what
@@ -145,7 +150,11 @@ pub(crate) fn no_json_form(
                 // A batch run, kept in an entity field or saved with
                 // another run, is its type's JSON on the server (area 12);
                 // nothing of a batch crosses a boundary.
-                None if jadpo_std::batch::object_fields(name).is_some() => (used != JsonUse::Store)
+                // A person's export holds an `ExportSummary`, which holds
+                // the file it wrote, as it holds any file (chunk B14); a
+                // batch's other records stay out, as from a response.
+                None if jadpo_std::batch::object_fields(name).is_some() => (used != JsonUse::Store
+                    && (used != JsonUse::Export || !holds_kept_file(name)))
                     .then(|| {
                         (
                             found.to_string(),
@@ -157,7 +166,9 @@ pub(crate) fn no_json_form(
                 // run, is its type's JSON on the server (area 16, chunk
                 // 6.4b): a request sends a `FileUpload`, and an output a
                 // signed link.
-                None if name == jadpo_std::files::FILE => (used != JsonUse::Store).then(|| {
+                None if name == jadpo_std::files::FILE => (used != JsonUse::Store
+                    && used != JsonUse::Export)
+                    .then(|| {
                     (
                         found.to_string(),
                         "a stored file's, which the runtime keeps; a request sends a `FileUpload` and an output a signed link"
@@ -172,7 +183,9 @@ pub(crate) fn no_json_form(
                         "an upload's token, which only a request sends".to_string(),
                     )
                 }),
-                None if name == jadpo_std::files::UPLOAD_SLOT => (used != JsonUse::Write).then(|| {
+                None if name == jadpo_std::files::UPLOAD_SLOT => (used != JsonUse::Write
+                    && used != JsonUse::Export)
+                    .then(|| {
                     (
                         found.to_string(),
                         "where an upload goes, which only an answer sends".to_string(),
@@ -243,6 +256,16 @@ fn fields_base(base: FieldsBase, used: JsonUse) -> &'static str {
         }
         FieldsBase::Object | FieldsBase::Input | FieldsBase::Output => "an object",
     }
+}
+
+/// Whether the batch record called `name` keeps a `File`: an
+/// `ExportSummary`, which holds the file it wrote.
+fn holds_kept_file(name: &str) -> bool {
+    jadpo_std::batch::object_fields(name).is_some_and(|fields| {
+        fields
+            .iter()
+            .any(|(_, part)| matches!(part, jadpo_std::batch::Part::Kept(jadpo_std::files::FILE)))
+    })
 }
 
 /// The type as written when it is a `PasswordHash` or built on one.

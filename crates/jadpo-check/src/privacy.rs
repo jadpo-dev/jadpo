@@ -631,30 +631,23 @@ pub fn request_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let mail = mail(db, project);
     out.extend(mail.problems.iter().cloned());
     // What a request can't carry out in full, refused where it is turned
-    // on, as `User.erase` and `User.export` are where they are written.
-    if let Some(erasure) = crate::erasure::erasures(db, project)
+    // on, as `User.erase` is where it is written.
+    if let Some(first) = crate::erasure::erasures(db, project)
         .people
         .get(&user.entity)
+        .and_then(|erasure| erasure.unbuilt.first())
     {
-        let mut unbuilt = |first: &str, what: &str| {
-            out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("A data request can't {what} a `{}` yet", user.entity),
-                )
-                .at(span.clone(), "decided, not built")
-                .reason(format!(
-                    "{first}, which a data request can't do in full yet: accepted, the person would be told it was done while data of theirs remained."
-                ))
-                .next("Remove `privacy:` for now, or take the field out of what the person's records reach"),
-            );
-        };
-        if let Some(first) = erasure.unbuilt.first() {
-            unbuilt(first, "erase");
-        }
-        if let Some(first) = erasure.export_unbuilt.first() {
-            unbuilt(first, "export");
-        }
+        out.push(
+            Diagnostic::new(
+                &rule::TOOLCHAIN_NOT_BUILT_YET,
+                format!("A data request can't erase a `{}` yet", user.entity),
+            )
+            .at(span.clone(), "decided, not built")
+            .reason(format!(
+                "{first}, which a data request can't do in full yet: accepted, the person would be told it was done while data of theirs remained."
+            ))
+            .next("Remove `privacy:` for now, or take the field out of what the person's records reach"),
+        );
     }
     if !found.log_written {
         out.push(

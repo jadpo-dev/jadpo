@@ -875,24 +875,6 @@ impl Body<'_> {
                 .edit(removal, ""),
             );
         }
-        // What isn't built yet, refused where the export is written.
-        let unbuilt = self
-            .writes
-            .erasure(entity)
-            .and_then(|erasure| erasure.export_unbuilt.first().cloned());
-        if let Some(first) = unbuilt {
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("Exporting a `{entity}` here isn't built yet"),
-                )
-                .at(head_span.clone(), "decided, not built")
-                .reason(format!(
-                    "{first}, and a `File` inside a structured value has no link to export it as yet: accepted, the export would leave out a file of theirs."
-                ))
-                .next(format!("Read the `{entity}`'s records with queries of your own for now")),
-            );
-        }
         Ty::Opaque(
             jadpo_std::erasure::PERSONAL_DATA_EXPORT.to_string(),
             Vec::new(),

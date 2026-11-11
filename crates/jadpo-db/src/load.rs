@@ -496,6 +496,17 @@ impl Loaded {
         self.apply(path, Role::Record, text.map(Ok));
     }
 
+    /// Whether the project holds the file at `path` that is neither source
+    /// nor a record, such as a README in a domain, as a command that moves
+    /// it sees it before it moves the file. A path of another role is left
+    /// alone.
+    pub fn set_other(&mut self, path: &str, present: bool) {
+        if role(path, self.project.layout(&self.db)) != Some(Role::Other) {
+            return;
+        }
+        self.apply(path, Role::Other, present.then(|| Ok(String::new())));
+    }
+
     /// Reads `path` from disk again: its text now, or its removal when it
     /// is gone or unreadable.
     pub fn reload(&mut self, path: &str) {

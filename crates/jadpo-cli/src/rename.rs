@@ -90,8 +90,8 @@ pub fn rename(call: &Call) -> Reply {
     {
         return Reply::failed(not_renamed(
             format!("`{name}` is a domain"),
-            "A domain's name is its folder's, and renaming one moves the folder and every `use` line that names it: that is `jadpo domain rename`'s, which isn't built yet.".to_string(),
-            "Rename what the domain declares with `jadpo rename <name> <new-name>`",
+            "A domain's name is its folder's, and renaming one moves the folder and every call into it, which `jadpo domain rename` does.".to_string(),
+            &format!("Run `jadpo domain rename {name} {new}`"),
         ));
     }
     let id = match crate::inspect::resolve(

@@ -78,6 +78,23 @@ pub const DUE: &str = "WITH \"due\" AS (SELECT \"store\", \"key\" FROM \"jadpo_f
 /// A file's bytes recorded gone once its store confirmed deleting them.
 pub const GONE: &str = "UPDATE \"jadpo_files\" SET \"holders\" = -2 WHERE \"store\" = $1 AND \"key\" = $2 AND \"holders\" = -1";
 
+/// A file marked as being deleted at `$3` in one of several databases
+/// counting its store's files (chunk B14), as long as none of this
+/// database's records holds it: `RETURNING` a row only when it was
+/// marked. A row it had none of is made, so no record here may hold it
+/// from then on.
+pub const MARK: &str = "INSERT INTO \"jadpo_files\" (\"store\", \"key\", \"holders\", \"since\") VALUES ($1, $2, -1, $3) ON CONFLICT (\"store\", \"key\") DO UPDATE SET \"holders\" = -1, \"since\" = $3 WHERE \"jadpo_files\".\"holders\" IN (0, -1) RETURNING 1";
+
+/// How many of a database's records hold a file, or that its bytes are
+/// being deleted (`-1`) or gone (`-2`).
+pub const HOLDERS: &str =
+    "SELECT \"holders\" FROM \"jadpo_files\" WHERE \"store\" = $1 AND \"key\" = $2";
+
+/// A mark [`MARK`] made taken back, as another database's records still
+/// hold the file: the row goes, as one no record here holds.
+pub const UNMARK: &str =
+    "DELETE FROM \"jadpo_files\" WHERE \"store\" = $1 AND \"key\" = $2 AND \"holders\" = -1";
+
 /// The most bytes one read asks a store for: a page of rows is read in
 /// windows of this size until it holds its rows (chunk 6.4b).
 pub const WINDOW: u64 = 1 << 20;
@@ -631,6 +648,139 @@ pub(crate) async fn released(
     Ok(released_events(&mut named(rows)))
 }
 
+/// Whether a file's bytes may be deleted now, as its subscriber is about
+/// to (chunk B14).
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Decided {
+    /// No database's records hold it, and none may from now on.
+    Delete,
+    /// Another database's records still hold it: its mark here is taken
+    /// back, and that database deletes the bytes once its records let go.
+    Held,
+}
+
+/// Decides whether the bytes of `key` in store of files `connection` may
+/// be deleted, when fields in entities of several databases name the
+/// store (area 16, "Deleting and erasing"; chunk B14). Each database is
+/// marked as deleting the file, which refuses any record there holding
+/// it from then on, unless one of its records already does: then every
+/// database's mark is taken back, any another commit left included, and
+/// the bytes stay; whichever database lets go last decides again. The
+/// first database's mark
+/// is held in a transaction until the others are done, so two deletions
+/// of one file are decided one at a time. With one database, the commit
+/// that let go of the file marked it already.
+pub(crate) async fn decide(
+    ctx: &Ctx<'_>,
+    connection: &str,
+    key: &str,
+    now: i64,
+) -> Result<Decided, StoreError> {
+    let counting = ctx.started().files().counting(connection).to_vec();
+    let Some((first, rest)) = counting.split_first() else {
+        return Ok(Decided::Delete);
+    };
+    if rest.is_empty() {
+        return Ok(Decided::Delete);
+    }
+    let database = |store: &str| {
+        ctx.capabilities()
+            .database(store)
+            .ok_or_else(|| StoreError::Fault(format!("no store called `{store}`")))
+    };
+    let named = [
+        SqlValue::Text(connection.to_string()),
+        SqlValue::Text(key.to_string()),
+    ];
+    let marking = [named[0].clone(), named[1].clone(), micros(now)];
+    // Whether a database's records hold the file, once a mark finds them
+    // doing so; a file gone already is deleted again, which does nothing.
+    let held = |rows: &[crate::Row]| {
+        rows.first()
+            .and_then(|row| row.first())
+            .is_some_and(|holders| matches!(holders, SqlValue::Int4(n) if *n > 0))
+    };
+    let mut lead = database(first)?.begin_at(Isolation::ReadCommitted).await?;
+    let marked = match lead.query(MARK, &marking).await {
+        Ok(rows) => rows,
+        Err(error) => {
+            let _ = lead.rollback().await;
+            return Err(error);
+        }
+    };
+    let mut decided = Decided::Delete;
+    if marked.is_empty() {
+        match lead.query(HOLDERS, &named).await {
+            Ok(rows) if held(&rows) => decided = Decided::Held,
+            Ok(_) => {}
+            Err(error) => {
+                let _ = lead.rollback().await;
+                return Err(error);
+            }
+        }
+    }
+    for store in rest {
+        if decided == Decided::Held {
+            break;
+        }
+        let found = async {
+            let other = database(store)?;
+            if !other.query_once(MARK, &marking).await?.is_empty() {
+                return Ok(false);
+            }
+            Ok::<bool, StoreError>(held(&other.query_once(HOLDERS, &named).await?))
+        }
+        .await;
+        match found {
+            Ok(false) => {}
+            Ok(true) => decided = Decided::Held,
+            Err(error) => {
+                // Each mark made stays: a later attempt marks them again.
+                let _ = lead.rollback().await;
+                return Err(error);
+            }
+        }
+    }
+    // Every mark taken back, those made here and any a commit left in
+    // another database: its own delivery decides again, after this one.
+    if decided == Decided::Held {
+        for store in rest {
+            if let Err(error) = database(store)?.query_once(UNMARK, &named).await {
+                let _ = lead.rollback().await;
+                return Err(error);
+            }
+        }
+        if let Err(error) = lead.query(UNMARK, &named).await {
+            let _ = lead.rollback().await;
+            return Err(error);
+        }
+    }
+    lead.commit().await?;
+    Ok(decided)
+}
+
+/// Records the bytes of `key` in `connection` gone in every database
+/// counting its files, once its store confirmed deleting them, so none
+/// of their records may hold it again.
+pub(crate) async fn record_gone(
+    ctx: &Ctx<'_>,
+    connection: &str,
+    key: &str,
+) -> Result<(), StoreError> {
+    let named = [
+        SqlValue::Text(connection.to_string()),
+        SqlValue::Text(key.to_string()),
+    ];
+    for store in ctx.started().files().counting(connection) {
+        let database = ctx
+            .capabilities()
+            .database(store)
+            .ok_or_else(|| StoreError::Fault(format!("no store called `{store}`")))?;
+        database.query_once(GONE, &named).await?;
+    }
+    Ok(())
+}
+
 /// What a tick's sweep of the records of held files did.
 #[derive(Debug, Default)]
 pub struct Sweep {
@@ -650,11 +800,8 @@ pub async fn sweep(executor: &dyn Executor, budget: &crate::budget::Budget<'_>, 
     let Some(events) = executor.plan().events() else {
         return out;
     };
-    let mut counters: Vec<&String> = events.plan.files.counters.values().collect();
-    counters.sort();
-    counters.dedup();
     let host = budget.host();
-    for counter in counters {
+    for counter in events.plan.files.stores() {
         if budget.spent() {
             break;
         }
@@ -667,7 +814,7 @@ pub async fn sweep(executor: &dyn Executor, budget: &crate::budget::Budget<'_>, 
                         .push(crate::runner::Deferred::Deliveries(deliveries));
                 }
             }
-            Err(error) => out.problems.push((counter.clone(), error)),
+            Err(error) => out.problems.push((counter.to_string(), error)),
         }
     }
     out
@@ -962,6 +1109,101 @@ pub async fn read_whole(ctx: &mut Ctx<'_>, file: &Value) -> Done {
         }
     }
     Done::Value(Value::Bytes(Rc::from(bytes)))
+}
+
+/// Whether `value` holds a stored `File`, however deep.
+pub(crate) fn holds_stored(value: &Value) -> bool {
+    let mut found = Vec::new();
+    stored_in(value, &mut found);
+    !found.is_empty()
+}
+
+/// Each stored `File` `value` holds, however deep, in the order it holds
+/// them, once each: a record's and a variant's fields, a list's, a set's
+/// and a map's values.
+fn stored_in(value: &Value, out: &mut Vec<Value>) {
+    match value {
+        Value::Record(record) if &*record.ty == jadpo_std::files::FILE => {
+            if !out.contains(value) {
+                out.push(value.clone());
+            }
+        }
+        Value::Record(record) => record
+            .fields
+            .iter()
+            .for_each(|(_, field)| stored_in(field, out)),
+        Value::Variant(variant) => variant
+            .fields
+            .iter()
+            .for_each(|(_, field)| stored_in(field, out)),
+        Value::List(items) | Value::Set(items) => {
+            items.iter().for_each(|item| stored_in(item, out))
+        }
+        Value::Map(map) => map.values().for_each(|item| stored_in(item, out)),
+        _ => {}
+    }
+}
+
+/// `value` with each `File` among `read` in its place as the bytes given
+/// with it.
+fn with_read(value: &Value, read: &[(Value, Value)]) -> Value {
+    match value {
+        Value::Record(record) if &*record.ty == jadpo_std::files::FILE => read
+            .iter()
+            .find(|(file, _)| file == value)
+            .map_or_else(|| value.clone(), |(_, bytes)| bytes.clone()),
+        Value::Record(record) => {
+            let mut out = (**record).clone();
+            out.fields = record
+                .fields
+                .iter()
+                .map(|(name, field)| (name.clone(), with_read(field, read)))
+                .collect();
+            Value::Record(Rc::new(out))
+        }
+        Value::Variant(variant) => {
+            let mut out = (**variant).clone();
+            out.fields = variant
+                .fields
+                .iter()
+                .map(|(name, field)| (name.clone(), with_read(field, read)))
+                .collect();
+            Value::Variant(Rc::new(out))
+        }
+        Value::List(items) => Value::List(items.iter().map(|item| with_read(item, read)).collect()),
+        // A set's order is its values', so bytes in place of files are
+        // put in order again.
+        Value::Set(items) => {
+            let mut out: Vec<Value> = items.iter().map(|item| with_read(item, read)).collect();
+            out.sort();
+            out.dedup();
+            Value::Set(out.into())
+        }
+        Value::Map(map) => Value::Map(Rc::new(
+            map.iter()
+                .map(|(key, item)| (key.clone(), with_read(item, read)))
+                .collect(),
+        )),
+        other => other.clone(),
+    }
+}
+
+/// `value` with each stored `File` it holds, however deep, as its bytes,
+/// each read whole from its store as `store.read` reads it: what an
+/// operation's `input:` and a webhook's `reply:` send (area 11, "Types";
+/// chunk B14). A file over [`WHOLE_READ_LIMIT`], or whose bytes are gone,
+/// is a fault, as it is for `store.read`.
+pub(crate) async fn with_bytes(ctx: &mut Ctx<'_>, value: &Value) -> Done {
+    let mut files = Vec::new();
+    stored_in(value, &mut files);
+    let mut read = Vec::with_capacity(files.len());
+    for file in files {
+        match Box::pin(read_whole(ctx, &file)).await {
+            Done::Value(bytes) => read.push((file, bytes)),
+            other => return other,
+        }
+    }
+    Done::Value(with_read(value, &read))
 }
 
 /// The `files` capability in memory (area 13, "Provider calls and

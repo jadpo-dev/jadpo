@@ -29,6 +29,7 @@ pub mod databases;
 pub mod declines;
 pub mod deployables;
 pub mod disk;
+pub mod domain_move;
 pub mod emails;
 pub mod erasure;
 pub mod events;
@@ -409,7 +410,6 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(personal_reads::unread_problems(db, project).iter().cloned());
         out.extend(disk::disk_problems(db, project).iter().cloned());
         out.extend(thresholds::problems(db, project));
-        out.extend(data::held::counting_problems(db, project).iter().cloned());
         out.extend(ai::ai_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(

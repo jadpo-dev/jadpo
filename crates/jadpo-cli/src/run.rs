@@ -743,9 +743,12 @@ fn dispatch(parsed: Parsed, env: &Environment) -> (Option<&'static str>, Reply) 
         };
         return (Some("help"), help::command(target));
     }
-    // `jadpo package search <words>` takes as many words as it is given.
-    let any_words =
-        command.name == "package" && parsed.arguments.first().map(String::as_str) == Some("search");
+    // `jadpo package search <words>` takes as many words as it is given,
+    // and `jadpo domain split` as many declarations.
+    let any_words = (command.name == "package"
+        && parsed.arguments.first().map(String::as_str) == Some("search"))
+        || (command.name == "domain"
+            && parsed.arguments.first().map(String::as_str) == Some("split"));
     // `jadpo dev` answers a word it doesn't have itself, however many follow
     // it: what would be kept of them here is no command.
     let unknown_dev_word =

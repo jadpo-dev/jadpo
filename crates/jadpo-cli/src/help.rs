@@ -279,6 +279,7 @@ fn argument_row(argument: &Argument) -> Row {
         | Values::Deployable
         | Values::Flag
         | Values::Declaration
+        | Values::Domain
         | Values::Id => row,
     }
 }
@@ -330,6 +331,7 @@ fn argument_json(argument: &Argument) -> Json {
         Values::Deployable => ("deployable", Json::array(Vec::<Json>::new())),
         Values::Flag => ("flag", Json::array(Vec::<Json>::new())),
         Values::Declaration => ("declaration", Json::array(Vec::<Json>::new())),
+        Values::Domain => ("domain", Json::array(Vec::<Json>::new())),
         Values::Id => ("id", Json::array(Vec::<Json>::new())),
     };
     Json::object([

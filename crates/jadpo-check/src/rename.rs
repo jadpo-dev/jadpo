@@ -766,7 +766,7 @@ fn kept(db: &dyn Db, project: Project, node: &Node, owner: Option<&Node>) -> Opt
 }
 
 /// Each error's rule and headline, counted.
-fn headlines(problems: &[Diagnostic]) -> BTreeMap<(String, String), usize> {
+pub(crate) fn headlines(problems: &[Diagnostic]) -> BTreeMap<(String, String), usize> {
     let mut out: BTreeMap<(String, String), usize> = BTreeMap::new();
     for problem in problems {
         *out.entry((problem.rule.id.to_string(), problem.message.clone()))
@@ -782,11 +782,7 @@ fn headlines(problems: &[Diagnostic]) -> BTreeMap<(String, String), usize> {
 pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Renamed, Stopped> {
     let project = loaded.project;
     let before_errors = headlines(&crate::check(&loaded.db, project));
-    let before_records: BTreeMap<String, crate::records::State> =
-        crate::records::standings(&loaded.db, project)
-            .iter()
-            .map(|standing| (standing.path.clone(), standing.state))
-            .collect();
+    let before_records = record_states(&loaded.db, project);
     let text_of =
         |loaded: &Loaded, path: &str| loaded.file(path).map(|file| file.text(&loaded.db).clone());
     let mut paths: BTreeSet<String> = plan.edits.keys().cloned().collect();
@@ -831,70 +827,23 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Renamed, Stopped> {
     }
 
     // 3. Formatted as the files were.
-    let layout_project = project.layout(&loaded.db) == jadpo_db::Layout::Project;
     let moved_from: BTreeMap<&str, &str> = plan
         .moves
         .iter()
         .map(|(from, to)| (to.as_str(), from.as_str()))
         .collect();
-    for path in &present {
-        let Some(after) = text_of(loaded, path) else {
-            continue;
-        };
-        let was = match moved_from.get(path.as_str()) {
-            Some(from) => before.get(*from).cloned().flatten(),
-            None => before.get(path).cloned().flatten(),
-        };
-        let canonical = |text: &str| crate::setting_move::canonical(path, text, layout_project);
-        let formatted = match &was {
-            Some(was) => canonical(was).as_deref() == Some(was.as_str()),
-            None => true,
-        };
-        if formatted && let Some(text) = canonical(&after) {
-            loaded.set_text(path, text);
-        }
-    }
+    format_as_before(loaded, &present, &before, &moved_from);
 
     // 4. The registry, then each record the rename put out of date.
     loaded.set_record(
         jadpo_db::IDENTITIES,
         Some(jadpo_db::write_identities(&plan.lines)),
     );
-    let mut rewritten: Vec<String> = Vec::new();
-    let standings: Vec<crate::records::Standing> =
-        crate::records::standings(&loaded.db, project).to_vec();
-    for standing in standings {
-        if standing.path == jadpo_db::IDENTITIES
-            || !standing.state.is_problem()
-            || before_records
-                .get(&standing.path)
-                .is_some_and(|state| state.is_problem())
-        {
-            continue;
-        }
-        for (path, fix) in &standing.fixes {
-            records_before
-                .entry(path.clone())
-                .or_insert_with(|| loaded.record(path));
-            match fix {
-                crate::records::Fix::Write(text) => loaded.set_record(path, Some(text.clone())),
-                crate::records::Fix::Remove => loaded.set_record(path, None),
-            }
-            rewritten.push(path.clone());
-        }
-    }
+    let rewritten = rewrite_records(loaded, &before_records, &mut records_before);
 
     // 5. Checked: a rename never adds an error.
     let problems = crate::check(&loaded.db, project);
-    let mut had = before_errors;
-    let mut added: Vec<Diagnostic> = Vec::new();
-    for problem in &problems {
-        let key = (problem.rule.id.to_string(), problem.message.clone());
-        match had.get_mut(&key) {
-            Some(count) if *count > 0 => *count -= 1,
-            _ => added.push(problem.clone()),
-        }
-    }
+    let added = added_errors(before_errors, &problems);
     let after: BTreeMap<String, Option<String>> = paths
         .iter()
         .map(|path| (path.clone(), text_of(loaded, path)))
@@ -1020,6 +969,98 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Renamed, Stopped> {
         errors_left: problems.len(),
         records,
     })
+}
+
+/// Each record's state, by path, to tell a record a change puts out of
+/// date from one that already was.
+pub(crate) fn record_states(
+    db: &dyn Db,
+    project: Project,
+) -> BTreeMap<String, crate::records::State> {
+    crate::records::standings(db, project)
+        .iter()
+        .map(|standing| (standing.path.clone(), standing.state))
+        .collect()
+}
+
+/// Formats each of `present` that was formatted before the change, as
+/// `jadpo fmt` would; `moved_from` gives a moved file's path before, so its
+/// old text says whether it was.
+pub(crate) fn format_as_before(
+    loaded: &mut Loaded,
+    present: &[String],
+    before: &BTreeMap<String, Option<String>>,
+    moved_from: &BTreeMap<&str, &str>,
+) {
+    let layout_project = loaded.project.layout(&loaded.db) == jadpo_db::Layout::Project;
+    for path in present {
+        let Some(after) = loaded.file(path).map(|file| file.text(&loaded.db).clone()) else {
+            continue;
+        };
+        let was = match moved_from.get(path.as_str()) {
+            Some(from) => before.get(*from).cloned().flatten(),
+            None => before.get(path).cloned().flatten(),
+        };
+        let canonical = |text: &str| crate::setting_move::canonical(path, text, layout_project);
+        let formatted = match &was {
+            Some(was) => canonical(was).as_deref() == Some(was.as_str()),
+            None => true,
+        };
+        if formatted && let Some(text) = canonical(&after) {
+            loaded.set_text(path, text);
+        }
+    }
+}
+
+/// Writes again each record, other than the registry, that the change put
+/// out of date, as `jadpo records update` writes it, keeping each one's
+/// text before in `records_before`; the paths it wrote.
+pub(crate) fn rewrite_records(
+    loaded: &mut Loaded,
+    before_records: &BTreeMap<String, crate::records::State>,
+    records_before: &mut BTreeMap<String, Option<String>>,
+) -> Vec<String> {
+    let mut rewritten: Vec<String> = Vec::new();
+    let standings: Vec<crate::records::Standing> =
+        crate::records::standings(&loaded.db, loaded.project).to_vec();
+    for standing in standings {
+        if standing.path == jadpo_db::IDENTITIES
+            || !standing.state.is_problem()
+            || before_records
+                .get(&standing.path)
+                .is_some_and(|state| state.is_problem())
+        {
+            continue;
+        }
+        for (path, fix) in &standing.fixes {
+            records_before
+                .entry(path.clone())
+                .or_insert_with(|| loaded.record(path));
+            match fix {
+                crate::records::Fix::Write(text) => loaded.set_record(path, Some(text.clone())),
+                crate::records::Fix::Remove => loaded.set_record(path, None),
+            }
+            rewritten.push(path.clone());
+        }
+    }
+    rewritten
+}
+
+/// The errors of `problems` the project didn't have, by rule and headline,
+/// counting each the project had as many times as it had it.
+pub(crate) fn added_errors(
+    mut had: BTreeMap<(String, String), usize>,
+    problems: &[Diagnostic],
+) -> Vec<Diagnostic> {
+    let mut added: Vec<Diagnostic> = Vec::new();
+    for problem in problems {
+        let key = (problem.rule.id.to_string(), problem.message.clone());
+        match had.get_mut(&key) {
+            Some(count) if *count > 0 => *count -= 1,
+            _ => added.push(problem.clone()),
+        }
+    }
+    added
 }
 
 /// Puts back the texts and records [`apply`] changed, for the editor,
