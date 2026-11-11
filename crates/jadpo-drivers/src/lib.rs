@@ -19,6 +19,9 @@
 //! - [`s3`]: the S3 driver, behind the `package` feature: the `files`
 //!   capability over the same [`package::Fetch`], signed with AWS
 //!   Signature Version 4, natively and on Workers.
+//! - [`webhook`]: the webhook driver, behind the `package` feature: the
+//!   `publishing` capability, each chosen event posted to one address over
+//!   the same [`package::Fetch`], signed as Standard Webhooks signs.
 //! - [`factory`]: each connection's driver built from the plan's
 //!   connections table and what the program started with, over what the
 //!   host supplies (chunk 8.1d).
@@ -50,5 +53,7 @@ pub mod s3;
 #[cfg(feature = "smtp")]
 pub mod smtp;
 mod transport;
+#[cfg(feature = "package")]
+pub mod webhook;
 
 pub use transport::{Endpoint, Stream, Transport, Trust, within};

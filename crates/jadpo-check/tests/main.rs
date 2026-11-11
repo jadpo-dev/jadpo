@@ -100,6 +100,7 @@ mod project;
 mod prompt_policy;
 mod prompts;
 mod providers;
+mod publishing_events;
 mod quantities;
 mod randomness;
 mod read_only_get;

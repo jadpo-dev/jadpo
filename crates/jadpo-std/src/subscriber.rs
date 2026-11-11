@@ -116,6 +116,7 @@ impl SubscriberPlan {
         match &self.target {
             Target::Capability { connection, .. }
             | Target::Email { connection }
+            | Target::Publish { connection, .. }
             | Target::Files { connection } => {
                 vec![connection.clone()]
             }
@@ -177,6 +178,15 @@ pub enum Target {
     /// plan is [`crate::email::EmailsPlan::email`] of the subscriber's
     /// event. Sent with no key, as SMTP and the mail APIs take none.
     Email { connection: String },
+    /// An event published outward through `connection`, a
+    /// `Driver.webhook` connection `application { publishing: }` chooses
+    /// it for (area 12, "Where events travel"): its delivery posts the
+    /// event to the connection's address under its `type_name`, signed,
+    /// with its id, which every attempt sends again.
+    Publish {
+        connection: String,
+        type_name: String,
+    },
     /// A file's bytes deleted from the store of files `connection` once
     /// no record holds it (area 16, "Deleting and erasing"; chunk B3):
     /// the event is [`crate::files::FILE_RELEASED`], and its delivery

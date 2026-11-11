@@ -1854,6 +1854,7 @@ impl Walk<'_> {
                         let event = event.clone();
                         if self.personal {
                             self.emailed(flow, &event, &prov);
+                            self.published(flow, &event, &prov);
                         }
                         self.event_tenant(flow, &event, value, &prov);
                         self.emitted(flow, &event, prov);

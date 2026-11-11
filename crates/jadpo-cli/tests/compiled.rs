@@ -758,6 +758,10 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             .expect("it checks"),
         ),
         (
+            "an event published outward".into(),
+            corpus_project(&crate::publishing::files(), "compiled-publishing").expect("it checks"),
+        ),
+        (
             "a file's bytes deleted".into(),
             corpus_project(&crate::file_deletes::files(), "compiled-file-deletes")
                 .expect("it checks"),

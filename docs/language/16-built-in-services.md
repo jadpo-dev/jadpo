@@ -41,7 +41,7 @@ capability the built-in services use, and the whole of its job:
 | `search` | Upsert, remove, and query by words with equality filters, returning ranked ids | PostgreSQL full-text search, built in; an engine's package |
 | `bot_check` | Check a token: pass or fail | A package (Turnstile, hCaptcha, reCAPTCHA) |
 | `scanning` | Scan an uploaded file: clean or infected | A ClamAV container package or a scanning API's package |
-| `publishing` | Deliver chosen events outward, and outgoing webhooks | Drivers and packages ([Where events travel](12-jobs-and-events.md#where-events-travel)) |
+| `publishing` | Deliver chosen events outward, and outgoing webhooks | `Driver.webhook`, one address; packages later ([Publishing events outward](12-jobs-and-events.md#publishing-events-outward)) |
 | `receiving` | Fetch messages from a queue, the inbound twin of `publishing` | Packages; a built-in driver for Cloudflare Queues on Workers ([Where events travel](12-jobs-and-events.md#where-events-travel)) |
 
 [Capabilities](11-integrations.md#capabilities) lists the others, such as
@@ -53,9 +53,10 @@ development, one fake for tests
 and a conformance suite that a package filling it must pass.
 
 The table gives each capability's whole job, and not all of it works yet.
-`documents`, `bot_check`, `scanning` and `publishing` aren't built, and `files`
-has only its disk driver, with signed links and single upload slots but no
-multipart ones ([What is built](#what-is-built)).
+`documents`, `bot_check` and `scanning` aren't built, `publishing` has only
+`Driver.webhook`, posting to one address, and `files` has only its disk
+driver, with signed links and single upload slots but no multipart ones
+([What is built](#what-is-built)).
 
 ## Feature flags
 <!-- topic: feature-flags -->
@@ -1726,17 +1727,33 @@ person, and who read sensitive fields, is kept as log events instead
 
 ### Sending audit entries elsewhere
 
-When something subscribes to the built-in `AuditEntryRecorded` event, each
-entry is also emitted as that event, in the same transaction, and travels
-through the outbox like any event
+When something subscribes to the built-in `AuditEntryRecorded` event, or
+`publishing:` lists it, each entry is also emitted as that event, in the
+same transaction, and travels through the outbox like any event
 ([Delivery: at least once, safe to repeat](12-jobs-and-events.md#delivery-at-least-once-safe-to-repeat)).
-A SIEM or log archive will receive it through `publishing`, which isn't built
-yet ([Where events travel](12-jobs-and-events.md#where-events-travel)). With
-nothing listening the event is never emitted. The database stays the record of
-truth; the event is a copy. It holds an entry's fields after `entity`,
-the entity's name, and `record_id`, the record's `id`. A subscriber to it
-when no entity is audited is
-[`subscriber.event_invalid`](../errors/subscriber.event_invalid.md).
+With nothing listening the event is never emitted. The database stays the
+record of truth; the event is a copy. It holds an entry's fields after
+`entity`, the entity's name, and `record_id`, the record's `id`. A
+subscriber to it when no entity is audited is
+[`subscriber.event_invalid`](../errors/subscriber.event_invalid.md), and
+listing it in `publishing:` then is
+[`publishing.invalid`](../errors/publishing.invalid.md).
+
+A SIEM or log archive receives each entry through `publishing`
+([Publishing events outward](12-jobs-and-events.md#publishing-events-outward)),
+posted to its address as `jadpo.AuditEntryRecorded`, signed and retried:
+
+```jadpo fragment
+    publishing: {
+        siem: {
+            events: [AuditEntryRecorded]
+        }
+    }
+```
+
+Its `data` is the entry's fields as JSON: `entity`, `record_id`, then
+`at` and every field of the entry, each time as RFC 3339 text and each
+enum as its value's name.
 
 A [sealed field](15-personal-data.md#encrypted-fields) is in a history as
 having changed, with no value before or after, so a history in clear holds
@@ -3931,9 +3948,17 @@ The exception is listed once in the network report
 else in your app, a package included, can reach an address that isn't a
 declared connection.
 
-Outgoing webhooks aren't built yet ([What is built](#what-is-built)), and nothing
-stands in for them: your app reaches only the connections it declares, so it
-can't send to an address a customer gives it. Receiving a webhook is built
+Publishing to one address the operator gives, a connection with `driver:
+Driver.webhook`, is built: each chosen event is posted to it, typed from the
+event, signed and retried
+([Publishing events outward](12-jobs-and-events.md#publishing-events-outward)).
+That address is a declared connection, listed in the network report as any
+connection is, so it needs no exception.
+
+Addresses your customers register aren't built yet
+([What is built](#what-is-built)), and nothing stands in for them: your app
+reaches only the connections it declares, so it can't send to an address a
+customer gives it. Receiving a webhook is built
 ([Receive a webhook](../guides/17-receive-a-webhook.md)).
 
 ## What isn't built in
@@ -3971,7 +3996,7 @@ This is why each is here and where you set it up.
 | Documents | Yes, through the `documents` capability | Templates typed and translated as email's; rendered in subscribers | `type X = Document` in `documents/`; a `documents:` connection in `app.jadpo` |
 | Search | Yes, through the `search` capability | Index, query and migration generated from one declaration; results always pass policy | `search:` section on an entity; PostgreSQL |
 | Bot protection | Yes, through the `bot_check` capability | Jadpo's own public endpoints need it; the token never enters a route's input | `bot_check:` in `application { }`, `bot_check: true` on a route or feature |
-| Outgoing webhooks | Yes | Payloads typed from events; signing and retries generated; one guarded network exception | Later, through `publishing` |
+| Outgoing webhooks | Yes | Payloads typed from events; signing and retries generated; one guarded network exception | `publishing:` in `application { }`, through a `Driver.webhook` connection; customers' addresses later |
 | Field encryption | Yes | Encrypted fields kept out of logs, indexes and filters | [Encrypted fields](15-personal-data.md#encrypted-fields) |
 | Realtime, admin screens, payments, CMS, analytics, quotas, media transformations | No, or later | The compiler gains little, or the feature is not a backend's | Not built in; media services (Cloudinary, Uploadcare) are ordinary packages |
 
@@ -5346,11 +5371,11 @@ The errors this page describes are built with the feature they belong to.
 | Outside calls | Built: the one place in the runtime every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([How every outside call is made safe](#how-every-outside-call-is-made-safe)). |
 | Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` and [`Driver.s3`](#the-s3-driver) connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included, a `File` inside a structured field held as a `File` field's is ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). A `File` an `Output` or a person's export reaches goes out as a signed link valid for five minutes, served from the disk with single ranges, `If-Range` and an ETag from the file's hash ([Downloading](#downloading)). A client's file reaches a store through a [slot](#uploading): `Entity.field_upload()`, the disk driver's upload address, and a `FileUpload` attached by an ordinary create or update. A test keeps a fixture file in its in-memory store with `fixture_file`, and tells the store to fail every call or every write ([Files](13-testing.md#files)). `jadpo files` lists a store's files on either driver, or `jadpo dev`'s copy, shows, gets and puts one, and copies every file and the erasure log from one store into another, a disk store's folder among them ([`jadpo files`](14-tooling.md#jadpo-files)). A `File` an operation's `input:` or a webhook's `reply:` holds is sent as its bytes ([What a `File` holds](#what-a-file-holds)), and fields in entities of two databases may name one store of files, each counting its own records' holders ([Deleting and erasing](#deleting-and-erasing)). Not built yet: multipart slots, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
 | Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flag rules: declaring, reading, testing](#flag-rules-declaring-reading-testing)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flag rules: changing, listing, removing](#flag-rules-changing-listing-removing)). A person's erasure takes their `id` out of `jadpo_flags` and `jadpo_flag_changes`, and `jadpo migrate new --drop jadpo_flags` drops both once the last flag has gone ([The log](#the-log), [Removing](#removing)). Not built yet: named tenants, which wait for tenancy to be settled for flags. |
-| Audit | Partly built: an entity's `audit:`, an entry in the same transaction as each change, `history` with the record's `read` grant and the fields the caller can read, retention by the purge schedule, entries deleted with their record by erasure, `AuditEntryRecorded` to subscribers, and the permissions report's line ([Audit trail](#audit-trail)). Not built yet: what [What the audit trail doesn't keep yet](#what-the-audit-trail-doesnt-keep-yet) lists, each `toolchain.not_built_yet` where it is written, and `publishing`, which comes with outgoing webhooks. |
+| Audit | Partly built: an entity's `audit:`, an entry in the same transaction as each change, `history` with the record's `read` grant and the fields the caller can read, retention by the purge schedule, entries deleted with their record by erasure, `AuditEntryRecorded` to subscribers and through `publishing` ([Sending audit entries elsewhere](#sending-audit-entries-elsewhere)), and the permissions report's line ([Audit trail](#audit-trail)). Not built yet: what [What the audit trail doesn't keep yet](#what-the-audit-trail-doesnt-keep-yet) lists, each `toolchain.not_built_yet` where it is written. |
 | Search | Partly built: on PostgreSQL, `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages. |
 | Documents | Not built yet: the application's `documents:` is `toolchain.not_built_yet` where it is written. |
 | Bot protection | Not built yet: the application's `bot_check:` and a route's are `toolchain.not_built_yet` where they are written. |
-| Outgoing webhooks | Not built yet. |
+| Outgoing webhooks | Partly built: chosen events posted to one address, a `Driver.webhook` connection, signed as Standard Webhooks signs and retried ([Outgoing webhooks](#outgoing-webhooks)). Not built yet: addresses customers register, and the network exception that guards them. |
 | The `telemetry:` section | Not built yet: it is `toolchain.not_built_yet` where it is written. Nor is telemetry in the developer console, or `jadpo traces`, `jadpo metrics` and `jadpo logs`, which read it in development. |
 | Path IDs | Not built yet for requests. Each body's ways are numbered, and the gate compares the paths each test's bodies took when it runs them interpreted and compiled, but no request carries a `path` or a `path_key`, and `jadpo path` isn't built. |
 | Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([What Jadpo generates from thresholds](#what-jadpo-generates-from-thresholds)). A route's, action's, schedule's or subscriber's most queries per request, where its `queries:` starts, in the query report. Not built yet: acting on the per-request limits, which comes with the `telemetry:` section, starting values from production, and an agent's proposals through MCP. |

@@ -410,6 +410,41 @@ fn variant(ty: &str, name: &str) -> Value {
     Value::variant(ty, ordinal, name, Vec::new())
 }
 
+/// An `AuditEntryRecorded`'s fields as the contract's JSON, as a
+/// connection `publishing:` lists it for posts it (area 16, "Sending audit
+/// entries elsewhere"): its entity and record, then the entry's fields in
+/// `AuditEntry`'s order, each time as RFC 3339 text and each enum as its
+/// value's name. `None` for anything else.
+pub(crate) fn published_data(value: &Value) -> Option<String> {
+    fn json(value: &Value) -> Option<serde_json::Value> {
+        Some(match value {
+            Value::None | Value::Unit => serde_json::Value::Null,
+            Value::Text(text) | Value::Uuid(text) => serde_json::Value::String(text.to_string()),
+            Value::Instant(at) => serde_json::Value::String(jadpo_std::format_instant(*at)),
+            Value::Variant(variant) if variant.fields.is_empty() => {
+                serde_json::Value::String(variant.name.to_string())
+            }
+            Value::List(items) => {
+                serde_json::Value::Array(items.iter().map(json).collect::<Option<Vec<_>>>()?)
+            }
+            Value::Record(record) => serde_json::Value::Object(
+                record
+                    .fields
+                    .iter()
+                    .map(|(name, field)| Some((name.to_string(), json(field)?)))
+                    .collect::<Option<serde_json::Map<_, _>>>()?,
+            ),
+            _ => return None,
+        })
+    }
+    match value {
+        Value::Record(record) if &*record.ty == jadpo_std::audit::AUDIT_ENTRY_RECORDED => {
+            json(value).map(|json| json.to_string())
+        }
+        _ => None,
+    }
+}
+
 /// The value of an `AuditEntryRecorded` from its outbox payload, as the
 /// sweep reads a delivery back; `None` when `key` isn't its.
 pub(crate) fn read_payload(key: &str, payload: &str) -> Option<Result<Value, String>> {
@@ -593,6 +628,47 @@ fn entry_of(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An entry published outward is its fields as the contract's JSON:
+    /// each time RFC 3339 text and each enum its value's name (area 16,
+    /// "Sending audit entries elsewhere").
+    #[test]
+    fn a_published_entry_is_its_fields_as_json() {
+        let entry = Entry {
+            at: 1_792_400_400_000,
+            change: AuditChange::Updated,
+            by: AuditBy::NoCaller,
+            user: None,
+            service: None,
+            action: Some("orders.ship".into()),
+            request: None,
+            trace: None,
+            fields: vec![("status".into(), Some("open".into()), Some("shipped".into()))],
+        };
+        let mut fields = vec![
+            (Rc::from("entity"), Value::text("Order")),
+            (
+                Rc::from("record_id"),
+                Value::uuid("0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d"),
+            ),
+        ];
+        fields.extend(entry.fields_of());
+        let value = Value::record(jadpo_std::audit::AUDIT_ENTRY_RECORDED, fields);
+        let data: serde_json::Value =
+            serde_json::from_str(&published_data(&value).expect("its data")).expect("JSON");
+        assert_eq!(data["entity"], "Order");
+        assert_eq!(data["record_id"], "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d");
+        assert_eq!(data["at"], "2026-10-19T09:00:00Z");
+        assert_eq!(data["change"], "updated");
+        assert_eq!(data["by"], "no_caller");
+        assert_eq!(data["user_id"], serde_json::Value::Null);
+        assert_eq!(data["action"], "orders.ship");
+        assert_eq!(
+            data["fields"],
+            serde_json::json!([{"field": "status", "before": "open", "after": "shipped"}])
+        );
+        assert_eq!(published_data(&Value::Unit), None);
+    }
 
     /// A field retired since an entry was written has no grant any more, so
     /// a caller is never given what the entry holds of it (chunk V3).

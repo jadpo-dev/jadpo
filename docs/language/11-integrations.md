@@ -361,10 +361,10 @@ deployable is a Worker. Neither is an image.
 ### What is built of these
 
 Of what this page describes, these aren't built yet: running a service in a
-container; the Redis driver; OAuth grants; the `cache`, `publishing`,
-`documents`, `bot_check` and `scanning` capabilities; an outside engine for
-`search`; importers other than `openapi`; and choosing
-a provider when deploying.
+container; the Redis driver; OAuth grants; the `cache`, `documents`,
+`bot_check` and `scanning` capabilities; `publishing` through anything but
+`Driver.webhook`; an outside engine for `search`; importers other than
+`openapi`; and choosing a provider when deploying.
 
 Of the built-in services, flags, rate limits, files, audit and search are
 partly built, email is built, and documents, bot protection and the
@@ -5854,7 +5854,7 @@ support can't arise.
 | `cache` | `caches:` ([Caches](05-data.md#caches)) | Redis (Upstash, Valkey and ElastiCache through it, on Workers too); in memory, a warning in production and an error on Workers | No |
 | `files` | `File` fields, `store.read` and `store.put` ([Files](16-built-in-services.md#files)) | Disk, native only, one server; S3 (R2, B2, MinIO and the rest through its settings) | Only one that does the whole job |
 | `email` | `type X = EmailMessage`, emitted, and Jadpo's own emails ([Email](16-built-in-services.md#email)) | SMTP; the local inbox | Yes |
-| `publishing` | Chosen public events sent outward after commit; outgoing webhooks | The local log; outgoing webhooks | Yes |
+| `publishing` | Chosen public events sent outward after commit; outgoing webhooks | `Driver.webhook`, one address; the local log in development and tests | Yes, later |
 | `receiving` | Queue messages arriving as events | Cloudflare Queues on Workers; Kafka later | Yes (SQS, Pub/Sub pull) |
 | `schedules` | `schedule` ([Schedules](12-jobs-and-events.md#schedules)) | Timer; Cloudflare cron; external tick | No |
 | `search` | `search:` on an entity ([Search](16-built-in-services.md#search)) | PostgreSQL full-text search, the default | Yes (hosted engines) |
@@ -5864,7 +5864,8 @@ support can't arise.
 | `ai` | Prompts and `ai.generate`, embeddings ([AI](21-ai.md)) | OpenAI-compatible servers, for local models | Yes (`provides/ai.jadpo`: Anthropic, OpenAI and the rest) |
 
 This table is the whole design. Built so far: `database` on PostgreSQL, `email`,
-`receiving`, `schedules`, `ai`, `files` on the disk and `search` on PostgreSQL.
+`receiving`, `schedules`, `ai`, `files` on the disk, `search` on PostgreSQL
+and `publishing` through `Driver.webhook`.
 The others aren't built yet ([What is built](#what-is-built)).
 
 Some things are not capabilities:
@@ -6083,7 +6084,8 @@ A target is where a deployable runs, natively or on Cloudflare Workers.
 Each driver and package says which targets it runs on, and `jadpo check`
 refuses a deployable that uses one elsewhere, naming what to use instead.
 
-- A package that calls an HTTP API runs on every target.
+- A package that calls an HTTP API runs on every target, and so does
+  `Driver.webhook`, which publishes events outward.
 - A service run by Jadpo, once built, runs only beside a native deployable, so
   on Workers its connection gives `host:`.
 - Cloudflare Workers can open TCP sockets but block port 25, so SMTP

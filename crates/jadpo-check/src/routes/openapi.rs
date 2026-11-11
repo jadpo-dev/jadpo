@@ -430,6 +430,10 @@ pub fn document(
         }
     }
 
+    // The public events the app publishes (area 7, "The `x-jadpo`
+    // fields"; area 12, "Where events travel"), each by the type it is
+    // named by outside, with its payload's schema.
+    let published = published_events(db, project, &wire, &mut refs);
     // Every object and enum the routes name, until none is new.
     let mut schemas: BTreeMap<String, Value> = BTreeMap::new();
     let mut done: BTreeSet<Key> = BTreeSet::new();
@@ -541,6 +545,42 @@ pub fn document(
         })
         .collect();
     out.set_some("tags", tags);
+    if let Some(published) = published {
+        out.set("x-jadpo-events", published);
+    }
+    Some(out)
+}
+
+/// `x-jadpo-events`: how each event the app publishes is signed, Standard
+/// Webhooks' scheme, and each one by the type it is named by outside,
+/// its payload's schema a component; `None` when the app publishes none.
+/// An audit entry, the runtime's own event, has no component of its own.
+fn published_events(
+    db: &dyn Db,
+    project: Project,
+    wire: &Wire<'_>,
+    refs: &mut BTreeSet<Key>,
+) -> Option<Value> {
+    let publishing = crate::published::publishing(db, project);
+    let mut events: BTreeMap<String, Value> = BTreeMap::new();
+    for event in publishing
+        .list
+        .iter()
+        .flat_map(|published| &published.events)
+    {
+        if event.key.as_str() == jadpo_std::audit::AUDIT_EVENT_KEY {
+            events.insert(event.type_name.clone(), Value::object());
+            continue;
+        }
+        refs.insert(event.key.clone());
+        events.insert(event.type_name.clone(), reference(&wire.name(&event.key)));
+    }
+    if events.is_empty() {
+        return None;
+    }
+    let mut out = Value::object();
+    out.set("signature", "standard_webhooks");
+    out.set("events", Value::Object(events));
     Some(out)
 }
 

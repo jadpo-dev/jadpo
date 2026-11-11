@@ -140,6 +140,7 @@ pub mod polls;
 #[cfg(feature = "testing")]
 pub mod prompt_recordings;
 pub mod provider;
+pub mod publishing;
 mod purge;
 mod race;
 mod ratelimit;

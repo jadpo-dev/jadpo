@@ -815,7 +815,7 @@ fn place_ok(text: &str) -> bool {
 
 /// The `wire_name:` the declaration `symbol` gives itself: `None` when it
 /// gives none, where it is written when it isn't text.
-fn wire_name_of(
+pub(crate) fn wire_name_of(
     db: &dyn Db,
     project: Project,
     symbol: &jadpo_db::Symbol,

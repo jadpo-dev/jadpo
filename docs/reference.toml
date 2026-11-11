@@ -643,7 +643,7 @@ topics = [
 [[group.page]]
 title = "Audit trail"
 status = ["16-built-in-services: Audit"]
-missing = "personal fields in a history, and more on its page; publishing"
+missing = "personal fields in a history, and more on its page"
 topics = [
   "audit-trail",
 ]
@@ -729,6 +729,7 @@ topics = [
 [[group.page]]
 title = "Outgoing webhooks"
 status = ["16-built-in-services: Outgoing webhooks"]
+missing = "addresses customers register"
 topics = [
   "outgoing-webhooks",
 ]

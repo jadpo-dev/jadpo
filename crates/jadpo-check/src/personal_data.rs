@@ -166,6 +166,7 @@ fn through_words(through: &Through) -> String {
         Through::Embedding => "a text sent for an embedding".to_string(),
         Through::Email(name) => format!("email `{name}`"),
         Through::Reply(name) => format!("the reply of `{name}`"),
+        Through::Published(name) => format!("published event `{name}`"),
         Through::Failure(name) => format!("failure field `{name}`"),
     }
 }
@@ -555,6 +556,7 @@ fn through_name(through: &Through) -> Option<&str> {
         | Through::Prompt(name)
         | Through::Email(name)
         | Through::Reply(name)
+        | Through::Published(name)
         | Through::Failure(name) => Some(name),
         Through::File | Through::Embedding => None,
     }
