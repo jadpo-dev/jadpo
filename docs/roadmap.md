@@ -268,10 +268,8 @@ work below (Richard, 2026-11-08).
      reports, `diagnostics/`, `inventory/`, `audit/` and `compatibility/`,
      `jadpo sql --explain`, and a threshold's starting values from the query
      report. Designed with the design skills first.
-   - [ ] **T5 The agent skill's last three parts** `opus · high` after A17:
-     area 14, "Tools for agents". Reading the catalogues and running `jadpo
-     impact` first, the parallel-workspace routine, and the rule for a fixed
-     value. Generated CI also belongs here, once a page says what generates it
+   - [ ] **T5 Generated CI** `opus · high` after L3: area 14, "Tools for
+     agents". Generated CI belongs here, once a page says what generates it
      (L3).
    - [ ] **T7 Records in the editor** `opus · high`: area 18, "Records in
      git and in your editor" and "What is built". `jadpo check` building
