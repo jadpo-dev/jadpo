@@ -2159,7 +2159,7 @@ pub static COMMANDS: &[Command] = &[
             },
             Example {
                 description: "Move one domain into another",
-                command: "jadpo domain merge reminders planning",
+                command: "jadpo domain merge notes planning",
             },
         ],
         arguments_rule: &rule::CLI_DOMAIN_ARGUMENTS,

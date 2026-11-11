@@ -1254,7 +1254,6 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Moved, Stopped> {
     // 4. Merged, what was offered to the other domain alone is offered to
     // no one, so it is no longer `public`.
     let mut before = before;
-    let mut paths = paths;
     let mut unpublic: BTreeMap<String, Vec<Row>> = BTreeMap::new();
     if let Move::Merge { into, .. } = &plan.what {
         let inside = folder(into);

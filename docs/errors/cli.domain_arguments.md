@@ -42,11 +42,15 @@ The folder, every call into the domain and its `use` lines take the new name, an
 jadpo domain split planning notes Note add_note all_notes list_notes
 ```
 
+The notes, their tests and their query move to the new domain together, so nothing that stays reaches them.
+
 **If a merge finds a name or a file in both domains**, rename one of the two first, then merge:
 
 ```sh
 jadpo rename reminders.TodoTitle ReminderTitle
 ```
+
+The type no longer shares its name with `planning`'s, so the merge can put both in one domain.
 
 ## Related
 
