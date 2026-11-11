@@ -376,7 +376,7 @@ fn a_name_it_cant_rename_is_refused_with_why() {
         ),
         (
             &["rename", "planning", "plans"],
-            "error: `planning` is a domain\n  reason: A domain's name is its folder's, and renaming one moves the folder and every `use` line that names it: that is `jadpo domain rename`'s, which isn't built yet.\n  next: Rename what the domain declares with `jadpo rename <name> <new-name>` (agent)\n",
+            "error: `planning` is a domain\n  reason: A domain's name is its folder's, and renaming one moves the folder and every call into it, which `jadpo domain rename` does.\n  next: Run `jadpo domain rename planning plans` (agent)\n",
         ),
         (
             &["rename", "TodoView", "Text"],
@@ -451,7 +451,12 @@ fn a_field_renamed_by_hand_is_pointed_at_the_command_that_keeps_its_column() {
 static SEED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// What `name` gives on the interpreter with `args`.
-fn interpreted(program: &Program, host: &Harness, name: &str, args: Vec<Value>) -> Value {
+pub(crate) fn interpreted(
+    program: &Program,
+    host: &Harness,
+    name: &str,
+    args: Vec<Value>,
+) -> Value {
     let runtime = jadpo_host_native::Runtime::new().expect("runtime");
     let id = program.plan().find(name).expect("the callable");
     let outcome = runtime.block_on(async {
@@ -471,7 +476,7 @@ fn interpreted(program: &Program, host: &Harness, name: &str, args: Vec<Value>) 
 /// The compiled executor on `program`'s plan, as generated code holds it:
 /// a query is read through the runtime's one read path from the plan's
 /// canonical bytes, which is all a compiled query's site calls.
-fn compiled(program: &Program) -> jadpo_runtime::compiled::Program {
+pub(crate) fn compiled(program: &Program) -> jadpo_runtime::compiled::Program {
     use jadpo_runtime::compiled::{Code, Shared};
     let bytes = program
         .plan()
@@ -490,7 +495,7 @@ fn compiled(program: &Program) -> jadpo_runtime::compiled::Program {
 }
 
 /// The project's one query, read on the compiled executor.
-fn compiled_query(program: &jadpo_runtime::compiled::Program, host: &Harness) -> Value {
+pub(crate) fn compiled_query(program: &jadpo_runtime::compiled::Program, host: &Harness) -> Value {
     let runtime = jadpo_host_native::Runtime::new().expect("runtime");
     assert_eq!(program.runtime().sites.queries.len(), 1);
     let ran = runtime.block_on(async {
@@ -505,7 +510,7 @@ fn compiled_query(program: &jadpo_runtime::compiled::Program, host: &Harness) ->
 }
 
 /// Each record's `field`, in the list's order.
-fn column(list: &Value, field: &str) -> Vec<Value> {
+pub(crate) fn column(list: &Value, field: &str) -> Vec<Value> {
     let Value::List(items) = list else {
         panic!("not a list: {list:?}");
     };

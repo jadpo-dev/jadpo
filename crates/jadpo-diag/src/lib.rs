@@ -174,6 +174,8 @@ rules! {
         "A `jadpo dev --port` flag holds something other than a whole number from 0 to 65535";
     CLI_DEV_START_FAILED: "cli.dev_start_failed", area 14, Error, Human,
         "The app couldn't start under `jadpo dev`, usually because another program is using its port, it has no database to run on, or a connection would call a provider's live API";
+    CLI_DOMAIN_ARGUMENTS: "cli.domain_arguments", area 14, Error, Agent,
+        "A `jadpo domain` command names a move it doesn't make, a domain the project doesn't have, a new name that is taken or isn't one, or a split or merge the domains can't take";
     CLI_EMAIL_ARGUMENTS: "cli.email_arguments", area 14, Error, Agent,
         "A `jadpo email` command names an action it doesn't have, or a mail or link the dev inbox doesn't hold";
     CLI_FILES_ARGUMENTS: "cli.files_arguments", area 14, Error, Agent,

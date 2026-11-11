@@ -26,6 +26,7 @@ pub mod compare;
 pub mod data;
 pub mod files;
 pub mod first;
+pub mod moves;
 pub mod network;
 pub mod upgrades;
 pub mod words;
@@ -47,13 +48,16 @@ pub fn needs(db: &dyn Db, project: Project) -> Vec<Need> {
         return Vec::new();
     };
     let mut out = Vec::new();
+    let graph = crate::graph::graph(db, project);
+    let moves = moves::Moves::new(before.text(jadpo_db::IDENTITIES), &before.domains, graph);
     api_needs(db, project, before, &mut out);
-    event_needs(db, project, before, &mut out);
+    event_needs(db, project, before, &moves, &mut out);
     if let Some(now) = access::record_text(db, project) {
         let now = now.as_deref().unwrap_or("");
         let was = before.text(access::PATH);
         if let Some(was) = was {
-            compare::access_needs(access::PATH, was, now, &mut out);
+            // Read in today's names, so a domain moved keeps its grants.
+            compare::access_needs(access::PATH, &moves.text_now(was), now, &mut out);
         }
         compare::own_source_needs(access::PATH, was.unwrap_or(""), now, &mut out);
     }
@@ -74,9 +78,16 @@ pub fn needs(db: &dyn Db, project: Project) -> Vec<Need> {
     {
         upgrade_needs(db, project, before, &mut out);
     }
-    compare::domains(&before.domains, &domains(db, project), &mut out);
+    let registry = crate::graph::registry(db, project);
+    compare::domains(
+        &before.domains,
+        |domain| moves.born(domain),
+        &domains(db, project),
+        |domain| registry.born(jadpo_graph::Kind::Domain, domain, None),
+        &mut out,
+    );
     data::needs(db, project, before, &mut out);
-    threshold_needs(db, project, before, &mut out);
+    threshold_needs(db, project, before, &moves, &mut out);
     erasure_needs(db, project, before, &mut out);
     out.sort();
     out.dedup_by(|a, b| a.subject == b.subject && a.change == b.change);
@@ -214,23 +225,38 @@ fn api_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut Vec<N
     }
 }
 
-fn event_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut Vec<Need>) {
+fn event_needs(
+    db: &dyn Db,
+    project: Project,
+    before: &BeforeSide,
+    moves: &moves::Moves,
+    out: &mut Vec<Need>,
+) {
     use crate::events::record as events;
     if !events::events_clean(db, project) {
         return;
     }
-    let after = events::record_texts(db, project);
+    let after: BTreeMap<&str, Vec<format::Entry>> = events::record_texts(db, project)
+        .iter()
+        .map(|(domain, text)| (domain.as_str(), compare::entries(text, &format::EVENTS)))
+        .collect();
     for (path, text) in &before.files {
         let Some(domain) = events::domain_of(path) else {
             continue;
         };
-        compare::events(
-            domain,
-            path,
-            text,
-            after.get(domain).map(String::as_str),
-            out,
-        );
+        // Each event is looked for where it is now: under its domain's
+        // name now, or in the domain it moved to.
+        let now = |heading: &str| {
+            let (kind, name) = heading.split_once(' ')?;
+            let named = moves.now(&format!("{domain}.{name}"));
+            let (domain, name) = named.split_once('.')?;
+            after
+                .get(domain)?
+                .iter()
+                .find(|entry| entry.heading == format!("{kind} {name}"))
+                .cloned()
+        };
+        compare::events_now(domain, path, text, now, out);
     }
 }
 
@@ -238,7 +264,13 @@ fn event_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut Vec
 /// the before side (area 16, "Setting and changing them"; chunk B13): the
 /// monitoring files are compared by threshold name, read as text on both
 /// sides, once today's thresholds check.
-fn threshold_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut Vec<Need>) {
+fn threshold_needs(
+    db: &dyn Db,
+    project: Project,
+    before: &BeforeSide,
+    moves: &moves::Moves,
+    out: &mut Vec<Need>,
+) {
     use crate::thresholds;
     if !thresholds::clean(db, project) {
         return;
@@ -250,7 +282,23 @@ fn threshold_needs(db: &dyn Db, project: Project, before: &BeforeSide, out: &mut
         let Some(was) = thresholds::written(was) else {
             continue;
         };
-        let now = thresholds::written(&texts(db, project, path)).unwrap_or_default();
+        // The domain's thresholds where they are now: under its name now,
+        // or, merged into another, among every domain's.
+        let now = match moves.domain_now(domain) {
+            Some(now) => thresholds::written(&texts(
+                db,
+                project,
+                &format!("domains/{now}/monitoring.jadpo"),
+            ))
+            .unwrap_or_default(),
+            None => project
+                .files(db)
+                .iter()
+                .filter(|file| thresholds::domain_of(file.path(db)).is_some())
+                .filter_map(|file| thresholds::written(file.text(db)))
+                .flatten()
+                .collect(),
+        };
         for (subject, change) in thresholds::loosened(Some(domain), &was, &now) {
             out.push(Need {
                 said: words::said(&Family::Thresholds, &subject, change),
@@ -598,6 +646,10 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
         "DomainChange.created" => (
             "a new domain needs a person",
             "A domain is a boundary other code is shaped around.",
+        ),
+        "DomainChange.renamed" => (
+            "a renamed domain needs a person",
+            "A domain is a boundary other code is shaped around, and its name is written before each call into it.",
         ),
         "DataChange.column_dropped" => (
             "dropping a column removes its data for good",

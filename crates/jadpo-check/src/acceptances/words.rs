@@ -166,6 +166,7 @@ pub fn said(family: &Family, subject: &str, change: &str) -> String {
             "`{subject}` is installed from git, where no registry verifies who published it"
         ),
         "DomainChange.created" => format!("new domain `{subject}`"),
+        "DomainChange.renamed" => format!("domain `{subject}` is renamed"),
         "ThresholdChange.raised" => {
             format!("threshold `{subject}` is raised, so its alert goes off later")
         }

@@ -431,7 +431,18 @@ impl Names<'_> {
             return self.resolver.path(&names).map(Found::Node);
         }
         match names.as_slice() {
-            [_] => declaration_key(self.resolver.symbols, text).map(Found::Node),
+            // A declaration by its name, or a domain where a setting lists
+            // domains (`domains: [planning]`).
+            [_] => declaration_key(self.resolver.symbols, text)
+                .or_else(|| {
+                    self.resolver.symbols.is_domain(text).then(|| {
+                        self.resolver
+                            .symbols
+                            .registry()
+                            .key(jadpo_graph::Kind::Domain, text, None)
+                    })
+                })
+                .map(Found::Node),
             _ => None,
         }
     }

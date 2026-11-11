@@ -144,11 +144,12 @@ POSTGRES = [
     # resumed, and worked out in Jadpo where SQL can't (area 5); stored
     # structured values checked or rewritten when their type reads less
     # (chunk 5.9c); a drop letting go of its files and leaving the audit
-    # trail alone (chunk V3); and a stored field renamed with `jadpo
-    # rename`, its rows read back interpreted and compiled.
+    # trail alone (chunk V3); a stored field renamed with `jadpo
+    # rename`, and a domain renamed, merged and split with `jadpo domain`,
+    # their rows read back interpreted and compiled.
     ('live PostgreSQL: jadpo migrate, backfills and renames',
      [('jadpo-cli', 'migrate'), ('jadpo-cli', 'backfills'), ('jadpo-cli', 'json_migrations'),
-      ('jadpo-cli', 'removals'), ('jadpo-cli', 'rename')], []),
+      ('jadpo-cli', 'removals'), ('jadpo-cli', 'rename'), ('jadpo-cli', 'domain')], []),
     # Every standard type stored and read back, its column laid out as its
     # entry says, and each literal in SQL the value the runtime binds
     # (area 19, chunks 5.5w and 5.5w3b); an application's structured
