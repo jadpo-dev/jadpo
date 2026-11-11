@@ -266,11 +266,6 @@ work below (Richard, 2026-11-08).
    - [ ] **T5 Generated CI** `opus · high` after L3: area 14, "Tools for
      agents". Generated CI belongs here, once a page says what generates it
      (L3).
-   - [ ] **T7 Records in the editor** `opus · high`: area 18, "Records in
-     git and in your editor" and "What is built". `jadpo check` building
-     the base commit, as `jadpo approval` does, to tell a careful hand edit of
-     a view from a stale one; the record language's grammar; `jadpo lsp`
-     serving records.
 5. Packages and capabilities after the first build (decided 2026-10-16):
    services run by Jadpo (`runs:`, Docker or Podman hidden behind
    `jadpo services`, and `jadpo dev` starting them); the `documents`

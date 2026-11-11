@@ -214,6 +214,29 @@ error: `database/identities.jadpo_record` was edited by hand: `type memos.Note` 
 check failed: 1 error, 4 files
 ```
 
+An edit Jadpo could have written, such as `status 200` changed to
+`status 201`, is told by the base commit, the default branch at its merge
+base. `jadpo check` builds it, and an entry of a view that changed since
+then, where the code behind it gives the same as it did there, was edited
+by hand:
+
+```text
+error: `api/main.jadpo_record` was edited by hand: `POST /memos` changed since main at 1a2b3c4, and the routes didn't
+ --> api/main.jadpo_record:8:1
+  |
+8 |     status 201
+  | ^^^^^^^^^^^^^^ not what Jadpo writes
+  reason: Jadpo writes this record with `jadpo api update`, and a record is never edited by hand, so its diff always means what the source or a command changed.
+  next: Run `jadpo api update`, which writes it again (agent)
+  rule: record.edited
+  help: https://jadpo.dev/docs/errors/record.edited
+```
+
+An entry added or removed by hand says so: "`GET /memos` was added since
+main at 1a2b3c4, and the routes don't have it". Without a base to compare
+with, such an edit reads as [`record.out_of_date`](record.out_of_date.md),
+which names the same command.
+
 A record that can't be read at all, such as a file that isn't UTF-8 or a
 `jadpo.lock` with a line Jadpo can't read, is this error too, and it says what
 is wrong.

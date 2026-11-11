@@ -19,7 +19,10 @@
 //! to definition does (`jadpo_check::graph::references`); formatting is
 //! `jadpo fmt`'s (`jadpo_check::formatting`); every error whose next step
 //! carries edits is a quick fix, promotion made as `jadpo fmt --layout`
-//! makes it; and a query's hover shows the SQL `jadpo sql` prints. Rename
+//! makes it; and a query's hover shows the SQL `jadpo sql` prints.
+//! Records (area 18) are served too: their errors as the editor edits
+//! them, an outline of their entries, a fold for each and a link on each
+//! file a fact names ([`records`]). Rename
 //! waits for `jadpo rename` (area 14), and checking runs between messages
 //! rather than in the background with salsa's cancellation.
 
@@ -30,6 +33,7 @@ mod fixes;
 mod hover;
 mod make_setting;
 mod quick_fixes;
+mod records;
 mod server;
 mod sql;
 

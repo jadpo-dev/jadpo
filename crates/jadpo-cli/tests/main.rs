@@ -133,6 +133,7 @@ mod purge_schedule;
 mod queries;
 mod read_only_get;
 mod receiving;
+mod record_base;
 mod recordings;
 mod records;
 mod registry_commands;
