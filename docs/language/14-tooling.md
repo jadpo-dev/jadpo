@@ -1559,14 +1559,15 @@ Not built yet:
 <!-- topic: commands-for-services-calls-email-and-stored-data -->
 
 These commands change a feature flag while your app runs, show what your app
-sent outside while you develop it, the provider calls and the email, and check a
-deploy before it happens.
+sent outside while you develop it, the provider calls and the email, reach
+the files it keeps, and check a deploy before it happens.
 
 | Command | Does |
 |---|---|
 | `jadpo flags` | Lists feature flags; `set`, `reset`, `remove` |
 | `jadpo calls` | The development call log |
 | `jadpo email` | The dev inbox and the sending domain's records |
+| `jadpo files` | Lists, reads and copies a store's files |
 | `jadpo runs unfinished --build <build id>` | Lists the multi-step runs a deploy would stop |
 
 ### `jadpo flags`
@@ -1655,6 +1656,53 @@ An unknown action, mail or link is `cli.email_arguments`, with the
 nearest. A browser that can't be started is `email.browser_failed`, with
 the link to open yourself.
 
+### `jadpo files`
+
+Reaches a store of files, a connection with `Driver.disk` or `Driver.s3`
+([Files](16-built-in-services.md#files)), in production or in
+development. `file` is a synonym, and it takes `--json`.
+
+- `jadpo files` is a table of the app's stores: each one's driver and
+  where it keeps its files.
+- `files ls <store>` is a table of the files the store keeps, each with
+  its key, its size and its kind, `file` or `erasure log`, then a footer
+  and one hint. An upload still waiting for its attach isn't listed.
+- `files show <store> <key>` reads one file through and shows its size,
+  the `FileType` its first bytes look like and its hash, the one a
+  download's ETag is made from.
+- `files get <store> <key> <path>` writes the file's bytes to a local file,
+  and never over one that is there.
+- `files put <store> <key> <path>` puts a local file's bytes back under a
+  file's key, such as one whose bytes were lost. A file never changes, so a
+  key that holds one is refused.
+- `files copy <from> <to>` copies every file and the erasure log from one
+  store into another, leaving each one already there of the same size, so
+  running it again catches up with what the app kept since. A file over
+  8 MB goes in pieces joined in the store, so the command holds no more
+  than a piece in memory. A person's export waiting to be downloaded isn't
+  copied, and they ask for it again.
+
+A store is named by its connection and reached as the deployed app
+reaches it: a disk store at its `path:`, and an S3 store with the settings
+the environment gives, then `.env.local`. `--dev` reaches `jadpo dev`'s
+copy under `.jadpo/files/<store>/` instead. `copy` also takes a disk
+store's folder written in full, `/var/lib/acme/uploads`, which is how an
+app moves off one server: change the connection to `Driver.s3`, copy the
+old folder into it from the server, deploy, then copy again to catch up
+with what was kept in between.
+
+```text
+$ jadpo files copy /var/lib/acme/uploads uploads
+✓ Copied 312 files · 2.3 GB
+    from  the folder /var/lib/acme/uploads
+    to    uploads on S3, bucket acme-uploads at https://acme.r2.cloudflarestorage.com
+```
+
+A credential is never printed. An unknown action, store, key or local
+file is `cli.files_arguments`, with the nearest, and a store that can't be
+reached, read or written, or whose settings have no value here, is
+`files.unavailable`.
+
 ### `jadpo runs unfinished`
 
 Run it against production before a deploy. It lists the unfinished
@@ -1683,9 +1731,6 @@ Not built yet:
   services](11-integrations.md)).
 - `jadpo dev grants add <connection> --owner <id>`, which makes a fake
   OAuth grant for local development ([OAuth grants](11-integrations.md#oauth-grants)).
-- `jadpo files ls`, `show`, `get`, `put` and `copy`, which work on any
-  store, in development or production, `copy` copying files between two
-  stores (S3, R2, disk) ([Files](16-built-in-services.md#files)).
 - `jadpo batches list`, `show <id>` and `cancel <id>`, which list batch
   runs (file reads and writes, `batches.each`) with their state and
   progress, show one run's progress and problems, and stop one, as

@@ -278,6 +278,13 @@ impl Caught {
         self
     }
 
+    /// Reads a test's fixture files from the project at `root` (area 13,
+    /// "Files").
+    pub fn fixtures_under(mut self, root: impl Into<std::path::PathBuf>) -> Caught {
+        self.files = std::mem::take(&mut self.files).fixtures_under(root);
+        self
+    }
+
     /// Catches the mail sent through `connection`.
     pub fn mail_for(mut self, connection: Option<String>) -> Caught {
         self.mail_connection = connection;

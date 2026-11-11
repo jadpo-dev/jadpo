@@ -862,6 +862,10 @@ impl Names<'_> {
             out.push(some_called(self.path, call, span));
             return;
         }
+        // A test's fixture file, which the body's check reads (area 13).
+        if text == jadpo_std::files::FIXTURE_FILE {
+            return;
+        }
         let candidates: Vec<String> = self
             .table
             .all()

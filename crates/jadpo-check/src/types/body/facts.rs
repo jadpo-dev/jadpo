@@ -89,6 +89,15 @@ pub(crate) enum Reach {
     },
     /// `clock.advance(duration)` in a test (area 13).
     AdvanceClock,
+    /// `fixture_file("<name>", store: <store>)` in a test (area 13,
+    /// "Files"): the store, the file's path in the project, its
+    /// `FileType` variant and its name as written.
+    FixtureFile {
+        store: String,
+        path: String,
+        file_type: String,
+        name: String,
+    },
     /// `schedule.run()` in a test (area 13, "Kinds of test"; chunk 6.2c):
     /// the schedule, the action it runs, unless it reads with problems,
     /// and that action's `fails` list.

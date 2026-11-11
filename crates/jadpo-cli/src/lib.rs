@@ -31,6 +31,7 @@ mod download;
 mod email;
 mod exchange;
 mod failure_text;
+mod files;
 mod fix;
 mod flags;
 mod fmt;

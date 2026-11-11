@@ -476,7 +476,7 @@ impl<E: Executor> Stored<'_, E> {
         let record = recording(kept.as_deref());
         let host = TestHost::new(self.databases)
             .with_record(record.clone())
-            .with_caught(test_run::Caught::of(executor.plan()));
+            .with_caught(test_run::Caught::of(executor.plan()).fixtures_under(&self.rerun.project));
         let ran = self.runtime.block_on(test_run::once(
             executor,
             &host,
@@ -600,6 +600,7 @@ mod tests {
         let rerun = Rerun {
             root: None,
             seed: 1,
+            project: std::path::PathBuf::new(),
         };
         let sources: BTreeMap<String, String> = BTreeMap::new();
         let failed: Vec<usize> = spread(Fake::new, &tests, &rerun, &sources, None, Keep::default())

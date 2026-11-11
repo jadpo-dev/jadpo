@@ -1465,6 +1465,77 @@ pub static COMMANDS: &[Command] = &[
         run: commands::schedules,
     },
     Command {
+        name: "files",
+        synonyms: &["file"],
+        group: "Production",
+        summary: "Read and copy stored files",
+        description: "A store of files is a connection with `Driver.disk` or `Driver.s3` (area 16). \
+                      `jadpo files` lists the app's stores. `ls` lists the files a store keeps with \
+                      their sizes, the erasure log's among them. `show` reads one file through and \
+                      says its size, the type its first bytes look like and its hash. `get` writes \
+                      a file's bytes to a local file it never overwrites. `put` puts a local file \
+                      back under a file's key that holds nothing yet, since files never change. \
+                      `copy` copies every file and the erasure log from one store into another, \
+                      leaving those already there, so it can be run again to catch up: how an app \
+                      moves off one server. A store is reached as the deployed app reaches it: a \
+                      disk store at its `path:`, an S3 store with the settings the environment, then \
+                      `.env.local`, gives. --dev reaches jadpo dev's copy instead. `copy` also takes \
+                      a disk store's folder written in full.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do",
+                required: false,
+                values: Values::Fixed(crate::files::ACTIONS),
+            },
+            Argument {
+                name: "store",
+                description: "The store, by its connection; copy's from",
+                required: false,
+                values: Values::Id,
+            },
+            Argument {
+                name: "key",
+                description: "A file's key, as ls lists it; copy's to",
+                required: false,
+                values: Values::Id,
+            },
+            Argument {
+                name: "path",
+                description: "The local file get writes or put reads",
+                required: false,
+                values: Values::Path,
+            },
+        ],
+        flags: &[Flag {
+            name: "--dev",
+            value: None,
+            description: "Reach jadpo dev's copy of the store",
+            values: &[],
+        }],
+        examples: &[
+            Example {
+                description: "See the app's stores of files",
+                command: "jadpo files",
+            },
+            Example {
+                description: "List the files a store keeps",
+                command: "jadpo files ls uploads",
+            },
+            Example {
+                description: "Save one file's bytes",
+                command: "jadpo files get uploads 3f/a2/3fa2c1d0-0000-4000-8000-000000000001 copy.csv",
+            },
+            Example {
+                description: "Move a disk store's files into the bucket its connection now names",
+                command: "jadpo files copy /var/lib/acme/uploads uploads",
+            },
+        ],
+        arguments_rule: &rule::CLI_FILES_ARGUMENTS,
+        raises: &[&rule::FILES_UNAVAILABLE, &rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        run: commands::files,
+    },
+    Command {
         name: "flags",
         synonyms: &["flag"],
         group: "Production",

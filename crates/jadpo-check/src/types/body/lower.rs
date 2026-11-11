@@ -857,10 +857,14 @@ impl Lower<'_> {
             let ast::MemberItem::Member(entry) = item else {
                 continue;
             };
-            let Some(Expr::ListExpr(list)) = entry.value() else {
-                continue;
+            // A store of files is told one thing, written bare (area 13,
+            // "Files"); an operation's answers are a list.
+            let answers: Vec<Expr> = match entry.value() {
+                Some(Expr::ListExpr(list)) => list.exprs().collect(),
+                Some(told @ Expr::NameRef(_)) => vec![told],
+                _ => continue,
             };
-            for answer in list.exprs() {
+            for answer in answers {
                 if let Some((prompt, scripted)) =
                     self.facts.ai_fakes.get(&node_key(answer.syntax())).cloned()
                 {
@@ -1478,6 +1482,17 @@ impl Lower<'_> {
                 operation: operation.clone(),
             },
             Reach::AdvanceClock => Callee::AdvanceClock,
+            Reach::FixtureFile {
+                store,
+                path,
+                file_type,
+                name,
+            } => Callee::FixtureFile {
+                store: store.clone(),
+                path: path.clone(),
+                file_type: file_type.clone(),
+                name: name.clone(),
+            },
             Reach::Schedule {
                 schedule,
                 action: Some(action),
@@ -1793,6 +1808,7 @@ impl Lower<'_> {
             | Reach::Files(..)
             | Reach::Provider { .. }
             | Reach::AdvanceClock
+            | Reach::FixtureFile { .. }
             | Reach::Translation { .. }
             | Reach::Prompt(_)
             | Reach::Generate { .. }

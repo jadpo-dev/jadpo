@@ -1009,6 +1009,7 @@ impl Decoder<'_> {
                 | Callee::AiFake { .. }
                 | Callee::AiRequests { .. }
                 | Callee::OperationRequests { .. }
+                | Callee::FixtureFile { .. }
                 | Callee::AdvanceClock
                 | Callee::Translation(_)
                 | Callee::Escape

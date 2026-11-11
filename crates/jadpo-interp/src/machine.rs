@@ -616,6 +616,34 @@ impl<'p> Machine<'p> {
         ))
     }
 
+    /// `fixture_file(...)` at `at` (area 13, "Files"), through the
+    /// runtime's entry point, which compiled code calls too: kept apart,
+    /// so the call's dispatch frame stays small.
+    #[inline(never)]
+    fn fixture_file(
+        &mut self,
+        ctx: &mut Ctx<'_>,
+        callee: &'p Callee,
+        at: SiteId,
+    ) -> Result<Value, Stop> {
+        let Callee::FixtureFile {
+            store,
+            path,
+            file_type,
+            name,
+        } = callee
+        else {
+            return Err(self.defect(ctx, "a fixture file the plan doesn't have", at));
+        };
+        called(calls::fixture_file(
+            ctx,
+            (store, path),
+            file_type,
+            name,
+            at.0,
+        ))
+    }
+
     /// Gives the `ai` fake the next answer to the prompt the `fakes:`
     /// answer at `at` scripts (area 21; chunk 5.5v3), through the
     /// runtime's entry point, which compiled code calls too: a value,
@@ -2395,6 +2423,11 @@ impl<'p> Machine<'p> {
             } => {
                 let sent = called(calls::operation_requests(ctx, connection, operation))?;
                 self.values.push(sent);
+            }
+            // A test's fixture file, kept in its store (area 13, "Files").
+            Callee::FixtureFile { .. } => {
+                let file = self.fixture_file(ctx, callee, id)?;
+                self.values.push(file);
             }
             // A model asked for embeddings: an outside call (area 21,
             // chunk 5.5v4).

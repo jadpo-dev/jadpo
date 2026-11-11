@@ -305,6 +305,22 @@ pub trait Capability {
         false
     }
 
+    /// The fixture file at the project-relative `path`, kept as a stored
+    /// file of `FileType` variant `file_type` named `name` in store
+    /// `connection` (area 13, "Files"): what a test's in-memory store of
+    /// files gives `fixture_file`, or why it couldn't. `None` from
+    /// anything but a test's store.
+    fn fixture(
+        &self,
+        connection: &str,
+        path: &str,
+        file_type: &str,
+        name: &str,
+    ) -> Option<Result<Value, String>> {
+        let _ = (connection, path, file_type, name);
+        None
+    }
+
     /// Sends `call` and gives its answer as it comes, for `ai.stream`
     /// (area 21; chunk 5.5v6): the whole answer, as [`Capability::call`]
     /// gives it, unless the driver can read it piece by piece.

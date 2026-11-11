@@ -980,6 +980,12 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     // them, the bytes left compared too (chunk B3).
     assert_eq!(counted("a file's bytes deleted"), Some((6, 6)));
     assert_eq!(counted("each kind of choice's paths"), Some((2, 2)));
+    // A fixture file read, and a store told to fail a read and a write
+    // (area 13, "Files").
+    assert_eq!(
+        counted("docs/language/13-testing.md fixture-files"),
+        Some((3, 3))
+    );
     // Every fuzzed body's tests compared (chunk 9.3).
     for (name, _) in &fuzzed {
         assert!(
