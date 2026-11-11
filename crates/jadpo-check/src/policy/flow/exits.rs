@@ -76,6 +76,9 @@ pub enum Through {
     Email(String),
     /// A webhook's reply, by the action that answers it.
     Reply(String),
+    /// An event published outward, by its type's name (area 12, "Where
+    /// events travel").
+    Published(String),
     /// A failure's internal field, by its identity key: never listed, only
     /// followed for its log event ([`FAILURE_CONTEXT`]).
     Failure(String),
@@ -91,6 +94,7 @@ impl Through {
             Through::Embedding => "an embedding".to_string(),
             Through::Email(name) => format!("email {name}"),
             Through::Reply(name) => format!("reply {name}"),
+            Through::Published(name) => format!("published {name}"),
             Through::Failure(field) => format!("failure field {field}"),
         }
     }
@@ -105,6 +109,7 @@ impl Through {
             Through::Embedding => "embedding",
             Through::Email(_) => "email",
             Through::Reply(_) => "reply",
+            Through::Published(_) => "published",
             Through::Failure(_) => "failure",
         }
     }
@@ -393,6 +398,33 @@ impl Walk<'_> {
                 &Exit {
                     connection: connection.clone(),
                     through: Through::Email(name.to_string()),
+                },
+                &prov,
+                &[Ty::Named(event.name().to_string())],
+            );
+        }
+    }
+
+    /// An `emit` of `event` holding `prov`: a published event goes out
+    /// through each connection `publishing:` lists it for (area 12, "Where
+    /// events travel").
+    pub(super) fn published(&mut self, flow: &Flow<'_>, event: &Key, prov: &Prov) {
+        let publishing = crate::published::publishing(flow.db, flow.project);
+        let connections: Vec<String> = publishing
+            .of_event(event.as_str())
+            .map(|(connection, _)| connection.to_string())
+            .collect();
+        if connections.is_empty() {
+            return;
+        }
+        let prov = self.with_pc(prov.clone());
+        let name = event.name().rsplit('.').next().unwrap_or_default();
+        for connection in connections {
+            self.sends(
+                flow,
+                &Exit {
+                    connection,
+                    through: Through::Published(name.to_string()),
                 },
                 &prov,
                 &[Ty::Named(event.name().to_string())],

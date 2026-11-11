@@ -177,6 +177,14 @@ impl<'k> Pruning<'k> {
                     .iter()
                     .map(|subscriber| subscriber.event.clone()),
             );
+            // Each event published outward is read back to be posted.
+            used.events.extend(
+                jadpo_check::published::publishing(db, project)
+                    .list
+                    .iter()
+                    .flat_map(|published| published.events.iter())
+                    .map(|event| event.key.clone()),
+            );
             let lookup = jadpo_check::lookups::Lookup::new(db, project);
             used.events.extend(
                 jadpo_check::emails::analysis(db, project)

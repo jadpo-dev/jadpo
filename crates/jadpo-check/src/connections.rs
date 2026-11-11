@@ -2219,6 +2219,51 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
             },
         });
     }
+    // Each address chosen events are published to (area 12, "Where events
+    // travel"), by the domains whose events it publishes.
+    let publishing = crate::published::publishing(db, project);
+    for hook in &crate::published::webhook_connections(db, project).list {
+        let (host, address, setting) = match &hook.url {
+            Some(crate::published::HookUrl::Written(url)) => {
+                (format!("`{url}`"), Some(url.clone()), None)
+            }
+            Some(crate::published::HookUrl::Setting(name)) => (
+                format!("the address in `config.{name}`"),
+                None,
+                Some(name.clone()),
+            ),
+            None => continue,
+        };
+        let mut publishing_domains: Vec<String> = if domains {
+            publishing
+                .list
+                .iter()
+                .filter(|published| published.connection == hook.name)
+                .flat_map(|published| &published.events)
+                .filter_map(|event| {
+                    let name = event.key.name();
+                    let (domain, rest) = name.split_once('.')?;
+                    rest.starts_with(|c: char| c.is_ascii_uppercase())
+                        .then(|| domain.to_string())
+                        .filter(|domain| domain != "jadpo")
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        publishing_domains.sort();
+        publishing_domains.dedup();
+        rows.push(Row {
+            connection: hook.name.clone(),
+            host,
+            address,
+            setting,
+            image: None,
+            when: None,
+            reached_for: "publishing".to_string(),
+            domains: publishing_domains,
+        });
+    }
     let identity = crate::identity::identity(db, project);
     if let Some(external) = &identity.external_token {
         rows.push(Row {

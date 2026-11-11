@@ -462,6 +462,13 @@ impl<'a> Plan<'a> {
             .collect()
     }
 
+    /// The program's connections that publish events outward (area 12,
+    /// "Where events travel"): every `Driver.webhook` connection, by name,
+    /// which a test's host and `jadpo dev` catch in place of sending.
+    pub fn publishing_connections(self) -> Vec<&'a str> {
+        jadpo_std::connections::webhooks(self.connections).collect()
+    }
+
     /// The program's stores of files (area 16): every `Driver.disk`
     /// connection, by name.
     pub fn file_stores(self) -> Vec<&'a str> {

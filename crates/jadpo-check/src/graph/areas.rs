@@ -147,6 +147,7 @@ fn capability(kind: ConnectionKind) -> &'static str {
         ConnectionKind::CloudflareQueue => "receiving",
         ConnectionKind::CloudflareRateLimits => "rate_limits",
         ConnectionKind::SignIn => "sign_in",
+        ConnectionKind::Webhook => "publishing",
         ConnectionKind::Package => "package",
         ConnectionKind::Other => "other",
     }

@@ -92,6 +92,7 @@ pub mod policy;
 pub mod privacy;
 pub mod prompt;
 pub mod provider;
+pub mod publishing;
 pub mod quantity;
 pub mod read;
 pub mod receiving;

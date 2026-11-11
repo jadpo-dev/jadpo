@@ -80,10 +80,17 @@ fn plural(count: usize, one: &str, many: &str) -> String {
 }
 
 fn list(call: &Call) -> Reply {
-    let (_, loaded) = match load(call) {
+    let (_, mut loaded) = match load(call) {
         Ok(found) => found,
         Err(reply) => return reply,
     };
+    // Judged as `jadpo check` judges them: a view edited by hand since the
+    // base is told from a stale one by building the base.
+    if let Ok(before) = crate::before::read(&loaded.root, None, false) {
+        loaded.set_before(before);
+        let day = crate::check::judged_day(call, &loaded.root, crate::check::JudgedOn::Today);
+        crate::before::judge_views(&mut loaded, day);
+    }
     let all = standings(&loaded.db, loaded.project);
     let mut screen = Screen::new();
     let mut groups: BTreeMap<String, Vec<&Standing>> = BTreeMap::new();

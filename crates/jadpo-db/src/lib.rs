@@ -213,6 +213,15 @@ pub struct Project {
     #[default]
     #[returns(ref)]
     pub before: Before,
+    /// What the base commit's own source gives for each view, by path, as
+    /// `jadpo check` builds the base to tell a careful hand edit of a view
+    /// from a stale one (area 18, "Checking a record"): `None` where the
+    /// base gives no record at that path. A view the base wasn't built for,
+    /// or whose source had errors there, has no entry and is judged by its
+    /// shape alone.
+    #[default]
+    #[returns(ref)]
+    pub base_views: BTreeMap<String, Option<String>>,
     /// The date a rule triggered by time passing is judged at (area 1,
     /// "Rules triggered by time passing"), in days since 1970-01-01: today
     /// for `jadpo check`, the commit's date for `jadpo build`. `None` where

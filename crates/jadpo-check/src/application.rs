@@ -16,7 +16,7 @@ use crate::tree::{self, node_span};
 
 /// The sections `application { }` holds and this compiler builds, in the
 /// order the error lists them, each read by its area's check.
-pub const SECTIONS: [&str; 19] = [
+pub const SECTIONS: [&str; 20] = [
     // Area 1: the Jadpo release line.
     "jadpo",
     // Area 8: the app's name, and how long a revoked caller may act.
@@ -36,11 +36,13 @@ pub const SECTIONS: [&str; 19] = [
     "rate_limits",
     "flags",
     "email",
-    // Area 12: where events, schedules and steps are kept, and queues read.
+    // Area 12: where events, schedules and steps are kept, queues read,
+    // and the events published outward.
     "events",
     "schedules",
     "steps",
     "receiving",
+    "publishing",
     // Area 21: the `ai` capability.
     "ai",
     // Area 15: the key encrypted fields are sealed with, and, of `privacy:`,
@@ -52,7 +54,7 @@ pub const SECTIONS: [&str; 19] = [
 
 /// The sections an area page decides that this compiler doesn't build,
 /// each with why accepting it would mislead.
-pub const NOT_BUILT: [(&str, &str); 6] = [
+pub const NOT_BUILT: [(&str, &str); 5] = [
     (
         "bot_check",
         "Checking a challenge token before a route or Jadpo's own public endpoints run is bot protection, which isn't built yet: accepted, every request would get through.",
@@ -64,10 +66,6 @@ pub const NOT_BUILT: [(&str, &str); 6] = [
     (
         "grants",
         "Encrypting the tokens of OAuth grants isn't built yet, nor the grants themselves: accepted, the key would guard nothing.",
-    ),
-    (
-        "publishing",
-        "Delivering chosen events outward through a `publishing` connection isn't built yet: accepted, no event would leave the app.",
     ),
     (
         "scanning",

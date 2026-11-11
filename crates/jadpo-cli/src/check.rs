@@ -139,6 +139,7 @@ pub(crate) fn checked_before_as(
         match crate::before::read(&loaded.root, with, has_acceptances) {
             Ok(before) => {
                 loaded.set_before(before);
+                crate::before::judge_views(loaded, day);
                 Ok(())
             }
             Err(crate::before::UnknownRef(reference)) => Err(Box::new(Reply::failed(

@@ -2,7 +2,9 @@
 // shows about Jadpo code (errors, hover, completion, go to definition,
 // references, formatting and quick fixes) comes from the compiler through
 // that server, which also says what starts completion (a word, `.`, `:`
-// or a digit); this file contains no parser of its own.
+// or a digit); this file contains no parser of its own. Records
+// (`.jadpo_record` files and `jadpo.lock`) are sent to it too, for their
+// errors, outline, folds and file links.
 //
 // What the extension shows itself follows docs/cli-design-language.md:
 // calm when all is well (a status item saying which `jadpo` runs, no
@@ -75,7 +77,10 @@ async function start() {
     "Jadpo",
     { run, debug: run },
     {
-      documentSelector: [{ scheme: "file", language: "jadpo" }],
+      documentSelector: [
+        { scheme: "file", language: "jadpo" },
+        { scheme: "file", language: "jadpo-record" },
+      ],
       outputChannel: output,
     },
   );
@@ -212,7 +217,10 @@ async function activate(context) {
   // vscode-languageclient 10 logs through a `LogOutputChannel` (`.error`, `.info`),
   // which only `{ log: true }` gives.
   output = vscode.window.createOutputChannel("Jadpo", { log: true });
-  status = vscode.languages.createLanguageStatusItem("jadpo.server", { language: "jadpo" });
+  status = vscode.languages.createLanguageStatusItem("jadpo.server", [
+    { language: "jadpo" },
+    { language: "jadpo-record" },
+  ]);
   status.name = "Jadpo language server";
   context.subscriptions.push(
     output,

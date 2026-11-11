@@ -2168,7 +2168,10 @@ its own, so it never disagrees with `jadpo check`.
 The VS Code extension starts `jadpo lsp` for `.jadpo` files, so everything
 the server gives works in VS Code. It formats `.jadpo` files on save by
 default. It highlights keywords, declarations, types, strings, numbers and
-quantities, comments, operators, route paths and `use` lines.
+quantities, comments, operators, route paths and `use` lines. Records
+(`.jadpo_record` files and `jadpo.lock`) have their own language, with
+their errors, outline, folding and file links from `jadpo lsp`
+([Records in git and in your editor](18-records-and-manifest.md#records-in-git-and-in-your-editor)).
 
 The `jadpo.server.path` setting names the binary: `jadpo` on your `PATH`
 by default, where the installers put it. A language status item names the
@@ -4176,8 +4179,8 @@ Each row says what is built and what is specified but not built yet.
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 3) with `durationMs`, project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys, shortened unless `--full` is given; `jadpo test --json` is described in [Testing](13-testing.md) and under `testReport` in `jadpo help --json`. |
 | `build/` | Partly built: `jadpo check` writes `build/manifest.json`, the catalogues in `build/catalogue/`, the permissions, network, provider, personal-data, schema and query reports in `build/report/`, `diagnostics/`, `inventory/`, `audit/` and `compatibility/`, and the monitoring rules in `build/monitoring/`; `jadpo test` keeps its last run in `build/test/`. |
 | Commands | Partly built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe. Not built yet: those in their "Not built yet" notes, `services`, `dev grants`, `files`, `batches`, `search reindex`, `trace`, `traces`, `metrics`, `logs`, `watch`, `call`, `console`, `mcp`, `replay`, `path`, `privacy requests`, `incident` and `test new --from`. |
-| Language server | Partly built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; and the code actions under [Editor support](#editor-support). Not built yet: rename, which is to run [`jadpo rename`](#jadpo-rename)'s code. |
-| VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release to the VS Code Marketplace and Open VSX, which publishes through trusted publishing. |
+| Language server | Partly built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; the code actions under [Editor support](#editor-support), and records' errors, outline, folding and file links. Not built yet: rename, which is to run [`jadpo rename`](#jadpo-rename)'s code. |
+| VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights code and records, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release to the VS Code Marketplace and Open VSX, which publishes through trusted publishing. |
 | Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; the agent skill is built, with every part [Tools for agents](#tools-for-agents) lists; `jadpo inspect`, `impact`, `rename` and `domain` are built; generated CI is not built yet. |
 | Suggestions | Partly built: `jadpo suggest` with its eight signal kinds and taught signals, `published` asking the registry by fingerprint prefix and `function` reading the operation table, the catalogue, accepted findings, `ignore`, `found`, `share`, `suggestions { }` and the committed taught record, `share` against a fake of Jadpo HQ. Not built yet: HQ itself, so a real `share` has nowhere to go; the public registry's `POST fingerprints/query`, so until jadpo.dev serves it a scan says `registry not reached`. |
 | Review and sign-off | Built: `jadpo check` judging acceptances against the default branch at its merge base, `--before`, `jadpo acceptance new` ([Acceptances](18-records-and-manifest.md#acceptances)) and [`jadpo approval`](#jadpo-approval). |

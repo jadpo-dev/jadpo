@@ -1038,6 +1038,14 @@ decisions themselves are `acceptances::needs`, the same list `check` judges,
 each carrying its plain words and the callers it lets in from where its
 record is read.
 
+`jadpo check` builds the same base for records (area 18, "Checking a
+record"): `records::candidates` names each view that changed since the base
+and disagrees with the source, `before::judge_views` loads the base the same
+way for those alone and sets `Project::base_views` from
+`records::base_view`, kept in `build/before/<commit>/records.json`, and
+`records::hand_edit` compares entry by entry. A project with no such view
+builds nothing.
+
 **The registry commands** (chunk R5, area 11, "How the registry commands
 work") are `jadpo-cli`'s `registry` (asking the protocol over `download`,
 each answer held to the table's shapes; the log check; which release `update`
@@ -5359,6 +5367,46 @@ system and keeps its reply. A test reaches a server on its own machine in
 AWS's place through `Outward::reaching`, built only with
 `jadpo-host-native`'s `test-outbound` feature, given to the harness with
 `Harness::outbound`.
+
+**Publishing events outward** (area 12, "Where events travel"; area 16,
+"Outgoing webhooks"). `jadpo_check::published` reads each connection
+with `driver: Driver.webhook` (`webhook_connections`: `url:`, a `Url`
+setting or a sendable address, and `secret:`, a secret setting) and
+`application { publishing: }` (`publishing`: each connection's events,
+a domain's `public` event or `AuditEntryRecorded` while an entity is
+audited, with no file held, each named outside by its `wire_name:` or
+`jadpo_std::publishing::default_type`, its key without the kind). The
+plan's connections table holds the connection as
+`ConnectionDriver::Webhook(WebhookTarget)`, and the events plan a
+generated subscriber for each event and connection
+(`jadpo_std::publishing::subscriber`, `publish <connection> <event key>`)
+whose target is `Target::Publish`, with the subscriber defaults' retry
+budget and no store, its record alone saying it was sent; an audited
+entity's `HistoryPlan` lists the ones that hear `AuditEntryRecorded`, so
+an entry is emitted when only publishing listens. `runner::attempt`
+makes a `jadpo_runtime::publishing::Published` from the delivery: the
+outbox row's id, the type, `jadpo_std::publishing::body` around the
+payload written again with the event's codec (an audit entry's by
+`audit::published_data`), and a new span of the event's trace; and sends
+it as one keyed `publish` call through the seam, so a retry is safe and
+an answer that may have acted is retried rather than parked. The driver,
+`jadpo_drivers::webhook::Webhook`, built by the factory over the host's
+`Fetch` and clock natively and on Workers, posts it signed as Standard
+Webhooks signs (`publishing::signature`, the HMAC of
+`<id>.<seconds>.<body>`) and classifies the answer: a `2xx` delivered;
+`408`, `429`, a `5xx`, a request that never left or whose answer never
+came, `unavailable`; a redirect, `401` or `403`, `misconfigured`; any other
+refusal the failure `refused`. A test's host catches each event
+(`test_run::Caught`), and `jadpo dev` logs it (`PublishLog`) and gives
+the connection's settings stand-ins, so neither sends. The flow's walk
+records an `emit` of a published event as an exit through each
+connection (`Through::Published`), so personal data in it reaches the
+personal-data report and needs `ErasureNotPossible`; a deployable that
+runs subscribers reaches the connection (`Via::Publishing`) and keeps
+each published event's codec. Each API's OpenAPI document carries
+`x-jadpo-events` (`openapi::published_events`). Addresses customers
+register, and the runtime-owned network exception that would guard them,
+aren't built.
 
 **Files and a file's run** (area 16; area 12, "How a file's run is kept"). The `files` capability's
 first part is on the seam: `jadpo_runtime::files` sends a store's `put`

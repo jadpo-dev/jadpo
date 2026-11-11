@@ -719,6 +719,9 @@ pub enum Via {
     /// It asks that provider to erase people (area 15, "Erasure at
     /// providers").
     ErasureAt,
+    /// It publishes the app's chosen events through it (area 12, "Where
+    /// events travel").
+    Publishing,
 }
 
 impl Via {
@@ -735,6 +738,7 @@ impl Via {
             Via::ErasureLog => "by keeping the erasure log there".to_string(),
             Via::Exports => "by keeping a data request's exports there".to_string(),
             Via::ErasureAt => "by asking its provider to erase people".to_string(),
+            Via::Publishing => "by publishing the app's events through it".to_string(),
         }
     }
 }
@@ -917,6 +921,11 @@ fn reach(
         // someone to (area 15, "Erasure at providers").
         for key in crate::provider_erasure::provider_keys(db, project) {
             connection(&mut out, &key.connection, Via::ErasureAt);
+        }
+        // A delivery of a published event posts it through its connection
+        // (area 12, "Where events travel").
+        for published in &crate::published::publishing(db, project).list {
+            connection(&mut out, &published.connection, Via::Publishing);
         }
     }
     roots.extend(named_by_the_runtime(db, project, deployable));

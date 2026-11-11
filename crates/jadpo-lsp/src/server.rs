@@ -15,8 +15,9 @@ use lsp_types::notification::{
     Initialized, Notification as _, PublishDiagnostics,
 };
 use lsp_types::request::{
-    CodeActionRequest, CodeActionResolveRequest, Completion, Formatting, GotoDefinition,
-    HoverRequest, References, RegisterCapability, Request as _,
+    CodeActionRequest, CodeActionResolveRequest, Completion, DocumentLinkRequest,
+    DocumentSymbolRequest, FoldingRangeRequest, Formatting, GotoDefinition, HoverRequest,
+    References, RegisterCapability, Request as _,
 };
 use lsp_types::{
     DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
@@ -156,10 +157,13 @@ impl Server {
             return Vec::new();
         }
         let watchers = DidChangeWatchedFilesRegistrationOptions {
-            watchers: vec![FileSystemWatcher {
-                glob_pattern: GlobPattern::String("**/*.jadpo".to_string()),
-                kind: None,
-            }],
+            watchers: ["**/*.jadpo", "**/*.jadpo_record", "**/jadpo.lock"]
+                .into_iter()
+                .map(|glob| FileSystemWatcher {
+                    glob_pattern: GlobPattern::String(glob.to_string()),
+                    kind: None,
+                })
+                .collect(),
         };
         let registration = Registration {
             id: "jadpo-files".to_string(),
@@ -243,6 +247,24 @@ impl Server {
                     Err(error) => invalid(id, &error),
                 }
             }
+            DocumentSymbolRequest::METHOD => {
+                match serde_json::from_value::<lsp_types::DocumentSymbolParams>(request.params) {
+                    Ok(params) => Response::new_ok(id, self.record_symbols(&params.text_document)),
+                    Err(error) => invalid(id, &error),
+                }
+            }
+            FoldingRangeRequest::METHOD => {
+                match serde_json::from_value::<lsp_types::FoldingRangeParams>(request.params) {
+                    Ok(params) => Response::new_ok(id, self.record_folds(&params.text_document)),
+                    Err(error) => invalid(id, &error),
+                }
+            }
+            DocumentLinkRequest::METHOD => {
+                match serde_json::from_value::<lsp_types::DocumentLinkParams>(request.params) {
+                    Ok(params) => Response::new_ok(id, self.record_links(&params.text_document)),
+                    Err(error) => invalid(id, &error),
+                }
+            }
             method => Response::new_err(
                 id,
                 ErrorCode::MethodNotFound as i32,
@@ -260,7 +282,7 @@ impl Server {
                     && let Some(path) = self.relative(&params.text_document.uri)
                 {
                     self.open.insert(path.clone());
-                    self.edit(|loaded| loaded.set_text(&path, params.text_document.text));
+                    self.edit(|loaded| put(loaded, &path, params.text_document.text));
                 }
             }
             DidChangeTextDocument::METHOD => {
@@ -270,7 +292,7 @@ impl Server {
                 {
                     // The server asks for whole texts, so the last change is
                     // the document.
-                    self.edit(|loaded| loaded.set_text(&path, change.text));
+                    self.edit(|loaded| put(loaded, &path, change.text));
                 }
             }
             DidCloseTextDocument::METHOD => {
@@ -280,7 +302,7 @@ impl Server {
                     // Unsaved changes go with the editor: the disk is the
                     // text now.
                     self.open.remove(&path);
-                    self.edit(|loaded| loaded.reload(&path));
+                    self.edit(|loaded| reload(loaded, &path));
                 }
             }
             DidChangeWatchedFiles::METHOD => {
@@ -293,9 +315,12 @@ impl Server {
                             continue;
                         }
                         if change.typ == FileChangeType::DELETED {
-                            self.edit(|loaded| loaded.remove(&path));
+                            self.edit(|loaded| {
+                                loaded.remove(&path);
+                                loaded.set_record(&path, None);
+                            });
                         } else {
-                            self.edit(|loaded| loaded.reload(&path));
+                            self.edit(|loaded| reload(loaded, &path));
                         }
                     }
                 }
@@ -329,7 +354,17 @@ impl Server {
             return Vec::new();
         };
         let db = &loaded.db;
-        let texts: BTreeMap<String, String> = jadpo_db::source_texts(db, loaded.project);
+        let mut texts: BTreeMap<String, String> = jadpo_db::source_texts(db, loaded.project);
+        // A record's errors are shown on the record (area 18).
+        for record in loaded.project.records(db) {
+            if let Ok(text) = &record.text
+                && is_record(&record.path)
+            {
+                texts
+                    .entry(record.path.clone())
+                    .or_insert_with(|| text.clone());
+            }
+        }
         let mut by_file: BTreeMap<String, Vec<lsp_types::Diagnostic>> = BTreeMap::new();
         for problem in jadpo_check::check(db, loaded.project) {
             let Some(label) = &problem.primary else {
@@ -535,6 +570,93 @@ impl Server {
     }
 }
 
+/// Whether `path` is a generated record: a `.jadpo_record` file or
+/// `jadpo.lock`.
+fn is_record(path: &str) -> bool {
+    jadpo_db::record::kind_of(path).is_some() || jadpo_db::record::renamed(path).is_some()
+}
+
+/// Sets the text the editor holds for `path`: a source file's, or a
+/// record's.
+fn put(loaded: &mut Loaded, path: &str, text: String) {
+    if jadpo_db::role(path, loaded.project.layout(&loaded.db)) == Some(jadpo_db::Role::Record) {
+        loaded.set_record(path, Some(text));
+    } else {
+        loaded.set_text(path, text);
+    }
+}
+
+/// Reads `path` from disk again, a source file or a record.
+fn reload(loaded: &mut Loaded, path: &str) {
+    if jadpo_db::role(path, loaded.project.layout(&loaded.db)) == Some(jadpo_db::Role::Record) {
+        let text = std::fs::read_to_string(loaded.on_disk(path)).ok();
+        loaded.set_record(path, text);
+    } else {
+        loaded.reload(path);
+    }
+}
+
+impl Server {
+    /// The text of the record a document is, when it is one.
+    fn record_text(
+        &self,
+        document: &lsp_types::TextDocumentIdentifier,
+    ) -> Option<(String, String)> {
+        let path = self.relative(&document.uri)?;
+        if !is_record(&path) {
+            return None;
+        }
+        let text = self.loaded.as_ref()?.record(&path)?;
+        Some((path, jadpo_db::record::normalise(&text).into_owned()))
+    }
+
+    fn record_symbols(
+        &self,
+        document: &lsp_types::TextDocumentIdentifier,
+    ) -> Option<lsp_types::DocumentSymbolResponse> {
+        let (_, text) = self.record_text(document)?;
+        Some(lsp_types::DocumentSymbolResponse::Nested(
+            crate::records::symbols(&text, self.encoding),
+        ))
+    }
+
+    fn record_folds(
+        &self,
+        document: &lsp_types::TextDocumentIdentifier,
+    ) -> Option<Vec<lsp_types::FoldingRange>> {
+        let (_, text) = self.record_text(document)?;
+        Some(crate::records::folds(&text))
+    }
+
+    /// A link on each file a fact names that is there.
+    fn record_links(
+        &self,
+        document: &lsp_types::TextDocumentIdentifier,
+    ) -> Option<Vec<lsp_types::DocumentLink>> {
+        let (path, text) = self.record_text(document)?;
+        let loaded = self.loaded.as_ref()?;
+        let mut out = Vec::new();
+        for (start, end, file) in crate::records::files(&text) {
+            let Some(target) = crate::records::joined(&path, file) else {
+                continue;
+            };
+            if !loaded.on_disk(&target).is_file() {
+                continue;
+            }
+            let Some(uri) = convert::uri_of(&self.uri_root(loaded).join(&target)) else {
+                continue;
+            };
+            out.push(lsp_types::DocumentLink {
+                range: convert::range(&text, start, end, self.encoding),
+                target: Some(uri),
+                tooltip: None,
+                data: None,
+            });
+        }
+        Some(out)
+    }
+}
+
 /// The project root `root` (a real path) as the editor names it, given
 /// that it named the real folder `real` as `given`: the same number of
 /// folders up from what it gave.
@@ -585,6 +707,12 @@ fn capabilities(encoding: Encoding) -> InitializeResult {
                 ..lsp_types::CompletionOptions::default()
             }),
             definition_provider: Some(OneOf::Left(true)),
+            document_symbol_provider: Some(OneOf::Left(true)),
+            folding_range_provider: Some(lsp_types::FoldingRangeProviderCapability::Simple(true)),
+            document_link_provider: Some(lsp_types::DocumentLinkOptions {
+                resolve_provider: Some(false),
+                work_done_progress_options: Default::default(),
+            }),
             references_provider: Some(OneOf::Left(true)),
             document_formatting_provider: Some(OneOf::Left(true)),
             code_action_provider: Some(lsp_types::CodeActionProviderCapability::Options(

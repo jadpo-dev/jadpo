@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-11-08. This page is the only list of outstanding work: the
+**Updated:** 2026-11-11. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record language decisions on the [area pages](language/README.md)
 and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
@@ -266,11 +266,6 @@ work below (Richard, 2026-11-08).
    - [ ] **T5 Generated CI** `opus · high` after L3: area 14, "Tools for
      agents". Generated CI belongs here, once a page says what generates it
      (L3).
-   - [ ] **T7 Records in the editor** `opus · high`: area 18, "Records in
-     git and in your editor" and "What is built". `jadpo check` building
-     the base commit, as `jadpo approval` does, to tell a careful hand edit of
-     a view from a stale one; the record language's grammar; `jadpo lsp`
-     serving records.
 5. Packages and capabilities after the first build (decided 2026-10-16):
    services run by Jadpo (`runs:`, Docker or Podman hidden behind
    `jadpo services`, and `jadpo dev` starting them); the `documents`
@@ -286,12 +281,15 @@ work below (Richard, 2026-11-08).
    apps (`jadpo package add` from a folder or a URL) and the cross-app break
    check; choosing a provider when deploying,
    when an app other people run needs it.
-   - [ ] **C1 Publishing events outward and outgoing webhooks** `opus ·
-     xhigh`: area 12, "Where events travel" and "Running background work";
-     area 16, "Outgoing webhooks" and "Sending audit entries elsewhere";
-     area 7, "The `x-jadpo` fields". `publishing:`, its capability, and
-     `x-jadpo-events`. Done when a chosen public event reaches a subscriber
-     outside the app on both executors, signed and retried.
+   - [ ] **C1b Outgoing webhooks to customers' addresses** `opus · xhigh`
+     **needs a maintainer** before it starts: area 16, "Outgoing webhooks";
+     area 11, "The network report". How a customer registers an address and
+     chooses its events, and how each address's signing secret is made, kept
+     and rotated, are security decisions the pages don't make; then the
+     runtime-owned network exception (HTTPS only, public addresses checked
+     at every attempt, no redirects), listed once in the network report.
+     Done when an event reaches an address a customer registered, signed
+     with that address's own secret, and a private address is refused.
    - [ ] **K1 Importers other than OpenAPI** `opus · high`, when first
      needed: area 11, "An importer" and "Installing safely"; area 14,
      "Commands for packages". `smithy`, `postman`, `har` (a capture's
