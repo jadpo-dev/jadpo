@@ -188,8 +188,9 @@ pub(crate) fn emit(
 /// One store's share of an erasure, about to run.
 pub(crate) struct Applying<'a> {
     pub(crate) plan: &'a ErasurePlan,
-    /// Whether the store keeps a record of files, whose commit releases them.
-    pub(crate) keeps_files: bool,
+    /// The plan of stores of files, when the store keeps a record of
+    /// them, whose commit releases them.
+    pub(crate) files: Option<&'a jadpo_std::files::FilesPlan>,
     pub(crate) part: &'a StoreErasure,
     /// The person's `id`.
     pub(crate) id: &'a SqlValue,
@@ -243,7 +244,7 @@ pub(crate) async fn apply_in(
 ) -> Result<Applied, StoreError> {
     let Applying {
         plan,
-        keeps_files,
+        files,
         part,
         id,
         at,
@@ -269,8 +270,8 @@ pub(crate) async fn apply_in(
         })
         .collect();
     let people = events.len();
-    if keeps_files {
-        events.extend(crate::files::released(&mut *transaction, now).await?);
+    if let Some(files) = files {
+        events.extend(crate::files::released(&mut *transaction, now, files).await?);
     }
     let mut sealed = Sealed {
         outbox: Vec::with_capacity(events.len()),
@@ -352,12 +353,12 @@ pub(crate) async fn apply_delivery(ctx: &mut Ctx<'_>, store: &str, delivery: &De
     };
     let host = ctx.host();
     let now = host.now_ms().unwrap_or_else(|| ctx.now());
-    let keeps_files = started.files().keeps(store);
+    let files = started.files().keeps(store).then(|| started.files());
     let (trace, depth) = (delivery.trace, delivery.depth.saturating_add(1));
     let mut new_id = || ctx.new_id();
     let applying = Applying {
         plan,
-        keeps_files,
+        files,
         part,
         id: &id,
         at,
@@ -770,7 +771,7 @@ async fn replay_page(
                 let at = time_of(host, log, entry).await?;
                 let applying = Applying {
                     plan,
-                    keeps_files: files.keeps(&part.store),
+                    files: files.keeps(&part.store).then_some(files),
                     part,
                     id: &SqlValue::Uuid(*id),
                     at,

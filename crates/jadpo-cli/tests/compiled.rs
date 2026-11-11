@@ -660,7 +660,7 @@ test "a body cut into segments" {
 /// a person's erasure (chunk P3, `crate::erasure`), a file's bytes
 /// deleted once no record holds them, the bytes each store keeps among
 /// the records (chunk B3, `crate::file_deletes`), and held from two
-/// databases (chunk B14), a file downloaded and exported (chunks B4 and
+/// databases (chunk B14), and held inside a structured value, a file downloaded and exported (chunks B4 and
 /// B14, `crate::file_downloads`), a file uploaded (chunk B5,
 /// `crate::file_uploads`), files sent as attachments and to a provider
 /// (chunk B14, `crate::file_sends`), and the audit trail (chunk B11,
@@ -767,6 +767,19 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             corpus_project(
                 &crate::file_deletes::two_database_files(),
                 "compiled-file-two-databases",
+            )
+            .expect("it checks"),
+        ),
+        (
+            "a file held inside a structured value".into(),
+            corpus_project(&crate::file_deletes::nested_files(), "compiled-file-nested")
+                .expect("it checks"),
+        ),
+        (
+            "a file a structured value holds in a second database".into(),
+            corpus_project(
+                &crate::file_deletes::nested_two_database_files(),
+                "compiled-file-nested-two-databases",
             )
             .expect("it checks"),
         ),
@@ -996,6 +1009,16 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     // Bytes held from two databases, a file's attachments and bytes sent
     // to a provider, each passing both ways (chunk B14).
     assert_eq!(counted("a file held from two databases"), Some((2, 2)));
+    // A file held only inside a structured value, in one database and in
+    // a second with no `File` field of its own.
+    assert_eq!(
+        counted("a file held inside a structured value"),
+        Some((3, 3))
+    );
+    assert_eq!(
+        counted("a file a structured value holds in a second database"),
+        Some((1, 1))
+    );
     assert_eq!(counted("files sent elsewhere"), Some((3, 3)));
     assert_eq!(counted("each kind of choice's paths"), Some((2, 2)));
     // A fixture file read, and a store told to fail a read and a write

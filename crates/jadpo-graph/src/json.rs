@@ -75,6 +75,41 @@ impl Value {
         out
     }
 
+    /// The value on one line, with no spaces: what a SQL statement embeds.
+    pub fn to_text(&self) -> String {
+        let mut out = String::new();
+        self.write_compact(&mut out);
+        out
+    }
+
+    fn write_compact(&self, out: &mut String) {
+        match self {
+            Value::Array(items) => {
+                out.push('[');
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    item.write_compact(out);
+                }
+                out.push(']');
+            }
+            Value::Object(entries) => {
+                out.push('{');
+                for (i, (key, value)) in entries.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    write_string(out, key);
+                    out.push(':');
+                    value.write_compact(out);
+                }
+                out.push('}');
+            }
+            scalar => scalar.write(out, 0),
+        }
+    }
+
     fn write(&self, out: &mut String, indent: usize) {
         match self {
             Value::Null => out.push_str("null"),

@@ -327,7 +327,8 @@ pub struct Removal {
     /// The columns that go, by name, each with its type: a field's own, or
     /// every column of a table dropped.
     pub columns: Vec<(String, String)>,
-    /// Whether any of them holds a `File`, which its rows let go of.
+    /// Whether any of them holds a `File`, however deep, which its rows
+    /// let go of.
     pub files: bool,
     /// Whether the store keeps an audit trail, whose entries stay.
     pub history: bool,
@@ -390,7 +391,9 @@ pub fn removals(before: &Schema, after: &Schema) -> Vec<Removal> {
                             .iter()
                             .map(|(name, column)| ((*name).clone(), column.sql_type.clone()))
                             .collect(),
-                        files: columns.iter().any(|(_, column)| holds_a_file(column)),
+                        files: columns
+                            .iter()
+                            .any(|(name, column)| files_held(name, column).is_some()),
                         history,
                     }
                 };
@@ -1207,8 +1210,9 @@ pub fn migration_sql(
         return Err(refusals);
     }
     // Each store that keeps a record of which files its records hold
-    // counts them with a trigger on each table with a `File` column
-    // (area 16, "Deleting and erasing"; chunk B3).
+    // counts them with a trigger on each table with a column holding
+    // files: a `File` column, or a structured value with files inside,
+    // however deep (area 16, "Deleting and erasing"; chunk B3).
     let stores: BTreeSet<&String> = before.stores.keys().chain(after.stores.keys()).collect();
     for store in stores {
         let had = held_files(before, store);
@@ -1217,14 +1221,28 @@ pub fn migration_sql(
             continue;
         }
         let plan = plans.entry(store.clone()).or_default();
-        if had.is_none() && has.is_some() {
+        let starts = had.is_none() && has.is_some();
+        let had = had.unwrap_or_default();
+        let has = has.unwrap_or_default();
+        // The functions the triggers and counts below run, made when the
+        // store starts its record, and made again whenever a structured
+        // value's files are counted, as a record made before they were
+        // has a function that reads only `File` columns.
+        let walks = has
+            .values()
+            .chain(had.values())
+            .flatten()
+            .any(|held| held.within.is_some());
+        if starts || walks {
+            plan.files.push(Statement {
+                sql: table::create_files_within(),
+                does: "create the function that finds the files a value holds",
+            });
             plan.files.push(Statement {
                 sql: table::create_files_function(),
                 does: "create the function that counts a file's holders",
             });
         }
-        let had = had.unwrap_or_default();
-        let has = has.unwrap_or_default();
         // What a drop lets go of, counted before its column or table goes,
         // since no trigger sees a row of it again: its bytes go once nothing
         // else holds them (chunk V3). A column's trigger is made again
@@ -1232,9 +1250,9 @@ pub fn migration_sql(
         // table has only this statement to do so.
         for (name, columns) in &had {
             let kept = table_in(after, store, name);
-            let gone: Vec<String> = columns
+            let gone: Vec<table::Held> = columns
                 .iter()
-                .filter(|column| kept.is_none_or(|table| !table.columns.contains_key(*column)))
+                .filter(|held| kept.is_none_or(|table| !table.columns.contains_key(&held.column)))
                 .cloned()
                 .collect();
             if gone.is_empty() {
@@ -1266,13 +1284,32 @@ pub fn migration_sql(
                 sql: table::create_files_trigger(name, columns),
                 does: "count a file's holders",
             });
+            // A column whose type now finds its files elsewhere in its
+            // value lets go of those it found before, then counts them
+            // where they are now.
+            let moved: Vec<table::Held> = was
+                .into_iter()
+                .flatten()
+                .filter(|held| {
+                    columns
+                        .iter()
+                        .any(|now| now.column == held.column && now != *held)
+                })
+                .cloned()
+                .collect();
+            if !moved.is_empty() {
+                plan.files.push(Statement {
+                    sql: table::release_held_files(name, &moved),
+                    does: "let go of the files its rows hold",
+                });
+            }
             // The files rows already hold, in columns no trigger counted.
-            let stored: Vec<String> = columns
+            let stored: Vec<table::Held> = columns
                 .iter()
-                .filter(|column| {
-                    was.is_none_or(|was| !was.contains(column))
+                .filter(|held| {
+                    was.is_none_or(|was| !was.contains(held))
                         && table_in(before, store, name)
-                            .is_some_and(|table| table.columns.contains_key(*column))
+                            .is_some_and(|table| table.columns.contains_key(&held.column))
                 })
                 .cloned()
                 .collect();
@@ -1331,13 +1368,15 @@ pub fn migration_sql(
     Ok(out)
 }
 
-/// The `File` columns of each entity table of `store` in `schema`, by
-/// table, in the order the table's columns stand, when the store keeps a
-/// record of which files its records hold (`jadpo_files`; area 16,
-/// "Deleting and erasing"; chunk B3): what its tables' triggers count.
-/// A retired column is still counted, since its rows still hold their
-/// files. `None` for a store that keeps none.
-pub fn held_files(schema: &Schema, store: &str) -> Option<BTreeMap<String, Vec<String>>> {
+/// The columns of each entity table of `store` in `schema` whose rows
+/// hold stored files, by table, in the order the table's columns stand,
+/// when the store keeps a record of which files its records hold
+/// (`jadpo_files`; area 16, "Deleting and erasing"; chunk B3): what its
+/// tables' triggers count. A `File` column holds one, and a structured
+/// value's column every `File` inside it, however deep, with where they
+/// are. A retired column is still counted, since its rows still hold
+/// their files. `None` for a store that keeps none.
+pub fn held_files(schema: &Schema, store: &str) -> Option<BTreeMap<String, Vec<table::Held>>> {
     let store = schema.stores.get(store)?;
     if !store.tables.contains_key(jadpo_std::system::FILES.table) {
         return None;
@@ -1347,11 +1386,10 @@ pub fn held_files(schema: &Schema, store: &str) -> Option<BTreeMap<String, Vec<S
         if !matches!(table.holds, Holds::Entity(_)) {
             continue;
         }
-        let columns: Vec<String> = table
+        let columns: Vec<table::Held> = table
             .ordered()
             .into_iter()
-            .filter(|(_, column)| holds_a_file(column))
-            .map(|(name, _)| name.clone())
+            .filter_map(|(name, column)| files_held(name, column))
             .collect();
         if !columns.is_empty() {
             out.insert(name.clone(), columns);
@@ -1360,21 +1398,18 @@ pub fn held_files(schema: &Schema, store: &str) -> Option<BTreeMap<String, Vec<S
     Some(out)
 }
 
-/// Whether `column` keeps a `File` as its JSON.
-fn holds_a_file(column: &Column) -> bool {
-    use crate::stored_json::Shape;
-    let Some(reads) = column
-        .allows
-        .as_ref()
-        .and_then(|allows| allows.json.as_ref())
-    else {
-        return false;
-    };
-    let file = |shape: &Shape| matches!(shape, Shape::Value(scalar) if scalar.ty == jadpo_std::files::FILE);
-    match &reads.shape {
-        Shape::Optional(inner) => file(inner),
-        shape => file(shape),
+/// What `column` holds of stored files: a `File` as its JSON, or a
+/// structured value holding some, with where.
+fn files_held(name: &str, column: &Column) -> Option<table::Held> {
+    let reads = column.allows.as_ref()?.json.as_ref()?;
+    let within = crate::stored_json::files_within(reads)?;
+    if within.get("at").and_then(crate::json::Value::as_str) == Some("file") {
+        return Some(table::Held::file(name));
     }
+    Some(table::Held {
+        column: name.to_string(),
+        within: Some(within.to_text()),
+    })
 }
 
 /// The PostgreSQL extensions `store`'s columns need in `schema`: pgvector's
@@ -2371,7 +2406,7 @@ mod tests {
             held_files(&filed(true), "main"),
             Some(BTreeMap::from([(
                 "todo".to_string(),
-                vec!["scan".to_string()]
+                vec![table::Held::file("scan")]
             )]))
         );
         let sql = migration_sql(&filed(false), &filed(true), &|_| None).expect("sql");
