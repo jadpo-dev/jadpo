@@ -452,11 +452,11 @@ type Tag = Text {
 ```jadpo check project=held-conditions file=domains/bakery/entities/order.jadpo
 use bakery/types { CakePrice, Tag }
 
-/// A cake ordered for a month.
+/// A cake ordered for the month it is baked in.
 entity Order {
     id: Uuid
     total: CakePrice  // `total_amount` and `total_currency`
-    month: YearMonth  // `month_year` and `month_month`
+    bake_month: YearMonth  // `bake_month_year` and `bake_month_month`
     tags: List<Tag>  // one `jsonb` column
 }
 ```
@@ -466,7 +466,7 @@ use bakery/entities { Order }
 
 /// An order in a list.
 type OrderCard = Output {
-    pick: [Order.id, Order.total, Order.month]
+    pick: [Order.id, Order.total, Order.bake_month]
 }
 ```
 
@@ -474,12 +474,12 @@ type OrderCard = Output {
 use bakery/entities { Order }
 use bakery/types { CakePrice, Tag }
 
-/// Takes an order for a month.
-action place_order(total: CakePrice, month: YearMonth, tags: List<Tag>) -> Order {
+/// Takes an order for the month a cake is baked in.
+action place_order(total: CakePrice, bake_month: YearMonth, tags: List<Tag>) -> Order {
     return Order.create {
         set: {
             total: total
-            month: month
+            bake_month: bake_month
             tags: tags
         }
     }
@@ -499,28 +499,28 @@ query dearer_than(price: CakePrice) -> List<OrderCard> {
 }
 ```
 
-```jadpo check project=held-conditions file=domains/bakery/queries/from_month.jadpo
+```jadpo check project=held-conditions file=domains/bakery/queries/baked_from.jadpo
 use bakery/entities { Order }
 use bakery/types { OrderCard }
 
-/// The orders for `month` and after, soonest first.
-query from_month(month: YearMonth) -> List<OrderCard> {
+/// The orders baked in `opening_month` and after, soonest first.
+query baked_from(opening_month: YearMonth) -> List<OrderCard> {
     from: Order
-    where: Order.month >= month
-    order: [Order.month asc]
+    where: Order.bake_month >= opening_month
+    order: [Order.bake_month asc]
     limit: 50
 }
 ```
 
-```jadpo check project=held-conditions file=domains/bakery/queries/tagged.jadpo migrate=initial
+```jadpo check project=held-conditions file=domains/bakery/queries/tagged_exactly.jadpo migrate=initial
 use bakery/entities { Order }
 use bakery/types { OrderCard, Tag }
 
 /// The orders filed under exactly `tags`, in that order.
-query tagged(tags: List<Tag>) -> List<OrderCard> {
+query tagged_exactly(tags: List<Tag>) -> List<OrderCard> {
     from: Order
     where: Order.tags == tags
-    order: [Order.month asc]
+    order: [Order.bake_month asc]
     limit: 50
 }
 ```
@@ -532,35 +532,35 @@ year's first, a list keeps its order, and £42.49 is not more than
 ```jadpo check project=held-conditions file=domains/bakery/actions/place_order.test.jadpo
 use bakery/entities { Order }
 use bakery/types { CakePrice, OrderCard, Tag }
-use bakery/queries { dearer_than, from_month, tagged }
+use bakery/queries { baked_from, dearer_than, tagged_exactly }
 
 test "a query compares money, months and lists as code does" {
     var birthday: Tag = "birthday"
     var chocolate: Tag = "chocolate"
-    var december: Order = place_order(
+    var first_cake: Order = place_order(
         CakePrice(money.from_minor(4250, Currency.gbp)),
         "2026-12",
         [birthday]
     )
-    var january: Order = place_order(
+    var second_cake: Order = place_order(
         CakePrice(money.from_minor(4249, Currency.gbp)),
         "2027-01",
         [birthday, chocolate]
     )
-    var march: Order = place_order(
+    var third_cake: Order = place_order(
         CakePrice(money.from_minor(9900, Currency.gbp)),
         "2027-03",
         [chocolate, birthday]
     )
-    var dearer: List<OrderCard> = dearer_than(january.total)
-    assert list.map(dearer, card -> text.from(card.month)) == ["2027-03", "2026-12"]
-    var since: List<OrderCard> = from_month(january.month)
-    assert list.map(since, card -> text.from(card.month)) == ["2027-01", "2027-03"]
-    var both: List<OrderCard> = tagged([birthday, chocolate])
-    assert list.map(both, card -> text.from(card.month)) == ["2027-01"]
-    var one: List<OrderCard> = tagged(december.tags)
-    assert list.map(one, card -> text.from(card.month)) == ["2026-12"]
-    assert march.tags != january.tags
+    var dearer: List<OrderCard> = dearer_than(second_cake.total)
+    assert list.map(dearer, card -> text.from(card.bake_month)) == ["2027-03", "2026-12"]
+    var baked_later: List<OrderCard> = baked_from(second_cake.bake_month)
+    assert list.map(baked_later, card -> text.from(card.bake_month)) == ["2027-01", "2027-03"]
+    var both: List<OrderCard> = tagged_exactly([birthday, chocolate])
+    assert list.map(both, card -> text.from(card.bake_month)) == ["2027-01"]
+    var one: List<OrderCard> = tagged_exactly(first_cake.tags)
+    assert list.map(one, card -> text.from(card.bake_month)) == ["2026-12"]
+    assert third_cake.tags != second_cake.tags
 }
 ```
 
@@ -570,27 +570,27 @@ JSON ([Indexes](05-data.md#indexes)):
 
 ```sql
 -- dearer_than
-SELECT "id", "total_amount", "total_currency", "month_year", "month_month"
+SELECT "id", "total_amount", "total_currency", "bake_month_year", "bake_month_month"
 FROM "order"
 WHERE "total_amount" > $1
 ORDER BY "total_amount" DESC, "id" DESC
 LIMIT 50
 
--- from_month
-SELECT "id", "total_amount", "total_currency", "month_year", "month_month"
+-- baked_from
+SELECT "id", "total_amount", "total_currency", "bake_month_year", "bake_month_month"
 FROM "order"
-WHERE ("month_year", "month_month") >= ($1, $2)
-ORDER BY "month_year" ASC, "month_month" ASC, "id" ASC
+WHERE ("bake_month_year", "bake_month_month") >= ($1, $2)
+ORDER BY "bake_month_year" ASC, "bake_month_month" ASC, "id" ASC
 LIMIT 50
 
--- tagged
-SELECT "id", "total_amount", "total_currency", "month_year", "month_month"
+-- tagged_exactly
+SELECT "id", "total_amount", "total_currency", "bake_month_year", "bake_month_month"
 FROM "order"
 WHERE "tags" = $1
-ORDER BY "month_year" ASC, "month_month" ASC, "id" ASC
+ORDER BY "bake_month_year" ASC, "bake_month_month" ASC, "id" ASC
 LIMIT 50
 
-CREATE INDEX "order_month_year_month_month_id_idx" ON "order" ("month_year", "month_month", "id");
+CREATE INDEX "order_bake_month_year_bake_month_month_id_idx" ON "order" ("bake_month_year", "bake_month_month", "id");
 CREATE INDEX "order_total_amount_id_idx" ON "order" ("total_amount", "id");
 ```
 
