@@ -2102,7 +2102,7 @@ pub static COMMANDS: &[Command] = &[
                       isn't a name for its kind, is refused before anything changes; a rename \
                       whose result would have an error the project didn't have changes nothing \
                       and shows that error. Name a field after its entity or type \
-                      (`Todo.priority`); its new name is its own (`importance`).",
+                      (`Invoice.amount`); its new name is its own (`total`).",
         arguments: &[
             Argument {
                 name: "name",
@@ -2121,11 +2121,11 @@ pub static COMMANDS: &[Command] = &[
         examples: &[
             Example {
                 description: "Rename an action, its file and every call",
-                command: "jadpo rename greet welcome",
+                command: "jadpo rename greet salute",
             },
             Example {
                 description: "Rename a stored field, keeping its column",
-                command: "jadpo rename Todo.priority importance",
+                command: "jadpo rename Invoice.amount total",
             },
         ],
         arguments_rule: &rule::CLI_RENAME_ARGUMENTS,

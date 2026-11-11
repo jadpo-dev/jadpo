@@ -344,7 +344,7 @@ pub fn plan(db: &dyn Db, project: Project, key: &Key, new: &str) -> Result<Plan,
     // Not a name in use.
     let to = with_own(&name, &new_own);
     if let Some(owner) = owner
-        && let Some(problem) = member_in_use(&graph, node, owner, &name, &to, &new_own)
+        && let Some(problem) = member_in_use(graph, node, owner, &name, &to, &new_own)
     {
         return Err(problem);
     }
@@ -357,7 +357,7 @@ pub fn plan(db: &dyn Db, project: Project, key: &Key, new: &str) -> Result<Plan,
     // Every place it is written, and every field copied from it.
     let mut keys = vec![key.clone()];
     if kind == Kind::Field {
-        keys.extend(copies(&graph, key));
+        keys.extend(copies(graph, key));
     }
     let edits = references(db, project, &keys);
 
@@ -396,7 +396,7 @@ pub fn plan(db: &dyn Db, project: Project, key: &Key, new: &str) -> Result<Plan,
 
     // The registry's line.
     let registry = crate::graph::registry(db, project);
-    let now = identity_now(&graph, registry, node);
+    let now = identity_now(graph, registry, node);
     let after = with_own(&now, &new_own);
     let born = key.name().to_string();
     let word_kind = kind.word();
@@ -404,7 +404,7 @@ pub fn plan(db: &dyn Db, project: Project, key: &Key, new: &str) -> Result<Plan,
     let had = lines.remove(&format!("{word_kind} {now}"));
     let parent_names = owner.map(|owner| {
         (
-            identity_now(&graph, registry, owner),
+            identity_now(graph, registry, owner),
             owner.key.name().to_string(),
         )
     });
@@ -540,7 +540,7 @@ fn shares_words(name: &str, other: &str) -> bool {
 /// The most names the `in use` list shows, as `semantic.duplicate_declaration`'s does.
 const IN_USE: usize = 12;
 
-fn capped(mut rows: Vec<(String, String)>) -> Vec<(String, String)> {
+fn limited(mut rows: Vec<(String, String)>) -> Vec<(String, String)> {
     rows.sort();
     rows.dedup();
     if rows.len() > IN_USE {
@@ -603,7 +603,7 @@ fn member_in_use(
             "Choose another name, then run `jadpo rename {} <new-name>`",
             shell(name)
         ))
-        .in_use(capped(rows)),
+        .in_use(limited(rows)),
     ))
 }
 
@@ -660,7 +660,7 @@ fn declaration_in_use(
             taken.path
         ))
         .next(format!("Choose another name, then run `{}`", again))
-        .in_use(capped(rows)),
+        .in_use(limited(rows)),
     ))
 }
 
