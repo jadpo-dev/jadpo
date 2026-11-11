@@ -1,0 +1,17 @@
+{
+  "brackets": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"]
+  ],
+  "autoClosingPairs": [
+    { "open": "{", "close": "}" },
+    { "open": "[", "close": "]" },
+    { "open": "(", "close": ")" },
+    { "open": "\"", "close": "\"", "notIn": ["string", "comment"] }
+  ],
+  "folding": {
+    "offSide": true
+  },
+  "wordPattern": "[A-Za-z_][A-Za-z0-9_]*|\\d+(\\.\\d+)*"
+}

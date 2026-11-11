@@ -896,6 +896,20 @@ graph gives a query a `reads` edge to its entity, an `includes` edge to
 each entity it includes and a `raises` edge to its `missing:` failure; a
 body calling `Entity.get` gets a `reads` edge too.
 
+**The schema and query reports** (areas 5, 6 and 14). The index a read
+needs and the key or index that serves it come from one rule in
+`jadpo_check::data::report` (`wanted_columns`, `serving`), which the
+derived indexes and the reports both call, so a report never names an
+index the schema doesn't hold. `report::reads` gives each statement each
+query sends with its rows and index, and `report::database` the schema
+report. The query report (`jadpo-cli`'s `query_report`) adds what only
+the plan knows: each action's query calls, by site, and the reads a
+request sends, summed through the actions it calls. `jadpo_graph::views`
+writes `inventory/`, `audit/` and `compatibility/` from the manifest's
+own entries (`node_json`). `jadpo sql --explain` plans each statement on
+a copy `jadpo_test::database::TestDatabases` makes, through
+`Postgres::explain` (generic plan, no costs).
+
 **Outside, access and services** (areas 8, 10, 11 and 12). A package's
 declarations are its files' parts: a `package` node for its index, keyed
 by the name its declarations are written through (`package SwiftCouriers`,
@@ -1023,6 +1037,14 @@ newly reachable callables and the other behaviour, and walks today's edges
 decisions themselves are `acceptances::needs`, the same list `check` judges,
 each carrying its plain words and the callers it lets in from where its
 record is read.
+
+`jadpo check` builds the same base for records (area 18, "Checking a
+record"): `records::candidates` names each view that changed since the base
+and disagrees with the source, `before::judge_views` loads the base the same
+way for those alone and sets `Project::base_views` from
+`records::base_view`, kept in `build/before/<commit>/records.json`, and
+`records::hand_edit` compares entry by entry. A project with no such view
+builds nothing.
 
 **The registry commands** (chunk R5, area 11, "How the registry commands
 work") are `jadpo-cli`'s `registry` (asking the protocol over `download`,

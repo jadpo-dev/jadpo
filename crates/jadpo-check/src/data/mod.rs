@@ -24,6 +24,7 @@ pub use columns::system_table;
 pub mod lifecycle;
 pub mod migrations;
 pub mod queries;
+pub mod report;
 pub mod retention;
 pub mod sealed;
 pub mod search;
@@ -3399,45 +3400,11 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
 /// The records of an entity with a lifecycle are indexed only as far as
 /// its `visible:` lets queries see them.
 fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mut Schema) {
-    use queries::{Condition, Include, IncludeKind, OrderField};
+    use queries::{Include, IncludeKind};
     let queries = queries::query_models(db, project);
     let lookup = Lookup::new(db, project);
     let mut wanted: Vec<(String, (Vec<String>, usize), String)> = Vec::new();
-    fn equal_fields(filter: &[Condition], out: &mut Vec<String>) {
-        for line in filter {
-            let mut push = |field: &String| {
-                if !out.contains(field) {
-                    out.push(field.clone());
-                }
-            };
-            match line {
-                Condition::Compare {
-                    field,
-                    op: queries::Compare::Equal,
-                    ..
-                }
-                | Condition::In { field, .. } => push(field),
-                Condition::And(parts) => equal_fields(parts, out),
-                _ => {}
-            }
-        }
-    }
-    /// The columns, and how many of them lead as equality tests.
-    fn columns(
-        prefix: &[String],
-        filter: &[Condition],
-        order: &[OrderField],
-    ) -> (Vec<String>, usize) {
-        let mut out = prefix.to_vec();
-        equal_fields(filter, &mut out);
-        let equal = out.len();
-        for field in order {
-            if !out.contains(&field.field) {
-                out.push(field.field.clone());
-            }
-        }
-        (out, equal)
-    }
+    use report::wanted_columns as columns;
     #[allow(clippy::type_complexity)]
     fn walk(
         includes: &[Include],
@@ -3483,39 +3450,11 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
         if born.len() != fields.len() {
             continue;
         }
+        let (collate, tested) = report::sorted_and_tested(&lookup, entity, &fields, &born, equal);
         // An index that starts with these columns already serves the
         // query, and so does a unique key all of whose columns it tests
         // for equality: at most one record matches each value.
-        let tested = &born[..equal];
-        // The text columns it sorts by, after those it tests for
-        // equality, are kept in code-point order, as the query sorts
-        // them; an equality test compares under the column's own order.
-        let collate: Vec<String> = born[equal..]
-            .iter()
-            .zip(&fields[equal..])
-            .filter(|(_, name)| {
-                lookup.representation(&Ty::Field(entity.name.clone(), vec![(*name).clone()]))
-                    == Some(jadpo_std::Builtin::Text)
-            })
-            .map(|(column, _)| column.clone())
-            .collect();
-        let serves = |existing: &[String], sorted: &[String]| {
-            existing.len() >= born.len()
-                && existing[..born.len()] == born[..]
-                && born
-                    .iter()
-                    .all(|column| collate.contains(column) == sorted.contains(column))
-        };
-        let covered = std::iter::once(&table.primary_key.columns)
-            .chain(table.unique.values().map(|u| &u.columns))
-            .any(|existing| serves(existing, &[]))
-            || table
-                .indexes
-                .values()
-                .any(|index| serves(&index.columns, &index.collate))
-            || std::iter::once(&table.primary_key.columns)
-                .chain(table.unique.values().map(|u| &u.columns))
-                .any(|key| key.iter().all(|column| tested.contains(column)));
+        let covered = report::serving(table, &born, &collate, &tested).is_some();
         if covered {
             continue;
         }

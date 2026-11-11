@@ -16,7 +16,10 @@ the lexer does not know:
   ...), from the comment on `SingletonDecl` in `jadpo.ungram`.
 
 It also checks the extension's manifest points at the grammar, and pins the
-language client to one exact version. It needs no Node.
+language client to one exact version. The record language's grammar
+(`syntaxes/jadpo-record.tmLanguage.json`) must name every kind of record the
+compiler writes, read from `crates/jadpo-db/src/record.rs`, and no other, and
+be contributed for `.jadpo_record` files and `jadpo.lock`. It needs no Node.
 """
 from __future__ import annotations
 
@@ -27,6 +30,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+RECORD_FORMAT = ROOT / 'crates' / 'jadpo-db' / 'src' / 'record.rs'
 SYNTAX = ROOT / 'crates' / 'jadpo-syntax'
 EXTENSION = ROOT / 'editors' / 'vscode'
 
@@ -85,6 +89,48 @@ def words_in_groups(patterns: list[str]) -> set[str]:
     return words
 
 
+def record_kinds() -> set[str]:
+    """The words of every kind of record, from `KINDS` in record.rs."""
+    source = RECORD_FORMAT.read_text()
+    listed = re.search(r'pub const KINDS: &\[&Kind\] = &\[(.*?)\];', source, re.S)
+    if not listed:
+        raise SystemExit('record.rs has no `KINDS`; update tools/checks/editor_grammar.py')
+    words = set()
+    for constant in re.findall(r'&([A-Z_]+)', listed.group(1)):
+        word = re.search(rf'pub const {constant}: Kind = Kind \{{\s*word: "([a-z_]+)"', source)
+        if not word:
+            raise SystemExit(f'record.rs has no word for `{constant}`')
+        words.add(word.group(1))
+    return words
+
+
+def check_records(package: dict) -> list[str]:
+    problems: list[str] = []
+    path = EXTENSION / 'syntaxes' / 'jadpo-record.tmLanguage.json'
+    grammar = json.loads(path.read_text())
+    line = grammar['repository']['record-line']['match']
+    group = re.search(r'\^\(record\) \(([a-z_|]+)\)', line)
+    named = set(group.group(1).split('|')) if group else set()
+    kinds = record_kinds()
+    for word in sorted(kinds - named):
+        problems.append(f'the record grammar does not know the `{word}` record')
+    for word in sorted(named - kinds):
+        problems.append(f'the record grammar names `{word}`, which is no kind of record')
+    contributes = package.get('contributes', {})
+    if not any(g.get('scopeName') == grammar.get('scopeName')
+               and (EXTENSION / g.get('path', '')).resolve() == path.resolve()
+               for g in contributes.get('grammars', [])):
+        problems.append('package.json does not contribute the record grammar')
+    language = next((l for l in contributes.get('languages', [])
+                     if l.get('id') == 'jadpo-record'), {})
+    if '.jadpo_record' not in language.get('extensions', []) \
+            or 'jadpo.lock' not in language.get('filenames', []):
+        problems.append('package.json does not give `.jadpo_record` files and `jadpo.lock` the record language')
+    else:
+        json.loads((EXTENSION / language['configuration']).read_text())
+    return problems
+
+
 def check() -> list[str]:
     problems: list[str] = []
     grammar_path = EXTENSION / 'syntaxes' / 'jadpo.tmLanguage.json'
@@ -111,6 +157,7 @@ def check() -> list[str]:
     version = package.get('dependencies', {}).get('vscode-languageclient', '')
     if not re.fullmatch(r'\d+\.\d+\.\d+', version):
         problems.append(f'vscode-languageclient must be pinned exactly, not `{version}`')
+    problems += check_records(package)
     return problems
 
 

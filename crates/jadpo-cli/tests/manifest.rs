@@ -40,6 +40,19 @@ const DERIVED: &[&str] = &[
     "build/report/network.json",
     "build/report/personal-data.md",
     "build/report/personal-data.json",
+    "build/report/database.md",
+    "build/report/database.json",
+    "build/report/queries.md",
+    "build/report/queries.json",
+    "build/inventory/routes.json",
+    "build/inventory/callables.json",
+    "build/audit/failures.json",
+    "build/audit/entities.json",
+    "build/audit/transactions.json",
+    "build/audit/configuration.json",
+    "build/audit/policy.json",
+    "build/compatibility/public-failure-codes.json",
+    "build/diagnostics/errors.json",
 ];
 
 use crate::support;
@@ -172,12 +185,16 @@ fn a_project_with_errors_still_writes_and_says_so() {
     let output = jadpo(&root, &["check", "--json", "--full"]);
     assert_eq!(output.code, 1);
     let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
-    // All but the personal-data report, which only a project with no errors
-    // can be sure of (area 15; chunk V5).
+    // All but the personal-data, schema and query reports, which only a
+    // project with no errors can be sure of (area 15; chunks V5 and T4).
     let written: Vec<&str> = DERIVED
         .iter()
         .copied()
-        .filter(|path| !path.contains("personal-data"))
+        .filter(|path| {
+            !["personal-data", "database", "queries"]
+                .iter()
+                .any(|report| path.contains(report))
+        })
         .collect();
     assert_eq!(
         document["data"]["build"],

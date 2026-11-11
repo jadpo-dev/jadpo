@@ -49,6 +49,11 @@ language server does everything else.
 - **Highlighting** of keywords, declarations, types, strings, numbers and
   quantities (`15m`), comments, operators, route paths and `use` lines. It
   also gives you comment toggling, bracket matching and indentation.
+- **Records**: the files Jadpo generates and you commit, `.jadpo_record`
+  files and `jadpo.lock`, are highlighted too. Their errors show as you
+  edit them (a record is never edited by hand, so an edit is an error
+  naming the command that writes it again), the outline lists each entry,
+  each entry folds, and a `file` line links to the file it names.
 
 ## Install Jadpo first
 
@@ -64,8 +69,8 @@ that `jadpo` runs the Jadpo release your project names. You need no
 setting. People working on the compiler can set `jadpo.server.path` to the
 path of their own build.
 
-The status bar shows which `jadpo` is running whenever a `.jadpo` file is
-open: `jadpo 0.1.0`, with the binary's path when you point at it. Click it
+The status bar shows which `jadpo` is running whenever a Jadpo file or
+record is open: `jadpo 0.1.0`, with the binary's path when you point at it. Click it
 to restart the language server.
 
 If no binary is found, the item reads `jadpo not found`, and a message says

@@ -440,3 +440,70 @@ pub fn tree(root: &Path, commit: &str) -> jadpo_db::FileSet {
     }
     files
 }
+
+/// Builds the base commit for the views that need it to be judged (area
+/// 18, "Checking a record"), as `jadpo approval` builds its before side,
+/// and sets what the base's source gives for each: a view that changed
+/// since the base where its source didn't was edited by hand. Nothing is
+/// built while no view needs it. What a base gives is kept in
+/// `build/before/<commit>/records.json`, so each base is built once by
+/// this compiler.
+pub fn judge_views(loaded: &mut jadpo_db::Loaded, day: i32) {
+    let wanted = jadpo_check::records::candidates(&loaded.db, loaded.project);
+    if wanted.is_empty() {
+        return;
+    }
+    let Before::At(side) = loaded.project.before(&loaded.db).clone() else {
+        return;
+    };
+    let views = base_views(&loaded.root, &side.commit, day, &wanted);
+    loaded.set_base_views(views);
+}
+
+/// What the source at `commit` gives for each of `wanted`, from the kept
+/// file when this compiler wrote it, else built and kept.
+fn base_views(
+    root: &Path,
+    commit: &str,
+    day: i32,
+    wanted: &[String],
+) -> BTreeMap<String, Option<String>> {
+    let full = full_commit(root, commit).unwrap_or_else(|| commit.to_string());
+    let kept_path = format!("build/before/{full}/records.json");
+    let mut kept: BTreeMap<String, Option<String>> = std::fs::read_to_string(root.join(&kept_path))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .filter(|value| value["compiler"] == crate::help::VERSION)
+        .and_then(|value| {
+            serde_json::from_value::<BTreeMap<String, Option<String>>>(value["views"].clone()).ok()
+        })
+        .unwrap_or_default();
+    if wanted.iter().any(|path| !kept.contains_key(path)) {
+        let files = tree(root, &full);
+        let mut base = jadpo_db::load_files(root.to_path_buf(), &files);
+        base.set_judged_on(Some(day));
+        for path in wanted {
+            // A view whose source had errors at the base can't say.
+            if let Some(view) = jadpo_check::records::base_view(&base.db, base.project, path) {
+                kept.insert(path.clone(), view);
+            }
+        }
+        let document = serde_json::json!({
+            "compiler": crate::help::VERSION,
+            "commit": full,
+            "views": kept,
+        });
+        // Kept only to save building it again: a folder that can't be
+        // written builds it each time.
+        let _ = crate::derived::put(
+            root,
+            &kept_path,
+            &format!(
+                "{}\n",
+                serde_json::to_string_pretty(&document).unwrap_or_default()
+            ),
+        );
+    }
+    kept.retain(|path, _| wanted.contains(path));
+    kept
+}

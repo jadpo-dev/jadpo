@@ -10,8 +10,13 @@
 //! difference is a hand edit when the file isn't one Jadpo could have
 //! written (a comment, a fact outside the kind's list, a layout Jadpo
 //! doesn't write); otherwise the record is out of date, the source having
-//! moved on. Telling a careful hand edit of a fact from a stale record
-//! needs `jadpo check` to build the base commit, as `jadpo approval` does.
+//! moved on. With a base commit to compare with, `jadpo check` builds it,
+//! as `jadpo approval` does, and sets what its source gives for each view
+//! ([`base_view`], `Project::base_views`): an entry that changed since the
+//! base where the source behind it didn't is a hand edit however carefully
+//! it was written, so a stale record is told from an edited one
+//! ([`hand_edit`]). The base is built only for the views [`candidates`]
+//! names: changed since the base, and disagreeing with the source.
 //!
 //! A ledger is parsed and compared with its own canonical rewrite: sorted,
 //! one line per entry, each key once, so a `union` merge that left lines
@@ -139,6 +144,8 @@ pub fn standings(db: &dyn Db, project: Project) -> Vec<Standing> {
     views(db, project, &written, &mut out);
     event_views(db, project, &written, &mut out);
     root_view(
+        db,
+        project,
         crate::acceptances::access::PATH,
         &format::ACCESS,
         crate::acceptances::access::record_text(db, project).as_ref(),
@@ -148,6 +155,8 @@ pub fn standings(db: &dyn Db, project: Project) -> Vec<Standing> {
         &mut out,
     );
     root_view(
+        db,
+        project,
         crate::acceptances::network::PATH,
         &format::NETWORK,
         crate::acceptances::network::record_text(db, project).as_ref(),
@@ -247,6 +256,8 @@ fn views(
             )),
             Some(Ok(written)) => {
                 let (state, problem) = compare(
+                    db,
+                    project,
                     &path,
                     written,
                     text,
@@ -371,6 +382,8 @@ fn event_views(
             )),
             Some(Ok(written)) => {
                 let (state, problem) = compare(
+                    db,
+                    project,
                     &path,
                     written,
                     text,
@@ -423,7 +436,10 @@ fn event_views(
 /// A view kept at the root, `access.jadpo_record` or
 /// `network.jadpo_record` (chunk A8): `expected` is `None` while its
 /// source has errors, and `Some(None)` when there is nothing to record.
+#[allow(clippy::too_many_arguments)]
 fn root_view(
+    db: &dyn Db,
+    project: Project,
     path: &str,
     kind: &'static Kind,
     expected: Option<&Option<String>>,
@@ -480,9 +496,10 @@ fn root_view(
             let from = format::kind_of(path)
                 .map(|(_, from)| from)
                 .unwrap_or_default();
-            let (state, problem) = compare(path, written, text, kind, &from, |changes| {
-                format!("{now}: {changes}.")
-            });
+            let (state, problem) =
+                compare(db, project, path, written, text, kind, &from, |changes| {
+                    format!("{now}: {changes}.")
+                });
             let fixes = if state == State::UpToDate {
                 Vec::new()
             } else {
@@ -498,7 +515,10 @@ fn file_span(path: &str) -> Span {
 }
 
 /// How a view's file stands against what its writer gives today.
+#[allow(clippy::too_many_arguments)]
 fn compare(
+    db: &dyn Db,
+    project: Project,
     path: &str,
     written: &str,
     expected: &str,
@@ -518,6 +538,9 @@ fn compare(
             State::Edited,
             Some(edited(path, &written, kind, line, &why, true)),
         );
+    }
+    if let Some(found) = judged_by_base(db, project, path, &written, expected, kind) {
+        return (State::Edited, Some(found));
     }
     let before = format::read(&written, kind).unwrap_or_default();
     let after = format::read(expected, kind).unwrap_or_default();
@@ -657,6 +680,27 @@ fn edited(
     why: &str,
     rewritable: bool,
 ) -> Diagnostic {
+    edited_with(
+        path,
+        text,
+        kind,
+        line,
+        why,
+        rewritable,
+        "not what Jadpo writes",
+    )
+}
+
+/// [`edited`], with `label` under the line.
+fn edited_with(
+    path: &str,
+    text: &str,
+    kind: &Kind,
+    line: usize,
+    why: &str,
+    rewritable: bool,
+    label: &str,
+) -> Diagnostic {
     let command = match kind.shape {
         Shape::View => kind.command,
         Shape::History => "jadpo records update",
@@ -673,7 +717,7 @@ fn edited(
         &rule::RECORD_EDITED,
         format!("`{path}` was edited by hand: {why}"),
     )
-    .at(line_span(path, text, line), "not what Jadpo writes")
+    .at(line_span(path, text, line), label)
     .reason(format!(
         "Jadpo writes this record with {}, and a record is never edited by hand, so its diff always means what the source or a command changed.",
         kind.update
@@ -847,4 +891,213 @@ pub fn entry_changes(kind: &Kind, before: &str, after: &str) -> Vec<(Change, Str
     let before = format::read(&format::normalise(before), kind).unwrap_or_default();
     let after = format::read(&format::normalise(after), kind).unwrap_or_default();
     format::changes(&before, &after)
+}
+
+/// What a view is written from, as a hand edit's message names it, and
+/// whether it is said in the plural.
+fn source_of(kind: &Kind) -> (&'static str, bool) {
+    match kind.word {
+        "api" => ("the routes", true),
+        "events" => ("the events", true),
+        "access" => ("the policy", false),
+        "network" => ("the connections", true),
+        _ => ("the source", false),
+    }
+}
+
+/// `record.edited` for a view that reads as Jadpo could have written it,
+/// but whose entry changed since the base commit where the source behind it
+/// didn't: told only once the base was built for it.
+fn judged_by_base(
+    db: &dyn Db,
+    project: Project,
+    path: &str,
+    written: &str,
+    expected: &str,
+    kind: &Kind,
+) -> Option<Diagnostic> {
+    let jadpo_db::Before::At(side) = project.before(db) else {
+        return None;
+    };
+    let built = project.base_views(db).get(path)?;
+    let committed = side.text(path).map(format::normalise);
+    let (line, why, label) = hand_edit(
+        written,
+        expected,
+        committed.as_deref(),
+        built.as_deref(),
+        kind,
+        &side.described,
+    )?;
+    Some(edited_with(path, written, kind, line, &why, true, &label))
+}
+
+/// Where a view `written` now, `expected` from today's source, was edited
+/// by hand, given the record `committed` at the base commit and what the
+/// base's source gives, `built` (`None` for nothing): the first entry that
+/// differs from what the source gives and changed since the base, where the
+/// source gives at the base what it gives today. Its line (from 0), what
+/// happened and the label under the line.
+pub fn hand_edit(
+    written: &str,
+    expected: &str,
+    committed: Option<&str>,
+    built: Option<&str>,
+    kind: &Kind,
+    described: &str,
+) -> Option<(usize, String, String)> {
+    let entries = |text: Option<&str>| -> Option<BTreeMap<String, String>> {
+        let Some(text) = text else {
+            return Some(BTreeMap::new());
+        };
+        let read = format::read(text, kind).ok()?;
+        Some(
+            read.into_iter()
+                .map(|entry| (entry.heading.clone(), entry.text()))
+                .collect(),
+        )
+    };
+    let now = format::read(written, kind).ok()?;
+    let today = format::read(expected, kind).ok()?;
+    let today_by: BTreeMap<String, String> = today
+        .iter()
+        .map(|entry| (entry.heading.clone(), entry.text()))
+        .collect();
+    let committed = entries(committed)?;
+    let built = entries(built)?;
+    let (source, plural) = source_of(kind);
+    let line_of = |heading: &str| {
+        written
+            .lines()
+            .position(|line| line == heading)
+            .unwrap_or(0)
+    };
+    for entry in &now {
+        let heading = &entry.heading;
+        let text = entry.text();
+        let given = today_by.get(heading);
+        if given == Some(&text)
+            || committed.get(heading) == Some(&text)
+            || built.get(heading) != given
+        {
+            continue;
+        }
+        let at = line_of(heading);
+        return Some(match given {
+            Some(given) => {
+                let lines: Vec<&str> = text.lines().collect();
+                let differs = lines
+                    .iter()
+                    .zip(given.lines())
+                    .position(|(a, b)| *a != b)
+                    .unwrap_or(lines.len().min(given.lines().count()))
+                    .min(lines.len().saturating_sub(1));
+                (
+                    at + differs,
+                    format!("`{heading}` changed since {described}, and {source} didn't"),
+                    "not what Jadpo writes".to_string(),
+                )
+            }
+            None => (
+                at,
+                format!(
+                    "`{heading}` was added since {described}, and {source} {} have it",
+                    if plural { "don't" } else { "doesn't" }
+                ),
+                "not what Jadpo writes".to_string(),
+            ),
+        });
+    }
+    let held: std::collections::BTreeSet<&str> =
+        now.iter().map(|entry| entry.heading.as_str()).collect();
+    for (index, entry) in today.iter().enumerate() {
+        let heading = &entry.heading;
+        if held.contains(heading.as_str())
+            || !committed.contains_key(heading)
+            || built.get(heading) != today_by.get(heading)
+        {
+            continue;
+        }
+        let next = today[index + 1..]
+            .iter()
+            .find(|later| held.contains(later.heading.as_str()));
+        let (at, label) = match next {
+            Some(later) => (
+                line_of(&later.heading),
+                format!("`{heading}` goes before this"),
+            ),
+            None => (
+                now.last().map_or(0, |last| line_of(&last.heading)),
+                format!("`{heading}` goes after this"),
+            ),
+        };
+        return Some((
+            at,
+            format!(
+                "`{heading}` was removed since {described}, and {source} still {} it",
+                if plural { "have" } else { "has" }
+            ),
+            label,
+        ));
+    }
+    None
+}
+
+/// The views that need the base commit's build to be judged: each one that
+/// reads as Jadpo could have written it, disagrees with the source, and
+/// changed since the base. A view untouched since the base is out of date
+/// whatever the base gives, so nothing is built for it.
+pub fn candidates(db: &dyn Db, project: Project) -> Vec<String> {
+    let jadpo_db::Before::At(side) = project.before(db) else {
+        return Vec::new();
+    };
+    let written: BTreeMap<&str, &Result<String, String>> = project
+        .records(db)
+        .iter()
+        .map(|record| (record.path.as_str(), &record.text))
+        .collect();
+    standings(db, project)
+        .iter()
+        .filter(|standing| standing.state == State::OutOfDate)
+        .filter(|standing| standing.kind().shape == Shape::View)
+        .filter_map(|standing| {
+            let Some(Ok(text)) = written.get(standing.path.as_str()) else {
+                return None;
+            };
+            let text = format::normalise(text);
+            let (kind, from) = format::kind_of(&standing.path)?;
+            format::canonical(&text, kind, &from).ok()?;
+            let before = side.text(&standing.path).map(format::normalise);
+            (before.as_deref() != Some(&*text)).then(|| standing.path.clone())
+        })
+        .collect()
+}
+
+/// What the source gives for the view at `path` (`Some(None)` for no
+/// record there), or `None` while that source has errors: read on the base
+/// commit's build for [`candidates`].
+pub fn base_view(db: &dyn Db, project: Project, path: &str) -> Option<Option<String>> {
+    let (kind, _) = format::kind_of(path)?;
+    match kind.word {
+        "api" => {
+            if !routes_clean(db, project) {
+                return None;
+            }
+            let name = path
+                .trim_start_matches("api/")
+                .trim_end_matches(format::EXTENSION);
+            Some(api::record_texts(db, project).get(name).cloned())
+        }
+        "events" => {
+            use crate::events::record as events;
+            if !events::events_clean(db, project) {
+                return None;
+            }
+            let domain = events::domain_of(path)?;
+            Some(events::record_texts(db, project).get(domain).cloned())
+        }
+        "access" => crate::acceptances::access::record_text(db, project).clone(),
+        "network" => crate::acceptances::network::record_text(db, project).clone(),
+        _ => None,
+    }
 }

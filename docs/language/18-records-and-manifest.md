@@ -155,14 +155,39 @@ A record is one of two shapes:
   the suggestion records or the lock, is a list of one-line entries that
   hold history.
 
-**A hand edit of a view is told by its shape.** Without the base
-commit's build, a view that differs from what its writer gives today is
-`record.edited` when Jadpo couldn't have written it, and
-`record.out_of_date` otherwise. Jadpo couldn't have written a comment, a
-fact outside the kind's closed list, a tab, a trailing space, a layout
-Jadpo doesn't write, or a header other than the one it writes. Both
-errors name the same command, which writes the record again, so a
-careful edit of one fact reads as out of date.
+**A hand edit of a view is told by its shape, then by its base.** A view
+that differs from what its writer gives today is `record.edited` when
+Jadpo couldn't have written it: a comment, a fact outside the kind's
+closed list, a tab, a trailing space, a layout Jadpo doesn't write, or a
+header other than the one it writes.
+
+A view Jadpo could have written is judged against the
+[before side](#comparing-two-builds). `jadpo check` builds the base
+commit, as `jadpo approval` does, and compares entry by entry. An entry
+that changed since the base, where the source gives the same at the base
+as today, was edited by hand, however carefully. That holds for a fact
+changed, an entry added and an entry removed:
+
+```text
+error: `api/main.jadpo_record` was edited by hand: `POST /memos` changed since main at 1a2b3c4, and the routes didn't
+ --> api/main.jadpo_record:8:1
+  |
+8 |     status 201
+  | ^^^^^^^^^^^^^^ not what Jadpo writes
+  reason: Jadpo writes this record with `jadpo api update`, and a record is never edited by hand, so its diff always means what the source or a command changed.
+  next: Run `jadpo api update`, which writes it again (agent)
+  rule: record.edited
+  help: https://jadpo.dev/docs/errors/record.edited
+```
+
+Anything else is `record.out_of_date`: a view nobody changed since the
+base, or one its command wrote from source that has since moved on
+again. The base is built only for a view that changed since it and
+disagrees with the source, and what it gives is kept in
+`build/before/<commit>/records.json`, so each base is built once. With
+no before side, or while the base's source has errors, the shape alone
+decides. Both errors name the same command, which writes the record
+again.
 
 **A ledger is checked against its own rewrite.** Each line must read,
 each key must appear once, and the file must equal what Jadpo writes
@@ -346,13 +371,22 @@ database/identities.jadpo_record     merge=union
 **/translations/sources.jadpo_record merge=union
 ```
 
-Editors get a record language: a TextMate grammar,
-`source.jadpo-record`, in `editors/vscode`, and `jadpo lsp` serving a
-record's errors, outline, file links and folding.
+Editors get a record language. The VS Code extension gives `.jadpo_record`
+files and `jadpo.lock` a TextMate grammar, `source.jadpo-record`, that
+colours the header, each entry's heading word, facts, fields, strings,
+digests and hashes. `jadpo lsp` serves records as it serves code:
 
-Not built yet: `jadpo check` building the base commit, as `jadpo
-approval` does, so every view is checked by its shape alone, and the record
-language for editors ([What is built](#what-is-built)).
+- **Errors.** A record's `record.*` errors are shown on the record, and
+  follow it as you edit it, before it is saved. The editor judges a view
+  by its shape alone, since it doesn't build the base; `jadpo check` and
+  CI judge it against the base too.
+- **Outline.** Each entry is a symbol named by its heading, with its
+  fields and enum variants beneath it.
+- **Folding.** Each entry with members folds, and so does each member
+  with fields of its own.
+- **File links.** Each `file <path>` fact, such as a package surface's,
+  links to the file it names, relative to the record's folder, when the
+  file is there.
 
 ## The manifest
 <!-- topic: the-manifest -->
@@ -1072,7 +1106,7 @@ that the path number can't be decoded.
 | Migrations | Built: `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
 | Stable identity | Built: a key is the kind and the born name, a function or type declared in a domain carries its domain, and a test's key is the file it sits beside and its sentence. `jadpo check` reads the registry, and `jadpo rename`, the `jadpo domain` commands and promotion with `jadpo fmt --layout` write it ([Tools](14-tooling.md#jadpo-rename)); a domain's line carries the keys named after it. |
 | API record | Built: `jadpo api update` writes `api/<api>.jadpo_record` for each API with routes, `jadpo check` fails with `record.out_of_date` while one disagrees with the routes, naming what changed, and a breaking change needs an [acceptance](#acceptances). |
-| `.jadpo_record` files | Partly built: every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, `jadpo records` and `jadpo records update`, and the `.gitattributes` lines `jadpo new` writes. Not built yet: telling a careful hand edit of a view from a stale one, which needs `jadpo check` to build the base as `jadpo approval` does; the editor grammar and `jadpo lsp` serving records. |
+| `.jadpo_record` files | Partly built: every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, a careful hand edit of a view told from a stale one by building the base, as `jadpo approval` does, in `jadpo check` and `jadpo records`, `jadpo records` and `jadpo records update`, the `.gitattributes` lines `jadpo new` writes, the record grammar in the VS Code extension, and `jadpo lsp` serving a record's errors, outline, folding and file links. Not built yet: checking that each ledger line added since the base is one its command could write. |
 | Event records | Built: one view per domain with events, `domains/<domain>/events/events.jadpo_record`, written by `jadpo records update` and checked as the API record is; what [The event record](12-jobs-and-events.md#the-event-record) records, and its breaking changes need an [acceptance](#acceptances). |
 | Access and network records | Built: `access.jadpo_record` and `network.jadpo_record` at the root, written by `jadpo records update` and checked as the API record is ([Acceptances](#acceptances)). |
 | Acceptances | Partly built: `jadpo acceptance new <purpose>`, the before side read from git (`--before` on `jadpo check`), matching, the `///` reason and history, for `ApiChange` (the API and event records), `PolicyChange` (widenings, routes made public, security declines, sign-in settings past their limit), `DomainChange.created` and `.renamed`, `NetworkChange.host_added`, `PackageChange.git_source`, an upgrade's `PackageChange`s ([Package upgrades](#package-upgrades)), `ThresholdChange` (each domain's `monitoring.jadpo` and `app.jadpo`'s disk floors read from git) and `DataChange` (read from the migrations a change adds, [Removing data](05-data.md#removing-data)). And `ErasureNotPossible`, which says how things stand rather than what changed, read from [where personal data goes](15-personal-data.md#where-personal-data-goes). The before side's records are read in today's names, so a domain renamed, split or merged keeps its events, grants and thresholds. Not built yet: `PackageChange.service_image`, which comes with services. |
