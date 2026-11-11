@@ -90,6 +90,34 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::batches::UNFINISHED.to_string(),
         ),
         ("batches::WAITING", crate::batches::WAITING.to_string()),
+        (
+            "batches::operator::LIST",
+            crate::batches::operator::LIST.to_string(),
+        ),
+        (
+            "batches::operator::FIND",
+            crate::batches::operator::FIND.to_string(),
+        ),
+        (
+            "batches::operator::COUNTS",
+            crate::batches::operator::COUNTS.to_string(),
+        ),
+        (
+            "batches::operator::PROBLEMS_PAGE",
+            crate::batches::operator::PROBLEMS_PAGE.to_string(),
+        ),
+        (
+            "batches::operator::CANCEL_LOGGED",
+            crate::batches::operator::CANCEL_LOGGED.to_string(),
+        ),
+        (
+            "batches::operator::DISMISS_LOGGED",
+            crate::batches::operator::DISMISS_LOGGED.to_string(),
+        ),
+        (
+            "batches::operator::OLD_ACTIONS",
+            crate::batches::operator::OLD_ACTIONS.to_string(),
+        ),
         ("files::DUE", crate::files::DUE.to_string()),
         ("files::GONE", crate::files::GONE.to_string()),
         ("files::HOLDERS", crate::files::HOLDERS.to_string()),
@@ -184,6 +212,15 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::deliveries::requests_sql(),
         ),
         ("deliveries::runs_sql", crate::deliveries::runs_sql()),
+        ("deliveries::batches_sql", crate::deliveries::batches_sql()),
+        (
+            "deliveries::find_batch_sql",
+            crate::deliveries::find_batch_sql(),
+        ),
+        (
+            "deliveries::batch_counts_sql",
+            crate::deliveries::batch_counts_sql(),
+        ),
         (
             "http::idempotency::CLAIM",
             crate::http::idempotency::CLAIM.to_string(),

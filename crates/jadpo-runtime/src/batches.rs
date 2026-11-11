@@ -39,6 +39,7 @@
 pub(crate) mod calling;
 pub(crate) mod export;
 pub(crate) mod file;
+pub mod operator;
 
 pub use file::MAX_ROW_BYTES;
 
@@ -1565,7 +1566,8 @@ pub async fn resume_within(
 /// cancels, and the cancels as old of runs no store keeps (chunk 6.6a):
 /// the retention work run by hourly housekeeping, a thousand rows at a time, at
 /// most ten times a tick, as its other deletes. A run still going is
-/// never deleted. How many runs and cancels it deleted.
+/// never deleted. How many runs, cancels and operators' log rows it
+/// deleted.
 pub async fn clean(executor: &dyn Executor, host: &dyn Host, now: i64) -> u64 {
     use crate::schedules::{DELETE_BATCH, DELETE_BATCHES};
     let budget = Budget::start(host, Invocation::Tick);
@@ -1588,7 +1590,9 @@ pub async fn clean(executor: &dyn Executor, host: &dyn Host, now: i64) -> u64 {
         let Some(database) = host.database(store) else {
             continue;
         };
-        for sql in [ENDED, UNKEPT_CANCELS] {
+        // An operator's log rows go once their run has (`jadpo batches
+        // cancel`, `jadpo deliveries dismiss`).
+        for sql in [ENDED, UNKEPT_CANCELS, operator::OLD_ACTIONS] {
             for _ in 0..DELETE_BATCHES {
                 if budget.spent() {
                     break;
