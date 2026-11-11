@@ -1812,7 +1812,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--page",
                 value: Some("n"),
-                description: "Which page of the list, or of a run's problems, from 1",
+                description: "Which page of the list or problems, from 1",
                 values: &[],
             },
             Flag {
