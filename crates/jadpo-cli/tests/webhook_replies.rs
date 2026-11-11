@@ -354,9 +354,18 @@ struct Loaded {
 /// The project, checked, with its migration, and a test database of its
 /// own; `None` when live tests are skipped.
 fn load(name: &str) -> Option<Loaded> {
+    let files: Vec<(String, String)> = FILES
+        .iter()
+        .map(|(path, text)| (path.to_string(), text.to_string()))
+        .collect();
+    load_with(name, &files)
+}
+
+/// As [`load`], for the project `files`.
+fn load_with(name: &str, files: &[(String, String)]) -> Option<Loaded> {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("webhooks-7.7b-{name}"));
     let _ = fs::remove_dir_all(&root);
-    for (path, text) in FILES {
+    for (path, text) in files {
         write(&root, path, text);
     }
     for args in [
@@ -1009,4 +1018,104 @@ fn handshakes_are_checked() {
         let found = check_with(name, &[(PROVIDER, Some(&text))]);
         assert_eq!(&found, expected, "{name}");
     }
+}
+
+/// The help desk, its reply holding the greeting a caller hears as a file
+/// kept in `greetings`.
+fn greeting_files() -> Vec<(String, String)> {
+    let mut files: Vec<(String, String)> = FILES
+        .iter()
+        .map(|(path, text)| (path.to_string(), text.to_string()))
+        .collect();
+    for (path, text) in &mut files {
+        match path.as_str() {
+            "app.jadpo" => {
+                *text = text.replace(
+                    "    connections: {\n",
+                    "    connections: {\n        greetings: {\n            driver: Driver.disk\n            path: \"/var/lib/desk/greetings\"\n        }\n",
+                );
+            }
+            "shared/providers/acme_voice/v1/types/call_reply.jadpo" => {
+                *text = text.replace("    say: Text\n", "    say: Text\n    greeting: File?\n");
+            }
+            "domains/support/actions/answer_call.jadpo" => {
+                *text = text
+                    .replace(
+                        "use support/failures { CallerBlocked }\n",
+                        "use app { greetings }\nuse support/failures { CallerBlocked, GreetingNotKept }\n",
+                    )
+                    .replace(
+                        "fails CallerBlocked -> AcmeVoice.CallReply {\n",
+                        "fails CallerBlocked, GreetingNotKept -> AcmeVoice.CallReply {\n",
+                    )
+                    .replace(
+                        "    var call: Call = Call.create {\n",
+                        "    var greeting: File = attempt greetings.put(encoding.to_utf8(\"Hello\"), FileType.csv) {\n        storage_full: GreetingNotKept\n    }\n    var call: Call = Call.create {\n",
+                    )
+                    .replace(
+                        "        say: \"Thanks for calling.\"\n",
+                        "        say: \"Thanks for calling.\"\n        greeting: greeting\n",
+                    );
+            }
+            _ => {}
+        }
+    }
+    files.push((
+        "domains/support/failures/greeting_not_kept.jadpo".to_string(),
+        "/// The greetings store had no room for a greeting.\ntype GreetingNotKept = Failure {\n    kind: FailureKind.unavailable\n    message: \"There was no room to keep the greeting.\"\n}\n".to_string(),
+    ));
+    files
+}
+
+/// A reply holding a `File` sends its bytes in Base64, read from its store
+/// once the action has committed (area 11, "Types"; chunk B14), and a
+/// repeat is answered with the reply kept, bytes and all.
+#[test]
+fn a_reply_holding_a_file_sends_its_bytes() {
+    let Some(loaded) = load_with("reply-file", &greeting_files()) else {
+        return;
+    };
+    let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
+    let greetings = std::rc::Rc::new(jadpo_runtime::files::MemoryFiles::new());
+    let host = jadpo_runtime::capability::Faked::new(&harness).with(
+        "greetings",
+        std::rc::Rc::clone(&greetings) as std::rc::Rc<dyn jadpo_runtime::capability::Capability>,
+    );
+    let program = &loaded.program;
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let first = ringing("CA200", "+447700900123", VOICE_TOKEN);
+        let app = program.app();
+        let mut ctx = harness.ctx_on(program, &host);
+        let response = handle(&app, program, &mut ctx, &first, "req_test").await;
+        assert_eq!(
+            response.status,
+            200,
+            "{}",
+            String::from_utf8_lossy(&response.body)
+        );
+        let reply = body(&response);
+        assert_eq!(
+            reply,
+            serde_json::json!({
+                "say": "Thanks for calling.",
+                "greeting": jadpo_value::encoding::to_base64(b"Hello"),
+                "hangUp": true,
+            })
+        );
+        // Neither the store nor the key goes out.
+        let keys = greetings.keys();
+        assert_eq!(keys.len(), 1);
+        assert!(
+            !String::from_utf8_lossy(&response.body).contains(&keys[0]),
+            "{}",
+            String::from_utf8_lossy(&response.body)
+        );
+        // Asked again: the reply kept, as it was sent.
+        harness.advance(5_000);
+        let mut ctx = harness.ctx_on(program, &host);
+        let again = handle(&app, program, &mut ctx, &first, "req_test").await;
+        assert_eq!(again.status, 200);
+        assert_eq!(again.body, response.body);
+    });
 }

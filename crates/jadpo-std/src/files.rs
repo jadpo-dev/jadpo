@@ -78,6 +78,17 @@ pub const FILE_LINK_FIELDS: [(&str, Part); 4] = [
     ("type", Part::Enum(crate::standard::FILE_TYPE)),
 ];
 
+/// How the plan's JSON table writes each `File` a type holds, however
+/// deep, named as a wrapper around that type which no source can write
+/// (chunk B14): as its signed link, what a person's export holds
+/// ([`FILE_LINK`]), or as its bytes in Base64, what an operation's `input:`
+/// and a webhook's `reply:` send, as `FileContents` is sent. Anywhere else
+/// a `File` is written as the record the runtime keeps.
+pub const FILES_AS_LINKS: &str = "files as links";
+
+/// See [`FILES_AS_LINKS`].
+pub const FILES_AS_BYTES: &str = "files as bytes";
+
 /// The fields of the file type called `name`, when it is `File` or
 /// [`FILE_LINK`].
 pub fn object_fields(name: &str) -> Option<&'static [(&'static str, Part)]> {
@@ -485,27 +496,59 @@ pub const FILE_RELEASED: &str = "jadpo.FileReleased";
 pub const UNHELD_KEPT_MS: i64 = 24 * 60 * 60 * 1000;
 
 /// Where each store of files keeps its record of which files its records
-/// hold (area 16, "Deleting and erasing"; chunk B3): the database store
+/// hold (area 16, "Deleting and erasing"; chunk B3): each database store
 /// whose entities' `File` fields name it, which keeps `jadpo_files`
 /// ([`crate::system::FILES`]) and the triggers that count each file's
-/// holders as its rows change. A store of files no entity's field names
-/// has none, and nothing it keeps is deleted.
+/// holders among its own rows as they change. A store of files no
+/// entity's field names has none, and nothing it keeps is deleted.
+///
+/// When fields in entities of several databases name one store of files,
+/// each database counts its own records' holders, and a file's bytes go
+/// only once none of them holds it: the first database, the one a put
+/// records its file in, is where deleting one file is decided, one
+/// deletion at a time.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FilesPlan {
-    /// By the files connection's name, the database store keeping its
-    /// record.
-    pub counters: std::collections::BTreeMap<String, String>,
+    /// By the files connection's name, the database stores counting its
+    /// files' holders: the first entity's store, in entity name order,
+    /// then the rest in name order.
+    pub counters: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 impl FilesPlan {
-    /// The database store keeping the record of `connection`'s files.
+    /// The database store a put of `connection`'s files records them in,
+    /// and where deleting one is decided.
     pub fn counter(&self, connection: &str) -> Option<&str> {
-        self.counters.get(connection).map(String::as_str)
+        self.counters
+            .get(connection)
+            .and_then(|stores| stores.first())
+            .map(String::as_str)
+    }
+
+    /// Every database store counting the holders of `connection`'s files.
+    pub fn counting(&self, connection: &str) -> &[String] {
+        self.counters.get(connection).map_or(&[], Vec::as_slice)
     }
 
     /// Whether database store `store` keeps a record of files.
     pub fn keeps(&self, store: &str) -> bool {
-        self.counters.values().any(|counter| counter == store)
+        self.counters
+            .values()
+            .any(|stores| stores.iter().any(|counter| counter == store))
+    }
+
+    /// Every database store keeping a record of files, once each, in name
+    /// order.
+    pub fn stores(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = self
+            .counters
+            .values()
+            .flatten()
+            .map(String::as_str)
+            .collect();
+        out.sort_unstable();
+        out.dedup();
+        out
     }
 
     /// The generated subscriber that deletes `connection`'s unheld bytes:

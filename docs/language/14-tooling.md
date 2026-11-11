@@ -886,8 +886,14 @@ its decisions. With nothing to migrate, `new` lists what is still retired.
 with a removal nobody accepted
 ([`migration.drop_not_accepted`](../errors/migration.drop_not_accepted.md)).
 
-A missing purpose will be asked for at a prompt, once prompts are built.
-Until then the command names a purpose to use.
+A missing purpose is asked for at a prompt when standard input and
+standard error are terminals: `? What does this migration do?`, offering
+the purpose the changes suggest (`initial` for the first migration), which
+enter takes. An answer no folder can be named after is asked again, naming
+the lower_snake_case form to write. Answered, the prompt collapses to
+`✓ What does this migration do?  add_priority` and the migration is
+written. Without a terminal, with `--json`, or when the input ends, it is
+`cli.migrate_arguments`, naming the purpose to use.
 
 ### `jadpo seed`
 
@@ -1961,8 +1967,11 @@ editor's quick fix or `jadpo fmt --layout`, never on save, so a move is
 always a visible, separate change.
 
 `jadpo fmt --layout` makes every move a type needs: out of its file with
-its comments, into a file of its own below the `use` lines it needs. Then
-it fixes the imports the moves touched. Moving a helper function into a
+its comments, into a file of its own below the `use` lines it needs. A
+message moves with its wording, its record lines and its calls
+([Where translations live](10-configuration-and-time.md#where-translations-live)),
+and a file a move empties is removed. Then it fixes the imports the moves
+touched. Moving a helper function into a
 library changes its calls, so that stays a change you make by hand.
 
 ## Which jadpo runs

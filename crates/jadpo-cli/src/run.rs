@@ -40,6 +40,8 @@ pub enum Session {
     ConfigSet(Box<crate::config::SetArgs>),
     /// `jadpo package new`, which asks who publishes the package.
     PackageNew(Box<crate::package_new::NewArgs>),
+    /// `jadpo migrate new` without a purpose, which asks for one.
+    MigrateNew(Box<crate::migrate::NewArgs>),
     /// `jadpo package preview`, until it is stopped.
     Preview(Box<crate::package_preview::PreviewArgs>),
     /// `jadpo package verify --serve`, until it is stopped.
@@ -306,6 +308,27 @@ pub(crate) fn finish(
                 stderr: String::new(),
                 code: 0,
                 session: Some(Session::PackageNew(args)),
+            };
+        }
+        Reply::Session(Session::MigrateNew(mut args)) => {
+            // A prompt has no JSON form: the document names the purpose to
+            // give instead.
+            if json {
+                return finish(
+                    name,
+                    Reply::failed(crate::migrate::needs_purpose(&args.suggested)),
+                    env,
+                    json,
+                    choice,
+                    asked,
+                );
+            }
+            args.choice = choice;
+            return Output {
+                stdout: String::new(),
+                stderr: String::new(),
+                code: 0,
+                session: Some(Session::MigrateNew(args)),
             };
         }
         Reply::Session(Session::Preview(mut args)) => {

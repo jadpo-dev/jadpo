@@ -595,6 +595,24 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                     ));
                 }
             }
+            // A message another domain calls moves to `shared/translations/`
+            // with its wording, once its domain offers it (area 10, "Where
+            // translations live"); a private one is
+            // `visibility.private_cross_domain` where it is called.
+            (Ownership::Domain(domain), Folder::Translations, ItemKind::Type(Base::Message))
+                if item.public =>
+            {
+                let elsewhere = named(&item.name)
+                    .iter()
+                    .find(|user| user.path != *path && !ours(user));
+                if let Some(user) = elsewhere
+                    && pure(&source, path, item.index, &lookup)
+                {
+                    out.push(promoted_message(
+                        db, project, file, &source, item, domain, &user.path,
+                    ));
+                }
+            }
             (ownership, Folder::Libraries, ItemKind::Library) => {
                 let mut callers: BTreeSet<&User> = BTreeSet::new();
                 let library = contested.canonical(&item.name, location.ownership.scope());
@@ -854,6 +872,76 @@ fn promoted(
     }
     let problem = problem.next(format!(
         "Move `{name}` to `{target}`, or run `jadpo fmt --layout`, which moves it and updates the imports"
+    ));
+    edits
+        .into_iter()
+        .fold(problem, |problem, (span, text)| problem.edit(span, text))
+}
+
+/// `layout.promotion_required` for message `item` of `domain`, which a
+/// file of another domain, `user`, calls: with the edits that move its
+/// type, its wording and the record of each translation to
+/// `shared/translations/`, and call it there.
+fn promoted_message(
+    db: &dyn Db,
+    project: Project,
+    file: File,
+    source: &ast::SourceFile,
+    item: &Item,
+    domain: &str,
+    user: &str,
+) -> Diagnostic {
+    let path = file.path(db);
+    let name = &item.name;
+    let key = to_snake(name);
+    let target = format!("shared/translations/{key}.jadpo");
+    let problem = Diagnostic::new(
+        &rule::LAYOUT_PROMOTION_REQUIRED,
+        format!("`{name}` is used beyond this domain"),
+    )
+    .at(
+        name_span(source, path, item.index, None),
+        "used by another domain",
+    )
+    .reason(format!(
+        "A message used by one domain lives in its `translations/` folder; once another domain calls it, it moves to `shared/translations/` with its wording. `{user}` uses it too."
+    ))
+    .next(format!(
+        "Move `{name}` and its wording to `shared/translations/`, and call it as `translations.shared.{key}`"
+    ));
+    if let Some(other) = folds_onto(db, project, path, item, &Move::Shared) {
+        let said = problem.reason.clone().unwrap_or_default();
+        return problem
+            .reason(format!(
+                "{said} Its own file would be `{key}.jadpo`, the file name of `{}`, {} in `{}`.",
+                other.name,
+                other.kind.with_a(),
+                other.path
+            ))
+            .next(format!(
+                "Rename `{name}` first, so its file name differs from `{}`'s, then move it to `shared/translations/`",
+                other.name
+            ));
+    }
+    let Some(decl) = tree::decl_at(source, item.index) else {
+        return problem;
+    };
+    let mut edits = crate::imports::move_edits(db, project, file, decl.syntax(), name, &target);
+    if edits.is_empty() {
+        return problem;
+    }
+    edits.extend(crate::translations::moving::wording_and_calls(
+        db, project, domain, &key,
+    ));
+    // Its key carries its domain until it moves, as a type's does.
+    edits.push(registry_line(
+        db,
+        project,
+        &format!("type {name}"),
+        &format!("{domain}.{name}"),
+    ));
+    let problem = problem.next(format!(
+        "Move `{name}` and its wording to `shared/translations/`, or run `jadpo fmt --layout`, which moves them and calls it as `translations.shared.{key}`"
     ));
     edits
         .into_iter()

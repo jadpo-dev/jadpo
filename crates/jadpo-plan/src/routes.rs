@@ -711,13 +711,35 @@ pub(crate) fn table(
 pub(crate) struct Codecs<'t> {
     types: &'t mut Types,
     codecs: Vec<Codec>,
-    ids: HashMap<TypeRef, CodecId>,
+    ids: HashMap<(TypeRef, FilesAs), CodecId>,
     /// The locales the application supports, when it declares them: a
     /// `Locale` on the wire is one of these or an invalid value (area 10,
     /// "Locales").
     locales: Option<jadpo_std::LocalePlan>,
-    /// Whether a `File` is written as its signed link: what a route sends.
-    links: bool,
+    /// How a `File` is written in the type whose codec is being made.
+    files: FilesAs,
+}
+
+/// How a codec writes a `File` (chunk B14): as the record the runtime
+/// keeps, as its signed link, what a route sends and a person's export
+/// holds, or as its bytes, what an operation's `input:` and a webhook's
+/// `reply:` send. A type is made once for each way it is asked for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum FilesAs {
+    Kept,
+    Links,
+    Bytes,
+}
+
+/// `ty`, written with each `File` it holds as its signed link, when it
+/// holds one: what [`Codecs::codec`] makes the link's codec for.
+pub(crate) fn files_as_links(ty: TypeRef) -> TypeRef {
+    TypeRef::Std(jadpo_std::files::FILES_AS_LINKS.to_string(), vec![ty])
+}
+
+/// `ty`, written with each `File` it holds as its bytes in Base64.
+pub(crate) fn files_as_bytes(ty: TypeRef) -> TypeRef {
+    TypeRef::Std(jadpo_std::files::FILES_AS_BYTES.to_string(), vec![ty])
 }
 
 /// What a type is made of, for its codec.
@@ -749,6 +771,9 @@ enum Made {
     Feature(TypeRef, TypeRef),
     /// `FeatureCollection<G, P>` (area 20): its type arguments.
     FeatureCollection(Vec<TypeRef>),
+    /// A `FileContents`, or a `File` sent as its bytes (chunk B14),
+    /// Base64 as `Bytes` is.
+    Bytes,
     Unknown,
 }
 
@@ -760,13 +785,13 @@ impl<'t> Codecs<'t> {
             codecs: Vec::new(),
             ids: HashMap::new(),
             locales: None,
-            links: false,
+            files: FilesAs::Kept,
         }
     }
 
     /// Writes a `File` as its signed link, as a route sends one.
     pub(crate) fn sending_links(mut self) -> Codecs<'t> {
-        self.links = true;
+        self.files = FilesAs::Links;
         self
     }
 
@@ -805,14 +830,30 @@ impl<'t> Codecs<'t> {
     }
 
     pub(crate) fn codec(&mut self, ty: &TypeRef) -> CodecId {
-        if let Some(id) = self.ids.get(ty) {
+        // A type asked for with its files written another way: its own
+        // codec, made that way.
+        if let TypeRef::Std(name, args) = ty
+            && let [inner] = args.as_slice()
+            && let Some(files) = match name.as_str() {
+                jadpo_std::files::FILES_AS_LINKS => Some(FilesAs::Links),
+                jadpo_std::files::FILES_AS_BYTES => Some(FilesAs::Bytes),
+                _ => None,
+            }
+        {
+            let before = std::mem::replace(&mut self.files, files);
+            let id = self.codec(inner);
+            self.files = before;
+            return id;
+        }
+        let at = (ty.clone(), self.files);
+        if let Some(id) = self.ids.get(&at) {
             return *id;
         }
         // Reserved first, so a type that holds itself (through a list)
         // refers to its own number.
         let id = CodecId(self.codecs.len() as u32);
         self.codecs.push(Codec::Nullable(id));
-        self.ids.insert(ty.clone(), id);
+        self.ids.insert(at, id);
         let codec = if self.types.is_nullable(ty) && !matches!(ty, TypeRef::Field(_)) {
             match ty {
                 TypeRef::Nullable(inner) => Codec::Nullable(self.codec(inner)),
@@ -1062,6 +1103,14 @@ impl<'t> Codecs<'t> {
                     validator: None,
                 }
             }
+            Made::Bytes => {
+                let bytes = TypeRef::Builtin(jadpo_std::Builtin::Bytes);
+                Codec::Scalar {
+                    builtin: jadpo_std::Builtin::Bytes,
+                    validator: self.types.validator_id(&bytes),
+                    int_as_number: false,
+                }
+            }
             Made::Batch(name) => {
                 let shape = self.types.batch_shape(name);
                 let fields = jadpo_std::batch::kept_fields(name)
@@ -1251,6 +1300,11 @@ impl<'t> Codecs<'t> {
                             _ => {}
                         }
                     }
+                    // A file's bytes, Base64 as `Bytes` is, wherever one
+                    // is kept or sent: an event's field among them.
+                    if name == jadpo_std::files::FILE_CONTENTS {
+                        return Made::Bytes;
+                    }
                     if let Some(batch) = jadpo_std::batch::OBJECTS
                         .into_iter()
                         .chain([
@@ -1261,9 +1315,16 @@ impl<'t> Codecs<'t> {
                         .find(|object| *object == name)
                     {
                         // In what a route sends, a `File` is its signed
-                        // link (area 16, "Downloading").
-                        if self.links && batch == jadpo_std::files::FILE {
-                            return Made::Batch(jadpo_std::files::FILE_LINK);
+                        // link (area 16, "Downloading"), and in what goes
+                        // to a provider, its bytes (chunk B14).
+                        if batch == jadpo_std::files::FILE {
+                            match self.files {
+                                FilesAs::Links => {
+                                    return Made::Batch(jadpo_std::files::FILE_LINK);
+                                }
+                                FilesAs::Bytes => return Made::Bytes,
+                                FilesAs::Kept => {}
+                            }
                         }
                         return Made::Batch(batch);
                     }

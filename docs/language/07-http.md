@@ -2171,7 +2171,7 @@ where an app uses it.
 | Answers that never change | Built: `cache: immutable` writes `Cache-Control` on a 200 ([Answers that never change](#answers-that-never-change), and `route.cache_invalid`). |
 | `settle:` | Built: a route waits for the work its action set off ([Waiting for follow-on work](#waiting-for-follow-on-work), and `route.settle_invalid`). |
 | Streaming | Built: a route whose action returns an `AiStream` sends a model's answer as server-sent events ([Streaming a model's answer](#streaming-a-models-answer), and `route.stream_invalid`). |
-| Failure wording from a build | Not built yet: `jadpo check` writes `<api>.failures.<locale>.json` beside each OpenAPI document, and `jadpo build` is to write it too. |
+| Failure wording from a build | Built: `jadpo check` writes `<api>.failures.<locale>.json` beside each OpenAPI document, and `jadpo build` copies each served API's beside its deployable, in `build/target/<deployable>/openapi/` ([`jadpo build`](14-tooling.md#jadpo-build)). |
 | `x-jadpo-events` | Not built yet: it waits for publishing events outward ([Where events travel](12-jobs-and-events.md#where-events-travel)). |
 | Rate limits | Built: a route's own `rate_limit:` and an API's ([Rate limits](16-built-in-services.md#rate-limits)). |
 | The Redis store for rate limits | Not built yet ([Rate limits](16-built-in-services.md#rate-limits)). |

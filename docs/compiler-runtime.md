@@ -499,9 +499,16 @@ unknown type, or an unknown callee in its typed body), it reports none.
 `layout.promotion_required` on a type carries the edits that move it
 (`imports::move_edits`): out of its file with its attached comments, into
 a new file below the `use` lines it needs, and imported back into the old
-file when that still uses it; `jadpo fmt --layout` applies them one move at
-a time, checking again after each. The language server's lookup reads a
-`use` line's names as the declarations they bring in.
+file when that still uses it. On a message, `translations::moving` adds
+the edits that take its wording with it: each language file's member into
+the shared file of the same locale, its `sources.jadpo_record` lines into
+the shared record, and every call's domain, found in each file's tokens
+and in email templates' text, as `shared`. `jadpo fmt --layout` applies
+them one move at a time, checking again after each, and removes a file a
+move empties. The language server's lookup reads a `use` line's names as
+the declarations they bring in. `assets::asset_problems` reads the
+project's other files and its prompts' recordings against what refers to
+them, `layout.asset_unreferenced` (area 1).
 
 **Making a constant a setting.** `jadpo_check::setting_move` (area 10) is the code `jadpo config move` and the editor's "Make this a
 setting" share: `plan` reads the checked project and decides the setting,

@@ -877,10 +877,16 @@ that let go of them has committed:
   deletes the bytes no record holds any more, as long as a `File` field
   still names their store of files
   ([Removing data](05-data.md#removing-data)).
-- **One database per store of files.** The holders are counted in the
-  database whose records hold the files. Fields naming one store of files
-  in entities of two databases are `toolchain.not_built_yet`, since one
-  database's records couldn't see the other's.
+- **Several databases.** The holders are counted in the database whose
+  records hold the files. When fields in entities of two databases name
+  one store of files, each database counts its own records, and the bytes
+  go only once neither holds the file. The database whose records let go
+  marks the file in every other first, and while it does, a write there
+  that would keep the file stops with a fault, as it does once the bytes
+  are being deleted; if another's records still hold it, every mark is
+  taken back and the bytes stay until those let go too. A `put` records
+  its file as held by none in the database of the first entity, by name,
+  whose field names the store.
 
 ### The disk driver
 
@@ -2656,12 +2662,26 @@ file's type: `invoice: File` holding a PDF goes out as `invoice.pdf`. A
 `FileType.json_lines` file ends in `.jsonl`. No part of the file's key goes
 out.
 
-Each attachment is one `File` field. Sending several from one field isn't
-built: a `List<File>`, a `Set<File>` or a `Map` of them, and a `FileContents`,
-on an email or a partial are `toolchain.not_built_yet`, since each would
-compile and never be sent. So is a `File` on a partial, which sends nothing of
-its own. An object or an `ExportSummary` on an email is read for its other
-fields, and a file it holds isn't attached.
+A field may send several: a `List<File>` or a `Set<File>` attaches each
+file it holds, in order, and a `Map` its values, in the order of their keys;
+a list of lists, all of them. A file with no name of its own in such a field
+is named from the field, its place counted from 1 and its type: `sheets:
+List<File>` holding two CSV files sends `sheets-1.csv` and `sheets-2.csv`.
+
+A `FileContents`, the bytes `store.read` gives, is attached too, and so is
+each in a list of them. It has no name or type of its own, so it is named
+from the field and typed by what its first bytes say: a PDF's bytes in
+`terms` go out as `terms.pdf`, and bytes that say nothing as
+`application/octet-stream`, named `terms`. It is kept in the outbox until
+the email is sent, as Base64 in its JSON as an event's field is, so `emit`
+faults on an email whose JSON is over 64 KB
+([`store.read(file)`](#storereadfile)).
+
+A file on a partial, which sends nothing of its own, is
+`toolchain.not_built_yet`, since it would compile and never be sent. So is
+a file an email's field holds another way, such as a map's key or a field
+named through another type. An object or an `ExportSummary` on an email is
+read for its other fields, and a file it holds isn't attached.
 
 ### The mail health score
 
@@ -4336,7 +4356,8 @@ A mail package fills `email` with a `provides/email.jadpo`, which gives
 
 Through a mail package, each `File` field of an email gives
 `max_size:`, and their sum is at most the package's limit
-(`email.attachment_limit`). A send whose attachments are larger still is
+(`email.attachment_limit`). A field of several files, or of a file's bytes,
+gives the most its files hold in all: `sheets: List<File> { max_size: 5mb }`. A send whose attachments are larger still is
 refused as `message_rejected` before it goes out. Through SMTP, which
 declares no limit, `max_size:` is optional.
 
@@ -4709,10 +4730,13 @@ A route sends a `File` as a [signed link](#downloading), in its `output:` and
 in a failure's `client:` alike. A failure's `internal:` fields stay on the
 server and may hold one.
 
-Sending a file to a provider isn't built. A `File` in an operation's `input:`
-or a webhook's `reply:` is `toolchain.not_built_yet`, since the provider would
-get the store and key and none of the bytes
-([Types](11-integrations.md#types)).
+A `File` in an operation's `input:` or a webhook's `reply:` is sent as its
+bytes, Base64 in the JSON as a `FileContents` is, never its store or key. Each
+is read whole from its store as the call is made, or once the reply's action
+has committed, and held to `store.read`'s 10 MB: a larger file, or one whose
+bytes are gone, is a fault, and nothing is sent
+([Types](11-integrations.md#types)). A person's [export](15-personal-data.md#export)
+holds each `File` it reaches, however deep, as its signed link.
 
 Each of these holds however deep: a list, a map, an `Object`, an entity's field
 named as a type, a `pick:`, or an `ExportSummary`, which holds the file it
@@ -4733,8 +4757,8 @@ wrote. The other ways a value leaves or arrives refuse one too:
 | A search's fields | `search.settings_invalid` |
 | A field an audit trail keeps | `toolchain.not_built_yet` |
 
-A `File` field on an `EmailMessage` is the one that leaves: it is sent as an
-attachment, the bytes rather than the store and key
+A `File` field on an `EmailMessage`, and a list, set or map of them, is sent
+as attachments, the bytes rather than the store and key
 ([Attachments](#attachments)).
 
 A program reads none of its parts. `file.key`, and `file.nope`, are
@@ -4914,7 +4938,7 @@ bytes are gone from its store is a fault too.
 It goes to a provider: an operation's `input:` holding one sends its Base64 in
 the JSON, as `Bytes` is sent.
 
-Two other places can hold one on its way there:
+Three other places can hold one on its way there:
 
 - **An event's field**, so a subscriber can pass the bytes on. They are kept in
   the outbox, as Base64 in the event's JSON, until the event is deleted
@@ -4924,6 +4948,8 @@ Two other places can hold one on its way there:
   a larger file.
 - **A failure's `internal:` field**, which stays on the server, so the caller's
   answer holds none of the bytes.
+- **An email's field**, which sends the bytes as an attachment, kept in the
+  outbox as an event's field is ([Attachments](#attachments)).
 
 Nothing else takes it:
 
@@ -4933,10 +4959,11 @@ Nothing else takes it:
 | An `Input` or a route's placeholder | `type.batch_input` |
 | An operation's `output:` or `wire_output:`, a webhook's event, an event a queue lists | `type.batch_input` |
 | A route's `output:` or a failure's `client:` | `toolchain.not_built_yet` |
-| An email or a partial ([Attachments](#attachments)) | `toolchain.not_built_yet` |
+| A partial, or an email's field holding one other than as itself or in a list, set or map's values ([Attachments](#attachments)) | `toolchain.not_built_yet` |
 | A prompt's field | `prompt.placeholder_type` |
 
-Each holds however deep, but for an email. A provider's own bytes come as
+Each holds however deep, but for an email, whose objects are read for their
+other fields. A provider's own bytes come as
 `Bytes`, which `put` keeps.
 
 Like `put`, `read` is called only in an action, before its first read or
@@ -5309,7 +5336,7 @@ The errors this page describes are built with the feature they belong to.
 | The dev inbox and the health score | Partly built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
 | Rate limits | Partly built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |
 | Outside calls | Built: the one place in the runtime every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([How every outside call is made safe](#how-every-outside-call-is-made-safe)). |
-| Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` and [`Driver.s3`](#the-s3-driver) connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). A `File` an `Output` or a person's export reaches goes out as a signed link valid for five minutes, served from the disk with single ranges, `If-Range` and an ETag from the file's hash ([Downloading](#downloading)). A client's file reaches a store through a [slot](#uploading): `Entity.field_upload()`, the disk driver's upload address, and a `FileUpload` attached by an ordinary create or update. A test keeps a fixture file in its in-memory store with `fixture_file`, and tells the store to fail every call or every write ([Files](13-testing.md#files)). `jadpo files` lists a store's files on either driver, or `jadpo dev`'s copy, shows, gets and puts one, and copies every file and the erasure log from one store into another, a disk store's folder among them ([`jadpo files`](14-tooling.md#jadpo-files)). Not built yet: multipart slots, fields naming one store of files in entities of two databases, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
+| Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` and [`Driver.s3`](#the-s3-driver) connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). A `File` an `Output` or a person's export reaches goes out as a signed link valid for five minutes, served from the disk with single ranges, `If-Range` and an ETag from the file's hash ([Downloading](#downloading)). A client's file reaches a store through a [slot](#uploading): `Entity.field_upload()`, the disk driver's upload address, and a `FileUpload` attached by an ordinary create or update. A test keeps a fixture file in its in-memory store with `fixture_file`, and tells the store to fail every call or every write ([Files](13-testing.md#files)). `jadpo files` lists a store's files on either driver, or `jadpo dev`'s copy, shows, gets and puts one, and copies every file and the erasure log from one store into another, a disk store's folder among them ([`jadpo files`](14-tooling.md#jadpo-files)). A `File` an operation's `input:` or a webhook's `reply:` holds is sent as its bytes ([What a `File` holds](#what-a-file-holds)), and fields in entities of two databases may name one store of files, each counting its own records' holders ([Deleting and erasing](#deleting-and-erasing)). Not built yet: multipart slots, and image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
 | Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flag rules: declaring, reading, testing](#flag-rules-declaring-reading-testing)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flag rules: changing, listing, removing](#flag-rules-changing-listing-removing)). A person's erasure takes their `id` out of `jadpo_flags` and `jadpo_flag_changes`, and `jadpo migrate new --drop jadpo_flags` drops both once the last flag has gone ([The log](#the-log), [Removing](#removing)). Not built yet: named tenants, which wait for tenancy to be settled for flags. |
 | Audit | Partly built: an entity's `audit:`, an entry in the same transaction as each change, `history` with the record's `read` grant and the fields the caller can read, retention by the purge schedule, entries deleted with their record by erasure, `AuditEntryRecorded` to subscribers, and the permissions report's line ([Audit trail](#audit-trail)). Not built yet: what [What the audit trail doesn't keep yet](#what-the-audit-trail-doesnt-keep-yet) lists, each `toolchain.not_built_yet` where it is written, and `publishing`, which comes with outgoing webhooks. |
 | Search | Partly built: on PostgreSQL, `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages. |

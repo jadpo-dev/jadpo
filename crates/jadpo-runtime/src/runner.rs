@@ -822,26 +822,42 @@ async fn attempt(
         // A file held by no record (area 16, "Deleting and erasing";
         // chunk B3): its bytes deleted under its key, which a repeat sends
         // again safely, then recorded gone, so none may hold it again.
+        // Where several databases count the store's files, each is asked
+        // first, and the bytes stay while any of their records holds them
+        // (chunk B14).
         Target::Files { connection } => match crate::files::released_parts(&delivery.value) {
             Some((store, key)) if store == *connection => {
-                let call = crate::files::delete_call(connection, &key);
-                let sent = send(ctx, call, budget, within).await;
-                if matches!(sent, Ok(Outcome::Value(_))) {
-                    let gone = database
-                        .query_once(
-                            crate::files::GONE,
-                            &[SqlValue::Text(store), SqlValue::Text(key)],
-                        )
-                        .await;
-                    // Its bytes are gone either way; a record that didn't
-                    // keep that is swept again after a day.
-                    if gone.is_err() {
-                        Ok(Outcome::Failed(Box::new(crate::unavailable())))
-                    } else {
-                        sent
+                let now = crate::steps::wall(ctx);
+                match Box::pin(crate::files::decide(ctx, connection, &key, now)).await {
+                    // Another database's records hold it: it stays.
+                    Ok(crate::files::Decided::Held) => Ok(Outcome::Value(Value::Unit)),
+                    Err(_) => Ok(Outcome::Failed(Box::new(crate::unavailable()))),
+                    Ok(crate::files::Decided::Delete) => {
+                        let call = crate::files::delete_call(connection, &key);
+                        let sent = send(ctx, call, budget, within).await;
+                        if matches!(sent, Ok(Outcome::Value(_))) {
+                            let gone = if ctx.started().files().counting(connection).len() > 1 {
+                                Box::pin(crate::files::record_gone(ctx, connection, &key)).await
+                            } else {
+                                database
+                                    .query_once(
+                                        crate::files::GONE,
+                                        &[SqlValue::Text(store), SqlValue::Text(key)],
+                                    )
+                                    .await
+                                    .map(|_| ())
+                            };
+                            // Its bytes are gone either way; a record that
+                            // didn't keep that is swept again after a day.
+                            if gone.is_err() {
+                                Ok(Outcome::Failed(Box::new(crate::unavailable())))
+                            } else {
+                                sent
+                            }
+                        } else {
+                            sent
+                        }
                     }
-                } else {
-                    sent
                 }
             }
             _ => Ok(Outcome::Fault(ctx.fault(

@@ -37,7 +37,8 @@ const OPEN: &str = "    policy: {
 ";
 
 /// A bakery's price sheets, a route that sends one, and a person whose
-/// export reaches a sheet.
+/// export reaches a sheet, held in its own field and in a list (chunk
+/// B14), each as its signed link.
 pub(crate) fn files(path: &str) -> Vec<(String, String)> {
     let app = format!(
         "application {{\n    connections: {{\n        main: {{\n            driver: Driver.postgres\n            url: config.database_url\n        }}\n        sheets: {{\n            driver: Driver.disk\n            path: \"{path}\"\n        }}\n    }}\n    privacy: {{\n        erasure_log: {{\n            store: sheets\n        }}\n    }}\n}}\n"
@@ -244,15 +245,15 @@ test "a path that names no store is no download" {
         ),
         (
             "domains/accounts/entities/scan.jadpo",
-            format!("use accounts/entities {{ Member }}\n\n/// A member's scanned document.\nentity Scan {{\n    id: Uuid\n    member_id: Member.id {{\n        on_delete: OnDelete.cascade\n    }}\n    document: File {{\n        store: sheets\n        max_size: 1mb\n        personal: PersonalData.identifying\n    }}\n\n{OPEN}}}\n"),
+            format!("use accounts/entities {{ Member }}\n\n/// A member's scanned document.\nentity Scan {{\n    id: Uuid\n    member_id: Member.id {{\n        on_delete: OnDelete.cascade\n    }}\n    document: File {{\n        store: sheets\n        max_size: 1mb\n        personal: PersonalData.identifying\n    }}\n    copies: List<File>\n\n{OPEN}}}\n"),
         ),
         (
             "domains/accounts/actions/keep_scan.jadpo",
-            "use app { sheets }\nuse accounts/entities { Member, Scan }\nuse accounts/failures { ScanNotKept }\n\n/// Keeps a member and a scan of theirs.\naction keep_scan() fails ScanNotKept -> Scan {\n    var document: File = attempt sheets.put(encoding.to_utf8(\"id\"), FileType.pdf) {\n        storage_full: ScanNotKept\n    }\n    var member: Member = Member.create {\n        set: {\n            handle: \"ada\"\n        }\n    }\n    return Scan.create {\n        set: {\n            member_id: member.id\n            document: document\n        }\n    }\n}\n".to_string(),
+            "use app { sheets }\nuse accounts/entities { Member, Scan }\nuse accounts/failures { ScanNotKept }\n\n/// Keeps a member and a scan of theirs.\naction keep_scan() fails ScanNotKept -> Scan {\n    var document: File = attempt sheets.put(encoding.to_utf8(\"id\"), FileType.pdf) {\n        storage_full: ScanNotKept\n    }\n    var member: Member = Member.create {\n        set: {\n            handle: \"ada\"\n        }\n    }\n    return Scan.create {\n        set: {\n            member_id: member.id\n            document: document\n            copies: [document]\n        }\n    }\n}\n".to_string(),
         ),
         (
             "domains/accounts/actions/keep_scan.test.jadpo",
-            "use accounts/entities { Member, Scan }\n\ntest \"a member's export links their file\" {\n    var scan: Scan = attempt keep_scan()\n    var export: PersonalDataExport = Member.export(scan.member_id)\n    assert export.records == 2\n    assert text.contains(export.json, \"/files/sheets/\")\n    assert not text.contains(export.json, \"\\\"key\\\"\")\n}\n".to_string(),
+            "use accounts/entities { Member, Scan }\n\ntest \"a member's export links their file\" {\n    var scan: Scan = attempt keep_scan()\n    var export: PersonalDataExport = Member.export(scan.member_id)\n    assert export.records == 2\n    assert text.contains(export.json, \"/files/sheets/\")\n    assert text.contains(export.json, \"\\\"copies\\\":[{\\\"url\\\":\\\"/files/sheets/\")\n    assert not text.contains(export.json, \"\\\"key\\\"\")\n}\n".to_string(),
         ),
     ];
     plain

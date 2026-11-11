@@ -16,6 +16,7 @@ pub mod ai_mapping;
 pub mod ai_personal;
 pub mod application;
 pub mod approval;
+pub mod assets;
 pub mod batches;
 mod case;
 pub mod client_address;
@@ -405,10 +406,10 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         );
         out.extend(prompts::prompt_problems(db, project).iter().cloned());
         out.extend(emails::email_problems(db, project).iter().cloned());
+        out.extend(assets::asset_problems(db, project).iter().cloned());
         out.extend(personal_reads::unread_problems(db, project).iter().cloned());
         out.extend(disk::disk_problems(db, project).iter().cloned());
         out.extend(thresholds::problems(db, project));
-        out.extend(data::held::counting_problems(db, project).iter().cloned());
         out.extend(ai::ai_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(

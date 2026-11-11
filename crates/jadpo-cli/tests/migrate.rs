@@ -840,3 +840,107 @@ fn a_field_added_in_the_middle_changes_only_itself() {
         again.stdout
     );
 }
+
+/// `jadpo migrate` with `args` and every stream a terminal.
+fn on_a_terminal(cwd: &Path, args: &[&str]) -> Output {
+    let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+    run(
+        &args,
+        &Environment::empty()
+            .with_cwd(cwd)
+            .with_terminals(true, true, true),
+    )
+}
+
+/// Area 14, "`jadpo migrate`": a missing purpose is asked for at a
+/// prompt, which offers the purpose it would name and asks again after
+/// one no folder can be named after; without a terminal, or for JSON, the
+/// command names the purpose to use.
+#[test]
+fn a_missing_purpose_is_asked_for_on_a_terminal() {
+    use jadpo_cli::Session;
+    use jadpo_term::{Mode, Style};
+    use std::io::Cursor;
+
+    let root = project("asked");
+    let asks = on_a_terminal(&root, &["migrate", "new"]);
+    let Some(Session::MigrateNew(args)) = &asks.session else {
+        panic!("it asks: {}{}", asks.stdout, asks.stderr);
+    };
+    assert!(migrations(&root).is_empty(), "nothing written yet");
+    assert_eq!(args.suggested, "initial");
+
+    // Asked for JSON, or piped, there is no one to ask.
+    let document = on_a_terminal(&root, &["migrate", "new", "--json"]);
+    assert!(document.session.is_none());
+    assert_eq!(document.code, 2, "{}", document.stdout);
+    let document: serde_json::Value = serde_json::from_str(&document.stdout).expect("JSON");
+    assert_eq!(
+        document["diagnostics"][0]["rule"], "cli.migrate_arguments",
+        "{document}"
+    );
+    let piped = jadpo(&root, &["migrate", "new"]);
+    assert!(piped.session.is_none());
+    assert!(
+        piped
+            .stderr
+            .contains("next: Add one, such as `jadpo migrate new initial`"),
+        "{}",
+        piped.stderr
+    );
+
+    // What it reads: one no folder can be named after is asked again,
+    // naming the purpose to write; enter takes the one it offers.
+    let style = Style::new(Mode::Plain);
+    let mut said = Vec::new();
+    let answer = jadpo_cli::migrate::ask_purpose(
+        &mut Cursor::new("Add Rating\nadd_rating\n"),
+        &mut said,
+        &style,
+        "initial",
+    );
+    assert_eq!(answer.as_deref(), Some("add_rating"));
+    let said = String::from_utf8(said).expect("text");
+    assert!(
+        said.starts_with("? What does this migration do?  "),
+        "{said}"
+    );
+    assert!(said.contains("enter takes initial"), "{said}");
+    assert!(
+        said.contains(
+            "`Add Rating` isn't a purpose a folder can be named after; write it as `add_rating`"
+        ),
+        "{said}"
+    );
+    assert!(!said.contains('\x1b'), "plain output moves nothing: {said}");
+    let taken =
+        jadpo_cli::migrate::ask_purpose(&mut Cursor::new("\n"), &mut Vec::new(), &style, "initial");
+    assert_eq!(taken.as_deref(), Some("initial"));
+    // The input ending asks nothing more, and writes nothing.
+    let ended =
+        jadpo_cli::migrate::ask_purpose(&mut Cursor::new(""), &mut Vec::new(), &style, "initial");
+    assert_eq!(ended, None);
+
+    // Answered on a rich terminal, the prompt collapses to a record of it.
+    let mut said = Vec::new();
+    jadpo_cli::migrate::ask_purpose(
+        &mut Cursor::new("first_tables\n"),
+        &mut said,
+        &Style::new(Mode::Rich),
+        "initial",
+    );
+    let said = String::from_utf8(said).expect("text");
+    assert!(
+        said.contains("✓ What does this migration do?  first_tables"),
+        "{said}"
+    );
+
+    // The answer names the migration it writes.
+    let made = jadpo_cli::migrate::written(args, "first_tables", &Environment::empty());
+    assert_eq!(made.code, 0, "{}{}", made.stdout, made.stderr);
+    let names = migrations(&root);
+    assert!(
+        names.len() == 1 && names[0].ends_with("_first_tables"),
+        "{names:?}"
+    );
+}

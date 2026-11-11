@@ -21,6 +21,7 @@ pub mod exchange;
 pub mod failures;
 pub mod jadpo;
 mod language;
+pub(crate) mod moving;
 pub mod outstanding;
 pub mod packages;
 pub mod sources;

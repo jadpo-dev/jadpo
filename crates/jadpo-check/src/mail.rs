@@ -872,18 +872,43 @@ pub fn attachment_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 Some(bytes) => total = total.saturating_add(*bytes),
                 None => {
                     sized = false;
+                    // A field of several files, or of a file's bytes,
+                    // says the most it holds in all (chunk B14).
+                    let written = email
+                        .fields
+                        .iter()
+                        .find(|(field, ..)| field == name)
+                        .map(|(_, ty, _)| ty.strip_nullable().to_string())
+                        .filter(|ty| ty != jadpo_std::files::FILE);
+                    let (reason, next) = match written {
+                        None => (
+                            format!(
+                                "An email's `File` fields are sent as attachments, and `{connection}` accepts {shown} of them in all, so each says the most it may hold, and their sum fits."
+                            ),
+                            format!(
+                                "Give `{name}` a `max_size:`, such as `{name}: File {{ max_size: 5mb }}`, keeping the email's total within {shown}"
+                            ),
+                        ),
+                        Some(ty) => (
+                            format!(
+                                "`{name}` is sent as attachments, and `{connection}` accepts {shown} of them in all, so each field sending files says the most its files may hold in all, and their sum fits."
+                            ),
+                            format!(
+                                "Give `{name}` a `max_size:`, the most its files may hold in all, such as `{name}: {ty} {{ max_size: 5mb }}`, keeping the email's total within {shown}"
+                            ),
+                        ),
+                    };
                     out.push(
                         Diagnostic::new(
                             &rule::EMAIL_ATTACHMENT_LIMIT,
-                            format!("`{}.{name}` doesn't say how large it may be", email.type_name),
+                            format!(
+                                "`{}.{name}` doesn't say how large it may be",
+                                email.type_name
+                            ),
                         )
                         .at(span.clone(), "no `max_size:`")
-                        .reason(format!(
-                            "An email's `File` fields are sent as attachments, and `{connection}` accepts {shown} of them in all, so each says the most it may hold, and their sum fits."
-                        ))
-                        .next(format!(
-                            "Give `{name}` a `max_size:`, such as `{name}: File {{ max_size: 5mb }}`, keeping the email's total within {shown}"
-                        )),
+                        .reason(reason)
+                        .next(next),
                     );
                 }
             }

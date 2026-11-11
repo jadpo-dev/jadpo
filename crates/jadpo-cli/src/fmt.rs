@@ -170,7 +170,15 @@ fn make_moves(root: &Path) {
             {
                 return;
             }
-            if std::fs::write(&file, jadpo_check::apply_edits(&text, edits)).is_err() {
+            let written = jadpo_check::apply_edits(&text, edits);
+            // A file a move emptied is the declaration's old home: it goes.
+            if written.trim().is_empty() && path.ends_with(".jadpo") {
+                if std::fs::remove_file(&file).is_err() {
+                    return;
+                }
+                continue;
+            }
+            if std::fs::write(&file, written).is_err() {
                 return;
             }
         }

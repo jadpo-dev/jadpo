@@ -59,9 +59,6 @@ pub(crate) fn plans(
         .filter(|entity| entity.person)
         .filter_map(|person| {
             let erasure = erasures.people.get(&person.name)?;
-            if !erasure.export_unbuilt.is_empty() {
-                return None;
-            }
             let key = planner.types.named(&person.name)?;
             if !keep(&key) {
                 return None;
@@ -259,8 +256,15 @@ impl Planner<'_> {
                         link
                     })?
                 }
+                // One held inside a structured value, as its link too
+                // (chunk B14).
                 None => {
-                    self.json_number(TypeRef::Field(self.types.graph().node(id).key.clone()))?
+                    let ty = TypeRef::Field(self.types.graph().node(id).key.clone());
+                    self.json_number(if jadpo_check::types::holds_file(lookup, &field.ty) {
+                        crate::routes::files_as_links(ty)
+                    } else {
+                        ty
+                    })?
                 }
             };
             fields.push((field.name.clone(), number));
