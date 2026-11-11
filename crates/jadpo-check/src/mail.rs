@@ -894,7 +894,7 @@ pub fn attachment_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                                 "`{name}` is sent as attachments, and `{connection}` accepts {shown} of them in all, so each field sending files says the most its files may hold in all, and their sum fits."
                             ),
                             format!(
-                                "Give `{name}` a `max_size:` for all its files together, such as `{name}: {ty} {{ max_size: 5mb }}`, keeping the email's total within {shown}"
+                                "Give `{name}` a `max_size:`, the most its files may hold in all, such as `{name}: {ty} {{ max_size: 5mb }}`, keeping the email's total within {shown}"
                             ),
                         ),
                     };
