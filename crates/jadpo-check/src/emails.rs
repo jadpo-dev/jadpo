@@ -108,12 +108,14 @@ pub struct EmailFacts {
     /// Its fields, `to` and `locale` first, with their types and where
     /// each is written (its type's name for the two every email has).
     pub fields: Vec<(String, Ty, Span)>,
-    /// Its `File` fields, each an attachment.
+    /// Its fields sending files, each one or several attachments: a
+    /// `File`, a `FileContents`, or a list, set or map of them.
     pub attachments: Vec<String>,
     /// Its fields holding a file no email would send, reported as that.
     pub unattached: Vec<String>,
     /// Each attachment with its `max_size:` in bytes, when it gives one,
-    /// and where it is written (chunk 7.3c).
+    /// and where it is written (chunk 7.3c): for a field of several, the
+    /// most its files hold in all.
     pub attachment_sizes: Vec<(String, Option<u64>, Span)>,
 }
 
@@ -638,19 +640,38 @@ pub fn smtp_connections(db: &dyn Db, project: Project) -> SmtpConnections {
     out
 }
 
-/// Whether a field of type `ty` holds a file that no email would send: a
-/// file's bytes, or a file in a collection. `top` says an email's own `File`
-/// field may be `ty`, which is its attachment. An object is read for its
-/// other fields, so one holding a file is left alone.
+/// Whether a field of type `ty` holds a file that no email would send.
+/// `top` says an email's own field may be `ty`, so that its files are
+/// attachments: a `File`, a `FileContents`, or a list, set or map's values
+/// of them, however deep (chunk B14), each written as that type rather
+/// than named through another. A partial's fields are never sent, and a
+/// map's keys are never attachments. An object is read for its other
+/// fields, so one holding a file is left alone.
 fn unattached(lookup: &Lookup<'_>, ty: &Ty, top: bool) -> bool {
     match lookup.structure(ty) {
         Ty::Nullable(inner) => unattached(lookup, &inner, top),
-        Ty::Opaque(name, _) if name == jadpo_std::files::FILE => {
+        Ty::Opaque(name, _)
+            if name == jadpo_std::files::FILE || name == jadpo_std::files::FILE_CONTENTS =>
+        {
             !top || !matches!(ty.strip_nullable(), Ty::Opaque(..))
         }
-        Ty::Opaque(name, _) => name == jadpo_std::files::FILE_CONTENTS,
-        Ty::List(inner) | Ty::Set(inner) => unattached(lookup, &inner, false),
-        Ty::Map(key, value) => unattached(lookup, &key, false) || unattached(lookup, &value, false),
+        Ty::List(inner) | Ty::Set(inner) => unattached(lookup, &inner, top),
+        Ty::Map(key, value) => unattached(lookup, &key, false) || unattached(lookup, &value, top),
+        _ => false,
+    }
+}
+
+/// Whether a field of type `ty` sends files as attachments where it may:
+/// a `File` or a `FileContents`, alone or in a list, a set or a map's
+/// values, however deep.
+fn sends_files(lookup: &Lookup<'_>, ty: &Ty) -> bool {
+    match lookup.structure(ty) {
+        Ty::Nullable(inner) | Ty::List(inner) | Ty::Set(inner) | Ty::Map(_, inner) => {
+            sends_files(lookup, &inner)
+        }
+        Ty::Opaque(name, _) => {
+            name == jadpo_std::files::FILE || name == jadpo_std::files::FILE_CONTENTS
+        }
         _ => false,
     }
 }
@@ -660,13 +681,13 @@ fn unattached(lookup: &Lookup<'_>, ty: &Ty, top: bool) -> bool {
 fn file_not_attached(host: &str, field: &str, ty: &Ty, partial: bool, span: Span) -> Diagnostic {
     let (reason, next) = if partial {
         (
-            "A partial's fields are what its templates write, and a file isn't written out; only an email's own `File` field is sent, as an attachment.",
+            "A partial's fields are what its templates write, and a file isn't written out; only an email's own fields send files, as attachments.".to_string(),
             format!("Remove `{field}`, and give the email a `File` field"),
         )
     } else {
         (
-            "An email's attachments are its `File` fields, one file each, read from the store as it is sent. Nothing sends a file any other way, so this would compile and never reach anyone.",
-            format!("Give each file its own `File` field, in place of `{field}`"),
+            "An email's attachments are its fields declared as `File` or `FileContents`, or as a list, set or map of them, read as it is sent. This field holds a file another way, so it would compile and never reach anyone.".to_string(),
+            format!("Declare `{field}` as `File`, or a `List<File>`, in place of `{ty}`"),
         )
     };
     Diagnostic::new(
@@ -731,11 +752,13 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
                 (field.name.clone(), field.declared.clone(), span)
             })
             .collect();
+        // Its attachments: each field sending files, one or several.
         let attachments: Vec<String> = defs
             .iter()
             .filter(|field| {
-                matches!(field.declared.strip_nullable(), Ty::Opaque(held, args)
-                    if held == jadpo_std::files::FILE && args.is_empty())
+                !is_partial(symbol)
+                    && sends_files(&lookup, &field.declared)
+                    && !unattached(&lookup, &field.declared, true)
             })
             .map(|field| field.name.clone())
             .collect();

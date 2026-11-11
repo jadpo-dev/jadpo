@@ -425,13 +425,12 @@ fn a_disk_stores_settings_are_held_to_what_they_say() {
     }
 }
 
-/// The fields naming one store of files are counted in one database's
-/// record of held files (area 16, "Deleting and erasing"; chunk B3): a
-/// field in an entity of another database is `toolchain.not_built_yet`
-/// where it is written, since bytes one database's records still hold
-/// could be deleted once the other's let go.
+/// Fields naming one store of files may be in entities of two databases
+/// (area 16, "Deleting and erasing"; chunk B14): each counts its own
+/// records' holders, and the runtime deletes a file's bytes only once
+/// neither holds it, so neither field is refused.
 #[test]
-fn a_store_of_files_held_from_two_databases_is_not_built_yet() {
+fn a_store_of_files_held_from_two_databases_checks() {
     let app = "application {\n    connections: {\n        main: {\n            driver: Driver.postgres\n        }\n        archive: {\n            driver: Driver.postgres\n        }\n        sheets: {\n            driver: Driver.disk\n            path: \"/var/lib/pantry/sheets\"\n        }\n        notes: {\n            driver: Driver.disk\n            path: \"/var/lib/pantry/notes\"\n        }\n    }\n}\n";
     let old = |store: &str| {
         format!(
@@ -455,15 +454,8 @@ fn a_store_of_files_held_from_two_databases_is_not_built_yet() {
     };
     // Its own store of files, counted in its own database: nothing.
     assert_eq!(rules("notes"), Vec::<String>::new());
-    // The first entity by name, `OldSheet`, keeps the record, so
-    // `ShelfSheet`'s field is the one refused.
-    let found = rules("sheets");
-    assert_eq!(
-        found,
-        [
-            "domains/pantry/entities/shelf_sheet.jadpo toolchain.not_built_yet: `ShelfSheet.sheet` keeps its bytes in `sheets`, as records in `archive` do"
-        ]
-    );
+    // One store of files named from both databases: nothing either.
+    assert_eq!(rules("sheets"), Vec::<String>::new());
 }
 
 /// What the base project reports with `Sheet`'s declaration and a route
@@ -707,13 +699,11 @@ const HOLDING: [(&str, &str); 6] = [
 const INNER: (&str, &str) = ("Inner", "    sheet: File\n");
 const PLAIN: (&str, &str) = ("Plain", "    name: Text\n");
 
-/// Sending a `File` to a provider isn't built: an operation's `input:` or
-/// a webhook's `reply:` would write its store and key, not its bytes, so
-/// holding one, however deep, is `toolchain.not_built_yet` (area 16, "What
-/// a `File` holds"; area 11, "Types").
+/// A `File` sent to a provider goes as its bytes (area 11, "Types";
+/// chunk B14): an operation's `input:` or a webhook's `reply:` holding one,
+/// however deep, checks like any other, and a call sending one too.
 #[test]
-fn a_file_sent_to_a_provider_is_not_built_yet() {
-    const REFUSED: &str = "toolchain.not_built_yet:";
+fn a_file_sent_to_a_provider_checks() {
     for (what, holds) in HOLDING {
         let found = through_acme(
             "        input: Sent\n        output: Plain\n",
@@ -721,12 +711,7 @@ fn a_file_sent_to_a_provider_is_not_built_yet() {
             &[("Sent", holds), INNER, PLAIN],
             &[],
         );
-        assert_eq!(
-            found.iter().filter(|p| p.starts_with(REFUSED)).count(),
-            1,
-            "an operation's input, {what}: {found:?}"
-        );
-        assert_eq!(found.len(), 1, "an operation's input, {what}: {found:?}");
+        assert_eq!(found, Vec::<String>::new(), "an operation's input, {what}");
         let found = through_acme(
             "        input: Plain\n        output: Plain\n",
             "    reply: Sent\n",
@@ -734,45 +719,14 @@ fn a_file_sent_to_a_provider_is_not_built_yet() {
             &[],
         );
         // A connection that doesn't answer the event is reported beside it.
-        assert_eq!(
-            found.iter().filter(|p| p.starts_with(REFUSED)).count(),
-            1,
+        assert!(
+            !found
+                .iter()
+                .any(|p| p.starts_with("toolchain.not_built_yet:")
+                    || p.starts_with("type.batch_input:")),
             "a webhook's reply, {what}: {found:?}"
         );
-        assert!(
-            !found.iter().any(|p| p.starts_with("type.batch_input:")),
-            "a webhook's reply is sent, not taken, {what}: {found:?}"
-        );
     }
-    // What it says names the operation and the field.
-    let found = through_acme(
-        "        input: Sent\n        output: Plain\n",
-        "",
-        &[("Sent", "    sheet: File\n"), PLAIN],
-        &[],
-    );
-    assert_eq!(
-        found,
-        [
-            "toolchain.not_built_yet: `uploads.create`'s `input:` sends a `File`, in `Acme.Sent.sheet`, and sending one to a provider isn't built yet"
-        ]
-    );
-    // An input and a reply that leave the file out are like any other.
-    assert_eq!(
-        through_acme(
-            "        input: Plain\n        output: Plain\n",
-            "",
-            &[PLAIN],
-            &[],
-        ),
-        Vec::<String>::new()
-    );
-}
-
-/// A call to an operation refused for its `input:` reports the operation,
-/// and nothing more at the call that sends it.
-#[test]
-fn a_call_sending_a_file_is_reported_at_the_operation() {
     let action = "use app { acme, sheets }\nuse pantry/failures { NoRoom }\nuse shared/providers/acme\n\naction send() fails NoRoom -> Unit {\n    var sheet: File = attempt sheets.put(encoding.to_utf8(\"a,b\"), FileType.csv) {\n        storage_full: NoRoom\n    }\n    var plain: Acme.Plain = acme.uploads.create(\n        Acme.Sent {\n            sheet: sheet\n        }\n    )\n    assert plain.name == \"sent\"\n}\n";
     let found = through_acme(
         "        input: Sent\n        output: Plain\n",
@@ -780,11 +734,7 @@ fn a_call_sending_a_file_is_reported_at_the_operation() {
         &[("Sent", "    sheet: File\n"), PLAIN],
         &[("domains/pantry/actions/send.jadpo", action)],
     );
-    assert_eq!(found.len(), 1, "{found:?}");
-    assert!(
-        found[0].starts_with("toolchain.not_built_yet:"),
-        "{found:?}"
-    );
+    assert_eq!(found, Vec::<String>::new());
 }
 
 /// Only the runtime builds a `File`, so nothing from outside carries one:
@@ -996,16 +946,25 @@ fn a_template_reading_a_part_of_a_file_is_refused() {
     );
 }
 
-/// An email's attachments are its `File` fields, each one file. A file in
-/// a collection, or a file's bytes, would compile and never be sent, so each
-/// is `toolchain.not_built_yet` (area 16, "Attachments").
+/// An email's attachments are its fields of files (area 16, "Attachments";
+/// chunk B14): a `File`, a `FileContents`, or a list, set or map of them,
+/// each sent. A partial sends nothing, so a file on one is
+/// `toolchain.not_built_yet`; an object is read for its other fields.
 #[test]
-fn an_email_holding_a_file_any_other_way_is_not_built_yet() {
+fn an_email_attaches_each_file_its_fields_hold() {
     const INNER: (&str, &str) = (
         "domains/pantry/types/held_sheet.jadpo",
         "/// A sheet.\ntype HeldSheet = Object {\n    title: Text\n    sheet: File\n}\n",
     );
     for (what, field) in [
+        (
+            "a file",
+            "    sheet: File {\n        store: sheets\n        max_size: 5mb\n    }\n",
+        ),
+        (
+            "an optional file",
+            "    sheet: File? {\n        store: sheets\n        max_size: 5mb\n    }\n",
+        ),
         ("a list", "    sheets: List<File>\n"),
         ("an optional list", "    sheets: List<File>?\n"),
         ("a set", "    sheets: Set<File>\n"),
@@ -1015,31 +974,25 @@ fn an_email_holding_a_file_any_other_way_is_not_built_yet() {
         ("a list of its bytes", "    wholes: List<FileContents>\n"),
     ] {
         let found = emailing(field, "A sheet.\n", &[INNER]);
-        assert_eq!(found, ["toolchain.not_built_yet"], "{what}: {found:?}");
+        assert_eq!(found, Vec::<String>::new(), "{what}");
     }
     // A partial sends nothing, so no file on one is an attachment.
-    let found = emailing(
-        "    title: Text\n",
-        "{{ title }}\n",
-        &[
-            (
-                "domains/pantry/emails/sign_off.jadpo",
-                "/// How an email ends.\ntype SignOff = EmailPartial {\n    sheet: File\n}\n",
-            ),
-            ("domains/pantry/emails/sign_off.txt", "Thanks.\n"),
-        ],
-    );
-    assert_eq!(found, ["toolchain.not_built_yet"], "a partial: {found:?}");
-    // A `File`, optional or not, is an attachment.
     for field in [
-        "    sheet: File {\n        store: sheets\n        max_size: 5mb\n    }\n",
-        "    sheet: File? {\n        store: sheets\n        max_size: 5mb\n    }\n",
+        "    sheet: File\n",
+        "    sheets: List<File>\n",
+        "    whole: FileContents\n",
     ] {
-        assert_eq!(
-            emailing(field, "A sheet.\n", &[]),
-            Vec::<String>::new(),
-            "{field}"
+        let partial =
+            format!("/// How an email ends.\ntype SignOff = EmailPartial {{\n{field}}}\n");
+        let found = emailing(
+            "    title: Text\n",
+            "{{ title }}\n",
+            &[
+                ("domains/pantry/emails/sign_off.jadpo", &partial),
+                ("domains/pantry/emails/sign_off.txt", "Thanks.\n"),
+            ],
         );
+        assert_eq!(found, ["toolchain.not_built_yet"], "a partial, {field}");
     }
     // An object is read for its other fields, and a summary for its counts.
     assert_eq!(

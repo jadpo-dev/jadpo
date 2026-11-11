@@ -587,3 +587,289 @@ fn a_lost_delivery_is_swept_and_gone_bytes_are_never_held_again() {
         assert_eq!(sheets, 0);
     });
 }
+
+/// One store of files named from two databases (area 16, "Deleting and
+/// erasing"; chunk B14): the bakery's sheets in `main`, and its archived
+/// sheets in `archive`, each a `File` in `sheets`. Each database counts
+/// its own records' holders, and a file's bytes go only once neither
+/// holds it. Its tests run interpreted here, and compiled with the
+/// interpreter's records in the gate's compiled step (`compiled.rs`, "a
+/// file held from two databases").
+pub(crate) fn two_database_files() -> Vec<(String, String)> {
+    let mut files: Vec<(String, String)> = files()
+        .into_iter()
+        .filter(|(path, _)| !path.ends_with(".test.jadpo"))
+        .collect();
+    for (path, text) in &mut files {
+        if path == "app.jadpo" {
+            *text = "application {\n    connections: {\n        main: {\n            driver: Driver.postgres\n        }\n        archive: {\n            driver: Driver.postgres\n        }\n        sheets: {\n            driver: Driver.disk\n            path: \"/var/lib/bakery/sheets\"\n        }\n    }\n    schedules: {\n        store: main\n    }\n}\n".to_string();
+        }
+    }
+    files.extend([
+        (
+            "domains/bakery/entities/archived_sheet.jadpo".to_string(),
+            "/// A sheet kept in the archive once its supplier stops sending it.\nentity ArchivedSheet {\n    id: Uuid\n    sheet: File? {\n        store: sheets\n        max_size: 1mb\n        types: [FileType.csv]\n    }\n\n    store: archive\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        delete: [Access.public]\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/bakery/actions/archive_sheet.jadpo".to_string(),
+            "use bakery/entities { ArchivedSheet, PriceSheet }\n\n/// Keeps a copy of a sheet's file in the archive.\naction archive_sheet(from: PriceSheet) -> ArchivedSheet {\n    return ArchivedSheet.create {\n        set: {\n            sheet: from.sheet\n        }\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/bakery/actions/forget_archived.jadpo".to_string(),
+            "use bakery/entities { ArchivedSheet, ArchivedSheetNotFound }\n\n/// Deletes an archived sheet.\naction forget_archived(archived_id: ArchivedSheet.id) fails ArchivedSheetNotFound -> Unit {\n    attempt ArchivedSheet.delete(archived_id)\n}\n".to_string(),
+        ),
+        (
+            "domains/bakery/actions/restore_sheet.jadpo".to_string(),
+            "use bakery/entities { ArchivedSheet, PriceSheet, Supplier, SupplierNotFound }\n\n/// Puts an archived sheet's file back on a supplier's sheet.\naction restore_sheet(archived: ArchivedSheet, supplier_id: Supplier.id) fails SupplierNotFound -> PriceSheet {\n    return attempt PriceSheet.create {\n        set: {\n            supplier_id: supplier_id\n            sheet: archived.sheet\n        }\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/bakery/actions/archive_sheet.test.jadpo".to_string(),
+            TWO_DATABASE_TESTS.to_string(),
+        ),
+    ]);
+    files
+}
+
+/// What every executor runs over two databases: bytes `archive` still
+/// holds stay once `main` lets go, so `main` may hold them again.
+const TWO_DATABASE_TESTS: &str = r#"use bakery/actions { add_supplier, forget_archived, forget_sheet, keep_sheet, restore_sheet }
+use bakery/entities { ArchivedSheet, PriceSheet, PriceSheetNotFound, Supplier }
+
+test "bytes the archive holds stay once a sheet lets go" {
+    var millers: Supplier = add_supplier("Millers")
+    var kept: PriceSheet = attempt keep_sheet(millers.id, "flour,1.20")
+    var archived: ArchivedSheet = archive_sheet(kept)
+    attempt forget_sheet(kept.id)
+    assert PriceSheet.get(kept.id) fails PriceSheetNotFound
+    var restored: PriceSheet = attempt restore_sheet(archived, millers.id)
+    assert restored.sheet == archived.sheet
+}
+
+test "bytes go once both databases let go" {
+    var millers: Supplier = add_supplier("Millers")
+    var kept: PriceSheet = attempt keep_sheet(millers.id, "rye,2.40")
+    var archived: ArchivedSheet = archive_sheet(kept)
+    attempt forget_archived(archived.id)
+    attempt forget_sheet(kept.id)
+    assert PriceSheet.get(kept.id) fails PriceSheetNotFound
+}
+"#;
+
+fn two_database_project(name: &str) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("file-deletes-b14-{name}"));
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in two_database_files() {
+        write(&root, &path, &text);
+    }
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
+    }
+    root
+}
+
+#[test]
+fn a_store_of_files_held_from_two_databases_passes_its_tests() {
+    let root = two_database_project("tests");
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    // Each database counts its own records' holders.
+    let migrations = root.join("database/migrations");
+    let folder = fs::read_dir(&migrations)
+        .expect("migrations")
+        .filter_map(Result::ok)
+        .next()
+        .expect("one migration")
+        .path();
+    for (store, table) in [("main", "price_sheet"), ("archive", "archived_sheet")] {
+        let sql = fs::read_dir(&folder)
+            .expect("its files")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "sql"))
+            .map(|path| fs::read_to_string(path).expect("its sql"))
+            .find(|sql| sql.contains(&format!("CREATE TABLE \"{table}\"")))
+            .unwrap_or_else(|| panic!("{store}'s sql"));
+        assert!(
+            sql.contains("CREATE TABLE \"jadpo_files\""),
+            "{store}: {sql}"
+        );
+        assert!(
+            sql.contains("FOR EACH ROW EXECUTE FUNCTION \"jadpo_files_held\"('sheet')"),
+            "{store}: {sql}"
+        );
+    }
+    if !jadpo_test::live() {
+        return;
+    }
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(tested.stdout.contains("2 passed"), "{}", tested.stdout);
+}
+
+/// A host over each of the bakery's two databases, with the store of
+/// files in memory; its clock and randomness a harness's.
+struct TwoBakeries {
+    clock: Harness,
+    stores: std::collections::BTreeMap<String, jadpo_host_native::Postgres>,
+    files: MemoryFiles,
+}
+
+impl Host for TwoBakeries {
+    fn database(&self, store: &str) -> Option<&dyn jadpo_runtime::Database> {
+        self.stores
+            .get(store)
+            .map(|store| store as &dyn jadpo_runtime::Database)
+    }
+
+    fn capability(&self, connection: &str) -> Option<&dyn Capability> {
+        (connection == "sheets").then_some(&self.files as &dyn Capability)
+    }
+
+    fn random(&self, bytes: &mut [u8]) -> bool {
+        self.clock.random(bytes)
+    }
+
+    fn now_ms(&self) -> Option<i64> {
+        self.clock.now_ms()
+    }
+}
+
+impl TwoBakeries {
+    /// Runs `action` with `args`, and the work it left once it answered.
+    async fn done(&self, program: &Program, action: &str, args: Vec<Value>) -> Value {
+        let id = program.plan().find(action).expect("the action");
+        let mut ctx = self.clock.ctx_on(program, self);
+        let outcome = program.run(&mut ctx, id, args).await;
+        let work = ctx.take_deferred();
+        run_deferred(program, self, work).await;
+        match outcome {
+            Outcome::Value(value) => value,
+            other => panic!("{action}: expected a value, got {other:?}"),
+        }
+    }
+
+    /// Each file's holders in `store`'s record of held files, by key.
+    async fn holders(&self, store: &str) -> Vec<(String, i32)> {
+        use jadpo_runtime::Database;
+        self.stores
+            .get(store)
+            .expect("a store")
+            .query_once(
+                "SELECT \"key\", \"holders\" FROM \"jadpo_files\" ORDER BY \"key\"",
+                &[],
+            )
+            .await
+            .expect("the record of held files")
+            .into_iter()
+            .map(|row| match row.as_slice() {
+                [SqlValue::Text(key), SqlValue::Int4(holders)] => (key.clone(), *holders),
+                other => panic!("not a file: {other:?}"),
+            })
+            .collect()
+    }
+}
+
+/// Bytes `archive`'s record still holds stay once `main`'s sheet lets go,
+/// and `main` takes back the mark it made, so a sheet there may hold them
+/// again; once both let go, the bytes go and both record them gone.
+#[test]
+fn bytes_held_from_two_databases_go_once_neither_holds_them() {
+    let root = two_database_project("held");
+    if !jadpo_test::live() {
+        return;
+    }
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let mut stores = std::collections::BTreeMap::new();
+    for (store, (_, url)) in &copy.stores {
+        stores.insert(
+            store.clone(),
+            jadpo_host_native::postgres(url).expect("a store"),
+        );
+    }
+    let (_, main) = copy.stores.get("main").expect("main");
+    let bakery = TwoBakeries {
+        clock: Harness::postgres(main).at(T0).random_from(0),
+        stores,
+        files: MemoryFiles::new(),
+    };
+    let program = &program;
+    Runtime::new().expect("runtime").block_on(async {
+        let millers = bakery
+            .done(program, "add_supplier", vec![Value::text("Millers")])
+            .await;
+        let millers_id = field(&millers, "id");
+        let kept = bakery
+            .done(
+                program,
+                "keep_sheet",
+                vec![millers_id.clone(), Value::text("flour,1.20")],
+            )
+            .await;
+        let key = key_of(&kept);
+        let archived = bakery
+            .done(program, "archive_sheet", vec![kept.clone()])
+            .await;
+        assert_eq!(bakery.holders("main").await, [(key.clone(), 1)]);
+        assert_eq!(bakery.holders("archive").await, [(key.clone(), 1)]);
+
+        // `main` lets go: the archive still holds the bytes, so they stay
+        // and `main`'s mark is taken back.
+        bakery
+            .done(program, "forget_sheet", vec![field(&kept, "id")])
+            .await;
+        assert_eq!(bakery.files.keys(), std::slice::from_ref(&key));
+        assert_eq!(bakery.holders("main").await, []);
+        assert_eq!(bakery.holders("archive").await, [(key.clone(), 1)]);
+
+        // So `main` may hold them again, and let go again.
+        let restored = bakery
+            .done(
+                program,
+                "restore_sheet",
+                vec![archived.clone(), millers_id.clone()],
+            )
+            .await;
+        assert_eq!(key_of(&restored), key);
+        assert_eq!(bakery.holders("main").await, [(key.clone(), 1)]);
+        bakery
+            .done(program, "forget_sheet", vec![field(&restored, "id")])
+            .await;
+        assert_eq!(bakery.files.keys(), std::slice::from_ref(&key));
+
+        // The archive lets go too: the bytes go, gone in both records.
+        bakery
+            .done(program, "forget_archived", vec![field(&archived, "id")])
+            .await;
+        assert!(bakery.files.keys().is_empty(), "{:?}", bakery.files.keys());
+        assert_eq!(bakery.holders("main").await, [(key.clone(), -2)]);
+        assert_eq!(bakery.holders("archive").await, [(key.clone(), -2)]);
+
+        // A sheet only `main` ever held goes as it would with one
+        // database.
+        let second = bakery
+            .done(
+                program,
+                "keep_sheet",
+                vec![millers_id.clone(), Value::text("rye,2.40")],
+            )
+            .await;
+        let second_key = key_of(&second);
+        bakery
+            .done(program, "forget_sheet", vec![field(&second, "id")])
+            .await;
+        assert!(!bakery.files.keys().contains(&second_key));
+        assert!(
+            bakery
+                .holders("main")
+                .await
+                .contains(&(second_key.clone(), -2))
+        );
+    });
+}

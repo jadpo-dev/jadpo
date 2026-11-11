@@ -37,21 +37,18 @@ check failed: 1 error, 1 file
 the fix itself.
 
 Something this compiler can't do yet can also be refused where its effect
-would be wrong. A `File` in a provider operation's `input:` or a webhook's
-`reply:` is refused, since the provider would be told where the file is
-kept and be given none of it
-([What a `File` holds](../language/16-built-in-services.md#what-a-file-holds)).
-A `FileContents` in a route's `output:` or a failure's `client:` is refused
-too, since the answer would hold the whole file as Base64.
+would be wrong. A `FileContents` in a route's `output:` or a failure's
+`client:` is refused, since the answer would hold the whole file as Base64
+([`store.read(file)`](../language/16-built-in-services.md#storereadfile)).
 
 A slot for a `File` field over 100 MB is refused where it is asked for,
 since such a field gets a slot in parts
 ([Large uploads go in parts](../language/16-built-in-services.md#large-uploads-go-in-parts)).
 
-An email's attachments are its `File` fields, one file each, so a
-`List<File>`, a `Set<File>` or a `Map` of them and a `FileContents` on an
-email or a partial are refused, as a `File` on a partial is, since each
-would compile and never be sent
+A file on an email partial, which sends nothing of its own, is refused,
+and so is a file an email's field holds other than as a `File`, a
+`FileContents` or a list, set or map's values of them, since each would
+compile and never be sent
 ([Attachments](../language/16-built-in-services.md#attachments)).
 
 ## How to fix it

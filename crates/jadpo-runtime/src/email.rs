@@ -717,47 +717,23 @@ async fn rendered(
         &locale,
     )
     .await?;
-    // Each attachment, read whole from its store.
+    // Each attachment, read whole from its store: a field's one file, or
+    // each file its list, set or map holds, in order, numbered (chunk
+    // B14); a file's bytes as they are.
     let mut attachments = Vec::new();
     for name in &email.attachments {
-        let file = field(name);
-        if file == Value::None {
-            continue;
+        let held = field(name);
+        let several = matches!(held, Value::List(_) | Value::Set(_) | Value::Map(_));
+        let mut files = Vec::new();
+        attached_in(&held, &mut files);
+        for (at, file) in files.into_iter().enumerate() {
+            let named = if several {
+                format!("{name}-{}", at + 1)
+            } else {
+                name.clone()
+            };
+            attachments.push(attachment(ctx, &named, &file).await?);
         }
-        if crate::files::stored(&file).is_none() {
-            return Err(defect(ctx, "an attachment that isn't a stored file"));
-        }
-        let content = match read_whole(ctx, &file).await {
-            Done::Value(bytes) => bytes,
-            Done::Failed(failure) => return Err(Outcome::Failed(failure)),
-            Done::Fault(kind) => return Err(Outcome::Fault(ctx.fault(kind, Frame::ENTRY))),
-            Done::Broke(_) => return Err(defect(ctx, "an attachment's store refused a read")),
-        };
-        let Value::Record(file) = &file else {
-            continue;
-        };
-        let content_type = file
-            .get("type")
-            .and_then(crate::files::media_type)
-            .unwrap_or("application/octet-stream");
-        // Named from the email's field and the file's type when it has no
-        // name of its own, so the recipient never sees any of its key.
-        let file_name = match (
-            file.get("name"),
-            file.get("type").and_then(crate::files::extension),
-        ) {
-            (Some(Value::Text(name)), _) => name.to_string(),
-            (_, Some(extension)) => format!("{name}.{extension}"),
-            (_, None) => name.clone(),
-        };
-        attachments.push(Value::record(
-            ATTACHMENT,
-            ATTACHMENT_FIELDS
-                .iter()
-                .zip([Value::text(&file_name), Value::text(content_type), content])
-                .map(|(name, value)| (Rc::from(*name), value))
-                .collect(),
-        ));
     }
     Ok(Value::record(
         MESSAGE,
@@ -771,6 +747,78 @@ async fn rendered(
                 text,
                 Value::List(attachments.into()),
             ])
+            .map(|(name, value)| (Rc::from(*name), value))
+            .collect(),
+    ))
+}
+
+/// Each file `value`, an email's field, sends, in order: a `File` or a
+/// file's bytes, or what a list, a set or a map's values hold, however
+/// deep; `none` sends nothing.
+fn attached_in(value: &Value, out: &mut Vec<Value>) {
+    match value {
+        Value::List(items) | Value::Set(items) => {
+            items.iter().for_each(|item| attached_in(item, out));
+        }
+        Value::Map(map) => map.values().for_each(|item| attached_in(item, out)),
+        Value::None => {}
+        other => out.push(other.clone()),
+    }
+}
+
+/// One attachment: `file`, a `File` read whole from its store or a file's
+/// bytes as they are, named `name` and its type's extension when it has no
+/// name of its own, so the recipient never sees any of its key. Bytes are
+/// typed by what their first bytes say they are, or sent as
+/// `application/octet-stream` under `name` alone.
+async fn attachment(ctx: &mut Ctx<'_>, name: &str, file: &Value) -> Result<Value, Outcome> {
+    let (file_name, content_type, content) = match file {
+        Value::Bytes(bytes) => {
+            let sniffed = jadpo_std::files::type_of(bytes, None, &[]);
+            let media = sniffed.and_then(|variant| {
+                jadpo_std::FILE_TYPES
+                    .iter()
+                    .find(|(name, _)| *name == variant)
+                    .map(|(_, media)| *media)
+            });
+            let file_name = match sniffed.and_then(jadpo_std::files::extension) {
+                Some(extension) => format!("{name}.{extension}"),
+                None => name.to_string(),
+            };
+            (
+                file_name,
+                media.unwrap_or("application/octet-stream"),
+                file.clone(),
+            )
+        }
+        Value::Record(record) if crate::files::stored(file).is_some() => {
+            let content = match Box::pin(read_whole(ctx, file)).await {
+                Done::Value(bytes) => bytes,
+                Done::Failed(failure) => return Err(Outcome::Failed(failure)),
+                Done::Fault(kind) => return Err(Outcome::Fault(ctx.fault(kind, Frame::ENTRY))),
+                Done::Broke(_) => return Err(defect(ctx, "an attachment's store refused a read")),
+            };
+            let content_type = record
+                .get("type")
+                .and_then(crate::files::media_type)
+                .unwrap_or("application/octet-stream");
+            let file_name = match (
+                record.get("name"),
+                record.get("type").and_then(crate::files::extension),
+            ) {
+                (Some(Value::Text(own)), _) => own.to_string(),
+                (_, Some(extension)) => format!("{name}.{extension}"),
+                (_, None) => name.to_string(),
+            };
+            (file_name, content_type, content)
+        }
+        _ => return Err(defect(ctx, "an attachment that isn't a stored file")),
+    };
+    Ok(Value::record(
+        ATTACHMENT,
+        ATTACHMENT_FIELDS
+            .iter()
+            .zip([Value::text(&file_name), Value::text(content_type), content])
             .map(|(name, value)| (Rc::from(*name), value))
             .collect(),
     ))

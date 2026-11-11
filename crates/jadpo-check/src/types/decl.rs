@@ -3158,20 +3158,6 @@ fn is_file_name(held: &str) -> bool {
     !held.contains('.')
 }
 
-/// `toolchain.not_built_yet`: `held`, in an answer a route sends, at
-/// `span`: an operation's `input:`, or a webhook's `reply:`.
-pub(crate) fn file_sent_to_provider(what: &str, held: &str, span: Span) -> Diagnostic {
-    Diagnostic::new(
-        &rule::TOOLCHAIN_NOT_BUILT_YET,
-        format!("{what} sends a `File`, in `{held}`, and sending one to a provider isn't built yet"),
-    )
-    .at(span, "not built yet")
-    .reason("A `File` is the store and key its bytes are kept under, not the bytes. Until sending a file to a provider is built, the provider would be told where the file is kept and be given none of it.")
-    .next(format!(
-        "Leave `{held}` out of what is sent, and send the fields the provider needs"
-    ))
-}
-
 /// `type.batch_input`: `what`, read from outside the app, at `span`, holds
 /// a `File`, in `held`: an operation's `output:` or `wire_output:`, a
 /// webhook's event, or a queue's. `held` is `File` when `what` is one.

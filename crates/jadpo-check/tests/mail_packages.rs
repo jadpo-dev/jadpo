@@ -305,3 +305,46 @@ fn an_emails_attachments_fit_the_packages_limit() {
     assert_eq!(problems_with("mail", MAPPING, &over), NONE);
     assert_eq!(problems_with("mail", MAPPING, &unsized_terms), NONE);
 }
+
+/// A field of several files, or of a file's bytes, says the most its
+/// files hold in all, which counts towards the package's limit (chunk
+/// B14).
+#[test]
+fn a_field_of_several_files_says_how_large_they_may_be_in_all() {
+    for (field, sized) in [
+        (
+            "    terms: List<File>\n",
+            "    terms: List<File> {\n        max_size: 2mb\n    }\n",
+        ),
+        (
+            "    terms: FileContents\n",
+            "    terms: FileContents {\n        max_size: 2mb\n    }\n",
+        ),
+    ] {
+        let unsized_terms =
+            INVOICE.replace("    terms: File {\n        max_size: 2mb\n    }\n", field);
+        assert_ne!(unsized_terms, INVOICE);
+        assert_eq!(
+            problems_with("postbox", MAPPING, &unsized_terms),
+            vec![
+                "domains/billing/emails/invoice_email.jadpo email.attachment_limit: `InvoiceEmail.terms` doesn't say how large it may be"
+            ],
+            "{field}"
+        );
+        let sized_terms =
+            INVOICE.replace("    terms: File {\n        max_size: 2mb\n    }\n", sized);
+        assert_eq!(
+            problems_with("postbox", MAPPING, &sized_terms),
+            NONE,
+            "{sized}"
+        );
+        let over = sized_terms.replace("max_size: 2mb", "max_size: 8mb");
+        assert_eq!(
+            problems_with("postbox", MAPPING, &over),
+            vec![
+                "domains/billing/emails/invoice_email.jadpo email.attachment_limit: `InvoiceEmail`'s attachments may be 12 MB, over the 10 MB `postbox` accepts"
+            ],
+            "{sized}"
+        );
+    }
+}
