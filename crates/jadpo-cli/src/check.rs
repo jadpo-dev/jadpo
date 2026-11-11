@@ -475,9 +475,13 @@ fn checked_with(
         // walk can't say what it sends.
         if errors == 0 {
             surfaces.extend(derived::personal_data(db, loaded.project));
+            surfaces.extend(derived::database_and_queries(db, loaded.project, graph));
         } else {
             derived::remove_personal_data(&loaded.root);
+            derived::remove_database_and_queries(&loaded.root);
         }
+        surfaces.extend(derived::views(graph));
+        surfaces.push(derived::diagnostics(db, loaded.project, &diagnostics));
         let monitoring = derived::monitoring(db, loaded.project);
         if let Some(rules) = &monitoring {
             derived::remove_stale_monitoring(&loaded.root, rules);

@@ -29,6 +29,7 @@ pub mod paths;
 pub mod schema;
 pub mod stored_json;
 mod types;
+pub mod views;
 
 pub use graph::{Builder, Edge, Graph, NodeId};
 pub use jadpo_std::Rules;

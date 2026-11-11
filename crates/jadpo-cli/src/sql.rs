@@ -36,16 +36,7 @@ use crate::run::{Call, Reply, quoted};
 use crate::suggest::nearest;
 
 pub fn sql(call: &Call) -> Reply {
-    if call.flag("--explain") {
-        return Reply::failed(
-            Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                "`jadpo sql --explain` isn't built yet",
-            )
-            .reason("`--explain` runs the query on a disposable database and shows PostgreSQL's plan; it is decided, and comes later.")
-            .next("Run `jadpo sql <query>` to see its statements"),
-        );
-    }
+    let explain = call.flag("--explain");
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     let Some(root) = jadpo_db::find_root(&cwd) else {
         return project_not_found("sql");
@@ -89,6 +80,18 @@ pub fn sql(call: &Call) -> Reply {
             .iter()
             .find(|c| c.kind == Kind::Action && c.key.name() == name.as_str())
         {
+            if explain {
+                return Reply::failed(
+                    Diagnostic::new(
+                        &rule::CLI_SQL_ARGUMENTS,
+                        format!("`--explain` plans a query, and `{name}` is an action"),
+                    )
+                    .reason(
+                        "`--explain` shows PostgreSQL's plan for each statement a query sends; an action's writes each find their record by its key or a unique field, so there is no plan to choose.",
+                    )
+                    .next(format!("Run `jadpo sql {name}` to see its writes")),
+                );
+            }
             let file = jadpo_term::shown_path(root_shown.as_deref(), &action.file);
             return render_action(&plan, action, &file);
         }
@@ -124,7 +127,130 @@ pub fn sql(call: &Call) -> Reply {
         .and_then(|node| node.place.as_ref())
         .map_or(1, |place| place.lines.0);
     let file = jadpo_term::shown_path(root_shown.as_deref(), &query.path);
-    render(query, planned, &format!("{file}:{line}"))
+    let mut explained = Explained::default();
+    if explain {
+        match explain_query(&loaded, query, planned) {
+            Ok(plans) => explained.plans = Some(plans.into()),
+            Err(problem) => return Reply::failed(*problem),
+        }
+    }
+    render(query, planned, &format!("{file}:{line}"), &mut explained)
+}
+
+// --- `--explain` --------------------------------------------------------------------
+
+/// PostgreSQL's plan for each statement, in the order they are shown,
+/// when `--explain` asks for them.
+#[derive(Default)]
+struct Explained {
+    plans: Option<std::collections::VecDeque<Vec<String>>>,
+    /// Whether a plan has been shown, so what one is is said once.
+    shown: bool,
+}
+
+/// Each statement a query sends, with its parameters' types, in the order
+/// they are shown: the query's, then each include's after the statement
+/// it is included in.
+fn statements_of(select: &Select, out: &mut Vec<(String, Vec<String>)>) {
+    out.push((
+        select.sql.clone(),
+        select
+            .params
+            .iter()
+            .map(|param| pg_type(param.ty))
+            .collect(),
+    ));
+    for include in &select.includes {
+        statements_of(&include.select, out);
+    }
+}
+
+/// Plans each statement of `query` on a disposable database at the latest
+/// migration, made as `jadpo test` makes one, from the server
+/// `JADPO_TEST_DATABASE_URL` names or one started from PostgreSQL's own
+/// tools; nothing is read from or written to the app's own database.
+fn explain_query(
+    loaded: &jadpo_db::Loaded,
+    query: &QueryModel,
+    planned: &QueryPlan,
+) -> Result<Vec<Vec<String>>, Box<Diagnostic>> {
+    let (db, project) = (&loaded.db, loaded.project);
+    let variable = jadpo_test::postgres::DATABASE_URL_VARIABLE;
+    let own_server = std::env::var(variable).is_ok_and(|url| !url.trim().is_empty());
+    let unavailable = |why: String| {
+        Box::new(
+            Diagnostic::new(
+                &rule::CLI_SQL_EXPLAIN_UNAVAILABLE,
+                format!("`{}` couldn't be planned", query.name),
+            )
+            .reason(format!(
+                "`--explain` plans each statement on a disposable PostgreSQL database at the latest migration, and {why}."
+            ))
+            .next(if own_server {
+                format!(
+                    "Start the server `{variable}` names, or unset it to use PostgreSQL's own tools, then run the command again"
+                )
+            } else {
+                format!(
+                    "Install PostgreSQL, or set `{variable}` to a server's admin URL, then run the command again"
+                )
+            }),
+        )
+    };
+    let store = jadpo_check::data::data_model(db, project)
+        .entity(&query.entity)
+        .and_then(|entity| entity.store.clone())
+        .unwrap_or_default();
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(db, project),
+    );
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    if let Some(error) = databases.unavailable() {
+        use jadpo_test::postgres::ServerError;
+        return Err(unavailable(match error {
+            ServerError::NotFound => {
+                "PostgreSQL's tools aren't installed where it looks for them".to_string()
+            }
+            ServerError::Failed { detail, .. } if detail.trim() == "Unavailable" => {
+                "its server couldn't be reached".to_string()
+            }
+            ServerError::Failed { step, detail } => format!(
+                "{step} failed: {}",
+                detail
+                    .lines()
+                    .next()
+                    .unwrap_or_default()
+                    .trim_end_matches('.')
+            ),
+        }));
+    }
+    let copy = databases
+        .acquire()
+        .map_err(|error| unavailable(format!("none could be made: {error}")))?;
+    let Some((_, url)) = copy.stores.get(&store).cloned() else {
+        databases.release(copy, false);
+        return Err(unavailable(format!(
+            "the store `{store}` has no migrations to make it from"
+        )));
+    };
+    let mut statements = Vec::new();
+    statements_of(&planned.read.select, &mut statements);
+    let result = (|| {
+        let runtime = jadpo_host_native::Runtime::new()
+            .map_err(|error| unavailable(format!("it couldn't be reached: {error}")))?;
+        let database = jadpo_host_native::postgres(&url)
+            .map_err(|error| unavailable(format!("it couldn't be reached: {error:?}")))?;
+        statements
+            .iter()
+            .map(|(sql, types)| {
+                runtime
+                    .block_on(database.explain(sql, types))
+                    .map_err(|error| unavailable(format!("PostgreSQL refused it: {error:?}")))
+            })
+            .collect::<Result<Vec<_>, _>>()
+    })();
+    databases.release(copy, false);
+    result
 }
 
 /// Names as a list for a sentence: "`a` and `b`", or "none".
@@ -470,7 +596,7 @@ fn action_names(root: &std::path::Path) -> Vec<String> {
 }
 
 /// The statements, as a screen and as data.
-fn render(query: &QueryModel, plan: &QueryPlan, place: &str) -> Reply {
+fn render(query: &QueryModel, plan: &QueryPlan, place: &str, explained: &mut Explained) -> Reply {
     let mut screen = Screen::new();
     let mut statements = Vec::new();
     let count = 1 + count_includes(&plan.read.select.includes);
@@ -551,6 +677,7 @@ fn render(query: &QueryModel, plan: &QueryPlan, place: &str) -> Reply {
         fields,
         &plan.read.select,
         &names,
+        explained,
     );
     includes(
         &mut screen,
@@ -559,6 +686,7 @@ fn render(query: &QueryModel, plan: &QueryPlan, place: &str) -> Reply {
         &query.includes,
         &plan.read.select.includes,
         &query.entity,
+        explained,
     );
     let data = Json::object([
         ("query", query.name.as_str().into()),
@@ -595,6 +723,7 @@ fn includes(
     model: &[Include],
     plans: &[IncludeRead],
     host: &str,
+    explained: &mut Explained,
 ) {
     for (include, plan) in model.iter().zip(plans) {
         let follows = match include.kind {
@@ -626,6 +755,7 @@ fn includes(
             vec![("follows".to_string(), follows)],
             &plan.select,
             &names,
+            explained,
         );
         self::includes(
             screen,
@@ -634,6 +764,7 @@ fn includes(
             &include.includes,
             &plan.select.includes,
             &include.entity,
+            explained,
         );
     }
 }
@@ -726,6 +857,7 @@ fn statement(
     mut fields: Vec<(String, String)>,
     select: &Select,
     names: &Names<'_>,
+    explained: &mut Explained,
 ) {
     screen.push(Block::section(heading.clone(), select.sql.lines()));
     let mut params = Vec::new();
@@ -739,12 +871,34 @@ fn statement(
             ("type", ty.into()),
         ]));
     }
+    let plan = explained.plans.as_mut().and_then(|plans| plans.pop_front());
+    if plan.is_some() {
+        fields.push((
+            "plan".to_string(),
+            if explained.shown {
+                "PostgreSQL's generic plan, below".to_string()
+            } else {
+                "PostgreSQL's generic plan, for any values, on an empty database at the latest migration, below".to_string()
+            },
+        ));
+        explained.shown = true;
+    }
     screen.push(Block::fields(fields));
-    statements.push(Json::object([
+    if let Some(plan) = &plan {
+        screen.push(Block::section("", plan.iter().map(String::as_str)));
+    }
+    let mut entry = vec![
         ("for", heading.into()),
         ("sql", select.sql.as_str().into()),
         ("params", Json::array(params)),
-    ]));
+    ];
+    if let Some(plan) = plan {
+        entry.push((
+            "plan",
+            Json::array(plan.into_iter().map(Json::from).collect::<Vec<Json>>()),
+        ));
+    }
+    statements.push(Json::object(entry));
 }
 
 /// A parameter's type as PostgreSQL names it.

@@ -772,9 +772,9 @@ pub static COMMANDS: &[Command] = &[
                       print the statement each of its writes sends, with what each refusal raises: \
                       the failure a conflict: arm names, the not-found failure or a fault. The \
                       statements are fixed when the project is compiled, so the same query always \
-                      sends the same text. The project must check without errors first. --explain, \
-                      which runs the query on a disposable database and shows PostgreSQL's plan, \
-                      comes later.",
+                      sends the same text. The project must check without errors first. --explain \
+                      plans a query's statements on a disposable database at the latest migration \
+                      and shows PostgreSQL's generic plan under each.",
         arguments: &[Argument {
             name: "name",
             description: "The query's or action's name",
@@ -784,7 +784,7 @@ pub static COMMANDS: &[Command] = &[
         flags: &[Flag {
             name: "--explain",
             value: None,
-            description: "Show PostgreSQL's plan (not built yet)",
+            description: "Show PostgreSQL's plan for each statement",
             values: &[],
         }],
         examples: &[
@@ -796,10 +796,14 @@ pub static COMMANDS: &[Command] = &[
                 description: "Show the statements an action's writes send",
                 command: "jadpo sql archive_entry",
             },
+            Example {
+                description: "Show how PostgreSQL plans a query's statements",
+                command: "jadpo sql latest_entries --explain",
+            },
         ],
         arguments_rule: &rule::CLI_SQL_ARGUMENTS,
         raises: &[
-            &rule::TOOLCHAIN_NOT_BUILT_YET,
+            &rule::CLI_SQL_EXPLAIN_UNAVAILABLE,
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
         run: commands::sql,
