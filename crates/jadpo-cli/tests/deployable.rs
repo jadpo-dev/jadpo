@@ -1304,6 +1304,17 @@ fn a_deployable_carries_its_supported_locales_and_answers_what_dev_answers() {
         &at(&root, &cache),
     );
     assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
+    // Each locale's failure wording for client apps is beside the API's
+    // document, as the check wrote it (area 7).
+    for locale in ["en_gb", "fr_fr"] {
+        let name = format!("main.failures.{locale}.json");
+        let checked = fs::read_to_string(root.join("build/openapi").join(&name)).expect(&name);
+        assert_eq!(
+            fs::read_to_string(root.join("build/target/app/openapi").join(&name)).ok(),
+            Some(checked),
+            "{name} is beside the binary"
+        );
+    }
 
     // The data it was built with, the one locale set in its cache, holds
     // English and French month names, and no other language's.

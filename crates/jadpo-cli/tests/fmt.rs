@@ -611,3 +611,141 @@ fn fmt_layout_refuses_a_move_onto_a_name_its_file_folds_to() {
         output.stdout
     );
 }
+
+/// A message the shipping domain words and another domain calls: public,
+/// so `billing` may call it, and so it moves to `shared/translations/`.
+fn message_project(name: &str) -> PathBuf {
+    let root = folder(name);
+    write(
+        &root,
+        "app.jadpo",
+        "application {}\n\nlocales {\n    default: Locale.en_gb\n    supported: [Locale.en_gb, Locale.de_de]\n}\n",
+    );
+    write(
+        &root,
+        "shared/types/parcel_count.jadpo",
+        "/// How many parcels.\ntype ParcelCount = Int {\n    min: 0\n}\n",
+    );
+    write(
+        &root,
+        "domains/shipping/translations/parcels.jadpo",
+        "/// How many parcels an order has.\npublic type Parcels = Message {\n    count: PluralCount\n}\n",
+    );
+    write(
+        &root,
+        "domains/shipping/translations/greeting.jadpo",
+        "/// Says hello.\ntype Greeting = Message {}\n",
+    );
+    write(
+        &root,
+        "domains/shipping/translations/en_gb.jadpo",
+        "translations {\n    greeting: \"Hello.\"\n    parcels: {\n        one: \"{count} parcel\"\n        other: \"{count} parcels\"\n    }\n}\n",
+    );
+    write(
+        &root,
+        "domains/shipping/translations/de_de.jadpo",
+        "translations {\n    greeting: \"Hallo.\"\n    parcels: {\n        one: \"{count} Paket\"\n        other: \"{count} Pakete\"\n    }\n}\n",
+    );
+    write(
+        &root,
+        "domains/shipping/actions/describe.jadpo",
+        "use shared/types { ParcelCount }\n\n/// The parcels.\naction describe(count: ParcelCount, reader: Locale) -> PresentationText {\n    return translations.shipping.parcels(count: count, locale: reader)\n}\n",
+    );
+    write(
+        &root,
+        "domains/shipping/actions/greet.jadpo",
+        "/// A greeting.\naction greet(reader: Locale) -> PresentationText {\n    return translations.shipping.greeting(locale: reader)\n}\n",
+    );
+    write(
+        &root,
+        "domains/shipping/actions/describe.test.jadpo",
+        "test \"parcels are counted in German\" {\n    assert translations.shipping.parcels(count: 2, locale: Locale.de_de) == \"2 Pakete\"\n}\n",
+    );
+    write(
+        &root,
+        "domains/billing/actions/bill.jadpo",
+        "use shared/types { ParcelCount }\n\n/// The parcels billed.\naction bill(count: ParcelCount, reader: Locale) -> PresentationText {\n    return translations.shipping.parcels(count: count, locale: reader)\n}\n",
+    );
+    root
+}
+
+/// Area 1, "Sharing and promotion", and area 10, "Where translations
+/// live": a message a second domain calls is `layout.promotion_required`,
+/// and `jadpo fmt --layout` moves it to `shared/translations/` with its
+/// wording in every language and the record of what each translation was
+/// made from, and calls it `translations.shared.parcels` everywhere.
+#[test]
+fn fmt_layout_moves_a_message_another_domain_calls_with_its_wording() {
+    let root = message_project("layout-message");
+    let updated = jadpo(&root, &["translations", "update"]);
+    assert_eq!(updated.code, 0, "{}{}", updated.stdout, updated.stderr);
+    let record = read(&root, "domains/shipping/translations/sources.jadpo_record");
+    assert!(
+        record.contains("translation de_de.parcels from "),
+        "{record}"
+    );
+
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 1, "{}", checked.stdout);
+    assert!(
+        checked
+            .stdout
+            .contains("error: `Parcels` is used beyond this domain"),
+        "{}",
+        checked.stdout
+    );
+    assert!(
+        checked.stdout.contains("A message used by one domain lives in its `translations/` folder; once another domain calls it, it moves to `shared/translations/` with its wording. `domains/billing/actions/bill.jadpo` uses it too."),
+        "{}",
+        checked.stdout
+    );
+    assert!(
+        checked.stdout.contains("next: Move `Parcels` and its wording to `shared/translations/`, or run `jadpo fmt --layout`, which moves them and calls it as `translations.shared.parcels` (agent)"),
+        "{}",
+        checked.stdout
+    );
+
+    let output = jadpo(&root, &["fmt", "--layout"]);
+    assert_eq!(output.code, 0, "{}", output.stdout);
+    assert_eq!(
+        read(&root, "shared/translations/parcels.jadpo"),
+        "/// How many parcels an order has.\npublic type Parcels = Message {\n    count: PluralCount\n}\n"
+    );
+    assert!(
+        !root
+            .join("domains/shipping/translations/parcels.jadpo")
+            .exists(),
+        "the emptied file is removed"
+    );
+    assert_eq!(
+        read(&root, "shared/translations/de_de.jadpo"),
+        "translations {\n    parcels: {\n        one: \"{count} Paket\"\n        other: \"{count} Pakete\"\n    }\n}\n"
+    );
+    assert_eq!(
+        read(&root, "domains/shipping/translations/en_gb.jadpo"),
+        "translations {\n    greeting: \"Hello.\"\n}\n"
+    );
+    let moved = read(&root, "shared/translations/sources.jadpo_record");
+    assert!(moved.contains("translation de_de.parcels from "), "{moved}");
+    let kept = read(&root, "domains/shipping/translations/sources.jadpo_record");
+    assert!(
+        kept.contains("translation de_de.greeting ") && !kept.contains("parcels"),
+        "{kept}"
+    );
+    for path in [
+        "domains/shipping/actions/describe.jadpo",
+        "domains/shipping/actions/describe.test.jadpo",
+        "domains/billing/actions/bill.jadpo",
+    ] {
+        let text = read(&root, path);
+        assert!(
+            text.contains("translations.shared.parcels(")
+                && !text.contains("translations.shipping.parcels"),
+            "{path}: {text}"
+        );
+    }
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    let tested = jadpo(&root, &["test"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+}

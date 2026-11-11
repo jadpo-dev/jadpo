@@ -49,6 +49,10 @@ fn main() -> ExitCode {
             &args,
             &Environment::from_process(),
         )),
+        Some(Session::MigrateNew(args)) => ExitCode::from(jadpo_cli::migrate::serve(
+            &args,
+            &Environment::from_process(),
+        )),
         Some(Session::Dev(args)) => {
             ExitCode::from(jadpo_cli::dev::serve(&args, &Environment::from_process()))
         }

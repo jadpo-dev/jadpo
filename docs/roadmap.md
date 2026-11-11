@@ -296,12 +296,6 @@ work below (Richard, 2026-11-08).
      impact` first, the parallel-workspace routine, and the rule for a fixed
      value. Generated CI also belongs here, once a page says what generates it
      (L3).
-   - [ ] **T6 Small promises from the pages** `opus · high`: area 7, "What
-     is built"; area 10, "Where translations live"; area 1, "What is built";
-     area 14, "`jadpo migrate`". `jadpo build` writing
-     `<api>.failures.<locale>.json`; `layout.promotion_required` covering
-     messages; `layout.asset_unreferenced`; and `jadpo migrate new` asking for
-     a missing purpose, which comes with prompts.
    - [ ] **T7 Records in the editor** `opus · high`: area 18, "Records in
      git and in your editor" and "What is built". `jadpo check` building
      the base commit, as `jadpo approval` does, to tell a careful hand edit of

@@ -140,6 +140,68 @@ error: `ListBooks` is used beyond this file
 check failed: 1 error, 3 files
 ```
 
+A message another domain calls moves to `shared/translations/`, with its
+wording in every language. `billing` calls `shipping`'s public `Parcels`:
+
+```jadpo check project=e-promotion-message file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-promotion-message file=shared/types/parcel_count.jadpo hidden
+/// How many parcels.
+type ParcelCount = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-promotion-message file=domains/shipping/translations/en_gb.jadpo hidden
+translations {
+    parcels: {
+        one: "{count} parcel"
+        other: "{count} parcels"
+    }
+}
+```
+
+`domains/billing/actions/bill_parcels.jadpo`:
+
+```jadpo check project=e-promotion-message file=domains/billing/actions/bill_parcels.jadpo
+use shared/types { ParcelCount }
+
+/// The parcels a bill is for, in the reader's language.
+action bill_parcels(count: ParcelCount, reader: Locale) -> PresentationText {
+    return translations.shipping.parcels(count: count, locale: reader)
+}
+```
+
+`domains/shipping/translations/parcels.jadpo`:
+
+```jadpo check project=e-promotion-message file=domains/shipping/translations/parcels.jadpo expect=layout.promotion_required
+/// How many parcels an order has.
+public type Parcels = Message {
+    count: PluralCount
+}
+```
+
+```text output
+error: `Parcels` is used beyond this domain
+ --> domains/shipping/translations/parcels.jadpo:2:13
+  |
+2 | public type Parcels = Message {
+  |             ^^^^^^^ used by another domain
+  reason: A message used by one domain lives in its `translations/` folder; once another domain calls it, it moves to `shared/translations/` with its wording. `domains/billing/actions/bill_parcels.jadpo` uses it too.
+  next: Move `Parcels` and its wording to `shared/translations/`, or run `jadpo fmt --layout`, which moves them and calls it as `translations.shared.parcels` (agent)
+  rule: layout.promotion_required
+  help: https://jadpo.dev/docs/errors/layout.promotion_required
+
+check failed: 1 error, 5 files
+```
+
 ## How to fix it
 
 **If you want Jadpo to make the move**, run the formatter. It moves the
@@ -206,8 +268,59 @@ action list_books(filter: BookFilter) -> Unit {}
 The type has a file of its own, whose name is no other declaration's, and
 both actions use it from there.
 
+**If a message moves**, the formatter takes its wording and its calls with
+it: `jadpo fmt --layout` moves `Parcels` to
+`shared/translations/parcels.jadpo`, its English wording to
+`shared/translations/en_gb.jadpo`, and calls it as
+`translations.shared.parcels`. In `domains/billing/actions/bill_parcels.jadpo`:
+
+```jadpo check project=e-promotion-message-fix file=domains/billing/actions/bill_parcels.jadpo
+use shared/types { ParcelCount }
+
+/// The parcels a bill is for, in the reader's language.
+action bill_parcels(count: ParcelCount, reader: Locale) -> PresentationText {
+    return translations.shared.parcels(count: count, locale: reader)
+}
+```
+
+```jadpo check project=e-promotion-message-fix file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-promotion-message-fix file=shared/types/parcel_count.jadpo hidden
+/// How many parcels.
+type ParcelCount = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-promotion-message-fix file=shared/translations/parcels.jadpo hidden
+/// How many parcels an order has.
+public type Parcels = Message {
+    count: PluralCount
+}
+```
+
+```jadpo check project=e-promotion-message-fix file=shared/translations/en_gb.jadpo hidden
+translations {
+    parcels: {
+        one: "{count} parcel"
+        other: "{count} parcels"
+    }
+}
+```
+
+`Parcels` and its wording are now shared, so every domain calls the one
+message through `translations.shared`.
+
 ## Related
 
 - [Sharing and promotion](../language/01-project-layout-and-modules.md#sharing-and-promotion)
 - [How a promotion happens](../language/01-project-layout-and-modules.md#how-a-promotion-happens)
 - [When two names clash](../language/01-project-layout-and-modules.md#when-two-names-clash)
+- [Where translations live](../language/10-configuration-and-time.md#where-translations-live)
