@@ -639,6 +639,28 @@ jadpo rename greet welcome
 ```
 
 ```text output
+  domains/hello/actions/greet.jadpo
+    - greet.jadpo    file, renamed welcome.jadpo
+
+  domains/hello/actions/welcome.jadpo
+    + welcome.jadpo  file, was greet.jadpo
+    ~ line 4         welcome, was greet
+
+  domains/hello/routes/hello.jadpo
+    ~ line 13        welcome, was greet
+
+  policy.jadpo
+    ~ line 5         welcome, was greet
+
+  access.jadpo_record
+    ~ record         brought up to date
+
+  database/identities.jadpo_record
+    + action greet   now welcome
+
+Renamed greet to welcome
+
+next: jadpo check  says whether the change needs an acceptance
 ```
 
 A rename keeps what is stored under the old name. It adds a line to the

@@ -17,6 +17,13 @@ jadpo rename Visitor Greeting
 ```
 
 ```text output
+error: `Greeting` is already declared
+  reason: `Greeting` is the type in `domains/hello/types/greeting.jadpo`, and a private name is unique within `hello`, so `Visitor` can't take it.
+  next: Choose another name, then run `jadpo rename Visitor <new-name>` (agent)
+  in use:
+    Greeting  domains/hello/types/greeting.jadpo
+  rule: cli.rename_arguments
+  help: https://jadpo.dev/docs/errors/cli.rename_arguments
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make the fix itself.

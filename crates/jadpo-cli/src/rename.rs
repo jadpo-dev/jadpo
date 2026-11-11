@@ -107,7 +107,7 @@ pub fn rename(call: &Call) -> Reply {
     let node = graph.node(id);
     if !rename::renames(node.kind) {
         return Reply::failed(match node.kind {
-            Kind::Route | Kind::RouteGroup | Kind::GeneratedRoute => not_renamed(
+            Kind::Route | Kind::GeneratedRoute => not_renamed(
                 format!("`{name}` is a route"),
                 "A route goes by its method and path, written in its `routes` block.".to_string(),
                 "Change its method or path where its `routes` block writes them",

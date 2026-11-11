@@ -85,6 +85,7 @@ Change safely
   approval      Explain a change, decisions first
   declines      List or clear declines        list, clear
   fix           Fix a standard type's finding
+  rename        Rename a declaration or field everywhere
   suggest       Hint where a standard type or operation fits
   translations  Keep translations up to date
 
@@ -170,6 +171,7 @@ Change safely
   approval      Explain a change, decisions first
   declines      List or clear declines        list · clear
   fix           Fix a standard type's finding
+  rename        Rename a declaration or field everywhere
   suggest       Hint where a standard type or operation fits
   translations  Keep translations up to date
 
@@ -827,6 +829,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "approval\tExplain a change, decisions first",
             "declines\tList or clear declines",
             "fix\tFix a standard type's finding",
+            "rename\tRename a declaration or field everywhere",
             "suggest\tHint where a standard type or operation fits",
             "translations\tKeep translations up to date",
             "schedules\tWatch and control schedules",

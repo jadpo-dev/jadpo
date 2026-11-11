@@ -940,7 +940,7 @@ commands = ["new", "check", "fmt", "test", "build", "dev"]
 [[group.page.section]]
 id = "commands-for-looking-into-and-changing-code"
 title = "Commands for looking into and changing code"
-commands = ["inspect", "impact", "routes", "sql", "ai"]
+commands = ["inspect", "impact", "rename", "routes", "sql", "ai"]
 
 [[group.page.section]]
 id = "commands-for-the-database-settings-and-translations"
