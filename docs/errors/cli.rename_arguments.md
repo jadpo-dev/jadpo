@@ -44,11 +44,15 @@ The list shows the names in use that share the new name's words, so a name that 
 jadpo rename greet welcome
 ```
 
+The action, its file and every call take the new name.
+
 **If it names a field**, name the field after its entity or type, and give it a name of its own:
 
 ```sh
 jadpo rename Todo.priority importance
 ```
+
+The field takes its new name everywhere, and its column and rows stay where they are.
 
 ## Related
 

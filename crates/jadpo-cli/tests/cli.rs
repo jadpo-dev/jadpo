@@ -356,6 +356,7 @@ fn help_json_is_the_whole_command_reference() {
             "approval",
             "declines",
             "fix",
+            "rename",
             "suggest",
             "translations",
             "schedules",
@@ -559,12 +560,12 @@ fn an_unknown_command_with_nothing_near_points_at_help() {
 
 #[test]
 fn commands_that_are_not_built_yet_are_unknown() {
-    let output = jadpo(&["rename"]);
+    let output = jadpo(&["domain"]);
     assert_eq!(output.code, 2);
     assert!(
         output
             .stderr
-            .starts_with("error: `rename` isn't a jadpo command"),
+            .starts_with("error: `domain` isn't a jadpo command"),
         "{}",
         output.stderr
     );
