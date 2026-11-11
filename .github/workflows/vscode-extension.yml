@@ -88,6 +88,7 @@ jobs:
           name: vscode-extension
           path: editors/vscode/${{ steps.version.outputs.file }}
           if-no-files-found: error
+          retention-days: 3
 
   # The packaged file attested and attached to the release: nothing is
   # checked out or run here but the attestation action and `gh`.
