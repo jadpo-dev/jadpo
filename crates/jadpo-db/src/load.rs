@@ -386,6 +386,14 @@ impl Loaded {
         }
     }
 
+    /// Sets what the base commit's source gives for each view (area 18,
+    /// "Checking a record").
+    pub fn set_base_views(&mut self, views: BTreeMap<String, Option<String>>) {
+        if &views != self.project.base_views(&self.db) {
+            self.project.set_base_views(&mut self.db).to(views);
+        }
+    }
+
     /// Sets the date rules triggered by time passing are judged at, in
     /// days since 1970-01-01 (area 1; chunk B9).
     pub fn set_judged_on(&mut self, day: Option<i32>) {

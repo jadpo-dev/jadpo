@@ -1024,6 +1024,14 @@ decisions themselves are `acceptances::needs`, the same list `check` judges,
 each carrying its plain words and the callers it lets in from where its
 record is read.
 
+`jadpo check` builds the same base for records (area 18, "Checking a
+record"): `records::candidates` names each view that changed since the base
+and disagrees with the source, `before::judge_views` loads the base the same
+way for those alone and sets `Project::base_views` from
+`records::base_view`, kept in `build/before/<commit>/records.json`, and
+`records::hand_edit` compares entry by entry. A project with no such view
+builds nothing.
+
 **The registry commands** (chunk R5, area 11, "How the registry commands
 work") are `jadpo-cli`'s `registry` (asking the protocol over `download`,
 each answer held to the table's shapes; the log check; which release `update`

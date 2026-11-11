@@ -10,6 +10,7 @@ mod incremental;
 mod make_setting;
 mod query_sql;
 mod quick_fixes;
+mod records;
 mod references;
 mod route_hover;
 mod support;
