@@ -474,6 +474,28 @@ impl Loaded {
         }
     }
 
+    /// The text of the record at `path` (a `.jadpo_record` file or
+    /// `jadpo.lock`), or `None` when the project has none there or it
+    /// can't be read.
+    pub fn record(&self, path: &str) -> Option<String> {
+        self.project
+            .records(&self.db)
+            .iter()
+            .find(|record| record.path == path)
+            .and_then(|record| record.text.clone().ok())
+    }
+
+    /// Sets the record at `path` to `text`, or takes it away for `None`, as
+    /// a command that writes a record sees it before it writes the file:
+    /// the identity registry's lines are read again from it. A path that
+    /// isn't a record's is left alone.
+    pub fn set_record(&mut self, path: &str, text: Option<String>) {
+        if role(path, self.project.layout(&self.db)) != Some(Role::Record) {
+            return;
+        }
+        self.apply(path, Role::Record, text.map(Ok));
+    }
+
     /// Reads `path` from disk again: its text now, or its removal when it
     /// is gone or unreadable.
     pub fn reload(&mut self, path: &str) {

@@ -1131,8 +1131,8 @@ held, the app words each under a key that carries the version,
   `StripeApi.v1`.
 - **Two packages never share a name in code.** Installing a registry package
   whose name one of the app's own integrations or libraries already uses
-  stops and asks for the app's own to be renamed first (by hand, since
-  `jadpo rename` isn't built yet).
+  stops and asks for the app's own to be renamed first, with
+  [`jadpo rename`](14-tooling.md#jadpo-rename).
 - **A package's name can't clash with any other name.** Domain, library
   and standard-library names are unique among themselves, and a package's
   name joins them. Installing a package refuses one whose name the app

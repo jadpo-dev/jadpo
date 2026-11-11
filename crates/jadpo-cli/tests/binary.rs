@@ -128,6 +128,7 @@ fn bash_completes_commands_and_values() {
             "approval",
             "declines",
             "fix",
+            "rename",
             "suggest",
             "translations",
             "schedules",

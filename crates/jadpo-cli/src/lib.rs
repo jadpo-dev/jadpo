@@ -63,6 +63,7 @@ mod provider_review;
 mod records;
 mod registry;
 mod releases;
+mod rename;
 mod routes;
 mod run;
 mod runs;

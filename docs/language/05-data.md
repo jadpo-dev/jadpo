@@ -1442,10 +1442,13 @@ migration {
   ([Removing data](#removing-data)).
 - **Renames keep their data.** The identity registry, a file Jadpo keeps
   under `database/`, records what each renamed thing was born as
-  ([Review and records](18-records-and-manifest.md)). Tables and columns
-  keep the names they were born with, so renaming a field keeps its
-  column. A field renamed by hand, without the registry, reads as one
-  removed and one added, and the removed one's decision says so.
+  ([Review and records](18-records-and-manifest.md)), and
+  [`jadpo rename`](14-tooling.md#jadpo-rename) writes it. Tables and
+  columns keep the names they were born with, so renaming a field keeps
+  its column and its rows, and the next `jadpo migrate new` has nothing to
+  migrate. A field renamed by hand, without the registry, reads as one
+  removed and one added, and the removed one's decision says so, naming
+  the `jadpo rename` that keeps its column.
 - **Field order is no part of the schema.** PostgreSQL can't move a
   column, so each column keeps its place, a new field's column goes last
   wherever the field is written, and fields written in another order are
@@ -1476,9 +1479,8 @@ and indexes `<table>_<name>_key`, `_fkey` and `_idx`, cut short with a
 digest past PostgreSQL's 63 bytes. Each store that holds an entity also
 gets the runtime's [system tables](#system-tables), prefixed `jadpo_`.
 
-Not built yet: `jadpo rename`, which writes the identity registry
-([Tools](14-tooling.md)), and changing a column's type other than
-widening it. `jadpo migrate new` says so for each.
+Not built yet: changing a column's type other than widening it.
+`jadpo migrate new` says so.
 
 ### Removing data
 
@@ -1560,7 +1562,7 @@ column and its type.
 - **What was retired stays retired.** An entity can't take back a retired
   table, nor a field a retired column, until a migration has dropped it. A
   field or entity renamed by hand reads as one removed and one added, so
-  its decision says to give it back its name.
+  its decision says to give it back its name and run `jadpo rename`.
 - **Moving copies nothing.** A migration runs against one store at a
   time, so an entity moved to another starts empty there and its records
   stay behind, retired, until you copy them across and drop them.
@@ -2083,7 +2085,7 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | Index kinds other than geographic and HNSW | Not built yet. |
 | A database implied only when something needs one | Not built yet: it comes with the first feature that can run without one. |
 | Seeds and `jadpo seed` | Built. |
-| `jadpo rename` | Not built yet: it writes the identity registry ([Tools](14-tooling.md)). |
+| `jadpo rename` | Built: it writes the identity registry, so a renamed field keeps its column and a renamed entity its table ([Tools](14-tooling.md#jadpo-rename)). |
 
 ## Errors
 

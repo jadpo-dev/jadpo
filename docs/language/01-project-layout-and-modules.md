@@ -668,8 +668,9 @@ the name. If the type is promoted to its own file, the rule applies again.
 A clash is `semantic.duplicate_declaration`. It says whether the two are a
 copy (use the existing one, or move it to `shared/`) or two things with
 one name (rename one). It never invents a name, and it lists the names in
-use that contain the same word. `jadpo rename` refuses a new name already
-in use before editing anything.
+use that contain the same word. [`jadpo rename`](14-tooling.md#jadpo-rename)
+refuses a new name already in use before editing anything, listing them
+the same way.
 
 An agent working in parallel with others merges `main` before pushing,
 runs `jadpo check` (it builds nothing, so it is quick), fixes any clash,
@@ -686,8 +687,6 @@ route, schedule) is known from what it calls, so it isn't a folder;
 Files that aren't Jadpo (provider contracts, email templates, search
 mappings) sit beside the file that uses them, and that file must refer to
 them.
-
-Not built yet: `jadpo rename`.
 
 ## Sharing and promotion
 <!-- topic: sharing-and-promotion -->
@@ -1182,7 +1181,7 @@ The compiler builds this layout, with each rule's real output under
 |---|---|
 | Root, domains and their folders | Partly built: a file where the layout has no place for it is `layout.unknown_location`, and a declaration in the wrong folder `layout.wrong_folder`; a folder or file with no `app.jadpo` above it is checked as loose files. A domain created needs an [acceptance](18-records-and-manifest.md#acceptances). Not built yet: `jadpo domain rename`, `split` and `merge`; the `documents` capability, so a file in `documents/` is `layout.unknown_location` until it is. |
 | Files and names | Built: one primary declaration per file, named after it; names unique project-wide; the round-trip and folded-collision rules, with the exception for a type folding to its callable's name. |
-| Names per domain | Partly built: private functions and types unique only within their domain, each domain's code reading its own; their identity keys carrying the domain, with promotion to `shared/` writing a registry line; `semantic.duplicate_declaration` saying copy or clash and listing the names in use with the same words. `jadpo rename` is not built yet ([Commands for looking into and changing code](14-tooling.md#commands-for-looking-into-and-changing-code)). |
+| Names per domain | Partly built: private functions and types unique only within their domain, each domain's code reading its own; their identity keys carrying the domain, with promotion to `shared/` writing a registry line; `semantic.duplicate_declaration` saying copy or clash and listing the names in use with the same words; `jadpo rename` refusing a name in use ([`jadpo rename`](14-tooling.md#jadpo-rename)). |
 | Order independence | Built: declaration and file order never matter. |
 | Domains, `public` and calls | Built: owner-qualified calls and per-declaration `public`, with `visibility.private_cross_domain`, `visibility.public_not_allowed` and `visibility.public_unused`. |
 | Reserved words | Built: a reserved word names only a field or an enum variant ([Names from reserved words](02-values-and-types.md#names-from-reserved-words)). |

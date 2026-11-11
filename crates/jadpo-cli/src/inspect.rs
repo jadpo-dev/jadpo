@@ -120,11 +120,14 @@ fn describe(kind: Kind) -> &'static str {
 /// The node `text` names: a key (`function sales.flour_for`), a name as
 /// code writes it (`flour_for`, `sacks.weight_in`, `FlourShort.available`,
 /// `POST /orders`), or a born name with its domain (`sales.flour_for`).
-fn resolve(
+/// `after` is what the command line takes after the name, for the next
+/// step's command (` <new-name>` for `jadpo rename`).
+pub(crate) fn resolve(
     graph: &Graph,
     text: &str,
     command: &str,
     rule: &'static Rule,
+    after: &str,
 ) -> Result<NodeId, Box<Diagnostic>> {
     if let Some(id) = Key::from_text(text)
         .kind()
@@ -166,7 +169,7 @@ fn resolve(
                     .reason(format!(
                         "This project declares nothing called `{text}`. Did you mean `{near}`?"
                     ))
-                    .next(format!("Run `jadpo {command} {}`", quoted(near))),
+                    .next(format!("Run `jadpo {command} {}{after}`", quoted(near))),
                 None => diagnostic
                     .reason(format!("This project declares nothing called `{text}`."))
                     .next("Run `jadpo inspect` to list the project's declarations"),
@@ -192,7 +195,7 @@ fn resolve(
                         and(&listed)
                     ))
                     .next(format!(
-                        "Name one as it is listed, for example `jadpo {command} {}`",
+                        "Name one as it is listed, for example `jadpo {command} {}{after}`",
                         quoted(&names[0])
                     )),
             ))
@@ -263,7 +266,7 @@ pub fn inspect(call: &Call) -> Reply {
     };
     match call.arguments.first() {
         None => map(&loaded, &graph),
-        Some(name) => match resolve(&graph, name, "inspect", &rule::CLI_INSPECT_ARGUMENTS) {
+        Some(name) => match resolve(&graph, name, "inspect", &rule::CLI_INSPECT_ARGUMENTS, "") {
             Ok(id) => one(&graph, id),
             Err(diagnostic) => Reply::Failed(diagnostic),
         },
@@ -577,7 +580,7 @@ pub fn impact(call: &Call) -> Reply {
         Ok(found) => found,
         Err(reply) => return reply,
     };
-    let id = match resolve(&graph, name, "impact", &rule::CLI_IMPACT_ARGUMENTS) {
+    let id = match resolve(&graph, name, "impact", &rule::CLI_IMPACT_ARGUMENTS, "") {
         Ok(id) => id,
         Err(diagnostic) => return Reply::Failed(diagnostic),
     };

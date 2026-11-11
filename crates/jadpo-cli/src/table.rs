@@ -2160,6 +2160,53 @@ pub static COMMANDS: &[Command] = &[
         run: commands::fix,
     },
     Command {
+        name: "rename",
+        synonyms: &[],
+        group: "Change safely",
+        summary: "Rename a declaration or field everywhere",
+        description: "Rename a declaration or a field (areas 14 and 18): at its declaration and \
+                      every place code names it, the fields copied from it with `pick:` among \
+                      them, moving the file named after it. The identity registry \
+                      (database/identities.jadpo_record) records the name it was born with, so a \
+                      stored field keeps its column and an entity its table, and the records the \
+                      rename changes are written again. A new name already in use, or one that \
+                      isn't a name for its kind, is refused before anything changes; a rename \
+                      whose result would have an error the project didn't have changes nothing \
+                      and shows that error. Name a field after its entity or type \
+                      (`Invoice.amount`); its new name is its own (`total`).",
+        arguments: &[
+            Argument {
+                name: "name",
+                description: "The declaration or field to rename, as code writes it",
+                required: true,
+                values: Values::Declaration,
+            },
+            Argument {
+                name: "new-name",
+                description: "Its new name",
+                required: true,
+                values: Values::Fixed(&[]),
+            },
+        ],
+        flags: &[],
+        examples: &[
+            Example {
+                description: "Rename an action, its file and every call",
+                command: "jadpo rename greet salute",
+            },
+            Example {
+                description: "Rename a stored field, keeping its column",
+                command: "jadpo rename Invoice.amount total",
+            },
+        ],
+        arguments_rule: &rule::CLI_RENAME_ARGUMENTS,
+        raises: &[
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::rename,
+    },
+    Command {
         name: "suggest",
         synonyms: &[],
         group: "Change safely",

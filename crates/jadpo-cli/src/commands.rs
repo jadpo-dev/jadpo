@@ -29,6 +29,7 @@ pub use crate::new::new;
 pub use crate::package::package;
 pub use crate::privacy::privacy;
 pub use crate::records::records;
+pub use crate::rename::rename;
 pub use crate::routes::routes;
 use crate::run::{Call, Reply, Session, both, either, quoted, unknown_topic};
 pub use crate::runs::runs;
