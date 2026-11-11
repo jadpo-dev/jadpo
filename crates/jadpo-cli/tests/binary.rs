@@ -136,6 +136,7 @@ fn bash_completes_commands_and_values() {
             "files",
             "flags",
             "deliveries",
+            "batches",
             "privacy",
             "runs",
             "new",

@@ -95,6 +95,7 @@ Production
   files         Read and copy stored files    ls, show, get, put, copy
   flags         Change and remove flags       list, set, reset, remove
   deliveries    Retry, dismiss or cancel deliveries
+  batches       Watch and stop batch runs     list, show, cancel
   privacy       List data requests            requests
   runs          Check runs before a deploy    unfinished
 
@@ -183,6 +184,7 @@ Production
   files         Read and copy stored files    ls · show · get · put · copy
   flags         Change and remove flags       list · set · reset · remove
   deliveries    Retry, dismiss or cancel deliveries
+  batches       Watch and stop batch runs     list · show · cancel
   privacy       List data requests            requests
   runs          Check runs before a deploy    unfinished
 
@@ -368,6 +370,7 @@ fn help_json_is_the_whole_command_reference() {
             "files",
             "flags",
             "deliveries",
+            "batches",
             "privacy",
             "runs",
             "new",
@@ -846,6 +849,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "files\tRead and copy stored files",
             "flags\tChange and remove flags",
             "deliveries\tRetry, dismiss or cancel deliveries",
+            "batches\tWatch and stop batch runs",
             "privacy\tList data requests",
             "runs\tCheck runs before a deploy",
             "new\tStart a project",

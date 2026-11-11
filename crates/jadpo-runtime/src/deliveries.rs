@@ -23,6 +23,12 @@
 //!   `jadpo_parked_messages`, in the store a queue's events are kept in:
 //!   `failed` until an operator retries one (`pending`, read again by the
 //!   app's next tick) or dismisses it (`dismissed`).
+//! - **Batch runs** are their rows in `jadpo_batch_runs`, in each store
+//!   a batch walks: `running`, `finished`, `failed` or `cancelled`, as
+//!   `batches.status` gives them. A failed one needs an operator until
+//!   one dismisses it (its log row, as a schedule's run is dismissed),
+//!   and one running is stopped after the batch in hand by a cancel
+//!   ([`crate::batches::operator`]).
 //! - **The log** (`jadpo_operator_actions`) is in the store the item is
 //!   in: when, what, the item and its state then, the name the operator's
 //!   machine gives, and the database role PostgreSQL authenticated, which
@@ -133,6 +139,48 @@ pub fn requests_sql() -> String {
         request_columns(),
         request_from()
     )
+}
+
+/// A batch run's state as an item: `dismissed` once an operator set a
+/// failed one aside, else its own.
+const BATCH_STATE: &str = "CASE WHEN \"r\".\"state\" = 'failed' AND \"a\".\"action\" = 'dismiss' THEN 'dismissed' ELSE \"r\".\"state\" END";
+
+/// A batch run as an item: its call as its target, its state, when it
+/// ended or else started, ordered by when it ended or last moved, its
+/// last operator action; then its items done, its estimated total and its
+/// problems.
+fn batch_columns() -> String {
+    format!(
+        "\"r\".\"id\", 'batch_run', \"r\".\"batch\", NULL::text, {BATCH_STATE}, NULL::int4, COALESCE(\"r\".\"finished_at\", \"r\".\"started_at\"), NULL::timestamptz, NULL::text, NULL::text, \"a\".\"acted_at\", \"a\".\"action\", \"a\".\"operator\", \"a\".\"role\", COALESCE(\"r\".\"finished_at\", \"r\".\"stepped_at\"), \"r\".\"items_done\", \"r\".\"estimated_total\", \"r\".\"problems\""
+    )
+}
+
+fn batch_from() -> &'static str {
+    "FROM \"jadpo_batch_runs\" AS \"r\" LEFT JOIN LATERAL (SELECT \"acted_at\", \"action\", \"operator\", \"role\" FROM \"jadpo_operator_actions\" WHERE \"item\" = \"r\".\"id\" ORDER BY \"acted_at\" DESC, \"id\" DESC LIMIT 1) AS \"a\" ON TRUE"
+}
+
+/// The batch runs in states `$1`, as items, most recent first, at most
+/// `$2`.
+pub fn batches_sql() -> String {
+    format!(
+        "SELECT {} {} WHERE {BATCH_STATE} = ANY($1::text[]) ORDER BY 15 DESC, \"r\".\"id\" DESC LIMIT $2",
+        batch_columns(),
+        batch_from()
+    )
+}
+
+/// The batch runs, as items, whose id, as 32 hex digits, ends with `$1`.
+pub fn find_batch_sql() -> String {
+    format!(
+        "SELECT {} {} WHERE right(replace(\"r\".\"id\"::text, '-', ''), length($1::text)) = $1::text",
+        batch_columns(),
+        batch_from()
+    )
+}
+
+/// How many batch runs, as items, are in each state.
+pub fn batch_counts_sql() -> String {
+    format!("SELECT {BATCH_STATE}, count(*) {} GROUP BY 1", batch_from())
 }
 
 /// The routes' records, as items whose key lapsed by `$2`, whose id ends
@@ -288,6 +336,8 @@ pub enum Kind {
     Request,
     /// A queue message parked for an operator (chunk 7.7c).
     Message,
+    /// A batch run, kept in a store a batch walks.
+    Batch,
 }
 
 impl Kind {
@@ -297,6 +347,7 @@ impl Kind {
             Kind::ScheduleRun => "schedule_run",
             Kind::Request => "request",
             Kind::Message => "message",
+            Kind::Batch => crate::batches::operator::KIND,
         }
     }
 }
@@ -339,6 +390,17 @@ pub struct Item {
     /// since when (chunk 7.2b).
     pub held_for: Option<String>,
     pub held_since: Option<i64>,
+    /// A batch run's counts.
+    pub batch: Option<BatchCounts>,
+}
+
+/// How far a batch run is, as `batches.status` gives it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BatchCounts {
+    pub items_done: i64,
+    /// Its estimate, or once finished the items it did.
+    pub total: Option<i64>,
+    pub problems: i64,
 }
 
 /// The states [`items`] lists.
@@ -369,6 +431,8 @@ pub struct Holds {
     /// Parked queue messages, when it is the store queues' events are
     /// kept in (chunk 7.7c).
     pub messages: bool,
+    /// Batch runs, when a batch walks it.
+    pub batches: bool,
 }
 
 /// When a route's record last taken at `now` less a day was: its
@@ -431,6 +495,22 @@ pub async fn items(
                         SqlValue::Array(SqlType::Text, parked),
                         SqlValue::Int8(limit),
                     ],
+                )
+                .await?;
+            out.extend(rows.iter().filter_map(|row| read_item(row)));
+        }
+    }
+    if holds.batches {
+        let kept: Vec<SqlValue> = states
+            .iter()
+            .filter(|s| [FAILED, RUNNING, CANCELLED, DISMISSED].contains(s))
+            .map(|s| SqlValue::Text(s.to_string()))
+            .collect();
+        if !kept.is_empty() {
+            let rows = database
+                .query_once(
+                    &batches_sql(),
+                    &[SqlValue::Array(SqlType::Text, kept), SqlValue::Int8(limit)],
                 )
                 .await?;
             out.extend(rows.iter().filter_map(|row| read_item(row)));
@@ -521,6 +601,15 @@ pub async fn counts(
             }
         }
     }
+    if holds.batches {
+        for row in database.query_once(&batch_counts_sql(), &[]).await? {
+            if let (Some(SqlValue::Text(state)), Some(SqlValue::Int8(n))) =
+                (row.first(), row.get(1))
+            {
+                *out.entry(state.clone()).or_default() += u64::try_from(*n).unwrap_or(0);
+            }
+        }
+    }
     if holds.runs {
         for item in items(
             database,
@@ -529,6 +618,7 @@ pub async fn counts(
                 runs: true,
                 steps: false,
                 messages: false,
+                batches: false,
             },
             &[FAILED, OUTCOME_UNKNOWN, RUNNING, PENDING],
             10_000,
@@ -567,6 +657,12 @@ pub async fn find(
     if holds.messages {
         let rows = database
             .query_once(&find_message_sql(), std::slice::from_ref(&suffix))
+            .await?;
+        out.extend(rows.iter().filter_map(|row| read_item(row)));
+    }
+    if holds.batches {
+        let rows = database
+            .query_once(&find_batch_sql(), std::slice::from_ref(&suffix))
             .await?;
         out.extend(rows.iter().filter_map(|row| read_item(row)));
     }
@@ -641,6 +737,11 @@ impl Action {
             // 7.7c).
             (Kind::Message, Action::Retry | Action::Dismiss) => &[FAILED],
             (Kind::Message, _) => &[],
+            // A batch run that is going is stopped after the batch in
+            // hand, and one that failed is set aside.
+            (Kind::Batch, Action::Cancel) => &[RUNNING],
+            (Kind::Batch, Action::Dismiss) => &[FAILED],
+            (Kind::Batch, _) => &[],
             (Kind::ScheduleRun, Action::RetryNotDone | Action::Abandon) => &[],
             (Kind::ScheduleRun, Action::Retry) => &[FAILED],
             (Kind::Delivery, Action::Retry) => &[FAILED, DIVERGED],
@@ -870,6 +971,7 @@ fn read_item(row: &[SqlValue]) -> Option<Item> {
         "delivery" => Kind::Delivery,
         "request" => Kind::Request,
         "message" => Kind::Message,
+        "batch_run" => Kind::Batch,
         _ => Kind::ScheduleRun,
     };
     let acted = match (millis(10), text(11), text(12), text(13)) {
@@ -907,6 +1009,23 @@ fn read_item(row: &[SqlValue]) -> Option<Item> {
             millis(16)
         } else {
             None
+        },
+        batch: match (kind, row.get(15), row.get(16), row.get(17)) {
+            (Kind::Batch, Some(SqlValue::Int8(done)), total, Some(SqlValue::Int8(problems))) => {
+                Some(BatchCounts {
+                    items_done: *done,
+                    total: if text(4).as_deref() == Some(crate::batches::operator::FINISHED) {
+                        Some(*done)
+                    } else {
+                        match total {
+                            Some(SqlValue::Int8(total)) => Some(*total),
+                            _ => None,
+                        }
+                    },
+                    problems: *problems,
+                })
+            }
+            _ => None,
         },
     })
 }

@@ -584,6 +584,7 @@ async fn operate(host: &Stores, id: &str, action: Action, now: i64) {
         runs: false,
         steps: false,
         messages: false,
+        batches: false,
     };
     let found = find(&host.main, holds, id, now)
         .await

@@ -378,11 +378,6 @@ work below (Richard, 2026-11-08).
       20, "What is built".
 11. Background work and tests (areas 12 and 13), added by the audit of
     2026-11-08.
-    - [ ] **J1 `jadpo batches`** `opus · high`: area 14, "Commands for
-      services, calls, email and stored data" and "`jadpo runs unfinished`";
-      area 12, "What `batches.status` shows". `list`, `show` and
-      `cancel`, and `jadpo deliveries` listing batch runs. Designed with the
-      design skills first.
     - [ ] **J2 Batches over more** `opus · high`: area 12, "Walking records
       or a provider's list: `batches.each`", "How a run is kept" and "How a
       file's run is kept"; area 11, "Pages of results". A provider's list operation as

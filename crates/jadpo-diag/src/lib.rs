@@ -138,6 +138,8 @@ rules! {
         "An API's `serve_openapi:` setting holds something other than `true` or `false`";
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
         "An API in `apis:` has a setting an API doesn't take";
+    BATCHES_UNAVAILABLE: "batches.unavailable", area 14, Error, Human,
+        "The app's batch runs couldn't be read or cancelled in their database, because it can't be reached or has no table for them yet";
     CLI_ACCEPTANCE_ARGUMENTS: "cli.acceptance_arguments", area 14, Error, Agent,
         "A `jadpo acceptance` command names no action, one it doesn't have, or no purpose for `new`";
     CLI_AI_ARGUMENTS: "cli.ai_arguments", area 14, Error, Agent,
@@ -146,6 +148,8 @@ rules! {
         "A `jadpo api` command names no action, one it doesn't have, or more than `update`";
     CLI_APPROVAL_ARGUMENTS: "cli.approval_arguments", area 14, Error, Agent,
         "A `jadpo approval` command is given an argument it doesn't take, names a `--before` git doesn't know, or has nothing to compare with";
+    CLI_BATCHES_ARGUMENTS: "cli.batches_arguments", area 14, Error, Agent,
+        "A `jadpo batches` command names an action it doesn't have, no id or an id no batch run has, or a state or page it doesn't list";
     CLI_BUILD_ARGUMENTS: "cli.build_arguments", area 14, Error, Agent,
         "A `jadpo build` command names a deployable the app doesn't have, or more than one";
     CLI_CALLS_ARGUMENTS: "cli.calls_arguments", area 14, Error, Agent,

@@ -203,3 +203,37 @@ maintainer to overrule:
   --unshallow`, as `jadpo check` does.
 - **With `--watch`**, the first run is what the branch changed reaches;
   each save after is measured from the last run, as always.
+
+## `jadpo batches` (chunk J1)
+
+Decisions the pages didn't make, recommended here and open for a
+maintainer to overrule:
+
+- **The databases are found as `jadpo deliveries` finds its own**:
+  `--url` (with `--store` when several stores keep runs), the
+  connection's setting, else a running `jadpo dev`'s. There is no
+  `--dev`, unlike `jadpo files`: a store of files has a production copy
+  and a `jadpo dev` copy at once, while a database command already falls
+  back to `jadpo dev`'s database when no setting names one.
+- **The list shows every run kept**, those running first and then those
+  that ended, newest first, with `--state` for one of `running`,
+  `finished`, `failed` or `cancelled`. Its columns are the id, the
+  starting action with its helper, the state, the progress against the
+  estimated total and the problem count; the times are on `show`, so the
+  table fits 80 columns.
+- **`cancel` of a run that has ended, or was already asked to stop,
+  exits 0** and says so, writing nothing: it leaves the run where the
+  operator wanted it, as `batches.cancel` asks nothing of a run that has
+  ended. `jadpo deliveries cancel` of one is `deliveries.wrong_state`, as
+  every action from the wrong state is there.
+- **An unknown id is `cli.batches_arguments`**, as an unknown key is for
+  `jadpo files`, rather than a rule of its own.
+- **In `jadpo deliveries`, a failed batch run needs an operator** until
+  `dismiss` sets it aside, which is its log row, as a schedule's run is
+  dismissed; `retry`, `resolve` and `abandon` don't apply, since a failed
+  run ended for good and the app starts it again. Its row's kind in
+  `jadpo_operator_actions` is `batch_run`, deleted with the other log rows
+  once its run is gone.
+- **The estimated finish** is the rate from the run's start to its last
+  committed page over the items still to do, shown only while it is in
+  the future, so a run waiting for the tick shows no stale time.

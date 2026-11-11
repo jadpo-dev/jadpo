@@ -3780,7 +3780,12 @@ runs a new build changes.
 
 Batch runs and queue messages show here as well. Each batch run shows
 its state, its progress against the file's size, its problems and an
-estimated finish, which `batches.status` gives the app. Each queue
+estimated finish, which `batches.status` gives the app. A run that failed
+is listed by default until an operator dismisses it, which is its log
+row, as a schedule's run is dismissed, and one running is stopped after
+the batch in hand with `cancel`. [`jadpo
+batches`](14-tooling.md#jadpo-batches) lists every run kept and shows
+one's problems. Each queue
 message shows when it was parked because its type isn't listed or
 because it kept failing.
 
@@ -3951,7 +3956,6 @@ These limits may change once they have been measured on real runs.
 |---|---|
 | Everything else on this page | Built. |
 | Publishing chosen public events outward | Partly built: through `Driver.webhook`, to one address, signed and retried; to Cloudflare Queues, SQS and Pub/Sub not built yet ([Publishing events outward](#publishing-events-outward)). |
-| `jadpo batches list`, `show` and `cancel` | Not built yet: an action can call `batches.status` and `batches.cancel` meanwhile ([Tooling](14-tooling.md#commands-for-services-calls-email-and-stored-data)). |
 | `batches.each` over a provider's list operation, walked by `page.next` | Not built yet: a provider's list operation as `from:` is `toolchain.not_built_yet` where it is written; a named query giving a `Page` is built ([Walking records or a provider's list](#walking-records-or-a-providers-list-batcheseach)). |
 | Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging](17-debugging-and-review.md)), and a record's entry in the [personal-data report](15-personal-data.md) | Not built yet. |
 | Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for [telemetry](16-built-in-services.md). |
