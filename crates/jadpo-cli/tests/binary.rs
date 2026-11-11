@@ -131,6 +131,7 @@ fn bash_completes_commands_and_values() {
             "suggest",
             "translations",
             "schedules",
+            "files",
             "flags",
             "deliveries",
             "privacy",

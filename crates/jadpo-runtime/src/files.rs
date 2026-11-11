@@ -44,8 +44,9 @@ use std::rc::Rc;
 use jadpo_std::RuleKey;
 use jadpo_std::files::{
     COMPLETE, DELETE, DISCARD, FILE, FILE_RELEASED, FilesPlan, HEAD_BYTES, JOIN, NOT_FOUND,
-    PARTS_MISSING, PARTS_UNEQUAL, PUT, PartsRefused, READ, STAT, STORAGE_FULL, UNHELD_KEPT_MS,
-    UPLOADED, WHOLE_READ_LIMIT, key_for, parts_fit, piece_key, type_of,
+    PARTS_MISSING, PARTS_UNEQUAL, PUT, PartsRefused, READ, STAT, STORAGE_FULL, StoreFails,
+    UNHELD_KEPT_MS, UPLOADED, WHOLE_READ_LIMIT, WHOLE_STORE, key_for, parts_fit, piece_key,
+    type_of,
 };
 use jadpo_value::Value;
 
@@ -106,6 +107,25 @@ pub struct Stored {
 /// its ETag is made from.
 pub fn hash_of(bytes: &[u8]) -> String {
     blake3::hash(bytes).to_hex().to_string()
+}
+
+/// A file's hash made as its bytes go by, a window at a time, as
+/// [`hash_of`] makes it from them whole (`jadpo files show`).
+#[derive(Debug, Default)]
+pub struct Hashing(blake3::Hasher);
+
+impl Hashing {
+    pub fn new() -> Hashing {
+        Hashing::default()
+    }
+
+    pub fn update(&mut self, bytes: &[u8]) {
+        self.0.update(bytes);
+    }
+
+    pub fn finish(&self) -> String {
+        self.0.finalize().to_hex().to_string()
+    }
 }
 
 /// A `File` (area 16): what an entity field keeps and `store.put` gives.
@@ -712,6 +732,90 @@ async fn sweeping(ctx: &mut Ctx<'_>, counter: &str, now: i64) -> Result<Vec<Deli
     Ok(sealed.deliveries)
 }
 
+/// What a store answers [`jadpo_std::files::KEYS`] with: `keys`, each a
+/// key and its size, and `next`, where the following page starts, or
+/// `none` after the last.
+pub fn keys_answer(keys: &[(String, u64)], next: Option<&str>) -> Value {
+    let listed = keys
+        .iter()
+        .map(|(key, size)| {
+            Value::record(
+                jadpo_std::files::FILE_KEY,
+                vec![
+                    (Rc::from("key"), Value::text(key)),
+                    (
+                        Rc::from("size"),
+                        Value::Int(i64::try_from(*size).unwrap_or(i64::MAX)),
+                    ),
+                ],
+            )
+        })
+        .collect();
+    Value::record(
+        jadpo_std::files::FILE_KEYS,
+        vec![
+            (Rc::from("keys"), Value::list(listed)),
+            (Rc::from("next"), next.map_or(Value::None, Value::text)),
+        ],
+    )
+}
+
+/// One page of [`jadpo_std::files::KEYS`] from `held`, every key a store
+/// holds with its size, in any order: those after `after` that
+/// [`jadpo_std::files::is_listed`] allows, in order.
+pub fn keys_page(held: impl IntoIterator<Item = (String, u64)>, after: &str) -> Value {
+    let mut keys: Vec<(String, u64)> = held
+        .into_iter()
+        .filter(|(key, _)| key.as_str() > after && jadpo_std::files::is_listed(key))
+        .collect();
+    keys.sort();
+    let more = keys.len() > jadpo_std::files::KEYS_PAGE;
+    keys.truncate(jadpo_std::files::KEYS_PAGE);
+    let next = more
+        .then(|| keys.last().map(|(key, _)| key.clone()))
+        .flatten();
+    keys_answer(&keys, next.as_deref())
+}
+
+/// One page of a store's keys, each with its size, and where the next
+/// page starts.
+pub type KeysPage = (Vec<(String, u64)>, Option<String>);
+
+/// What a [`jadpo_std::files::KEYS`] answer holds: its keys with their
+/// sizes, and where the next page starts.
+pub fn keys_of(answer: &Value) -> Option<KeysPage> {
+    let Value::Record(record) = answer else {
+        return None;
+    };
+    let Some(Value::List(listed)) = record.get("keys") else {
+        return None;
+    };
+    let mut keys = Vec::new();
+    for item in listed.iter() {
+        let Value::Record(item) = item else {
+            return None;
+        };
+        let (Some(Value::Text(key)), Some(Value::Int(size))) = (item.get("key"), item.get("size"))
+        else {
+            return None;
+        };
+        keys.push((key.to_string(), u64::try_from(*size).unwrap_or(0)));
+    }
+    let next = match record.get("next") {
+        Some(Value::Text(next)) => Some(next.to_string()),
+        _ => None,
+    };
+    Some((keys, next))
+}
+
+/// The `after` a [`jadpo_std::files::KEYS`] call is given, or empty text.
+pub fn keys_after(input: &jadpo_value::Record) -> String {
+    match input.get("after") {
+        Some(Value::Text(after)) => after.to_string(),
+        _ => String::new(),
+    }
+}
+
 /// The media type of the `FileType` variant called `name`.
 pub fn media_of(name: &str) -> Option<&'static str> {
     jadpo_std::FILE_TYPES
@@ -876,6 +980,12 @@ pub struct MemoryFiles {
     full: Cell<bool>,
     reads: Cell<usize>,
     kept: Cell<u64>,
+    /// What a test's `fakes:` told each connection's store to answer
+    /// (area 13, "Files"), by the connection's name.
+    told: RefCell<BTreeMap<String, StoreFails>>,
+    /// The project folder a test's fixture files are read from, below
+    /// each domain's `fixtures/files/`; `None` where none can be read.
+    fixtures: Option<std::path::PathBuf>,
 }
 
 impl MemoryFiles {
@@ -932,6 +1042,59 @@ impl MemoryFiles {
         self
     }
 
+    /// Reads a test's fixture files from the project at `root`.
+    pub fn fixtures_under(mut self, root: impl Into<std::path::PathBuf>) -> MemoryFiles {
+        self.fixtures = Some(root.into());
+        self
+    }
+
+    /// Answers every call through `connection` as `fails` says, from now
+    /// on (area 13, "Files").
+    pub fn tell(&self, connection: &str, fails: StoreFails) {
+        self.told.borrow_mut().insert(connection.to_string(), fails);
+    }
+
+    /// Why an upload to `connection` is refused, as a test told its store.
+    fn refuses(&self, connection: &str) -> Result<(), Refused> {
+        match self.told.borrow().get(connection) {
+            Some(StoreFails::Unavailable) => Err(Refused::Unavailable),
+            Some(StoreFails::StorageFull) => Err(Refused::Full),
+            None => Ok(()),
+        }
+    }
+
+    /// The fixture file at `path`, relative to the project, kept as a
+    /// file of the `FileType` variant `file_type` named `name` in
+    /// connection `store` (area 13, "Files"): the `File`, or why it
+    /// couldn't be read. Only a regular file inside the project is read,
+    /// so a link can't bring a file from elsewhere on the machine into a
+    /// test.
+    fn fixture_at(
+        &self,
+        store: &str,
+        path: &str,
+        file_type: &str,
+        name: &str,
+    ) -> Result<Value, String> {
+        let Some(root) = &self.fixtures else {
+            return Err(format!(
+                "`{path}` can't be read here: fixture files are read by `jadpo test` from the project's folder"
+            ));
+        };
+        let unread = |why: String| format!("the fixture file `{path}` couldn't be read: {why}");
+        let within = std::fs::canonicalize(root).map_err(|error| unread(error.to_string()))?;
+        let found =
+            std::fs::canonicalize(root.join(path)).map_err(|error| unread(error.to_string()))?;
+        if !found.starts_with(&within) {
+            return Err(unread("it links to a file outside the project".to_string()));
+        }
+        if !std::fs::metadata(&found).is_ok_and(|meta| meta.is_file()) {
+            return Err(unread("it isn't a regular file".to_string()));
+        }
+        let bytes = std::fs::read(&found).map_err(|error| unread(error.to_string()))?;
+        Ok(self.keep_named(store, &bytes, file_type, Some(name)))
+    }
+
     /// Has no room from now on: every put answers `storage_full`.
     pub fn fill(&self) {
         self.full.set(true);
@@ -962,6 +1125,11 @@ impl MemoryFiles {
     /// connection `store`, as a test's fixture file is (area 13): the
     /// `File` an action is given.
     pub fn keep(&self, store: &str, bytes: &[u8], file_type: &str) -> Value {
+        self.keep_named(store, bytes, file_type, None)
+    }
+
+    /// [`MemoryFiles::keep`], the file named `name`.
+    fn keep_named(&self, store: &str, bytes: &[u8], file_type: &str, name: Option<&str>) -> Value {
         self.kept.set(self.kept.get() + 1);
         let mut id = [0xf0u8; 16];
         for (slot, byte) in id.iter_mut().rev().zip(self.kept.get().to_le_bytes()) {
@@ -972,7 +1140,7 @@ impl MemoryFiles {
         file_value(
             store,
             &key,
-            None,
+            name,
             i64::try_from(bytes.len()).unwrap_or(i64::MAX),
             file_type,
             Some(&hash_of(bytes)),
@@ -983,6 +1151,26 @@ impl MemoryFiles {
         let Value::Record(input) = &call.input else {
             return Answer::Misconfigured;
         };
+        // What a test told this connection's store (area 13, "Files").
+        match self.told.borrow().get(&call.connection) {
+            Some(StoreFails::Unavailable) => return Answer::Unavailable,
+            Some(StoreFails::StorageFull)
+                if matches!(call.operation.as_str(), PUT | JOIN | COMPLETE) =>
+            {
+                return Answer::Failed(STORAGE_FULL.into());
+            }
+            _ => {}
+        }
+        // Every key it keeps, a page at a time (area 14, `jadpo files`).
+        if call.operation == jadpo_std::files::KEYS {
+            let files = self.files.borrow();
+            return Answer::Value(keys_page(
+                files
+                    .iter()
+                    .map(|(key, bytes)| (key.clone(), bytes.len() as u64)),
+                &keys_after(input),
+            ));
+        }
         // Every key of the erasure log kept here (area 15; chunk P4c).
         if call.operation == jadpo_std::files::LIST {
             let mut keys: Vec<Value> = self
@@ -1213,10 +1401,11 @@ impl Capability for MemoryFiles {
 
     fn receive(
         &self,
-        _connection: &str,
+        connection: &str,
         key: &str,
         _expected: u64,
     ) -> Result<Box<dyn Receiving + '_>, Refused> {
+        self.refuses(connection)?;
         if self.full.get() {
             return Err(Refused::Full);
         }
@@ -1233,11 +1422,12 @@ impl Capability for MemoryFiles {
 
     fn receive_part(
         &self,
-        _connection: &str,
+        connection: &str,
         key: &str,
         part: u64,
         _expected: u64,
     ) -> Result<Box<dyn Receiving + '_>, Refused> {
+        self.refuses(connection)?;
         if self.full.get() {
             return Err(Refused::Full);
         }
@@ -1250,6 +1440,37 @@ impl Capability for MemoryFiles {
             bytes: Vec::new(),
             part: Some(part),
         }))
+    }
+
+    /// A test's `fakes: { <store>: unavailable }` or `storage_full`
+    /// (area 13, "Files"): the store as a whole answers so from now on.
+    fn script(
+        &self,
+        connection: &str,
+        operation: &str,
+        answer: Answer,
+        _from: crate::Frame,
+    ) -> bool {
+        if operation != WHOLE_STORE {
+            return false;
+        }
+        let fails = match answer {
+            Answer::Unavailable => StoreFails::Unavailable,
+            Answer::Failed(code) if code == STORAGE_FULL => StoreFails::StorageFull,
+            _ => return false,
+        };
+        self.tell(connection, fails);
+        true
+    }
+
+    fn fixture(
+        &self,
+        connection: &str,
+        path: &str,
+        file_type: &str,
+        name: &str,
+    ) -> Option<Result<Value, String>> {
+        Some(self.fixture_at(connection, path, file_type, name))
     }
 
     fn link_key(&self, _connection: &str, _make: bool) -> Option<[u8; 32]> {

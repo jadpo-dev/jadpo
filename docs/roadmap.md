@@ -251,15 +251,6 @@ work below (Richard, 2026-11-08).
    The disk driver in production moved here from item 5; the `search`,
    `bot_check` and `scanning` capabilities, image variants, the
    `telemetry:` section and custom metrics stay under item 5.
-   - [ ] **B8 Files in tests and `jadpo files`** `opus · high`: area 13,
-     "Files" (fakes); area 14, the files commands; area 16, "The disk
-     driver" (commands). `fixture_file("customers.csv", store:)` from a
-     domain's `fixtures/files/`; a test telling the in-memory store to
-     fail a read (`unavailable`) or a write (`storage_full`); and `jadpo
-     files ls`, `show`, `get`, `put` and `copy` on any store, designed
-     with the design skills first. Done when tests read fixture files and
-     see each failure on both executors, and `jadpo files copy` moves a
-     disk store's files to S3.
    - [ ] **B14 Where else a `File` goes** `opus · high` after B5:
      area 16, "What a `File` holds", "Attachments", "`store.read(file)`"
      and "Deleting and erasing"; area 11, "Types". A `File` in an

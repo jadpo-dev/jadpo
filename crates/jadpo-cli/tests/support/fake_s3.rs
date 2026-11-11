@@ -419,9 +419,22 @@ fn handle(request: &Incoming, shared: &Mutex<State>) -> Got {
         "GET" | "HEAD" => {
             if has("list-type") {
                 let wanted = value("prefix").unwrap_or_default();
-                let mut xml = String::from("<ListBucketResult><IsTruncated>false</IsTruncated>");
-                for object in state.objects.keys().filter(|key| key.starts_with(&wanted)) {
-                    xml.push_str(&format!("<Contents><Key>{object}</Key></Contents>"));
+                let after = value("start-after").unwrap_or_default();
+                let most: usize = value("max-keys")
+                    .and_then(|most| most.parse().ok())
+                    .unwrap_or(1000);
+                let listed: Vec<(&String, &Object)> = state
+                    .objects
+                    .iter()
+                    .filter(|(key, _)| key.starts_with(&wanted) && key.as_str() > after.as_str())
+                    .collect();
+                let truncated = listed.len() > most;
+                let mut xml = format!("<ListBucketResult><IsTruncated>{truncated}</IsTruncated>");
+                for (key, object) in listed.into_iter().take(most) {
+                    xml.push_str(&format!(
+                        "<Contents><Key>{key}</Key><Size>{}</Size></Contents>",
+                        object.bytes.len()
+                    ));
                 }
                 xml.push_str("</ListBucketResult>");
                 return (200, Vec::new(), xml.into_bytes());

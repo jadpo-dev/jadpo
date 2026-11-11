@@ -1534,11 +1534,260 @@ make them in development. A call on behalf of an owner with no grant fails
 #### Files
 
 In a test, an in-memory store takes the place of every `files`
-connection ([Files](16-built-in-services.md#files)). It can be told to
-fail a read (`unavailable`) or a write (`storage_full`). A real file sits
-in a domain's `fixtures/` folder, such as `fixtures/files/customers.csv`,
-and a test turns it into a stored `File` with
-`fixture_file("customers.csv", store: imports)`.
+connection ([Files](16-built-in-services.md#files)), so nothing touches a
+disk or a bucket.
+
+- **A real file.** A file a test needs sits in its domain's
+  `fixtures/files/` folder, such as
+  `domains/crm/fixtures/files/customers.csv`.
+  `fixture_file("customers.csv", store: imports)` keeps it in the test's
+  store for `imports` and gives the stored `File`, named as the file is.
+  Its `FileType` is what its name ends in: `.csv`, `.tsv`, `.json`,
+  `.jsonl`, `.pdf`, `.png`, `.jpeg` or `.jpg`, or `.webp`. Only a test calls
+  it, and only for a file its own domain's folder holds
+  ([`semantic.fixture_file_invalid`](../errors/semantic.fixture_file_invalid.md)).
+- **A store that fails.** `fakes: { imports: unavailable }` makes every
+  read and write of `imports` answer `unavailable`, as a store that can't
+  be reached does. `fakes: { imports: storage_full }` makes every write
+  answer `storage_full`, as a store with no room does, and reads go on.
+  Either holds for the rest of the test, and `fixture_file` still keeps
+  its file, since the file is the test's own and not the code's.
+
+A shop adds customers from a sheet it is sent. `app.jadpo` names the
+store the sheets are kept in:
+
+```jadpo check project=fixture-files file=app.jadpo
+application {
+    connections: {
+        imports: {
+            driver: Driver.disk
+            path: "/var/lib/shop/imports"
+        }
+    }
+}
+```
+
+```jadpo check project=fixture-files file=domains/crm/types/customer_name.jadpo hidden
+/// A customer's name, as a sheet gives it.
+type CustomerName = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+```jadpo check project=fixture-files file=domains/crm/types/customer_row.jadpo hidden
+use crm/types { CustomerName }
+
+/// One row of a sheet of customers.
+type CustomerRow = Input {
+    name: CustomerName {
+        column: "Name"
+    }
+}
+```
+
+```jadpo check project=fixture-files file=domains/crm/types/sheet_text.jadpo hidden
+/// A sheet of customers, typed in rather than sent as a file.
+type SheetText = Text {
+    min_length: 1
+    max_length: 10000
+}
+```
+
+```jadpo check project=fixture-files file=domains/crm/failures/sheet_not_kept.jadpo hidden
+/// The store had no room for a sheet of customers.
+type SheetNotKept = Failure {
+    kind: FailureKind.unavailable
+    message: "There was no room to keep the sheet."
+}
+```
+
+```jadpo check project=fixture-files file=domains/crm/entities/customer.jadpo hidden
+use crm/types { CustomerName }
+
+/// A customer.
+entity Customer {
+    id: Uuid
+    name: CustomerName
+
+    policy: {
+        create: [Access.system]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=fixture-files file=domains/crm/entities/customer_sheet.jadpo hidden
+/// A sheet of customers to add, and how reading it went.
+entity CustomerSheet {
+    id: Uuid
+    sheet: File {
+        store: imports
+        max_size: 1mb
+        types: [FileType.csv]
+    }
+    sheet_run: BatchRun?
+    customers_added: Int?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=fixture-files file=domains/crm/actions/add_customer.jadpo hidden
+use crm/entities { Customer }
+use crm/types { CustomerRow }
+
+/// Adds the customer one row of a sheet names.
+action add_customer(sheet_row: CustomerRow) -> Customer {
+    return Customer.create {
+        set: {
+            name: sheet_row.name
+        }
+    }
+}
+```
+
+```jadpo check project=fixture-files file=domains/crm/actions/sheet_read.jadpo hidden
+use crm/entities { CustomerSheet, CustomerSheetNotFound }
+
+/// Keeps how many customers a sheet added.
+action sheet_read(
+    summary: ImportSummary,
+    sheet_id: CustomerSheet.id
+) fails CustomerSheetNotFound -> Unit {
+    attempt CustomerSheet.update(sheet_id) {
+        set: {
+            customers_added: summary.items - summary.items_with_problems
+        }
+    }
+}
+```
+
+```jadpo check project=fixture-files file=domains/crm/queries/customers_by_name.jadpo hidden
+use crm/entities { Customer }
+
+/// The first customers, by name.
+query customers_by_name() -> List<Customer> {
+    from: Customer
+    order: [Customer.name asc]
+    limit: 50
+}
+```
+
+`domains/crm/actions/add_customers.jadpo` keeps a sheet and reads it a
+row at a time ([Batches over files](12-jobs-and-events.md#batches-over-files)):
+
+```jadpo check project=fixture-files file=domains/crm/actions/add_customers.jadpo
+use crm/entities { CustomerSheet }
+use crm/types { CustomerRow }
+use crm/actions { add_customer, sheet_read }
+
+/// Keeps a sheet of customers and starts adding each one it lists.
+action add_customers(sheet: File) -> CustomerSheet {
+    var sheet_kept: CustomerSheet = CustomerSheet.create {
+        set: {
+            sheet: sheet
+            sheet_run: none
+            customers_added: none
+        }
+    }
+    var sheet_run: BatchRun = csv.read(
+        sheet_kept.sheet,
+        as: CustomerRow,
+        each: sheet_row -> add_customer(sheet_row),
+        finished: summary -> sheet_read(summary, sheet_kept.id),
+        key: sheet_kept.id
+    )
+    return CustomerSheet.update(sheet_kept) {
+        set: {
+            sheet_run: sheet_run
+        }
+    }
+}
+```
+
+`domains/crm/actions/keep_typed_sheet.jadpo` keeps a sheet someone typed
+in, with `put`:
+
+```jadpo check project=fixture-files file=domains/crm/actions/keep_typed_sheet.jadpo migrate=initial
+use app { imports }
+use crm/entities { CustomerSheet }
+use crm/types { SheetText }
+use crm/failures { SheetNotKept }
+
+/// Keeps a sheet of customers typed in rather than sent as a file.
+action keep_typed_sheet(typed_in: SheetText) fails SheetNotKept -> CustomerSheet {
+    var sheet: File = attempt imports.put(encoding.to_utf8(typed_in), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    return CustomerSheet.create {
+        set: {
+            sheet: sheet
+            sheet_run: none
+            customers_added: none
+        }
+    }
+}
+```
+
+The sheet a supplier sent is kept beside the tests, in
+`domains/crm/fixtures/files/customers.csv`:
+
+```jadpo check project=fixture-files file=domains/crm/fixtures/files/customers.csv
+Name
+Ada Lovelace
+Grace Hopper
+```
+
+`domains/crm/actions/add_customers.test.jadpo` reads it, then reads it
+from a store that can't be reached. A batch whose file can't be read
+waits for the store, as it would for the tick, so no one is added yet
+([Batches](#batches)):
+
+```jadpo check project=fixture-files file=domains/crm/actions/add_customers.test.jadpo
+use app { imports }
+use crm/entities { CustomerSheet }
+use crm/queries { customers_by_name }
+
+test "each customer a sheet lists is added" {
+    var sheet: CustomerSheet = add_customers(fixture_file("customers.csv", store: imports))
+    var read_back: CustomerSheet = attempt CustomerSheet.get(sheet.id)
+    assert read_back.customers_added == 2
+    assert list.map(customers_by_name(), customer -> customer.name) == [
+        "Ada Lovelace",
+        "Grace Hopper"
+    ]
+}
+
+test "a sheet the store can't read adds no one yet" {
+    fakes: {
+        imports: unavailable
+    }
+    var sheet: CustomerSheet = add_customers(fixture_file("customers.csv", store: imports))
+    var read_back: CustomerSheet = attempt CustomerSheet.get(sheet.id)
+    assert read_back.customers_added == none
+    assert customers_by_name() == []
+}
+```
+
+`domains/crm/actions/keep_typed_sheet.test.jadpo` writes to a store with
+no room, and sees the action's own failure:
+
+```jadpo check project=fixture-files file=domains/crm/actions/keep_typed_sheet.test.jadpo
+use app { imports }
+use crm/failures { SheetNotKept }
+
+test "a sheet the store has no room for isn't kept" {
+    fakes: {
+        imports: storage_full
+    }
+    assert keep_typed_sheet("Name\nAda Lovelace\n") fails SheetNotKept
+}
+```
 
 #### Batches
 
@@ -1558,18 +1807,18 @@ on.
 
 These parts of fakes aren't built yet:
 
-- The capabilities' fakes, apart from `email.sent` and the `ai`
-  capability's: its fake, `fakes: { ai.<prompt>: }`,
-  `ai.<prompt>.requests`, `recorded("<name>")`, the fake's embeddings and
-  `fakes: { ai.embed: }` ([Testing AI calls](21-ai.md#testing-ai-calls)).
-- `fixture_file`, and telling the file store to fail from a test. The
-  in-memory store itself is built.
+- The capabilities' fakes, apart from `email.sent`, the store of files'
+  ([Files](#files)) and the `ai` capability's: its fake,
+  `fakes: { ai.<prompt>: }`, `ai.<prompt>.requests`, `recorded("<name>")`,
+  the fake's embeddings and `fakes: { ai.embed: }`
+  ([Testing AI calls](21-ai.md#testing-ai-calls)).
 
 What is built is every call a test reaches answering through its
 package's fake, a test's `fakes:` scripting an operation's answers in
 order, each a value of its output type, one of its failures by its code,
-or a condition, and batch runs going to their end within the test, two
-items a batch with a restart between batches. Why fakes work this way is in the
+or a condition, a store of files told to fail and its fixture files, and
+batch runs going to their end within the test, two items a batch with a
+restart between batches. Why fakes work this way is in the
 [External services design notes](notes/11-integrations.md).
 
 ## Shared test data: fixtures
@@ -2196,7 +2445,7 @@ Not built yet: caches, which need the Redis driver.
 | Batches | Built: a batch run a step starts, or a delivery or an item starts in turn, runs to its end before the test's next statement, drawn among the deliveries a batch at a time, at the test's clock, two items a batch with a fresh runner claiming each, as after a restart. An item that fails is the run's problem, and a `finished:` that fails leaves the run `failed`, which `batches.status` reads; the test goes on. A run whose batch couldn't commit, such as one whose item's call a fake answers `unavailable`, gives its runner's lease back and waits, as for the tick, until the next `clock.advance`, of any length ("Batches"). |
 | Clock | Built: a test's clock starts at its `clock:`, or at 2000-01-01T00:00:00Z without one, and `clock.advance(...)` moves it on for the calls after it; only a test moves it (`type.test_clock_context`, a fixture and a seed included), and a move backwards is the fault `clock_backward`. |
 | Configuration | Built: `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
-| Integration fakes | Partly built: for provider packages, every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Package fakes keep keys, and a test that reaches an action with several changing calls runs again with a crash at each step boundary ("Provider calls and capabilities in tests"). `email.sent` ([Email](16-built-in-services.md#email)): every email a test sends is caught, rendered whole, a mail package's included, and read as a `List<SentEmail>`. `.requests` lists what the code sent an operation, typed as its input, with secrets redacted, as the `ai` fake's `ai.<prompt>.requests` does. Not built yet: the capability fakes but `ai`'s, grants, documents and `fixture_file`. |
+| Integration fakes | Partly built: for provider packages, every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Package fakes keep keys, and a test that reaches an action with several changing calls runs again with a crash at each step boundary ("Provider calls and capabilities in tests"). `email.sent` ([Email](16-built-in-services.md#email)): every email a test sends is caught, rendered whole, a mail package's included, and read as a `List<SentEmail>`. `.requests` lists what the code sent an operation, typed as its input, with secrets redacted, as the `ai` fake's `ai.<prompt>.requests` does. In a test, `fixture_file` keeps a file from the test's domain's `fixtures/files/` in the in-memory store as a stored `File`, and `fakes: { <store>: unavailable }` or `storage_full` makes the store fail every call, or every write, for the rest of the test ("Files"). Not built yet: the capability fakes but the store of files' and `ai`'s, grants and documents. |
 | Database | Built: `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
 | Caller | Built: `Principal.user(user)` and `Principal.service(service)` in tests, fixtures and seeds; a call passing a caller runs as that caller, one passing none runs without policy. |
 | Placement | Built: a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. |
@@ -2223,6 +2472,7 @@ its report (run with `--seed 1`), then the `jadpo check` errors.
 - [`test.fake_exhausted`](../errors/test.fake_exhausted.md)
 - [`test.fake_unused`](../errors/test.fake_unused.md)
 - [`semantic.fake_invalid`](../errors/semantic.fake_invalid.md)
+- [`semantic.fixture_file_invalid`](../errors/semantic.fixture_file_invalid.md)
 - [`semantic.request_route_unknown`](../errors/semantic.request_route_unknown.md)
 - [`semantic.request_invalid`](../errors/semantic.request_invalid.md)
 - [`type.test_clock_context`](../errors/type.test_clock_context.md)
