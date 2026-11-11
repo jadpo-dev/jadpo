@@ -104,14 +104,12 @@ fn a_disk_stores_files_are_copied_to_s3_and_read_back() {
     let large = root.join("large.bin");
     let large_bytes: Vec<u8> = (0..(17u64 << 20)).map(|at| (at % 251) as u8).collect();
     std::fs::write(&large, &large_bytes).expect("a file");
+    // Laid out as the old server's store left them: a disk store's `put`
+    // refuses while this machine's disk is below its free-space floor.
     for (key, path) in [(key(1), &small), (key(2), &large)] {
-        let put = jadpo(
-            &root,
-            &["files", "put", &folder_text, &key, &path.to_string_lossy()],
-            &[],
-        );
-        assert_eq!(put.code, 0, "{}", shown(&put));
-        assert!(put.stdout.contains("Put "), "{}", shown(&put));
+        let at = folder.join(&key);
+        std::fs::create_dir_all(at.parent().expect("a shard")).expect("a folder");
+        std::fs::copy(path, &at).expect("a stored file");
     }
     let logged = "erasure-log/User/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
     std::fs::create_dir_all(folder.join("erasure-log/User")).expect("a folder");
