@@ -78,6 +78,23 @@ impl Body<'_> {
                 self.ai_fakes(&entry, prompt, &written, span);
                 continue;
             }
+            // A store of files told to fail as a whole (area 13, "Files").
+            if let [store] = names.as_slice()
+                && crate::data::connections(self.db, self.project).kind(store)
+                    == Some(crate::data::ConnectionKind::Files)
+            {
+                if seen.contains(&written) {
+                    self.out.push(
+                        invalid(format!("`{written}` is told twice"), span, "told again")
+                            .reason("A test tells a store of files one thing, which it answers for the rest of the test.")
+                            .next(format!("Keep one `{written}:`")),
+                    );
+                    continue;
+                }
+                seen.push(written.clone());
+                self.store_fake(&entry, store, span);
+                continue;
+            }
             let [connection, resource, name] = names.as_slice() else {
                 self.out.push(
                     invalid(
@@ -231,6 +248,75 @@ impl Body<'_> {
                     .insert(node_key(answer.syntax()), fact(FakeAnswer::Value));
             }
         }
+    }
+
+    /// `fakes: { <store>: unavailable }` or `storage_full` (area 13,
+    /// "Files"): every call the store is sent answers `unavailable`, or
+    /// every write `storage_full`, for the rest of the test.
+    fn store_fake(&mut self, entry: &ast::Member, store: &str, span: jadpo_diag::Span) {
+        let reason = format!(
+            "A test tells a store of files how to fail for the rest of the test: `{store}: unavailable` answers every read and write `unavailable`, as a store that can't be reached does, and `{store}: storage_full` answers every write `storage_full`, as a store with no room does."
+        );
+        let word = match entry.value() {
+            Some(Expr::NameRef(named)) => Some((super::text(&named), named)),
+            _ => None,
+        };
+        let Some((word, named)) = word else {
+            let at = entry
+                .value()
+                .map_or_else(|| span.clone(), |value| self.span(&value));
+            self.out.push(
+                invalid(
+                    format!("`{store}` is told something other than how to fail"),
+                    at,
+                    "not `unavailable` or `storage_full`",
+                )
+                .reason(reason)
+                .next(format!(
+                    "Write `{store}: unavailable` or `{store}: storage_full`"
+                )),
+            );
+            return;
+        };
+        let Some(fails) = jadpo_std::files::StoreFails::named(&word) else {
+            let words: Vec<&str> = jadpo_std::files::StoreFails::ALL
+                .iter()
+                .map(|fails| fails.word())
+                .collect();
+            let near = nearest(&word, words.iter().copied());
+            let mut problem = invalid(
+                format!("`{word}` isn't how a store of files fails"),
+                self.span(&named),
+                "not `unavailable` or `storage_full`",
+            )
+            .reason(reason);
+            problem = match near {
+                Some(near) => problem
+                    .next(format!("Use `{near}` instead of `{word}`"))
+                    .edit(self.span(&named), near),
+                None => problem.next(format!(
+                    "Write `{store}: unavailable` or `{store}: storage_full`"
+                )),
+            };
+            self.out.push(problem);
+            return;
+        };
+        let answer = match fails {
+            jadpo_std::files::StoreFails::Unavailable => {
+                FakeAnswer::Condition(FakeCondition::Unavailable)
+            }
+            jadpo_std::files::StoreFails::StorageFull => {
+                FakeAnswer::Failed(jadpo_std::files::STORAGE_FULL.to_string())
+            }
+        };
+        self.facts.fakes.insert(
+            node_key(named.syntax()),
+            FakeFact {
+                connection: store.to_string(),
+                operation: jadpo_std::files::WHOLE_STORE.to_string(),
+                answer,
+            },
+        );
     }
 
     /// `connection.resource.operation.requests` in a test: what the code

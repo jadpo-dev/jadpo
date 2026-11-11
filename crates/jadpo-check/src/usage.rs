@@ -150,6 +150,7 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 | Callee::Files { .. }
                 | Callee::Provider { .. }
                 | Callee::Fake { .. }
+                | Callee::FixtureFile { .. }
                 | Callee::AdvanceClock
                 | Callee::Escape
                 | Callee::Unknown => {}

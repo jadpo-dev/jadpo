@@ -159,7 +159,9 @@ pub fn projects() -> Vec<(String, Vec<(String, String)>)> {
         };
         let project = attr("project").unwrap_or_else(|| format!("example-{n}"));
         let file = attr("file").unwrap_or_else(|| "main.jadpo".to_string());
-        if !file.ends_with(".jadpo") {
+        // A test's fixture files are part of its project (area 13,
+        // "Files"), which its tests read.
+        if !file.ends_with(".jadpo") && !file.contains("/fixtures/files/") {
             continue;
         }
         // A later block of the same file replaces it, as the page's

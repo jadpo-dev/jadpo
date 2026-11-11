@@ -160,6 +160,10 @@ impl Body<'_> {
                     return (sig.result, CallKind::Pure(callee), reach);
                 }
                 let Some(sig) = self.calls.signature(&callee).cloned() else {
+                    // A test's fixture file (area 13, "Files").
+                    if callee == jadpo_std::files::FIXTURE_FILE {
+                        return self.fixture_file(call, &Expr::NameRef(name));
+                    }
                     self.args_only(call);
                     return (Ty::Error, CallKind::Other, Reach::Unknown);
                 };

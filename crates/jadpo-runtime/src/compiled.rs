@@ -1459,6 +1459,27 @@ pub fn operation_requests(cx: &mut Ctx<'_>, connection: &str, operation: &str) -
     called(calls::operation_requests(cx, connection, operation))
 }
 
+/// `fixture_file("<name>", store: <connection>)` at site `at` in a test
+/// (area 13, "Files"): the fixture file at `path`, kept in the test's
+/// store as a `File` of `FileType` variant `file_type`.
+#[cfg(feature = "testing")]
+pub fn fixture_file(
+    cx: &mut Ctx<'_>,
+    connection: &str,
+    path: &str,
+    file_type: &str,
+    name: &str,
+    at: u32,
+) -> Ran {
+    called(calls::fixture_file(
+        cx,
+        (connection, path),
+        file_type,
+        name,
+        at,
+    ))
+}
+
 // --- assertions --------------------------------------------------------------
 
 /// `assert value` at site `at`.

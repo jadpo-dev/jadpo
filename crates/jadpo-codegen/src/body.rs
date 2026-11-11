@@ -1132,6 +1132,16 @@ impl Emitter<'_> {
                 let (connection, operation) = (text(connection), text(operation));
                 self.tri(quote!(rt::operation_requests(cx, #connection, #operation)))
             }
+            Callee::FixtureFile {
+                store,
+                path,
+                file_type,
+                name,
+            } => {
+                let (store, path) = (text(store), text(path));
+                let (file_type, name, at) = (text(file_type), text(name), number(id.0));
+                self.tri(quote!(rt::fixture_file(cx, #store, #path, #file_type, #name, #at)))
+            }
             Callee::Schedule { .. } => {
                 let ran = self.schedule_ran(id, false);
                 self.tri(ran)

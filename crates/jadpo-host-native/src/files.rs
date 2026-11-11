@@ -525,6 +525,68 @@ impl DiskStore {
     /// entity's and a regular file for each person, anything else, a
     /// `put`'s temporary file or a link among them, named by no key. Nothing
     /// kept yet is an empty list.
+    /// A page of the keys it keeps after `after`, with their sizes (area
+    /// 14, `jadpo files`): its folders walked in order, without following
+    /// a link, each folder whose keys all come before `after` passed by,
+    /// and the walk stopped once a page's worth is found.
+    fn keys(&self, after: &str) -> Answer {
+        fn sorted(folder: &Path, dirs: bool) -> std::io::Result<Vec<(String, u64)>> {
+            let mut out = Vec::new();
+            for entry in std::fs::read_dir(folder)? {
+                let entry = entry?;
+                let kind = entry.file_type()?;
+                let wanted = if dirs { kind.is_dir() } else { kind.is_file() };
+                if !wanted {
+                    continue;
+                }
+                let size = if dirs { 0 } else { entry.metadata()?.len() };
+                out.push((entry.file_name().to_string_lossy().into_owned(), size));
+            }
+            out.sort();
+            Ok(out)
+        }
+        let mut after_parts = after.splitn(3, '/');
+        let (first_after, second_after) = (
+            after_parts.next().unwrap_or_default(),
+            after_parts.next().unwrap_or_default(),
+        );
+        let walked = (|| -> std::io::Result<Vec<(String, u64)>> {
+            let top = match sorted(&self.root, true) {
+                Ok(top) => top,
+                Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+                Err(error) => return Err(error),
+            };
+            let mut held = Vec::new();
+            let mut found = 0;
+            for (first, _) in top {
+                if first.as_str() < first_after {
+                    continue;
+                }
+                let at = self.root.join(&first);
+                for (second, _) in sorted(&at, true)? {
+                    if first == first_after && second.as_str() < second_after {
+                        continue;
+                    }
+                    for (name, size) in sorted(&at.join(&second), false)? {
+                        let key = format!("{first}/{second}/{name}");
+                        if key.as_str() > after && jadpo_std::files::is_listed(&key) {
+                            found += 1;
+                            held.push((key, size));
+                        }
+                    }
+                }
+                if found > jadpo_std::files::KEYS_PAGE {
+                    break;
+                }
+            }
+            Ok(held)
+        })();
+        match walked {
+            Ok(held) => Answer::Value(jadpo_runtime::files::keys_page(held, after)),
+            Err(_) => Answer::Unavailable,
+        }
+    }
+
     fn list(&self) -> Answer {
         let top = self.root.join(jadpo_std::erasure::LOG_FOLDER);
         let entities = match std::fs::symlink_metadata(&top) {
@@ -598,6 +660,9 @@ impl DiskStore {
         };
         if call.operation == jadpo_std::files::LIST {
             return self.list();
+        }
+        if call.operation == jadpo_std::files::KEYS {
+            return self.keys(&jadpo_runtime::files::keys_after(input));
         }
         let Some(Value::Text(key)) = input.get("key") else {
             return Answer::Misconfigured;

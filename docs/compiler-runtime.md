@@ -531,6 +531,21 @@ imports, formats what was formatted and checks the result, undoing a fix
 that adds an error by rule and headline. Each standard type's data entry
 carries the `release` that added it, which the clash names.
 
+**Renaming.** `jadpo_check::rename` is `jadpo rename`'s code, and the
+editor's rename is to share it, built as `fixes` is: `plan` takes the
+node's key and the new name, refuses what can't be (a name in use among
+the owner's members, the domain or the project, or one another node of
+its kind was born with), finds every place through
+`graph::node_references` (the resolution find references uses, which now
+also reaches a constant's declaration and a root `policy { actions: }`
+line), a field's `pick:` copies through the graph's `copied_from`, and
+works out the registry's lines; `apply` makes the edits and moves in the
+loaded project, writes the registry and the view records the rename put
+out of date into it (`Loaded::set_record`), fixes imports, formats and
+checks, undoing a rename that adds an error. A listed action's policy
+line is found by its born name as well as its name now, since routes and
+callers name it by key.
+
 **Types.** Nominal and bidirectional: the expected type flows into
 literals (area 2). Widening is the only implicit conversion; the standard
 library's signatures are the only generics. An `Error` type absorbs
@@ -5349,6 +5364,26 @@ store's keys, `path:` against `Project::folder` (the project's folder
 with links resolved) and `free_space_floor:`; `jadpo_cli::stamp` lists
 each deployable's reached disk stores as the manifest's `one_server`
 (chunk B2).
+A test's files (chunk B8): `fixture_file("<name>", store:)` is
+`Callee::FixtureFile` (the store, the path below the test's domain's
+`fixtures/files/`, its `FileType` from its name, its name), found as the
+test is checked (`jadpo_check::types::body::files`, against
+`Project::other_files`), and `jadpo_runtime::calls::fixture_file`, which
+both executors call, has the store's `Capability::fixture` keep it:
+`MemoryFiles` reads it from the project's folder `jadpo test` gives
+(`Caught::fixtures_under`, from `Rerun::project`), only a regular file
+inside it. `fakes: { <store>: unavailable }` or `storage_full` is a
+`Callee::Fake` whose operation is `jadpo_std::files::WHOLE_STORE`;
+`calls::fake` hands it to the store's `Capability::script`, and
+`MemoryFiles` answers that connection's every call `unavailable`, or
+every write `storage_full`, from then on. `jadpo files`
+(`jadpo_cli::files`) builds a store's driver from the plan's connection,
+`DiskStore::at`, `DiskFiles` for `--dev` or `S3Store` with the settings
+the environment and `.env.local` give, and lists it through the
+capability's `jadpo_std::files::KEYS`, a page of keys and sizes after a
+key, which `MemoryFiles`, `DiskStore` (walking its shards in order) and
+`S3Store` (`ListObjectsV2` with `start-after`) answer; `copy` puts a file
+over 8 MB in pieces joined with `JOIN`.
 Downloading a file (chunk B4, `jadpo_runtime::http::downloads`): a
 `File` an `Output` holds is written as a `jadpo_std::files::FILE_LINK`
 through the route table's codecs (`Codecs::sending_links`), the value

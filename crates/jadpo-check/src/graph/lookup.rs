@@ -197,7 +197,25 @@ impl Names<'_> {
             | ROUTES_DECL | SCHEDULE_DECL | SUBSCRIBER_DECL | SEED_DECL => {
                 Some(Found::Node(declaration_key(self.resolver.symbols, text)?))
             }
-            MEMBER_KEY => self.member(&holder.parent()?),
+            // A constant, beside its use or in a library.
+            CONSTANT_DECL => {
+                let library = holder
+                    .ancestors()
+                    .skip(1)
+                    .find_map(ast::LibraryDecl::cast)
+                    .and_then(|library| library.name())
+                    .as_ref()
+                    .and_then(tree::name_text);
+                Some(Found::Node(super::constant_key(
+                    self.resolver.symbols,
+                    library.as_deref(),
+                    text,
+                )?))
+            }
+            MEMBER_KEY => match self.listed(name, &holder) {
+                Some(found) => Some(found),
+                None => self.member(&holder.parent()?),
+            },
             BARE_MEMBER => self.member(&holder),
             PARAM => {
                 let param = ast::Param::cast(holder)?;
@@ -218,6 +236,54 @@ impl Names<'_> {
             FOR_STMT => Some(local(text, None, "loop item")),
             PAT_BINDING => Some(local(text, None, "binding")),
             LAMBDA_EXPR => Some(local(text, None, "inline parameter")),
+            _ => None,
+        }
+    }
+
+    /// A name in a line of root `policy { actions: }` (area 9, "Listing an
+    /// action"): `hello.greet`'s domain, or the action or query it lists.
+    fn listed(&self, name: &SyntaxNode, key: &SyntaxNode) -> Option<Found> {
+        let line = key.parent().filter(|node| node.kind() == MEMBER)?;
+        let actions = line
+            .parent()
+            .filter(|node| node.kind() == MEMBER_LIST)?
+            .parent()
+            .and_then(ast::Member::cast)?;
+        let word = actions
+            .member_key()
+            .map(|key| tree::written(key.syntax()))?;
+        let policy = actions
+            .syntax()
+            .parent()
+            .filter(|node| node.kind() == MEMBER_LIST)?
+            .parent()
+            .and_then(ast::SingletonDecl::cast)?;
+        if word != "actions"
+            || policy
+                .keyword()
+                .is_none_or(|keyword| keyword.text() != "policy")
+        {
+            return None;
+        }
+        let names: Vec<SyntaxNode> = ast::MemberKey::cast(key.clone())?
+            .names()
+            .map(|name| name.syntax().clone())
+            .collect();
+        let at = names.iter().position(|other| other == name)?;
+        let text = ast::Name::cast(name.clone())
+            .as_ref()
+            .and_then(tree::name_text)?;
+        match (names.len(), at) {
+            (2, 0) => self.resolver.symbols.is_domain(&text).then(|| {
+                Found::Node(self.resolver.symbols.registry().key(
+                    jadpo_graph::Kind::Domain,
+                    &text,
+                    None,
+                ))
+            }),
+            (_, at) if at + 1 == names.len() => {
+                declaration_key(self.resolver.symbols, &text).map(Found::Node)
+            }
             _ => None,
         }
     }
@@ -408,7 +474,10 @@ pub fn references(
     }
 }
 
-fn node_references(db: &dyn Db, project: Project, key: &jadpo_graph::Key) -> Vec<Reference> {
+/// Every place in `project` written with a name that refers to the node
+/// `key`, its declaration among them, in file and source order: what find
+/// references gives for it, and what `jadpo rename` rewrites.
+pub fn node_references(db: &dyn Db, project: Project, key: &jadpo_graph::Key) -> Vec<Reference> {
     let graph = graph(db, project);
     let now = jadpo_graph::manifest::name_now(graph, key);
     let name = now.rsplit('.').next().unwrap_or(&now).to_string();

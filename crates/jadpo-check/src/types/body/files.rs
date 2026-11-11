@@ -13,7 +13,10 @@
 //! limit by the runtime.
 
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_std::files::{FILE, FILE_CONTENTS, FilesOp, UPLOAD_SLOT, WHOLE_READ_LIMIT, shown_size};
+use jadpo_std::files::{
+    FILE, FILE_CONTENTS, FIXTURE_FILE, FIXTURE_FOLDER, FilesOp, UPLOAD_SLOT, WHOLE_READ_LIMIT,
+    fixture_type, is_fixture_name, shown_size,
+};
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use super::super::ty::{Prim, Ty};
@@ -83,6 +86,181 @@ impl Body<'_> {
             return Ty::Error;
         }
         opaque(UPLOAD_SLOT)
+    }
+
+    /// `fixture_file("customers.csv", store: imports)` in a test (area 13,
+    /// "Files"): the file of that name in the test's domain's
+    /// `fixtures/files/`, kept in the test's in-memory store for the
+    /// `files` connection `store:` names, as a `File`. Its type is what its
+    /// name ends in.
+    pub(super) fn fixture_file(
+        &mut self,
+        call: &ast::CallExpr,
+        callee: &Expr,
+    ) -> (Ty, CallKind, Reach) {
+        let failed = (
+            Ty::Error,
+            CallKind::Effect(FIXTURE_FILE.to_string()),
+            Reach::Unknown,
+        );
+        if !self.test {
+            let span = self.span(callee);
+            let who = super::capital(self.context.with_a());
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_NOT_CALLABLE,
+                    format!("{who} can't call `{FIXTURE_FILE}`"),
+                )
+                .at(span, "only in a test")
+                .reason(format!(
+                    "`{FIXTURE_FILE}` keeps a file from a domain's `{FIXTURE_FOLDER}/` in a test's in-memory store of files; only a test has one, and a running app reads its files from its stores."
+                ))
+                .next(format!("Call `{FIXTURE_FILE}` in a test, and pass the `File` it gives to an action")),
+            );
+            return failed;
+        }
+        let args = Self::arguments(call);
+        let (named, store) = match args.as_slice() {
+            [first, second]
+                if first.name().is_none() && Self::arg_name(second).as_deref() == Some("store") =>
+            {
+                (first.expr(), second.expr())
+            }
+            _ => {
+                let at = self.arg_list_span(call);
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_ARGUMENT_COUNT,
+                        format!("`{FIXTURE_FILE}` takes a file's name and `store:`"),
+                    )
+                    .at(at, format!("{} given", args.len()))
+                    .reason(format!(
+                        "`{FIXTURE_FILE}(\"<file>\", store: <store>)` keeps the file of that name in the test's domain's `{FIXTURE_FOLDER}/` in the store `store:` names."
+                    ))
+                    .next(format!("Write `{FIXTURE_FILE}(\"<file>\", store: <store>)`")),
+                );
+                return failed;
+            }
+        };
+        let (Some(named), Some(store)) = (named, store) else {
+            return failed;
+        };
+        self.write_store(&store, FIXTURE_FILE);
+        let store_name = match &store {
+            Expr::NameRef(name) => super::text(name),
+            _ => return failed,
+        };
+        if crate::data::connections(self.db, self.project).kind(&store_name)
+            != Some(crate::data::ConnectionKind::Files)
+        {
+            return failed;
+        }
+        let span = self.span(&named);
+        let Some(name) = crate::emails::literal_text(&named) else {
+            self.infer(&named);
+            self.out.push(
+                fixture_invalid(
+                    format!("`{FIXTURE_FILE}` takes the file's name written out"),
+                    span,
+                    "not written out",
+                )
+                .reason(format!(
+                    "The file is found as the test is checked, so its name is text written in the call: `{FIXTURE_FILE}(\"<file>\", store: <store>)`."
+                ))
+                .next("Write the file's name in quotes"),
+            );
+            return failed;
+        };
+        let Some(domain) = self.ownership.domain().map(str::to_string) else {
+            self.out.push(
+                fixture_invalid(
+                    format!("A test in `tests/` has no `{FIXTURE_FOLDER}/`"),
+                    span,
+                    "no domain",
+                )
+                .reason(format!(
+                    "Fixture files are kept beside the tests that use them, in a domain's `{FIXTURE_FOLDER}/`, and a test in the root `tests/` belongs to no domain."
+                ))
+                .next("Move the test beside its subject in a domain, and the file into that domain's `fixtures/files/`"),
+            );
+            return failed;
+        };
+        let folder = format!("domains/{domain}/{FIXTURE_FOLDER}");
+        if !is_fixture_name(&name) {
+            self.out.push(
+                fixture_invalid(
+                    format!("`{name}` can't name a fixture file"),
+                    span,
+                    "not a file's name",
+                )
+                .reason(format!(
+                    "A fixture file is named by its path below `{folder}/`, each part written out, none of them `.`, `..` or starting with a dot."
+                ))
+                .next(format!("Name a file in `{folder}/`, such as `\"<file>.csv\"`")),
+            );
+            return failed;
+        }
+        let path = format!("{folder}/{name}");
+        let held: Vec<String> = self
+            .project
+            .other_files(self.db)
+            .iter()
+            .filter_map(|other| other.strip_prefix(&format!("{folder}/")))
+            .map(str::to_string)
+            .collect();
+        if !held.contains(&name) {
+            let near = jadpo_diag::nearest(&name, held.iter().map(String::as_str));
+            let mut problem = fixture_invalid(
+                format!("`{folder}/` holds no `{name}`"),
+                span.clone(),
+                "no such file",
+            )
+            .reason(format!(
+                "`{FIXTURE_FILE}` reads a file from the test's own domain's `{FIXTURE_FOLDER}/`, which {}.",
+                match held.as_slice() {
+                    [] => "holds no file".to_string(),
+                    listed => format!(
+                        "holds {}",
+                        crate::and_list(
+                            &listed.iter().map(|file| format!("`{file}`")).collect::<Vec<_>>()
+                        )
+                    ),
+                }
+            ));
+            problem = match near {
+                Some(near) => problem
+                    .next(format!("Use `\"{near}\"` instead"))
+                    .edit(span, format!("\"{near}\"")),
+                None => problem.next(format!("Put the file at `{path}`")),
+            };
+            self.out.push(problem);
+            return failed;
+        }
+        let Some(file_type) = fixture_type(&name) else {
+            self.out.push(
+                fixture_invalid(
+                    format!("`{name}` isn't a file of a type a `File` holds"),
+                    span,
+                    "no `FileType`",
+                )
+                .reason(
+                    "A fixture file's `FileType` is what its name ends in: `.csv`, `.tsv`, `.json`, `.jsonl`, `.pdf`, `.png`, `.jpeg` or `.jpg`, or `.webp`.",
+                )
+                .next("Rename the file to end in its type"),
+            );
+            return failed;
+        };
+        (
+            opaque(FILE),
+            CallKind::Effect(FIXTURE_FILE.to_string()),
+            Reach::FixtureFile {
+                store: store_name,
+                path,
+                file_type: file_type.to_string(),
+                // The file's own name, without a folder it is in.
+                name: name.rsplit('/').next().unwrap_or(&name).to_string(),
+            },
+        )
     }
 
     /// `store.put(bytes, type)` or `store.read(file)`, through the `files`
@@ -247,4 +425,8 @@ impl Body<'_> {
             )),
         );
     }
+}
+
+fn fixture_invalid(headline: String, span: jadpo_diag::Span, label: &str) -> Diagnostic {
+    Diagnostic::new(&rule::SEMANTIC_FIXTURE_FILE_INVALID, headline).at(span, label.to_string())
 }

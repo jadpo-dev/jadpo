@@ -594,7 +594,7 @@ details = [
 [[group.page]]
 title = "Files"
 status = ["16-built-in-services: Files"]
-missing = "jadpo files"
+missing = "image variants, scanning and one store of files held from two databases"
 topics = [
   "files",
   "uploading",
@@ -930,7 +930,7 @@ id = "commands"
 title = "Commands"
 summary = "Every jadpo command, what it does and how to run it."
 status = ["14-tooling: Commands"]
-missing = "`jadpo rename`, `domain`, `services`, `dev grants`, `files`, `batches`, `search reindex`, the debugging commands, `path` and privacy requests"
+missing = "`jadpo rename`, `domain`, `services`, `dev grants`, `batches`, `search reindex`, the debugging commands, `path` and privacy requests"
 
 [[group.page.section]]
 id = "the-jadpo-command"
@@ -940,7 +940,7 @@ commands = ["new", "check", "fmt", "test", "build", "dev"]
 [[group.page.section]]
 id = "commands-for-looking-into-and-changing-code"
 title = "Commands for looking into and changing code"
-commands = ["inspect", "impact", "routes", "sql", "ai"]
+commands = ["inspect", "impact", "rename", "routes", "sql", "ai"]
 
 [[group.page.section]]
 id = "commands-for-the-database-settings-and-translations"
@@ -965,7 +965,7 @@ commands = ["package"]
 [[group.page.section]]
 id = "commands-for-services-calls-email-and-stored-data"
 title = "Commands for services, calls, email and stored data"
-commands = ["flags", "calls", "email", "runs"]
+commands = ["flags", "calls", "email", "files", "runs"]
 
 [[group.page.section]]
 id = "commands-for-debugging-editors-and-help"

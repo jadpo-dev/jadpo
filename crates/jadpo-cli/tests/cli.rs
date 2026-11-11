@@ -85,11 +85,13 @@ Change safely
   approval      Explain a change, decisions first
   declines      List or clear declines        list, clear
   fix           Fix a standard type's finding
+  rename        Rename a declaration or field everywhere
   suggest       Hint where a standard type or operation fits
   translations  Keep translations up to date
 
 Production
   schedules     Watch and control schedules   run, pause, resume, history
+  files         Read and copy stored files    ls, show, get, put, copy
   flags         Change and remove flags       list, set, reset, remove
   deliveries    Retry, dismiss or cancel deliveries
   privacy       List data requests            requests
@@ -170,11 +172,13 @@ Change safely
   approval      Explain a change, decisions first
   declines      List or clear declines        list · clear
   fix           Fix a standard type's finding
+  rename        Rename a declaration or field everywhere
   suggest       Hint where a standard type or operation fits
   translations  Keep translations up to date
 
 Production
   schedules     Watch and control schedules   run · pause · resume · history
+  files         Read and copy stored files    ls · show · get · put · copy
   flags         Change and remove flags       list · set · reset · remove
   deliveries    Retry, dismiss or cancel deliveries
   privacy       List data requests            requests
@@ -354,9 +358,11 @@ fn help_json_is_the_whole_command_reference() {
             "approval",
             "declines",
             "fix",
+            "rename",
             "suggest",
             "translations",
             "schedules",
+            "files",
             "flags",
             "deliveries",
             "privacy",
@@ -557,12 +563,12 @@ fn an_unknown_command_with_nothing_near_points_at_help() {
 
 #[test]
 fn commands_that_are_not_built_yet_are_unknown() {
-    let output = jadpo(&["rename"]);
+    let output = jadpo(&["domain"]);
     assert_eq!(output.code, 2);
     assert!(
         output
             .stderr
-            .starts_with("error: `rename` isn't a jadpo command"),
+            .starts_with("error: `domain` isn't a jadpo command"),
         "{}",
         output.stderr
     );
@@ -827,9 +833,11 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "approval\tExplain a change, decisions first",
             "declines\tList or clear declines",
             "fix\tFix a standard type's finding",
+            "rename\tRename a declaration or field everywhere",
             "suggest\tHint where a standard type or operation fits",
             "translations\tKeep translations up to date",
             "schedules\tWatch and control schedules",
+            "files\tRead and copy stored files",
             "flags\tChange and remove flags",
             "deliveries\tRetry, dismiss or cancel deliveries",
             "privacy\tList data requests",

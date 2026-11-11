@@ -68,6 +68,7 @@ pub mod rate_limits;
 pub mod receiving;
 pub mod records;
 pub mod release;
+pub mod rename;
 mod resolve;
 pub mod review;
 pub mod routes;

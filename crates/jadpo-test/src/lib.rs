@@ -540,6 +540,7 @@ pub(crate) fn choose_and_run(
     let rerun = Rerun {
         root: root.clone(),
         seed,
+        project: loaded.root.clone(),
     };
     // Only tests that call actions, queries or fixtures use a store.
     let users = ordered
@@ -640,6 +641,9 @@ pub(crate) fn choose_and_run(
 pub(crate) struct Rerun {
     pub root: Option<String>,
     pub seed: u64,
+    /// The project's folder, which a test's fixture files are read from
+    /// (area 13, "Files").
+    pub project: std::path::PathBuf,
 }
 
 impl Rerun {

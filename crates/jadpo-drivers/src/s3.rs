@@ -748,12 +748,55 @@ impl S3Store {
         ))
     }
 
+    /// A page of the keys the bucket holds after `after`, with their sizes
+    /// (area 14, `jadpo files`): one `ListObjectsV2` from `after`, the
+    /// files' and the erasure log's kept, an upload still waiting left
+    /// out; `next` is the last key the service listed while there are more.
+    async fn keys(&self, after: &str) -> Answer {
+        let mut url = format!(
+            "{}/{}?list-type=2&max-keys={}",
+            self.host,
+            self.bucket,
+            jadpo_std::files::KEYS_PAGE
+        );
+        if !after.is_empty() {
+            url.push_str(&format!("&start-after={}", encode_segment(after)));
+        }
+        let response = match self.get(&url, Vec::new()).await {
+            Ok(response) => response,
+            Err(answer) => return answer,
+        };
+        if !ok(response.status) {
+            return classified(response.status);
+        }
+        let text = String::from_utf8_lossy(&response.body).into_owned();
+        let mut keys = Vec::new();
+        let mut last = None;
+        for block in xml_all(&text, "Contents") {
+            let Some(key) = xml_text(block, "Key").map(xml_unescape) else {
+                continue;
+            };
+            let size = xml_text(block, "Size")
+                .and_then(|size| size.parse::<u64>().ok())
+                .unwrap_or(0);
+            if jadpo_std::files::is_listed(&key) {
+                keys.push((key.clone(), size));
+            }
+            last = Some(key);
+        }
+        let next = last.filter(|_| xml_text(&text, "IsTruncated") == Some("true"));
+        Answer::Value(jadpo_runtime::files::keys_answer(&keys, next.as_deref()))
+    }
+
     async fn answer(&self, call: &Call) -> Answer {
         let Value::Record(input) = &call.input else {
             return Answer::Misconfigured;
         };
         if call.operation == LIST {
             return self.list().await;
+        }
+        if call.operation == jadpo_std::files::KEYS {
+            return self.keys(&jadpo_runtime::files::keys_after(input)).await;
         }
         let Some(Value::Text(key)) = input.get("key") else {
             return Answer::Misconfigured;
