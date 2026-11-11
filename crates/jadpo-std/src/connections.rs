@@ -121,6 +121,10 @@ pub enum ConnectionDriver {
     /// A provider package (area 11, "Calling"): the package driver, JSON
     /// over HTTP, and how each call through it is made.
     Package(Box<ConnectionPlan>),
+    /// `Driver.webhook`, the `publishing` capability's driver (area 12,
+    /// "Where events travel"): the address each chosen event is posted to
+    /// and the secret it is signed with.
+    Webhook(crate::publishing::WebhookTarget),
 }
 
 impl ConnectionDriver {
@@ -141,6 +145,7 @@ impl ConnectionDriver {
             | ConnectionDriver::S3(_)
             | ConnectionDriver::Smtp(_)
             | ConnectionDriver::OpenAiCompatible { .. }
+            | ConnectionDriver::Webhook(_)
             | ConnectionDriver::Package(_) => EVERY_TARGET.to_vec(),
         }
     }
@@ -157,6 +162,7 @@ impl ConnectionDriver {
             ConnectionDriver::OpenAiCompatible { .. } => "Driver.openai_compatible",
             ConnectionDriver::CloudflareQueues(_) => "Driver.cloudflare_queues",
             ConnectionDriver::CloudflareRateLimits { .. } => "Driver.cloudflare_rate_limits",
+            ConnectionDriver::Webhook(_) => "Driver.webhook",
             ConnectionDriver::Package(_) => "package",
         }
     }
@@ -197,6 +203,12 @@ impl ConnectionDriver {
                 AiUrl::Setting(at) => vec![*at],
                 AiUrl::Written(_) => Vec::new(),
             },
+            ConnectionDriver::Webhook(target) => target
+                .url
+                .setting()
+                .into_iter()
+                .chain([target.secret])
+                .collect(),
             ConnectionDriver::Disk { .. }
             | ConnectionDriver::CloudflareQueues(_)
             | ConnectionDriver::CloudflareRateLimits { .. } => Vec::new(),
@@ -308,6 +320,15 @@ pub fn packages(table: &[Connection]) -> impl Iterator<Item = (u32, &str, &Conne
             )),
             _ => None,
         })
+}
+
+/// The connections in `table` that publish events outward (area 12,
+/// "Where events travel"): every `Driver.webhook` connection, by name.
+pub fn webhooks(table: &[Connection]) -> impl Iterator<Item = &str> {
+    table
+        .iter()
+        .filter(|connection| matches!(connection.driver, ConnectionDriver::Webhook(_)))
+        .map(|connection| connection.name.as_str())
 }
 
 /// The stores of files in `table` (area 16): every `Driver.disk`

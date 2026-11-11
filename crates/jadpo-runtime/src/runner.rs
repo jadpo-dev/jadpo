@@ -743,6 +743,26 @@ async fn attempt(
             );
             send(ctx, call, budget, within).await
         }
+        // A chosen event posted outward through its connection (area 12,
+        // "Where events travel"), under its id, which every attempt sends
+        // again, so a retry is safe.
+        Target::Publish {
+            connection,
+            type_name,
+        } => {
+            // The work posting it is a span of the event's trace.
+            let traceparent = delivery
+                .trace
+                .map(|parent| ctx.new_span(parent))
+                .or_else(|| ctx.trace())
+                .map(|trace| trace.header());
+            match crate::publishing::published(&events, &delivery, type_name, traceparent) {
+                Ok(published) => send(ctx, published.call(connection), budget, within).await,
+                Err(what) => Ok(Outcome::Fault(
+                    ctx.fault(FaultKind::Defect(what), Frame::ENTRY),
+                )),
+            }
+        }
         // A person's erasure in another store, or their entry in the log,
         // after the main commit (area 15; chunk P4c): each safe to repeat,
         // and each settled as any delivery is, so a store that can't do it

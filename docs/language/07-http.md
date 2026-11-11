@@ -1864,15 +1864,14 @@ package, with no corrections or recordings
 | `x-jadpo-cache` | A route with `cache:` | `immutable` ([Answers that never change](#answers-that-never-change)) |
 | `x-jadpo-failure` | The schema of each failure the application declares | Its `code` and `kind` (`not_found`); sign-in's, policy's and the runtime's own codes carry none, since the caller's runtime handles them |
 | `x-jadpo-constraints` | Every field's, placeholder's and success response's schema | Every field's rules: its type and rules as the API record writes them, `Text { min_length: 1, max_length: 200 }`, `List<TodoView>`, `Money?` |
+| `x-jadpo-events` | The document, when the app publishes events | The events `publishing:` sends outward ([Publishing events outward](12-jobs-and-events.md#publishing-events-outward)): `signature`, `standard_webhooks`, the scheme each is signed with, and `events`, each by the type it is named by outside, its payload a component schema, `{"parcel.shipped": {"$ref": "#/components/schemas/ParcelShipped"}}`. An audit entry, the runtime's own event, is listed with an empty schema |
 
 Each operation is tagged with its route group, and the group's `///`
 description is the tag's, so an importer names a resource after it.
 
-> `x-jadpo-events`, the public events the app publishes, waits for
-> publishing events outward
-> ([Where events travel](12-jobs-and-events.md#where-events-travel)): an
-> application publishes no event to another yet, so no document carries
-> it.
+> Jadpo's importer doesn't read `x-jadpo-events` yet: a package made from
+> another Jadpo app's document has its operations, not the events that
+> app publishes.
 
 ## The public API record
 <!-- topic: the-public-api-record -->
@@ -2172,7 +2171,7 @@ where an app uses it.
 | `settle:` | Built: a route waits for the work its action set off ([Waiting for follow-on work](#waiting-for-follow-on-work), and `route.settle_invalid`). |
 | Streaming | Built: a route whose action returns an `AiStream` sends a model's answer as server-sent events ([Streaming a model's answer](#streaming-a-models-answer), and `route.stream_invalid`). |
 | Failure wording from a build | Built: `jadpo check` writes `<api>.failures.<locale>.json` beside each OpenAPI document, and `jadpo build` copies each served API's beside its deployable, in `build/target/<deployable>/openapi/` ([`jadpo build`](14-tooling.md#jadpo-build)). |
-| `x-jadpo-events` | Not built yet: it waits for publishing events outward ([Where events travel](12-jobs-and-events.md#where-events-travel)). |
+| `x-jadpo-events` | Partly built: each API's document carries it ([The `x-jadpo` fields](#the-x-jadpo-fields)); the importer doesn't read it yet. |
 | Rate limits | Built: a route's own `rate_limit:` and an API's ([Rate limits](16-built-in-services.md#rate-limits)). |
 | The Redis store for rate limits | Not built yet ([Rate limits](16-built-in-services.md#rate-limits)). |
 | Classifying breaking changes and their acceptances | Built ([Acceptances](18-records-and-manifest.md#acceptances)). |

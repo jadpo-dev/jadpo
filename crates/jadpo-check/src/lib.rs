@@ -64,6 +64,7 @@ pub mod prompt_recordings;
 pub mod prompts;
 pub mod provider_erasure;
 pub mod providers;
+pub mod published;
 pub mod publishing;
 pub mod rate_limits;
 pub mod receiving;
@@ -452,6 +453,13 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(mail::mappings(db, project).problems.iter().cloned());
         out.extend(ai_mapping::mappings(db, project).problems.iter().cloned());
         out.extend(receiving::receiving(db, project).problems.iter().cloned());
+        out.extend(
+            published::webhook_connections(db, project)
+                .problems
+                .iter()
+                .cloned(),
+        );
+        out.extend(published::publishing(db, project).problems.iter().cloned());
         out.extend(polls::declared(db, project).problems.iter().cloned());
         out.extend(polls::polls(db, project).problems.iter().cloned());
         out.extend(rate_limits::rate_limits_problems(db, project));

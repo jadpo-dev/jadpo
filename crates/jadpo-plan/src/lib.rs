@@ -377,6 +377,36 @@ fn events_plan(
             subscriber.elsewhere()
         });
     }
+    // Each event `publishing:` chooses, with the subscriber that posts it
+    // through its connection: tried as a subscriber is by default, then
+    // left for an operator (area 12, "Where events travel").
+    for published in &jadpo_check::published::publishing(db, project).list {
+        for event in &published.events {
+            let subscriber = SubscriberPlan {
+                key: jadpo_std::publishing::subscriber(&published.connection, event.key.as_str()),
+                name: format!("publish {} to {}", event.type_name, published.connection),
+                event: event.key.as_str().to_string(),
+                target: Target::Publish {
+                    connection: published.connection.clone(),
+                    type_name: event.type_name.clone(),
+                },
+                attempts: defaults.attempts,
+                within_ms: defaults.within_ms,
+                // It reaches no records: the event is posted as it is.
+                tenant: TenantFrom::Nowhere,
+                store: None,
+                connections: Vec::new(),
+                through: None,
+                file: "app.jadpo".to_string(),
+                line: 1,
+            };
+            subscribers.push(if running {
+                subscriber
+            } else {
+                subscriber.elsewhere()
+            });
+        }
+    }
     // A data request's steps, each a delivery due when the step is: tried
     // for as long as a request may take, then left for an operator (area
     // 15, "Data requests").

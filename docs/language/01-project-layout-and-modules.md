@@ -482,15 +482,15 @@ the page that covers each:
 | `schedules:` | The store schedules' state is kept in | [Schedules](12-jobs-and-events.md#schedules) |
 | `steps:` | How an action's steps are kept and sealed | [Several changing calls in one action](12-jobs-and-events.md#several-changing-calls-in-one-action) |
 | `receiving:` | The queues read into the app's events | [Events from outside](12-jobs-and-events.md#events-from-outside) |
+| `publishing:` | The events sent outward, and the connections they leave through | [Publishing events outward](12-jobs-and-events.md#publishing-events-outward) |
 | `ai:` | The model connection, its models and its limits | [The `ai` capability](21-ai.md#the-ai-capability) |
 | `field_encryption_key:` | The key encrypted fields are sealed with | [Encrypted fields](15-personal-data.md#encrypted-fields) |
 
-Seven more aren't built yet: `bot_check:`
+Six more aren't built yet: `bot_check:`
 ([Bot protection](16-built-in-services.md#bot-protection)), `documents:`
 ([Documents](16-built-in-services.md#documents)), `grants:`
 ([OAuth grants](11-integrations.md#oauth-grants)),
 `privacy:` ([Data requests](15-personal-data.md#data-requests)),
-`publishing:` ([Where events travel](12-jobs-and-events.md#where-events-travel)),
 `scanning:` ([Image variants and scanning](16-built-in-services.md#image-variants-and-scanning))
 and `telemetry:` ([Telemetry](16-built-in-services.md#telemetry)). Each is
 `toolchain.not_built_yet` where it is written, since accepting it would

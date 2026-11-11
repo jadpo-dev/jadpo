@@ -88,6 +88,9 @@ pub enum ConnectionKind {
     /// An OpenID Connect provider people sign in with, `Driver.oidc`
     /// (area 8, "Providers"; chunk A7b).
     SignIn,
+    /// One address chosen events are posted to, `Driver.webhook`, the
+    /// `publishing` capability (area 12, "Where events travel").
+    Webhook,
     /// A provider package (area 11).
     Package,
     /// Neither a built-in driver nor a package: area 11 reports it.
@@ -275,6 +278,7 @@ pub(crate) fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
                         Some(Driver::CloudflareQueues) => ConnectionKind::CloudflareQueue,
                         Some(Driver::CloudflareRateLimits) => ConnectionKind::CloudflareRateLimits,
                         Some(Driver::Oidc) => ConnectionKind::SignIn,
+                        Some(Driver::Webhook) => ConnectionKind::Webhook,
                         None => ConnectionKind::Other,
                     },
                     _ => ConnectionKind::Other,

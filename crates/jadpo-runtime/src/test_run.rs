@@ -261,6 +261,29 @@ pub struct Caught {
     file_stores: Vec<String>,
     mail: crate::capability::Fake,
     mail_connection: Option<String>,
+    /// Every event published outward, caught rather than sent (area 12,
+    /// "Where events travel"), through the connections in `publishing`.
+    published: Published,
+    publishing: Vec<String>,
+}
+
+/// What a test's host catches in place of each event published outward:
+/// every one delivered, nothing sent (area 13, "One fake per
+/// capability").
+#[derive(Debug, Default)]
+struct Published(crate::capability::Fake);
+
+impl Capability for Published {
+    fn call<'a>(
+        &'a self,
+        call: &'a crate::capability::Call,
+    ) -> crate::LocalFuture<'a, crate::capability::Answer> {
+        self.0.call(call)
+    }
+
+    fn source(&self) -> crate::capability::Source {
+        crate::capability::Source::Fake
+    }
 }
 
 impl Caught {
@@ -270,6 +293,14 @@ impl Caught {
         Caught::default()
             .files_for(plan.file_stores())
             .mail_for(plan.mail_connection().map(str::to_string))
+            .published_for(plan.publishing_connections())
+    }
+
+    /// Catches the events published through the connections in
+    /// `connections`.
+    pub fn published_for<'s>(mut self, connections: impl IntoIterator<Item = &'s str>) -> Caught {
+        self.publishing = connections.into_iter().map(str::to_string).collect();
+        self
     }
 
     /// Keeps files for the connections in `stores`.
@@ -309,6 +340,9 @@ impl Caught {
     pub fn capability(&self, connection: &str) -> Option<&dyn Capability> {
         if self.mail_connection.as_deref() == Some(connection) {
             return Some(&self.mail);
+        }
+        if self.publishing.iter().any(|known| known == connection) {
+            return Some(&self.published);
         }
         self.file_stores
             .iter()

@@ -468,5 +468,6 @@ error: Auditing `Invoice` isn't built yet
   next: Leave `audit:` out of `Invoice` for now (agent)
 ```
 
-Sending entries outward through `publishing` isn't built yet either. It comes with
-outgoing webhooks. Subscribe to `AuditEntryRecorded` for now.
+To send each entry to a SIEM or log archive, list `AuditEntryRecorded` in
+`publishing:`, through a connection to the archive's address
+([Sending audit entries elsewhere](../language/16-built-in-services.md#sending-audit-entries-elsewhere)).

@@ -40,6 +40,7 @@ pub(crate) fn table(
     let queues = &jadpo_check::receiving::cloudflare_queues(db, project).list;
     let limits = &jadpo_check::rate_limits::binding_connections(db, project).list;
     let packages = &jadpo_check::connections::package_connections(db, project).connections;
+    let hooks = &jadpo_check::published::webhook_connections(db, project).list;
     let mut table: Vec<Connection> = kinds
         .iter()
         .filter(|(name, kind)| keeps(name, kind))
@@ -134,6 +135,20 @@ pub(crate) fn table(
                     ConnectionDriver::Package(Box::new(crate::providers::connection_plan(
                         db, project, connection, setting,
                     )))
+                }
+                ConnectionKind::Webhook => {
+                    let hook = hooks.iter().find(|hook| hook.name == *name)?;
+                    ConnectionDriver::Webhook(jadpo_std::publishing::WebhookTarget {
+                        url: match hook.url.as_ref()? {
+                            jadpo_check::published::HookUrl::Setting(name) => {
+                                jadpo_std::connections::Said::Setting(setting(name)?)
+                            }
+                            jadpo_check::published::HookUrl::Written(url) => {
+                                jadpo_std::connections::Said::Written(url.clone())
+                            }
+                        },
+                        secret: setting(hook.secret.as_deref()?)?,
+                    })
                 }
                 // A sign-in provider is identity's, read by its settings'
                 // names (area 8, "Providers"; chunk A7b).

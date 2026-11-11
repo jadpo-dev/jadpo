@@ -128,6 +128,7 @@ mod provider_parts;
 mod provider_paths;
 mod provider_sign_in;
 mod provider_wire;
+mod publishing;
 mod purge_schedule;
 mod queries;
 mod read_only_get;

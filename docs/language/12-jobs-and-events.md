@@ -3109,11 +3109,164 @@ off with `settle:`
 An outside queue is never how events reach your subscribers. A
 connection can *publish* chosen public events outward, so other systems
 can react to them. That is a bridge fed from the outbox after the
-commit, at least once, with the trace context attached, to Cloudflare
-Queues, SQS, Pub/Sub or a webhook. Reading a queue the other way,
-through `receiving`, turns each message into one of the app's own events
-in its own outbox ([Events from outside](#events-from-outside)), so the
-runtime still delivers it to subscribers.
+commit, at least once, with the trace context attached, to a webhook,
+and later to Cloudflare Queues, SQS or Pub/Sub. Reading a queue the
+other way, through `receiving`, turns each message into one of the app's
+own events in its own outbox ([Events from outside](#events-from-outside)),
+so the runtime still delivers it to subscribers.
+
+### Publishing events outward
+
+`publishing:` in `application { }` names each connection your events
+leave through and lists the events it publishes. Here every
+`ParcelShipped` is posted to a partner's address once the action that
+emits it commits:
+
+`app.jadpo`:
+
+```jadpo check project=publishing-events file=app.jadpo
+use shipping/events { ParcelShipped }
+
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.main_url
+        }
+        partner_hooks: {
+            driver: Driver.webhook
+            url: config.partner_hook_url
+            secret: config.partner_hook_secret
+        }
+    }
+    events: {
+        store: main
+    }
+    publishing: {
+        partner_hooks: {
+            events: [ParcelShipped]
+        }
+    }
+}
+```
+
+`config.jadpo`:
+
+```jadpo check project=publishing-events file=config.jadpo
+config {
+    main_url: PostgresUrl
+    /// What each announcement is signed with, which the partner holds too.
+    partner_hook_secret: Text {
+        secret: true
+    }
+    /// Where each shipped parcel is announced.
+    partner_hook_url: Url
+}
+```
+
+`domains/shipping/events/parcel_shipped.jadpo`:
+
+```jadpo check project=publishing-events file=domains/shipping/events/parcel_shipped.jadpo
+use shipping/types { TrackingCode }
+
+/// A parcel left the depot.
+public type ParcelShipped = Event {
+    wire_name: "parcel.shipped"
+    tracking_code: TrackingCode
+    shipped_at: Instant
+}
+```
+
+```jadpo check project=publishing-events file=domains/shipping/types/tracking_code.jadpo hidden
+/// A parcel's tracking code.
+public type TrackingCode = Text {
+    min_length: 1
+    max_length: 20
+}
+```
+
+```jadpo check project=publishing-events file=domains/shipping/entities/shipment.jadpo hidden migrate=initial
+use shipping/types { TrackingCode }
+
+/// A parcel that has left the depot.
+entity Shipment {
+    id: Uuid
+    tracking_code: TrackingCode
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=publishing-events file=domains/shipping/actions/ship_parcel.jadpo hidden
+use shipping/entities { Shipment }
+use shipping/types { TrackingCode }
+use shipping/events { ParcelShipped }
+
+/// Records that a parcel left the depot, and says so.
+action ship_parcel(tracking_code: TrackingCode) -> Unit {
+    var shipment: Shipment = Shipment.create {
+        set: {
+            tracking_code: tracking_code
+        }
+    }
+    emit ParcelShipped {
+        tracking_code: shipment.tracking_code
+        shipped_at: clock.now
+    }
+}
+```
+
+- **What may leave.** Each listed event is a `public` event of one of
+  your domains, since it becomes another system's contract, or the
+  built-in `AuditEntryRecorded` while an entity keeps an audit trail
+  ([Sending audit entries elsewhere](16-built-in-services.md#sending-audit-entries-elsewhere)).
+  An event holding a `File` or `FileContents` stays in the app, since a
+  file's store and key mean nothing outside it. Personal data in an
+  event leaves through its connection, which can't be asked to erase it,
+  so the [personal-data report](15-personal-data.md) lists it there and
+  it needs a person's `ErasureNotPossible` acceptance. Anything else is
+  [`publishing.invalid`](../errors/publishing.invalid.md).
+- **The connection.** One with `driver: Driver.webhook` is one address:
+  `url:`, a `Url` setting or an address written out, HTTPS, or plain
+  HTTP only to this machine; and `secret:`, a `secret: true` setting
+  each event is signed with. It is listed in the network report like any
+  connection, and runs natively and on Workers.
+- **What is sent.** A `POST` of `application/json`, the body holding the
+  event's id, the type it is named by outside and its payload as the
+  contract's JSON:
+  `{"id": "…", "type": "parcel.shipped", "data": {"tracking_code": "…", "shipped_at": "…"}}`.
+  The type is the event's `wire_name:`, or its domain and name,
+  `shipping.ParcelShipped`, no two alike through one connection.
+- **Signed as Standard Webhooks signs.** `webhook-id` is the event's id,
+  `webhook-timestamp` the seconds since 1970 as it is sent, and
+  `webhook-signature` is `v1,` and the Base64 of the HMAC-SHA-256 of
+  `<id>.<timestamp>.<body>` under the secret: the Base64 after `whsec_`,
+  or the secret's own bytes. A Jadpo app receives it with
+  `SignatureScheme.standard_webhooks`. `traceparent` carries the trace of
+  the work that emitted it.
+- **At least once, then retried.** Each event's delivery to each
+  connection is tried as a subscriber's is: 10 attempts within 24 hours,
+  each wait longer than the last
+  ([Retries and giving up](#retries-and-giving-up)), every attempt under
+  the same id, so a receiver that keeps ids keeps it once. A `2xx` ends
+  it. A `408`, a `429`, a `5xx`, no answer within 15 seconds or none at
+  all is tried again, and five in a row hold the connection's deliveries
+  behind its circuit breaker. A redirect, never followed, and a `401` or
+  `403` fail it as `misconfigured`, since the address or secret is wrong;
+  any other refusal fails it as `refused`, since the same event would be
+  refused again. A failed one waits in `jadpo deliveries` for an operator.
+- **In development and tests nothing leaves.** `jadpo dev` logs each
+  event in place of sending it, and a test's host catches it; neither
+  needs the connection's settings. Each API's OpenAPI document lists the
+  events the app publishes in `x-jadpo-events`
+  ([The `x-jadpo` fields](07-http.md#the-x-jadpo-fields)).
+
+Publishing to Cloudflare Queues, SQS or Pub/Sub, and to addresses your
+customers register ([Outgoing webhooks](16-built-in-services.md#outgoing-webhooks)),
+aren't built yet.
 
 ### Running background work
 
@@ -3201,9 +3354,8 @@ stops short.
   the same runner, a batch at a time. Each value is kept and checked by
   its field's rules, as any value of the field's type is.
 
-Not built yet: publishing events outward, whose `publishing:` in
-`application { }` is `toolchain.not_built_yet` where it is written, and
-the error for signals that can't be watched, `cli.signal_handler_failed`.
+Not built yet: the error for signals that can't be watched,
+`cli.signal_handler_failed`.
 
 ## Events from outside
 <!-- topic: events-from-outside -->
@@ -3798,7 +3950,7 @@ These limits may change once they have been measured on real runs.
 | Feature | Status |
 |---|---|
 | Everything else on this page | Built. |
-| Publishing chosen public events outward | Not built yet. |
+| Publishing chosen public events outward | Partly built: through `Driver.webhook`, to one address, signed and retried; to Cloudflare Queues, SQS and Pub/Sub not built yet ([Publishing events outward](#publishing-events-outward)). |
 | `jadpo batches list`, `show` and `cancel` | Not built yet: an action can call `batches.status` and `batches.cancel` meanwhile ([Tooling](14-tooling.md#commands-for-services-calls-email-and-stored-data)). |
 | `batches.each` over a provider's list operation, walked by `page.next` | Not built yet: a provider's list operation as `from:` is `toolchain.not_built_yet` where it is written; a named query giving a `Page` is built ([Walking records or a provider's list](#walking-records-or-a-providers-list-batcheseach)). |
 | Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging](17-debugging-and-review.md)), and a record's entry in the [personal-data report](15-personal-data.md) | Not built yet. |
@@ -3813,6 +3965,7 @@ These limits may change once they have been measured on real runs.
 - [`event.emit_invalid`](../errors/event.emit_invalid.md)
 - [`event.settings_invalid`](../errors/event.settings_invalid.md)
 - [`event.store_required`](../errors/event.store_required.md)
+- [`publishing.invalid`](../errors/publishing.invalid.md)
 - [`receiving.invalid`](../errors/receiving.invalid.md)
 - [`schedule.every_invalid`](../errors/schedule.every_invalid.md)
 - [`schedule.item_invalid`](../errors/schedule.item_invalid.md)

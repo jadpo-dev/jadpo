@@ -14,6 +14,8 @@
 //! - `Driver.smtp`: [`crate::smtp::Smtp`] for its server, over the
 //!   transport.
 //! - `Driver.disk`: what the host's disk gives for its `path:`.
+//! - `Driver.webhook`: [`crate::webhook::Webhook`] for its address and
+//!   secret, over the host's HTTP and clock.
 //! - `Driver.cloudflare_queues`: nothing to build, since Cloudflare pushes
 //!   its batches to the Workers host's consumer, which calls no driver.
 //! - `Driver.cloudflare_rate_limits`: nothing to build, since the Workers
@@ -329,7 +331,39 @@ fn build_one(
         ConnectionDriver::CloudflareQueues(_) | ConnectionDriver::CloudflareRateLimits { .. } => {
             Ok(Built::Nothing)
         }
+        ConnectionDriver::Webhook(target) => webhook(target, started, supplies),
     }
+}
+
+/// The webhook driver for a connection's address, over the host's HTTP
+/// and clock (area 12, "Where events travel").
+#[cfg(feature = "package")]
+fn webhook(
+    target: &jadpo_std::publishing::WebhookTarget,
+    started: &Started,
+    supplies: &Supplies,
+) -> Result<Built, Why> {
+    let fetch = supplies.fetch.clone().ok_or(Why::NotSupplied("HTTP"))?;
+    let clock = supplies.clock.clone().ok_or(Why::NotSupplied("a clock"))?;
+    let text = |at: u32| started.driver_setting(at).ok_or(Why::Unset(Some(at)));
+    let url = match &target.url {
+        jadpo_std::connections::Said::Written(url) => url.clone(),
+        jadpo_std::connections::Said::Setting(at) => text(*at)?.to_string(),
+    };
+    let secret = text(target.secret)?;
+    crate::webhook::Webhook::new(fetch, clock, &url, secret)
+        .map(|hook| Built::Capability(Rc::new(hook)))
+        .map_err(Why::Invalid)
+}
+
+/// Without HTTP in this build there is no webhook driver.
+#[cfg(not(feature = "package"))]
+fn webhook(
+    _target: &jadpo_std::publishing::WebhookTarget,
+    _started: &Started,
+    _supplies: &Supplies,
+) -> Result<Built, Why> {
+    Err(Why::NotInThisBuild)
 }
 
 /// The S3 driver for a connection's bucket, over the host's HTTP.
