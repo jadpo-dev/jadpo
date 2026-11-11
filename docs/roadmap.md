@@ -272,11 +272,6 @@ work below (Richard, 2026-11-08).
      cascade changes an audited record, and an erasure that keeps an
      audited record. The pages don't yet say how each is kept or removed,
      so **needs a maintainer** for that decision first.
-   - [ ] **B17 Rate limits in the documents** `opus · high`: area 16, "What
-     is built"; area 7, "The `x-jadpo` fields". A generated route's own
-     limits in OpenAPI's `x-jadpo-rate-limit` and `jadpo routes`, and the
-     `RateLimit` headers on a magic-link refusal. Redis's store is Q8;
-     turning a limit off is L3.
 3. Debugging and review (area 17): `why` for anything but a schedule,
    `jadpo trace` and the timelines (the trace `--keep-failed` keeps, each
    step's state, an email's link to its trace), `test new --from` and

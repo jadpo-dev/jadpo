@@ -1,7 +1,7 @@
 //! `jadpo routes` (area 7, "Route URL shown"): every route with its full method
 //! and path, what it runs, its authentication and where it is written,
-//! grouped by API, and what each route written is limited to (area 16,
-//! "Rate limits"). Authentication is `required` for a route that needs a
+//! grouped by API, and what each route is limited to (area 16, "Rate
+//! limits"), written or generated. Authentication is `required` for a route that needs a
 //! signed-in caller, `none` for one anyone may call and `fresh` for one
 //! that reads the caller's record now (area 8).
 //!
@@ -18,17 +18,22 @@
 //! `signature` as their authentication (chunk 7.7), the API shown at
 //! `/webhooks` when the app declares none. A route a person confirms with
 //! a passkey has its `…/confirmation` listed beside it, running `generated
-//! confirmation` (area 8, "Confirm one request with a passkey").
+//! confirmation` (area 8, "Confirm one request with a passkey"). Each store
+//! of files' upload and download addresses are in a `files` block of their
+//! own (area 16, "Uploading" and "Downloading").
 
 use std::path::PathBuf;
 
-use jadpo_check::routes::limit::{self, Limit};
+use jadpo_check::routes::limit::{self, Shown};
 use jadpo_check::routes::{Apis, Groups, api_table, groups};
 use jadpo_term::{Block, Fact, Json, Outcome, Screen};
 
 use crate::fmt::project_not_found;
 use crate::migrate::blocked;
 use crate::run::{Call, Reply};
+
+/// The block `jadpo routes` lists a store of files' own addresses in.
+const FILES: &str = jadpo_std::files::DOWNLOADS;
 
 pub fn routes(call: &Call) -> Reply {
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
@@ -74,7 +79,7 @@ pub fn routes(call: &Call) -> Reply {
                         jadpo_std::http::Authentication::Fresh => "fresh",
                         jadpo_std::http::Authentication::Required => "required",
                     },
-                    limit: None,
+                    limit: limit::generated(step.authentication(), Vec::new()),
                     file: String::new(),
                     line: 0,
                     place: "generated".to_string(),
@@ -104,7 +109,7 @@ pub fn routes(call: &Call) -> Reply {
                 path,
                 runs: format!("generated {}", step.label()),
                 authentication: "none",
-                limit: None,
+                limit: limit::magic_link(step, magic),
                 file: String::new(),
                 line: 0,
                 place: "generated".to_string(),
@@ -136,7 +141,7 @@ pub fn routes(call: &Call) -> Reply {
                 } else {
                     "none"
                 },
-                limit: None,
+                limit: limit::privacy(step),
                 file: String::new(),
                 line: 0,
                 place: "generated".to_string(),
@@ -160,7 +165,7 @@ pub fn routes(call: &Call) -> Reply {
                     path,
                     runs: format!("generated {}", step.label()),
                     authentication: "none",
-                    limit: None,
+                    limit: limit::generated(step.authentication(), Vec::new()),
                     file: String::new(),
                     line: 0,
                     place: "generated".to_string(),
@@ -179,7 +184,7 @@ pub fn routes(call: &Call) -> Reply {
                     path: format!("/{}", jadpo_std::http::EXCHANGE_PATH.join("/")),
                     runs: "generated exchange".to_string(),
                     authentication: "required",
-                    limit: None,
+                    limit: limit::generated(jadpo_std::http::Authentication::Required, Vec::new()),
                     file: String::new(),
                     line: 0,
                     place: "generated".to_string(),
@@ -202,7 +207,7 @@ pub fn routes(call: &Call) -> Reply {
                 } else {
                     "none"
                 },
-                limit: None,
+                limit: limit::generated(served.authentication, Vec::new()),
                 file: String::new(),
                 line: 0,
                 place: "generated".to_string(),
@@ -225,7 +230,7 @@ pub fn routes(call: &Call) -> Reply {
                 } else {
                     "none"
                 },
-                limit: None,
+                limit: limit::generated(served.authentication, Vec::new()),
                 file: String::new(),
                 line: 0,
                 place: "generated".to_string(),
@@ -244,11 +249,29 @@ pub fn routes(call: &Call) -> Reply {
             path: route.path(),
             runs: "generated webhook".to_string(),
             authentication: "signature",
-            limit: None,
+            limit: limit::generated(jadpo_std::http::Authentication::Public, Vec::new()),
             file: String::new(),
             line: 0,
             place: "generated".to_string(),
         });
+    }
+    // Each store of files' own addresses (area 16, "Uploading" and
+    // "Downloading"): the runtime answers them ahead of every API.
+    let stores = jadpo_check::data::connections(db, project).files();
+    for store in &stores {
+        for address in jadpo_std::files::FileAddress::ALL {
+            lines.push(Line {
+                api: FILES.to_string(),
+                method: address.method().word().to_string(),
+                path: address.path(store),
+                runs: format!("generated {}", address.label()),
+                authentication: "signature",
+                limit: limit::generated(jadpo_std::http::Authentication::Public, Vec::new()),
+                file: String::new(),
+                line: 0,
+                place: "generated".to_string(),
+            });
+        }
     }
     lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
     let mut blocks: Vec<(String, String)> = apis
@@ -261,6 +284,10 @@ pub fn routes(call: &Call) -> Reply {
             jadpo_check::webhooks::DEFAULT_PREFIX.to_string(),
             format!("/{}", jadpo_check::webhooks::DEFAULT_PREFIX),
         ));
+        blocks.sort();
+    }
+    if !stores.is_empty() && apis.get(FILES).is_none() {
+        blocks.push((FILES.to_string(), format!("/{FILES}")));
         blocks.sort();
     }
     let mut screen = Screen::new();
@@ -280,36 +307,26 @@ pub fn routes(call: &Call) -> Reply {
                 .max()
                 .unwrap_or(0),
             rows.iter()
-                .map(|r| {
-                    r.limit
-                        .as_ref()
-                        .map_or(0, |limit| limit::words(limit).len())
-                })
+                .map(|r| limit::words(&r.limit).len())
                 .max()
                 .unwrap_or(0),
         ];
         let shown = rows
             .iter()
             .map(|r| {
-                let limited = r.limit.as_ref().map_or_else(String::new, limit::words);
-                // A block of generated routes has no limits to show, so no
-                // column for them.
-                let limited = if widths[4] == 0 {
-                    String::new()
-                } else {
-                    format!("{limited:w4$}  ", w4 = widths[4])
-                };
                 format!(
-                    "{:w0$}  {:w1$}  {:w2$}  {:w3$}  {limited}{}",
+                    "{:w0$}  {:w1$}  {:w2$}  {:w3$}  {:w4$}  {}",
                     r.method,
                     r.path,
                     r.runs,
                     r.authentication,
+                    limit::words(&r.limit),
                     r.place,
                     w0 = widths[0],
                     w1 = widths[1],
                     w2 = widths[2],
-                    w3 = widths[3]
+                    w3 = widths[3],
+                    w4 = widths[4],
                 )
             })
             .collect();
@@ -325,16 +342,7 @@ pub fn routes(call: &Call) -> Reply {
                 ("path", Json::from(r.path.as_str())),
                 ("runs", Json::from(r.runs.as_str())),
                 ("authentication", Json::from(r.authentication)),
-                (
-                    "rate_limit",
-                    r.limit.as_ref().map_or(Json::Null, |limit| {
-                        Json::object([
-                            ("requests", Json::from(limit.limit.requests as usize)),
-                            ("within", Json::from(limit::within(limit.limit))),
-                            ("by", Json::from(limit.by.name())),
-                        ])
-                    }),
-                ),
+                ("rate_limit", limit_json(&r.limit)),
                 ("file", Json::from(r.file.as_str())),
                 ("line", Json::from(r.line as usize)),
                 ("generated", Json::from(r.file.is_empty())),
@@ -361,15 +369,39 @@ pub fn routes(call: &Call) -> Reply {
     Reply::screen(screen, Json::object([("routes", Json::array(data))]))
 }
 
+/// `limit`, for `--json`, as OpenAPI's `x-jadpo-rate-limit` writes it.
+fn limit_json(shown: &Shown) -> Json {
+    let mut fields = vec![
+        ("requests", Json::from(shown.limit.limit.requests as usize)),
+        ("within", Json::from(limit::within(shown.limit.limit))),
+        ("by", Json::from(shown.limit.by.name())),
+    ];
+    if !shown.also.is_empty() {
+        let also = shown.also.iter().map(|also| {
+            let mut fields = vec![
+                ("requests", Json::from(also.limit.requests as usize)),
+                ("within", Json::from(limit::within(also.limit))),
+                ("by", Json::from("email")),
+            ];
+            if let Some(counts) = also.counts {
+                fields.push(("counts", Json::from(counts)));
+            }
+            Json::object(fields)
+        });
+        fields.push(("also", Json::Array(also.collect())));
+    }
+    Json::object(fields)
+}
+
 struct Line {
     api: String,
     method: String,
     path: String,
     runs: String,
     authentication: &'static str,
-    /// What a route written is limited to; `None` for one the runtime
-    /// answers, which keeps its own limits.
-    limit: Option<Limit>,
+    /// What it is limited to: its own or its API's limit if it writes
+    /// one, and the defaults otherwise.
+    limit: Shown,
     file: String,
     line: u32,
     place: String,
@@ -397,7 +429,7 @@ fn listing(apis: &Apis, groups: &Groups, graph: &jadpo_graph::Graph) -> Vec<Line
                     jadpo_std::http::Authentication::Public => "none",
                     jadpo_std::http::Authentication::Fresh => "fresh",
                 },
-                limit: Some(limit::shown(apis, group, route)),
+                limit: limit::shown(apis, group, route),
                 file: group.path.clone(),
                 line,
                 place: format!("{}:{line}", group.path),
@@ -417,7 +449,7 @@ fn listing(apis: &Apis, groups: &Groups, graph: &jadpo_graph::Graph) -> Vec<Line
                 jadpo_std::http::Authentication::Fresh => "fresh",
                 _ => "required",
             },
-            limit: None,
+            limit: limit::generated(route.authentication, Vec::new()),
             file: String::new(),
             line: 0,
             place: "generated".to_string(),

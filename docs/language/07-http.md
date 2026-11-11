@@ -1726,11 +1726,17 @@ Some features generate their routes for you:
 - connecting and disconnecting an OAuth grant:
   `POST /connections/<name>/start`, `GET /connections/<name>/callback` and
   `POST /connections/<name>/disconnect`
-  ([OAuth grants](11-integrations.md#oauth-grants)).
+  ([OAuth grants](11-integrations.md#oauth-grants));
+- each store of files' upload and download addresses,
+  `PUT /files/<store>/uploads/<token>` and its parts, and
+  `GET /files/<store>/<link>`
+  ([Uploading](16-built-in-services.md#uploading)).
 
 Jadpo generates endpoints only, never pages: the app's frontend owns every
 page. Generated routes appear in `jadpo routes`, the API record and OpenAPI
-like any route, marked generated.
+like any route, marked generated. A store of files' addresses are the
+store's own, so they appear in `jadpo routes` in a block of their own and in
+every API's OpenAPI document, and not in any API record.
 
 ### Moving or replacing one
 
@@ -1851,7 +1857,7 @@ package, with no corrections or recordings
 | Field | On | Holds |
 |---|---|---|
 | `x-jadpo-changes` | Every operation | Whether the operation changes something: `true` for a route of any other method, `false` for a `GET`, whatever it runs, and for the runtime's own reads |
-| `x-jadpo-rate-limit` | Every route you write | What it is limited to, its own limit, its API's or the default: `requests`, `within` and `by`, as `rate_limit:` writes them ([Rate limits](16-built-in-services.md#rate-limits)) |
+| `x-jadpo-rate-limit` | Every operation | What it is limited to, its own limit, its API's or the default: `requests`, `within` and `by`, as `rate_limit:` writes them ([Rate limits](16-built-in-services.md#rate-limits)). A generated route's other limits are in `also`, each with its own `requests`, `within` and `by: "email"` (one per email address), and `counts: "wrong_codes"` when what it counts isn't requests |
 | `x-jadpo-confirm` | A route with `confirm:` | What the signed-in person presents before it runs, `passkey` ([Confirm one request with a passkey](08-identity.md#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)); the operation lists the `X-Jadpo-Confirmation` header and the 403 `confirmation_required` |
 | `x-jadpo-idempotency` | Every operation that reads an `Idempotency-Key` | Whether it takes `Idempotency-Key`, and whether the API requires it: `header`, `required` (the API's `idempotency:`), `keeps` (`response`: a repeat gets the first answer; `request`: a repeat waits for the first but runs again; `nothing`: running it again changes nothing, or no store keeps it), `window` (`1d`), `max_length` (255), and the codes a key's repeat answers with, `in_use` (`conflict`) and `reused` (`idempotency_key_reused`) |
 | `x-jadpo-sends` | The media type of a route with `sends:` | The `output` and the `field` its body is ([Sending raw bytes](#sending-raw-bytes)) |

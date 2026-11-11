@@ -25,7 +25,7 @@ use std::rc::Rc;
 
 use jadpo_std::http::{
     IdentityPlan, PRIVACY_CHECK_EXPIRES_AFTER_MS, PRIVACY_CHECK_RESEND_AFTER_MS,
-    PRIVACY_CHECKS_PER_HOUR, PRIVACY_REQUEST_ACCEPTED, PrivacyPlan, PrivacyStep,
+    PRIVACY_CHECKS_PER_HOUR, PRIVACY_REQUEST_ACCEPTED, PrivacyPlan, PrivacyStep, RateLimit,
 };
 use jadpo_std::read::SqlType;
 use jadpo_std::{PrivacyRequestKind, PrivacyRequestSource};
@@ -34,8 +34,8 @@ use jadpo_value::Value;
 use super::identity::{AUTHENTICATION_MISCONFIGURED, AUTHENTICATION_UNAVAILABLE, CSRF_REJECTED};
 use super::magic_links::{
     Refused, Stop, address_digest, email_address, format_uuid, json_body, limited, locale_named,
-    micros, millis, new_token, ok_json, parse_uuid, problem, raised, seal, text, token_bytes,
-    unseal, verifier,
+    micros, millis, new_token, ok_json, one_send, parse_uuid, per_hour, problem, raised, seal,
+    text, token_bytes, unseal, verifier,
 };
 use super::privacy_steps::{self, Timers};
 use super::sign_in_events::{self, SignInEvent};
@@ -225,7 +225,7 @@ async fn ask(
     transaction: &mut dyn crate::Transaction,
     privacy: &PrivacyPlan,
     asking: &Asking<'_>,
-) -> Result<Result<bool, i64>, crate::StoreError> {
+) -> Result<Result<bool, (i64, RateLimit)>, crate::StoreError> {
     let now = asking.now;
     let digest = address_digest(asking.address);
     let expires = now.saturating_add(PRIVACY_CHECK_EXPIRES_AFTER_MS);
@@ -254,13 +254,16 @@ async fn ask(
     if let Some(at) = millis(requested_at) {
         let next = at.saturating_add(PRIVACY_CHECK_RESEND_AFTER_MS);
         if next > now {
-            return Ok(Err(next - now));
+            return Ok(Err((next - now, one_send(PRIVACY_CHECK_RESEND_AFTER_MS))));
         }
     }
     let (since, sends) = match millis(sends_since) {
         Some(since) if since.saturating_add(HOUR_MS) > now => {
             if u32::try_from(*sends).unwrap_or(u32::MAX) >= PRIVACY_CHECKS_PER_HOUR {
-                return Ok(Err(since.saturating_add(HOUR_MS) - now));
+                return Ok(Err((
+                    since.saturating_add(HOUR_MS) - now,
+                    per_hour(PRIVACY_CHECKS_PER_HOUR),
+                )));
             }
             (since, sends.saturating_add(1))
         }
@@ -306,6 +309,14 @@ impl Site<'_> {
                         .headers
                         .push(("retry-after".to_string(), wait.to_string()));
                 }
+                Box::new(response)
+            }
+            Refused::Limited(failure, wait, limit) => {
+                let mut response = runtime_failure(failure, self.request_id, None);
+                response
+                    .headers
+                    .push(("retry-after".to_string(), wait.to_string()));
+                super::limit_headers(&mut response, wait.unsigned_abs(), limit);
                 Box::new(response)
             }
             Refused::Store(_) => fail(AUTHENTICATION_UNAVAILABLE, self.request_id),
@@ -364,10 +375,10 @@ impl Site<'_> {
             address: &address,
             locale: Some(Self::locale_name(locale)),
         };
-        let steps: Result<Option<i64>, crate::StoreError> = async {
+        let steps: Result<Option<(i64, RateLimit)>, crate::StoreError> = async {
             transaction.execute(SWEEP, &[micros(now)]).await?;
             let sends_email = match ask(transaction.as_mut(), self.privacy, &asking).await? {
-                Err(wait) => return Ok(Some(wait)),
+                Err(refused) => return Ok(Some(refused)),
                 Ok(sends_email) => sends_email,
             };
             if sends_email {
@@ -400,9 +411,9 @@ impl Site<'_> {
         }
         .await;
         match steps {
-            Ok(Some(wait)) => {
+            Ok(Some((wait, limit))) => {
                 let _ = transaction.rollback().await;
-                return Err(Box::new(limited(self.request_id, wait)));
+                return Err(Box::new(limited(self.request_id, wait, limit)));
             }
             Ok(None) => {}
             Err(_) => {
@@ -969,10 +980,10 @@ pub async fn request_op(
         Err(error) => Err(error),
     };
     let sends = match asked_now {
-        Ok(Err(wait)) => {
+        Ok(Err((wait, limit))) => {
             return raised(
                 ctx,
-                Refused::Failure(super::RATE_LIMITED, Some(wait / 1000 + 1)),
+                Refused::Limited(super::RATE_LIMITED, wait / 1000 + 1, limit),
                 at,
             );
         }

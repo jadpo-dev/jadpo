@@ -271,4 +271,3 @@ exact, and refuse the request in your action when it is used up.
   deployable whose store is Redis counts in its own memory for now.
 - Turning a limit off has no syntax yet. To loosen one, raise `requests:` or
   shorten `within:`.
-- A generated route's own limits aren't shown yet in `jadpo routes` or OpenAPI.

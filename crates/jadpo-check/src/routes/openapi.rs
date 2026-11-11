@@ -23,7 +23,7 @@
 //!
 //! The `x-jadpo` fields carry what plain OpenAPI lacks (area 7, chunk
 //! 7.2), so area 11's importer makes an exact package from the document:
-//! `x-jadpo-rate-limit` on every route written (area 16),
+//! `x-jadpo-rate-limit` on every route, written or generated (area 16),
 //! `x-jadpo-changes` on every operation (a route that runs an action
 //! changes something), `x-jadpo-idempotency` on every operation that
 //! reads an `Idempotency-Key` (the header, whether the API requires it,
@@ -264,11 +264,7 @@ pub fn document(
         }
         // What it's limited to (area 16, "What a client sees").
         let limited = super::limit::shown(super::api_table(db, project), group, route);
-        let mut rate_limit = Value::object();
-        rate_limit.set("requests", i64::from(limited.limit.requests));
-        rate_limit.set("within", super::limit::within(limited.limit));
-        rate_limit.set("by", limited.by.name());
-        operation.set("x-jadpo-rate-limit", rate_limit);
+        operation.set("x-jadpo-rate-limit", limit_extension(&limited));
         operation.set("tags", vec![Value::from(group.name.as_str())]);
         tags.entry(group.name.clone())
             .or_insert_with(|| group.doc.clone());
@@ -288,6 +284,10 @@ pub fn document(
             let entry = paths
                 .entry(super::generated::confirmation_path(route))
                 .or_insert_with(Value::object);
+            confirmation.set(
+                "x-jadpo-rate-limit",
+                limit_extension(&generated(route.authentication)),
+            );
             entry.set(
                 &jadpo_std::http::confirmation_method(route.method)
                     .word()
@@ -299,23 +299,27 @@ pub fn document(
     // Its own document (area 7, "OpenAPI").
     if let Some(served) = super::served::served_by(db, project, api) {
         let entry = paths.entry(served.path()).or_insert_with(Value::object);
-        entry.set(
-            "get",
-            served_operation(&served, &methods, &mut failure_schemas),
+        let mut operation = served_operation(&served, &methods, &mut failure_schemas);
+        operation.set(
+            "x-jadpo-rate-limit",
+            limit_extension(&generated(served.authentication)),
         );
+        entry.set("get", operation);
     }
     // Its flags (area 16; chunk B10).
     if let Some(served) = super::served::flags_served_by(db, project, api) {
         let entry = paths.entry(served.path()).or_insert_with(Value::object);
-        entry.set(
-            "get",
-            flags_operation(
-                crate::flags::flags(db, project),
-                &served,
-                &methods,
-                &mut failure_schemas,
-            ),
+        let mut operation = flags_operation(
+            crate::flags::flags(db, project),
+            &served,
+            &methods,
+            &mut failure_schemas,
         );
+        operation.set(
+            "x-jadpo-rate-limit",
+            limit_extension(&generated(served.authentication)),
+        );
+        entry.set("get", operation);
     }
     let exchange =
         identity.exchanges() && methods.contains(&jadpo_std::AuthenticationMethod::ServiceKey);
@@ -323,11 +327,21 @@ pub fn document(
         let entry = paths
             .entry(format!("/{}", jadpo_std::http::EXCHANGE_PATH.join("/")))
             .or_insert_with(Value::object);
-        entry.set("post", exchange_operation(&methods, &mut failure_schemas));
+        let mut operation = exchange_operation(&methods, &mut failure_schemas);
+        operation.set(
+            "x-jadpo-rate-limit",
+            limit_extension(&generated(jadpo_std::http::Authentication::Required)),
+        );
+        entry.set("post", operation);
     }
     for webhook in &webhooks {
         let entry = paths.entry(webhook.path()).or_insert_with(Value::object);
-        entry.set("post", webhook_operation(webhook, &mut failure_schemas));
+        let mut operation = webhook_operation(webhook, &mut failure_schemas);
+        operation.set(
+            "x-jadpo-rate-limit",
+            limit_extension(&generated(jadpo_std::http::Authentication::Public)),
+        );
+        entry.set("post", operation);
     }
     if let Some(passkey) = passkeys {
         for step in jadpo_std::http::PasskeyStep::ALL {
@@ -337,10 +351,12 @@ pub fn document(
                 .map(|text| format!("/{text}"))
                 .collect();
             let entry = paths.entry(path).or_insert_with(Value::object);
-            entry.set(
-                &step.method().word().to_ascii_lowercase(),
-                passkey_operation(step, &methods, &mut failure_schemas),
+            let mut operation = passkey_operation(step, &methods, &mut failure_schemas);
+            operation.set(
+                "x-jadpo-rate-limit",
+                limit_extension(&generated(step.authentication())),
             );
+            entry.set(&step.method().word().to_ascii_lowercase(), operation);
         }
     }
     if let Some(magic) = magic_links {
@@ -355,10 +371,12 @@ pub fn document(
                 .map(|text| format!("/{text}"))
                 .collect();
             let entry = paths.entry(path).or_insert_with(Value::object);
-            entry.set(
-                &step.method().word().to_ascii_lowercase(),
-                magic_link_operation(step, &mut failure_schemas),
+            let mut operation = magic_link_operation(step, &mut failure_schemas);
+            operation.set(
+                "x-jadpo-rate-limit",
+                limit_extension(&super::limit::magic_link(step, magic)),
             );
+            entry.set(&step.method().word().to_ascii_lowercase(), operation);
         }
     }
     let privacy = crate::privacy::privacy(db, project);
@@ -371,10 +389,12 @@ pub fn document(
                     .map(|text| format!("/{text}"))
                     .collect();
                 let entry = paths.entry(path).or_insert_with(Value::object);
-                entry.set(
-                    &step.method().word().to_ascii_lowercase(),
-                    privacy_operation(step, &mut failure_schemas),
+                let mut operation = privacy_operation(step, &mut failure_schemas);
+                operation.set(
+                    "x-jadpo-rate-limit",
+                    limit_extension(&super::limit::privacy(step)),
                 );
+                entry.set(&step.method().word().to_ascii_lowercase(), operation);
             }
         }
     }
@@ -386,10 +406,27 @@ pub fn document(
                 .map(|text| format!("/{text}"))
                 .collect();
             let entry = paths.entry(path).or_insert_with(Value::object);
-            entry.set(
-                &step.method().word().to_ascii_lowercase(),
-                provider_operation(&provider.name, step, &mut failure_schemas),
+            let mut operation = provider_operation(&provider.name, step, &mut failure_schemas);
+            operation.set(
+                "x-jadpo-rate-limit",
+                limit_extension(&generated(step.authentication())),
             );
+            entry.set(&step.method().word().to_ascii_lowercase(), operation);
+        }
+    }
+    // Each store of files' own addresses, which any API's clients may be
+    // given (area 16, "Uploading" and "Downloading").
+    for store in crate::data::connections(db, project).files() {
+        for address in jadpo_std::files::FileAddress::ALL {
+            let entry = paths
+                .entry(address.path(&store))
+                .or_insert_with(Value::object);
+            let mut operation = file_operation(address, &store, &mut failure_schemas);
+            operation.set(
+                "x-jadpo-rate-limit",
+                limit_extension(&generated(jadpo_std::http::Authentication::Public)),
+            );
+            entry.set(&address.method().word().to_ascii_lowercase(), operation);
         }
     }
 
@@ -509,6 +546,196 @@ pub fn document(
 
 /// The runtime's `GET <prefix>/openapi.json` (area 7, "OpenAPI"): this
 /// document, under the API's own default authentication.
+/// `x-jadpo-rate-limit`: what a route is limited to (area 7, "The
+/// `x-jadpo` fields").
+fn limit_extension(shown: &super::limit::Shown) -> Value {
+    let mut out = Value::object();
+    out.set("requests", i64::from(shown.limit.limit.requests));
+    out.set("within", super::limit::within(shown.limit.limit));
+    out.set("by", shown.limit.by.name());
+    if !shown.also.is_empty() {
+        let also = shown
+            .also
+            .iter()
+            .map(|also| {
+                let mut one = Value::object();
+                one.set("requests", i64::from(also.limit.requests));
+                one.set("within", super::limit::within(also.limit));
+                one.set("by", "email");
+                if let Some(counts) = also.counts {
+                    one.set("counts", counts);
+                }
+                one
+            })
+            .collect::<Vec<_>>();
+        out.set("also", also);
+    }
+    out
+}
+
+/// What a route the runtime answers, with no limits beyond the defaults
+/// for who may call it, is limited to.
+fn generated(authentication: jadpo_std::http::Authentication) -> super::limit::Shown {
+    super::limit::generated(authentication, Vec::new())
+}
+
+/// A store of files' own address (area 16, "Uploading" and "Downloading").
+fn file_operation(
+    address: jadpo_std::files::FileAddress,
+    store: &str,
+    failure_schemas: &mut BTreeMap<String, Value>,
+) -> Value {
+    use jadpo_std::files::FileAddress as A;
+    let mut out = Value::object();
+    out.set(
+        "operationId",
+        format!(
+            "{}_{}_{}",
+            address.method().word().to_ascii_lowercase(),
+            store.replace(['-', '.'], "_"),
+            address.label().replace(' ', "_"),
+        ),
+    );
+    out.set(
+        "description",
+        match address {
+            A::Upload => "Keeps the file a slot's address was given for, once; an ordinary create or update attaches it by the slot's token.",
+            A::UploadPart => "Keeps one part of a large file a slot's address was given for; a part may be sent again.",
+            A::Download => "Answers with the file a signed link names.",
+        },
+    );
+    out.set("x-jadpo-generated", true);
+    out.set("x-jadpo-changes", address != A::Download);
+    out.set("security", Vec::<Value>::new());
+    let parameter = |name: &str, description: &str| {
+        let mut one = Value::object();
+        one.set("name", name);
+        one.set("in", "path");
+        one.set("required", true);
+        one.set("description", description);
+        let mut schema = Value::object();
+        schema.set("type", "string");
+        one.set("schema", schema);
+        one
+    };
+    out.set(
+        "parameters",
+        match address {
+            A::Upload => vec![parameter("token", "The token the slot gave.")],
+            A::UploadPart => vec![
+                parameter("token", "The token the slot gave."),
+                parameter("part", "The part's number, from 1."),
+            ],
+            A::Download => vec![parameter("link", "The signed link the file's value gave.")],
+        },
+    );
+    let bytes = || {
+        let mut schema = Value::object();
+        schema.set("type", "string");
+        schema.set("contentEncoding", "binary");
+        let mut media = Value::object();
+        media.set("schema", schema);
+        let mut content = Value::object();
+        content.set("application/octet-stream", media);
+        content
+    };
+    let mut responses = Value::object();
+    if address == A::Download {
+        let mut ok = Value::object();
+        ok.set("description", "The file.");
+        ok.set("content", bytes());
+        responses.set("200", ok);
+    } else {
+        let mut body = Value::object();
+        body.set("required", true);
+        body.set("content", bytes());
+        out.set("requestBody", body);
+        let mut kept = Value::object();
+        kept.set("description", "The file is kept.");
+        responses.set("204", kept);
+    }
+    let mut failures: Vec<(&str, &str, &str, &str)> = vec![
+        (
+            "403",
+            "FileLinkInvalid",
+            "link_invalid",
+            "The link or address has been changed, or isn't for this store.",
+        ),
+        (
+            "403",
+            "FileLinkExpired",
+            "link_expired",
+            "The link or address has expired.",
+        ),
+    ];
+    if address == A::Download {
+        failures.push((
+            "404",
+            "FileNotFound",
+            "file_not_found",
+            "The file no longer exists.",
+        ));
+    } else {
+        failures.extend([
+            (
+                "409",
+                "UploadAlreadySent",
+                "upload_already_sent",
+                "A file has already been sent to this slot.",
+            ),
+            (
+                "413",
+                "FileTooLarge",
+                "file_too_large",
+                "This file is over the size this slot takes.",
+            ),
+            (
+                "415",
+                "FileTypeRefused",
+                "file_type_refused",
+                "This file isn't a type this slot takes.",
+            ),
+            (
+                "503",
+                "StorageFull",
+                "storage_full",
+                "There is no room to keep this file.",
+            ),
+        ]);
+    }
+    let mut by_status: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+    for (status, name, code, description) in failures {
+        failure_schemas.insert(name.to_string(), envelope(code, description, None));
+        by_status.entry(status).or_default().push((code, name));
+    }
+    for (status, mut failures) in by_status {
+        failures.sort();
+        let mut schemas: Vec<Value> = failures.iter().map(|(_, name)| reference(name)).collect();
+        let codes: Vec<String> = failures
+            .iter()
+            .map(|(code, _)| format!("`{code}`"))
+            .collect();
+        let schema = if schemas.len() == 1 {
+            schemas.remove(0)
+        } else {
+            let mut any = Value::object();
+            any.set("oneOf", schemas);
+            any
+        };
+        responses.set(
+            status,
+            response(
+                &format!("Fails with {}.", crate::and_list(&codes)),
+                Some(schema),
+            ),
+        );
+    }
+    responses.set("429", shared_response("RateLimited"));
+    responses.set("500", shared_response("InternalFault"));
+    out.set("responses", responses);
+    out
+}
+
 fn served_operation(
     served: &super::served::Served,
     methods: &[jadpo_std::AuthenticationMethod],

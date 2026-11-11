@@ -209,11 +209,13 @@ fn a_routes_limit_is_shown_in_routes_and_openapi() {
         serde_json::json!({"requests": 3, "within": "1m", "by": "ip"}),
         "{releases}"
     );
-    assert!(
+    // A route Jadpo answers says its own (`generated_limits.rs`).
+    assert_eq!(
         every
             .iter()
-            .filter(|route| route["generated"] == true)
-            .all(|route| route["rate_limit"].is_null()),
+            .find(|route| route["generated"] == true)
+            .expect("the API's OpenAPI document")["rate_limit"],
+        serde_json::json!({"requests": 120, "within": "1m", "by": "ip"}),
         "{listed}"
     );
 

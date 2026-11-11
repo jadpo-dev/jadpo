@@ -3388,7 +3388,12 @@ on Cloudflare's), the Workers host counts in it, and `jadpo check`
 refuses a Workers deployable that serves an API without one. A route's or an
 API's own `rate_limit:` reaches the runtime on its `RoutePlan`
 (`RouteRateLimit`, its count's key starting with the route's key or `api
-<name>`), counted in place of the defaults through the same capability; the
+<name>`), counted in place of the defaults through the same capability. A
+route the runtime answers has no `rate_limit:`: `limit::generated`,
+`limit::magic_link` and `limit::privacy` say what it is limited to, for
+OpenAPI and `jadpo routes`, and a magic link's or an address check's
+refusal gives the limit it was over in the `RateLimit` headers (`Refused::Limited`,
+carried on a raised `Failure` as `rate_limit` for a route of the app's own). The
 store's bindings are numbered from every limit the app writes, and the
 in-memory table drops the counter whose window ends soonest whatever its
 length. Round trips: the sign-in lookup, an idempotency key's claim (one
