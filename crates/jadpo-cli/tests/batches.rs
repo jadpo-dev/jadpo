@@ -53,7 +53,7 @@ fn jadpo(cwd: &Path, args: &[&str]) -> Output {
     run(&args, &env.with_cwd(cwd))
 }
 
-const FILES: &[(&str, &str)] = &[
+pub(crate) const FILES: &[(&str, &str)] = &[
     ("app.jadpo", "application {}\n"),
     (
         "domains/inventory/types/shelf_code.jadpo",

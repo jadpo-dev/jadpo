@@ -1772,6 +1772,81 @@ pub static COMMANDS: &[Command] = &[
         run: commands::deliveries,
     },
     Command {
+        name: "batches",
+        synonyms: &["batch"],
+        group: "Production",
+        summary: "Watch and stop batch runs",
+        description: "Lists the app's batch runs (area 12): its file reads and writes and its \
+                      `batches.each` runs, those running first, then those that ended, newest \
+                      first, 20 a page, each with its state, how far it is against its estimated \
+                      total, and its problems. --state lists one state's. `show` shows one run's \
+                      progress, when it started and last moved, when it should finish at the rate \
+                      so far, why it failed, and its problems by row, column and rule, never a \
+                      value, 20 a page with --page. `cancel` stops a running one after the batch in \
+                      hand, as `batches.cancel` does, logged in the database with who asked; one \
+                      that has ended is left as it is. It runs none of the app's code. An id is the \
+                      last 8 hex digits the list shows, or more. The databases are the ones the \
+                      stores' connections' settings give, or a running jadpo dev's, or the one \
+                      --url names (with --store when there are several). Times are in UTC.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do: list, show or cancel",
+                required: false,
+                values: Values::Fixed(crate::batches::ACTIONS),
+            },
+            Argument {
+                name: "id",
+                description: "The batch run's id, as the list shows it",
+                required: false,
+                values: Values::Id,
+            },
+        ],
+        flags: &[
+            Flag {
+                name: "--state",
+                value: Some("state"),
+                description: "List those in this state only",
+                values: crate::batches::STATE_VALUES,
+            },
+            Flag {
+                name: "--page",
+                value: Some("n"),
+                description: "Which page of the list, or of a run's problems, from 1",
+                values: &[],
+            },
+            Flag {
+                name: "--url",
+                value: Some("url"),
+                description: "The database the batch runs are in",
+                values: &[],
+            },
+            Flag {
+                name: "--store",
+                value: Some("name"),
+                description: "The store --url's database is",
+                values: &[],
+            },
+        ],
+        examples: &[
+            Example {
+                description: "See the batch runs and how far each is",
+                command: "jadpo batches",
+            },
+            Example {
+                description: "See one run's progress and problems",
+                command: "jadpo batches show 4fa2c09e",
+            },
+            Example {
+                description: "Stop a run after the batch in hand",
+                command: "jadpo batches cancel 4fa2c09e",
+            },
+        ],
+        arguments_rule: &rule::CLI_BATCHES_ARGUMENTS,
+        raises: &[&rule::BATCHES_UNAVAILABLE, &rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        run: commands::batches,
+    },
+    Command {
         name: "privacy",
         synonyms: &[],
         group: "Production",

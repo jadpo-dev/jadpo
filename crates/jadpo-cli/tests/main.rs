@@ -28,6 +28,7 @@ mod backfills;
 mod background_budget;
 mod batch_calls;
 mod batch_limits;
+mod batch_operators;
 mod batch_tenants;
 mod batches;
 mod binary;

@@ -1100,6 +1100,7 @@ fn a_store_that_cant_apply_it_is_tried_again_and_shown() {
             runs: false,
             steps: false,
             messages: false,
+            batches: false,
         };
         let shown = jadpo_runtime::deliveries::items(
             club.store("main"),

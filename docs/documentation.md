@@ -281,7 +281,7 @@ A page not wholly built opens with one line straight under its title, in its
 Markdown as on the site, and a page wholly built has none:
 
 ```markdown
-**Partly built.** Missing: `jadpo batches`. See [What is built](built-in-services-built.md).
+**Partly built.** Missing: `jadpo search reindex`. See [What is built](built-in-services-built.md).
 
 **Not built.** This page is the design; Jadpo doesn't do this yet. See [What is built](built-in-services-built.md).
 ```

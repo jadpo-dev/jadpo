@@ -2430,7 +2430,8 @@ address with `sslmode` or another `ssl…` setting
 `PostgresUrl`'s check (`configuration.value_invalid` with
 `config::TLS_RULE`, as the app starts and in `jadpo config check`) and by
 `jadpo migrate`. The CLI's commands that open a database (`jadpo
-migrate`, `schedules`, `runs`, `deliveries`, `ai usage`, `jadpo dev`)
+migrate`, `schedules`, `runs`, `deliveries`, `batches`, `ai usage`,
+`jadpo dev`)
 open it as its connection says (`jadpo_cli`'s `database::Address`),
 reading the authority's setting as they read the address. SCRAM's channel
 binding is left off, as tokio-postgres never sees the TLS; the
@@ -5598,7 +5599,14 @@ holds. `jadpo_batch_runs.estimated_total` is written by `ADVANCE` (a
 `NULL` keeps the last): a query's run's from `read::count`, its first
 page's statement under `count(*)` with its limit `NULL`, behind a
 savepoint; a file's from its items over how far into its text they end.
-`batches.status` gives it, and the items done once finished.
+`batches.status` gives it, and the items done once finished. `jadpo
+batches` reads the same rows through `batches::operator` (its list, a
+run by its id's last digits, a page of problems), works the estimated
+finish out from the run's rate between `started_at` and `stepped_at`,
+and cancels with one statement that writes the cancel row and its
+`jadpo_operator_actions` row (kind `batch_run`) together, only while the
+run is `running` and no cancel is asked; `jadpo deliveries` lists the
+runs as `Kind::Batch` items, a failed one until its `dismiss` log row.
 `type.batch_order_updatable` is the checker's, at `from:`'s query
 (`Body::batch_order`), declinable.
 

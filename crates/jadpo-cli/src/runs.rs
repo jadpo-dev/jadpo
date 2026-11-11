@@ -384,8 +384,8 @@ fn unfinished(call: &Call) -> Reply {
     let id = jadpo_runtime::deliveries::short(&first.id);
     let (command, reason) = match first.kind {
         "batch" => (
-            "jadpo runs unfinished --build ".to_string() + &build,
-            "again once they have finished, before deploying",
+            format!("jadpo batches show {id}"),
+            "says when it should finish, to let it before deploying",
         ),
         _ => (
             format!("jadpo deliveries show {id}"),

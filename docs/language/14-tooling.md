@@ -1195,7 +1195,12 @@ Below it are a footer and one hint.
 
 Diverged deliveries and a route's unfinished steps are listed by
 default. Parked queue messages are listed as `failed`, as
-`queue <connection> · <Event>` with their reason as the code. A
+`queue <connection> · <Event>` with their reason as the code. A batch
+run that failed is listed as `batch <action>`, with when it ended and
+how far it got, until `dismiss` sets it aside; `--state running` and
+`--state cancelled` list those going and those stopped. `show <id>`
+shows a batch run as [`jadpo batches show`](#jadpo-batches) does, and
+`cancel <id>` stops a running one as `jadpo batches cancel` does. A
 multi-step run unfinished for a day gets an alert line, and `--json`
 gives the metric on unfinished records.
 
@@ -1233,8 +1238,6 @@ schedules](12-jobs-and-events.md#watching-schedules)).
 The database is `--url`'s, the connection's setting's, or a running
 `jadpo dev`'s. An unknown name is `cli.schedules_arguments`, with the
 nearest.
-
-Not built yet: `jadpo deliveries` doesn't list batch runs.
 
 ### `jadpo privacy`
 
@@ -1667,6 +1670,7 @@ the files it keeps, and check a deploy before it happens.
 | `jadpo calls` | The development call log |
 | `jadpo email` | The dev inbox and the sending domain's records |
 | `jadpo files` | Lists, reads and copies a store's files |
+| `jadpo batches` | Lists batch runs; `show`, `cancel` |
 | `jadpo runs unfinished --build <build id>` | Lists the multi-step runs a deploy would stop |
 
 ### `jadpo flags`
@@ -1802,6 +1806,48 @@ file is `cli.files_arguments`, with the nearest, and a store that can't be
 reached, read or written, or whose settings have no value here, is
 `files.unavailable`.
 
+### `jadpo batches`
+
+Shows the app's batch runs, its file reads and writes and its
+`batches.each` runs, and stops one
+([Batches](12-jobs-and-events.md#batches-work-over-many-items)). `batch`
+is a synonym, and it takes `--json`.
+
+- `jadpo batches`, or `list`, is a table of the runs kept, those running
+  first, then those that ended, newest first, 20 to a page (`--page`).
+  Each row has the run's id, the action that started it and the helper
+  (`batches.each`, `csv.read`, `json_lines.write`), its state, its
+  progress against its estimated total, and how many problems it has.
+  `--state` lists one state's: `running`, `finished`, `failed` or
+  `cancelled`. A footer and one hint follow.
+- `batches show <id>` shows one run: its progress, when it started and
+  last moved or ended, when it should finish at the rate it has gone so
+  far, why it failed, and its problems by row, column and rule, never a
+  value, 20 to a page (`--page`).
+- `batches cancel <id>` stops a running run after the batch in hand, as
+  `batches.cancel` does, and logs it with the operator's name and
+  database role, as `jadpo deliveries` does. A run that has ended, or
+  was already asked to stop, is left as it is, and the command says so.
+
+```text
+$ jadpo batches
+  id        batch                        state       progress          problems
+  4fa2c09e  import_prices  csv.read      ● running   412 of about 900         3
+  9b1e77d2  check_stock    batches.each  ✓ finished  21 of 21                 0
+
+● 1 running  1 finished
+
+→ jadpo batches show 4fa2c09e  lists its problems
+```
+
+An id is the last 8 hex digits the list shows, or more. Each run's
+counts and state are what `batches.status` gives the app; the command
+runs none of the app's code and reads nothing a run saved. The database
+is `--url`'s, with `--store` when several stores keep runs, the
+connection's setting's, or a running `jadpo dev`'s. An unknown action,
+state, page or id is `cli.batches_arguments`, with the nearest, and a
+database it can't reach or read is `batches.unavailable`.
+
 ### `jadpo runs unfinished`
 
 Run it against production before a deploy. It lists the unfinished
@@ -1830,10 +1876,6 @@ Not built yet:
   services](11-integrations.md)).
 - `jadpo dev grants add <connection> --owner <id>`, which makes a fake
   OAuth grant for local development ([OAuth grants](11-integrations.md#oauth-grants)).
-- `jadpo batches list`, `show <id>` and `cancel <id>`, which list batch
-  runs (file reads and writes, `batches.each`) with their state and
-  progress, show one run's progress and problems, and stop one, as
-  `batches.cancel` does ([Background work](12-jobs-and-events.md)).
 - `jadpo search reindex`, which rebuilds a search index from the
   database ([Search](16-built-in-services.md#search)).
 
@@ -4063,6 +4105,7 @@ yet, or that other commands replace.
 | `cli.ai_arguments` | `ai` | A `jadpo ai` command names no action, one it doesn't have, or a prompt the project doesn't declare |
 | `cli.api_arguments` | `api` | A `jadpo api` command names no action, one it doesn't have, or more than `update` |
 | `cli.approval_arguments` | `approval` | A `jadpo approval` command is given an argument it doesn't take, names a `--before` git doesn't know, or has nothing to compare with |
+| `cli.batches_arguments` | `batches` | A `jadpo batches` command names an action it doesn't have, no id or an id no batch run has, or a state or page it doesn't list |
 | `cli.build_arguments` | `build` | A `jadpo build` command names a deployable the app doesn't have, or more than one |
 | `cli.calls_arguments` | `calls` | A `jadpo calls` command names an action it doesn't have, a call the log doesn't hold, or an answer without its operation |
 | `cli.check_arguments` | `check` | A `jadpo check` command names a path that isn't there or isn't a `.jadpo` file, or a `--before` git doesn't know |
@@ -4144,6 +4187,7 @@ against one.
 | Rule | Raised by | What it means |
 |---|---|---|
 | `ai.usage_unavailable` | `ai usage` | The app's AI usage couldn't be read from its database, because it can't be reached or has no table for it yet |
+| `batches.unavailable` | `batches` | The app's batch runs couldn't be read or cancelled in their database, because it can't be reached or has no table for them yet |
 | `deliveries.not_found` | `deliveries` | The id given to `jadpo deliveries` matches no delivery or schedule run in the database |
 | `deliveries.unavailable` | `deliveries` | The app's deliveries couldn't be read from their database, because it can't be reached or has no table for them yet |
 | `deliveries.wrong_state` | `deliveries` | A delivery or schedule run was asked to do something its state rules out, such as cancelling one that has already failed |
@@ -4178,7 +4222,7 @@ Each row says what is built and what is specified but not built yet.
 | Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 3) with `durationMs`, project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys, shortened unless `--full` is given; `jadpo test --json` is described in [Testing](13-testing.md) and under `testReport` in `jadpo help --json`. |
 | `build/` | Partly built: `jadpo check` writes `build/manifest.json`, the catalogues in `build/catalogue/`, the permissions, network, provider, personal-data, schema and query reports in `build/report/`, `diagnostics/`, `inventory/`, `audit/` and `compatibility/`, and the monitoring rules in `build/monitoring/`; `jadpo test` keeps its last run in `build/test/`. |
-| Commands | Partly built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe. Not built yet: those in their "Not built yet" notes, `services`, `dev grants`, `files`, `batches`, `search reindex`, `trace`, `traces`, `metrics`, `logs`, `watch`, `call`, `console`, `mcp`, `replay`, `path`, `privacy requests`, `incident` and `test new --from`. |
+| Commands | Partly built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe. Not built yet: those in their "Not built yet" notes, `services`, `dev grants`, `search reindex`, `trace`, `traces`, `metrics`, `logs`, `watch`, `call`, `console`, `mcp`, `replay`, `path`, `privacy requests`, `incident` and `test new --from`. |
 | Language server | Partly built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; the code actions under [Editor support](#editor-support), and records' errors, outline, folding and file links. Not built yet: rename, which is to run [`jadpo rename`](#jadpo-rename)'s code. |
 | VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights code and records, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release to the VS Code Marketplace and Open VSX, which publishes through trusted publishing. |
 | Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; the agent skill is built, with every part [Tools for agents](#tools-for-agents) lists; `jadpo inspect`, `impact`, `rename` and `domain` are built; generated CI is not built yet. |
