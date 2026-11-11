@@ -713,7 +713,10 @@ fn item_json(project: &Project, store: &str, item: &Item) -> Json {
             item.batch.map_or(Json::Null, |counts| {
                 Json::object([
                     ("itemsDone", Json::from(counts.items_done)),
-                    ("estimatedTotal", counts.total.map_or(Json::Null, Json::from)),
+                    (
+                        "estimatedTotal",
+                        counts.total.map_or(Json::Null, Json::from),
+                    ),
                     ("problems", Json::from(counts.problems)),
                 ])
             }),

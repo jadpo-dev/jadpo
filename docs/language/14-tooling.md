@@ -1810,7 +1810,7 @@ reached, read or written, or whose settings have no value here, is
 
 Shows the app's batch runs, its file reads and writes and its
 `batches.each` runs, and stops one
-([Batches](12-jobs-and-events.md#batches-work-over-many-items)). `batch`
+([Batches](12-jobs-and-events.md#batches)). `batch`
 is a synonym, and it takes `--json`.
 
 - `jadpo batches`, or `list`, is a table of the runs kept, those running

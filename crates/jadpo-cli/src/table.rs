@@ -1843,7 +1843,10 @@ pub static COMMANDS: &[Command] = &[
             },
         ],
         arguments_rule: &rule::CLI_BATCHES_ARGUMENTS,
-        raises: &[&rule::BATCHES_UNAVAILABLE, &rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        raises: &[
+            &rule::BATCHES_UNAVAILABLE,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
         run: commands::batches,
     },
     Command {

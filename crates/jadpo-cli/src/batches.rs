@@ -380,7 +380,10 @@ fn locate(
             let suffix = suffix.to_string();
             Box::pin(async move { runtime::find(database, &suffix).await })
         })?;
-        found.extend(runs.into_iter().map(|run| (store.clone(), url.clone(), run)));
+        found.extend(
+            runs.into_iter()
+                .map(|run| (store.clone(), url.clone(), run)),
+        );
     }
     match found.as_slice() {
         [] => Err(Reply::failed(arguments(
@@ -711,8 +714,12 @@ fn list(call: &Call, project: &Project, state: Option<&'static str>, page: u64) 
                 .map(|id| (format!("jadpo batches show {id}"), "lists its problems"))
         })
         .or_else(|| {
-            first(&|run| run.state == RUNNING)
-                .map(|id| (format!("jadpo batches show {id}"), "says when it should finish"))
+            first(&|run| run.state == RUNNING).map(|id| {
+                (
+                    format!("jadpo batches show {id}"),
+                    "says when it should finish",
+                )
+            })
         });
     if let Some((command, reason)) = hint {
         screen.push(Block::hint(command, reason));
@@ -1049,7 +1056,10 @@ mod tests {
             call_words(
                 "action catalogue.export_products from query catalogue.products_for_export writes json_lines ProductExportRow #2"
             ),
-            ("export_products #2".to_string(), "json_lines.write".to_string())
+            (
+                "export_products #2".to_string(),
+                "json_lines.write".to_string()
+            )
         );
     }
 

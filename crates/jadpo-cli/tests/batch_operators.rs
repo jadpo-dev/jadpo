@@ -128,10 +128,7 @@ fn mistakes_on_the_command_line_are_refused_before_any_database_is_read() {
             "`jadpo batches` lists them all, not `4fa2c09e`",
         ),
         (&["batches", "--state", "stuck"], "`stuck` isn't a state"),
-        (
-            &["batches", "--state", "runing"],
-            "`runing` isn't a state",
-        ),
+        (&["batches", "--state", "runing"], "`runing` isn't a state"),
         (&["batches", "--page", "0"], "`0` isn't a page"),
         (
             &["batches", "show", "4fa2c09e", "--state", "failed"],
@@ -232,7 +229,10 @@ fn batch_runs_are_listed_shown_and_cancelled_on_its_stack() {
     assert_eq!(empty.stdout, "✓ No batch run is kept\n");
 
     // Seven products, the fourth with none in stock.
-    for (n, code) in ["p1", "p2", "p3", "p4", "p5", "p6", "p7"].iter().enumerate() {
+    for (n, code) in ["p1", "p2", "p3", "p4", "p5", "p6", "p7"]
+        .iter()
+        .enumerate()
+    {
         let stock = if n == 3 { 0 } else { 5 };
         rt.block_on(call(
             &program,
@@ -343,7 +343,9 @@ fn batch_runs_are_listed_shown_and_cancelled_on_its_stack() {
     // A failed one: why.
     let failed = op(at, &["batches", "show", c]);
     assert!(
-        failed.stdout.contains("  ended     09:25:00 · took 5 min\n"),
+        failed
+            .stdout
+            .contains("  ended     09:25:00 · took 5 min\n"),
         "{}",
         failed.stdout
     );
@@ -397,7 +399,11 @@ fn batch_runs_are_listed_shown_and_cancelled_on_its_stack() {
         retried.stderr
     );
     let dismissed = op(at, &["deliveries", "dismiss", c]);
-    assert_eq!(dismissed.code, 0, "{}{}", dismissed.stdout, dismissed.stderr);
+    assert_eq!(
+        dismissed.code, 0,
+        "{}{}",
+        dismissed.stdout, dismissed.stderr
+    );
     assert_eq!(
         dismissed.stdout,
         format!(
@@ -410,9 +416,9 @@ fn batch_runs_are_listed_shown_and_cancelled_on_its_stack() {
     assert_eq!(calm.stdout, "✓ Nothing needs an operator  1 running\n");
     let set_aside = op(at, &["deliveries", "--state", "dismissed"]);
     assert!(
-        set_aside
-            .stdout
-            .contains(&format!("{c}  batch quick_check  – dismissed  09:30:00 · sam")),
+        set_aside.stdout.contains(&format!(
+            "{c}  batch quick_check  – dismissed  09:30:00 · sam"
+        )),
         "{}",
         set_aside.stdout
     );
@@ -420,7 +426,11 @@ fn batch_runs_are_listed_shown_and_cancelled_on_its_stack() {
     // Cancelled: asked of the run, logged, and the runner stops it at its
     // next batch.
     let cancelled = op(at, &["batches", "cancel", b]);
-    assert_eq!(cancelled.code, 0, "{}{}", cancelled.stdout, cancelled.stderr);
+    assert_eq!(
+        cancelled.code, 0,
+        "{}{}",
+        cancelled.stdout, cancelled.stderr
+    );
     assert_eq!(
         cancelled.stdout,
         format!(
@@ -453,9 +463,9 @@ fn batch_runs_are_listed_shown_and_cancelled_on_its_stack() {
     );
     let stopping = op(at, &["batches", "show", b]);
     assert!(
-        stopping.stdout.contains(
-            "  cancel    asked at 09:30:00 by sam; it stops after the batch in hand\n"
-        ),
+        stopping
+            .stdout
+            .contains("  cancel    asked at 09:30:00 by sam; it stops after the batch in hand\n"),
         "{}",
         stopping.stdout
     );

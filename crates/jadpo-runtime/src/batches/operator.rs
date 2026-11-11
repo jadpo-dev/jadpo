@@ -75,8 +75,8 @@ impl Kept {
         if self.items_done <= 0 || total <= self.items_done || elapsed <= 0 {
             return None;
         }
-        let left = i128::from(total - self.items_done) * i128::from(elapsed)
-            / i128::from(self.items_done);
+        let left =
+            i128::from(total - self.items_done) * i128::from(elapsed) / i128::from(self.items_done);
         let left = i64::try_from(left).ok()?;
         self.stepped_at.checked_add(left)
     }
@@ -101,8 +101,7 @@ pub const LIST: &str = "SELECT \"r\".\"id\", \"r\".\"batch\", \"r\".\"state\", \
 pub const FIND: &str = "SELECT \"r\".\"id\", \"r\".\"batch\", \"r\".\"state\", \"r\".\"items_done\", \"r\".\"problems\", \"r\".\"estimated_total\", \"r\".\"failure\", \"r\".\"started_at\", \"r\".\"stepped_at\", \"r\".\"finished_at\", \"c\".\"requested_at\", \"a\".\"acted_at\", \"a\".\"action\", \"a\".\"operator\", \"a\".\"role\" FROM \"jadpo_batch_runs\" AS \"r\" LEFT JOIN \"jadpo_batch_cancels\" AS \"c\" ON \"c\".\"run_id\" = \"r\".\"id\" LEFT JOIN LATERAL (SELECT \"acted_at\", \"action\", \"operator\", \"role\" FROM \"jadpo_operator_actions\" WHERE \"item\" = \"r\".\"id\" ORDER BY \"acted_at\" DESC, \"id\" DESC LIMIT 1) AS \"a\" ON TRUE WHERE right(replace(\"r\".\"id\"::text, '-', ''), length($1::text)) = $1::text";
 
 /// How many runs are in each state.
-pub const COUNTS: &str =
-    "SELECT \"state\", count(*) FROM \"jadpo_batch_runs\" GROUP BY \"state\"";
+pub const COUNTS: &str = "SELECT \"state\", count(*) FROM \"jadpo_batch_runs\" GROUP BY \"state\"";
 
 /// Run `$1`'s problems in row order, at most `$2` after the first `$3`.
 pub const PROBLEMS_PAGE: &str = "SELECT \"row\", \"column\", \"rule\" FROM \"jadpo_batch_problems\" WHERE \"run_id\" = $1 ORDER BY \"row\" LIMIT $2 OFFSET $3";
@@ -133,7 +132,10 @@ pub async fn list(
 ) -> Result<Vec<Kept>, StoreError> {
     let wanted = SqlValue::Array(
         SqlType::Text,
-        states.iter().map(|s| SqlValue::Text(s.to_string())).collect(),
+        states
+            .iter()
+            .map(|s| SqlValue::Text(s.to_string()))
+            .collect(),
     );
     let rows = database
         .query_once(LIST, &[wanted, SqlValue::Int8(limit)])
@@ -184,7 +186,11 @@ pub async fn problems(
     Ok(rows
         .iter()
         .filter_map(|row| match row.as_slice() {
-            [SqlValue::Int8(n), SqlValue::Text(column), SqlValue::Text(rule)] => Some(Problem {
+            [
+                SqlValue::Int8(n),
+                SqlValue::Text(column),
+                SqlValue::Text(rule),
+            ] => Some(Problem {
                 row: *n,
                 column: column.clone(),
                 rule: rule.clone(),

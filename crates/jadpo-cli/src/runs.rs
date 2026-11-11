@@ -385,7 +385,7 @@ fn unfinished(call: &Call) -> Reply {
     let (command, reason) = match first.kind {
         "batch" => (
             format!("jadpo batches show {id}"),
-            "says when it should finish, to let it before deploying",
+            "says when it should finish, to deploy once it has",
         ),
         _ => (
             format!("jadpo deliveries show {id}"),

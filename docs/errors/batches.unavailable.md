@@ -122,6 +122,11 @@ jadpo batches
 ```
 
 ```text output
+error: The database `main` has no table for batch runs yet
+  reason: `jadpo_batch_runs` comes with the project's migrations, so either the database hasn't applied them, or it isn't this project's database.
+  next: Run `jadpo migrate apply` if it is this project's database, then run the command again (human)
+  rule: batches.unavailable
+  help: https://jadpo.dev/docs/errors/batches.unavailable
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop
@@ -138,6 +143,11 @@ DATABASE_URL=postgresql://localhost:5499/stock jadpo batches
 ```
 
 ```text output
+error: The database `main` can't be reached
+  reason: Connecting to it failed, so no batch runs could be read.
+  next: Check the database is running and its address is right, then run the command again (human)
+  rule: batches.unavailable
+  help: https://jadpo.dev/docs/errors/batches.unavailable
 ```
 
 ## How to fix it
@@ -176,5 +186,5 @@ The command reads that database instead, and leaves the other alone.
 ## Related
 
 - [`jadpo batches`](../language/14-tooling.md#jadpo-batches)
-- [Batches](../language/12-jobs-and-events.md#batches-work-over-many-items)
+- [Batches](../language/12-jobs-and-events.md#batches)
 - [`jadpo migrate`](../language/14-tooling.md#jadpo-migrate)
