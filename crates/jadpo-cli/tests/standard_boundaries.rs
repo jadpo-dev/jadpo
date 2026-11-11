@@ -608,6 +608,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "works out a constant's value at compile time",
     ),
     (
+        "crates/jadpo-check/src/data/queries/kept.rs",
+        "checks which types a query compares as their JSON, by the built-in types their parts are built on; it encodes no value (chunk Q1)",
+    ),
+    (
         "crates/jadpo-check/src/flags.rs",
         "checks a flag's `expires:`, a date read by the contract's own reader (chunk B9)",
     ),
