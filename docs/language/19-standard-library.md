@@ -7192,7 +7192,10 @@ signs them in to all of it. So a call of a provider's operation whose
 input holds one, however deep, is
 [`type.password_sent_to_provider`](../errors/type.password_sent_to_provider.md).
 That covers everything the operation sends, since its body, its path's
-placeholders and its query string are all read from its input.
+placeholders and its query string are all read from its input. An
+`AnyObject` the input holds doesn't say what it holds, so an object holding a
+`Password` is refused where it is given to one, with the same rule
+([Types](11-integrations.md#types)).
 
 ```jadpo check project=e-password-to-provider-area file=app.jadpo hidden
 application {

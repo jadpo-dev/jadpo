@@ -34,7 +34,9 @@
 # emitted as (area 16), their fields in `jadpo-std`'s `audit`.
 # `PersonErased` is the event an erasure emits and `PersonalDataExport`
 # what a person's export gives (area 15), their fields in `jadpo-std`'s
-# `erasure`.
+# `erasure`. `AnyObject` is a provider package's input field that takes
+# any of the app's object types (areas 2 and 11), in `jadpo-std`'s
+# `provider`.
 [types]
 Page Nearest
 File FileContents FileUpload UploadSlot Principal Response Access AiStream
@@ -56,7 +58,7 @@ Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 FieldAccess OnDelete Generated FieldChange EntityChange
 ApiChange PersonalData Erasure SearchLanguage RateLimitKey
 AuditEntry AuditFieldChange AuditEntryRecorded AuditChange AuditBy
-PersonErased PersonalDataExport
+PersonErased PersonalDataExport AnyObject
 
 # Standard-library namespaces and the operations the pages name so far,
 # always called through the namespace (area 10); none waits for a stub

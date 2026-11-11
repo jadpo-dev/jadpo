@@ -663,7 +663,8 @@ test "a body cut into segments" {
 /// databases (chunk B14), and held inside a structured value, a file downloaded and exported (chunks B4 and
 /// B14, `crate::file_downloads`), a file uploaded (chunk B5,
 /// `crate::file_uploads`), files sent as attachments and to a provider
-/// (chunk B14, `crate::file_sends`), and the audit trail (chunk B11,
+/// (chunk B14, `crate::file_sends`), any of the app's objects sent to a
+/// provider (`crate::any_object`), and the audit trail (chunk B11,
 /// `crate::audit`).
 fn parity_projects() -> Vec<(String, PathBuf)> {
     let caught: Vec<(String, String)> = PACKAGE_CAUGHT
@@ -786,6 +787,10 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
         (
             "files sent elsewhere".into(),
             corpus_project(&crate::file_sends::files(), "compiled-file-sends").expect("it checks"),
+        ),
+        (
+            "any of the app's objects sent to a provider".into(),
+            corpus_project(&crate::any_object::files(), "compiled-any-object").expect("it checks"),
         ),
         (
             "a file downloaded".into(),
