@@ -745,8 +745,9 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
     });
     if let Some(store) = releasing.filter(|store| ctx.started().files().keeps(store)) {
         let now = crate::steps::wall(ctx);
+        let started = ctx.started();
         let transaction = ctx.transaction(&store).await?;
-        let released = crate::files::released(transaction, now).await?;
+        let released = crate::files::released(transaction, now, started.files()).await?;
         if let Some(boundary) = ctx.boundary_mut() {
             boundary.releases = false;
             boundary.outbox.extend(released);
