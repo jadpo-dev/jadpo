@@ -609,8 +609,7 @@ impl Body<'_> {
         {
             format!("Write `{name}`'s fields one by one, `{{{{ value.field }}}}`")
         } else {
-            "Format it with `text.format(...)` (area 19), which writes it in the email's locale"
-                .to_string()
+            "Format it with `text.format(...)`, which writes it in the email's locale".to_string()
         };
         Err((format!("this is `{shown}`"), next))
     }
