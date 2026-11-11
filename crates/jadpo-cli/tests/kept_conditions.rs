@@ -12,9 +12,10 @@
 //!   tested `in` a list given as a parameter;
 //! - `none` meeting no comparison but `!=`, `not` keeping that meaning, a
 //!   `where_present:` line applying only when its value is there;
-//! - a list, an object and an enum with data compared as the JSON the
-//!   codec keeps, a variant without data among them, and counted through
-//!   `list.count`;
+//! - a list, an object, an enum with data and a `LocalisedText` compared
+//!   as the JSON the codec keeps, a variant without data among them and a
+//!   map built in another order, and a list counted through `list.count`;
+//! - a `DateRange` compared as PostgreSQL's `daterange`;
 //! - each condition's statement and the index it derives, through `jadpo
 //!   sql`.
 //!
@@ -90,6 +91,8 @@ entity Order {
     tags: List<Tag>
     label: Label
     delivery: Delivery?
+    name: LocalisedText
+    pickup_days: DateRange
 
     policy: {
         read: [Access.public]
@@ -108,7 +111,9 @@ action place(
     month: YearMonth,
     tags: List<Tag>,
     label: Label,
-    delivery: Delivery?
+    delivery: Delivery?,
+    name: LocalisedText,
+    pickup_days: DateRange
 ) -> Order {
     return Order.create {
         set: {
@@ -119,6 +124,8 @@ action place(
             tags: tags
             label: label
             delivery: delivery
+            name: name
+            pickup_days: pickup_days
         }
     }
 }
@@ -236,6 +243,18 @@ const QUERIES: &[(&str, &str, &str, &str)] = &[
         "Order.number asc",
     ),
     (
+        "named",
+        "name: LocalisedText",
+        "where: Order.name == name",
+        "Order.number asc",
+    ),
+    (
+        "collected_over",
+        "days: DateRange",
+        "where: Order.pickup_days == days",
+        "Order.number asc",
+    ),
+    (
         "narrowed",
         "filter: OrderFilter",
         "where_present: Order.total == filter.total",
@@ -286,7 +305,7 @@ fn project(name: &str) -> PathBuf {
 /// the six orders `open_bakery` places.
 const TESTS: &str = r#"use bakery/actions { open_bakery }
 use bakery/entities { Order }
-use bakery/queries { before, by_price, collected, costing, dearer, deposited, everything, from_month, in_euros, in_months, labelled, labelled_any, large_deposit, many_tags, narrowed, no_deposit, not_collected, not_costing, not_dearer, not_deposited, tagged }
+use bakery/queries { before, by_price, collected, collected_over, costing, dearer, deposited, everything, from_month, in_euros, in_months, labelled, labelled_any, large_deposit, many_tags, named, narrowed, no_deposit, not_collected, not_costing, not_dearer, not_deposited, tagged }
 use bakery/types { CakePrice, Deposit, Label, OrderCard, OrderFilter, Tag }
 
 test "an amount of money is compared by its minor units and its currency" {
@@ -349,6 +368,16 @@ test "a value kept as JSON is compared as code compares it" {
     assert list.map(labelled(plain), card -> card.number) == [1, 3, 5]
     assert list.map(labelled_any([noted]), card -> card.number) == [2, 4, 6]
     assert list.map(collected(), card -> card.number) == [1, 4]
+    // A map's keys are kept in their canonical order, however it was built.
+    var french: LocalisedText = LocalisedText(map.with([], Locale.fr_fr, "Pain de seigle"))
+    var bilingual: LocalisedText = LocalisedText(map.with(french, Locale.en_gb, "Rye loaf"))
+    assert list.map(named(bilingual), card -> card.number) == [1, 3, 6]
+    assert list.map(named(french), card -> card.number) == [4]
+    var christmas: DateRange = DateRange {
+        start: "2026-12-24"
+        end: "2026-12-26"
+    }
+    assert list.map(collected_over(christmas), card -> card.number) == [1, 4, 5]
     // An order with no delivery meets `!=`, as `none != Delivery.pickup`.
     assert list.map(not_collected(), card -> card.number) == [2, 3, 5, 6]
 }
@@ -366,7 +395,8 @@ test "a where_present line applies only when its value is there" {
 "#;
 
 /// Six orders: totals around £42.50, deposits in pounds and euros and
-/// none, months either side of New Year, tags, labels and deliveries.
+/// none, months either side of New Year, tags, labels, deliveries, names
+/// in one language or two, and the days they are collected over.
 const OPEN: &str = r#"use bakery/actions { place }
 use bakery/entities { Order }
 use bakery/types { CakePrice, Delivery, Deposit, Label }
@@ -384,12 +414,23 @@ action open_bakery() -> List<Order.id> {
     var swift: Delivery = Delivery.courier {
         company: "Swift"
     }
-    var one: Order = place(1, CakePrice(money.from_minor(4250, Currency.gbp)), Deposit(money.from_minor(1000, Currency.gbp)), "2026-11", ["birthday"], plain, Delivery.pickup)
-    var two: Order = place(2, CakePrice(money.from_minor(4250, Currency.gbp)), Deposit(money.from_minor(1000, Currency.eur)), "2026-12", ["birthday", "chocolate"], noted, swift)
-    var three: Order = place(3, CakePrice(money.from_minor(4249, Currency.gbp)), none, "2027-01", [], plain, none)
-    var four: Order = place(4, CakePrice(money.from_minor(9900, Currency.gbp)), Deposit(money.from_minor(500, Currency.eur)), "2027-02", ["chocolate", "birthday"], noted, Delivery.pickup)
-    var five: Order = place(5, CakePrice(money.from_minor(0, Currency.gbp)), none, "2027-03", ["birthday"], plain, swift)
-    var six: Order = place(6, CakePrice(money.from_minor(12000, Currency.gbp)), Deposit(money.from_minor(2000, Currency.gbp)), "2026-12", ["chocolate"], noted, none)
+    var french: LocalisedText = LocalisedText(map.with([], Locale.fr_fr, "Pain de seigle"))
+    var english: LocalisedText = LocalisedText(map.with([], Locale.en_gb, "Rye loaf"))
+    var both: LocalisedText = LocalisedText(map.with(english, Locale.fr_fr, "Pain de seigle"))
+    var christmas: DateRange = DateRange {
+        start: "2026-12-24"
+        end: "2026-12-26"
+    }
+    var new_year: DateRange = DateRange {
+        start: "2026-12-31"
+        end: "2027-01-01"
+    }
+    var one: Order = place(1, CakePrice(money.from_minor(4250, Currency.gbp)), Deposit(money.from_minor(1000, Currency.gbp)), "2026-11", ["birthday"], plain, Delivery.pickup, both, christmas)
+    var two: Order = place(2, CakePrice(money.from_minor(4250, Currency.gbp)), Deposit(money.from_minor(1000, Currency.eur)), "2026-12", ["birthday", "chocolate"], noted, swift, english, new_year)
+    var three: Order = place(3, CakePrice(money.from_minor(4249, Currency.gbp)), none, "2027-01", [], plain, none, both, new_year)
+    var four: Order = place(4, CakePrice(money.from_minor(9900, Currency.gbp)), Deposit(money.from_minor(500, Currency.eur)), "2027-02", ["chocolate", "birthday"], noted, Delivery.pickup, french, christmas)
+    var five: Order = place(5, CakePrice(money.from_minor(0, Currency.gbp)), none, "2027-03", ["birthday"], plain, swift, english, christmas)
+    var six: Order = place(6, CakePrice(money.from_minor(12000, Currency.gbp)), Deposit(money.from_minor(2000, Currency.gbp)), "2026-12", ["chocolate"], noted, none, both, new_year)
     return [one.id, two.id, three.id, four.id, five.id, six.id]
 }
 "#;

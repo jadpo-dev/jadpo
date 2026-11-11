@@ -96,7 +96,13 @@ impl Reader<'_> {
                     );
                     return false;
                 }
-                if matches!(value, Value::Variant { .. }) {
+                // A standard type's value is given, never an enum value.
+                let variant = |value: &Value| matches!(value, Value::Variant { .. });
+                let given_variant = match value {
+                    Value::List(items) => items.iter().any(variant),
+                    value => variant(value),
+                };
+                if given_variant {
                     self.value_unsupported(scope, whole);
                     return false;
                 }
