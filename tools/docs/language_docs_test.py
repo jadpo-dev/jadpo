@@ -869,6 +869,76 @@ class WhatAnAgentIsToldToRead(unittest.TestCase):
         self.assertEqual(self.problems(skill='https://jadpo.dev/docs/errors/<rule>.md, https://jadpo.dev/v/<version>/docs/index.json\n'), [])
 
 
+class WhatTheSkillTellsAnAgentToRun(unittest.TestCase):
+    """Every `jadpo` command the agent skill names is one `jadpo help --json`
+    lists, and so is the action it names of a command that takes one
+    (docs/documentation.md, "The agent skill")."""
+
+    COMMANDS = [
+        {'name': 'check', 'synonyms': [], 'arguments': [{'name': 'path', 'kind': 'path', 'values': []}]},
+        {'name': 'impact', 'synonyms': [], 'arguments': [{'name': 'name', 'kind': 'declaration', 'values': []}]},
+        {'name': 'config', 'synonyms': [], 'arguments': [
+            {'name': 'action', 'kind': 'choice', 'values': [{'name': 'check'}, {'name': 'move'}]}]},
+        {'name': 'fmt', 'synonyms': ['format'], 'arguments': []},
+    ]
+
+    def problems(self, skill):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / docs.SKILL).parent.mkdir(parents=True)
+            (root / docs.SKILL).write_text(skill)
+            return docs.skill_command_problems(self.COMMANDS, root)
+
+    def test_commands_and_actions_it_has_pass(self):
+        self.assertEqual(self.problems('Run `jadpo check --json`, then `jadpo impact <name>`, '
+                                       '`jadpo config move <constant>` and `jadpo format`.\n'
+                                       'When jadpo check reports an error, in an app.jadpo file.\n'), [])
+
+    def test_a_command_it_doesnt_have_is_a_problem(self):
+        problems = self.problems('Run `jadpo reach <name>`.\n')
+        self.assertEqual(len(problems), 1)
+        self.assertIn('jadpo reach', problems[0])
+        self.assertIn(':1:', problems[0])
+
+    def test_an_action_a_command_doesnt_have_is_a_problem(self):
+        problems = self.problems('Move it with `jadpo config shift <constant>`.\n')
+        self.assertEqual(len(problems), 1)
+        self.assertIn('jadpo config shift', problems[0])
+
+    def test_without_the_commands_nothing_is_checked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / docs.SKILL).parent.mkdir(parents=True)
+            (root / docs.SKILL).write_text('`jadpo reach`\n')
+            self.assertEqual(docs.skill_command_problems([], root), [])
+
+
+class TheSkillsParts(unittest.TestCase):
+    """The repository's agent skill carries what area 14, "Tools for
+    agents", says it tells an agent."""
+
+    def section(self, heading):
+        skill = (docs.ROOT / docs.SKILL).read_text()
+        self.assertIn(f'\n## {heading}\n', skill, f'no "{heading}" section')
+        return skill.split(f'\n## {heading}\n', 1)[1].split('\n## ', 1)[0]
+
+    def test_it_says_to_read_the_catalogues_and_run_impact_first(self):
+        part = self.section('Before you add or change code')
+        for text in ('build/catalogue/libraries.md', 'build/catalogue/failures.md', 'jadpo impact <name>'):
+            self.assertIn(text, part)
+
+    def test_it_gives_the_routine_for_parallel_workspaces(self):
+        routine = self.section('Working beside other agents')
+        steps = [routine.find(text) for text in ('Merge `main`', '`jadpo check', 'then push')]
+        self.assertNotIn(-1, steps, routine)
+        self.assertEqual(steps, sorted(steps), 'merge main, then check, then push')
+
+    def test_it_gives_the_rule_for_a_fixed_value(self):
+        rule = self.section('A fixed value')
+        for text in ('config.jadpo', '`constant`', '`default:`', 'jadpo config move <constant>'):
+            self.assertIn(text, rule)
+
+
 class WhatAnAgentReadsOnce(unittest.TestCase):
     """The primer as the bundle gives it, and the repository's llms.txt, stay
     inside the budget (agent_guidance.READ_ONCE_TOKENS)."""

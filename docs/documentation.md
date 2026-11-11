@@ -364,11 +364,19 @@ as pages of kind `guide`, so the site keeps no task list of its own.
 `docs/agent-skill/SKILL.md` is a skill in the standard `SKILL.md` format,
 for a coding agent that writes Jadpo apps (it does not cover changing
 Jadpo). Its front matter has a `name`, `jadpo`, and a one-line
-`description`; its body tells the agent to read the primer and `llms.txt`
-first, find pages through a guide or a group of the reference, run
-`jadpo check --json` and `jadpo test --json`, read the error document and what `(agent)` and
-`(human)` mean, and report a bug in Jadpo through the user, as "Using
-Jadpo" in `AGENTS.md` says. It is versioned with the language: a release's
+`description`. Its body tells the agent to read the primer and `llms.txt`
+first and find pages through a guide or a group of the reference; to read
+the catalogues before adding code and run `jadpo impact` before changing
+anything shared; to run `jadpo check --json` and `jadpo test --json` and
+read the error document and what `(agent)` and `(human)` mean; to make a
+fixed value a constant or a setting, never both; to merge `main` and check
+before pushing when agents work in parallel; and to report a bug in Jadpo
+through the user, as "Using Jadpo" in `AGENTS.md` says ([Tools for
+agents](language/14-tooling.md#tools-for-agents)).
+
+Every `jadpo` command the skill names is one `jadpo help --json` lists,
+and so is the action it names of a command that takes one: the docs check
+confirms both. The skill is versioned with the language: a release's
 bundle holds the skill of that release. Its links are full URLs, because
 the bundle's text is served as it is.
 
