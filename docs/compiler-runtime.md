@@ -896,6 +896,20 @@ graph gives a query a `reads` edge to its entity, an `includes` edge to
 each entity it includes and a `raises` edge to its `missing:` failure; a
 body calling `Entity.get` gets a `reads` edge too.
 
+**The schema and query reports** (areas 5, 6 and 14). The index a read
+needs and the key or index that serves it come from one rule in
+`jadpo_check::data::report` (`wanted_columns`, `serving`), which the
+derived indexes and the reports both call, so a report never names an
+index the schema doesn't hold. `report::reads` gives each statement each
+query sends with its rows and index, and `report::database` the schema
+report. The query report (`jadpo-cli`'s `query_report`) adds what only
+the plan knows: each action's query calls, by site, and the reads a
+request sends, summed through the actions it calls. `jadpo_graph::views`
+writes `inventory/`, `audit/` and `compatibility/` from the manifest's
+own entries (`node_json`). `jadpo sql --explain` plans each statement on
+a copy `jadpo_test::database::TestDatabases` makes, through
+`Postgres::explain` (generic plan, no costs).
+
 **Outside, access and services** (areas 8, 10, 11 and 12). A package's
 declarations are its files' parts: a `package` node for its index, keyed
 by the name its declarations are written through (`package SwiftCouriers`,

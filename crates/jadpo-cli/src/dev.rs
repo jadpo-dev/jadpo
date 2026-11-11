@@ -1339,6 +1339,13 @@ pub(crate) fn prepare(
         .then(|| jadpo_check::policy::report::report(db, project));
     let mut surfaces = crate::derived::surfaces(db, project);
     surfaces.extend(crate::derived::network(db, project));
+    if errors == 0 {
+        surfaces.extend(crate::derived::database_and_queries(db, project, graph));
+    } else {
+        crate::derived::remove_database_and_queries(root);
+    }
+    surfaces.extend(crate::derived::views(graph));
+    surfaces.push(crate::derived::diagnostics(db, project, &diagnostics));
     if let Some(rules) = crate::derived::monitoring(db, project) {
         crate::derived::remove_stale_monitoring(root, &rules);
         surfaces.extend(rules);

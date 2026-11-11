@@ -815,6 +815,15 @@ the failure its `conflict:` arm names, the not-found failure, or a fault.
 For a transition whose `when:` can refuse a record, it also prints the
 statement that asks when no row changed.
 
+With `--explain`, it also shows PostgreSQL's plan for each statement of a
+query, under that statement's fields: the generic plan, made for any
+values, as a fixed statement is run with, and without costs. It plans
+them on a disposable database at the latest migration, as `jadpo test`
+makes one, never on your app's own database, so the plan is for an empty
+table. An action's writes find their record by a key, so they have no
+plan to show. A database it can't make is
+[`cli.sql_explain_unavailable`](../errors/cli.sql_explain_unavailable.md).
+
 Tab completes the project's queries and actions. Run without one, it
 fails and lists them.
 
@@ -852,9 +861,7 @@ each prompt and model, and a footer that fails once the day's tokens are
 spent. The database is the one its connection's setting names, a running
 `jadpo dev`'s, or `--url`'s. One it can't read is `ai.usage_unavailable`.
 
-Not built yet: `jadpo sql` for SQLite, which comes with a SQLite store,
-and `jadpo sql --explain`, which runs the statement on a disposable
-database and shows the plan. The flag says `toolchain.not_built_yet`.
+Not built yet: `jadpo sql` for SQLite, which comes with a SQLite store.
 
 ## Commands for the database, settings and translations
 <!-- topic: commands-for-the-database-settings-and-translations -->
@@ -2399,17 +2406,17 @@ build/
     libraries.md              every library function and constant: signature or type and value, description, callers or readers
     failures.md               every failure: code, kind, status, client fields
   report/
-    database.md               every table, column and index, with the query that needs it
-    queries.md                each query call: store or cache, row bound, queries per request
+    database.md               every table, column and index, with the queries that read it
+    queries.md                each statement's rows and index, each query call, queries per request
     permissions.md            who can do what to every entity and field, and the actions listed apart
-  diagnostics/                the error catalogue
-  inventory/                  routes and callables
-  audit/                      failures, entities, transactions, configuration, policy
+  diagnostics/errors.json     the error catalogue: every error the last check found
+  inventory/                  routes.json and callables.json
+  audit/                      failures, entities, transactions, configuration and policy, as .json
   openapi/openapi.json
   monitoring/
     prometheus.yaml           alerting rules for each threshold judged across requests, and each disk floor
     openslo.yaml              an OpenSLO objective for each percentile and server-failure limit
-  compatibility/              public failure codes
+  compatibility/              public-failure-codes.json
   before/<commit>/            the before side's manifest and declines (jadpo approval only)
   review/                     approval.md and approval.json (jadpo approval only)
   rust/                       a deployable's Rust and cargo's builds of it (jadpo build only)
@@ -2428,12 +2435,49 @@ Each report is written as Markdown, which an agent can search, with a
 [Reads and writes](06-reads-and-writes.md), and is kept beside the schema
 report because a reviewer reads them together.
 
+- **The schema report** (`database.md`) lists each store's tables, each
+  with its columns (type, whether it may be empty, and the field it
+  holds) and its keys and indexes, each saying why it exists and which
+  statements it serves. Jadpo's own tables are named in one line; their
+  columns are in `database.json`.
+- **The query report** (`queries.md`) lists first any statement no key or
+  index serves, which reads every record of its table. Then each
+  statement a query sends, with the entity it reads, its store, the most
+  rows it returns and the key or index it reads; each place a query is
+  called, with where it reads from; and the most queries one request or
+  run of each route, action, schedule and subscriber sends. That count is
+  each query with one more for each include, and each `get` and
+  `history`, along every branch and through every action it calls. No
+  read sits in a loop, so a request never sends more. Writes aren't
+  counted. It is where a threshold's `queries:` starts
+  ([Setting and changing them](16-built-in-services.md#setting-and-changing-them)).
+
+Both are written once the project checks without errors, and removed
+while it has some, so neither says less than the code does.
+
+The folders beside them are JSON for tools, each made of the manifest's
+own entries, and written whether or not there are errors:
+
+- `diagnostics/errors.json`: every error the last check found, each as
+  `jadpo check --json --full` gives it, so an agent reads them without
+  running the check again.
+- `inventory/`: `routes.json`, every API, route and generated route, and
+  `callables.json`, every function, action, query, fixture, schedule and
+  subscriber.
+- `audit/`: `failures.json`, each failure with its fields and what
+  raises it; `entities.json`, each entity with everything declared under
+  it; `transactions.json`, each action's isolation level, writes, events
+  and calls; `configuration.json`, each setting and connection with what
+  uses it; and `policy.json`, who can sign in, tenancy, grants and the
+  actions listed apart.
+- `compatibility/public-failure-codes.json`: each failure a route can
+  answer with, by code, with its status, message, client fields and the
+  routes ([Failures](04-failures.md)). Jadpo's own codes, such as
+  `invalid_input`, are the language's and aren't listed.
+
 `jadpo check` also writes the monitoring rules to `build/monitoring/`
 once the thresholds read cleanly
 ([Monitoring](16-built-in-services.md#monitoring)).
-
-Not built yet: the schema report ([Entities, stores and migrations](05-data.md)) and the query report,
-and the `diagnostics/`, `inventory/`, `audit/` and `compatibility/` folders.
 
 ## Tools for agents
 <!-- topic: tools-for-agents -->
@@ -2458,8 +2502,8 @@ before it changes something shared, it asks what the change reaches.
 - **The failure catalogue** (`build/catalogue/failures.md`): every failure
   with its code, kind, status and client fields.
 - **The schema and query reports** (`build/report/`): every table, column
-  and index with the query that needed it, and each query call's store,
-  row bound and query count.
+  and index with the queries that read it, and each statement's rows and
+  index, each query call and the queries each request sends.
 - **`jadpo inspect`**: the project map, or one declaration with its
   fields, signature and edges ([`jadpo inspect`](#jadpo-inspect)).
 - **`jadpo impact <name>`**: what a change to a declaration reaches: the
@@ -2498,8 +2542,8 @@ before it changes something shared, it asks what the change reaches.
   what generates a project's CI (`jadpo new` creates none); whatever does
   must follow this.
 
-Not built yet: the schema and query reports, and generated CI. The
-catalogues, the similar-helper check, `jadpo inspect`, `jadpo impact`,
+Not built yet: generated CI. The catalogues, the schema and query
+reports, the similar-helper check, `jadpo inspect`, `jadpo impact`,
 `jadpo rename`, the `jadpo domain` commands and the agent skill are built.
 
 ## Suggestions
@@ -4071,6 +4115,7 @@ yet, or that other commands replace.
 | `cli.seed_arguments` | `seed` | A `jadpo seed` command names no seed, one the project doesn't have, or more than one |
 | `cli.signal_handler_failed` | any command | Shutdown handler could not be installed |
 | `cli.sql_arguments` | `sql` | A `jadpo sql` command names no query or action, one the project doesn't declare, or an action that writes nothing |
+| `cli.sql_explain_unavailable` | `sql --explain` | A `jadpo sql --explain` command can't make the disposable database it plans a query's statements on |
 | `cli.suggest_arguments` | `suggest` | A `jadpo suggest` command names an action it doesn't have, or a suggestion the last scan didn't find |
 | `cli.test_arguments` | `test` | A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use, or asks for `--affected` with nothing to compare with or `--interactive` where it can't open |
 | `cli.toolchain_arguments` | `toolchain` | A `jadpo toolchain` command names an action it doesn't have, or a release that isn't kept |
@@ -4129,7 +4174,7 @@ Each row says what is built and what is specified but not built yet.
 | Formatter | Built: one member per line, one blank line between declarations, and `fmt --check` counts the files it read; it keeps `use` lines at the top, sorted, fixes imports inside a project, `--layout` makes promotion moves, and it writes each file's declarations before their use, the primary declaration last. |
 | Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 3) with `durationMs`, project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys, shortened unless `--full` is given; `jadpo test --json` is described in [Testing](13-testing.md) and under `testReport` in `jadpo help --json`. |
-| `build/` | Partly built: `jadpo check` writes `build/manifest.json`, the catalogues in `build/catalogue/`, the permissions, network, provider and personal-data reports in `build/report/` and the monitoring rules in `build/monitoring/`; `jadpo test` keeps its last run in `build/test/`. Not built yet: the schema and query reports, and `diagnostics/`, `inventory/`, `audit/` and `compatibility/`. |
+| `build/` | Partly built: `jadpo check` writes `build/manifest.json`, the catalogues in `build/catalogue/`, the permissions, network, provider, personal-data, schema and query reports in `build/report/`, `diagnostics/`, `inventory/`, `audit/` and `compatibility/`, and the monitoring rules in `build/monitoring/`; `jadpo test` keeps its last run in `build/test/`. |
 | Commands | Partly built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe. Not built yet: those in their "Not built yet" notes, `services`, `dev grants`, `files`, `batches`, `search reindex`, `trace`, `traces`, `metrics`, `logs`, `watch`, `call`, `console`, `mcp`, `replay`, `path`, `privacy requests`, `incident` and `test new --from`. |
 | Language server | Partly built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; and the code actions under [Editor support](#editor-support). Not built yet: rename, which is to run [`jadpo rename`](#jadpo-rename)'s code. |
 | VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release to the VS Code Marketplace and Open VSX, which publishes through trusted publishing. |

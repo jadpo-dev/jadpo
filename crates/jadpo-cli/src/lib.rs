@@ -63,6 +63,7 @@ mod package_release;
 mod package_search;
 mod privacy;
 mod provider_review;
+mod query_report;
 mod records;
 mod registry;
 mod releases;

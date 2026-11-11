@@ -694,6 +694,56 @@ impl Postgres {
                 .map_err(|error| store_error(&error))
         })
     }
+
+    /// PostgreSQL's plan for `sql`, whose parameters have the column types
+    /// `types`, one line each (area 14, `jadpo sql --explain`): the generic
+    /// plan, made for any values, as a fixed statement is run with, and
+    /// without costs, which change with the server and its statistics. On
+    /// a connection of its own, so the prepared statement and the setting
+    /// go with it; nothing runs, since `EXPLAIN` without `ANALYZE` only
+    /// plans.
+    pub fn explain<'a>(
+        &'a self,
+        sql: &'a str,
+        types: &'a [String],
+    ) -> LocalFuture<'a, Result<Vec<String>, StoreError>> {
+        Box::pin(async move {
+            let (client, _) = self.pool.connect().await?;
+            let failed = |error: tokio_postgres::Error| match error.as_db_error() {
+                Some(db) => StoreError::Fault(db.message().to_string()),
+                None => store_error(&error),
+            };
+            let typed = if types.is_empty() {
+                String::new()
+            } else {
+                format!("({})", types.join(", "))
+            };
+            client
+                .batch_execute(&format!(
+                    "SET plan_cache_mode = force_generic_plan; PREPARE jadpo_explained{typed} AS {sql}"
+                ))
+                .await
+                .map_err(failed)?;
+            let values = if types.is_empty() {
+                String::new()
+            } else {
+                format!("({})", vec!["NULL"; types.len()].join(", "))
+            };
+            let rows = client
+                .simple_query(&format!(
+                    "EXPLAIN (COSTS OFF) EXECUTE jadpo_explained{values}"
+                ))
+                .await
+                .map_err(failed)?;
+            Ok(rows
+                .iter()
+                .filter_map(|message| match message {
+                    tokio_postgres::SimpleQueryMessage::Row(row) => row.get(0).map(str::to_string),
+                    _ => None,
+                })
+                .collect())
+        })
+    }
 }
 
 impl Database for Postgres {

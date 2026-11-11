@@ -317,9 +317,10 @@ view them in whatever tool your team already uses.
 ### What gets flagged
 
 A request that runs several queries for one call, or runs a query with no
-index to use, is flagged on its line. These are the same problems the
-query report flags, the report `jadpo check` writes to `build/report/`
-([Tools for agents](14-tooling.md#tools-for-agents)).
+index to use, is flagged on its line. The query report, which `jadpo
+check` writes to `build/report/`, flags a statement no index serves before
+anything runs, and counts the queries each request can send
+([The `build/` folder](14-tooling.md#the-build-folder)).
 
 ### Provider calls in the timeline
 
