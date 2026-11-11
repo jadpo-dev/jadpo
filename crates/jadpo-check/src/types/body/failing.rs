@@ -205,6 +205,7 @@ impl Body<'_> {
                 | Reach::Batch(_)
                 | Reach::Files(..)
                 | Reach::AdvanceClock
+                | Reach::FixtureFile { .. }
                 | Reach::Translation { .. }
                 | Reach::Prompt(_),
             ) => Fallible::Never,

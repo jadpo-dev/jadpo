@@ -228,6 +228,30 @@ pub const DELETE: &str = "delete";
 /// the runtime sends any of them, and no file's key can name one.
 pub const LIST: &str = "list";
 
+/// The capability's operation that lists what a store keeps, for `jadpo
+/// files` (area 14; area 16, "The disk driver"): its input is
+/// `{ after }`, a key or empty text, and it answers [`FILE_KEYS`], at most
+/// [`KEYS_PAGE`] of the keys after it, in order, each with its size: every
+/// file's key [`key_for`] made and every key of the erasure log
+/// ([`is_listed`]), never an upload still waiting or a store's own files.
+/// `next` is where the following page starts, `none` after the last.
+pub const KEYS: &str = "keys";
+
+/// What [`KEYS`] answers: `{ keys: List<{ key, size }>, next: Text? }`.
+pub const FILE_KEYS: &str = "FileKeys";
+
+/// One key [`KEYS`] lists, with its size in bytes.
+pub const FILE_KEY: &str = "FileKey";
+
+/// The most keys one [`KEYS`] answers.
+pub const KEYS_PAGE: usize = 1000;
+
+/// Whether `key` is one [`KEYS`] lists and `jadpo files copy` copies: a
+/// file's, or the erasure log's (area 15, "What erasure doesn't rewrite").
+pub fn is_listed(key: &str) -> bool {
+    is_key(key) || crate::erasure::log_key_parts(key).is_some()
+}
+
 /// The capability's operation that says what an upload left under a key
 /// (area 16, "Uploading"): its input is `{ key }`, and it answers with a
 /// [`UPLOADED`] of the file's size, hash, name, the type the client claimed
@@ -494,6 +518,81 @@ impl FilesPlan {
 /// The failure a put answers when its store has no room (area 16, "The
 /// disk driver").
 pub const STORAGE_FULL: &str = "storage_full";
+
+/// `fixture_file("customers.csv", store: imports)` in a test (area 13,
+/// "Files"): a real file from the test's domain's [`FIXTURE_FOLDER`],
+/// kept in the test's in-memory store as a stored `File`.
+pub const FIXTURE_FILE: &str = "fixture_file";
+
+/// The folder of a domain a test's fixture files are read from:
+/// `domains/<domain>/fixtures/files/`.
+pub const FIXTURE_FOLDER: &str = "fixtures/files";
+
+/// The `FileType` variant of a fixture file named `name`, from what its
+/// name ends in (`customers.csv` is `csv`, `photo.jpg` is `jpeg`), or
+/// `None` for an ending no `FileType` has.
+pub fn fixture_type(name: &str) -> Option<&'static str> {
+    let (_, ending) = name.rsplit_once('.')?;
+    let ending = ending.to_ascii_lowercase();
+    let variant = match ending.as_str() {
+        "jpg" => "jpeg",
+        "jsonl" => "json_lines",
+        other => other,
+    };
+    crate::standard::FILE_TYPES
+        .iter()
+        .find(|(name, _)| *name == variant)
+        .map(|(name, _)| *name)
+}
+
+/// Whether `name` names a file below a fixture folder: one or more parts
+/// split by `/`, none empty, none `.` or `..` and none starting with a dot,
+/// so it never names a file outside the folder or one a project doesn't
+/// hold.
+pub fn is_fixture_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.contains('\\')
+        && name
+            .split('/')
+            .all(|part| !part.is_empty() && !part.starts_with('.'))
+}
+
+/// What a test's `fakes:` tells a store of files to answer, written
+/// `fakes: { imports: unavailable }` (area 13, "Files"): every call the
+/// store is sent answers `unavailable`, or every write `storage_full`,
+/// for the rest of the test. The operation it is scripted as is
+/// [`WHOLE_STORE`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum StoreFails {
+    /// The store can't be reached: every read and every write answers
+    /// `unavailable`.
+    Unavailable,
+    /// The store has no room: every write answers `storage_full`, and
+    /// reads go on.
+    StorageFull,
+}
+
+impl StoreFails {
+    pub const ALL: [StoreFails; 2] = [StoreFails::Unavailable, StoreFails::StorageFull];
+
+    /// As a test writes it.
+    pub fn word(self) -> &'static str {
+        match self {
+            StoreFails::Unavailable => "unavailable",
+            StoreFails::StorageFull => STORAGE_FULL,
+        }
+    }
+
+    pub fn named(word: &str) -> Option<StoreFails> {
+        StoreFails::ALL
+            .into_iter()
+            .find(|fails| fails.word() == word)
+    }
+}
+
+/// The operation a store's `fakes:` entry is scripted as: the store as a
+/// whole, not one of its operations.
+pub const WHOLE_STORE: &str = "";
 
 /// The failure a read answers when its store holds no bytes under the key.
 pub const NOT_FOUND: &str = "not_found";

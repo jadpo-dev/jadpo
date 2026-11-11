@@ -240,6 +240,9 @@ fn name_ref_use(node: &SyntaxNode) -> Option<(String, Role, u32, u32)> {
         // A file helper's write names the store of files it writes to,
         // a connection, as its first argument (chunk 6.4b2).
         ARG if !upper && writes_to(&parent) => Role::Qualifier,
+        // A test's fixture file names the store it keeps the file in
+        // (area 13, "Files").
+        ARG if !upper && fixture_store(&parent) => Role::Qualifier,
         _ if upper => Role::Type,
         _ => return None,
     };
@@ -276,12 +279,51 @@ fn writes_to(arg: &SyntaxNode) -> bool {
         .any(|format| written == format!("{}.write", format.namespace()))
 }
 
+/// Whether `arg` is `store:` in `fixture_file(..., store: imports)`.
+fn fixture_store(arg: &SyntaxNode) -> bool {
+    let named_store = arg
+        .children()
+        .find(|child| child.kind() == NAME)
+        .is_some_and(|name| name.text() == "store");
+    named_store
+        && arg
+            .parent()
+            .filter(|list| list.kind() == ARG_LIST)
+            .and_then(|list| list.parent())
+            .filter(|call| call.kind() == CALL_EXPR)
+            .and_then(|call| call.first_child())
+            .is_some_and(|callee| {
+                callee.kind() == NAME_REF && callee.text() == jadpo_std::files::FIXTURE_FILE
+            })
+}
+
+/// Whether `key` is a store of files' line under a test's `fakes:`,
+/// `imports: unavailable`: its one name is a connection's.
+fn store_told(key: &SyntaxNode) -> bool {
+    key.parent()
+        .filter(|member| member.kind() == MEMBER)
+        .and_then(|member| member.parent())
+        .filter(|list| list.kind() == MEMBER_LIST)
+        .and_then(|list| list.parent())
+        .filter(|fakes| fakes.kind() == MEMBER)
+        .and_then(|fakes| fakes.children().find(|child| child.kind() == MEMBER_KEY))
+        .is_some_and(|fakes| fakes.text() == "fakes")
+}
+
 /// A dotted member key, `Todo.priority: ...`: its first name.
 fn member_key_use(node: &SyntaxNode) -> Option<(String, Role, u32, u32)> {
     let names: Vec<SyntaxNode> = node
         .children()
         .filter(|child| child.kind() == NAME)
         .collect();
+    if let [only] = names.as_slice()
+        && store_told(node)
+    {
+        let (name, start, end) = named(only)?;
+        if !starts_upper(&name) && name != jadpo_std::standard::ai::AI {
+            return Some((name, Role::Qualifier, start, end));
+        }
+    }
     if let [only] = names.as_slice()
         && listed_action(node)
     {

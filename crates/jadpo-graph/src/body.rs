@@ -656,6 +656,17 @@ pub enum Callee {
         /// `bookings.create`.
         operation: String,
     },
+    /// `fixture_file("customers.csv", store: imports)` in a test (area 13,
+    /// "Files"): the file at `path` in the project, below the test's
+    /// domain's `fixtures/files/`, kept in the test's store for the
+    /// `files` connection `store` as a `File` of `FileType` variant
+    /// `file_type`, named `name`, as written.
+    FixtureFile {
+        store: String,
+        path: String,
+        file_type: String,
+        name: String,
+    },
     /// What an email's HTML template writes out, escaped (area 16,
     /// "Email"): never written in source, but made for each `{{ value }}`
     /// that isn't `Html`.
@@ -700,6 +711,7 @@ impl Callee {
             | Callee::AiFake { .. }
             | Callee::AiRequests { .. }
             | Callee::OperationRequests { .. }
+            | Callee::FixtureFile { .. }
             | Callee::Escape
             | Callee::Unknown => None,
         }

@@ -529,6 +529,10 @@ const BODY: &[&str] = &[
     "call provider operation",
     "call package action",
     "script a provider's fake",
+    // A test's store of files told to fail, and its fixture files (area
+    // 13, "Files").
+    "tell a store of files to fail",
+    "keep a fixture file in a test",
     "include an email partial",
     "read the emails a test sent",
     "advance the test clock",
@@ -917,7 +921,13 @@ fn body_features(
                         },
                         Callee::Provider { .. } => "call provider operation",
                         Callee::PackageAction { .. } => "call package action",
+                        Callee::Fake { operation, .. }
+                            if operation == jadpo_std::files::WHOLE_STORE =>
+                        {
+                            "tell a store of files to fail"
+                        }
                         Callee::Fake { .. } => "script a provider's fake",
+                        Callee::FixtureFile { .. } => "keep a fixture file in a test",
                         Callee::AdvanceClock => "advance the test clock",
                         Callee::Schedule { .. } => "run a schedule in a test",
                         Callee::Translation(_) => "call translation",

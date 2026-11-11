@@ -168,7 +168,7 @@ impl Body<'_> {
     }
 
     /// A writer's store: the name of a connection that keeps files.
-    fn write_store(&mut self, store: &Expr, written: &str) {
+    pub(super) fn write_store(&mut self, store: &Expr, written: &str) {
         let connections = crate::data::connections(self.db, self.project);
         let (shown, what) = match store {
             Expr::NameRef(name) => {

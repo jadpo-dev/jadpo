@@ -176,6 +176,8 @@ rules! {
         "The app couldn't start under `jadpo dev`, usually because another program is using its port, it has no database to run on, or a connection would call a provider's live API";
     CLI_EMAIL_ARGUMENTS: "cli.email_arguments", area 14, Error, Agent,
         "A `jadpo email` command names an action it doesn't have, or a mail or link the dev inbox doesn't hold";
+    CLI_FILES_ARGUMENTS: "cli.files_arguments", area 14, Error, Agent,
+        "A `jadpo files` command names an action it doesn't have, a store the app doesn't keep files in, a file the store doesn't hold, or a local file it can't use";
     CLI_FIX_ARGUMENTS: "cli.fix_arguments", area 14, Error, Agent,
         "A `jadpo fix` command names a declaration with nothing to fix, or a fix it doesn't have";
     CLI_FLAGS_ARGUMENTS: "cli.flags_arguments", area 14, Error, Agent,
@@ -594,6 +596,8 @@ rules! {
         "A failure is raised with a field it doesn't declare";
     FAILURE_UNKNOWN_MAPPING: "failure.unknown_mapping", area 4, Error, Agent,
         "An `attempt` block maps a condition that what it attempts doesn't have";
+    FILES_UNAVAILABLE: "files.unavailable", area 14, Error, Human,
+        "A store of files couldn't be reached, read or written by a `jadpo files` command, or its settings have no value here";
     FLAG_DECLARATION_INVALID: "flag.declaration_invalid", area 16, Error, Agent,
         "A flag in `flags { }` isn't a `Bool` or an enum of plain variants, or its `default:`, `owner:` or `expires:` is missing or isn't valid";
     FLAG_EXPIRED: "flag.expired", area 16, Error, Human,
@@ -1052,6 +1056,8 @@ rules! {
         "A name, or a test's sentence, is already taken where it is declared";
     SEMANTIC_FAKE_INVALID: "semantic.fake_invalid", area 13, Error, Agent,
         "A test's `fakes:` scripts an operation or an answer that the app's connections and prompts don't have";
+    SEMANTIC_FIXTURE_FILE_INVALID: "semantic.fixture_file_invalid", area 13, Error, Agent,
+        "A test's `fixture_file` names a file its domain's `fixtures/files/` doesn't hold, one of a type a `File` can't hold, or a store that doesn't keep files";
     SEMANTIC_MISSING_RETURN: "semantic.missing_return", area 3, Error, Agent,
         "A function, action or query can end without giving its result, or a `return` gives no value";
     SEMANTIC_MULTIPLE_APPLICATIONS: "semantic.multiple_applications", area 8, Error, Agent,

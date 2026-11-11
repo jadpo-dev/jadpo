@@ -29,6 +29,8 @@ use jadpo_std::files::FilesOp;
 use jadpo_std::provider::{CallSite, Called as Operation};
 use jadpo_value::Value;
 
+#[cfg(feature = "testing")]
+use crate::capability::Answer;
 use crate::provider::Functions;
 use crate::{Ctx, Failure, Fault, FaultKind, Plan};
 
@@ -386,6 +388,28 @@ pub fn fake(
     at: u32,
 ) -> Called {
     use crate::fakes::Script;
+    // A store of files told to fail as a whole (area 13, "Files"): its
+    // test's in-memory store answers so from now on.
+    if operation == jadpo_std::files::WHOLE_STORE {
+        ctx.at(at);
+        let answer = match answer {
+            FakeAnswer::Unavailable => Answer::Unavailable,
+            FakeAnswer::Failed(code) => Answer::Failed(code),
+            _ => return Called::defect(ctx, "a store of files told something it can't answer", at),
+        };
+        let Some(frame) = ctx.frames().first().copied() else {
+            return Called::defect(ctx, "a store told to fail outside a test", at);
+        };
+        let told = ctx
+            .host()
+            .capability(connection)
+            .is_some_and(|store| store.script(connection, operation, answer, frame));
+        return if told {
+            Called::Value(Value::Unit)
+        } else {
+            Called::defect(ctx, "a store of files no test's store stands in for", at)
+        };
+    }
     let given = match answer {
         FakeAnswer::Value(value) => Script::Value(value),
         FakeAnswer::Failed(code) => Script::Failed(code),
@@ -543,6 +567,34 @@ pub fn ai_requests(ctx: &mut Ctx<'_>, plan: Plan<'_>, prompt: &str, at: u32) -> 
     match plan.ai(&started) {
         Some(ai) => Called::Value(crate::ai::requests(ctx, &ai, prompt)),
         None => Called::defect(ctx, "`.requests` in a program that asks no model", at),
+    }
+}
+
+/// `fixture_file("<name>", store: <connection>)` at a test's site `at`
+/// (area 13, "Files"): the fixture file at the project-relative `path`
+/// kept in the test's in-memory store for `connection`, of `FileType`
+/// variant `file_type`, named `name`, as a stored `File`.
+#[cfg(feature = "testing")]
+pub fn fixture_file(
+    ctx: &mut Ctx<'_>,
+    (connection, path): (&str, &str),
+    file_type: &str,
+    name: &str,
+    at: u32,
+) -> Called {
+    ctx.at(at);
+    let kept = ctx
+        .host()
+        .capability(connection)
+        .and_then(|store| store.fixture(connection, path, file_type, name));
+    match kept {
+        Some(Ok(file)) => Called::Value(file),
+        Some(Err(why)) => Called::defect(ctx, &why, at),
+        None => Called::defect(
+            ctx,
+            &format!("`fixture_file` found no test's store of files for `{connection}`"),
+            at,
+        ),
     }
 }
 

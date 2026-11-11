@@ -27,7 +27,7 @@ jadpo-db.workspace = true
 jadpo-diag.workspace = true
 # The SMTP driver's writer, so the dev inbox hands SpamAssassin each mail
 # as it would be sent (chunk 7.3c3).
-jadpo-drivers = { workspace = true, features = ["smtp"] }
+jadpo-drivers = { workspace = true, features = ["smtp", "package"] }
 jadpo-fmt.workspace = true
 jadpo-graph.workspace = true
 # `jadpo dev` serves its fakes in front of the drivers (chunk 8.1e).

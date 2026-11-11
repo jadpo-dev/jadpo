@@ -90,6 +90,7 @@ Change safely
 
 Production
   schedules     Watch and control schedules   run, pause, resume, history
+  files         Read and copy stored files    ls, show, get, put, copy
   flags         Change and remove flags       list, set, reset, remove
   deliveries    Retry, dismiss or cancel deliveries
   privacy       List data requests            requests
@@ -175,6 +176,7 @@ Change safely
 
 Production
   schedules     Watch and control schedules   run · pause · resume · history
+  files         Read and copy stored files    ls · show · get · put · copy
   flags         Change and remove flags       list · set · reset · remove
   deliveries    Retry, dismiss or cancel deliveries
   privacy       List data requests            requests
@@ -357,6 +359,7 @@ fn help_json_is_the_whole_command_reference() {
             "suggest",
             "translations",
             "schedules",
+            "files",
             "flags",
             "deliveries",
             "privacy",
@@ -830,6 +833,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "suggest\tHint where a standard type or operation fits",
             "translations\tKeep translations up to date",
             "schedules\tWatch and control schedules",
+            "files\tRead and copy stored files",
             "flags\tChange and remove flags",
             "deliveries\tRetry, dismiss or cancel deliveries",
             "privacy\tList data requests",
