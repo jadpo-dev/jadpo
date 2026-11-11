@@ -124,7 +124,7 @@ Why [Configuration](../10-configuration-and-time.md) is the way it is: the decis
 | A constant or a setting | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both: one source, one way to read it. If a constant could seed a setting, code reading the constant would silently ignore the environment variable (the `DEFAULT_PORT` bug of TypeScript and pydantic code); `default:` on the field already names the default, so a constant is not a literal for `default:` or `test:`. Rule of thumb: if a deployment could ever need a different value it is a setting, otherwise a constant. Tiers: `constant` (fixed in code), `config` (per deployment), `flags { }` (area 16, changes at runtime) |
 | Making a constant a setting | `jadpo config move <constant>`, and the editor's "Make this a setting" running the same code, adds a `config` field of the constant's name and type with its value as `default:` and its `///` description, deletes the constant and rewrites every read to `config.<name>`, so a reviewer sees each place that can now differ per deployment. Offered, never required, so not part of `jadpo fmt --layout`. Refuses, editing nothing, a type a setting can't hold, a name a setting already has, and a constant read in a query, an update by `id`, a backfill or another constant. No command moves a setting back. No constant an environment variable can override (it would hide per-deployment behaviour at the call site, agents would add it everywhere, there would be no single list of variables, and moving a file would rename its variable); no `config { }` per domain; no settings declared beside their use and gathered by the compiler; no values per environment in source (`production:`, `staging:`), since values aren't layered |
 | Fields in name order | `jadpo fmt` sorts `config { }` fields by name, comments moving with each, so parallel workspaces adding settings rarely touch the same lines; nothing gives a field's position meaning (settings are read, bound and reported by name). `jadpo fmt --check` fails on one out of order. The page examples are sorted already |
-| Moving a message (chunk T6, 2026-11-11, the obvious recommendation) | As for a type: another domain may call a message only once it is `public`, and a public message a second domain calls is `layout.promotion_required`, once its fields name nothing one domain owns. Its edit moves the type, each language file's member into the shared file of the same locale (made when missing), the member's lines into `shared/translations/sources.jadpo_record`, so a translation stays recorded and accepted, and every call, in tests and email templates too, to `translations.shared.<message>`. Not chosen: reporting another domain's call of a private message as the promotion directly, as for a failure a second domain raises, since `public` is the owning domain's promise and the page already says another domain calls a message only when it is public |
+| Moving a message (chunk T6; decided 2026-11-11, Richard accepting the recommendation) | As for a type: another domain may call a message only once it is `public`, and a public message a second domain calls is `layout.promotion_required`, once its fields name nothing one domain owns. Its edit moves the type, each language file's member into the shared file of the same locale (made when missing), the member's lines into `shared/translations/sources.jadpo_record`, so a translation stays recorded and accepted, and every call, in tests and email templates too, to `translations.shared.<message>`. Not chosen: reporting another domain's call of a private message as the promotion directly, as for a failure a second domain raises, since `public` is the owning domain's promise and the page already says another domain calls a message only when it is public |
 
 ## Moved from the area page
 
@@ -219,12 +219,13 @@ in this list changed a rule.
   The root folder's `layout.wrong_folder` is `Place::RootTranslations`.
   The choices for packages' text follow area 11, "Two versions side by side,
   lazy loading and the package cache".
-- **A package's default locale**, an open question. The publishing bar
+- **A package's default locale**: kept strict until a package needs to
+  ship a language unfinished, decided 2026-11-11, Richard accepting the
+  recommendation. The publishing bar
   holds every language a package ships to completeness, which is stricter
   than "complete wording in its own default locale". A `locale:` key in
   `package.jadpo` could name the default and let other languages ship
-  part-done, at the cost of the index's two keys. Recommendation: keep it
-  strict until a package needs to ship a language unfinished.
+  part-done, at the cost of the index's two keys.
 - **`jadpo fix`** stays the type clashes' (area 14).
 - **Translation checks**: `translation.field_unused` is an error because
   there are no warnings (area 1); `sources.jadpo_record` is in area 18's
