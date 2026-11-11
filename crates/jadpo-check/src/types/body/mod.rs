@@ -1577,7 +1577,7 @@ impl Body<'_> {
             self.out.push(
                 Diagnostic::new(&rule::EVENT_EMIT_INVALID, format!("`emit` is given a `{ty}`"))
                     .at(self.span(expr), "not an event")
-                    .reason("`emit` announces that something happened: its value is an event, a type with the `Event` base declared in a domain's `events/` folder, or an email to send, a type with the `EmailMessage` base in its `emails/` folder, built where it is emitted.")
+                    .reason("`emit` announces that something happened: its value is an event, a type with the `Event` base declared in a domain's `events/` folder, or an email to send, a type with the `EmailMessage` base in its `emails/` folder.")
                     .next("Emit an event, `emit <Name> { ... }`, declaring it as `type <Name> = Event { ... }`"),
             );
             return;
@@ -1611,9 +1611,19 @@ impl Body<'_> {
                 )
                 .at(self.span(emit), "only actions emit")
                 .reason(format!(
-                    "An event is kept in the same transaction as an action's writes and handed to its subscribers once it commits, so only actions emit; {caller} emits by calling an action."
+                    "An event is kept in the same transaction as an action's writes and handed to its subscribers once it commits, so only actions emit; {}",
+                    if caller == "a function" {
+                        "a function is pure, so it returns the event for the action that calls it to emit."
+                            .to_string()
+                    } else {
+                        format!("{caller} emits by calling an action.")
+                    }
                 ))
-                .next("Move the `emit` into the action this code calls, or make this an action"),
+                .next(if caller == "a function" {
+                    "Move the `emit` into the action that calls this function, or make this an action"
+                } else {
+                    "Move the `emit` into the action this code calls, or make this an action"
+                }),
             );
         }
     }

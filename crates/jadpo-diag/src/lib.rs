@@ -119,9 +119,9 @@ rules! {
     ACCEPTANCE_UNMATCHED: "acceptance.unmatched", area 14, Error, Agent,
         "An acceptance lists a change that this change doesn't make";
     AI_CONNECTION_REQUIRED: "ai.connection_required", area 21, Error, Agent,
-        "Action asks a model but the application names no `ai:` connection";
+        "An action asks a model, but the application names no `ai:` connection to ask it through";
     AI_SETTINGS_INVALID: "ai.settings_invalid", area 21, Error, Agent,
-        "Application's `ai:` holds something it doesn't take, or leaves out what it needs";
+        "The application's `ai:` holds a setting it doesn't take, or leaves out one it needs";
     AI_USAGE_UNAVAILABLE: "ai.usage_unavailable", area 14, Error, Human,
         "The app's AI usage couldn't be read from its database, because it can't be reached or has no table for it yet";
     API_AUTHENTICATION_INVALID: "api.authentication_invalid", area 7, Error, Agent,
@@ -527,9 +527,9 @@ rules! {
     EMAIL_TEMPLATE_VALUE_INVALID: "email.template_value_invalid", area 16, Error, Agent,
         "An email template writes out a value that isn't text, a number or an enum with wording, such as a date";
     EVENT_EMIT_INVALID: "event.emit_invalid", area 12, Error, Agent,
-        "Emit is given something that isn't an event, or is used outside an action";
+        "Something other than an action emits, or what is emitted isn't an event or an email";
     EVENT_SETTINGS_INVALID: "event.settings_invalid", area 12, Error, Agent,
-        "Events settings in `app.jadpo` hold something other than a database's `store:`";
+        "The application's `events:` holds something other than a `store:` that names one of its databases";
     EVENT_STORE_REQUIRED: "event.store_required", area 12, Error, Human,
         "An action emits an event but writes no database, and the app names no database to keep its events in";
     FAILURE_ATTEMPT_INFALLIBLE: "failure.attempt_infallible", area 3, Error, Agent,
@@ -789,13 +789,13 @@ rules! {
     PROMPT_FREE_TEXT_IN_INSTRUCTIONS: "prompt.free_text_in_instructions", area 21, Error, Agent,
         "A prompt writes a free-text value, such as text a user typed, in its instructions rather than in its request";
     PROMPT_PLACEHOLDER_TYPE: "prompt.placeholder_type", area 21, Error, Agent,
-        "A prompt's field is of a type a prompt can't send";
+        "A prompt's field is of a type a prompt can't send, such as bytes, a file, a secret or a value that may be `none`";
     PROMPT_PLACEHOLDER_UNKNOWN: "prompt.placeholder_unknown", area 21, Error, Agent,
-        "A prompt's text writes a field its type does not have";
+        "A prompt's text writes a placeholder that names no field of its type, or a brace on its own";
     PROMPT_PLACEHOLDER_UNUSED: "prompt.placeholder_unused", area 21, Error, Agent,
         "A prompt's type has a field that its prompt file never writes";
     PROMPT_SECTION_MISSING: "prompt.section_missing", area 21, Error, Agent,
-        "A prompt and its file don't make its two sections, each once and in order";
+        "A prompt's `.prompt` file doesn't hold `# Instructions` then `# Request`, each once and with text, or a prompt type and its file aren't both there";
     PROTOCOL_MISMATCH: "protocol.mismatch", area 14, Error, Agent,
         "A registry's OpenAPI document differs from the registry protocol";
     PROTOCOL_UNREADABLE: "protocol.unreadable", area 14, Error, Agent,
@@ -909,7 +909,7 @@ rules! {
     RATE_LIMITS_WINDOW_UNSUPPORTED: "rate_limits.window_unsupported", area 16, Error, Agent,
         "A rate limit counted in Cloudflare's binding has a window other than 10 or 60 seconds";
     RECEIVING_INVALID: "receiving.invalid", area 12, Error, Agent,
-        "A queue in `receiving:` doesn't say how its messages are read";
+        "A queue in `receiving:` isn't a connection a queue is read through, or doesn't say where each message's id and type are and which events it may be";
     RECORD_EDITED: "record.edited", area 18, Error, Agent,
         "A record file that Jadpo writes holds something Jadpo couldn't have written, or can't be read";
     RECORD_FORMAT_NEWER: "record.format_newer", area 18, Error, Human,
@@ -995,11 +995,11 @@ rules! {
     SCHEDULE_EVERY_INVALID: "schedule.every_invalid", area 12, Error, Agent,
         "A schedule's `every:` says how often it runs in something other than a whole number of seconds, minutes, hours or days";
     SCHEDULE_ITEM_INVALID: "schedule.item_invalid", area 12, Error, Agent,
-        "Schedule holds an item it doesn't take, gives one twice or leaves out `every:` or `run:`";
+        "A schedule holds an item it doesn't take, gives one twice or leaves out `every:` or `run:`";
     SCHEDULE_RUN_INVALID: "schedule.run_invalid", area 12, Error, Agent,
-        "Schedule's `run:` isn't a call of an action in its own domain with no arguments";
+        "A schedule's `run:` isn't a call, with no arguments, of an action in the schedule's own domain";
     SCHEDULE_SETTINGS_INVALID: "schedule.settings_invalid", area 12, Error, Agent,
-        "Schedules settings in `app.jadpo` hold something other than a database's `store:`";
+        "The application's `schedules:` holds a `store:` that isn't one of its databases, a `trigger:` that isn't a `ScheduleTrigger`, or a setting it doesn't take";
     SCHEDULE_STORE_REQUIRED: "schedule.store_required", area 12, Error, Human,
         "An app has a schedule but no database named to keep its state in, because it has several databases or none";
     SCHEDULES_LEASE_HELD: "schedules.lease_held", area 14, Error, Human,
@@ -1113,29 +1113,29 @@ rules! {
     STEP_ENCRYPTION_KEY_REQUIRED: "step.encryption_key_required", area 12, Error, Human,
         "An action makes several changing calls, but the app names no key to encrypt the answers it keeps from them";
     STEP_LARGE_OUTPUT: "step.large_output", area 12, Error, Agent,
-        "Operation with a large answer among several changing calls";
+        "An action makes several changing calls, and one of them is an operation its package marks `large_output: true`";
     STEP_LATE_FAILURE: "step.late_failure", area 12, Declinable, Agent,
         "An action can fail for good after a call that changes something outside the app took effect, leaving that change behind";
     STEP_SETTINGS_INVALID: "step.settings_invalid", area 12, Error, Agent,
-        "Steps setting in `application { }` doesn't read";
+        "The application's `steps:` holds something other than an `encryption_key:` that reads a `SigningKey` setting";
     STEP_STORE_REQUIRED: "step.store_required", area 12, Error, Human,
         "An action makes several changing calls but writes no database, and the app names no database to keep the record of its calls in";
     STEP_TOO_MANY: "step.too_many", area 12, Error, Agent,
-        "More than 8 changing calls on one way through an action";
+        "An action makes more than 8 changing calls on one way through it";
     STEP_UNKEYED: "step.unkeyed", area 12, Error, Agent,
-        "Changing call with no idempotency key beside another changing call";
+        "An action makes a changing call that takes no idempotency key, and another changing call beside it";
     STORE_ACTION_SPANS_STORES: "store.action_spans_stores", area 6, Error, Human,
         "An action writes to two databases, itself or through an action it calls, but an action's writes all commit in one database";
     SUBSCRIBER_ARGUMENT_INVALID: "subscriber.argument_invalid", area 12, Error, Agent,
-        "Subscriber passes something other than its event or a field of it";
+        "A subscriber's `run:` passes something other than its event or a field of it";
     SUBSCRIBER_EVENT_INVALID: "subscriber.event_invalid", area 12, Error, Agent,
         "A subscriber's `on:` names something other than an event, such as an entity or a plain type";
     SUBSCRIBER_ITEM_INVALID: "subscriber.item_invalid", area 12, Error, Agent,
-        "Subscriber holds an item it doesn't take, gives one twice or leaves out `on:` or `run:`";
+        "A subscriber holds an item it doesn't take, gives one twice or leaves out `on:` or `run:`";
     SUBSCRIBER_RETRY_INVALID: "subscriber.retry_invalid", area 12, Error, Agent,
         "A subscriber's `retry:` holds something other than 1 to 100 tries and up to 30 days to keep trying";
     SUBSCRIBER_RUN_INVALID: "subscriber.run_invalid", area 12, Error, Agent,
-        "Subscriber's `run:` isn't a call of an action in its own domain";
+        "A subscriber's `run:` isn't a call of an action in the subscriber's own domain";
     SUGGEST_RECORD_INVALID: "suggest.record_invalid", area 14, Error, Agent,
         "A suggestions record `jadpo suggest` reads, `ignored_suggestions.jadpo_record` or `taught_suggestions.jadpo_record`, isn't as Jadpo writes it";
     SUGGEST_SHARE_FAILED: "suggest.share_failed", area 14, Error, Human,
@@ -1559,7 +1559,7 @@ rules! {
     TYPE_RULE_OUTSIDE_OBJECT: "type.rule_outside_object", area 2, Error, Agent,
         "A `rule` is written in a type other than an `Object`, an `Input` or an `Output`, such as one built on `Int`";
     TYPE_SECRET_EXPOSED: "type.secret_exposed", area 19, Error, Agent,
-        "Secret value is sent, stored, logged or read as text";
+        "A secret value, such as a password or an API key, is sent, stored, logged or read as text";
     TYPE_SETTING_VALUE: "type.setting_value", area 2, Error, Agent,
         "A setting is given the wrong kind of value, such as a bare `email` where `TextFormat.email` belongs";
     TYPE_SIBLING_MISMATCH: "type.sibling_mismatch", area 2, Error, Agent,

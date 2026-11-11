@@ -1451,35 +1451,13 @@ class ErrorFormat(unittest.TestCase):
         text = text.replace('```sh run project=e expect=a.b', '```sh run project=e expect=a.c')
         self.assertIn('expect=a.b', self.problems(text)[0])
 
-    def test_the_scope_is_what_the_user_layer_and_people_reach(self):
+    def test_every_error_page_has_the_parts(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            for folder in ('docs/learn', 'docs/guides', 'docs/errors', 'examples/one'):
-                (root / folder).mkdir(parents=True)
-            (root / 'docs/learn/01-a.md').write_text('See [it](../errors/a.b.md).\n')
-            (root / 'examples/one/README.md').write_text('Shows `c.d`.\n')
-            command = docs.COMMAND_AREA
-            catalogue = {'a.b': {'area': 3, 'decides': 'agent'}, 'c.d': {'area': 3, 'decides': 'agent'},
-                         'e.f': {'area': 3, 'decides': 'human'}, 'g.h': {'area': 3, 'decides': 'agent'},
-                         'cli.y': {'area': command, 'decides': 'agent'},
-                         'seed.failed': {'area': command, 'decides': 'agent'},
-                         'schedule.ambiguous': {'area': command, 'decides': 'agent'},
-                         'subscriber.empty': {'area': command, 'decides': 'agent'},
-                         'install.in_use': {'area': command, 'decides': 'agent'},
-                         'type.absent_field': {'area': 2, 'decides': 'agent'},
-                         'type.foreign_type': {'area': 2, 'decides': 'agent'},
-                         'type.optional_outside_input': {'area': 2, 'decides': 'agent'}}
-            commands = [{'name': 'check', 'rules': ['schedule.ambiguous']},
-                        {'name': 'seed', 'rules': ['seed.failed']},
-                        {'name': 'package', 'rules': ['install.in_use']}]
-            # The command line's own rules, and every other rule only a
-            # command raises, are in scope, as are those a part of D13c
-            # has finished; a rule `jadpo check` raises, or no command
-            # lists, waits for its part of D13c.
-            self.assertEqual(docs.error_format_scope(catalogue, root, commands),
-                             {'a.b', 'c.d', 'e.f', 'cli.y', 'seed.failed', 'install.in_use',
-                              'type.absent_field', 'type.foreign_type',
-                              'type.optional_outside_input'})
+            path = Path(tmp) / 'a.b.md'
+            path.write_text('# `a.b`\n\nA setting holds something other than `true` or `false`.\n')
+            page = docs.ErrorPage(path, self.catalogue)
+            page.check()
+        self.assertTrue(any('an error page has' in problem for problem in page.problems), page.problems)
 
     def test_the_bundle_gives_the_summary_once(self):
         with tempfile.TemporaryDirectory() as tmp:

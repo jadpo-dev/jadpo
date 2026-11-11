@@ -116,13 +116,6 @@ D1 first: the site starts once D1 has merged.
   agent that holds no secrets and cannot merge or release, since issue text
   is anyone's; its pull requests pass the same gate and review.
 - [ ] **D8b Rename in the editor** `opus · high`: area 14, "Editor support", through `jadpo_check::rename`, the code `jadpo rename` runs.
-- [ ] **D13c The rest of the error pages** `opus · high`: every other page
-  in `docs/errors/` to the format, each rule's catalogue summary its
-  page's first sentence; `error_format_scope` then covers every page.
-  Split by size (2026-11-08) into the parts below, taken in order,
-  each widening `error_format_scope` to the rules it finished; delete it
-  once all are.
-- [ ] **D13c15 `step.*`, `subscriber.*`, `schedule.*`, `prompt.*`, `event.*`, `ai.*` and `receiving.*`** `opus · high`: 18 pages; then `error_format_scope` covers every rule.
 
 ## Phase 10 — Golden todo
 
