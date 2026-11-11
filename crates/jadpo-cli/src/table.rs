@@ -763,7 +763,7 @@ pub static COMMANDS: &[Command] = &[
         flags: &[Flag {
             name: "--explain",
             value: None,
-            description: "Show PostgreSQL's plan for each statement of a query",
+            description: "Show PostgreSQL's plan for each statement",
             values: &[],
         }],
         examples: &[

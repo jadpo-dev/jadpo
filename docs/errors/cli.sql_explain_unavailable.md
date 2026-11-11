@@ -1,6 +1,6 @@
 # `cli.sql_explain_unavailable`
 
-`jadpo sql --explain` can't make the disposable database it plans a query's statements on.
+A `jadpo sql --explain` command can't make the disposable database it plans a query's statements on.
 
 ## Why Jadpo refuses it
 
@@ -31,13 +31,18 @@ type ItemTitle = Text {
 }
 ```
 
+```jadpo check project=e-sql-explain-unavailable file=domains/lists/types/list_ref.jadpo hidden
+/// Which list an item is on.
+type ListRef = Uuid {}
+```
+
 ```jadpo check project=e-sql-explain-unavailable file=domains/lists/entities/item.jadpo hidden
-use lists/types { ItemTitle }
+use lists/types { ItemTitle, ListRef }
 
 /// One item on a list.
 entity Item {
     id: Uuid
-    list_id: Uuid
+    list_id: ListRef
     title: ItemTitle
 
     policy: {
@@ -50,9 +55,10 @@ entity Item {
 
 ```jadpo check project=e-sql-explain-unavailable file=domains/lists/queries/items_on_list.jadpo migrate=initial
 use lists/entities { Item }
+use lists/types { ListRef }
 
 /// A list's items, by title.
-query items_on_list(list_id: Uuid) -> List<Item> {
+query items_on_list(list_id: ListRef) -> List<Item> {
     from: Item
     where: Item.list_id == list_id
     order: [Item.title asc]

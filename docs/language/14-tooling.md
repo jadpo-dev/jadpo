@@ -4107,7 +4107,7 @@ yet, or that other commands replace.
 | `cli.seed_arguments` | `seed` | A `jadpo seed` command names no seed, one the project doesn't have, or more than one |
 | `cli.signal_handler_failed` | any command | Shutdown handler could not be installed |
 | `cli.sql_arguments` | `sql` | A `jadpo sql` command names no query or action, one the project doesn't declare, or an action that writes nothing |
-| `cli.sql_explain_unavailable` | `sql --explain` | `jadpo sql --explain` can't make the disposable database it plans a query's statements on |
+| `cli.sql_explain_unavailable` | `sql --explain` | A `jadpo sql --explain` command can't make the disposable database it plans a query's statements on |
 | `cli.suggest_arguments` | `suggest` | A `jadpo suggest` command names an action it doesn't have, or a suggestion the last scan didn't find |
 | `cli.test_arguments` | `test` | A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use |
 | `cli.toolchain_arguments` | `toolchain` | A `jadpo toolchain` command names an action it doesn't have, or a release that isn't kept |

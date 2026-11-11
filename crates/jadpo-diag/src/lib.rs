@@ -223,7 +223,7 @@ rules! {
     CLI_SQL_ARGUMENTS: "cli.sql_arguments", area 14, Error, Agent,
         "A `jadpo sql` command names no query or action, one the project doesn't declare, or an action that writes nothing";
     CLI_SQL_EXPLAIN_UNAVAILABLE: "cli.sql_explain_unavailable", area 14, Error, Human,
-        "`jadpo sql --explain` can't make the disposable database it plans a query's statements on";
+        "A `jadpo sql --explain` command can't make the disposable database it plans a query's statements on";
     CLI_SUGGEST_ARGUMENTS: "cli.suggest_arguments", area 14, Error, Agent,
         "A `jadpo suggest` command names an action it doesn't have, or a suggestion the last scan didn't find";
     CLI_TEST_ARGUMENTS: "cli.test_arguments", area 14, Error, Agent,

@@ -167,8 +167,8 @@ pub fn reads(db: &dyn Db, project: Project) -> Vec<StatementRead> {
     let mut out = Vec::new();
     for query in queries {
         let reader = Reader {
-            model: &model,
-            schema: &schema,
+            model,
+            schema,
             lookup: &lookup,
             query,
         };

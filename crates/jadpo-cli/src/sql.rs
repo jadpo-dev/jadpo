@@ -86,9 +86,9 @@ pub fn sql(call: &Call) -> Reply {
                         &rule::CLI_SQL_ARGUMENTS,
                         format!("`--explain` plans a query, and `{name}` is an action"),
                     )
-                    .reason(format!(
-                        "`--explain` shows PostgreSQL's plan for each statement a query sends; an action's writes each find their record by its key or a unique field, so there is no plan to choose."
-                    ))
+                    .reason(
+                        "`--explain` shows PostgreSQL's plan for each statement a query sends; an action's writes each find their record by its key or a unique field, so there is no plan to choose.",
+                    )
                     .next(format!("Run `jadpo sql {name}` to see its writes")),
                 );
             }
