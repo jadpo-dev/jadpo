@@ -66,7 +66,7 @@ impl Kept {
     /// far: from its start to its last committed page, over the items
     /// still to do. `None` until it has a total and has done some, or once
     /// it has done what it estimated.
-    pub fn finish_estimate(&self) -> Option<i64> {
+    pub fn likely_finish(&self) -> Option<i64> {
         if self.state != RUNNING {
             return None;
         }
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn a_running_run_finishes_at_the_rate_it_has_gone() {
         let run = kept(RUNNING, 400, Some(1_200), 0, 240_000);
-        assert_eq!(run.finish_estimate(), Some(240_000 + 480_000));
+        assert_eq!(run.likely_finish(), Some(240_000 + 480_000));
         assert_eq!(run.total(), Some(1_200));
     }
 
@@ -336,12 +336,12 @@ mod tests {
     /// it has ended; a finished run's total is what it did.
     #[test]
     fn no_estimate_without_a_rate_or_once_ended() {
-        assert_eq!(kept(RUNNING, 0, Some(10), 0, 1).finish_estimate(), None);
-        assert_eq!(kept(RUNNING, 5, None, 0, 1).finish_estimate(), None);
-        assert_eq!(kept(RUNNING, 12, Some(10), 0, 1).finish_estimate(), None);
-        assert_eq!(kept(RUNNING, 5, Some(10), 7, 7).finish_estimate(), None);
+        assert_eq!(kept(RUNNING, 0, Some(10), 0, 1).likely_finish(), None);
+        assert_eq!(kept(RUNNING, 5, None, 0, 1).likely_finish(), None);
+        assert_eq!(kept(RUNNING, 12, Some(10), 0, 1).likely_finish(), None);
+        assert_eq!(kept(RUNNING, 5, Some(10), 7, 7).likely_finish(), None);
         let finished = kept(FINISHED, 21, Some(30), 0, 9);
-        assert_eq!(finished.finish_estimate(), None);
+        assert_eq!(finished.likely_finish(), None);
         assert_eq!(finished.total(), Some(21));
     }
 }

@@ -518,9 +518,9 @@ fn kept_json(store: &str, run: &Kept) -> Json {
         ("estimatedTotal", run.total().map_or(Json::Null, count)),
         ("problems", count(run.problems)),
         ("startedAt", instant(Some(run.started_at))),
-        ("updatedAt", instant(Some(run.stepped_at))),
+        ("lastPageAt", instant(Some(run.stepped_at))),
         ("endedAt", instant(run.finished_at)),
-        ("estimatedFinishAt", instant(run.finish_estimate())),
+        ("estimatedFinishAt", instant(run.likely_finish())),
         (
             "failure",
             run.failure.as_deref().map_or(Json::Null, Json::from),
@@ -792,7 +792,7 @@ pub(crate) fn show_screen(
         )),
         None => fields.push(("updated".to_string(), clock(run.stepped_at, now))),
     }
-    let finish = run.finish_estimate().filter(|at| *at > now);
+    let finish = run.likely_finish().filter(|at| *at > now);
     if let Some(at) = finish {
         fields.push(("finishes".to_string(), format!("about {}", clock(at, now))));
     }
