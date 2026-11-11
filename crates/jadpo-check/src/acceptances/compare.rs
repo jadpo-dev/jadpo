@@ -640,15 +640,35 @@ pub fn api(api: &str, path: &str, before: &str, after: Option<&str>, out: &mut V
 /// event removed, a field removed or retyped, a required field added or a
 /// rule tightened.
 pub fn events(domain: &str, path: &str, before: &str, after: Option<&str>, out: &mut Vec<Need>) {
-    let before = entries(before, &format::EVENTS);
     let after = after
         .map(|text| entries(text, &format::EVENTS))
         .unwrap_or_default();
     let new = by_heading(&after);
+    events_now(
+        domain,
+        path,
+        before,
+        |heading| new.get(heading).map(|entry| (*entry).clone()),
+        out,
+    );
+}
+
+/// As [`events`], with each of the before side's entries found where it is
+/// now by `now`, from its heading: in another domain's record once its
+/// domain was renamed, split or merged.
+pub fn events_now(
+    domain: &str,
+    path: &str,
+    before: &str,
+    now: impl Fn(&str) -> Option<Entry>,
+    out: &mut Vec<Need>,
+) {
+    let before = entries(before, &format::EVENTS);
     for entry in &before {
         let heading = entry.heading.as_str();
         let name = heading.split_once(' ').map_or(heading, |(_, name)| name);
-        let Some(now) = new.get(heading) else {
+        let found = now(heading);
+        let Some(now) = found.as_ref() else {
             if heading.starts_with("event ") {
                 need(
                     out,
@@ -1214,16 +1234,30 @@ pub fn lock(path: &str, before: &str, after: &str, own: &[String], out: &mut Vec
     }
 }
 
-/// A domain created (area 1, "Domains"): its folder wasn't there before.
-pub fn domains(before: &BTreeSet<String>, after: &BTreeSet<String>, out: &mut Vec<Need>) {
+/// A domain created or renamed (area 1, "Domains"): its folder wasn't
+/// there before, and its born name, `born` gives it, was no domain's
+/// there (`before_born`) or was one's.
+pub fn domains(
+    before: &BTreeSet<String>,
+    before_born: impl Fn(&str) -> String,
+    after: &BTreeSet<String>,
+    born: impl Fn(&str) -> String,
+    out: &mut Vec<Need>,
+) {
+    let was: BTreeSet<String> = before.iter().map(|domain| before_born(domain)).collect();
     for domain in after.difference(before) {
+        let renamed = was.contains(&born(domain));
         need(
             out,
             Family::Domains,
             &format!("domains/{domain}"),
             None,
             domain.clone(),
-            "DomainChange.created",
+            if renamed {
+                "DomainChange.renamed"
+            } else {
+                "DomainChange.created"
+            },
         );
     }
 }

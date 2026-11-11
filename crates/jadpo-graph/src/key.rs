@@ -115,7 +115,9 @@ impl Registry {
 
     /// The born name of the `kind` called `now`; `parent` is the born name
     /// of what it belongs to, for a child whose own name is the part after
-    /// its parent's (`Task.title` under a `Task` born `Todo`).
+    /// its parent's (`Task.title` under a `Task` born `Todo`). A name that
+    /// carries its domain (`type plans.Address`, `field plans.Address.street`)
+    /// follows its domain's line, so renaming a domain is one line.
     pub fn born(&self, kind: Kind, now: &str, parent: Option<(&str, &str)>) -> String {
         if let Some(born) = self.renames.get(&format!("{} {now}", kind.word())) {
             return born.clone();
@@ -130,8 +132,54 @@ impl Registry {
                     None => now.to_string(),
                 }
             }
-            _ => now.to_string(),
+            _ => self
+                .domain_born(kind, now)
+                .unwrap_or_else(|| now.to_string()),
         }
+    }
+
+    /// The born name of `now`, a name of `kind` that carries its domain,
+    /// when that domain has a line of its own (`domain planning -> plans`
+    /// makes `plans.Address` born `planning.Address`).
+    fn domain_born(&self, kind: Kind, now: &str) -> Option<String> {
+        if !matches!(
+            kind,
+            Kind::Type | Kind::Function | Kind::Constant | Kind::Field | Kind::Variant | Kind::Rule
+        ) {
+            return None;
+        }
+        let (domain, rest) = now.split_once('.')?;
+        let born = self
+            .renames
+            .get(&format!("{} {domain}", Kind::Domain.word()))?;
+        Some(format!("{born}.{rest}"))
+    }
+
+    /// The name now of what the registry's line for `key` names, the
+    /// reverse of [`Registry::born`] for a declaration's key: the line
+    /// whose born name it is, or its domain's (`type planning.Address` is
+    /// `plans.Address` once `domain planning -> plans` is a line), or its
+    /// born name.
+    pub fn now_of(&self, key: &Key) -> String {
+        let word = key.as_str().split(' ').next().unwrap_or("");
+        let born = key.name();
+        if let Some(now) = self.renames.iter().find_map(|(line, was)| {
+            let (kind, now) = line.split_once(' ')?;
+            (kind == word && was == born).then(|| now.to_string())
+        }) {
+            return now;
+        }
+        if let Some(kind) = key.kind()
+            && let Some((domain, rest)) = born.split_once('.')
+            && let Some(now) = self.renames.iter().find_map(|(line, was)| {
+                let (kind, now) = line.split_once(' ')?;
+                (kind == Kind::Domain.word() && was == domain).then(|| now.to_string())
+            })
+            && self.domain_born(kind, &format!("{now}.{rest}")).as_deref() == Some(born)
+        {
+            return format!("{now}.{rest}");
+        }
+        born.to_string()
     }
 
     /// The key of the `kind` called `now`.

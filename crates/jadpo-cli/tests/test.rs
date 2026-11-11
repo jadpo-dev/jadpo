@@ -654,26 +654,12 @@ error: No schedule tests to run
 }
 
 #[test]
-fn decided_flags_that_are_not_built_say_so() {
+fn keep_failed_without_tables_has_nothing_to_keep() {
     let root = loose("planned", &[ADDS]);
-    let interactive = jadpo(&root, &["test", "--interactive"]);
-    assert_eq!(interactive.code, 1);
-    assert_eq!(
-        interactive.stderr,
-        "\
-error: Interactive tests aren't built yet
-  reason: `--interactive` opens a keyboard view of every test (area 13), which comes with the rest of area 14's tooling.
-  next: Leave out `--interactive`; `jadpo test --help` lists what is built (agent)
-  rule: toolchain.not_built_yet
-  help: https://jadpo.dev/docs/errors/toolchain.not_built_yet
-"
-    );
     // `--keep-failed` is built with the test database (chunk 3.1): a
     // project without tables has nothing to keep, and passes.
     let kept = jadpo(&root, &["test", ".", "--keep-failed"]);
     assert_eq!(kept.code, 0, "{}", kept.stderr);
-    let help = jadpo(&root, &["test", "--help"]);
-    assert!(!help.stdout.contains("--interactive"), "{}", help.stdout);
 }
 
 #[test]

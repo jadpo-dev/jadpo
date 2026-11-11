@@ -1,6 +1,6 @@
 # `cli.test_arguments`
 
-A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use.
+A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use, or asks for `--affected` with nothing to compare with or `--interactive` where it can't open.
 
 ## Why Jadpo refuses it
 

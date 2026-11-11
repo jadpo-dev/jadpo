@@ -930,7 +930,7 @@ id = "commands"
 title = "Commands"
 summary = "Every jadpo command, what it does and how to run it."
 status = ["14-tooling: Commands"]
-missing = "`jadpo rename`, `domain`, `services`, `dev grants`, `batches`, `search reindex`, the debugging commands, `path` and privacy requests"
+missing = "`services`, `dev grants`, `batches`, `search reindex`, the debugging commands, `path` and privacy requests"
 
 [[group.page.section]]
 id = "the-jadpo-command"
@@ -940,7 +940,7 @@ commands = ["new", "check", "fmt", "test", "build", "dev"]
 [[group.page.section]]
 id = "commands-for-looking-into-and-changing-code"
 title = "Commands for looking into and changing code"
-commands = ["inspect", "impact", "rename", "routes", "sql", "ai"]
+commands = ["inspect", "impact", "rename", "domain", "routes", "sql", "ai"]
 
 [[group.page.section]]
 id = "commands-for-the-database-settings-and-translations"

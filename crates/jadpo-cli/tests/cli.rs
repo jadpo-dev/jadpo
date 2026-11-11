@@ -84,6 +84,7 @@ Change safely
   acceptance    Draft a person's acceptance   new
   approval      Explain a change, decisions first
   declines      List or clear declines        list, clear
+  domain        Rename or reshape a domain    rename, split, merge
   fix           Fix a standard type's finding
   rename        Rename a declaration or field everywhere
   suggest       Hint where a standard type or operation fits
@@ -171,6 +172,7 @@ Change safely
   acceptance    Draft a person's acceptance   new
   approval      Explain a change, decisions first
   declines      List or clear declines        list · clear
+  domain        Rename or reshape a domain    rename · split · merge
   fix           Fix a standard type's finding
   rename        Rename a declaration or field everywhere
   suggest       Hint where a standard type or operation fits
@@ -357,6 +359,7 @@ fn help_json_is_the_whole_command_reference() {
             "acceptance",
             "approval",
             "declines",
+            "domain",
             "fix",
             "rename",
             "suggest",
@@ -475,6 +478,8 @@ fn help_json_is_the_whole_command_reference() {
             ("--failed", &serde_json::Value::Null),
             ("--seed", &serde_json::json!("n")),
             ("--watch", &serde_json::Value::Null),
+            ("--affected", &serde_json::Value::Null),
+            ("--interactive", &serde_json::Value::Null),
             ("--keep-failed", &serde_json::Value::Null),
         ]
     );
@@ -563,12 +568,12 @@ fn an_unknown_command_with_nothing_near_points_at_help() {
 
 #[test]
 fn commands_that_are_not_built_yet_are_unknown() {
-    let output = jadpo(&["domain"]);
+    let output = jadpo(&["replay"]);
     assert_eq!(output.code, 2);
     assert!(
         output
             .stderr
-            .starts_with("error: `domain` isn't a jadpo command"),
+            .starts_with("error: `replay` isn't a jadpo command"),
         "{}",
         output.stderr
     );
@@ -832,6 +837,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "acceptance\tDraft a person's acceptance",
             "approval\tExplain a change, decisions first",
             "declines\tList or clear declines",
+            "domain\tRename or reshape a domain",
             "fix\tFix a standard type's finding",
             "rename\tRename a declaration or field everywhere",
             "suggest\tHint where a standard type or operation fits",

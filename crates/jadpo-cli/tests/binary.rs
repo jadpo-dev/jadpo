@@ -127,6 +127,7 @@ fn bash_completes_commands_and_values() {
             "acceptance",
             "approval",
             "declines",
+            "domain",
             "fix",
             "rename",
             "suggest",

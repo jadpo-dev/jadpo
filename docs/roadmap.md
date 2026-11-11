@@ -263,17 +263,6 @@ work below (Richard, 2026-11-08).
      `jadpo replay`. Done when a request's number draws its route on both
      executors and a replay gives the same results.
 4. Tooling completeness (area 14): interactive tests, full completion.
-   - [ ] **T2 `jadpo domain`** `opus · high`: area 14, "Tools for
-     agents"; area 1, "Domains"; area 18, "Keys" and "Acceptances". `rename`,
-     `split` and `merge`, moving files and every call, so a domain renamed
-     no longer reads as one created. Designed with the design skills
-     first. Done when each passes on a two-domain app with no diff from
-     the moved code's behaviour.
-   - [ ] **T3 `jadpo test --interactive` and `--affected`** `opus · high`:
-     area 13, "In the editor" and "What is built"; area 14, "`jadpo test`".
-     The keyboard view, its `enter`, `a` and `f` keys under `--watch`, and
-     the tests a change reaches against the merge-base with `main`.
-     Designed with the design skills first.
    - [ ] **T4 The schema and query reports** `opus · high`: area 14, "The
      `build/` folder"; area 16, "Setting and changing them". Those two
      reports, `diagnostics/`, `inventory/`, `audit/` and `compatibility/`,

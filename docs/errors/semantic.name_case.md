@@ -78,7 +78,7 @@ action tidy() -> Unit {}
 error: Domains are written in lower_snake_case
  --> domains/OrderLines/actions/tidy.jadpo
   reason: A domain's folder name is its name, used in calls such as `order_lines.action(...)`.
-  next: Rename the folder `domains/OrderLines/` to `domains/order_lines/` (agent)
+  next: Run `jadpo domain rename OrderLines order_lines` (agent)
   rule: semantic.name_case
   help: https://jadpo.dev/docs/errors/semantic.name_case
 

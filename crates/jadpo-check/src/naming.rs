@@ -673,13 +673,15 @@ pub fn domain_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .reason(format!(
                     "A domain's folder name is its name, used in calls such as `{fixed}.action(...)`."
                 ))
-                .next(format!("Rename the folder `domains/{domain}/` to `domains/{fixed}/`")),
+                .next(format!("Run `jadpo domain rename {domain} {fixed}`")),
             );
         } else if names.reserved(domain) {
             out.push(reserved(domain, span));
         } else if names.is_generic(domain) {
             out.push(generic(domain, "domain", span).next_for(
-                format!("Rename `domains/{domain}/` after the business area it covers"),
+                format!(
+                    "Run `jadpo domain rename {domain} <new-name>` with the name of the business area it covers"
+                ),
                 domain_rename(db, project),
             ));
         }

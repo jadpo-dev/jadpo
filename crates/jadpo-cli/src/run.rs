@@ -34,6 +34,8 @@ pub enum Session {
     Lsp(PathBuf),
     /// `jadpo test --watch`, until it is stopped.
     Watch(Box<WatchArgs>),
+    /// `jadpo test --interactive`, until it is quit.
+    Interactive(Box<crate::interactive::InteractiveArgs>),
     /// `jadpo dev`, until it is stopped.
     Dev(Box<crate::dev::DevArgs>),
     /// `jadpo config set`, which asks for the value at a prompt.
@@ -264,6 +266,18 @@ pub(crate) fn finish(
                 stderr: String::new(),
                 code: 0,
                 session: Some(Session::Watch(args)),
+            };
+        }
+        Reply::Session(Session::Interactive(mut args)) => {
+            if let Some(refusal) = crate::interactive::refusal(env, json, choice) {
+                return finish(name, Reply::failed(refusal), env, json, choice, asked);
+            }
+            args.choice = choice;
+            return Output {
+                stdout: String::new(),
+                stderr: String::new(),
+                code: 0,
+                session: Some(Session::Interactive(args)),
             };
         }
         Reply::Session(Session::ConfigSet(mut args)) => {
@@ -729,9 +743,12 @@ fn dispatch(parsed: Parsed, env: &Environment) -> (Option<&'static str>, Reply) 
         };
         return (Some("help"), help::command(target));
     }
-    // `jadpo package search <words>` takes as many words as it is given.
-    let any_words =
-        command.name == "package" && parsed.arguments.first().map(String::as_str) == Some("search");
+    // `jadpo package search <words>` takes as many words as it is given,
+    // and `jadpo domain split` as many declarations.
+    let any_words = (command.name == "package"
+        && parsed.arguments.first().map(String::as_str) == Some("search"))
+        || (command.name == "domain"
+            && parsed.arguments.first().map(String::as_str) == Some("split"));
     // `jadpo dev` answers a word it doesn't have itself, however many follow
     // it: what would be kept of them here is no command.
     let unknown_dev_word =
