@@ -5465,15 +5465,24 @@ name it, which the schema gives `jadpo_std::system::FILES`
 `EventsPlan::files` (`FilesPlan`, also on `Started`); fields naming it
 from a second database are `toolchain.not_built_yet`
 (`counting_problems`). `jadpo_graph::migration::held_files` derives each
-table's `File` columns (a column whose stored JSON reads a `File`) while
-the store keeps `jadpo_files`, and `migration_sql` writes, after the
-indexes, the trigger function `jadpo_files_held` once, a `jadpo_files`
-trigger on each such table (`AFTER INSERT OR UPDATE OF <columns> OR
-DELETE`, its columns as arguments) and a count of the files rows already
-hold (`jadpo_sql::table::count_held_files`). The function counts one
-holder more for a file a row now holds, refusing a file whose holders are
-`-1` (being deleted) or `-2` (gone), and one fewer for a file it no longer
-holds, clearing `since`. `files::put` records its file at none
+table's columns holding files (`jadpo_sql::table::Held`: a `File` column,
+or a structured value's with `jadpo_graph::stored_json::files_within`,
+where in its JSON each `File` is, however deep) while the store keeps
+`jadpo_files`, and `migration_sql` writes, after the indexes, the
+functions `jadpo_files_within` (which walks a value for its files) and
+`jadpo_files_held` once, and again when a structured value's files are
+counted, a `jadpo_files` trigger on each such table (`AFTER INSERT OR
+UPDATE OF <columns> OR DELETE`, each `File` column's name or a
+structured value's `{"column", "at", "types"}` as arguments) and a count
+of the files rows already hold (`jadpo_sql::table::count_held_files`).
+`held::counters` adds a database whose entities' structured fields hold a
+`File` to every store of files' counters, since such a field names no
+store. The function counts, across the row's columns, as many holders
+more for a file the row now holds more often as it does, refusing a file
+whose holders are `-1` (being deleted) or `-2` (gone), and as many fewer
+for one it holds less often, clearing `since`, in key order. A file of a
+store of files no `File` field names is taken out of what `RELEASED` and
+`DUE` release, its row deleted (`UNMARK`). `files::put` records its file at none
 (`KEEP_PUT`) before sending. A write that updates or deletes marks the
 boundary (`Boundary::may_release`), and `boundary::seal` then runs
 `files::RELEASED` in the transaction, marking each file held by none and

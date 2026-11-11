@@ -263,15 +263,8 @@ work below (Richard, 2026-11-08).
      `jadpo replay`. Done when a request's number draws its route on both
      executors and a replay gives the same results.
 4. Tooling completeness (area 14): interactive tests, full completion.
-   - [ ] **T3 `jadpo test --interactive` and `--affected`** `opus · high`:
-     area 13, "In the editor" and "What is built"; area 14, "`jadpo test`".
-     The keyboard view, its `enter`, `a` and `f` keys under `--watch`, and
-     the tests a change reaches against the merge-base with `main`.
-     Designed with the design skills first.
-   - [ ] **T5 The agent skill's last three parts** `opus · high` after A17:
-     area 14, "Tools for agents". Reading the catalogues and running `jadpo
-     impact` first, the parallel-workspace routine, and the rule for a fixed
-     value. Generated CI also belongs here, once a page says what generates it
+   - [ ] **T5 Generated CI** `opus · high` after L3: area 14, "Tools for
+     agents". Generated CI belongs here, once a page says what generates it
      (L3).
    - [ ] **T7 Records in the editor** `opus · high`: area 18, "Records in
      git and in your editor" and "What is built". `jadpo check` building

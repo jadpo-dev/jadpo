@@ -183,7 +183,20 @@ To run fewer tests:
 reruns the tests that reach something whose digest, a hash of its code,
 changed since the last run, within the path, name and kind you gave. While
 the build is broken it shows the errors and runs nothing. With `--json` it
-writes one envelope per line. Ctrl-c quits.
+writes one envelope per line. In a terminal, `enter` reruns the last run's
+tests, `a` runs them all and `f` the failing ones; `q` or ctrl-c quits.
+
+`jadpo test --affected` runs the tests that reach what changed since the
+merge base with `main`, measured as `--watch` measures a save: the tests
+reaching any node whose digest differs from that commit's, the commit
+found as `jadpo check` finds its before side ([`jadpo
+check`](#jadpo-check)); on `main` itself, the previous commit. Run it
+before pushing, or in CI.
+
+`jadpo test --interactive` opens a keyboard view of every test: search,
+move between tests, run a file, one test or all, rerun failures, read a
+failure's report and turn watching on and off
+([Running tests](13-testing.md#running-tests)). It needs a terminal.
 
 `--keep-failed` keeps a failed test's database and names it in the report.
 
@@ -295,12 +308,6 @@ work](12-jobs-and-events.md#running-background-work)).
 
 Not built yet:
 
-- `jadpo test --affected`, which runs the tests a change reaches,
-  measured against the merge-base with `main`.
-- `jadpo test --interactive`, a keyboard view of every test: search,
-  move between tests, run a file, one test or all, rerun failures and
-  turn watching on and off ([Testing](13-testing.md)). The flag says
-  `toolchain.not_built_yet`.
 - The trace `--keep-failed` keeps, which comes with
   [Debugging](17-debugging-and-review.md).
 - `jadpo dev` starting the services the app's connections declare
@@ -2514,9 +2521,11 @@ before it changes something shared, it asks what the change reaches.
   `https://jadpo.dev/llms.txt` links): tells an agent to read the primer, find
   the page for its task, run `jadpo check --json` and `jadpo test --json` after
   each connected change, and report a bug in Jadpo through you. It points at
-  these pages for syntax. Three things are still to go in it:
-  - Read the catalogues before adding code, and run `jadpo impact <name>`
-    before changing or removing anything shared or public.
+  these pages for syntax, and it also tells the agent:
+  - Read the catalogues before adding code, running `jadpo check` once
+    first in a fresh workspace, since `build/` isn't committed, and run
+    `jadpo impact <name>` before changing or removing anything shared or
+    public, while the project still checks.
   - The routine for agents working in parallel workspaces: before
     pushing, merge `main`, run `jadpo check` (it builds nothing), fix any
     clash, then push. Private functions and types need only be unique
@@ -2533,10 +2542,9 @@ before it changes something shared, it asks what the change reaches.
   what generates a project's CI (`jadpo new` creates none); whatever does
   must follow this.
 
-Not built yet: those three parts of the agent skill and generated CI.
-The catalogues, the schema and query reports, the similar-helper check,
-`jadpo inspect`, `jadpo impact`, `jadpo rename`, the `jadpo domain`
-commands and the rest of the skill are built.
+Not built yet: generated CI. The catalogues, the schema and query
+reports, the similar-helper check, `jadpo inspect`, `jadpo impact`,
+`jadpo rename`, the `jadpo domain` commands and the agent skill are built.
 
 ## Suggestions
 <!-- topic: suggestions -->
@@ -4109,7 +4117,7 @@ yet, or that other commands replace.
 | `cli.sql_arguments` | `sql` | A `jadpo sql` command names no query or action, one the project doesn't declare, or an action that writes nothing |
 | `cli.sql_explain_unavailable` | `sql --explain` | A `jadpo sql --explain` command can't make the disposable database it plans a query's statements on |
 | `cli.suggest_arguments` | `suggest` | A `jadpo suggest` command names an action it doesn't have, or a suggestion the last scan didn't find |
-| `cli.test_arguments` | `test` | A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use |
+| `cli.test_arguments` | `test` | A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use, or asks for `--affected` with nothing to compare with or `--interactive` where it can't open |
 | `cli.toolchain_arguments` | `toolchain` | A `jadpo toolchain` command names an action it doesn't have, or a release that isn't kept |
 | `cli.translations_arguments` | `translations` | A `jadpo translations` command names no action, one it doesn't have, or a locale the project doesn't translate into |
 | `cli.unknown_command` | any command | A `jadpo` command line starts with a command Jadpo doesn't have, or asks `jadpo help` about a command or rule it doesn't have |
@@ -4170,7 +4178,7 @@ Each row says what is built and what is specified but not built yet.
 | Commands | Partly built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe. Not built yet: those in their "Not built yet" notes, `services`, `dev grants`, `files`, `batches`, `search reindex`, `trace`, `traces`, `metrics`, `logs`, `watch`, `call`, `console`, `mcp`, `replay`, `path`, `privacy requests`, `incident` and `test new --from`. |
 | Language server | Partly built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; and the code actions under [Editor support](#editor-support). Not built yet: rename, which is to run [`jadpo rename`](#jadpo-rename)'s code. |
 | VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release to the VS Code Marketplace and Open VSX, which publishes through trusted publishing. |
-| Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; the agent skill is built, but for the three parts [Tools for agents](#tools-for-agents) lists; `jadpo inspect`, `impact`, `rename` and `domain` are built; generated CI is not built yet. |
+| Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; the agent skill is built, with every part [Tools for agents](#tools-for-agents) lists; `jadpo inspect`, `impact`, `rename` and `domain` are built; generated CI is not built yet. |
 | Suggestions | Partly built: `jadpo suggest` with its eight signal kinds and taught signals, `published` asking the registry by fingerprint prefix and `function` reading the operation table, the catalogue, accepted findings, `ignore`, `found`, `share`, `suggestions { }` and the committed taught record, `share` against a fake of Jadpo HQ. Not built yet: HQ itself, so a real `share` has nowhere to go; the public registry's `POST fingerprints/query`, so until jadpo.dev serves it a scan says `registry not reached`. |
 | Review and sign-off | Built: `jadpo check` judging acceptances against the default branch at its merge base, `--before`, `jadpo acceptance new` ([Acceptances](18-records-and-manifest.md#acceptances)) and [`jadpo approval`](#jadpo-approval). |
 | Build-only errors | Built: `jadpo build` for the one deployable an app that declares none has and for declared deployables, what a target can't run reported by `jadpo check` as `deployable.target_unsupported`; its `settings` line, and a Worker's `secrets: { required: [ ] }`, name every setting a deployable reads, its connections' included. |

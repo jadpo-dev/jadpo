@@ -2453,6 +2453,34 @@ def check_skill(root=ROOT):
     return problems
 
 
+# `jadpo` and a command, then perhaps its action: not `app.jadpo`'s word.
+SKILL_COMMAND = re.compile(r'(?<![\w.])jadpo ([a-z][a-z-]*)(?: ([a-z][a-z-]*))?')
+
+
+def skill_command_problems(commands, root=ROOT):
+    """Problems with what the agent skill tells an agent to run: a command
+    `jadpo help --json` doesn't list, or an action a command that takes one
+    doesn't have. With no commands, as when `jadpo` isn't built, none."""
+    path = root / SKILL
+    if not commands or not path.exists():
+        return []
+    by_name = {name: command for command in commands for name in (command['name'], *command.get('synonyms', []))}
+    problems = []
+    for number, line in enumerate(path.read_text().split('\n'), 1):
+        for m in SKILL_COMMAND.finditer(line):
+            command = by_name.get(m.group(1))
+            if command is None:
+                problems.append(f'{SKILL}:{number}: tells an agent to run `jadpo {m.group(1)}`, '
+                                f'which isn\'t a command (jadpo help --json)')
+                continue
+            first = (command.get('arguments') or [{}])[0]
+            actions = {value['name'] for value in first.get('values', [])}
+            if m.group(2) and first.get('kind') == 'choice' and actions and m.group(2) not in actions:
+                problems.append(f'{SKILL}:{number}: tells an agent to run `jadpo {m.group(1)} {m.group(2)}`, '
+                                f'which isn\'t one of its actions ({", ".join(sorted(actions))})')
+    return problems
+
+
 MONTHS = ('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
           'October', 'November', 'December')
 RELEASED = re.compile(rf'Released ([1-9]|[12][0-9]|3[01]) ({"|".join(MONTHS)}) (20[0-9][0-9])\.')
@@ -2585,6 +2613,7 @@ def check_structure(pages, errors, catalogue, commands=(), root=ROOT, learn=(), 
     problems += site_path_problems({kind for kind, *_ in built})
     problems += agent_reading_problems(built, root)
     problems += read_once_problems(built, root)
+    problems += skill_command_problems(commands, root)
     files = markdown_files(root)
     problems += check_links(files, root)
     problems += check_help_lines(files, catalogue, root)

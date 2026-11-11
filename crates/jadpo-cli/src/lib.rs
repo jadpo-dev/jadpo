@@ -41,6 +41,8 @@ mod hq;
 mod inbox_page;
 mod inspect;
 mod install;
+pub mod interactive;
+pub mod keys;
 pub mod launcher;
 mod local;
 pub mod migrate;

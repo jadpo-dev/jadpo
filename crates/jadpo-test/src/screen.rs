@@ -82,7 +82,26 @@ pub fn screen(run: &Run) -> Screen {
     screen
 }
 
-fn footer(run: &Run) -> Block {
+/// Each failed test's report as the run's screen shows it, by the test's
+/// key, in the order they ran: what the keyboard view opens with `o`.
+/// Each is whole, since it is read on its own rather than after the
+/// report it would repeat.
+pub fn reports(run: &Run) -> Vec<(String, Block)> {
+    let root = run.root.as_deref();
+    run.results
+        .iter()
+        .filter_map(|result| {
+            let failure = result.failure.as_ref()?;
+            Some((
+                result.test.key.clone(),
+                Block::report(report(&result.test, failure, root, false)),
+            ))
+        })
+        .collect()
+}
+
+/// The run's footer: `✗ 1 failed  87 passed · 88 tests in 2.4 s`.
+pub fn footer(run: &Run) -> Block {
     let failed = run.failed();
     let passed = run.passed();
     let ran = run.results.len();
@@ -98,6 +117,10 @@ fn footer(run: &Run) -> Block {
         }
     }
     kinds.sort();
+    // What `--affected` measured the change against.
+    if let Some(since) = &run.selection.affected {
+        facts.push(Fact::plain(format!("since {since}")));
+    }
     let mut counts: Vec<String> = if ran < run.total() {
         vec![format!("{ran} of {}", count(run.total(), "test", "tests"))]
     } else {

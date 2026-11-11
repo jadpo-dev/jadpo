@@ -123,6 +123,7 @@ jobs:
           name: docs-bundle
           path: build/docs-bundle/
           if-no-files-found: error
+          retention-days: 30
 
   tests:
     runs-on: ubuntu-24.04

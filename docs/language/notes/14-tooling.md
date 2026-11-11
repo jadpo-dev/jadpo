@@ -30,6 +30,7 @@ what other areas carried here and where this page answers it.
 
 | Topic | Decision |
 |---|---|
+| The agent skill's catalogue, parallel-work and fixed-value parts | Recommended 2026-11-11 (T5, built unattended; to confirm): the skill tells an agent to run `jadpo check` once before reading `build/catalogue/` in a fresh workspace, since `build/` is never committed and a new clone or worktree has no catalogue, and to run `jadpo impact` before editing, while the project still checks, since `impact` refuses a project with errors. The parallel-workspace routine runs `jadpo test --json` after the clash is fixed and before the push, as the skill's check step already asks after each change; for a clash it sends the agent to the error's `next` step rather than a fixed "keep `main`'s", because `semantic.duplicate_declaration` says whether the two are a copy or two things with one name. Every `jadpo` command and action the skill names is checked against `jadpo help --json` by the docs check, so the skill can't send an agent to a command that doesn't exist; the scaffold's `AGENTS.md` isn't held to it, as its table names commands not built yet on purpose |
 | How `jadpo suggest` finds a published copy | Recommended 2026-11-08 (R8, built unattended; to confirm): by the release's own `source` fingerprint, the similar-helper check's likeness, so there is one scheme; a `shape` match was rejected, since `(Text) -> Text` is shared by hundreds of unrelated functions and a distinctive shape is rare enough to find nothing. The registry is asked with each fingerprint's first five hex digits (`POST fingerprints/query`, a new row of the protocol) and answers the whole bucket, k-anonymity as Have I Been Pwned's range API does it, so it learns nothing of which functions an app holds; sending whole fingerprints was rejected because it would tell the registry exactly which published functions an app copies. It asks by default, since an agent never passes a flag it doesn't know about, `JADPO_SUGGEST_REGISTRY` (anything but `on`) stops it on a machine or in CI, and the teaching-example gate runs with it off so its answer doesn't change with what is published; a `suggestions { registry: false }` option was left out until a project asks, which also keeps the `suggestions` errors' pages as they are. An unreachable registry, or one that doesn't serve the row yet, never fails the scan: the summary says `registry not reached`, and a `published` finding missing from that scan isn't counted taken nor its ignore dropped. The suggestion is the package and declaration, `@acme/postcodes uk.parse`, as `jadpo package search` lists a result, so the ignore record reads a suggestion up to its quoted reason, which every earlier record still reads as before |
 | How `jadpo suggest` finds a standard function | Recommended 2026-11-08 (R8, built unattended; to confirm): a standard operation is built in, with no source to fingerprint, and the registry indexes the standard library's types, not its functions, so the scan matches it locally from the operation table: the function's own name is the operation's, word for word with or without the namespace (`slug`, `text_slug`), and each parameter and its result fit the operation's kinds. A name holding more words (`count_active`) is left alone, since a function named for more than the operation usually does more; a shape alone, with no name, was rejected for the noise above. It is the `function` signal, beside `published` |
 | Which release `jadpo package check` compares with | Decided 2026-11-07 (Richard): `check` counts releases from git tags and the registry counts what it published, so a tag the registry never took (a release its verifier refused) made `check` write a "changes since" section the registry refused for a first release. `--previous <version>` names the tagged release the registry holds and `--previous none` a first release, as `verify --previous` names the release before. Asking the registry from `check` was rejected: `check` runs in a package's CI before a tag, and has to give the same answer with or without a network |
@@ -176,3 +177,29 @@ this list changed a rule.
   whose `deploy --dry-run` accepts the file, are pinned in
   `tools/fixtures/workers/`. The Rust toolchain is fetched from Rust's dist
   server.
+
+## `jadpo test --affected` (chunk T3)
+
+Decisions the page didn't make, recommended here and open for a
+maintainer to overrule:
+
+- **The base is the before side's commit**, found exactly as `jadpo check`
+  finds it: the merge base with the default branch, and on the default
+  branch itself the previous commit. "The merge-base with `main`" would
+  give nothing to run on `main`, and the decision above says the before
+  side is the one diffs use. There is no `--before` for `jadpo test`;
+  the pages don't offer one.
+- **No test reached passes.** It prints `nothing to run  no test reaches
+  what changed since <base>` and exits 0, as `--failed` with nothing to
+  rerun does; its JSON is `{ selection: { affected }, reached: 0, tests:
+  [] }`. A run that did run says `since <base>` in its footer, and
+  `selection.affected` names the base.
+- **A project new since the base** has nothing there to compare, so every
+  test reaches the change and all run.
+- **No base commit is a usage error.** Outside git, before the first
+  commit, with no default branch, with no history shared with it, or for a
+  project git ignores, it is `cli.test_arguments` (exit 2), its next step
+  `jadpo test`; a base a shallow clone doesn't hold names `git fetch
+  --unshallow`, as `jadpo check` does.
+- **With `--watch`**, the first run is what the branch changed reaches;
+  each save after is measured from the last run, as always.

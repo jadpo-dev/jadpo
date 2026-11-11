@@ -5,12 +5,14 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use jadpo_diag::{Diagnostic, nearest, rule};
 use jadpo_term::{Block, ColorChoice, Fact, Json, Outcome, Screen};
 use jadpo_test::{Options, Ran, TestKind};
 
 use crate::fmt::project_not_found;
+use crate::interactive::InteractiveArgs;
 use crate::run::{Call, Reply, Session, either, quoted};
 use crate::watch::WatchArgs;
 
@@ -48,7 +50,7 @@ pub fn test(call: &Call) -> Reply {
         }
         name => name.map(str::to_string),
     };
-    let options = Options {
+    let mut options = Options {
         cwd: call.cwd.clone().unwrap_or_else(|| PathBuf::from(".")),
         target: call.arguments.first().cloned(),
         name,
@@ -59,7 +61,24 @@ pub fn test(call: &Call) -> Reply {
         ci: crate::run::in_ci(&call.environment),
         record: false,
         full: call.flag("--full"),
+        since: None,
     };
+    if call.flag("--interactive") {
+        return interactive(call, options);
+    }
+    if call.flag("--affected") {
+        // A mistake in what to run is said before the base is looked for.
+        if let Some(ran) = jadpo_test::watch::validate(&options) {
+            return reply(ran);
+        }
+        let Some(root) = project_root(&options) else {
+            return project_not_found("test");
+        };
+        match crate::before::since(&root) {
+            Ok(since) => options.since = Some(Arc::new(since)),
+            Err(before) => return Reply::failed(no_base(before)),
+        }
+    }
     if call.flag("--watch") {
         // Mistakes in what to run end the command before it starts
         // watching; everything after (errors in the code, no tests yet)
@@ -123,6 +142,25 @@ pub(crate) fn view(ran: Ran) -> (Screen, Json, Vec<Diagnostic>, BTreeMap<String,
                 BTreeMap::new(),
             )
         }
+        Ran::NothingReached { since } => (
+            Screen::new().with(Block::summary(
+                Outcome::Success,
+                "nothing to run",
+                [Fact::plain(format!(
+                    "no test reaches what changed since {since}"
+                ))],
+            )),
+            Json::object([
+                (
+                    "selection",
+                    Json::object([("affected", Json::from(since.as_str()))]),
+                ),
+                ("reached", 0.into()),
+                ("tests", Json::Array(Vec::new())),
+            ]),
+            Vec::new(),
+            BTreeMap::new(),
+        ),
         Ran::NothingToRerun { gone } => (
             Screen::new().with(Block::summary(
                 Outcome::Success,
@@ -175,6 +213,93 @@ pub(crate) fn view(ran: Ran) -> (Screen, Json, Vec<Diagnostic>, BTreeMap<String,
             )
         }
     }
+}
+
+/// The project the tests run in: the one around the folder the command
+/// runs in, or around the path given.
+fn project_root(options: &Options) -> Option<PathBuf> {
+    jadpo_db::find_root(&options.cwd).or_else(|| {
+        let written = options.target.as_deref()?;
+        let path = written
+            .rsplit_once(':')
+            .filter(|(_, line)| line.chars().all(|c| c.is_ascii_digit()))
+            .map_or(written, |(path, _)| path);
+        jadpo_db::find_root(&options.cwd.join(path))
+    })
+}
+
+/// Why `--affected` has no base to measure a change against.
+fn no_base(before: jadpo_db::Before) -> Diagnostic {
+    match before {
+        jadpo_db::Before::Missing { base } => Diagnostic::new(
+            &rule::CLI_TEST_ARGUMENTS,
+            format!("The base to compare with, {base}, isn't in this clone"),
+        )
+        .reason("`--affected` runs the tests that reach what changed since the merge base with the default branch, and this clone was made without that commit.")
+        .next("Fetch the history with `git fetch --unshallow`; in CI, check out with `fetch-depth: 0`"),
+        other => {
+            let reason = match other {
+                jadpo_db::Before::Nothing(reason) => reason
+                    .split("; name one with")
+                    .next()
+                    .unwrap_or_default()
+                    .to_string(),
+                _ => "git doesn't track the project".to_string(),
+            };
+            Diagnostic::new(
+                &rule::CLI_TEST_ARGUMENTS,
+                "`--affected` has nothing to compare with",
+            )
+            .reason(format!("It runs the tests that reach what changed since the merge base with the default branch, and there is none: {reason}."))
+            .next("Run `jadpo test` to run every test")
+        }
+    }
+}
+
+/// `--interactive`: the keyboard view, which takes no selection of its
+/// own; whether it has a terminal is decided where the output's form is
+/// known ([`crate::run`]).
+fn interactive(call: &Call, options: Options) -> Reply {
+    let given: Vec<&str> = [
+        ("a path", options.target.is_some()),
+        ("`--name`", options.name.is_some()),
+        ("`--kind`", options.kind.is_some()),
+        ("`--failed`", options.failed),
+        ("`--affected`", call.flag("--affected")),
+    ]
+    .into_iter()
+    .filter_map(|(what, given)| given.then_some(what))
+    .collect();
+    if let Some(first) = given.first() {
+        return Reply::failed(
+            Diagnostic::new(
+                &rule::CLI_TEST_ARGUMENTS,
+                format!(
+                    "`--interactive` takes no {}",
+                    first.trim_start_matches("a ")
+                ),
+            )
+            .reason("The keyboard view lists every test in the app, and searches them as you type.")
+            .next(format!(
+                "Leave out {}, and press `/` in the view to search",
+                either(
+                    &given
+                        .iter()
+                        .map(|what| what.to_string())
+                        .collect::<Vec<_>>()
+                )
+            )),
+        );
+    }
+    // Outside a project, it says so before the view opens.
+    if let Some(ran) = jadpo_test::watch::validate(&options) {
+        return reply(ran);
+    }
+    Reply::Session(Session::Interactive(Box::new(InteractiveArgs {
+        options,
+        watch: call.flag("--watch"),
+        choice: ColorChoice::Auto,
+    })))
 }
 
 fn unknown_kind(word: &str) -> Diagnostic {

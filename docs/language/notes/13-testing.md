@@ -144,3 +144,38 @@ on both executors, whole and by range, and see an expired or altered one
 refused. `link:` takes text as well as a `File` so a test can send a link it
 altered, since no test can read a `File`'s parts. It names no route, and its
 `Response` holds `status`, `code` and `body` rather than `output`.
+
+## Keys under `--watch` and the keyboard view (chunk T3)
+
+Decisions the page didn't make, recommended here and open for a
+maintainer to overrule:
+
+- **What the watch keys run.** `enter` reruns the tests the last run ran,
+  `a` every test the command asked for (its path, `--name` and `--kind`),
+  `f` the tests failing now, as a test runner's watch mode does. Each run
+  appends a rule naming its key, as a save's names its file (`── 14:02:31
+  · run all · 8 tests ──`). `q` quits beside ctrl-c, because a terminal
+  that delivers keys as they are pressed delivers ctrl-c as a key, and
+  the session must put the terminal back before it ends. Keys are read
+  only when standard input is a terminal and the waiting line is drawn
+  for one; piped, or with `--json`, nothing changes.
+- **`--interactive` takes no selection.** A path, `--name`, `--kind`,
+  `--failed` or `--affected` is `cli.test_arguments`, since the view lists
+  every test and searches inside it; `--seed`, `--keep-failed`, `--full`
+  and `--watch` (open with watching on) are taken.
+- **Its refusals are usage errors.** `--json`, and a standard input or
+  output that isn't a terminal or isn't rich (`JADPO_PLAIN`, `TERM=dumb`),
+  are `cli.test_arguments`, exit 2, naming the flags that do the same job;
+  no rule of their own.
+- **Each test's last result.** The project's record of the last run,
+  `build/test/last-run.json`, now keeps the tests that passed as well as
+  those that failed. A test that passed is shown passed until it runs
+  again, even if its code changed since, as `--failed` trusts the record.
+- **What `a` and `enter` run under a search.** `a` runs every test, the
+  search notwithstanding; `enter` on a file runs the file's tests the
+  search shows.
+- **A report in the view is whole.** A fault that repeats an earlier
+  test's is shown in full, since it is read on its own.
+- **Leaving the view.** It draws on the alternate screen and gives the
+  terminal back on quit, leaving the last run's footer in the scrollback;
+  it exits 0, as a watch session does.

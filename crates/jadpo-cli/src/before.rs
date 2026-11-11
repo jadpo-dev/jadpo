@@ -90,6 +90,69 @@ pub struct UnknownRef(pub String);
 /// `--before` names, when it names one; whether the project holds
 /// acceptances decides whether being outside git is said.
 pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Before, UnknownRef> {
+    let Found {
+        top,
+        prefix,
+        base,
+        described,
+        paths,
+    } = match find(root, with, has_acceptances)? {
+        Ok(found) => found,
+        Err(before) => return Ok(before),
+    };
+    if !paths.iter().any(|path| path == jadpo_db::PROJECT_FILE) {
+        return Ok(Before::Nothing(format!(
+            "the project is new since {described}"
+        )));
+    }
+    read_at(root, &top, &prefix, &base, described, &paths)
+}
+
+/// What `jadpo test --affected` measures a change against (area 14,
+/// "What `--affected` measures against"): the project's files at the
+/// before side's commit, found as for every diff. A project new since that
+/// commit has none there, so every test reaches the change. Without a base
+/// commit, the before side saying why.
+pub fn since(root: &Path) -> Result<jadpo_test::Since, Before> {
+    let found = match find(root, None, true) {
+        Ok(Ok(found)) => found,
+        Ok(Err(before)) => return Err(before),
+        // Only a branch or commit given by name can be unknown.
+        Err(UnknownRef(reference)) => return Err(Before::Missing { base: reference }),
+    };
+    if !found
+        .paths
+        .iter()
+        .any(|path| path == jadpo_db::PROJECT_FILE)
+    {
+        return Ok(jadpo_test::Since {
+            described: found.described,
+            files: jadpo_db::FileSet::default(),
+        });
+    }
+    Ok(jadpo_test::Since {
+        files: tree(root, &found.base),
+        described: found.described,
+    })
+}
+
+/// A base commit found: the repository's top folder, the project's
+/// prefix in it, the whole commit, how it was found, and the
+/// project-relative paths it holds.
+struct Found {
+    top: std::path::PathBuf,
+    prefix: String,
+    base: String,
+    described: String,
+    paths: Vec<String>,
+}
+
+/// Finds the base commit, or the before side that says why there is none.
+fn find(
+    root: &Path,
+    with: Option<&str>,
+    has_acceptances: bool,
+) -> Result<Result<Found, Before>, UnknownRef> {
     let outside = || {
         if has_acceptances {
             Before::Nothing("not a git repository".to_string())
@@ -98,12 +161,12 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
         }
     };
     let Some(top) = line(root, &["rev-parse", "--show-toplevel"]) else {
-        return Ok(outside());
+        return Ok(Err(outside()));
     };
     let top = Path::new(&top).to_path_buf();
     // A project git ignores isn't tracked: a test's, under `target/`.
     if git(root, &["check-ignore", "-q", "."]).is_some() {
-        return Ok(Before::NotRead);
+        return Ok(Err(Before::NotRead));
     }
     let prefix = line(root, &["rev-parse", "--show-prefix"]).unwrap_or_default();
     let shallow = line(&top, &["rev-parse", "--is-shallow-repository"]).as_deref() == Some("true");
@@ -119,9 +182,9 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
                 ],
             ) else {
                 if shallow {
-                    return Ok(Before::Missing {
+                    return Ok(Err(Before::Missing {
                         base: reference.to_string(),
-                    });
+                    }));
                 }
                 return Err(UnknownRef(reference.to_string()));
             };
@@ -130,17 +193,17 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
         }
         None => {
             if line(&top, &["rev-parse", "-q", "--verify", "HEAD"]).is_none() {
-                return Ok(Before::Nothing("no commit yet".to_string()));
+                return Ok(Err(Before::Nothing("no commit yet".to_string())));
             }
             let Some((default, name)) = default_branch(&top) else {
                 if shallow {
-                    return Ok(Before::Missing {
+                    return Ok(Err(Before::Missing {
                         base: "the default branch".to_string(),
-                    });
+                    }));
                 }
-                return Ok(Before::Nothing(
+                return Ok(Err(Before::Nothing(
                     "no default branch to compare with; name one with `jadpo check --before <branch or commit>`".to_string(),
-                ));
+                )));
             };
             let current = line(&top, &["symbolic-ref", "-q", "--short", "HEAD"]);
             if current.as_deref() == Some(name.as_str()) {
@@ -148,13 +211,13 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
                     line(&top, &["rev-parse", "-q", "--verify", "HEAD~1^{commit}"])
                 else {
                     if shallow {
-                        return Ok(Before::Missing {
+                        return Ok(Err(Before::Missing {
                             base: "the previous commit".to_string(),
-                        });
+                        }));
                     }
-                    return Ok(Before::Nothing(
+                    return Ok(Err(Before::Nothing(
                         "the first commit has nothing before it".to_string(),
-                    ));
+                    )));
                 };
                 let short = previous.get(..7).unwrap_or(&previous).to_string();
                 (previous, format!("the previous commit, {short}"))
@@ -165,15 +228,15 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
                         (commit, format!("{} at {short}", shown(&default)))
                     }
                     None if shallow => {
-                        return Ok(Before::Missing {
+                        return Ok(Err(Before::Missing {
                             base: format!("the merge base with {}", shown(&default)),
-                        });
+                        }));
                     }
                     None => {
-                        return Ok(Before::Nothing(format!(
+                        return Ok(Err(Before::Nothing(format!(
                             "this branch shares no history with {}",
                             shown(&default)
-                        )));
+                        ))));
                     }
                 }
             }
@@ -204,11 +267,25 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
         .filter(|path| !path.is_empty())
         .map(str::to_string)
         .collect();
-    if !paths.iter().any(|path| path == jadpo_db::PROJECT_FILE) {
-        return Ok(Before::Nothing(format!(
-            "the project is new since {described}"
-        )));
-    }
+    Ok(Ok(Found {
+        top,
+        prefix,
+        base,
+        described,
+        paths,
+    }))
+}
+
+/// The before side at `base`: its records and acceptance files, and its
+/// domains and migrations.
+fn read_at(
+    root: &Path,
+    top: &Path,
+    prefix: &str,
+    base: &str,
+    described: String,
+    paths: &[String],
+) -> Result<Before, UnknownRef> {
     let domains: BTreeSet<String> = paths
         .iter()
         .filter_map(|path| {
@@ -227,7 +304,7 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
         .iter()
         .filter(|path| jadpo_db::compared_on_the_before_side(path))
         .collect();
-    let mut files = contents(&top, &base, &prefix, &wanted);
+    let mut files = contents(top, base, prefix, &wanted);
     // The lock moved: an upgrade's review compares what the app used then
     // (area 18, "Package upgrades"), so its sources and surfaces are read.
     let lock_now = std::fs::read_to_string(root.join(jadpo_db::LOCK)).ok();
@@ -238,10 +315,10 @@ pub fn read(root: &Path, with: Option<&str>, has_acceptances: bool) -> Result<Be
                 jadpo_db::reviewed_when_the_lock_moves(path) && !files.contains_key(*path)
             })
             .collect();
-        files.extend(contents(&top, &base, &prefix, &reviewed));
+        files.extend(contents(top, base, prefix, &reviewed));
     }
     Ok(Before::At(BeforeSide {
-        commit: base.get(..7).unwrap_or(&base).to_string(),
+        commit: base.get(..7).unwrap_or(base).to_string(),
         described,
         files,
         domains,

@@ -162,8 +162,28 @@ pub struct Watch {
     pending: Vec<Edit>,
     /// The keys of the tests failing now.
     failing: BTreeSet<String>,
+    /// The keys of the tests the last run that ran any ran, which `enter`
+    /// runs again.
+    last: BTreeSet<String>,
     /// The last look found errors, so nothing ran.
     refused: bool,
+}
+
+/// What a run picks, within what the session's options ask for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Pick {
+    /// What changed since the last run reaches; on the first run, what
+    /// the options ask for (with `--affected`, what changed since its
+    /// base reaches).
+    Reached,
+    /// Every test the options ask for: `a`.
+    All,
+    /// The tests failing now: `f`.
+    Failing,
+    /// The tests the last run ran: `enter` under `--watch`.
+    Again,
+    /// These tests, by key: a file or a test chosen in the keyboard view.
+    Only(BTreeSet<String>),
 }
 
 impl Watch {
@@ -181,19 +201,104 @@ impl Watch {
         if let Some(ran) = validate(&options) {
             return Err(ran);
         }
+        let mut watch = Watch::open(options, db)?;
+        let event = watch.step(Vec::new(), &Pick::Reached);
+        Ok((watch, event))
+    }
+
+    /// Loads the project without running anything, for the keyboard view,
+    /// which runs what is asked for when it is asked.
+    pub fn open(options: Options, db: Database) -> Result<Watch, Ran> {
+        if let Some(ran) = validate(&options) {
+            return Err(ran);
+        }
         let target = select::resolve(&options)?;
         let loaded = jadpo_db::load_into(&target.folder, db);
-        let mut watch = Watch {
+        Ok(Watch {
             target,
             options,
             loaded,
             baseline: None,
             pending: Vec::new(),
             failing: BTreeSet::new(),
+            last: BTreeSet::new(),
             refused: false,
+        })
+    }
+
+    /// Every test in the project as it checks now, in file and line
+    /// order, or the errors that stop it checking. Before any run, what
+    /// the session saw here is what the first save is measured from.
+    pub fn tests(&mut self) -> Result<Vec<crate::Test>, Ran> {
+        // A mutable borrow, as `step` takes: the database isn't shared
+        // between threads, only lent to the interpreter's.
+        let this = &mut *self;
+        let checked = jadpo_interp::on_large_stack(move || {
+            let tests = crate::prepare(&this.loaded, &this.options.cwd)?.tests;
+            // Before any run, a save is measured from the project as it
+            // was listed.
+            if this.baseline.is_none() {
+                this.baseline = Some(Arc::clone(jadpo_check::graph::graph(
+                    &this.loaded.db,
+                    this.loaded.project,
+                )));
+            }
+            Ok(tests)
+        });
+        match checked {
+            Ok(result) => result,
+            Err(error) => Err(Ran::Stopped(Box::new(start_failed(&error.to_string())))),
+        }
+    }
+
+    /// The keys of the tests that passed and failed the last time each
+    /// ran, as the project's record keeps them.
+    pub fn last_results(&self) -> (BTreeSet<String>, BTreeSet<String>) {
+        if !self.is_project() {
+            return Default::default();
+        }
+        crate::record::results(&self.loaded.root)
+    }
+
+    /// Takes the tests that failed last time, by the project's record, as
+    /// failing now, so `f` can run them before the session has: the
+    /// keyboard view starts from each test's last result.
+    pub fn adopt_last_failures(&mut self) {
+        self.failing = self.last_results().0;
+    }
+
+    /// The keys of the tests failing now, as far as the session knows.
+    pub fn failing(&self) -> &BTreeSet<String> {
+        &self.failing
+    }
+
+    /// Brings the database up to date with `edits` without running
+    /// anything; the edits whose contents changed. The next run that
+    /// checks shows them.
+    pub fn sync(&mut self, edits: Vec<Edit>) -> Vec<Edit> {
+        let changed: Vec<Edit> = edits
+            .into_iter()
+            .filter(|edit| self.refresh(&edit.path))
+            .collect();
+        self.pending.extend(changed.iter().cloned());
+        self.pending = merge(std::mem::take(&mut self.pending));
+        changed
+    }
+
+    /// Runs what `pick` picks now. `None` when it picks nothing: no test
+    /// is failing for [`Pick::Failing`], or no run has happened for
+    /// [`Pick::Again`].
+    pub fn run(&mut self, pick: Pick) -> Option<Event> {
+        let empty = match &pick {
+            Pick::Failing => self.failing.is_empty(),
+            Pick::Again => self.last.is_empty(),
+            Pick::Only(keys) => keys.is_empty(),
+            Pick::Reached | Pick::All => false,
         };
-        let event = watch.step(Vec::new());
-        Ok((watch, event))
+        if empty {
+            return None;
+        }
+        Some(self.step(Vec::new(), &pick))
     }
 
     /// The folder every path is relative to.
@@ -229,7 +334,7 @@ impl Watch {
         if changed.is_empty() {
             return None;
         }
-        Some(self.step(changed))
+        Some(self.step(changed, &Pick::Reached))
     }
 
     /// Reads one changed path again; whether anything the check reads
@@ -260,26 +365,17 @@ impl Watch {
 
     /// Checks, works out what the edits reach, and runs it, on the
     /// interpreter's thread.
-    fn step(&mut self, edits: Vec<Edit>) -> Event {
+    fn step(&mut self, edits: Vec<Edit>, pick: &Pick) -> Event {
         let these = merge(edits.clone());
         self.pending.extend(edits);
         self.pending = merge(std::mem::take(&mut self.pending));
         let started = Instant::now();
-        let run = jadpo_interp::on_large_stack(|| self.check_and_run(started));
+        let run = jadpo_interp::on_large_stack(|| self.check_and_run(started, pick));
         let (reached, ran, good) = match run {
             Ok(result) => result,
             Err(error) => (
                 None,
-                Some(Ran::Stopped(Box::new(
-                    Diagnostic::new(
-                        &rule::TEST_RUNTIME_START_FAILED,
-                        "The interpreter couldn't start",
-                    )
-                    .reason(format!(
-                        "Tests run on a thread with a large stack, and starting it failed: {error}."
-                    ))
-                    .next("Free some memory, then save again"),
-                ))),
+                Some(Ran::Stopped(Box::new(start_failed(&error.to_string())))),
                 false,
             ),
         };
@@ -315,7 +411,11 @@ impl Watch {
     }
 
     /// The count reached, what ran, and whether the build checked.
-    fn check_and_run(&mut self, started: Instant) -> (Option<usize>, Option<Ran>, bool) {
+    fn check_and_run(
+        &mut self,
+        started: Instant,
+        pick: &Pick,
+    ) -> (Option<usize>, Option<Ran>, bool) {
         let checked = match crate::prepare(&self.loaded, &self.options.cwd) {
             Ok(checked) => checked,
             Err(ran) => return (None, Some(ran), false),
@@ -324,10 +424,23 @@ impl Watch {
             &self.loaded.db,
             self.loaded.project,
         ));
-        let only = self
-            .baseline
-            .as_ref()
-            .map(|before| affected(&graph, before));
+        // The first run under `--affected` runs what changed since its
+        // base reaches, and says so when that is nothing.
+        let since = match (pick, &self.baseline) {
+            (Pick::Reached, None) => self.options.since.clone(),
+            _ => None,
+        };
+        let only = match pick {
+            Pick::Reached => match (&self.baseline, &since) {
+                (Some(before), _) => Some(affected(&graph, before)),
+                (None, Some(since)) => Some(crate::reached_since(&self.loaded, since)),
+                (None, None) => None,
+            },
+            Pick::All => None,
+            Pick::Failing => Some(self.failing.clone()),
+            Pick::Again => Some(self.last.clone()),
+            Pick::Only(keys) => Some(keys.clone()),
+        };
         let ran = crate::choose_and_run(
             &self.loaded,
             &checked,
@@ -341,6 +454,7 @@ impl Watch {
         // `--failed` picks the first run only; later runs are what each
         // change reaches.
         self.options.failed = false;
+        self.options.since = None;
         let keys: BTreeSet<&str> = checked.tests.iter().map(|test| test.key.as_str()).collect();
         self.failing.retain(|key| keys.contains(key.as_str()));
         if let Ran::Done(run) = &ran {
@@ -351,6 +465,16 @@ impl Watch {
                     self.failing.remove(&result.test.key);
                 }
             }
+            if !run.results.is_empty() {
+                self.last = run
+                    .results
+                    .iter()
+                    .map(|result| result.test.key.clone())
+                    .collect();
+            }
+        }
+        if let Some(since) = &since {
+            return (None, Some(crate::nothing_reached(ran, since)), true);
         }
         match (only, ran) {
             (None, ran) => (None, Some(ran), true),
@@ -359,6 +483,18 @@ impl Watch {
             (Some(_), ran) => (None, Some(ran), true),
         }
     }
+}
+
+/// The interpreter's thread couldn't start, with `error`.
+fn start_failed(error: &str) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TEST_RUNTIME_START_FAILED,
+        "The interpreter couldn't start",
+    )
+    .reason(format!(
+        "Tests run on a thread with a large stack, and starting it failed: {error}."
+    ))
+    .next("Free some memory, then save again")
 }
 
 /// Why `options` can't start a session, if they can't: a path that

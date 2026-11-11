@@ -303,6 +303,128 @@ fn names(value: &Value, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Where the `File`s a stored value holds are, however deep (area 16,
+/// "Deleting and erasing"): what a store's trigger walks to count each
+/// file's holders, as `{"at": <where>, "types": {<name>: <where>}}`. Each
+/// `<where>` is `"file"` (the value is a `File`, or `null`), `{"items":
+/// <where>}` (each item of a list or set), `{"values": <where>}` (each of
+/// a map's values), `{"fields": {<field>: <where>}}` (an object's fields),
+/// `{"variants": {<variant>: {<field>: <where>}}}` (the fields of the
+/// variant an enum's `tag` names) or `{"named": <name>}` (one of `types`,
+/// so a type that holds itself is written once). Only the parts that lead
+/// to a file are kept; `None` for a value that holds none.
+pub fn files_within(reads: &Reads) -> Option<Value> {
+    // The named types that hold a file, found until no more are: a type
+    // that holds itself holds one only through some other part.
+    let mut leading: BTreeSet<String> = BTreeSet::new();
+    loop {
+        let before = leading.len();
+        for (name, named) in &reads.types {
+            if leading.contains(name) {
+                continue;
+            }
+            let found = match named {
+                Named::Object { fields, .. } => fields.values().any(|shape| leads(shape, &leading)),
+                Named::Enum { variants } => variants
+                    .values()
+                    .flatten()
+                    .any(|fields| fields.values().any(|shape| leads(shape, &leading))),
+            };
+            if found {
+                leading.insert(name.clone());
+            }
+        }
+        if leading.len() == before {
+            break;
+        }
+    }
+    let at = within(&reads.shape, &leading)?;
+    let mut types = Value::object();
+    for name in &leading {
+        let mut held = Value::object();
+        match &reads.types[name] {
+            Named::Object { fields, .. } => held.set("fields", fields_holding(fields, &leading)),
+            Named::Enum { variants } => {
+                let mut each = Value::object();
+                for (variant, fields) in variants {
+                    if let Some(fields) = fields {
+                        each.set_some(variant, fields_holding(fields, &leading));
+                    }
+                }
+                held.set("variants", each);
+            }
+        }
+        types.set(name, held);
+    }
+    let mut out = Value::object();
+    out.set("at", at);
+    out.set_some("types", types);
+    Some(out)
+}
+
+/// Whether `shape` holds a `File`, given the named types `leading` that do.
+fn leads(shape: &Shape, leading: &BTreeSet<String>) -> bool {
+    match shape {
+        Shape::Value(scalar) => kept_within(&scalar.ty).is_some(),
+        Shape::Optional(inner) => leads(inner, leading),
+        Shape::List { item, .. } => leads(item, leading),
+        Shape::Map { value, .. } => leads(value, leading),
+        Shape::Named(name) => leading.contains(name),
+    }
+}
+
+/// `{key: at}`.
+fn one(key: &str, at: Value) -> Value {
+    let mut out = Value::object();
+    out.set(key, at);
+    out
+}
+
+/// Where the files `shape` holds are, as [`files_within`] writes it.
+fn within(shape: &Shape, leading: &BTreeSet<String>) -> Option<Value> {
+    match shape {
+        Shape::Value(scalar) => kept_within(&scalar.ty),
+        Shape::Optional(inner) => within(inner, leading),
+        Shape::List { item, .. } => within(item, leading).map(|item| one("items", item)),
+        Shape::Map { value, .. } => within(value, leading).map(|value| one("values", value)),
+        Shape::Named(name) => leading
+            .contains(name)
+            .then(|| one("named", Value::from(name))),
+    }
+}
+
+/// The fields of `fields` that hold a file, each with where.
+fn fields_holding(fields: &BTreeMap<String, Shape>, leading: &BTreeSet<String>) -> Value {
+    let mut out = Value::object();
+    for (name, shape) in fields {
+        if let Some(at) = within(shape, leading) {
+            out.set(name, at);
+        }
+    }
+    out
+}
+
+/// Where the files a value of the built-in or standard type `ty` holds
+/// are: a `File` is one, and an object only the runtime builds holds them
+/// in its fields (an `ExportSummary`'s `file`).
+fn kept_within(ty: &str) -> Option<Value> {
+    if ty == jadpo_std::files::FILE {
+        return Some(Value::from("file"));
+    }
+    let mut fields = Value::object();
+    for (name, part) in jadpo_std::batch::object_fields(ty)? {
+        let at = match part {
+            jadpo_std::batch::Part::Kept(kept) => kept_within(kept),
+            jadpo_std::batch::Part::List(item) => kept_within(item).map(|item| one("items", item)),
+            _ => None,
+        };
+        if let Some(at) = at {
+            fields.set(name, at);
+        }
+    }
+    (fields != Value::object()).then(|| one("fields", fields))
+}
+
 /// Whether `now` reads every value `was` read, as the route codec reads a
 /// stored value back: never when it can't show it. An object reads its
 /// members exactly, every field required and no other allowed, so a field
@@ -508,6 +630,117 @@ mod tests {
             },
             types,
         }
+    }
+
+    fn scalar(ty: &str) -> Shape {
+        Shape::Value(Scalar {
+            ty: ty.into(),
+            ..Scalar::default()
+        })
+    }
+
+    fn list(item: Shape, set: bool) -> Shape {
+        Shape::List {
+            set,
+            item: Box::new(item),
+            min_length: None,
+            max_length: None,
+        }
+    }
+
+    /// Where a stored value's files are, however deep: only the parts that
+    /// lead to one, a type that holds itself written once, and nothing for
+    /// a value holding none, itself included.
+    #[test]
+    fn a_values_files_are_found_however_deep() {
+        let within = |shape: Shape, types: &[(&str, Named)]| {
+            let types = types
+                .iter()
+                .map(|(name, named)| (name.to_string(), named.clone()))
+                .collect();
+            files_within(&Reads { shape, types }).map(|found| found.to_text())
+        };
+        let file = || scalar("File");
+        assert_eq!(within(file(), &[]).as_deref(), Some(r#"{"at":"file"}"#));
+        assert_eq!(
+            within(Shape::Optional(Box::new(list(file(), true))), &[]).as_deref(),
+            Some(r#"{"at":{"items":"file"}}"#)
+        );
+        let map = Shape::Map {
+            key: Box::new(scalar("Text")),
+            value: Box::new(list(file(), false)),
+            min_length: None,
+            max_length: None,
+        };
+        assert_eq!(
+            within(map, &[]).as_deref(),
+            Some(r#"{"at":{"values":{"items":"file"}}}"#)
+        );
+        assert_eq!(
+            within(scalar("ExportSummary"), &[]).as_deref(),
+            Some(r#"{"at":{"fields":{"file":"file"}}}"#)
+        );
+        // A folder of folders, each with a sheet, and a choice whose one
+        // variant carries a file.
+        let folder = Named::Object {
+            fields: [
+                ("name".to_string(), scalar("Text")),
+                ("sheet".to_string(), Shape::Optional(Box::new(file()))),
+                (
+                    "folders".to_string(),
+                    list(Shape::Named("Folder".into()), false),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+            rules: Vec::new(),
+        };
+        assert_eq!(
+            within(Shape::Named("Folder".into()), &[("Folder", folder)]).as_deref(),
+            Some(
+                r#"{"at":{"named":"Folder"},"types":{"Folder":{"fields":{"folders":{"items":{"named":"Folder"}},"sheet":"file"}}}}"#
+            )
+        );
+        let choice = Named::Enum {
+            variants: [
+                ("plain".to_string(), None),
+                (
+                    "sheet".to_string(),
+                    Some(
+                        [
+                            ("file".to_string(), file()),
+                            ("note".to_string(), scalar("Text")),
+                        ]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        };
+        assert_eq!(
+            within(
+                list(Shape::Named("Choice".into()), false),
+                &[("Choice", choice)]
+            )
+            .as_deref(),
+            Some(
+                r#"{"at":{"items":{"named":"Choice"}},"types":{"Choice":{"variants":{"sheet":{"file":"file"}}}}}"#
+            )
+        );
+        // A tree holding only itself holds no file.
+        let node = Named::Object {
+            fields: [(
+                "nodes".to_string(),
+                list(Shape::Named("Node".into()), false),
+            )]
+            .into_iter()
+            .collect(),
+            rules: Vec::new(),
+        };
+        assert_eq!(within(Shape::Named("Node".into()), &[("Node", node)]), None);
+        assert_eq!(files_within(&base()), None);
     }
 
     fn base() -> Reads {
