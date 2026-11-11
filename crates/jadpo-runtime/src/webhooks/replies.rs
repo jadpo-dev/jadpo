@@ -125,6 +125,32 @@ pub(crate) async fn answer(
         release(database, &key, &at).await;
         return super::internal(request_id, "a webhook's reply the plan gave no codec");
     };
+    // A `File` the reply holds is sent as its bytes, read from its store
+    // once the action has committed (area 11, "Types"; chunk B14).
+    let answered = if crate::files::holds_stored(&answered) {
+        match Box::pin(crate::files::with_bytes(ctx, &answered)).await {
+            crate::files::Done::Value(sent) => sent,
+            crate::files::Done::Failed(refused) => {
+                release(database, &key, &at).await;
+                if refused.kind.as_deref() == Some("unavailable") {
+                    return failure(UNAVAILABLE, request_id, None);
+                }
+                return failure(INTERNAL_FAULT, request_id, None);
+            }
+            crate::files::Done::Fault(kind) => {
+                release(database, &key, &at).await;
+                let mut response = failure(INTERNAL_FAULT, request_id, None);
+                response.fault = Some(ctx.fault(kind, crate::Frame::ENTRY));
+                return response;
+            }
+            crate::files::Done::Broke(_) => {
+                release(database, &key, &at).await;
+                return super::internal(request_id, "a store of files refused a reply's read");
+            }
+        }
+    } else {
+        answered
+    };
     let wire = super::Wire;
     let codecs = jadpo_value::json::Codecs {
         coder: Some(&wire),

@@ -34,9 +34,13 @@ Why [Personal data](../15-personal-data.md) is the way it is: the decisions behi
 - **Reading more than one store.** `export` reads each store in a read-only
   transaction of its own, beside the action's, since it must reach records
   across every store where `erase` does and an action may write only one.
-- **A `File` field waits for downloads.** The area's own rule is that
-  whatever can't be carried out in full is refused where it is written;
-  a link that goes nowhere would be a silently partial export.
+- **A `File` goes as its link, however deep.** The area's own rule is that
+  whatever can't be carried out in full is refused where it is written; a
+  link that goes nowhere would be a silently partial export. A `File` inside
+  a structured value is a link too, written by its field's codec with each
+  file it holds as a link, and an `ExportSummary` field is exported with
+  its file, though a batch's other records stay out as they do from a
+  response.
 - **The after-`erase` test.** Generating one for each person entity needs
   a person to make, which data builders will give. Until then, every test
   that erases a person is held to its export holding nothing, checked after

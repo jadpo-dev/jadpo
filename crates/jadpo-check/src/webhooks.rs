@@ -428,8 +428,8 @@ pub fn package_events(db: &dyn Db, project: Project) -> PackageEvents {
                 );
             }
             // A `File` is the store and key its bytes are under, so a
-            // webhook names any file by holding one, and a reply tells whoever
-            // sent it where one is kept (area 16, "What a `File` holds").
+            // webhook names any file by holding one (area 16, "What a `File`
+            // holds"). A reply holding one sends its bytes (chunk B14).
             for field in fields {
                 let at = || {
                     tree::members(decl.member_list())
@@ -477,26 +477,6 @@ pub fn package_events(db: &dyn Db, project: Project) -> PackageEvents {
                     None
                 }
             };
-            if let Some((_, _, canonical)) = &reply
-                && let Some(held) = crate::types::decl::held_file(
-                    table,
-                    &Ty::Named(canonical.clone()),
-                    &mut Vec::new(),
-                )
-            {
-                let at = tree::members(decl.member_list())
-                    .into_iter()
-                    .find(|(key, _)| name_text(key).as_deref() == Some(crate::types::REPLY))
-                    .map_or_else(
-                        || name_span.clone(),
-                        |(key, _)| node_span(&path, key.syntax()),
-                    );
-                out.problems.push(crate::types::decl::file_sent_to_provider(
-                    &format!("`{name}`'s `reply:`"),
-                    &held,
-                    at,
-                ));
-            }
             // A reply is an answer like any other (area 19, "Where a secret
             // can go").
             if let Some((_, _, canonical)) = &reply

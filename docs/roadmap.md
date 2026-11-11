@@ -244,18 +244,6 @@ work below (Richard, 2026-11-08).
    The disk driver in production moved here from item 5; the `search`,
    `bot_check` and `scanning` capabilities, image variants, the
    `telemetry:` section and custom metrics stay under item 5.
-   - [ ] **B14 Where else a `File` goes** `opus · high` after B5:
-     area 16, "What a `File` holds", "Attachments", "`store.read(file)`"
-     and "Deleting and erasing"; area 11, "Types". A `File` in an
-     operation's `input:` or a webhook's `reply:`, sent as its bytes;
-     a `File` held inside a structured value that a person's export
-     reaches (area 15, "Export"), as its signed link;
-     a `File` held inside a structured value that a person's export
-     reaches (area 15, "Export"), as its signed link;
-     several attachments from one field (`List<File>`, `Set<File>`, a
-     `Map`) and a `FileContents` on an email; fields naming one store of
-     files in entities of two databases. Done when each runs on both
-     executors in place of its `toolchain.not_built_yet`.
    - [ ] **B16 What the audit trail doesn't keep yet** `opus · xhigh`
      area 16, "What the audit trail doesn't keep yet"; area 15,
      "What is built". A `File` field, a field with its own `retention:`, a

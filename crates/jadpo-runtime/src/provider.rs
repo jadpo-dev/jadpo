@@ -846,6 +846,23 @@ pub async fn call(ctx: &mut Ctx<'_>, calling: Calling<'_>, input: Option<Value>)
         Some((plan, _, _)) => ctx.settings_of(settings_read(plan)),
         None => Vec::new(),
     };
+    // A `File` the input holds is sent as its bytes, read from its store
+    // before the request is made (area 11, "Types"; chunk B14).
+    let input = match input {
+        Some(value) if crate::files::holds_stored(&value) => {
+            match Box::pin(crate::files::with_bytes(ctx, &value)).await {
+                crate::files::Done::Value(sent) => Some(sent),
+                crate::files::Done::Failed(failure) => return Done::Failed(failure),
+                crate::files::Done::Fault(kind) => return Done::Fault(kind),
+                crate::files::Done::Broke(_) => {
+                    return Done::Fault(FaultKind::Defect(
+                        "a store of files refused to read a file sent to a provider".into(),
+                    ));
+                }
+            }
+        }
+        other => other,
+    };
     made(ctx, &providers, number, input, &settings, calling.site).await
 }
 

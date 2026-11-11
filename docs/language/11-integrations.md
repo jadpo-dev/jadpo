@@ -2957,13 +2957,14 @@ metadata need, is `AnyObject`
 ([Other built-in types](02-values-and-types.md#other-built-in-types)), which
 isn't built, so writing it is `semantic.unknown_name`.
 
-A `File` is the store and key its bytes are under, so it doesn't cross to or
-from a provider, however deep a type holds it
+A `File` is the store and key its bytes are under, and neither the store nor
+the key crosses to or from a provider, however deep a type holds the file
 ([What a `File` holds](16-built-in-services.md#what-a-file-holds)):
 
-- In an operation's `input:` or a webhook's `reply:` it is
-  `toolchain.not_built_yet`, since sending a file to a provider isn't built.
-  The provider would get the store and key and none of the bytes.
+- In an operation's `input:` or a webhook's `reply:` it is sent as its bytes,
+  Base64 in the JSON as `Bytes` is, read whole from its store as the call is
+  made, or once the reply's action has committed. A file over `store.read`'s
+  10 MB, or one whose bytes are gone, is a fault, and nothing is sent.
 - In an operation's `output:` or `wire_output:`, or a webhook's event, it is
   `type.batch_input`, since a provider could name any file.
 
@@ -2976,16 +2977,6 @@ A file's bytes do go out: an operation's `input:` may hold the `FileContents`
 `store.read` gives, sent as its Base64. It doesn't come back, so an `output:`,
 a `wire_output:` or a webhook's event holding one is `type.batch_input`
 ([`store.read(file)`](16-built-in-services.md#storereadfile)).
-
-A `File` is the store and key its bytes are under, so it doesn't cross to or
-from a provider, however deep a type holds it
-([What a `File` holds](16-built-in-services.md#what-a-file-holds)):
-
-- In an operation's `input:` or a webhook's `reply:` it is
-  `toolchain.not_built_yet`, since sending a file to a provider isn't built.
-  The provider would get the store and key and none of the bytes.
-- In an operation's `output:` or `wire_output:`, or a webhook's event, it is
-  `type.batch_input`, since a provider could name any file.
 
 ### Failures
 
