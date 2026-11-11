@@ -311,13 +311,14 @@ Not built yet:
 
 These commands show you what your code does: the project map, what a
 change to a name reaches, its routes, the SQL its queries send, and what a
-prompt sends a model.
+prompt sends a model. One changes it: a rename.
 
 | Command | Does |
 |---|---|
 | `jadpo inspect` | Prints the project map |
 | `jadpo inspect <name>` | Prints one declaration: where it is, its fields or signature, and its edges |
 | `jadpo impact <name>` | Lists what a change to a declaration reaches |
+| `jadpo rename <name> <new-name>` | Renames a declaration or field everywhere, keeping its stored data |
 | `jadpo routes` | Lists every route |
 | `jadpo sql <query>`, `jadpo sql <action>` | Prints the SQL a query or an action's writes send |
 | `jadpo ai show <prompt>` | Prints what a prompt sends a model |
@@ -622,6 +623,59 @@ says `none` when nothing is reached. `--json` names each caller, with its
 calls, each trigger and each test. A name the project doesn't have is
 `cli.impact_arguments`, with the nearest.
 
+### `jadpo rename`
+
+Renames a declaration or a field: where it is declared and every place
+code names it, including the fields copied from it with `pick:`. A
+declaration in the file named after it moves to the new name's file,
+with the test file beside it. Name it as code writes it, a field after its
+entity or type (`Todo.priority`); a field's new name is its own
+(`importance`).
+
+```sh run project=renaming
+jadpo new todo > /dev/null
+cd todo
+jadpo rename greet welcome
+```
+
+```text output
+```
+
+A rename keeps what is stored under the old name. It adds a line to the
+identity registry, mapping the name now to the name it was born with
+([Stable identity](18-records-and-manifest.md#stable-identity)), so a
+stored field keeps its column and its rows, and an entity its table:
+`jadpo migrate new` finds nothing to migrate, and the screen says what was
+`kept`. A second rename changes the line, and a rename back to the born
+name removes it. The records the rename changes, such as
+`access.jadpo_record` here, are written again, and `jadpo check` says
+whether the change needs a person's
+[acceptance](18-records-and-manifest.md#acceptances), as it does for any
+change.
+
+It renames entities, types, functions, constants, actions, queries,
+fixtures, seeds, schedules, subscribers and libraries, and their fields
+and variants. It never edits a migration's folder, which is history, or an
+installed package.
+
+A new name already in use is `cli.rename_arguments`, refused before
+anything changes. It names what holds the name and its file, and lists
+the names in use that share its words, as
+[`semantic.duplicate_declaration`](../errors/semantic.duplicate_declaration.md)
+does. A name is in use where the new one has to be unique: among its
+owner's fields and variants, in its library, in its domain for a private
+function or type, and across the project for everything else. So is a
+name another declaration of its kind was born with, which stored records
+still know it by. A name that isn't one for its kind, the name it has, a
+domain, a route and a test are refused the same way. A rename whose
+result would have an error the project didn't have changes nothing and
+shows the error. It takes `--json`.
+
+Not built yet: renaming a variant of an enum a column stores, or a field
+of an object stored as JSON. Their stored values hold the names they were
+written with, so such a rename stops with `migration.out_of_date`, and
+nothing changes.
+
 ### `jadpo routes`
 
 Lists every route with its full method and path, its file, its API, its
@@ -690,9 +744,6 @@ Not built yet:
 - `jadpo sql` for SQLite, which comes with a SQLite store, and
   `jadpo sql --explain`, which runs the statement on a disposable
   database and shows the plan. The flag says `toolchain.not_built_yet`.
-- `jadpo rename <old> <new>`, which renames a declaration or field
-  everywhere and keeps its stored data. It refuses a new name already in
-  use.
 - `jadpo domain rename`, `split` and `merge`, which move a domain's files
   and update every call
   ([Project layout and modules](01-project-layout-and-modules.md)).
@@ -2037,7 +2088,7 @@ never behave differently.
   `type.standard_exists`, works as `jadpo fix <name> swap` does. Where the
   command stops, it is unavailable and shows the error it would add.
   Renaming instead needs a new name, so that stays with the command until
-  the editor's rename comes with `jadpo rename` ([A release that adds a
+  the editor has a rename of its own ([A release that adds a
   standard type](19-standard-library.md#a-release-that-adds-a-standard-type)).
 
 ### Completion
@@ -2091,9 +2142,8 @@ written by a model belong to your agent, never to `jadpo lsp`. VS Code
 asks for completion as you type a word, a `.`, a `:` or a digit.
 
 Not built yet: rename in the editor. It goes through the same code as
-`jadpo rename`, so an entity field renamed in the editor keeps its
-stored data, and it waits for that command and the identity registry it
-writes ([Entities, stores and migrations](05-data.md), [Stable
+[`jadpo rename`](#jadpo-rename), so an entity field renamed in the editor
+keeps its stored data through the identity registry ([Stable
 identity](18-records-and-manifest.md#stable-identity)).
 
 ## Error messages
@@ -2253,6 +2303,9 @@ before it changes something shared, it asks what the change reaches.
 - **`jadpo impact <name>`**: what a change to a declaration reaches: the
   domains that call it, the entry points and the tests
   ([`jadpo impact`](#jadpo-impact)).
+- **`jadpo rename <name> <new-name>`**: a declaration or field renamed
+  everywhere, its stored data kept, a name in use refused
+  ([`jadpo rename`](#jadpo-rename)).
 
 - **`jadpo domain rename`, `split` and `merge`**: move files and update
   every call. A new or renamed domain appears in the approval review
@@ -2283,8 +2336,8 @@ before it changes something shared, it asks what the change reaches.
 
 Not built yet: the schema and query reports, the `jadpo domain`
 commands, those three parts of the agent skill and generated CI. The
-catalogues, the similar-helper check, `jadpo inspect`, `jadpo impact` and
-the rest of the skill are built.
+catalogues, the similar-helper check, `jadpo inspect`, `jadpo impact`,
+`jadpo rename` and the rest of the skill are built.
 
 ## Suggestions
 <!-- topic: suggestions -->
@@ -3839,6 +3892,7 @@ yet, or that other commands replace.
 | `cli.privacy_arguments` | `privacy` | A `jadpo privacy` command names an action it doesn't have, or a state or page `requests` doesn't list |
 | `cli.project_required` | any command | Command requires a project path |
 | `cli.records_arguments` | `records` | A `jadpo records` command names an action other than `update` |
+| `cli.rename_arguments` | `rename` | A `jadpo rename` command names a declaration or field the project doesn't have, one it doesn't rename, or a new name that is taken or isn't one |
 | `cli.routes_arguments` | `routes` | A `jadpo routes` command is given an argument, which it doesn't take |
 | `cli.runs_arguments` | `runs` | A `jadpo runs` command names an action other than `unfinished`, or leaves out its `--build` |
 | `cli.schedules_arguments` | `schedules` | A `jadpo schedules` command names an action it doesn't have, or a schedule the project doesn't declare |
@@ -3912,10 +3966,10 @@ Each row says what is built and what is specified but not built yet.
 | Error messages | Built: one error per mistake, in the field order [Error messages](#error-messages) gives, `impact` only when it says something, edits on the next step where one exists, and help links to each error's page on the site. |
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 3) with `durationMs`, project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys, shortened unless `--full` is given; `jadpo test --json` is described in [Testing](13-testing.md) and under `testReport` in `jadpo help --json`. |
 | `build/` | Partly built: `jadpo check` writes `build/manifest.json`, the catalogues in `build/catalogue/`, the permissions, network, provider and personal-data reports in `build/report/` and the monitoring rules in `build/monitoring/`; `jadpo test` keeps its last run in `build/test/`. Not built yet: the schema and query reports, and `diagnostics/`, `inventory/`, `audit/` and `compatibility/`. |
-| Commands | Partly built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe. Not built yet: those in their "Not built yet" notes, `jadpo rename`, `domain`, `services`, `dev grants`, `files`, `batches`, `search reindex`, `trace`, `traces`, `metrics`, `logs`, `watch`, `call`, `console`, `mcp`, `replay`, `path`, `privacy requests`, `incident` and `test new --from`. |
-| Language server | Partly built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; and the code actions under [Editor support](#editor-support). Not built yet: rename, which waits for `jadpo rename`. |
+| Commands | Partly built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe. Not built yet: those in their "Not built yet" notes, `domain`, `services`, `dev grants`, `files`, `batches`, `search reindex`, `trace`, `traces`, `metrics`, `logs`, `watch`, `call`, `console`, `mcp`, `replay`, `path`, `privacy requests`, `incident` and `test new --from`. |
+| Language server | Partly built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; and the code actions under [Editor support](#editor-support). Not built yet: rename, which is to run [`jadpo rename`](#jadpo-rename)'s code. |
 | VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release to the VS Code Marketplace and Open VSX, which publishes through trusted publishing. |
-| Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; the agent skill is built, but for the three parts [Tools for agents](#tools-for-agents) lists; `jadpo inspect` and `impact` are built; `domain` and `rename` are not built yet, nor is generated CI. |
+| Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; the agent skill is built, but for the three parts [Tools for agents](#tools-for-agents) lists; `jadpo inspect`, `impact` and `rename` are built; `domain` is not built yet, nor is generated CI. |
 | Suggestions | Partly built: `jadpo suggest` with its eight signal kinds and taught signals, `published` asking the registry by fingerprint prefix and `function` reading the operation table, the catalogue, accepted findings, `ignore`, `found`, `share`, `suggestions { }` and the committed taught record, `share` against a fake of Jadpo HQ. Not built yet: HQ itself, so a real `share` has nowhere to go; the public registry's `POST fingerprints/query`, so until jadpo.dev serves it a scan says `registry not reached`. |
 | Review and sign-off | Built: `jadpo check` judging acceptances against the default branch at its merge base, `--before`, `jadpo acceptance new` ([Acceptances](18-records-and-manifest.md#acceptances)) and [`jadpo approval`](#jadpo-approval). |
 | Build-only errors | Built: `jadpo build` for the one deployable an app that declares none has and for declared deployables, what a target can't run reported by `jadpo check` as `deployable.target_unsupported`; its `settings` line, and a Worker's `secrets: { required: [ ] }`, name every setting a deployable reads, its connections' included. |

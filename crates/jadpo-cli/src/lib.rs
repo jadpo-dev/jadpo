@@ -60,6 +60,7 @@ mod package_search;
 mod privacy;
 mod provider_review;
 mod records;
+mod rename;
 mod registry;
 mod releases;
 mod routes;

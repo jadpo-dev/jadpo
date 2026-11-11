@@ -1357,7 +1357,13 @@ fn decision_problems(
             let span = written.map_or_else(|| at.clone(), |d| d.span.clone());
             let example = field_type(model, &need.entity, &need.field)
                 .and_then(|ty| example_backfill(&lookup, ty));
-            out.push(required(migration, need, span, example));
+            out.push(required(
+                migration,
+                need,
+                span,
+                example,
+                renamed_to(model, &before, after, need),
+            ));
             continue;
         }
         let Some(decision) = written else {
@@ -1582,13 +1588,81 @@ fn misfit(
     }
 }
 
+/// What a field or entity this migration retires may have been renamed
+/// to by hand: the one field its entity gains in the migration, or the one
+/// entity the migration adds, each by its name; `None` when there isn't
+/// exactly one. With the field's or entity's name now, for the command.
+fn renamed_to(
+    model: &DataModel,
+    before: &Schema,
+    after: &Schema,
+    need: &Needed,
+) -> Option<(String, String)> {
+    let entity_now = |born: &str| {
+        model
+            .entities
+            .iter()
+            .find(|entity| entity.born == born)
+            .map_or_else(|| born.to_string(), |entity| entity.name.clone())
+    };
+    let mut added: Vec<String> = Vec::new();
+    for (store, tables) in &after.stores {
+        let was = before.stores.get(store);
+        for (name, table) in &tables.tables {
+            let Holds::Entity(entity) = &table.holds else {
+                continue;
+            };
+            let old = was.and_then(|tables| tables.tables.get(name));
+            match need.kind {
+                NeededKind::Retire if *entity == need.entity => {
+                    for (column, now) in &table.columns {
+                        if now.retired || old.is_some_and(|t| t.columns.contains_key(column)) {
+                            continue;
+                        }
+                        if let Some(field) = &now.field
+                            && !added.contains(field)
+                        {
+                            added.push(field.clone());
+                        }
+                    }
+                }
+                NeededKind::RetireEntity if old.is_none() && !added.contains(entity) => {
+                    added.push(entity.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+    let [one] = added.as_slice() else {
+        return None;
+    };
+    Some(match need.kind {
+        NeededKind::RetireEntity => (entity_now(&need.entity), entity_now(one)),
+        _ => (
+            format!("{}.{}", entity_now(&need.entity), need.field),
+            one.clone(),
+        ),
+    })
+}
+
 fn required(
     migration: &Migration,
     need: &Needed,
     span: Span,
     example: Option<String>,
+    renamed: Option<(String, String)>,
 ) -> Diagnostic {
     let key = need.key();
+    // The command that renames it and keeps its data, once its old name
+    // is back (area 14, `jadpo rename`).
+    let rename = |what: &str, keeps: &str| match &renamed {
+        Some((old, new)) => format!(
+            "if the {what} was renamed to `{new}` instead, give it back its old name and run `jadpo rename {old} {new}`, which keeps its {keeps}."
+        ),
+        None => format!(
+            "if the {what} was renamed instead, give it back its old name and run `jadpo rename {key} <new-name>`, which keeps its {keeps}."
+        ),
+    };
     let (what, next) = match need.kind {
         NeededKind::Backfill => (
             format!(
@@ -1626,8 +1700,9 @@ fn required(
         ),
         NeededKind::Retire => (
             format!(
-                "`{key}` is gone from `{}`. Retiring its column keeps the column and its data while code stops using it; if the field was renamed instead, give it back its old name, since a rename that keeps the column comes with `jadpo rename`.",
-                need.entity
+                "`{key}` is gone from `{}`. Retiring its column keeps the column and its data while code stops using it; {}",
+                need.entity,
+                rename("field", "column")
             ),
             format!("Write `{key}: FieldChange.retired`"),
         ),
@@ -1637,7 +1712,8 @@ fn required(
         ),
         NeededKind::RetireEntity => (
             format!(
-                "`{key}` is gone. Retiring its table keeps the table and its records while code stops using them, out of the app's reach until a later migration drops them; if the entity was renamed instead, give it back its old name, since a rename that keeps the table comes with `jadpo rename`."
+                "`{key}` is gone. Retiring its table keeps the table and its records while code stops using them, out of the app's reach until a later migration drops them; {}",
+                rename("entity", "table")
             ),
             format!("Write `{key}: EntityChange.retired`"),
         ),

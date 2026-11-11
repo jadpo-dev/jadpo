@@ -272,6 +272,10 @@ pub enum ActionWho {
 pub struct ActionGrants {
     /// The action's name: `transfer_todo`.
     pub action: String,
+    /// The name it was born with, which its key holds (area 18, "Stable
+    /// identity"): what a route's or a caller's key names it by once it is
+    /// renamed.
+    pub born: String,
     /// As written: `todos.transfer_todo`.
     pub written: String,
     pub who: Vec<ActionWho>,
@@ -432,13 +436,22 @@ pub struct RootPolicy {
 }
 
 impl RootPolicy {
+    /// `name` is its name now or the name it was born with, as a key
+    /// holds it.
     pub fn action(&self, name: &str) -> Option<&ActionGrants> {
-        self.actions.iter().find(|line| line.action == name)
+        self.actions
+            .iter()
+            .find(|line| line.action == name)
+            .or_else(|| self.actions.iter().find(|line| line.born == name))
     }
 
-    /// The line under `actions:` listing the query called `name`.
+    /// The line under `actions:` listing the query called `name`, now or
+    /// when it was born.
     pub fn query(&self, name: &str) -> Option<&ActionGrants> {
-        self.queries.iter().find(|line| line.action == name)
+        self.queries
+            .iter()
+            .find(|line| line.action == name)
+            .or_else(|| self.queries.iter().find(|line| line.born == name))
     }
 
     /// Who the line listing the query called `name` lets run it, checked
@@ -1317,8 +1330,11 @@ pub fn root_read(db: &dyn Db, project: Project) -> Arc<RootRead> {
                     Err(problem) => out.problems.push(problem),
                 }
             }
+            let born = crate::graph::declaration_key(&lookup, &action)
+                .map_or_else(|| action.clone(), |key| key.name().to_string());
             let line = ActionGrants {
                 action,
+                born,
                 written,
                 who,
                 written_who,

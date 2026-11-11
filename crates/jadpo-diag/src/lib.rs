@@ -206,6 +206,8 @@ rules! {
         "A `jadpo privacy` command names an action it doesn't have, or a state or page `requests` doesn't list";
     CLI_RECORDS_ARGUMENTS: "cli.records_arguments", area 14, Error, Agent,
         "A `jadpo records` command names an action other than `update`";
+    CLI_RENAME_ARGUMENTS: "cli.rename_arguments", area 14, Error, Agent,
+        "A `jadpo rename` command names a declaration or field the project doesn't have, one it doesn't rename, or a new name that is taken or isn't one";
     CLI_ROUTES_ARGUMENTS: "cli.routes_arguments", area 14, Error, Agent,
         "A `jadpo routes` command is given an argument, which it doesn't take";
     CLI_RUNS_ARGUMENTS: "cli.runs_arguments", area 14, Error, Agent,

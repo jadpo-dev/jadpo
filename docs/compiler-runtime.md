@@ -524,6 +524,21 @@ imports, formats what was formatted and checks the result, undoing a fix
 that adds an error by rule and headline. Each standard type's data entry
 carries the `release` that added it, which the clash names.
 
+**Renaming.** `jadpo_check::rename` is `jadpo rename`'s code, and the
+editor's rename is to share it, built as `fixes` is: `plan` takes the
+node's key and the new name, refuses what can't be (a name in use among
+the owner's members, the domain or the project, or one another node of
+its kind was born with), finds every place through
+`graph::node_references` (the resolution find references uses, which now
+also reaches a constant's declaration and a root `policy { actions: }`
+line), a field's `pick:` copies through the graph's `copied_from`, and
+works out the registry's lines; `apply` makes the edits and moves in the
+loaded project, writes the registry and the view records the rename put
+out of date into it (`Loaded::set_record`), fixes imports, formats and
+checks, undoing a rename that adds an error. A listed action's policy
+line is found by its born name as well as its name now, since routes and
+callers name it by key.
+
 **Types.** Nominal and bidirectional: the expected type flows into
 literals (area 2). Widening is the only implicit conversion; the standard
 library's signatures are the only generics. An `Error` type absorbs
