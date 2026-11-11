@@ -8,7 +8,9 @@
 //! prompt's text beside no declaration of its name is reported by its own
 //! rule (`email.template_missing`, `prompt.section_missing`), whose fix
 //! declares the type, so it isn't reported again here. A package's files
-//! are the package's own (area 11), and records are Jadpo's.
+//! are the package's own (area 11), records are Jadpo's, and a domain's
+//! `fixtures/files/` holds the files its tests name with `fixture_file`
+//! (area 13), which `semantic.fixture_file_invalid` checks from the test.
 //!
 //! Design (impeccable's shape pass against the CLI design language, run
 //! unattended, so its assumptions are marked):
@@ -52,12 +54,22 @@ pub fn asset_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let mut assets: Vec<&String> = project
         .other_files(db)
         .iter()
-        .filter(|path| !jadpo_db::is_package_data(path))
+        .filter(|path| !jadpo_db::is_package_data(path) && !is_fixture_file(path))
         .chain(recordings)
         .collect();
     assets.sort();
     assets.dedup();
     assets.into_iter().map(|path| unreferenced(path)).collect()
+}
+
+/// Whether `path` is in a domain's `fixtures/files/`.
+fn is_fixture_file(path: &str) -> bool {
+    let mut parts = path.split('/');
+    parts.next() == Some("domains")
+        && parts.next().is_some()
+        && parts.next() == Some("fixtures")
+        && parts.next() == Some("files")
+        && parts.next().is_some()
 }
 
 /// `layout.asset_unreferenced` for the file at `path`.
