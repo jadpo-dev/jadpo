@@ -1257,6 +1257,18 @@ pub trait TypeView {
         current
     }
 
+    /// The app's own object type a value of this type is, through a field
+    /// type naming one (`Order.details`): what an `AnyObject` takes (areas
+    /// 2 and 11, "Types"). `None` for a package's type, written through the
+    /// package (`Mailer.Sent`), and for any other base.
+    fn app_object(&self, ty: &Ty) -> Option<String> {
+        let Ty::Named(name) = self.structure(ty) else {
+            return None;
+        };
+        (!packaged_name(&name) && self.base(&name) == Some(super::shape::FieldsBase::Object))
+            .then_some(name)
+    }
+
     /// The standard type held as text (area 19) a value of this type is,
     /// along its chain: `Iban` for a type built on `Iban`; or the one
     /// built on a built-in type with bounds of its own, `TaxRate` (chunk
@@ -1403,6 +1415,11 @@ pub trait TypeView {
                     if name == jadpo_std::files::FILE || name == jadpo_std::files::FILE_UPLOAD
             );
         }
+        // A provider package's `AnyObject` field takes any of the app's own
+        // object types, sent as its JSON (areas 2 and 11, "Types").
+        if is_any_object(&self.structure(expected)) {
+            return self.app_object(actual).is_some() || is_any_object(&self.structure(actual));
+        }
         match (actual.strip_nullable(), expected) {
             (Ty::List(a), Ty::List(b)) | (Ty::Set(a), Ty::Set(b)) => {
                 return a == b || a.has_error() || b.has_error();
@@ -1480,6 +1497,19 @@ pub trait TypeView {
 /// declared one is named (`ExchangeRate`'s currencies compare with
 /// `Currency.gbp`, a `PersonName`'s given name is a `GivenName`), another
 /// standard object, or the part or `none`, or a list of it (chunk 5.5l).
+/// Whether the type called `name` is a package's, written through the
+/// package (`Mailer.Sent`, `Postcodes.v3.UkPostcode`), rather than the
+/// app's own (`Order`, or `billing.Address` for a domain's private one).
+pub(crate) fn packaged_name(name: &str) -> bool {
+    name.split_once('.')
+        .is_some_and(|(first, _)| first.starts_with(|c: char| c.is_ascii_uppercase()))
+}
+
+/// Whether `ty` is the built-in `AnyObject` (areas 2 and 11, "Types").
+pub(crate) fn is_any_object(ty: &Ty) -> bool {
+    matches!(ty.strip_nullable(), Ty::Opaque(name, _) if name == jadpo_std::provider::ANY_OBJECT)
+}
+
 fn part_ty(part: jadpo_std::Part) -> Ty {
     match part {
         jadpo_std::Part::Of(builtin) => Ty::Prim(builtin),

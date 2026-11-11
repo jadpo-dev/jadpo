@@ -1406,6 +1406,7 @@ impl Body<'_> {
                         provider: false,
                         installed: false,
                         packaged: false,
+                        any_object: false,
                     };
                     let ok = decls.type_node(&TypeNode::Type(ty.clone()), false);
                     self.out.append(&mut decls.out);

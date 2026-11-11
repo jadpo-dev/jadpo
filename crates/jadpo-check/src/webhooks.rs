@@ -496,6 +496,29 @@ pub fn package_events(db: &dyn Db, project: Project) -> PackageEvents {
                 out.problems
                     .push(crate::types::secrets::in_a_reply(&name, secret, at));
             }
+            // An `AnyObject` is sent only on an operation's input (areas 2
+            // and 11, "Types").
+            if let Some((_, _, canonical)) = &reply
+                && let Some(held) = crate::types::decl::held_any_object(
+                    table,
+                    &Ty::Named(canonical.clone()),
+                    &mut Vec::new(),
+                )
+            {
+                let at = tree::members(decl.member_list())
+                    .into_iter()
+                    .find(|(key, _)| name_text(key).as_deref() == Some(crate::types::REPLY))
+                    .map_or_else(
+                        || name_span.clone(),
+                        |(key, _)| node_span(&path, key.syntax()),
+                    );
+                out.problems.push(crate::types::decl::any_object_held(
+                    &format!("`{name}`'s `reply:`"),
+                    &held,
+                    "A webhook's reply is kept with its id to answer a repeat, and only an operation's `input:` sends one.",
+                    at,
+                ));
+            }
             let (Some(wire_name), true) = (wire_name, clean) else {
                 continue;
             };

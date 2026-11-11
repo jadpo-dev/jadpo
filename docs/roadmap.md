@@ -301,9 +301,6 @@ work below (Richard, 2026-11-08).
      placeholder in a host (`{project_ref}`), defaults for package settings,
      and a field read by `decode:` or `encode:` on a webhook's event.
      Twilio's XML waits on an XML byte format (L2).
-   - [ ] **K3 `AnyObject`** `opus · high`: area 2, "Other built-in types";
-     area 11, "Types". A package input taking any of the app's object types as
-     JSON, as Postmark's template variables and Stripe's metadata need.
    - [ ] **K4 Capability mappings and conformance suites** `opus · high`:
      area 11, "How a package provides a capability", "Proving a package
      works" and "Mistakes not reported yet"; area 21, "The conformance
