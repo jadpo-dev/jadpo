@@ -497,10 +497,11 @@ pub const UNHELD_KEPT_MS: i64 = 24 * 60 * 60 * 1000;
 
 /// Where each store of files keeps its record of which files its records
 /// hold (area 16, "Deleting and erasing"; chunk B3): each database store
-/// whose entities' `File` fields name it, which keeps `jadpo_files`
+/// whose entities' `File` fields name it, or whose structured fields hold
+/// a `File` inside them, which name no store. Each keeps `jadpo_files`
 /// ([`crate::system::FILES`]) and the triggers that count each file's
 /// holders among its own rows as they change. A store of files no
-/// entity's field names has none, and nothing it keeps is deleted.
+/// entity's `File` field names has none, and nothing it keeps is deleted.
 ///
 /// When fields in entities of several databases name one store of files,
 /// each database counts its own records' holders, and a file's bytes go

@@ -643,9 +643,35 @@ fn named(rows: Vec<crate::Row>) -> Vec<(String, String)> {
 pub(crate) async fn released(
     transaction: &mut dyn Transaction,
     now: i64,
+    files: &FilesPlan,
 ) -> Result<Vec<Event>, StoreError> {
     let rows = transaction.query(RELEASED, &[micros(now)]).await?;
-    Ok(released_events(&mut named(rows)))
+    let mut released = named(rows);
+    uncounted(transaction, files, &mut released).await?;
+    Ok(released_events(&mut released))
+}
+
+/// Takes out of `released` each file of a store of files no `File` field
+/// names, which a structured value's `File` inside it may hold (area 16,
+/// "Deleting and erasing"): nothing deletes such a store's bytes, so its
+/// row goes, as one no record here holds, and its bytes stay.
+async fn uncounted(
+    transaction: &mut dyn Transaction,
+    files: &FilesPlan,
+    released: &mut Vec<(String, String)>,
+) -> Result<(), StoreError> {
+    let mut kept = Vec::with_capacity(released.len());
+    for (store, key) in released.drain(..) {
+        if files.counters.contains_key(&store) {
+            kept.push((store, key));
+        } else {
+            transaction
+                .query(UNMARK, &[SqlValue::Text(store), SqlValue::Text(key)])
+                .await?;
+        }
+    }
+    *released = kept;
+    Ok(())
 }
 
 /// Whether a file's bytes may be deleted now, as its subscriber is about
@@ -840,9 +866,22 @@ async fn sweeping(ctx: &mut Ctx<'_>, counter: &str, now: i64) -> Result<Vec<Deli
             return Err(error);
         }
     };
-    let events = released_events(&mut named(rows));
+    let mut due = named(rows);
+    let found = due.len();
+    let files = ctx.started();
+    if let Err(error) = uncounted(transaction.as_mut(), files.files(), &mut due).await {
+        let _ = transaction.rollback().await;
+        return Err(error);
+    }
+    let events = released_events(&mut due);
     if events.is_empty() {
-        transaction.rollback().await?;
+        // The rows of a store none counts went, which the next sweep
+        // mustn't find again.
+        if found > 0 {
+            transaction.commit().await?;
+        } else {
+            transaction.rollback().await?;
+        }
         return Ok(Vec::new());
     }
     let mut sealed = Sealed {

@@ -1016,8 +1016,9 @@ pub const HOUSEKEEPING: SystemTable = SystemTable {
 /// Which stored files a store's records hold (area 16, "Deleting and
 /// erasing"; chunk B3), in the store whose entities' `File` fields name
 /// the store of files: a row for each file, by its store of files and
-/// key, counting the fields that hold it. Triggers on each entity table
-/// with a `File` column count them in the same transaction as the row
+/// key, counting the fields that hold it, a structured value's `File`s
+/// inside it included. Triggers on each entity table with a column
+/// holding files count them in the same transaction as the row
 /// changes, cascades and purges included; a put adds its file at none
 /// before its bytes are sent. `holders` is the count, `-1` once its
 /// bytes are being deleted and `-2` once they are gone, which no field
