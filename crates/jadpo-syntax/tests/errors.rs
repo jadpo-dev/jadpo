@@ -464,7 +464,7 @@ fn colon_required() {
 #[test]
 fn record_fields_have_no_shorthand() {
     let text =
-        "function make(name: Name) -> Product {\n    return Product {\n        name\n    }\n}\n";
+        "function built(name: Name) -> Product {\n    return Product {\n        name\n    }\n}\n";
     let (error, _) = one_error(text);
     assert_eq!(error.rule.id, "syntax.colon_required");
     assert_eq!(error.message, "`name` needs a value");

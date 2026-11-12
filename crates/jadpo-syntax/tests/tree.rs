@@ -301,6 +301,26 @@ fn an_inline_function_reads_back_one_or_two_parameters() {
     );
 }
 
+#[test]
+fn emitted_is_a_keyword_only_before_an_events_name() {
+    // `assert emitted Event { ... }` (area 13): the event's record is the
+    // assertion's value.
+    let source = file(
+        "test \"a todo is done\" {\n    assert emitted TodoDone {\n        todo_id: id\n    }\n    assert emitted == 2\n}\n",
+    );
+    let asserts: Vec<ast::AssertStmt> = source
+        .syntax()
+        .descendants()
+        .filter_map(ast::AssertStmt::cast)
+        .collect();
+    assert_eq!(asserts.len(), 2);
+    assert!(asserts[0].emitted_kw_token().is_some());
+    assert!(matches!(asserts[0].expr(), Some(ast::Expr::RecordExpr(_))));
+    // A value called `emitted` still reads as one.
+    assert!(asserts[1].emitted_kw_token().is_none());
+    assert!(matches!(asserts[1].expr(), Some(ast::Expr::BinExpr(_))));
+}
+
 /// `_` where a value goes is a typed hole, a value the checker answers
 /// (area 2, "Typed holes"); in a pattern it stays the wildcard.
 #[test]

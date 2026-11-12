@@ -55,23 +55,24 @@ fn broken_literal(source: &str, ty: &str, rule: &str) {
 fn attempted(signature: &str, ty: &str, parts: &str, named: &[&str]) {
     // A range is written `Range { ... }` whatever it holds.
     let head = ty.split('<').next().unwrap_or(ty);
-    let bare =
-        format!("function make({signature}) -> {ty} {{\n    return {head} {{\n{parts}    }}\n}}\n");
+    let bare = format!(
+        "function built({signature}) -> {ty} {{\n    return {head} {{\n{parts}    }}\n}}\n"
+    );
     assert_eq!(rules(&bare), ["failure.attempt_required"], "{bare}");
     let arms: String = named
         .iter()
         .map(|rule| format!("        {rule}: Refused\n"))
         .collect();
     let mapped = format!(
-        "function make({signature}) fails Refused -> {ty} {{\n    return attempt {head} {{\n{parts}    }} {{\n{arms}    }}\n}}\n"
+        "function built({signature}) fails Refused -> {ty} {{\n    return attempt {head} {{\n{parts}    }} {{\n{arms}    }}\n}}\n"
     );
     assert_eq!(rules(&mapped), NONE, "{mapped}");
     let any = format!(
-        "function make({signature}) fails Refused -> {ty} {{\n    return attempt {head} {{\n{parts}    }} {{\n        invalid: Refused\n    }}\n}}\n"
+        "function built({signature}) fails Refused -> {ty} {{\n    return attempt {head} {{\n{parts}    }} {{\n        invalid: Refused\n    }}\n}}\n"
     );
     assert_eq!(rules(&any), NONE, "{any}");
     let misspelt = format!(
-        "function make({signature}) fails Refused -> {ty} {{\n    return attempt {head} {{\n{parts}    }} {{\n{arms}        no_such_rule: Refused\n    }}\n}}\n"
+        "function built({signature}) fails Refused -> {ty} {{\n    return attempt {head} {{\n{parts}    }} {{\n{arms}        no_such_rule: Refused\n    }}\n}}\n"
     );
     assert_eq!(rules(&misspelt), ["failure.unknown_mapping"], "{misspelt}");
 }

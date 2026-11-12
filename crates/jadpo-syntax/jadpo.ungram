@@ -287,10 +287,10 @@ ForStmt =
 EmitStmt =
   'emit' Expr
 
-// `assert response.status == 422`, `assert complete(id) fails NotFound`
-// (area 13).
+// `assert response.status == 422`, `assert complete(id) fails NotFound`,
+// `assert emitted ReminderDue { todo_id: todo.id }` (area 13).
 AssertStmt =
-  'assert' Expr AssertFails?
+  'assert' 'emitted'? Expr AssertFails?
 
 AssertFails =
   'fails' Type

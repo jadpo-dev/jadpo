@@ -74,11 +74,11 @@ fn each_mistake_gives_its_rule() {
             "type.missing_field",
         ),
         (
-            "type Thing = Object {\n    name: ProductName\n}\n\nfunction make(name: ProductName) -> Thing {\n    return Thing {\n        name: name\n        label: name\n    }\n}\n",
+            "type Thing = Object {\n    name: ProductName\n}\n\nfunction built(name: ProductName) -> Thing {\n    return Thing {\n        name: name\n        label: name\n    }\n}\n",
             "type.unknown_field",
         ),
         (
-            "type Thing = Object {\n    name: ProductName\n}\n\nfunction make(name: ProductName) -> Thing {\n    return Thing {\n        name: name\n        name: name\n    }\n}\n",
+            "type Thing = Object {\n    name: ProductName\n}\n\nfunction built(name: ProductName) -> Thing {\n    return Thing {\n        name: name\n        name: name\n    }\n}\n",
             "type.duplicate_field",
         ),
         (
@@ -254,7 +254,7 @@ fn one_mistake_gives_one_error() {
     // declaration, none where the field is read or built.
     assert_eq!(
         with_names(
-            "type Holder = Object {\n    name: ProductName\n    price: Holder.cost\n}\n\nfunction make(name: ProductName, price: Coins) -> Holder {\n    return Holder {\n        name: name\n        price: price\n    }\n}\n"
+            "type Holder = Object {\n    name: ProductName\n    price: Holder.cost\n}\n\nfunction built(name: ProductName, price: Coins) -> Holder {\n    return Holder {\n        name: name\n        price: price\n    }\n}\n"
         ),
         ["type.unknown_field"]
     );

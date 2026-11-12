@@ -397,7 +397,7 @@ fn children(expr: &Expr) -> Vec<SiteId> {
     match expr {
         Expr::Field { receiver, .. } => out.push(*receiver),
         Expr::Call { args, .. } => out.extend(args.iter().flatten().copied()),
-        Expr::Build { fields, .. } | Expr::Reject { fields, .. } => {
+        Expr::Build { fields, .. } | Expr::Reject { fields, .. } | Expr::Emitted { fields, .. } => {
             out.extend(fields.iter().map(|(_, site)| *site));
         }
         Expr::List { items } => out.extend(items.iter().copied()),
@@ -465,6 +465,7 @@ fn children(expr: &Expr) -> Vec<SiteId> {
         | Expr::Flag { .. }
         | Expr::Constant { .. }
         | Expr::Now
+        | Expr::Made { .. }
         | Expr::SentEmails
         | Expr::Unchecked => {}
     }

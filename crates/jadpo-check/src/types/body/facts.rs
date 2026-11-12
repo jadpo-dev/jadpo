@@ -230,6 +230,11 @@ pub(crate) struct Facts {
     /// Each entity write (area 6): keyed by the record for a `create`, the
     /// call for an `update` or `delete`.
     pub writes: BTreeMap<NodeKey, super::writes::WriteFact>,
+    /// Each data builder, `make.Entity { ... }`, by its record (area 13).
+    pub makes: BTreeMap<NodeKey, super::builders::MakeFact>,
+    /// Each `assert emitted Event { ... }`'s record, with the event's type
+    /// (area 13).
+    pub emitted: BTreeMap<NodeKey, String>,
     /// Each stored field an update by `id` reads (`Post.view_count`).
     pub stored: BTreeSet<NodeKey>,
     /// Each read of a setting (`config.mail_sender`), with the setting's

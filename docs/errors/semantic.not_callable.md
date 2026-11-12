@@ -189,8 +189,8 @@ error: A test can't call `Shelf.update`
   |
 2 |     var shelf: Shelf = attempt Shelf.update("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e") {
   |                                ^^^^^^^^^^^^ writes a record
-  reason: Only actions write records (area 6), so a test changes data through the action that does it, which is what it proves; a fixture, a test-only action, builds the data a test starts from. A test may still read, with `Shelf.get` and queries.
-  next: Call the action that writes `Shelf`, or move the write into a fixture (agent)
+  reason: Only actions write records (area 6), so a test changes data through the action that does it, which is what it proves; a fixture, a test-only action, or a data builder, `make.Shelf { ... }`, builds the data a test starts from. A test may still read, with `Shelf.get` and queries.
+  next: Call the action that writes `Shelf`, or make the record it starts from with `make.Shelf { ... }` (agent)
   rule: semantic.not_callable
   help: https://jadpo.dev/docs/errors/semantic.not_callable
 

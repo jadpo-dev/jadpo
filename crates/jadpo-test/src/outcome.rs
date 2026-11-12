@@ -998,6 +998,41 @@ fn assertion_failure(
                 }
             }
         }
+        AssertionDetail::Emitted {
+            event,
+            given,
+            emitted,
+        } => {
+            failure.expected = Some(jadpo_runtime::emitted_expected(event, given));
+            failure.actual = Some(jadpo_runtime::emitted_actual(event, emitted));
+            // One kept of its type: how it differs in the fields given.
+            if let [only] = emitted.as_slice()
+                && let Value::Record(record) = only
+            {
+                let fields = |values: Vec<(std::rc::Rc<str>, Value)>| {
+                    Value::Record(std::rc::Rc::new(jadpo_value::Record {
+                        ty: record.ty.clone(),
+                        fields: values,
+                        omitted: None,
+                    }))
+                };
+                let wanted = fields(
+                    given
+                        .iter()
+                        .map(|(name, value)| (std::rc::Rc::from(name.as_str()), value.clone()))
+                        .collect(),
+                );
+                let kept = fields(
+                    given
+                        .iter()
+                        .filter_map(|(name, _)| {
+                            Some((std::rc::Rc::from(name.as_str()), record.get(name)?.clone()))
+                        })
+                        .collect(),
+                );
+                failure.diff = diff(&wanted, &kept);
+            }
+        }
     }
     failure
 }

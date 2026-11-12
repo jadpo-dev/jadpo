@@ -802,6 +802,5 @@ Read only what a task needs.
 A feature that isn't built is the error `toolchain.not_built_yet` where
 you use it. Not built yet, among others: entities and caches in Redis;
 sign-in with GitHub, Apple or your own OAuth provider; OAuth grants;
-token scopes; most of personal data; the developer console and MCP; data
-builders and `assert emitted` in tests; and documents. Each area's `What
-is built` topic has the rest.
+token scopes; most of personal data; the developer console and MCP; and
+documents. Each area's `What is built` topic has the rest.

@@ -1810,6 +1810,7 @@ impl<'c, 'p> Batch<'c, 'p> {
         }
         transaction.commit().await?;
         crate::boundary::confirm_erased(ctx, boundary.take_erased());
+        ctx.note_emitted(boundary.take_emitted());
         crate::boundary::committed(ctx, boundary.take_sealed());
         Ok(())
     }

@@ -427,8 +427,8 @@ fn the_operations_need_their_routes_off_and_a_grant_for_staff() {
         !found.contains(&"semantic.auth_setting_required".to_string()),
         "{found:?}"
     );
-    let staff = "use accounts/entities { Member }\n\n/// Staff make a request.\naction make(member: Member.id) -> Unit {\n    var made: PrivacyRequestAccepted = privacy.create_request(member, PrivacyRequestKind.export, \"Passport\")\n    return\n}\n";
-    let path = "domains/accounts/actions/make.jadpo";
+    let staff = "use accounts/entities { Member }\n\n/// Staff make a request.\naction built(member: Member.id) -> Unit {\n    var made: PrivacyRequestAccepted = privacy.create_request(member, PrivacyRequestKind.export, \"Passport\")\n    return\n}\n";
+    let path = "domains/accounts/actions/built.jadpo";
     let found = rules(&[(path, staff)]);
     assert!(
         found.contains(&"policy.binding_invalid".to_string()),

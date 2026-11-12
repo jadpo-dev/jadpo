@@ -1894,9 +1894,18 @@ impl Walk<'_> {
             | Expr::Flag { .. }
             | Expr::Constant { .. }
             | Expr::Now
+            | Expr::Made { .. }
             | Expr::SentEmails
             | Expr::Unchecked
             | Expr::Propagate { .. } => Prov::default(),
+            // What a test compares an emitted event's fields with: worked
+            // out, holding nothing that goes anywhere.
+            Expr::Emitted { fields, .. } => {
+                for (_, value) in &fields {
+                    self.eval(flow, *value);
+                }
+                Prov::default()
+            }
             // A stored field an update by `id` reads is the record's.
             Expr::Stored { field } => {
                 let mut out = Prov::default();
