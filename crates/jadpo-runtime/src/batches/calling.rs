@@ -68,7 +68,11 @@ pub(super) fn calls(call: Option<&BatchCall>) -> bool {
 
 /// What [`PEEK`] found, and whether a cancel was asked for; or the step
 /// the run ends at when it isn't running or its store refused.
-async fn peek(ctx: &mut Ctx<'_>, plan: &BatchPlan, id: &SqlValue) -> Result<(Held, bool), Step> {
+pub(super) async fn peek(
+    ctx: &mut Ctx<'_>,
+    plan: &BatchPlan,
+    id: &SqlValue,
+) -> Result<(Held, bool), Step> {
     let Some(database) = ctx.host().database(&plan.store) else {
         return Err(Step::Ended(Ran::Paused(format!(
             "no store called `{}`",

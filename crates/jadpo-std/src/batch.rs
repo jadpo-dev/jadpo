@@ -327,6 +327,23 @@ pub enum BatchFrom {
     /// The rows of the stored `File` saved first with the run (chunk
     /// 6.4b).
     File(FileRows),
+    /// A provider's list operation, walked by `page.next` (chunk J2): its
+    /// input saved first with the run, each page asked for once the page
+    /// before has committed, with that page's `next` cursor.
+    Listed(Listed),
+}
+
+/// A provider's list operation a run walks (area 12, "Walking records or
+/// a provider's list"; chunk J2).
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct Listed {
+    /// The operation, as a call's site names it.
+    pub called: crate::provider::Called,
+    /// `connection.resource.operation`, for what a run says of it.
+    pub operation: String,
+    /// The field of its input the cursor of the page before is put in:
+    /// the input's one `PageCursor` field.
+    pub cursor: Vec<String>,
 }
 
 impl BatchFrom {
@@ -334,7 +351,7 @@ impl BatchFrom {
     pub fn query(&self) -> Option<&ReadPlan> {
         match self {
             BatchFrom::Query(read) => Some(read.as_ref()),
-            BatchFrom::File(_) => None,
+            BatchFrom::File(_) | BatchFrom::Listed(_) => None,
         }
     }
 }

@@ -1071,3 +1071,55 @@ entity Fine {
 action forget_patron(patron_id: Patron.id) fails PatronNotFound -> Unit {
     attempt Patron.erase(patron_id)
 }
+
+// Values kept in several columns or as JSON (chunk Q1): an amount of money
+// compared by both its columns and ordered by its minor units, a month by
+// its year then its month, a list as its JSON.
+
+type CakePrice = Money {
+    currency: Currency.gbp
+    min: 0
+}
+
+type CakeTag = Text {
+    max_length: 20
+}
+
+entity Cake {
+    id: Uuid
+    price: CakePrice
+    deposit: CakePrice?
+    month: YearMonth
+    tags: List<CakeTag>
+}
+
+type CakeView = Output {
+    pick: [Cake.id, Cake.price, Cake.month]
+}
+
+type CakeFilter = Input {
+    price: CakePrice {
+        optional: true
+    }
+}
+
+query cakes_costing(price: CakePrice, filter: CakeFilter) -> List<CakeView> {
+    from: Cake
+    where: Cake.price == price
+    where: Cake.deposit == none or not (Cake.deposit < price)
+    where_present: Cake.price != filter.price
+    order: [Cake.month asc]
+    limit: 20
+}
+
+query cakes_from(month: YearMonth, months: List<YearMonth>, tags: List<CakeTag>, after: PageCursor?) -> Page<CakeView> {
+    from: Cake
+    where: Cake.month >= month
+    where: Cake.month in months
+    where: Cake.tags != tags
+    order: [Cake.price desc]
+    page: {
+        size: 10
+        after: after
+    }
+}

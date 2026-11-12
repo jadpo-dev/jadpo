@@ -4,8 +4,8 @@
 //! type made of what that JSON holds checks; a part with no stored form is
 //! `data.field_without_json`, and a secret, a token, an entity or text for
 //! people inside one is refused as it is in a column of its own. A query
-//! neither compares nor sorts such a field, no unique rule or index covers
-//! one, a lifecycle tests or sets one only as `none`, and a field's policy
+//! compares such a field as its JSON but never sorts by one, no unique
+//! rule or index covers one, a lifecycle tests or sets one only as `none`, and a field's policy
 //! covers its whole value.
 
 use crate::support;
@@ -149,21 +149,21 @@ fn a_part_with_no_stored_json_form_is_refused() {
 }
 
 #[test]
-fn a_query_neither_compares_nor_sorts_a_stored_value() {
+fn a_query_compares_a_stored_value_as_its_json_and_never_sorts_one() {
     let entity =
         "entity Parcel {\n    id: Uuid\n    tags: List<Tag>\n    delivery: Delivery\n}\n\n";
     assert_eq!(
         checked(&format!(
             "{entity}query tagged(tags: List<Tag>) -> List<Parcel> {{\n    from: Parcel\n    where: Parcel.tags == tags\n    order: [Parcel.id asc]\n    limit: 20\n}}\n"
         )),
-        ["toolchain.not_built_yet"],
+        NONE,
         "compared"
     );
     assert_eq!(
         checked(&format!(
             "{entity}query couriered() -> List<Parcel> {{\n    from: Parcel\n    where: Parcel.delivery == Delivery.collect\n    order: [Parcel.id asc]\n    limit: 20\n}}\n"
         )),
-        ["toolchain.not_built_yet"],
+        NONE,
         "a variant of an enum with data"
     );
     assert_eq!(

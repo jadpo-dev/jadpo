@@ -512,13 +512,21 @@ pub trait Host {
     }
 
     /// How many of a file's rows a file helper's run reads into one batch
-    /// (area 12, "How a run is kept"; chunk 6.4b), and the most items of a
-    /// query's page one batch holds: a batch's transaction commits that
-    /// many items' writes and the run's position together. A test's host
-    /// gives fewer, so every run resumes between batches (area 13,
-    /// "Batches").
+    /// (area 12, "How a run is kept"; chunk 6.4b): a batch's transaction
+    /// commits that many items' writes and the run's position together. A
+    /// test's host gives fewer, so every run resumes between batches (area
+    /// 13, "Batches").
     fn rows_per_batch(&self) -> u32 {
         crate::batches::ROWS_PER_BATCH
+    }
+
+    /// The most items of a query's page one batch holds (area 12, "Limits
+    /// and runtime faults"): a page its type allows to be larger is split
+    /// into batches of this many, each continuing from the last item the
+    /// one before committed. A test's host gives as few as its
+    /// [`Host::rows_per_batch`].
+    fn items_per_batch(&self) -> u32 {
+        crate::batches::MOST_ITEMS_PER_BATCH
     }
 
     /// A future that finishes once the host begins to shut down: natively
@@ -689,6 +697,10 @@ impl<H: Host + ?Sized> Host for &H {
         (**self).rows_per_batch()
     }
 
+    fn items_per_batch(&self) -> u32 {
+        (**self).items_per_batch()
+    }
+
     fn stopping(&self) -> LocalFuture<'_, ()> {
         (**self).stopping()
     }
@@ -813,6 +825,17 @@ impl Host for MemoryHost {
 #[cfg(test)]
 mod tests {
     use super::public_address;
+
+    /// A host that says nothing reads a file a hundred rows a batch, and
+    /// holds a query's page whole up to area 12's 1,000 items a batch,
+    /// splitting a larger page into batches of 1,000.
+    #[test]
+    fn a_batch_holds_a_hundred_rows_of_a_file_and_a_thousand_items_of_a_page() {
+        use super::Host;
+        let host = super::MemoryHost::new();
+        assert_eq!(host.rows_per_batch(), 100);
+        assert_eq!(host.items_per_batch(), 1000);
+    }
 
     fn public(address: &str) -> bool {
         public_address(address.parse().expect("an address"))

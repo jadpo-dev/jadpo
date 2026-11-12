@@ -1401,3 +1401,74 @@ fn an_s3_connections_settings_are_held_to_what_they_say() {
         ["connection.key_invalid"]
     );
 }
+
+/// A file's run whose actions write no database, in an application with
+/// several (area 12, "How a file's run is kept"): kept in the store
+/// `events: { store: }` names, as an event of an action that writes none
+/// is, and `event.store_required` where the run starts when it names none.
+#[test]
+fn a_files_run_with_several_databases_and_none_written_is_kept_beside_the_events() {
+    let app = |events: &str| {
+        format!(
+            "application {{\n    connections: {{\n        main: {{\n            driver: Driver.postgres\n        }}\n        ledger: {{\n            driver: Driver.postgres\n        }}\n        sheets: {{\n            driver: Driver.disk\n            path: \"/var/lib/pantry/sheets\"\n        }}\n    }}\n{events}}}\n"
+        )
+    };
+    let read = action(
+        "action read_shelves(sheet: File) -> BatchRun {\n    return csv.read(sheet, as: ShelfRow, each: listed -> note_shelf(listed))\n}\n",
+    );
+    let files = |app: &str| -> Vec<(String, String)> {
+        let mut files = vec![("app.jadpo".to_string(), app.to_string())];
+        files.extend(
+            BASE.iter()
+                .map(|(path, text)| (path.to_string(), text.to_string())),
+        );
+        files.push((
+            "domains/pantry/actions/read_shelves.jadpo".to_string(),
+            read.clone(),
+        ));
+        files
+    };
+    let found = |app: &str| {
+        let files = files(app);
+        let borrowed: Vec<(&str, &str)> = files
+            .iter()
+            .map(|(path, text)| (path.as_str(), text.as_str()))
+            .collect();
+        support::problems(Layout::Project, &borrowed)
+            .into_iter()
+            .filter(|problem| {
+                !problem.contains(" import.unused:")
+                    && !problem.contains(" layout.unused_declaration:")
+                    && !problem.contains(" migration.")
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        found(&app("")),
+        [
+            "domains/pantry/actions/read_shelves.jadpo event.store_required: `read_shelves` starts `csv.read` but writes no store to keep its run in"
+        ]
+    );
+    let named = app("    events: {\n        store: ledger\n    }\n");
+    assert_eq!(found(&named), Vec::<String>::new());
+    // The run's tables are in the store named.
+    let files = files(&named);
+    let borrowed: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    let db = jadpo_db::Database::default();
+    let project = support::project(&db, Layout::Project, &borrowed);
+    assert_eq!(
+        jadpo_check::types::file_run_stores(&db, project).get("read_shelves"),
+        Some(&Some("ledger".to_string()))
+    );
+    let schema = jadpo_check::data::schema(&db, project);
+    assert!(
+        schema.stores["ledger"]
+            .tables
+            .contains_key("jadpo_batch_runs"),
+        "{:?}",
+        schema.stores.keys().collect::<Vec<_>>()
+    );
+}

@@ -422,6 +422,13 @@ impl FieldModel {
             ty: sql_type(self),
             builtin: self.builtin,
             scale: self.scale,
+            // The codec a JSON-held value is written with is the plan's to
+            // number.
+            kept: match (self.compound, &self.json) {
+                (Some(entry), _) => jadpo_sql::Kept::Parts(entry),
+                (None, Some(_)) => jadpo_sql::Kept::Json(None),
+                (None, None) => jadpo_sql::Kept::One,
+            },
         }
     }
 
@@ -3000,8 +3007,8 @@ fn holds_presentation(lookup: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) ->
 }
 
 /// A unique rule or an index on `entity.field`, a value stored whole as
-/// JSON, which none covers yet (chunk 5.9b): PostgreSQL compares `jsonb` by
-/// its own rules rather than Jadpo's `==`, and no query compares it.
+/// JSON, which none covers yet (chunk 5.9b): a B-tree's entry holds about
+/// 2.7 kB, and a stored value up to 1 MiB.
 fn json_keyed(entity: &str, field: &str, what: &str, at: Span, next: String) -> Diagnostic {
     Diagnostic::new(
         &rule::TOOLCHAIN_NOT_BUILT_YET,
@@ -3009,7 +3016,7 @@ fn json_keyed(entity: &str, field: &str, what: &str, at: Span, next: String) -> 
     )
     .at(at, "stored as JSON")
     .reason(format!(
-        "`{entity}.{field}` is stored whole as its JSON in one `jsonb` column, which PostgreSQL compares by its own rules rather than Jadpo's `==`, and no query compares it yet."
+        "`{entity}.{field}` is stored whole as its JSON in one `jsonb` column, of up to 1 MiB, and a B-tree index's entry holds about 2.7 kB, so this compiler keeps no index or unique rule over one yet."
     ))
     .next(next)
 }
@@ -3144,6 +3151,24 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
         );
     }
     derived_indexes(db, project, model, &mut schema);
+    // Batch runs live in the store each run's query reads, beside the
+    // writes of its items (area 12; chunk 6.4); a run with no query whose
+    // actions write nothing, in the store `events: { store: }` names,
+    // which may hold no entity, with an outbox for what its items emit.
+    for store in crate::types::batch_stores(db, project) {
+        let found = schema
+            .stores
+            .entry(store.clone())
+            .or_insert_with(|| physical::Store {
+                driver: Driver::Postgres.name().to_string(),
+                tables: BTreeMap::new(),
+            });
+        for system in jadpo_std::system::BATCH_TABLES {
+            found
+                .tables
+                .insert(system.table.to_string(), columns::system_table(system));
+        }
+    }
     for store in schema.stores.values_mut() {
         for system in SYSTEM_TABLES {
             store
@@ -3160,17 +3185,6 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
                 system::FILES.table.to_string(),
                 columns::system_table(&system::FILES),
             );
-        }
-    }
-    // Batch runs live in the store each run's query reads, beside the
-    // writes of its items (area 12; chunk 6.4).
-    for store in crate::types::batch_stores(db, project) {
-        if let Some(found) = schema.stores.get_mut(store) {
-            for system in jadpo_std::system::BATCH_TABLES {
-                found
-                    .tables
-                    .insert(system.table.to_string(), columns::system_table(system));
-            }
         }
     }
     // The record of an action with several changing calls lives in the
@@ -3380,6 +3394,18 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             tables.insert(table.table.to_string(), columns::system_table(table));
         }
     }
+    // With runs kept in several stores, every store keeps the run tables,
+    // so a cancel an action keeps beside its events finds its table there,
+    // and `batches.status` may look in each (area 12; chunk J2).
+    if crate::types::batch_stores(db, project).len() > 1 {
+        for store in schema.stores.values_mut() {
+            for system in jadpo_std::system::BATCH_TABLES {
+                store
+                    .tables
+                    .insert(system.table.to_string(), columns::system_table(system));
+            }
+        }
+    }
     // Every schema store keeps runtime state (entities have the outbox,
     // and state-only stores hold schedules or AI usage). Add this after
     // all feature stores have been collected, including AI-only stores.
@@ -3442,15 +3468,15 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
         else {
             continue;
         };
-        let born: Vec<String> = fields
-            .iter()
-            .filter_map(|f| entity.fields.iter().find(|field| field.name == *f))
-            .map(|field| field.born.clone())
-            .collect();
-        if born.len() != fields.len() {
+        // A field kept in several columns gives the index each of them, and
+        // one kept as its JSON none (area 5, "Indexes").
+        let Some((born, collate, tested)) = report::index_columns(&lookup, entity, &fields, equal)
+        else {
+            continue;
+        };
+        if born.is_empty() {
             continue;
         }
-        let (collate, tested) = report::sorted_and_tested(&lookup, entity, &fields, &born, equal);
         // An index that starts with these columns already serves the
         // query, and so does a unique key all of whose columns it tests
         // for equality: at most one record matches each value.
@@ -3647,7 +3673,15 @@ fn expression_indexes(model: &DataModel, queries: &[queries::QueryModel], schema
             name,
             physical::Index {
                 expression: Some(expression),
-                columns: vec![field.born.clone()],
+                // The columns it reads: an amount of money's two (chunk Q1).
+                columns: match field.compound {
+                    Some(_) => field
+                        .columns()
+                        .into_iter()
+                        .map(|(column, _)| column)
+                        .collect(),
+                    None => vec![field.born.clone()],
+                },
                 reason: format!("query {query}"),
                 predicate: visible_predicate(entity),
                 collate: Vec::new(),

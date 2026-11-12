@@ -338,6 +338,12 @@ impl Types {
         if key.kind() != Some(Kind::Type) || self.node(key).is_some() {
             return None;
         }
+        // A `Page`, as a test scripts a provider's list operation's answer
+        // (chunk J2): one shape for every item type, each field checked
+        // as its type where it is built.
+        if key.name() == "Page" {
+            return Some(self.generic_shape("Page", &["items", "next"]));
+        }
         // `FirstSignIn` or a sign-in event a test builds (chunk 7.3b4),
         // checked as each field's type where it is built.
         if let Some(fields) = jadpo_std::http::test_built_fields(key.name()) {

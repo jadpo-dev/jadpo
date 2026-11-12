@@ -635,15 +635,22 @@ pub fn emitting(db: &dyn Db, project: Project) -> BTreeMap<String, BTreeSet<Key>
 
 /// The store the action called `action` keeps the events it emits in:
 /// the one it writes, itself or through what it calls, or, writing none,
-/// the one `events: { store: }` names (area 12, "Outbox placement"). `None`
-/// when it emits nothing, or has nowhere to keep them,
-/// which is `event.store_required`.
+/// the one `events: { store: }` names (area 12, "Outbox placement"); and
+/// the cancels it asks for when the application keeps runs in several
+/// stores. `None` when it emits and cancels nothing, or has nowhere to
+/// keep them, which is `event.store_required`.
 ///
 /// A package's action writes no store, and keeps what it emits where its
 /// package's webhooks are kept: the store `events: { store: }` names, or
 /// the only store that holds the app's records (chunk 7.6b).
 pub fn outbox_store(db: &dyn Db, project: Project, action: &str) -> Option<String> {
-    emitting(db, project).get(action)?;
+    // An action asking a run to stop, when runs are kept in several
+    // stores, keeps its cancel where it would keep its events (chunk J2).
+    if !emitting(db, project).contains_key(action)
+        && !crate::types::cancelling(db, project).contains(action)
+    {
+        return None;
+    }
     if crate::package_code::actions(db, project)
         .iter()
         .any(|own| own.canonical == action)

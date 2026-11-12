@@ -325,6 +325,10 @@ impl Host for Store {
     fn rows_per_batch(&self) -> u32 {
         self.rows_per_batch.get()
     }
+
+    fn items_per_batch(&self) -> u32 {
+        self.rows_per_batch.get()
+    }
 }
 
 impl Database for Store {

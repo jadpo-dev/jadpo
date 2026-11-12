@@ -71,8 +71,8 @@ pub use steps::{
     resumable_runs, step_problems, steps_settings,
 };
 pub use stores::{
-    Reach as StoreReach, batch_store_problems, batch_stores, file_run_problems, file_run_stores,
-    store_problems, store_reaches, unkept_responses, used_stores, written_stores,
+    Reach as StoreReach, batch_store_problems, batch_stores, cancelling, file_run_problems,
+    file_run_stores, store_problems, store_reaches, unkept_responses, used_stores, written_stores,
 };
 pub use table::{
     Def, EMAIL_FIELDS, FieldDef, PARTIAL_FIELDS, TypeTable, TypeView, VariantDef, WrittenCoding,

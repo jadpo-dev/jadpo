@@ -2200,7 +2200,12 @@ and with random bytes counted on from the last batch
 a batch, a query's page cut to that (area 13, "Batches"). A run whose
 batch couldn't commit gives its lease back (`batches::give_back`), and a
 step that moves the clock picks up the runs with no lease, as the tick
-does (`batches::waiting`).
+does (`batches::waiting`). A run over a provider's list asks for each
+page as the system before its batch's transaction opens, then holds its
+row to the position the page was asked after (`batches::listed`); with
+runs kept in several stores, a runner copies a cancel an action kept in
+another store beside its run before each batch (`batches::copy_cancel`),
+and `batches.status` asks each store in turn.
 
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one
@@ -2498,6 +2503,16 @@ other arguments are written into its expression, so
 B-tree the checker derives on it (`jadpo_graph::schema::Index::expression`,
 `jadpo_sql::table::create_expression_index`), and
 `jadpo_sql::form::indexable` says which forms PostgreSQL can index.
+A field kept in several columns or as JSON (area 6, "Values kept in
+several columns or as JSON") is said by `jadpo_sql::Kept` on its column:
+the condition compares each column of a standard type's layout, its order
+those `jadpo_sql::ordered_parts` names, and a `jsonb` column as JSON. The
+value it is compared with is a parameter `jadpo_std::read::Source::Laid`,
+which the runtime lays out when the read runs as a write keeps it, by
+`jadpo_value::standard::to_parts` or the field's own JSON codec, so
+neither the compiler nor the plan encodes a value of its own; the checker
+(`jadpo_check::data::queries`'s `kept`) allows only what that comparison
+decides as code's `==` and `<` do.
 `jadpo-plan` decides each statement's parts and where each value comes
 from, and writes no SQL text of its own: the vector distances and
 `hnsw.` settings, `ST_Distance`, an aggregate's parts

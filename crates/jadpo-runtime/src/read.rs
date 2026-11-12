@@ -15,8 +15,8 @@ use std::rc::Rc;
 
 use jadpo_std::policy::CallerPart;
 use jadpo_std::read::{
-    Cardinality, Check, Column, Field, FieldRules, IncludeShape, Operand, ReadPlan, Recheck,
-    Record, RowVersions, Select, Size, Source,
+    Cardinality, Check, Column, Field, FieldRules, IncludeShape, Laying, Operand, ReadPlan,
+    Recheck, Record, RowVersions, Select, Size, Source,
 };
 use jadpo_value::Value;
 
@@ -533,6 +533,58 @@ fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Probl
                 }
             }
         }
+        // Only ever laid out, below.
+        Source::Constant(_) => {
+            return Err(Problem::Defect(
+                "a constant sent without being laid out".into(),
+            ));
+        }
+        // A value laid out as the field it is compared with keeps it
+        // (chunk Q1): each item of a list for an array.
+        Source::Laid { of, laying } => {
+            let value = match of.as_ref() {
+                Source::Constant(constant) => Value::constant(constant),
+                Source::Now => Value::Instant(env.now),
+                source => value_at(source, env.args)
+                    .ok_or_else(|| Problem::Defect("a parameter the read wasn't given".into()))?,
+            };
+            match param.ty {
+                SqlType::Array(inner) => {
+                    let items: Vec<Value> = match &value {
+                        Value::List(items) | Value::Set(items) => items.to_vec(),
+                        _ => return Err(Problem::Defect("a list that isn't one".into())),
+                    };
+                    let laid = items
+                        .iter()
+                        .map(|item| lay(item, *laying, *inner, env))
+                        .collect::<Result<Vec<SqlValue>, Problem>>()?;
+                    SqlValue::Array(*inner, laid)
+                }
+                ty => lay(&value, *laying, ty, env)?,
+            }
+        }
+    })
+}
+
+/// `value` laid out as `laying` says, sent as `ty` (chunk Q1): one of its
+/// columns, as a write keeps it ([`jadpo_value::standard::to_parts`]), its
+/// JSON, written by the codec a write keeps it with, or whether it is
+/// there. `none` is `NULL`.
+fn lay(value: &Value, laying: Laying, ty: SqlType, env: &Env<'_>) -> Result<SqlValue, Problem> {
+    if matches!(value, Value::None) {
+        return Ok(SqlValue::Null(ty));
+    }
+    Ok(match laying {
+        Laying::Part(at) => {
+            let part = jadpo_value::standard::to_parts(value)
+                .and_then(|parts| parts.get(at as usize).cloned())
+                .ok_or_else(|| {
+                    Problem::Defect("a value without the part it is compared by".into())
+                })?;
+            to_sql(&part, ty).map_err(Problem::Defect)?
+        }
+        Laying::Json(codec) => env.json.write(codec, value).map_err(Problem::Defect)?,
+        Laying::Given => SqlValue::Bool(true),
     })
 }
 
