@@ -517,3 +517,161 @@ fn readiness_plan_names_declared_provider_connections_in_order() {
         "no entity store was declared"
     );
 }
+
+/// `provider.jadpo` at `folder` with `from` replaced by `to`.
+fn change_provider(root: &Path, folder: &str, from: &str, to: &str) {
+    let path = root.join(format!("shared/providers/{folder}/v1/provider.jadpo"));
+    let text = std::fs::read_to_string(&path).expect("provider");
+    assert!(text.contains(from), "{from}");
+    std::fs::write(path, text.replacen(from, to, 1)).expect("provider");
+}
+
+/// A package's setting may have a `default:` of its type (area 11, "How
+/// connections to packages are read"; chunk K2), given to a connection
+/// that leaves the setting out; anything else in its block is refused.
+#[test]
+fn a_package_setting_may_have_a_default() {
+    let (_dir, root) = app("connections-setting-default");
+    change_provider(
+        &root,
+        "ledger",
+        "account: Text",
+        "account: Text {\n            default: \"shop\"\n        }",
+    );
+    change(&root, "            account: \"shop\"\n", "");
+    assert_eq!(rules(&root), Vec::<String>::new());
+    // A connection may still give it.
+    change(
+        &root,
+        "            host: config.ledger_address\n",
+        "            host: config.ledger_address\n            account: \"cafe\"\n",
+    );
+    assert_eq!(rules(&root), Vec::<String>::new());
+    for (from, to) in [
+        ("default: \"shop\"", "default: 3"),
+        (
+            "default: \"shop\"",
+            "default: \"shop\"\n            secret: true",
+        ),
+    ] {
+        let (_dir, root) = app("connections-setting-default-bad");
+        change_provider(
+            &root,
+            "ledger",
+            "account: Text",
+            &format!("account: Text {{\n            {to}\n        }}"),
+        );
+        let _ = from;
+        assert_eq!(rules(&root), ["package.provider_invalid"], "{to}");
+    }
+}
+
+/// A host may hold one placeholder in its host name, filled from the
+/// `Text` setting of its name (chunk K2). The network report shows the
+/// pattern and the setting that fills it, or the host a value written in
+/// `app.jadpo` makes.
+#[test]
+fn a_host_may_hold_a_settings_placeholder() {
+    let (_dir, root) = app("connections-host-placeholder");
+    change_provider(
+        &root,
+        "acme_couriers",
+        "live: \"https://api.acme-couriers.example\"",
+        "live: \"https://{region}.acme-couriers.example\"",
+    );
+    change_provider(
+        &root,
+        "acme_couriers",
+        "    credential: CredentialScheme.bearer\n",
+        "    credential: CredentialScheme.bearer\n    settings: {\n        region: Text\n    }\n",
+    );
+    change(
+        &root,
+        "            timeout: 5s\n",
+        "            timeout: 5s\n            region: config.couriers_region\n",
+    );
+    let config = root.join("config.jadpo");
+    let text = std::fs::read_to_string(&config).expect("config");
+    std::fs::write(
+        &config,
+        text.replace(
+            "    ledger_address: Url\n",
+            "    couriers_region: Text\n    ledger_address: Url\n",
+        ),
+    )
+    .expect("config");
+    assert_eq!(rules(&root), Vec::<String>::new());
+    let report = std::fs::read_to_string(root.join("build/report/network.md")).expect("report");
+    assert!(
+        report.contains("| `couriers` | `https://{region}.acme-couriers.example`, `{region}` from `config.couriers_region` | `config.couriers_environment` is `live` |"),
+        "{report}"
+    );
+    let json: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("build/report/network.json")).expect("twin"),
+    )
+    .expect("JSON");
+    let live = json["hosts"]
+        .as_array()
+        .and_then(|hosts| {
+            hosts
+                .iter()
+                .find(|host| host["address"] == "https://{region}.acme-couriers.example")
+        })
+        .expect("the live host, as its pattern");
+    assert_eq!(live["setting"], "couriers_region");
+    // Written out, the host is known.
+    change(&root, "region: config.couriers_region", "region: \"eu\"");
+    assert_eq!(rules(&root), Vec::<String>::new());
+    let report = std::fs::read_to_string(root.join("build/report/network.md")).expect("report");
+    assert!(
+        report.contains("| `couriers` | `https://eu.acme-couriers.example` |"),
+        "{report}"
+    );
+    // A placeholder that isn't a `Text` setting, two of them, or one
+    // outside the host's name is refused.
+    for (from, to) in [
+        ("{region}.acme", "{zone}.acme"),
+        ("region: Text", "region: Int"),
+        ("{region}.acme", "{region}.{region}.acme"),
+        (
+            "https://{region}.acme-couriers.example",
+            "https://api.acme-couriers.example/{region}",
+        ),
+    ] {
+        let (_dir, again) = app("connections-host-placeholder-bad");
+        for entry in [
+            "provider.jadpo",
+            "../../../../app.jadpo",
+            "../../../../config.jadpo",
+        ] {
+            let from_path = root.join("shared/providers/acme_couriers/v1").join(entry);
+            let to_path = again.join("shared/providers/acme_couriers/v1").join(entry);
+            std::fs::copy(from_path, to_path).expect("copy");
+        }
+        change(&again, "region: \"eu\"", "region: config.couriers_region");
+        change_provider(&again, "acme_couriers", from, to);
+        let found = rules(&again);
+        assert!(
+            found.contains(&"package.provider_invalid".to_string()),
+            "{from} -> {to}: {found:?}"
+        );
+    }
+}
+
+/// A provider's credential is sent by one of the language's schemes;
+/// any other is refused where it is written (chunk K2).
+#[test]
+fn a_credential_scheme_is_one_of_the_languages() {
+    let (_dir, root) = app("connections-credential-scheme");
+    change_provider(
+        &root,
+        "ledger",
+        "CredentialScheme.bearer",
+        "CredentialScheme.digest",
+    );
+    let found = rules(&root);
+    assert!(
+        found.contains(&"package.provider_invalid".to_string()),
+        "{found:?}"
+    );
+}
