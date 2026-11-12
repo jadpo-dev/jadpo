@@ -195,7 +195,7 @@ pub enum SyntaxKind {
 
 use self::SyntaxKind::*;
 
-const ALL: [SyntaxKind; 184] = [
+const ALL: [SyntaxKind; 185] = [
     EOF,
     L_BRACE,
     R_BRACE,
