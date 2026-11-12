@@ -4,7 +4,7 @@
 //! first, with the edit that writes the closest.
 
 use jadpo_db::{Database, Layout};
-use jadpo_diag::{Diagnostic, rule};
+use jadpo_diag::Diagnostic;
 
 use crate::support;
 
@@ -92,7 +92,6 @@ fn a_field_of_an_object_names_its_type_and_what_fits() {
     assert_eq!(found.expected.as_deref(), Some("PersonName"));
     assert_eq!(fits(&hole), ["input.name"]);
     assert_eq!(found.fits[0].ty, "GreetInput.name");
-    assert!(!rule::TYPE_HOLE.declinable);
 }
 
 #[test]

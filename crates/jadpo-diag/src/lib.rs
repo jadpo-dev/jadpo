@@ -1475,7 +1475,7 @@ rules! {
     TYPE_FOREIGN_VALUE: "type.foreign_value", area 2, Error, Agent,
         "A value is written as another language writes it, such as `null` for `none` or Python's `True` for `true`";
     TYPE_HOLE: "type.hole", area 2, Error, Agent,
-        "`_` stands where a value goes, for one the code doesn't give yet";
+        "A `_` stands where a value goes, for one the code doesn't give yet";
     TYPE_INCOMPARABLE: "type.incomparable", area 3, Error, Agent,
         "An `==` or `!=` compares two values of different types, neither of which stands in for the other, or compares a value that is never `none` with `none`";
     TYPE_INLINE_FUNCTION_PARAMETERS: "type.inline_function_parameters", area 3, Error, Agent,

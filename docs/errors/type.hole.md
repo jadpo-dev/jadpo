@@ -1,6 +1,6 @@
 # `type.hole`
 
-`_` stands where a value goes, for one the code doesn't give yet.
+A `_` stands where a value goes, for one the code doesn't give yet.
 
 ## Why Jadpo refuses it
 
