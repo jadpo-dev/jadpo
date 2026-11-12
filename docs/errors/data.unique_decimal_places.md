@@ -1,8 +1,8 @@
 # `data.unique_decimal_places`
 
-A unique rule covers a field kept as JSON whose type holds a percentage,
-or another value whose places its type doesn't fix, which its JSON can
-write two ways.
+A unique rule covers a field kept as JSON that holds a percentage, or
+another value whose places its type doesn't fix, which its JSON can write
+two ways.
 
 ## Why Jadpo refuses it
 
@@ -53,15 +53,7 @@ the fix itself.
 **If the share has a fixed number of places**, keep it as a decimal
 whose type has a `scale:`, so each value is written one way:
 
-```jadpo fragment
-type MilkShare = Decimal {
-    scale: 1
-    min: 0.0
-    max: 100.0
-}
-```
-
-```jadpo check project=e-unique-decimal-places-fix hidden
+```jadpo check project=e-unique-decimal-places-fix
 type MilkShare = Decimal {
     scale: 1
     min: 0.0
@@ -96,6 +88,8 @@ entity Coffee {
     recipe: Recipe
 }
 ```
+
+Two coffees may now be made with the same recipe.
 
 ## Related
 
