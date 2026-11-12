@@ -112,6 +112,9 @@ impl Command {
 /// one tick. Its exit code: 1 when it couldn't start or a tick couldn't
 /// work in a store, 2 when its arguments name no command.
 pub fn run(deployable: &Deployable) -> ExitCode {
+    // Each schedule lease it takes names it (area 12, "Watching
+    // schedules").
+    crate::name_instance();
     let log = Log::new(deployable.stamp, standard_output);
     let arguments: Vec<OsString> = std::env::args_os().skip(1).collect();
     let outcome = match Command::read(&arguments) {

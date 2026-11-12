@@ -85,9 +85,7 @@ fn depot() -> PathBuf {
             &["package", "add", package.to_str().expect("a path")],
         );
     }
-    if !root.join("database/migrations").exists() {
-        jadpo(&root, &["migrate", "new", "initial"]);
-    }
+    crate::deployable::migrated(&root);
     jadpo(&root, &["records", "update"]);
     root
 }

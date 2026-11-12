@@ -251,6 +251,17 @@ impl WorkersHost {
     /// The host for an invocation given `env` and `ctx`, with no driver
     /// built yet.
     pub fn new(env: JsValue, ctx: JsValue) -> WorkersHost {
+        // The isolate's name as an instance of the app, kept with each
+        // schedule lease it takes (area 12, "Watching schedules"): random,
+        // since an isolate has no name of its own, and the same for every
+        // invocation it runs.
+        jadpo_runtime::instance::name(|| {
+            let mut bytes = [0u8; 4];
+            web_crypto_random(&mut bytes).then(|| {
+                let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+                format!("worker-{hex}")
+            })
+        });
         let ctx = ctx
             .is_object()
             .then(|| ctx.unchecked_into::<ExecutionContext>());

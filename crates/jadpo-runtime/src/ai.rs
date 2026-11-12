@@ -670,11 +670,15 @@ async fn generated(
             }
             Answer::Unavailable | Answer::RetryAfter(_) | Answer::Unknown => {
                 used.add(unanswered);
+                let wait = match &answer {
+                    Answer::RetryAfter(millis) => Some(*millis),
+                    _ => None,
+                };
                 return crate::ai_budget::debited(
                     ctx,
                     taken,
                     used,
-                    Done::Failed(Box::new(crate::unavailable())),
+                    Done::Failed(Box::new(crate::refused(wait))),
                 )
                 .await;
             }

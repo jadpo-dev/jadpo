@@ -1091,19 +1091,20 @@ fn schedules_are_listed_explained_paused_resumed_run_and_paged_on_its_stack() {
         failed.stdout
     );
 
-    // A run still holding the lease: running, and a run now is refused.
+    // A run still holding the lease: running, on the instance its host
+    // named, and a run now is refused.
     tick_at(200);
     runtime.block_on(async {
         host.rows("INSERT INTO \"jadpo_schedule_runs\" (\"id\", \"schedule\", \"due_slot\", \"started_at\", \"outcome\") VALUES ('00000000-0000-7000-8000-0000000000aa', 'schedule chore_census', '2026-10-19T12:20:00Z', '2026-10-19T12:20:00Z', 'running') RETURNING 1")
             .await;
-        host.rows("UPDATE \"jadpo_schedules\" SET \"lease_until\" = '2026-10-19T12:25:00Z', \"run_id\" = '00000000-0000-7000-8000-0000000000aa' WHERE \"schedule\" = 'schedule chore_census' RETURNING 1")
+        host.rows("UPDATE \"jadpo_schedules\" SET \"lease_until\" = '2026-10-19T12:25:00Z', \"run_id\" = '00000000-0000-7000-8000-0000000000aa', \"lease_holder\" = 'api-2:4182' WHERE \"schedule\" = 'schedule chore_census' RETURNING 1")
             .await;
     });
     let listed = watching(&root, &url, at(200, 40), &["schedules"]);
     assert!(
         listed
             .stdout
-            .contains("  chore_census  ● running  12:20:00 · 40 s so far"),
+            .contains("  chore_census  ● running  12:20:00 · 40 s so far · on api-2:4182"),
         "{}",
         listed.stdout
     );
@@ -1126,12 +1127,20 @@ fn schedules_are_listed_explained_paused_resumed_run_and_paged_on_its_stack() {
         "{}",
         refused.stderr
     );
+    assert!(
+        refused
+            .stderr
+            .contains("A run that started at 12:20:00 on `api-2:4182` holds its lease until\n"),
+        "{}",
+        refused.stderr
+    );
     let why = watching(&root, &url, at(200, 40), &["why", "chore_census"]);
     assert_eq!(
         why.stdout,
         "`chore_census`'s run from 12:20:00 is still going, so its due ticks are skipped
 until it ends
   lease     held until 12:25:00, the 15-minute limit and a minute
+  instance  api-2:4182
   schedule  domains/home/schedules/chore_census.jadpo:3
 "
     );
@@ -1141,7 +1150,7 @@ until it ends
     let why = watching(&root, &url, at(206, 0), &["why", "chore_census"]);
     assert!(
         why.stdout.starts_with(
-            "`chore_census`'s run from 12:20:00 held its lease past 12:25:00: its worker was\nlost\n"
+            "`chore_census`'s run from 12:20:00 held its lease past 12:25:00: its worker was\nlost\n  instance  api-2:4182\n"
         ),
         "{}",
         why.stdout

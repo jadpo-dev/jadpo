@@ -224,6 +224,8 @@ rules! {
         "A `jadpo schedules` command names an action it doesn't have, or a schedule the project doesn't declare";
     CLI_SEED_ARGUMENTS: "cli.seed_arguments", area 14, Error, Agent,
         "A `jadpo seed` command names no seed, one the project doesn't have, or more than one";
+    CLI_SIGNAL_HANDLER_FAILED: "cli.signal_handler_failed", area 14, Error, Human,
+        "SIGTERM and ctrl-c couldn't be watched, so `jadpo dev` runs without them, and a signal ends it at once";
     CLI_SQL_ARGUMENTS: "cli.sql_arguments", area 14, Error, Agent,
         "A `jadpo sql` command names no query or action, one the project doesn't declare, or an action that writes nothing";
     CLI_SQL_EXPLAIN_UNAVAILABLE: "cli.sql_explain_unavailable", area 14, Error, Human,

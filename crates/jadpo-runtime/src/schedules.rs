@@ -156,16 +156,17 @@ pub const TICKED: &str = "UPDATE \"jadpo_schedules\" SET \"last_tick_at\" = GREA
 /// earlier of the one kept and `$3`, one new interval after the tick.
 pub const REGRID: &str = "UPDATE \"jadpo_schedules\" SET \"every_ms\" = $2, \"next_run_at\" = LEAST(\"next_run_at\", $3) WHERE \"schedule\" = $1 AND \"every_ms\" <> $2 RETURNING \"next_run_at\"";
 
-/// Takes schedule `$1`'s lease at tick `$6` for run `$5` until `$4`,
-/// moving its next due time from `$2` to `$3`: only while that due time
-/// stands, it isn't paused and no live lease holds it, so one claimer wins.
-pub const CLAIM: &str = "UPDATE \"jadpo_schedules\" SET \"next_run_at\" = $3, \"lease_until\" = $4, \"run_id\" = $5 WHERE \"schedule\" = $1 AND \"next_run_at\" = $2 AND NOT \"paused\" AND (\"lease_until\" IS NULL OR \"lease_until\" <= $6) RETURNING \"schedule\"";
+/// Takes schedule `$1`'s lease at tick `$6` for run `$5` until `$4`, held
+/// by instance `$7`, moving its next due time from `$2` to `$3`: only
+/// while that due time stands, it isn't paused and no live lease holds
+/// it, so one claimer wins.
+pub const CLAIM: &str = "UPDATE \"jadpo_schedules\" SET \"next_run_at\" = $3, \"lease_until\" = $4, \"run_id\" = $5, \"lease_holder\" = $7 WHERE \"schedule\" = $1 AND \"next_run_at\" = $2 AND NOT \"paused\" AND (\"lease_until\" IS NULL OR \"lease_until\" <= $6) RETURNING \"schedule\"";
 
 /// Takes schedule `$1`'s lease at tick `$4` until `$3` for run `$2`, the
-/// one an operator asked for, which no longer waits: only while that is
-/// the request standing and no live lease holds it, paused or not, its
-/// due time left as it is.
-pub const CLAIM_REQUESTED: &str = "UPDATE \"jadpo_schedules\" SET \"lease_until\" = $3, \"run_id\" = $2, \"run_requested\" = NULL WHERE \"schedule\" = $1 AND \"run_requested\" = $2 AND (\"lease_until\" IS NULL OR \"lease_until\" <= $4) RETURNING \"schedule\"";
+/// one an operator asked for, which no longer waits, held by instance
+/// `$5`: only while that is the request standing and no live lease holds
+/// it, paused or not, its due time left as it is.
+pub const CLAIM_REQUESTED: &str = "UPDATE \"jadpo_schedules\" SET \"lease_until\" = $3, \"run_id\" = $2, \"run_requested\" = NULL, \"lease_holder\" = $5 WHERE \"schedule\" = $1 AND \"run_requested\" = $2 AND (\"lease_until\" IS NULL OR \"lease_until\" <= $4) RETURNING \"schedule\"";
 
 /// Moves schedule `$1`'s next due time from `$2` to `$3` past a tick that
 /// skips it: once, by whichever instance gets there first.
@@ -174,7 +175,7 @@ pub const SKIP: &str = "UPDATE \"jadpo_schedules\" SET \"next_run_at\" = $3 WHER
 /// Gives schedule `$1`'s lease back once run `$2` has ended, keeping
 /// `$3`, the start of a run that succeeded, as its last success (`NULL`
 /// keeps the one before).
-pub const RELEASE: &str = "UPDATE \"jadpo_schedules\" SET \"lease_until\" = NULL, \"run_id\" = NULL, \"last_succeeded_at\" = COALESCE($3, \"last_succeeded_at\") WHERE \"schedule\" = $1 AND \"run_id\" = $2 RETURNING \"schedule\"";
+pub const RELEASE: &str = "UPDATE \"jadpo_schedules\" SET \"lease_until\" = NULL, \"run_id\" = NULL, \"lease_holder\" = NULL, \"last_succeeded_at\" = COALESCE($3, \"last_succeeded_at\") WHERE \"schedule\" = $1 AND \"run_id\" = $2 RETURNING \"schedule\"";
 
 /// A run record: its id, schedule, due, start and end, outcome, the reason
 /// a tick skipped it, its failure, its events and its trace; the items it
@@ -882,6 +883,10 @@ impl crate::lease::Leased for Leased {
     fn claim(&self, now: i64, until: i64) -> (&'static str, Vec<SqlValue>) {
         let key = SqlValue::Text(self.key.clone());
         let run = SqlValue::Uuid(self.run);
+        // The instance that holds it, by the name its host gave it.
+        let holder = crate::instance::named().map_or(SqlValue::Null(SqlType::Text), |name| {
+            SqlValue::Text(name.to_string())
+        });
         match self.take {
             Take::Due { slot, next } => (
                 CLAIM,
@@ -892,10 +897,17 @@ impl crate::lease::Leased for Leased {
                     micros(until),
                     run,
                     micros(now),
+                    holder,
                 ],
             ),
-            Take::Requested => (CLAIM_REQUESTED, vec![key, run, micros(until), micros(now)]),
-            Take::Now => (watch::CLAIM_NOW, vec![key, micros(until), run, micros(now)]),
+            Take::Requested => (
+                CLAIM_REQUESTED,
+                vec![key, run, micros(until), micros(now), holder],
+            ),
+            Take::Now => (
+                watch::CLAIM_NOW,
+                vec![key, micros(until), run, micros(now), holder],
+            ),
         }
     }
 
@@ -1329,6 +1341,39 @@ mod tests {
     use super::*;
     use std::future::Future;
     use std::pin::Pin;
+
+    /// Each way a run takes its lease keeps the instance taking it, by the
+    /// name its host gave it, and giving it back clears it.
+    #[test]
+    fn a_lease_keeps_the_instance_that_took_it() {
+        use crate::lease::Leased as _;
+        crate::instance::name(|| Some("api-2:4182".to_string()));
+        let named = SqlValue::Text("api-2:4182".to_string());
+        for (take, sql, at) in [
+            (
+                Take::Due {
+                    slot: 0,
+                    next: 60_000,
+                },
+                CLAIM,
+                6,
+            ),
+            (Take::Requested, CLAIM_REQUESTED, 4),
+            (Take::Now, watch::CLAIM_NOW, 4),
+        ] {
+            let lease = Leased {
+                key: "schedule home.census".into(),
+                run: [7; 16],
+                take,
+                succeeded: None,
+            };
+            let (claim, params) = lease.claim(1_000, 61_000);
+            assert_eq!(claim, sql);
+            assert_eq!(params.get(at), Some(&named), "{take:?}");
+            assert!(claim.contains(&format!("\"lease_holder\" = ${}", at + 1)));
+        }
+        assert!(RELEASE.contains("\"lease_holder\" = NULL"));
+    }
 
     #[test]
     fn missed_due_slots_become_one_run_on_the_same_grid() {

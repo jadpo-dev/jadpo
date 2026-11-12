@@ -383,10 +383,7 @@ work below (Richard, 2026-11-08).
       20, "What is built".
 11. Background work and tests (areas 12 and 13), added by the audit of
     2026-11-08.
-    - [ ] **J3 Delivery and operator gaps** `opus · high`: area 12, "Retries and
-      giving up", "Watching schedules" and "Running background work". `Retry-After`
-      between a delivery's attempts, names for instances, and
-      `cli.signal_handler_failed`.
+    - [x] **J3 Delivery and operator gaps**: area 12, "How long between tries", "Running background work" and "Watching schedules", and its notes; `cli.signal_handler_failed`'s page.
     - [ ] **J4 File writers over a provider's list** `opus · high`: area 19,
       "Data formats"; area 12, "Walking records or a provider's list:
       `batches.each`" and "How an export's run is kept". A file helper's write

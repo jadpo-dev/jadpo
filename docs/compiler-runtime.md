@@ -2874,7 +2874,13 @@ its timer starts no more ticks, and each worker waits, at most
 ended through `Host::stopping`; it first waits as long
 for its connections to give the answers they owe (§2.5). `stop_signals`
 turns SIGTERM and SIGINT into that stop, a second ending the process at
-once; `jadpo dev` stops on them.
+once; `jadpo dev` stops on them, and where they can't be watched says so
+once (`cli.signal_handler_failed`) and serves without them.
+`name_instance` names the process for the leases it takes, its host name
+and process id, as each `jadpo` command and native deployable starts
+(`jadpo_runtime::instance`); `WorkersHost::new` names its isolate at
+random. A schedule's claim writes the name to
+`jadpo_schedules.lease_holder`, and its release clears it.
 
 **What an invocation did** (area 16, "Telemetry"). `Ctx` keeps one
 list of spans for the invocation it runs (`jadpo_runtime::spans`), in
@@ -3642,7 +3648,9 @@ the subscriber's action as the system limited to the event's tenant,
 in a new span of the event's trace (`outbox::Trace`, `Ctx::trace`,
 which the HTTP component starts or continues from `traceparent`), and
 records `succeeded`, `pending` with a backoff (`outbox::backoff`, full
-jitter) or `failed`; `runner::sweep` delivers what is due in a store,
+jitter, lengthened by `outbox::wait` to a provider's `Retry-After`, which
+`boundary::refused` keeps on the `unavailable` it raises as
+`Failure::wait_asked`) or `failed`; `runner::sweep` delivers what is due in a store,
 for the minute tick. The statements are `jadpo_runtime::outbox`'s,
 on its own system tables, as the idempotency keys' are.
 

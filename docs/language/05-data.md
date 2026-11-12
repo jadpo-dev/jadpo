@@ -1955,8 +1955,8 @@ Schedule state, each schedule's lease included, goes in the store
 `schedules: { store: }` names in `app.jadpo`, or the only store when there
 is one ([Schedules](12-jobs-and-events.md#schedules)):
 
-- `jadpo_schedules`: each schedule's next due time, lease and last tick (a
-  time the schedule was due to run);
+- `jadpo_schedules`: each schedule's next due time, lease, the instance
+  holding it, and last tick (a time the schedule was due to run);
 - `jadpo_schedule_runs`: each run and skipped tick.
 
 They are created when a schedule is declared, with
