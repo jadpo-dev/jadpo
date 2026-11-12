@@ -487,6 +487,8 @@ impl Body<'_> {
             sets.fields.extend(rule.sets.iter().cloned());
         }
         let mut missing: Vec<(String, String)> = Vec::new();
+        // The failures a construction over stored fields maps (chunk Q2b).
+        let mut refused: Vec<String> = Vec::new();
         // The fields a write gives: not the store's own, and not those only
         // the lifecycle's transitions change.
         let settable: Vec<FieldDef> = fields
@@ -498,7 +500,7 @@ impl Body<'_> {
             .collect();
         // `set:`.
         if let Some(set) = members.get("set") {
-            self.write_set(
+            refused = self.write_set(
                 entity, op, by_id, set, &fields, &settable, &head_span, &written, &rules,
             );
             for (name, member) in tree::members(set.block()) {
@@ -590,6 +592,7 @@ impl Body<'_> {
             .iter()
             .chain(missing.iter().map(|(_, failure)| failure))
             .chain(arms.iter().map(|(_, _, failure)| failure))
+            .chain(refused.iter())
         {
             if !failures.contains(failure) {
                 failures.push(failure.clone());
@@ -1091,7 +1094,9 @@ impl Body<'_> {
     /// `set:`: each field once, none the store generates, each value of its
     /// field's type. A create gives every field the store doesn't
     /// generate; an update at least one. By `id`, a value may read the
-    /// stored ones (area 6, "Counters and other one-step updates").
+    /// stored ones (area 6, "Counters and other one-step updates"), and a
+    /// construction over them map the rules it can break, whose failures
+    /// it gives (area 6, "A one-step update that refuses"; chunk Q2b).
     #[allow(clippy::too_many_arguments)]
     fn write_set(
         &mut self,
@@ -1104,7 +1109,7 @@ impl Body<'_> {
         head_span: &Span,
         written: &str,
         rules: &WriteRules,
-    ) {
+    ) -> Vec<String> {
         let generated: BTreeSet<&str> = fields
             .iter()
             .filter(|field| field.name == "id" || field.generated)
@@ -1179,6 +1184,9 @@ impl Body<'_> {
                 self.facts.key_sinks.insert(node_key(value.syntax()));
             }
         }
+        // A construction over stored fields may map the rules it can break
+        // (area 6, "A one-step update that refuses"; chunk Q2b).
+        let outer_refusing = std::mem::replace(&mut self.refusing, by_id.then(Vec::new));
         self.fields_given(
             set.block(),
             entity,
@@ -1188,6 +1196,7 @@ impl Body<'_> {
             head_span.clone(),
             &skip,
         );
+        let refused = std::mem::replace(&mut self.refusing, outer_refusing).unwrap_or_default();
         self.stored = outer;
         if by_id {
             for (name, member) in &given {
@@ -1200,6 +1209,7 @@ impl Body<'_> {
                 }
             }
         }
+        refused
     }
 
     /// A value the database works out from stored fields, set on a field
@@ -1820,7 +1830,24 @@ impl Body<'_> {
     /// would have needed an `attempt` (chunk Q2).
     fn one_step(&mut self, entity: &str, value: &Expr, written: &str) {
         let root = value.syntax().clone();
+        // The arms after a construction that refuses: the executor works
+        // out a failure's fields only when the update is refused, so they
+        // may read what the action has, though never what is stored
+        // (chunk Q2b).
+        let arms: Vec<SyntaxNode> = std::iter::once(root.clone())
+            .chain(root.descendants())
+            .filter(|node| self.facts.refusing.contains_key(&node_key(node)))
+            .filter_map(ast::RecordExpr::cast)
+            .filter_map(|record| record.member_list())
+            .map(|list| list.syntax().clone())
+            .collect();
         for node in std::iter::once(root.clone()).chain(root.descendants().skip(1)) {
+            if node.ancestors().any(|above| arms.contains(&above)) {
+                if self.facts.stored.contains(&node_key(&node)) {
+                    self.stored_operand(&node, &root, entity, written);
+                }
+                continue;
+            }
             if let Some(name) = ast::NameRef::cast(node.clone())
                 && let Some(local) = self.facts.reads.get(&node_key(name.syntax()))
                 && let Some(fact) = self.facts.locals.get(*local)
@@ -2037,36 +2064,50 @@ impl Body<'_> {
                 SyntaxKind::CALL_EXPR => {
                     let key = node_key(&parent);
                     match self.facts.reaches.get(&key) {
-                        Some(Reach::Construct(_)) => {
-                            if let Some(Fallible::Construction(rules)) =
-                                self.facts.constructions.get(&key).cloned()
+                        Some(Reach::Construct(target)) => {
+                            let target = target.clone();
+                            let breakable = match self.facts.constructions.get(&key) {
+                                Some(Fallible::Construction(rules)) => rules.clone(),
+                                _ => Vec::new(),
+                            };
+                            // The block after it, mapping the rules it can
+                            // break (chunk Q2b).
+                            let refusing = parent
+                                .parent()
+                                .filter(|record| record.kind() == SyntaxKind::RECORD_EXPR)
+                                .and_then(|record| {
+                                    self.facts.refusing.get(&node_key(&record)).cloned()
+                                });
+                            if refusing.as_ref().is_some_and(|refusing| refusing.unsure) {
+                                return;
+                            }
+                            if !breakable.is_empty()
+                                && let Some(call) = ast::CallExpr::cast(parent.clone())
                             {
                                 let span = crate::tree::node_span(self.path, &parent);
-                                let rules = match ast::CallExpr::cast(parent.clone()) {
-                                    Some(call) => self.written_rules(&call, &rules),
-                                    None => crate::and_list(&rules),
-                                };
-                                self.out.push(
-                                    Diagnostic::new(
-                                        &rule::DATA_STORED_VALUE_UNPROVEN,
-                                        format!(
-                                            "`{written}` by `id` could store a value that breaks {rules}"
-                                        ),
-                                    )
-                                    .at(span, "worked out by the database")
-                                    .reason(format!(
-                                        "The database works out a value from `{entity}`'s stored fields when it writes, so nothing checks it before it is stored: the declared ranges must prove it follows its type's rules."
-                                    ))
-                                    .next(format!(
-                                        "Load the record and build the value with `attempt` before `{written}`, or loosen the type's rules"
-                                    )),
-                                );
-                                return;
+                                if self.stored_unproven(
+                                    &call,
+                                    &target,
+                                    &breakable,
+                                    refusing.as_ref(),
+                                    span,
+                                    entity,
+                                    written,
+                                ) {
+                                    return;
+                                }
                             }
                             true
                         }
                         _ => false,
                     }
+                }
+                // The construction a block of arms follows (chunk Q2b).
+                SyntaxKind::RECORD_EXPR => {
+                    self.facts.refusing.contains_key(&node_key(&parent))
+                        && ast::RecordExpr::cast(parent.clone())
+                            .and_then(|record| record.expr())
+                            .is_some_and(|head| *head.syntax() == child)
                 }
                 _ => false,
             };
@@ -2091,6 +2132,107 @@ impl Body<'_> {
                 return;
             }
             child = parent;
+        }
+    }
+
+    /// A construction over stored fields that could break `breakable`,
+    /// its type's rules the ranges don't prove: reported unless a block
+    /// after it maps every one (`refusing`), each a rule the database
+    /// checks as Jadpo does (area 6, "A one-step update that refuses";
+    /// chunk Q2b). Whether it was reported.
+    #[allow(clippy::too_many_arguments)]
+    fn stored_unproven(
+        &mut self,
+        call: &ast::CallExpr,
+        target: &Ty,
+        breakable: &[String],
+        refusing: Option<&super::facts::Refusing>,
+        span: Span,
+        entity: &str,
+        written: &str,
+    ) -> bool {
+        let unchecked: Vec<String> = breakable
+            .iter()
+            .filter(|rule| !self.checkable(target, rule))
+            .cloned()
+            .collect();
+        let shown = call
+            .expr()
+            .map(|callee| format!("{}(...)", tree::written(callee.syntax())))
+            .unwrap_or_default();
+        let problem = if !unchecked.is_empty() {
+            let rules = self.written_rules(call, &unchecked);
+            Diagnostic::new(
+                &rule::DATA_STORED_VALUE_UNPROVEN,
+                format!(
+                    "`{written}` by `id` could store a value that breaks {rules}, which the database can't check"
+                ),
+            )
+            .at(span, "worked out by the database")
+            .reason(format!(
+                "The database works out a value from `{entity}`'s stored fields when it writes, so it would check the value too, and it checks only a number's, an amount's or a duration's `min` and `max` and text's lengths as Jadpo does."
+            ))
+            .next(format!(
+                "Load the record and build the value with `attempt` before `{written}`, or loosen the type's rules"
+            ))
+        } else if let Some(refusing) = refusing {
+            if refusing.uncovered.is_empty() {
+                return false;
+            }
+            let rules = self.written_rules(call, &refusing.uncovered);
+            let first = &refusing.uncovered[0];
+            let (them, it) = if refusing.uncovered.len() == 1 {
+                ("it", "it")
+            } else {
+                ("them", "each")
+            };
+            Diagnostic::new(
+                &rule::DATA_STORED_VALUE_UNPROVEN,
+                format!(
+                    "`{written}` by `id` could store a value that breaks {rules}, and nothing maps {them}"
+                ),
+            )
+            .at(span, "worked out by the database")
+            .reason(format!(
+                "The database works out a value from `{entity}`'s stored fields when it writes, and checks each rule the block after `{shown}` maps; {it} needs an arm naming the `conflict` failure the caller gets, or `invalid:` covers every rule without its own."
+            ))
+            .next(format!(
+                "Add `{first}: SomeFailure` to the block, naming a `conflict` failure, or `invalid: SomeFailure` to cover every rule without an arm"
+            ))
+        } else {
+            let rules = self.written_rules(call, breakable);
+            let first = &breakable[0];
+            Diagnostic::new(
+                &rule::DATA_STORED_VALUE_UNPROVEN,
+                format!("`{written}` by `id` could store a value that breaks {rules}"),
+            )
+            .at(span, "worked out by the database")
+            .reason(format!(
+                "The database works out a value from `{entity}`'s stored fields when it writes, so nothing checks it before it is stored: the declared ranges must prove it follows its type's rules, or a block after the construction must map each rule it can break to a failure, which the statement then checks."
+            ))
+            .next(format!(
+                "Map each rule in a block after the construction, `{shown} {{ {first}: SomeFailure }}`, naming a `conflict` failure, or loosen the type's rules"
+            ))
+        };
+        self.out.push(problem);
+        true
+    }
+
+    /// Whether the database checks `rule` of the type `target` as Jadpo
+    /// does, in the statement that works the value out (chunk Q2b): `min`
+    /// and `max` of a number, an amount of money (in minor units) or a
+    /// duration, and `min_length` and `max_length` of text, which both
+    /// count in characters. PostgreSQL's regular expressions and formats
+    /// aren't Jadpo's.
+    fn checkable(&self, target: &Ty, rule: &str) -> bool {
+        let base = self.table.representation(target);
+        match rule {
+            "min" | "max" => matches!(
+                base,
+                Some(Prim::Int | Prim::Decimal | Prim::Money | Prim::Duration)
+            ),
+            "min_length" | "max_length" => base == Some(Prim::Text),
+            _ => false,
         }
     }
 

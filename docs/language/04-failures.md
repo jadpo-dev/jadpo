@@ -476,6 +476,7 @@ must fit the condition:
 | `conflict:` | `conflict` |
 | `empty:` (a patch that changes nothing) | `invalid_value` |
 | A construction's rule keys, such as `max:`, and `invalid:` covering the rest | `invalid_value` |
+| The same on a value an update by `id` works out from what is stored ([A one-step update that refuses](06-reads-and-writes.md#a-one-step-update-that-refuses)) | `conflict` |
 
 ### A read that finds nothing: `missing:`
 

@@ -324,13 +324,10 @@ work below (Richard, 2026-11-08).
 
 10. Data and queries (areas 5, 6, 19 and 20), added by the audit of
     2026-11-08. Each keeps every test passing on both executors.
-    - [ ] **Q2b A one-step update that refuses** `opus · xhigh`: notes for
-      area 6, "A one-step update that refuses". A stored-value construction
-      in an update by `id`'s `set:` mapping the rules it can break, as
-      `stock: Stock(Product.stock - ordered) { min: OutOfStock }`: the
-      statement's `WHERE` checks them, and no row updated is the mapped
-      failure, so the update never reruns. Split from Q2 (2026-11-12),
-      which built the rest.
+    - [x] **Q2b A one-step update that refuses**: a construction over
+      stored fields in an update by `id`'s `set:` mapping the rules it can
+      break, checked by the statement's `WHERE`, in area 6, "A one-step
+      update that refuses", and its notes.
     - [x] **Q3 What `jadpo migrate new` still refuses**: a new `pattern:` and
       a computed backfill for a field that allows less, in area 5, "Changing
       what a field allows", and its notes, "Refits".

@@ -298,6 +298,36 @@ pub fn select_one(table: &str) -> String {
     format!("SELECT 1\nFROM {}", ident(table))
 }
 
+/// `SELECT` of each of `values` from `table`, one to a line: what a row
+/// holds, worked out by the database.
+pub fn select_values(table: &str, values: &[String]) -> String {
+    format!(
+        "SELECT {}\nFROM {}",
+        values.join(",\n       "),
+        ident(table)
+    )
+}
+
+/// `value` held to a type's lower bound, written into the statement (area
+/// 6, "A one-step update that refuses"; chunk Q2b): `("stock" - $1) >=
+/// 0`. The bound is a number from the type's rules, never a value from a
+/// request.
+pub fn at_least(value: &str, bound: &str) -> String {
+    format!("{value} >= {bound}")
+}
+
+/// `value` held to a type's upper bound, as [`at_least`] holds it to its
+/// lower one.
+pub fn at_most(value: &str, bound: &str) -> String {
+    format!("{value} <= {bound}")
+}
+
+/// How many characters `text` holds, as Jadpo counts them, in Unicode
+/// characters.
+pub fn char_length(text: &str) -> String {
+    format!("char_length({text})")
+}
+
 /// The row version (PostgreSQL's `xmin`, as text) of each of `table`'s
 /// rows whose `id` is among the array `$1`, with its `id`: what a snapshot
 /// read before an outside call loaded, read again in that snapshot before

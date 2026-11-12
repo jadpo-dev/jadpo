@@ -2815,7 +2815,16 @@ the update changes no row, the runtime asks with its `SELECT 1`
 whether the record is there and visible, and a row is the refusal its
 `conflict:` arm maps (listed among the plan's refusals as `when:
 Entity.transition`), otherwise the not-found failure or the fault as for
-any write. `jadpo_runtime::purge(host, plan, now, batches)` is purge's
+any write. An update by `id` whose `set:` maps the rules a construction
+over stored fields can break (area 6, "A one-step update that refuses";
+chunk Q2b) has them as `ConflictArm`s after its `conflict:` arms, each
+with a `StoredRule` naming its construction and rule; its statement's
+`WHERE` holds the worked-out value to each bound
+(`Planner::rule_holds`), and its `Guard` selects whether each rule holds
+now, a column each (`Guard::rules`, listed among the refusals as `min:
+Product.stock`): the first that doesn't is that arm's refusal, and a row
+whose every rule holds is a concurrent change. The probe asks afresh, so
+the update loads no record. `jadpo_runtime::purge(host, plan, now, batches)` is purge's
 entry point, outside every action: batch after batch, each its own transaction, one
 `DELETE ... WHERE "id" IN (SELECT ... LIMIT 500 FOR UPDATE SKIP LOCKED)
 RETURNING "id"` of hidden records whose `since:` field is older than `now`

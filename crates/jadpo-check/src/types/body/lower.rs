@@ -53,6 +53,7 @@ pub(super) fn lower(
         refers: Vec::new(),
         at: BTreeMap::new(),
         write_block: None,
+        stored_arms: Vec::new(),
         template_locale: None,
     };
     let mut body = typed::Body::default();
@@ -175,6 +176,7 @@ pub(super) fn lower_template(
         refers: Vec::new(),
         at: BTreeMap::new(),
         write_block: None,
+        stored_arms: Vec::new(),
         template_locale: None,
     };
     let mut body = typed::Body::default();
@@ -333,6 +335,15 @@ fn range(node: &SyntaxNode) -> (u32, u32) {
     (span.start, span.end)
 }
 
+/// One arm of a construction an update by `id` works out from stored
+/// fields, before the write knows the field it sets (area 6, "A one-step
+/// update that refuses"; chunk Q2b).
+struct StoredArm {
+    stored: typed::StoredRule,
+    failure: Key,
+    fields: Vec<(Key, SiteId)>,
+}
+
 struct Lower<'a> {
     facts: &'a Facts,
     names: &'a dyn NameView,
@@ -347,6 +358,9 @@ struct Lower<'a> {
     at: BTreeMap<NodeKey, SiteId>,
     /// The block an `attempt` hands the write it is lowering.
     write_block: Option<ast::MemberList>,
+    /// The arms of each construction over stored fields lowered since the
+    /// update by `id` whose `set:` holds it asked (chunk Q2b).
+    stored_arms: Vec<StoredArm>,
     /// In an email's template: the locale its translations and
     /// `text.format` write in, which they are given without `locale:`
     /// (area 16).
@@ -1079,6 +1093,18 @@ impl Lower<'_> {
             && let Some(inner) = paren.expr()
         {
             return self.expr(&inner);
+        }
+        // `Stock(Product.stock - ordered) { min: OutOfStock }` in an update
+        // by `id`: the construction, whose arms go to the write (chunk
+        // Q2b).
+        if let Expr::RecordExpr(record) = expr
+            && let Some(refusing) = self.facts.refusing.get(&node_key(record.syntax()))
+            && let Some(head @ Expr::CallExpr(_)) = record.expr()
+        {
+            let mapped = refusing.mapped.clone();
+            let construction = self.expr(&head);
+            self.stored_rule_arms(construction, record.member_list(), &mapped);
+            return construction;
         }
         let id = self.alloc();
         self.at.insert(node_key(expr.syntax()), SiteId(id as u32));
@@ -2114,9 +2140,35 @@ impl Lower<'_> {
         let mut patch_input: Option<String> = None;
         let mut when_supplied = Vec::new();
         let mut conflicts = Vec::new();
+        // The arms of each construction over stored fields `set:` gives,
+        // after the `conflict:` arms (area 6, "A one-step update that
+        // refuses"; chunk Q2b).
+        let mut refusing = Vec::new();
         for (name, member) in tree::members(block) {
             match tree::name_text(&name).as_deref() {
-                Some("set") => set.extend(self.fields_given(member.block(), &fact.entity, &[])),
+                Some("set") => {
+                    let outer = std::mem::take(&mut self.stored_arms);
+                    for (name, member) in tree::members(member.block()) {
+                        let Some(text) = tree::name_text(&name) else {
+                            continue;
+                        };
+                        let field =
+                            field_key(self.names, &fact.entity, std::slice::from_ref(&text));
+                        self.node(name.syntax(), Some(field.clone()), false);
+                        if let Some(value) = member.value() {
+                            set.push((field.clone(), self.expr(&value)));
+                            for arm in std::mem::take(&mut self.stored_arms) {
+                                refusing.push(typed::ConflictArm {
+                                    rule: field.clone(),
+                                    failure: arm.failure,
+                                    fields: arm.fields,
+                                    stored: Some(arm.stored),
+                                });
+                            }
+                        }
+                    }
+                    self.stored_arms = outer;
+                }
                 Some("patch") => {
                     if let Some(value) = member.value() {
                         if let Some(Ty::Named(input)) =
@@ -2236,6 +2288,7 @@ impl Lower<'_> {
                                 rule,
                                 failure,
                                 fields,
+                                stored: None,
                             });
                         }
                     }
@@ -2243,6 +2296,7 @@ impl Lower<'_> {
                 _ => self.scan(member.syntax()),
             }
         }
+        conflicts.extend(refusing);
         let missing = fact
             .missing
             .iter()
@@ -2275,6 +2329,53 @@ impl Lower<'_> {
                 .and_then(|failure| self.type_key(failure)),
             fallible: self.fallible(Some(&fact.fallible)),
             attaches: fact.attaches,
+        }
+    }
+
+    /// The arms after a construction over stored fields, `{ min:
+    /// OutOfStock }`, each with the failure `mapped` names and its fields,
+    /// kept for the update by `id` whose `set:` holds it (area 6, "A
+    /// one-step update that refuses"; chunk Q2b).
+    fn stored_rule_arms(
+        &mut self,
+        construction: SiteId,
+        list: Option<ast::MemberList>,
+        mapped: &[(Option<String>, String)],
+    ) {
+        for (name, member) in tree::members(list) {
+            let word = tree::name_text(&name).unwrap_or_default();
+            let key = (word != "invalid").then_some(word);
+            let Some((_, failure)) = mapped.iter().find(|(rule, _)| *rule == key) else {
+                self.scan(member.syntax());
+                continue;
+            };
+            let failure = failure.clone();
+            let fields = match member.value() {
+                Some(Expr::RecordExpr(record)) => {
+                    if let Some(Expr::NameRef(name)) = record.expr() {
+                        self.path_names(&[name]);
+                    }
+                    self.fields_given(record.member_list(), &failure, &[])
+                }
+                Some(Expr::NameRef(name)) => {
+                    self.path_names(&[name]);
+                    Vec::new()
+                }
+                Some(other) => {
+                    self.scan(other.syntax());
+                    Vec::new()
+                }
+                None => Vec::new(),
+            };
+            let Some(failure) = self.type_key(&failure) else {
+                continue;
+            };
+            let rule = key.as_deref().and_then(RuleKey::from_word);
+            self.stored_arms.push(StoredArm {
+                stored: typed::StoredRule { construction, rule },
+                failure,
+                fields,
+            });
         }
     }
 

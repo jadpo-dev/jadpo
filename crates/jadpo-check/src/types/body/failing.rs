@@ -731,12 +731,14 @@ impl Body<'_> {
     /// The arms of an `attempt`'s block, with their failures' names
     /// resolved.
     fn arms(&mut self, attempt: &ast::AttemptExpr) -> Vec<Arm> {
+        self.arms_in(attempt.member_list())
+    }
+
+    /// The arms of a block of mappings, with their failures' names
+    /// resolved.
+    fn arms_in(&mut self, list: Option<ast::MemberList>) -> Vec<Arm> {
         let mut arms = Vec::new();
-        for item in attempt
-            .member_list()
-            .iter()
-            .flat_map(ast::MemberList::member_items)
-        {
+        for item in list.iter().flat_map(ast::MemberList::member_items) {
             let MemberItem::Member(member) = item else {
                 continue;
             };
@@ -1389,6 +1391,91 @@ impl Body<'_> {
         mapped
     }
 
+    /// The arms of a construction an update by `id` works out from stored
+    /// fields (area 6, "A one-step update that refuses"; chunk Q2b):
+    /// `Stock(Product.stock - ordered) { min: OutOfStock }`. Each arm is
+    /// keyed by a rule of the construction's type that can break, or is
+    /// `invalid:` for the rest, as a construction's arms are (area 2), and
+    /// names a `conflict` failure, since what refuses the update is the
+    /// value stored, not the request. The write reports the rules no arm
+    /// maps, and those the database can't check.
+    pub(super) fn stored_arms(
+        &mut self,
+        list: Option<ast::MemberList>,
+        call: &ast::CallExpr,
+    ) -> super::facts::Refusing {
+        let arms = self.arms_in(list);
+        let written = call
+            .expr()
+            .map(|callee| format!("{}(...)", tree::written(callee.syntax())))
+            .unwrap_or_default();
+        let key = node_key(call.syntax());
+        let breakable = match self.facts.constructions.get(&key) {
+            Some(Fallible::Construction(rules)) => rules.clone(),
+            _ => Vec::new(),
+        };
+        let rules: Vec<(String, String)> = self
+            .construction_rules(call)
+            .into_iter()
+            .map(|(key, written)| (key.to_string(), written))
+            .collect();
+        let proofs = self.facts.proofs.get(&key).cloned().unwrap_or_default();
+        let mut seen: BTreeMap<String, Span> = BTreeMap::new();
+        let mut refusing = super::facts::Refusing::default();
+        let mut invalid: Option<&Arm> = None;
+        for arm in &arms {
+            let failure = arm.value.as_ref().and_then(|v| self.failure_given(v));
+            match &failure {
+                Some(failure) => self.mapping_kind(arm, failure, "conflict"),
+                None => self.flow.open = true,
+            }
+            if let Some(first) = seen.get(&arm.key) {
+                refusing.unsure = true;
+                self.duplicate_mapping(arm, first.clone());
+                continue;
+            }
+            seen.insert(arm.key.clone(), arm.key_span.clone());
+            if arm.key == "invalid" {
+                invalid = Some(arm);
+            } else if let Some((_, rule)) = rules.iter().find(|(k, _)| *k == arm.key) {
+                if !breakable.contains(&arm.key) {
+                    let by = proofs
+                        .iter()
+                        .find(|(key, _)| *key == arm.key)
+                        .map(|(_, by)| by.as_slice())
+                        .unwrap_or_default();
+                    self.rule_cannot_break(arm, rule, &written, by);
+                    continue;
+                }
+            } else {
+                refusing.unsure = true;
+                self.unknown_mapping(arm, &written, Some(&rules));
+                continue;
+            }
+            if let Some(failure) = failure {
+                let key = (arm.key != "invalid").then(|| arm.key.clone());
+                refusing.mapped.push((key, failure));
+            }
+        }
+        if refusing.unsure {
+            self.flow.open = true;
+            return refusing;
+        }
+        let uncovered: Vec<String> = breakable
+            .iter()
+            .filter(|key| !seen.contains_key(*key))
+            .cloned()
+            .collect();
+        match invalid {
+            Some(arm) if uncovered.is_empty() => {
+                self.invalid_covers_nothing(arm, &breakable, &written);
+            }
+            Some(_) => {}
+            None => refusing.uncovered = uncovered,
+        }
+        refusing
+    }
+
     /// The edit that removes an arm's line from its block.
     fn arm_removal(&self, arm: &Arm) -> Span {
         let node = arm.member.syntax();
@@ -1701,6 +1788,13 @@ impl Body<'_> {
             "a"
         };
         let meaning = match kind {
+            // A rule a one-step update's value breaks (area 6, "A one-step
+            // update that refuses"; chunk Q2b).
+            "conflict"
+                if condition == "invalid" || jadpo_std::RuleKey::from_word(condition).is_some() =>
+            {
+                "an update by `id` the stored value refuses"
+            }
             "conflict" => "a write the store refuses because of the records already there",
             "not_found" => "a read that finds nothing",
             "unavailable" if condition == jadpo_std::RuleKey::StorageFull.word() => {
