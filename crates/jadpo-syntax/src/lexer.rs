@@ -559,7 +559,9 @@ impl Lexer<'_> {
         // A `;` that opens its line: the spaces after it are the line's
         // indent, so only the `;` goes.
         let line_start = self.text[..start].rfind('\n').map_or(0, |i| i + 1);
-        let opens_line = self.text[line_start..start].trim_matches([' ', '\t']).is_empty();
+        let opens_line = self.text[line_start..start]
+            .trim_matches([' ', '\t'])
+            .is_empty();
         let (edit, next) = if opens_line && !ends {
             (TextEdit::replace(start as u32, self.pos as u32, ""), None)
         } else if ends {
