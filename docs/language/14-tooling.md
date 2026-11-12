@@ -4164,7 +4164,7 @@ yet, or that other commands replace.
 | `cli.schema_snapshot_arguments` | `schema` | Schema snapshot command requires an output path |
 | `cli.schema_sql_arguments` | `schema` | Schema SQL command has invalid arguments |
 | `cli.seed_arguments` | `seed` | A `jadpo seed` command names no seed, one the project doesn't have, or more than one |
-| `cli.signal_handler_failed` | any command | Shutdown handler could not be installed |
+| `cli.signal_handler_failed` | `dev` | SIGTERM and ctrl-c couldn't be watched, so `jadpo dev` runs without them, and a signal ends it at once |
 | `cli.sql_arguments` | `sql` | A `jadpo sql` command names no query or action, one the project doesn't declare, or an action that writes nothing |
 | `cli.sql_explain_unavailable` | `sql --explain` | A `jadpo sql --explain` command can't make the disposable database it plans a query's statements on |
 | `cli.suggest_arguments` | `suggest` | A `jadpo suggest` command names an action it doesn't have, or a suggestion the last scan didn't find |

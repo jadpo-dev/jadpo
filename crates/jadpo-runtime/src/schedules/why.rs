@@ -66,19 +66,22 @@ pub enum Answer {
         tick_every_ms: u64,
     },
     /// The run that started at `started` held its lease past `until` and
-    /// never gave it back: its worker was lost. The tick due at `next`
-    /// records it so and runs it again.
+    /// never gave it back: its worker, on the instance named `holder`, was
+    /// lost. The tick due at `next` records it so and runs it again.
     LeaseExpired {
         started: Option<i64>,
         until: i64,
         next: i64,
+        holder: Option<String>,
     },
     /// The run that started at `started` still holds its lease, until
-    /// `lease_until`, and `skipped` due ticks have been skipped for it.
+    /// `lease_until`, on the instance named `holder`, and `skipped` due
+    /// ticks have been skipped for it.
     Running {
         started: i64,
         lease_until: i64,
         skipped: u64,
+        holder: Option<String>,
     },
     /// The tick due at `due` was skipped since its last run started: it was
     /// paused then (`paused`), or the run before was still going.
@@ -165,6 +168,7 @@ pub fn answer(watch: &Watch, recent: &[RunRecord], now: i64) -> Answer {
                 .map(|run| run.started),
             until: state.lease_until.unwrap_or(now),
             next: state.next_run_at.max(now),
+            holder: state.holder.clone(),
         };
     }
     if state.leased(now)
@@ -178,6 +182,7 @@ pub fn answer(watch: &Watch, recent: &[RunRecord], now: i64) -> Answer {
                 .take_while(|record| record.is_skipped())
                 .filter(|record| record.reason.as_deref() == Some("lease_held"))
                 .count() as u64,
+            holder: state.holder.clone(),
         };
     }
     // A tick skipped since the last run started: it was still going then.
@@ -295,6 +300,7 @@ mod tests {
                 last_succeeded_at: None,
                 requested: None,
                 raised: BTreeMap::new(),
+                holder: None,
             }),
             last_run,
             failures_in_a_row: failures,
@@ -379,13 +385,15 @@ mod tests {
             state.run_id = Some([7; 16]);
             state.lease_until = Some(137 * MINUTE);
             state.next_run_at = 180 * MINUTE;
+            state.holder = Some("api-2:4182".into());
         }
         assert_eq!(
             answer(&watch, std::slice::from_ref(&running), now),
             Answer::Running {
                 started: 120 * MINUTE,
                 lease_until: 137 * MINUTE,
-                skipped: 0
+                skipped: 0,
+                holder: Some("api-2:4182".into()),
             }
         );
         let later = 140 * MINUTE;
@@ -395,6 +403,7 @@ mod tests {
                 started: Some(120 * MINUTE),
                 until: 137 * MINUTE,
                 next: 180 * MINUTE,
+                holder: Some("api-2:4182".into()),
             }
         );
         let fresh = read(None, 0, MINUTE);

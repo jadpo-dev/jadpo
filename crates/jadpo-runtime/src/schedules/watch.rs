@@ -29,7 +29,7 @@ use crate::runner::{self, RUN_LIMIT_MS};
 use crate::{Clock, Ctx, Database, Env, Executor, Host, Outcome, SqlType, SqlValue, StoreError};
 
 /// Every schedule's state row.
-pub const STATES: &str = "SELECT \"schedule\", \"every_ms\", \"next_run_at\", \"paused\", \"lease_until\", \"run_id\", \"last_tick_at\", \"last_succeeded_at\", \"run_requested\", \"alerts\" FROM \"jadpo_schedules\" ORDER BY \"schedule\"";
+pub const STATES: &str = "SELECT \"schedule\", \"every_ms\", \"next_run_at\", \"paused\", \"lease_until\", \"run_id\", \"last_tick_at\", \"last_succeeded_at\", \"run_requested\", \"alerts\", \"lease_holder\" FROM \"jadpo_schedules\" ORDER BY \"schedule\"";
 
 /// What a run record is read as: its id, schedule, due, start and end,
 /// outcome, reason, failure code and kind, events, trace and the items it
@@ -70,10 +70,11 @@ pub const METRICS: &str = "SELECT count(*), count(*) FILTER (WHERE \"outcome\" <
 /// its next due time.
 pub const SET_PAUSED: &str = "UPDATE \"jadpo_schedules\" SET \"paused\" = $2 WHERE \"schedule\" = $1 AND \"paused\" <> $2 RETURNING \"next_run_at\"";
 
-/// Takes schedule `$1`'s lease for run `$3` until `$2` at `$4`, whatever
-/// its due time and whether it is paused, while no live lease holds it;
-/// the run that held it before and that lease's end.
-pub const CLAIM_NOW: &str = "WITH \"old\" AS (SELECT \"run_id\", \"lease_until\" FROM \"jadpo_schedules\" WHERE \"schedule\" = $1 FOR UPDATE) UPDATE \"jadpo_schedules\" AS \"s\" SET \"lease_until\" = $2, \"run_id\" = $3 FROM \"old\" WHERE \"s\".\"schedule\" = $1 AND (\"old\".\"lease_until\" IS NULL OR \"old\".\"lease_until\" <= $4) RETURNING \"old\".\"run_id\", \"old\".\"lease_until\"";
+/// Takes schedule `$1`'s lease for run `$3` until `$2` at `$4`, held by
+/// instance `$5`, whatever its due time and whether it is paused, while no
+/// live lease holds it; the run that held it before and that lease's
+/// end.
+pub const CLAIM_NOW: &str = "WITH \"old\" AS (SELECT \"run_id\", \"lease_until\" FROM \"jadpo_schedules\" WHERE \"schedule\" = $1 FOR UPDATE) UPDATE \"jadpo_schedules\" AS \"s\" SET \"lease_until\" = $2, \"run_id\" = $3, \"lease_holder\" = $5 FROM \"old\" WHERE \"s\".\"schedule\" = $1 AND (\"old\".\"lease_until\" IS NULL OR \"old\".\"lease_until\" <= $4) RETURNING \"old\".\"run_id\", \"old\".\"lease_until\"";
 
 /// Asks schedule `$1`'s next tick for run `$2`, while no live lease holds
 /// it at `$3`; a request already standing is kept, so both wait for the
@@ -125,6 +126,10 @@ pub struct StateRow {
     /// The alerts a tick has raised for it that still held at the last
     /// tick, by id, each with when it was raised (chunk 6.9).
     pub raised: BTreeMap<String, i64>,
+    /// The instance holding its lease, by the name its host gave it,
+    /// while a run holds it or after its worker was lost (area 12,
+    /// "Watching schedules").
+    pub holder: Option<String>,
 }
 
 impl StateRow {
@@ -512,6 +517,7 @@ fn read_state(row: &[SqlValue]) -> Option<StateRow> {
             Some(SqlValue::Json(text)) => raised_from(text),
             _ => BTreeMap::new(),
         },
+        holder: text(row.get(10)),
     })
 }
 
@@ -798,8 +804,13 @@ pub enum RunNow {
         due: super::Due,
         deliveries: Vec<Outcome>,
     },
-    /// A run that started at `started` holds the lease until `until`.
-    LeaseHeld { started: Option<i64>, until: i64 },
+    /// A run that started at `started` holds the lease until `until`, on
+    /// the instance named `holder`.
+    LeaseHeld {
+        started: Option<i64>,
+        until: i64,
+        holder: Option<String>,
+    },
 }
 
 /// Runs `schedule` at `now`, outside the grid, as `jadpo schedules run`
@@ -834,8 +845,12 @@ pub async fn run_now(
         succeeded: None,
     };
     let Some(row) = crate::lease::claim(database, &budget, &lease, now).await? else {
-        let (started, until) = holder(database, &schedule.key, now).await?;
-        return Ok(RunNow::LeaseHeld { started, until });
+        let (started, until, holder) = holder(database, &schedule.key, now).await?;
+        return Ok(RunNow::LeaseHeld {
+            started,
+            until,
+            holder,
+        });
     };
     let lost = uuid(row.first()).map(|lost| (lost, millis(row.get(1))));
     let claimed = Claimed {
@@ -850,12 +865,13 @@ pub async fn run_now(
 }
 
 /// The run holding schedule `key`'s lease: when it started, if its
-/// record says, and the lease's end.
+/// record says, the lease's end, and the instance holding it, if its host
+/// named it.
 async fn holder(
     database: &dyn Database,
     key: &str,
     now: i64,
-) -> Result<(Option<i64>, i64), StoreError> {
+) -> Result<(Option<i64>, i64, Option<String>), StoreError> {
     let state = states(database)
         .await?
         .into_iter()
@@ -864,11 +880,12 @@ async fn holder(
         .as_ref()
         .and_then(|state| state.lease_until)
         .unwrap_or(now);
+    let holder = state.as_ref().and_then(|state| state.holder.clone());
     let started = match state.and_then(|state| state.run_id) {
         Some(id) => run(database, id).await?.map(|run| run.started),
         None => None,
     };
-    Ok((started, until))
+    Ok((started, until, holder))
 }
 
 /// The run record with id `id`, if there is one.
@@ -885,9 +902,13 @@ pub enum Requested {
     /// The run `run` waits for the application's next tick; `joined` when
     /// it was asked for already and this request waits for the same run.
     Waiting { run: [u8; 16], joined: bool },
-    /// A run that started at `started` holds the lease until `until`, so
-    /// nothing was asked.
-    LeaseHeld { started: Option<i64>, until: i64 },
+    /// A run that started at `started` holds the lease until `until`, on
+    /// the instance named `holder`, so nothing was asked.
+    LeaseHeld {
+        started: Option<i64>,
+        until: i64,
+        holder: Option<String>,
+    },
 }
 
 /// Asks `schedule`'s next tick to run it by hand, as `jadpo schedules run`
@@ -922,8 +943,12 @@ pub async fn request_run(
             joined: run != id,
         }),
         None => {
-            let (started, until) = holder(database, &schedule.key, now).await?;
-            Ok(Requested::LeaseHeld { started, until })
+            let (started, until, holder) = holder(database, &schedule.key, now).await?;
+            Ok(Requested::LeaseHeld {
+                started,
+                until,
+                holder,
+            })
         }
     }
 }
@@ -968,6 +993,7 @@ mod tests {
                 last_succeeded_at: Some(45 * MINUTE),
                 requested: None,
                 raised: BTreeMap::new(),
+                holder: None,
             }),
             last_run: None,
             failures_in_a_row: 0,

@@ -28,6 +28,9 @@ fn main() -> ExitCode {
             return ExitCode::from(output.code);
         }
     }
+    // A schedule's lease this process takes, under `jadpo dev` or `jadpo
+    // schedules run`, names it (area 12, "Watching schedules").
+    jadpo_host_native::name_instance();
     let spinner = jadpo_cli::spinner(&args, &env);
     let output = jadpo_cli::run(&args, &env);
     spinner.finish();
