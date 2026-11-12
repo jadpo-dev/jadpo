@@ -111,7 +111,7 @@ impl Server {
     }
 
     /// The project-relative path and byte offset of `position` in `uri`.
-    fn place(&self, uri: &Uri, position: Position) -> Option<(String, u32)> {
+    pub(crate) fn place(&self, uri: &Uri, position: Position) -> Option<(String, u32)> {
         let path = self.relative(uri)?;
         let loaded = self.loaded()?;
         let text = loaded.file(&path)?.text(&loaded.db).clone();

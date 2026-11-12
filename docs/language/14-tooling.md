@@ -2202,8 +2202,8 @@ gate pointing here.
 
 Your editor gets the compiler's own view of your code through the language
 server, `jadpo lsp`: errors while you type, hover, go to definition, find
-references, completion, formatting and quick fixes. It has no parser of
-its own, so it never disagrees with `jadpo check`.
+references, rename, completion, formatting and quick fixes. It has no
+parser of its own, so it never disagrees with `jadpo check`.
 
 ### The VS Code extension
 
@@ -2266,6 +2266,27 @@ Find references lists every name in the project that the checker resolves
 to the same declaration, or to the same parameter or variable in its body.
 A private name of the same spelling in another domain is never counted.
 
+### Rename
+
+Rename in the editor runs [`jadpo rename`](#jadpo-rename)'s code, so it
+makes the edits the command makes: every place the name is written, the
+fields copied from a field, the declaration's file and the test beside
+it moved to the new name's, the records written again, and the identity
+registry's line, so an entity field renamed in the editor keeps its
+column and its rows ([Stable
+identity](18-records-and-manifest.md#stable-identity)). It works from
+the declaration or any place its name is written, and the new name is
+the name's own part (`importance` for `Todo.priority`).
+
+It renames what the command renames and refuses what it refuses, with the
+command's own words: a parameter, a variable, a route or a test is
+refused before you type a name, and a name that can't be, or is in use,
+when you give it. A file that doesn't parse stops it, and a rename whose
+result would have an error the project didn't have changes nothing and
+says the error, as the command does. The edit renames a moved file
+rather than deleting it and creating another, so a tab open on it
+follows it.
+
 ### Formatting and quick fixes
 
 Formatting in the editor runs `jadpo fmt`'s own code on the text the
@@ -2304,8 +2325,8 @@ never behave differently.
 - **"Swap for the standard ..."**, a quick fix on `type.standard_clash` and
   `type.standard_exists`, works as `jadpo fix <name> swap` does. Where the
   command stops, it is unavailable and shows the error it would add.
-  Renaming instead needs a new name, so that stays with the command until
-  the editor has a rename of its own ([A release that adds a
+  Renaming instead needs a new name, so it is the editor's
+  [rename](#rename) on the declaration's name ([A release that adds a
   standard type](19-standard-library.md#a-release-that-adds-a-standard-type)).
 
 ### Completion
@@ -2357,11 +2378,6 @@ application's own callables every one is in its place.
 The server offers what the compiler knows and nothing else: suggestions
 written by a model belong to your agent, never to `jadpo lsp`. VS Code
 asks for completion as you type a word, a `.`, a `:` or a digit.
-
-Not built yet: rename in the editor. It goes through the same code as
-[`jadpo rename`](#jadpo-rename), so an entity field renamed in the editor
-keeps its stored data through the identity registry ([Stable
-identity](18-records-and-manifest.md#stable-identity)).
 
 ## Error messages
 <!-- topic: error-messages (was every-error-has-the-same-shape) -->
@@ -4228,7 +4244,7 @@ Each row says what is built and what is specified but not built yet.
 | JSON output | Built: every command takes `--json` and prints one envelope (`schemaVersion` 3) with `durationMs`, project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys, shortened unless `--full` is given; `jadpo test --json` is described in [Testing](13-testing.md) and under `testReport` in `jadpo help --json`. |
 | `build/` | Partly built: `jadpo check` writes `build/manifest.json`, the catalogues in `build/catalogue/`, the permissions, network, provider, personal-data, schema and query reports in `build/report/`, `diagnostics/`, `inventory/`, `audit/` and `compatibility/`, and the monitoring rules in `build/monitoring/`; `jadpo test` keeps its last run in `build/test/`. |
 | Commands | Partly built: each command [The `jadpo` command](#the-jadpo-command) and the topics after it describe. Not built yet: those in their "Not built yet" notes, `services`, `dev grants`, `search reindex`, `trace`, `traces`, `metrics`, `logs`, `watch`, `call`, `console`, `mcp`, `replay`, `path`, `privacy requests`, `incident` and `test new --from`. |
-| Language server | Partly built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; the code actions under [Editor support](#editor-support), and records' errors, outline, folding and file links. Not built yet: rename, which is to run [`jadpo rename`](#jadpo-rename)'s code. |
+| Language server | Partly built: diagnostics; hover, with a query's SQL and a route's full path; go to definition, from a `use` line too; find references; completion; formatting as `jadpo fmt`; quick fixes from each error's edit, promotion among them; the code actions under [Editor support](#editor-support); rename, running [`jadpo rename`](#jadpo-rename)'s code; and records' errors, outline, folding and file links. |
 | VS Code extension | Built: starts `jadpo lsp`, formats on save, highlights code and records, a status item naming the `jadpo` running, "Open Generated File", and packaging and publishing on each release to the VS Code Marketplace and Open VSX, which publishes through trusted publishing. |
 | Agent tools | Partly built: the catalogues and the similar-helper check, a declinable error, are built; `migrate` is built; the agent skill is built, with every part [Tools for agents](#tools-for-agents) lists; `jadpo inspect`, `impact`, `rename` and `domain` are built; generated CI is not built yet. |
 | Suggestions | Partly built: `jadpo suggest` with its eight signal kinds and taught signals, `published` asking the registry by fingerprint prefix and `function` reading the operation table, the catalogue, accepted findings, `ignore`, `found`, `share`, `suggestions { }` and the committed taught record, `share` against a fake of Jadpo HQ. Not built yet: HQ itself, so a real `share` has nowhere to go; the public registry's `POST fingerprints/query`, so until jadpo.dev serves it a scan says `registry not reached`. |

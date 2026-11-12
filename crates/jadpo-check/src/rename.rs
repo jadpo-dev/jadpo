@@ -1,7 +1,8 @@
 //! Renaming a declaration or a field (area 14, "Commands for looking into
 //! and changing code"; area 18, "Stable identity"; area 5, "Migrations"):
-//! `jadpo rename` runs this code, and the editor's rename is to run it too,
-//! so both rename the same places and refuse the same names.
+//! `jadpo rename` runs this code, and so does the editor's rename
+//! ([`at`] finds what the name under the cursor is), so both rename the
+//! same places and refuse the same names.
 //!
 //! - **What it renames.** An entity, a type of any kind, a function, a
 //!   constant, an action, a query, a fixture, a seed, a schedule, a
@@ -78,6 +79,84 @@ pub fn renames(kind: Kind) -> bool {
     )
 }
 
+/// What `jadpo rename` renames, in the reader's words.
+const RENAMES: &str = "`jadpo rename` renames entities, types, functions, constants, actions, queries, fixtures, seeds, schedules, subscribers and libraries, and their fields and variants.";
+
+/// `cli.rename_arguments` for `name`, a node of `kind` that `jadpo
+/// rename` doesn't rename, saying what changes it instead; `None` for a
+/// kind it renames.
+pub fn not_renamed(name: &str, kind: Kind) -> Option<Diagnostic> {
+    if renames(kind) {
+        return None;
+    }
+    let refusal = |message: String, reason: &str, next: &str| {
+        Diagnostic::new(&rule::CLI_RENAME_ARGUMENTS, message)
+            .reason(reason)
+            .next(next)
+    };
+    Some(match kind {
+        Kind::Route | Kind::GeneratedRoute => refusal(
+            format!("`{name}` is a route"),
+            "A route goes by its method and path, written in its `routes` block.",
+            "Change its method or path where its `routes` block writes them",
+        ),
+        Kind::Test => refusal(
+            format!("`{name}` is a test"),
+            "A test goes by the file it sits beside and its sentence, written where the test is.",
+            "Change its sentence where the test is written",
+        ),
+        kind => refusal(
+            format!(
+                "`{name}` is {} {}",
+                a_or_an(kind.word()),
+                kind.word().replace('_', " ")
+            ),
+            RENAMES,
+            "Change it where it is written",
+        ),
+    })
+}
+
+/// The project's syntax errors, which stop a rename before it starts:
+/// editing a file that doesn't parse could change the wrong text, as in
+/// every command that writes source.
+pub fn unparsed(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    crate::check(db, project)
+        .into_iter()
+        .filter(|problem| problem.rule.id.starts_with("syntax."))
+        .collect()
+}
+
+/// What a name in the editor is to a rename: the node it refers to, or
+/// why `jadpo rename` doesn't rename it; with the name's own byte range.
+pub type Target = (Result<Key, Box<Diagnostic>>, (u32, u32));
+
+/// What the editor's rename at byte `offset` of `file` renames: the node
+/// the name there refers to, as go to definition resolves it, or why
+/// `jadpo rename` doesn't rename it; with the name's own byte range.
+/// `None` when no name is there.
+pub fn at(db: &dyn Db, project: Project, file: jadpo_db::File, offset: u32) -> Option<Target> {
+    let (found, range) = crate::graph::lookup(db, project, file, offset)?;
+    let target = match found {
+        crate::graph::Found::Node(key) => {
+            let node = crate::graph::graph(db, project).get(&key)?;
+            match not_renamed(&node.name, node.kind) {
+                Some(refusal) => Err(Box::new(refusal)),
+                None => Ok(key),
+            }
+        }
+        crate::graph::Found::Local { name, what, .. } => Err(Box::new(
+            Diagnostic::new(
+                &rule::CLI_RENAME_ARGUMENTS,
+                format!("`{name}` is {} {what}", a_or_an(what)),
+            )
+            .reason(RENAMES)
+            .next("Change it where it is written"),
+        )),
+    };
+    Some((target, range))
+}
+
 /// The kinds whose names are written in UpperCamelCase.
 fn upper(kind: Kind) -> bool {
     matches!(kind, Kind::Entity | Kind::Type)
@@ -128,6 +207,14 @@ pub struct Plan {
     /// What stored data the rename keeps: `table todo`, `column
     /// todo.priority`.
     pub kept: Option<String>,
+}
+
+impl Plan {
+    /// The files that move, each path before and after: the declaration's
+    /// own, then the test beside it.
+    pub fn moves(&self) -> &[(String, String)] {
+        &self.moves
+    }
 }
 
 /// What [`apply`] did.

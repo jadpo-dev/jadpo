@@ -531,8 +531,10 @@ imports, formats what was formatted and checks the result, undoing a fix
 that adds an error by rule and headline. Each standard type's data entry
 carries the `release` that added it, which the clash names.
 
-**Renaming.** `jadpo_check::rename` is `jadpo rename`'s code, and the
-editor's rename is to share it, built as `fixes` is: `plan` takes the
+**Renaming.** `jadpo_check::rename` is `jadpo rename`'s code and the
+editor's rename's (`at` resolves the name under the cursor as go to
+definition does, and `not_renamed` and `unparsed` are the refusals both
+make first), built as `fixes` is: `plan` takes the
 node's key and the new name, refuses what can't be (a name in use among
 the owner's members, the domain or the project, or one another node of
 its kind was born with), finds every place through
