@@ -64,6 +64,11 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
         ),
         ("batches::ADVANCE", crate::batches::ADVANCE.to_string()),
         ("batches::CANCEL", crate::batches::CANCEL.to_string()),
+        ("batches::CANCELLED", crate::batches::CANCELLED.to_string()),
+        (
+            "batches::CANCEL_COPY",
+            crate::batches::CANCEL_COPY.to_string(),
+        ),
         ("batches::CLAIM", crate::batches::CLAIM.to_string()),
         ("batches::END", crate::batches::END.to_string()),
         ("batches::ENDED", crate::batches::ENDED.to_string()),

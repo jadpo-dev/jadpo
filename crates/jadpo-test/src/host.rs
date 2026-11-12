@@ -326,6 +326,11 @@ impl<D: Database> Host for Harness<D> {
             .unwrap_or(jadpo_runtime::batches::ROWS_PER_BATCH)
     }
 
+    fn items_per_batch(&self) -> u32 {
+        self.rows_per_batch
+            .unwrap_or(jadpo_runtime::batches::MOST_ITEMS_PER_BATCH)
+    }
+
     fn defer(&self, work: LocalFuture<'static, ()>) {
         self.deferred.borrow_mut().push(work);
     }

@@ -65,6 +65,10 @@ pub struct BatchFact {
     /// other file helpers; chunk 6.4b), keeping its run where its actions
     /// write.
     pub file: bool,
+    /// Whether it walks a provider's list operation by `page.next`
+    /// instead (chunk J2), which, as a file's, keeps its run where its
+    /// actions write.
+    pub listed: bool,
     /// The action `each:` calls per item.
     pub each: Option<Key>,
     /// The action `finished:` calls once.
@@ -199,6 +203,7 @@ fn batch_of(body: &Body, args: &[Option<SiteId>], op: BatchOp) -> (BatchFact, Ve
     let mut fact = BatchFact {
         query: None,
         file,
+        listed: false,
         each: None,
         finished: None,
     };
@@ -212,6 +217,20 @@ fn batch_of(body: &Body, args: &[Option<SiteId>], op: BatchOp) -> (BatchFact, Ve
     )) = node(from.and_then(|at| args.get(at).copied().flatten()))
     {
         fact.query = Some(query.name().to_string());
+        skip.push(site);
+    }
+    // A provider's list `from:` calls is the run's, made after the action
+    // commits (chunk J2).
+    if let Some((
+        site,
+        Node::Expr(Expr::Call {
+            callee: Callee::Provider { .. },
+            ..
+        }),
+    )) = node(from.and_then(|at| args.get(at).copied().flatten()))
+        && op == BatchOp::Each
+    {
+        fact.listed = true;
         skip.push(site);
     }
     let called = |at: Option<SiteId>, skip: &mut Vec<SiteId>| match node(at) {

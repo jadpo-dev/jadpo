@@ -834,6 +834,11 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             .expect("it checks"),
         ),
         (
+            "runs kept in several stores".into(),
+            corpus_project(&crate::batch_stores::files(), "compiled-batch-stores")
+                .expect("it checks"),
+        ),
+        (
             "the system writing a server-only field".into(),
             corpus_project(&crate::server_only_writes::files(), "compiled-server-only")
                 .expect("it checks"),
@@ -942,6 +947,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "docs/language/13-testing.md events-in-tests",
         "docs/language/10-configuration-and-time.md translation-messages",
         "docs/language/12-jobs-and-events.md several-steps",
+        "docs/language/12-jobs-and-events.md batches-provider-list",
         "docs/language/13-testing.md fakes-in-tests",
         "docs/language/13-testing.md overdue-reminders",
         "docs/language/15-personal-data.md erasure",
@@ -1024,6 +1030,10 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         Some((1, 1))
     );
     assert_eq!(counted("files sent elsewhere"), Some((3, 3)));
+    // A run in either of two stores found by its status, a page above
+    // 1,000 items split, and a cancel kept beside the events stopping a
+    // run over a provider's list kept in the other store (chunk J2).
+    assert_eq!(counted("runs kept in several stores"), Some((2, 2)));
     assert_eq!(counted("each kind of choice's paths"), Some((2, 2)));
     // A fixture file read, and a store told to fail a read and a write
     // (area 13, "Files").

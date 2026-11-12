@@ -3144,6 +3144,24 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
         );
     }
     derived_indexes(db, project, model, &mut schema);
+    // Batch runs live in the store each run's query reads, beside the
+    // writes of its items (area 12; chunk 6.4); a run with no query whose
+    // actions write nothing, in the store `events: { store: }` names,
+    // which may hold no entity, with an outbox for what its items emit.
+    for store in crate::types::batch_stores(db, project) {
+        let found = schema
+            .stores
+            .entry(store.clone())
+            .or_insert_with(|| physical::Store {
+                driver: Driver::Postgres.name().to_string(),
+                tables: BTreeMap::new(),
+            });
+        for system in jadpo_std::system::BATCH_TABLES {
+            found
+                .tables
+                .insert(system.table.to_string(), columns::system_table(system));
+        }
+    }
     for store in schema.stores.values_mut() {
         for system in SYSTEM_TABLES {
             store
@@ -3160,17 +3178,6 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
                 system::FILES.table.to_string(),
                 columns::system_table(&system::FILES),
             );
-        }
-    }
-    // Batch runs live in the store each run's query reads, beside the
-    // writes of its items (area 12; chunk 6.4).
-    for store in crate::types::batch_stores(db, project) {
-        if let Some(found) = schema.stores.get_mut(store) {
-            for system in jadpo_std::system::BATCH_TABLES {
-                found
-                    .tables
-                    .insert(system.table.to_string(), columns::system_table(system));
-            }
         }
     }
     // The record of an action with several changing calls lives in the
@@ -3378,6 +3385,18 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             .tables;
         for table in [&system::FLAGS, &system::FLAG_CHANGES] {
             tables.insert(table.table.to_string(), columns::system_table(table));
+        }
+    }
+    // With runs kept in several stores, every store keeps the run tables,
+    // so a cancel an action keeps beside its events finds its table there,
+    // and `batches.status` may look in each (area 12; chunk J2).
+    if crate::types::batch_stores(db, project).len() > 1 {
+        for store in schema.stores.values_mut() {
+            for system in jadpo_std::system::BATCH_TABLES {
+                store
+                    .tables
+                    .insert(system.table.to_string(), columns::system_table(system));
+            }
         }
     }
     // Every schema store keeps runtime state (entities have the outbox,

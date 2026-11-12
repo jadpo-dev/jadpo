@@ -1577,6 +1577,9 @@ impl Body<'_> {
             ([], None) if jadpo_std::http::test_built_fields(&name).is_some() => {
                 self.sign_in_literal(record, &name, head_span)
             }
+            // A page a test scripts as a provider's list operation's answer
+            // (area 13; chunk J2).
+            ([], None) if name == PAGE => self.page_literal(record, head_span),
             // What `magic_links.redeem` gives: the runtime's to build, from
             // a link or a code it checked (area 8; chunk 7.3b3).
             ([], None) if name == jadpo_std::http::MAGIC_LINK_REDEEMED => {
@@ -1721,6 +1724,49 @@ impl Body<'_> {
         );
         self.object_built(record);
         Ty::Opaque(name.to_string(), Vec::new())
+    }
+
+    /// `Page { items: [...], next: ... }`: what a query or a provider's
+    /// list operation gives, built only in a test, as the answer its
+    /// `fakes:` scripts for a list operation (area 13; chunk J2). Its item
+    /// type is its `items:` list's.
+    fn page_literal(&mut self, record: &ast::RecordExpr, head_span: Span) -> Ty {
+        if self.context != super::Context::Test {
+            self.out.push(
+                Diagnostic::new(&rule::TYPE_NOT_RECORD, "`Page` isn't built with `{ ... }` here")
+                    .at(self.span(record), "only a query or a provider gives one")
+                    .reason("A `Page` is what a named query or a provider's list operation gives, its cursor one they made; a test builds one only to script a list operation's answer in its `fakes:`.")
+                    .next("Use the page a query or a provider's operation gives, and remove this value"),
+            );
+            self.walk(|walk| walk.member_values(record.member_list()));
+            return Ty::Error;
+        }
+        let fields = page_fields(&Ty::Unknown("T".to_string()));
+        self.facts.builds.insert(
+            node_key(record.syntax()),
+            super::facts::BuildFact::Object(PAGE.to_string()),
+        );
+        self.fields_given(
+            record.member_list(),
+            PAGE,
+            &[],
+            &fields,
+            Required::All,
+            head_span,
+            &[],
+        );
+        self.object_built(record);
+        let items = crate::tree::members(record.member_list())
+            .into_iter()
+            .find(|(key, _)| crate::tree::name_text(key).as_deref() == Some("items"))
+            .and_then(|(_, member)| member.value());
+        let item = match items
+            .and_then(|value| self.facts.types.get(&node_key(value.syntax())).cloned())
+        {
+            Some(Ty::List(item)) => *item,
+            _ => Ty::Unknown("T".to_string()),
+        };
+        Ty::Opaque(PAGE.to_string(), vec![item])
     }
 
     /// `Certificate { ... }`: a standard type read only from what it

@@ -1390,7 +1390,9 @@ test "an unscripted call answers with the generated default" {
 ### Values a fake answers with
 
 A test scripts a value of the operation's output type, as Jadpo code
-sees it. The fake then encodes it as the provider would send it, with the
+sees it. A list operation's answer is a page,
+`Page { items: [...], next: "page-2" }`, which a test builds only to
+script one; elsewhere a page comes from a query or a provider. The fake then encodes it as the provider would send it, with the
 package's `wire_name:` spellings and `output_at:` envelope, and reads it
 back through the operation's real decoding, as a real answer is. So a
 scripted answer exercises the package's encoders and decoders too.

@@ -193,6 +193,9 @@ pub(crate) struct BatchSite {
     /// For a file helper's read (chunk 6.4b): its format and the JSON
     /// table's number of the row type, each row read as one.
     pub file: Option<(jadpo_std::batch::RowFormat, u32, TypeRef)>,
+    /// For `batches.each` over a provider's list (chunk J2): the
+    /// operation it asks for each page, and where its cursor goes.
+    pub listed: Option<jadpo_std::batch::Listed>,
     /// For `json.read`'s file form, the members `items_at:` names; and for
     /// any read, `max_unpacked_size:`'s bytes (chunk 6.4b3).
     pub items_at: Vec<String>,
@@ -284,6 +287,33 @@ fn provider_site(types: &Types, body: &Body, call: SiteId) -> jadpo_std::provide
 /// The path from the inline parameter `item` to the value at `site`: the
 /// item itself, or a field inside it, `row.sku` being `["sku"]`; `None`
 /// for anything else.
+/// The one field of `ty`, an operation's input, that holds a
+/// `PageCursor`, by name (chunk J2): where a run walking a provider's list
+/// puts the cursor the page before gave.
+fn cursor_field(types: &Types, ty: &TypeRef) -> Option<String> {
+    let TypeRef::Node(key) = ty else {
+        return None;
+    };
+    let graph = types.graph();
+    let id = graph.find(key)?;
+    let cursors: Vec<String> = graph
+        .fields(id)
+        .into_iter()
+        .filter_map(|field| {
+            let node = graph.node(field);
+            let jadpo_graph::Detail::Field { ty, .. } = &node.detail else {
+                return None;
+            };
+            matches!(types.chain(ty), Some((jadpo_std::Builtin::PageCursor, _)))
+                .then(|| types.field_name(&node.key).to_string())
+        })
+        .collect();
+    match cursors.as_slice() {
+        [only] => Some(only.clone()),
+        _ => None,
+    }
+}
+
 fn item_path(types: &Types, body: &Body, site: SiteId, item: LocalId) -> Option<Vec<String>> {
     match &body.site(site).node {
         Node::Expr(Expr::Local(local)) if *local == item => Some(Vec::new()),
@@ -442,6 +472,42 @@ impl Decoder<'_> {
                 }
             }
             shape.push(')');
+        }
+        // A provider's list operation, walked by `page.next` (chunk J2):
+        // its input saved with the run, and each page asked for with the
+        // cursor the page before gave in the input's `PageCursor` field.
+        let mut listed: Option<jadpo_std::batch::Listed> = None;
+        if op == BatchOp::Each
+            && let Some((_, from)) = node(from_at.and_then(|at| args.get(at).copied().flatten()))
+            && let Node::Expr(Expr::Call {
+                callee:
+                    Callee::Provider {
+                        connection,
+                        operation,
+                    },
+                args: given,
+                ..
+            }) = &from.node
+        {
+            query_key = None;
+            shape.push_str(&format!("from {connection}.{operation}("));
+            let mut cursor = Vec::new();
+            for arg in given.iter().flatten() {
+                let ty = body.site(*arg).ty.clone();
+                shape.push_str(&format!("{},", ty.canonical()));
+                cursor = cursor_field(self.types, &ty).into_iter().collect();
+                if let Decoded::Json(number) = self.json_type(ty.clone()) {
+                    captured.push(number);
+                    saved_types.push(ty);
+                    sites.push(arg.0);
+                }
+            }
+            shape.push(')');
+            listed = Some(jadpo_std::batch::Listed {
+                called: (self.called)(connection, operation),
+                operation: format!("{connection}.{operation}"),
+                cursor,
+            });
         }
         // A file helper's file, saved with the run first.
         if let Some(format) = read
@@ -692,6 +758,9 @@ impl Decoder<'_> {
         if let Some(query) = query_key {
             name.push_str(&format!(" from {}", query.as_str()));
         }
+        if let Some(listed) = &listed {
+            name.push_str(&format!(" lists {}", listed.operation));
+        }
         if let Some((format, _, row)) = &row_read {
             name.push_str(&format!(
                 " reads {} {}",
@@ -744,6 +813,7 @@ impl Decoder<'_> {
             from_args,
             key,
             file: row_read,
+            listed,
             items_at,
             max_unpacked,
             write,
