@@ -1651,7 +1651,9 @@ impl<'p> Machine<'p> {
                 }
             }
             Task::AssertEmitted { at, value, count } => {
-                let given = self.values.split_off(self.values.len().saturating_sub(count));
+                let given = self
+                    .values
+                    .split_off(self.values.len().saturating_sub(count));
                 let Some(Decoded::Emitted { key, event, fields }) = self.decoded(value) else {
                     return Err(self.defect(ctx, "an `assert emitted` with no event", at));
                 };

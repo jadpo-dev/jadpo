@@ -567,9 +567,14 @@ impl Planner<'_> {
                 for field in &entity_model.fields {
                     // Every field is stored, or there is no statement.
                     column_type(field)?;
-                    if let Some(lifecycle) = lifecycle.filter(|l| l.owns(&field.name)) {
-                        // A field the lifecycle owns starts at its
-                        // `initial:` value, or `none`.
+                    // A field the lifecycle owns starts at its `initial:`
+                    // value, or `none`, unless a data builder gives it, to
+                    // make a record in a state only transitions reach
+                    // (area 13, "Data builders"); no other create can.
+                    let owned = lifecycle.filter(|l| l.owns(&field.name));
+                    if let Some(lifecycle) = owned
+                        && !given.iter().any(|(name, _)| *name == field.name)
+                    {
                         let value = lifecycle
                             .initial
                             .iter()

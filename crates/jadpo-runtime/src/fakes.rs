@@ -544,7 +544,8 @@ fn generate(
                     vec![written(jadpo_value::Value::Date(day))]
                 }
                 _ => {
-                    let mut candidates = scalar_candidates(*builtin, &rules, *int_as_number, making);
+                    let mut candidates =
+                        scalar_candidates(*builtin, &rules, *int_as_number, making);
                     if let Some(mark) = mark {
                         candidates.splice(0..0, marked_candidates(*builtin, &rules, mark));
                     }

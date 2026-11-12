@@ -535,6 +535,9 @@ const BODY: &[&str] = &[
     "keep a fixture file in a test",
     "include an email partial",
     "read the emails a test sent",
+    // Data builders and `assert emitted` (area 13; chunk W1).
+    "fill a field with a data builder's value",
+    "assert an event was emitted",
     "advance the test clock",
     "run a schedule in a test",
     "call translation",
@@ -1101,6 +1104,12 @@ fn body_features(
                 }
                 Expr::SentEmails => {
                     out.insert("read the emails a test sent");
+                }
+                Expr::Made { .. } => {
+                    out.insert("fill a field with a data builder's value");
+                }
+                Expr::Emitted { .. } => {
+                    out.insert("assert an event was emitted");
                 }
                 Expr::Now | Expr::Unchecked => {}
             },

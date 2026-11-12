@@ -576,8 +576,11 @@ impl Emitter<'_> {
                 .get(value.0 as usize)
                 .map(|site| site.node.clone()) =>
             {
-                let Some(Decoded::Emitted { key, event, fields: names }) =
-                    self.decoded(value).cloned()
+                let Some(Decoded::Emitted {
+                    key,
+                    event,
+                    fields: names,
+                }) = self.decoded(value).cloned()
                 else {
                     let defect = self.defect("an `assert emitted` with no event", id);
                     self.label = outer.0;

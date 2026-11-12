@@ -195,8 +195,8 @@ error: A test can't call `Shelf.update`
   |
 2 |     var shelf: Shelf = attempt Shelf.update("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e") {
   |                                ^^^^^^^^^^^^ writes a record
-  reason: Only actions write records (area 6), so a test changes data through the action that does it, which is what it proves; a fixture, a test-only action, builds the data a test starts from. A test may still read, with `Shelf.get` and queries.
-  next: Call the action that writes `Shelf`, or move the write into a fixture (agent)
+  reason: Only actions write records (area 6), so a test changes data through the action that does it, which is what it proves; a fixture, a test-only action, or a data builder, `make.Shelf { ... }`, builds the data a test starts from. A test may still read, with `Shelf.get` and queries.
+  next: Call the action that writes `Shelf`, or make the record it starts from with `make.Shelf { ... }` (agent)
   rule: semantic.not_callable
   help: https://jadpo.dev/docs/errors/semantic.not_callable
 
@@ -1949,6 +1949,8 @@ to build.
 
 Each field a builder isn't given is filled with a valid value:
 
+- A field a lifecycle owns starts at its `initial:` value, as on any new
+  record; a builder given one starts the record in that state instead.
 - A field that may be absent (`T?`) is `none`.
 - A reference that can't be absent names a record its entity's own
   builder makes, with every field filled.
@@ -1989,6 +1991,14 @@ type BookTitle = Text {
 }
 ```
 
+```jadpo check project=lending file=domains/lending/types/loan_state.jadpo hidden
+/// Where a borrowed book is.
+type LoanState = Enum {
+    out
+    returned
+}
+```
+
 ```jadpo check project=lending file=domains/lending/entities/member.jadpo hidden
 use lending/types { MemberName }
 
@@ -2009,7 +2019,7 @@ entity Member {
 
 ```jadpo check project=lending file=domains/lending/entities/loan.jadpo migrate=initial
 use lending/entities { Member }
-use lending/types { BookTitle }
+use lending/types { BookTitle, LoanState }
 
 /// A book a member has borrowed.
 entity Loan {
@@ -2018,8 +2028,22 @@ entity Loan {
         on_delete: OnDelete.cascade
     }
     title: BookTitle
-    returned: Bool
+    state: LoanState
     due: CalendarDate?
+
+    lifecycle: {
+        initial: {
+            state: LoanState.out
+        }
+        transitions: {
+            give_back: {
+                when: state == LoanState.out
+                set: {
+                    state: LoanState.returned
+                }
+            }
+        }
+    }
 
     policy: {
         create: [Access.public]
@@ -2053,13 +2077,9 @@ use lending/events { LoanReturned }
 
 /// Takes a book back.
 action return_loan(loan_id: Loan.id) fails LoanNotFound, AlreadyReturned -> Loan {
-    var loan: Loan = attempt Loan.get(loan_id)
-    if (loan.returned) {
-        reject AlreadyReturned {}
-    }
-    var back: Loan = attempt Loan.update(loan_id) {
-        set: {
-            returned: true
+    var back: Loan = attempt Loan.give_back(loan_id) {
+        conflict: {
+            Loan.give_back: AlreadyReturned
         }
     }
     emit LoanReturned {
@@ -2071,6 +2091,7 @@ action return_loan(loan_id: Loan.id) fails LoanNotFound, AlreadyReturned -> Loan
 
 ```jadpo check project=lending file=domains/lending/actions/return_loan.test.jadpo
 use lending/entities { Loan, Member }
+use lending/types { LoanState }
 use lending/failures { AlreadyReturned }
 
 test "a loan a builder makes is out" {
@@ -2078,13 +2099,13 @@ test "a loan a builder makes is out" {
         title: "Middlemarch"
     }
     assert loan.title == "Middlemarch"
-    assert loan.returned == false
+    assert loan.state == LoanState.out
     assert loan.due == none
 }
 
 test "a loan returned already can't be returned again" {
     var loan: Loan = make.Loan {
-        returned: true
+        state: LoanState.returned
     }
     assert return_loan(loan.id) fails AlreadyReturned
 }
@@ -2097,8 +2118,9 @@ test "two members made the same way have their own emails" {
 ```
 
 The first test gives only the title: the builder makes the member the
-loan belongs to, and leaves `due` as `none`. The second builds a state
-only `return_loan` reaches, to test what happens next.
+loan belongs to, starts the loan at its lifecycle's `initial:` state and
+leaves `due` as `none`. The second builds a loan already returned, a
+state only the `give_back` transition reaches, to test what happens next.
 
 With builders, fixtures remain for meaningful scenarios. A fixture
 returns a named object holding what it made, an `Object` type declared
@@ -2199,12 +2221,13 @@ event is `event.emit_invalid`.
 
 ```jadpo check project=lending file=domains/lending/events/loan_returned.test.jadpo
 use lending/entities { Loan }
+use lending/types { LoanState }
 use lending/actions { return_loan }
 
 test "returning a loan says it came back" {
     var loan: Loan = make.Loan {}
     var back: Loan = attempt return_loan(loan.id)
-    assert back.returned
+    assert back.state == LoanState.returned
     assert emitted LoanReturned {
         loan_id: loan.id
     }
@@ -2683,7 +2706,7 @@ Not built yet: caches, which need the Redis driver.
 | Watch mode | Built: `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run, or says `errors fixed` when no test reaches it; a removed file is a change like any other. Run from outside the project, its paths start with the project as typed. It ends when nothing reads its output any more, as when piped into `head`. A save shows its results in about 0.1 s on a 230-file project, and the gate fails above 1.25 s. In a terminal, `enter` reruns the last run's tests, `a` runs every test asked for and `f` the failing ones, each under a rule naming the key, and `q` or ctrl-c quits; with `--json` or no terminal on standard input, no key is read. |
 | `--affected` | Built: the tests that reach any node whose digest differs from the base commit's, found through the same before side as `jadpo check`'s diffs: the merge base with the default branch, or on it the previous commit. Uncommitted changes count, a project new since the base runs every test, and no test reached is `nothing to run`, which passes. With no base commit (outside git, no commit yet, no default branch) it is `cli.test_arguments`; a base the clone doesn't hold names `git fetch --unshallow`. With `--watch`, the first run is what the branch changed reaches. |
 | Fixtures | Built: a fixture is checked like an action and called by name from tests, fixtures and seeds; an action calling one is `semantic.not_callable`. A `public` fixture is called through its domain from other domains' tests, fixtures and seeds and from root `tests/`; a private one from there is `visibility.private_cross_domain`. Seeds are checked like tests and run with `jadpo seed` ([Seeds](05-data.md#seeds)). |
-| Data builders | Built: `make.Entity { ... }` in tests, fixtures and seeds creates a record through the entity's create, given any field the store doesn't generate; a field left out is `none` when it may be absent, a record its reference's own builder makes, or a value of its type keeping its rules, a different one each time for a field a unique rule holds. A `File`, a key or text with a `pattern:` is given (`type.missing_field`); elsewhere `make` is `semantic.not_callable`. A fixture returns a named object holding what it made ("Data builders"). |
+| Data builders | Built: `make.Entity { ... }` in tests, fixtures and seeds creates a record through the entity's create, given any field the store doesn't generate, one a lifecycle owns included; a field left out starts at its lifecycle's `initial:` value when the lifecycle owns it, and otherwise is `none` when it may be absent, a record its reference's own builder makes, or a value of its type keeping its rules, a different one each time for a field a unique rule holds. A `File`, a key or text with a `pattern:` is given (`type.missing_field`); elsewhere `make` is `semantic.not_callable`. A fixture returns a named object holding what it made ("Data builders"). |
 | `assert emitted` | Built: `assert emitted Event { ... }` holds when an event of that type the test's committed steps or their deliveries emitted has the fields it gives; the report shows each emitted event of that type, and with one, a diff of the fields given. A batch's items run on their own runner, and the events they emit aren't listed. |
 | The trace `--keep-failed` keeps, for `jadpo trace` | Not built yet: it comes with [Debugging and review](17-debugging-and-review.md). |
 | Interactive mode | Built: `jadpo test --interactive` opens the keyboard view on the alternate screen: each domain and file with its tests and their last results (the project's record keeps passes as well as failures), search as you type, `enter` on a file or test, `a`, `f`, `o` for a failure's report as `jadpo test` prints it, `w` to watch, on the same long-lived session as `--watch`. A build with errors shows them in the view. On quit, the last run's footer is left in the scrollback. It refuses `--json`, a missing terminal, and a path, `--name`, `--kind`, `--failed` or `--affected`, as `cli.test_arguments`. |

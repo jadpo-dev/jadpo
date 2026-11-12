@@ -19,8 +19,8 @@ use jadpo_syntax::{SyntaxKind, SyntaxNode};
 
 use super::super::rules::Const;
 use super::super::ty::{Prim, Ty};
-use super::facts::{BuildFact, Facts, NodeKey, PatternFact, Reach, node_key};
 use super::builders::{Filled, MakeFact};
+use super::facts::{BuildFact, Facts, NodeKey, PatternFact, Reach, node_key};
 use super::writes::{Breach, WriteFact};
 use super::{Body, Fallible, LocalKind};
 use crate::graph::paths::Resolver;
@@ -2296,7 +2296,12 @@ impl Lower<'_> {
                 Filled::Absent(ty) => {
                     let id = self.alloc();
                     let ty = self.ty(ty);
-                    self.fill(id, node, ty, typed::Node::Expr(typed::Expr::Literal(Literal::None)));
+                    self.fill(
+                        id,
+                        node,
+                        ty,
+                        typed::Node::Expr(typed::Expr::Literal(Literal::None)),
+                    );
                     id
                 }
                 Filled::Made { ty, distinct } => {

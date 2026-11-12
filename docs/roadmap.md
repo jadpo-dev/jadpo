@@ -393,9 +393,7 @@ work below (Richard, 2026-11-08).
       (`csv.write`, `tsv.write`, `json_lines.write`, `json.write`) taking a
       provider's list operation as `from:`, walked by `page.next`, in place
       of `type.batch_from_invalid`.
-    - [ ] **W1 Data builders and `assert emitted`** `opus · high`: area 13,
-      "Data builders" and "What is built". Builders' valid defaults, the
-      named object a fixture returns with them, and `assert emitted`.
+    - [x] **W1 Data builders and `assert emitted`**: area 13, "Data builders", "Events and query cost" and its notes; compiler-runtime §2.5, "Data builders and `assert emitted`".
     - [ ] **W2 Generated tests** `opus · xhigh`: area 13, "In the editor" and
       "What is built". Every route refusing bad input with `{ field, rule }`, each
       declared failure's envelope and the rest of that list, generated, run with

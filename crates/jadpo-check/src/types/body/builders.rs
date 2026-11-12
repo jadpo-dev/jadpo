@@ -63,7 +63,9 @@ impl Body<'_> {
     pub(super) fn make(&mut self, record: &ast::RecordExpr, entity: &ast::NameRef) -> Ty {
         let name = text(entity);
         let written = format!("{MAKE}.{name}");
-        let head_span = record.expr().map_or_else(|| self.span(record), |head| self.span(&head));
+        let head_span = record
+            .expr()
+            .map_or_else(|| self.span(record), |head| self.span(&head));
         if self.context != Context::Test {
             self.out.push(
                 Diagnostic::new(
@@ -109,7 +111,11 @@ impl Body<'_> {
             return Ty::Error;
         }
         let rules = self.writes.write_rules(&name).cloned().unwrap_or_default();
-        let fields: Vec<FieldDef> = self.table.fields(&name).map(<[_]>::to_vec).unwrap_or_default();
+        let fields: Vec<FieldDef> = self
+            .table
+            .fields(&name)
+            .map(<[_]>::to_vec)
+            .unwrap_or_default();
         // The fields it may set: any the store doesn't generate.
         let settable: Vec<FieldDef> = fields
             .iter()
@@ -201,14 +207,25 @@ impl Body<'_> {
         span: &Span,
     ) -> Option<Vec<(String, Filled)>> {
         let rules = self.writes.write_rules(entity).cloned().unwrap_or_default();
-        let fields: Vec<FieldDef> = self.table.fields(entity).map(<[_]>::to_vec).unwrap_or_default();
+        let fields: Vec<FieldDef> = self
+            .table
+            .fields(entity)
+            .map(<[_]>::to_vec)
+            .unwrap_or_default();
         let mut out = Vec::new();
         let mut unfillable: Vec<(String, &'static str)> = Vec::new();
         for field in &fields {
-            if field.name == "id" || field.generated || given.contains(&field.name) {
+            // A field the lifecycle owns starts at its `initial:` value.
+            if field.name == "id"
+                || field.generated
+                || given.contains(&field.name)
+                || rules.owned.contains(&field.name)
+            {
                 continue;
             }
-            let ty = self.table.field_type(entity, std::slice::from_ref(&field.name));
+            let ty = self
+                .table
+                .field_type(entity, std::slice::from_ref(&field.name));
             if self.table.is_nullable(&field.declared) {
                 out.push((field.name.clone(), Filled::Absent(ty)));
                 continue;
@@ -216,7 +233,10 @@ impl Body<'_> {
             if let Some(target) = rules.reference(&field.name) {
                 let target = target.to_string();
                 if making.contains(&target) {
-                    unfillable.push((field.name.clone(), "a reference back to a record being made"));
+                    unfillable.push((
+                        field.name.clone(),
+                        "a reference back to a record being made",
+                    ));
                     continue;
                 }
                 making.push(target.clone());
@@ -292,7 +312,11 @@ impl Body<'_> {
         if opaque(jadpo_std::files::FILE) || opaque(jadpo_std::files::FILE_UPLOAD) {
             return Some("a file, which only a store makes");
         }
-        if self.table.base_prim(declared).is_some_and(|prim| prim.is_key()) {
+        if self
+            .table
+            .base_prim(declared)
+            .is_some_and(|prim| prim.is_key())
+        {
             return Some("a key, which only `crypto.new_key` makes");
         }
         if self
@@ -357,7 +381,9 @@ impl Body<'_> {
             head_span,
             &[],
         );
-        self.facts.types.insert(node_key(record.syntax()), Ty::Named(name.clone()));
+        self.facts
+            .types
+            .insert(node_key(record.syntax()), Ty::Named(name.clone()));
         self.facts.emitted.insert(node_key(record.syntax()), name);
     }
 
