@@ -501,6 +501,135 @@ pub enum Protocol {
     /// with `Content-Type: application/x-amz-json-1.0`, named by
     /// `X-Amz-Target: <target>.<Operation>`.
     AwsJson,
+    /// A body form-encoded (`application/x-www-form-urlencoded`), its
+    /// members as [`form_pairs`] flattens them, the answer JSON (chunk K2).
+    FormHttp,
+    /// A body of parts (`multipart/form-data`): each of the input's members
+    /// a part named by its spelling, a file part for each member
+    /// [`OperationPlan::files`] names, the rest text as a form's members are
+    /// (chunk K2); the answer JSON.
+    MultipartHttp,
+}
+
+/// The placeholder a package's host holds, filled from one of its
+/// settings (area 11, "How the API is reached"; chunk K2):
+/// `"https://{project_ref}.supabase.co"`.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HostFill {
+    /// The setting's name, `project_ref`, as the host writes it.
+    pub name: String,
+    pub value: HostValue,
+}
+
+/// Where a host's placeholder's value comes from: a setting the
+/// connection reads, by number, or text written in `app.jadpo` or given
+/// as the package setting's default.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum HostValue {
+    Setting(u32),
+    Written(String),
+}
+
+/// `host` with its placeholder `{name}` filled with `value` (chunk K2):
+/// `None` when the value isn't one DNS label of letters, digits and
+/// hyphens, at most 63 long and neither starting nor ending with a hyphen,
+/// so a setting can never move a call to another host, port or path.
+pub fn filled_host(host: &str, name: &str, value: &str) -> Option<String> {
+    let label = !value.is_empty()
+        && value.len() <= 63
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        && !value.starts_with('-')
+        && !value.ends_with('-');
+    let placeholder = format!("{{{name}}}");
+    (label && host.contains(&placeholder)).then(|| host.replacen(&placeholder, value, 1))
+}
+
+/// The placeholder a host holds, `project_ref` of
+/// `"https://{project_ref}.supabase.co"`, and whether it holds just one,
+/// in its host name: `Err` with what is wrong otherwise.
+pub fn host_placeholder(host: &str) -> Result<Option<String>, &'static str> {
+    let opens = host.matches('{').count();
+    let closes = host.matches('}').count();
+    if opens == 0 && closes == 0 {
+        return Ok(None);
+    }
+    if opens != 1 || closes != 1 {
+        return Err("holds more than one placeholder");
+    }
+    let start = host.find('{').unwrap_or_default();
+    let end = host.find('}').unwrap_or_default();
+    if end < start {
+        return Err("isn't a placeholder");
+    }
+    let name = &host[start + 1..end];
+    let named = !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        && name.starts_with(|c: char| c.is_ascii_lowercase());
+    if !named {
+        return Err("isn't a setting's name");
+    }
+    let authority = host
+        .split_once("://")
+        .map_or("", |(_, rest)| rest)
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    let name_part = authority
+        .rsplit_once(':')
+        .map_or(authority, |(name, _)| name);
+    if !name_part.contains(&format!("{{{name}}}")) {
+        return Err("is outside its host name");
+    }
+    Ok(Some(name.to_string()))
+}
+
+/// A JSON object's members as a form's pairs (chunk K2), the way Stripe
+/// and every Rack, PHP and `qs` reader takes them: text as it is, a number
+/// as `number` gives it, a flag as `true` or `false`; a member that is
+/// `null` left out; an object's members as `name[member]`, a list's items
+/// as `name[0]`, `name[1]`, at any depth.
+pub fn form_pairs(
+    members: &serde_json::Map<String, serde_json::Value>,
+    number: &dyn Fn(&[String], &serde_json::Number) -> String,
+) -> Vec<(String, String)> {
+    fn walk(
+        name: &str,
+        at: &mut Vec<String>,
+        value: &serde_json::Value,
+        number: &dyn Fn(&[String], &serde_json::Number) -> String,
+        out: &mut Vec<(String, String)>,
+    ) {
+        match value {
+            serde_json::Value::Null => {}
+            serde_json::Value::Bool(flag) => out.push((name.to_string(), flag.to_string())),
+            serde_json::Value::Number(n) => out.push((name.to_string(), number(at, n))),
+            serde_json::Value::String(text) => out.push((name.to_string(), text.clone())),
+            serde_json::Value::Array(items) => {
+                for (place, item) in items.iter().enumerate() {
+                    at.push(place.to_string());
+                    walk(&format!("{name}[{place}]"), at, item, number, out);
+                    at.pop();
+                }
+            }
+            serde_json::Value::Object(inner) => {
+                for (member, item) in inner {
+                    at.push(member.clone());
+                    walk(&format!("{name}[{member}]"), at, item, number, out);
+                    at.pop();
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for (member, value) in members {
+        let mut at = vec![member.clone()];
+        walk(member, &mut at, value, number, &mut out);
+    }
+    out
 }
 
 /// A provider's `aws: { service: target: }` (chunk 7.7c): the service
@@ -581,10 +710,32 @@ pub struct ConnectionPlan {
     /// `pickups.create` (area 11, "Provider calls in development"; chunk
     /// 7.2d); every other call there is faked.
     pub sandbox: Vec<String>,
+    /// The placeholders its package's hosts hold and what fills each
+    /// (chunk K2); empty when they hold none.
+    #[serde(default)]
+    pub host_fills: Vec<HostFill>,
     /// How many of its calls go out at once per app instance (area 11,
     /// "Calling"; chunk 7.6c): its package's `max_concurrent:`, or the
     /// connection's lower one; `None` for no cap.
     pub max_concurrent: Option<u32>,
+}
+
+impl ConnectionPlan {
+    /// The settings where its calls go are read from, by number: its
+    /// environment's or its `host:`'s, and the one filling its host's
+    /// placeholder (chunk K2).
+    pub fn address_settings(&self) -> Vec<u32> {
+        let address = match &self.address {
+            Address::Hosts { environment, .. } => Some(*environment),
+            Address::Setting(at) => Some(*at),
+            Address::Unknown => None,
+        };
+        let fills = self.host_fills.iter().filter_map(|fill| match fill.value {
+            HostValue::Setting(at) => Some(at),
+            HostValue::Written(_) => None,
+        });
+        address.into_iter().chain(fills).collect()
+    }
 }
 
 /// One part of an operation's path.
@@ -684,6 +835,12 @@ pub struct OperationPlan {
     /// The identity keys of the package failures it answers with, whose
     /// codes the provider's error code is matched against.
     pub failures: Vec<String>,
+    /// The input's members, by their spellings, that
+    /// [`Protocol::MultipartHttp`] sends as file parts: those holding
+    /// `Bytes`, `FileContents` or a `File`, written as Base64 in the input's
+    /// JSON (chunk K2).
+    #[serde(default)]
+    pub files: Vec<String>,
 }
 
 /// What the call at one site needs (chunk 7.2c2): the operation it calls,
@@ -934,6 +1091,54 @@ pub fn sendable(address: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// A host's placeholder is one, in its host's name, named as a setting
+    /// is; it is filled only with one DNS label (chunk K2).
+    #[test]
+    fn a_hosts_placeholder_is_one_dns_label_in_its_name() {
+        assert_eq!(
+            host_placeholder("https://{project_ref}.supabase.co"),
+            Ok(Some("project_ref".into()))
+        );
+        assert_eq!(host_placeholder("https://api.example"), Ok(None));
+        assert!(host_placeholder("https://{a}.{b}.example").is_err());
+        assert!(host_placeholder("https://api.example/{a}").is_err());
+        assert!(host_placeholder("https://api.example:{port}").is_err());
+        assert!(host_placeholder("https://{Ref}.example").is_err());
+        let host = "https://{project_ref}.supabase.co";
+        assert_eq!(
+            filled_host(host, "project_ref", "abc-123").as_deref(),
+            Some("https://abc-123.supabase.co")
+        );
+        for bad in ["", "-a", "a-", "a.b", "a/b", "a:1", "a@b", &"a".repeat(64)] {
+            assert_eq!(filled_host(host, "project_ref", bad), None, "{bad}");
+        }
+    }
+
+    /// A form's pairs nest an object's members and a list's items in
+    /// brackets and leave `null` out (chunk K2).
+    #[test]
+    fn a_forms_pairs_nest_in_brackets() {
+        let serde_json::Value::Object(members) = serde_json::json!({
+            "amount": 1250,
+            "none": null,
+            "live": false,
+            "card": {"num": "4242", "tags": ["a", {"b": 1}]}
+        }) else {
+            panic!("an object");
+        };
+        let pairs = form_pairs(&members, &|_, number| number.to_string());
+        assert_eq!(
+            pairs,
+            [
+                ("amount".to_string(), "1250".to_string()),
+                ("card[num]".to_string(), "4242".to_string()),
+                ("card[tags][0]".to_string(), "a".to_string()),
+                ("card[tags][1][b]".to_string(), "1".to_string()),
+                ("live".to_string(), "false".to_string()),
+            ]
+        );
+    }
+
     /// Plain HTTP goes only to this machine, the host read as an address
     /// (chunk 8.4d): a name whose first label is `127` is elsewhere.
     #[test]
@@ -1031,6 +1236,7 @@ mod tests {
             repeat: Repeat::Safe,
             changes: false,
             failures: Vec::new(),
+            files: Vec::new(),
         };
         let plan = ProviderPlan {
             operations: vec![

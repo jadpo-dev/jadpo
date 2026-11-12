@@ -1917,6 +1917,12 @@ impl Lower<'_> {
                     None if jadpo_std::http::test_built_fields(name).is_some() => {
                         Callee::Object(Key::new(jadpo_graph::Kind::Type, name))
                     }
+                    // A `Page`, as a test scripts a provider's list
+                    // operation's answer (chunk J2): its `items` and its
+                    // `next` cursor.
+                    None if name == super::expr::PAGE => {
+                        Callee::Object(Key::new(jadpo_graph::Kind::Type, name))
+                    }
                     None => Callee::Unknown,
                 },
                 name.clone(),

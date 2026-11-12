@@ -129,6 +129,13 @@ pub(super) fn children(node: &Node) -> Vec<SiteId> {
         },
         Node::Expr(expr) => match expr {
             Expr::Field { receiver, .. } => out.push(*receiver),
+            // `batches.each`'s `from:` is the run's, called after the action
+            // commits: a provider's list asked for a page then (chunk J2).
+            Expr::Call {
+                callee: Callee::Batch(BatchOp::Each),
+                args,
+                ..
+            } => out.extend(args.iter().skip(1).flatten().copied()),
             Expr::Call { args, .. } => out.extend(args.iter().flatten().copied()),
             Expr::Build { fields, .. } | Expr::Reject { fields, .. } => {
                 out.extend(fields.iter().map(|(_, site)| *site));

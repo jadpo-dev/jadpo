@@ -299,13 +299,7 @@ work below (Richard, 2026-11-08).
      needed: area 11, "An importer" and "Installing safely"; area 14,
      "Commands for packages". `smithy`, `postman`, `har` (a capture's
      operations) and `dts`.
-   - [ ] **K2 What else a provider call can be** `opus · high`: area 11,
-     "How provider calls are made", "How connections to packages are read"
-     and "How webhooks are received". Protocols other than `json_http` and
-     `aws_json`, credential schemes other than the four built, a setting's
-     placeholder in a host (`{project_ref}`), defaults for package settings,
-     and a field read by `decode:` or `encode:` on a webhook's event.
-     Twilio's XML waits on an XML byte format (L2).
+   - [x] **K2 What else a provider call can be**: area 11, "How provider calls are made", "How connections to packages are read" and "How webhooks are received", and its notes.
    - [ ] **K4 Capability mappings and conformance suites** `opus · high`:
      area 11, "How a package provides a capability", "Proving a package
      works" and "Mistakes not reported yet"; area 21, "The conformance
@@ -389,16 +383,16 @@ work below (Richard, 2026-11-08).
       20, "What is built".
 11. Background work and tests (areas 12 and 13), added by the audit of
     2026-11-08.
-    - [ ] **J2 Batches over more** `opus · high`: area 12, "Walking records
-      or a provider's list: `batches.each`", "How a run is kept" and "How a
-      file's run is kept"; area 11, "Pages of results". A provider's list operation as
-      `from:`, walked by `page.next`; a page type above 1,000 items split into
-      batches; `batches.status` and `batches.cancel` with runs in no store or
-      several; a file's run with several databases and none written.
     - [ ] **J3 Delivery and operator gaps** `opus · high`: area 12, "Retries and
       giving up", "Watching schedules" and "Running background work". `Retry-After`
       between a delivery's attempts, names for instances, and
       `cli.signal_handler_failed`.
+    - [ ] **J4 File writers over a provider's list** `opus · high`: area 19,
+      "Data formats"; area 12, "Walking records or a provider's list:
+      `batches.each`" and "How an export's run is kept". A file helper's write
+      (`csv.write`, `tsv.write`, `json_lines.write`, `json.write`) taking a
+      provider's list operation as `from:`, walked by `page.next`, in place
+      of `type.batch_from_invalid`.
     - [ ] **W1 Data builders and `assert emitted`** `opus · high`: area 13,
       "Data builders" and "What is built". Builders' valid defaults, the
       named object a fixture returns with them, and `assert emitted`.

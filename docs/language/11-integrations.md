@@ -772,7 +772,7 @@ packages.
 | `polls:` | Operations the runtime calls on a schedule, each with a default interval and the event emitted when the answer changes |
 | `erasure:` | The operation that deletes a person at the provider and the key it takes (`by:`) |
 | `max_concurrent:` | How many of its calls run at once per app instance |
-| `settings:` | Typed values the app gives on the connection (`message_stream:`) |
+| `settings:` | Typed values the app gives on the connection (`message_stream:`), each with an optional `default:` |
 | `imported:` | The description it was imported from, `file:`, that file's digest, `digest:`, `reviewed:`, the package's types an agent has reviewed against the provider's documentation, and `renamed:`, each name in the description that code calls by another |
 | `reviewed:` | In a package written by hand, which has no `imported:`, the package's types an agent has reviewed against the provider's documentation |
 
@@ -2770,7 +2770,8 @@ action file_invoice(code: InvoiceCode) -> InvoiceCode {
 A package declares its own settings in `provider.jadpo`'s `settings:`, each
 a plain value (`Text`, `Int`, `Decimal`, `Bool` or `Duration`), and every
 connection to it gives each one by name, written out or read from a
-setting of that type (`account: config.ledger_account`).
+setting of that type (`account: config.ledger_account`), unless the
+setting has a `default:` (`account: Text { default: "shop" }`).
 
 A connection's name shares one namespace with the app's domains and
 libraries, so `billing.<name>` always means one thing. A connection named
@@ -3218,10 +3219,12 @@ route.
 
 A list operation returns a `Page<T>`
 ([Pages](06-reads-and-writes.md#pages)). The package says how the
-provider pages, and `page.next` asks for the next page. Work over many
-pages uses `batches.each(from:, each:, finished:, key:)`, which pages
-through in the background and resumes where it stopped
-([Batches](12-jobs-and-events.md#batches)).
+provider pages: its output is read as the page's `items` and its `next`
+cursor, and its input has one `PageCursor` field, where `page.next` is
+sent to ask for the next page. Work over many pages uses
+`batches.each(from:, each:, finished:, key:)`, which pages through in the
+background and resumes where it stopped
+([Walking records or a provider's list](12-jobs-and-events.md#walking-records-or-a-providers-list-batcheseach)).
 
 ### Calls and writes
 
@@ -7266,7 +7269,10 @@ which keys a connection to a package takes and needs, and what
   setting and its type, one of `Text`, `Int`, `Decimal`, `Bool` and
   `Duration` (`package.provider_invalid` otherwise), and every connection
   gives each, written out or read from a setting whose type is built on
-  it. A setting has no default: every connection gives each one.
+  it, unless the setting has a `default:`: `message_stream: Text {
+  default: "outbound" }`, a literal of its type and the block's only key
+  (`package.provider_invalid` otherwise), given to a connection that
+  leaves the setting out.
 - **The network report.** `build/report/network.md` and `.json`, written
   by `jadpo check` once the connections and their addresses read cleanly,
   designed with the CLI design language's calm, plain rules: a title, one
@@ -7292,8 +7298,7 @@ which keys a connection to a package takes and needs, and what
   calls are made"), or in `jadpo dev` and `jadpo test` the package's fake
   ("Fakes and the development call log").
 
-> `outbound:` waits for services, which aren't built yet. Package
-> settings have no defaults yet. The approval report shows host changes,
+> `outbound:` waits for services, which aren't built yet. The approval report shows host changes,
 > and a new host needs a `NetworkChange.host_added` acceptance.
 
 ## A package's names, and watching a linked checkout
@@ -7534,9 +7539,20 @@ again, and how its answer is classified and read.
   would leave it, empty, `.` or `..`, is a fault, and nothing is sent);
   the rest is a `GET`'s or
   `DELETE`'s query (a list as the key repeated, `none` left out, an
-  object as its JSON) and every other method's JSON body, where a field
+  object as its JSON) and every other method's body, where a field
   that is `none`, at any depth, is left out rather than sent as `null`,
-  which some providers refuse.
+  which some providers refuse. The body is written as the provider's
+  `protocol:` says: `json_http` and `aws_json` its JSON; `form_http`
+  form-encoded (`application/x-www-form-urlencoded`), each member's text
+  as JSON writes it (a string as it is), an object's members as
+  `name[member]` and a list's items as `name[0]`, `name[1]`, at any
+  depth, as Stripe and every Rack, PHP and `qs` reader take them;
+  `multipart_http` as parts (`multipart/form-data`), a field holding
+  `Bytes`, `FileContents` or a `File` a file part of its bytes under its
+  spelling (`application/octet-stream`), every other member text parts
+  written as a form's are, under a boundary drawn from what the parts
+  hold, so the same call is the same bytes. Every protocol's answer is
+  JSON.
 - **Who calls.** Only an action, of a domain the connection's `domains:`
   lists (`connection.domain_not_listed` otherwise); never a function, and
   never a test, which reaches a provider through an action with the
@@ -7574,15 +7590,28 @@ again, and how its answer is classified and read.
   wherever it runs, and an action run again after a concurrent change
   takes the same steps; the generation is 0 until a provider's
   `new_key_on:`.
+- **A host's placeholder.** A host in `hosts:` may hold one
+  placeholder in its host name, `"https://{project_ref}.supabase.co"`,
+  naming a `Text` setting the provider declares, which fills it from what
+  the connection gives (or the setting's `default:`). The value must be
+  one DNS label, letters, digits and hyphens, at most 63, neither first
+  nor last a hyphen, so no value moves a call to another host, port or
+  path; any other value is `misconfigured`, and nothing is sent. A
+  placeholder outside the host's name, two in one host, or one naming no
+  `Text` setting is `package.provider_invalid`. The network report shows
+  the host filled when the connection writes the value out, and as its
+  pattern with the setting that fills it when a setting gives it.
 - **Where it is sent.** HTTPS, or plain HTTP only to this machine
   (`localhost`, an IPv4 address in `127.0.0.0/8`, `[::1]`, the host read
   as an address, so `127.api.example.com` is elsewhere), which is how a test reaches its
   server; any other address, or a connection whose address or credential
   has no value, is `misconfigured` and logged as refused, sent to nobody.
   The call waits `timeout:` (3 seconds by default), a duration
-  written out (`connection.value_invalid` otherwise). It sends `Accept`
-  and `Content-Type: application/json`, `User-Agent: jadpo`, the
-  credential as `Authorization`, and the key in the package's header.
+  written out (`connection.value_invalid` otherwise). It sends `Accept:
+  application/json`, the body's `Content-Type`, `User-Agent: jadpo`, the
+  credential as its scheme sends it, and the key in the package's header.
+  A `credential:` naming a scheme other than `CredentialScheme.bearer`,
+  `.header`, `.basic` and `.aws_sigv4` is `package.provider_invalid`.
 - **The package driver** is one driver for every package connection,
   over the fetch its host gives. Natively that is an HTTP/1.1 client on
   the worker's thread, with its connections kept per host, checking the
@@ -7619,12 +7648,8 @@ again, and how its answer is classified and read.
   `AcmeCouriers.CreateBooking { ... }`, as its other types are written.
 
 
-> Not built yet: a connection's protocol other than `Protocol.json_http`
-> and `.aws_json`, and a credential scheme other than
-> `CredentialScheme.bearer`, `.basic`, `.header` (which
-> [AI](21-ai.md) packages use) and `.aws_sigv4`, is
-> `toolchain.not_built_yet` at the call. A host holding a setting's
-> placeholder (`{project_ref}`) isn't filled yet.
+> OAuth client credentials, a further scheme, waits for an app that needs
+> it and a page saying how its token is fetched and kept.
 
 ## Wire encodings, decoders and retries
 <!-- topic: wire-encodings-decoders-and-retries -->
@@ -8096,9 +8121,12 @@ and queues under [How queues are received](#how-queues-are-received).
   sends every type the account subscribes to. The event's fields are read
   from the body's root with its type's codec on the provider's wire, its
   `wire_name:` and `wire:` spellings included, every member it doesn't
-  declare left out; a body it doesn't read is `422 invalid_input`, each
-  problem by the provider's field, so the provider keeps it and sends it
-  again once the package is fixed.
+  declare left out; a field the package's own `decode:` reads is decoded
+  by it as the request is answered, and a reply's field its `encode:`
+  writes is written by it. A body it doesn't read is `422 invalid_input`,
+  each problem by the provider's field (`decode` for a value its decoder
+  refused), so the provider keeps it and sends it again once the package
+  is fixed.
 - **`occurred_at`.** Every event of a package with `webhooks:` declares
   `occurred_at: Instant`, with no `wire_name:` or `wire:`
   (`package.wire_invalid`), and the runtime fills it, whatever the body
@@ -8137,10 +8165,6 @@ and queues under [How queues are received](#how-queues-are-received).
   non-public package event is kept and reaches no subscriber, subscribing
   to one being `package.not_public`; the package's own subscribers hear
   it ("Package subscribers and recipes in `sample/`").
-
-> A field read by the package's own `decode:` and `encode:` isn't built
-> yet on a webhook's event, since those run at a call's site: it is
-> `toolchain.not_built_yet`.
 
 
 ## The Cloudflare Queues driver

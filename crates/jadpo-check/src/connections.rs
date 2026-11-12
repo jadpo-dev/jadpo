@@ -87,6 +87,9 @@ pub struct Reach {
     pub headers: Vec<(String, String)>,
     /// Each setting it declares, by name, with its type.
     pub settings: Vec<(String, Prim)>,
+    /// Each setting's `default:`, by name, given for a connection that
+    /// leaves the setting out (chunk K2).
+    pub defaults: Vec<(String, Given)>,
     /// `protocol:`'s variant, `json_http`.
     pub protocol: Option<String>,
     /// `idempotency:`, when its API takes a key (chunk 7.2c).
@@ -689,9 +692,15 @@ pub fn reach(db: &dyn Db, project: Project, home: &PackageHome) -> Option<Reach>
                     let (Some(setting), Some(value)) = (name_text(&setting), inner.value()) else {
                         continue;
                     };
-                    if let Some(prim) = Prim::from_name(&tree::written(value.syntax()))
+                    let (written, options) = setting_parts(&value, &inner);
+                    if let Some(prim) = Prim::from_name(&written)
                         && SETTING_TYPES.contains(&prim)
                     {
+                        if let Some(given) =
+                            setting_default(prim, options).and_then(|default| default.ok())
+                        {
+                            reach.defaults.push((setting.clone(), given));
+                        }
                         reach.settings.push((setting, prim));
                     }
                 }
@@ -721,20 +730,97 @@ fn text_of(member: &ast::Member) -> Option<String> {
     }
 }
 
+/// A package setting as written, `Text` or `Text { default: "x" }`: its
+/// type's name and the options in its block.
+fn setting_parts(value: &ast::Expr, inner: &ast::Member) -> (String, Option<ast::MemberList>) {
+    match value {
+        ast::Expr::RecordExpr(record) => match record.expr() {
+            Some(ty) => (tree::written(ty.syntax()), record.member_list()),
+            None => (tree::written(value.syntax()), None),
+        },
+        other => (tree::written(other.syntax()), inner.block()),
+    }
+}
+
+/// A package setting's `default:` (chunk K2), when its block gives one: the
+/// value, a literal of the setting's type, or where it is and why it isn't
+/// one.
+fn setting_default(
+    prim: Prim,
+    options: Option<ast::MemberList>,
+) -> Option<Result<Given, ast::Member>> {
+    let (_, member) = tree::members(options)
+        .into_iter()
+        .find(|(key, _)| name_text(key).as_deref() == Some("default"))?;
+    let value = member.value().as_ref().map(Const::from_expr);
+    let given = match (prim, value) {
+        (Prim::Text, Some(Const::Str(text))) => Some(Given::Text(text)),
+        (
+            Prim::Int,
+            Some(Const::Number {
+                value,
+                decimal: false,
+            }),
+        ) if value.scale == 0 => i64::try_from(value.mantissa).ok().map(Given::Int),
+        (Prim::Decimal, Some(Const::Number { .. })) => Some(Given::Other),
+        (Prim::Bool, Some(Const::Bool(flag))) => Some(Given::Bool(flag)),
+        (Prim::Duration, Some(Const::Duration(_))) => Some(Given::Other),
+        _ => None,
+    };
+    Some(given.ok_or(member))
+}
+
 /// `settings:` in `provider.jadpo`: each a setting's name and a type a
-/// connection can give (`package.provider_invalid` otherwise).
+/// connection can give, with at most a `default:` of that type in its
+/// block (`package.provider_invalid` otherwise).
 pub(crate) fn provider_settings(path: &str, member: &ast::Member, out: &mut Vec<Diagnostic>) {
     let names: Vec<String> = SETTING_TYPES
         .iter()
         .map(|prim| format!("`{}`", prim.name()))
         .collect();
     for (setting, inner) in tree::members(member.block()) {
-        let written = inner
+        let (written, options) = inner
             .value()
-            .map(|value| tree::written(value.syntax()))
+            .map(|value| setting_parts(&value, &inner))
             .unwrap_or_default();
-        let fits = Prim::from_name(&written).is_some_and(|prim| SETTING_TYPES.contains(&prim));
-        if fits {
+        let fits = Prim::from_name(&written).filter(|prim| SETTING_TYPES.contains(prim));
+        if let Some(prim) = fits {
+            let setting = name_text(&setting).unwrap_or_default();
+            for (key, _) in tree::members(options.clone()) {
+                let word = name_text(&key).unwrap_or_default();
+                if word == "default" {
+                    continue;
+                }
+                out.push(
+                    Diagnostic::new(
+                        &rule::PACKAGE_PROVIDER_INVALID,
+                        format!("Setting `{setting}:` has no option `{word}:`"),
+                    )
+                    .at(node_span(path, key.syntax()), "not a setting's option")
+                    .reason("A package's setting is a plain value each connection gives, and its block says only its `default:`, the value a connection that leaves it out is given.")
+                    .next(format!("Remove `{word}:`")),
+                );
+            }
+            if let Some(Err(at)) = setting_default(prim, options) {
+                out.push(
+                    Diagnostic::new(
+                        &rule::PACKAGE_PROVIDER_INVALID,
+                        format!("Setting `{setting}:`'s `default:` isn't a `{}`", prim.name()),
+                    )
+                    .at(
+                        at.value().map_or_else(
+                            || node_span(path, at.syntax()),
+                            |value| node_span(path, value.syntax()),
+                        ),
+                        format!("not a `{}`", prim.name()),
+                    )
+                    .reason(format!(
+                        "A setting's `default:` is a literal of its type, `{}`, given to every connection that leaves `{setting}:` out.",
+                        prim.name()
+                    ))
+                    .next(format!("Write a `{}` literal, or remove `default:`", prim.name())),
+                );
+            }
             continue;
         }
         let setting = name_text(&setting).unwrap_or_default();
@@ -1047,8 +1133,13 @@ impl Reader<'_> {
                 "Declare `<name>: Url` in `config.jadpo`, and add `host: config.<name>`".to_string(),
             ));
         }
-        for (setting, prim) in &reach.settings {
+        for (setting, default) in &reach.defaults {
             if !given.contains(setting) {
+                read.settings.push((setting.clone(), default.clone()));
+            }
+        }
+        for (setting, prim) in &reach.settings {
+            if !given.contains(setting) && !reach.defaults.iter().any(|(name, _)| name == setting) {
                 out.push(missing(
                     setting,
                     format!(
@@ -2085,8 +2176,40 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
                 let Some(address) = address else {
                     continue;
                 };
-                let mut row = base(format!("`{address}`"));
-                row.address = Some(address.clone());
+                // A placeholder written out in `app.jadpo` (or by its
+                // setting's default) is filled; one read from a setting
+                // stays a pattern, naming the setting (chunk K2).
+                let placeholder = jadpo_std::provider::host_placeholder(address)
+                    .ok()
+                    .flatten()
+                    .and_then(|name| {
+                        let given = connection
+                            .settings
+                            .iter()
+                            .find(|(setting, _)| *setting == name)?;
+                        Some((name, given.1.clone()))
+                    });
+                let mut row = match &placeholder {
+                    Some((name, Given::Text(text))) => {
+                        let filled = jadpo_std::provider::filled_host(address, name, text)
+                            .unwrap_or_else(|| address.clone());
+                        let mut row = base(format!("`{filled}`"));
+                        row.address = Some(filled);
+                        row
+                    }
+                    Some((name, Given::Setting(setting))) => {
+                        let mut row =
+                            base(format!("`{address}`, `{{{name}}}` from `config.{setting}`"));
+                        row.address = Some(address.clone());
+                        row.setting = Some(setting.clone());
+                        row
+                    }
+                    _ => {
+                        let mut row = base(format!("`{address}`"));
+                        row.address = Some(address.clone());
+                        row
+                    }
+                };
                 row.when = connection
                     .environment
                     .as_ref()

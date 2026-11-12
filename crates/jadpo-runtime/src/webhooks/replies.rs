@@ -151,12 +151,19 @@ pub(crate) async fn answer(
     } else {
         answered
     };
-    let wire = super::Wire;
-    let codecs = jadpo_value::json::Codecs {
-        coder: Some(&wire),
-        ..webhooks.json.codecs
+    // A field the package's own `encode:` writes is written by it (chunk
+    // K2).
+    let written = {
+        let running = super::Running {
+            executor,
+            ctx: std::cell::RefCell::new(&mut *ctx),
+        };
+        let codecs = jadpo_value::json::Codecs {
+            coder: Some(&running),
+            ..webhooks.json.codecs
+        };
+        codecs.write_value(codec, &answered)
     };
-    let written = codecs.write_value(codec, &answered);
     let params = [
         key[0].clone(),
         key[1].clone(),

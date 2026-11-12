@@ -363,6 +363,9 @@ impl<'a> Plan<'a> {
             plans: self.batches,
             json: self.json,
             failures: self.failures,
+            stores: self
+                .schedules
+                .map_or(&[][..], |schedules| schedules.cleanup_batches.as_slice()),
         })
     }
 

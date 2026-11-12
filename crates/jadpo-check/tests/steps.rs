@@ -352,36 +352,117 @@ fn several_from_a_schedule_are_refused_at_the_schedule() {
     );
 }
 
+/// A provider's list operation, `members.list`, taking `input` and giving
+/// a `Page` of replies, with `keys` after `output:`.
+fn members(input: &str, keys: &str) -> (String, String) {
+    (
+        "shared/providers/acme_pay/v1/resources/members.jadpo".to_string(),
+        format!(
+            "public resource members {{\n    list: {{\n        method: HttpMethod.get\n        path: \"/v1/members\"\n        input: {input}\n        output: Page<PayReply>\n{keys}        source: PackageSource.written\n    }}\n}}\n"
+        ),
+    )
+}
+
+/// What a list of members is asked with: a reference, and the cursor of
+/// the page before.
+const MEMBER_PAGE: (&str, &str) = (
+    "shared/providers/acme_pay/v1/types/member_page.jadpo",
+    "/// Which members to list, after which page.\npublic type MemberPage = Object {\n    reference: Reference\n    after: PageCursor?\n}\n",
+);
+
 /// Area 12 lets `batches.each` walk a provider's list operation by
-/// `page.next`, which this compiler doesn't run yet: the `from:` is
-/// `toolchain.not_built_yet`, not a refusal of the form.
+/// `page.next` (chunk J2): its input is saved with the run, and each page
+/// is asked for with the cursor the one before gave, in the input's
+/// `PageCursor` field.
 #[test]
-fn a_run_over_a_providers_list_is_not_built_yet() {
-    let members = (
-        "shared/providers/acme_pay/v1/resources/members.jadpo",
-        "public resource members {\n    list: {\n        method: HttpMethod.get\n        path: \"/v1/members\"\n        input: PayRequest\n        output: Page<PayReply>\n        changes: false\n        source: PackageSource.written\n    }\n}\n",
-    );
+fn a_run_over_a_providers_list_walks_it_by_its_cursor() {
     let keep = "/// Keeps one member.\naction keep(member: AcmePay.PayReply) -> Unit {\n    assert member.id == member.id\n}\n";
-    let each = "use app { pay }\nuse billing/actions { keep }\nuse shared/providers/acme_pay\n\n/// Keeps each member.\naction keep_each() -> BatchRun {\n    return batches.each(from: pay.members.list(AcmePay.PayRequest {\n        reference: \"all\"\n    }), each: member -> keep(member))\n}\n";
+    let each = |input: &str| {
+        let after = if input == "MemberPage" {
+            "\n        after: none"
+        } else {
+            ""
+        };
+        format!(
+            "use app {{ pay }}\nuse billing/actions {{ keep }}\nuse shared/providers/acme_pay\n\n/// Keeps each member.\naction keep_each() -> BatchRun {{\n    return batches.each(from: pay.members.list(AcmePay.{input} {{\n        reference: \"all\"{after}\n    }}), each: member -> keep(member))\n}}\n"
+        )
+    };
     let path = "domains/billing/actions/keep_each.jadpo";
-    let found = found(keep, &[members, (path, each)], "toolchain.not_built_yet");
-    assert_eq!(found.len(), 1, "{found:?}");
-    let label = found[0].primary.as_ref().expect("a label");
-    assert!(
-        pointed(each, label).starts_with("pay.members.list("),
-        "{}",
-        pointed(each, label)
+    let listed = members("MemberPage", "        changes: false\n");
+    let good = each("MemberPage");
+    assert_eq!(
+        problems(
+            keep,
+            &[
+                (listed.0.as_str(), listed.1.as_str()),
+                MEMBER_PAGE,
+                (path, good.as_str())
+            ]
+        ),
+        Vec::<String>::new()
     );
+    // An input with no `PageCursor` has nowhere to send the next page's
+    // cursor.
+    let no_cursor = members("PayRequest", "        changes: false\n");
+    let refused = each("PayRequest");
+    let found = found(
+        keep,
+        &[
+            (no_cursor.0.as_str(), no_cursor.1.as_str()),
+            (path, refused.as_str()),
+        ],
+        "type.batch_from_invalid",
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(
         found[0].message,
-        "`batches.each` over a provider's list isn't built yet"
+        "`batches.each`'s `from:` can't ask `pay.members.list` for its next page"
     );
+    // A list that changes something would change it again when a page is
+    // asked for again.
+    let changing = members("MemberPage", "        changes: true\n");
     assert_eq!(
-        problems(keep, &[members, (path, each)])
-            .iter()
-            .filter(|problem| !problem.contains(" toolchain.not_built_yet:"))
-            .collect::<Vec<_>>(),
-        Vec::<&String>::new()
+        problems(
+            keep,
+            &[
+                (changing.0.as_str(), changing.1.as_str()),
+                MEMBER_PAGE,
+                (path, good.as_str())
+            ]
+        )
+        .iter()
+        .filter(|problem| problem.contains("type.batch_from_invalid"))
+        .collect::<Vec<_>>(),
+        [&format!(
+            "{path} type.batch_from_invalid: `batches.each`'s `from:` lists through `pay.members.list`, which changes something"
+        )]
+    );
+}
+
+/// An `each:` action that makes outside calls would need each item of a
+/// provider's page read on its own.
+#[test]
+fn a_run_over_a_providers_list_whose_items_call_out_is_not_built_yet() {
+    let keep = format!(
+        "/// Renews one member.\naction keep(member: AcmePay.PayReply) fails PaymentRefused -> Unit {{\n{}    assert renewed.id == member.id\n}}\n",
+        keyed("renewed", "subscriptions.create", "member.id"),
+    );
+    let each = "use app { pay }\nuse billing/actions { keep }\nuse shared/providers/acme_pay\n\n/// Renews each member.\naction keep_each() -> BatchRun {\n    return batches.each(from: pay.members.list(AcmePay.MemberPage {\n        reference: \"all\"\n        after: none\n    }), each: member -> keep(member))\n}\n";
+    let listed = members("MemberPage", "        changes: false\n");
+    let path = "domains/billing/actions/keep_each.jadpo";
+    let found = found(
+        &keep,
+        &[
+            (listed.0.as_str(), listed.1.as_str()),
+            MEMBER_PAGE,
+            (path, each),
+        ],
+        "toolchain.not_built_yet",
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        found[0].message,
+        "`batches.each` over a provider's list with an `each:` action that makes outside calls isn't built yet"
     );
 }
 

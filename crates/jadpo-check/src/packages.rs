@@ -123,6 +123,10 @@ pub fn header_line(line: &str) -> Option<(String, String)> {
 /// How a provider's bodies are sent: `Protocol.<name>`.
 pub const PROTOCOLS: [&str; 4] = ["json_http", "form_http", "multipart_http", "aws_json"];
 
+/// How a provider's credential is sent: `CredentialScheme.<name>` (area
+/// 11, "How the API is reached").
+pub const CREDENTIAL_SCHEMES: [&str; 4] = ["bearer", "header", "basic", "aws_sigv4"];
+
 /// The keys of `hosts:`.
 pub const HOST_KEYS: [&str; 2] = ["live", "sandbox"];
 
@@ -705,6 +709,34 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
                 }
             }
             "hosts" => nested_keys(&path, &key, &member, &HOST_KEYS, out),
+            "credential" => {
+                let value = member
+                    .value()
+                    .map(|value| tree::written(value.syntax()))
+                    .unwrap_or_default();
+                let known = value
+                    .strip_prefix("CredentialScheme.")
+                    .is_some_and(|name| CREDENTIAL_SCHEMES.contains(&name));
+                if !known {
+                    out.push(
+                        Diagnostic::new(
+                            &rule::PACKAGE_PROVIDER_INVALID,
+                            format!("`{value}` isn't a credential scheme"),
+                        )
+                        .at(span, "not a credential scheme")
+                        .reason(format!(
+                            "`credential:` says how the connection's credential is sent: {}.",
+                            crate::or_list(
+                                &CREDENTIAL_SCHEMES
+                                    .iter()
+                                    .map(|name| format!("`CredentialScheme.{name}`"))
+                                    .collect::<Vec<_>>()
+                            )
+                        ))
+                        .next("Write the scheme the provider's documentation describes, such as `credential: CredentialScheme.bearer`"),
+                    );
+                }
+            }
             "idempotency" => {
                 nested_keys(&path, &key, &member, &IDEMPOTENCY_KEYS, out);
                 let has_window = tree::members(member.block())
@@ -773,6 +805,7 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
     }
     aws_needs(&path, &decl, out);
     header_needs(&path, &decl, out);
+    host_placeholders(&path, &decl, out);
     if let (Some(hosts), Some(_)) = (seen.get("hosts"), seen.get("runs")) {
         out.push(
             Diagnostic::new(
@@ -852,6 +885,81 @@ fn headers(path: &str, member: &ast::Member, out: &mut Vec<Diagnostic>) {
             .reason("`headers:` lists the fixed headers every request to the API carries, such as the version of the API it is written for, each as text `\"Name: value\"`; the driver writes `Authorization`, `Content-Type`, `Accept`, `User-Agent` and `Host` itself.")
             .next("Write `headers: [\"anthropic-version: 2023-06-01\"]`, a line for each header the provider's documentation requires"),
         );
+    }
+}
+
+/// Each host's placeholder (chunk K2): at most one, in its host name,
+/// naming a `Text` setting the provider declares, which fills it.
+fn host_placeholders(path: &str, decl: &ast::SingletonDecl, out: &mut Vec<Diagnostic>) {
+    let members = tree::members(decl.member_list());
+    let block = |key: &str| {
+        members
+            .iter()
+            .find(|(name, _)| tree::name_text(name).as_deref() == Some(key))
+            .map(|(_, member)| tree::members(member.block()))
+            .unwrap_or_default()
+    };
+    // Each setting the provider declares, with its type as written.
+    let settings: Vec<(String, String)> = block("settings")
+        .iter()
+        .filter_map(|(name, inner)| {
+            let written = match inner.value()? {
+                ast::Expr::RecordExpr(record) => tree::written(record.expr()?.syntax()),
+                other => tree::written(other.syntax()),
+            };
+            Some((tree::name_text(name)?, written))
+        })
+        .collect();
+    for (_, inner) in block("hosts") {
+        let Some(crate::types::Const::Str(host)) =
+            inner.value().as_ref().map(crate::types::Const::from_expr)
+        else {
+            continue;
+        };
+        let span = inner.value().map_or_else(
+            || node_span(path, inner.syntax()),
+            |value| node_span(path, value.syntax()),
+        );
+        let reason = "A host may hold one placeholder in its host name, `\"https://{project_ref}.supabase.co\"`, filled from the `Text` setting of its name, which the connection gives; the value is checked to be one DNS label, so it can't move a call elsewhere.";
+        let name = match jadpo_std::provider::host_placeholder(&host) {
+            Ok(Some(name)) => name,
+            Ok(None) => continue,
+            Err(what) => {
+                out.push(
+                    Diagnostic::new(
+                        &rule::PACKAGE_PROVIDER_INVALID,
+                        format!("Host `{host}` {what}"),
+                    )
+                    .at(span, "not one placeholder in its host name")
+                    .reason(reason)
+                    .next(
+                        "Write one placeholder, a setting's name in braces, inside the host's name",
+                    ),
+                );
+                continue;
+            }
+        };
+        match settings.iter().find(|(setting, _)| *setting == name) {
+            Some((_, ty)) if ty == "Text" => {}
+            Some((_, ty)) => out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_PROVIDER_INVALID,
+                    format!("Host `{host}`'s placeholder `{{{name}}}` is a `{ty}` setting"),
+                )
+                .at(span, "not a `Text` setting")
+                .reason(reason)
+                .next(format!("Declare `{name}: Text` in `settings:`")),
+            ),
+            None => out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_PROVIDER_INVALID,
+                    format!("Host `{host}`'s placeholder `{{{name}}}` isn't a setting"),
+                )
+                .at(span, "no such setting")
+                .reason(reason)
+                .next(format!("Declare `{name}: Text` in `settings:`")),
+            ),
+        }
     }
 }
 

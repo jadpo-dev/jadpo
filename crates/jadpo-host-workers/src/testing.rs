@@ -546,6 +546,10 @@ impl Host for TestHost {
     fn rows_per_batch(&self) -> u32 {
         test_run::ROWS_PER_BATCH
     }
+
+    fn items_per_batch(&self) -> u32 {
+        test_run::ROWS_PER_BATCH
+    }
 }
 
 #[cfg(test)]

@@ -539,7 +539,14 @@ async fn receive(
     if let serde_json::Value::Object(members) = &mut json {
         members.insert(crate::webhooks::OCCURRED_AT.to_string(), occurred);
     }
-    let value = match read(webhooks.json, event.number, &json, &numbers) {
+    let read = {
+        let running = Running {
+            executor,
+            ctx: std::cell::RefCell::new(&mut *ctx),
+        };
+        read_with(webhooks.json, event.number, &json, &numbers, &running)
+    };
+    let value = match read {
         Ok(value) => value,
         Err(problems) => return invalid_input(request_id, &problems),
     };
@@ -642,15 +649,26 @@ pub(crate) fn read(
     body: &serde_json::Value,
     numbers: &jadpo_value::json::Numbers,
 ) -> Result<Value, Vec<Problem>> {
+    read_with(json, number, body, numbers, &Wire)
+}
+
+/// As [`read`], each field the package's own `decode:` reads decoded by
+/// `coder` (chunk K2).
+fn read_with(
+    json: JsonCodecs<'_>,
+    number: u32,
+    body: &serde_json::Value,
+    numbers: &jadpo_value::json::Numbers,
+    coder: &dyn jadpo_value::json::Coder,
+) -> Result<Value, Vec<Problem>> {
     let Some(codec) = json.codec_of(number) else {
         return Err(vec![Problem {
             field: String::new(),
             rule: "type".into(),
         }]);
     };
-    let wire = Wire;
     let codecs = jadpo_value::json::Codecs {
-        coder: Some(&wire),
+        coder: Some(coder),
         ..json.codecs
     };
     let mut problems = Vec::new();
@@ -670,8 +688,50 @@ pub(crate) fn read(
     }
 }
 
-/// The provider's wire for a webhook's body: the built-in encodings, and
-/// no package function, which the checker keeps from a webhook's event.
+/// The provider's wire for a webhook's event and its reply (chunk K2):
+/// the built-in encodings, and a field's own `decode:` and `encode:`, the
+/// package's pure functions, run by the executor as the request is
+/// answered. One that ends without a value is the field's problem.
+pub(crate) struct Running<'c, 'x> {
+    pub(crate) executor: &'c dyn Executor,
+    pub(crate) ctx: std::cell::RefCell<&'c mut Ctx<'x>>,
+}
+
+impl std::fmt::Debug for Running<'_, '_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Running").finish_non_exhaustive()
+    }
+}
+
+impl Running<'_, '_> {
+    fn run(&self, function: &str, value: Value) -> Option<Value> {
+        let mut ctx = self.ctx.borrow_mut();
+        crate::provider::Functions::function(
+            self.executor,
+            &mut ctx,
+            function,
+            vec![value],
+            crate::Frame::ENTRY,
+        )
+        .ok()
+    }
+}
+
+impl jadpo_value::json::Coder for Running<'_, '_> {
+    fn decode(&self, function: &str, wire: Value) -> Option<Value> {
+        self.run(function, wire)
+    }
+
+    fn encode(&self, function: &str, value: Value) -> Option<Value> {
+        self.run(function, value)
+    }
+
+    fn unwritten(&self, _rule: &str) {}
+}
+
+/// The provider's wire for a queue's message, and for what reads a
+/// provider's body outside a webhook: the built-in encodings, and no
+/// package function.
 #[derive(Debug)]
 pub(crate) struct Wire;
 

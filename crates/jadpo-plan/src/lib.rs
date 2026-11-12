@@ -1309,8 +1309,12 @@ impl Plan {
         for plan in batch_sites.into_iter().map(|site| {
             // A query's pages, kept in its store; or a file's rows, kept
             // where the run's actions write (chunk 6.4b).
-            let (from, store) = match &site.file {
-                Some((format, row, ty)) => (
+            let (from, store) = match (&site.file, &site.listed) {
+                (_, Some(listed)) => (
+                    jadpo_std::batch::BatchFrom::Listed(listed.clone()),
+                    run_stores.get(&site.starter).cloned().flatten()?,
+                ),
+                (Some((format, row, ty)), None) => (
                     jadpo_std::batch::BatchFrom::File(jadpo_std::batch::FileRows {
                         format: *format,
                         row: *row,
@@ -1320,7 +1324,7 @@ impl Plan {
                     }),
                     run_stores.get(&site.starter).cloned().flatten()?,
                 ),
-                None => {
+                (None, None) => {
                     let read = queries.get(site.query? as usize)?.read.clone();
                     let store = read.store.clone();
                     (jadpo_std::batch::BatchFrom::Query(Box::new(read)), store)
