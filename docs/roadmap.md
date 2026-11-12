@@ -380,12 +380,7 @@ work below (Richard, 2026-11-08).
 11. Background work and tests (areas 12 and 13), added by the audit of
     2026-11-08.
     - [x] **J3 Delivery and operator gaps**: area 12, "How long between tries", "Running background work" and "Watching schedules", and its notes; `cli.signal_handler_failed`'s page.
-    - [ ] **J4 File writers over a provider's list** `opus · high`: area 19,
-      "Data formats"; area 12, "Walking records or a provider's list:
-      `batches.each`" and "How an export's run is kept". A file helper's write
-      (`csv.write`, `tsv.write`, `json_lines.write`, `json.write`) taking a
-      provider's list operation as `from:`, walked by `page.next`, in place
-      of `type.batch_from_invalid`.
+    - [x] **J4 File writers over a provider's list**: area 19, "`json_lines`"; area 12, "How an export's run is kept", and its notes.
     - [ ] **W1 Data builders and `assert emitted`** `opus · high`: area 13,
       "Data builders" and "What is built". Builders' valid defaults, the
       named object a fixture returns with them, and `assert emitted`.

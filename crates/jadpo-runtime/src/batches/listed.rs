@@ -1,5 +1,7 @@
 //! A run over a provider's list operation, walked by `page.next` (area
 //! 12, "Walking records or a provider's list: `batches.each`"; chunk J2).
+//! A file helper's write over one asks for its pages with [`ask`] too, and
+//! writes them as an export does (chunk J4).
 //!
 //! No outside call goes out while a transaction is open, so each page is
 //! asked for first, as the system and with no transaction, with the
@@ -45,54 +47,18 @@ pub(super) async fn page(
     if cancelled || held.read_all {
         return batch(executor, ctx, batches, plan, start, saved, times).await;
     }
-    let mut input = saved.values.first().cloned().unwrap_or(Value::Unit);
-    if let Some(cursor) = &held.position {
-        input = with_at(&input, &listed.cursor, Value::text(cursor));
-    }
-    let site = jadpo_std::provider::CallSite {
-        called: listed.called,
-        ..jadpo_std::provider::CallSite::default()
-    };
-    let calling = Calling {
-        plan: executor.plan(),
-        site: Site {
-            call: &site,
-            functions: &crate::receiving::NoFunctions,
-            at: 0,
-        },
-    };
-    let operation = listed.operation.as_str();
-    let (items, next) = match crate::provider::call(ctx, calling, Some(input)).await {
-        Done::Value(Value::Record(record)) => (
-            match record.get("items") {
-                Some(Value::List(items)) => items.to_vec(),
-                _ => Vec::new(),
-            },
-            match record.get("next") {
-                Some(Value::Text(cursor)) => Some(cursor.to_string()),
-                _ => None,
-            },
-        ),
-        Done::Value(_) => {
-            return failed(ctx, start, &format!("`{operation}` answered with no page")).await;
-        }
-        Done::Failed(failure) if PASSING.contains(&failure.code.as_str()) => {
-            return Step::Ended(Ran::Paused(format!(
-                "`{operation}` couldn't give its page (`{}`)",
-                failure.code
-            )));
-        }
-        Done::Failed(failure) => {
-            let why = format!("`{operation}` refused its page (`{}`)", failure.code);
-            return failed(ctx, start, &why).await;
-        }
-        Done::Fault(kind) => {
-            let why = format!(
-                "asking `{operation}` for its page faulted with `{}`",
-                kind.classification()
-            );
-            return failed(ctx, start, &why).await;
-        }
+    let (items, next) = match ask(
+        executor,
+        ctx,
+        listed,
+        start,
+        saved,
+        held.position.as_deref(),
+    )
+    .await
+    {
+        Ok(page) => page,
+        Err(step) => return step,
     };
     let fetched = Fetched {
         after: held.position,
@@ -110,6 +76,72 @@ pub(super) async fn page(
         Some(fetched),
     )
     .await
+}
+
+/// Asks `listed` for the page after `cursor`, the first when there is
+/// none, with the run's saved input and the cursor put in its
+/// `PageCursor` field, as the system and with no transaction open: its
+/// items and the cursor of the page after it. A list that can't give it
+/// now pauses the run for the tick; its own failure, a fault or an
+/// answer that isn't a page ends the run `failed`. A file helper's write
+/// over a provider's list asks for its pages here too (chunk J4).
+pub(super) async fn ask(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    listed: &Listed,
+    start: &super::BatchStart,
+    saved: Saved<'_>,
+    cursor: Option<&str>,
+) -> Result<(Vec<Value>, Option<String>), Step> {
+    let mut input = saved.values.first().cloned().unwrap_or(Value::Unit);
+    if let Some(cursor) = cursor {
+        input = with_at(&input, &listed.cursor, Value::text(cursor));
+    }
+    let site = jadpo_std::provider::CallSite {
+        called: listed.called,
+        ..jadpo_std::provider::CallSite::default()
+    };
+    let calling = Calling {
+        plan: executor.plan(),
+        site: Site {
+            call: &site,
+            functions: &crate::receiving::NoFunctions,
+            at: 0,
+        },
+    };
+    let operation = listed.operation.as_str();
+    match crate::provider::call(ctx, calling, Some(input)).await {
+        Done::Value(Value::Record(record)) => Ok((
+            match record.get("items") {
+                Some(Value::List(items)) => items.to_vec(),
+                _ => Vec::new(),
+            },
+            match record.get("next") {
+                Some(Value::Text(cursor)) => Some(cursor.to_string()),
+                _ => None,
+            },
+        )),
+        Done::Value(_) => {
+            Err(failed(ctx, start, &format!("`{operation}` answered with no page")).await)
+        }
+        Done::Failed(failure) if PASSING.contains(&failure.code.as_str()) => {
+            Err(Step::Ended(Ran::Paused(format!(
+                "`{operation}` couldn't give its page (`{}`)",
+                failure.code
+            ))))
+        }
+        Done::Failed(failure) => {
+            let why = format!("`{operation}` refused its page (`{}`)", failure.code);
+            Err(failed(ctx, start, &why).await)
+        }
+        Done::Fault(kind) => {
+            let why = format!(
+                "asking `{operation}` for its page faulted with `{}`",
+                kind.classification()
+            );
+            Err(failed(ctx, start, &why).await)
+        }
+    }
 }
 
 /// Ends the run `start` names `failed`, saying `why`.

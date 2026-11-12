@@ -473,11 +473,12 @@ impl Decoder<'_> {
             }
             shape.push(')');
         }
-        // A provider's list operation, walked by `page.next` (chunk J2):
-        // its input saved with the run, and each page asked for with the
-        // cursor the page before gave in the input's `PageCursor` field.
+        // A provider's list operation, walked by `page.next` (chunk J2),
+        // `batches.each`'s or a writer's (chunk J4): its input saved with
+        // the run, and each page asked for with the cursor the page before
+        // gave in the input's `PageCursor` field.
         let mut listed: Option<jadpo_std::batch::Listed> = None;
-        if op == BatchOp::Each
+        if op.walks_from()
             && let Some((_, from)) = node(from_at.and_then(|at| args.get(at).copied().flatten()))
             && let Node::Expr(Expr::Call {
                 callee:
