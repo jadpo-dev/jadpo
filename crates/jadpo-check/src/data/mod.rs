@@ -3923,7 +3923,7 @@ fn table_of(
                     rule: format!("{}.{}", entity.born, field.born),
                     // A value kept whole as its JSON is keyed by its
                     // digest (chunk Q2).
-                    digest: digested(&[field.name.clone()]),
+                    digest: digested(std::slice::from_ref(&field.name)),
                 },
             );
         }

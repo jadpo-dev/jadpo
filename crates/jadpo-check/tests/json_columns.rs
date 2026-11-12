@@ -221,7 +221,7 @@ fn migrated(source: &str) -> String {
     let schema = jadpo_check::data::schema(&db, project);
     let sql = jadpo_graph::migration::migration_sql(
         &jadpo_graph::schema::Schema::default(),
-        &schema,
+        schema,
         &|_| None,
     )
     .expect("a migration");

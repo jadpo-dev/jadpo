@@ -1439,10 +1439,24 @@ impl Planner<'_> {
                     .iter()
                     .position(|(part, _)| *part == "amount")?;
                 let lhs = self.stored_parts(body, *lhs, entity, target, writing)?;
-                let rhs = self.stored_parts(body, *rhs, entity, target, writing)?;
+                // The right amount gives only its minor units: its currency
+                // is the left one's.
+                let rhs = if stored_in(body, *rhs) {
+                    self.stored_parts(body, *rhs, entity, target, writing)?
+                        .get(amount)?
+                        .clone()
+                } else {
+                    let input = writing.input(*rhs, None);
+                    let part = WriteSource::Part {
+                        of: Box::new(WriteSource::Input(input)),
+                        index: u32::try_from(amount).ok()?,
+                    };
+                    let ty = SqlType::of_column(&target.columns().get(amount)?.1)?.param();
+                    writing.param(part, ty)
+                };
                 let sum = match op {
-                    BinaryOp::Add => text::plus(lhs.get(amount)?, rhs.get(amount)?, false),
-                    _ => text::minus(lhs.get(amount)?, rhs.get(amount)?),
+                    BinaryOp::Add => text::plus(lhs.get(amount)?, &rhs, false),
+                    _ => text::minus(lhs.get(amount)?, &rhs),
                 };
                 let mut out = lhs;
                 out[amount] = text::money_minor(&sum);
