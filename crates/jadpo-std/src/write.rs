@@ -74,6 +74,13 @@ pub enum WriteSource {
         bound: String,
         id: Box<WriteSource>,
     },
+    /// The variant from `of`, of an enum without data, written by the name
+    /// at its place in `stored`, the one it was born with (area 5, "What a
+    /// rename keeps"); `NULL` for no value.
+    Variant {
+        of: Box<WriteSource>,
+        stored: Vec<String>,
+    },
 }
 
 /// One parameter: `$1` is the first.

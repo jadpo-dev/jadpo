@@ -1745,6 +1745,15 @@ fn field_columns(
         };
         return Some(vec![(field.born.clone(), writing.param(source, ty))]);
     }
+    // A variant, by the name it was born with where any differs from its
+    // own (area 5, "What a rename keeps").
+    if field.stored_variants.is_some() {
+        let source = WriteSource::Variant {
+            of: Box::new(source.clone()),
+            stored: crate::queries::stored_names(field),
+        };
+        return Some(vec![(field.born.clone(), writing.param(source, ty))]);
+    }
     if field.compound.is_none() {
         return Some(vec![(
             field.born.clone(),

@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use jadpo_cli::{Output, run};
 use jadpo_interp::Program;
-use jadpo_runtime::{Clock, Ctx, Env, Executor, Outcome};
+use jadpo_runtime::{Clock, Ctx, Database as _, Env, Executor, Outcome};
 use jadpo_term::Environment;
 use jadpo_test::host::Harness;
 use jadpo_value::Value;
@@ -578,4 +578,356 @@ fn renaming_a_stored_field_keeps_its_rows_on_both_executors() {
         column(&read, "importance"),
         vec![Value::Int(3), Value::Int(2), Value::Int(1)]
     );
+}
+
+/// A tracking app: a todo's status, an enum without data, stored in a
+/// `text` column, and its label, an object stored as JSON that holds a
+/// status too; read by a query given a status and by one comparing with a
+/// variant written out.
+const TRACKING: &[(&str, &str)] = &[
+    ("app.jadpo", "application {}\n"),
+    (
+        "domains/planning/entities/todo.jadpo",
+        "use planning/types { Label, Status }\n\n/// Something to do.\nentity Todo {\n    id: Uuid\n    title: Text\n    status: Status\n    label: Label\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n}\n",
+    ),
+    (
+        "domains/planning/types/status.jadpo",
+        "/// Where a todo stands.\ntype Status = Enum {\n    open\n    done\n}\n",
+    ),
+    (
+        "domains/planning/types/label.jadpo",
+        "use planning/types { Status }\n\n/// What a todo is marked with.\ntype Label = Object {\n    line: Text\n    stage: Status\n}\n",
+    ),
+    (
+        "domains/planning/actions/add_todo.jadpo",
+        "use planning/entities { Todo }\n\n/// Adds a todo.\naction add_todo(title: Todo.title, status: Todo.status, label: Todo.label) -> Todo {\n    return Todo.create {\n        set: {\n            title: title\n            status: status\n            label: label\n        }\n    }\n}\n",
+    ),
+    (
+        "domains/planning/queries/todos_in.jadpo",
+        "use planning/entities { Todo }\nuse planning/types { Status }\n\n/// The todos at one status, by title.\nquery todos_in(status: Status) -> List<Todo> {\n    from: Todo\n    where: Todo.status == status\n    order: [Todo.title asc]\n    limit: 50\n}\n",
+    ),
+    (
+        "domains/planning/actions/todos_at.jadpo",
+        "use planning/entities { Todo }\nuse planning/queries { todos_in }\nuse planning/types { Status }\n\n/// The todos at one status.\naction todos_at(status: Status) -> List<Todo> {\n    return todos_in(status)\n}\n",
+    ),
+    (
+        "domains/planning/actions/open_list.jadpo",
+        "use planning/entities { Todo }\nuse planning/queries { open_todos }\n\n/// The open todos.\naction open_list() -> List<Todo> {\n    return open_todos()\n}\n",
+    ),
+    (
+        "domains/planning/queries/open_todos.jadpo",
+        "use planning/entities { Todo }\nuse planning/types { Status }\n\n/// The open todos, by title.\nquery open_todos() -> List<Todo> {\n    from: Todo\n    where: Todo.status == Status.open\n    order: [Todo.title asc]\n    limit: 50\n}\n",
+    ),
+];
+
+/// The tracking app in `folder(name)`, its first migration and its
+/// records written.
+fn tracking(name: &str) -> PathBuf {
+    let root = folder(name);
+    for (path, text) in TRACKING {
+        write(&root, path, text);
+    }
+    ok(&jadpo(&root, &["migrate", "new", "initial"]));
+    ok(&jadpo(&root, &["records", "update"]));
+    ok(&jadpo(&root, &["check"]));
+    root
+}
+
+/// Whether the next `jadpo migrate new` finds nothing to migrate.
+fn nothing_to_migrate(root: &Path) {
+    let migrate = jadpo(root, &["migrate", "new", "after_rename"]);
+    ok(&migrate);
+    assert!(
+        migrate.stdout.starts_with("Nothing to migrate"),
+        "{}",
+        migrate.stdout
+    );
+}
+
+#[test]
+fn a_variant_a_column_stores_keeps_the_name_it_was_stored_by() {
+    let root = tracking("variant");
+    let output = jadpo(&root, &["rename", "Status.open", "active"]);
+    assert_eq!(output.stderr, "");
+    ok(&output);
+    assert!(
+        output.stdout.contains(
+            "  database/identities.jadpo_record\n    + variant planning.Status.open  now active\n"
+        ),
+        "{}",
+        output.stdout
+    );
+    assert!(
+        output.stdout.ends_with(
+            "Renamed Status.open to Status.active\n    kept  value open in todo.status, todo.label\n"
+        ),
+        "{}",
+        output.stdout
+    );
+    assert!(
+        read(&root, "domains/planning/queries/open_todos.jadpo")
+            .contains("where: Todo.status == Status.active\n")
+    );
+    ok(&jadpo(&root, &["check"]));
+    nothing_to_migrate(&root);
+}
+
+#[test]
+fn a_field_of_an_object_stored_as_json_keeps_its_member() {
+    let root = tracking("json-field");
+    let output = jadpo(&root, &["rename", "Label.line", "text"]);
+    assert_eq!(output.stderr, "");
+    ok(&output);
+    assert!(
+        output
+            .stdout
+            .ends_with("Renamed Label.line to Label.text\n    kept  member line in todo.label\n"),
+        "{}",
+        output.stdout
+    );
+    assert_eq!(
+        read(&root, "database/identities.jadpo_record"),
+        format!("{REGISTRY_HEADER}\nfield planning.Label.line -> text\n")
+    );
+    ok(&jadpo(&root, &["check"]));
+    nothing_to_migrate(&root);
+    // The type that holds it, renamed too: no stored value names a type.
+    ok(&jadpo(&root, &["rename", "Label", "Tag"]));
+    ok(&jadpo(&root, &["check"]));
+    nothing_to_migrate(&root);
+}
+
+#[test]
+fn a_declaration_written_by_hand_with_a_born_name_is_refused() {
+    let root = tracking("born-by-hand");
+    ok(&jadpo(&root, &["rename", "add_todo", "create_todo"]));
+    ok(&jadpo(&root, &["rename", "Todo.title", "name"]));
+    ok(&jadpo(&root, &["rename", "Status.open", "active"]));
+    // A new action called what `create_todo` was born, a new field called
+    // what `Todo.name` was, and a new variant called what `active` was.
+    write(
+        &root,
+        "domains/planning/actions/add_todo.jadpo",
+        "/// Does nothing yet.\naction add_todo() -> Unit {}\n",
+    );
+    let entity = read(&root, "domains/planning/entities/todo.jadpo");
+    write(
+        &root,
+        "domains/planning/entities/todo.jadpo",
+        &entity.replace("    name: Text\n", "    name: Text\n    title: Text?\n"),
+    );
+    let status = read(&root, "domains/planning/types/status.jadpo");
+    write(
+        &root,
+        "domains/planning/types/status.jadpo",
+        &status.replace("    done\n", "    done\n    open\n"),
+    );
+    let check = jadpo(&root, &["check"]);
+    assert_eq!(check.code, 1, "{}", check.stdout);
+    for (headline, reason) in [
+        (
+            "error: `add_todo` is the name `create_todo` was born with",
+            "  reason: Stored records and the review know `create_todo` by the name it was born with, so a new action can't take `add_todo` while `create_todo` keeps that identity.",
+        ),
+        (
+            "error: `title` is the name `Todo.name` was born with",
+            "  reason: Stored records and the review know `Todo.name` by the name it was born with, so a new field can't take `title` while `Todo.name` keeps that identity.",
+        ),
+        (
+            "error: `open` is the name `Status.active` was born with",
+            "  reason: Stored records and the review know `Status.active` by the name it was born with, so a new variant can't take `open` while `Status.active` keeps that identity.",
+        ),
+    ] {
+        assert!(
+            check.stdout.contains(headline),
+            "{headline}\n{}",
+            check.stdout
+        );
+        assert!(check.stdout.contains(reason), "{reason}\n{}", check.stdout);
+    }
+    assert!(
+        check
+            .stdout
+            .contains("rule: semantic.duplicate_declaration"),
+        "{}",
+        check.stdout
+    );
+}
+
+/// `name`'s plan number among the program's queries.
+fn query_number(program: &Program, name: &str) -> u32 {
+    program
+        .plan()
+        .queries()
+        .iter()
+        .position(|query| query.name == name)
+        .unwrap_or_else(|| panic!("no query `{name}`")) as u32
+}
+
+/// Query `name` read on the compiled executor with `args`.
+fn compiled_named(
+    program: &Program,
+    compiled: &jadpo_runtime::compiled::Program,
+    host: &Harness,
+    name: &str,
+    args: &[Value],
+) -> Value {
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    let number = query_number(program, name);
+    let ran = runtime.block_on(async {
+        let env = Env {
+            seed: Some(1),
+            clock: Clock::TEST,
+        };
+        let mut ctx = Ctx::of(compiled, host, env);
+        jadpo_runtime::compiled::query(&mut ctx, compiled, number, args, 0).await
+    });
+    ran.unwrap_or_else(|stop| panic!("the compiled query `{name}` stopped: {stop:?}"))
+}
+
+/// A status by its name and place.
+fn status(name: &str, ordinal: u32) -> Value {
+    Value::variant("Status", ordinal, name, Vec::new())
+}
+
+/// A label of `line` at `stage`.
+fn label(line: &str, stage: Value) -> Value {
+    Value::record(
+        "Label",
+        vec![
+            (std::rc::Rc::from("line"), Value::text(line)),
+            (std::rc::Rc::from("stage"), stage),
+        ],
+    )
+}
+
+#[test]
+fn renaming_a_variant_and_a_json_field_keeps_stored_values_on_both_executors() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let root = tracking("stored-names");
+    let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
+    let url = server
+        .create_database("rename_stored_names")
+        .expect("database");
+    ok(&jadpo(&root, &["migrate", "apply", "--url", &url]));
+    let host = Harness::postgres(&url).random_from(0);
+    {
+        let loaded = jadpo_db::load(&root);
+        let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+        for (title, stage) in [("Post the letters", 0), ("Book the room", 1)] {
+            let name = ["open", "done"][stage as usize];
+            interpreted(
+                &program,
+                &host,
+                "add_todo",
+                vec![
+                    Value::text(title),
+                    status("open", 0),
+                    label(title, status(name, stage)),
+                ],
+            );
+        }
+    }
+    ok(&jadpo(&root, &["rename", "Status.open", "active"]));
+    ok(&jadpo(&root, &["rename", "Label.line", "text"]));
+    ok(&jadpo(&root, &["migrate", "status", "--url", &url]));
+    let loaded = jadpo_db::load(&root);
+    let program = Program::load(&loaded.db, loaded.project).expect("the renamed project checks");
+    let compiled = compiled(&program);
+    let active = status("active", 0);
+    // A row written after the rename is stored as one written before.
+    interpreted(
+        &program,
+        &host,
+        "add_todo",
+        vec![
+            Value::text("Water the plants"),
+            active.clone(),
+            label("Water the plants", active.clone()),
+        ],
+    );
+    let titles = vec![
+        Value::text("Book the room"),
+        Value::text("Post the letters"),
+        Value::text("Water the plants"),
+    ];
+    let labels = vec![
+        label("Book the room", status("done", 1)),
+        label("Post the letters", active.clone()),
+        label("Water the plants", active.clone()),
+    ];
+    let relabelled = |list: &Value| -> Vec<Value> {
+        column(list, "label")
+            .into_iter()
+            .map(|value| match value {
+                Value::Record(record) => label(
+                    match record.get("text") {
+                        Some(Value::Text(text)) => text,
+                        other => panic!("no `text`: {other:?}"),
+                    },
+                    record.get("stage").cloned().expect("a stage"),
+                ),
+                other => panic!("not a label: {other:?}"),
+            })
+            .collect()
+    };
+    for (read, executor) in [
+        (
+            interpreted(&program, &host, "todos_at", vec![active.clone()]),
+            "interpreted",
+        ),
+        (
+            compiled_named(
+                &program,
+                &compiled,
+                &host,
+                "todos_in",
+                std::slice::from_ref(&active),
+            ),
+            "compiled",
+        ),
+        (
+            interpreted(&program, &host, "open_list", Vec::new()),
+            "interpreted literal",
+        ),
+        (
+            compiled_named(&program, &compiled, &host, "open_todos", &[]),
+            "compiled literal",
+        ),
+    ] {
+        assert_eq!(column(&read, "title"), titles, "{executor}");
+        assert_eq!(
+            column(&read, "status"),
+            vec![active.clone(); 3],
+            "{executor}"
+        );
+        assert_eq!(relabelled(&read), labels, "{executor}");
+    }
+    // Stored by the names they were born with.
+    let store = jadpo_host_native::postgres(&url).expect("store");
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    let stored = runtime.block_on(async {
+        let mut transaction = store.begin().await.expect("begin");
+        let rows = transaction
+            .query(
+                "SELECT \"status\", \"label\"::text FROM \"todo\" ORDER BY \"title\"",
+                &[],
+            )
+            .await
+            .expect("query");
+        transaction.commit().await.expect("commit");
+        rows
+    });
+    let stored: Vec<String> = stored.into_iter().map(|row| format!("{:?}", row)).collect();
+    assert_eq!(stored.len(), 3);
+    for row in &stored {
+        assert!(row.contains("Text(\"open\")"), "{row}");
+        assert!(row.contains("\\\"line\\\""), "{row}");
+        assert!(
+            !row.contains("active") && !row.contains("\\\"text\\\""),
+            "{row}"
+        );
+    }
 }

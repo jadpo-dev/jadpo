@@ -353,16 +353,10 @@ work below (Richard, 2026-11-08).
       area 18, "Acceptances". The data migration and acceptances for a
       `type.standard_exists` or `type.standard_clash` swap of a type already
       stored or on the wire.
-    - [ ] **Q11 Born names kept for every rename** `opus · high`: area 14,
-      "`jadpo rename`"; notes for area 5, "What a rename keeps"; notes for
-      area 14, "A born name is a name in use". An enum variant a column stores
-      and a field of an object stored as JSON recorded in the snapshot by born
-      name, the codec reading and writing the born name, so `jadpo rename`
-      keeps their data as it keeps a column's; and `jadpo check` refusing a
-      declaration written by hand with a name another of its kind was born
-      with. Both rules go on their area pages. Done when renaming either keeps
-      its stored values on both executors and the hand-written clash is
-      refused.
+    - [x] **Q11 Born names kept for every rename**: a variant and a field
+      inside JSON stored by born name, and a born name written by hand
+      refused, in area 5, "What a rename keeps", area 14, "`jadpo rename`",
+      area 18, "Stable identity", and their notes.
     - [ ] **Q8 The Redis driver** `opus · xhigh`: area 11, "No presets, no
       dependencies"; area 16, "Where the counts are kept: `rate_limits: { store: }`" and "A
       Redis store on Workers". `Driver.redis` natively and on Workers, and

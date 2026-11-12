@@ -820,9 +820,16 @@ fn references(db: &dyn Db, project: Project, keys: &[Key]) -> BTreeMap<String, V
 }
 
 /// What stored data the node's rename keeps: an entity's table, an
-/// entity field's column.
+/// entity field's column, and a variant or an object's field kept by the
+/// name it was born with in each column holding it (area 5, "What a
+/// rename keeps").
 fn kept(db: &dyn Db, project: Project, node: &Node, owner: Option<&Node>) -> Option<String> {
     let model = crate::data::data_model(db, project);
+    if let Some(owner) = owner
+        && (node.kind == Kind::Variant || owner.kind == Kind::Type)
+    {
+        return stored_member(model, node, owner);
+    }
     match node.kind {
         Kind::Entity => model
             .entities
@@ -850,6 +857,43 @@ fn kept(db: &dyn Db, project: Project, node: &Node, owner: Option<&Node>) -> Opt
         }
         _ => None,
     }
+}
+
+/// The columns holding a variant, or a field of an object stored as JSON,
+/// by the name it was born with: `value open in todo.status, todo.label`.
+fn stored_member(model: &crate::data::DataModel, node: &Node, owner: &Node) -> Option<String> {
+    use jadpo_graph::stored_json::{Named, Shape};
+    let born = node.key.name().rsplit('.').next()?;
+    let ty = owner.key.name().rsplit('.').next()?;
+    let variant = node.kind == Kind::Variant;
+    // Whether a value read as `reads` holds the member, by its born name.
+    let holds = |reads: &jadpo_graph::stored_json::Reads| match reads.types.get(ty) {
+        Some(Named::Enum { variants }) => variant && variants.contains_key(born),
+        Some(Named::Object { fields, .. }) => !variant && fields.contains_key(born),
+        None => false,
+    };
+    let mut columns = Vec::new();
+    for entity in &model.entities {
+        for field in &entity.fields {
+            let in_column = variant
+                && field.json.is_none()
+                && matches!(field.ty.strip_nullable(), crate::types::Ty::Named(name) if name == &owner.name)
+                && field.allows.values.iter().any(|value| value == born);
+            let in_json = field
+                .allows
+                .json
+                .as_ref()
+                .is_some_and(|reads| !matches!(reads.shape, Shape::Value(_)) && holds(reads));
+            if in_column || in_json {
+                columns.push(format!("{}.{}", entity.table, field.born));
+            }
+        }
+    }
+    if columns.is_empty() {
+        return None;
+    }
+    let what = if variant { "value" } else { "member" };
+    Some(format!("{what} {born} in {}", columns.join(", ")))
 }
 
 /// Each error's rule and headline, counted.
