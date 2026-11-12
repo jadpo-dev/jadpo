@@ -517,7 +517,7 @@ topics = [
 title = "Batches"
 status = [
   "12-jobs-and-events: Everything else on this page",
-  "12-jobs-and-events: `batches.each` over a provider's list operation",
+  "12-jobs-and-events: `batches.each` and the file helpers' writes over a provider's list operation",
 ]
 missing = "walking a provider's list"
 topics = [

@@ -215,6 +215,13 @@ impl BatchOp {
         matches!(self, BatchOp::Each | BatchOp::Read(_) | BatchOp::Write(_))
     }
 
+    /// Whether it takes a `from:` that its run walks a page at a time:
+    /// `batches.each`, or a file helper's write. Either may walk a named
+    /// query's pages or a provider's list (chunks J2 and J4).
+    pub fn walks_from(self) -> bool {
+        matches!(self, BatchOp::Each | BatchOp::Write(_))
+    }
+
     pub fn from_name(name: &str) -> Option<BatchOp> {
         BatchOp::ALL.into_iter().find(|op| op.name() == name)
     }

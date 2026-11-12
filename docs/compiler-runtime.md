@@ -2204,7 +2204,10 @@ batch couldn't commit gives its lease back (`batches::give_back`), and a
 step that moves the clock picks up the runs with no lease, as the tick
 does (`batches::waiting`). A run over a provider's list asks for each
 page as the system before its batch's transaction opens, then holds its
-row to the position the page was asked after (`batches::listed`); with
+row to the position the page was asked after (`batches::listed`), and a
+file helper's write over one asks for each page the same way once the
+transaction that read its position has ended, writing it as a piece of
+the file (`batches::export`); with
 runs kept in several stores, a runner copies a cancel an action kept in
 another store beside its run before each batch (`batches::copy_cancel`),
 and `batches.status` asks each store in turn.

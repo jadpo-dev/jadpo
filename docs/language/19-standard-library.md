@@ -8797,6 +8797,266 @@ A JSON Lines row may hold lists and objects, which is why a CSV row that
 needs them is pointed here. Encodings and gzip are as for `csv`, and a
 JSON Lines file takes no `format:`.
 
+A writer's `from:` may be a provider's list operation, walked by
+`page.next` as `batches.each` walks one
+([Walking records or a provider's list](12-jobs-and-events.md#walking-records-or-a-providers-list-batcheseach)).
+A club writes every member Acme Clubs lists into a JSON Lines file, a
+page at a time: each page the provider gives is asked for once the page
+before is in the store, with its cursor in the input's `after:`, and its
+rows are one piece of the file:
+
+```jadpo check project=json-lines-provider-export file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        clubs: {
+            package: AcmeClubs.v1
+            domains: [club]
+            environment: config.clubs_environment
+        }
+        member_files: {
+            driver: Driver.disk
+            path: "/var/lib/club/members"
+        }
+    }
+}
+```
+
+```jadpo check project=json-lines-provider-export file=config.jadpo hidden
+config {
+    clubs_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+```jadpo check project=json-lines-provider-export file=shared/providers/acme_clubs/v1/package.jadpo hidden
+/// Acme Clubs' membership API.
+package AcmeClubs.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=json-lines-provider-export file=shared/providers/acme_clubs/v1/provider.jadpo hidden
+/// Acme Clubs' membership API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-clubs.example"
+        sandbox: "https://sandbox.acme-clubs.example"
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=json-lines-provider-export file=shared/providers/acme_clubs/v1/resources/members.jadpo hidden
+public resource members {
+    list: {
+        method: HttpMethod.get
+        path: "/v1/members"
+        input: MembersAsked
+        output: Page<Member>
+        changes: false
+        source: PackageSource.written
+        docs: "https://docs.acme-clubs.example/members"
+    }
+}
+```
+
+```jadpo check project=json-lines-provider-export file=shared/providers/acme_clubs/v1/types/member_id.jadpo hidden
+/// The club's reference for a member.
+public type MemberId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=json-lines-provider-export file=shared/providers/acme_clubs/v1/types/member.jadpo hidden
+/// One member of the club.
+public type Member = Object {
+    id: MemberId
+}
+```
+
+```jadpo check project=json-lines-provider-export file=shared/providers/acme_clubs/v1/types/members_asked.jadpo hidden
+/// Which page of the club's members to list.
+public type MembersAsked = Object {
+    after: PageCursor?
+}
+```
+
+```jadpo check project=json-lines-provider-export file=domains/club/types/member_line.jadpo hidden
+use shared/providers/acme_clubs
+
+/// One member's line in the club's file.
+type MemberLine = Output {
+    member: AcmeClubs.MemberId
+}
+```
+
+```jadpo check project=json-lines-provider-export file=domains/club/entities/member_roll.jadpo hidden
+/// One file of the club's members.
+entity MemberRoll {
+    id: Uuid
+    members_file: File? {
+        store: member_files
+        max_size: 20mb
+        types: [FileType.json_lines]
+    }
+    members_listed: Int?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+```
+
+```jadpo check project=json-lines-provider-export file=domains/club/actions/open_member_roll.jadpo hidden
+use club/entities { MemberRoll }
+
+/// Opens a list of the members, its file still to come.
+action open_member_roll() -> MemberRoll {
+    return MemberRoll.create {
+        set: {
+            members_file: none
+            members_listed: none
+        }
+    }
+}
+```
+
+```jadpo check project=json-lines-provider-export file=domains/club/actions/members_listed.jadpo hidden
+use club/entities { MemberRoll, MemberRollNotFound }
+
+/// Keeps the written file, and how many members it lists.
+action members_listed(
+    done: ExportSummary,
+    list_id: MemberRoll.id
+) fails MemberRollNotFound -> Unit {
+    attempt MemberRoll.update(list_id) {
+        set: {
+            members_file: done.file
+            members_listed: done.items
+        }
+    }
+}
+```
+
+```jadpo check project=json-lines-provider-export file=domains/club/actions/listing_progress.jadpo hidden
+/// How far a listing's walk has got.
+action listing_progress(listing: BatchRun) -> BatchProgress {
+    return batches.status(listing)
+}
+```
+
+`domains/club/actions/list_members.jadpo`:
+
+```jadpo check project=json-lines-provider-export file=domains/club/actions/list_members.jadpo migrate=initial
+use app { clubs, member_files }
+use club/entities { MemberRoll }
+use club/types { MemberLine }
+use club/actions { members_listed }
+use shared/providers/acme_clubs
+
+/// Starts writing every member of the club into a file, once.
+action list_members(list_id: MemberRoll.id) -> BatchRun {
+    var asked_for: AcmeClubs.MembersAsked = AcmeClubs.MembersAsked {
+        after: none
+    }
+    return json_lines.write(
+        member_files,
+        name: "members.jsonl",
+        from: clubs.members.list(asked_for),
+        each: member -> MemberLine {
+            member: member.id
+        },
+        finished: done -> members_listed(done, list_id),
+        key: list_id
+    )
+}
+```
+
+`domains/club/actions/list_members.test.jadpo`:
+
+```jadpo check project=json-lines-provider-export file=domains/club/actions/list_members.test.jadpo
+use app { clubs }
+use club/entities { MemberRoll }
+use club/actions { listing_progress, open_member_roll }
+use shared/providers/acme_clubs
+
+test "every page of the club's members is written" {
+    fakes: {
+        clubs.members.list: [
+            Page {
+                items: [
+                    AcmeClubs.Member {
+                        id: "m-1"
+                    },
+                    AcmeClubs.Member {
+                        id: "m-2"
+                    }
+                ]
+                next: "page-2"
+            },
+            Page {
+                items: [
+                    AcmeClubs.Member {
+                        id: "m-3"
+                    }
+                ]
+                next: none
+            }
+        ]
+    }
+    var roll_file: MemberRoll = open_member_roll()
+    var listing: BatchRun = list_members(roll_file.id)
+    var listing_state: BatchProgress = listing_progress(listing)
+    assert listing_state.state == BatchState.finished
+    var filed_roll: MemberRoll = attempt MemberRoll.get(roll_file.id)
+    assert filed_roll.members_listed == 3
+    assert filed_roll.members_file != none
+    assert list.map(clubs.members.list.requests, sent -> sent.after) == [none, "page-2"]
+}
+
+test "a page the club can't give yet is asked for again" {
+    fakes: {
+        clubs.members.list: [
+            unavailable,
+            unavailable,
+            unavailable,
+            Page {
+                items: [
+                    AcmeClubs.Member {
+                        id: "m-1"
+                    }
+                ]
+                next: none
+            }
+        ]
+    }
+    var roll_file: MemberRoll = open_member_roll()
+    var listing: BatchRun = list_members(roll_file.id)
+    var waiting: BatchProgress = listing_progress(listing)
+    assert waiting.state == BatchState.running
+    clock.advance(1m)
+    var walk_end: BatchProgress = listing_progress(listing)
+    assert walk_end.state == BatchState.finished
+    assert walk_end.items_done == 1
+    assert list.map(clubs.members.list.requests, sent -> sent.after) == [none, none, none, none]
+}
+```
+
+The first test scripts the provider's two pages: the file is written
+from both, the second asked for with the first's `next`, `"page-2"`. In
+the second, the club can't give its first page in any of the call's
+three tries ([Time limits and retries](11-integrations.md#time-limits-and-retries)),
+so the run waits, and asks for it again, with the same cursor, when the
+tick carries it on.
+
 > Not built yet: reading legacy encodings. They come when an application
 > needs one.
 >
