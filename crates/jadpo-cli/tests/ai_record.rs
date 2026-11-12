@@ -236,7 +236,7 @@ fn a_recording_made_by_jadpo_ai_record_answers_a_test() {
     assert!(
         tested
             .stdout
-            .contains("2 passed, 1 action test, 1 recording test")
+            .contains("5 passed, 1 action test, 1 recording test, 3 generated tests")
             && !tested.stdout.contains("alert"),
         "{}",
         tested.stdout

@@ -940,20 +940,21 @@ fn caller(app: &App<'_>, route: &RoutePlan, key: &str) -> Option<Caller> {
             None
         }
     })?;
+    // A new identity from the test's key, read as a stored id is.
     let seed = jadpo_runtime::test_run::seed(key);
-    let id = format!(
-        "{:08x}-{:04x}-4{:03x}-8{:03x}-{:012x}",
-        seed >> 32,
-        (seed >> 16) & 0xffff,
-        (seed >> 4) & 0xfff,
-        seed & 0xfff,
-        seed & 0xffff_ffff_ffff
-    );
+    let mut bytes = [0u8; 16];
+    bytes[..8].copy_from_slice(&seed.to_be_bytes());
+    bytes[8..].copy_from_slice(&jadpo_runtime::test_run::splitmix(seed).to_be_bytes());
+    let id = jadpo_runtime::from_sql(
+        &jadpo_runtime::SqlValue::Uuid(bytes),
+        &jadpo_std::read::Column::Uuid,
+    )
+    .ok()?;
     Some(Caller {
         key: format!("{} {id}", kind.name()),
         value: jadpo_runtime::http::identity::principal_of(
             kind,
-            jadpo_value::Value::Uuid(id.as_str().into()),
+            id,
             jadpo_value::Value::None,
             true,
         ),

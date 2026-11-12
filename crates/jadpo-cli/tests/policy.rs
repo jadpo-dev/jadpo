@@ -869,7 +869,13 @@ fn policy_decides_what_each_caller_reads_writes_and_revokes() {
     write(&root, "domains/desk/routes/desk.test.jadpo", TESTS);
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("7 passed"), "{}", tested.stdout);
+    assert!(
+        tested
+            .stdout
+            .contains("21 passed, 1 action test, 6 route tests, 14 generated tests"),
+        "{}",
+        tested.stdout
+    );
 }
 
 // --- through the runtime ---------------------------------------------------------
@@ -1866,7 +1872,13 @@ fn a_field_the_caller_may_not_change_refuses_the_whole_write() {
     );
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("2 passed"), "{}", tested.stdout);
+    assert!(
+        tested
+            .stdout
+            .contains("21 passed, 2 route tests, 19 generated tests"),
+        "{}",
+        tested.stdout
+    );
 }
 
 #[test]
@@ -1878,7 +1890,13 @@ fn a_reference_stays_inside_its_tenant_so_an_include_of_its_parent_proves() {
     write(&root, "domains/ledger/routes/tasks.test.jadpo", TASK_TESTS);
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("2 passed"), "{}", tested.stdout);
+    assert!(
+        tested
+            .stdout
+            .contains("21 passed, 2 route tests, 19 generated tests"),
+        "{}",
+        tested.stdout
+    );
     // `jadpo sql` shows the check in the create's statement.
     let shown = jadpo(&root, &["sql", "add_task"]);
     assert_eq!(shown.code, 0, "{}{}", shown.stdout, shown.stderr);
@@ -2743,7 +2761,13 @@ fn tenancy_seats_only_founders_moves_need_a_seat_and_a_field_refusal_comes_first
     write(&root, "domains/craft/routes/guilds.test.jadpo", GUILD_TESTS);
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("3 passed"), "{}", tested.stdout);
+    assert!(
+        tested
+            .stdout
+            .contains("17 passed, 3 route tests, 14 generated tests"),
+        "{}",
+        tested.stdout
+    );
 }
 
 #[test]

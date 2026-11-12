@@ -221,7 +221,7 @@ fn jadpo_test_embeds_through_the_fake_and_answers_from_recordings() {
     assert!(
         tested
             .stdout
-            .contains("tested: 4 passed, 3 action tests, 1 recording test"),
+            .contains("tested: 6 passed, 3 action tests, 1 recording test, 2 generated tests"),
         "{}",
         tested.stdout
     );

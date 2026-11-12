@@ -854,5 +854,11 @@ fn the_compiled_version_route_fixture_checks_and_runs() {
     }
     let output = jadpo_cli::run(&["test".into(), "--seed".into(), "1".into()], &terminal);
     assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
-    assert!(output.stdout.contains("1 passed"), "{}", output.stdout);
+    assert!(
+        output
+            .stdout
+            .contains("4 passed, 1 route test, 3 generated tests"),
+        "{}",
+        output.stdout
+    );
 }

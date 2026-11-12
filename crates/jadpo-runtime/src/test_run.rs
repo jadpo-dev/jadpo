@@ -235,7 +235,6 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
 /// the test's context, keeping what each was answered with in `answers`:
 /// a `Unit` value, or the fault behind a 500, which ends the test as a
 /// route test's does.
-#[cfg(feature = "testing")]
 async fn exchanged(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
@@ -258,21 +257,6 @@ async fn exchanged(
         });
     }
     Outcome::Value(jadpo_value::Value::Unit)
-}
-
-/// A program built without `testing` sends no generated test's requests:
-/// only `jadpo test` runs them.
-#[cfg(not(feature = "testing"))]
-async fn exchanged(
-    _executor: &dyn Executor,
-    ctx: &mut Ctx<'_>,
-    _exchanges: &[Exchange],
-    _answers: &mut Vec<Answer>,
-) -> Outcome {
-    Outcome::Fault(ctx.fault(
-        FaultKind::Defect("a generated test outside `jadpo test`".into()),
-        0,
-    ))
 }
 
 /// The check generated for each person a test erases (area 15, "Export"):

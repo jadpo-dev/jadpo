@@ -2402,14 +2402,51 @@ the project as it was typed (`examples/07-testing/domains/…`).
 The editor shows a run button above each test and the last result beside
 it, through the language server.
 
-Not built yet: the tests the compiler is to generate from facts it
-already has, run with your tests and shown in the report under the route
-they test:
+### Tests generated for each route
 
-- every route refuses bad input with `{ field, rule }` details;
-- every declared failure reaches the client in the right envelope and
-  status;
-- no output has a field its type doesn't declare.
+`jadpo test` also runs tests it writes itself for every route the
+application declares, from what the route's
+[OpenAPI document](07-http.md#openapi) says a client gets. You write
+nothing for them. Each is named after its route and sits at the route's
+lines, so the report shows it under the route it tests, and a file, a
+line, `--name` and `--kind route` pick it as they pick any test:
+
+- **`POST /items refuses bad input with { field, rule }`** sends a member
+  the input doesn't declare, in the query string and in the body; leaves
+  out each required member; gives each member of the body a value of
+  another kind, and one past its `min:`, `max:`, `min_length:` or
+  `max_length:`; and gives each placeholder or query member that is a
+  number, a yes-or-no or a `Uuid` text it can't read. Each answer is 422
+  `invalid_input` with the problem it made among `details.problems`, every
+  problem `{ field, rule }` alone, and nothing it sent sent back.
+- **`POST /items sends each failure it declares in its envelope`** has the
+  route answer with each failure its document lists, a value made for
+  each client field. Each reaches the client with the status the document
+  gives, its `code`, a `message`, the `request_id` the `x-request-id`
+  header repeats, and `details` holding exactly its client fields.
+- **`POST /items sends only the fields its output declares`** has the route
+  answer with a value made for its output. The answer has the success
+  status, and no member its schema doesn't declare, however deep.
+
+A generated test's request is answered as a caller of the kind the route
+takes, without signing in, since what it checks comes after sign-in. The
+failure and the output are given in place of what the route runs, so no
+data is needed. Values are made as a fake's defaults are
+([Values a fake answers with](#values-a-fake-answers-with)), so a route
+whose placeholders, input or output hold something no value can be made
+for, such as text with a `pattern:`, gets only its bad-input test.
+
+The footer counts them apart, `tested: 7 passed, 1 route test, 6
+generated tests`. `--json` marks each `generated: true` and counts them
+in `counts.generated`; with `--full`, each lists the requests it sent and
+what each answer was to be. One that fails is `test.assertion_failed` at
+the route, with the request, what it was to be answered with and what it
+was. The route and its document are both the compiler's work, so such a
+failure is a fault in Jadpo to report, never one in your code.
+
+Not built yet: the test for a person entity no test erases
+([Export](15-personal-data.md#export)), and these tests inside workerd.
+They run interpreted and natively compiled.
 
 ## The test database
 <!-- topic: the-test-database -->
@@ -2710,7 +2747,7 @@ Not built yet: caches, which need the Redis driver.
 | `assert emitted` | Built: `assert emitted Event { ... }` holds when an event of that type the test's committed steps or their deliveries emitted has the fields it gives; the report shows each emitted event of that type, and with one, a diff of the fields given. A batch's items run on their own runner, and the events they emit aren't listed. |
 | The trace `--keep-failed` keeps, for `jadpo trace` | Not built yet: it comes with [Debugging and review](17-debugging-and-review.md). |
 | Interactive mode | Built: `jadpo test --interactive` opens the keyboard view on the alternate screen: each domain and file with its tests and their last results (the project's record keeps passes as well as failures), search as you type, `enter` on a file or test, `a`, `f`, `o` for a failure's report as `jadpo test` prints it, `w` to watch, on the same long-lived session as `--watch`. A build with errors shows them in the view. On quit, the last run's footer is left in the scrollback. It refuses `--json`, a missing terminal, and a path, `--name`, `--kind`, `--failed` or `--affected`, as `cli.test_arguments`. |
-| Generated tests | Partly built: every person a test erases is checked once its deliveries are done, and an [`export`](15-personal-data.md#export) of them that holds anything ends the test as a fault. Not built yet: a generated test for a person entity no test erases, which waits for data builders, and the rest of this list ("In the editor"). |
+| Generated tests | Partly built: for every route the application declares, `jadpo test` runs a test that it refuses bad input with `{ field, rule }`, one that each failure its OpenAPI document lists reaches the client in its envelope with its status, and one that its output sends no member its schema doesn't declare, each at the route's lines and counted apart, interpreted and natively compiled ("Tests generated for each route"). Every person a test erases is checked once its deliveries are done, and an [`export`](15-personal-data.md#export) of them that holds anything ends the test as a fault. Not built yet: a generated test for a person entity no test erases, and generated tests inside workerd. |
 | Caches in tests | Not built yet: caches need the Redis driver. |
 | Golden application contract | Built: the shared black-box harness in `benchmarks/contract/` executes all 44 versioned application cases interpreted, on generated native code and on compiled workerd, with real credential verification, raw invalid inputs, physical SQL observation, persisted-state assertions, controlled clocks and provider faults. These checks supplement authored Jadpo tests; they add no application-facing test controls. Full-gate ownership is interpreted and native in `compiled`, workerd in `wasm32`, and verifier negative controls in `lint`. |
 | `test.no_tests` | Built: raised by `jadpo test` only ([Tools](14-tooling.md)), when the project has no tests or a file, line, name, kind or `--failed` picks none. |

@@ -92,8 +92,9 @@ fn passes(root: &Path, limits: &str, tests: &str, count: usize) {
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let tested = jadpo(root, &["test"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    // With the three generated for its route (area 13).
     assert!(
-        tested.stdout.contains(&format!("{count} passed")),
+        tested.stdout.contains(&format!("{} passed", count + 3)),
         "{}{}",
         tested.stdout,
         tested.stderr

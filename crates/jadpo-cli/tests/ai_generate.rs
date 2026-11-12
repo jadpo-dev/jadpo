@@ -195,7 +195,9 @@ fn jadpo_test_drives_every_failure_and_a_repair_through_the_fake() {
     let tested = jadpo(&root, &["test"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
     assert!(
-        tested.stdout.contains("8 passed"),
+        tested
+            .stdout
+            .contains("11 passed, 8 action tests, 3 generated tests"),
         "{}{}",
         tested.stdout,
         tested.stderr

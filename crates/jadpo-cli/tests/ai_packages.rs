@@ -875,7 +875,9 @@ fn jadpo_test_fakes_the_packages_stream_and_embeddings() {
     let tested = jadpo(&root, &["test"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
     assert!(
-        tested.stdout.contains("3 passed"),
+        tested
+            .stdout
+            .contains("10 passed, 2 action tests, 1 route test, 7 generated tests"),
         "{}{}",
         tested.stdout,
         tested.stderr

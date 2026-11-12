@@ -85,10 +85,11 @@ pub fn json(run: &Run) -> Json {
                         // With `--full`, what a generated test sent and
                         // what each answer was to be (area 13).
                         if run.full
-                            && let Some(made) = run.generated.get(&result.test.key)
                             && let Json::Object(fields) = &mut entry
                         {
-                            fields.push(("requests".to_string(), requests(made)));
+                            let made = run.generated.get(&result.test.key);
+                            fields
+                                .push(("requests".to_string(), made.map_or(Json::Null, requests)));
                         }
                         entry
                     }),
@@ -135,10 +136,7 @@ fn requests(made: &crate::generated::Generated) -> Json {
             } => Json::object([
                 ("status", Json::from(i64::from(*status))),
                 ("code", Json::from(code)),
-                (
-                    "details",
-                    Json::array(details.iter().map(|name| Json::from(name))),
-                ),
+                ("details", Json::array(details.iter().map(Json::from))),
             ]),
             Expect::Output { status, .. } => {
                 Json::object([("status", Json::from(i64::from(*status)))])
@@ -559,7 +557,7 @@ pub fn schema() -> Json {
                 ),
                 (
                     "requests",
-                    "With --full, for a generated test: each request it sends, { request (its first line), does, expected: { status, and code, field and rule for bad input, code and details for a failure } }",
+                    "With --full: for a generated test, each request it sends, { request (its first line), does, expected: { status, and code, field and rule for bad input, code and details for a failure } }; null for a test the project writes",
                 ),
                 ("outcome", "passed or failed"),
                 ("failure", "Only when it failed"),
