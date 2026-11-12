@@ -304,8 +304,8 @@ pub const IDEMPOTENCY_KEYS: SystemTable = SystemTable {
 
 /// Each schedule's state (area 12, "Schedules"; chunk 6.2): the interval
 /// its due times were worked out with, when it is next due, whether an
-/// operator paused it, the lease that lets one instance run it at a time
-/// and the run holding it, the last tick that reached it, and when its
+/// operator paused it, the lease that lets one instance run it at a time,
+/// the run and the instance holding it, the last tick that reached it, and when its
 /// last successful run started, which the alerts read (chunk 6.2b). In
 /// `schedules: { store: }`.
 pub const SCHEDULES: SystemTable = SystemTable {
@@ -327,6 +327,10 @@ pub const SCHEDULES: SystemTable = SystemTable {
         // raised (chunk 6.9), so of several instances' ticks one raises
         // each.
         column("alerts", SqlType::Json, true),
+        // The instance holding the lease, by the name its host gave it
+        // (area 12, "Watching schedules"): while a run holds it, or after
+        // its worker was lost. `NULL` where the host names none.
+        column("lease_holder", SqlType::Text, true),
     ],
     primary_key: &["schedule"],
     unique: &[],

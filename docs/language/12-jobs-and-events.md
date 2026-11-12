@@ -3586,15 +3586,16 @@ stops short.
   follow-on work stops waiting, as when `within:` passes. The server
   waits at most 10 seconds for this, then ends, and `jadpo dev` exits 0.
   A second signal ends the process at once, with 143 for SIGTERM or 130
-  for SIGINT. If the signals can't be watched, `jadpo dev` runs without
-  them, and a signal ends it at once.
+  for SIGINT. If the signals can't be watched, as when the process has
+  no file descriptors left, `jadpo dev` says so with
+  [`cli.signal_handler_failed`](../errors/cli.signal_handler_failed.md)
+  and runs without them: a signal then ends it at once, and what its
+  background work held waits for its lease to end. A native deployable
+  that can't watch them doesn't start.
 - **Backfills.** A backfill worked out in Jadpo
   ([Computed backfills](05-data.md#computed-backfills)) runs its rows on
   the same runner, a batch at a time. Each value is kept and checked by
   its field's rules, as any value of the field's type is.
-
-Not built yet: the error for signals that can't be watched,
-`cli.signal_handler_failed`.
 
 ## Events from outside
 <!-- topic: events-from-outside -->
@@ -3767,8 +3768,19 @@ never its fields.
 Each retry waits longer than the last, with random jitter, so many
 failures don't all retry at once. Each wait is drawn evenly from zero to
 a ceiling that starts at 30 seconds and doubles with each attempt, up to
-6 hours, and is never under a second. A `Retry-After` from a provider is
-honoured.
+6 hours, and is never under a second.
+
+A `Retry-After` from a provider is honoured. When an attempt ends with
+the `unavailable` raised by a refusal whose `Retry-After` gave whole
+seconds (a provider's `408` or `429`, or a webhook receiver's `408`,
+`429` or `5xx` when events are published outward), or with a failure
+mapped from it, the next attempt waits the longer of its drawn wait and the provider's. So
+the provider is never asked sooner than it said, and deliveries it
+refused together still spread out after it. A wait that would put the
+next attempt more than `within:` after the event fails the delivery, as
+any other wait does. A `Retry-After` that gives a date is read as giving
+no wait, as a call's own retries read it
+([Calling](11-integrations.md#calling)).
 
 ### How many tries: the default
 
@@ -3881,13 +3893,6 @@ You don't write anything for this.
   opened again. Its log event is
   `{"event": "delivery.alert", "alert": "connection_unavailable", "connection": …, "since": …, "held": …}`,
   and `jadpo dev` prints it with the schedules' alerts.
-
-### Not built yet
-
-`Retry-After` is built for a call's own retries within one attempt
-([Calling](11-integrations.md#calling)). Between attempts of a delivery,
-the next attempt waits its backoff, with jitter, and doesn't read
-`Retry-After`.
 
 ## What an operator sees
 <!-- topic: what-an-operator-sees -->
@@ -4041,9 +4046,18 @@ records and checks every part of a schedule's life, so you find out.
   run opens as one trace. Records are kept 30 days.
 - **Every tick is recorded too,** skipped ones included, with why (lease
   held, or paused). Each state row keeps the last tick that reached it.
+- **Each instance has a name,** which the lease it takes keeps on the
+  state row (`lease_holder`) until its run gives it back, so an operator
+  sees which copy of the app a run is going on, or was lost with. A
+  native deployable, `jadpo dev` and `jadpo schedules run` are named by
+  their machine's host name and process id, `api-2:4182`. A Worker's
+  isolate names itself at random, `worker-3fa9c1d2`, once for its life.
+  A test's host names nothing, and its leases keep no holder.
 - **`jadpo schedules`** lists each schedule with its last run and next
   due time (or `‖ paused`), the alerts that hold, and a footer. A run
-  holding the lease shows as the last run, `● running`, with its start.
+  holding the lease shows as the last run, `● running`, with its start
+  and the instance it is on (`· on api-2:4182`), and `--json` gives each
+  schedule's `leaseHolder`.
   Recent failures are the failed runs since the last success, shown
   beside a failed last run (`· 3 in a row`). The command succeeds
   whatever it lists, a failed last run or an alert included, as other
@@ -4071,7 +4085,9 @@ records and checks every part of a schedule's life, so you find out.
   skipped since; no tick since a time; a lease held past its end; a run
   still holding it; a tick skipped since the last run; the last run
   failed, with its code, kind, failures before it, next due time and
-  trace; it succeeded; not due yet; or no tick has seen it. Its `.jadpo`
+  trace; it succeeded; not due yet; or no tick has seen it. A lease held,
+  or held past its end, names its instance (`instance  api-2:4182`), and
+  so does `schedules.lease_held`. Its `.jadpo`
   place is the schedule's declaration, or its doc comment's line when it
   has one. Other alerts follow. The answer is the runtime's, as data (the
   answer, the alerts that hold, a standing request), which the CLI says
@@ -4169,10 +4185,9 @@ database:
 
 ### Not built yet
 
-Three things aren't built yet: names for instances, so the lease holder
-shows as a run rather than an instance; sending the metrics and alerts
-to a monitoring tool; and the console's timeline of each schedule's runs
-and ticks ([Debugging](17-debugging-and-review.md)).
+Two things aren't built yet: sending the metrics and alerts to a
+monitoring tool, and the console's timeline of each schedule's runs and
+ticks ([Debugging](17-debugging-and-review.md)).
 
 ## Limits and runtime faults
 <!-- topic: limits-and-runtime-faults -->
@@ -4199,8 +4214,6 @@ These limits may change once they have been measured on real runs.
 | Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging](17-debugging-and-review.md)), and a record's entry in the [personal-data report](15-personal-data.md) | Not built yet. |
 | Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for [telemetry](16-built-in-services.md). |
 | The console's timeline | Not built yet ([Debugging](17-debugging-and-review.md)). |
-| `Retry-After` between a delivery's attempts | Not built yet: the next attempt waits its backoff, with jitter ([Retries and giving up](#retries-and-giving-up)). |
-| `cli.signal_handler_failed` | Not built yet ([Running background work](#running-background-work)). |
 
 ## Errors
 

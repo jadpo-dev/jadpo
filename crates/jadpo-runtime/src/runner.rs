@@ -606,8 +606,10 @@ async fn attempt(
         .saturating_add(i64::try_from(subscriber.within_ms).unwrap_or(i64::MAX));
     // An attempt that ended in a failure worth retrying is tried again
     // after a wait, while its budget lasts, and fails after.
-    let retried = |code: &str, kind: Option<&str>| {
-        let next = now.saturating_add(outbox::backoff(attempt, jitter(host)));
+    // A provider that refused it with `Retry-After` is asked no sooner
+    // than it said.
+    let retried = |code: &str, kind: Option<&str>, asked: Option<u64>| {
+        let next = now.saturating_add(outbox::wait(attempt, asked, jitter(host)));
         let failure = Some(failure_json(code, kind));
         let again = attempt < subscriber.attempts && next <= within_ms;
         async move {
@@ -636,7 +638,7 @@ async fn attempt(
             }
             Ok(_) => {}
             Err(_) => {
-                let state = retried("unavailable", Some("unavailable")).await;
+                let state = retried("unavailable", Some("unavailable"), None).await;
                 return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
             }
         }
@@ -704,7 +706,7 @@ async fn attempt(
     {
         ctx.set_resumable(None);
         let Some(fresh) = ctx.new_id() else {
-            let state = retried("unavailable", Some("unavailable")).await;
+            let state = retried("unavailable", Some("unavailable"), None).await;
             return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
         };
         ctx.set_call_key("sign-in link", jadpo_value::encoding::to_hex(&fresh));
@@ -730,7 +732,7 @@ async fn attempt(
                     .query_once(outbox::MARK_SENDING, &[id.clone(), counted.clone()])
                     .await;
                 if !matches!(marked, Ok(rows) if !rows.is_empty()) {
-                    let state = retried("unavailable", Some("unavailable")).await;
+                    let state = retried("unavailable", Some("unavailable"), None).await;
                     ctx.set_resumable(None);
                     return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
                 }
@@ -904,7 +906,7 @@ async fn attempt(
                         .query_once(outbox::MARK_SENDING, &[id.clone(), counted.clone()])
                         .await;
                     if !matches!(marked, Ok(rows) if !rows.is_empty()) {
-                        let state = retried("unavailable", Some("unavailable")).await;
+                        let state = retried("unavailable", Some("unavailable"), None).await;
                         ctx.set_resumable(None);
                         return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
                     }
@@ -1127,7 +1129,7 @@ async fn attempt(
             settle(SUCCEEDED, None, None).await;
             SUCCEEDED
         }
-        After::Retry { code, kind } => retried(&code, kind.as_deref()).await,
+        After::Retry { code, kind, asked } => retried(&code, kind.as_deref(), asked).await,
         After::Fail { code, kind } => {
             settle(FAILED, None, Some(failure_json(&code, kind.as_deref()))).await;
             FAILED

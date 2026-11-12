@@ -853,8 +853,10 @@ fn shorten(path: &str) -> String {
 /// back what it holds (chunk 6.7); the exit code when it can't start. A
 /// second signal ends it at once.
 pub fn serve(args: &DevArgs, env: &Environment) -> u8 {
-    let stop = jadpo_host_native::stop_signals().ok();
-    serve_to(
+    let watched = jadpo_host_native::stop_signals();
+    let unwatched = watched.as_ref().err().map(ToString::to_string);
+    let stop = watched.ok();
+    serve_unwatched_to(
         args,
         env,
         &mut std::io::stdout(),
@@ -863,6 +865,7 @@ pub fn serve(args: &DevArgs, env: &Environment) -> u8 {
             stop.as_ref()
                 .is_some_and(|stop| stop.load(Ordering::SeqCst))
         },
+        unwatched.as_deref(),
     )
 }
 
@@ -873,6 +876,21 @@ pub fn serve_to(
     out: &mut dyn Write,
     err: &mut dyn Write,
     stop: &dyn Fn() -> bool,
+) -> u8 {
+    serve_unwatched_to(args, env, out, err, stop, None)
+}
+
+/// [`serve_to`], when SIGTERM and ctrl-c couldn't be watched, for the
+/// reason `unwatched` gives: the session says so with
+/// `cli.signal_handler_failed` and runs without them, a signal ending it
+/// at once (area 12, "Running background work").
+pub fn serve_unwatched_to(
+    args: &DevArgs,
+    env: &Environment,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    stop: &dyn Fn() -> bool,
+    unwatched: Option<&str>,
 ) -> u8 {
     let mut out = Out {
         out,
@@ -888,6 +906,9 @@ pub fn serve_to(
     let started = crate::watch::time_now();
     if !args.json {
         out.screen(Screen::new().with(Block::header("jadpo dev", [format!("started {started}")])));
+    }
+    if let Some(why) = unwatched {
+        report_unwatched(&mut out, why);
     }
     // The first version that checks cleanly; until then, what's wrong.
     let mut poller = Poller::new(&root, true).watching(crate::local::FILE);
@@ -2305,9 +2326,59 @@ fn report_failure(out: &mut Out<'_>, problem: Diagnostic) {
     let _ = out.err.flush();
 }
 
+/// SIGTERM and ctrl-c couldn't be watched, for the reason `why`: said once
+/// as it starts, and the session carries on without them.
+fn report_unwatched(out: &mut Out<'_>, why: &str) {
+    let problem = unwatched(why);
+    if out.json {
+        out.json(
+            Json::object([("event", "signals".into()), ("watched", false.into())]),
+            &[problem],
+            &BTreeMap::new(),
+        );
+        return;
+    }
+    let screen = Screen::new().with(Block::diagnostic(
+        &problem,
+        &BTreeMap::<String, String>::new(),
+    ));
+    let _ = out.err.write_all(screen.render(&out.err_style).as_bytes());
+    let _ = out.err.flush();
+}
+
+/// The `cli.signal_handler_failed` diagnostic for the reason `why`.
+fn unwatched(why: &str) -> Diagnostic {
+    let why = why.trim_end_matches('.');
+    Diagnostic::new(
+        &rule::CLI_SIGNAL_HANDLER_FAILED,
+        "SIGTERM and ctrl-c can't be watched, so `jadpo dev` runs without them",
+    )
+    .reason(format!(
+        "Watching them failed: {why}. A signal now ends `jadpo dev` at once, and background work it was running waits for its lease to end before a tick runs it again."
+    ))
+    .next("Stop `jadpo dev` and run it again; if the reason says too many files are open, raise the limit first with `ulimit -n 4096`")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Signals that can't be watched are said once, and the session goes
+    /// on (area 12, "Running background work").
+    #[test]
+    fn signals_that_cant_be_watched_are_said_with_their_rule() {
+        let problem = unwatched("Too many open files (os error 24)");
+        assert_eq!(problem.rule.id, "cli.signal_handler_failed");
+        assert_eq!(
+            problem.message,
+            "SIGTERM and ctrl-c can't be watched, so `jadpo dev` runs without them"
+        );
+        let reason = problem.reason.expect("a reason");
+        assert!(
+            reason.starts_with("Watching them failed: Too many open files (os error 24). "),
+            "{reason}"
+        );
+    }
 
     /// A taken port says so in words, the same on macOS and Linux, whose
     /// error numbers for it differ (roadmap D13b2c).
