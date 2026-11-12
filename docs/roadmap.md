@@ -115,7 +115,6 @@ D1 first: the site starts once D1 has merged.
   and feature requests read, answered and turned into pull requests by an
   agent that holds no secrets and cannot merge or release, since issue text
   is anyone's; its pull requests pass the same gate and review.
-- [ ] **D8b Rename in the editor** `opus · high`: area 14, "Editor support", through `jadpo_check::rename`, the code `jadpo rename` runs.
 
 ## Phase 10 — Golden todo
 

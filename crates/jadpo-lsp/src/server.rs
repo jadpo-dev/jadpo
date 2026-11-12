@@ -17,7 +17,7 @@ use lsp_types::notification::{
 use lsp_types::request::{
     CodeActionRequest, CodeActionResolveRequest, Completion, DocumentLinkRequest,
     DocumentSymbolRequest, FoldingRangeRequest, Formatting, GotoDefinition, HoverRequest,
-    References, RegisterCapability, Request as _,
+    PrepareRenameRequest, References, RegisterCapability, Rename, Request as _,
 };
 use lsp_types::{
     DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
@@ -59,6 +59,9 @@ pub struct Server {
     /// The plan a query's hover reads its SQL from, built once the project
     /// has no errors and kept until the next edit.
     pub(crate) plan: Option<std::sync::Arc<jadpo_plan::Plan>>,
+    /// Whether the editor asks whether a name can be renamed before it
+    /// asks for the new name (`textDocument/prepareRename`).
+    prepares_renames: bool,
 }
 
 impl Server {
@@ -118,6 +121,13 @@ impl Server {
             .and_then(|completion| completion.completion_item.as_ref())
             .and_then(|item| item.snippet_support)
             .unwrap_or(false);
+        server.prepares_renames = params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|text| text.rename.as_ref())
+            .and_then(|rename| rename.prepare_support)
+            .unwrap_or(false);
         server.can_watch = params
             .capabilities
             .workspace
@@ -125,7 +135,8 @@ impl Server {
             .and_then(|workspace| workspace.did_change_watched_files.as_ref())
             .and_then(|watched| watched.dynamic_registration)
             .unwrap_or(false);
-        (server, capabilities(encoding))
+        let result = capabilities(encoding, server.prepares_renames);
+        (server, result)
     }
 
     /// A server over an already loaded project.
@@ -141,6 +152,7 @@ impl Server {
             resolves_edits: false,
             snippets: false,
             plan: None,
+            prepares_renames: false,
         }
     }
 
@@ -244,6 +256,28 @@ impl Server {
             CodeActionResolveRequest::METHOD => {
                 match serde_json::from_value::<lsp_types::CodeAction>(request.params) {
                     Ok(action) => Response::new_ok(id, self.resolve(action)),
+                    Err(error) => invalid(id, &error),
+                }
+            }
+            PrepareRenameRequest::METHOD => {
+                match serde_json::from_value::<lsp_types::TextDocumentPositionParams>(
+                    request.params,
+                ) {
+                    Ok(params) => answered(
+                        id,
+                        self.prepare_rename(&params)
+                            .map(|answer| serde_json::to_value(answer).unwrap_or_default()),
+                    ),
+                    Err(error) => invalid(id, &error),
+                }
+            }
+            Rename::METHOD => {
+                match serde_json::from_value::<lsp_types::RenameParams>(request.params) {
+                    Ok(params) => answered(
+                        id,
+                        self.rename(&params)
+                            .map(|answer| serde_json::to_value(answer).unwrap_or_default()),
+                    ),
                     Err(error) => invalid(id, &error),
                 }
             }
@@ -709,8 +743,18 @@ fn invalid(id: lsp_server::RequestId, error: &serde_json::Error) -> Response {
     )
 }
 
-/// What the server can do, told to the editor once.
-fn capabilities(encoding: Encoding) -> InitializeResult {
+/// A request's result, or the reason it was refused, which the editor
+/// shows.
+fn answered(id: lsp_server::RequestId, result: Result<serde_json::Value, String>) -> Response {
+    match result {
+        Ok(result) => Response::new_ok(id, result),
+        Err(reason) => Response::new_err(id, ErrorCode::RequestFailed as i32, reason),
+    }
+}
+
+/// What the server can do, told to the editor once; `prepares_renames`
+/// when the editor asks whether a name can be renamed first.
+fn capabilities(encoding: Encoding, prepares_renames: bool) -> InitializeResult {
     InitializeResult {
         capabilities: ServerCapabilities {
             position_encoding: Some(match encoding {
@@ -744,6 +788,14 @@ fn capabilities(encoding: Encoding) -> InitializeResult {
             }),
             references_provider: Some(OneOf::Left(true)),
             document_formatting_provider: Some(OneOf::Left(true)),
+            rename_provider: Some(if prepares_renames {
+                OneOf::Right(lsp_types::RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: Default::default(),
+                })
+            } else {
+                OneOf::Left(true)
+            }),
             code_action_provider: Some(lsp_types::CodeActionProviderCapability::Options(
                 lsp_types::CodeActionOptions {
                     code_action_kinds: Some(vec![

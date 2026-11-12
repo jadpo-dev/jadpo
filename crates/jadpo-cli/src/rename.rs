@@ -2,7 +2,7 @@
 //! and changing code"; area 18, "Stable identity"): renames a declaration
 //! or a field everywhere, keeps its stored data by writing the identity
 //! registry, and refuses a name in use, through `jadpo_check::rename`,
-//! the code the editor's rename is to run.
+//! the code the editor's rename runs.
 //!
 //! Designed before it was built (impeccable's shape pass against the CLI
 //! design language, matching `jadpo fix … rename` and `jadpo config move`,
@@ -45,7 +45,6 @@ use std::path::PathBuf;
 
 use jadpo_check::rename::{self, Plan, Renamed};
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_graph::Kind;
 use jadpo_term::{Block, Fact, Json, Outcome, Screen};
 
 use crate::config::{change_groups, files_json, write_files};
@@ -61,10 +60,7 @@ pub fn rename(call: &Call) -> Reply {
     let mut loaded = jadpo_db::load(&root);
     // Editing a file that doesn't parse could change the wrong text, so
     // syntax errors stop it, as in every command that writes source.
-    let syntax: Vec<Diagnostic> = jadpo_check::check(&loaded.db, loaded.project)
-        .into_iter()
-        .filter(|d| d.rule.id.starts_with("syntax."))
-        .collect();
+    let syntax = rename::unparsed(&loaded.db, loaded.project);
     if !syntax.is_empty() {
         return blocked(&loaded, &cwd, syntax, "rename stopped");
     }
@@ -105,24 +101,8 @@ pub fn rename(call: &Call) -> Reply {
         Err(problem) => return Reply::Failed(problem),
     };
     let node = graph.node(id);
-    if !rename::renames(node.kind) {
-        return Reply::failed(match node.kind {
-            Kind::Route | Kind::GeneratedRoute => not_renamed(
-                format!("`{name}` is a route"),
-                "A route goes by its method and path, written in its `routes` block.".to_string(),
-                "Change its method or path where its `routes` block writes them",
-            ),
-            Kind::Test => not_renamed(
-                format!("`{name}` is a test"),
-                "A test goes by the file it sits beside and its sentence, written where the test is.".to_string(),
-                "Change its sentence where the test is written",
-            ),
-            kind => not_renamed(
-                format!("`{name}` is {} {}", a_or_an(kind.word()), kind.word().replace('_', " ")),
-                "`jadpo rename` renames entities, types, functions, constants, actions, queries, fixtures, seeds, schedules, subscribers and libraries, and their fields and variants.".to_string(),
-                "Change it where it is written",
-            ),
-        });
+    if let Some(refusal) = rename::not_renamed(name, node.kind) {
+        return Reply::failed(refusal);
     }
     let key = node.key.clone();
     let plan = match rename::plan(db, project, &key, new) {
@@ -166,14 +146,6 @@ pub fn rename(call: &Call) -> Reply {
         return Reply::failed(*problem);
     }
     Reply::screen(screen(&plan, &renamed), data(&plan, &renamed))
-}
-
-fn a_or_an(word: &str) -> &'static str {
-    if word.starts_with(['a', 'e', 'i', 'o', 'u']) {
-        "an"
-    } else {
-        "a"
-    }
 }
 
 /// `cli.rename_arguments` for something `jadpo rename` doesn't rename.

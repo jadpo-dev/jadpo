@@ -4,9 +4,8 @@
 //! runs (`jadpo_check::fixes`) and is unavailable, with the errors it
 //! would add, where the command stops.
 //!
-//! The rename needs a name, which a quick fix can't ask for, so it stays
-//! `jadpo fix <name> rename <NewName>` until the editor's rename comes
-//! with `jadpo rename`. As "Make this a setting" is, the edit is made in
+//! The rename needs a name, which a quick fix can't ask for, so it is the
+//! editor's rename on the declaration's name (`crate::rename`). As "Make this a setting" is, the edit is made in
 //! the server's own database and sent as one workspace edit, and an
 //! editor that resolves code actions gets it only once it is chosen.
 
