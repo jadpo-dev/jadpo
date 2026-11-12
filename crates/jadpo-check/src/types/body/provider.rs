@@ -18,12 +18,6 @@ use super::facts::Reach;
 use super::failing::Arm;
 use super::{Body, CallKind, Context};
 
-/// The protocols and credential schemes the package driver sends with
-/// (chunk 7.2c): JSON over HTTP, with a bearer token or basic credentials,
-/// and AWS's JSON protocol signed with Signature Version 4 (chunk 7.7c).
-pub(crate) const BUILT_PROTOCOLS: [&str; 2] = ["json_http", "aws_json"];
-pub(crate) const BUILT_CREDENTIALS: [&str; 4] = ["bearer", "basic", "aws_sigv4", "header"];
-
 impl Body<'_> {
     /// `connection.resource.operation(input)` through the package
     /// connection `connection`.
@@ -600,33 +594,6 @@ impl Body<'_> {
                         connection.name
                     ))
                     .next(next),
-            );
-            return false;
-        }
-        // The package driver sends JSON over HTTP with a bearer token or
-        // basic credentials (chunk 7.2c); the other protocols and schemes
-        // come with the first package needing them.
-        let protocol = connection.reach.protocol.as_deref().unwrap_or("json_http");
-        let scheme = connection.reach.credential.as_deref();
-        if !BUILT_PROTOCOLS.contains(&protocol)
-            || scheme.is_some_and(|scheme| !BUILT_CREDENTIALS.contains(&scheme))
-        {
-            let what = if BUILT_PROTOCOLS.contains(&protocol) {
-                format!("`CredentialScheme.{}`", scheme.unwrap_or_default())
-            } else {
-                format!("`Protocol.{protocol}`")
-            };
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("Calls with {what} aren't built yet"),
-                )
-                .at(span, "declared, not built")
-                .reason(format!(
-                    "`{}` is called with {what}, which the language declares but this compiler can't send yet: it sends JSON over HTTP with a bearer token or basic credentials.",
-                    connection.package
-                ))
-                .next(format!("Do without `{written}` for now")),
             );
             return false;
         }

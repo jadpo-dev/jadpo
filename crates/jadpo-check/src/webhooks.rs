@@ -407,26 +407,6 @@ pub fn package_events(db: &dyn Db, project: Project) -> PackageEvents {
                     );
                 }
             }
-            for field in fields.iter().filter(|field| {
-                matches!(
-                    field.coding,
-                    Some(crate::types::WrittenCoding::Functions { .. })
-                )
-            }) {
-                clean = false;
-                out.problems.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!(
-                            "Webhook event `{name}`'s `{}` is read by the package's own functions",
-                            field.name
-                        ),
-                    )
-                    .at(name_span.clone(), "declared, not built")
-                    .reason("A field read and written by a package's own `decode:` and `encode:` runs them where it is called, and this compiler can't run them on a webhook's event yet.")
-                    .next("Use a built-in encoding, `wire:`, or the field's type as the provider sends it, for now"),
-                );
-            }
             // A `File` is the store and key its bytes are under, so a
             // webhook names any file by holding one (area 16, "What a `File`
             // holds"). A reply holding one sends its bytes (chunk B14).

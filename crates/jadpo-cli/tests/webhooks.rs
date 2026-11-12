@@ -129,6 +129,47 @@ public type PaymentSucceeded = Event {
     pence: Int {
         min: 0
     }
+    method: PayMethod {
+        decode: methods.parse_method
+        encode: methods.format_method
+    }
+}
+"#,
+    ),
+    (
+        "shared/providers/acme_pay/v1/types/pay_method.jadpo",
+        "/// How a customer paid.\npublic type PayMethod = Enum {\n    card\n    bank\n}\n",
+    ),
+    (
+        "shared/providers/acme_pay/v1/types/method_code.jadpo",
+        "/// How Acme Pay writes a way of paying.\npublic type MethodCode = Text {\n    max_length: 1\n}\n",
+    ),
+    (
+        "shared/providers/acme_pay/v1/failures/method_unknown.jadpo",
+        "/// Acme Pay named a way of paying this package doesn't know.\npublic type MethodUnknown = Failure {\n    kind: FailureKind.invalid_value\n}\n",
+    ),
+    (
+        "shared/providers/acme_pay/v1/libraries/methods.jadpo",
+        r#"/// The ways of paying, which Acme Pay writes as "C" and "B".
+public library methods {
+    /// The way of paying Acme Pay's code names.
+    function parse_method(code: MethodCode) fails MethodUnknown -> PayMethod {
+        if (code == "C") {
+            return PayMethod.card
+        }
+        if (code == "B") {
+            return PayMethod.bank
+        }
+        reject MethodUnknown
+    }
+
+    /// Acme Pay's code for a way of paying.
+    function format_method(method: PayMethod) -> MethodCode {
+        if (method == PayMethod.card) {
+            return "C"
+        }
+        return "B"
+    }
 }
 "#,
     ),
@@ -364,7 +405,7 @@ fn mail(id: &str, body: &str, at: i64) -> Request {
 /// seconds since 1970.
 fn payment(id: &str, payment: &str, created: i64) -> String {
     format!(
-        r#"{{"id":"{id}","type":"payment.succeeded","created":{created},"paymentId":"{payment}","pence":1250,"livemode":false}}"#
+        r#"{{"id":"{id}","type":"payment.succeeded","created":{created},"paymentId":"{payment}","pence":1250,"method":"C","livemode":false}}"#
     )
 }
 
@@ -440,6 +481,8 @@ fn a_signed_webhook_is_kept_once_and_delivered_to_its_subscriber() {
         // An `Int` is the contract's text, as every payload writes one.
         assert_eq!(payload["pence"], "1250");
         assert_eq!(payload["occurred_at"], "2026-10-19T08:58:30Z");
+        // Read by the package's own decoder as it arrived (chunk K2).
+        assert_eq!(payload["method"], "card");
         assert!(payload.get("livemode").is_none(), "{payload}");
         // Delivered after the response: the payment is recorded.
         let outcomes = run_deferred(program, &harness, deferred).await;
@@ -549,9 +592,19 @@ fn what_a_webhook_cant_be_kept_as_is_answered_without_keeping_it() {
             problems,
             &serde_json::json!([
                 {"field": "paymentId", "rule": "required"},
-                {"field": "pence", "rule": "min"}
+                {"field": "pence", "rule": "min"},
+                {"field": "method", "rule": "required"}
             ]),
             "{problems}"
+        );
+        // A code the package's decoder doesn't know is the field's problem
+        // (chunk K2).
+        let unknown = r#"{"id":"evt_7","type":"payment.succeeded","created":1792400000,"paymentId":"pi_7","pence":1,"method":"Z"}"#;
+        let (response, _) = send(&harness, program, &pay(unknown, PAY_SECRET, T0)).await;
+        assert_eq!(response.status, 422);
+        assert_eq!(
+            &answer(&response)["error"]["details"]["problems"],
+            &serde_json::json!([{"field": "method", "rule": "decode"}])
         );
         let mut get = pay(&payment("evt_6", "pi_6", 1), PAY_SECRET, T0);
         get.method = "GET".into();

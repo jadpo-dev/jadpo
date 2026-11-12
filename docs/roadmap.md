@@ -299,13 +299,7 @@ work below (Richard, 2026-11-08).
      needed: area 11, "An importer" and "Installing safely"; area 14,
      "Commands for packages". `smithy`, `postman`, `har` (a capture's
      operations) and `dts`.
-   - [ ] **K2 What else a provider call can be** `opus · high`: area 11,
-     "How provider calls are made", "How connections to packages are read"
-     and "How webhooks are received". Protocols other than `json_http` and
-     `aws_json`, credential schemes other than the four built, a setting's
-     placeholder in a host (`{project_ref}`), defaults for package settings,
-     and a field read by `decode:` or `encode:` on a webhook's event.
-     Twilio's XML waits on an XML byte format (L2).
+   - [x] **K2 What else a provider call can be**: area 11, "How provider calls are made", "How connections to packages are read" and "How webhooks are received", and its notes.
    - [ ] **K4 Capability mappings and conformance suites** `opus · high`:
      area 11, "How a package provides a capability", "Proving a package
      works" and "Mistakes not reported yet"; area 21, "The conformance
