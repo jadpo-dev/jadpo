@@ -1400,6 +1400,15 @@ impl Body<'_> {
         {
             return self.request(record);
         }
+        // `make.Todo { ... }`, a data builder (area 13).
+        if let Some(head) = record.expr()
+            && let Some((first, rest)) = dotted(&head)
+            && text(&first) == super::builders::MAKE
+            && self.find(super::builders::MAKE).is_none()
+            && let [entity] = rest.as_slice()
+        {
+            return self.make(record, entity);
+        }
         self.resolved_by(|names, out| crate::resolve::record_head(names, record, out));
         let Some(head) = record.expr() else {
             self.walk(|walk| walk.member_values(record.member_list()));

@@ -56,6 +56,43 @@ pub enum AssertionDetail {
     },
     /// `assert call(...) fails Expected`, and the call did something else.
     Fails { expected: String, got: Got },
+    /// `assert emitted Event { ... }` (area 13, "Events and query cost"),
+    /// and no event of that type the test's committed steps kept had the
+    /// fields it gives: `event`, the type's name now, the fields given
+    /// with their values in the order written, and every event of that
+    /// type that was kept, in the order they committed.
+    Emitted {
+        event: String,
+        given: Vec<(String, Value)>,
+        emitted: Vec<Value>,
+    },
+}
+
+/// What `assert emitted` expected, as a report shows it: the event's type
+/// with the fields it gives, `OrderPlaced { order_id: 7 }`.
+pub fn emitted_expected(event: &str, given: &[(String, Value)]) -> String {
+    let fields: Vec<String> = given
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}"))
+        .collect();
+    if fields.is_empty() {
+        format!("an `{event}`")
+    } else {
+        format!("{event} {{ {} }}", fields.join(", "))
+    }
+}
+
+/// What the test's steps emitted of `event`'s type instead, as a report
+/// shows it: `no OrderPlaced emitted`, or each one kept, in order.
+pub fn emitted_actual(event: &str, emitted: &[Value]) -> String {
+    if emitted.is_empty() {
+        return format!("no {event} emitted");
+    }
+    emitted
+        .iter()
+        .map(Value::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// What a call did instead of failing as expected.

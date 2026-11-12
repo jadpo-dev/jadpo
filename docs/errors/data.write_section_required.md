@@ -57,7 +57,7 @@ entity Item {
     name: ItemName
 }
 
-action make() -> Item {
+action add_item() -> Item {
     return Item.create {}
 }
 ```

@@ -58,6 +58,11 @@ pub enum Effect<'s> {
     /// `email.sent` in a test (area 16; chunk 7.3c): every email the test
     /// sent, as the email connection's fake caught it.
     SentEmails,
+    /// A value a data builder makes for a field it leaves out (area 13,
+    /// "Data builders"): of the type the plan's JSON table numbers `json`,
+    /// keeping its rules, made as a fake's generated default is at the
+    /// invocation's clock; `distinct` for a field a unique rule holds.
+    Made { json: Option<u32>, distinct: bool },
 }
 
 /// What an effect runs with besides its values: the program's tables.
@@ -223,6 +228,7 @@ pub fn run(
                     .into(),
             ))
         }
+        Effect::Made { json, distinct } => made(ctx, effects, json, distinct),
         Effect::Emit { event } => {
             let [value] = values else {
                 return Err(defect("an `emit` without its event"));
@@ -433,6 +439,49 @@ fn json(
         }
         _ => Err(defect("a JSON call without its values")),
     }
+}
+
+/// Only a test makes values for a data builder, so a program built
+/// without testing has none to make.
+#[cfg(not(feature = "testing"))]
+fn made(_: &mut Ctx<'_>, _: &Effects<'_>, _: Option<u32>, _: bool) -> Result<Value, Refused> {
+    Err(defect("a data builder outside a test"))
+}
+
+/// A value a data builder makes (area 13, "Data builders"): what a fake
+/// would answer for the type `number` names, read as that type. With
+/// `distinct`, its text carries part of a new identity, so two records a
+/// unique rule holds apart can both be made.
+#[cfg(feature = "testing")]
+fn made(
+    ctx: &mut Ctx<'_>,
+    effects: &Effects<'_>,
+    number: Option<u32>,
+    distinct: bool,
+) -> Result<Value, Refused> {
+    let Some(codec) = number.and_then(|number| effects.json.types.get(number as usize).copied())
+    else {
+        return Err(defect("a made value the plan gave no codec"));
+    };
+    let now = ctx.now();
+    let mark = if distinct {
+        let Some(bytes) = ctx.new_id() else {
+            return Err(defect("no random bytes for a made value"));
+        };
+        Some(jadpo_value::encoding::to_hex(&bytes[12..16]))
+    } else {
+        None
+    };
+    let mut uuid = || crate::fakes::uuid_text(ctx.new_id().unwrap_or_default());
+    let mut making = crate::fakes::Making {
+        now,
+        uuid: &mut uuid,
+    };
+    let codecs = effects.json.codecs;
+    let json = crate::fakes::generated_marked(&codecs, codec, &mut making, mark.as_deref());
+    codecs
+        .read_value(codec, &Value::text(&json.to_string()))
+        .map_err(|_| defect("a made value that doesn't keep its type's rules"))
 }
 
 /// A `crypto` operation (area 19, "Hashing and cryptography"), in

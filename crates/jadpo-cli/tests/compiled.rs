@@ -936,8 +936,9 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     // end with a schedule run by hand (chunk 8.1h); translations, provider
     // operations with a test's fakes and their failures mapped by code, a
     // package's action, a store's put and read, `ai.*` with the `ai` fake
-    // and `.requests`, email templates and prompts (chunk 8.1i): each
-    // passing compiled.
+    // and `.requests`, email templates and prompts (chunk 8.1i); records a
+    // data builder makes and `assert emitted` (chunk W1): each passing
+    // compiled.
     for name in [
         "docs/language/08-identity.md sign-in",
         "docs/language/08-identity.md tokens-and-keys",
@@ -950,6 +951,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "docs/language/09-policy.md listed-query",
         "docs/language/10-configuration-and-time.md deliveries",
         "docs/language/13-testing.md events-in-tests",
+        "docs/language/13-testing.md lending",
         "docs/language/10-configuration-and-time.md translation-messages",
         "docs/language/12-jobs-and-events.md several-steps",
         "docs/language/12-jobs-and-events.md batches-provider-list",

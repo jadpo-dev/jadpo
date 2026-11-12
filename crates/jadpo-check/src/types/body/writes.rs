@@ -67,7 +67,7 @@ fn is_upload(ty: &Ty) -> bool {
 
 /// `field` as a write's `set:` and `patch:` see it: a `File` field takes a
 /// stored file or a finished upload (area 16, "Uploading").
-fn attachable(mut field: FieldDef) -> FieldDef {
+pub(super) fn attachable(mut field: FieldDef) -> FieldDef {
     if matches!(field.declared.strip_nullable(), Ty::Opaque(name, _) if name == jadpo_std::files::FILE)
     {
         let nullable = matches!(field.declared, Ty::Nullable(_));
@@ -264,7 +264,7 @@ impl Body<'_> {
     /// read or write fills each of its fields typed `<Entity>.id` with the
     /// `id` it looked for; a declared one with other fields can't be
     /// raised yet.
-    fn not_found_of(&mut self, entity: &str, span: Span, written: &str) -> String {
+    pub(super) fn not_found_of(&mut self, entity: &str, span: Span, written: &str) -> String {
         let missing = format!("{entity}NotFound");
         let id = Ty::Field(entity.to_string(), vec!["id".to_string()]);
         let unfilled: Vec<String> = self
@@ -437,10 +437,10 @@ impl Body<'_> {
                 )
                 .at(head_span.clone(), "writes a record")
                 .reason(format!(
-                    "Only actions write records (area 6), so a test changes data through the action that does it, which is what it proves; a fixture, a test-only action, builds the data a test starts from. A test may still read, with `{entity}.get` and queries."
+                    "Only actions write records (area 6), so a test changes data through the action that does it, which is what it proves; a fixture, a test-only action, or a data builder, `make.{entity} {{ ... }}`, builds the data a test starts from. A test may still read, with `{entity}.get` and queries."
                 ))
                 .next(format!(
-                    "Call the action that writes `{entity}`, or move the write into a fixture"
+                    "Call the action that writes `{entity}`, or make the record it starts from with `make.{entity} {{ ... }}`"
                 )),
             );
         }
@@ -623,7 +623,7 @@ impl Body<'_> {
     }
 
     /// Whether `value`, written to a field, is a finished upload.
-    fn attaches(&self, value: &ast::Expr) -> bool {
+    pub(super) fn attaches(&self, value: &ast::Expr) -> bool {
         self.facts
             .types
             .get(&node_key(value.syntax()))
@@ -1436,7 +1436,14 @@ impl Body<'_> {
         );
     }
 
-    fn set_generated(&mut self, entity: &str, field: &str, span: Span, written: &str, from: &str) {
+    pub(super) fn set_generated(
+        &mut self,
+        entity: &str,
+        field: &str,
+        span: Span,
+        written: &str,
+        from: &str,
+    ) {
         let why = if field == "id" {
             format!(
                 "`{entity}.id` is generated when the record is created and never supplied by callers."
@@ -1754,7 +1761,7 @@ impl Body<'_> {
     /// `none`, or the `id` (or a reference to the same entity) of a record
     /// loaded earlier, which the store holds while the action's
     /// transaction lasts. Any other value may name one that isn't.
-    fn holds(&self, value: &Expr, target: &str) -> bool {
+    pub(super) fn holds(&self, value: &Expr, target: &str) -> bool {
         let value = match value {
             Expr::ParenExpr(paren) => match paren.expr() {
                 Some(inner) => inner,
@@ -2163,6 +2170,19 @@ impl Body<'_> {
                 let span = self.span(expr);
                 self.backfill_reads_added(span, &format!("{head}.{field}"));
                 return Some(Ty::Error);
+            }
+            // A field this migration refits is read as its column holds
+            // it, since a stored value may break its rules now (chunk Q3).
+            if self.context == super::Context::Backfill
+                && let Some(refitted) = self.refitted_field(&field)
+            {
+                let Some(ty) = refitted else {
+                    let span = self.span(expr);
+                    self.backfill_reads_refitted(span, &format!("{head}.{field}"));
+                    return Some(Ty::Error);
+                };
+                self.facts.stored.insert(node_key(expr.syntax()));
+                return Some(ty);
             }
             self.facts.stored.insert(node_key(expr.syntax()));
             return Some(self.table.field_type(head, &[field]));

@@ -193,7 +193,7 @@ type ItemClash = Failure {
     kind: FailureKind.conflict
 }
 
-action make(name: Item.name) fails ItemClash -> Item {
+action add_item(name: Item.name) fails ItemClash -> Item {
     return attempt Item.create {
         set: {
             name: name

@@ -444,6 +444,15 @@ pub fn outcome(outcome: &Outcome, places: &Places) -> String {
                         format!("expected {expected}, got {}", failure_text(failure, places))
                     }
                 },
+                AssertionDetail::Emitted {
+                    event,
+                    given,
+                    emitted,
+                } => format!(
+                    "expected {}, got {}",
+                    crate::emitted_expected(event, given),
+                    crate::emitted_actual(event, emitted)
+                ),
             };
             let parts: Vec<String> = assertion
                 .parts

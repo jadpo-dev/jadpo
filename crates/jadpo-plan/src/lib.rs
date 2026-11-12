@@ -674,6 +674,9 @@ pub struct BackfillPlan {
     /// and checked by, as a value of the field's type is (chunk 6.1a): a
     /// decimal at the type's places, rounded half to even.
     pub validator: ValidatorId,
+    /// For a refit (chunk Q3), how the field's own column is read, so only
+    /// the stored values its rules refuse are replaced.
+    pub refits: Option<jadpo_std::read::Column>,
 }
 
 impl Plan {
@@ -797,6 +800,7 @@ impl Plan {
                     held: Vec::new(),
                     write: backfill.plan.write,
                     validator: ValidatorId(0),
+                    refits: backfill.plan.refits.clone(),
                 });
                 backfill_reads.push(
                     backfill
