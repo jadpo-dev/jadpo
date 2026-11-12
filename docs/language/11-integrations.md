@@ -3218,10 +3218,12 @@ route.
 
 A list operation returns a `Page<T>`
 ([Pages](06-reads-and-writes.md#pages)). The package says how the
-provider pages, and `page.next` asks for the next page. Work over many
-pages uses `batches.each(from:, each:, finished:, key:)`, which pages
-through in the background and resumes where it stopped
-([Batches](12-jobs-and-events.md#batches)).
+provider pages: its output is read as the page's `items` and its `next`
+cursor, and its input has one `PageCursor` field, where `page.next` is
+sent to ask for the next page. Work over many pages uses
+`batches.each(from:, each:, finished:, key:)`, which pages through in the
+background and resumes where it stopped
+([Walking records or a provider's list](12-jobs-and-events.md#walking-records-or-a-providers-list-batcheseach)).
 
 ### Calls and writes
 

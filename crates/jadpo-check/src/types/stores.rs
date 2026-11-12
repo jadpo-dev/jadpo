@@ -25,7 +25,7 @@ use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::Kind;
 
 use super::body::{callables_of, typed_body};
-use super::facts::{BatchFact as BatchFactRef, Fact, body_facts, facts_at};
+use super::facts::{Fact, body_facts, facts_at};
 use crate::lookups::Name;
 
 /// What one action or fixture does that reaches a store, in source order:
@@ -102,7 +102,8 @@ pub fn batch_stores(db: &dyn Db, project: Project) -> BTreeSet<String> {
                 {
                     out.insert(store);
                 }
-                if let Fact::Batch(BatchFactRef { file: true, .. }) = fact
+                if let Fact::Batch(batch) = fact
+                    && (batch.file || batch.listed)
                     && let Some(key) = &facts.key
                     && let Some(Some(store)) = file_run_stores(db, project).get(key.name())
                 {
@@ -118,9 +119,11 @@ pub fn batch_stores(db: &dyn Db, project: Project) -> BTreeSet<String> {
 /// a file has no query whose store keeps its run, so it is kept in the
 /// one store the action writes, counting what its run's actions write,
 /// which area 6's one-store rule makes one; when none of them writes, in
-/// the application's only database. `None` when that leaves no one store:
-/// the actions write several, which [`store_problems`] reports, or none,
-/// in an application with several databases ([`file_run_problems`]).
+/// the application's only database, or, with several, the one `events: {
+/// store: }` names, as an event of an action that writes none is. `None`
+/// when that leaves no one store: the actions write several, which
+/// [`store_problems`] reports, or none, in an application with several
+/// databases naming none ([`file_run_problems`]).
 ///
 /// It reads what each action writes without the runs `batches.cancel`
 /// keeps, so it never waits on [`batch_stores`].
@@ -140,7 +143,7 @@ pub fn file_run_stores(db: &dyn Db, project: Project) -> BTreeMap<String, Option
             if facts
                 .facts
                 .iter()
-                .any(|fact| matches!(fact, Fact::Batch(BatchFactRef { file: true, .. })))
+                .any(|fact| matches!(fact, Fact::Batch(batch) if batch.file || batch.listed))
                 && let Some(key) = &facts.key
             {
                 starters.insert(key.name().to_string());
@@ -173,6 +176,7 @@ pub fn file_run_stores(db: &dyn Db, project: Project) -> BTreeMap<String, Option
         let store = match (stores.len(), databases.as_slice()) {
             (1, _) => stores.into_iter().next(),
             (0, [only]) => Some(only.clone()),
+            (0, [_, _, ..]) => crate::events::events_settings(db, project).store.clone(),
             _ => None,
         };
         out.insert(name, store);
@@ -181,18 +185,44 @@ pub fn file_run_stores(db: &dyn Db, project: Project) -> BTreeMap<String, Option
 }
 
 /// The file helpers' reads in `file` whose run no one store keeps: their
-/// actions write nothing, in an application with several databases
+/// actions write nothing, in an application with several databases that
+/// names none with `events: { store: }`, which is `event.store_required`
 /// (chunk 6.4b).
 #[salsa::tracked(returns(ref))]
 pub fn file_run_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let path = file.path(db);
     let mut out = Vec::new();
     let runs = file_run_stores(db, project);
+    let outside = super::outside_calls(db, project);
     for callable in callables_of(db, file) {
         let checked = typed_body(db, project, callable);
         let Some(key) = checked.key.as_ref() else {
             continue;
         };
+        // A provider's list walked with an `each:` action that makes
+        // outside calls would need each item read on its own, which a
+        // provider's page can't give (chunk J2).
+        for (fact, (start, end)) in facts_at(&checked.body) {
+            let Fact::Batch(batch) = fact else { continue };
+            let Some(each) = batch.each.as_ref().filter(|_| batch.listed) else {
+                continue;
+            };
+            if outside.get(each).is_none_or(|found| found.calls.is_none()) {
+                continue;
+            }
+            out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    "`batches.each` over a provider's list with an `each:` action that makes outside calls isn't built yet",
+                )
+                .at(Span::new(path, start, end), "declared, not built")
+                .reason(format!(
+                    "An item whose action makes outside calls is a batch of its own, read on its own as it is run, and a provider's list is asked for a page at a time; `{}` makes outside calls.",
+                    each.name()
+                ))
+                .next("Emit an event for each item in `each:`'s action, and make the calls in its subscriber, for now"),
+            );
+        }
         if !matches!(runs.get(key.name()), Some(None)) {
             continue;
         }
@@ -203,34 +233,76 @@ pub fn file_run_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagn
             continue;
         }
         for site in &checked.body.sites {
-            let jadpo_graph::body::Node::Expr(jadpo_graph::body::Expr::Call {
-                callee: jadpo_graph::body::Callee::Batch(jadpo_std::batch::BatchOp::Read(format)),
+            use jadpo_graph::body::{Callee, Expr, Node};
+            let Node::Expr(Expr::Call {
+                callee: Callee::Batch(op),
+                args,
                 ..
             }) = &site.node
             else {
                 continue;
             };
-            let written = format!("{}.read", format.namespace());
+            let (written, why) = match op {
+                jadpo_std::batch::BatchOp::Read(format) => (
+                    format!("{}.read", format.namespace()),
+                    "A file has no query whose store keeps its run",
+                ),
+                jadpo_std::batch::BatchOp::Each
+                    if args.first().copied().flatten().is_some_and(|from| {
+                        matches!(
+                            checked.body.site(from).node,
+                            Node::Expr(Expr::Call {
+                                callee: Callee::Provider { .. },
+                                ..
+                            })
+                        )
+                    }) =>
+                {
+                    (
+                        "batches.each".to_string(),
+                        "A provider's list has no query whose store keeps its run",
+                    )
+                }
+                _ => continue,
+            };
             let databases = crate::data::connections(db, project).databases();
-            let listed: Vec<String> = databases.iter().map(|d| format!("`{d}`")).collect();
-            out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("`{written}` here keeps its run in no one store"),
-                )
-                .at(Span::new(path, site.start, site.end), "which store keeps the run?")
-                .reason(format!(
-                    "A file has no query whose store keeps its run, so it is kept in the store its actions write; `{}` and the actions its run calls write nothing, and the application's databases are {}.",
-                    key.name(),
-                    crate::and_list(&listed)
-                ))
-                .next(format!(
-                    "Have `{written}`'s `each:` action write the records it reads, for now"
-                )),
-            );
+            out.push(run_store_required(
+                Span::new(path, site.start, site.end),
+                &written,
+                key.name(),
+                why,
+                &databases,
+            ));
         }
     }
     out
+}
+
+/// `event.store_required` at `at`, a call starting a run, `written`,
+/// that `starter` makes, where `why` says why no query's store keeps the
+/// run: neither `starter` nor the actions its run calls write a database,
+/// and the application has `databases` and names none to keep the run in.
+fn run_store_required(
+    at: Span,
+    written: &str,
+    starter: &str,
+    why: &str,
+    databases: &[String],
+) -> Diagnostic {
+    let listed: Vec<String> = databases.iter().map(|d| format!("`{d}`")).collect();
+    let first = databases.first().cloned().unwrap_or_else(|| "main".into());
+    Diagnostic::new(
+        &rule::EVENT_STORE_REQUIRED,
+        format!("`{starter}` starts `{written}` but writes no store to keep its run in"),
+    )
+    .at(at, "no store for the run")
+    .reason(format!(
+        "{why}, so it is kept in the store its actions write, or, when they write none, the one `events: {{ store: }}` names; `{starter}` and the actions its run calls write nothing, the application's databases are {}, and `app.jadpo` names none.",
+        crate::and_list(&listed)
+    ))
+    .next(format!(
+        "Add `events: {{ store: {first} }}` to `application {{ }}` in `app.jadpo`"
+    ))
 }
 
 /// One action's or fixture's name and what it reaches, each with its
@@ -578,52 +650,88 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     out
 }
 
-/// The calls of `batches.status` and `batches.cancel` in `file` that no
-/// one store pins (area 12, chunk 6.4): a run is found by its `id` alone,
-/// in the store the application keeps its runs in, so an application
-/// whose batches keep them in more than one store, or that starts none,
-/// has nowhere to look.
+/// The actions that ask a run to stop, themselves or through an action
+/// they call, when the application keeps its runs in several stores
+/// (area 12, "Cancelling"; chunk J2): each keeps its cancel as it keeps
+/// its events, in the store it writes or the one `events: { store: }`
+/// names. Empty when the runs are kept in one store or none.
+#[salsa::tracked(returns(ref))]
+pub fn cancelling(db: &dyn Db, project: Project) -> BTreeSet<String> {
+    if batch_stores(db, project).len() < 2 {
+        return BTreeSet::new();
+    }
+    let mut reached: BTreeMap<String, BTreeSet<Reach>> = BTreeMap::new();
+    for &file in project.files(db) {
+        for (name, found) in store_reaches(db, project, file) {
+            reached
+                .entry(name.clone())
+                .or_default()
+                .extend(found.iter().cloned());
+        }
+    }
+    let mut out = BTreeSet::new();
+    for name in reached.keys() {
+        let mut seen = BTreeSet::from([name.clone()]);
+        let mut queue = vec![name.clone()];
+        while let Some(current) = queue.pop() {
+            for reach in reached.get(&current).into_iter().flatten() {
+                match reach {
+                    Reach::Runs(true) => {
+                        out.insert(name.clone());
+                    }
+                    Reach::Calls(callee) if seen.insert(callee.clone()) => {
+                        queue.push(callee.clone());
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The calls of `batches.cancel` in `file` with nowhere to keep their
+/// cancel (area 12, "Cancelling"; chunk J2): in an application whose runs
+/// are kept in several stores, a cancel is kept as an event is, in the
+/// store its action writes, or the one `events: { store: }` names, which
+/// is `event.store_required` when its action writes none and the
+/// application names none.
 #[salsa::tracked(returns(ref))]
 pub fn batch_store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let stores = batch_stores(db, project);
-    if stores.len() == 1 {
+    if stores.len() < 2 || crate::events::events_settings(db, project).store.is_some() {
         return Vec::new();
     }
     let path = file.path(db);
+    let written = written_stores(db, project);
     let mut out = Vec::new();
-    for (_, found) in reaches(db, project, file) {
-        for (reach, (start, end)) in found {
-            let Reach::Runs(cancels) = reach else {
-                continue;
-            };
-            let written = if cancels {
-                "batches.cancel"
-            } else {
-                "batches.status"
-            };
-            let reason = if stores.is_empty() {
-                format!(
-                    "`{written}` finds a run in the store the application keeps its runs in, beside the store its query reads, and nothing in this application starts one with `batches.each`."
-                )
-            } else {
-                let listed: Vec<String> = stores.iter().map(|s| format!("`{s}`")).collect();
-                format!(
-                    "`{written}` finds a run by its `id` alone, in the store the application keeps its runs in, and this application's batches keep them in {}; this compiler doesn't look in more than one yet.",
-                    crate::and_list(&listed)
-                )
-            };
-            out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("`{written}` here isn't built yet"),
-                )
-                .at(Span::new(path, start, end), "no one store keeps the runs")
-                .reason(reason)
-                .next(format!(
-                    "Start the runs with `batches.each` over queries of one store, or do without `{written}` for now"
-                )),
-            );
+    for (name, found) in reaches(db, project, file) {
+        if written.get(&name).is_some_and(|stores| !stores.is_empty()) {
+            continue;
         }
+        let Some((start, end)) = found
+            .iter()
+            .find(|(reach, _)| *reach == Reach::Runs(true))
+            .map(|(_, at)| *at)
+        else {
+            continue;
+        };
+        let listed: Vec<String> = stores.iter().map(|s| format!("`{s}`")).collect();
+        let first = stores.iter().next().cloned().unwrap_or_default();
+        out.push(
+            Diagnostic::new(
+                &rule::EVENT_STORE_REQUIRED,
+                format!("`{name}` cancels a run but writes no store to keep the cancel in"),
+            )
+            .at(Span::new(path, start, end), "no store for the cancel")
+            .reason(format!(
+                "This application's runs are kept in {}, so a cancel is kept as an event is, in the store its action writes, and each run's runner looks for it there; `{name}` writes no store, itself or through what it calls, and `app.jadpo` names none with `events: {{ store: }}`.",
+                crate::and_list(&listed)
+            ))
+            .next(format!(
+                "Add `events: {{ store: {first} }}` to `application {{ }}` in `app.jadpo`"
+            )),
+        );
     }
     out
 }

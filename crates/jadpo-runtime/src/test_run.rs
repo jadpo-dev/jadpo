@@ -525,6 +525,10 @@ impl<H: Host> Host for AtClock<H> {
         self.host.rows_per_batch()
     }
 
+    fn items_per_batch(&self) -> u32 {
+        self.host.items_per_batch()
+    }
+
     fn stopping(&self) -> LocalFuture<'_, ()> {
         self.host.stopping()
     }

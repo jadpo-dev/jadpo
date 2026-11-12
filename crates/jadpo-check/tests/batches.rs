@@ -413,8 +413,9 @@ fn a_runs_tables_live_beside_the_store_its_query_reads() {
             "jadpo_batch_runs"
         ]
     );
-    // An application that starts no batch has none, and nowhere to find
-    // a run.
+    // An application that starts no batch has none: a run it was given
+    // is one no store keeps, whose status is a fault as it runs and which
+    // a cancel leaves alone (chunk J2).
     let db = jadpo_db::Database::default();
     let project = support::project(&db, Layout::Project, BASE);
     let schema = jadpo_check::data::schema(&db, project);
@@ -428,12 +429,81 @@ fn a_runs_tables_live_beside_the_store_its_query_reads() {
         .iter()
         .map(|d| format!("{} {}", d.rule.id, d.message))
         .collect();
+    assert_eq!(found, Vec::<String>::new());
+}
+
+/// Runs kept in several stores (area 12, "Status" and "Cancelling";
+/// chunk J2): every store keeps the run tables, `batches.status` looks in
+/// each, and `batches.cancel` is kept as an event is, in the store its
+/// action writes or the one `events: { store: }` names, which
+/// `event.store_required` asks for when it writes none.
+#[test]
+fn runs_kept_in_several_stores_are_asked_after_in_each() {
+    let app = |events: &str| {
+        format!(
+            "application {{\n    connections: {{\n        main: {{\n            driver: Driver.postgres\n        }}\n        tallies: {{\n            driver: Driver.postgres\n        }}\n    }}\n{events}}}\n"
+        )
+    };
+    let tally = (
+        "domains/shop/entities/tally.jadpo",
+        "entity Tally {\n    id: Uuid\n    seen: Bool\n\n    store: tallies\n\n    policy: {\n        create: [Access.public, Access.system]\n        read: [Access.public, Access.system]\n        update: [Access.system]\n    }\n}\n",
+    );
+    let tallies = (
+        "domains/shop/queries/tallies.jadpo",
+        "use shop/entities { Tally }\nuse shop/types { ItemPage }\n\nquery tallies(page: ItemPage) -> Page<Tally> {\n    from: Tally\n    order: [Tally.id asc]\n    page: {\n        size: page.page_size\n        after: page.after\n    }\n}\n",
+    );
+    let mark = (
+        "domains/shop/actions/mark.jadpo",
+        "use shop/entities { Tally }\n\naction mark(tally: Tally) -> Unit {\n    var marked: Tally = Tally.update(tally) {\n        set: {\n            seen: true\n        }\n    }\n    assert marked.seen\n}\n",
+    );
+    let count = (
+        "domains/shop/actions/count.jadpo",
+        "use shop/actions { mark }\nuse shop/queries { tallies }\nuse shop/types { ItemPage }\n\naction count(page: ItemPage) -> BatchRun {\n    return batches.each(from: tallies(page), each: tally -> mark(tally))\n}\n",
+    );
+    let start = format!("{IMPORTS}{GOOD}");
+    let found = |events: &str| {
+        let app = app(events);
+        let mut files: Vec<(&str, &str)> = BASE
+            .iter()
+            .filter(|(path, _)| *path != "app.jadpo")
+            .copied()
+            .collect();
+        files.extend([
+            ("app.jadpo", app.as_str()),
+            tally,
+            tallies,
+            mark,
+            count,
+            SEE_PAGE,
+            ("domains/shop/actions/start.jadpo", start.as_str()),
+        ]);
+        let db = jadpo_db::Database::default();
+        let project = support::project(&db, Layout::Project, &files);
+        let found: Vec<String> = jadpo_check::check(&db, project)
+            .iter()
+            .filter(|d| d.rule.id != "import.unused")
+            .map(|d| format!("{} {}", d.rule.id, d.message))
+            .collect();
+        let schema = jadpo_check::data::schema(&db, project);
+        let kept: Vec<(&String, bool)> = schema
+            .stores
+            .iter()
+            .map(|(name, store)| (name, store.tables.contains_key("jadpo_batch_cancels")))
+            .collect();
+        assert_eq!(
+            kept,
+            [(&"main".to_string(), true), (&"tallies".to_string(), true)]
+        );
+        found
+    };
+    // `stop` cancels and writes nothing: its cancel has nowhere to go.
     assert_eq!(
-        found,
-        [
-            "toolchain.not_built_yet `batches.status` here isn't built yet",
-            "toolchain.not_built_yet `batches.cancel` here isn't built yet",
-        ]
+        found(""),
+        ["event.store_required `stop` cancels a run but writes no store to keep the cancel in"]
+    );
+    assert_eq!(
+        found("    events: {\n        store: main\n    }\n"),
+        Vec::<String>::new()
     );
 }
 

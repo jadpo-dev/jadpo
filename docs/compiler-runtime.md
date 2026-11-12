@@ -2200,7 +2200,12 @@ and with random bytes counted on from the last batch
 a batch, a query's page cut to that (area 13, "Batches"). A run whose
 batch couldn't commit gives its lease back (`batches::give_back`), and a
 step that moves the clock picks up the runs with no lease, as the tick
-does (`batches::waiting`).
+does (`batches::waiting`). A run over a provider's list asks for each
+page as the system before its batch's transaction opens, then holds its
+row to the position the page was asked after (`batches::listed`); with
+runs kept in several stores, a runner copies a cancel an action kept in
+another store beside its run before each batch (`batches::copy_cancel`),
+and `batches.status` asks each store in turn.
 
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one

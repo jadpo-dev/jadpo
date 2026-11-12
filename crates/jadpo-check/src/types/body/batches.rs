@@ -671,6 +671,32 @@ impl Body<'_> {
         }
     }
 
+    /// The one field of `ty`, an operation's input, that holds a
+    /// `PageCursor`, by name: where a run walking a provider's list puts
+    /// the cursor the page before gave (chunk J2). `None` when it has none,
+    /// or more than one.
+    pub(super) fn cursor_field(&self, ty: &Ty) -> Option<String> {
+        let Ty::Named(name) = self.table.structure(ty.strip_nullable()) else {
+            return None;
+        };
+        let Some(Def::Fields { fields, .. }) = self.table.def(&name) else {
+            return None;
+        };
+        let cursors: Vec<&str> = fields
+            .iter()
+            .filter(|field| {
+                let declared = field.declared.strip_nullable();
+                matches!(declared, Ty::Prim(Prim::PageCursor))
+                    || self.table.base_prim(declared) == Some(Prim::PageCursor)
+            })
+            .map(|field| field.name.as_str())
+            .collect();
+        match cursors.as_slice() {
+            [only] => Some((*only).to_string()),
+            _ => None,
+        }
+    }
+
     /// `from:`: a call of a named query giving a `Page<T>`, whose
     /// arguments are saved with the run; the item type `T`.
     pub(super) fn batch_from(&mut self, from: &Expr, written: &str) -> Ty {
@@ -712,28 +738,74 @@ impl Body<'_> {
             Ty::Opaque(name, args) if name == "Page" && args.len() == 1 => args.into_iter().next(),
             _ => None,
         };
-        // Area 12 also lets `batches.each`'s `from:` be a provider's list
-        // operation, walked by `page.next`; a run is kept only over a
-        // named query's pages so far.
+        // `batches.each`'s `from:` may be a provider's list operation,
+        // walked by `page.next` (area 12; chunk J2): its input is saved
+        // with the run as a query's arguments are, and each page asked for
+        // with the cursor the page before gave in its `PageCursor` field.
         if written == "batches.each"
-            && item.is_some()
-            && matches!(reach, Some(Reach::Provider { .. }))
+            && let Some(item) = item.as_ref()
+            && let Some(Reach::Provider {
+                safe, action: None, ..
+            }) = &reach
         {
+            let operation = match &reach {
+                Some(Reach::Provider {
+                    connection,
+                    operation,
+                    ..
+                }) => format!("{connection}.{operation}"),
+                _ => String::new(),
+            };
             let at = self.span(from);
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("`{written}` over a provider's list isn't built yet"),
-                )
-                .at(at, "declared, not built")
-                .reason(format!(
-                    "The language lets `{written}` walk a provider's list operation by `page.next`, but this compiler keeps a run only over the pages of a named query, so this run couldn't keep its place."
-                ))
-                .next(format!(
-                    "Do without `{written}` over a provider's list for now: keep what it lists in an entity, and walk that with a named query giving a `Page`"
-                )),
-            );
-            return Ty::Error;
+            let input = Self::arguments(query)
+                .into_iter()
+                .filter_map(|arg| arg.expr())
+                .next();
+            let input_ty = input
+                .as_ref()
+                .and_then(|value| self.facts.types.get(&node_key(value.syntax())).cloned());
+            if !safe {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_BATCH_FROM_INVALID,
+                        format!("`{written}`'s `from:` lists through `{operation}`, which changes something"),
+                    )
+                    .at(at, "an operation that changes something")
+                    .reason(format!(
+                        "A run asks `from:`'s provider for each page after the action that starts it commits, and asks for a page again when a batch is undone before it commits; `{operation}` changes something at the provider, so asking again could change it twice."
+                    ))
+                    .next(format!(
+                        "Walk a list operation its package marks `changes: false`, or call `{operation}` in `each:`'s action"
+                    )),
+                );
+                return Ty::Error;
+            }
+            let cursor = input_ty.as_ref().and_then(|ty| self.cursor_field(ty));
+            if cursor.is_none() {
+                let given = input_ty
+                    .as_ref()
+                    .map_or_else(|| "no input".to_string(), |ty| format!("`{ty}`"));
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_BATCH_FROM_INVALID,
+                        format!("`{written}`'s `from:` can't ask `{operation}` for its next page"),
+                    )
+                    .at(at, format!("takes {given}"))
+                    .reason(format!(
+                        "A run walks a provider's list by `page.next`: it asks for each page with the cursor the page before gave, in its input's one `PageCursor` field; `{operation}` takes {given}, which has none."
+                    ))
+                    .next(
+                        "Give the operation's input a field such as `after: PageCursor { optional: true }`, sent as the provider's cursor",
+                    ),
+                );
+                return Ty::Error;
+            }
+            if let Some(value) = input
+                && let Some(saved) = input_ty
+            {
+                self.batch_saved(&value, &saved, Saved::From, written);
+            }
+            return item.clone();
         }
         let Some(item) = item.filter(|_| is_query) else {
             let at = self.span(from);

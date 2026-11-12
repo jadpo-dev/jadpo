@@ -389,16 +389,16 @@ work below (Richard, 2026-11-08).
       20, "What is built".
 11. Background work and tests (areas 12 and 13), added by the audit of
     2026-11-08.
-    - [ ] **J2 Batches over more** `opus · high`: area 12, "Walking records
-      or a provider's list: `batches.each`", "How a run is kept" and "How a
-      file's run is kept"; area 11, "Pages of results". A provider's list operation as
-      `from:`, walked by `page.next`; a page type above 1,000 items split into
-      batches; `batches.status` and `batches.cancel` with runs in no store or
-      several; a file's run with several databases and none written.
     - [ ] **J3 Delivery and operator gaps** `opus · high`: area 12, "Retries and
       giving up", "Watching schedules" and "Running background work". `Retry-After`
       between a delivery's attempts, names for instances, and
       `cli.signal_handler_failed`.
+    - [ ] **J4 File writers over a provider's list** `opus · high`: area 19,
+      "Data formats"; area 12, "Walking records or a provider's list:
+      `batches.each`" and "How an export's run is kept". A file helper's write
+      (`csv.write`, `tsv.write`, `json_lines.write`, `json.write`) taking a
+      provider's list operation as `from:`, walked by `page.next`, in place
+      of `type.batch_from_invalid`.
     - [ ] **W1 Data builders and `assert emitted`** `opus · high`: area 13,
       "Data builders" and "What is built". Builders' valid defaults, the
       named object a fixture returns with them, and `assert emitted`.

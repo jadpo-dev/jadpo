@@ -1122,6 +1122,10 @@ impl jadpo_runtime::Host for TestHost<'_> {
     fn rows_per_batch(&self) -> u32 {
         jadpo_runtime::test_run::ROWS_PER_BATCH
     }
+
+    fn items_per_batch(&self) -> u32 {
+        jadpo_runtime::test_run::ROWS_PER_BATCH
+    }
 }
 
 /// The one diagnostic for a server that can't be used (chunk A13), for a
