@@ -738,15 +738,28 @@ impl Planner<'_> {
                         let ty = column_type(field)?.param();
                         let validator = self.types.validator_id(&TypeRef::Field(key.clone()));
                         let parts = if *by_id && stored_in(body, *value) {
-                            // The database works out no compound type in
-                            // its several columns (area 19), nor a value
-                            // held as JSON (chunk 5.5w2b).
+                            // A value kept in several columns is worked
+                            // out column by column, and one kept whole as
+                            // its JSON copied (chunk Q2).
                             if field.compound.is_some() || field.json.is_some() {
-                                return None;
+                                let parts = self.stored_parts(
+                                    body,
+                                    *value,
+                                    entity_model,
+                                    field,
+                                    &mut writing,
+                                )?;
+                                field
+                                    .columns()
+                                    .into_iter()
+                                    .map(|(column, _)| column)
+                                    .zip(parts)
+                                    .collect()
+                            } else {
+                                let sql =
+                                    self.stored_sql(body, *value, entity_model, ty, &mut writing)?;
+                                vec![(field.born.clone(), sql)]
                             }
-                            let sql =
-                                self.stored_sql(body, *value, entity_model, ty, &mut writing)?;
-                            vec![(field.born.clone(), sql)]
                         } else {
                             let input = writing.input(*value, Some(validator));
                             if field.reference.is_some() {
@@ -1356,6 +1369,103 @@ impl Planner<'_> {
         })
     }
 
+    /// A value of `target`'s type, kept in several columns or whole as its
+    /// JSON in one, that an update by `id` works out from stored fields, as
+    /// SQL for each of `target`'s columns (chunk Q2): a stored field is its
+    /// columns, copied; a construction (which the checker proved can't
+    /// fail) is what it holds; an amount of money's `+` and `-` add its
+    /// minor units, held to what an amount holds, in the currency both
+    /// sides' types fix, which the left one's column gives; and any other
+    /// part of an amount is an input the executor works out first, its
+    /// columns its parts. The checker allows nothing else.
+    fn stored_parts(
+        &mut self,
+        body: &Body,
+        site: SiteId,
+        entity: &EntityModel,
+        target: &jadpo_check::data::FieldModel,
+        writing: &mut Writing,
+    ) -> Option<Vec<String>> {
+        let money = target.compound == Some(MONEY);
+        if !stored_in(body, site) {
+            if !money {
+                return None;
+            }
+            let input = writing.input(site, None);
+            return target
+                .columns()
+                .into_iter()
+                .enumerate()
+                .map(|(index, (_, sql_type))| {
+                    let part = WriteSource::Part {
+                        of: Box::new(WriteSource::Input(input)),
+                        index: u32::try_from(index).ok()?,
+                    };
+                    let ty = SqlType::of_column(&sql_type)?.param();
+                    Some(writing.param(part, ty))
+                })
+                .collect();
+        }
+        Some(match &body.site(site).node {
+            Node::Expr(Expr::Stored { field: key }) => {
+                let field = field(entity, self.types.field_name(key))?;
+                let columns: Vec<String> = field
+                    .columns()
+                    .into_iter()
+                    .map(|(column, _)| text::column(&column))
+                    .collect();
+                if columns.len() != target.columns().len() {
+                    return None;
+                }
+                columns
+            }
+            Node::Expr(Expr::Call {
+                callee: Callee::Construct(_),
+                args,
+                ..
+            }) => {
+                let [Some(inner)] = args.as_slice() else {
+                    return None;
+                };
+                self.stored_parts(body, *inner, entity, target, writing)?
+            }
+            Node::Expr(Expr::Binary {
+                op: op @ (BinaryOp::Add | BinaryOp::Subtract),
+                lhs,
+                rhs,
+            }) if money => {
+                let amount = jadpo_std::standard_type(MONEY)?
+                    .columns()
+                    .iter()
+                    .position(|(part, _)| *part == "amount")?;
+                let lhs = self.stored_parts(body, *lhs, entity, target, writing)?;
+                // The right amount gives only its minor units: its currency
+                // is the left one's.
+                let rhs = if stored_in(body, *rhs) {
+                    self.stored_parts(body, *rhs, entity, target, writing)?
+                        .get(amount)?
+                        .clone()
+                } else {
+                    let input = writing.input(*rhs, None);
+                    let part = WriteSource::Part {
+                        of: Box::new(WriteSource::Input(input)),
+                        index: u32::try_from(amount).ok()?,
+                    };
+                    let ty = SqlType::of_column(&target.columns().get(amount)?.1)?.param();
+                    writing.param(part, ty)
+                };
+                let sum = match op {
+                    BinaryOp::Add => text::plus(lhs.get(amount)?, &rhs, false),
+                    _ => text::minus(lhs.get(amount)?, &rhs),
+                };
+                let mut out = lhs;
+                out[amount] = text::money_minor(&sum);
+                out
+            }
+            _ => return None,
+        })
+    }
+
     /// The constraint the database knows a rule by: a unique field's or a
     /// named unique rule's key, or a reference's foreign key.
     /// Whether a create of `entity` setting `set` founds a tenant (area 9,
@@ -1650,6 +1760,9 @@ fn field_columns(
         })
         .collect()
 }
+
+/// The standard type an amount of money is.
+const MONEY: &str = "Money";
 
 /// Whether the value at `site` reads a stored field.
 fn stored_in(body: &Body, site: SiteId) -> bool {

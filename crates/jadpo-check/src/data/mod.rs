@@ -1750,16 +1750,15 @@ impl Reader<'_> {
                             format!("Remove `unique:` from `{name}`, or `encrypted:`"),
                         ));
                     }
-                    // A value stored whole as JSON is compared by no unique
-                    // rule yet (chunk 5.9b).
-                    Some(Const::Bool(true)) if field.json.is_some() => {
-                        self.out.push(json_keyed(
-                            entity,
-                            name,
-                            "A unique rule",
-                            key_span,
-                            format!("Remove `unique:` from `{name}` for now"),
-                        ));
+                    // A value stored whole as JSON is keyed by the digest
+                    // of its JSON (chunk Q2), which tells two values apart
+                    // only where the codec writes one spelling for each.
+                    Some(Const::Bool(true))
+                        if field.json.is_some()
+                            && let Some(problem) =
+                                self.unique_spelled_two_ways(entity, name, key_span.clone()) =>
+                    {
+                        self.out.push(problem);
                     }
                     Some(Const::Bool(true)) => field.unique = true,
                     _ => self.setting_value(value_span, "unique", "`true`"),
@@ -2254,6 +2253,26 @@ impl Reader<'_> {
         })
     }
 
+    /// `data.unique_decimal_places`: a unique rule over `entity.field`,
+    /// kept whole as its JSON, whose type holds a value its JSON can write
+    /// two ways, a percentage or a standard type holding one, so the key, the digest of that JSON, could let two
+    /// values code calls `==` both in (chunk Q2).
+    fn unique_spelled_two_ways(&self, entity: &str, field: &str, at: Span) -> Option<Diagnostic> {
+        let ty = Ty::Field(entity.to_string(), vec![field.to_string()]);
+        let held = queries::kept::spelled_two_ways(self.lookup, &ty)?;
+        Some(
+            Diagnostic::new(
+                &rule::DATA_UNIQUE_DECIMAL_PLACES,
+                format!("`{entity}.{field}` can be written two ways, so no unique rule can compare it"),
+            )
+            .at(at, "kept as JSON")
+            .reason(format!(
+                "`{entity}.{field}` is kept as its JSON, and a unique rule compares the digest of that JSON; it holds {held}, whose JSON keeps its places, so `12.5%` and `12.50%` are `==` in code but written differently, and the rule would let both in."
+            ))
+            .next("Hold a decimal whose type has a `scale:` instead, or leave the field out of the unique rule"),
+        )
+    }
+
     /// The rules in a `unique:` or `indexes:` section.
     fn rules(
         &mut self,
@@ -2346,11 +2365,11 @@ impl Reader<'_> {
                                     self.out.push(
                                         Diagnostic::new(
                                             &rule::TYPE_SETTING_VALUE,
-                                            "`kind` takes `IndexKind.geographic` or `IndexKind.hnsw`",
+                                            "`kind` takes `IndexKind.geographic`, `IndexKind.hnsw` or `IndexKind.json`",
                                         )
                                         .at(value_span, "not an index kind")
-                                        .reason("An index's `kind:` names a special kind of index the store builds: `IndexKind.geographic`, a GiST index on a geometry field (area 20, \"Indexes\"), or `IndexKind.hnsw`, pgvector's index on a vector field (area 21, \"The index\"). An index without `kind:` is an ordinary one.")
-                                        .next("Write `kind: IndexKind.geographic` or `kind: IndexKind.hnsw`, or leave `kind:` out"),
+                                        .reason("An index's `kind:` names a special kind of index the store builds: `IndexKind.geographic`, a GiST index on a geometry field (area 20, \"Indexes\"), `IndexKind.hnsw`, pgvector's index on a vector field (area 21, \"The index\"), or `IndexKind.json`, a GIN index on a field kept as JSON (area 5, \"Special kinds of index\"). An index without `kind:` is an ordinary one.")
+                                        .next("Write `kind: IndexKind.geographic`, `kind: IndexKind.hnsw` or `kind: IndexKind.json`, or leave `kind:` out"),
                                     );
                                 }
                             }
@@ -2486,17 +2505,16 @@ impl Reader<'_> {
                     ));
                     continue;
                 }
-                // A value stored whole as JSON is compared by no unique rule
-                // or index yet (chunk 5.9b).
-                if found.json.is_some() {
+                // A value stored whole as JSON is keyed by the digest of its
+                // JSON, which tells two values apart only where the codec
+                // writes one spelling for each (chunk Q2).
+                if unique
+                    && found.json.is_some()
+                    && let Some(problem) =
+                        self.unique_spelled_two_ways(&entity.name, &field, entry_span.clone())
+                {
                     broken = true;
-                    self.out.push(json_keyed(
-                        &entity.name,
-                        &field,
-                        if unique { "A unique rule" } else { "An index" },
-                        entry_span,
-                        format!("Leave `{field}` out of `{rule_name}` for now"),
-                    ));
+                    self.out.push(problem);
                     continue;
                 }
                 if unique && found.nullable {
@@ -2567,6 +2585,30 @@ impl Reader<'_> {
                         .at(at.clone(), "geographic")
                         .reason("A geographic index is a GiST index on one field holding a geometry (`Point`, `LineString`, `Polygon`, their multi-part forms, or `Geometry`), which `geo.` conditions search (area 20, \"Indexes\").")
                         .next(format!("List one geometry field in `{rule_name}`, or leave `kind:` out")),
+                    );
+                    continue;
+                }
+            }
+            // A JSON index is GIN, on one field kept whole as its JSON
+            // (area 5, "Special kinds of index"; chunk Q2).
+            if let Some((IndexKind::Json, at)) = &kind {
+                let json = match fields.as_slice() {
+                    [only] => entity
+                        .fields
+                        .iter()
+                        .find(|f| f.name == *only)
+                        .is_some_and(|f| f.json.is_some()),
+                    _ => false,
+                };
+                if !json {
+                    self.out.push(
+                        Diagnostic::new(
+                            &rule::TYPE_SETTING_VALUE,
+                            format!("The JSON index `{rule_name}` isn't on one field kept as JSON"),
+                        )
+                        .at(at.clone(), "json")
+                        .reason("A JSON index is PostgreSQL's GIN index on one field kept whole as its JSON (an object, an enum with data, a list, a set or a map of yours, or a standard collection), which finds records by what the value holds, for lookups made from outside the application (area 5, \"Special kinds of index\").")
+                        .next(format!("List one field kept as JSON in `{rule_name}`, or leave `kind:` out")),
                     );
                     continue;
                 }
@@ -3004,21 +3046,6 @@ fn holds_presentation(lookup: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) ->
         }
         _ => None,
     }
-}
-
-/// A unique rule or an index on `entity.field`, a value stored whole as
-/// JSON, which none covers yet (chunk 5.9b): a B-tree's entry holds about
-/// 2.7 kB, and a stored value up to 1 MiB.
-fn json_keyed(entity: &str, field: &str, what: &str, at: Span, next: String) -> Diagnostic {
-    Diagnostic::new(
-        &rule::TOOLCHAIN_NOT_BUILT_YET,
-        format!("{what} on `{entity}.{field}` isn't built yet"),
-    )
-    .at(at, "stored as JSON")
-    .reason(format!(
-        "`{entity}.{field}` is stored whole as its JSON in one `jsonb` column, of up to 1 MiB, and a B-tree index's entry holds about 2.7 kB, so this compiler keeps no index or unique rule over one yet."
-    ))
-    .next(next)
 }
 
 /// The API token or service key a value of `ty` is or holds, however
@@ -3521,6 +3548,7 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
                 reason: format!("query {query}"),
                 predicate,
                 collate,
+                digest: Vec::new(),
                 method: None,
             },
         );
@@ -3589,6 +3617,7 @@ fn search_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &m
                     reason: format!("query {}", query.name),
                     predicate,
                     collate: Vec::new(),
+                    digest: Vec::new(),
                     method: Some(method),
                 },
             );
@@ -3685,6 +3714,7 @@ fn expression_indexes(model: &DataModel, queries: &[queries::QueryModel], schema
                 reason: format!("query {query}"),
                 predicate: visible_predicate(entity),
                 collate: Vec::new(),
+                digest: Vec::new(),
                 method: None,
             },
         );
@@ -3765,6 +3795,7 @@ fn nearest_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &
                 reason: format!("query {}", query.name),
                 predicate,
                 collate: Vec::new(),
+                digest: Vec::new(),
                 method: Some(method),
             },
         );
@@ -3800,6 +3831,16 @@ fn table_of(
         }
     };
     let tenancy = within.and_then(|within| column(within).into_iter().next());
+    // The columns of `fields` kept whole as their JSON, which a key or a
+    // B-tree holds as each one's digest (area 5, "Unique rules"; chunk Q2).
+    let digested = |fields: &[String]| -> Vec<String> {
+        fields
+            .iter()
+            .filter_map(|name| entity.fields.iter().find(|f| &f.name == name))
+            .filter(|field| field.json.is_some())
+            .map(|field| field.born.clone())
+            .collect()
+    };
     let mut position = 0u32;
     for field in &entity.fields {
         let columns = field.columns();
@@ -3899,6 +3940,9 @@ fn table_of(
                         tenancy.as_deref(),
                     ),
                     rule: format!("{}.{}", entity.born, field.born),
+                    // A value kept whole as its JSON is keyed by its
+                    // digest (chunk Q2).
+                    digest: digested(std::slice::from_ref(&field.name)),
                 },
             );
         }
@@ -3939,6 +3983,7 @@ fn table_of(
                         reason: format!("reference {}.{}", entity.born, field.born),
                         predicate: None,
                         collate: Vec::new(),
+                        digest: Vec::new(),
                         method: None,
                     },
                 );
@@ -3954,6 +3999,7 @@ fn table_of(
                     tenancy.as_deref(),
                 ),
                 rule: format!("{}.{}", entity.born, rule.name),
+                digest: digested(&rule.fields),
             },
         );
     }
@@ -3966,13 +4012,27 @@ fn table_of(
                 reason: format!("index {}.{}", entity.born, index.name),
                 predicate: None,
                 collate: Vec::new(),
+                // A B-tree holds a value kept as its JSON by its digest; a
+                // JSON index holds the value itself (chunk Q2).
+                digest: match index.kind {
+                    None => digested(&index.fields),
+                    Some(_) => Vec::new(),
+                },
                 // A geographic index is GiST, with `geography`'s own
                 // operator class (area 20, "Indexes"; chunk 5.5u4).
                 // An HNSW index is pgvector's, tuned as its entry says (area
-                // 21, "The index"; chunk 5.5v1c).
+                // 21, "The index"; chunk 5.5v1c). A JSON index is GIN, with
+                // `jsonb`'s own operator class, `jsonb_ops` (area 5,
+                // "Special kinds of index"; chunk Q2).
                 method: index.kind.and_then(|kind| match kind {
                     IndexKind::Geographic => Some(physical::IndexMethod {
                         name: "gist".into(),
+                        operator_class: String::new(),
+                        cast: None,
+                        with: Vec::new(),
+                    }),
+                    IndexKind::Json => Some(physical::IndexMethod {
+                        name: "gin".into(),
                         operator_class: String::new(),
                         cast: None,
                         with: Vec::new(),
@@ -4027,6 +4087,7 @@ fn table_of(
                 reason: format!("search {}", entity.born),
                 predicate,
                 collate: Vec::new(),
+                digest: Vec::new(),
                 method: Some(physical::IndexMethod {
                     name: "gin".into(),
                     operator_class: String::new(),

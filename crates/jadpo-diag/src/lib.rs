@@ -460,6 +460,8 @@ rules! {
         "A stored field, written `Entity.field`, is read anywhere but an update by `id` of that record";
     DATA_STORED_VALUE_UNPROVEN: "data.stored_value_unproven", area 6, Error, Human,
         "An update by `id` works out a new value from a stored field, and the value could break its type's rules";
+    DATA_UNIQUE_DECIMAL_PLACES: "data.unique_decimal_places", area 5, Error, Agent,
+        "A unique rule covers a field kept as JSON that holds a percentage, or another value whose places its type doesn't fix, which its JSON can write two ways";
     DATA_UNIQUE_NULLABLE_FIELD: "data.unique_nullable_field", area 5, Error, Agent,
         "A unique rule over several fields includes a field that can be `none`";
     DATA_UNIQUE_SINGLE_FIELD: "data.unique_single_field", area 5, Error, Agent,
@@ -1476,6 +1478,8 @@ rules! {
         "A type is named as another language names it, such as `string` or `int`, and the project declares no type of that name";
     TYPE_FOREIGN_VALUE: "type.foreign_value", area 2, Error, Agent,
         "A value is written as another language writes it, such as `null` for `none` or Python's `True` for `true`";
+    TYPE_HOLE: "type.hole", area 2, Error, Agent,
+        "A `_` stands where a value goes, for one the code doesn't give yet";
     TYPE_INCOMPARABLE: "type.incomparable", area 3, Error, Agent,
         "An `==` or `!=` compares two values of different types, neither of which stands in for the other, or compares a value that is never `none` with `none`";
     TYPE_INLINE_FUNCTION_PARAMETERS: "type.inline_function_parameters", area 3, Error, Agent,
@@ -1730,6 +1734,30 @@ pub struct Diagnostic {
     /// its place: this one has no `reason` of its own, set by
     /// [`shorten_repeats`].
     pub repeat_of: Option<usize>,
+    /// For `type.hole` (area 2, "Typed holes"): the type that goes there
+    /// and the values in scope that fit, which `--json` gives as
+    /// `expected` and `fits` and hovering over the `_` shows.
+    pub hole: Option<Hole>,
+}
+
+/// What a typed hole asks for: the type, as the code would write it, and
+/// up to five values in scope that fit, closest first.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Hole {
+    /// The type, as written; `None` where nothing around the `_` says it.
+    pub expected: Option<String>,
+    pub fits: Vec<Fit>,
+}
+
+/// One value that fits a hole.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Fit {
+    /// The value as code writes it: `input.name`, `clock.now`.
+    pub text: String,
+    /// Its type, as written.
+    pub ty: String,
+    /// The edit that writes it in place of the `_`.
+    pub edit: Edit,
 }
 
 /// Shortens a list of diagnostics for the one reading them, whose context
@@ -1769,6 +1797,7 @@ impl Diagnostic {
             impact: None,
             in_use: Vec::new(),
             repeat_of: None,
+            hole: None,
         }
     }
 
@@ -1841,6 +1870,12 @@ impl Diagnostic {
                 replacement: replacement.into(),
             });
         }
+        self
+    }
+
+    /// What a typed hole asks for (`type.hole`, area 2).
+    pub fn hole(mut self, hole: Hole) -> Diagnostic {
+        self.hole = Some(hole);
         self
     }
 

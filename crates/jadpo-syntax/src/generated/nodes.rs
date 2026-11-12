@@ -1771,6 +1771,7 @@ pub enum Expr {
     GenericExpr(GenericExpr),
     NullableExpr(NullableExpr),
     ElisionExpr(ElisionExpr),
+    HoleExpr(HoleExpr),
 }
 
 impl AstNode for Expr {
@@ -1794,6 +1795,7 @@ impl AstNode for Expr {
             || kind == GENERIC_EXPR
             || kind == NULLABLE_EXPR
             || kind == ELISION_EXPR
+            || kind == HOLE_EXPR
     }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
         let kind = syntax.kind();
@@ -1854,6 +1856,9 @@ impl AstNode for Expr {
         if kind == ELISION_EXPR {
             return Some(Self::ElisionExpr(ElisionExpr { syntax }));
         }
+        if kind == HOLE_EXPR {
+            return Some(Self::HoleExpr(HoleExpr { syntax }));
+        }
         None
     }
     fn syntax(&self) -> &SyntaxNode {
@@ -1877,6 +1882,7 @@ impl AstNode for Expr {
             Self::GenericExpr(it) => it.syntax(),
             Self::NullableExpr(it) => it.syntax(),
             Self::ElisionExpr(it) => it.syntax(),
+            Self::HoleExpr(it) => it.syntax(),
         }
     }
 }
@@ -1992,6 +1998,12 @@ impl From<NullableExpr> for Expr {
 impl From<ElisionExpr> for Expr {
     fn from(node: ElisionExpr) -> Expr {
         Expr::ElisionExpr(node)
+    }
+}
+
+impl From<HoleExpr> for Expr {
+    fn from(node: HoleExpr) -> Expr {
+        Expr::HoleExpr(node)
     }
 }
 
@@ -3340,6 +3352,33 @@ impl AstNode for ElisionExpr {
 impl ElisionExpr {
     pub fn dot3_token(&self) -> Option<SyntaxToken> {
         support::token(&self.syntax, DOT3)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct HoleExpr {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for HoleExpr {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == HOLE_EXPR
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl HoleExpr {
+    pub fn underscore_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, UNDERSCORE)
     }
 }
 

@@ -322,6 +322,7 @@ Expr =
 | GenericExpr
 | NullableExpr
 | ElisionExpr
+| HoleExpr
 
 Literal =
   value:('int_number' | 'decimal_number' | 'unit_number' | 'string' | 'true' | 'false' | 'none')
@@ -417,6 +418,11 @@ NullableExpr =
 
 ElisionExpr =
   '...'
+
+// `_` where a value goes and the code doesn't know it yet: always the
+// error `type.hole`, which says what fits (area 2, "Typed holes").
+HoleExpr =
+  '_'
 
 //*************************//
 // Types                   //

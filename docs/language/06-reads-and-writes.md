@@ -2348,7 +2348,23 @@ The database works a stored field out only with `+` and `-`, which give
 the same result in SQL as in Jadpo (`+` joining text is written `||`).
 They must sit inside a construction the declared ranges prove:
 `ViewCount(...)` here, since a count of at least 0 plus 1 is at least 0.
-Anything else needs the record loaded first.
+Both sides are of one kind, a whole number added to a decimal aside: an
+`Instant` moved by a `Duration`, which SQL keeps in columns of two types,
+is `data.update_by_id_value`. Anything else needs the record loaded
+first.
+
+- **Money** adds and subtracts its minor units, where both amounts'
+  types fix one currency, which the stored amount keeps
+  (`SET "total_amount" = ...`). Past 2^53 - 1 minor units either side,
+  the most an amount holds, the statement fails, as working the amount
+  out in code is overflow
+  ([Money in a translated message](19-standard-library.md#money-in-a-translated-message)).
+  Where only the running program knows a currency, `+` can fail with
+  `currency_mismatch`, which needs the record loaded.
+- **A value kept in several columns, or whole as its JSON,** may be
+  copied from another stored field, column by column or as its JSON
+  ([Structured values](05-data.md#structured-values)). The database
+  works nothing else out from one.
 
 A decimal added to a stored field may not have more decimal places than
 the field's `scale`, since PostgreSQL would round the sum its own way

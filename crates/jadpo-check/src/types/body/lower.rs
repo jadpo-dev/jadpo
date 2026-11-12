@@ -1277,7 +1277,8 @@ impl Lower<'_> {
             | Expr::RoutePathExpr(_)
             | Expr::GenericExpr(_)
             | Expr::NullableExpr(_)
-            | Expr::ElisionExpr(_) => {
+            | Expr::ElisionExpr(_)
+            | Expr::HoleExpr(_) => {
                 self.scan(expr.syntax());
                 typed::Expr::Unchecked
             }

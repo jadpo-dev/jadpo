@@ -288,6 +288,7 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             out.extend(failure_problems(db, project, file).iter().cloned());
             out.extend(types::body_problems(db, project, file).iter().cloned());
+            out.extend(types::hole_problems(db, project, file).iter().cloned());
             out.extend(types::recursion_problems(db, project, file).iter().cloned());
             out.extend(
                 types::call_order_problems(db, project, file)
@@ -481,6 +482,21 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .cloned(),
         );
         out = declines::answer(db, project, out, syntax.is_empty());
+        // A hole is the one error at its place (area 2, "Typed holes"):
+        // what else reads the `_` there would only say it isn't a value.
+        let holes: Vec<jadpo_diag::Span> = out
+            .iter()
+            .filter(|d| d.rule.id == rule::TYPE_HOLE.id)
+            .filter_map(|d| d.primary.as_ref().map(|label| label.span.clone()))
+            .collect();
+        if !holes.is_empty() {
+            out.retain(|d| {
+                d.rule.id == rule::TYPE_HOLE.id
+                    || d.primary
+                        .as_ref()
+                        .is_none_or(|label| !holes.contains(&label.span))
+            });
+        }
         // A marked field nothing reads is said only of a project with
         // nothing else wrong: a body with an error may hold a read no walk
         // can see (area 15, "What the compiler checks").

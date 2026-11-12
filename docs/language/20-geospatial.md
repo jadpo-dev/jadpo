@@ -955,9 +955,10 @@ then the exact test.
   `Geometry`); anything else is refused as `type.setting_value`. A
   setting a block doesn't have is `type.unknown_setting`, a block without
   `fields:` is `data.field_list_required`, and the same fields and kind
-  twice is `data.duplicate_rule`. `IndexKind` has `geographic` and
-  `hnsw`, the vector index from [AI](21-ai.md). A plain index on a
-  geometry field stays a plain one.
+  twice is `data.duplicate_rule`. `IndexKind` has `geographic`, `hnsw`,
+  the vector index from [AI](21-ai.md), and `json`
+  ([Special kinds of index](05-data.md#special-kinds-of-index)). A plain
+  index on a geometry field stays a plain one.
 
 ### A store with no PostGIS
 
@@ -1928,4 +1929,3 @@ what to use instead:
 | Everything on this page but the rows below | Built. |
 | Geometries in Redis | Not built yet: waits for entities in Redis ([Reading and writing entities in Redis](06-reads-and-writes.md#reading-and-writing-entities-in-redis)). Until then nothing stores a geometry there. A Redis entity will keep a geometry as its GeoJSON, and every geometry, with and without altitude, comes back from its GeoJSON unchanged, except that a polygon wound clockwise comes back wound by the right-hand rule, which PostGIS storage doesn't do. |
 | A `geo.` condition in an include or an aggregate query | Not built yet (`toolchain.not_built_yet`): an include's records aren't checked again by the code yet, and an aggregate's totals are the database's ([The aggregates](06-reads-and-writes.md#the-aggregates)). |
-| `IndexKind`s other than `geographic` and `hnsw` | Not built yet ([Special kinds of index](05-data.md#special-kinds-of-index)). |

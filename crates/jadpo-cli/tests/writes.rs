@@ -16,7 +16,10 @@
 //! "Counters and other one-step updates", chunk 3.7): a counter that is
 //! its action's first statement runs at read committed, so both commit at
 //! their first attempt; a counter after a read runs at repeatable read, so
-//! the second runs again; either way the count goes up by two.
+//! the second runs again; either way the count goes up by two. An amount
+//! of money an update by `id` works out holds what an amount holds: past
+//! 2^53 - 1 minor units either side its statement fails, as working it out
+//! in code is overflow (area 19; chunk Q2).
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
@@ -786,4 +789,46 @@ fn two_counters_at_once_rerun_only_when_their_action_reads_first() {
     drop(host);
     drop(state);
     databases.release(copy, false);
+}
+
+#[test]
+fn an_amount_worked_out_past_what_one_holds_fails_its_statement() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
+    let url = server
+        .create_database("writes_money_minor")
+        .expect("database");
+    let store = postgres(&url).expect("store");
+    let most = jadpo_std::http::SAFE_INTEGER as i64;
+    let worked_out = |minor: i64| {
+        let sum = jadpo_sql::statement::plus(&format!("{minor}::bigint"), "0::bigint", false);
+        format!(
+            "SELECT {} FROM (VALUES (1)) AS one (n)",
+            jadpo_sql::statement::money_minor(&sum)
+        )
+    };
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        for minor in [0, 5, -5, most, -most] {
+            assert_eq!(
+                rows(&store, &worked_out(minor)).await,
+                vec![vec![SqlValue::Int8(minor)]],
+                "{minor} is an amount"
+            );
+        }
+        for minor in [most + 1, -(most + 1), i64::MAX / 2, i64::MIN / 2] {
+            let mut transaction = store.begin().await.expect("begin");
+            let refused = transaction.query(&worked_out(minor), &[]).await;
+            assert_eq!(
+                refused,
+                Err(StoreError::Statement(
+                    "22003: a value the server can't take".into()
+                )),
+                "{minor} is past what an amount holds"
+            );
+            transaction.rollback().await.expect("rollback");
+        }
+    });
 }

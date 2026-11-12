@@ -386,6 +386,30 @@ pub fn add_unique(table: &str, name: &str, columns: &[String]) -> String {
     )
 }
 
+/// The digest of `column`'s JSON, `md5("tags"::text)`, which a key or a
+/// B-tree holds in place of a value kept whole as its JSON (area 5,
+/// "Unique rules"; chunk Q2): a B-tree's entry holds about 2.7 kB, and a
+/// stored value up to 1 MiB. `jsonb` writes one text for one value, its
+/// keys in one order, and both functions are fixed (`IMMUTABLE`), as an
+/// index's expression must be.
+pub fn json_digest(column: &str) -> String {
+    format!("md5({}::text)", ident(column))
+}
+
+/// Creates the unique index `name` on `columns` of `table`: a unique rule
+/// one of whose columns holds a value kept whole as its JSON, which it
+/// holds as that JSON's digest (chunk Q2). PostgreSQL names the index in
+/// a duplicate's error as it names a constraint, so a write maps it to
+/// its rule the same way.
+pub fn create_unique_index(table: &str, name: &str, columns: &[IndexColumn<'_>]) -> String {
+    format!(
+        "CREATE UNIQUE INDEX {} ON {} ({})",
+        ident(name),
+        ident(table),
+        index_columns(columns, None)
+    )
+}
+
 /// Adds the check constraint `name` that `column` of `table` holds one of
 /// `values`, each text.
 pub fn add_check(table: &str, name: &str, column: &str, values: &[String]) -> String {
@@ -451,12 +475,15 @@ pub fn add_foreign_key(
     )
 }
 
-/// One column of an index: its name, and whether it keeps text in code
-/// point order (`COLLATE "C"`), as a query sorts it.
+/// One column of an index: its name, whether it keeps text in code
+/// point order (`COLLATE "C"`), as a query sorts it, and whether it holds
+/// a value kept whole as its JSON, which a B-tree holds as its digest
+/// ([`json_digest`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct IndexColumn<'a> {
     pub name: &'a str,
     pub collate: bool,
+    pub digest: bool,
 }
 
 /// An index's access method other than a B-tree: its name, its column's
@@ -484,24 +511,7 @@ pub fn create_index(
     predicate: Option<&str>,
     method: Option<IndexMethod<'_>>,
 ) -> String {
-    let columns = columns
-        .iter()
-        .map(|column| {
-            let indexed = match method.and_then(|method| method.cast) {
-                Some(cast) => format!("({}::{cast})", ident(column.name)),
-                None => ident(column.name),
-            };
-            match method {
-                Some(IndexMethod {
-                    operator_class: "", ..
-                }) => indexed,
-                Some(method) => format!("{indexed} {}", method.operator_class),
-                None if column.collate => format!("{indexed} COLLATE \"C\""),
-                None => indexed,
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
+    let columns = index_columns(columns, method);
     let using = method
         .map(|method| format!(" USING {}", method.name))
         .unwrap_or_default();
@@ -525,6 +535,29 @@ pub fn create_index(
         ident(name),
         ident(table)
     )
+}
+
+/// An index's columns as `CREATE INDEX` lists them.
+fn index_columns(columns: &[IndexColumn<'_>], method: Option<IndexMethod<'_>>) -> String {
+    columns
+        .iter()
+        .map(|column| {
+            let indexed = match method.and_then(|method| method.cast) {
+                Some(cast) => format!("({}::{cast})", ident(column.name)),
+                None if column.digest => format!("({})", json_digest(column.name)),
+                None => ident(column.name),
+            };
+            match method {
+                Some(IndexMethod {
+                    operator_class: "", ..
+                }) => indexed,
+                Some(method) => format!("{indexed} {}", method.operator_class),
+                None if column.collate => format!("{indexed} COLLATE \"C\""),
+                None => indexed,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// `CREATE INDEX` of `expression` on `table` (area 6, "Operations in

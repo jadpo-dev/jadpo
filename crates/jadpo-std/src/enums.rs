@@ -318,6 +318,11 @@ std_enum! {
         /// searches, tuned by `m:` and `ef_construction:` (area 21, "The
         /// index"; chunk 5.5v1c).
         Hnsw: "hnsw",
+        /// PostgreSQL's GIN index on one field kept whole as its JSON,
+        /// which finds records by what the value holds (`@>`, `?`), for
+        /// lookups made from outside the application (area 5, "Special
+        /// kinds of index"; chunk Q2).
+        Json: "json",
     }
 }
 

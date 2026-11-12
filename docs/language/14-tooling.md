@@ -2243,7 +2243,10 @@ Hovering over a name shows:
 - for anything you can call, the failures it can produce;
 - for a failure, its code, kind and status;
 - who calls or uses it;
-- for a route, its full method and path ([HTTP](07-http.md)).
+- for a route, its full method and path ([HTTP](07-http.md));
+- for a typed hole, `_`, the type that goes there and the values in scope
+  that fit, closest first, each with its type ([Typed
+  holes](02-values-and-types.md#typed-holes)).
 
 Hovering over a query, where it is declared or called, shows its
 generated SQL once the project has no errors: the statements `jadpo sql`
@@ -2398,7 +2401,9 @@ that allow it, [declined](01-project-layout-and-modules.md#keeping-code-as-it-is
   rule.
 - Tools read the same fields as JSON with `jadpo check --json`, which gives
   line and column as well as byte offsets, and uses one naming style for
-  its keys.
+  its keys. A `type.hole` adds `expected`, the type as code writes it, and
+  `fits`, each value that fits with its `text`, `type` and `edit`
+  ([Typed holes](02-values-and-types.md#typed-holes)).
 - A reason that quotes another tool's lines, as `toolchain.build_failed`
   quotes cargo's, prints each as a line of its own under the reason, its
   indent kept and blank lines left out; JSON keeps them in the one

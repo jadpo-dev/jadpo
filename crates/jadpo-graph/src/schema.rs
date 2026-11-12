@@ -212,6 +212,12 @@ pub struct Key {
 pub struct Unique {
     pub columns: Vec<String>,
     pub rule: String,
+    /// The columns among `columns` that hold a value whole as its JSON,
+    /// which the key holds as the digest of that JSON, `md5("tags"::text)`,
+    /// since a B-tree's entry holds about 2.7 kB and a stored value up to
+    /// 1 MiB (area 5, "Unique rules"; chunk Q2). A key holding one is a
+    /// unique index rather than a constraint.
+    pub digest: Vec<String>,
 }
 
 /// A check constraint: `column` holds one of `values`, written as text;
@@ -289,6 +295,10 @@ pub struct Index {
     /// its one column: `hnsw` with `vector_cosine_ops` for a vector a
     /// `nearest` query searches (area 21, chunk 5.5v1b).
     pub method: Option<IndexMethod>,
+    /// The columns among `columns` that hold a value whole as its JSON,
+    /// which a B-tree holds as the digest of that JSON, as a unique key
+    /// does ([`Unique::digest`]; chunk Q2).
+    pub digest: Vec<String>,
 }
 
 impl Index {
@@ -483,6 +493,9 @@ impl Table {
             let mut entry = Value::object();
             entry.set("columns", strings(&rule.columns));
             entry.set("rule", &rule.rule);
+            // Written only when it holds one, so older snapshots stay
+            // canonical (chunk Q2).
+            entry.set_some("digest", strings(&rule.digest));
             unique.set(name, entry);
         }
         value.set_some("unique", unique);
@@ -507,6 +520,7 @@ impl Table {
                 entry.set("where", predicate);
             }
             entry.set_some("collate_c", strings(&index.collate));
+            entry.set_some("digest", strings(&index.digest));
             if let Some(method) = &index.method {
                 entry.set("method", &method.name);
                 entry.set("operator_class", &method.operator_class);
@@ -586,6 +600,7 @@ impl Table {
                 Unique {
                     columns: list_of(entry, "columns")?,
                     rule: text_of(entry, "rule")?,
+                    digest: list_of(entry, "digest").unwrap_or_default(),
                 },
             );
         }
@@ -615,6 +630,7 @@ impl Table {
                     reason: text_of(entry, "reason")?,
                     predicate: entry.get("where").and_then(Value::as_str).map(String::from),
                     collate: list_of(entry, "collate_c").unwrap_or_default(),
+                    digest: list_of(entry, "digest").unwrap_or_default(),
                     method: match entry.get("method").and_then(Value::as_str) {
                         Some(method) => Some(IndexMethod {
                             name: method.to_string(),
@@ -1267,6 +1283,7 @@ mod tests {
                 reason: "index Todo.by_meaning".into(),
                 predicate: None,
                 collate: Vec::new(),
+                digest: Vec::new(),
                 method: Some(IndexMethod {
                     name: "hnsw".into(),
                     operator_class: "halfvec_cosine_ops".into(),
@@ -1289,6 +1306,7 @@ mod tests {
             reason: reason.into(),
             predicate: None,
             collate: vec!["title".into()],
+            digest: Vec::new(),
             method: None,
         };
         let with = |index: Index| {

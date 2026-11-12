@@ -6,6 +6,7 @@ mod completion;
 mod declines;
 mod fixes;
 mod formatting;
+mod hole_hover;
 mod incremental;
 mod make_setting;
 mod query_sql;

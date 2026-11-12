@@ -37,6 +37,10 @@ impl Body<'_> {
     // --- checking against an expected type -------------------------------
 
     fn check_value(&mut self, expr: &Expr, expected: &Ty) {
+        if let Expr::HoleExpr(_) = expr {
+            self.hole(expr, Some(expected));
+            return;
+        }
         if let Expr::ParenExpr(paren) = expr {
             if let Some(inner) = paren.expr() {
                 self.check(&inner, expected);
@@ -584,6 +588,10 @@ impl Body<'_> {
             Expr::PropagateExpr(_) => {
                 self.misplaced_exit(expr, "propagate");
                 self.flow.open = true;
+                Ty::Error
+            }
+            Expr::HoleExpr(_) => {
+                self.hole(expr, None);
                 Ty::Error
             }
             // A type written as a value, or a later area's form: nothing

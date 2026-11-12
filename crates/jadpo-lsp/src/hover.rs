@@ -29,6 +29,37 @@ pub fn render(graph: &Graph, found: &Found) -> Option<String> {
     }
 }
 
+/// The hover for a typed hole (area 2, "Typed holes"), from its error:
+/// the type that goes there, as code, then each value in scope that
+/// fits, closest first, with its type.
+pub fn hole(problem: &jadpo_diag::Diagnostic) -> Option<String> {
+    let hole = problem.hole.as_ref()?;
+    let Some(expected) = &hole.expected else {
+        return Some(format!(
+            "{}\n\n{}",
+            problem.message,
+            problem.reason.clone().unwrap_or_default()
+        ));
+    };
+    let mut out = format!(
+        "{}\n\n{}",
+        block(&format!("_: {expected}")),
+        problem.message
+    );
+    if hole.fits.is_empty() {
+        out.push_str("\n\nNothing in scope fits.");
+        if let Some(next) = &problem.next {
+            out.push_str(&format!(" {}.", next.text));
+        }
+    } else {
+        out.push_str("\n\nIn scope, closest first:\n");
+        for fit in &hole.fits {
+            out.push_str(&format!("\n- `{}`: `{}`", fit.text, fit.ty));
+        }
+    }
+    Some(out)
+}
+
 fn block(code: &str) -> String {
     format!("```jadpo\n{code}\n```")
 }

@@ -168,6 +168,7 @@ pub enum SyntaxKind {
     GENERIC_EXPR,
     NULLABLE_EXPR,
     ELISION_EXPR,
+    HOLE_EXPR,
     ARG_LIST,
     ARG,
     MATCH_ARM_LIST,
@@ -193,7 +194,7 @@ pub enum SyntaxKind {
 
 use self::SyntaxKind::*;
 
-const ALL: [SyntaxKind; 183] = [
+const ALL: [SyntaxKind; 184] = [
     EOF,
     L_BRACE,
     R_BRACE,
@@ -356,6 +357,7 @@ const ALL: [SyntaxKind; 183] = [
     GENERIC_EXPR,
     NULLABLE_EXPR,
     ELISION_EXPR,
+    HOLE_EXPR,
     ARG_LIST,
     ARG,
     MATCH_ARM_LIST,

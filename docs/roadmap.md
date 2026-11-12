@@ -144,15 +144,7 @@ D1 first: the site starts once D1 has merged.
 
 What the Reddit thread found (Richard, 2026-11-03):
 
-- [ ] **A19 Typed holes** `opus · high`: notes for area 2, "Typed holes".
-  `_` where a value goes, always the error `type.hole`, decided by the agent:
-  the type as the code would write it and up to five values in scope that fit,
-  closest first, with the edit for one; `expected` and `fits` in `--json`, and
-  the same on hover. Its rule goes on area 2's page, with its error page.
-  Measured against the PersonName detour it saves nothing, since D15, D16 and
-  A14 already remove it; it saves lookups where an agent knows it doesn't
-  know. Done when a hole is reported with its fits and no project holding one
-  checks, tests or builds.
+- [x] **A19 Typed holes**: [Typed holes](language/02-values-and-types.md#typed-holes) and [`type.hole`](errors/type.hole.md).
 
 Not scheduled: a way to write a query the language can't express. Richard
 will work through it and other solutions later; don't design or build one
@@ -332,13 +324,13 @@ work below (Richard, 2026-11-08).
 
 10. Data and queries (areas 5, 6, 19 and 20), added by the audit of
     2026-11-08. Each keeps every test passing on both executors.
-    - [ ] **Q2 Unique rules, indexes and one-step updates over held values**
-      `opus · xhigh`: area 5, "Migrating structured values" and "Special
-      kinds of index"; area 19, "Money in a translated message". A `unique:` or
-      index over a structured value, a one-step update working one out, other
-      index kinds than geographic and HNSW, and a one-step update that refuses
-      when the stored value would break a rule (notes for area 6, "A one-step
-      update that refuses").
+    - [ ] **Q2b A one-step update that refuses** `opus · xhigh`: notes for
+      area 6, "A one-step update that refuses". A stored-value construction
+      in an update by `id`'s `set:` mapping the rules it can break, as
+      `stock: Stock(Product.stock - ordered) { min: OutOfStock }`: the
+      statement's `WHERE` checks them, and no row updated is the mapped
+      failure, so the update never reruns. Split from Q2 (2026-11-12),
+      which built the rest.
     - [ ] **Q3 What `jadpo migrate new` still refuses** `opus · high`: area 5,
       "A stored value is checked when it is read", "Migrations" and "Batches,
       locks and resuming". A new `pattern:` on a stored field; column type
