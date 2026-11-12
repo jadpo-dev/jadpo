@@ -107,8 +107,8 @@ became links by title. Nothing in this list changed a rule.
 
 ## `.requests` (chunk A27)
 
-Decisions the page didn't make, recommended here and open for a
-maintainer to overrule:
+Decisions the page didn't make, decided 2026-11-11, Richard accepting
+the recommendations:
 
 - **The form it is read in.** `.requests` is read as
   `connection.resource.operation.requests`, the form the code calls and
@@ -147,8 +147,8 @@ altered, since no test can read a `File`'s parts. It names no route, and its
 
 ## Keys under `--watch` and the keyboard view (chunk T3)
 
-Decisions the page didn't make, recommended here and open for a
-maintainer to overrule:
+Decisions the page didn't make, decided 2026-11-11, Richard accepting
+the recommendations:
 
 - **What the watch keys run.** `enter` reruns the tests the last run ran,
   `a` every test the command asked for (its path, `--name` and `--kind`),

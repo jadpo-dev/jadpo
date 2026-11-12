@@ -272,7 +272,7 @@
     "declarations": {
       "patterns": [
         {
-          "comment": "type and entity names are types.",
+          "comment": "type and entity names, where they are declared (a type named anywhere else is entity.name.type).",
           "match": "\\b(public)?\\s*\\b(type|entity)\\b\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": {
@@ -282,12 +282,12 @@
               "name": "keyword.declaration.jadpo"
             },
             "3": {
-              "name": "entity.name.type.jadpo"
+              "name": "entity.name.type.declaration.jadpo"
             }
           }
         },
         {
-          "comment": "callables and the named blocks.",
+          "comment": "callables and the named blocks, where they are declared.",
           "match": "\\b(public)?\\s*\\b(action|function|query|fixture|library|routes|schedule|subscriber)\\b\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": {
@@ -297,7 +297,7 @@
               "name": "keyword.declaration.jadpo"
             },
             "3": {
-              "name": "entity.name.function.jadpo"
+              "name": "entity.name.function.declaration.jadpo"
             }
           }
         },
@@ -309,7 +309,7 @@
               "name": "keyword.declaration.jadpo"
             },
             "2": {
-              "name": "entity.name.type.jadpo"
+              "name": "entity.name.type.declaration.jadpo"
             }
           }
         },
@@ -329,7 +329,7 @@
               "name": "keyword.declaration.jadpo"
             },
             "2": {
-              "name": "entity.name.function.jadpo"
+              "name": "entity.name.function.declaration.jadpo"
             }
           }
         }

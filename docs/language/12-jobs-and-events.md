@@ -606,6 +606,228 @@ returning a `Page`, which the run walks a page at a time
 a provider's list operation, which it walks by `page.next`
 ([External services](11-integrations.md)).
 
+A provider's list is asked for a page at a time, after the action that
+starts the run commits. The operation's input is saved with the run, and
+each page after the first is asked for with the `next` cursor of the page
+before, put in the input's one `PageCursor` field. So the input needs
+such a field, as `after: PageCursor?`, and an input with none is
+`type.batch_from_invalid`. A page may be asked for again when its batch
+is undone before it commits, so the operation must be one its package
+marks `changes: false`. Each page is one batch, whatever its size, since
+the provider says where its pages end.
+
+Here a club greets every member Acme Clubs lists, a page at a time, and
+keeps how many it went through. The list operation gives a `Page` of
+members, and its input's `after:` takes the cursor:
+
+```jadpo check project=batches-provider-list file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        clubs: {
+            package: AcmeClubs.v1
+            domains: [club]
+            environment: config.clubs_environment
+        }
+    }
+}
+```
+
+```jadpo check project=batches-provider-list file=config.jadpo hidden
+config {
+    clubs_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+```jadpo check project=batches-provider-list file=shared/providers/acme_clubs/v1/package.jadpo hidden
+/// Acme Clubs' membership API.
+package AcmeClubs.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=batches-provider-list file=shared/providers/acme_clubs/v1/provider.jadpo hidden
+/// Acme Clubs' membership API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-clubs.example"
+        sandbox: "https://sandbox.acme-clubs.example"
+    }
+    error_code: "error.code"
+}
+```
+
+`shared/providers/acme_clubs/v1/resources/members.jadpo`:
+
+```jadpo check project=batches-provider-list file=shared/providers/acme_clubs/v1/resources/members.jadpo
+public resource members {
+    list: {
+        method: HttpMethod.get
+        path: "/v1/members"
+        input: MembersAsked
+        output: Page<Member>
+        changes: false
+        source: PackageSource.written
+        docs: "https://docs.acme-clubs.example/members"
+    }
+}
+```
+
+```jadpo check project=batches-provider-list file=shared/providers/acme_clubs/v1/types/member_id.jadpo hidden
+/// The club's reference for a member.
+public type MemberId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=batches-provider-list file=shared/providers/acme_clubs/v1/types/member.jadpo hidden
+/// One member of the club.
+public type Member = Object {
+    id: MemberId
+}
+```
+
+`shared/providers/acme_clubs/v1/types/members_asked.jadpo`:
+
+```jadpo check project=batches-provider-list file=shared/providers/acme_clubs/v1/types/members_asked.jadpo
+/// Which page of the club's members to list.
+public type MembersAsked = Object {
+    after: PageCursor?
+}
+```
+
+```jadpo check project=batches-provider-list file=domains/club/entities/roll_call.jadpo hidden
+/// One walk through the club's members.
+entity RollCall {
+    id: Uuid
+    members: Int?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+```
+
+```jadpo check project=batches-provider-list file=domains/club/actions/welcome.jadpo hidden
+use shared/providers/acme_clubs
+
+/// Greets one member.
+action welcome(member: AcmeClubs.Member) -> Unit {
+    assert member.id == member.id
+}
+```
+
+```jadpo check project=batches-provider-list file=domains/club/actions/roll_called.jadpo hidden
+use club/entities { RollCall, RollCallNotFound }
+
+/// Keeps how many members the roll call went through.
+action roll_called(
+    summary: ImportSummary,
+    roll_call_id: RollCall.id
+) fails RollCallNotFound -> Unit {
+    attempt RollCall.update(roll_call_id) {
+        set: {
+            members: summary.items
+        }
+    }
+}
+```
+
+```jadpo check project=batches-provider-list file=domains/club/actions/open_roll_call.jadpo hidden
+use club/entities { RollCall }
+
+/// Opens a roll call, its count still to come.
+action open_roll_call() -> RollCall {
+    return RollCall.create {
+        set: {
+            members: none
+        }
+    }
+}
+```
+
+```jadpo check project=batches-provider-list file=domains/club/actions/roll_call_progress.jadpo hidden
+/// How far a roll call's walk has got.
+action roll_call_progress(club_walk: BatchRun) -> BatchProgress {
+    return batches.status(club_walk)
+}
+```
+
+`domains/club/actions/call_roll.jadpo`:
+
+```jadpo check project=batches-provider-list file=domains/club/actions/call_roll.jadpo migrate=initial
+use app { clubs }
+use club/entities { RollCall }
+use club/actions { roll_called, welcome }
+use shared/providers/acme_clubs
+
+/// Starts greeting every member of the club, a page at a time.
+action call_roll(roll_call_id: RollCall.id) -> BatchRun {
+    var asked_for: AcmeClubs.MembersAsked = AcmeClubs.MembersAsked {
+        after: none
+    }
+    return batches.each(
+        from: clubs.members.list(asked_for),
+        each: member -> welcome(member),
+        finished: summary -> roll_called(summary, roll_call_id),
+        key: roll_call_id
+    )
+}
+```
+
+`domains/club/actions/call_roll.test.jadpo`:
+
+```jadpo check project=batches-provider-list file=domains/club/actions/call_roll.test.jadpo
+use app { clubs }
+use club/entities { RollCall }
+use club/actions { open_roll_call, roll_call_progress }
+use shared/providers/acme_clubs
+
+test "every page of the club's members is greeted" {
+    fakes: {
+        clubs.members.list: [
+            Page {
+                items: [
+                    AcmeClubs.Member {
+                        id: "m-1"
+                    },
+                    AcmeClubs.Member {
+                        id: "m-2"
+                    }
+                ]
+                next: "page-2"
+            },
+            Page {
+                items: [
+                    AcmeClubs.Member {
+                        id: "m-3"
+                    }
+                ]
+                next: none
+            }
+        ]
+    }
+    var roll_call: RollCall = open_roll_call()
+    var club_walk: BatchRun = call_roll(roll_call.id)
+    var walk_state: BatchProgress = roll_call_progress(club_walk)
+    assert walk_state.items_done == 3
+    assert walk_state.state == BatchState.finished
+    assert list.map(clubs.members.list.requests, sent -> sent.after) == [none, "page-2"]
+}
+```
+
+The test scripts the provider's two pages. The run asks for the first
+with the input as it was saved, and for the second with the first page's
+`next`, `"page-2"`, in `after:`.
+
 ### `each:` and `finished:`
 
 `each:` and `finished:` are written in the inline `->` form that
@@ -841,7 +1063,11 @@ build on this one ([How a file's run is kept](#how-a-files-run-is-kept),
 ### A batch is a page
 
 Each transaction is one page of `from:`, at the size its query's `page:`
-reads. So 60 items in pages of 3 commit 20 times.
+reads. So 60 items in pages of 3 commit 20 times. A page type allowing
+more than the 1,000 items of one batch
+([Limits and runtime faults](#limits-and-runtime-faults)) is split: a page
+of 2,500 commits as batches of 1,000, 1,000 and 500, each going on from
+the last item the one before committed.
 
 ### Where a run is kept
 
@@ -854,6 +1080,11 @@ A run is kept in the store `from:`'s query reads, in three
   next page, its counts, its state and its runner's lease;
 - `jadpo_batch_problems` holds each problem;
 - `jadpo_batch_cancels` holds each cancel asked for.
+
+A provider's list has no query either, so its run is kept as a file's
+is ([Where it is kept](#where-it-is-kept)): in the store the starting
+action writes, counting what `each:`'s and `finished:`'s actions write,
+else the app's only database, else the one `events: { store: }` names.
 
 Only a store some batch walks has these tables. Starting a run writes
 that store, and `each:`'s and `finished:`'s actions may write no other
@@ -992,12 +1223,26 @@ transaction and never touches the run's row, so it never waits for the
 page in hand. The next page finds it and ends the run `cancelled`. Until
 then `batches.status` says `running`.
 
+When the app's runs are kept in more than one store, the cancel is kept
+as an event is ([Where the event is kept](#where-the-event-is-kept)): in
+the store the action's transaction is in as it commits, or, when it wrote
+none, the one `events: { store: }` names. An action that cancels and
+writes no store, in an app that names none, is `event.store_required`.
+Before each page a run's runner looks for a cancel of it in the app's
+other stores, and copies one it finds beside the run, where the page
+finds it. An app that starts no batch keeps no run, and its
+`batches.cancel` changes nothing.
+
 ### Status
 
 `batches.status` reads the counts and the state in the calling action's
 transaction. A `BatchRun` that no store keeps is a fault. Both
-`batches.status` and `batches.cancel` find a run by its `id` alone, so
-they need the app's runs in one store.
+`batches.status` and `batches.cancel` find a run by its `id` alone.
+
+When the app's runs are kept in more than one store, each of its stores
+keeps the run tables, and `batches.status` asks each in turn: in the
+action's transaction where it is open, and in a statement of its own in
+the others, so asking never ties the action to a store.
 
 ### The estimated total
 
@@ -1075,11 +1320,9 @@ no variable may be named `batches`.
 
 ### Not built yet
 
-A page type allowing more than the 1,000 items of one batch
-([Limits and runtime faults](#limits-and-runtime-faults)) isn't split
-into smaller batches yet; `PageSize` stops at 100. `batches.status` and
-`batches.cancel` in an app whose runs are kept in no store, or in more
-than one, are `toolchain.not_built_yet`.
+A provider's list walked with an `each:` action that makes outside calls
+is `toolchain.not_built_yet`: such an item is a batch of its own, read on
+its own, and a provider's list gives a page at a time.
 
 ## How a file's run is kept
 <!-- topic: file-batch-runs (was how-a-file-s-run-is-kept) -->
@@ -1097,7 +1340,9 @@ A file has no query whose store could keep its run, so the run is kept
 in the store the starting action writes, counting what `each:`'s and
 `finished:`'s actions write. The rule of one store per action makes that
 a single store. When none of them writes, the run is kept in the app's
-only database.
+only database. In an app with several databases it is kept in the one
+`events: { store: }` names, as the events of an action that writes no
+store are, and without one the call is `event.store_required`.
 
 ### A batch is rows
 
@@ -1232,12 +1477,6 @@ saves, so a deploy may change it under a running run.
 A file is read as UTF-8, with any byte-order mark removed, or as UTF-16
 with its mark, little- or big-endian. The encoding is never guessed:
 anything else isn't text.
-
-### Not built yet
-
-A file's run in an app with several databases, when neither the
-starting action nor `each:`'s or `finished:`'s actions write any of
-them, is `toolchain.not_built_yet`.
 
 ## How an export's run is kept
 <!-- topic: export-batch-runs (was how-an-export-s-run-is-kept) -->
@@ -3956,12 +4195,11 @@ These limits may change once they have been measured on real runs.
 |---|---|
 | Everything else on this page | Built. |
 | Publishing chosen public events outward | Partly built: through `Driver.webhook`, to one address, signed and retried; to Cloudflare Queues, SQS and Pub/Sub not built yet ([Publishing events outward](#publishing-events-outward)). |
-| `batches.each` over a provider's list operation, walked by `page.next` | Not built yet: a provider's list operation as `from:` is `toolchain.not_built_yet` where it is written; a named query giving a `Page` is built ([Walking records or a provider's list](#walking-records-or-a-providers-list-batcheseach)). |
+| `batches.each` over a provider's list operation, walked by `page.next` | Built, but for an `each:` action that makes outside calls, which is `toolchain.not_built_yet` ([How a run is kept](#how-a-run-is-kept)). |
 | Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging](17-debugging-and-review.md)), and a record's entry in the [personal-data report](15-personal-data.md) | Not built yet. |
 | Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for [telemetry](16-built-in-services.md). |
 | The console's timeline | Not built yet ([Debugging](17-debugging-and-review.md)). |
 | `Retry-After` between a delivery's attempts | Not built yet: the next attempt waits its backoff, with jitter ([Retries and giving up](#retries-and-giving-up)). |
-| Splitting a page type allowing more than 1,000 items into batches; `batches.status` and `batches.cancel` with runs in no store or several; a file's run with several databases and none written | Not built yet ([How a run is kept](#how-a-run-is-kept), [How a file's run is kept](#how-a-files-run-is-kept)). |
 | `cli.signal_handler_failed` | Not built yet ([Running background work](#running-background-work)). |
 
 ## Errors

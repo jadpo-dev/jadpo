@@ -24,6 +24,11 @@ language server does everything else.
 - **Format on save**: the layout `jadpo fmt` writes, imports fixed and
   declarations in order. Formatting is on for `.jadpo` files by default
   (`editor.formatOnSave` under `[jadpo]`).
+- **Bold and italics in Jadpo code**, whatever your colour theme: a name
+  where it is declared and an action or function where it is called are
+  bold, and comments are italic. Colours stay your theme's, and nothing
+  outside `.jadpo` files changes. Your own `textMateRules` in
+  `editor.tokenColorCustomizations` replace these.
 - **Hover** over a name to see its declaration written as Jadpo and its
   `///` description, along with:
   - the failures it can produce, and what calls or uses it;

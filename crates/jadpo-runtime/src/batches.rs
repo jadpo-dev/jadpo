@@ -39,6 +39,7 @@
 pub(crate) mod calling;
 pub(crate) mod export;
 pub(crate) mod file;
+pub(crate) mod listed;
 pub mod operator;
 
 pub use file::MAX_ROW_BYTES;
@@ -68,6 +69,10 @@ pub struct Batches<'a> {
     pub plans: &'a [BatchPlan],
     pub json: JsonCodecs<'a>,
     pub failures: &'a [FailurePlan],
+    /// Every store that keeps runs and cancels: the one, or, when the
+    /// application's runs are kept in several, every store its schema has
+    /// (area 12, "Status" and "Cancelling").
+    pub stores: &'a [String],
 }
 
 impl<'a> Batches<'a> {
@@ -76,11 +81,27 @@ impl<'a> Batches<'a> {
         self.plans.iter().find(|plan| plan.name == name)
     }
 
-    /// The store the program keeps its runs in: the one every batch's
-    /// query reads, which the checker holds `batches.status` and
-    /// `batches.cancel` to.
+    /// The store the program keeps its runs in when it keeps them in one:
+    /// the one every batch's run is kept in, which the checker holds
+    /// `batches.status` and `batches.cancel` to. `None` when its runs are
+    /// kept in several.
     fn store(&self) -> Option<&'a str> {
-        self.plans.first().map(|plan| plan.store.as_str())
+        let first = self.plans.first()?.store.as_str();
+        self.plans
+            .iter()
+            .all(|plan| plan.store == first)
+            .then_some(first)
+    }
+
+    /// The stores other than `own` a cancel of a run kept in `own` may be
+    /// kept in: the application's other stores, when its runs are kept in
+    /// several.
+    fn elsewhere(&self, own: &str) -> impl Iterator<Item = &'a str> {
+        let several = self.store().is_none();
+        self.stores
+            .iter()
+            .map(String::as_str)
+            .filter(move |store| several && *store != own)
     }
 }
 
@@ -103,6 +124,11 @@ const SWEEP_LIMIT: i64 = 100;
 /// unless its host says otherwise ([`crate::Host::rows_per_batch`]): as
 /// many as a query's largest page (`PageSize`'s 100).
 pub const ROWS_PER_BATCH: u32 = 100;
+
+/// The most items of a query's page one batch holds, unless its host says
+/// otherwise ([`crate::Host::items_per_batch`]): area 12's 1,000. A page
+/// type allowing more is split into batches of this many.
+pub const MOST_ITEMS_PER_BATCH: u32 = 1000;
 
 /// Starts a run, or finds the one its call already started with its
 /// `key:` in its tenant (chunk 6.6c), keeping the encoding its saved
@@ -186,6 +212,14 @@ pub(crate) const STATUS: &str = "SELECT \"items_done\", \"problems\", \"state\",
 pub(crate) const PROBLEMS: &str = "SELECT \"row\", \"column\", \"rule\" FROM \"jadpo_batch_problems\" WHERE \"run_id\" = $1 ORDER BY \"row\"";
 
 pub(crate) const CANCEL: &str = "INSERT INTO \"jadpo_batch_cancels\" (\"run_id\", \"requested_at\") VALUES ($1, $2) ON CONFLICT (\"run_id\") DO NOTHING";
+
+/// A cancel of run `$1` kept in another store, when the application keeps
+/// runs in several (chunk J2): when it was asked for.
+pub(crate) const CANCELLED: &str =
+    "SELECT \"requested_at\" FROM \"jadpo_batch_cancels\" WHERE \"run_id\" = $1";
+
+/// [`CANCEL`], copying a cancel kept elsewhere beside its run.
+pub(crate) const CANCEL_COPY: &str = "INSERT INTO \"jadpo_batch_cancels\" (\"run_id\", \"requested_at\") VALUES ($1, $2) ON CONFLICT (\"run_id\") DO NOTHING RETURNING \"run_id\"";
 
 /// Runs that ended (finished, failed or cancelled) at or before `$1`, at
 /// most `$2`, with their cancels; their problems go with them.
@@ -414,8 +448,15 @@ pub async fn call(
     site: u32,
 ) -> Stored {
     use jadpo_std::batch::BatchOp;
+    // A program that starts no run keeps none: a `BatchRun` it was given,
+    // from a field kept before, names a run no store keeps, whose status
+    // is a fault and which nothing is left to stop (area 12, "Status").
     let Some(batches) = batches else {
-        return fault(ctx, "a batch in a program that runs none", site);
+        return match (op, args) {
+            (BatchOp::Cancel, [_]) => Stored::Value(Value::Unit),
+            (BatchOp::Status, [_]) => fault(ctx, "no store keeps this `BatchRun`'s run", site),
+            _ => fault(ctx, "a batch in a program that runs none", site),
+        };
     };
     let stored = match (op, args) {
         (BatchOp::Each | BatchOp::Read(_) | BatchOp::Write(_), _) => match plan {
@@ -461,20 +502,27 @@ pub fn row_locals(
 /// `batches.status(run)`, at `site` of the running action: the run's
 /// `BatchProgress`, read in the action's transaction.
 pub async fn status(ctx: &mut Ctx<'_>, batches: Batches<'_>, run: &Value, site: u32) -> Stored {
-    let (Some(id), Some(store)) = (run_id(run), batches.store()) else {
-        return fault(
-            ctx,
-            "a batch's status with no run or no store keeping it",
-            site,
-        );
+    let Some(id) = run_id(run) else {
+        return fault(ctx, "a batch's status with no run", site);
     };
-    let transaction = match ctx.read_transaction(store).await {
-        Ok(transaction) => transaction,
-        Err(error) => return refused(ctx, error, site),
-    };
-    let rows = match transaction.query(STATUS, &[SqlValue::Uuid(id)]).await {
-        Ok(rows) => rows,
-        Err(error) => return refused(ctx, error, site),
+    let rows = match batches.store() {
+        Some(store) => {
+            let transaction = match ctx.read_transaction(store).await {
+                Ok(transaction) => transaction,
+                Err(error) => return refused(ctx, error, site),
+            };
+            match transaction.query(STATUS, &[SqlValue::Uuid(id)]).await {
+                Ok(rows) => rows,
+                Err(error) => return refused(ctx, error, site),
+            }
+        }
+        // Runs kept in several stores: each is asked in turn, in the
+        // action's transaction where it is open, else in a statement of
+        // its own, so asking never ties the action to a store (chunk J2).
+        None => match status_elsewhere(ctx, batches, id).await {
+            Ok(rows) => rows,
+            Err(error) => return refused(ctx, error, site),
+        },
     };
     match rows.first().map(Vec::as_slice) {
         Some(
@@ -501,6 +549,36 @@ pub async fn status(ctx: &mut Ctx<'_>, batches: Batches<'_>, run: &Value, site: 
     }
 }
 
+/// The row of run `id` from the first of the application's stores that
+/// keeps it, when its runs are kept in several: read in the running
+/// action's transaction in the store it is open in, so a run the action
+/// started is found, and in a statement of its own in each other.
+async fn status_elsewhere(
+    ctx: &mut Ctx<'_>,
+    batches: Batches<'_>,
+    id: [u8; 16],
+) -> Result<Vec<Row>, StoreError> {
+    let open = ctx
+        .boundary()
+        .and_then(crate::boundary::Boundary::open_store)
+        .map(str::to_string);
+    for store in batches.stores {
+        let rows = if open.as_deref() == Some(store.as_str()) {
+            let transaction = ctx.read_transaction(store).await?;
+            transaction.query(STATUS, &[SqlValue::Uuid(id)]).await?
+        } else {
+            let Some(database) = ctx.capabilities().database(store) else {
+                return Err(StoreError::Fault(format!("no store called `{store}`")));
+            };
+            database.query_once(STATUS, &[SqlValue::Uuid(id)]).await?
+        };
+        if !rows.is_empty() {
+            return Ok(rows);
+        }
+    }
+    Ok(Vec::new())
+}
+
 /// A `BatchProgress`, with the total its run estimates, if it has one
 /// yet.
 fn progress(done: i64, problems: i64, state: BatchState, likely_total: Option<i64>) -> Value {
@@ -525,12 +603,19 @@ fn progress(done: i64, problems: i64, state: BatchState, likely_total: Option<i6
 /// `batches.cancel(run)`, at `site` of the running action: asks the run
 /// to stop after the batch in hand, in the action's transaction.
 pub async fn cancel(ctx: &mut Ctx<'_>, batches: Batches<'_>, run: &Value, site: u32) -> Stored {
-    let (Some(id), Some(store)) = (run_id(run), batches.store()) else {
-        return fault(
-            ctx,
-            "a batch cancelled with no run or no store keeping it",
-            site,
-        );
+    let Some(id) = run_id(run) else {
+        return fault(ctx, "a batch cancelled with no run", site);
+    };
+    // Runs kept in several stores: the cancel is kept as an event is,
+    // written as the action commits in the store its transaction is in,
+    // or the one `events: { store: }` names, and a run's runner copies it
+    // beside the run before its next batch (chunk J2).
+    let Some(store) = batches.store() else {
+        if let Some(boundary) = ctx.boundary_mut() {
+            boundary.cancel(id);
+            return Stored::Value(Value::Unit);
+        }
+        return fault(ctx, "a batch cancelled outside an action", site);
     };
     let now = ctx.now();
     let transaction = match ctx.transaction(store).await {
@@ -719,6 +804,9 @@ async fn run_inner(
         if budget.spent() {
             return handed_on(database, budget, start, &lease, pages, left).await;
         }
+        // A cancel kept in another store is copied beside the run, where
+        // its next batch finds it (chunk J2).
+        copy_cancel(host, batches, start, database).await;
         let saved = Saved {
             values: &values,
             system,
@@ -754,6 +842,37 @@ async fn run_inner(
             Ok(Step::Ended(Ran::Paused(_))) if budget.spent() => {}
             Ok(Step::Ended(ran)) => return ran,
             Err(_) => return handed_on(database, budget, start, &lease, pages, left).await,
+        }
+    }
+}
+
+/// Copies a cancel of the run `start` names into its own store, `own`,
+/// from whichever other store keeps one, when the application keeps runs
+/// in several: an action's cancel is kept in the store its transaction is
+/// in. A store that can't be reached is asked again before the next
+/// batch.
+async fn copy_cancel(
+    host: &dyn Host,
+    batches: Batches<'_>,
+    start: &BatchStart,
+    own: &dyn crate::Database,
+) {
+    let id = SqlValue::Uuid(start.run);
+    for store in batches.elsewhere(&start.store) {
+        let Some(database) = host.database(store) else {
+            continue;
+        };
+        let Ok(rows) = database
+            .query_once(CANCELLED, std::slice::from_ref(&id))
+            .await
+        else {
+            continue;
+        };
+        if let Some([asked]) = rows.first().map(Vec::as_slice) {
+            let _ = own
+                .query_once(CANCEL_COPY, &[id.clone(), asked.clone()])
+                .await;
+            return;
         }
     }
 }
@@ -875,6 +994,21 @@ async fn step(
             ))
             .await
         }
+        // A provider's list, a page asked for before the batch's
+        // transaction opens (chunk J2).
+        (BatchFrom::Listed(listed), _) => {
+            Box::pin(listed::page(
+                executor,
+                &mut ctx,
+                batches,
+                plan,
+                listed,
+                start,
+                saved,
+                (now, lease_until),
+            ))
+            .await
+        }
         (BatchFrom::File(rows), _) => {
             Box::pin(file::page(
                 executor,
@@ -911,7 +1045,32 @@ async fn batch(
     plan: &BatchPlan,
     start: &BatchStart,
     saved: Saved<'_>,
+    times: (i64, i64),
+) -> Step {
+    batch_of(executor, ctx, batches, plan, start, saved, times, None).await
+}
+
+/// A page read before its batch's transaction opened: the position it
+/// was read after, its items and the cursor of the page after it (a
+/// provider's list's, chunk J2).
+pub(crate) struct Fetched {
+    pub(crate) after: Option<String>,
+    pub(crate) items: Vec<Value>,
+    pub(crate) next: Option<String>,
+}
+
+/// [`batch`], with its page read already when `fetched` is given: the
+/// batch then holds the run to the position the page was read after.
+#[allow(clippy::too_many_arguments)]
+async fn batch_of(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    batches: Batches<'_>,
+    plan: &BatchPlan,
+    start: &BatchStart,
+    saved: Saved<'_>,
     (now, lease_until): (i64, i64),
+    fetched: Option<Fetched>,
 ) -> Step {
     let Saved { values, system, .. } = saved;
     let id = SqlValue::Uuid(start.run);
@@ -1003,23 +1162,29 @@ async fn batch(
     } else {
         None
     };
-    // The page after the position that committed, as the system.
-    let (items, next) =
-        match read_page(&mut open, batches, plan, values, held.position.as_deref()).await {
-            Ok(page) => page,
-            Err(Unread::Changed) => {
-                open.rollback().await;
-                return Step::Changed;
-            }
-            Err(Unread::Paused(why)) => {
-                open.rollback().await;
-                return Step::Ended(Ran::Paused(why));
-            }
-            Err(Unread::Refused(why)) => {
-                let ended = end_in(&mut open, &id, BatchState::Failed, Some(&why), now).await;
-                return finish(open, ended, Ran::Failed(why)).await;
-            }
-        };
+    // The page after the position that committed, as the system; or the
+    // one read before the transaction, while the run is still where it
+    // was read after.
+    let read = match fetched {
+        Some(fetched) if fetched.after == held.position => Ok((fetched.items, fetched.next)),
+        Some(_) => Err(Unread::Changed),
+        None => read_page(&mut open, batches, plan, values, held.position.as_deref()).await,
+    };
+    let (items, next) = match read {
+        Ok(page) => page,
+        Err(Unread::Changed) => {
+            open.rollback().await;
+            return Step::Changed;
+        }
+        Err(Unread::Paused(why)) => {
+            open.rollback().await;
+            return Step::Ended(Ran::Paused(why));
+        }
+        Err(Unread::Refused(why)) => {
+            let ended = end_in(&mut open, &id, BatchState::Failed, Some(&why), now).await;
+            return finish(open, ended, Ran::Failed(why)).await;
+        }
+    };
     let calls: Vec<Vec<Value>> = items
         .iter()
         .map(|item| arguments(&each.args, item, values))
@@ -1163,9 +1328,10 @@ async fn read_page(
         }
     }
     // A batch holds at most as many items as its host's batches do: a
-    // query's whole page anywhere but a test's host, whose batches hold
-    // two (area 13, "Batches").
-    let most = i64::from(open.ctx().host().rows_per_batch().max(1));
+    // query's whole page up to 1,000 items, a larger page split into
+    // batches of 1,000, each going on from the last item the one before
+    // committed; a test's host's batches hold two (area 13, "Batches").
+    let most = i64::from(open.ctx().host().items_per_batch().max(1));
     let smaller = query.page.as_ref().and_then(|page| {
         let size = match &page.size {
             Size::Fixed(n) => i64::try_from(*n).unwrap_or(i64::MAX),
@@ -1574,10 +1740,13 @@ pub async fn clean(executor: &dyn Executor, host: &dyn Host, now: i64) -> u64 {
     let Some(batches) = executor.plan().batches() else {
         return 0;
     };
+    // Every store keeping runs and cancels: with runs in several, a store
+    // a cancel was kept in that keeps no run too (chunk J2).
     let mut stores: Vec<&str> = batches
         .plans
         .iter()
         .map(|plan| plan.store.as_str())
+        .chain(batches.stores.iter().map(String::as_str))
         .collect();
     stores.sort_unstable();
     stores.dedup();

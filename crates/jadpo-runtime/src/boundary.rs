@@ -46,6 +46,10 @@ pub(crate) struct Boundary {
     store: Option<String>,
     /// What the action emitted, for after it commits.
     outbox: Vec<Event>,
+    /// The runs it asked to stop, when the application keeps its runs in
+    /// several stores: kept as its events are, in the store its
+    /// transaction is in as it commits (area 12, "Cancelling"; chunk J2).
+    cancels: Vec<[u8; 16]>,
     /// Where in `outbox` the running action's own events begin, which its
     /// allowance of [`crate::outbox::MAX_EVENTS`] counts from: 0, but for
     /// each item of a batch, an action of its own whose events join its
@@ -278,6 +282,16 @@ impl Boundary {
     /// Its open transaction updated or deleted a record.
     pub(crate) fn may_release(&mut self) {
         self.releases = true;
+    }
+
+    /// The store its transaction is open in, once begun.
+    pub(crate) fn open_store(&self) -> Option<&str> {
+        self.transaction.as_ref().and(self.store.as_deref())
+    }
+
+    /// Keeps a cancel of run `id` for its commit ([`seal`]).
+    pub(crate) fn cancel(&mut self, id: [u8; 16]) {
+        self.cancels.push(id);
     }
 
     /// Whether it has begun its transaction.
@@ -827,6 +841,33 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
             boundary.kept = written;
         }
     }
+    // The runs it asked to stop, when the application keeps runs in
+    // several stores, beside its events (chunk J2).
+    let cancels = ctx
+        .boundary_mut()
+        .map(|boundary| std::mem::take(&mut boundary.cancels))
+        .unwrap_or_default();
+    if !cancels.is_empty() {
+        let open = ctx.boundary().and_then(|boundary| boundary.store.clone());
+        let Some(store) = open.or_else(|| outbox.map(str::to_string)) else {
+            return Err(StoreError::Fault(
+                "an action cancelled a run with no store to keep the cancel in".into(),
+            ));
+        };
+        let now = ctx.now();
+        let transaction = ctx.transaction(&store).await?;
+        for id in cancels {
+            transaction
+                .execute(
+                    crate::batches::CANCEL,
+                    &[
+                        crate::SqlValue::Uuid(id),
+                        crate::SqlValue::Timestamp(now.saturating_mul(1000)),
+                    ],
+                )
+                .await?;
+        }
+    }
     // The store the transaction is in now, the outbox's when only it
     // began one.
     let open = ctx.boundary().and_then(|boundary| boundary.store.clone());
@@ -935,6 +976,7 @@ pub(crate) struct Undo {
     /// a snapshot, and its savepoint with it (chunk 7.4).
     generation: u32,
     emitted: usize,
+    cancelled: usize,
     session: Option<SessionEffect>,
     issued: bool,
     binding: Option<Binding>,
@@ -950,6 +992,7 @@ impl Undo {
                 open: boundary.transaction.is_some(),
                 generation: boundary.generation,
                 emitted: boundary.outbox.len(),
+                cancelled: boundary.cancels.len(),
                 session: boundary.session.clone(),
                 issued: boundary.issued,
                 binding: boundary.binding.clone(),
@@ -959,6 +1002,7 @@ impl Undo {
                 open: false,
                 generation: 0,
                 emitted: 0,
+                cancelled: 0,
                 session: None,
                 issued: false,
                 binding: None,
@@ -1007,6 +1051,7 @@ impl Undo {
                 BTreeSet::new()
             };
             boundary.outbox.truncate(self.emitted);
+            boundary.cancels.truncate(self.cancelled);
             boundary.session = self.session;
             boundary.issued = self.issued;
             boundary.binding = self.binding;

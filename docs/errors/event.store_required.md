@@ -127,6 +127,13 @@ too.
 An action that writes a database keeps its events in that one instead,
 in the same transaction, so it never needs `events: { store: }`.
 
+The same store keeps two other things an action that writes no database
+starts in an app with several: a batch run with no query, over a file's
+rows or a provider's list, whose actions write nothing, and a
+`batches.cancel` when the app keeps its runs in more than one store
+([How a run is kept](../language/12-jobs-and-events.md#how-a-run-is-kept)).
+Each is this error without it.
+
 ## Related
 
 - [Where the event is kept](../language/12-jobs-and-events.md#where-the-event-is-kept)

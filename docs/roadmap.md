@@ -144,12 +144,15 @@ D1 first: the site starts once D1 has merged.
 
 What the Reddit thread found (Richard, 2026-11-03):
 
-- [ ] **A19 Typed holes, to decide** `opus · high`: whether an agent can write
-  a hole and have the compiler say what type belongs there and what is in
-  scope. Waiting for Richard's decision on the recommendation in notes for
-  area 2, "Open questions": `_` as a value, always the error `type.hole`,
-  naming the type and what in scope fits; measured against the PersonName
-  detour, it saves nothing there, since D15, D16 and A14 already remove it.
+- [ ] **A19 Typed holes** `opus · high`: notes for area 2, "Typed holes".
+  `_` where a value goes, always the error `type.hole`, decided by the agent:
+  the type as the code would write it and up to five values in scope that fit,
+  closest first, with the edit for one; `expected` and `fits` in `--json`, and
+  the same on hover. Its rule goes on area 2's page, with its error page.
+  Measured against the PersonName detour it saves nothing, since D15, D16 and
+  A14 already remove it; it saves lookups where an agent knows it doesn't
+  know. Done when a hole is reported with its fits and no project holding one
+  checks, tests or builds.
 
 Not scheduled: a way to write a query the language can't express. Richard
 will work through it and other solutions later; don't design or build one
@@ -281,13 +284,15 @@ work below (Richard, 2026-11-08).
    apps (`jadpo package add` from a folder or a URL) and the cross-app break
    check; choosing a provider when deploying,
    when an app other people run needs it.
-   - [ ] **C1b Outgoing webhooks to customers' addresses** `opus · xhigh`
-     **needs a maintainer** before it starts: area 16, "Outgoing webhooks";
-     area 11, "The network report". How a customer registers an address and
-     chooses its events, and how each address's signing secret is made, kept
-     and rotated, are security decisions the pages don't make; then the
-     runtime-owned network exception (HTTPS only, public addresses checked
-     at every attempt, no redirects), listed once in the network report.
+   - [ ] **C1b Outgoing webhooks to customers' addresses** `opus · xhigh`:
+     area 16, "Outgoing webhooks"; area 11, "The network report"; notes for
+     area 16, "Addresses customers register". A customer registers an address
+     through operations generated on the customer's entity, as
+     `Service.issue_key` works, under policy; the runtime generates each
+     address's Standard Webhooks secret, shows it once and stores it sealed
+     with `field_encryption_key:`. The runtime-owned network exception is
+     built on the `Outward` client (HTTPS only, public addresses checked at
+     every attempt, no redirects), listed once in the network report.
      Done when an event reaches an address a customer registered, signed
      with that address's own secret, and a private address is refused.
    - [ ] **K1 Importers other than OpenAPI** `opus · high`, when first
@@ -331,7 +336,9 @@ work below (Richard, 2026-11-08).
       `opus · xhigh`: area 5, "Migrating structured values" and "Special
       kinds of index"; area 19, "Money in a translated message". A `unique:` or
       index over a structured value, a one-step update working one out, other
-      index kinds than geographic and HNSW.
+      index kinds than geographic and HNSW, and a one-step update that refuses
+      when the stored value would break a rule (notes for area 6, "A one-step
+      update that refuses").
     - [ ] **Q3 What `jadpo migrate new` still refuses** `opus · high`: area 5,
       "A stored value is checked when it is read", "Migrations" and "Batches,
       locks and resuming". A new `pattern:` on a stored field; column type
@@ -351,6 +358,16 @@ work below (Richard, 2026-11-08).
       area 18, "Acceptances". The data migration and acceptances for a
       `type.standard_exists` or `type.standard_clash` swap of a type already
       stored or on the wire.
+    - [ ] **Q11 Born names kept for every rename** `opus · high`: area 14,
+      "`jadpo rename`"; notes for area 5, "What a rename keeps"; notes for
+      area 14, "A born name is a name in use". An enum variant a column stores
+      and a field of an object stored as JSON recorded in the snapshot by born
+      name, the codec reading and writing the born name, so `jadpo rename`
+      keeps their data as it keeps a column's; and `jadpo check` refusing a
+      declaration written by hand with a name another of its kind was born
+      with. Both rules go on their area pages. Done when renaming either keeps
+      its stored values on both executors and the hand-written clash is
+      refused.
     - [ ] **Q8 The Redis driver** `opus · xhigh`: area 11, "No presets, no
       dependencies"; area 16, "Where the counts are kept: `rate_limits: { store: }`" and "A
       Redis store on Workers". `Driver.redis` natively and on Workers, and
@@ -366,16 +383,16 @@ work below (Richard, 2026-11-08).
       20, "What is built".
 11. Background work and tests (areas 12 and 13), added by the audit of
     2026-11-08.
-    - [ ] **J2 Batches over more** `opus · high`: area 12, "Walking records
-      or a provider's list: `batches.each`", "How a run is kept" and "How a
-      file's run is kept"; area 11, "Pages of results". A provider's list operation as
-      `from:`, walked by `page.next`; a page type above 1,000 items split into
-      batches; `batches.status` and `batches.cancel` with runs in no store or
-      several; a file's run with several databases and none written.
     - [ ] **J3 Delivery and operator gaps** `opus · high`: area 12, "Retries and
       giving up", "Watching schedules" and "Running background work". `Retry-After`
       between a delivery's attempts, names for instances, and
       `cli.signal_handler_failed`.
+    - [ ] **J4 File writers over a provider's list** `opus · high`: area 19,
+      "Data formats"; area 12, "Walking records or a provider's list:
+      `batches.each`" and "How an export's run is kept". A file helper's write
+      (`csv.write`, `tsv.write`, `json_lines.write`, `json.write`) taking a
+      provider's list operation as `from:`, walked by `page.next`, in place
+      of `type.batch_from_invalid`.
     - [ ] **W1 Data builders and `assert emitted`** `opus · high`: area 13,
       "Data builders" and "What is built". Builders' valid defaults, the
       named object a fixture returns with them, and `assert emitted`.
@@ -418,8 +435,7 @@ work below (Richard, 2026-11-08).
     - [ ] **L3 Language questions the pages leave open** **needs a maintainer**:
       each needs a decision, recorded on its area page, before it can be built.
       A map literal with entries and a rule on an entity (area 2); clearing only
-      the cache entries a change affects (area 5); a one-step update that refuses when
-      the stored value would break a rule (notes for area 6); `If-Match` and
+      the cache entries a change affects (area 5); `If-Match` and
       `ETag`, and a stream failing after its headers (notes for areas 4
       and 7); totals kept on an entity (notes for area 6); what generates a
       project's CI (area 14); flags for named tenants (area 16); turning a
@@ -428,8 +444,7 @@ work below (Richard, 2026-11-08).
       app's `shared/`, whether the registry marks and caches a provider's own
       package, and what `jadpo packages outdated` does (notes for area 11);
       and, from the registry's asks, personal-data labels on every field a
-      package sends, a way for a `GET` to count what it serves, and
-      `names.registry_part`.
+      package sends and a way for a `GET` to count what it serves.
 
 ## How we work
 

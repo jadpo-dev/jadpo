@@ -39,20 +39,6 @@ Why [Reads and writes](../06-reads-and-writes.md) is the way it is: the decision
 | `expiry:` on lossy-store entities hiding expired records from queries and updates like `visible:` | 5 | Answered by area 5: `expires_after:` |
 | Several changing calls: the record, replay and `diverged` | 12 | Answered: "Several outside calls" |
 
-## Open questions
-
-1. **Can a one-step update refuse when the stored value would break a
-   rule?** Taking stock (`Product.stock - quantity`) can't be a one-step
-   update, because the declared ranges can't prove the result stays at 0
-   or above, so the action loads the product first, and buyers racing on
-   one product rerun each other; in a flash sale that uses up the
-   three-attempt budget. *Recommendation:* a stored-value construction in
-   `set:` may map the rules it can break, as any construction does (area
-   2): `stock: Stock(Product.stock - quantity) { min: OutOfStock }`. The
-   database checks the condition in the same statement (`WHERE "stock" >=
-   $1`), and no row updated is the mapped failure, so the update stays one
-   step and never reruns.
-
 ## Decisions
 
 Rows starting "From area" were decided in that area and bind this page.
@@ -89,6 +75,7 @@ Rows starting "From area" were decided in that area and bind this page.
 | Provided not-found failure | Kind `not_found`, public, no fields, placed at its entity |
 | References that hold | A reference's value read from a record loaded earlier (its `id`, or its reference to the same entity) or `none` names a record that is there; any other value may not, and the write can fail with that entity's not-found failure |
 | Stored values | An update by `id` works a stored field out only with `+` and `-`, under constructions the declared ranges prove |
+| A one-step update that refuses (decided 2026-11-11, Richard accepting the recommendation) | A stored-value construction in `set:` may map the rules it can break, as any construction does (area 2): `stock: Stock(Product.stock - quantity) { min: OutOfStock }`. The database checks the condition in the same statement (`WHERE "stock" >= $1`), and no row updated is the mapped failure, so the update stays one step and never reruns. Without it, taking stock can't be a one-step update, because the declared ranges can't prove the result stays at 0 or above, so the action loads the product first, and buyers racing on one product rerun each other; in a flash sale that uses up the three-attempt budget. Not built yet |
 | `none` to a field that can't be cleared | `none` given to an optional `Input` field whose type isn't nullable is the same as leaving it out, so a patch keeps the stored value |
 | Refusals in a called action | An action whose failure its caller handles with `match` runs inside a savepoint, so its failure undoes all it wrote, a refusal among it, and the caller carries on |
 | Transitions as operations | `Entity.<transition>(record or id)`, an update of the fields its `set:` gives, giving back the record (nothing through `delete`); its block takes only `conflict:`; it reaches only visible records |
