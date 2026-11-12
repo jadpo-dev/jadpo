@@ -26,6 +26,12 @@ pub struct Needed {
     pub entity: String,
     pub field: String,
     pub kind: NeededKind,
+    /// A refit only Jadpo can carry out: one for a new `pattern:`, whose
+    /// stored values SQL can't find, since PostgreSQL's regular
+    /// expressions aren't Jadpo's (chunk Q3). `jadpo migrate apply` reads
+    /// every stored value in batches, checks it with the field's rules and
+    /// replaces those they refuse with the backfill, worked out in Jadpo.
+    pub in_jadpo: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,8 +43,8 @@ pub enum NeededKind {
     /// data until a later migration drops it.
     Retire,
     /// A field whose type allows less than it did (a variant gone, a
-    /// shorter `max_length`, a narrower range): stored rows it no longer
-    /// allows need a value it does.
+    /// shorter `max_length`, a narrower range, a new `pattern:`): stored
+    /// rows it no longer allows need a value it does.
     Refit,
     /// A structured field stored as JSON whose type may no longer read
     /// every value stored under the type it had (chunk 5.9c): the
@@ -492,6 +498,7 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
         entity: entity.to_string(),
         field: String::new(),
         kind,
+        in_jadpo: false,
     };
     for change in changes(before, after) {
         let (store, table, column) = match &change {
@@ -549,6 +556,7 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
                         entity: entity.clone(),
                         field: held.field.clone().unwrap_or_else(|| column.clone()),
                         kind: NeededKind::DropField,
+                        in_jadpo: false,
                     };
                     if !out.iter().any(|other: &Needed| {
                         other.store == needed.store
@@ -589,7 +597,7 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
             Some(was) if !was.retired && now.retired => NeededKind::Retire,
             Some(_) if now.sealed => continue,
             Some(was) if was.nullable && !now.nullable && !now.retired => NeededKind::Backfill,
-            Some(was) if !now.retired && narrowed(was, now) => NeededKind::Refit,
+            Some(was) if !now.retired && allows_less(was, now) => NeededKind::Refit,
             Some(was) if reads_less(was, now) => NeededKind::Unreadable,
             _ => continue,
         };
@@ -600,6 +608,7 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
             entity: entity.clone(),
             field: now.field.clone().unwrap_or_else(|| column.clone()),
             kind,
+            in_jadpo: kind == NeededKind::Refit && was.is_some_and(|was| adds_pattern(was, now)),
         };
         // A field stored in two columns (an amount of money, area 19) is
         // one decision.
@@ -625,6 +634,23 @@ pub fn narrowed(was: &Column, now: &Column) -> bool {
     }
 }
 
+/// Whether column `now` refuses a value `was` allowed, a new `pattern:`
+/// included: what needs a refit (chunk Q3).
+pub fn allows_less(was: &Column, now: &Column) -> bool {
+    narrowed(was, now) || adds_pattern(was, now)
+}
+
+/// Whether column `now` holds text to a pattern `was` didn't: one SQL
+/// can't test, since PostgreSQL's regular expressions aren't Jadpo's, so
+/// only Jadpo finds the stored values it refuses (chunk Q3). Never when
+/// `was` comes from a snapshot that didn't record what it allows.
+pub fn adds_pattern(was: &Column, now: &Column) -> bool {
+    match (&was.allows, &now.allows) {
+        (Some(was), Some(now)) => now.patterns.iter().any(|p| !was.patterns.contains(p)),
+        _ => false,
+    }
+}
+
 /// Whether column `now` holds a structured value as JSON whose type may
 /// not read every value stored under `was`'s (chunk 5.9c): never for a
 /// change that only widens what is read; always when `was` comes from a
@@ -644,9 +670,9 @@ pub fn reads_less(was: &Column, now: &Column) -> bool {
     }
 }
 
-/// Whether `now` refuses a value `was` allowed: a variant gone, or a
-/// bound or length tighter or new. A new pattern is refused by
-/// [`migration_sql`] instead, since no SQL finds the values it refuses.
+/// Whether `now` refuses a value `was` allowed that SQL can find: a
+/// variant gone, or a bound or length tighter or new. A new pattern is
+/// [`adds_pattern`]'s, since no SQL finds the values it refuses.
 pub fn narrows(was: &Allows, now: &Allows) -> bool {
     let tighter = |old: &Option<String>, new: &Option<String>, below: bool| match (old, new) {
         (_, None) => false,
@@ -1020,7 +1046,7 @@ pub fn migration_sql(
                 if now.sealed
                     && !now.retired
                     && was.allows.is_some()
-                    && (narrowed(was, now) || reads_less(was, now))
+                    && (allows_less(was, now) || reads_less(was, now))
                 {
                     refusals.push(Refusal {
                         change: format!("sealed column `{table}.{column}` allows less"),
@@ -1044,19 +1070,6 @@ pub fn migration_sql(
                         });
                         continue;
                     }
-                }
-                let new_pattern = match (&was.allows, &now.allows) {
-                    (Some(was), Some(now)) => {
-                        now.patterns.iter().any(|p| !was.patterns.contains(p))
-                    }
-                    _ => false,
-                };
-                if !now.retired && new_pattern {
-                    refusals.push(Refusal {
-                        change: format!("column `{table}.{column}` takes a new `pattern`"),
-                        reason: "Stored values a new pattern refuses would need a value it allows, and PostgreSQL's regular expressions aren't Jadpo's, so this compiler can't find them yet.".into(),
-                    });
-                    continue;
                 }
                 if was.retired && !now.retired {
                     let field = format!(
@@ -1672,7 +1685,46 @@ fn backfill(
                 ..Filled::default()
             }
         }
-        (NeededKind::Refit, Some(Decided::Backfill(value))) => Filled {
+        // A refit worked out in Jadpo, or one only Jadpo can find the
+        // values of (a new `pattern:`): every stored value read in
+        // batches, checked with the field's rules now, and those they
+        // refuse given the backfill's value (chunk Q3).
+        (NeededKind::Refit, Some(Decided::InJadpo { reads, code })) if key.len() == 1 => Filled {
+            batches: vec![Statement {
+                sql: table::refit_in_jadpo(
+                    &need.key(),
+                    table,
+                    &key[0],
+                    column,
+                    sql_type,
+                    &reads,
+                    &code,
+                ),
+                does: "replace values no longer allowed in batches in Jadpo",
+            }],
+            ..Filled::default()
+        },
+        // A computed refit with a SQL form, in batches by `UPDATE` of the
+        // rows breaking what the field allows now (chunk Q3).
+        (NeededKind::Refit, Some(Decided::Computed(value)))
+            if key.len() == 1 && !need.in_jadpo && !broken.is_empty() =>
+        {
+            Filled {
+                batches: vec![Statement {
+                    sql: table::refit_in_batches(
+                        &need.key(),
+                        table,
+                        &key[0],
+                        column,
+                        &value,
+                        broken,
+                    ),
+                    does: "replace values no longer allowed in batches",
+                }],
+                ..Filled::default()
+            }
+        }
+        (NeededKind::Refit, Some(Decided::Backfill(value))) if !need.in_jadpo => Filled {
             now: vec![Statement {
                 sql: table::fill(table, column, &value, broken),
                 does: "replace values no longer allowed",

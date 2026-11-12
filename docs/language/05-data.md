@@ -1247,6 +1247,64 @@ migration {
 The migration's SQL is `UPDATE "parcel" SET "size" = 'medium' WHERE
 "size" NOT IN ('medium', 'small')`.
 
+**A new `pattern:`** allows less too, and takes a `backfill:` the same
+way. PostgreSQL's regular expressions aren't Jadpo's, so no SQL finds the
+values it refuses: `jadpo migrate apply` reads every stored value in
+batches, checks each with the field's rules now, and writes the
+backfill's value back for those they refuse, worked out in Jadpo even when
+it is written out. Here a code takes capital letters only:
+
+```jadpo check project=new-pattern file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=new-pattern file=domains/shop/entities/item.jadpo hidden migrate=initial
+entity Item {
+    id: Uuid
+    code: Text
+}
+```
+
+```jadpo check project=new-pattern file=domains/shop/entities/item.jadpo migrate=capital_codes
+entity Item {
+    id: Uuid
+    code: Text {
+        pattern: "[A-Z]+"
+    }
+}
+```
+
+database/migrations/20261020T1401_capital_codes/changes.jadpo:
+
+```jadpo check project=new-pattern file=database/migrations/20261020T1401_capital_codes/changes.jadpo migrate=finish
+/// Holds codes to capital letters.
+migration {
+    Item.code: {
+        backfill: "UNKNOWN"  // codes stored with anything else
+    }
+}
+```
+
+The migration's SQL says how (`-- rewrite Item.code: in Jadpo, 1000 rows
+a batch, …`), and `jadpo migrate apply` reports the values it replaced
+(`3 rows rewritten in 2 batches in Jadpo`).
+
+**A backfill worked out from each record** refits too
+([Computed backfills](#computed-backfills)). It reads the field it refits,
+and any other field its migration refits, as the built-in type its column
+holds, as it reads a retired field, since a stored value may break the
+rules the field has now; an enum's isn't offered. So a shorter `Name`
+keeps the start of each name too long for it:
+`backfill: Name(text.keep_first(Item.name, 5))`. With a SQL form, and no
+new pattern, the rows breaking what the field allows now are replaced by
+`UPDATE` in batches (`-- rewrite Item.name: by UPDATE, …`); otherwise in
+Jadpo, as for a new pattern. A value the field allows is never touched.
+
+As with any refit, a server still on the old build may write a value the
+field no longer allows after its row was refitted; such a value is a
+fault when read, as any stored value that breaks its rules is
+([A stored value is checked when it is read](#a-stored-value-is-checked-when-it-is-read)).
+
 An older snapshot that doesn't record what fields allow has it recorded by
 the next migration, with nothing to decide.
 
@@ -1289,9 +1347,8 @@ A query compares a stored value as code compares it, part for part in
 named columns and as its JSON in a `jsonb` column
 ([Values kept in several columns or as JSON](06-reads-and-writes.md#values-kept-in-several-columns-or-as-json)).
 
-Not built yet: a new `pattern:` on a stored field, since PostgreSQL's
-regular expressions aren't Jadpo's (`jadpo migrate new` says so); and
-`CHECK` constraints holding fields' rules in the database.
+Not built yet: `CHECK` constraints holding fields' rules in the
+database.
 
 ## Structured values
 <!-- topic: structured-values -->
@@ -1534,8 +1591,7 @@ and leaves the rest as they are.
   UPDATE`, reads each with the new type, works the backfill out for those
   that don't read, and writes them back through the codec, leaving the
   rest as they are. The backfill may be written out or worked out from the
-  row, as any backfill in Jadpo may; a narrowed column's refit outside
-  JSON still takes only a value written out. A backfill still reads no
+  row, as any backfill in Jadpo may. A backfill still reads no
   field held as JSON, its own included, whose old type is gone.
 - **Values written meanwhile.** A server still on the old build may write
   a value the new type doesn't read after the check or the rewrite has
@@ -1882,7 +1938,10 @@ refused, as in any function.
 (`boolean`, `text`, `uuid`, a whole number, `numeric`, `timestamptz`,
 `date`), since its declared type goes with it. So
 `LegacyFlag(Todo.legacy_flag)` gives the function the named type it
-takes. A retired enum or structured field isn't offered.
+takes. A retired enum or structured field isn't offered. A field the
+migration refits is read the same way, since a stored value may break the
+rules it has now
+([Changing what a field allows](#changing-what-a-field-allows)).
 
 **Its type** is the field's declared type, as for any value set on the
 field ([Reads and writes](06-reads-and-writes.md)). A field with rules of
@@ -2037,10 +2096,8 @@ earlier run. `--json` gives them as `backfills`, each with its `how` (`"in
 Jadpo"`). `jadpo migrate new` lists "fill existing rows in batches in
 Jadpo" for one worked out in Jadpo.
 
-Not built yet: a computed backfill for a field that allows less (a
-variant removed, a shorter `max_length`), which is refitted only with a
-value written out; and a backfill in Jadpo that fills a value held in
-several columns, or reads a field held so or as JSON.
+Not built yet: a backfill in Jadpo that fills a value held in several
+columns, or reads a field held so or as JSON.
 
 ## System tables
 <!-- topic: system-tables -->
@@ -2271,8 +2328,8 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | Standard types stored in named columns, and the standard collections | Built: each is stored, read back, and compared and ordered in a query as code compares and orders it. |
 | Manifest nodes | Built: a node for each entity's placement, unique rule, index and reference, with `references` edges between entities, one for each system table and migration snapshot, and one for each lifecycle and transition (`lifecycle Todo`, `transition Todo.delete`, with its `when:`, whether it can refuse a record and the fields it sets). |
 | Removing data | Built: retiring a field or an entity, moving an entity to another store and `--drop`, each needing its [acceptance](18-records-and-manifest.md#acceptances) ([Removing data](#removing-data)). Copying an entity's records to its new store is yours to do. |
-| Other schema changes in `jadpo migrate new` | Not built yet: a new `pattern:` on a stored field, and other column type changes. Turning `encrypted:` on or off is refused for good: it needs a data migration ([Encrypted fields](15-personal-data.md#encrypted-fields)). |
-| A worked-out backfill for a field that allows less | Not built yet. |
+| Other schema changes in `jadpo migrate new` | Built: a new `pattern:` on a stored field, refitted in Jadpo. Not built yet: column type changes other than widening. Turning `encrypted:` on or off is refused for good: it needs a data migration ([Encrypted fields](15-personal-data.md#encrypted-fields)). |
+| A worked-out backfill for a field that allows less | Built: by `UPDATE` in batches, or in Jadpo. |
 | A backfill in Jadpo that fills a value held in several columns, or reads a field held so or as JSON | Not built yet. |
 | Entities in Redis and record caches (`caches:`) | Not built yet. Clearing only the cached entries a change affects isn't designed yet. |
 | Index kinds: geographic, HNSW and JSON | Built. |

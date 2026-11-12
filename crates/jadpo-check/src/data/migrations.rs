@@ -319,6 +319,48 @@ pub fn retired_fields(db: &dyn Db, project: Project, entity: &str) -> Vec<(Strin
     out
 }
 
+/// The fields of `entity` the latest migration refits, since what they
+/// allow is less (chunk Q3), each with the built-in type its column holds,
+/// as which its computed backfills read it: a stored value may break the
+/// rules the field has now, so it isn't read as the field's type. `None`
+/// for one held otherwise, an enum's variant among them, which isn't
+/// offered, as a retired one isn't.
+pub fn refitted_fields(db: &dyn Db, project: Project, entity: &str) -> Vec<(String, Option<Ty>)> {
+    let set = migrations(db, project);
+    let (before, after) = (set.before_latest(), set.latest_schema());
+    let mut out = Vec::new();
+    for (store, tables) in &after.stores {
+        for (name, table) in &tables.tables {
+            if table.holds != Holds::Entity(entity.to_string()) {
+                continue;
+            }
+            let was = before.stores.get(store).and_then(|s| s.tables.get(name));
+            for (column, now) in &table.columns {
+                let Some(held) = was.and_then(|t| t.columns.get(column)) else {
+                    continue;
+                };
+                if now.retired || held.retired || !jadpo_graph::migration::allows_less(held, now) {
+                    continue;
+                }
+                let Some(field) = &now.field else {
+                    continue;
+                };
+                let enum_text = now.allows.as_ref().is_some_and(|a| !a.values.is_empty());
+                let ty = retired_type(&now.sql_type)
+                    .filter(|_| !enum_text)
+                    .map(Ty::Prim);
+                if !out
+                    .iter()
+                    .any(|(known, _): &(String, Option<Ty>)| known == field)
+                {
+                    out.push((field.clone(), ty));
+                }
+            }
+        }
+    }
+    out
+}
+
 /// The fields of `entity` the latest migration adds: what its computed
 /// backfills may not read, since no stored record has a value for them
 /// while the backfill runs (chunk 5.8b).
@@ -517,7 +559,8 @@ fn number_text(value: Num) -> String {
 
 /// A value of a field's type to suggest for its backfill: the first plain
 /// variant of an enum, `false`, the smallest number its rules allow, or a
-/// text of the shortest length allowed.
+/// text of the shortest length allowed; none for text held to a pattern or
+/// a format, which no such text is sure to meet.
 pub fn example_backfill(lookup: &dyn TypeView, ty: &Ty) -> Option<String> {
     let rules: Vec<_> = lookup
         .rule_chain(ty)
@@ -538,6 +581,12 @@ pub fn example_backfill(lookup: &dyn TypeView, ty: &Ty) -> Option<String> {
             .find_map(|r| r.min)
             .map_or_else(|| "0".into(), number_text),
         Ty::Prim(prim) if prim.representation() == Builtin::Text => {
+            if rules
+                .iter()
+                .any(|r| r.pattern.is_some() || r.format.is_some())
+            {
+                return None;
+            }
             let min = rules.iter().find_map(|r| r.min_length).unwrap_or(0);
             format!("\"{}\"", "x".repeat(usize::try_from(min).unwrap_or(0)))
         }
@@ -599,9 +648,10 @@ impl Decide<'_> {
     pub fn decided(&self, need: &Needed) -> Option<Decided> {
         let decision = self.decisions.iter().find(|d| d.key == need.key())?;
         match (&decision.value, need.kind) {
-            (DecisionValue::Backfill(value, _), NeededKind::Backfill | NeededKind::Unreadable)
-                if self.is_computed(need, value) =>
-            {
+            (
+                DecisionValue::Backfill(value, _),
+                NeededKind::Backfill | NeededKind::Unreadable | NeededKind::Refit,
+            ) if self.is_computed(need, value) => {
                 let computed = self.computed(decision, need)?;
                 if !computed.problems.is_empty() {
                     return None;
@@ -614,11 +664,6 @@ impl Decide<'_> {
                     }),
                     (None, None) => None,
                 }
-            }
-            (DecisionValue::Backfill(value, _), NeededKind::Refit)
-                if self.is_computed(need, value) =>
-            {
-                None
             }
             (DecisionValue::Backfill(value, _), NeededKind::Backfill | NeededKind::Refit) => {
                 let field = field_model(self.model, &need.entity, &need.field)?;
@@ -663,6 +708,11 @@ impl Decide<'_> {
         // codec, so even a literal or a variant is worked out in Jadpo
         // (chunk 5.9c).
         if field_model(self.model, &need.entity, &need.field).is_some_and(|f| f.json.is_some()) {
+            return true;
+        }
+        // Only Jadpo finds the stored values a new pattern refuses, so even
+        // a literal replacing them is written back from Jadpo (chunk Q3).
+        if need.in_jadpo {
             return true;
         }
         match value {
@@ -739,7 +789,7 @@ impl Decide<'_> {
         // codec's, written in Jadpo (chunk 5.9c).
         let json =
             field_model(self.model, &need.entity, &need.field).is_some_and(|f| f.json.is_some());
-        let sql = (!json)
+        let sql = (!json && !need.in_jadpo)
             .then(|| super::backfill::sql(self.db, self.project, &checked.body, &row, scale))
             .flatten();
         let jadpo = match sql {
@@ -771,13 +821,25 @@ impl Decide<'_> {
         let field = field_model(self.model, &need.entity, &need.field)?;
         // A structured value is written through the route codec (chunk
         // 5.9c); any other only when held in one column.
-        if field.json.is_none() {
-            decode_column(self.lookup, &entity.name, field)?;
-        }
+        let own = match field.json {
+            None => Some(decode_column(self.lookup, &entity.name, field)?),
+            Some(_) => None,
+        };
+        // A refit reads the field's own column too, checking each value
+        // with the field's rules now (chunk Q3).
+        let refits = match need.kind {
+            NeededKind::Refit => Some(own?),
+            _ => None,
+        };
         let sql_type = field.sql_type.clone()?;
         let write = jadpo_std::SqlType::of_column(&sql_type)?;
         let (function, names) = super::backfill::as_function(body);
-        let retired = retired_fields(self.db, self.project, &need.entity);
+        // A field retired or refitted is read as the built-in type its
+        // column holds (chunk Q3).
+        let mut retired = retired_fields(self.db, self.project, &need.entity);
+        for (field, ty) in refitted_fields(self.db, self.project, &need.entity) {
+            retired.push((field, ty.unwrap_or(Ty::Error)));
+        }
         let mut reads = Vec::new();
         for name in names {
             let (decode, now) = match retired.iter().find(|(field, _)| *field == name) {
@@ -808,6 +870,7 @@ impl Decide<'_> {
             scale,
             fills: (entity.name.clone(), field.name.clone()),
             code: super::backfill::fingerprint(self.db, self.project, body),
+            refits,
         })
     }
 }
@@ -900,8 +963,10 @@ pub fn jadpo_backfills(db: &dyn Db, project: Project) -> Vec<JadpoBackfill> {
         let DecisionValue::Backfill(value, span) = &decision.value else {
             continue;
         };
-        if !matches!(need.kind, NeededKind::Backfill | NeededKind::Unreadable)
-            || !decide.is_computed(&need, value)
+        if !matches!(
+            need.kind,
+            NeededKind::Backfill | NeededKind::Unreadable | NeededKind::Refit
+        ) || !decide.is_computed(&need, value)
         {
             continue;
         }
@@ -1487,19 +1552,6 @@ fn computed_problems(
     span: &Span,
 ) -> Vec<Diagnostic> {
     let key = need.key();
-    if need.kind == NeededKind::Refit {
-        return vec![
-            Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                format!("A backfill worked out from each record for `{key}` isn't built yet"),
-            )
-            .at(span.clone(), "worked out from each record")
-            .reason(format!(
-                "`{key}` allows less than it did, and this compiler replaces the values it no longer allows only with one value written out so far."
-            ))
-            .next(format!("Write `{key}: {{ backfill: <value> }}` with one value of its type")),
-        ];
-    }
     let Some(computed) = decide.computed(decision, need) else {
         return Vec::new();
     };

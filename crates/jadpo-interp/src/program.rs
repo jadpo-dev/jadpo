@@ -593,6 +593,7 @@ impl Program {
                     .collect(),
                 write: plan.write,
                 validator: Some(self.validator(plan.validator)),
+                refits: plan.refits.clone(),
             })
             .collect()
     }

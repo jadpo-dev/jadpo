@@ -634,6 +634,12 @@ struct Body<'a> {
     /// `stored`'s entity this migration adds, which no stored record has
     /// a value for yet.
     added: Vec<String>,
+    /// While a computed backfill is checked (chunk Q3): the fields of
+    /// `stored`'s entity this migration refits, each read as the built-in
+    /// type its column holds, since a stored value may break the rules its
+    /// field has now; `None` for one held otherwise (an enum's variant),
+    /// which isn't offered.
+    refitted: Vec<(String, Option<Ty>)>,
     /// The action being checked, by name: whether root `policy {
     /// actions: }` lists it decides which fields its updates may change
     /// (area 9).
@@ -690,6 +696,7 @@ impl<'a> Body<'a> {
             stored: None,
             retired: Vec::new(),
             added: Vec::new(),
+            refitted: Vec::new(),
             action: None,
         }
     }
@@ -730,6 +737,7 @@ struct BackfillTarget {
     value: ast::Expr,
     retired: Vec<(String, Ty)>,
     added: Vec<String>,
+    refitted: Vec<(String, Option<Ty>)>,
 }
 
 fn text(name: &ast::NameRef) -> String {
@@ -966,6 +974,8 @@ impl Body<'_> {
                 let retired =
                     crate::data::migrations::retired_fields(self.db, self.project, &entity);
                 let added = crate::data::migrations::added_fields(self.db, self.project, &entity);
+                let refitted =
+                    crate::data::migrations::refitted_fields(self.db, self.project, &entity);
                 Target {
                     syntax: value.syntax().clone(),
                     context: Context::Backfill,
@@ -984,6 +994,7 @@ impl Body<'_> {
                         value,
                         retired,
                         added,
+                        refitted,
                     }),
                 }
             }

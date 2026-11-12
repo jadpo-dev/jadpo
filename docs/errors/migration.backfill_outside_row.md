@@ -194,6 +194,63 @@ error: The backfill for `Draft.subheading` can't read `Draft.title`
 check failed: 1 error, 4 files
 ```
 
+Nor, as the field's own type, an enum field its migration refits, which a
+stored record may still hold a variant of that is gone. A field it refits
+is read as the built-in type its column holds, and an enum's variant
+isn't one:
+
+```jadpo check project=e-backfill-refitted file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-backfill-refitted file=domains/depot/types/box_size.jadpo hidden
+type BoxSize = Enum {
+    small
+    medium
+    large
+}
+```
+
+```jadpo check project=e-backfill-refitted file=domains/depot/entities/parcel.jadpo hidden migrate=initial
+use depot/types { BoxSize }
+
+entity Parcel {
+    id: Uuid
+    size: BoxSize
+}
+```
+
+```jadpo check project=e-backfill-refitted file=domains/depot/types/box_size.jadpo hidden migrate=drop_large
+type BoxSize = Enum {
+    small
+    medium
+}
+```
+
+`database/migrations/20261020T1401_drop_large/changes.jadpo`:
+
+```jadpo check project=e-backfill-refitted file=database/migrations/20261020T1401_drop_large/changes.jadpo expect=migration.backfill_outside_row
+migration {
+    Parcel.size: {
+        backfill: Parcel.size
+    }
+}
+```
+
+```text output
+error: The backfill for `Parcel.size` can't read `Parcel.size`
+ --> database/migrations/20261020T1401_drop_large/changes.jadpo:3:19
+  |
+3 |         backfill: Parcel.size
+  |                   ^^^^^^^^^^^ a field this migration refits
+  reason: `Parcel.size` allows less after this migration, so a stored value may be one its type no longer has; a backfill reads such a field only as the built-in type its column holds, and an enum's variant isn't one.
+  next: Work the value out from `Parcel`'s other fields, or a constant (agent)
+  rule: migration.backfill_outside_row
+  help: https://jadpo.dev/docs/errors/migration.backfill_outside_row
+
+check failed: 1 error, 4 files
+```
+
 ## How to fix it
 
 **If every stored record can start with the same value**, write the value:

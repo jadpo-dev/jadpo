@@ -86,6 +86,10 @@ pub struct InJadpo {
     pub fills: (String, String),
     /// The digest of the code it runs.
     pub code: String,
+    /// For a refit (chunk Q3), how the field's own column is read, so each
+    /// stored value is checked with its rules now and only those they
+    /// refuse are replaced.
+    pub refits: Option<jadpo_std::read::Column>,
 }
 
 /// A stored field a backfill worked out in Jadpo reads.

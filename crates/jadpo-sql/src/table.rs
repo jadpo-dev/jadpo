@@ -243,17 +243,81 @@ pub fn rewrite_in_jadpo(
     reads: &[String],
     code: &str,
 ) -> String {
+    rewritten_in_jadpo(
+        field,
+        "rewriting the stored values the field's type no longer reads",
+        (table, key, column, sql_type),
+        reads,
+        code,
+    )
+}
+
+/// The refit of the values stored in `column` that its field's rules no
+/// longer allow, a new `pattern:`'s among them, with a backfill worked out
+/// in Jadpo (chunk Q3): read in batches as [`rewrite_in_jadpo`] reads
+/// them, `jadpo migrate apply` checking each value with the field's rules
+/// now and writing the backfill's value back for those they refuse.
+pub fn refit_in_jadpo(
+    field: &str,
+    table: &str,
+    key: &str,
+    column: &str,
+    sql_type: &str,
+    reads: &[String],
+    code: &str,
+) -> String {
+    rewritten_in_jadpo(
+        field,
+        "replacing the stored values the field's rules no longer allow",
+        (table, key, column, sql_type),
+        reads,
+        code,
+    )
+}
+
+fn rewritten_in_jadpo(
+    field: &str,
+    doing: &str,
+    (table, key, column, sql_type): (&str, &str, &str, &str),
+    reads: &[String],
+    code: &str,
+) -> String {
     let (t, k, c) = (ident(table), ident(key), ident(column));
     let mut read = vec![column.to_string()];
     read.extend(reads.iter().cloned());
     format!(
-        "{marker}{field}: {how}, {BATCH_ROWS} rows a batch, each batch its own transaction, rewriting the stored values the field's type no longer reads; its code's digest {code}\n\
+        "{marker}{field}: {how}, {BATCH_ROWS} rows a batch, each batch its own transaction, {doing}; its code's digest {code}\n\
          SELECT count(*) FROM {t} WHERE {c} IS NOT NULL;\n\
          {select} WHERE {k} > $1 AND {c} IS NOT NULL ORDER BY {k} LIMIT {BATCH_ROWS} FOR NO KEY UPDATE;\n\
          UPDATE {t} SET {c} = \"jadpo_value\".\"value\" FROM unnest($1::uuid[], $2::{sql_type}[]) AS \"jadpo_value\"(\"key\", \"value\") WHERE {t}.{k} = \"jadpo_value\".\"key\"",
         marker = jadpo_std::REWRITE_MARKER,
         how = jadpo_std::IN_JADPO,
         select = jadpo_read(table, key, &read),
+    )
+}
+
+/// The refit of the values stored in `column` that its field's rules no
+/// longer allow, by a computed backfill with a SQL form (chunk Q3): in
+/// the batches of [`backfill_in_batches`], each giving `value` to the rows
+/// of the batch meeting any of `broken`, the conditions under which a
+/// stored value breaks them. Its count is of the rows to replace.
+pub fn refit_in_batches(
+    field: &str,
+    table: &str,
+    key: &str,
+    column: &str,
+    value: &str,
+    broken: &[String],
+) -> String {
+    let (t, k, c) = (ident(table), ident(key), ident(column));
+    let broken = broken.join(" OR ");
+    format!(
+        "{marker}{field}: by UPDATE, {BATCH_ROWS} rows a batch, each batch its own transaction, replacing the stored values the field's rules no longer allow\n\
+         SELECT count(*) FROM {t} WHERE {broken};\n\
+         WITH \"batch\" AS (SELECT {k} AS \"jadpo_key\" FROM {t} WHERE {k} > $1 ORDER BY {k} LIMIT {BATCH_ROWS}), \
+         \"filled\" AS (UPDATE {t} SET {c} = {value} FROM \"batch\" WHERE {t}.{k} = \"batch\".\"jadpo_key\" AND ({broken}) RETURNING 1) \
+         SELECT (SELECT \"jadpo_key\" FROM \"batch\" ORDER BY \"jadpo_key\" DESC LIMIT 1), (SELECT count(*) FROM \"filled\")",
+        marker = jadpo_std::REWRITE_MARKER,
     )
 }
 
