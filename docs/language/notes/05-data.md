@@ -114,3 +114,12 @@ changed a rule.
   plan's and are tested with it.
 - **Hyperdrive** pools connections by transaction, which is why Jadpo's
   statements there are unnamed and its leases are rows.
+
+## Held values in lifecycles (decided 2026-11-11)
+
+A lifecycle's `visible:` and `when:` test a field kept in several
+columns, as they test one kept as JSON, only with `== none` or `!= none`
+(`data.lifecycle_condition`). A query lays such a value out as
+parameters when it runs, one per column, and a lifecycle's condition is
+also written into its partial index's predicate as SQL text, which takes
+no parameters. Recommended, for a maintainer to confirm.

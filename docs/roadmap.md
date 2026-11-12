@@ -306,9 +306,6 @@ work below (Richard, 2026-11-08).
      placeholder in a host (`{project_ref}`), defaults for package settings,
      and a field read by `decode:` or `encode:` on a webhook's event.
      Twilio's XML waits on an XML byte format (L2).
-   - [ ] **K3 `AnyObject`** `opus · high`: area 2, "Other built-in types";
-     area 11, "Types". A package input taking any of the app's object types as
-     JSON, as Postmark's template variables and Stripe's metadata need.
    - [ ] **K4 Capability mappings and conformance suites** `opus · high`:
      area 11, "How a package provides a capability", "Proving a package
      works" and "Mistakes not reported yet"; area 21, "The conformance
@@ -341,14 +338,8 @@ work below (Richard, 2026-11-08).
 
 10. Data and queries (areas 5, 6, 19 and 20), added by the audit of
     2026-11-08. Each keeps every test passing on both executors.
-    - [ ] **Q1 Comparing standard types, money and held values in a query**
-      `opus · xhigh`: area 5, "A stored value is checked when it is read"
-      and "Migrating structured values"; area 6, "Operations in conditions";
-      area 19, "SQL literals" and "Money in a translated message". Comparing and
-      ordering by a standard type held in named columns, a standard collection,
-      an amount of money or a range, and a condition on a field kept as JSON.
     - [ ] **Q2 Unique rules, indexes and one-step updates over held values**
-      `opus · xhigh` after Q1: area 5, "Migrating structured values" and "Special
+      `opus · xhigh`: area 5, "Migrating structured values" and "Special
       kinds of index"; area 19, "Money in a translated message". A `unique:` or
       index over a structured value, a one-step update working one out, other
       index kinds than geographic and HNSW, and a one-step update that refuses

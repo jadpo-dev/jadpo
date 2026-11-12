@@ -12,11 +12,9 @@
 //! no exact form, or one PostgreSQL can't index (`jadpo_sql::form::
 //! indexable`); a value given when the query runs as another argument; an
 //! operation of another operation's result, or with the field anywhere but
-//! first (`query.condition_unsupported`); a field kept in several columns
-//! or whole as its JSON (chunk 5.9b), which no condition compares yet
-//! (`toolchain.not_built_yet`);
-//! and arguments code would refuse (`type.mismatch`, a zero divisor, a
-//! negative count, empty text to find).
+//! first (`query.condition_unsupported`); and arguments code would
+//! refuse (`type.mismatch`, a zero divisor, a negative count, empty text
+//! to find).
 
 use super::*;
 use jadpo_sql::form;
@@ -169,35 +167,6 @@ impl Reader<'_> {
             ));
             return None;
         }
-        // A field kept in several columns, or whole as its JSON (chunks
-        // 5.5w2b and 5.9b), isn't compared in a query yet, through an
-        // operation or not: PostgreSQL compares `jsonb` by its own rules,
-        // not by Jadpo's `==`, and an operation's form reads one column.
-        let not_built = match (field.compound, &field.json) {
-            (Some(compound), _) => Some((
-                compound.to_string(),
-                "stored in several columns (an amount of money in its minor units and its currency, area 19)",
-            )),
-            (None, Some(held)) => Some((
-                held.clone(),
-                "stored whole as its JSON in one `jsonb` column (area 5)",
-            )),
-            (None, None) => None,
-        };
-        if let Some((stored, how)) = not_built {
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("Comparing `{field_written}` in a query isn't built yet"),
-                )
-                .at(Self::span(scope.path, whole), format!("a `{stored}`"))
-                .reason(format!(
-                    "`{field_written}` is a `{stored}`, {how}, and this compiler's queries don't compare such a field yet, through an operation or not."
-                ))
-                .next("Filter the records after the query for now"),
-            );
-            return None;
-        }
         // An exact SQL form, which the database works out as the code does.
         let exact = jadpo_sql::lowering(operation.op) == Some(Lowering::Exact)
             && operation.op != Op::AiDistance;
@@ -277,6 +246,10 @@ impl Reader<'_> {
                 if operation.result == operation.params[0].kind =>
             {
                 (field_ty.clone(), held)
+            }
+            // A standard enum, kept by its code: `money.currency`'s.
+            Kind::Enum(name) if jadpo_std::standard::stored_by_code(name).is_some() => {
+                (Ty::Named(name.to_string()), form::Held::Builtin(Prim::Text))
             }
             _ => {
                 self.unsupported(
@@ -404,6 +377,10 @@ impl Reader<'_> {
     /// it is built on, text for a plain enum, `jsonb` for a list, a set or
     /// a map.
     fn held(&self, ty: &Ty) -> Option<form::Held> {
+        // An amount of money, in its two columns.
+        if self.lookup.representation(ty) == Some(Prim::Money) {
+            return Some(form::Held::Money);
+        }
         if let Some(prim) = self.lookup.representation(ty) {
             return form::reads(prim).then_some(form::Held::Builtin(prim));
         }
@@ -591,7 +568,7 @@ fn kind_shown(kind: Kind) -> String {
 }
 
 /// A comparison's operator as written.
-fn compare_written(compare: Compare) -> &'static str {
+pub(super) fn compare_written(compare: Compare) -> &'static str {
     match compare {
         Compare::Equal => "==",
         Compare::NotEqual => "!=",

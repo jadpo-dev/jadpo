@@ -131,6 +131,11 @@ pub enum Codec {
         contract: CodecId,
         coding: WireCoding,
     },
+    /// A provider package's `AnyObject` field (areas 2 and 11, "Types"):
+    /// one of the app's object types, written as that type's codec writes
+    /// it, found by the record's type's name among `objects`. Nothing reads
+    /// one, since JSON doesn't say which type it was.
+    AnyObject { objects: Vec<(String, CodecId)> },
 }
 
 /// How a provider package's field is sent ([`Codec::Wired`]).

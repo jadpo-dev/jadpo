@@ -130,6 +130,13 @@ impl WireEncoding {
     }
 }
 
+/// The built-in type of a provider package's input field that takes any
+/// of the app's object types and sends it as its JSON (areas 2 and 11,
+/// "Types"), as an email provider's template variables and a payment
+/// provider's metadata need. It is written only as a field of a provider
+/// package's object type, which only an operation's `input:` may hold.
+pub const ANY_OBJECT: &str = "AnyObject";
+
 /// The setting a provider package's field reads its standard type's parts
 /// from its object's own members with (area 11, "Mapping imported types
 /// to standard types"; chunk 7.2e): `amount: Money { wire_parts: { amount:

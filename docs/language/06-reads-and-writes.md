@@ -358,7 +358,8 @@ The values a condition compares with are parameters and their fields,
 literals, enum values, lists of those, and `clock.now`. A
 [constant](03-logic.md#constants) works wherever a literal does, since its
 value is fixed when the project is compiled. `<` and the other orderings
-take numbers, times, dates and durations, as they do in code.
+take numbers, times, dates and durations, as they do in code, and the
+standard types and amounts of money the next section orders.
 
 A search by words is a condition of its own, `where: Todo matches
 phrase`, on an entity with a `search:` section; with no `order:` it gives
@@ -385,6 +386,217 @@ for.
 
 The compiler creates the indexes the conditions and order need
 ([Indexes](05-data.md#indexes)).
+
+### Values kept in several columns or as JSON
+
+A field whose standard type is stored in named columns
+([Standard types in columns](05-data.md#standard-types-in-columns)), or
+which is kept whole as its JSON
+([Structured values](05-data.md#structured-values)), is compared as code
+compares it:
+
+- **In named columns, part for part.** Two values are equal when every
+  column is, a part that is `none` equal only to `none`, so an amount of
+  money in another currency is never equal. A type the contract orders
+  part by part, whose columns are all numbers, dates and times, is ordered
+  by them in turn: a `YearMonth` by its year, then its month. A
+  `ZonedTime`, a range or a `CalendarPeriod` has no order, and a
+  `SemanticVersion`'s columns don't sort by precedence, so `<` on one is
+  `query.condition_unsupported`.
+- **Money in one currency.** An amount of money is ordered by its minor
+  units, only where the field's type fixes its currency, and so the
+  value's, of that type: the proof code needs without an `attempt`, since
+  a query can't map `currency_mismatch` for a record. Anything else is
+  `query.condition_unsupported`. `money.minor` and `money.currency` of the
+  field stand where it does, as other operations do (below).
+- **As JSON, by the JSON.** A structured value or a standard collection is
+  compared with `==`, `!=` and `in`, and never ordered. The value is a
+  parameter, a field of one, or an enum value, which the codec writes when
+  the query runs exactly as a write keeps it, one spelling for each value.
+  So the database's comparison of the JSON keeps what code's `==` keeps.
+  A decimal without `scale:` keeps its places in its JSON (`1.5` and
+  `1.50` are `==`), so a type holding one anywhere isn't compared, and a
+  list written out isn't a value the codec writes; each is
+  `query.condition_unsupported`. `list.count` tests a list's length.
+- **What has no exact `=`.** PostGIS compares geometries by their
+  bounding boxes, so a type holding one (`Circle`) isn't compared. `in` a
+  list given as a parameter sends each column as an array, which holds no
+  `NULL`, so it takes a type whose parts are always there; a list written
+  out takes any.
+
+Such a field is compared with a parameter or a field of one, laid out
+when the query runs as a write keeps it
+([SQL literals](19-standard-library.md#sql-literals)), or with `none`,
+which is every column `NULL` and meets no comparison but `!=`, as for any
+field. Text isn't a `YearMonth` in a condition, as it isn't in code.
+
+```jadpo check project=held-conditions file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=held-conditions file=domains/bakery/types/cake_price.jadpo hidden
+/// What a cake costs, in pounds.
+type CakePrice = Money {
+    currency: Currency.gbp
+    min: 0
+}
+```
+
+```jadpo check project=held-conditions file=domains/bakery/types/tag.jadpo hidden
+/// A word an order is filed under.
+type Tag = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=held-conditions file=domains/bakery/entities/order.jadpo
+use bakery/types { CakePrice, Tag }
+
+/// A cake ordered for the month it is baked in.
+entity Order {
+    id: Uuid
+    total: CakePrice  // `total_amount` and `total_currency`
+    bake_month: YearMonth  // `bake_month_year` and `bake_month_month`
+    tags: List<Tag>  // one `jsonb` column
+}
+```
+
+```jadpo check project=held-conditions file=domains/bakery/types/order_card.jadpo hidden
+use bakery/entities { Order }
+
+/// An order in a list.
+type OrderCard = Output {
+    pick: [Order.id, Order.total, Order.bake_month]
+}
+```
+
+```jadpo check project=held-conditions file=domains/bakery/actions/place_order.jadpo hidden
+use bakery/entities { Order }
+use bakery/types { CakePrice, Tag }
+
+/// Takes an order for the month a cake is baked in.
+action place_order(total: CakePrice, bake_month: YearMonth, tags: List<Tag>) -> Order {
+    return Order.create {
+        set: {
+            total: total
+            bake_month: bake_month
+            tags: tags
+        }
+    }
+}
+```
+
+```jadpo check project=held-conditions file=domains/bakery/queries/dearer_than.jadpo
+use bakery/entities { Order }
+use bakery/types { CakePrice, OrderCard }
+
+/// The orders costing more than `price`, dearest first.
+query dearer_than(price: CakePrice) -> List<OrderCard> {
+    from: Order
+    where: Order.total > price
+    order: [Order.total desc]
+    limit: 50
+}
+```
+
+```jadpo check project=held-conditions file=domains/bakery/queries/baked_from.jadpo
+use bakery/entities { Order }
+use bakery/types { OrderCard }
+
+/// The orders baked in `opening_month` and after, soonest first.
+query baked_from(opening_month: YearMonth) -> List<OrderCard> {
+    from: Order
+    where: Order.bake_month >= opening_month
+    order: [Order.bake_month asc]
+    limit: 50
+}
+```
+
+```jadpo check project=held-conditions file=domains/bakery/queries/tagged_exactly.jadpo migrate=initial
+use bakery/entities { Order }
+use bakery/types { OrderCard, Tag }
+
+/// The orders filed under exactly `tags`, in that order.
+query tagged_exactly(tags: List<Tag>) -> List<OrderCard> {
+    from: Order
+    where: Order.tags == tags
+    order: [Order.bake_month asc]
+    limit: 50
+}
+```
+
+This test runs on PostgreSQL. A year's last month comes before the next
+year's first, a list keeps its order, and £42.49 is not more than
+£42.50:
+
+```jadpo check project=held-conditions file=domains/bakery/actions/place_order.test.jadpo
+use bakery/entities { Order }
+use bakery/types { CakePrice, OrderCard, Tag }
+use bakery/queries { baked_from, dearer_than, tagged_exactly }
+
+test "a query compares money, months and lists as code does" {
+    var birthday: Tag = "birthday"
+    var chocolate: Tag = "chocolate"
+    var first_cake: Order = place_order(
+        CakePrice(money.from_minor(4250, Currency.gbp)),
+        "2026-12",
+        [birthday]
+    )
+    var second_cake: Order = place_order(
+        CakePrice(money.from_minor(4249, Currency.gbp)),
+        "2027-01",
+        [birthday, chocolate]
+    )
+    var third_cake: Order = place_order(
+        CakePrice(money.from_minor(9900, Currency.gbp)),
+        "2027-03",
+        [chocolate, birthday]
+    )
+    var dearer: List<OrderCard> = dearer_than(second_cake.total)
+    assert list.map(dearer, card -> text.from(card.bake_month)) == ["2027-03", "2026-12"]
+    var baked_later: List<OrderCard> = baked_from(second_cake.bake_month)
+    assert list.map(baked_later, card -> text.from(card.bake_month)) == ["2027-01", "2027-03"]
+    var both: List<OrderCard> = tagged_exactly([birthday, chocolate])
+    assert list.map(both, card -> text.from(card.bake_month)) == ["2027-01"]
+    var one: List<OrderCard> = tagged_exactly(first_cake.tags)
+    assert list.map(one, card -> text.from(card.bake_month)) == ["2026-12"]
+    assert third_cake.tags != second_cake.tags
+}
+```
+
+The statements and the indexes derived for them, which hold the columns
+a value kept in several is compared or sorted by, and none of one kept as
+JSON ([Indexes](05-data.md#indexes)):
+
+```sql
+-- dearer_than
+SELECT "id", "total_amount", "total_currency", "bake_month_year", "bake_month_month"
+FROM "order"
+WHERE "total_amount" > $1
+ORDER BY "total_amount" DESC, "id" DESC
+LIMIT 50
+
+-- baked_from
+SELECT "id", "total_amount", "total_currency", "bake_month_year", "bake_month_month"
+FROM "order"
+WHERE ("bake_month_year", "bake_month_month") >= ($1, $2)
+ORDER BY "bake_month_year" ASC, "bake_month_month" ASC, "id" ASC
+LIMIT 50
+
+-- tagged_exactly
+SELECT "id", "total_amount", "total_currency", "bake_month_year", "bake_month_month"
+FROM "order"
+WHERE "tags" = $1
+ORDER BY "bake_month_year" ASC, "bake_month_month" ASC, "id" ASC
+LIMIT 50
+
+CREATE INDEX "order_bake_month_year_bake_month_month_id_idx" ON "order" ("bake_month_year", "bake_month_month", "id");
+CREATE INDEX "order_total_amount_id_idx" ON "order" ("total_amount", "id");
+```
+
+A live test (`jadpo-cli`'s `kept_conditions`) runs such queries on
+PostgreSQL, `none`, `not`, `where_present:`, pages and lists given as
+parameters among them, and checks each gives the code's answer.
 
 ### Operations in conditions
 
@@ -559,8 +771,11 @@ The rules for an operation in a condition:
   beside the column it reads, and a migration creates it with
   `CREATE INDEX ... ((expression))`.
 
-Comparing a field of money or a range, or one kept whole as JSON, isn't
-built yet ([What is built](#what-is-built)).
+An amount of money is given to an operation as its two columns, so
+`money.minor(Order.deposit) >= 1000` and `money.currency(Order.deposit) ==
+Currency.eur` index its minor units and its currency's code; a list kept
+as JSON is given as its `jsonb`, so `list.count(Order.tags) >= 2` indexes
+its length.
 
 The statements (`jadpo sql`) and the indexes derived for them:
 
@@ -646,7 +861,12 @@ the last record's values.
 
 Text sorts by code point, as Jadpo compares it, whatever the database's
 collation. An enum, a `Bool` or a structured field can't be sorted by,
-since the database and Jadpo would disagree on their order.
+since the database and Jadpo would disagree on their order. A standard
+type kept in named columns sorts by them in turn where the contract
+orders it so (a `YearMonth`, a `LocalTime`), and an amount of money by
+its minor units where its type fixes its currency; any other is
+`query.order_field` ([Values kept in several columns or as JSON](#values-kept-in-several-columns-or-as-json)).
+A page's cursor holds each column it sorts by.
 
 ### Nearest first
 
@@ -2443,7 +2663,6 @@ var owners: List<OwnerView> = identity.users_by_ids(owner_ids)
 | Everything else on this page | Built. |
 | Reading another store outside an action's transaction | Not built yet: it is `toolchain.not_built_yet` ("One store per action"). |
 | Caches and entities in Redis | Not built yet: there is no Redis driver ("Where a read comes from", "Entities in Redis"). |
-| Comparing money, ranges and fields kept as JSON in a query | Not built yet: a field of money or a range, or one kept whole as its JSON (an object, a list, a set, a map or an enum with data), isn't compared in a query, its operations included (`toolchain.not_built_yet`), though `list.count` of a list would otherwise have a form ("Operations in conditions"). |
 
 ## Errors
 

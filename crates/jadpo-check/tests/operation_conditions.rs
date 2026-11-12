@@ -126,13 +126,9 @@ fn an_operation_without_an_exact_form_is_refused() {
     ] {
         assert_eq!(query(line), ["query.condition_unsupported"], "{why}");
     }
-    assert_eq!(
-        query("    where: money.minor(Book.sold) > 100\n"),
-        ["toolchain.not_built_yet"],
-        "a field in several columns isn't compared in a query yet"
-    );
-    // A structured field is kept whole as its JSON (chunk 5.9b), which no
-    // condition compares yet, through an operation or not.
+    // An amount of money is given as its two columns, and a list kept as
+    // JSON as its `jsonb`.
+    assert_eq!(query("    where: money.minor(Book.sold) > 100\n"), NONE);
     let shelved = |condition: &str| {
         support::rules(
             Layout::Loose,
@@ -146,7 +142,7 @@ fn an_operation_without_an_exact_form_is_refused() {
     };
     assert_eq!(
         shelved("list.count(Shelf.labels) >= 2"),
-        ["toolchain.not_built_yet"],
+        NONE,
         "a list kept as JSON"
     );
 }

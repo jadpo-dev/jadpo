@@ -622,6 +622,12 @@ impl Codecs<'_> {
                     vec![(Rc::from("features"), Value::list(features))],
                 ))
             }
+            // An `AnyObject` is only ever sent (areas 2 and 11, "Types"):
+            // its JSON doesn't say which of the app's types it was.
+            Codec::AnyObject { .. } => {
+                Self::problem(problems, path, "type");
+                None
+            }
             // A page is only ever an output, read back by a route test as
             // `Response.output`: `items` and the `next` cursor, as written.
             Codec::Page { item } => {
@@ -1576,6 +1582,21 @@ impl Codecs<'_> {
                     self.write(*feature, entry, out);
                 }
                 out.push_str("]}");
+            }
+            // One of the app's object types, as its own codec writes it
+            // (areas 2 and 11, "Types"). The checker lets only those in,
+            // so one not among them is a defect: never written as
+            // anything but `null`.
+            (Some(Codec::AnyObject { objects }), Value::Record(record)) => {
+                match objects.iter().find(|(name, _)| **name == *record.ty) {
+                    Some((_, codec)) => self.write(*codec, value, out),
+                    None => {
+                        if let Some(coder) = self.coder {
+                            coder.unwritten(jadpo_std::provider::ANY_OBJECT);
+                        }
+                        out.push_str("null");
+                    }
+                }
             }
             (Some(Codec::Page { item }), Value::Record(record)) => {
                 out.push_str("{\"items\":[");

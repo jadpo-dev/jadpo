@@ -774,6 +774,9 @@ enum Made {
     /// A `FileContents`, or a `File` sent as its bytes (chunk B14),
     /// Base64 as `Bytes` is.
     Bytes,
+    /// A provider package's `AnyObject` field (areas 2 and 11, "Types"):
+    /// any of the app's object types.
+    AnyObject,
     Unknown,
 }
 
@@ -1103,6 +1106,21 @@ impl<'t> Codecs<'t> {
                     validator: None,
                 }
             }
+            // Each of the app's object types, by the name its records
+            // carry, as it goes to a provider: a `File` it holds is sent as
+            // its bytes, as one the package's input declares is (chunk
+            // B14).
+            Made::AnyObject => {
+                let before = std::mem::replace(&mut self.files, FilesAs::Bytes);
+                let objects = self
+                    .types
+                    .app_objects()
+                    .into_iter()
+                    .map(|(name, key)| (name, self.codec(&TypeRef::Node(key))))
+                    .collect();
+                self.files = before;
+                Codec::AnyObject { objects }
+            }
             Made::Bytes => {
                 let bytes = TypeRef::Builtin(jadpo_std::Builtin::Bytes);
                 Codec::Scalar {
@@ -1277,6 +1295,11 @@ impl<'t> Codecs<'t> {
                     if name == jadpo_std::standard::geo::FEATURE_COLLECTION && args.len() == 2 =>
                 {
                     return Made::FeatureCollection(args);
+                }
+                TypeRef::Std(name, args)
+                    if args.is_empty() && name == jadpo_std::provider::ANY_OBJECT =>
+                {
+                    return Made::AnyObject;
                 }
                 TypeRef::Std(name, args) if args.is_empty() => {
                     if let Some(entry) = jadpo_std::standard_type(&name) {

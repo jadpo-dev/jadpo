@@ -134,7 +134,28 @@ pub fn sql(call: &Call) -> Reply {
             Err(problem) => return Reply::failed(*problem),
         }
     }
-    render(query, planned, &format!("{file}:{line}"), &mut explained)
+    // Each column a page's cursor holds, by the field it is of: a field
+    // kept in several columns holds one for each it sorts by (chunk Q1).
+    let model = jadpo_check::data::data_model(db, loaded.project);
+    let cursor: Vec<String> = query
+        .order
+        .iter()
+        .flat_map(|order| {
+            let parts = model
+                .entity(&query.entity)
+                .and_then(|entity| entity.fields.iter().find(|f| f.name == order.field))
+                .and_then(|field| field.compound)
+                .map_or(1, |entry| jadpo_sql::ordered_parts(entry).len());
+            std::iter::repeat_n(order.field.clone(), parts)
+        })
+        .collect();
+    render(
+        query,
+        planned,
+        &format!("{file}:{line}"),
+        &cursor,
+        &mut explained,
+    )
 }
 
 // --- `--explain` --------------------------------------------------------------------
@@ -572,6 +593,19 @@ fn stored(value: &jadpo_std::SqlValue) -> String {
     jadpo_sql::literal::sql(value).unwrap_or_else(|| "a literal".to_string())
 }
 
+/// A literal or an enum value a statement lays out when it runs (chunk
+/// Q1), as source writes it.
+fn constant_shown(constant: &jadpo_std::Constant) -> String {
+    use jadpo_std::Constant;
+    match constant {
+        Constant::Text(text) | Constant::Standard { text, .. } => format!("{text:?}"),
+        Constant::Variant { ty, name, .. } => format!("{ty}.{name}"),
+        Constant::Int(n) => n.to_string(),
+        Constant::Bool(flag) => flag.to_string(),
+        _ => "a literal".to_string(),
+    }
+}
+
 /// How a caller parameter of a statement's policy reads (area 9).
 fn caller(part: jadpo_std::policy::CallerPart) -> String {
     use jadpo_std::policy::CallerPart;
@@ -596,7 +630,13 @@ fn action_names(root: &std::path::Path) -> Vec<String> {
 }
 
 /// The statements, as a screen and as data.
-fn render(query: &QueryModel, plan: &QueryPlan, place: &str, explained: &mut Explained) -> Reply {
+fn render(
+    query: &QueryModel,
+    plan: &QueryPlan,
+    place: &str,
+    cursor: &[String],
+    explained: &mut Explained,
+) -> Reply {
     let mut screen = Screen::new();
     let mut statements = Vec::new();
     let count = 1 + count_includes(&plan.read.select.includes);
@@ -618,6 +658,7 @@ fn render(query: &QueryModel, plan: &QueryPlan, place: &str, explained: &mut Exp
     let names = Names {
         query,
         include: None,
+        cursor,
     };
     let mut fields = vec![
         ("reads".to_string(), format!("{}, {what}", query.entity)),
@@ -747,6 +788,7 @@ fn includes(
         let names = Names {
             query,
             include: Some(&keys),
+            cursor: &[],
         };
         statement(
             screen,
@@ -774,6 +816,8 @@ struct Names<'a> {
     query: &'a QueryModel,
     /// For an include: what its keys are.
     include: Option<&'a str>,
+    /// The field each column of a page's cursor is of.
+    cursor: &'a [String],
 }
 
 impl Names<'_> {
@@ -801,11 +845,7 @@ impl Names<'_> {
                 let field = match (ranked, *i) {
                     (true, 0) => "rank",
                     (true, _) => "id",
-                    (false, i) => self
-                        .query
-                        .order
-                        .get(i as usize)
-                        .map_or("?", |order| order.field.as_str()),
+                    (false, i) => self.cursor.get(i as usize).map_or("?", String::as_str),
                 };
                 format!("after: the cursor's {field}, or none")
             }
@@ -845,6 +885,17 @@ impl Names<'_> {
                     path: path.clone(),
                 });
                 format!("{phrase}, its `or` a word")
+            }
+            Source::Constant(constant) => constant_shown(constant),
+            // A value laid out as the field it is compared with keeps it
+            // (chunk Q1).
+            Source::Laid { of, laying } => {
+                let of = self.source(of);
+                match laying {
+                    jadpo_std::read::Laying::Part(at) => format!("{of}, its column {}", at + 1),
+                    jadpo_std::read::Laying::Json(_) => format!("{of}, as its JSON"),
+                    jadpo_std::read::Laying::Given => format!("whether {of} is given"),
+                }
             }
         }
     }
