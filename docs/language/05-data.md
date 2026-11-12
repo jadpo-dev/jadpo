@@ -637,8 +637,8 @@ test "a shelf holds one parcel of each label" {
         note: "Glass"
     }
     var first: Parcel = attempt shelve("A1", fragile)
-    var elsewhere: Parcel = attempt shelve("B2", fragile)
-    assert elsewhere.label == first.label
+    var on_shelf_b2: Parcel = attempt shelve("B2", fragile)
+    assert on_shelf_b2.label == first.label
     assert shelve("A1", fragile) fails LabelTaken
     var second: Parcel = attempt shelve("A1", upright)
     assert relabel(second.id, fragile) fails LabelTaken

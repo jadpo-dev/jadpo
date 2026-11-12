@@ -3417,18 +3417,18 @@ type OrderNotFound = Failure {
 An update by `id` adds to an amount in one step, as it adds to a count
 ([Counters and other one-step updates](06-reads-and-writes.md#counters-and-other-one-step-updates)).
 Both amounts' types fix pounds, so the database adds their pence, and
-an extra another request adds at the same moment is never lost:
+a surcharge another request adds at the same moment is never lost:
 
-```jadpo check project=money-orders file=domains/bakery/actions/add_extra.jadpo
+```jadpo check project=money-orders file=domains/bakery/actions/add_surcharge.jadpo
 use bakery/entities { Order }
 use bakery/types { CakePrice }
 use bakery/failures { OrderNotFound }
 
-/// Adds `extra`, such as candles, to an order's total.
-action add_extra(order_id: Order.id, extra: CakePrice) fails OrderNotFound -> Order {
+/// Adds `surcharge`, such as candles, to an order's total.
+action add_surcharge(order_id: Order.id, surcharge: CakePrice) fails OrderNotFound -> Order {
     return attempt Order.update(order_id) {
         set: {
-            total: CakePrice(Order.total + extra)
+            total: CakePrice(Order.total + surcharge)
         }
     }
 }
@@ -3437,7 +3437,7 @@ action add_extra(order_id: Order.id, extra: CakePrice) fails OrderNotFound -> Or
 ```jadpo check project=money-orders file=domains/bakery/actions/place_order.test.jadpo
 use bakery/entities { Order }
 use bakery/types { CakePrice, Deposit }
-use bakery/actions { add_extra, pay_deposit }
+use bakery/actions { add_surcharge, pay_deposit }
 
 test "an order keeps its amounts as they were written" {
     var placed: Order = place_order(CakePrice(money.from_minor(4250, Currency.gbp)))
@@ -3450,14 +3450,17 @@ test "an order keeps its amounts as they were written" {
     assert order_after_deposit.deposit == Deposit(money.from_minor(2000, Currency.eur))
 }
 
-test "the database adds an extra to the stored total" {
+test "the database adds a surcharge to the stored total" {
     var placed: Order = place_order(CakePrice(money.from_minor(4250, Currency.gbp)))
-    var candles: Order = attempt add_extra(
+    var candles: Order = attempt add_surcharge(
         placed.id,
         CakePrice(money.from_minor(350, Currency.gbp))
     )
     assert candles.total == money.from_minor(4600, Currency.gbp)
-    var card: Order = attempt add_extra(placed.id, CakePrice(money.from_minor(125, Currency.gbp)))
+    var card: Order = attempt add_surcharge(
+        placed.id,
+        CakePrice(money.from_minor(125, Currency.gbp))
+    )
     assert card.total == money.from_minor(4725, Currency.gbp)
 }
 ```
