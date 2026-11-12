@@ -1541,10 +1541,10 @@ fn decision_problems(
 }
 
 /// What is wrong with a computed backfill (area 5, "Computed backfills";
-/// chunk 5.6b): its body's problems, or that it can't run yet, for a
-/// field that allows less, or with an operation that has no SQL form
-/// reading or filling a value `jadpo migrate apply` can't yet work out in
-/// Jadpo (chunk 5.6b2).
+/// chunk 5.6b): its body's problems, or that it can't run yet, with an
+/// operation that has no SQL form reading or filling a value `jadpo
+/// migrate apply` can't yet work out in Jadpo (chunk 5.6b2). A refit is
+/// worked out as any other (chunk Q3).
 fn computed_problems(
     decide: &Decide<'_>,
     need: &Needed,
