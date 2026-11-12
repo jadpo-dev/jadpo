@@ -8896,9 +8896,9 @@ type MemberLine = Output {
 }
 ```
 
-```jadpo check project=json-lines-provider-export file=domains/club/entities/member_list.jadpo hidden
+```jadpo check project=json-lines-provider-export file=domains/club/entities/member_roll.jadpo hidden
 /// One file of the club's members.
-entity MemberList {
+entity MemberRoll {
     id: Uuid
     members_file: File? {
         store: member_files
@@ -8915,12 +8915,12 @@ entity MemberList {
 }
 ```
 
-```jadpo check project=json-lines-provider-export file=domains/club/actions/open_member_list.jadpo hidden
-use club/entities { MemberList }
+```jadpo check project=json-lines-provider-export file=domains/club/actions/open_member_roll.jadpo hidden
+use club/entities { MemberRoll }
 
 /// Opens a list of the members, its file still to come.
-action open_member_list() -> MemberList {
-    return MemberList.create {
+action open_member_roll() -> MemberRoll {
+    return MemberRoll.create {
         set: {
             members_file: none
             members_listed: none
@@ -8930,14 +8930,14 @@ action open_member_list() -> MemberList {
 ```
 
 ```jadpo check project=json-lines-provider-export file=domains/club/actions/members_listed.jadpo hidden
-use club/entities { MemberList, MemberListNotFound }
+use club/entities { MemberRoll, MemberRollNotFound }
 
 /// Keeps the written file, and how many members it lists.
 action members_listed(
     done: ExportSummary,
-    list_id: MemberList.id
-) fails MemberListNotFound -> Unit {
-    attempt MemberList.update(list_id) {
+    list_id: MemberRoll.id
+) fails MemberRollNotFound -> Unit {
+    attempt MemberRoll.update(list_id) {
         set: {
             members_file: done.file
             members_listed: done.items
@@ -8957,13 +8957,13 @@ action listing_progress(listing: BatchRun) -> BatchProgress {
 
 ```jadpo check project=json-lines-provider-export file=domains/club/actions/list_members.jadpo migrate=initial
 use app { clubs, member_files }
-use club/entities { MemberList }
+use club/entities { MemberRoll }
 use club/types { MemberLine }
 use club/actions { members_listed }
 use shared/providers/acme_clubs
 
 /// Starts writing every member of the club into a file, once.
-action list_members(list_id: MemberList.id) -> BatchRun {
+action list_members(list_id: MemberRoll.id) -> BatchRun {
     var asked_for: AcmeClubs.MembersAsked = AcmeClubs.MembersAsked {
         after: none
     }
@@ -8984,8 +8984,8 @@ action list_members(list_id: MemberList.id) -> BatchRun {
 
 ```jadpo check project=json-lines-provider-export file=domains/club/actions/list_members.test.jadpo
 use app { clubs }
-use club/entities { MemberList }
-use club/actions { listing_progress, open_member_list }
+use club/entities { MemberRoll }
+use club/actions { listing_progress, open_member_roll }
 use shared/providers/acme_clubs
 
 test "every page of the club's members is written" {
@@ -9012,13 +9012,13 @@ test "every page of the club's members is written" {
             }
         ]
     }
-    var member_list: MemberList = open_member_list()
-    var listing: BatchRun = list_members(member_list.id)
+    var roll_file: MemberRoll = open_member_roll()
+    var listing: BatchRun = list_members(roll_file.id)
     var listing_state: BatchProgress = listing_progress(listing)
     assert listing_state.state == BatchState.finished
-    var written: MemberList = attempt MemberList.get(member_list.id)
-    assert written.members_listed == 3
-    assert written.members_file != none
+    var filed_roll: MemberRoll = attempt MemberRoll.get(roll_file.id)
+    assert filed_roll.members_listed == 3
+    assert filed_roll.members_file != none
     assert list.map(clubs.members.list.requests, sent -> sent.after) == [none, "page-2"]
 }
 
@@ -9038,14 +9038,14 @@ test "a page the club can't give yet is asked for again" {
             }
         ]
     }
-    var member_list: MemberList = open_member_list()
-    var listing: BatchRun = list_members(member_list.id)
+    var roll_file: MemberRoll = open_member_roll()
+    var listing: BatchRun = list_members(roll_file.id)
     var waiting: BatchProgress = listing_progress(listing)
     assert waiting.state == BatchState.running
     clock.advance(1m)
-    var listed: BatchProgress = listing_progress(listing)
-    assert listed.state == BatchState.finished
-    assert listed.items_done == 1
+    var walk_end: BatchProgress = listing_progress(listing)
+    assert walk_end.state == BatchState.finished
+    assert walk_end.items_done == 1
     assert list.map(clubs.members.list.requests, sent -> sent.after) == [none, none, none, none]
 }
 ```
