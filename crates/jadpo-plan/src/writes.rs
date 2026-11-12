@@ -1577,21 +1577,27 @@ impl Planner<'_> {
             let ty = column_type(target)?.param();
             self.stored_sql(body, *inner, entity, ty, writing)?
         };
-        let (builtin, chain) = self.types.chain(&check.target)?;
-        let duration = builtin == jadpo_std::Builtin::Duration;
+        // A duration's bounds are its type's `min:` and `max:` too, held in
+        // milliseconds as its column holds it.
+        let (_, chain) = self.types.chain(&check.target)?;
         let mut held = Vec::new();
         for rules in &chain {
+            let millis = |bound: Option<jadpo_std::Dur>| bound.map(|d| d.millis.to_string());
             let (bounded, bound): (fn(&str, &str) -> String, _) = match check.rule {
-                RuleKey::Min if duration => (
+                RuleKey::Min => (
                     text::at_least,
-                    rules.min_duration.map(|d| d.millis.to_string()),
+                    rules
+                        .min
+                        .map(|n| n.to_string())
+                        .or_else(|| millis(rules.min_duration)),
                 ),
-                RuleKey::Max if duration => (
+                RuleKey::Max => (
                     text::at_most,
-                    rules.max_duration.map(|d| d.millis.to_string()),
+                    rules
+                        .max
+                        .map(|n| n.to_string())
+                        .or_else(|| millis(rules.max_duration)),
                 ),
-                RuleKey::Min => (text::at_least, rules.min.map(|n| n.to_string())),
-                RuleKey::Max => (text::at_most, rules.max.map(|n| n.to_string())),
                 RuleKey::MinLength => (text::at_least, rules.min_length.map(|n| n.to_string())),
                 RuleKey::MaxLength => (text::at_most, rules.max_length.map(|n| n.to_string())),
                 _ => return None,

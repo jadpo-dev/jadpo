@@ -2474,8 +2474,8 @@ test "stock is taken down to none, and never below" {
     var left: Product = attempt take_stock(product.id, 2)
     assert left.stock == 1
     assert take_stock(product.id, 2) fails OutOfStock
-    var last: Product = attempt take_stock(product.id, 1)
-    assert last.stock == 0
+    var emptied: Product = attempt take_stock(product.id, 1)
+    assert emptied.stock == 0
 }
 
 test "a product that isn't there is not found, not out of stock" {
