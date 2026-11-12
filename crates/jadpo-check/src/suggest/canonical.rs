@@ -342,7 +342,18 @@ impl<'a> Canon<'a> {
             }
             Expr::Download { .. } => C::Tag("download", Vec::new()),
             Expr::Upload { .. } => C::Tag("upload", Vec::new()),
-            Expr::Now | Expr::SentEmails | Expr::Unchecked => C::Atom("…".into()),
+            Expr::Emitted { event, fields } => {
+                let mut parts: Vec<C> = fields
+                    .iter()
+                    .map(|(key, value)| C::Tag("=", vec![C::Atom(last(key)), self.site(*value)]))
+                    .collect();
+                parts.sort_by_key(C::render);
+                parts.insert(0, C::Atom(event.name().to_string()));
+                C::Tag("emitted", parts)
+            }
+            Expr::Now | Expr::Made { .. } | Expr::SentEmails | Expr::Unchecked => {
+                C::Atom("…".into())
+            }
         }
     }
 

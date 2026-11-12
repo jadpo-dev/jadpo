@@ -84,6 +84,18 @@ pub enum Decoded {
     Match { arms: Vec<ArmPattern> },
     /// `assert … fails Failure`: the failure's name now.
     AssertFails { expected: String },
+    /// A value a data builder makes for a field it leaves out (area 13):
+    /// the number of the field's type in the plan's JSON table, whose
+    /// codec makes it, and whether each value made differs from the last.
+    Made { json: u32, distinct: bool },
+    /// `assert emitted Event { ... }` (area 13): the event type's identity
+    /// key, as the outbox keeps it, its name now, and each field given's
+    /// name as a value holds it, in the order written.
+    Emitted {
+        key: String,
+        event: String,
+        fields: Vec<String>,
+    },
     /// A call to a query, by the number of its plan; `None` when it has
     /// none, which the checker rules out.
     Query(Option<u32>),
@@ -1212,6 +1224,21 @@ impl Decoder<'_> {
                 ..
             }) => Decoded::AssertFails {
                 expected: self.types.name(expected).to_string(),
+            },
+            Node::Expr(Expr::Made { distinct }) => match self.json_type(site.ty.clone()) {
+                Decoded::Json(json) => Decoded::Made {
+                    json,
+                    distinct: *distinct,
+                },
+                _ => Decoded::Nothing,
+            },
+            Node::Expr(Expr::Emitted { event, fields }) => Decoded::Emitted {
+                key: event.as_str().to_string(),
+                event: self.types.name(event).to_string(),
+                fields: fields
+                    .iter()
+                    .map(|(field, _)| self.types.field_name(field).to_string())
+                    .collect(),
             },
             Node::Expr(Expr::Config { field }) => Decoded::Config((self.setting)(field)),
             Node::Expr(Expr::Flag { flag }) => Decoded::Flag((self.flag)(flag)),

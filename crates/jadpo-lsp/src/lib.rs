@@ -23,8 +23,10 @@
 //! Records (area 18) are served too: their errors as the editor edits
 //! them, an outline of their entries, a fold for each and a link on each
 //! file a fact names ([`records`]). Rename
-//! waits for `jadpo rename` (area 14), and checking runs between messages
-//! rather than in the background with salsa's cancellation.
+//! runs the code `jadpo rename` runs (`jadpo_check::rename`, chunk D8b), so
+//! a renamed entity field keeps its column through the same identity line.
+//! Checking runs between messages rather than in the background with
+//! salsa's cancellation.
 
 mod completion;
 mod convert;
@@ -34,6 +36,7 @@ mod hover;
 mod make_setting;
 mod quick_fixes;
 mod records;
+mod rename;
 mod server;
 mod sql;
 

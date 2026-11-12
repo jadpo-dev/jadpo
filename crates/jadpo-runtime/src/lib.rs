@@ -204,7 +204,9 @@ pub use migrate::{
     Backfills, MIGRATIONS_TABLE, MigrateError, Migration, NoBackfills, Progress, STEPS_TABLE,
     Standing, Unworked, has_extensions, migrate, migrate_reporting, migrate_with, standing,
 };
-pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
+pub use outcome::{
+    Assertion, AssertionDetail, Got, Outcome, Part, emitted_actual, emitted_expected,
+};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
 pub use plan::{Loaded, Plan, RuntimePlan};
 pub use policy::{admit, call_as};

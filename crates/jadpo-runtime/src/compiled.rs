@@ -882,6 +882,22 @@ pub fn emit(cx: &mut Ctx<'_>, p: &Program, key: &str, event: Value, at: u32) -> 
     effect(cx, p, Effect::Emit { event: key }, &[event], at).map(|_| ())
 }
 
+/// A value a data builder fills a field with at site `at` (area 13): of
+/// the type the plan's JSON table numbers `json`; `distinct` for a field a
+/// unique rule holds.
+pub fn made(cx: &mut Ctx<'_>, p: &Program, json: u32, distinct: bool, at: u32) -> Ran {
+    effect(
+        cx,
+        p,
+        Effect::Made {
+            json: Some(json),
+            distinct,
+        },
+        &[],
+        at,
+    )
+}
+
 /// `email.sent` in a test, at site `at` (area 16).
 pub fn sent_emails(cx: &mut Ctx<'_>, p: &Program, at: u32) -> Ran {
     effect(cx, p, Effect::SentEmails, &[], at)
@@ -1538,6 +1554,23 @@ pub fn assert_fails(
             got,
         },
     )))
+}
+
+/// `assert emitted Event { ... }` at site `at` (area 13): it holds when an
+/// event of the type whose identity key is `key` that the test's committed
+/// steps kept has each of `fields` at the value beside it in `values`;
+/// `event` is the type's name now.
+#[cfg(feature = "testing")]
+pub fn assert_emitted(
+    cx: &mut Ctx<'_>,
+    key: &str,
+    event: &str,
+    fields: &[String],
+    values: Vec<Value>,
+    at: u32,
+) -> Result<(), Stop> {
+    crate::test_steps::emitted(cx, key, event, fields, values)
+        .map_err(|detail| Stop::Assertion(cx.assertion_failed(at, detail)))
 }
 
 /// The end of an `assert` that gave `held`: its recording stops, and a

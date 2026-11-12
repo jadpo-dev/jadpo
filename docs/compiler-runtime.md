@@ -531,8 +531,10 @@ imports, formats what was formatted and checks the result, undoing a fix
 that adds an error by rule and headline. Each standard type's data entry
 carries the `release` that added it, which the clash names.
 
-**Renaming.** `jadpo_check::rename` is `jadpo rename`'s code, and the
-editor's rename is to share it, built as `fixes` is: `plan` takes the
+**Renaming.** `jadpo_check::rename` is `jadpo rename`'s code and the
+editor's rename's (`at` resolves the name under the cursor as go to
+definition does, and `not_renamed` and `unparsed` are the refusals both
+make first), built as `fixes` is: `plan` takes the
 node's key and the new name, refuses what can't be (a name in use among
 the owner's members, the domain or the project, or one another node of
 its kind was born with), finds every place through
@@ -2209,6 +2211,26 @@ the file (`batches::export`); with
 runs kept in several stores, a runner copies a cancel an action kept in
 another store beside its run before each batch (`batches::copy_cancel`),
 and `batches.status` asks each store in turn.
+
+**Data builders and `assert emitted`** (area 13; chunk W1).
+`make.Entity { ... }` is checked by `Body::make`
+(`jadpo_check::types::body::builders`), which decides what fills each field
+left out (`MakeFact`), and lowered to an ordinary `Expr::Write` create whose
+`set:` holds the fields given and then a site for each it fills: a `none`
+literal, `Expr::Made { distinct }`, or the `id` of a nested create for a
+reference that can't be absent; a field a lifecycle owns is left to its
+`initial:` value, and the plan writes one a builder gives in its place. So a
+builder's create is planned, run and compared as any other, and in a test it
+is a step; a test whose body writes is an action test. `Expr::Made` runs
+`Effect::Made`, which makes what a fake's generated default would for the
+field's type through the codec the plan numbers for it (`Decoded::Made`,
+`fakes::generated_marked`), with part of a new identity in its text when a
+unique rule holds the field, and reads it back as that type. In a test each
+boundary that seals events keeps them (`Boundary::emitted`), and its commit
+adds them to `Ctx::emitted` by type key; `assert emitted` is an `assert`
+whose value is `Expr::Emitted { event, fields }`, its fields' values handed
+to `test_steps::emitted`, which compares them with `==` and otherwise gives
+`AssertionDetail::Emitted`: the event wanted and each of its type kept.
 
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one

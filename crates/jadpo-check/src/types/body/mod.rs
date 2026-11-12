@@ -24,6 +24,7 @@ pub(crate) const ATTACHED: &str = "File or FileUpload";
 mod across;
 pub(crate) mod backfill;
 mod batches;
+mod builders;
 mod calls;
 mod contract;
 mod currency;
@@ -1535,7 +1536,11 @@ impl Body<'_> {
                     _ => None,
                 };
                 self.handled.extend(handled);
-                if let Some(expr) = assert.expr() {
+                if assert.emitted_kw_token().is_some() {
+                    if let Some(expr) = assert.expr() {
+                        self.assert_emitted(&expr);
+                    }
+                } else if let Some(expr) = assert.expr() {
                     self.infer(&expr);
                 }
                 if handled.is_some() {

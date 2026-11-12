@@ -212,7 +212,7 @@ There are three kinds of value, from fixed to changing while the app runs:
 When a fixed value needs to differ per deployment, a tool makes the change
 for you: `jadpo config move <constant>` on the command line, or "Make this
 a setting" in the editor on the constant's declaration or any read of it.
-Both run the same code, as the editor's rename is to run `jadpo rename`'s
+Both run the same code, as the editor's rename runs `jadpo rename`'s
 ([Editor support](14-tooling.md#editor-support)). The move is offered,
 never required, so `jadpo fmt --layout`, which makes only the moves an
 error asks for, doesn't make it. In one step it:

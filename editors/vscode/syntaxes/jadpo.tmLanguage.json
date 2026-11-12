@@ -352,7 +352,7 @@
         },
         {
           "name": "keyword.control.jadpo",
-          "match": "\\b(if|else|for|in|match|return|attempt|reject|propagate|emit|assert)\\b"
+          "match": "\\b(if|else|for|in|match|return|attempt|reject|propagate|emit|emitted|assert)\\b"
         },
         {
           "name": "keyword.operator.word.jadpo",

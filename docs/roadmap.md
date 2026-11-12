@@ -115,7 +115,6 @@ D1 first: the site starts once D1 has merged.
   and feature requests read, answered and turned into pull requests by an
   agent that holds no secrets and cannot merge or release, since issue text
   is anyone's; its pull requests pass the same gate and review.
-- [ ] **D8b Rename in the editor** `opus · high`: area 14, "Editor support", through `jadpo_check::rename`, the code `jadpo rename` runs.
 
 ## Phase 10 — Golden todo
 
@@ -381,9 +380,7 @@ work below (Richard, 2026-11-08).
     2026-11-08.
     - [x] **J3 Delivery and operator gaps**: area 12, "How long between tries", "Running background work" and "Watching schedules", and its notes; `cli.signal_handler_failed`'s page.
     - [x] **J4 File writers over a provider's list**: area 19, "`json_lines`"; area 12, "How an export's run is kept", and its notes.
-    - [ ] **W1 Data builders and `assert emitted`** `opus · high`: area 13,
-      "Data builders" and "What is built". Builders' valid defaults, the
-      named object a fixture returns with them, and `assert emitted`.
+    - [x] **W1 Data builders and `assert emitted`**: area 13, "Data builders", "Events and query cost" and its notes; compiler-runtime §2.5, "Data builders and `assert emitted`".
     - [ ] **W2 Generated tests** `opus · xhigh`: area 13, "In the editor" and
       "What is built". Every route refusing bad input with `{ field, rule }`, each
       declared failure's envelope and the rest of that list, generated, run with

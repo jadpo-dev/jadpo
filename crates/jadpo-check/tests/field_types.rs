@@ -57,7 +57,7 @@ fn a_block_of_fields_or_a_swift_list_is_no_type_either() {
     // Swift's list type.
     assert_eq!(
         with_status(
-            "type Thing = Object {\n    label: Label\n    nested: {\n        a: Label\n    }\n}\n\nfunction make(label: Label) -> Thing {\n    return Thing {\n        label: label\n    }\n}\n"
+            "type Thing = Object {\n    label: Label\n    nested: {\n        a: Label\n    }\n}\n\nfunction built(label: Label) -> Thing {\n    return Thing {\n        label: label\n    }\n}\n"
         ),
         ["type.not_a_type", "type.missing_field"]
     );
@@ -99,7 +99,7 @@ fn a_field_written_as_a_value_is_never_dropped() {
     // is not a second error, and neither is giving it.
     assert_eq!(
         with_status(
-            "type HandedIn = Input {\n    label: Label\n    testy: Status(\"x\")\n}\n\nfunction make(label: Label) -> HandedIn {\n    return HandedIn {\n        label: label\n        testy: Status.open\n    }\n}\n"
+            "type HandedIn = Input {\n    label: Label\n    testy: Status(\"x\")\n}\n\nfunction built(label: Label) -> HandedIn {\n    return HandedIn {\n        label: label\n        testy: Status.open\n    }\n}\n"
         ),
         ["type.not_a_type"]
     );
