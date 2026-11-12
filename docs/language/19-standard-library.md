@@ -695,9 +695,14 @@ A literal in SQL is the value the storage codec makes for it:
 - **A literal is never absent,** so comparing an optional field with a
   literal in a `where:` line, or testing it `in` a list of literals,
   compiles; it isn't `query.optional_value`.
-
-Comparing a JSON-held field in a query's condition isn't built yet: it is
-`toolchain.not_built_yet`, as a condition on a compound type is.
+- **A value held in several columns or as JSON is laid out when the query
+  runs.** A parameter compared with such a field, or an enum value
+  compared with one kept as JSON, is laid out by the runtime as a write
+  keeps it: each column bound as a parameter of its own, by the codec that
+  writes the columns, or its JSON, written by the field's own codec; each
+  item of a list given for `in` the same. An index's predicate takes no
+  parameters, so a lifecycle's condition tests such a field only for
+  `none`.
 
 ## Changing a standard type's encoding
 <!-- topic: standard-type-encodings (was changing-a-standard-type-s-encoding) -->
@@ -3419,9 +3424,14 @@ test "an order keeps its amounts as they were written" {
 }
 ```
 
-Not built yet: a query that compares or orders by a money amount, a
-one-step update that works one out, and a backfill of a new required
-money field. Each is reported as `toolchain.not_built_yet`.
+A query compares an amount by both its columns, so £10 and €10 are
+unequal, and orders amounts by their minor units only where the field's
+type fixes its currency
+([Values kept in several columns or as JSON](06-reads-and-writes.md#values-kept-in-several-columns-or-as-json)).
+
+Not built yet: a one-step update that works an amount out, and a backfill
+of a new required money field. Each is reported as
+`toolchain.not_built_yet`.
 
 ## Prices, discounts and rates
 <!-- topic: prices-discounts-and-rates -->
@@ -12587,7 +12597,7 @@ what Jadpo took from each, is in the
 | Everything on this page not listed below | Built |
 | What keys held as data allow: `crypto.verify_totp` and HS256 in `crypto.verify_jwt` | Not built yet |
 | A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename` | Not built yet: a swap waits on [Review and records](18-records-and-manifest.md), `jadpo rename` on [Tools](14-tooling.md) |
-| A query comparing or ordering by an amount of money, a one-step update working one out, a backfill of a new required one, and a condition on a JSON-held field | Not built yet: `toolchain.not_built_yet` names each |
+| A one-step update working an amount of money out, and a backfill of a new required one | Not built yet: `toolchain.not_built_yet` names each |
 | The UK modulus check in `BankAccount` | Not built yet: waits on Vocalink's permission to ship its tables |
 | Checking `UnLocode`, `IataAirport`, `IcaoAirport`, `IataAirline` and `Icd10Code` against their lists | Not built yet: waits on licences that allow shipping the lists |
 | [Policy](09-policy.md)'s scopes narrowing `OAuthScope` | Not built yet: waits on [Policy](09-policy.md) |

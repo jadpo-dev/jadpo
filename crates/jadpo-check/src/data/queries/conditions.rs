@@ -199,6 +199,9 @@ impl Reader<'_> {
                                 return None;
                             }
                         }
+                        if !self.kept_comparison(scope, entity, field, None, &value, &ty, &expr) {
+                            return None;
+                        }
                         Some(Condition::In {
                             field: field.name.clone(),
                             value,
@@ -264,7 +267,10 @@ impl Reader<'_> {
                                 negated: compare == Compare::NotEqual,
                             });
                         }
-                        if compare.is_ordering() && !self.ordered(&field_ty) {
+                        // A field kept in several columns or as JSON is
+                        // ordered as [`Reader::kept_comparison`] says.
+                        let kept = field.compound.is_some() || field.json.is_some();
+                        if compare.is_ordering() && !kept && !self.ordered(&field_ty) {
                             let written = format!("{}.{}", entity.name, field.name);
                             self.unsupported(
                                 scope,
@@ -282,6 +288,19 @@ impl Reader<'_> {
                         }
                         if !matches!(value, Value::Literal(_)) && !self.comparable(&ty, &field_ty) {
                             self.mismatch(scope, &rhs, &ty, &wanted);
+                            return None;
+                        }
+                        if kept
+                            && !self.kept_comparison(
+                                scope,
+                                entity,
+                                field,
+                                Some(compare),
+                                &value,
+                                &ty,
+                                &expr,
+                            )
+                        {
                             return None;
                         }
                         Some(Condition::Compare {
@@ -373,48 +392,8 @@ impl Reader<'_> {
                 ));
                 return None;
             }
-            // A compound type is stored in several columns, which a
-            // query's condition doesn't compare yet (area 19).
-            if field.compound.is_some() {
-                let written = shown(whole.syntax());
-                self.out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("Comparing `{}.{}` in a query isn't built yet", entity.name, field.name),
-                    )
-                    .at(
-                        Self::span(scope.path, whole),
-                        format!("a `{}`", field.compound.unwrap_or_default()),
-                    )
-                    .reason(format!(
-                        "`{}.{}` is a `{}`, stored in several columns (an amount of money in its minor units and its currency, area 19), and `{written}` would compare them all, which this compiler's queries don't do yet.",
-                        entity.name,
-                        field.name,
-                        field.compound.unwrap_or_default()
-                    ))
-                    .next("Filter the records after the query for now"),
-                );
-                return None;
-            }
-            // A structured value is stored whole as its JSON, which a
-            // query's condition doesn't compare yet (chunks 5.5w2b and
-            // 5.9b): PostgreSQL compares `jsonb` by its own rules, not by
-            // Jadpo's `==`.
-            if let Some(held) = &field.json {
-                self.out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("Comparing `{}.{}` in a query isn't built yet", entity.name, field.name),
-                    )
-                    .at(Self::span(scope.path, whole), format!("a `{held}`"))
-                    .reason(format!(
-                        "`{}.{}` is a `{held}`, stored whole as its JSON in one `jsonb` column, and this compiler's queries don't compare such a column yet.",
-                        entity.name, field.name
-                    ))
-                    .next("Filter the records after the query for now"),
-                );
-                return None;
-            }
+            // A field kept in several columns or as its JSON is compared
+            // as [`Reader::kept_comparison`] says, once its value is read.
             return Some(field);
         }
         let reason = match self.field_in(scope, entity, whole) {

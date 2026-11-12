@@ -167,9 +167,11 @@ POSTGRES = [
      [('jadpo-cli', 'passkeys'), ('jadpo-cli', 'passkey_tokens'), ('jadpo-cli', 'magic_links'),
       ('jadpo-cli', 'privacy_requests'), ('jadpo-cli', 'generated_limits'),
       ('jadpo-cli', 'config')], []),
-    # Queries, `get` and `create` run through `jadpo test`, and
-    # aggregate queries against what code works out (area 6).
-    ('live PostgreSQL: queries', [('jadpo-cli', 'queries'), ('jadpo-cli', 'aggregates')], []),
+    # Queries, `get` and `create` run through `jadpo test`, aggregate
+    # queries against what code works out, and conditions and orders on
+    # values kept in several columns or as JSON (area 6).
+    ('live PostgreSQL: queries', [('jadpo-cli', 'queries'), ('jadpo-cli', 'aggregates'),
+                                  ('jadpo-cli', 'kept_conditions')], []),
     # Writes, their conflicts and counters through `jadpo test`, and a
     # concurrent change forced from a second connection, rerunning the
     # whole action (area 6); and no transaction open while a provider

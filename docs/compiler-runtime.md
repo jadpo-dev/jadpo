@@ -2498,6 +2498,16 @@ other arguments are written into its expression, so
 B-tree the checker derives on it (`jadpo_graph::schema::Index::expression`,
 `jadpo_sql::table::create_expression_index`), and
 `jadpo_sql::form::indexable` says which forms PostgreSQL can index.
+A field kept in several columns or as JSON (area 6, "Values kept in
+several columns or as JSON") is said by `jadpo_sql::Kept` on its column:
+the condition compares each column of a standard type's layout, its order
+those `jadpo_sql::ordered_parts` names, and a `jsonb` column as JSON. The
+value it is compared with is a parameter `jadpo_std::read::Source::Laid`,
+which the runtime lays out when the read runs as a write keeps it, by
+`jadpo_value::standard::to_parts` or the field's own JSON codec, so
+neither the compiler nor the plan encodes a value of its own; the checker
+(`jadpo_check::data::queries`'s `kept`) allows only what that comparison
+decides as code's `==` and `<` do.
 `jadpo-plan` decides each statement's parts and where each value comes
 from, and writes no SQL text of its own: the vector distances and
 `hnsw.` settings, `ST_Distance`, an aggregate's parts

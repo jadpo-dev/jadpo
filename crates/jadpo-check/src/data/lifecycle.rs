@@ -637,7 +637,7 @@ impl<'a> Reader<'a, '_> {
                 (
                     &rule::DATA_LIFECYCLE_CONDITION,
                     "compared as JSON",
-                    "a lifecycle's condition tests it only for `none`, which is the column's `NULL`, since PostgreSQL compares `jsonb` by its own rules rather than Jadpo's `==`",
+                    "a lifecycle's condition tests it only for `none`, which is the column's `NULL`: the condition is written into its partial index as SQL text, and only the codec writes JSON",
                 )
             };
             self.out.push(
@@ -655,6 +655,26 @@ impl<'a> Reader<'a, '_> {
                 } else {
                     format!("Test `{}` with `== none` or `!= none`", field.name)
                 }),
+            );
+            return None;
+        }
+        // A value held in several columns is compared column by column,
+        // each bound when the statement runs, which a partial index's
+        // predicate can't be (chunk Q1).
+        if !set && field.compound.is_some() && !matches!(constant, Const::None) {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::DATA_LIFECYCLE_CONDITION,
+                    format!("`{}` is stored in several columns", field.name),
+                )
+                .at(self.span(&expr), "compared in several columns")
+                .reason(format!(
+                    "`{}.{}` is a `{}`, stored in several columns, which a query compares one by one, each bound when it runs; a lifecycle's condition is written into its partial index as SQL text, so it tests such a field only for `none`.",
+                    self.entity.name,
+                    field.name,
+                    field.compound_type()
+                ))
+                .next(format!("Test `{}` with `== none` or `!= none`", field.name)),
             );
             return None;
         }
