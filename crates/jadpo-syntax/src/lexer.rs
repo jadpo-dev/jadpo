@@ -556,7 +556,15 @@ impl Lexer<'_> {
             .next()
             .is_some_and(|c| c.is_alphanumeric() || matches!(c, '_' | '"' | '\'' | '-' | '!'));
         let ends_line = ends_line && starts_line;
-        let (edit, next) = if ends {
+        // A `;` that opens its line: the spaces after it are the line's
+        // indent, so only the `;` goes.
+        let line_start = self.text[..start].rfind('\n').map_or(0, |i| i + 1);
+        let opens_line = self.text[line_start..start]
+            .trim_matches([' ', '\t'])
+            .is_empty();
+        let (edit, next) = if opens_line && !ends {
+            (TextEdit::replace(start as u32, self.pos as u32, ""), None)
+        } else if ends {
             // Spaces before the `;` go with it.
             let before = self.text[..start].trim_end_matches([' ', '\t']).len();
             (TextEdit::replace(before as u32, self.pos as u32, ""), None)
@@ -580,7 +588,7 @@ impl Lexer<'_> {
                 written: ";".into(),
                 jadpo: String::new(),
                 edits: vec![edit],
-                clean: ends || ends_line,
+                clean: ends || ends_line || (opens_line && starts_line),
                 next,
             },
         );

@@ -332,7 +332,8 @@ pub(crate) fn answered(repeat: Repeat, answer: Answer) -> Result<Given, Unanswer
         #[cfg(feature = "testing")]
         Answer::Recorded => Ok(Given::Recorded),
         Answer::Failed(code) => Err(Unanswered::Failed(code)),
-        Answer::Unavailable | Answer::RetryAfter(_) => raised(crate::unavailable()),
+        Answer::Unavailable => raised(crate::unavailable()),
+        Answer::RetryAfter(millis) => raised(crate::refused(Some(millis))),
         // Sent again under its key, or a call that changes nothing, it
         // acts once: a retry is safe.
         Answer::Unknown | Answer::TimedOut if repeat != Repeat::Unkeyed => {

@@ -144,15 +144,7 @@ D1 first: the site starts once D1 has merged.
 
 What the Reddit thread found (Richard, 2026-11-03):
 
-- [ ] **A19 Typed holes** `opus · high`: notes for area 2, "Typed holes".
-  `_` where a value goes, always the error `type.hole`, decided by the agent:
-  the type as the code would write it and up to five values in scope that fit,
-  closest first, with the edit for one; `expected` and `fits` in `--json`, and
-  the same on hover. Its rule goes on area 2's page, with its error page.
-  Measured against the PersonName detour it saves nothing, since D15, D16 and
-  A14 already remove it; it saves lookups where an agent knows it doesn't
-  know. Done when a hole is reported with its fits and no project holding one
-  checks, tests or builds.
+- [x] **A19 Typed holes**: [Typed holes](language/02-values-and-types.md#typed-holes) and [`type.hole`](errors/type.hole.md).
 
 Not scheduled: a way to write a query the language can't express. Richard
 will work through it and other solutions later; don't design or build one
@@ -383,10 +375,7 @@ work below (Richard, 2026-11-08).
       20, "What is built".
 11. Background work and tests (areas 12 and 13), added by the audit of
     2026-11-08.
-    - [ ] **J3 Delivery and operator gaps** `opus · high`: area 12, "Retries and
-      giving up", "Watching schedules" and "Running background work". `Retry-After`
-      between a delivery's attempts, names for instances, and
-      `cli.signal_handler_failed`.
+    - [x] **J3 Delivery and operator gaps**: area 12, "How long between tries", "Running background work" and "Watching schedules", and its notes; `cli.signal_handler_failed`'s page.
     - [ ] **J4 File writers over a provider's list** `opus · high`: area 19,
       "Data formats"; area 12, "Walking records or a provider's list:
       `batches.each`" and "How an export's run is kept". A file helper's write

@@ -790,6 +790,31 @@ pub(crate) fn at(root: &Path, cache: &Path) -> Environment {
         .with_var("XDG_CACHE_HOME", &cache.to_string_lossy())
 }
 
+/// Gives the project at `root`, kept between runs with its build, the
+/// migrations its schema needs: its first, or, once Jadpo's own tables
+/// have changed since an earlier run wrote them, one more, so the build
+/// kept changes only by that.
+pub(crate) fn migrated(root: &Path) {
+    let migrate = |name: &str| {
+        let output = run(
+            &["migrate".to_string(), "new".to_string(), name.to_string()],
+            &at(root, &shared_cache()),
+        );
+        assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
+    };
+    if !root.join("database/migrations").exists() {
+        migrate("initial");
+        return;
+    }
+    let checked = run(
+        &["check".to_string(), "--json".to_string()],
+        &at(root, &shared_cache()),
+    );
+    if checked.stdout.contains("migration.out_of_date") {
+        migrate("keep_up");
+    }
+}
+
 /// `jadpo` with `args` in `root`, which must succeed.
 fn jadpo(root: &Path, args: &[&str]) -> jadpo_cli::Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
@@ -1725,9 +1750,7 @@ fn a_pruned_deployable_cleans_schedule_and_batch_history_before_the_jobs_role() 
         fs::create_dir_all(path.parent().expect("parent")).expect("folders");
         fs::write(path, text).expect("source");
     }
-    if !root.join("database/migrations").exists() {
-        jadpo(&root, &["migrate", "new", "initial"]);
-    }
+    migrated(&root);
     jadpo(&root, &["records", "update"]);
     let loaded = jadpo_db::load(&root);
     let deployables = jadpo_check::deployables::deployables(&loaded.db, loaded.project);

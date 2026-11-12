@@ -555,6 +555,9 @@ pub enum After {
     Retry {
         code: String,
         kind: Option<String>,
+        /// The wait a provider's `Retry-After` asked for, in milliseconds,
+        /// when the failure came from one ([`wait`]).
+        asked: Option<u64>,
     },
     /// Not tried again: any other declared failure, which the same input
     /// gives again, or a defect, until someone fixes the code.
@@ -605,6 +608,7 @@ pub fn after(outcome: &crate::Outcome) -> After {
                 After::Retry {
                     code: failure.code.clone(),
                     kind,
+                    asked: wait_asked(failure),
                 }
             } else {
                 After::Fail {
@@ -620,6 +624,7 @@ pub fn after(outcome: &crate::Outcome) -> After {
             FaultKind::Store(_) | FaultKind::DeadlineExceeded => After::Retry {
                 code: fault.kind.classification().to_string(),
                 kind: None,
+                asked: None,
             },
             other => After::Fail {
                 code: other.classification().to_string(),
@@ -657,6 +662,32 @@ pub fn backoff(attempt: u32, random: Option<[u8; 8]>) -> i64 {
         None => ceiling,
     };
     wait.max(1_000)
+}
+
+/// The wait after attempt `attempt` that ended in a failure whose provider
+/// asked for `asked` milliseconds with `Retry-After` (area 12, "How long
+/// between tries"): the longer of that and the attempt's [`backoff`], so
+/// the provider is never asked sooner than it said, and deliveries it
+/// refused together still spread out after it.
+pub fn wait(attempt: u32, asked: Option<u64>, random: Option<[u8; 8]>) -> i64 {
+    let drawn = backoff(attempt, random);
+    match asked {
+        Some(asked) => drawn.max(i64::try_from(asked).unwrap_or(i64::MAX)),
+        None => drawn,
+    }
+}
+
+/// The wait a provider asked for when it refused the call `failure` came
+/// from: its own, or that of the failure it was mapped from.
+fn wait_asked(failure: &crate::Failure) -> Option<u64> {
+    let mut at = Some(failure);
+    while let Some(failure) = at {
+        if failure.wait_asked.is_some() {
+            return failure.wait_asked;
+        }
+        at = failure.cause.as_deref();
+    }
+    None
 }
 
 /// The arguments a subscriber's action takes from event `value`, each a
@@ -875,6 +906,40 @@ mod tests {
         // The default budget, 10 attempts, fits well inside 24 hours.
         let longest: i64 = (1..10).map(backoff_ceiling).sum();
         assert!(longest < 24 * 60 * 60 * 1000, "{longest}");
+    }
+
+    #[test]
+    fn a_providers_retry_after_is_waited_out_never_cut_short_by_the_backoff() {
+        // Longer than the backoff: the provider's wait, whatever is drawn.
+        for seed in 0..16u64 {
+            let random = Some(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).to_be_bytes());
+            assert_eq!(wait(1, Some(120_000), random), 120_000);
+        }
+        // Shorter: the backoff, drawn as without one.
+        let random = Some(7u64.wrapping_mul(0x9E37_79B9_7F4A_7C15).to_be_bytes());
+        assert_eq!(wait(3, Some(1_000), random), backoff(3, random).max(1_000));
+        assert_eq!(wait(3, Some(1_000), None), 120_000);
+        assert_eq!(wait(3, None, random), backoff(3, random));
+        // A failure mapped from the refused call keeps its wait.
+        let mut mapped = crate::Failure::new("type Down", "Down", "down");
+        mapped.kind = Some("unavailable".to_string());
+        mapped.cause = Some(Box::new(crate::refused(Some(90_000))));
+        assert_eq!(
+            after(&crate::Outcome::Failed(Box::new(mapped))),
+            After::Retry {
+                code: "down".into(),
+                kind: Some("unavailable".into()),
+                asked: Some(90_000),
+            }
+        );
+        assert_eq!(
+            after(&crate::Outcome::Failed(Box::new(crate::unavailable()))),
+            After::Retry {
+                code: "unavailable".into(),
+                kind: Some("unavailable".into()),
+                asked: None,
+            }
+        );
     }
 
     #[test]

@@ -124,6 +124,7 @@ pub mod files;
 pub mod flags;
 mod host;
 pub mod http;
+pub mod instance;
 pub mod lease;
 mod limits;
 pub mod logging;
@@ -178,7 +179,7 @@ mod write;
 pub(crate) use boundary::committed as boundary_committed;
 pub use boundary::{
     ActionBody, RERUN_ATTEMPTS, RERUN_WINDOW_MS, action, commit_held, misconfigured,
-    outcome_unknown, unavailable,
+    outcome_unknown, refused, unavailable,
 };
 pub use ctx::{
     Binding, CallKey, Caller, Capabilities, Ctx, EmitRefused, Held, SessionEffect, SignInRefused,

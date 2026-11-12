@@ -502,6 +502,15 @@ pub fn unavailable() -> Failure {
     failure
 }
 
+/// [`unavailable`] for a call the provider refused, with the wait its
+/// `Retry-After` asked for, in milliseconds, when it gave one: what a
+/// delivery's next attempt honours (area 12, "How long between tries").
+pub fn refused(wait_asked: Option<u64>) -> Failure {
+    let mut failure = unavailable();
+    failure.wait_asked = wait_asked;
+    failure
+}
+
 /// What the runtime raises when an outside call may have acted and
 /// sending it again could act twice (area 4: `outcome_unknown`, 500, "the
 /// change may or may not have happened, so retrying blindly is unsafe";

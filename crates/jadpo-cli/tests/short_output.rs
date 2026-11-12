@@ -432,3 +432,53 @@ fn an_unused_declaration_is_to_be_used_or_removed() {
         "Use `DueWindow`, or remove it if nothing will"
     );
 }
+
+/// A typed hole (area 2, "Typed holes"): `--json` gives the type as
+/// `expected` and each value that fits as `fits`, with its text, type and
+/// edit; and a project holding one neither checks, tests nor builds.
+#[test]
+fn a_hole_gives_its_type_and_fits_and_never_runs() {
+    let root = folder("hole");
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &root,
+        "domains/hello/types/greet_input.jadpo",
+        "/// Who to greet.\ntype GreetInput = Input {\n    name: PersonName\n}\n",
+    );
+    write(
+        &root,
+        "domains/hello/types/greeting.jadpo",
+        "/// The greeting.\ntype Greeting = Output {\n    name: PersonName\n}\n",
+    );
+    write(
+        &root,
+        "domains/hello/actions/greet.jadpo",
+        "use hello/types { GreetInput, Greeting }\n\n/// Greets someone by name.\naction greet(input: GreetInput) -> Greeting {\n    return Greeting {\n        name: _\n    }\n}\n",
+    );
+    let document = json(&jadpo(&root, &["check", "--json"]));
+    let diagnostics = document["diagnostics"].as_array().expect("diagnostics");
+    assert_eq!(diagnostics.len(), 1, "{document}");
+    let hole = &diagnostics[0];
+    assert_eq!(hole["rule"], "type.hole", "{hole}");
+    assert_eq!(hole["expected"], "PersonName", "{hole}");
+    let fits = hole["fits"].as_array().expect("fits");
+    assert_eq!(fits.len(), 1, "{hole}");
+    assert_eq!(fits[0]["text"], "input.name");
+    assert_eq!(fits[0]["type"], "GreetInput.name");
+    assert_eq!(fits[0]["edit"]["replacement"], "input.name");
+    assert_eq!(fits[0]["edit"]["line"], 6);
+    assert_eq!(fits[0]["edit"]["column"], 15);
+    assert_eq!(hole["next"]["edits"][0]["replacement"], "input.name");
+    // Left out of the short form, as every rule that can't be declined.
+    assert!(hole.get("declinable").is_none(), "{hole}");
+    for command in ["check", "test", "build"] {
+        let output = jadpo(&root, &[command]);
+        assert_ne!(output.code, 0, "{command}: {}", output.stdout);
+        assert!(
+            format!("{}{}", output.stdout, output.stderr).contains("rule: type.hole"),
+            "{command}: {}{}",
+            output.stdout,
+            output.stderr
+        );
+    }
+}

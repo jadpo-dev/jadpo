@@ -120,6 +120,12 @@ fn a_semicolon_after_a_declaration_word_is_not_split() {
 }
 
 #[test]
+fn a_semicolon_opening_a_line_keeps_its_indent() {
+    check("library security {\n    constant a: Int = 5\n    /// B.\n;    constant b: Int = 3\n}\n");
+    check("library security {\n    constant a: Int = 5\n    ;constant b: Int = 3\n}\n");
+}
+
+#[test]
 fn mutated_examples_never_break_the_parser() {
     let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
     let examples = examples::all();

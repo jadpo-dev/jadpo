@@ -362,6 +362,24 @@ impl ObjectWanted {
         self.wrapped(format!("{name} {{ {} }}", fields.join(", ")))
     }
 
+    /// The value written out for a typed hole (area 2, "Typed holes"): a
+    /// `_` for each field that can't be `none`, which the next check
+    /// answers in turn, and `none` for every other.
+    pub(crate) fn with_holes(&self) -> String {
+        let fields: Vec<String> = self
+            .fields
+            .iter()
+            .map(|(field, _, may_be_none)| match may_be_none {
+                true => format!("{field}: none"),
+                false => format!("{field}: _"),
+            })
+            .collect();
+        if fields.is_empty() {
+            return self.wrapped(format!("{} {{}}", self.name));
+        }
+        self.wrapped(format!("{} {{ {} }}", self.name, fields.join(", ")))
+    }
+
     /// The value `written`, a text literal, makes when it fits the one field
     /// that can't be `none`, every other field given as `none`: an edit that
     /// checks as it stands.

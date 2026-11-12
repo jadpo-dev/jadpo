@@ -48,6 +48,12 @@ pub struct Failure {
     /// For such a failure, the limit it was over, which the response gives
     /// in the `RateLimit` headers (area 7, "Rate-limited requests").
     pub rate_limit: Option<jadpo_std::http::RateLimit>,
+    /// For the runtime's `unavailable` raised when a provider refused a
+    /// call and said how long to wait, with `Retry-After`: that wait, in
+    /// milliseconds. A delivery whose attempt ended with it waits at least
+    /// that long before its next attempt (area 12, "How long between
+    /// tries"); a route's response never says it.
+    pub wait_asked: Option<u64>,
 }
 
 impl Failure {
@@ -73,6 +79,7 @@ impl Failure {
             cause: None,
             retry_after: None,
             rate_limit: None,
+            wait_asked: None,
         }
     }
 

@@ -40,12 +40,14 @@ impl Request {
 /// What a test runs while a request is held, before it is answered.
 type Hold = Arc<dyn Fn(&Request) + Send + Sync>;
 
+/// A scripted answer's status, body, how long it waits first, in
+/// milliseconds, and the headers it adds.
+type Answer = (u16, String, u64, Vec<(String, String)>);
+
 #[derive(Default)]
 struct State {
     requests: Vec<Request>,
-    /// Each answer's status, body and how long it waits first, in
-    /// milliseconds.
-    answers: VecDeque<(u16, String, u64)>,
+    answers: VecDeque<Answer>,
     hold: Option<Hold>,
 }
 
@@ -96,11 +98,26 @@ impl FakeProvider {
     /// The same, answered only after `millis` milliseconds: longer than a
     /// call's timeout, it is never answered in time.
     pub fn answer_after(&self, millis: u64, status: u16, body: &str) {
+        self.state.lock().expect("state").answers.push_back((
+            status,
+            body.to_string(),
+            millis,
+            Vec::new(),
+        ));
+    }
+
+    /// Answers the next request with `status`, `body` and `headers`, such
+    /// as a refusal's `Retry-After`.
+    pub fn answer_with(&self, status: u16, headers: &[(&str, &str)], body: &str) {
+        let headers = headers
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.to_string()))
+            .collect();
         self.state
             .lock()
             .expect("state")
             .answers
-            .push_back((status, body.to_string(), millis));
+            .push_back((status, body.to_string(), 0, headers));
     }
 
     /// Runs `hold` with each request as it arrives, on the server's
@@ -176,17 +193,21 @@ fn serve(stream: TcpStream, state: &Mutex<State>) {
     if let Some(hold) = hold {
         hold(&request);
     }
-    let (status, reply, wait) = state
+    let (status, reply, wait, extra) = state
         .lock()
         .expect("state")
         .answers
         .pop_front()
-        .unwrap_or_else(|| (200, "{}".to_string(), 0));
+        .unwrap_or_else(|| (200, "{}".to_string(), 0, Vec::new()));
     if wait > 0 {
         std::thread::sleep(Duration::from_millis(wait));
     }
+    let extra: String = extra
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect();
     let response = format!(
-        "HTTP/1.1 {status} Status\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+        "HTTP/1.1 {status} Status\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n{reply}",
         reply.len()
     );
     let mut stream = stream;

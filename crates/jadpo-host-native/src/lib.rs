@@ -35,6 +35,9 @@
 //!   off, for the dev inbox's health score (chunk 7.3c3).
 //! - [`stop_signals`]: SIGTERM and ctrl-c, which stop a server so that it
 //!   drains (chunk 6.7).
+//! - [`name_instance`]: the process's name as an instance of the app,
+//!   kept with each schedule lease it takes (area 12, "Watching
+//!   schedules").
 //! - [`deployable`]: a compiled deployable from its `main` to its last
 //!   log line: its settings read, its databases' migrations checked, its
 //!   workers serving and ticking until a stop drains them (chunk 8.1o).
@@ -66,6 +69,7 @@ pub mod dns;
 pub mod fetch;
 pub mod files;
 pub mod http;
+mod instance;
 mod signals;
 pub mod spamassassin;
 pub mod tls;
@@ -84,6 +88,7 @@ use jadpo_runtime::{Allowed, Database, Host, LocalFuture, RateLimits, StoreError
 use jadpo_std::http::RateLimit;
 use tokio::task::LocalSet;
 
+pub use instance::name_instance;
 pub use signals::stop_signals;
 
 pub use jadpo_drivers::factory::{Drivers, Supplies};

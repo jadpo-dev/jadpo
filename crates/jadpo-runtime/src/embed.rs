@@ -391,7 +391,10 @@ async fn embedded(
         Answer::Failed(_) | Answer::Misconfigured => {
             return Done::Failed(Box::new(crate::misconfigured()));
         }
-        Answer::Unavailable | Answer::RetryAfter(_) | Answer::Unknown => {
+        Answer::RetryAfter(millis) => {
+            return Done::Failed(Box::new(crate::refused(Some(*millis))));
+        }
+        Answer::Unavailable | Answer::Unknown => {
             return Done::Failed(Box::new(crate::unavailable()));
         }
         Answer::Value(_) => {

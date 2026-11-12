@@ -582,6 +582,61 @@ fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds()
 /// A call the provider answers between failures ends the run: fewer than
 /// five in a row hold nothing. A delivery whose call a connection retry
 /// got through counts as answered.
+/// A courier that refuses a lookup with `429` and `Retry-After` is asked
+/// again no sooner than it said (area 12, "How long between tries"): the
+/// delivery's next attempt waits the two minutes asked for, past the
+/// first backoff's ceiling of 30 seconds. Asked next to wait ten minutes,
+/// past the subscriber's 5-minute `within:`, the delivery fails rather
+/// than come back early.
+#[test]
+fn a_refusal_with_retry_after_holds_the_next_attempt_back_that_long() {
+    async fn delivery(harness: &Harness<jadpo_host_native::Postgres>) -> Vec<Vec<SqlValue>> {
+        harness
+            .rows(
+                "SELECT \"status\", \"attempts\", (extract(epoch FROM \"next_attempt_at\") * 1000)::int8, \"last_failure\" ->> 'code' FROM \"jadpo_deliveries\"",
+            )
+            .await
+    }
+    let provider = FakeProvider::start();
+    let Some(loaded) = load("retry-after", &provider.url) else {
+        return;
+    };
+    let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
+    let host = faked(&harness);
+    let program = &loaded.program;
+    let runtime = Runtime::new().expect("runtime");
+    for _ in 0..TRIES {
+        provider.answer_with(429, &[("Retry-After", "120")], "{}");
+    }
+    for _ in 0..TRIES {
+        provider.answer_with(429, &[("Retry-After", "600")], "{}");
+    }
+    runtime.block_on(async {
+        let work = ship(&harness, &host, program, "p-1").await;
+        run_deferred(program, &host, work).await;
+        assert_eq!(
+            delivery(&harness).await,
+            vec![vec![
+                SqlValue::Text("pending".into()),
+                SqlValue::Int4(1),
+                SqlValue::Int8(T0 + 120 * SECOND),
+                SqlValue::Text("unavailable".into()),
+            ]]
+        );
+        // Not before: a tick a minute on leaves it alone.
+        harness.set_now(T0 + 60 * SECOND);
+        tick(program, &host, T0 + 60 * SECOND).await;
+        assert_eq!(provider.requests().len(), TRIES);
+        harness.set_now(T0 + 120 * SECOND);
+        let ticked = tick(program, &host, T0 + 120 * SECOND).await;
+        assert!(ticked.problems.is_empty(), "{:?}", ticked.problems);
+        assert_eq!(provider.requests().len(), 2 * TRIES);
+        let rows = delivery(&harness).await;
+        assert_eq!(rows[0][0], SqlValue::Text("failed".into()), "{rows:?}");
+        assert_eq!(rows[0][1], SqlValue::Int4(2), "{rows:?}");
+    });
+}
+
 #[test]
 fn an_answer_between_failures_holds_nothing() {
     let provider = FakeProvider::start();

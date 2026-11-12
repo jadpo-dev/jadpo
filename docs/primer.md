@@ -98,6 +98,8 @@ Every error has the same parts:
 `jadpo check --json` gives the same parts as JSON, for tools. A few rules
 are judgement calls: when the code is right as written, a line
 `decline <rule>: "<why>"` above the declaration answers that one finding.
+Unsure which value goes somewhere? Write `_`: `jadpo check` names the
+type and what in scope fits ([Typed holes](language/02-values-and-types.md#typed-holes)).
 
 ## How a project is laid out
 

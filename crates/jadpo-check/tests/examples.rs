@@ -82,6 +82,10 @@ const EXEMPT: &[(&str, &str)] = &[
         "syntax ELISION_EXPR",
         "`...` marks code left out of documentation",
     ),
+    (
+        "syntax HOLE_EXPR",
+        "a typed hole is always an error, so no example that checks holds one",
+    ),
     // Later areas' declarations and the syntax only they use.
     // No teaching example removes data: each needs a person's acceptance
     // and git around it, so the CLI's `removals` tests and area 5 show them.

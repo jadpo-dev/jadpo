@@ -823,6 +823,12 @@ fn schedule_json(schedule: &Watched, model: Option<&ScheduleModel>) -> Json {
         ("paused", Json::from(state.is_some_and(|s| s.paused))),
         ("nextRunAt", instant(state.map(|s| s.next_run_at))),
         ("leaseUntil", instant(state.and_then(|s| s.lease_until))),
+        (
+            "leaseHolder",
+            state
+                .and_then(|s| s.holder.as_deref())
+                .map_or(Json::Null, Json::from),
+        ),
         ("lastTickAt", instant(state.and_then(|s| s.last_tick_at))),
         (
             "lastSucceededAt",
@@ -851,11 +857,21 @@ fn last_run_cell(schedule: &Watched, now: i64) -> Cell {
     };
     let by_hand = if run.by_hand_run() { " · by hand" } else { "" };
     match run.outcome.as_str() {
-        "running" => Cell::state(Symbol::Running, "running").then(format!(
-            "{} · {} so far{by_hand}",
-            clock(run.started, now),
-            duration(run.duration_ms(now))
-        )),
+        "running" => {
+            // The instance it runs on, once its host named it: the one
+            // holding the lease.
+            let on = schedule
+                .state
+                .as_ref()
+                .filter(|state| state.run_id == Some(run.id))
+                .and_then(|state| state.holder.as_deref())
+                .map_or(String::new(), |holder| format!(" · on {holder}"));
+            Cell::state(Symbol::Running, "running").then(format!(
+                "{} · {} so far{by_hand}{on}",
+                clock(run.started, now),
+                duration(run.duration_ms(now))
+            ))
+        }
         "succeeded" => Cell::state(Symbol::Success, "succeeded").then(format!(
             "{} · {} · {}{by_hand}",
             clock(run.started, now),
@@ -1396,7 +1412,11 @@ fn run(call: &Call, project: &Project, schedule: &ScheduleModel) -> Reply {
         Ok(
             match runtime.block_on(watch::run_now(&program, &host, &store, &plan, now))? {
                 RunNow::Ran { due, .. } => Ok(due),
-                RunNow::LeaseHeld { started, until } => Err((started, until)),
+                RunNow::LeaseHeld {
+                    started,
+                    until,
+                    holder,
+                } => Err((started, until, holder)),
             },
         )
     });
@@ -1427,7 +1447,7 @@ fn run(call: &Call, project: &Project, schedule: &ScheduleModel) -> Reply {
         }
     };
     match ran {
-        Err((started, until)) => lease_held(&name, started, until, now),
+        Err((started, until, holder)) => lease_held(&name, started, until, holder, now),
         Ok(due) => ran_screen(&name, &due, false),
     }
 }
@@ -1440,8 +1460,12 @@ enum Waited {
     /// Its record ended.
     Ended(RunRecord),
     /// A run holds the lease, so nothing was asked: when it started, if
-    /// its record says, and the lease's end.
-    LeaseHeld { started: Option<i64>, until: i64 },
+    /// its record says, the lease's end and the instance holding it.
+    LeaseHeld {
+        started: Option<i64>,
+        until: i64,
+        holder: Option<String>,
+    },
     /// No tick took it in time, so it was withdrawn; whether a run held
     /// the lease then.
     NoTick { lease_held: bool },
@@ -1496,7 +1520,11 @@ pub(crate) fn ask_tick(
     let wait = span(period.saturating_mul(2));
     match waited {
         Waited::Ended(record) => ran_screen(&name, &due_of(&record), true),
-        Waited::LeaseHeld { started, until } => lease_held(&name, started, until, now),
+        Waited::LeaseHeld {
+            started,
+            until,
+            holder,
+        } => lease_held(&name, started, until, holder, now),
         Waited::NoTick { lease_held } => Reply::failed(
             Diagnostic::new(
                 &rule::SCHEDULES_NO_TICK,
@@ -1546,7 +1574,17 @@ async fn wait_for(
     let host = jadpo_host_native::NativeHost::new();
     let run = match watch::request_run(database, &host, schedule, now).await? {
         Requested::Waiting { run, .. } => run,
-        Requested::LeaseHeld { started, until } => return Ok(Waited::LeaseHeld { started, until }),
+        Requested::LeaseHeld {
+            started,
+            until,
+            holder,
+        } => {
+            return Ok(Waited::LeaseHeld {
+                started,
+                until,
+                holder,
+            });
+        }
     };
     crate::run::say(&format!(
         "Waiting for the app's next tick to run `{}`",
@@ -1623,11 +1661,19 @@ fn due_of(record: &RunRecord) -> Due {
 }
 
 /// `schedules.lease_held`: a run that started at `started` holds the
-/// lease until `until`.
-fn lease_held(name: &str, started: Option<i64>, until: i64, now: i64) -> Reply {
+/// lease until `until`, on the instance named `instance` when its host
+/// named it.
+fn lease_held(
+    name: &str,
+    started: Option<i64>,
+    until: i64,
+    instance: Option<String>,
+    now: i64,
+) -> Reply {
+    let on = instance.map_or(String::new(), |instance| format!(" on `{instance}`"));
     let holder = match started {
-        Some(started) => format!("A run that started at {}", clock(started, now)),
-        None => "Another run".to_string(),
+        Some(started) => format!("A run that started at {}{on}", clock(started, now)),
+        None => format!("Another run{on}"),
     };
     Reply::Failed(Box::new(
         Diagnostic::new(
@@ -1892,6 +1938,7 @@ fn say(answer: &why::Answer, name: &str, now: i64) -> Said {
             started,
             until,
             next,
+            holder,
         } => {
             let headline = match started {
                 Some(started) => format!(
@@ -1904,21 +1951,24 @@ fn say(answer: &why::Answer, name: &str, now: i64) -> Said {
                     clock(*until, now)
                 ),
             };
-            said(
-                headline,
-                vec![field(
-                    "next",
-                    format!(
-                        "{}: the next due tick records it as lease_expired and runs again",
-                        grid_clock(*next, now)
-                    ),
-                )],
-            )
+            let mut fields = Vec::new();
+            if let Some(holder) = holder {
+                fields.push(field("instance", holder.clone()));
+            }
+            fields.push(field(
+                "next",
+                format!(
+                    "{}: the next due tick records it as lease_expired and runs again",
+                    grid_clock(*next, now)
+                ),
+            ));
+            said(headline, fields)
         }
         Answer::Running {
             started,
             lease_until,
             skipped,
+            holder,
         } => {
             let mut fields = vec![field(
                 "lease",
@@ -1927,6 +1977,9 @@ fn say(answer: &why::Answer, name: &str, now: i64) -> Said {
                     clock(*lease_until, now)
                 ),
             )];
+            if let Some(holder) = holder {
+                fields.push(field("instance", holder.clone()));
+            }
             if *skipped > 0 {
                 fields.push(field(
                     "skipped",
