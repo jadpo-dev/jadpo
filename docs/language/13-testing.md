@@ -1975,9 +1975,9 @@ Here a lending desk's loan belongs to a member, whose email is unique:
 application {}
 ```
 
-```jadpo check project=lending file=domains/lending/types/member_name.jadpo hidden
+```jadpo check project=lending file=domains/lending/types/borrower_name.jadpo hidden
 /// What a member is called.
-type MemberName = Text {
+type BorrowerName = Text {
     min_length: 1
     max_length: 80
 }
@@ -2000,12 +2000,12 @@ type LoanState = Enum {
 ```
 
 ```jadpo check project=lending file=domains/lending/entities/member.jadpo hidden
-use lending/types { MemberName }
+use lending/types { BorrowerName }
 
 /// Someone who borrows books.
 entity Member {
     id: Uuid
-    name: MemberName
+    name: BorrowerName
     email: Email {
         unique: true
     }
@@ -2036,7 +2036,7 @@ entity Loan {
             state: LoanState.out
         }
         transitions: {
-            give_back: {
+            hand_in: {
                 when: state == LoanState.out
                 set: {
                     state: LoanState.returned
@@ -2057,14 +2057,14 @@ entity Loan {
 /// The loan was returned already.
 type AlreadyReturned = Failure {
     kind: FailureKind.conflict
-    message: "That book is back already."
+    message: "That book is shelved already."
 }
 ```
 
 ```jadpo check project=lending file=domains/lending/events/loan_returned.jadpo hidden
 use lending/entities { Loan }
 
-/// A member brought a book back.
+/// A member brought a book shelved.
 type LoanReturned = Event {
     loan_id: Loan.id
 }
@@ -2075,17 +2075,17 @@ use lending/entities { Loan, LoanNotFound }
 use lending/failures { AlreadyReturned }
 use lending/events { LoanReturned }
 
-/// Takes a book back.
+/// Takes a book shelved.
 action return_loan(loan_id: Loan.id) fails LoanNotFound, AlreadyReturned -> Loan {
-    var back: Loan = attempt Loan.give_back(loan_id) {
+    var shelved: Loan = attempt Loan.hand_in(loan_id) {
         conflict: {
-            Loan.give_back: AlreadyReturned
+            Loan.hand_in: AlreadyReturned
         }
     }
     emit LoanReturned {
-        loan_id: back.id
+        loan_id: shelved.id
     }
-    return back
+    return shelved
 }
 ```
 
@@ -2111,16 +2111,16 @@ test "a loan returned already can't be returned again" {
 }
 
 test "two members made the same way have their own emails" {
-    var ann: Member = make.Member {}
-    var bo: Member = make.Member {}
-    assert ann.email != bo.email
+    var alba: Member = make.Member {}
+    var bryn: Member = make.Member {}
+    assert alba.email != bryn.email
 }
 ```
 
 The first test gives only the title: the builder makes the member the
 loan belongs to, starts the loan at its lifecycle's `initial:` state and
 leaves `due` as `none`. The second builds a loan already returned, a
-state only the `give_back` transition reaches, to test what happens next.
+state only the `hand_in` transition reaches, to test what happens next.
 
 With builders, fixtures remain for meaningful scenarios. A fixture
 returns a named object holding what it made, an `Object` type declared
@@ -2140,21 +2140,21 @@ type LoansOut = Object {
 use lending/entities { Loan, Member }
 use lending/types { LoansOut }
 
-/// Ann, with two books out.
+/// Alba, with two books out.
 fixture two_loans_out() -> LoansOut {
-    var ann: Member = make.Member {
-        name: "Ann"
+    var alba: Member = make.Member {
+        name: "Alba"
     }
     var first: Loan = make.Loan {
-        member: ann.id
+        member: alba.id
         title: "Middlemarch"
     }
     var second: Loan = make.Loan {
-        member: ann.id
+        member: alba.id
         title: "Persuasion"
     }
     return LoansOut {
-        member: ann
+        member: alba
         loans: [first, second]
     }
 }
@@ -2216,7 +2216,7 @@ was emitted, as the fakes' `.requests` checks provider calls. It holds
 when an event of that type, emitted by a step of the test that committed
 or by a subscriber delivered since, has the fields it gives at those
 values; the fields it leaves out aren't compared. An event an action
-emitted and then rolled back was never emitted. A type that isn't an
+emitted and then rolled shelved was never emitted. A type that isn't an
 event is `event.emit_invalid`.
 
 ```jadpo check project=lending file=domains/lending/events/loan_returned.test.jadpo
@@ -2224,10 +2224,10 @@ use lending/entities { Loan }
 use lending/types { LoanState }
 use lending/actions { return_loan }
 
-test "returning a loan says it came back" {
+test "returning a loan says it came shelved" {
     var loan: Loan = make.Loan {}
-    var back: Loan = attempt return_loan(loan.id)
-    assert back.state == LoanState.returned
+    var shelved: Loan = attempt return_loan(loan.id)
+    assert shelved.state == LoanState.returned
     assert emitted LoanReturned {
         loan_id: loan.id
     }

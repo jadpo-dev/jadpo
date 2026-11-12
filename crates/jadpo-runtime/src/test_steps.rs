@@ -357,32 +357,6 @@ async fn undelivered(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_same_seed_draws_the_same_order() {
-        let draws = |order| {
-            let mut between = BetweenSteps {
-                order,
-                undelivered: None,
-                drawn: 0,
-            };
-            (0..8).map(|_| between.draw() % 5).collect::<Vec<_>>()
-        };
-        assert_eq!(draws(7), draws(7));
-        assert_ne!(draws(7), draws(8));
-    }
-
-    #[test]
-    fn an_identity_key_is_shown_as_written() {
-        assert_eq!(written("type cafe.RepairBooked"), "RepairBooked");
-        assert_eq!(written("type RepairBooked"), "RepairBooked");
-        assert_eq!(written("subscriber find_a_bench"), "find_a_bench");
-    }
-}
-
 /// Whether `assert emitted` holds (area 13, "Events and query cost"): an
 /// event of the type whose identity key is `key` that the test's committed
 /// steps kept, each of `fields` holding the value beside it as `==` would
@@ -421,4 +395,30 @@ pub fn emitted(
         given,
         emitted: of_type,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_same_seed_draws_the_same_order() {
+        let draws = |order| {
+            let mut between = BetweenSteps {
+                order,
+                undelivered: None,
+                drawn: 0,
+            };
+            (0..8).map(|_| between.draw() % 5).collect::<Vec<_>>()
+        };
+        assert_eq!(draws(7), draws(7));
+        assert_ne!(draws(7), draws(8));
+    }
+
+    #[test]
+    fn an_identity_key_is_shown_as_written() {
+        assert_eq!(written("type cafe.RepairBooked"), "RepairBooked");
+        assert_eq!(written("type RepairBooked"), "RepairBooked");
+        assert_eq!(written("subscriber find_a_bench"), "find_a_bench");
+    }
 }

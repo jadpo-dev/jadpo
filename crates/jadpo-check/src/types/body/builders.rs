@@ -395,7 +395,7 @@ impl Body<'_> {
                 "`assert emitted` is given something other than an event",
             )
             .at(span, "not an event")
-            .reason("`assert emitted` names the event's type and the fields to compare, as an event is written: `assert emitted ReminderDue { todo_id: todo.id }`.")
+            .reason("`assert emitted` names the event's type and the fields to compare, as an event is written: `assert emitted <Event> { field: value }`.")
             .next("Write `assert emitted <Event> { field: value }`"),
         );
     }

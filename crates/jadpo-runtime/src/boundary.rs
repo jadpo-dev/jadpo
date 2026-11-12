@@ -779,7 +779,10 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
         }
     }
     // What a test's `assert emitted` reads (area 13).
+    #[cfg(feature = "testing")]
     let noting = ctx.background().between_steps().is_some();
+    #[cfg(not(feature = "testing"))]
+    let noting = false;
     let Some(boundary) = ctx.boundary_mut() else {
         return Ok(());
     };

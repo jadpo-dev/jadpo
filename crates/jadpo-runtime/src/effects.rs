@@ -440,10 +440,18 @@ fn json(
     }
 }
 
+/// Only a test makes values for a data builder, so a program built
+/// without testing has none to make.
+#[cfg(not(feature = "testing"))]
+fn made(_: &mut Ctx<'_>, _: &Effects<'_>, _: Option<u32>, _: bool) -> Result<Value, Refused> {
+    Err(defect("a data builder outside a test"))
+}
+
 /// A value a data builder makes (area 13, "Data builders"): what a fake
 /// would answer for the type `number` names, read as that type. With
 /// `distinct`, its text carries part of a new identity, so two records a
 /// unique rule holds apart can both be made.
+#[cfg(feature = "testing")]
 fn made(
     ctx: &mut Ctx<'_>,
     effects: &Effects<'_>,
