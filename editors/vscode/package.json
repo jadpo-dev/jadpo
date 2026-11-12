@@ -131,6 +131,25 @@
     "configurationDefaults": {
       "[jadpo]": {
         "editor.formatOnSave": true
+      },
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": [
+              "entity.name.type.declaration.jadpo",
+              "entity.name.function.declaration.jadpo",
+              "entity.name.function.call.jadpo"
+            ],
+            "settings": { "fontStyle": "bold" }
+          },
+          {
+            "scope": [
+              "comment.line.documentation.jadpo",
+              "comment.line.double-slash.jadpo"
+            ],
+            "settings": { "fontStyle": "italic" }
+          }
+        ]
       }
     }
   },
