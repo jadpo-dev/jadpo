@@ -380,7 +380,7 @@ fn checked(source: &str) -> Vec<String> {
 }
 
 #[test]
-fn the_json_held_values_are_stored_but_not_compared_in_a_query() {
+fn the_json_held_values_are_stored_and_compared_but_not_sorted_in_a_query() {
     // Stored as their contract's JSON in one `jsonb` column (chunk
     // 5.5w2b), as an application's own structured field is (chunk 5.9b).
     for ty in [
@@ -405,7 +405,14 @@ fn the_json_held_values_are_stored_but_not_compared_in_a_query() {
         checked(
             "entity Dish {\n    id: Uuid\n    name: LocalisedText\n}\n\nquery named(name: LocalisedText) -> List<Dish> {\n    from: Dish\n    where: Dish.name == name\n    order: [Dish.id asc]\n    limit: 20\n}\n"
         ),
-        ["toolchain.not_built_yet"],
-        "compared in a query"
+        NONE,
+        "compared in a query, as its JSON"
+    );
+    assert_eq!(
+        checked(
+            "entity Dish {\n    id: Uuid\n    name: LocalisedText\n}\n\nquery sorted() -> List<Dish> {\n    from: Dish\n    order: [Dish.name asc]\n    limit: 20\n}\n"
+        ),
+        ["query.order_field"],
+        "never sorted"
     );
 }

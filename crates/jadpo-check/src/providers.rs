@@ -931,6 +931,19 @@ impl Reader<'_> {
                 span.clone(),
             ));
         }
+        // An `AnyObject` goes out as the JSON of the app's object it was
+        // given, which no answer says (areas 2 and 11, "Types").
+        if key != "input"
+            && let Some(held) =
+                crate::types::decl::held_any_object(self.table, &resolved, &mut Vec::new())
+        {
+            out.push(crate::types::decl::any_object_held(
+                &format!("`{}`'s `{key}:`", self.operation),
+                &held,
+                "An operation's answer is read from what the provider sends.",
+                span.clone(),
+            ));
+        }
         // A file's bytes go out as Base64 (area 16, "`FileContents`"), but
         // nothing reads an answer as them.
         if key != "input"

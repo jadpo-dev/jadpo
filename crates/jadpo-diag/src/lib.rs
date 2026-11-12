@@ -1382,6 +1382,8 @@ rules! {
         "A member is written in the wrong shape for what it words";
     TYPE_ABSENT_FIELD: "type.absent_field", area 2, Error, Agent,
         "An `omit:` or `optional:` line names a field that the lines above it don't bring into the type";
+    TYPE_ANY_OBJECT_OUTSIDE_INPUT: "type.any_object_outside_input", area 2, Error, Agent,
+        "A type is written `AnyObject` anywhere but in a provider package's object type's field, or an operation's answer, an event or a reply holds one";
     TYPE_ARGUMENT_COUNT: "type.argument_count", area 3, Error, Agent,
         "A call passes more or fewer values than the function or action it calls has parameters";
     TYPE_ARGUMENT_EMPTY: "type.argument_empty", area 19, Error, Agent,

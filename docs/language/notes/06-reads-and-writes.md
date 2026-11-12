@@ -39,20 +39,6 @@ Why [Reads and writes](../06-reads-and-writes.md) is the way it is: the decision
 | `expiry:` on lossy-store entities hiding expired records from queries and updates like `visible:` | 5 | Answered by area 5: `expires_after:` |
 | Several changing calls: the record, replay and `diverged` | 12 | Answered: "Several outside calls" |
 
-## Open questions
-
-1. **Can a one-step update refuse when the stored value would break a
-   rule?** Taking stock (`Product.stock - quantity`) can't be a one-step
-   update, because the declared ranges can't prove the result stays at 0
-   or above, so the action loads the product first, and buyers racing on
-   one product rerun each other; in a flash sale that uses up the
-   three-attempt budget. *Recommendation:* a stored-value construction in
-   `set:` may map the rules it can break, as any construction does (area
-   2): `stock: Stock(Product.stock - quantity) { min: OutOfStock }`. The
-   database checks the condition in the same statement (`WHERE "stock" >=
-   $1`), and no row updated is the mapped failure, so the update stays one
-   step and never reruns.
-
 ## Decisions
 
 Rows starting "From area" were decided in that area and bind this page.
@@ -89,6 +75,7 @@ Rows starting "From area" were decided in that area and bind this page.
 | Provided not-found failure | Kind `not_found`, public, no fields, placed at its entity |
 | References that hold | A reference's value read from a record loaded earlier (its `id`, or its reference to the same entity) or `none` names a record that is there; any other value may not, and the write can fail with that entity's not-found failure |
 | Stored values | An update by `id` works a stored field out only with `+` and `-`, under constructions the declared ranges prove |
+| A one-step update that refuses (decided 2026-11-11, Richard accepting the recommendation) | A stored-value construction in `set:` may map the rules it can break, as any construction does (area 2): `stock: Stock(Product.stock - quantity) { min: OutOfStock }`. The database checks the condition in the same statement (`WHERE "stock" >= $1`), and no row updated is the mapped failure, so the update stays one step and never reruns. Without it, taking stock can't be a one-step update, because the declared ranges can't prove the result stays at 0 or above, so the action loads the product first, and buyers racing on one product rerun each other; in a flash sale that uses up the three-attempt budget. Not built yet |
 | `none` to a field that can't be cleared | `none` given to an optional `Input` field whose type isn't nullable is the same as leaving it out, so a patch keeps the stored value |
 | Refusals in a called action | An action whose failure its caller handles with `match` runs inside a savepoint, so its failure undoes all it wrote, a refusal among it, and the caller carries on |
 | Transitions as operations | `Entity.<transition>(record or id)`, an update of the fields its `set:` gives, giving back the record (nothing through `delete`); its block takes only `conflict:`; it reaches only visible records |
@@ -106,3 +93,7 @@ Rows starting "From area" were decided in that area and bind this page.
 | Aggregate queries | `group:` and `aggregate:` blocks shaped like `include:`; `count()`, `sum`, `min`, `max` and `average(F, scale:, rounding:)`, each what code gives; groups of exactly-comparing fields and time buckets of dates; `List<T>` with `group:`, `T` without; one statement, as "Counts, sums and groups" sets out |
 | Standard operations in `where:` | Allowed where the operation has an exact SQL form, with a derived expression index, as "Operations in conditions" sets out |
 | A query giving a map layer | A query may return its records as a `FeatureCollection<G, P>`, naming the geometry field and the properties type, so a `GET` route can send a layer; nothing is computed beyond picking fields |
+| Values kept in several columns | Decided 2026-11-11, recommended for a maintainer to confirm: a standard type in named columns is equal when every column is, a part that may be `none` compared with `IS NOT DISTINCT FROM`; ordered only where the contract orders it part by part and every column is a number, a date or a time that is always there (`YearMonth`, `LocalTime`, `CardExpiry`), by a row comparison; never a `SemanticVersion`, whose pre-release text doesn't sort by precedence; a type holding a geometry or a vector isn't compared, since PostGIS's `=` compares bounding boxes. `in` a list given as a parameter sends each part as an array read back with `unnest`, so it takes only types whose parts are always there and can be sent as arrays; a list written out takes any |
+| Money in a query | Decided 2026-11-11, recommended for a maintainer to confirm: `==` and `!=` compare both columns, so amounts in two currencies are unequal, as code's `==` says; `<` and `order:` compare minor units only where the field's type fixes its currency (the value is of that type, since two types of money are compared only where one widens to the other), the proof code needs without `attempt`, since a query can't map `currency_mismatch` for a record. Conditions as proof (`money.currency(F) == ...` beside the ordering) were left out: `money.currency` of the field is a condition of its own, and the cheaper rule covers every app that fixes its currency |
+| Values kept as JSON | Decided 2026-11-11, recommended for a maintainer to confirm: compared by `jsonb`'s `=` with the JSON the field's own codec writes for a parameter or an enum value when the query runs, which is exactly code's `==` because the codec writes one spelling for each value; never ordered. A type holding a decimal, a percentage or a float whose places its type doesn't fix is refused, since `1.5` and `1.50` are `==` but differ as JSON; so is a list written out, which only the codec could write. A row written outside Jadpo in another spelling of the same value (a set out of its canonical order) is compared as written, as the area page's rows written around Jadpo are |
+| Indexes over held values | Decided 2026-11-11: a derived index holds every column of a value in named columns a condition tests with `==` or `in`, in its layout's order, and the columns its order reads of one it sorts by (an amount's minor units), and no column of one kept as JSON, whose up to 1 MiB a B-tree's entry of about 2.7 kB can't hold; an expression index over an amount's operation records both its columns as what it reads |

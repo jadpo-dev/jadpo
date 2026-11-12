@@ -42,6 +42,7 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
         provider,
         installed: home.is_some_and(|home| home.installed),
         packaged: home.is_some(),
+        any_object: false,
     };
     for decl in source.decls() {
         checker.decl(&decl);
@@ -93,6 +94,11 @@ pub(super) struct Decls<'a> {
     /// Whether the file is in a package, whose types' fields may be marked
     /// `personal:` (area 15; chunk V5).
     pub packaged: bool,
+    /// Whether the type being checked may be `AnyObject`: a provider
+    /// package's object type's field, written `AnyObject` or `AnyObject?`
+    /// (areas 2 and 11, "Types"). Cleared by the first name it reaches, so
+    /// a collection's arguments never may.
+    pub any_object: bool,
 }
 
 impl Decls<'_> {
@@ -246,6 +252,12 @@ impl Decls<'_> {
             TypeRef::Path(names, args) => {
                 let head = node.head();
                 let first = names[0].as_str();
+                let any_object = std::mem::take(&mut self.any_object);
+                if names.len() == 1 && first == jadpo_std::provider::ANY_OBJECT && !any_object {
+                    let span = self.span(node.syntax());
+                    self.out.push(any_object_written(self.provider, span));
+                    return false;
+                }
                 if names.len() == 1 && BASES.contains(&first) && !base_allowed {
                     let span = self.span(&head);
                     self.out.push(
@@ -1028,11 +1040,29 @@ impl Decls<'_> {
                         continue;
                     };
                     let node = TypeNode::Expr(value.clone());
-                    if !self.type_node(&node, false) {
+                    self.any_object = self.provider && base == FieldsBase::Object && !self.failure;
+                    let written = self.type_node(&node, false);
+                    self.any_object = false;
+                    if !written {
                         continue;
                     }
                     let declared = self.table.resolve(ty);
                     if declared.has_error() {
+                        continue;
+                    }
+                    // What an `AnyObject` holds goes out as its JSON, so
+                    // only an object an operation's input holds keeps one
+                    // (areas 2 and 11, "Types").
+                    if base != FieldsBase::Object
+                        && let Some(held) = held_any_object(self.table, &declared, &mut Vec::new())
+                    {
+                        let span = self.span(value.syntax());
+                        self.out.push(any_object_held(
+                            &format!("`{host}.{name}`"),
+                            &held,
+                            "Only an object type's field may hold one, for an operation's `input:` to send.",
+                            span,
+                        ));
                         continue;
                     }
                     if holds_principal(self.table, &declared, &mut Vec::new()) {
@@ -3150,6 +3180,57 @@ fn held_where(
         }
         _ => None,
     }
+}
+
+/// As [`held_file`], for an `AnyObject` (areas 2 and 11, "Types"),
+/// however deep.
+pub(crate) fn held_any_object(
+    table: &dyn TypeView,
+    ty: &Ty,
+    seen: &mut Vec<String>,
+) -> Option<String> {
+    held_where(table, ty, seen, &|name| {
+        name == jadpo_std::provider::ANY_OBJECT
+    })
+}
+
+/// `type.any_object_outside_input`: `AnyObject` written, at `span`, where
+/// it can't be: anywhere but a provider package's object type's field,
+/// as `AnyObject` or `AnyObject?`. `provider` when the file is in a
+/// provider package.
+pub(crate) fn any_object_written(provider: bool, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TYPE_ANY_OBJECT_OUTSIDE_INPUT,
+        "`AnyObject` is only the type of a provider package's input field",
+    )
+    .at(span, "not a package's input field")
+    .reason("An `AnyObject` takes any of the application's own object types and sends it as its JSON, for a provider whose input takes values of any shape, such as an email's template variables. Only a field of a provider package's object type is one, written `AnyObject` or `AnyObject?`, for an operation's `input:` to hold; everywhere else, code names the object type it means.")
+    .next(if provider {
+        "Make it a field of the object type the operation's `input:` takes, written `AnyObject` or `AnyObject?`"
+    } else {
+        "Name the application's own object type meant here instead"
+    })
+}
+
+/// `type.any_object_outside_input`: `what`, at `span`, holds an
+/// `AnyObject`, in `held`, where it can't go, as `why` says: an
+/// `AnyObject` is sent as the JSON of whichever object type it was given,
+/// which nothing records.
+pub(crate) fn any_object_held(what: &str, held: &str, why: &str, span: Span) -> Diagnostic {
+    let place = if held == jadpo_std::provider::ANY_OBJECT {
+        ",".to_string()
+    } else {
+        format!(", in `{held}`,")
+    };
+    Diagnostic::new(
+        &rule::TYPE_ANY_OBJECT_OUTSIDE_INPUT,
+        format!("{what} holds an `AnyObject`{place} which only an operation's `input:` sends"),
+    )
+    .at(span, "an `AnyObject`")
+    .reason(format!(
+        "An `AnyObject` is sent as the JSON of whichever of the application's object types it was given, and nothing records which type that was, so nothing can be read back as one. {why}"
+    ))
+    .next("Declare the fields this holds in types of their own, and keep `AnyObject` to an operation's `input:`")
 }
 
 /// Whether [`held_file`]'s answer is still the file's own type, so the

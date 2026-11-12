@@ -81,6 +81,8 @@ fn source(source: &Source) -> String {
                 path: path.clone()
             })
         ),
+        Source::Constant(constant) => format!("constant {constant:?}"),
+        Source::Laid { of, laying } => format!("{laying:?} of {}", self::source(of)),
     }
 }
 

@@ -142,6 +142,75 @@ impl Statement {
     }
 }
 
+/// A statement's parameters while a condition on `entity` is written, with
+/// what the plan knows of its fields (chunk Q1): a value compared with a
+/// field kept in several columns or as JSON is laid out as the field keeps
+/// it when the read runs, a literal or an enum value as the constant code
+/// makes of it.
+struct Laying<'p, 'a, 's> {
+    planner: &'p Planner<'a>,
+    entity: &'p EntityModel,
+    statement: &'s mut Statement,
+}
+
+impl Bind for Laying<'_, '_, '_> {
+    fn bind(&mut self, value: &Value, ty: SqlType) -> Option<String> {
+        self.statement.bind(value, ty)
+    }
+
+    fn stored(&mut self, value: jadpo_std::SqlValue) -> Option<String> {
+        self.statement.stored(value)
+    }
+
+    fn envelope(&mut self, bounds: &Value, part: EnvelopePart) -> Option<String> {
+        self.statement.envelope(bounds, part)
+    }
+
+    fn search_phrase(&mut self, value: &Value) -> Option<String> {
+        self.statement.search_phrase(value)
+    }
+
+    fn distance_bound(&mut self, bound: &Value, strict: bool) -> Option<String> {
+        self.statement.distance_bound(bound, strict)
+    }
+
+    fn laid(
+        &mut self,
+        column: &str,
+        value: &Value,
+        laying: jadpo_std::read::Laying,
+        ty: SqlType,
+    ) -> Option<String> {
+        let field = self.entity.fields.iter().find(|f| f.born == column)?;
+        let of = self.planner.given(self.entity, field, value)?;
+        Some(self.statement.param(
+            Source::Laid {
+                of: Box::new(of),
+                laying,
+            },
+            ty,
+        ))
+    }
+}
+
+/// An entity's columns as the plan sees them: a JSON-held field's with the
+/// number of the codec its value is written with (chunk Q1).
+struct Coded<'p, 'a> {
+    planner: &'p Planner<'a>,
+    entity: &'p EntityModel,
+}
+
+impl jadpo_sql::Columns for Coded<'_, '_> {
+    fn column(&self, name: &str) -> Option<jadpo_sql::Column<'_>> {
+        let field = field(self.entity, name)?;
+        let mut column = field.column();
+        if let jadpo_sql::Kept::Json(_) = column.kept {
+            column.kept = jadpo_sql::Kept::Json(self.planner.json_codec(self.entity, field));
+        }
+        Some(column)
+    }
+}
+
 impl Bind for Statement {
     fn bind(&mut self, value: &Value, ty: SqlType) -> Option<String> {
         let source = match value {
@@ -223,6 +292,22 @@ pub(crate) struct Columns {
 /// change (area 5, "Migrations").
 pub(crate) fn sealed_bound(entity: &EntityModel, field: &FieldModel) -> String {
     format!("{}.{}", entity.table, field.born)
+}
+
+/// One column an order sorts by (chunk Q1): a field's own, or a part of a
+/// standard type kept in several columns.
+pub(crate) struct Sorted {
+    /// The column's name.
+    pub(crate) column: String,
+    /// The type its value is sent as, a page's cursor holding it.
+    pub(crate) ty: SqlType,
+    /// Whether it sorts text by code point.
+    pub(crate) collate: bool,
+    pub(crate) descending: bool,
+    /// The field it is a column of, by its name now.
+    pub(crate) field: String,
+    /// Its place among the field's columns.
+    pub(crate) part: u32,
 }
 
 /// How a later column of a compound standard type (`Money`, area 19) is
@@ -417,11 +502,11 @@ impl Planner<'_> {
         };
         let mut cursor = Vec::new();
         if page {
-            for order in &query.order {
-                let field = field(entity, &order.field)?;
+            for sorted in self.sorted(entity, &query.order)? {
+                let field = field(entity, &sorted.field)?;
                 let kind = self.column(entity, field)?;
                 let at = columns.add(&field.name, kind);
-                cursor.push((at, column_type(field)?.param()));
+                cursor.push((at + sorted.part, sorted.ty));
             }
         }
         let mut conditions: Vec<String> = Vec::new();
@@ -459,10 +544,11 @@ impl Planner<'_> {
                 None => conditions.push(self.after(&mut statement, entity, &query.order)?),
             }
         }
+        let sorted = self.sorted(entity, &query.order)?;
         let order = if query.order.is_empty() {
             None
         } else {
-            Some(self.order(entity, &query.order)?)
+            Some(self.order(&sorted))
         };
         let limit = match (&query.limit, page) {
             // A read whose rows are rechecked asks for as many as it needs,
@@ -760,7 +846,8 @@ impl Planner<'_> {
                     conditions.extend(self.access(&mut statement, target, Reach::Read)?);
                     let policy = self.policy(&mut statement, target, Effect::Read, &Row::Table)?;
                     let inner_columns = borns(target, &columns.names);
-                    let order = self.order(target, &include.order)?;
+                    let sorted = self.sorted(target, &include.order)?;
+                    let order = self.order(&sorted);
                     let limit = match &include.limit {
                         Some(Bound::Literal(n)) => n.to_string(),
                         Some(Bound::Value(value)) => {
@@ -948,14 +1035,51 @@ impl Planner<'_> {
 
     /// A condition as SQL, `negated` when a `not` above it was pushed
     /// down.
-    fn condition(
+    pub(crate) fn condition(
         &mut self,
         statement: &mut Statement,
         entity: &EntityModel,
         condition: &Condition,
         negated: bool,
     ) -> Option<String> {
-        jadpo_sql::condition(statement, entity, condition, negated)
+        let planner: &Planner<'_> = self;
+        let mut laying = Laying {
+            planner,
+            entity,
+            statement,
+        };
+        jadpo_sql::condition(&mut laying, &Coded { planner, entity }, condition, negated)
+    }
+
+    /// Where a value compared with `field`, kept in several columns or as
+    /// JSON, comes from (chunk Q1): an argument, or a literal or an enum
+    /// value made the constant code makes of it for the field's type.
+    fn given(&self, entity: &EntityModel, field: &FieldModel, value: &Value) -> Option<Source> {
+        Some(match value {
+            Value::Param { .. } | Value::Now => self.source(value)?,
+            Value::Literal(literal) => {
+                let key = self
+                    .types
+                    .graph()
+                    .named(Kind::Field, &format!("{}.{}", entity.name, field.name))
+                    .map(|id| self.types.graph().node(id).key.clone())?;
+                Source::Constant(self.types.literal(literal, &TypeRef::Field(key))?)
+            }
+            Value::Variant { ty, variant } => {
+                let shape = self
+                    .types
+                    .shape_plan(&self.types.variant_named(ty, variant))?;
+                let plan = shape.variant?;
+                Source::Constant(Constant::Variant {
+                    ty: ty.clone(),
+                    ordinal: plan.ordinal,
+                    name: plan.name,
+                    fields: Vec::new(),
+                })
+            }
+            // A list is compared item by item, each laid out on its own.
+            Value::List(_) => return None,
+        })
     }
 
     /// Where a value that isn't written into the text comes from.
@@ -995,41 +1119,74 @@ impl Planner<'_> {
     }
 
     /// The condition that starts a page after its cursor: the rows past
-    /// the cursor's values of the order fields, or every row when there is
-    /// no cursor.
+    /// the cursor's values of the order's columns, or every row when there
+    /// is no cursor.
     fn after(
         &mut self,
         statement: &mut Statement,
         entity: &EntityModel,
         order: &[OrderField],
     ) -> Option<String> {
+        let sorted = self.sorted(entity, order)?;
         let mut parts = Vec::new();
-        for (i, order) in order.iter().enumerate() {
-            let field = field(entity, &order.field)?;
-            let ty = column_type(field)?.param();
-            let param = statement.param(Source::Cursor(i as u32), ty);
+        for (i, column) in sorted.iter().enumerate() {
+            let param = statement.param(Source::Cursor(u32::try_from(i).ok()?), column.ty);
             parts.push(After {
-                column: &field.born,
+                column: &column.column,
                 param,
-                collate: self.is_text(entity, field),
-                descending: order.descending,
+                collate: column.collate,
+                descending: column.descending,
             });
         }
         text::after(&parts)
     }
 
-    /// An order's fields as their columns, text sorted by code point.
-    fn order<'e>(&self, entity: &'e EntityModel, order: &[OrderField]) -> Option<Vec<Order<'e>>> {
+    /// An order's fields as the columns they sort by, in turn (chunk Q1):
+    /// a field's own column, text sorted by code point, or the parts of a
+    /// standard type kept in several columns that its order reads
+    /// ([`jadpo_sql::ordered_parts`]), each with its place among the
+    /// field's columns.
+    pub(crate) fn sorted(&self, entity: &EntityModel, order: &[OrderField]) -> Option<Vec<Sorted>> {
         let mut out = Vec::new();
         for order in order {
             let field = field(entity, &order.field)?;
-            out.push(Order {
-                column: &field.born,
-                collate: self.is_text(entity, field),
-                descending: order.descending,
-            });
+            match (field.compound, field.column().parts()) {
+                (Some(entry), Some(parts)) => {
+                    for at in jadpo_sql::ordered_parts(entry) {
+                        let part = parts.get(at as usize)?;
+                        out.push(Sorted {
+                            column: part.name.clone(),
+                            ty: part.ty,
+                            collate: false,
+                            descending: order.descending,
+                            field: field.name.clone(),
+                            part: at,
+                        });
+                    }
+                }
+                _ => out.push(Sorted {
+                    column: field.born.clone(),
+                    ty: column_type(field)?.param(),
+                    collate: self.is_text(entity, field),
+                    descending: order.descending,
+                    field: field.name.clone(),
+                    part: 0,
+                }),
+            }
         }
         Some(out)
+    }
+
+    /// An order's columns, as a statement sorts by them.
+    fn order<'s>(&self, sorted: &'s [Sorted]) -> Vec<Order<'s>> {
+        sorted
+            .iter()
+            .map(|column| Order {
+                column: &column.column,
+                collate: column.collate,
+                descending: column.descending,
+            })
+            .collect()
     }
 
     fn is_text(&self, entity: &EntityModel, field: &FieldModel) -> bool {

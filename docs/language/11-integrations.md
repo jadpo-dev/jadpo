@@ -2951,11 +2951,175 @@ response is checked only for the fields your code reads, so a provider
 adding or changing other fields breaks nothing.
 
 An operation's input holds the package's own types and the built-in ones, so
-passing your app's own object is `type.mismatch`. A field taking any of your
-app's object types, sent as JSON, as Postmark's template variables or Stripe's
-metadata need, is `AnyObject`
-([Other built-in types](02-values-and-types.md#other-built-in-types)), which
-isn't built, so writing it is `semantic.unknown_name`.
+passing your app's own object is `type.mismatch`, with one exception. Some
+providers take values of any shape the account chooses, as Postmark's
+template variables and Stripe's metadata are. A package declares such a field
+as `AnyObject`
+([Other built-in types](02-values-and-types.md#other-built-in-types)), and your
+app gives it any of its own object types, sent as that type's JSON:
+
+```jadpo check project=any-object file=app.jadpo hidden
+application {
+    connections: {
+        postmark: {
+            package: Postmark.v1
+            domains: [accounts]
+            credential: config.postmark_token
+            environment: config.postmark_environment
+        }
+    }
+}
+```
+
+```jadpo check project=any-object file=config.jadpo hidden
+config {
+    postmark_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+    postmark_token: Text {
+        secret: true
+    }
+}
+```
+
+```jadpo check project=any-object file=shared/providers/postmark/v1/package.jadpo hidden
+/// Postmark's email API.
+package Postmark.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=any-object file=shared/providers/postmark/v1/provider.jadpo hidden
+/// How Postmark is reached.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.postmarkapp.com"
+        sandbox: "https://api.postmarkapp.com"
+    }
+    credential: CredentialScheme.header
+    credential_header: "X-Postmark-Server-Token"
+}
+```
+
+```jadpo check project=any-object file=shared/providers/postmark/v1/types/message_sent.jadpo hidden
+/// The email Postmark accepted.
+public type MessageSent = Object {
+    message_id: Text {
+        wire_name: "MessageID"
+    }
+}
+```
+
+```jadpo check project=any-object file=shared/providers/postmark/v1/resources/email.jadpo hidden
+public resource email {
+    send_with_template: {
+        method: HttpMethod.post
+        path: "/email/withTemplate"
+        input: TemplatedEmail
+        output: MessageSent
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+`shared/providers/postmark/v1/types/templated_email.jadpo`:
+
+```jadpo check project=any-object file=shared/providers/postmark/v1/types/templated_email.jadpo
+/// An email made from one of the server's templates.
+public type TemplatedEmail = Object {
+    from: Email {
+        wire_name: "From"
+    }
+    to: Email {
+        wire_name: "To"
+    }
+    template_alias: Text {
+        wire_name: "TemplateAlias"
+    }
+    /// What the template's placeholders read.
+    template_model: AnyObject {
+        wire_name: "TemplateModel"
+    }
+}
+```
+
+```jadpo check project=any-object file=domains/accounts/types/customer_name.jadpo hidden
+/// A customer's name as they gave it.
+type CustomerName = Text {
+    min_length: 1
+    max_length: 100
+}
+```
+
+`domains/accounts/types/welcome_model.jadpo`:
+
+```jadpo check project=any-object file=domains/accounts/types/welcome_model.jadpo
+use accounts/types { CustomerName }
+
+/// What the welcome template reads.
+type WelcomeModel = Object {
+    name: CustomerName
+    product_name: Text
+}
+```
+
+`domains/accounts/actions/send_welcome.jadpo`:
+
+```jadpo check project=any-object file=domains/accounts/actions/send_welcome.jadpo
+use app { postmark }
+use accounts/types { CustomerName, WelcomeModel }
+use shared/providers/postmark
+
+/// Welcomes a new customer.
+action send_welcome(to: Email, name: CustomerName) -> Postmark.MessageSent {
+    var email: Postmark.TemplatedEmail = Postmark.TemplatedEmail {
+        from: "hello@shop.example"
+        to: to
+        template_alias: "welcome"
+        template_model: WelcomeModel {
+            name: name
+            product_name: "Shop"
+        }
+    }
+    return postmark.email.send_with_template(email)
+}
+```
+
+```jadpo check project=any-object file=domains/accounts/actions/send_welcome.test.jadpo
+use app { postmark }
+use shared/providers/postmark
+
+test "the welcome goes out with its model" {
+    fakes: {
+        postmark.email.send_with_template: [
+            Postmark.MessageSent {
+                message_id: "m_1"
+            }
+        ]
+    }
+    var sent: Postmark.MessageSent = send_welcome("ada@example.test", "Ada")
+    assert sent.message_id == "m_1"
+}
+```
+
+Postmark is sent `"TemplateModel": {"name": "Ada", "product_name": "Shop"}`:
+the object as your app's contract writes it, a field that is `none` left out
+as the package's own are. What it holds is checked where it is given, since
+the package's input doesn't say: a `File` in it is sent as its bytes and a
+`FileContents` as its Base64, as below, and a `Password` is
+[`type.password_sent_to_provider`](../errors/type.password_sent_to_provider.md).
+Only an object type is an `AnyObject`, so text or a list there is
+`type.mismatch`.
+
+`AnyObject` is written only as a field of a provider package's object type,
+`AnyObject` or `AnyObject?`, and only an operation's `input:` holds that type.
+Nothing records which type an `AnyObject` was given, so its JSON can't be read
+back as one: anywhere else, an operation's `output:`, an event, a webhook's
+`reply:` or your app's own types among them, is
+[`type.any_object_outside_input`](../errors/type.any_object_outside_input.md).
 
 A `File` is the store and key its bytes are under, and neither the store nor
 the key crosses to or from a provider, however deep a type holds the file

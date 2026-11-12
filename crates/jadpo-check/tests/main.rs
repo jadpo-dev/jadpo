@@ -66,6 +66,7 @@ mod incremental;
 mod isolation;
 mod jadpo_version;
 mod json_columns;
+mod kept_conditions;
 mod lists;
 mod locales;
 mod logic;

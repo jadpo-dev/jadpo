@@ -382,6 +382,34 @@ pub enum Source {
     /// inside it, `path`) holds, as `websearch_to_tsquery` is given it
     /// ([`crate::search::phrase`]), so `or` is a word, never an operator.
     SearchPhrase { index: u32, path: Vec<String> },
+    /// A literal or an enum value a condition compares a field held in
+    /// several columns or as JSON with, as code makes it, which only
+    /// [`Source::Laid`] reads: the storage codec lays such a value out
+    /// when the read runs, as it lays out a value a write keeps.
+    Constant(crate::Constant),
+    /// The value `of` gives (an argument, or a [`Source::Constant`]) laid
+    /// out as the field it is compared with is kept (area 5, "A stored
+    /// value is checked when it is read"): one of the columns a standard
+    /// type is stored in, the JSON a structured value is kept as, or
+    /// whether it is there. For a parameter of an array type, `of` is a
+    /// list, and each of its items is laid out so.
+    Laid { of: Box<Source>, laying: Laying },
+}
+
+/// How a value is laid out as the field a condition compares it with is
+/// kept ([`Source::Laid`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum Laying {
+    /// Its `n`th column, in its type's layout
+    /// ([`crate::standard::storage::layout`]), as a write keeps it; `NULL`
+    /// for `none`.
+    Part(u32),
+    /// Its contract's JSON, written by the codec the plan's JSON table
+    /// numbers so, as a write keeps it; `NULL` for `none`.
+    Json(u32),
+    /// `true` when it is there, `NULL` for `none`: what `where_present:`
+    /// tests a value held in several columns by.
+    Given,
 }
 
 /// The sides of the two envelopes a `BoundingBox` filter searches, in

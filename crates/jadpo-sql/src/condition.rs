@@ -27,7 +27,7 @@
 
 use std::collections::BTreeSet;
 
-use jadpo_std::read::{EnvelopePart, GEO_MARGIN, SqlType};
+use jadpo_std::read::{EnvelopePart, GEO_MARGIN, Laying, SqlType};
 use jadpo_std::standard::geo::{BOUNDING_BOX, CIRCLE, POINT};
 use jadpo_std::standard::storage::{self, Stored};
 use jadpo_std::{Builtin, Literal, Op, Rounding, SqlValue, VectorDistance};
@@ -387,6 +387,39 @@ pub struct Column<'a> {
     /// The places its values keep, for a decimal: `5` where `scale: 2`
     /// goes is `5.00`.
     pub scale: Option<u32>,
+    /// How the field is kept, when that isn't one column of its own type.
+    pub kept: Kept,
+}
+
+/// The standard type an amount of money is.
+const MONEY: &str = "Money";
+
+/// How a field is kept, which decides how a condition compares it (area
+/// 5, "Storage types").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kept {
+    /// In one column of its type.
+    One,
+    /// A standard type in the named columns its entry lays out (`Money`'s
+    /// two, a `YearMonth`'s, a range's one of PostgreSQL's range type), by
+    /// the entry's name: each `<field>_<part>`, a part of `""` the field's
+    /// own column, of the column's type.
+    Parts(&'static str),
+    /// Whole as its contract's JSON in one `jsonb` column, written by the
+    /// codec the plan's JSON table numbers so, once a plan has numbered it.
+    Json(Option<u32>),
+}
+
+/// One of the columns a field held in several is kept in.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Part {
+    /// Its name: `<field>_<part>`, or the field's own.
+    pub name: String,
+    /// The type a value compared with it is sent as.
+    pub ty: SqlType,
+    /// Whether it may be `NULL` while the value is there: a part that may
+    /// be `none`, or a field a choice's stored variant doesn't have.
+    pub nullable: bool,
 }
 
 impl Column<'_> {
@@ -397,8 +430,11 @@ impl Column<'_> {
 
     /// How an operation's form is given the column's value: the built-in
     /// type it is built on, text for an enum, `jsonb` for a list, a set or
-    /// a map, and a vector.
+    /// a map, a vector, and an amount of money in its two columns.
     fn held(&self) -> Option<Held> {
+        if self.kept == Kept::Parts(MONEY) {
+            return Some(Held::Money);
+        }
         Some(match (self.ty?, self.builtin) {
             (SqlType::Json, _) => Held::Json,
             (SqlType::Vector, _) => Held::Vector,
@@ -407,6 +443,91 @@ impl Column<'_> {
             _ => return None,
         })
     }
+
+    /// The columns a field held in several is kept in, in its entry's
+    /// order; `None` for one kept otherwise.
+    pub fn parts(&self) -> Option<Vec<Part>> {
+        let Kept::Parts(name) = self.kept else {
+            return None;
+        };
+        let entry = jadpo_std::standard_type(name)?;
+        let mut out = Vec::new();
+        for (at, (suffix, sql_type)) in entry.columns().iter().enumerate() {
+            let (name, ty) = if suffix.is_empty() {
+                (self.name.to_string(), self.ty?)
+            } else {
+                (
+                    format!("{}_{suffix}", self.name),
+                    SqlType::of_column(sql_type)?,
+                )
+            };
+            out.push(Part {
+                name,
+                ty: ty.param(),
+                nullable: entry.part_may_be_none(at),
+            });
+        }
+        Some(out)
+    }
+}
+
+/// Of a standard type kept in named columns, the parts an order or an
+/// ordering compares, by their place: an amount of money's minor units
+/// alone, since a query orders amounts of one currency only, which the
+/// checker proves; every part of any other type, each in turn
+/// ([`orders_by_parts`]).
+pub fn ordered_parts(entry: &str) -> Vec<u32> {
+    if entry == MONEY {
+        return vec![0];
+    }
+    let count = jadpo_std::standard_type(entry).map_or(0, |entry| entry.columns().len());
+    (0..u32::try_from(count).unwrap_or(0)).collect()
+}
+
+/// Whether a standard type kept in named columns is ordered as its
+/// columns are, each in turn (area 19, "What every standard type can
+/// do"): an ordered type whose every column is a number, a date or a time
+/// and is never `NULL` while the value is there (`YearMonth`, `LocalTime`,
+/// `CardExpiry`). A `SemanticVersion`'s pre-release is text, so its columns
+/// don't sort by precedence; `Money` orders by its amount within one
+/// currency, which [`ordered_parts`] reads.
+pub fn orders_by_parts(entry: &jadpo_std::StandardType) -> bool {
+    entry.ordered
+        && entry.name != MONEY
+        && !entry.columns().is_empty()
+        && entry
+            .columns()
+            .iter()
+            .enumerate()
+            .all(|(at, (suffix, sql_type))| {
+                !entry.part_may_be_none(at)
+                    && (suffix.is_empty()
+                        || matches!(
+                            SqlType::of_column(sql_type),
+                            Some(
+                                SqlType::Int2
+                                    | SqlType::Int4
+                                    | SqlType::Int8
+                                    | SqlType::Numeric
+                                    | SqlType::Date
+                                    | SqlType::Time
+                                    | SqlType::Timestamp
+                                    | SqlType::LocalTimestamp
+                            )
+                        ))
+            })
+}
+
+/// Whether PostgreSQL's `=` compares every column of a standard type kept
+/// in named columns as Jadpo's `==` compares its parts. A geometry isn't,
+/// since PostGIS's `=` compares bounding boxes, nor a vector.
+pub fn compares_parts(entry: &jadpo_std::StandardType) -> bool {
+    entry.columns().iter().all(|(_, sql_type)| {
+        !matches!(
+            SqlType::of_column(sql_type),
+            Some(SqlType::Geography | SqlType::Vector)
+        )
+    })
 }
 
 /// An entity's fields as the columns that hold them, by each field's name
@@ -448,6 +569,23 @@ pub trait Bind {
     fn search_phrase(&mut self, _value: &Value) -> Option<String> {
         None
     }
+
+    /// `$n` for `value` laid out as the field kept in the column `column`
+    /// keeps it, sent as `ty` (`laying`): one of the columns a standard
+    /// type is stored in, the JSON a structured value is kept as, or
+    /// whether it is there; for an array type, each item of the list
+    /// `value` gives. `value` may be a literal or an enum value, which the
+    /// storage codec lays out when the statement runs. `None` when the
+    /// statement can't take it, as an index's predicate can't.
+    fn laid(
+        &mut self,
+        _column: &str,
+        _value: &Value,
+        _laying: jadpo_std::read::Laying,
+        _ty: SqlType,
+    ) -> Option<String> {
+        None
+    }
 }
 
 /// For text that takes no parameters: a partial index's predicate, which
@@ -481,13 +619,17 @@ pub fn condition(
             value,
         } => {
             let field = entity.column(name)?;
-            let column = ident(field.name);
-            let rendered = self::value(bind, value, &field)?;
             // Jadpo's meaning when the field is `none`: it meets no
             // comparison but `!=`, and so meets the negation of every
             // other.
             let none_meets = (*op == Compare::NotEqual) != negated;
             let op = if negated { op.negated() } else { *op };
+            if let Some(parts) = field.parts() {
+                let text = compare_parts(bind, &field, &parts, op, value)?;
+                return Some(guarded(&field, &parts, text, none_meets, op));
+            }
+            let column = ident(field.name);
+            let rendered = self::value(bind, value, &field)?;
             let text = format!("{column} {} {rendered}", op.sql());
             if field.nullable && none_meets {
                 format!("({text} OR {column} IS NULL)")
@@ -501,6 +643,15 @@ pub fn condition(
         } => {
             let field = entity.column(name)?;
             let is_not = *written != negated;
+            // A value held in several columns is `none` when they are all
+            // `NULL`.
+            if let Some(parts) = field.parts() {
+                return Some(if is_not {
+                    parts_present(&parts)
+                } else {
+                    parts_absent(&parts)
+                });
+            }
             format!(
                 "{} IS {}NULL",
                 ident(field.name),
@@ -509,6 +660,16 @@ pub fn condition(
         }
         Condition::In { field: name, value } => {
             let field = entity.column(name)?;
+            if let Some(parts) = field.parts() {
+                let text = among_parts(bind, &field, &parts, value)?;
+                let text = if negated { format!("NOT {text}") } else { text };
+                let op = if negated {
+                    Compare::NotEqual
+                } else {
+                    Compare::Equal
+                };
+                return Some(guarded(&field, &parts, text, negated, op));
+            }
             let column = ident(field.name);
             let text = among(bind, &column, value, &field, negated)?;
             if negated && field.nullable {
@@ -549,7 +710,11 @@ pub fn condition(
                     // distance of `NULL` is `NULL` and meets nothing
                     // already; a form is given values, never `NULL`.
                     if field.nullable && call.op != Op::AiDistance {
-                        format!("({column} IS NOT NULL AND {text})")
+                        let there = match field.parts() {
+                            Some(parts) => parts_present(&parts),
+                            None => format!("{column} IS NOT NULL"),
+                        };
+                        format!("({there} AND {text})")
                     } else {
                         text
                     }
@@ -564,6 +729,17 @@ pub fn condition(
             crate::search::matches(&search_query(bind, search)?)
         }
         Condition::Present { value, condition } => {
+            // A field held in several columns or as JSON is given whole:
+            // whether it is there is what the line tests.
+            if let Condition::Compare { field: name, .. } | Condition::In { field: name, .. } =
+                condition.as_ref()
+                && entity.column(name)?.kept != Kept::One
+            {
+                let column = entity.column(name)?;
+                let n = bind.laid(column.name, value, Laying::Given, SqlType::Bool)?;
+                let inner = self::condition(bind, entity, condition, negated)?;
+                return Some(format!("({n} IS NULL OR {inner})"));
+            }
             let ty = match condition.as_ref() {
                 Condition::Compare { field: name, .. } => entity.column(name)?.param()?,
                 Condition::In { field: name, .. } => entity.column(name)?.param()?.array(),
@@ -616,7 +792,13 @@ fn among(
             )
         }
         other => {
-            let n = bind.bind(other, ty.array())?;
+            let n = match field.kept {
+                // Each item as the JSON the field keeps (chunk Q1).
+                Kept::Json(codec) => {
+                    bind.laid(field.name, other, Laying::Json(codec?), ty.array())?
+                }
+                _ => bind.bind(other, ty.array())?,
+            };
             if negated {
                 format!("{column} <> ALL({n})")
             } else {
@@ -624,6 +806,200 @@ fn among(
             }
         }
     })
+}
+
+// --- fields held in several columns (area 19, "Storage layout") ------------------
+
+/// `field`'s columns compared with `value` by `op`, for a value that is
+/// there: each column for `==` and `!=`, a column that may be `NULL` while
+/// the value is there by `IS NOT DISTINCT FROM`, so two values equal part
+/// for part are equal as Jadpo's `==` says; the parts its order reads, in
+/// turn, for an ordering ([`ordered_parts`]).
+fn compare_parts(
+    bind: &mut dyn Bind,
+    field: &Column<'_>,
+    parts: &[Part],
+    op: Compare,
+    value: &Value,
+) -> Option<String> {
+    Some(match op {
+        Compare::Equal => equal_parts(bind, field, parts, value)?,
+        // Never `NULL` for a value that is there.
+        Compare::NotEqual => format!("NOT {}", equal_parts(bind, field, parts, value)?),
+        ordering => {
+            let Kept::Parts(entry) = field.kept else {
+                return None;
+            };
+            let mut columns = Vec::new();
+            let mut values = Vec::new();
+            for at in ordered_parts(entry) {
+                let part = parts.get(at as usize)?;
+                columns.push(ident(&part.name));
+                values.push(bind.laid(field.name, value, Laying::Part(at), part.ty)?);
+            }
+            match (columns.as_slice(), values.as_slice()) {
+                ([column], [value]) => format!("{column} {} {value}", ordering.sql()),
+                _ => format!(
+                    "({}) {} ({})",
+                    columns.join(", "),
+                    ordering.sql(),
+                    values.join(", ")
+                ),
+            }
+        }
+    })
+}
+
+/// Every column of `field` equal to `value`'s.
+fn equal_parts(
+    bind: &mut dyn Bind,
+    field: &Column<'_>,
+    parts: &[Part],
+    value: &Value,
+) -> Option<String> {
+    let mut terms = Vec::new();
+    for (at, part) in parts.iter().enumerate() {
+        let n = bind.laid(
+            field.name,
+            value,
+            Laying::Part(u32::try_from(at).ok()?),
+            part.ty,
+        )?;
+        terms.push(equal_part(part, &n));
+    }
+    Some(joined(terms, " AND "))
+}
+
+/// One column equal to `value`: `IS NOT DISTINCT FROM` where it may be
+/// `NULL` while the value is there.
+fn equal_part(part: &Part, value: &str) -> String {
+    let column = ident(&part.name);
+    if part.nullable {
+        format!("{column} IS NOT DISTINCT FROM {value}")
+    } else {
+        format!("{column} = {value}")
+    }
+}
+
+/// `terms` joined by `with`, bracketed when there is more than one.
+fn joined(mut terms: Vec<String>, with: &str) -> String {
+    if terms.len() == 1 {
+        terms.remove(0)
+    } else {
+        format!("({})", terms.join(with))
+    }
+}
+
+/// `field` among the values `value` holds, for a value that is there: each
+/// item of a list written out compared part for part, or the items of a
+/// list given as a parameter, each part sent as an array and read back
+/// row by row with `unnest`, which the checker allows only where no part
+/// may be `NULL` and every part's type can be sent as an array.
+fn among_parts(
+    bind: &mut dyn Bind,
+    field: &Column<'_>,
+    parts: &[Part],
+    value: &Value,
+) -> Option<String> {
+    Some(match value {
+        Value::List(items) => {
+            if items.is_empty() {
+                return Some("FALSE".to_string());
+            }
+            let mut alternatives = Vec::new();
+            for item in items {
+                alternatives.push(equal_parts(bind, field, parts, item)?);
+            }
+            joined(alternatives, " OR ")
+        }
+        other => {
+            let mut arrays = Vec::new();
+            let mut names = Vec::new();
+            let mut terms = Vec::new();
+            for (at, part) in parts.iter().enumerate() {
+                if part.nullable {
+                    return None;
+                }
+                let name = format!("p{at}");
+                arrays.push(bind.laid(
+                    field.name,
+                    other,
+                    Laying::Part(u32::try_from(at).ok()?),
+                    part.ty.array(),
+                )?);
+                terms.push(format!(
+                    "{} = {}.{}",
+                    ident(&part.name),
+                    ident(HELD),
+                    ident(&name)
+                ));
+                names.push(ident(&name));
+            }
+            format!(
+                "EXISTS (SELECT 1 FROM unnest({}) AS {}({}) WHERE {})",
+                arrays.join(", "),
+                ident(HELD),
+                names.join(", "),
+                terms.join(" AND ")
+            )
+        }
+    })
+}
+
+/// The alias of the rows a list given as a parameter is read back as.
+const HELD: &str = "held";
+
+/// `text`, a test of a value that is there, with Jadpo's meaning for a
+/// field that is `none` (every column `NULL`): it meets the test when
+/// `none_meets`, else never. `op` is what `text` tests, which says whether
+/// it could hold for a row of `NULL`s: only an equality whose every column
+/// may be `NULL` while the value is there could.
+fn guarded(
+    field: &Column<'_>,
+    parts: &[Part],
+    text: String,
+    none_meets: bool,
+    op: Compare,
+) -> String {
+    if !field.nullable {
+        return text;
+    }
+    if none_meets {
+        format!("({} OR {text})", parts_absent(parts))
+    } else if op == Compare::Equal && parts.iter().all(|part| part.nullable) {
+        format!("({} AND {text})", parts_present(parts))
+    } else {
+        text
+    }
+}
+
+/// A field held in several columns being there: the first column never
+/// `NULL` while it is, or any column not `NULL`.
+fn parts_present(parts: &[Part]) -> String {
+    match parts.iter().find(|part| !part.nullable) {
+        Some(part) => format!("{} IS NOT NULL", ident(&part.name)),
+        None => joined(
+            parts
+                .iter()
+                .map(|part| format!("{} IS NOT NULL", ident(&part.name)))
+                .collect(),
+            " OR ",
+        ),
+    }
+}
+
+/// A field held in several columns being `none`: every column `NULL`.
+fn parts_absent(parts: &[Part]) -> String {
+    match parts.iter().find(|part| !part.nullable) {
+        Some(part) => format!("{} IS NULL", ident(&part.name)),
+        None => joined(
+            parts
+                .iter()
+                .map(|part| format!("{} IS NULL", ident(&part.name)))
+                .collect(),
+            " AND ",
+        ),
+    }
 }
 
 /// The column a call's result is compared as: of the type its result is
@@ -637,7 +1013,7 @@ fn result_column(call: &Call) -> Column<'static> {
         Held::Double => (Some(SqlType::Float8), None),
         Held::Json => (Some(SqlType::Json), None),
         Held::Vector => (Some(SqlType::Vector), None),
-        Held::Range(_) | Held::Shape(_) => (None, None),
+        Held::Range(_) | Held::Shape(_) | Held::Money => (None, None),
     };
     Column {
         name: "",
@@ -645,6 +1021,7 @@ fn result_column(call: &Call) -> Column<'static> {
         ty,
         builtin,
         scale: None,
+        kept: Kept::One,
     }
 }
 
@@ -742,7 +1119,18 @@ pub fn expression(bind: &mut dyn Bind, entity: &dyn Columns, call: &Call) -> Opt
             _ => None,
         });
     }
-    let mut args = vec![Arg::Value(&column, field.held()?)];
+    // An amount of money is given as its two columns (chunk Q1).
+    let parts: Vec<String> = field
+        .parts()
+        .unwrap_or_default()
+        .iter()
+        .map(|part| ident(&part.name))
+        .collect();
+    let first = match field.held()? {
+        Held::Money => Arg::Parts(&parts),
+        held => Arg::Value(&column, held),
+    };
+    let mut args = vec![first];
     for (arg, sql) in call.args.iter().zip(&rendered) {
         args.push(match (arg, sql) {
             (CallArg::Value(_, held), Some(sql)) => Arg::Value(sql, *held),
@@ -766,7 +1154,7 @@ fn argument(bind: &mut dyn Bind, value: &Value, held: Held) -> Option<String> {
         Held::Shape(_) => SqlType::Geography,
         Held::Json => SqlType::Json,
         Held::Double => SqlType::Float8,
-        Held::Range(_) => return None,
+        Held::Range(_) | Held::Money => return None,
     };
     let builtin = match held {
         Held::Builtin(builtin) => Some(builtin),
@@ -858,6 +1246,7 @@ fn search(bind: &mut dyn Bind, column: &str, call: &Call) -> Option<String> {
                     _ => None,
                 },
                 scale: None,
+                kept: Kept::One,
             };
             let point = bind.bind(value, SqlType::Geography)?;
             let distance = self::value(bind, distance, &length)?;
@@ -911,6 +1300,11 @@ pub fn present(column: &str) -> String {
 /// bound.
 pub fn value(bind: &mut dyn Bind, value: &Value, column: &Column<'_>) -> Option<String> {
     let ty = column.param()?;
+    // A structured value is compared as the JSON it is kept as, which the
+    // codec writes one way for each value (chunk Q1).
+    if let Kept::Json(codec) = column.kept {
+        return bind.laid(column.name, value, Laying::Json(codec?), ty);
+    }
     match value {
         Value::Literal(literal) => bind.stored(self::literal(literal, column)?),
         Value::Variant {
@@ -955,6 +1349,7 @@ mod tests {
                 ty: Some(SqlType::Text),
                 builtin: Some(Builtin::Text),
                 scale: None,
+                kept: super::Kept::One,
             })
         }
     }
@@ -973,6 +1368,212 @@ mod tests {
             self.0 += 1;
             Some(format!("${}", self.0))
         }
+    }
+
+    /// An order's fields kept in several columns or as JSON: `total`, an
+    /// amount of money, `paid`, one that may be `none`, `month`, a
+    /// `YearMonth`, `address`, a `PostalAddress` whose parts may be `none`,
+    /// and `tags`, a list kept as JSON.
+    struct Order;
+
+    impl Columns for Order {
+        fn column(&self, field: &str) -> Option<Column<'_>> {
+            let (name, nullable, ty, kept) = match field {
+                "total" => ("total", false, SqlType::Int8, super::Kept::Parts("Money")),
+                "paid" => ("paid", true, SqlType::Int8, super::Kept::Parts("Money")),
+                "month" => (
+                    "month",
+                    false,
+                    SqlType::Int2,
+                    super::Kept::Parts("YearMonth"),
+                ),
+                "address" => (
+                    "address",
+                    true,
+                    SqlType::Text.array(),
+                    super::Kept::Parts("PostalAddress"),
+                ),
+                "tags" => ("tags", true, SqlType::Json, super::Kept::Json(Some(3))),
+                _ => return None,
+            };
+            Some(Column {
+                name,
+                nullable,
+                ty: Some(ty),
+                builtin: None,
+                scale: None,
+                kept,
+            })
+        }
+    }
+
+    /// Binds every value laid out as the next parameter, naming how.
+    #[derive(Default)]
+    struct Laid(Vec<String>);
+
+    impl Bind for Laid {
+        fn bind(&mut self, _value: &Value, _ty: SqlType) -> Option<String> {
+            None
+        }
+
+        fn stored(&mut self, _value: SqlValue) -> Option<String> {
+            None
+        }
+
+        fn laid(
+            &mut self,
+            column: &str,
+            _value: &Value,
+            laying: Laying,
+            ty: SqlType,
+        ) -> Option<String> {
+            self.0.push(format!("{column} {laying:?} {ty:?}"));
+            Some(format!("${}", self.0.len()))
+        }
+    }
+
+    fn held(condition: &Condition) -> String {
+        self::condition(&mut Laid::default(), &Order, condition, false).expect("renders")
+    }
+
+    fn param() -> Value {
+        Value::Param {
+            index: 0,
+            path: Vec::new(),
+        }
+    }
+
+    fn compare(field: &str, op: Compare) -> Condition {
+        Condition::Compare {
+            field: field.into(),
+            op,
+            value: param(),
+        }
+    }
+
+    #[test]
+    fn a_value_in_named_columns_is_compared_part_for_part() {
+        assert_eq!(
+            held(&compare("total", Compare::Equal)),
+            "(\"total_amount\" = $1 AND \"total_currency\" = $2)"
+        );
+        // An amount of money is ordered by its minor units, a month by its
+        // year then its month.
+        assert_eq!(
+            held(&compare("total", Compare::Less)),
+            "\"total_amount\" < $1"
+        );
+        assert_eq!(
+            held(&compare("month", Compare::GreaterEqual)),
+            "(\"month_year\", \"month_month\") >= ($1, $2)"
+        );
+        // `none` meets `!=` and the negation of an ordering, never `==`.
+        assert_eq!(
+            held(&compare("paid", Compare::NotEqual)),
+            "(\"paid_amount\" IS NULL OR NOT (\"paid_amount\" = $1 AND \"paid_currency\" = $2))"
+        );
+        assert_eq!(
+            held(&Condition::Not(Box::new(compare("paid", Compare::Less)))),
+            "(\"paid_amount\" IS NULL OR \"paid_amount\" >= $1)"
+        );
+        assert_eq!(
+            held(&Condition::IsNone {
+                field: "paid".into(),
+                negated: false
+            }),
+            "\"paid_amount\" IS NULL"
+        );
+        // A part that may be `none` is equal only to `none`.
+        let address = held(&compare("address", Compare::Equal));
+        assert!(
+            address.contains("\"address_locality\" IS NOT DISTINCT FROM $2")
+                && address.starts_with("(\"address_lines\" = $1 AND "),
+            "{address}"
+        );
+        assert_eq!(
+            held(&Condition::IsNone {
+                field: "address".into(),
+                negated: true
+            }),
+            "\"address_lines\" IS NOT NULL"
+        );
+    }
+
+    #[test]
+    fn a_list_given_for_in_is_read_back_a_part_at_a_time() {
+        let mut laid = Laid::default();
+        let text = self::condition(
+            &mut laid,
+            &Order,
+            &Condition::In {
+                field: "month".into(),
+                value: param(),
+            },
+            false,
+        )
+        .expect("renders");
+        assert_eq!(
+            text,
+            "EXISTS (SELECT 1 FROM unnest($1, $2) AS \"held\"(\"p0\", \"p1\") WHERE \"month_year\" = \"held\".\"p0\" AND \"month_month\" = \"held\".\"p1\")"
+        );
+        assert_eq!(
+            laid.0,
+            [
+                "month Part(0) Array(Int8)".to_string(),
+                "month Part(1) Array(Int8)".to_string()
+            ]
+        );
+        // A written list compares each item part for part; an empty one
+        // holds nothing.
+        assert_eq!(
+            held(&Condition::In {
+                field: "total".into(),
+                value: Value::List(vec![param(), param()]),
+            }),
+            "((\"total_amount\" = $1 AND \"total_currency\" = $2) OR (\"total_amount\" = $3 AND \"total_currency\" = $4))"
+        );
+        assert_eq!(
+            held(&Condition::In {
+                field: "total".into(),
+                value: Value::List(Vec::new()),
+            }),
+            "FALSE"
+        );
+    }
+
+    #[test]
+    fn a_value_kept_as_json_is_compared_as_the_json_its_codec_writes() {
+        let mut laid = Laid::default();
+        let text = self::condition(
+            &mut laid,
+            &Order,
+            &compare("tags", Compare::NotEqual),
+            false,
+        )
+        .expect("renders");
+        assert_eq!(text, "(\"tags\" <> $1 OR \"tags\" IS NULL)");
+        assert_eq!(laid.0, ["tags Json(3) Json".to_string()]);
+        let mut laid = Laid::default();
+        let text = self::condition(
+            &mut laid,
+            &Order,
+            &Condition::In {
+                field: "tags".into(),
+                value: param(),
+            },
+            false,
+        )
+        .expect("renders");
+        assert_eq!(text, "\"tags\" = ANY($1)");
+        assert_eq!(laid.0, ["tags Json(3) Array(Json)".to_string()]);
+        // Whether a value is there, for `where_present:`.
+        assert_eq!(
+            held(&Condition::Present {
+                value: param(),
+                condition: Box::new(compare("total", Compare::Equal)),
+            }),
+            "($1 IS NULL OR (\"total_amount\" = $2 AND \"total_currency\" = $3))"
+        );
     }
 
     #[test]
@@ -1042,6 +1643,7 @@ mod tests {
                 ty: Some(ty),
                 builtin,
                 scale,
+                kept: super::Kept::One,
             })
         }
     }
@@ -1210,6 +1812,7 @@ mod tests {
                 ty: Some(SqlType::Vector),
                 builtin: None,
                 scale: None,
+                kept: super::Kept::One,
             })
         }
     }
@@ -1313,6 +1916,7 @@ mod tests {
                 ty: Some(SqlType::Geography),
                 builtin: None,
                 scale: None,
+                kept: super::Kept::One,
             })
         }
     }

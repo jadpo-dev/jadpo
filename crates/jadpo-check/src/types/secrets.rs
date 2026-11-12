@@ -326,6 +326,25 @@ pub(crate) fn sent_to_provider(written: &str, input: &str, span: Span) -> Diagno
     )
 }
 
+/// A `Password` going out in an `AnyObject` (areas 2 and 11, "Types"):
+/// `object`, the app's object type given there, holds it, which the
+/// package's input doesn't declare, so it is refused where it is given
+/// rather than at the call.
+pub(crate) fn sent_in_any_object(object: &str, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TYPE_PASSWORD_SENT_TO_PROVIDER,
+        format!("`{object}` holds a `Password`, which an `AnyObject` sends to a provider"),
+    )
+    .at(span, "a password, sent out")
+    .reason(format!(
+        "An `AnyObject` sends the whole `{object}` as its JSON, and it holds a `Password`. A password goes no further than its hash, because anyone holding one can sign in with it; sent to a provider, it is in the hands of a system you don't run, and of whatever that system logs or keeps."
+    ))
+    .next_declined_above(
+        "Leave the password out of the object, and send what the provider needs instead, such as a token issued for this",
+        "the action",
+    )
+}
+
 /// A webhook's reply holding a secret value.
 pub(crate) fn in_a_reply(event: &str, secret: &str, span: Span) -> Diagnostic {
     Diagnostic::new(

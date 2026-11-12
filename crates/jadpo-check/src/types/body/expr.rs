@@ -11,8 +11,8 @@ use jadpo_syntax::ast::{self, AstNode, Expr, MemberItem};
 use super::super::literal;
 use super::super::rules::{Const, Rules};
 use super::super::shape::FieldsBase;
-use super::super::table::{Def, FieldDef, TypeView};
-use super::super::ty::{Prim, Ty};
+use super::super::table::{Def, FieldDef, TypeView, is_any_object, packaged_name};
+use super::super::ty::{Prim, Ty, shown};
 use super::{Body, did_you_mean, is_literal, node_key, text};
 use crate::case::starts_upper;
 use crate::std_lib::{Namespace, StdNames};
@@ -241,14 +241,65 @@ impl Body<'_> {
     /// Reports `actual` where `expected` is required, unless it widens.
     pub(super) fn require(&mut self, expr: &Expr, actual: &Ty, expected: &Ty) {
         if self.table.assignable(actual, expected) {
+            if is_any_object(&self.table.structure(expected)) {
+                self.given_to_any_object(expr, actual, expected);
+            }
             return;
         }
         self.mismatch(expr, actual, expected);
     }
 
+    /// `expr`, of type `actual`, given where an `AnyObject` goes (areas 2
+    /// and 11, "Types"): sent as its JSON, so what goes out with its type
+    /// is checked here, since the package's input doesn't declare it. A
+    /// package's own code never names one of the app's types, so it only
+    /// passes on an `AnyObject` it was given.
+    fn given_to_any_object(&mut self, expr: &Expr, actual: &Ty, expected: &Ty) {
+        let Some(object) = self.table.app_object(actual) else {
+            return;
+        };
+        if self.ownership.package().is_some() {
+            self.mismatch(expr, actual, expected);
+            return;
+        }
+        if super::super::secrets::holds_password(self.table, actual) {
+            let span = self.span(expr);
+            self.out.push(super::super::secrets::sent_in_any_object(
+                shown(&object),
+                span,
+            ));
+        }
+    }
+
     pub(super) fn mismatch(&mut self, expr: &Expr, actual: &Ty, expected: &Ty) {
         let span = self.span(expr);
         let written = expr.syntax().text().to_string();
+        // Only one of the app's own object types goes where an `AnyObject`
+        // does (areas 2 and 11, "Types").
+        if is_any_object(&self.table.structure(expected)) && !actual.has_error() {
+            let packaged = self.ownership.package().is_some();
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{actual}` can't be used where `AnyObject` is required"),
+                )
+                .at(span, format!("this is `{actual}`"))
+                .reason(if packaged {
+                    "An `AnyObject` holds one of the application's own object types, sent as its JSON, and only the application's code names one; a package passes on the `AnyObject` it was given.".to_string()
+                } else {
+                    format!(
+                        "An `AnyObject` takes one of the application's own object types, sent as its JSON, and `{actual}` is {}.",
+                        literal::what(self.table, actual)
+                    )
+                })
+                .next(if packaged {
+                    "Pass on an `AnyObject` the package's caller gave".to_string()
+                } else {
+                    "Declare a `type ... = Object { ... }` with the fields the provider reads, and build one here".to_string()
+                }),
+            );
+            return;
+        }
         // A number where a quantity goes needs its unit (area 19).
         if let Some(Prim::Quantity(kind)) = self.table.representation(expected)
             && self
@@ -1939,6 +1990,15 @@ impl Body<'_> {
                 continue;
             };
             let Some(value) = value else { continue };
+            // An app's own type's `AnyObject` field is reported where it
+            // is written, once (areas 2 and 11, "Types").
+            if is_any_object(&field.declared)
+                && self.ownership.package().is_none()
+                && !packaged_name(host)
+            {
+                self.infer(&value);
+                continue;
+            }
             let mut path = variant.to_vec();
             path.push(name);
             // A standard object type's field has no field type of its own:
