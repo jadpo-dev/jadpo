@@ -144,7 +144,7 @@ jadpo test
 
 ```text
 checked: 20 files in 0.1 s
-tested: 6 passed, 3 action tests, 3 route tests in 0.9 s
+tested: 19 passed, 3 action tests, 3 route tests, 13 generated tests in 0.9 s
 ```
 
 ## Set it

@@ -170,7 +170,7 @@ jadpo test
 ```
 
 ```text
-tested: 5 passed, 2 action tests, 3 route tests in 1.0 s
+tested: 18 passed, 2 action tests, 3 route tests, 13 generated tests in 1.0 s
 ```
 
 The tests run in a random order each time, to catch tests that depend on
@@ -204,7 +204,7 @@ FAIL  adding a todo answers 201 with the todo
   rule: test.assertion_failed
   rerun: jadpo test domains/todos/routes/todos.test.jadpo:13 --seed 1
 
-test failed: 1 failed, 4 passed, 2 action tests, 3 route tests in 1.0 s
+test failed: 1 failed, 17 passed, 2 action tests, 3 route tests, 13 generated tests in 1.0 s
 ```
 
 It shows each part of the condition with its value, and a `rerun:` line
