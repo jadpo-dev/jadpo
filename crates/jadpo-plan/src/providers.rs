@@ -14,8 +14,8 @@ use jadpo_db::{Db, Project};
 use jadpo_graph::{Key, TypeRef};
 use jadpo_std::provider::{
     Address, AwsPlan, Called, ConnectionPlan, CredentialPlan, CredentialScheme, CredentialSource,
-    DEFAULT_TIMEOUT_MS, IdempotencyPlan, OperationPlan, PathPart, PollPlan, Protocol, ProviderPlan,
-    RecordedPlan, WebhookEvent, WebhookPlan, WebhookReply,
+    DEFAULT_TIMEOUT_MS, HostFill, HostValue, IdempotencyPlan, OperationPlan, PathPart, PollPlan,
+    Protocol, ProviderPlan, RecordedPlan, WebhookEvent, WebhookPlan, WebhookReply,
 };
 use jadpo_std::receiving::{
     AcknowledgePlan, CloudflareQueue, Mapped, QueueEvent, QueuePlan, QueueSource, ReceivePlan,
@@ -406,6 +406,34 @@ pub(crate) fn connection_plan(
             .and_then(setting)
             .map_or(Address::Unknown, Address::Setting)
     };
+    // Each host's placeholder, filled from the package setting of its
+    // name, as the connection or the setting's default gives it (chunk
+    // K2); a host left unfilled is no address.
+    let mut host_fills: Vec<HostFill> = Vec::new();
+    let mut address = address;
+    for host in [&reach.live, &reach.sandbox].into_iter().flatten() {
+        let Ok(Some(name)) = jadpo_std::provider::host_placeholder(host) else {
+            continue;
+        };
+        if host_fills.iter().any(|fill| fill.name == name) {
+            continue;
+        }
+        let value = connection
+            .settings
+            .iter()
+            .find(|(setting, _)| *setting == name)
+            .and_then(|(_, given)| match given {
+                jadpo_check::connections::Given::Setting(at) => setting(at).map(HostValue::Setting),
+                jadpo_check::connections::Given::Text(text) => {
+                    Some(HostValue::Written(text.clone()))
+                }
+                _ => None,
+            });
+        match value {
+            Some(value) => host_fills.push(HostFill { name, value }),
+            None => address = Address::Unknown,
+        }
+    }
     let credential = match (
         reach.credential.as_deref(),
         connection.credential.as_deref(),
@@ -448,6 +476,8 @@ pub(crate) fn connection_plan(
         headers: reach.headers.clone(),
         protocol: match reach.protocol.as_deref() {
             Some("aws_json") => Protocol::AwsJson,
+            Some("form_http") => Protocol::FormHttp,
+            Some("multipart_http") => Protocol::MultipartHttp,
             _ => Protocol::JsonHttp,
         },
         aws: reach.aws.as_ref().and_then(|aws| {
@@ -461,6 +491,7 @@ pub(crate) fn connection_plan(
         idempotency,
         error_code: reach.error_code.clone(),
         sandbox: jadpo_check::connections::sandboxed(db, project, connection),
+        host_fills,
         // The package's cap, or the connection's lower one (chunk
         // 7.6c).
         max_concurrent: match (reach.max_concurrent, connection.max_concurrent) {
@@ -540,6 +571,12 @@ fn operation_plan(
             .filter(|key: &Key| types.failure_id(key).is_some())
             .map(|key| key.as_str().to_string())
             .collect(),
+        // What a body of parts sends as files (chunk K2).
+        files: operation
+            .input
+            .as_ref()
+            .map(|(ty, _)| jadpo_check::types::file_members(lookup, ty))
+            .unwrap_or_default(),
     }
 }
 

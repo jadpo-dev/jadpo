@@ -93,6 +93,7 @@ mod tests {
         let column = [table::IndexColumn {
             name: "body_meaning",
             collate: false,
+            digest: false,
         }];
         assert_eq!(
             table::create_index(
@@ -142,6 +143,7 @@ mod tests {
         let column = [table::IndexColumn {
             name: "spot",
             collate: false,
+            digest: false,
         }];
         assert_eq!(
             table::create_index(

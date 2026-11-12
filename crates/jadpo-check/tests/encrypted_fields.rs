@@ -386,6 +386,17 @@ fn a_write_in_the_database_cant_work_out_a_sealed_field() {
 }
 
 #[test]
+fn a_write_in_the_database_cant_set_a_sealed_field_from_stored_ones() {
+    // Only the application seals a value, so the database can't copy a
+    // stored one into a sealed field (chunk Q2).
+    let found = rules(&format!(
+        "{}\naction sealed_copy(consultation_id: Consultation.id) fails ConsultationNotFound -> Consultation {{\n    return attempt Consultation.update(consultation_id) {{\n        set: {{\n            notes: Consultation.draft\n        }}\n    }}\n}}\n\ntype ConsultationNotFound = Failure {{\n    kind: FailureKind.not_found\n}}\n",
+        consultation(&format!("{SEALED}    draft: ClinicalNote\n"))
+    ));
+    assert_eq!(found, ["data.encrypted_field_used"]);
+}
+
+#[test]
 fn a_sealed_field_doesnt_reach_a_failures_fields() {
     // A failure's fields are written to the log.
     let found = rules(&format!(

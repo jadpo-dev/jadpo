@@ -213,16 +213,14 @@ impl ConnectionDriver {
             | ConnectionDriver::CloudflareQueues(_)
             | ConnectionDriver::CloudflareRateLimits { .. } => Vec::new(),
             ConnectionDriver::Package(plan) => {
-                let address = match plan.address {
-                    Address::Hosts { environment, .. } => Some(environment),
-                    Address::Setting(at) => Some(at),
-                    Address::Unknown => None,
-                };
                 let credential = plan
                     .credential
                     .map(|credential| credential.source.settings())
                     .unwrap_or_default();
-                address.into_iter().chain(credential).collect()
+                plan.address_settings()
+                    .into_iter()
+                    .chain(credential)
+                    .collect()
             }
         }
     }
@@ -380,6 +378,7 @@ mod tests {
             idempotency: None,
             error_code: None,
             sandbox: Vec::new(),
+            host_fills: Vec::new(),
             max_concurrent: None,
         }))
     }

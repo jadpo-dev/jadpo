@@ -15,6 +15,32 @@ pub fn holds_file(lookup: &crate::lookups::Lookup<'_>, ty: &ty::Ty) -> bool {
     decl::held_file(lookup, ty, &mut Vec::new()).is_some()
 }
 
+/// The members of object type `ty`, by their spellings on the wire, that a
+/// body of parts sends as files (area 11, "How provider calls are made";
+/// chunk K2): each field holding `Bytes`, `FileContents` or a `File`, or
+/// one of them that may be `none`.
+pub fn file_members(lookup: &crate::lookups::Lookup<'_>, ty: &ty::Ty) -> Vec<String> {
+    use table::TypeView;
+    let ty::Ty::Named(name) = lookup.structure(ty) else {
+        return Vec::new();
+    };
+    let Some(fields) = lookup.fields(&name) else {
+        return Vec::new();
+    };
+    fields
+        .iter()
+        .filter(|field| {
+            lookup.base_prim(&field.declared) == Some(ty::Prim::Bytes)
+                || matches!(
+                    lookup.structure(&field.declared),
+                    ty::Ty::Opaque(held, args) if args.is_empty()
+                        && (held == jadpo_std::files::FILE || held == jadpo_std::files::FILE_CONTENTS)
+                )
+        })
+        .map(|field| field.wire_name.clone().unwrap_or_else(|| field.name.clone()))
+        .collect()
+}
+
 pub(crate) mod across;
 mod body;
 mod connections;

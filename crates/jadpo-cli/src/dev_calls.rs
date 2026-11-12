@@ -263,11 +263,7 @@ pub(crate) fn provider_settings(prepared: &Prepared) -> BTreeMap<String, Vec<u32
         if let Some(credential) = connection.credential {
             read.extend(credential.source.settings());
         }
-        match &connection.address {
-            Address::Hosts { environment, .. } => read.push(*environment),
-            Address::Setting(at) => read.push(*at),
-            Address::Unknown => {}
-        }
+        read.extend(connection.address_settings());
         out.insert(name.to_string(), read);
     }
     out

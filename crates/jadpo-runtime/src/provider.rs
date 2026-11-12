@@ -51,7 +51,7 @@ use std::cell::{Cell, RefCell};
 
 use jadpo_std::HttpMethod;
 use jadpo_std::provider::{
-    Address, CallSite, ConnectionPlan, CredentialScheme, CredentialSource, FailureMatch,
+    Address, CallSite, ConnectionPlan, CredentialScheme, CredentialSource, FailureMatch, HostValue,
     OperationPlan, PathPart, Protocol, ProviderPlan, RETRY_BASE_MS, matched_failure,
 };
 use jadpo_std::subscriber::Repeat;
@@ -783,11 +783,7 @@ pub enum Done {
 /// environment's, or its `host:`'s, whose values [`call`] reads at the
 /// call's context.
 pub fn settings_read(connection: &ConnectionPlan) -> Vec<u32> {
-    match &connection.address {
-        Address::Hosts { environment, .. } => vec![*environment],
-        Address::Setting(at) => vec![*at],
-        Address::Unknown => Vec::new(),
-    }
+    connection.address_settings()
 }
 
 /// A provider call's site in a program, as an executor hands it to
@@ -1355,6 +1351,27 @@ fn request(
         },
         Address::Unknown => return Err(Unready::Misconfigured),
     };
+    // A host's placeholder takes its setting's value only as one DNS label
+    // (chunk K2), so no value moves the call elsewhere.
+    let mut base = base;
+    for fill in &plan.host_fills {
+        if !base.contains(&format!("{{{}}}", fill.name)) {
+            continue;
+        }
+        let value = match &fill.value {
+            HostValue::Setting(at) => match setting(*at) {
+                Some(Value::Text(text)) => text.to_string(),
+                _ => return Err(Unready::Misconfigured),
+            },
+            HostValue::Written(text) => text.clone(),
+        };
+        base = jadpo_std::provider::filled_host(&base, &fill.name, &value)
+            .ok_or(Unready::Misconfigured)?;
+    }
+    // A placeholder nothing filled is no address.
+    if base.contains(['{', '}']) {
+        return Err(Unready::Misconfigured);
+    }
     let base = sendable(&base).ok_or(Unready::Misconfigured)?;
     // The input as the package's JSON, each secret as its kind alone: what
     // a step's fingerprint and the development call log are made from
@@ -1382,19 +1399,35 @@ fn request(
         if let Some((place, value)) = added {
             add_at(&mut sent, place, value);
         }
-        let (url, body) = address_and_body(op, &base, sent, &numbers)?;
-        let (shown_url, shown_body) = address_and_body(op, &base, shown_members, &shown_numbers)?;
+        let (url, body) = address_and_body(plan.protocol, op, &base, sent, &numbers)?;
+        let (shown_url, shown_body) =
+            address_and_body(plan.protocol, op, &base, shown_members, &shown_numbers)?;
         (
             url,
             body,
             Some(Shown {
                 url: shown_url,
-                body: shown_body,
+                body: shown_body.text(),
             }),
         )
     } else {
-        let (url, body) = address_and_body(op, &base, shown_members, &shown_numbers)?;
+        let (url, body) =
+            address_and_body(plan.protocol, op, &base, shown_members, &shown_numbers)?;
         (url, body, None)
+    };
+    let (content_type, body, raw_body) = match body {
+        Body::None => (None, None, None),
+        Body::Json(text) => (Some("application/json".to_string()), Some(text), None),
+        Body::Form(text) => (
+            Some("application/x-www-form-urlencoded".to_string()),
+            Some(text),
+            None,
+        ),
+        Body::Parts { boundary, bytes } => (
+            Some(format!("multipart/form-data; boundary={boundary}")),
+            None,
+            Some(bytes),
+        ),
     };
     let aws_json = plan.protocol == Protocol::AwsJson;
     let mut headers = vec![
@@ -1420,8 +1453,8 @@ fn request(
             "X-Amz-Target".to_string(),
             format!("{target}.{}", pascal(operation)),
         ));
-    } else if body.is_some() {
-        headers.push(("Content-Type".to_string(), "application/json".to_string()));
+    } else if let Some(content_type) = content_type {
+        headers.push(("Content-Type".to_string(), content_type));
     }
     let body = if aws_json && body.is_none() {
         Some("{}".to_string())
@@ -1472,7 +1505,9 @@ fn request(
                     method: op.method.word(),
                     url: &url,
                     headers: &signed,
-                    body: body.as_deref().unwrap_or_default().as_bytes(),
+                    body: raw_body
+                        .as_deref()
+                        .unwrap_or_else(|| body.as_deref().unwrap_or_default().as_bytes()),
                     payload: None,
                 };
                 // Signed at the host's time, which AWS checks, never a
@@ -1529,7 +1564,7 @@ fn request(
             url,
             headers,
             body,
-            raw_body: None,
+            raw_body,
             timeout_ms: plan.timeout_ms,
             reading,
             // Set when the call takes it.
@@ -1600,15 +1635,37 @@ fn written_input(
     }
 }
 
+/// A request's body as made: none, the input's JSON, its members
+/// form-encoded, or its parts (chunk K2).
+enum Body {
+    None,
+    Json(String),
+    Form(String),
+    Parts { boundary: String, bytes: Vec<u8> },
+}
+
+impl Body {
+    /// What the development call log shows of it: its text, and nothing of
+    /// a body of parts, which may hold a file's bytes.
+    fn text(self) -> Option<String> {
+        match self {
+            Body::Json(text) | Body::Form(text) => Some(text),
+            Body::None | Body::Parts { .. } => None,
+        }
+    }
+}
+
 /// The address `op` is sent to and its body, from the members of its
 /// input: a placeholder's member goes into the path, and the rest into the
-/// query string or the body, as the method says.
+/// query string or the body, as the method says, the body written as
+/// `protocol` sends it.
 fn address_and_body(
+    protocol: Protocol,
     op: &OperationPlan,
     base: &str,
     mut members: serde_json::Map<String, serde_json::Value>,
     numbers: &jadpo_value::json::Numbers,
-) -> Result<(String, Option<String>), Unready> {
+) -> Result<(String, Body), Unready> {
     let mut url = base.trim_end_matches('/').to_string();
     for part in &op.path {
         match part {
@@ -1676,15 +1733,110 @@ fn address_and_body(
             url.push('?');
             url.push_str(&query.join("&"));
         }
-        None
+        Body::None
     } else {
-        Some(json_text(
-            &serde_json::Value::Object(members),
-            numbers,
-            &mut Vec::new(),
-        ))
+        let number = |at: &[String], number: &serde_json::Number| {
+            numbers
+                .get(at)
+                .map_or_else(|| number.to_string(), str::to_string)
+        };
+        match protocol {
+            Protocol::JsonHttp | Protocol::AwsJson => Body::Json(json_text(
+                &serde_json::Value::Object(members),
+                numbers,
+                &mut Vec::new(),
+            )),
+            Protocol::FormHttp => Body::Form(
+                jadpo_std::provider::form_pairs(&members, &number)
+                    .iter()
+                    .map(|(name, value)| {
+                        format!(
+                            "{}={}",
+                            jadpo_value::encoding::to_url_component(name),
+                            jadpo_value::encoding::to_url_component(value)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("&"),
+            ),
+            Protocol::MultipartHttp => parts(op, members, &number)?,
+        }
     };
     Ok((url, body))
+}
+
+/// `members` as a body of parts (`multipart/form-data`, RFC 7578; chunk
+/// K2): each member `op` sends as a file a part holding its bytes, under
+/// its spelling, `application/octet-stream`; every other member text
+/// parts, as a form's members are written. The boundary is drawn from what
+/// the parts hold, so the same request is the same bytes.
+fn parts(
+    op: &OperationPlan,
+    members: serde_json::Map<String, serde_json::Value>,
+    number: &dyn Fn(&[String], &serde_json::Number) -> String,
+) -> Result<Body, Unready> {
+    // A part's name in its header, `"` and line breaks escaped as the
+    // HTML standard writes a form's names.
+    let quoted = |name: &str| {
+        name.replace('"', "%22")
+            .replace('\r', "%0D")
+            .replace('\n', "%0A")
+    };
+    let mut written: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut text = serde_json::Map::new();
+    for (member, value) in members {
+        if !op.files.contains(&member) {
+            text.insert(member, value);
+            continue;
+        }
+        let bytes = match &value {
+            serde_json::Value::Null => continue,
+            serde_json::Value::String(base64) => jadpo_value::encoding::from_base64(base64),
+            _ => None,
+        };
+        let Some(bytes) = bytes else {
+            return Err(Unready::Fault(FaultKind::Defect(format!(
+                "`{}`'s file `{member}` that isn't Base64",
+                op.name
+            ))));
+        };
+        let name = quoted(&member);
+        let head = format!(
+            "Content-Disposition: form-data; name=\"{name}\"; filename=\"{name}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        );
+        written.push((head, bytes));
+    }
+    let mut out: Vec<(String, Vec<u8>)> = jadpo_std::provider::form_pairs(&text, number)
+        .into_iter()
+        .map(|(name, value)| {
+            (
+                format!(
+                    "Content-Disposition: form-data; name=\"{}\"\r\n\r\n",
+                    quoted(&name)
+                ),
+                value.into_bytes(),
+            )
+        })
+        .collect();
+    out.extend(written);
+    let mut held = Vec::new();
+    for (head, bytes) in &out {
+        held.extend_from_slice(head.as_bytes());
+        held.extend_from_slice(bytes);
+    }
+    let boundary = format!(
+        "jadpo-{}",
+        &jadpo_value::encoding::to_hex(&jadpo_value::hash::sha256(&held))[..32]
+    );
+    let mut bytes = Vec::new();
+    for (head, part) in &out {
+        bytes.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+        bytes.extend_from_slice(head.as_bytes());
+        bytes.extend_from_slice(part);
+        bytes.extend_from_slice(b"\r\n");
+    }
+    bytes.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    Ok(Body::Parts { boundary, bytes })
 }
 
 /// `receive_message` as AWS names an operation, `ReceiveMessage`.
@@ -2143,6 +2295,7 @@ mod tests {
             headers: Vec::new(),
             protocol: Protocol::JsonHttp,
             aws: None,
+            host_fills: Vec::new(),
             timeout_ms: 1000,
             retry: jadpo_std::provider::RetryPlan::default(),
             idempotency: None,

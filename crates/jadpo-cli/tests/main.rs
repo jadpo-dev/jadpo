@@ -131,6 +131,7 @@ mod provider_failures;
 mod provider_fakes;
 mod provider_parts;
 mod provider_paths;
+mod provider_protocols;
 mod provider_sign_in;
 mod provider_wire;
 mod publishing;

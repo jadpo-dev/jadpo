@@ -523,6 +523,147 @@ On a tenant's records, a rule holds within each tenant: its key holds the
 tenancy reference too
 ([A unique rule holds within its tenant](09-policy.md#a-unique-rule-holds-within-its-tenant)).
 
+### A unique rule over a structured value
+
+A rule may cover a field kept whole as its JSON
+([Structured values](#structured-values)). Its key holds the digest of
+that JSON, `md5("label"::text)`, never the value: a B-tree's entry holds
+about 2.7 kB, and a stored value may be 1 MiB. The codec writes one JSON
+for each value, so two values have one digest exactly when they are `==`.
+Here a shelf holds one parcel of each label:
+
+```jadpo check project=unique-structured file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=unique-structured file=domains/shipping/types/tag.jadpo hidden
+type Tag = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=unique-structured file=domains/shipping/types/label.jadpo hidden
+use shipping/types { Tag }
+
+/// What is printed on a parcel.
+type Label = Object {
+    line: Tag
+    note: Tag?
+}
+```
+
+```jadpo check project=unique-structured file=domains/shipping/failures/label_taken.jadpo hidden
+/// Another parcel on the shelf has this label.
+type LabelTaken = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=unique-structured file=domains/shipping/failures/parcel_not_found.jadpo hidden
+/// No parcel has this id.
+type ParcelNotFound = Failure {
+    kind: FailureKind.not_found
+}
+```
+
+```jadpo check project=unique-structured file=domains/shipping/entities/parcel.jadpo migrate=initial
+use shipping/types { Label, Tag }
+
+/// A parcel on a shelf.
+entity Parcel {
+    id: Uuid
+    shelf: Tag
+    label: Label
+    previous_label: Label?
+
+    unique: {
+        label_per_shelf: [shelf, label]  // the shelf, and the label's digest
+    }
+}
+```
+
+```jadpo check project=unique-structured file=domains/shipping/actions/shelve.jadpo hidden
+use shipping/entities { Parcel }
+use shipping/types { Label, Tag }
+use shipping/failures { LabelTaken }
+
+/// Puts a parcel on `shelf` under `label`.
+action shelve(shelf: Tag, label: Label) fails LabelTaken -> Parcel {
+    return attempt Parcel.create {
+        set: {
+            shelf: shelf
+            label: label
+            previous_label: none
+        }
+        conflict: {
+            Parcel.label_per_shelf: LabelTaken
+        }
+    }
+}
+```
+
+```jadpo check project=unique-structured file=domains/shipping/actions/relabel.jadpo hidden
+use shipping/entities { Parcel }
+use shipping/types { Label }
+use shipping/failures { LabelTaken, ParcelNotFound }
+
+/// Gives a parcel a new label, keeping the one it had.
+action relabel(parcel_id: Parcel.id, label: Label) fails ParcelNotFound, LabelTaken -> Parcel {
+    return attempt Parcel.update(parcel_id) {
+        set: {
+            previous_label: Parcel.label  // the stored label, copied by the database
+            label: label
+        }
+        conflict: {
+            Parcel.label_per_shelf: LabelTaken
+        }
+    }
+}
+```
+
+```jadpo check project=unique-structured file=domains/shipping/actions/shelve.test.jadpo
+use shipping/entities { Parcel }
+use shipping/types { Label }
+use shipping/failures { LabelTaken }
+use shipping/actions { relabel }
+
+test "a shelf holds one parcel of each label" {
+    var fragile: Label = Label {
+        line: "Fragile"
+        note: none
+    }
+    var upright: Label = Label {
+        line: "This way up"
+        note: "Glass"
+    }
+    var first: Parcel = attempt shelve("A1", fragile)
+    var on_shelf_b2: Parcel = attempt shelve("B2", fragile)
+    assert on_shelf_b2.label == first.label
+    assert shelve("A1", fragile) fails LabelTaken
+    var second: Parcel = attempt shelve("A1", upright)
+    assert relabel(second.id, fragile) fails LabelTaken
+    var relabelled: Parcel = attempt relabel(
+        first.id,
+        Label {
+            line: "Keep dry"
+            note: none
+        }
+    )
+    assert relabelled.previous_label == fragile
+}
+```
+
+Such a key is a unique index rather than a constraint
+(`CREATE UNIQUE INDEX "parcel_label_per_shelf_key" ON "parcel" ("shelf", (md5("label"::text)))`),
+and a write's conflict names it as it names any rule. A field's own
+`unique: true` works the same way.
+
+A percentage keeps its places in its JSON, so `12.5%` and `12.50%` are
+`==` but written differently. A rule over a value holding one anywhere,
+or a standard type holding one, is `data.unique_decimal_places`: it would
+let both in. A decimal's type fixes its `scale:`, so a decimal is written
+one way.
+
 ## References and `on_delete`
 <!-- topic: references-and-on-delete -->
 
@@ -758,7 +899,12 @@ entity Todo {
 }
 ```
 
-An index is a list of fields, or a block of `fields:` and `kind:`.
+An index is a list of fields, or a block of `fields:` and `kind:`. A
+field kept whole as its JSON is held by the digest of its JSON, as a
+unique rule holds one
+([A unique rule over a structured value](#a-unique-rule-over-a-structured-value)),
+so a lookup from outside compares `md5("label"::text)` with the digest
+of the JSON it looks for.
 
 ### Special kinds of index
 
@@ -770,14 +916,39 @@ it:
 - `kind: IndexKind.hnsw` makes pgvector's HNSW index on one vector field,
   with `m:` and `ef_construction:` for tuning
   ([The vector index](21-ai.md#the-vector-index) under AI).
+- `kind: IndexKind.json` makes PostgreSQL's GIN index on one field kept
+  whole as its JSON, with `jsonb`'s own operator class, `jsonb_ops`. It
+  finds records by what the value holds, for a lookup made from outside
+  that tests it with `@>`, `?`, `?|`, `?&`, `@?` or `@@`. A long text or
+  key inside is held as its hash, so a value of any size fits.
 
 A full-text index isn't a kind: it is the entity's `search:` section,
 which gives the index, its column of words and its migration from one
 declaration ([Search](16-built-in-services.md#search)), and
-`kind: IndexKind.full_text` says so (`type.setting_value`). JSON indexes
-are a kind too.
+`kind: IndexKind.full_text` says so (`type.setting_value`).
 
-Not built yet: index kinds other than geographic and HNSW.
+```jadpo check project=json-index
+type Tag = Text {
+    max_length: 20
+}
+
+entity Parcel {
+    id: Uuid
+    tags: List<Tag>
+
+    indexes: {
+        by_tags: {
+            fields: [tags]
+            kind: IndexKind.json  // the warehouse's own lookups by tag
+        }
+    }
+}
+```
+
+Its migration creates
+`CREATE INDEX "parcel_by_tags_idx" ON "parcel" USING gin ("tags")`. A
+JSON index on anything but one field kept as JSON is
+`type.setting_value`.
 
 ### How the derived indexes are chosen
 
@@ -1207,6 +1378,18 @@ what was written, but it reads back `==`.
   A type holding a decimal without `scale:` isn't compared, since its JSON
   keeps the places `==` ignores. An order by one is `query.order_field`.
   The field is read whole wherever its record is.
+- **A unique rule or an index holds its digest.** A unique rule or an
+  index you declare may cover one: it holds the digest of the value's
+  JSON
+  ([A unique rule over a structured value](#a-unique-rule-over-a-structured-value)),
+  and a `kind: IndexKind.json` index the value itself
+  ([Special kinds of index](#special-kinds-of-index)).
+- **An update by `id` copies one.** On the right of an update by `id`'s
+  `set:`, `Parcel.label` is the stored value, which the database copies
+  as it is (`SET "previous_label" = "label"`), so `relabel` above keeps
+  the old label in the same statement that writes the new. The database
+  works nothing else out from one
+  ([Counters and other one-step updates](06-reads-and-writes.md#counters-and-other-one-step-updates)).
 - **A lifecycle sets and tests one only as `none`.** A lifecycle tests one
   only with `== none` or `!= none`, and a transition or `initial:` sets
   one only to `none` (`data.lifecycle_condition`,
@@ -1378,11 +1561,6 @@ and leaves the rest as they are.
   line says `Checking Parcel.label in Jadpo  2000 of 5000 rows`. The
   result says `1200 rows checked in 2 batches in Jadpo` or `3 rows
   rewritten in 2 batches in Jadpo`, and `--json` gives each its `work`.
-
-Not built yet: a `unique:` or index over a structured field
-(`toolchain.not_built_yet`); and an update by `id` that works a
-structured value out in the database rather than setting one it is given
-(`toolchain.not_built_yet`, as for money).
 
 ## Migrations
 <!-- topic: migrations -->
@@ -2087,7 +2265,7 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | PostgreSQL over TLS and through Hyperdrive | Partly built: both connect. Not built yet: checking a Hyperdrive configuration's caching on a real deploy. |
 | D1, and actions on it as reads first and one checked batch of writes | Not built yet. |
 | Lifecycles | Built. |
-| Structured values stored as JSON, and their migrations | Partly built: each is stored whole, read back, migrated and compared in a query. Not built yet: a `unique:` or index over them, and an update by `id` that works one out in the database. |
+| Structured values stored as JSON, and their migrations | Built: each is stored whole, read back, migrated, compared in a query, held by a unique rule or an index by its digest, and copied by an update by `id`. |
 | The check of every stored value on read | Built. |
 | `CHECK` constraints holding fields' rules in the database | Not built yet. |
 | Standard types stored in named columns, and the standard collections | Built: each is stored, read back, and compared and ordered in a query as code compares and orders it. |
@@ -2097,7 +2275,7 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | A worked-out backfill for a field that allows less | Not built yet. |
 | A backfill in Jadpo that fills a value held in several columns, or reads a field held so or as JSON | Not built yet. |
 | Entities in Redis and record caches (`caches:`) | Not built yet. Clearing only the cached entries a change affects isn't designed yet. |
-| Index kinds other than geographic and HNSW | Not built yet. |
+| Index kinds: geographic, HNSW and JSON | Built. |
 | A database implied only when something needs one | Not built yet: it comes with the first feature that can run without one. |
 | Seeds and `jadpo seed` | Built. |
 | `jadpo rename` | Built: it writes the identity registry, so a renamed field keeps its column and a renamed entity its table ([Tools](14-tooling.md#jadpo-rename)). |
@@ -2125,6 +2303,7 @@ source.
 - [`data.repeated_field`](../errors/data.repeated_field.md)
 - [`data.field_list_required`](../errors/data.field_list_required.md)
 - [`data.unique_nullable_field`](../errors/data.unique_nullable_field.md)
+- [`data.unique_decimal_places`](../errors/data.unique_decimal_places.md)
 - [`data.unique_single_field`](../errors/data.unique_single_field.md)
 - [`data.duplicate_rule`](../errors/data.duplicate_rule.md)
 - [`data.store_unknown`](../errors/data.store_unknown.md)
