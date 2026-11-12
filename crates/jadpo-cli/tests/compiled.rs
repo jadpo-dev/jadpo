@@ -1120,9 +1120,11 @@ fn a_route_tests_spans_are_in_its_record() {
     let jadpo_test::Ran::Done(run) = ran else {
         panic!("it runs: {ran:?}")
     };
+    // The route tests the page writes, not those generated for its routes.
     let mut spans: Vec<(String, Vec<String>)> = run
         .results
         .iter()
+        .filter(|result| !result.test.generated())
         .map(|result| {
             let record: Vec<String> = result
                 .record

@@ -578,9 +578,11 @@ pub fn affected(graph: &Graph, before: &Graph) -> BTreeSet<String> {
             }
         }
     }
+    // A route reached is the tests generated for it reached (area 13,
+    // "Tests generated for each route"), which name it.
     graph
         .ids()
-        .filter(|id| seen[id.index()] && graph.node(*id).kind == Kind::Test)
+        .filter(|id| seen[id.index()] && matches!(graph.node(*id).kind, Kind::Test | Kind::Route))
         .map(|id| graph.node(id).key.as_str().to_string())
         .collect()
 }

@@ -42,6 +42,7 @@ pub mod differential;
 mod entries;
 mod env;
 pub mod fuzz;
+pub mod generated;
 pub mod host;
 mod json;
 mod live;
@@ -133,6 +134,14 @@ pub struct Test {
     pub line: u32,
     pub end_line: u32,
     pub kind: TestKind,
+}
+
+impl Test {
+    /// Whether the compiler generated it for a route, rather than the
+    /// project writing it (area 13, "Tests generated for each route").
+    pub fn generated(&self) -> bool {
+        self.key.starts_with(generated::GENERATED_KEY)
+    }
 }
 
 /// What `jadpo test` was asked to run.
@@ -236,6 +245,9 @@ pub struct Run {
     pub elapsed: Duration,
     /// `--full`: what the run reports isn't shortened (chunk A14).
     pub full: bool,
+    /// What each generated test that ran sends and expects (area 13,
+    /// "Tests generated for each route"), by key, which `--json --full` lists.
+    pub generated: Arc<generated::Table>,
 }
 
 /// A recording of a prompt's answer made from another version of its
@@ -475,6 +487,9 @@ pub(crate) struct Checked {
     /// Each store's migrations, which build the test databases; empty
     /// when the project has no tables.
     pub steps: BTreeMap<String, Vec<jadpo_runtime::Migration>>,
+    /// What each generated test sends (area 13, "Tests generated for each route"), by
+    /// key.
+    pub generated: Arc<generated::Table>,
 }
 
 /// The project's sources by path, for the code frames of its errors.
@@ -535,12 +550,25 @@ pub(crate) fn prepare(loaded: &jadpo_db::Loaded, cwd: &std::path::Path) -> Resul
     let prepared = Prepared::checked(db, loaded.project);
     let mut tests = discover(graph);
     tests.extend(recordings(&prepared));
-    tests.sort_by(|a, b| (&a.file, a.line).cmp(&(&b.file, b.line)));
+    // The tests generated for each route a project's APIs document (area
+    // 13, "Tests generated for each route").
+    let generated = if project {
+        let (made, table) = generated::discover(&prepared, graph, || {
+            let title = jadpo_check::routes::openapi::title(db, loaded.project);
+            jadpo_check::routes::openapi::documents(db, loaded.project, &title)
+        });
+        tests.extend(made);
+        table
+    } else {
+        generated::Table::new()
+    };
+    tests.sort_by(|a, b| (&a.file, a.line, &a.key).cmp(&(&b.file, b.line, &b.key)));
     Ok(Checked {
         prepared,
         tests,
         project,
         steps,
+        generated: Arc::new(generated),
     })
 }
 
@@ -561,6 +589,7 @@ pub(crate) fn choose_and_run(
         tests,
         project,
         steps,
+        generated,
     } = checked;
     let project = *project;
     let filter = target.filter(loaded);
@@ -593,7 +622,10 @@ pub(crate) fn choose_and_run(
         Err(diagnostic) => return Ran::Stopped(diagnostic),
     };
     if let Some(only) = only {
-        chosen.retain(|test| only.contains(&test.key));
+        chosen.retain(|test| {
+            only.contains(&test.key)
+                || generated::route_key(&test.key).is_some_and(|route| only.contains(route))
+        });
     }
     let seed = options.seed.unwrap_or_else(select::new_seed);
     let ordered = select::shuffle(chosen, seed);
@@ -639,6 +671,7 @@ pub(crate) fn choose_and_run(
         prepared,
         &ordered,
         &rerun,
+        generated,
         databases.as_ref(),
         run::Keep {
             record: options.record,
@@ -691,6 +724,7 @@ pub(crate) fn choose_and_run(
         alerts,
         elapsed: started.elapsed(),
         full: options.full,
+        generated: Arc::clone(generated),
     }))
 }
 
@@ -712,6 +746,17 @@ impl Rerun {
     pub fn command(&self, file: &str, line: u32) -> String {
         let path = jadpo_term::shown_path(self.root.as_deref(), file);
         format!("jadpo test {path}:{line} --seed {}", self.seed)
+    }
+
+    /// `jadpo test <file>:<line> --name "<name>" --seed <seed>`: the test
+    /// called `name` alone among those at the line, as a route's generated
+    /// tests are (area 13).
+    pub fn named(&self, file: &str, line: u32, name: &str) -> String {
+        let path = jadpo_term::shown_path(self.root.as_deref(), file);
+        format!(
+            "jadpo test {path}:{line} --name \"{name}\" --seed {}",
+            self.seed
+        )
     }
 }
 
@@ -873,6 +918,7 @@ mod a_person_tests {
             alerts: Vec::new(),
             elapsed: Duration::ZERO,
             full: false,
+            generated: Arc::default(),
         };
         assert!(run("Check the database it runs against (human)").needs_a_person());
         assert!(!run("Bound the values (agent)").needs_a_person());

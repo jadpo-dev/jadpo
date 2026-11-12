@@ -68,7 +68,7 @@ impl TestFailure {
                     located(&mut frame.location);
                 }
             }
-            Detail::Fake(_) | Detail::Recording(_) => {}
+            Detail::Fake(_) | Detail::Recording(_) | Detail::Generated(_) => {}
         }
     }
 }
@@ -109,6 +109,54 @@ pub enum Detail {
     Fake(Box<FakeInfo>),
     /// A recording its operation's decoders don't read (chunk 7.2d2).
     Recording(Box<RecordingInfo>),
+    /// A generated test's request answered otherwise than its API's
+    /// document says (area 13, "Tests generated for each route"; chunk W2).
+    Generated(Box<GeneratedInfo>),
+}
+
+/// Why a generated test failed (area 13, "Tests generated for each route"): the request
+/// whose answer broke what its route's API document says, and both sides.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GeneratedInfo {
+    /// `POST /todos`, the route it tests.
+    pub route: String,
+    /// The request's first line.
+    pub request: String,
+    /// What the request does: `leaves out \`title\``.
+    pub does: String,
+    pub expected: String,
+    pub got: String,
+}
+
+/// The failure generated test `test` gives when the answer `broken`
+/// names isn't what its route's API document says: `test.assertion_failed`,
+/// at the route.
+pub(crate) fn generated(
+    sources: &dyn Sources,
+    test: &Test,
+    broken: crate::generated::Broken,
+    rerun: &Rerun,
+) -> TestFailure {
+    let route = test
+        .key
+        .strip_prefix(crate::generated::GENERATED_KEY)
+        .and_then(|rest| rest.split_once(" route "))
+        .map_or_else(String::new, |(_, label)| label.to_string());
+    TestFailure {
+        rule: &rule::TEST_ASSERTION_FAILED,
+        delivery: None,
+        crash: None,
+        location: Located::new(sources, &test.file, None, test.line, "the route it tests"),
+        rerun: rerun.named(&test.file, test.line, &test.name),
+        kept: Vec::new(),
+        detail: Detail::Generated(Box::new(GeneratedInfo {
+            route,
+            request: broken.request,
+            does: broken.does,
+            expected: broken.expected,
+            got: broken.got,
+        })),
+    }
 }
 
 /// Why a recording of one of the app's own integrations isn't read by its
