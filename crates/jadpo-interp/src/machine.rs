@@ -373,6 +373,13 @@ enum Task<'p> {
         op: BinaryOp,
         value: SiteId,
     },
+    /// `assert emitted` at `at`, its fields' `count` values on top
+    /// (area 13); `value` is its event's site.
+    AssertEmitted {
+        at: SiteId,
+        value: SiteId,
+        count: usize,
+    },
     // --- handlers ----------------------------------------------------------
     /// The end of a callable's activation; `base` is the value stack's
     /// height when it was entered.
@@ -1643,6 +1650,17 @@ impl<'p> Machine<'p> {
                     )));
                 }
             }
+            Task::AssertEmitted { at, value, count } => {
+                let given = self.values.split_off(self.values.len().saturating_sub(count));
+                let Some(Decoded::Emitted { key, event, fields }) = self.decoded(value) else {
+                    return Err(self.defect(ctx, "an `assert emitted` with no event", at));
+                };
+                if let Err(detail) =
+                    jadpo_runtime::test_steps::emitted(ctx, key, event, fields, given)
+                {
+                    return Err(Stop::Assertion(ctx.assertion_failed(at.0, detail)));
+                }
+            }
             Task::AssertCompare { at, op, value } => {
                 let right = self.pop();
                 let left = self.pop();
@@ -1948,6 +1966,18 @@ impl<'p> Machine<'p> {
             );
         }
         match self.site(value).map(|site| &site.node) {
+            // `assert emitted Event { ... }` (area 13): its fields' values,
+            // then the events the test's steps kept.
+            Some(Node::Expr(Expr::Emitted { fields, .. })) => {
+                self.tasks.push(Task::AssertEmitted {
+                    at: id,
+                    value,
+                    count: fields.len(),
+                });
+                for (_, site) in fields.iter().rev() {
+                    self.tasks.push(Task::Expr(*site));
+                }
+            }
             Some(Node::Expr(Expr::Binary { op, lhs, rhs })) if is_comparison(*op) => {
                 self.tasks.push(Task::AssertCompare {
                     at: id,
@@ -2276,6 +2306,27 @@ impl<'p> Machine<'p> {
             Expr::SentEmails => {
                 let sent = self.run_effect(ctx, Effect::SentEmails, &[], id)?;
                 self.values.push(sent);
+            }
+            // A value a data builder fills a field with (area 13).
+            Expr::Made { distinct } => {
+                let json = match self.decoded(id) {
+                    Some(Decoded::Made { json, .. }) => Some(*json),
+                    _ => None,
+                };
+                let made = self.run_effect(
+                    ctx,
+                    Effect::Made {
+                        json,
+                        distinct: *distinct,
+                    },
+                    &[],
+                    id,
+                )?;
+                self.values.push(made);
+            }
+            // Only an `assert`'s value, which works out its fields itself.
+            Expr::Emitted { .. } => {
+                return Err(self.defect(ctx, "`emitted` outside an `assert`", id));
             }
             Expr::Unchecked => {
                 let written = self.written(id);

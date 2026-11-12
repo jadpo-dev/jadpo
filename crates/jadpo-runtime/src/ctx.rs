@@ -155,6 +155,8 @@ pub struct Held {
     pub deliveries: Vec<crate::outbox::Delivery>,
     /// The people it erased: what holds only if it commits.
     pub(crate) erased: Vec<crate::boundary::Erased>,
+    /// In a test, the events it kept, by type, for `assert emitted`.
+    pub(crate) emitted: Vec<(String, Value)>,
     /// How many events it kept, counted once it commits (a schedule's run
     /// record keeps the count; chunk 6.7).
     pub kept: u32,
@@ -252,6 +254,10 @@ pub struct Ctx<'p> {
     /// Each person an erasure erased, by entity and `id`, for the export
     /// the runtime asks after a test (area 15, "Export").
     erased: Vec<(String, String)>,
+    /// In a test, each event a committed step kept, by its type's
+    /// identity key, in the order they committed: what `assert emitted`
+    /// reads (area 13, "Events and query cost").
+    emitted: Vec<(String, Value)>,
     /// What background work carries while it runs.
     background: Background,
     /// What it reaches outside itself, through its host.
@@ -370,6 +376,7 @@ impl<'p> Ctx<'p> {
             flag_values: Vec::new(),
             signed_in: Vec::new(),
             erased: Vec::new(),
+            emitted: Vec::new(),
             started: None,
             background: Background::default(),
             capabilities: Capabilities::new(host, env.seed),
@@ -1451,6 +1458,17 @@ impl<'p> Ctx<'p> {
             Some(boundary) => boundary.erased_on_commit(erased),
             None => crate::boundary::confirm_erased(self, vec![erased]),
         }
+    }
+
+    /// Keeps, in a test, the events a step that committed kept.
+    pub(crate) fn note_emitted(&mut self, emitted: Vec<(String, Value)>) {
+        self.emitted.extend(emitted);
+    }
+
+    /// In a test, every event its committed steps kept so far, by its
+    /// type's identity key, in the order they committed (area 13).
+    pub fn emitted(&self) -> &[(String, Value)] {
+        &self.emitted
     }
 
     /// Who this run has erased so far, each once.

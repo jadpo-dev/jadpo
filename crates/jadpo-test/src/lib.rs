@@ -774,13 +774,15 @@ pub fn discover(graph: &Graph) -> Vec<Test> {
             }
             let place = node.place.as_ref()?;
             // An entity's `get` read straight from the test needs a store
-            // as much as a query does.
+            // as much as a query does, and so does a record a data builder
+            // makes (area 13).
             let acts = graph.outgoing(id, EdgeKind::Calls).any(|callee| {
                 matches!(
                     graph.node(callee).kind,
                     Kind::Action | Kind::Query | Kind::Fixture
                 )
-            }) || graph.outgoing(id, EdgeKind::Reads).next().is_some();
+            }) || graph.outgoing(id, EdgeKind::Reads).next().is_some()
+                || graph.outgoing(id, EdgeKind::Writes).next().is_some();
             // A request through a route makes it a route test (area 13), a
             // route the runtime generates included (area 8).
             let routes = graph.outgoing(id, EdgeKind::Calls).any(|callee| {

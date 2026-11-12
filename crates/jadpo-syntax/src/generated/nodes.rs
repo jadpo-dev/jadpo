@@ -2601,6 +2601,9 @@ impl AssertStmt {
     pub fn assert_kw_token(&self) -> Option<SyntaxToken> {
         support::token(&self.syntax, ASSERT_KW)
     }
+    pub fn emitted_kw_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, EMITTED_KW)
+    }
     pub fn expr(&self) -> Option<Expr> {
         support::child(&self.syntax)
     }

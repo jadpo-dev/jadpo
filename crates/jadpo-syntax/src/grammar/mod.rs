@@ -2532,6 +2532,12 @@ fn keyword_stmt(p: &mut Parser<'_>, keyword: SyntaxKind, kind: SyntaxKind) {
 fn assert_stmt(p: &mut Parser<'_>) {
     let m = p.start();
     p.bump(ASSERT_KW);
+    // `assert emitted Event { ... }` (area 13): `emitted` is a keyword
+    // only before the event's name on the same line, so a value called
+    // `emitted` still reads as one.
+    if p.at_word("emitted") && p.nth(1) == IDENT && !p.nth_on_new_line(1) {
+        p.bump_remap(EMITTED_KW);
+    }
     expr(p);
     if p.at(FAILS_KW) {
         let f = p.start();

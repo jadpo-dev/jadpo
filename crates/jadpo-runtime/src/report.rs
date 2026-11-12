@@ -493,6 +493,17 @@ impl Report {
                     ),
                 ],
             ),
+            AssertionDetail::Emitted {
+                event,
+                given,
+                emitted,
+            } => (
+                "wasn't emitted",
+                vec![
+                    ("expected", crate::outcome::emitted_expected(event, given)),
+                    ("actual", crate::outcome::emitted_actual(event, emitted)),
+                ],
+            ),
         };
         let location = site.and_then(|frame| site_text(places, sources, frame, caret).location);
         Report {

@@ -20,6 +20,7 @@ use jadpo_syntax::{SyntaxKind, SyntaxNode};
 use super::super::rules::Const;
 use super::super::ty::{Prim, Ty};
 use super::facts::{BuildFact, Facts, NodeKey, PatternFact, Reach, node_key};
+use super::builders::{Filled, MakeFact};
 use super::writes::{Breach, WriteFact};
 use super::{Body, Fallible, LocalKind};
 use crate::graph::paths::Resolver;
@@ -474,7 +475,9 @@ impl Lower<'_> {
                 | typed::Expr::Download { .. }
                 | typed::Expr::Upload { .. },
             ) => true,
-            typed::Node::Expr(typed::Expr::Now | typed::Expr::SentEmails) => true,
+            typed::Node::Expr(
+                typed::Expr::Now | typed::Expr::SentEmails | typed::Expr::Made { .. },
+            ) => true,
             _ => false,
         }
     }
@@ -1878,6 +1881,25 @@ impl Lower<'_> {
         if let Some(fact) = self.facts.writes.get(&key) {
             return self.write(fact, record.expr(), None, record.member_list());
         }
+        if let Some(fact) = self.facts.makes.get(&key) {
+            if let Some(head) = record.expr()
+                && let Some((_, rest)) = dotted(&head)
+            {
+                self.path_names(&rest);
+            }
+            let set = self.fields_given(record.member_list(), &fact.entity, &[]);
+            return self.builder(record.syntax(), fact, set);
+        }
+        if let Some(event) = self.facts.emitted.get(&key) {
+            if let Some(Expr::NameRef(head)) = record.expr() {
+                self.path_names(&[head]);
+            }
+            let fields = self.fields_given(record.member_list(), event, &[]);
+            return match self.type_key(event) {
+                Some(event) => typed::Expr::Emitted { event, fields },
+                None => typed::Expr::Unchecked,
+            };
+        }
         if let Some(Expr::CallExpr(call)) = record.expr()
             && let Some(fact) = self.facts.writes.get(&node_key(call.syntax()))
         {
@@ -2251,6 +2273,85 @@ impl Lower<'_> {
                 .as_deref()
                 .and_then(|failure| self.type_key(failure)),
             fallible: self.fallible(Some(&fact.fallible)),
+            attaches: fact.attaches,
+        }
+    }
+
+    /// A data builder's create (area 13, "Data builders"): `set`, the
+    /// fields given, then a site for each field it fills, all at the
+    /// builder's own place in the source: `none`, a value made, or the
+    /// `id` of a record the referenced entity's builder makes.
+    fn builder(
+        &mut self,
+        node: &SyntaxNode,
+        fact: &MakeFact,
+        mut set: Vec<(Key, SiteId)>,
+    ) -> typed::Expr {
+        let Some(entity) = self.type_key(&fact.entity) else {
+            return typed::Expr::Unchecked;
+        };
+        for (field, filled) in &fact.filled {
+            let key = field_key(self.names, &fact.entity, std::slice::from_ref(field));
+            let site = match filled {
+                Filled::Absent(ty) => {
+                    let id = self.alloc();
+                    let ty = self.ty(ty);
+                    self.fill(id, node, ty, typed::Node::Expr(typed::Expr::Literal(Literal::None)));
+                    id
+                }
+                Filled::Made { ty, distinct } => {
+                    let id = self.alloc();
+                    let ty = self.ty(ty);
+                    let made = typed::Expr::Made {
+                        distinct: *distinct,
+                    };
+                    self.fill(id, node, ty, typed::Node::Expr(made));
+                    id
+                }
+                Filled::Reference(nested) => {
+                    let inner = self.alloc();
+                    let record = self.builder(node, nested, Vec::new());
+                    let ty = self.ty(&Ty::Named(nested.entity.clone()));
+                    self.fill(inner, node, ty, typed::Node::Expr(record));
+                    let id = self.alloc();
+                    let path = ["id".to_string()];
+                    let ty = self.ty(&Ty::Field(nested.entity.clone(), path.to_vec()));
+                    let read = typed::Expr::Field {
+                        receiver: SiteId(inner as u32),
+                        field: field_key(self.names, &nested.entity, &path),
+                    };
+                    self.fill(id, node, ty, typed::Node::Expr(read));
+                    id
+                }
+            };
+            set.push((key, SiteId(site as u32)));
+        }
+        let missing = fact
+            .missing
+            .iter()
+            .filter_map(|(field, failure)| {
+                Some((
+                    field_key(self.names, &fact.entity, std::slice::from_ref(field)),
+                    self.type_key(failure)?,
+                ))
+            })
+            .collect();
+        typed::Expr::Write {
+            entity,
+            op: jadpo_std::write::WriteOp::Create,
+            transition: None,
+            target: None,
+            erase: false,
+            by_id: false,
+            set,
+            patch: None,
+            when_supplied: Vec::new(),
+            conflicts: Vec::new(),
+            missing,
+            not_found: None,
+            // A failure inside a builder fails the test, as a fixture's
+            // does (area 13).
+            fallible: typed::Fallible::Never,
             attaches: fact.attaches,
         }
     }

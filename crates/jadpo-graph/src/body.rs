@@ -436,6 +436,22 @@ pub enum Expr {
     /// (`jadpo_runtime::effects`, chunk 7.0b), never told by its source
     /// text.
     Now,
+    /// A valid value for a field a data builder's `make.Entity { ... }`
+    /// leaves out (area 13, "Data builders"): a value of the site's type
+    /// keeping its rules, made at the invocation's clock as a fake's
+    /// generated default is. `distinct` for a field a unique rule holds,
+    /// so each value made differs from the last.
+    Made {
+        distinct: bool,
+    },
+    /// `assert emitted Event { ... }`, only as an `assert`'s value (area
+    /// 13, "Events and query cost"): whether an event of type `event`
+    /// whose fields `fields` name hold those values was emitted by a
+    /// step that committed so far; fields it leaves out aren't compared.
+    Emitted {
+        event: Key,
+        fields: Vec<(Key, SiteId)>,
+    },
     /// `email.sent` in a test (area 16, "Email"; chunk 7.3c): every email
     /// the test has sent so far, rendered whole, as `SentEmail`s, which
     /// the runtime reads from the mail its host caught.

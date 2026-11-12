@@ -70,6 +70,7 @@ pub enum SyntaxKind {
     VAR_KW,
     ASC_KW,
     DESC_KW,
+    EMITTED_KW,
     END_KW,
     INCLUDE_KW,
     MATCHES_KW,
@@ -193,7 +194,7 @@ pub enum SyntaxKind {
 
 use self::SyntaxKind::*;
 
-const ALL: [SyntaxKind; 183] = [
+const ALL: [SyntaxKind; 184] = [
     EOF,
     L_BRACE,
     R_BRACE,
@@ -258,6 +259,7 @@ const ALL: [SyntaxKind; 183] = [
     VAR_KW,
     ASC_KW,
     DESC_KW,
+    EMITTED_KW,
     END_KW,
     INCLUDE_KW,
     MATCHES_KW,
@@ -509,6 +511,7 @@ impl SyntaxKind {
         let kind = match text {
             "asc" => ASC_KW,
             "desc" => DESC_KW,
+            "emitted" => EMITTED_KW,
             "end" => END_KW,
             "include" => INCLUDE_KW,
             "matches" => MATCHES_KW,
@@ -591,6 +594,7 @@ impl SyntaxKind {
             VAR_KW => "var",
             ASC_KW => "asc",
             DESC_KW => "desc",
+            EMITTED_KW => "emitted",
             END_KW => "end",
             INCLUDE_KW => "include",
             MATCHES_KW => "matches",
@@ -674,6 +678,7 @@ macro_rules! T {
     [var] => { $crate::SyntaxKind::VAR_KW };
     [asc] => { $crate::SyntaxKind::ASC_KW };
     [desc] => { $crate::SyntaxKind::DESC_KW };
+    [emitted] => { $crate::SyntaxKind::EMITTED_KW };
     [end] => { $crate::SyntaxKind::END_KW };
     [include] => { $crate::SyntaxKind::INCLUDE_KW };
     [matches] => { $crate::SyntaxKind::MATCHES_KW };

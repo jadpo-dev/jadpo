@@ -475,7 +475,20 @@ const DEEPEST: u32 = 12;
 /// gives its first candidate, which reading then refuses, naming the field
 /// and the rule, so a test scripts that operation instead.
 pub fn generated(codecs: &Codecs<'_>, id: CodecId, making: &mut Making<'_>) -> serde_json::Value {
-    generate(codecs, id, making, 0)
+    generate(codecs, id, making, 0, None)
+}
+
+/// [`generated`], with `mark` in each text, email address and link it
+/// makes where the type's rules allow, so values made with different
+/// marks differ: what a data builder fills a field a unique rule holds
+/// with (area 13, "Data builders").
+pub fn generated_marked(
+    codecs: &Codecs<'_>,
+    id: CodecId,
+    making: &mut Making<'_>,
+    mark: Option<&str>,
+) -> serde_json::Value {
+    generate(codecs, id, making, 0, mark)
 }
 
 /// `json` where an operation's `output_at:` reads its answer from, as the
@@ -496,6 +509,7 @@ fn generate(
     id: CodecId,
     making: &mut Making<'_>,
     depth: u32,
+    mark: Option<&str>,
 ) -> serde_json::Value {
     use serde_json::Value as J;
     if depth > DEEPEST {
@@ -529,7 +543,13 @@ fn generate(
                     let day = i32::try_from(now.div_euclid(86_400_000)).unwrap_or(0);
                     vec![written(jadpo_value::Value::Date(day))]
                 }
-                _ => scalar_candidates(*builtin, &rules, *int_as_number, making),
+                _ => {
+                    let mut candidates = scalar_candidates(*builtin, &rules, *int_as_number, making);
+                    if let Some(mark) = mark {
+                        candidates.splice(0..0, marked_candidates(*builtin, &rules, mark));
+                    }
+                    candidates
+                }
             };
             first_read(codecs, id, candidates)
         }
@@ -546,7 +566,7 @@ fn generate(
                     coding: jadpo_std::http::WireCoding::Parts { standard, parts },
                 }) = codecs.codecs.get(field.0 as usize)
                 {
-                    let whole = generate(codecs, *contract, making, depth + 1);
+                    let whole = generate(codecs, *contract, making, depth + 1, mark);
                     for (member, json) in jadpo_value::json::parts_members(standard, &whole, parts)
                     {
                         members.entry(member).or_insert(json);
@@ -558,7 +578,7 @@ fn generate(
                 };
                 members.insert(
                     name.to_string(),
-                    generate(codecs, *field, making, depth + 1),
+                    generate(codecs, *field, making, depth + 1, mark),
                 );
             }
             J::Object(members)
@@ -579,7 +599,7 @@ fn generate(
                     if let Some(name) = shape.json_name(slot) {
                         members.insert(
                             name.to_string(),
-                            generate(codecs, *field, making, depth + 1),
+                            generate(codecs, *field, making, depth + 1, mark),
                         );
                     }
                 }
@@ -587,7 +607,7 @@ fn generate(
             J::Object(members)
         }
         Codec::List { item, .. } | Codec::Set { item, .. } => {
-            let one = generate(codecs, *item, making, depth + 1);
+            let one = generate(codecs, *item, making, depth + 1, mark);
             first_read(codecs, id, vec![J::Array(Vec::new()), J::Array(vec![one])])
         }
         Codec::Map { .. } => J::Object(serde_json::Map::new()),
@@ -731,6 +751,38 @@ fn scalar_candidates(
             }
             texts
         }
+    }
+}
+
+/// The values carrying `mark` to try first for a scalar built on
+/// `builtin` with `rules`, before [`scalar_candidates`]: text, an email
+/// address or a link that holds it.
+fn marked_candidates(
+    builtin: jadpo_std::Builtin,
+    rules: &[&jadpo_std::Rules],
+    mark: &str,
+) -> Vec<serde_json::Value> {
+    use jadpo_std::Builtin as B;
+    let text = |text: String| serde_json::Value::String(text);
+    match builtin {
+        B::Email => vec![text(format!("someone-{mark}@example.com"))],
+        B::Url => vec![text(format!("https://example.com/{mark}"))],
+        B::Text => {
+            let least = rules
+                .iter()
+                .filter_map(|rules| rules.min_length)
+                .max()
+                .unwrap_or(0);
+            let least = usize::try_from(least).unwrap_or(usize::MAX);
+            let mut texts = vec![text(format!("example-{mark}"))];
+            if least > mark.len() {
+                texts.push(text(format!("{mark}{}", "a".repeat(least - mark.len()))));
+            } else {
+                texts.push(text(mark.to_string()));
+            }
+            texts
+        }
+        _ => Vec::new(),
     }
 }
 

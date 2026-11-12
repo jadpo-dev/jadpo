@@ -568,6 +568,31 @@ impl Emitter<'_> {
                 let defect = self.defect("an `assert … fails` naming no failure", id);
                 quote!({ #defect })
             }
+            // `assert emitted Event { ... }` (area 13): its fields' values,
+            // then the events the test's steps kept.
+            None if let Some(Node::Expr(Expr::Emitted { fields, .. })) = self
+                .body()
+                .sites
+                .get(value.0 as usize)
+                .map(|site| site.node.clone()) =>
+            {
+                let Some(Decoded::Emitted { key, event, fields: names }) =
+                    self.decoded(value).cloned()
+                else {
+                    let defect = self.defect("an `assert emitted` with no event", id);
+                    self.label = outer.0;
+                    self.recording = outer.1;
+                    return quote!(#defect;);
+                };
+                let values: Vec<TokenStream> =
+                    fields.iter().map(|(_, site)| self.expr(*site)).collect();
+                let (key, event) = (text(&key), text(&event));
+                let names = names.iter().map(|name| text(name));
+                quote!({
+                    let values = vec![#(#values),*];
+                    rt::assert_emitted(cx, #key, #event, &[#(#names.to_string()),*], values, #at)
+                })
+            }
             None => {
                 let compared = match self
                     .body()
@@ -910,6 +935,22 @@ impl Emitter<'_> {
             },
             // Every email the test sent (area 16).
             Expr::SentEmails => self.tri(quote!(rt::sent_emails(cx, p, #at))),
+            // A value a data builder fills a field with (area 13).
+            Expr::Made { distinct } => match self.decoded(id) {
+                Some(Decoded::Made { json, .. }) => {
+                    let json = number(*json);
+                    self.tri(quote!(rt::made(cx, p, #json, #distinct, #at)))
+                }
+                _ => {
+                    let defect = self.defect("a made value with no codec", id);
+                    quote!({ #defect })
+                }
+            },
+            // Only an `assert`'s value, which works out its fields itself.
+            Expr::Emitted { .. } => {
+                let defect = self.defect("`emitted` outside an `assert`", id);
+                quote!({ #defect })
+            }
         }
     }
 

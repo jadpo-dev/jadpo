@@ -382,3 +382,43 @@ mod tests {
         assert_eq!(written("subscriber find_a_bench"), "find_a_bench");
     }
 }
+
+/// Whether `assert emitted` holds (area 13, "Events and query cost"): an
+/// event of the type whose identity key is `key` that the test's committed
+/// steps kept, each of `fields` holding the value beside it as `==` would
+/// compare them; the fields it doesn't give aren't compared. When none
+/// does, what the assertion reports: `event`, the type's name now, the
+/// fields given, and every event of that type kept so far.
+pub fn emitted(
+    ctx: &Ctx<'_>,
+    key: &str,
+    event: &str,
+    fields: &[String],
+    values: Vec<Value>,
+) -> Result<(), crate::AssertionDetail> {
+    let given: Vec<(String, Value)> = fields.iter().cloned().zip(values).collect();
+    let of_type: Vec<Value> = ctx
+        .emitted()
+        .iter()
+        .filter(|(kept, _)| kept == key)
+        .map(|(_, value)| value.clone())
+        .collect();
+    let holds = |value: &Value| {
+        let Value::Record(record) = value else {
+            return false;
+        };
+        given.iter().all(|(name, wanted)| {
+            record
+                .get(name)
+                .is_some_and(|kept| jadpo_value::ops::equal(kept, wanted))
+        })
+    };
+    if of_type.iter().any(holds) {
+        return Ok(());
+    }
+    Err(crate::AssertionDetail::Emitted {
+        event: event.to_string(),
+        given,
+        emitted: of_type,
+    })
+}

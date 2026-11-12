@@ -63,6 +63,10 @@ pub(crate) struct Boundary {
     kept: u32,
     /// The people it erased: what holds only if it commits.
     erased: Vec<Erased>,
+    /// In a test, each event it kept in the outbox as it sealed, by its
+    /// type's identity key: what `assert emitted` reads once it commits
+    /// (area 13, "Events and query cost").
+    emitted: Vec<(String, jadpo_value::Value)>,
     /// A store operation found another transaction had changed what this
     /// one read, so the body is run again.
     concurrent_change: bool,
@@ -368,6 +372,11 @@ impl Boundary {
         std::mem::take(&mut self.erased)
     }
 
+    /// In a test, the events it kept as it sealed.
+    pub(crate) fn take_emitted(&mut self) -> Vec<(String, jadpo_value::Value)> {
+        std::mem::take(&mut self.emitted)
+    }
+
     /// The deliveries of what it kept in the outbox as it sealed.
     pub(crate) fn take_sealed(&mut self) -> Vec<crate::outbox::Delivery> {
         std::mem::take(&mut self.sealed)
@@ -636,6 +645,7 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
                 transaction: boundary.transaction,
                 deliveries: boundary.sealed,
                 erased: boundary.erased,
+                emitted: boundary.emitted,
                 kept: boundary.kept,
                 session: boundary.session,
                 issued: boundary.issued,
@@ -668,6 +678,7 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
             Ended::Committed => {
                 ctx.background_mut().count_kept(boundary.kept);
                 confirm_erased(ctx, boundary.erased);
+                ctx.note_emitted(boundary.emitted);
                 committed(ctx, boundary.sealed);
                 return outcome;
             }
@@ -767,10 +778,20 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
             boundary.outbox.extend(released);
         }
     }
+    // What a test's `assert emitted` reads (area 13).
+    let noting = ctx.background().between_steps().is_some();
     let Some(boundary) = ctx.boundary_mut() else {
         return Ok(());
     };
     let events = std::mem::take(&mut boundary.outbox);
+    let emitted: Vec<(String, jadpo_value::Value)> = if noting {
+        events
+            .iter()
+            .map(|event| (event.key.clone(), event.value.clone()))
+            .collect()
+    } else {
+        Vec::new()
+    };
     // What a `GET` runs may emit an event, so a subscriber can count a
     // read (area 7; Richard, 2026-11-07): its transaction is `READ ONLY`,
     // so the event is kept in one of its own.
@@ -839,6 +860,7 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
         if let Some(boundary) = ctx.boundary_mut() {
             boundary.sealed = sealed.deliveries;
             boundary.kept = written;
+            boundary.emitted = emitted;
         }
     }
     // The runs it asked to stop, when the application keeps runs in
@@ -906,6 +928,7 @@ pub async fn commit_held(
         deliveries,
         kept,
         erased,
+        emitted,
         ..
     } = held;
     if let Some((store, sql, params)) = then {
@@ -936,6 +959,7 @@ pub async fn commit_held(
         }
         ctx.background_mut().count_kept(kept);
         confirm_erased(ctx, erased);
+        ctx.note_emitted(emitted);
         committed(ctx, deliveries);
         return Ok(());
     }
@@ -944,6 +968,7 @@ pub async fn commit_held(
     }
     ctx.background_mut().count_kept(kept);
     confirm_erased(ctx, erased);
+    ctx.note_emitted(emitted);
     committed(ctx, deliveries);
     Ok(())
 }

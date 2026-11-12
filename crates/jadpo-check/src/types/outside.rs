@@ -137,7 +137,9 @@ pub(super) fn children(node: &Node) -> Vec<SiteId> {
                 ..
             } => out.extend(args.iter().skip(1).flatten().copied()),
             Expr::Call { args, .. } => out.extend(args.iter().flatten().copied()),
-            Expr::Build { fields, .. } | Expr::Reject { fields, .. } => {
+            Expr::Build { fields, .. }
+            | Expr::Reject { fields, .. }
+            | Expr::Emitted { fields, .. } => {
                 out.extend(fields.iter().map(|(_, site)| *site));
             }
             Expr::List { items } => out.extend(items.iter().copied()),
@@ -210,6 +212,7 @@ pub(super) fn children(node: &Node) -> Vec<SiteId> {
             | Expr::Flag { .. }
             | Expr::Constant { .. }
             | Expr::Now
+            | Expr::Made { .. }
             | Expr::SentEmails
             | Expr::Unchecked => {}
         },
