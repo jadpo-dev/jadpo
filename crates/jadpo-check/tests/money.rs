@@ -564,6 +564,89 @@ fn building_a_rate_type_checks_its_currencies() {
     );
 }
 
+/// An update by `id` of an order holding amounts, setting `set`, with the
+/// parameters `params`.
+fn one_step(params: &str, set: &str) -> Vec<String> {
+    rules(&format!(
+        "type OrderNotFound = Failure {{\n    kind: FailureKind.not_found\n}}\n\nentity Order {{\n    id: Uuid\n    total: CakePrice\n    extra: CakePrice\n    charge: Charge\n    paid: Amount?\n}}\n\naction change(order_id: Order.id{params}) fails OrderNotFound -> Order {{\n    return attempt Order.update(order_id) {{\n        set: {{\n{set}        }}\n    }}\n}}\n"
+    ))
+}
+
+#[test]
+fn an_update_by_id_works_an_amount_out_in_one_currency() {
+    // The database adds and subtracts minor units where both amounts'
+    // types fix one currency, under a construction the bounds prove (area
+    // 19, "Money in a translated message").
+    assert_eq!(
+        one_step(
+            ", more: CakePrice",
+            "            total: CakePrice(Order.total + more)\n"
+        ),
+        NONE
+    );
+    assert_eq!(
+        one_step(
+            "",
+            "            total: CakePrice(Order.total + Order.extra)\n"
+        ),
+        NONE,
+        "two stored amounts"
+    );
+    assert_eq!(
+        one_step(
+            "",
+            "            total: CakePrice(Order.total + money.from_minor(250, Currency.gbp))\n"
+        ),
+        NONE,
+        "an amount written out"
+    );
+    // A stored amount copied whole keeps its currency, whatever it is.
+    assert_eq!(
+        one_step("", "            paid: Amount(Order.charge)\n"),
+        NONE,
+        "a copy"
+    );
+    // A difference can fall below the type's `min: 0`.
+    assert_eq!(
+        one_step(
+            ", less: CakePrice",
+            "            total: CakePrice(Order.total - less)\n"
+        ),
+        ["data.stored_value_unproven"]
+    );
+    // Where only the running program knows the currencies, `+` can fail,
+    // which the database can't map for a row.
+    assert_eq!(
+        one_step(
+            ", more: Charge",
+            "            charge: Charge(Order.charge + more)\n"
+        ),
+        ["failure.attempt_required"]
+    );
+    // Only `+` and `-`.
+    assert_eq!(
+        one_step("", "            total: CakePrice(Order.total * 2)\n"),
+        ["data.update_by_id_value"]
+    );
+}
+
+#[test]
+fn an_update_by_id_adds_only_values_of_one_kind() {
+    // An `Instant` moved by a `Duration` is kept in columns of two types,
+    // which SQL's `+` doesn't add as Jadpo does.
+    let entity = "type Gap = Duration {}\n\ntype VisitNotFound = Failure {\n    kind: FailureKind.not_found\n}\n\nentity Visit {\n    id: Uuid\n    seen_at: Instant\n    stayed: Gap\n}\n\n";
+    let update = |set: &str| {
+        rules(&format!(
+            "{entity}action change(visit_id: Visit.id, by: Gap) fails VisitNotFound -> Visit {{\n    return attempt Visit.update(visit_id) {{\n        set: {{\n{set}        }}\n    }}\n}}\n"
+        ))
+    };
+    assert_eq!(
+        update("            seen_at: Visit.seen_at + by\n"),
+        ["data.update_by_id_value"]
+    );
+    assert_eq!(update("            stayed: Gap(Visit.stayed + by)\n"), NONE);
+}
+
 #[test]
 fn zz_debug() {
     let Ok(source) = std::env::var("MONEY_DEBUG") else {

@@ -458,6 +458,8 @@ rules! {
         "A stored field, written `Entity.field`, is read anywhere but an update by `id` of that record";
     DATA_STORED_VALUE_UNPROVEN: "data.stored_value_unproven", area 6, Error, Human,
         "An update by `id` works out a new value from a stored field, and the value could break its type's rules";
+    DATA_UNIQUE_DECIMAL_PLACES: "data.unique_decimal_places", area 5, Error, Agent,
+        "A unique rule covers a field kept as JSON that holds a percentage, or another value whose places its type doesn't fix, which its JSON can write two ways";
     DATA_UNIQUE_NULLABLE_FIELD: "data.unique_nullable_field", area 5, Error, Agent,
         "A unique rule over several fields includes a field that can be `none`";
     DATA_UNIQUE_SINGLE_FIELD: "data.unique_single_field", area 5, Error, Agent,
