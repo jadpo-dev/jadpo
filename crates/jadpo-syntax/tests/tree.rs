@@ -300,3 +300,32 @@ fn an_inline_function_reads_back_one_or_two_parameters() {
         0
     );
 }
+
+/// `_` where a value goes is a typed hole, a value the checker answers
+/// (area 2, "Typed holes"); in a pattern it stays the wildcard.
+#[test]
+fn an_underscore_value_is_a_hole_and_a_pattern_a_wildcard() {
+    let parse = parse_file(
+        "function f(status: Status) -> Count {\n    var count: Count = _\n    return match status {\n        _ -> g(_, count)\n    }\n}\n",
+    );
+    assert!(parse.errors().is_empty(), "{:#?}", parse.errors());
+    let kinds: Vec<SyntaxKind> = parse
+        .syntax()
+        .descendants()
+        .filter(|node| {
+            matches!(
+                node.kind(),
+                SyntaxKind::HOLE_EXPR | SyntaxKind::WILDCARD_PAT
+            )
+        })
+        .map(|node| node.kind())
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            SyntaxKind::HOLE_EXPR,
+            SyntaxKind::WILDCARD_PAT,
+            SyntaxKind::HOLE_EXPR
+        ]
+    );
+}

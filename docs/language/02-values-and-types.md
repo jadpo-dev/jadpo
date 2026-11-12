@@ -2181,6 +2181,72 @@ function restock(product: Product, stock: Stock) -> Product {
 }
 ```
 
+## Typed holes
+<!-- topic: typed-holes -->
+
+Where you don't know which value goes in a place, write `_` there and run
+`jadpo check`. The answer is the error `type.hole`: the type the place
+requires, written as the code would write it, and up to five values that
+fit, closest first, with the edit that writes the closest.
+
+```jadpo check project=typed-holes expect=type.hole
+type BookTitle = Text {
+    max_length: 200
+}
+
+type Book = Object {
+    title: BookTitle
+    author: PersonName
+}
+
+function shelve(title: BookTitle, author: PersonName) -> Book {
+    return Book {
+        title: title
+        author: _
+    }
+}
+```
+
+```text output
+error: `_` stands for a `PersonName`
+ --> main.jadpo:13:17
+   |
+13 |         author: _
+   |                 ^ a `PersonName` goes here
+  reason: `PersonName` is an object: `PersonName { given: GivenName, family: FamilyName? }`. In scope, `author` fits.
+  next: Write `author` (agent)
+  rule: type.hole
+  help: https://jadpo.dev/docs/errors/type.hole
+
+check failed: 1 error, 1 file
+```
+
+- **Where it goes.** `_` stands where a value goes: an argument, a field
+  of an object being built, a `return`, a `var`'s value or a `set:` line.
+  It is never a type or a pattern; in a `match` arm's pattern `_` is the
+  wildcard, as before.
+- **What fits, closest first.** The locals and parameters in scope,
+  nearest first; their fields, one level down (`input.name`); the
+  constants the code can read; `clock.now` where the code may read the
+  clock; then a standard operation or a library function whose result
+  fits and whose every argument is a value in scope, written with them,
+  fewest arguments first. An operation that can fail needs `attempt`, so
+  it isn't offered.
+- **When nothing fits.** An object is written out with a `_` for each
+  field that can't be `none` and `none` for the rest, so the next check
+  answers each of those holes in turn; a standard type's next step names
+  `jadpo help <Type>`.
+- **Where nothing says the type**, as in `_ + 1` or `_.count`, the error
+  says so: declare the value with its type first, `var name: Type = _`.
+- **It can never ship.** A hole is an error like every other finding and
+  can't be declined, so a project holding one never checks, runs its
+  tests or builds, and the code around it isn't reported unused while it
+  is there.
+
+`jadpo check --json` gives the type as `expected` and the values as
+`fits`, each with its text, its type and the edit that writes it, and
+hovering over the `_` in the editor shows the same.
+
 ## What is built
 <!-- topic: values-and-types-built -->
 
@@ -2198,6 +2264,7 @@ Every error this page's rules produce. Each page has an example that
 triggers it and the compiler's actual output.
 
 - [`type.mismatch`](../errors/type.mismatch.md)
+- [`type.hole`](../errors/type.hole.md)
 - [`type.sibling_mismatch`](../errors/type.sibling_mismatch.md)
 - [`type.primitive_signature`](../errors/type.primitive_signature.md)
 - [`type.invalid_literal`](../errors/type.invalid_literal.md)

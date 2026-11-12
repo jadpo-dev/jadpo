@@ -36,6 +36,7 @@ mod fakes;
 mod features;
 mod files;
 mod generate;
+mod hole;
 mod identity;
 mod json;
 mod keys;
@@ -82,6 +83,7 @@ use facts::{Facts, LocalFact};
 pub(crate) use facts::{NodeKey, node_key};
 pub use failing::Fallible;
 pub(crate) use features::{is_feature, wrong_arguments as feature_arguments};
+pub use hole::hole_problems;
 pub(crate) use lower::transition_key;
 pub use template::{template_body, template_reads};
 
@@ -575,6 +577,9 @@ struct Body<'a> {
     /// Whether this callable uses a name that isn't defined: an unused
     /// variable is then most likely the name that was meant.
     unknown_name: bool,
+    /// Whether this callable holds a typed hole (area 2): its code isn't
+    /// finished, so what it declares and doesn't read yet isn't reported.
+    holed: bool,
     /// Locals whose scope has closed without a read.
     unused: Vec<Local>,
     last_call: CallKind,
@@ -662,6 +667,7 @@ impl<'a> Body<'a> {
             word: "function",
             library: None,
             unknown_name: false,
+            holed: false,
             unused: Vec::new(),
             last_call: CallKind::Other,
             dead: false,
@@ -1071,7 +1077,7 @@ impl Body<'_> {
         {
             self.missing_return(word, body);
         }
-        if !self.unknown_name {
+        if !self.unknown_name && !self.holed {
             let unused = std::mem::take(&mut self.unused);
             for local in unused {
                 self.unused_variable(&local);
@@ -1951,6 +1957,10 @@ impl Body<'_> {
             }
             Expr::MatchExpr(subject) => self.match_stmt(subject),
             Expr::ElisionExpr(_) => true,
+            Expr::HoleExpr(_) => {
+                self.hole(expr, None);
+                true
+            }
             Expr::CallExpr(_) | Expr::RecordExpr(_) => {
                 self.last_call = CallKind::Other;
                 let ty = self.infer(expr);

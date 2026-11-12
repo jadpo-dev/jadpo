@@ -53,6 +53,7 @@ topics = [
   "collections",
   "when-one-type-can-stand-in-for-another",
   "values-never-change",
+  "typed-holes",
 ]
 built = [
   "values-and-types-built",

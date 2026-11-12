@@ -59,6 +59,7 @@ mod geospatial;
 mod graph;
 mod graph_nodes;
 mod habits;
+mod holes;
 mod identity;
 mod imports;
 mod in_memory;

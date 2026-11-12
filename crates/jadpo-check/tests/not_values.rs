@@ -334,6 +334,20 @@ fn a_declaration_is_not_a_value_wherever_a_value_is_read() {
     );
 }
 
+/// A typed hole (area 2, "Typed holes") is one error wherever a value is
+/// read, whatever the place requires.
+#[test]
+fn a_hole_is_one_error_wherever_a_value_is_read() {
+    let mut missed = Vec::new();
+    for site in SITES {
+        let found = check(&at(site, "_"));
+        if found != ["type.hole"] {
+            missed.push(format!("`_` as {}: {found:?}", site.name));
+        }
+    }
+    assert!(missed.is_empty(), "{}", missed.join("\n"));
+}
+
 #[test]
 fn what_is_a_value_stays_one() {
     for (code, why) in [

@@ -435,6 +435,9 @@ impl Server {
 
     fn hover(&mut self, params: &HoverParams) -> Option<Hover> {
         let position = &params.text_document_position_params;
+        if let Some(hole) = self.hole_hover(&position.text_document.uri, position.position) {
+            return Some(hole);
+        }
         let (found, text, (start, end)) =
             self.found(&position.text_document.uri, position.position)?;
         let sql = match &found {
@@ -456,6 +459,32 @@ impl Server {
                 value,
             }),
             range: Some(convert::range(&text, start, end, self.encoding)),
+        })
+    }
+
+    /// Hovering over a typed hole shows what its error says (area 2,
+    /// "Typed holes"): the type that goes there and what in scope fits.
+    fn hole_hover(&self, uri: &Uri, position: lsp_types::Position) -> Option<Hover> {
+        let loaded = self.loaded.as_ref()?;
+        let path = self.relative(uri)?;
+        let file = loaded.file(&path)?;
+        let text = file.text(&loaded.db).clone();
+        let offset = convert::offset(&text, position, self.encoding)?;
+        let problems = jadpo_check::check(&loaded.db, loaded.project);
+        let (problem, span) = problems.iter().find_map(|problem| {
+            let label = problem.primary.as_ref()?;
+            (problem.hole.is_some()
+                && label.span.path == path
+                && label.span.start <= offset
+                && offset <= label.span.end)
+                .then(|| (problem, label.span.clone()))
+        })?;
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: hover::hole(problem)?,
+            }),
+            range: Some(convert::range(&text, span.start, span.end, self.encoding)),
         })
     }
 
