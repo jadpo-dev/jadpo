@@ -338,6 +338,13 @@ work below (Richard, 2026-11-08).
 
 10. Data and queries (areas 5, 6, 19 and 20), added by the audit of
     2026-11-08. Each keeps every test passing on both executors.
+    - [ ] **Q2b A one-step update that refuses** `opus · xhigh`: notes for
+      area 6, "A one-step update that refuses". A stored-value construction
+      in an update by `id`'s `set:` mapping the rules it can break, as
+      `stock: Stock(Product.stock - ordered) { min: OutOfStock }`: the
+      statement's `WHERE` checks them, and no row updated is the mapped
+      failure, so the update never reruns. Split from Q2 (2026-11-12),
+      which built the rest.
     - [ ] **Q3 What `jadpo migrate new` still refuses** `opus · high`: area 5,
       "A stored value is checked when it is read", "Migrations" and "Batches,
       locks and resuming". A new `pattern:` on a stored field; column type
