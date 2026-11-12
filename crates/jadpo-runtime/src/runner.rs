@@ -1848,6 +1848,10 @@ pub struct Backfill<'v> {
     /// type's places, rounded half to even, and a value its rules refuse
     /// stops the backfill.
     pub validator: Option<&'v Validator>,
+    /// For a refit (chunk Q3), how the field's own column is read, so each
+    /// stored value is checked with `validator` and only those it refuses
+    /// are replaced: `None` for any other backfill.
+    pub refits: Option<jadpo_std::read::Column>,
 }
 
 /// Works out the latest migration's backfills that have no SQL form with
@@ -1998,6 +2002,20 @@ impl crate::Backfills for InJadpo<'_> {
         field: &str,
         values: &[&SqlValue],
     ) -> Result<Vec<Option<String>>, crate::Unworked> {
+        // A refit's stored values, each read as its column holds it and
+        // checked with the field's rules now (chunk Q3).
+        if self.json_of(migration, field).is_none()
+            && let Some(backfill) = self
+                .backfills
+                .iter()
+                .find(|backfill| backfill.migration == migration && backfill.field == field)
+            && let Some(column) = &backfill.refits
+        {
+            return Ok(values
+                .iter()
+                .map(|value| refused(field, column, backfill.validator, value))
+                .collect());
+        }
         let (codecs, number) = self
             .json_of(migration, field)
             .ok_or(crate::Unworked::Unavailable)?;
@@ -2009,6 +2027,26 @@ impl crate::Backfills for InJadpo<'_> {
             })
             .collect())
     }
+}
+
+/// Why the field's rules refuse `value`, a stored value of `field`'s
+/// column read as `column` holds it, never the value: `None` when they
+/// allow it (chunk Q3). A value the column can't read as its type now (a
+/// variant gone) is refused too; `none` breaks no rule.
+fn refused(
+    field: &str,
+    column: &jadpo_std::read::Column,
+    validator: Option<&Validator>,
+    value: &SqlValue,
+) -> Option<String> {
+    if matches!(value, SqlValue::Null(_)) {
+        return None;
+    }
+    let Ok(read) = crate::from_sql(value, column) else {
+        return Some(format!("a stored `{field}` its type no longer holds"));
+    };
+    let validator = validator?;
+    crate::kept_by(field, validator, &read).err()
 }
 
 /// The value a backfill's run gave, kept and checked as its field keeps
@@ -2835,6 +2873,7 @@ mod tests {
                 held: vec![None],
                 write: SqlType::Numeric,
                 validator: Some(&cost),
+                refits: None,
             }],
         );
         let rows: Vec<Vec<SqlValue>> = ["2.345", "2.355", "7"]
@@ -2896,6 +2935,7 @@ mod tests {
                 held: vec![Some(("Order.price".into(), &price))],
                 write: SqlType::Numeric,
                 validator: None,
+                refits: None,
             }],
         );
         let kept = [SqlValue::Numeric("12.50".into())];

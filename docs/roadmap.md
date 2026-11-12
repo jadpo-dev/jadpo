@@ -331,13 +331,17 @@ work below (Richard, 2026-11-08).
       statement's `WHERE` checks them, and no row updated is the mapped
       failure, so the update never reruns. Split from Q2 (2026-11-12),
       which built the rest.
-    - [ ] **Q3 What `jadpo migrate new` still refuses** `opus · high`: area 5,
-      "A stored value is checked when it is read", "Migrations" and "Batches,
-      locks and resuming". A new `pattern:` on a stored field; column type
-      changes other than widening; a computed backfill for a field that allows
-      less; a backfill filling a value held in several columns or reading one held so
-      or as JSON; a backfill of a new required money field; and `CHECK`
-      constraints holding fields' rules.
+    - [x] **Q3 What `jadpo migrate new` still refuses**: a new `pattern:` and
+      a computed backfill for a field that allows less, in area 5, "Changing
+      what a field allows", and its notes, "Refits".
+    - [ ] **Q3b The rest of what `jadpo migrate new` refuses** `opus · high`:
+      area 5, "Migrations", "A stored value is checked when it is read" and
+      "Batches, locks and resuming". Column type changes other than widening
+      (the form of the conversion is a language decision, since changing a
+      column in place drops what servers on the old build read); a backfill
+      filling a value held in several columns, a new required money field's
+      among them, or reading one held so or as JSON; and `CHECK` constraints
+      holding fields' rules. Split from Q3 (2026-11-12), which built refits.
     - [ ] **Q4 A `geo.` condition in an include or an aggregate** `opus ·
       high`: area 20, "What is built"; area 6, "The aggregates".
     - [ ] **Q5 Reading a second store** `opus · xhigh`: area 6, "One store per
