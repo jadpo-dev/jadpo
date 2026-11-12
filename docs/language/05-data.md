@@ -916,7 +916,6 @@ it:
 - `kind: IndexKind.hnsw` makes pgvector's HNSW index on one vector field,
   with `m:` and `ef_construction:` for tuning
   ([The vector index](21-ai.md#the-vector-index) under AI).
-
 - `kind: IndexKind.json` makes PostgreSQL's GIN index on one field kept
   whole as its JSON, with `jsonb`'s own operator class, `jsonb_ops`. It
   finds records by what the value holds, for a lookup made from outside
