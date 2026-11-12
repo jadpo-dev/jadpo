@@ -1195,10 +1195,39 @@ impl Body<'_> {
                     self.one_step(entity, &value, written);
                     if let Some(field) = tree::name_text(name) {
                         self.stored_scale(entity, &field, &value, written);
+                        self.stored_into_sealed(entity, &field, &value, written);
                     }
                 }
             }
         }
+    }
+
+    /// A value the database works out from stored fields, set on a field
+    /// kept sealed: only the application seals a value, so no statement
+    /// can write one it works out there (area 15, "Encrypted fields";
+    /// chunk Q2).
+    fn stored_into_sealed(&mut self, entity: &str, field: &str, value: &Expr, written: &str) {
+        let reads_stored = std::iter::once(value.syntax().clone())
+            .chain(value.syntax().descendants())
+            .any(|node| self.facts.stored.contains(&node_key(&node)));
+        if !reads_stored || !crate::data::sealed::is_sealed(self.db, self.project, entity, field) {
+            return;
+        }
+        let span = self.span(value);
+        self.out.push(
+            Diagnostic::new(
+                &rule::DATA_ENCRYPTED_FIELD_USED,
+                format!("`{written}` by `id` can't work out `{entity}.{field}`, which is encrypted"),
+            )
+            .at(span, "worked out by the database")
+            .reason(format!(
+                "`{entity}.{field}` is kept sealed: its column holds bytes only the application seals, so a value the database works out from stored fields can't be written there."
+            ))
+            .next(format!(
+                "Load the record and update it, `{written}({}) {{ set: {{ ... }} }}`",
+                crate::case::to_snake(entity)
+            )),
+        );
     }
 
     /// An update changing a field that never changes (`immutable: true`),
@@ -1778,7 +1807,10 @@ impl Body<'_> {
     /// one-step updates"): it uses only the action's parameters, constants,
     /// `clock.now` and the record's stored fields, never a value read
     /// earlier in the action; and the database works out a stored field
-    /// only with `+` and `-`, under constructions that can't fail.
+    /// only with `+` and `-`, under constructions that can't fail. A value
+    /// kept whole as its JSON is only copied, since JSON has no `+`; an
+    /// amount of money adds in one currency, which the types prove, or code
+    /// would have needed an `attempt` (chunk Q2).
     fn one_step(&mut self, entity: &str, value: &Expr, written: &str) {
         let root = value.syntax().clone();
         for node in std::iter::once(root.clone()).chain(root.descendants().skip(1)) {
@@ -1837,57 +1869,9 @@ impl Body<'_> {
                 }
             }
             if self.facts.stored.contains(&node_key(&node)) {
-                // A value stored whole as JSON is written through the
-                // route codec, which the database doesn't run (chunk
-                // 5.9b).
-                let json = self.facts.types.get(&node_key(&node)).is_some_and(|ty| {
-                    crate::data::column_type(self.table, ty).as_deref() == Ok("jsonb")
-                });
-                if json {
-                    let span = crate::tree::node_span(self.path, &node);
-                    let shown = crate::tree::written(&node);
-                    self.out.push(
-                        Diagnostic::new(
-                            &rule::TOOLCHAIN_NOT_BUILT_YET,
-                            format!("`{written}` by `id` working out `{shown}` isn't built yet"),
-                        )
-                        .at(span, "stored as JSON")
-                        .reason(format!(
-                            "`{shown}` is stored whole as its JSON in one `jsonb` column, which Jadpo writes through its type's codec and the database doesn't work out in one step yet."
-                        ))
-                        .next(format!(
-                            "Load the record and update it, `{written}({}) {{ set: {{ ... }} }}`, for now",
-                            crate::case::to_snake(entity)
-                        )),
-                    );
-                    return;
-                }
-                // An amount of money is stored in two columns, which the
-                // database doesn't work out in one step yet (area 19).
-                let money = self
-                    .facts
-                    .types
-                    .get(&node_key(&node))
-                    .is_some_and(|ty| self.table.representation(ty) == Some(Prim::Money));
-                if money {
-                    let span = crate::tree::node_span(self.path, &node);
-                    let shown = crate::tree::written(&node);
-                    self.out.push(
-                        Diagnostic::new(
-                            &rule::TOOLCHAIN_NOT_BUILT_YET,
-                            format!("`{written}` by `id` working out `{shown}` isn't built yet"),
-                        )
-                        .at(span, "an amount of money, stored")
-                        .reason(format!(
-                            "`{shown}` is an amount of money, stored as its minor units and its currency in two columns, which this compiler doesn't have the database work out in one step yet."
-                        ))
-                        .next(format!(
-                            "Load the record and update it, `{written}({}) {{ set: {{ ... }} }}`, for now",
-                            crate::case::to_snake(entity)
-                        )),
-                    );
-                    return;
-                }
+                // A value kept whole as its JSON is copied as it is, and an
+                // amount of money worked out in its minor units, its
+                // currency the one both sides' types fix (chunk Q2).
                 self.stored_operand(&node, &root, entity, written);
             }
         }
@@ -2014,9 +1998,32 @@ impl Body<'_> {
             };
             let allowed = match parent.kind() {
                 SyntaxKind::PAREN_EXPR | SyntaxKind::ARG | SyntaxKind::ARG_LIST => true,
-                SyntaxKind::BIN_EXPR => ast::BinExpr::cast(parent.clone())
-                    .and_then(|binary| binary.op())
-                    .is_some_and(|op| matches!(op.text(), "+" | "-")),
+                SyntaxKind::BIN_EXPR => match ast::BinExpr::cast(parent.clone()) {
+                    Some(binary)
+                        if binary.op().is_some_and(|op| matches!(op.text(), "+" | "-")) =>
+                    {
+                        if let Some((shown, kinds)) = self.mixed_sum(&binary) {
+                            let span = crate::tree::node_span(self.path, &parent);
+                            self.out.push(
+                                Diagnostic::new(
+                                    &rule::DATA_UPDATE_BY_ID_VALUE,
+                                    format!("`{written}` by `id` works out `{shown}`, which the database can't"),
+                                )
+                                .at(span, kinds)
+                                .reason(format!(
+                                    "The database works out a value from `{entity}`'s stored fields with `+` and `-` between values of one kind, numbers, text, durations or amounts of money in one currency, which give the same result in SQL as in Jadpo; anything else needs the record loaded first."
+                                ))
+                                .next(format!(
+                                    "Load the record and update it, `{written}({}) {{ set: {{ ... }} }}`",
+                                    crate::case::to_snake(entity)
+                                )),
+                            );
+                            return;
+                        }
+                        true
+                    }
+                    _ => false,
+                },
                 SyntaxKind::PREFIX_EXPR => ast::PrefixExpr::cast(parent.clone())
                     .and_then(|prefix| prefix.op())
                     .is_some_and(|op| op.kind() == SyntaxKind::MINUS),
@@ -2078,6 +2085,32 @@ impl Body<'_> {
             }
             child = parent;
         }
+    }
+
+    /// A `+` or `-` the database can't work out as Jadpo does: one whose
+    /// operands are of two kinds, a whole number and a decimal aside, such
+    /// as an `Instant` moved by a `Duration`, which SQL holds in columns of
+    /// different types. Gives it as written, and its kinds.
+    fn mixed_sum(&self, binary: &ast::BinExpr) -> Option<(String, String)> {
+        let kind = |expr: &Expr| {
+            let inner = match expr {
+                Expr::ParenExpr(paren) => paren.expr()?,
+                other => other.clone(),
+            };
+            self.facts
+                .types
+                .get(&node_key(inner.syntax()))
+                .and_then(|ty| self.table.representation(ty))
+        };
+        let (left, right) = (kind(&binary.lhs()?)?, kind(&binary.rhs()?)?);
+        let numbers = |kind: Prim| matches!(kind, Prim::Int | Prim::Decimal);
+        if left == right || (numbers(left) && numbers(right)) {
+            return None;
+        }
+        Some((
+            tree::written(binary.syntax()),
+            format!("{} and {}", left.name(), right.name()),
+        ))
     }
 
     /// `Post.view_count` as a value: the stored field, which an update by

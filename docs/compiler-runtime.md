@@ -2554,7 +2554,13 @@ value (a record built without an optional `Input` field remembers it,
 nullable counts as left out, `FieldPlan::none_left_out`, so a patch never
 sends `NULL` to a required column). An update by `id` works out a stored field
 (`Post.view_count + 1`) in the statement, with `+` and `-` only (`+` on
-text is `||`). A delete
+text is `||`); a value kept in several columns or as JSON is copied
+column by column, and an amount of money's `+` and `-` add its minor
+units under `jadpo_sql::statement::money_minor`, which fails the
+statement past 2^53 - 1 (`writes::stored_parts`). A unique rule or a
+declared B-tree over a value kept as JSON holds `md5("<column>"::text)`
+(`Unique::digest`, `Index::digest`), so a rule holding one is a unique
+index, created and dropped as one. A delete
 removes the row; by `id`, no row is `Missing`, and of a loaded record it is
 a fault, since a record changed by another transaction is a concurrent
 change and one this transaction can't see was deleted by it, or loaded

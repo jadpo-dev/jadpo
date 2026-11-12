@@ -1172,6 +1172,18 @@ pub fn migration_sql(
                     }),
                 }
             }
+            // A unique rule holding a value kept as JSON is a unique index
+            // of its digest, dropped as an index is (chunk Q2).
+            Change::DropUnique { name, .. }
+                if old
+                    .and_then(|t| t.unique.get(name))
+                    .is_some_and(|u| !u.digest.is_empty()) =>
+            {
+                plan.drop.push(Statement {
+                    sql: table::drop_index(name),
+                    does: "drop unique rule",
+                });
+            }
             Change::DropForeignKey { table, name, .. }
             | Change::DropUnique { table, name, .. }
             | Change::DropCheck { table, name, .. } => {
@@ -1744,13 +1756,26 @@ fn widens(from: &str, to: &str) -> bool {
 }
 
 fn add_unique(table: &str, name: &str, def: &Table) -> Statement {
-    let columns = def
-        .unique
-        .get(name)
-        .map(|u| u.columns.as_slice())
-        .unwrap_or_default();
+    let unique = def.unique.get(name);
+    let columns = unique.map(|u| u.columns.as_slice()).unwrap_or_default();
+    // One holding a value kept as JSON holds its digest, which only an
+    // index can (chunk Q2).
+    let sql = match unique {
+        Some(unique) if !unique.digest.is_empty() => {
+            let columns: Vec<table::IndexColumn<'_>> = columns
+                .iter()
+                .map(|column| table::IndexColumn {
+                    name: column,
+                    collate: false,
+                    digest: unique.digest.contains(column),
+                })
+                .collect();
+            table::create_unique_index(table, name, &columns)
+        }
+        _ => table::add_unique(table, name, columns),
+    };
     Statement {
-        sql: table::add_unique(table, name, columns),
+        sql,
         does: "add unique rule",
     }
 }
@@ -1805,6 +1830,7 @@ fn create_index(table: &str, name: &str, def: &Table) -> Statement {
                 .map(|column| table::IndexColumn {
                     name: column,
                     collate: i.collate.contains(column),
+                    digest: i.digest.contains(column),
                 })
                 .collect()
         })
@@ -2150,6 +2176,7 @@ mod tests {
                     reason: "index Todo.by_old".into(),
                     predicate: None,
                     collate: Vec::new(),
+                    digest: Vec::new(),
                     method: None,
                 },
             );
@@ -2474,6 +2501,7 @@ mod tests {
                     reason: "search Todo".into(),
                     predicate: None,
                     collate: Vec::new(),
+                    digest: Vec::new(),
                     method: Some(crate::schema::IndexMethod {
                         name: "gin".into(),
                         operator_class: String::new(),

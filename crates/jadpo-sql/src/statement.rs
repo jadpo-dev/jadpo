@@ -545,6 +545,19 @@ pub fn negate(operand: &str) -> String {
     format!("(-{operand})")
 }
 
+/// `minor`, minor units of money the database worked out, held to what
+/// an amount holds (area 19, "Money and payments"; chunk Q2): past 2^53 - 1
+/// either side the statement fails as `numeric_value_out_of_range`, as
+/// `+` on an `Int` past 64 bits does, since past that working one out in
+/// code is overflow. Within it, `minor` times 1; past it, times
+/// `i64::MAX`, which overflows, with no branch for the planner to work
+/// out ahead.
+pub fn money_minor(minor: &str) -> String {
+    let limit = jadpo_std::http::SAFE_INTEGER + 1;
+    let past = i64::MAX - 1;
+    format!("({minor} * (1 + LEAST(abs({minor}) / {limit}, 1) * {past}))")
+}
+
 /// One purge batch: `DELETE` from `table` of at most `batch` rows meeting
 /// `conditions`, oldest `since` first, locked without waiting on any
 /// another transaction holds, returning their `id`s.

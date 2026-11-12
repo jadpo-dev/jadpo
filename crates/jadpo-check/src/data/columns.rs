@@ -477,6 +477,7 @@ pub fn system_table(system: &jadpo_std::system::SystemTable) -> Table {
                 Unique {
                     columns: strings(u.columns),
                     rule: u.rule.to_string(),
+                    digest: Vec::new(),
                 },
             )
         })
@@ -507,6 +508,7 @@ pub fn system_table(system: &jadpo_std::system::SystemTable) -> Table {
                     reason: i.reason.to_string(),
                     predicate: None,
                     collate: Vec::new(),
+                    digest: Vec::new(),
                     method: None,
                 },
             )

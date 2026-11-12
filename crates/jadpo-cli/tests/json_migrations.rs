@@ -543,3 +543,100 @@ fn a_required_structured_field_added_to_a_table_with_rows_takes_a_backfill() {
         "both are required once filled"
     );
 }
+
+/// A parcel whose label is unique, kept as JSON, with an index of its
+/// delivery and a JSON index of its tags (chunk Q2).
+const KEYED_PARCEL: &str = "use shipping/types { Delivery, Label, Tag }\n\nentity Parcel {\n    id: Uuid\n    label: Label {\n        unique: true\n    }\n    delivery: Delivery\n    tags: List<Tag>\n\n    indexes: {\n        by_delivery: [delivery]\n        by_tags: {\n            fields: [tags]\n            kind: IndexKind.json\n        }\n    }\n}\n";
+
+/// Runs `sql` in a transaction of its own, giving the store's refusal.
+fn tried(url: &str, sql: &str) -> Result<(), jadpo_runtime::StoreError> {
+    let store = jadpo_host_native::postgres(url).expect("store");
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let mut transaction = store.begin().await?;
+        transaction.batch(sql).await?;
+        transaction.commit().await
+    })
+}
+
+#[test]
+fn a_unique_rule_and_an_index_hold_a_stored_value_of_any_size_by_its_digest() {
+    let root = folder("keyed");
+    write(&root, "app.jadpo", "application {}\n");
+    write(&root, TAG, &tag(20));
+    write(&root, LABEL, LABEL_TYPE);
+    write(&root, DELIVERY, &delivery(PICKUP_OR_COURIER));
+    write(&root, PARCEL, KEYED_PARCEL);
+    ok(&jadpo(&root, &["migrate", "new", "initial"]));
+    let sql = file(&root, &latest(&root), "postgres.sql");
+    for expected in [
+        "CREATE UNIQUE INDEX \"parcel_label_key\" ON \"parcel\" ((md5(\"label\"::text)));",
+        "CREATE INDEX \"parcel_by_delivery_idx\" ON \"parcel\" ((md5(\"delivery\"::text)));",
+        "CREATE INDEX \"parcel_by_tags_idx\" ON \"parcel\" USING gin (\"tags\");",
+    ] {
+        assert!(sql.contains(expected), "{expected}\n{sql}");
+    }
+    let snapshot = jadpo_graph::schema::Schema::read(&file(&root, &latest(&root), "snapshot.json"))
+        .expect("snapshot");
+    assert_eq!(
+        snapshot.stores["main"].tables["parcel"].unique["parcel_label_key"].digest,
+        ["label"]
+    );
+    jadpo(&root, &["records", "update"]);
+    ok(&jadpo(&root, &["check"]));
+    if !jadpo_test::live() {
+        return;
+    }
+    let url = first_applied(&root, "json_keyed");
+    // A label of 100,000 characters, far past the 2.7 kB a B-tree's entry
+    // holds: its digest fits, the value never needs to.
+    let line = "x".repeat(100_000);
+    let parcel = |label: &str, tags: &str| {
+        format!(
+            "INSERT INTO \"parcel\" (\"id\", \"label\", \"delivery\", \"tags\") VALUES (gen_random_uuid(), '{label}'::jsonb, '{{\"tag\": \"courier\", \"company\": \"{line}\"}}'::jsonb, '{tags}'::jsonb)"
+        )
+    };
+    let long = format!("{{\"line\": \"{line}\", \"note\": null}}");
+    statement(&url, &parcel(&long, &format!("[\"{line}\", \"fragile\"]")));
+    // The same label, its keys written in another order, is the same JSON
+    // to `jsonb` and so the same digest: the rule names it.
+    let reordered = format!("{{\"note\": null, \"line\": \"{line}\"}}");
+    assert_eq!(
+        tried(&url, &parcel(&reordered, "[]")),
+        Err(jadpo_runtime::StoreError::Conflict {
+            constraint: "parcel_label_key".into()
+        })
+    );
+    // Another label is kept, whatever it shares with the first.
+    statement(
+        &url,
+        &parcel("{\"line\": \"short\", \"note\": null}", "[\"fragile\"]"),
+    );
+    assert_eq!(
+        rows(
+            &url,
+            "SELECT count(*) FROM \"parcel\" WHERE \"tags\" @> '[\"fragile\"]'"
+        ),
+        vec![vec!["2".to_string()]]
+    );
+    assert_eq!(
+        rows(
+            &url,
+            "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'parcel' AND indexname <> 'parcel_pkey' ORDER BY 1"
+        ),
+        vec![
+            vec![
+                "parcel_by_delivery_idx".to_string(),
+                "CREATE INDEX parcel_by_delivery_idx ON public.parcel USING btree (md5((delivery)::text))".to_string(),
+            ],
+            vec![
+                "parcel_by_tags_idx".to_string(),
+                "CREATE INDEX parcel_by_tags_idx ON public.parcel USING gin (tags)".to_string(),
+            ],
+            vec![
+                "parcel_label_key".to_string(),
+                "CREATE UNIQUE INDEX parcel_label_key ON public.parcel USING btree (md5((label)::text))".to_string(),
+            ],
+        ]
+    );
+}

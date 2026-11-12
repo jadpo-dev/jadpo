@@ -215,15 +215,23 @@ impl Reader<'_> {
     }
 
     /// What `ty`, kept as JSON, holds that JSON can write two ways for one
-    /// value: a decimal or a percentage whose places its type doesn't fix,
-    /// anywhere inside, a standard type's parts included.
+    /// value ([`spelled_two_ways`]).
     fn spelled_two_ways(&self, ty: &Ty) -> Option<String> {
-        let reads = crate::data::columns::json_reads(self.lookup, ty);
-        let mut seen = BTreeSet::new();
-        let mut found = None;
-        two_ways(&reads.shape, &reads.types, &mut seen, &mut found);
-        found
+        spelled_two_ways(self.lookup, ty)
     }
+}
+
+/// What `ty`, kept as JSON, holds that JSON can write two ways for one
+/// value: a decimal or a percentage whose places its type doesn't fix,
+/// anywhere inside, a standard type's parts included. The database tells
+/// two such values apart where code's `==` doesn't, so a query compares
+/// none and a unique rule covers none (chunk Q2).
+pub(crate) fn spelled_two_ways(lookup: &dyn crate::types::TypeView, ty: &Ty) -> Option<String> {
+    let reads = crate::data::columns::json_reads(lookup, ty);
+    let mut seen = BTreeSet::new();
+    let mut found = None;
+    two_ways(&reads.shape, &reads.types, &mut seen, &mut found);
+    found
 }
 
 /// The standard type an amount of money is.

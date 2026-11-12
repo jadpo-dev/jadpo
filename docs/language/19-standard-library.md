@@ -3407,10 +3407,37 @@ action pay_deposit(order: Order, paid: Deposit) -> Order {
 }
 ```
 
+```jadpo check project=money-orders file=domains/bakery/failures/order_not_found.jadpo hidden
+/// No order has this id.
+type OrderNotFound = Failure {
+    kind: FailureKind.not_found
+}
+```
+
+An update by `id` adds to an amount in one step, as it adds to a count
+([Counters and other one-step updates](06-reads-and-writes.md#counters-and-other-one-step-updates)).
+Both amounts' types fix pounds, so the database adds their pence, and
+an extra another request adds at the same moment is never lost:
+
+```jadpo check project=money-orders file=domains/bakery/actions/add_extra.jadpo
+use bakery/entities { Order }
+use bakery/types { CakePrice }
+use bakery/failures { OrderNotFound }
+
+/// Adds `extra`, such as candles, to an order's total.
+action add_extra(order_id: Order.id, extra: CakePrice) fails OrderNotFound -> Order {
+    return attempt Order.update(order_id) {
+        set: {
+            total: CakePrice(Order.total + extra)
+        }
+    }
+}
+```
+
 ```jadpo check project=money-orders file=domains/bakery/actions/place_order.test.jadpo
 use bakery/entities { Order }
 use bakery/types { CakePrice, Deposit }
-use bakery/actions { pay_deposit }
+use bakery/actions { add_extra, pay_deposit }
 
 test "an order keeps its amounts as they were written" {
     var placed: Order = place_order(CakePrice(money.from_minor(4250, Currency.gbp)))
@@ -3422,15 +3449,34 @@ test "an order keeps its amounts as they were written" {
     assert order_after_deposit.deposit == paid.deposit
     assert order_after_deposit.deposit == Deposit(money.from_minor(2000, Currency.eur))
 }
+
+test "the database adds an extra to the stored total" {
+    var placed: Order = place_order(CakePrice(money.from_minor(4250, Currency.gbp)))
+    var candles: Order = attempt add_extra(
+        placed.id,
+        CakePrice(money.from_minor(350, Currency.gbp))
+    )
+    assert candles.total == money.from_minor(4600, Currency.gbp)
+    var card: Order = attempt add_extra(placed.id, CakePrice(money.from_minor(125, Currency.gbp)))
+    assert card.total == money.from_minor(4725, Currency.gbp)
+}
 ```
+
+The statement is `UPDATE "order" SET "total_amount" = ...,
+"total_currency" = "total_currency"`, the pence held to what an amount
+holds: past 2^53 - 1 minor units either side it fails, as working the
+amount out in code is overflow. A stored amount copied whole keeps its
+currency, whatever it is. Where only the running program knows a
+currency, as with `Deposit`, `+` can fail with `currency_mismatch`,
+which no statement can map for a row, so the action loads the order
+first.
 
 A query compares an amount by both its columns, so £10 and €10 are
 unequal, and orders amounts by their minor units only where the field's
 type fixes its currency
 ([Values kept in several columns or as JSON](06-reads-and-writes.md#values-kept-in-several-columns-or-as-json)).
 
-Not built yet: a one-step update that works an amount out, and a backfill
-of a new required money field. Each is reported as
+Not built yet: a backfill of a new required money field, reported as
 `toolchain.not_built_yet`.
 
 ## Prices, discounts and rates
@@ -12597,7 +12643,7 @@ what Jadpo took from each, is in the
 | Everything on this page not listed below | Built |
 | What keys held as data allow: `crypto.verify_totp` and HS256 in `crypto.verify_jwt` | Not built yet |
 | A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename` | Not built yet: a swap waits on [Review and records](18-records-and-manifest.md), `jadpo rename` on [Tools](14-tooling.md) |
-| A one-step update working an amount of money out, and a backfill of a new required one | Not built yet: `toolchain.not_built_yet` names each |
+| A backfill of a new required amount of money | Not built yet: `toolchain.not_built_yet` names it |
 | The UK modulus check in `BankAccount` | Not built yet: waits on Vocalink's permission to ship its tables |
 | Checking `UnLocode`, `IataAirport`, `IcaoAirport`, `IataAirline` and `Icd10Code` against their lists | Not built yet: waits on licences that allow shipping the lists |
 | [Policy](09-policy.md)'s scopes narrowing `OAuthScope` | Not built yet: waits on [Policy](09-policy.md) |

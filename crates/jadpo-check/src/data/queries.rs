@@ -40,7 +40,7 @@ mod aggregates;
 mod conditions;
 mod geo;
 mod includes;
-mod kept;
+pub(crate) mod kept;
 mod missing;
 mod operations;
 mod order;
