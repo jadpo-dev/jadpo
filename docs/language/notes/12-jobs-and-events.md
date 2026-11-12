@@ -77,11 +77,12 @@ Numbered as the questions they settled, which other pages cite.
     is there so that a rerun repeats each call under its key, and no
     second call fails for good after the first took effect without the
     warning ("Several changing calls in one action").
-12. **The limits** under "Limits and runtime faults" are defaults, to
-    confirm with measured runs: 1,000 events per action, 64 KB per event,
-    chains 16 deep, which stops only loops since paging uses batches, 15
-    minutes per run, batches of up to 1,000 items or 4 MiB of file, and at
-    most 8 changing calls per action.
+12. **The limits** under "Limits and runtime faults" are defaults,
+    decided 2026-11-11, Richard accepting the recommendation, and still
+    to be checked against measured runs: 1,000 events per action, 64 KB
+    per event, chains 16 deep, which stops only loops since paging uses
+    batches, 15 minutes per run, batches of up to 1,000 items or 4 MiB of
+    file, and at most 8 changing calls per action.
 13. **An export reads live data**, a batch walking keyset pages, not one
     consistent snapshot; a `from:` ordered by a field that can be updated
     is the declinable error `type.batch_order_updatable`, since every
@@ -175,7 +176,7 @@ Carried from other areas, and the choices the topic sections leave open:
 | Queue messages the store refuses | A message whose event the store refuses as a statement, as it would every time it was sent (a value it can't take, such as a text holding `\u0000`, which `jsonb` can't hold), is parked `unreadable` and acknowledged, so the queue doesn't send it again until its retention deletes it. A store that can't be reached, a conflict, a concurrent change or a fault the driver can't classify still leaves it on the queue, to be kept when it is sent again |
 | A delivery's answer closes its breaker | A delivery attempt whose call through a connection its provider answered closes the connection's breaker and releases what it holds, whatever the breaker's state when the delivery was claimed, as "When a provider keeps failing" says of a delivery already running when the breaker opened. It is one conditional statement after each attempt that called the provider, changing nothing while the breaker is closed with no failures in a run |
 | Publishing's shape (chunk C1, 2026-11-11) | `application { publishing: { <connection>: { events: [...] } } }`, the twin of `receiving:`, each connection listing what it publishes. Only a `public` event of one of the app's domains leaves, since a receiver writes code against it, or `AuditEntryRecorded` while an entity is audited; a package's events are refused, being another system's data already; an event holding a `File` or `FileContents` is refused, as a queue's is, since a store's key means nothing outside. Personal data in a published event is an exit through its connection (`Through::Published`), which has no package to declare `erasure:`, so it needs `ErasureNotPossible` as any such connection does. Anything wrong is one rule, `publishing.invalid`, as `receiving.invalid` is |
-| `Driver.webhook` (chunk C1) | The first `publishing` driver is one address the operator gives, `url:` (a `Url` setting or an address written out) and `secret:` (a secret setting), a declared connection listed in the network report, held to the connection rule: HTTPS, or plain HTTP only to this machine. Addresses customers register are outgoing webhooks proper, with the runtime-owned network exception and per-customer secrets, and aren't built: how a customer registers one and how its secret is kept is left for a maintainer, since that is a security decision. Cloudflare Queues, SQS and Pub/Sub come later |
+| `Driver.webhook` (chunk C1) | The first `publishing` driver is one address the operator gives, `url:` (a `Url` setting or an address written out) and `secret:` (a secret setting), a declared connection listed in the network report, held to the connection rule: HTTPS, or plain HTTP only to this machine. Addresses customers register are outgoing webhooks proper, with the runtime-owned network exception and per-customer secrets, and aren't built: how a customer registers one and how its secret is kept are decided in area 16's notes, "Addresses customers register". Cloudflare Queues, SQS and Pub/Sub come later |
 | What a published event is sent as (chunk C1) | A `POST` of `{"id": <event id>, "type": <type>, "data": <payload>}` as `application/json`: the id is the event's outbox row, the same through every connection and on every attempt, and in the body too because a Jadpo receiver reads a webhook's id from its body; the payload is the contract's JSON, as the outbox keeps it. The type is the event's `wire_name:`, or its identity key without the kind (`planning.TodoCompleted`, the born name), so renaming the event doesn't change what receivers see; two events named alike through one connection are refused |
 | Signing (chunk C1) | Standard Webhooks' `v1`: `webhook-id`, `webhook-timestamp` (the seconds as it is sent, so a receiver's five-minute window holds for a retry a day later) and `webhook-signature: v1,<Base64 of HMAC-SHA-256(<id>.<timestamp>.<body>)>`, the key the Base64 after `whsec_` or the secret's own bytes, exactly as Jadpo checks `SignatureScheme.standard_webhooks` on a webhook it receives, so one Jadpo app publishing to another needs nothing written. One shared secret per connection, as a received webhook's is. `traceparent` is a new span of the emitting work's trace |
 | Retries for a published event (chunk C1) | A subscriber's defaults, 10 attempts within 24 hours with the outbox's backoff, each attempt sent under the event's id as a keyed call, so an answer that may have acted is retried, never parked. A `2xx` delivers it; `408`, `429`, a `5xx`, no answer in 15 seconds or none at all are `unavailable` and retried, and count towards the connection's circuit breaker; a redirect (never followed), `401` and `403` are `misconfigured`; any other refusal is the failure `refused`, which the same event would get again, so it fails and waits in `jadpo deliveries` for an operator, as a subscriber's declared failure does. No `retry:` on `publishing:` until an app needs one |
@@ -243,5 +244,6 @@ into this page moved here. Nothing in this list changed a rule.
   quietly in most frameworks: a job that stops running produces no error
   at all, which is why every part of a schedule's life is recorded and
   checked.
-- **The limits are recommendations** to confirm with measured runs
+- **The limits are accepted** (decided 2026-11-11, Richard accepting the
+  recommendation) and are still to be checked against measured runs
   (decision 12).
