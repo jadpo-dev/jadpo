@@ -1176,7 +1176,7 @@ fn change_groups(
                     (Some(was), Some(now)) if was.nullable == now.nullable => {
                         if was.allows.is_none() {
                             "what it allows, recorded".into()
-                        } else if jadpo_graph::migration::narrowed(was, now) {
+                        } else if jadpo_graph::migration::allows_less(was, now) {
                             "allows less".into()
                         } else {
                             "allows more".into()
@@ -2039,6 +2039,7 @@ mod tests {
             entity: "Todo".into(),
             field: "rank".into(),
             kind: NeededKind::Retire,
+            in_jadpo: false,
         };
         let model = DataModel::default();
         let table = jadpo_check::types::TypeTable::default();

@@ -142,6 +142,7 @@ mod receiving;
 mod record_base;
 mod recordings;
 mod records;
+mod refits;
 mod registry_commands;
 mod released;
 mod removals;

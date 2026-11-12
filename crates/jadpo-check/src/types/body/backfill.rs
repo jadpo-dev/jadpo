@@ -18,10 +18,12 @@ impl Body<'_> {
             value,
             retired,
             added,
+            refitted,
         } = target;
         self.stored = Some(entity);
         self.retired = retired;
         self.added = added;
+        self.refitted = refitted;
         self.result = ty.clone();
         self.check(&value, &ty);
         // `attempt` passes a failure on, and a backfill has nowhere to
@@ -102,6 +104,33 @@ impl Body<'_> {
                 ))
                 .next(format!(
                     "Work the value out from the fields `{entity}` had before this migration, or a constant"
+                )),
+        );
+    }
+
+    /// How a backfill reads a field this migration refits, if `field` is
+    /// one (chunk Q3): as the built-in type its column holds, or `None`
+    /// for one it isn't offered.
+    pub(super) fn refitted_field(&self, field: &str) -> Option<Option<super::Ty>> {
+        self.refitted
+            .iter()
+            .find(|(name, _)| name == field)
+            .map(|(_, ty)| ty.clone())
+    }
+
+    /// The error for a backfill reading a field this migration refits
+    /// whose column holds no built-in type (an enum's variant): its stored
+    /// value may be one its type no longer has (chunk Q3).
+    pub(super) fn backfill_reads_refitted(&mut self, span: Span, written: &str) {
+        let key = self.flow.name.clone();
+        let entity = key.split('.').next().unwrap_or_default().to_string();
+        self.out.push(
+            crate::data::backfill::outside_row(&key, written, span, "a field this migration refits")
+                .reason(format!(
+                    "`{written}` allows less after this migration, so a stored value may be one its type no longer has; a backfill reads such a field only as the built-in type its column holds, and an enum's variant isn't one."
+                ))
+                .next(format!(
+                    "Work the value out from `{entity}`'s other fields, or a constant"
                 )),
         );
     }

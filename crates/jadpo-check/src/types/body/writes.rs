@@ -2171,6 +2171,19 @@ impl Body<'_> {
                 self.backfill_reads_added(span, &format!("{head}.{field}"));
                 return Some(Ty::Error);
             }
+            // A field this migration refits is read as its column holds
+            // it, since a stored value may break its rules now (chunk Q3).
+            if self.context == super::Context::Backfill
+                && let Some(refitted) = self.refitted_field(&field)
+            {
+                let Some(ty) = refitted else {
+                    let span = self.span(expr);
+                    self.backfill_reads_refitted(span, &format!("{head}.{field}"));
+                    return Some(Ty::Error);
+                };
+                self.facts.stored.insert(node_key(expr.syntax()));
+                return Some(ty);
+            }
             self.facts.stored.insert(node_key(expr.syntax()));
             return Some(self.table.field_type(head, &[field]));
         }
