@@ -48,7 +48,7 @@ pub(crate) type Field<'a> = (&'a str, &'a str);
 /// `types` knows them.
 pub(crate) fn in_value(path: &str, expr: &Expr, types: Option<&dyn TypeView>) -> Option<Found> {
     match expr {
-        Expr::NameRef(_) | Expr::ElisionExpr(_) => None,
+        Expr::NameRef(_) | Expr::ElisionExpr(_) | Expr::HoleExpr(_) => None,
         Expr::FieldExpr(_) => {
             let (first, rest) = dotted(expr)?;
             variant(path, &first, &rest, expr.syntax(), types?)

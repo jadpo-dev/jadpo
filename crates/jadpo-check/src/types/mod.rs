@@ -40,8 +40,8 @@ pub(crate) use body::transition_key;
 pub(crate) use body::{BodyView, LocalKind, ViewLocal, members_of};
 pub use body::{
     Callable, Checked, FailureSet, FailureSets, Fallible, backfill_callables, body_problems,
-    call_problems, callables_of, failure_set, failure_sets, rule_callables, template_body,
-    template_reads, typed_body,
+    call_problems, callables_of, failure_set, failure_sets, hole_problems, rule_callables,
+    template_body, template_reads, typed_body,
 };
 pub(crate) use body::{batch_fields, sign_in_object_fields};
 pub use connections::called_connections;

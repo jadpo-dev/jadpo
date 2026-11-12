@@ -2804,6 +2804,11 @@ fn primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
             p.bump(DOT3);
             ELISION_EXPR
         }
+        // A typed hole: the checker says what goes here (area 2).
+        UNDERSCORE => {
+            p.bump(UNDERSCORE);
+            HOLE_EXPR
+        }
         kind if kind.is_keyword() && !p.on_new_line() && !p.at(ELSE_KW) => {
             reserved_value(p);
             p.bump_remap(IDENT);

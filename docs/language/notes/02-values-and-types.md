@@ -28,12 +28,12 @@ a `set:` line), and is always the error `type.hole`, decided by the
 agent:
 
 ```text
-error: `_` stands for a `Greeting.name`
+error: `_` stands for a `PersonName`
  --> domains/hello/actions/greet.jadpo:7:15
   |
 7 |         name: _
-  |               ^ a `Greeting.name` goes here
-  reason: `Greeting.name` is a `PersonName { given: GivenName, family: FamilyName? }`. In scope, `input.name` fits.
+  |               ^ a `PersonName` goes here
+  reason: `PersonName` is an object: `PersonName { given: GivenName, family: FamilyName? }`. In scope, `input.name` fits.
   next: Write `input.name` (agent)
   rule: type.hole
 ```
@@ -44,18 +44,18 @@ error: `_` stands for a `Greeting.name`
   fit, closest first: locals and parameters, their fields one level
   down (`input.name`), constants, and library and standard calls whose
   result fits. With one fit, `next:` carries its edit; with none, the
-  edit that builds one (`Greeting.name(PersonName { given: ..., family:
-  none })`) and `jadpo help <Type>` for a standard type. `--json` adds
+  edit that builds one (`PersonName { given: _, family: none }`) and
+  `jadpo help <Type>` for a standard type. `--json` adds
   `expected` (the type as written) and `fits` (each one's text, type
   and edit), so a tool reads them without parsing the reason. Hovering
   over `_` in the editor shows the same.
 - **One form, `_`, and only as a value.** No named holes (`?name`, as in
   Agda and Idris): every error already gives its place. `_` is already
   the `match` wildcard, "anything" in a pattern; as a value it reads as
-  "not chosen yet", as in Haskell. Today `_` as a value is
-  `syntax.expected_expression`, which ignores the type the checker
-  knows is wanted there, so this turns an existing, unhelpful error into
-  a useful one, with no new token or reserved word. Not in a type
+  "not chosen yet", as in Haskell. Without holes, `_` as a value would
+  be `syntax.expected_expression`, which ignores the type the checker
+  knows is wanted there; a hole turns that unhelpful error into a useful
+  one, with no new token or reserved word. Not in a type
   (`List<_>`) or a pattern: type positions have completion and `jadpo
   help types`.
 - **Where nothing says the type** (`_ + 1`, `_.count`), the same rule
@@ -167,6 +167,7 @@ gives.
 | Messages and `PluralCount` | `Message` is a type base for translated messages, its fields the placeholders; `PluralCount` is a built-in whole number that picks a plural form, and `TextDirection` a locale's direction; enums have no display labels, and their wording for people lives in translations (area 10). |
 | Types from the services decisions | `File`, `FileUpload`, `UploadSlot`, `FileContents`, the batch types, `CsvFormat`, `SearchText`, `OAuthGrant`, `AnyObject` and the `Document` base, as [Other built-in types](../02-values-and-types.md#other-built-in-types) lists them (areas 11, 12 and 16). |
 | Typed holes (decided 2026-11-11, Richard accepting the recommendation) | `_` may stand where a value goes (an argument, a field of an object being built, a `return`, a `var`'s value, a `set:` line), never in a type or a pattern, and is always the error `type.hole`, decided by the agent: it names the type as the code would write it and up to five values in scope that fit, closest first, with the edit for one. It can't be declined, so a project with a hole never checks, tests or builds. See "Typed holes" above |
+| Typed holes as built (2026-11-12, the obvious recommendation) | In an object being built a hole names the field's declared type (`PersonName`, not `Greeting.name`), since building accepts it (question 2), so its edit needs no wrapper. The edit that builds an object writes `_` for each field that can't be `none` and `none` for the rest, so the next `check` answers each in turn. Closest first means the locals and parameters nearest first, their fields, the constants the code can read, `clock.now` where the clock may be read, then a standard operation or library function whose result fits and whose every required argument is a value in scope, fewest arguments first; one that can fail, or reads the random generator or a model in pure code, isn't offered. A `_` the bodies' check doesn't read (a declaration's setting, a route's `run:`, a query's clauses) is still `type.hole`, without fits; no other error is reported at a hole's place, and a callable holding one reports no unused variable. Hover shows `_: <Type>` and each fit with its type. |
 | What an `AnyObject` takes (2026-11-11, the obvious recommendation) | One of the app's own `Object` types, declared in a domain or `shared/` outside every package, or a field type naming one (`Order.details`), or an `AnyObject` passed on; anything else is `type.mismatch`, saying an object type goes there. Not a package's type, which the page's "the app's object types" leaves out and whose fields go on a provider's wire in that provider's spellings; not an entity, an `Input`, an `Output` or an event, whose shapes are a store's or a route's, not something to send as variables. A package's own code never names one of the app's types, so there it only passes on an `AnyObject` it was given. |
 | Where `AnyObject` is written (2026-11-11, the obvious recommendation) | Only as a field of a provider package's `Object` type, `AnyObject` or `AnyObject?`, never in a `List`, `Set` or `Map`, a signature, a `var` or the app's own types: `type.any_object_outside_input`. A collection is left out because its items would each be any type, which no template or metadata needs and assignability doesn't follow (a `List<Order>` is never a `List<AnyObject>`). A type that holds one, however deep, may be only what an operation's `input:` holds: an operation's `output:` or `wire_output:`, a webhook's `reply:` and a type with any base but `Object` (an event, an email, an `Input`, an entity) holding one is the same rule, since nothing records which type its JSON was and so nothing reads one back. |
 | How an `AnyObject` goes out (2026-11-11, the obvious recommendation) | As its own type's codec writes it, the app's contract, with `none` fields left out as on any provider wire. Because the package's input doesn't declare what it holds, the checks a declared input gets run where the object is given: a `Password` in it is `type.password_sent_to_provider`, declined above the action as at a call; a `File` is sent as its bytes and a `FileContents` as its Base64, as a declared input sends them (chunk B14), so a store and key never go out; other secret values go out as themselves, as in a declared input. The plan holds a codec for each of the app's object types under the name its records carry, built only when a type holding an `AnyObject` is sent. |

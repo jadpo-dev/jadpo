@@ -4,7 +4,7 @@
 
 use std::fmt::Write as _;
 
-use jadpo_diag::{Diagnostic, Label, Span};
+use jadpo_diag::{Diagnostic, Edit, Label, Span};
 
 use crate::sources::{Position, Sources};
 
@@ -325,11 +325,7 @@ pub fn diagnostic_json(diagnostic: &Diagnostic, sources: &dyn Sources) -> Json {
             ("decides", next.decides.word().into()),
             (
                 "edits",
-                Json::array(next.edits.iter().map(|edit| {
-                    let mut entries = span_entries(&edit.span, sources);
-                    entries.push(("replacement".into(), Json::from(&edit.replacement)));
-                    Json::Object(entries)
-                })),
+                Json::array(next.edits.iter().map(|edit| edit_json(edit, sources))),
             ),
         ])
     });
@@ -365,12 +361,33 @@ pub fn diagnostic_json(diagnostic: &Diagnostic, sources: &dyn Sources) -> Json {
         ),
         ("impact", diagnostic.impact.as_ref().into()),
     ];
+    // A typed hole's type and what fits it (area 2, "Typed holes"), so a
+    // tool reads them without parsing the reason.
+    if let Some(hole) = &diagnostic.hole {
+        entries.push(("expected", hole.expected.as_ref().into()));
+        entries.push((
+            "fits",
+            Json::array(hole.fits.iter().map(|fit| {
+                Json::object([
+                    ("text", Json::from(&fit.text)),
+                    ("type", Json::from(&fit.ty)),
+                    ("edit", edit_json(&fit.edit, sources)),
+                ])
+            })),
+        ));
+    }
     // A repeat points at the first that says the same (chunk A14).
     match diagnostic.repeat_of {
         Some(first) => entries.push(("sameAs", first.into())),
         None => entries.push(("help", diagnostic.help().into())),
     }
     Json::object(entries)
+}
+
+fn edit_json(edit: &Edit, sources: &dyn Sources) -> Json {
+    let mut entries = span_entries(&edit.span, sources);
+    entries.push(("replacement".into(), Json::from(&edit.replacement)));
+    Json::Object(entries)
 }
 
 fn label_json(label: &Label, sources: &dyn Sources) -> Json {
