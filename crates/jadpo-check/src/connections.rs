@@ -2399,10 +2399,28 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
     // Each sign-in provider's discovery, keys and token endpoint (area 8,
     // "Providers"; chunk A7b).
     for provider in &identity.providers {
+        let Some(issuer) = &provider.issuer else {
+            // GitHub's fixed addresses (chunk N1): the code exchanged at
+            // `github.com`, the account read from `api.github.com`.
+            let reached_for = "runtime sign-in: the code exchange, and the account's ID, name and address; public HTTPS, no redirects";
+            for host in ["https://github.com", "https://api.github.com"] {
+                rows.push(Row {
+                    connection: provider.name.clone(),
+                    host: host.trim_start_matches("https://").to_string(),
+                    address: Some(host.to_string()),
+                    setting: None,
+                    image: None,
+                    when: None,
+                    reached_for: reached_for.into(),
+                    domains: Vec::new(),
+                });
+            }
+            continue;
+        };
         rows.push(Row {
             connection: provider.name.clone(),
-            host: format!("the issuer in `config.{}` and the public HTTPS keys and token addresses its verified discovery document names", provider.issuer),
-            address: None, setting: Some(provider.issuer.clone()), image: None,
+            host: format!("the issuer in `config.{issuer}` and the public HTTPS keys and token addresses its verified discovery document names"),
+            address: None, setting: Some(issuer.clone()), image: None,
             when: None, reached_for: "runtime sign-in: discovery, signing keys and the code exchange; public HTTPS, no redirects".into(), domains: Vec::new(),
         });
     }

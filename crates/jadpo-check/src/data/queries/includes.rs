@@ -278,27 +278,9 @@ impl Reader<'_> {
                 self.search_refused = Some("an include's `where:`");
                 let read = self.filter_line(scope, target, member, *present);
                 self.search_refused = None;
-                if let Some(condition) = read {
-                    // An include's records aren't rechecked in code, which
-                    // a `geo.` condition needs (area 20, chunk 5.5u5).
-                    if condition.searches() {
-                        let at = member.value().map_or_else(
-                            || name_span.clone(),
-                            |value| Self::span(scope.path, &value),
-                        );
-                        self.out.push(
-                            Diagnostic::new(
-                                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                                "A `geo.` condition in an include isn't built yet".to_string(),
-                            )
-                            .at(at, "in an include")
-                            .reason("A `geo.` condition's records are found through a GiST index and each is held to Jadpo's own test again as the query runs; this compiler does that for a query's own records, not yet for those an include adds.")
-                            .next("Query the related records with a query of their own"),
-                        );
-                        continue;
-                    }
-                    filter.push(condition);
-                }
+                // A `geo.` condition's records are rechecked in code as
+                // the include runs, as a query's are (chunk Q4).
+                filter.extend(read);
             }
         }
         let mut order = Vec::new();

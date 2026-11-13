@@ -358,6 +358,22 @@ pub trait Outbound {
         let _ = (url, form, limit, timeout_ms);
         Box::pin(async { Err("this host posts to no provider".to_string()) })
     }
+
+    /// `GET`s `url` as [`Outbound::get`] does, sending `headers`, which
+    /// the runtime chose, besides: what GitHub's API is asked with a
+    /// sign-in's access token (area 8, "Providers"; chunk N1). Neither the
+    /// headers nor their values reach a log. A host that sends none says
+    /// so.
+    fn get_with<'a>(
+        &'a self,
+        url: &'a str,
+        headers: &'a [(&'a str, String)],
+        limit: usize,
+        timeout_ms: u64,
+    ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
+        let _ = (url, headers, limit, timeout_ms);
+        Box::pin(async { Err("this host asks no provider's API".to_string()) })
+    }
 }
 
 /// Whether `ip` is an address on the public internet, what an

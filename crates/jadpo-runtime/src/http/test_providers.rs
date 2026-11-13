@@ -100,15 +100,17 @@ pub async fn sign_in(
             .and_then(|values| values.first())
             .cloned()
     };
-    let (Some(state), Some(nonce), Some(challenge), Some(redirect), Some(client)) = (
+    let (Some(state), Some(challenge), Some(redirect), Some(client)) = (
         asked("state"),
-        asked("nonce"),
         asked("code_challenge"),
         asked("redirect_uri"),
         asked("client_id"),
     ) else {
         return defect(ctx, "the provider's address names no sign-in to answer", at);
     };
+    // GitHub's sign-in carries no nonce, since it signs no ID token
+    // (chunk N1).
+    let nonce = asked("nonce").unwrap_or_default();
     // The local issuer signs the account in, as the provider would.
     let now = ctx.now();
     let code = match ctx.host().local_issuer() {

@@ -2543,7 +2543,11 @@ as `jadpo_std::read::Recheck`: each `Check` an operation and its operands
 (a column of the row, a value from the read's arguments, a constant), run
 by `jadpo_value::run`, the code a function body's call runs, and an order
 by an operation's result (`geo.distance`), with the refetch-when-short
-loop `jadpo_runtime::read` keeps for any of them. An exact operation's
+loop `jadpo_runtime::read` keeps for any of them. An include holds its
+own (`IncludeRead::recheck`), refetching while one record's list comes
+out short; an aggregate query's are `ReadPlan::decided`, a statement
+finding the records before the grouped one, whose kept ids the totals
+read as `Source::Kept` (chunk Q4). An exact operation's
 other arguments are written into its expression, so
 `jadpo_sql::condition::index_expression` gives the same text for the
 B-tree the checker derives on it (`jadpo_graph::schema::Index::expression`,
@@ -3107,7 +3111,8 @@ fault is a 500 whose fault the host logs.
 **Sign-in providers** (area 8, "Providers"; chunk A7b). The checker
 reads each `Driver.oidc` connection in `jadpo_check::sign_in_providers`
 (`issuer:` a `Url`, `client_id:` a `Text`, `credential:` a secret
-setting) and `sign_in: { providers: }` into `Identity::providers`, once
+setting), and each `Driver.github` one (chunk N1) with no `issuer:`,
+`Provider::driver` saying which, and `sign_in: { providers: }` into `Identity::providers`, once
 a browser session's origin and `on_first_sign_in:` hold; the type table
 gives `SignInMethod` a value per provider after the language's own, read
 from the syntax alone (`sign_in_providers::declared`) so it needs no
@@ -3127,7 +3132,17 @@ external tokens' bounds; the code goes to the token endpoint through
 `global_fetch_strictly_public` set where providers are served). The ID
 token is checked by `id_token` (signature, exact `iss`, `aud`, `azp`,
 times, `nonce`) and only `sub`, `email`, `email_verified` and `name`
-reach `FirstSignIn`. The account's user comes from
+reach `FirstSignIn`. A GitHub provider (`ProviderDriver::Github`,
+chunk N1) has no discovery or keys (`ProviderSettings::keys` is `None`):
+its start goes to `GITHUB_AUTHORIZE` without a nonce, and its callback
+exchanges the code at `GITHUB_TOKEN` through `post_form`, then reads
+`GITHUB_USER` and `GITHUB_EMAILS` through `Outbound::get_with` (native
+`Outward` and Workers' fetch both send the runtime's headers, a header
+value that can't be sent refusing the request unnamed) with the access
+token, which only that call holds; `github_account` reads the numeric
+`id`, `name` and the primary address and its `verified`. The network
+report lists `github.com` and `api.github.com` for it. The account's
+user comes from
 `sign_in_links::first`, then a session starts with `SignedIn`, whose way
 in carries a provider's ordinal (`sign_in_events::Way`). In tests the
 local issuer is the provider: its `authorize` and `redeem` answer in

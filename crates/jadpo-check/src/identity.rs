@@ -1685,7 +1685,7 @@ impl Reader<'_> {
                     "`providers:` isn't a list of connections",
                 )
                 .at(key.clone(), "not a list")
-                .reason("`providers:` names the connections in `app.jadpo` people sign in through, each on `Driver.oidc`.")
+                .reason("`providers:` names the connections in `app.jadpo` people sign in through, each on `Driver.oidc` or `Driver.github`.")
                 .next("Write `providers: [<connection>]`"),
             );
             return None;
@@ -1724,7 +1724,7 @@ impl Reader<'_> {
                 continue;
             }
             clean = false;
-            // A connection on `Driver.oidc` that didn't read cleanly says
+            // A sign-in provider's connection that didn't read cleanly says
             // why where it is declared.
             if connections.declared.contains(&name) {
                 continue;
@@ -1734,11 +1734,11 @@ impl Reader<'_> {
                 .is_some()
             {
                 format!(
-                    "`{name}` is a connection, but not a sign-in provider: one is `driver: Driver.oidc`, with its issuer, client ID and client secret."
+                    "`{name}` is a connection, but not a sign-in provider: one is `driver: Driver.oidc`, with its issuer, client ID and client secret, or `driver: Driver.github`, with its client ID and client secret."
                 )
             } else {
                 format!(
-                    "No connection in `app.jadpo` is called `{name}`. A sign-in provider is a connection on `Driver.oidc`, with its issuer, client ID and client secret."
+                    "No connection in `app.jadpo` is called `{name}`. A sign-in provider is a connection on `Driver.oidc`, with its issuer, client ID and client secret, or on `Driver.github`, with its client ID and client secret."
                 )
             };
             self.out.problems.push(
@@ -1746,7 +1746,7 @@ impl Reader<'_> {
                     &rule::SEMANTIC_AUTH_SETTING_INVALID,
                     format!("`{name}` isn't a sign-in provider"),
                 )
-                .at(at, "not a `Driver.oidc` connection")
+                .at(at, "not a sign-in provider's connection")
                 .reason(reason)
                 .next(format!(
                     "Declare `{name}: {{ driver: Driver.oidc  issuer: config.<name>  client_id: config.<name>  credential: config.<name> }}` in `connections:`"

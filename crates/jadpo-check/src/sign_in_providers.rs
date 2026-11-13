@@ -1,6 +1,7 @@
-//! Sign-in providers (area 8, "Providers"; chunk A7b): each `Driver.oidc`
-//! connection, read with its settings, and the names `sign_in: {
-//! providers: [...] }` gives, which `SignInMethod` gains a value for.
+//! Sign-in providers (area 8, "Providers"; chunk A7b): each connection on
+//! `Driver.oidc` or `Driver.github`, read with its settings, and the names
+//! `sign_in: { providers: [...] }` gives, which `SignInMethod` gains a
+//! value for.
 //!
 //! - **A connection on `Driver.oidc`** takes `issuer:` (a `Url`
 //!   setting), `client_id:` (a `Text` setting) and `credential:` (a
@@ -9,6 +10,12 @@
 //!   signs in, which only a provider whose tokens name the company (Google
 //!   and Microsoft) can keep to. The runtime reads the rest from the
 //!   provider's discovery document.
+//! - **A connection on `Driver.github`** (chunk N1) takes `client_id:` and
+//!   `credential:` alone: GitHub's addresses are fixed, so it has no
+//!   `issuer:`, and a GitHub sign-in names no company, so it has no
+//!   `organisation:`.
+//! - **`Driver.apple`** is decided and not built yet:
+//!   `toolchain.not_built_yet` where it is written.
 //! - **The names `providers:` gives** are read from the syntax alone
 //!   ([`declared`]), since the type table reads them and the identity
 //!   reads the type table.
@@ -23,12 +30,14 @@ use crate::lookups::Lookup;
 use crate::tree::{self, name_text, node_span};
 use crate::types::{Prim, TypeView};
 
-/// One connection on `Driver.oidc`, read cleanly: the settings its
-/// issuer, its client ID and its client secret are read from.
+/// One sign-in provider's connection, read cleanly: its driver and the
+/// settings its issuer (OpenID Connect only), its client ID and its client
+/// secret are read from.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Provider {
     pub name: String,
-    pub issuer: String,
+    pub driver: jadpo_std::http::ProviderDriver,
+    pub issuer: Option<String>,
     pub client_id: String,
     pub secret: String,
     /// `organisation:`'s `Text` setting: the company whose accounts alone
@@ -40,7 +49,7 @@ pub struct Provider {
 pub struct Providers {
     /// Each that reads cleanly, as declared.
     pub list: Vec<Provider>,
-    /// Every connection on `Driver.oidc`, read cleanly or not.
+    /// Every sign-in provider's connection, read cleanly or not.
     pub declared: Vec<String>,
     pub problems: Vec<Diagnostic>,
 }
@@ -58,9 +67,32 @@ const SETTINGS: [(&str, &str); 3] = [
     ("credential", "Text { secret: true }"),
 ];
 
-/// Each connection with `driver: Driver.oidc`.
+/// The driver a sign-in connection's `driver:` names.
+fn driver_of(list: Option<ast::MemberList>) -> Option<jadpo_std::Driver> {
+    for (setting, member) in tree::members(list) {
+        if name_text(&setting).as_deref() != Some("driver") {
+            continue;
+        }
+        let (first, rest) = tree::dotted(&member.value()?)?;
+        let names: Vec<String> = std::iter::once(first)
+            .chain(rest)
+            .filter_map(|name| tree::name_ref_text(&name))
+            .collect();
+        return match names.as_slice() {
+            [host, variant] if host == jadpo_std::Driver::NAME => {
+                jadpo_std::Driver::from_name(variant)
+            }
+            _ => None,
+        };
+    }
+    None
+}
+
+/// Each connection on `Driver.oidc` or `Driver.github`, and the one on
+/// `Driver.apple` that isn't built yet.
 #[salsa::tracked(returns(ref))]
 pub fn oidc_connections(db: &dyn Db, project: Project) -> Providers {
+    use jadpo_std::http::ProviderDriver;
     let mut out = Providers::default();
     let lookup = Lookup::new(db, project);
     for found in crate::config::singletons(db, project, "application") {
@@ -76,6 +108,33 @@ pub fn oidc_connections(db: &dyn Db, project: Project) -> Providers {
                     continue;
                 }
                 out.declared.push(connection.clone());
+                let driver = match driver_of(entry.block()) {
+                    Some(jadpo_std::Driver::Github) => ProviderDriver::Github,
+                    Some(jadpo_std::Driver::Apple) => {
+                        let at = tree::members(entry.block())
+                            .into_iter()
+                            .find(|(setting, _)| name_text(setting).as_deref() == Some("driver"))
+                            .and_then(|(_, option)| option.value())
+                            .map_or_else(
+                                || node_span(&found.path, name.syntax()),
+                                |value| node_span(&found.path, value.syntax()),
+                            );
+                        out.problems.push(
+                            Diagnostic::new(
+                                &rule::TOOLCHAIN_NOT_BUILT_YET,
+                                "Sign in with Apple isn't built yet",
+                            )
+                            .at(at, "decided, not built")
+                            .reason("`Driver.apple` is decided (area 8, \"Providers\") and not built yet: Apple's client secret is a token the app signs with its private key, and Apple sends the person back with a form post.")
+                            .next(format!("Leave `{connection}` out for now, or sign in through `Driver.oidc` or `Driver.github`")),
+                        );
+                        continue;
+                    }
+                    _ => ProviderDriver::Oidc,
+                };
+                let github = driver == ProviderDriver::Github;
+                let wanted_settings: &[(&str, &str)] =
+                    if github { &SETTINGS[1..] } else { &SETTINGS };
                 let mut read: [Option<String>; 3] = [None, None, None];
                 let mut organisation = None;
                 let mut clean = true;
@@ -87,6 +146,32 @@ pub fn oidc_connections(db: &dyn Db, project: Project) -> Providers {
                         |value| node_span(&found.path, value.syntax()),
                     );
                     if word == "driver" {
+                        continue;
+                    }
+                    // GitHub's addresses are fixed, and its sign-in names
+                    // no company (chunk N1).
+                    if github && (word == "issuer" || word == "organisation") {
+                        clean = false;
+                        let (label, reason) = if word == "issuer" {
+                            (
+                                "GitHub's addresses are fixed",
+                                "A sign-in provider on `Driver.github` signs people in at GitHub's own addresses, `github.com` and `api.github.com`, so it has no issuer to set; it takes `client_id:` and `credential:`.",
+                            )
+                        } else {
+                            (
+                                "GitHub names no company",
+                                "`organisation:` is checked against the claim a provider's ID tokens name the account's company by, and GitHub's sign-in has no ID token and names no company, so a GitHub connection can't keep to one company's accounts.",
+                            )
+                        };
+                        out.problems.push(
+                            Diagnostic::new(
+                                &rule::CONNECTION_KEY_INVALID,
+                                format!("`{word}` isn't a setting of `{connection}`"),
+                            )
+                            .at(span, label)
+                            .reason(reason)
+                            .next(format!("Remove `{word}:`")),
+                        );
                         continue;
                     }
                     // The company whose accounts alone it signs in (chunk
@@ -119,13 +204,24 @@ pub fn oidc_connections(db: &dyn Db, project: Project) -> Providers {
                     }
                     let Some(at) = SETTINGS.iter().position(|(known, _)| *known == word) else {
                         clean = false;
+                        let (label, reason) = if github {
+                            (
+                                "not a GitHub setting",
+                                "A sign-in provider on `Driver.github` takes `client_id:` and `credential:`, each read from a setting; GitHub's addresses are fixed.",
+                            )
+                        } else {
+                            (
+                                "not an OpenID Connect setting",
+                                "A sign-in provider on `Driver.oidc` takes `issuer:`, `client_id:` and `credential:`, and optionally `organisation:`, each read from a setting; its discovery document gives the rest.",
+                            )
+                        };
                         out.problems.push(
                             Diagnostic::new(
                                 &rule::CONNECTION_KEY_INVALID,
                                 format!("`{word}` isn't a setting of `{connection}`"),
                             )
-                            .at(span, "not an OpenID Connect setting")
-                            .reason("A sign-in provider on `Driver.oidc` takes `issuer:`, `client_id:` and `credential:`, and optionally `organisation:`, each read from a setting; its discovery document gives the rest.")
+                            .at(span, label)
+                            .reason(reason)
                             .next(format!("Remove `{word}:`")),
                         );
                         continue;
@@ -175,22 +271,32 @@ pub fn oidc_connections(db: &dyn Db, project: Project) -> Providers {
                             )),
                     );
                 }
-                for (word, wanted) in SETTINGS {
+                for (word, wanted) in wanted_settings {
                     let written = members
                         .iter()
-                        .any(|(setting, _)| name_text(setting).as_deref() == Some(word));
+                        .any(|(setting, _)| name_text(setting).as_deref() == Some(*word));
                     if written {
                         continue;
                     }
                     clean = false;
+                    let reason = if github {
+                        "A sign-in provider on `Driver.github` needs the client ID GitHub gave the app and its client secret, each read from a setting."
+                    } else {
+                        "A sign-in provider on `Driver.oidc` needs its issuer, the client ID the provider gave the app and its client secret, each read from a setting."
+                    };
                     out.problems.push(
                         Diagnostic::new(
                             &rule::CONNECTION_KEY_MISSING,
                             format!("`{connection}` has no `{word}:`"),
                         )
-                        .at(node_span(&found.path, name.syntax()), format!("no `{word}:`"))
-                        .reason("A sign-in provider on `Driver.oidc` needs its issuer, the client ID the provider gave the app and its client secret, each read from a setting.")
-                        .next(format!("Add `{word}: config.<name>`, reading a `{wanted}` setting")),
+                        .at(
+                            node_span(&found.path, name.syntax()),
+                            format!("no `{word}:`"),
+                        )
+                        .reason(reason)
+                        .next(format!(
+                            "Add `{word}: config.<name>`, reading a `{wanted}` setting"
+                        )),
                     );
                 }
                 // A provider whose tokens name no company can't keep to
@@ -231,15 +337,24 @@ pub fn oidc_connections(db: &dyn Db, project: Project) -> Providers {
                         );
                     }
                 }
-                if let ([Some(issuer), Some(client_id), Some(secret)], true) = (read, clean) {
-                    out.list.push(Provider {
-                        name: connection,
-                        issuer,
-                        client_id,
-                        secret,
-                        organisation,
-                    });
+                let [issuer, client_id, secret] = read;
+                if !clean {
+                    continue;
                 }
+                let (Some(client_id), Some(secret)) = (client_id, secret) else {
+                    continue;
+                };
+                if !github && issuer.is_none() {
+                    continue;
+                }
+                out.list.push(Provider {
+                    name: connection,
+                    driver,
+                    issuer,
+                    client_id,
+                    secret,
+                    organisation,
+                });
             }
         }
     }

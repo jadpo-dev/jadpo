@@ -1613,7 +1613,7 @@ fn start_config(
         .and_then(|identity| identity.providers.as_ref());
     for provider in providers.iter().flat_map(|providers| &providers.providers) {
         for name in [
-            Some(&provider.issuer),
+            provider.issuer.as_ref(),
             Some(&provider.client_id),
             Some(&provider.client_secret),
             provider.organisation.as_ref(),

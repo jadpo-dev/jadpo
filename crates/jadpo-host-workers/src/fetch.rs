@@ -390,7 +390,19 @@ impl Outbound for WorkersOutbound {
         limit: usize,
         timeout_ms: u64,
     ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
-        self.exchange(url, None, limit, timeout_ms)
+        self.exchange(url, None, &[], limit, timeout_ms)
+    }
+
+    /// A `GET` with the runtime's own headers (chunk N1): GitHub's API,
+    /// asked with a sign-in's access token, under the same guards.
+    fn get_with<'a>(
+        &'a self,
+        url: &'a str,
+        headers: &'a [(&'a str, String)],
+        limit: usize,
+        timeout_ms: u64,
+    ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
+        self.exchange(url, None, headers, limit, timeout_ms)
     }
 
     /// A sign-in provider's token endpoint (area 8, "Providers"; chunk
@@ -402,16 +414,18 @@ impl Outbound for WorkersOutbound {
         limit: usize,
         timeout_ms: u64,
     ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
-        self.exchange(url, Some(form), limit, timeout_ms)
+        self.exchange(url, Some(form), &[], limit, timeout_ms)
     }
 }
 
 impl WorkersOutbound {
-    /// A `GET` of `url`, or with `form` a `POST` of it, under the guards.
+    /// A `GET` of `url`, or with `form` a `POST` of it, under the guards,
+    /// with `headers` besides its own.
     fn exchange<'a>(
         &'a self,
         url: &'a str,
         form: Option<&'a str>,
+        headers: &'a [(&'a str, String)],
         limit: usize,
         timeout_ms: u64,
     ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
@@ -424,11 +438,23 @@ impl WorkersOutbound {
             if self.reach.as_deref() != Some(parsed.origin().as_str()) {
                 outbound_host(&parsed.hostname())?;
             }
+            let mut own: Vec<(String, String)> = Vec::new();
+            if !headers
+                .iter()
+                .any(|(name, _)| name.eq_ignore_ascii_case("accept"))
+            {
+                own.push(("accept".into(), "*/*".into()));
+            }
+            own.extend(
+                headers
+                    .iter()
+                    .map(|(name, value)| ((*name).to_string(), value.clone())),
+            );
             let request = match form {
                 None => Request {
                     method: HttpMethod::Get,
                     url: url.to_string(),
-                    headers: vec![("accept".into(), "*/*".into())],
+                    headers: own,
                     body: None,
                     raw_body: None,
                     timeout_ms,

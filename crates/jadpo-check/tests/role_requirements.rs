@@ -463,3 +463,36 @@ test "a company account" {
         "{found:?}"
     );
 }
+
+/// GitHub never says how a person signed in, so its sign-ins are
+/// `primary`, and a role needing a second factor through it can't be
+/// held (chunk N1).
+#[test]
+fn a_second_factor_through_github_can_never_be_met() {
+    let app = APP
+        .replace(
+            "            organisation: config.google_domain\n        }\n",
+            "            organisation: config.google_domain\n        }\n        github: {\n            driver: Driver.github\n            client_id: config.github_client_id\n            credential: config.github_client_secret\n        }\n",
+        )
+        .replace(
+            "    google_domain: Text\n",
+            "    google_domain: Text\n    github_client_id: Text\n    github_client_secret: Text {\n        secret: true\n    }\n",
+        )
+        .replace("providers: [google]", "providers: [google, github]");
+    let code = CODE.replace("SignInMethod.google", "SignInMethod.github");
+    let found = with(&app, &code);
+    assert!(
+        has(
+            &found,
+            "policy.requirement_unsatisfiable",
+            "`github` with a second factor"
+        ),
+        "{found:?}"
+    );
+    // Without the second factor, GitHub meets it.
+    let primary = requires(
+        "            StaffRole.admin: { sign_in: [SignInMethod.github] }\n            StaffRole.front_desk: {}\n",
+    );
+    let found = with(&app, &primary);
+    assert_eq!(found, Vec::<String>::new(), "{found:?}");
+}

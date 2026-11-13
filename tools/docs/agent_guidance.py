@@ -76,7 +76,7 @@ PRIMER_NOT_BUILT = (
     ('05-data', '`jadpo rename`', '`jadpo rename`'),
     ('05-data', 'Entities in Redis', 'entities and caches in Redis'),
     ('04-failures', 'Logging', 'failure logging'),
-    ('08-identity', '`Driver.github`', 'sign-in with GitHub, Apple or your own OAuth provider'),
+    ('08-identity', '`Driver.apple`', 'sign-in with Apple or your own OAuth provider'),
     ('08-identity', 'OAuth grants', 'OAuth grants'),
     ('08-identity', 'Scope declarations', 'token scopes'),
     ('15-personal-data', 'Everything else on this page', 'most of personal data'),

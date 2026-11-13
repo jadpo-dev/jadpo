@@ -216,6 +216,7 @@ impl Planner<'_> {
             missing: None,
             recheck: None,
             layer: false,
+            decided: None,
             gate: None,
         })
     }
@@ -313,6 +314,7 @@ impl Planner<'_> {
                 missing: None,
                 recheck: None,
                 layer: false,
+                decided: None,
                 gate: None,
             },
             fields,

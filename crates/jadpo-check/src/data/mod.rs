@@ -278,7 +278,9 @@ pub(crate) fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
                         Some(Driver::OpenaiCompatible) => ConnectionKind::Model,
                         Some(Driver::CloudflareQueues) => ConnectionKind::CloudflareQueue,
                         Some(Driver::CloudflareRateLimits) => ConnectionKind::CloudflareRateLimits,
-                        Some(Driver::Oidc) => ConnectionKind::SignIn,
+                        Some(Driver::Oidc | Driver::Github | Driver::Apple) => {
+                            ConnectionKind::SignIn
+                        }
                         Some(Driver::Webhook) => ConnectionKind::Webhook,
                         None => ConnectionKind::Other,
                     },
@@ -3674,14 +3676,42 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
 /// `geometry` for each a `BoundingBox` filter tests, however many queries
 /// test it, as [`jadpo_sql::condition::search_index`] says the search reads.
 /// A field declared with `kind: IndexKind.geographic` already has the
-/// first.
+/// first. An include's conditions are searched so too (chunk Q4).
 fn search_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &mut Schema) {
+    fn reads<'q>(
+        entity: &'q str,
+        filter: &'q [queries::Condition],
+        includes: &'q [queries::Include],
+        query: &'q str,
+        out: &mut Vec<(&'q str, &'q [queries::Condition], &'q str)>,
+    ) {
+        out.push((entity, filter, query));
+        for include in includes {
+            reads(
+                &include.entity,
+                &include.filter,
+                &include.includes,
+                query,
+                out,
+            );
+        }
+    }
+    let mut wanted = Vec::new();
     for query in queries {
-        let Some(entity) = model.entity(&query.entity) else {
+        reads(
+            &query.entity,
+            &query.filter,
+            &query.includes,
+            &query.name,
+            &mut wanted,
+        );
+    }
+    for (entity_name, filter, query) in wanted {
+        let Some(entity) = model.entity(entity_name) else {
             continue;
         };
         let Some(store) = &entity.store else { continue };
-        for call in jadpo_sql::condition::search_calls(&query.filter) {
+        for call in jadpo_sql::condition::search_calls(filter) {
             let Some(found) = jadpo_sql::condition::search_index(call) else {
                 continue;
             };
@@ -3724,7 +3754,7 @@ fn search_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &m
                 physical::Index {
                     expression: None,
                     columns: vec![column],
-                    reason: format!("query {}", query.name),
+                    reason: format!("query {query}"),
                     predicate,
                     collate: Vec::new(),
                     digest: Vec::new(),
