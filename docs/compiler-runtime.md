@@ -4238,7 +4238,9 @@ saving the project changes them; `AppHandler` serves any
 driver is the factory's, so a model connection added while `jadpo dev`
 runs is reached from its next start. `jadpo package record`, `jadpo ai
 record` and `jadpo package conform` build their one connection's driver
-the same way (`Drivers::keeping`). `jadpo test` builds none: a test
+the same way (`Drivers::keeping`); against its local fake the suite's is
+built over a fetch that sends every request there (`conform_fake::ToFake`),
+so a package with fixed `hosts:` runs as one given `host:` does. `jadpo test` builds none: a test
 reaches no real driver, so its host gives each connection's stand-in by
 kind from the table (the in-memory files, the mail fake, a package's and
 `ai`'s fakes through `Faked`). *Rejected:* a closure per

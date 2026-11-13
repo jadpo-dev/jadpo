@@ -119,6 +119,65 @@ impl Drop for LocalFake {
     }
 }
 
+/// The package driver's HTTP for a package with fixed `hosts:` (chunk
+/// K4): every request goes to the local fake at `base` instead of the
+/// host the package names, its path and query kept, so nothing leaves the
+/// machine although the package's own address is written in it.
+pub(crate) struct ToFake {
+    base: String,
+    inner: jadpo_host_native::fetch::NativeFetch,
+}
+
+impl ToFake {
+    pub(crate) fn new(base: &str) -> ToFake {
+        ToFake {
+            base: base.trim_end_matches('/').to_string(),
+            inner: jadpo_host_native::fetch::NativeFetch::new(),
+        }
+    }
+
+    /// `request`, sent to the fake.
+    fn moved(
+        &self,
+        request: &jadpo_runtime::provider::Request,
+    ) -> jadpo_runtime::provider::Request {
+        let mut moved = request.clone();
+        moved.url = rebased(&request.url, &self.base);
+        moved
+    }
+}
+
+/// `url` with its scheme and authority replaced by `base`'s.
+pub(crate) fn rebased(url: &str, base: &str) -> String {
+    let after = url.split_once("://").map_or(url, |(_, after)| after);
+    let rest = after.find(['/', '?']).map_or("", |at| &after[at..]);
+    format!("{base}{rest}")
+}
+
+impl jadpo_drivers::package::Fetch for ToFake {
+    fn fetch<'a>(
+        &'a self,
+        request: &'a jadpo_runtime::provider::Request,
+    ) -> jadpo_runtime::LocalFuture<
+        'a,
+        Result<jadpo_runtime::provider::Response, jadpo_drivers::package::FetchError>,
+    > {
+        let moved = self.moved(request);
+        Box::pin(async move { self.inner.fetch(&moved).await })
+    }
+
+    fn open<'a>(
+        &'a self,
+        request: &'a jadpo_runtime::provider::Request,
+    ) -> jadpo_runtime::LocalFuture<
+        'a,
+        Result<jadpo_drivers::package::Opened, jadpo_drivers::package::FetchError>,
+    > {
+        let moved = self.moved(request);
+        Box::pin(async move { self.inner.open(&moved).await })
+    }
+}
+
 /// Reads one request whole, then answers it and closes the connection.
 fn serve(stream: TcpStream, answer: Option<Answer>) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
@@ -303,6 +362,18 @@ pub(crate) fn under(prefix: Option<&str>, steps: Vec<Step>) -> Vec<Step> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_fixed_host_is_moved_to_the_fake_keeping_its_path_and_query() {
+        assert_eq!(
+            super::rebased("https://api.acme.example/v1/send?x=1", "http://127.0.0.1:9"),
+            "http://127.0.0.1:9/v1/send?x=1"
+        );
+        assert_eq!(
+            super::rebased("https://api.acme.example", "http://127.0.0.1:9"),
+            "http://127.0.0.1:9"
+        );
+    }
+
     use super::*;
 
     #[test]

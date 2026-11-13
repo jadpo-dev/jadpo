@@ -18,6 +18,7 @@ mod commands;
 mod completion;
 pub mod config;
 mod conform_fake;
+mod conform_suites;
 pub mod crash;
 mod database;
 mod declines;

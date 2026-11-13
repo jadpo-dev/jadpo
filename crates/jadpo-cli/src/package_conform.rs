@@ -95,7 +95,7 @@ use crate::run::{Call, Reply, quoted};
 const AI: &str = "ai";
 
 /// The scratch app's connection to the package.
-const CONNECTION: &str = "provider";
+pub(crate) const CONNECTION: &str = "provider";
 
 /// How long the suite's embedding is: what its `embedding_dimensions:`
 /// declares.
@@ -134,23 +134,28 @@ pub fn conform(call: &Call) -> Reply {
 }
 
 /// Where the suite runs against.
-enum Against {
+pub(crate) enum Against {
     /// The local fake, from the package's recordings.
     Fake(LocalFake),
     /// The provider's API, at the app's connection's address, with its
-    /// credential.
-    Live { host: String, key: Option<String> },
+    /// credential; for a package with fixed `hosts:`, the environment the
+    /// connection chooses (chunk K4).
+    Live {
+        host: String,
+        key: Option<String>,
+        environment: Option<String>,
+    },
 }
 
 impl Against {
-    fn words(&self) -> String {
+    pub(crate) fn words(&self) -> String {
         match self {
             Against::Fake(_) => "its recordings and a local fake".to_string(),
             Against::Live { host, .. } => host.clone(),
         }
     }
 
-    fn live(&self) -> bool {
+    pub(crate) fn live(&self) -> bool {
         matches!(self, Against::Live { .. })
     }
 }
@@ -240,20 +245,42 @@ fn conformed(call: &Call) -> Reply {
 
     // What it fills.
     let fills = filled_capabilities(&source);
-    if capability != AI {
-        if fills.iter().any(|filled| filled == capability) {
+    if !fills.iter().any(|filled| filled == capability) {
+        return Reply::failed(doesnt_fill(&package, capability, &fills, &home.name));
+    }
+    let provider_text =
+        std::fs::read_to_string(source.join(jadpo_db::PROVIDER_FILE)).unwrap_or_default();
+    let found = Found {
+        root: &root,
+        call,
+        wanted,
+        db,
+        project,
+        home: &home,
+        source: &source,
+        lock: lock.as_ref(),
+        package: &package,
+        fixed: keyed(&provider_text, "hosts"),
+    };
+    match capability.as_str() {
+        AI => {}
+        jadpo_std::email::NAMESPACE => return crate::conform_suites::email(&found),
+        "receiving" => return crate::conform_suites::receiving(&found),
+        _ => {
             return Reply::failed(
                 Diagnostic::new(
                     &rule::TOOLCHAIN_NOT_BUILT_YET,
                     format!("`jadpo package conform` has no suite for `{capability}` yet"),
                 )
-                .reason("Area 11 gives every capability a conformance suite; `ai`'s is the first built (chunk 5.5v7b), and each other capability's comes with its own work.")
+                .reason(format!(
+                    "A package fills `{capability}` once its mapping is read, and its suite comes with it; the suites built are `ai`'s, `email`'s and `receiving`'s."
+                ))
                 .next(format!(
-                    "Run `jadpo package conform <package> ai` for a package that fills `ai`; `{package}` is checked by `jadpo package check` meanwhile"
+                    "Run `jadpo package conform {} <capability>` for a capability whose suite is built",
+                    home.name
                 )),
             );
         }
-        return Reply::failed(doesnt_fill(&package, capability, &fills, &home.name));
     }
     if !fills.iter().any(|filled| filled == AI) {
         return Reply::failed(doesnt_fill(&package, AI, &fills, &home.name));
@@ -272,18 +299,6 @@ fn conformed(call: &Call) -> Reply {
             .next_marked("Run `jadpo check`, correct `provides/ai.jadpo`, then run it again (agent)"),
         );
     };
-    let provider_text =
-        std::fs::read_to_string(source.join(jadpo_db::PROVIDER_FILE)).unwrap_or_default();
-    if keyed(&provider_text, "hosts") {
-        return Reply::failed(
-            Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                format!("`{package}` has fixed hosts, which the suite can't reach yet"),
-            )
-            .reason("The suite reaches the provider through its connection's `host:`, and a package with `hosts:` takes none; both first-party packages that fill `ai` take `host:` (area 21, \"The conformance suite\").")
-            .next("Give the package no `hosts:`, so each connection gives `host:`, or leave it to `jadpo package check` meanwhile"),
-        );
-    }
 
     // The app, for its connection to the package and the models it asks.
     let ready = match crate::dev::prepare(&root, &call.environment, true) {
@@ -313,7 +328,7 @@ fn conformed(call: &Call) -> Reply {
     };
     let live = call.flag("--live");
     let against = if live {
-        match live_target(&ready, connection, through.is_some(), &package) {
+        match live_target(&ready, connection, through.is_some(), &package, found.fixed) {
             Ok(against) => against,
             Err(refused) => return Reply::failed(*refused),
         }
@@ -358,23 +373,40 @@ fn conformed(call: &Call) -> Reply {
         takes_key,
         streams,
         embeds,
+        fixed: found.fixed,
     };
-    if let Err(error) = place(&scratch.0, &source, &home, lock.as_ref(), &suite) {
+    if let Err(error) = place(
+        &scratch.0,
+        &source,
+        &home,
+        lock.as_ref(),
+        &package,
+        sources(&suite),
+    ) {
         return crate::package::write_failed(
             "package conform",
             "the scratch app the suite runs in",
             &error,
         );
     }
-    let mut env = Environment::empty()
-        .with_var("CONFORMANCE_MODEL", &model)
-        .with_var(
+    let mut env = Environment::empty().with_var("CONFORMANCE_MODEL", &model);
+    env = if found.fixed {
+        env.with_var(
+            "CONFORMANCE_ENVIRONMENT",
+            &match &against {
+                Against::Fake(_) => fake_environment(&provider_text).to_string(),
+                Against::Live { environment, .. } => environment.clone().unwrap_or_default(),
+            },
+        )
+    } else {
+        env.with_var(
             "CONFORMANCE_HOST",
             &match &against {
                 Against::Fake(fake) => fake.url.clone(),
                 Against::Live { host, .. } => host.clone(),
             },
-        );
+        )
+    };
     if let Some(embedding_model) = &embedding_model
         && embeds
     {
@@ -421,7 +453,7 @@ fn conformed(call: &Call) -> Reply {
             jadpo_host_native::Drivers::build(
                 program.runtime_plan().connections,
                 program.started(),
-                &jadpo_host_native::supplies(),
+                &supplies(&against),
             )
             .keeping(|asked| asked == CONNECTION),
         )
@@ -475,7 +507,16 @@ fn conformed(call: &Call) -> Reply {
         Case::skipped("embedding", "ai: names no embedding model")
     });
     cases.push(run.usage(answered.as_deref()));
-    report(&package, wanted, &against, cases)
+    report(
+        &Ran {
+            capability: AI,
+            package: &package,
+            name: wanted,
+            against: &against,
+            live_words: Some("runs it against the provider's API with the app's key"),
+        },
+        cases,
+    )
 }
 
 /// What the suite's app holds besides the package.
@@ -484,6 +525,48 @@ struct Suite<'a> {
     takes_key: bool,
     streams: bool,
     embeds: bool,
+    /// The package has fixed `hosts:`, so its connection gives
+    /// `environment:` rather than `host:`.
+    fixed: bool,
+}
+
+/// The package the suite runs against, as the project holds it.
+pub(crate) struct Found<'a> {
+    pub root: &'a Path,
+    pub call: &'a Call,
+    /// The package as the command named it.
+    pub wanted: &'a str,
+    pub db: &'a jadpo_db::Database,
+    pub project: jadpo_db::Project,
+    pub home: &'a jadpo_db::PackageHome,
+    /// Where its files are read from: its folder, or a linked checkout.
+    pub source: &'a Path,
+    pub lock: Option<&'a jadpo_db::Locked>,
+    /// `Name.vN`.
+    pub package: &'a str,
+    /// It has fixed `hosts:` (chunk K4).
+    pub fixed: bool,
+}
+
+/// The environment a package with fixed `hosts:` is reached in against
+/// the local fake: its sandbox when it has one. The fake answers either
+/// way, since every request goes to it ([`conform_fake::ToFake`]).
+pub(crate) fn fake_environment(provider_text: &str) -> &'static str {
+    let sandbox = provider_text.lines().any(|line| {
+        let trimmed = line.trim_start();
+        line.len() - trimmed.len() == 8 && trimmed.starts_with("sandbox:")
+    });
+    if sandbox { "sandbox" } else { "live" }
+}
+
+/// What the suite's calls go out through: against the local fake, every
+/// request goes to it, whatever host the package names.
+pub(crate) fn supplies(against: &Against) -> jadpo_drivers::factory::Supplies {
+    let supplies = jadpo_host_native::supplies();
+    match against {
+        Against::Fake(fake) => supplies.with_fetch(Rc::new(conform_fake::ToFake::new(&fake.url))),
+        Against::Live { .. } => supplies,
+    }
 }
 
 /// The capabilities the package in `folder` fills: its `provides/` files.
@@ -524,8 +607,8 @@ fn doesnt_fill(package: &str, capability: &str, fills: &[String], name: &str) ->
         )
     };
     let next = match fills.first() {
-        Some(first) if first == AI => format!("Run `jadpo package conform {name} ai`"),
-        _ => "Name a package that fills it, such as one with `provides/ai.jadpo`".to_string(),
+        Some(first) => format!("Run `jadpo package conform {name} {first}`"),
+        None => format!("Name a package that fills it, one with `provides/{capability}.jadpo`"),
     };
     arguments(
         format!("`{package}` doesn't fill `{capability}`"),
@@ -541,22 +624,71 @@ fn live_target(
     connection: Option<(&str, &jadpo_std::provider::ConnectionPlan)>,
     ai_through: bool,
     package: &str,
+    fixed: bool,
 ) -> Result<Against, Box<Diagnostic>> {
-    let refused = |headline: String, reason: String, next: String| {
-        Box::new(
-            Diagnostic::new(&rule::CONFORM_REFUSED, headline)
-                .reason(reason)
-                .next_marked(next),
-        )
+    let (
+        name,
+        Live {
+            host,
+            key,
+            environment,
+        },
+    ) = live_reach(ready, connection, package, fixed)?;
+    if !ai_through {
+        return Err(refused(
+            format!("`ai:` doesn't ask its models through `{name}`"),
+            "`--live` asks the models the app's `ai:` names, so it proves what the app will send, and `ai:` names another connection or none.".to_string(),
+            format!(
+                "Name `{name}` in `ai: {{ connection: }}` with the models to ask, then run it again (agent)"
+            ),
+        ));
+    }
+    Ok(Against::Live {
+        host,
+        key,
+        environment,
+    })
+}
+
+/// A live run's refusal.
+pub(crate) fn refused(headline: String, reason: String, next: String) -> Box<Diagnostic> {
+    Box::new(
+        Diagnostic::new(&rule::CONFORM_REFUSED, headline)
+            .reason(reason)
+            .next_marked(next),
+    )
+}
+
+/// Where a live run reaches the provider, as the app's connection to the
+/// package reads it.
+pub(crate) struct Live {
+    pub host: String,
+    pub key: Option<String>,
+    /// For a package with fixed `hosts:`, `live` or `sandbox`.
+    pub environment: Option<String>,
+}
+
+/// The app's connection to the package, set for a live run: its name and
+/// where it reaches the provider, or why the live run is refused.
+pub(crate) fn live_reach<'c>(
+    ready: &crate::dev::Ready,
+    connection: Option<(&'c str, &jadpo_std::provider::ConnectionPlan)>,
+    package: &str,
+    fixed: bool,
+) -> Result<(&'c str, Live), Box<Diagnostic>> {
+    let (what, add) = if fixed {
+        ("`environment:`", "its credential and `environment:`")
+    } else {
+        ("`host:`", "its credential and `host:`")
     };
     let Some((name, chosen)) = connection else {
         return Err(refused(
             format!("The app has no connection to `{package}`"),
             format!(
-                "`--live` calls the provider's API through the app's own connection to `{package}`, with its credential and `host:`."
+                "`--live` calls the provider's API through the app's own connection to `{package}`, with {add}."
             ),
             format!(
-                "Connect `{package}` in `app.jadpo`'s `connections:` with its credential and `host:`, then run it again (agent)"
+                "Connect `{package}` in `app.jadpo`'s `connections:` with {add}, then run it again (agent)"
             ),
         ));
     };
@@ -590,27 +722,40 @@ fn live_target(
         },
         None => None,
     };
-    let host = match &chosen.address {
-        Address::Setting(at) => ready.config.text_at(*at).map(str::to_string),
-        _ => None,
+    let (host, environment) = match &chosen.address {
+        Address::Setting(at) => (ready.config.text_at(*at).map(str::to_string), None),
+        Address::Hosts {
+            live,
+            sandbox,
+            environment,
+        } => {
+            let chosen = ready.config.text_at(*environment).map(str::to_string);
+            let host = match chosen.as_deref() {
+                Some("live") => live.clone(),
+                Some("sandbox") => sandbox.clone(),
+                _ => None,
+            };
+            (host, chosen)
+        }
+        Address::Unknown => (None, None),
     };
     let Some(host) = host.filter(|host| !host.is_empty()) else {
         return Err(refused(
             format!("`{name}` has no address to call"),
-            "`--live` sends the suite to the address the connection's `host:` gives, and it gives none.".to_string(),
-            format!("Give `{name}` a `host:` in `app.jadpo`, then run it again (agent)"),
+            format!(
+                "`--live` sends the suite to the address the connection's {what} gives, and it gives none."
+            ),
+            format!("Give `{name}` {what} in `app.jadpo`, then run it again (agent)"),
         ));
     };
-    if !ai_through {
-        return Err(refused(
-            format!("`ai:` doesn't ask its models through `{name}`"),
-            "`--live` asks the models the app's `ai:` names, so it proves what the app will send, and `ai:` names another connection or none.".to_string(),
-            format!(
-                "Name `{name}` in `ai: {{ connection: }}` with the models to ask, then run it again (agent)"
-            ),
-        ));
-    }
-    Ok(Against::Live { host, key })
+    Ok((
+        name,
+        Live {
+            host,
+            key,
+            environment,
+        },
+    ))
 }
 
 /// Writes the suite's app in `root`: the package in `packages/` as the
@@ -620,7 +765,7 @@ fn live_target(
 /// `shared/providers/`, is the suite's app's own too, with no lock line:
 /// as an installed copy it would answer to an installed package's rules,
 /// such as being proprietary only when installed from git.
-fn mount(home: &jadpo_db::PackageHome) -> String {
+pub(crate) fn mount(home: &jadpo_db::PackageHome) -> String {
     if home.installed {
         format!("{}/{}/{}", jadpo_db::PACKAGES, home.name, home.version)
     } else {
@@ -628,12 +773,13 @@ fn mount(home: &jadpo_db::PackageHome) -> String {
     }
 }
 
-fn place(
+pub(crate) fn place(
     root: &Path,
     source: &Path,
     home: &jadpo_db::PackageHome,
     locked: Option<&jadpo_db::Locked>,
-    suite: &Suite<'_>,
+    package: &str,
+    files: Vec<(String, String)>,
 ) -> Result<(), String> {
     let own = !home.installed;
     let mount = mount(home);
@@ -651,7 +797,7 @@ fn place(
         }
         std::fs::copy(source.join(&file), to).map_err(|error| error.to_string())?;
     }
-    for (path, text) in sources(suite) {
+    for (path, text) in files {
         write(&path, &text)?;
     }
     if own {
@@ -662,7 +808,7 @@ fn place(
     let loaded = jadpo_db::load(root);
     let copied = surface::homes(&loaded.db, loaded.project)
         .into_values()
-        .find(|found| found.versioned() == suite.package)
+        .find(|found| found.versioned() == package)
         .ok_or_else(|| "the package wasn't found where it was copied".to_string())?;
     let digest = jadpo_check::packages::digest_of(&loaded.db, loaded.project, &copied)
         .map_err(|path| format!("`{path}` couldn't be read"))?;
@@ -675,7 +821,7 @@ fn place(
         _ => "0.0.0".to_string(),
     };
     let line = jadpo_db::Locked {
-        package: suite.package.to_string(),
+        package: package.to_string(),
         source: jadpo_db::Source::Path {
             version,
             path: source.to_string_lossy().replace('\\', "/"),
@@ -683,6 +829,25 @@ fn place(
         },
     };
     write(jadpo_db::LOCK, &jadpo_db::write_lock(&[line]))
+}
+
+/// Where the suite's app's connection reaches the provider: its fixed
+/// `hosts:` by `environment:`, or `host:`.
+pub(crate) fn reach_line(fixed: bool) -> &'static str {
+    if fixed {
+        "environment: config.conformance_environment"
+    } else {
+        "host: config.conformance_host"
+    }
+}
+
+/// The setting [`reach_line`] reads.
+pub(crate) fn reach_setting(fixed: bool) -> &'static str {
+    if fixed {
+        "    conformance_environment: ProviderEnvironment {\n    }\n"
+    } else {
+        "    conformance_host: Url {\n    }\n"
+    }
 }
 
 /// The suite's app's own files.
@@ -707,19 +872,21 @@ fn sources(suite: &Suite<'_>) -> Vec<(String, String)> {
         (
             "app.jadpo".to_string(),
             format!(
-                "application {{\n    connections: {{\n        {CONNECTION}: {{\n            package: {}\n            domains: [conformance]\n{credential}            host: config.conformance_host\n        }}\n    }}\n    ai: {{\n        connection: {CONNECTION}\n        models: {{\n{models}        }}\n{dimensions}        limits: {{\n            per_day: {{\n                tokens: 2000000\n            }}\n        }}\n    }}\n}}\n",
-                suite.package
+                "application {{\n    connections: {{\n        {CONNECTION}: {{\n            package: {}\n            domains: [conformance]\n{credential}            {}\n        }}\n    }}\n    ai: {{\n        connection: {CONNECTION}\n        models: {{\n{models}        }}\n{dimensions}        limits: {{\n            per_day: {{\n                tokens: 2000000\n            }}\n        }}\n    }}\n}}\n",
+                suite.package,
+                reach_line(suite.fixed)
             ),
         ),
         (
             "config.jadpo".to_string(),
             format!(
-                "config {{\n    conformance_model: ModelId {{\n    }}\n{}    conformance_host: Url {{\n    }}\n{}}}\n",
+                "config {{\n    conformance_model: ModelId {{\n    }}\n{}{}{}}}\n",
                 if suite.embeds {
                     "    conformance_embedding_model: ModelId {\n    }\n"
                 } else {
                     ""
                 },
+                reach_setting(suite.fixed),
                 if suite.takes_key {
                     "    conformance_key: Text {\n        secret: true\n    }\n"
                 } else {
@@ -839,15 +1006,15 @@ fn sources(suite: &Suite<'_>) -> Vec<(String, String)> {
 // --- the cases -------------------------------------------------------------
 
 /// One row of the suite.
-struct Case {
-    name: &'static str,
-    state: RowState,
-    detail: String,
-    problem: Option<Diagnostic>,
+pub(crate) struct Case {
+    pub name: &'static str,
+    pub state: RowState,
+    pub detail: String,
+    pub problem: Option<Diagnostic>,
 }
 
 impl Case {
-    fn passed(name: &'static str, detail: impl Into<String>) -> Case {
+    pub(crate) fn passed(name: &'static str, detail: impl Into<String>) -> Case {
         Case {
             name,
             state: RowState::Done,
@@ -856,7 +1023,7 @@ impl Case {
         }
     }
 
-    fn skipped(name: &'static str, detail: impl Into<String>) -> Case {
+    pub(crate) fn skipped(name: &'static str, detail: impl Into<String>) -> Case {
         Case {
             name,
             state: RowState::Skipped,
@@ -881,12 +1048,12 @@ impl Case {
 /// The requests the suite's calls sent and the answers that came back, as
 /// the call log is handed them.
 #[derive(Default)]
-struct Log(RefCell<Vec<Exchange>>);
+pub(crate) struct Log(pub RefCell<Vec<Exchange>>);
 
 #[derive(Clone, Debug, Default)]
-struct Exchange {
-    body: Option<String>,
-    answer: Option<String>,
+pub(crate) struct Exchange {
+    pub body: Option<String>,
+    pub answer: Option<String>,
 }
 
 impl CallLog for Log {
@@ -1404,37 +1571,7 @@ impl Answers<'_> {
         &self,
         operation: &str,
     ) -> Result<(J, Option<String>, Option<jadpo_std::http::CodecId>), String> {
-        let plan = self.program.plan().providers();
-        let table = self.program.plan().connections();
-        let Some((_, op)) = plan.operation(table, CONNECTION, operation) else {
-            return Err(format!("the package has no operation `{operation}`"));
-        };
-        let file = self.recordings.join(format!("{operation}.json"));
-        let Ok(text) = std::fs::read_to_string(&file) else {
-            return Err(format!(
-                "it has no recording of `{operation}`, `{}`",
-                jadpo_runtime::recorded::file_name(operation)
-            ));
-        };
-        let mut next = 0u32;
-        let mut uuid = || {
-            next += 1;
-            format!("00000000-0000-4000-8000-{next:012}")
-        };
-        let mut making = jadpo_runtime::fakes::Making {
-            now: 1_784_505_600_000,
-            uuid: &mut uuid,
-        };
-        let filled = jadpo_runtime::recorded::filled(&self.json, op, &text, &mut making)
-            .and_then(|filled| serde_json::from_str::<J>(&filled).ok())
-            .ok_or_else(|| {
-                format!(
-                    "its recording of `{operation}` isn't JSON, `{}`",
-                    jadpo_runtime::recorded::file_name(operation)
-                )
-            })?;
-        let codec = op.output.and_then(|number| self.json.codec_of(number));
-        Ok((filled, op.output_at.clone(), codec))
+        recorded(self.program, &self.recordings, operation)
     }
 
     /// The places, by field names in `codec`'s type, as places by
@@ -1614,9 +1751,66 @@ impl Answers<'_> {
     }
 }
 
+/// Operation `operation` of the suite's connection, its recording in
+/// `recordings` with its placeholders filled as `jadpo dev`'s fake fills
+/// them; and where its output is in the answer, and the output type's
+/// codec.
+pub(crate) fn recorded(
+    program: &Program,
+    recordings: &Path,
+    operation: &str,
+) -> Result<(J, Option<String>, Option<jadpo_std::http::CodecId>), String> {
+    let json = program.stored_json();
+    let plan = program.plan().providers();
+    let table = program.plan().connections();
+    let Some((_, op)) = plan.operation(table, CONNECTION, operation) else {
+        return Err(format!("the package has no operation `{operation}`"));
+    };
+    let file = recordings.join(format!("{operation}.json"));
+    let Ok(text) = std::fs::read_to_string(&file) else {
+        return Err(format!(
+            "it has no recording of `{operation}`, `{}`",
+            jadpo_runtime::recorded::file_name(operation)
+        ));
+    };
+    let mut next = 0u32;
+    let mut uuid = || {
+        next += 1;
+        format!("00000000-0000-4000-8000-{next:012}")
+    };
+    let mut making = jadpo_runtime::fakes::Making {
+        now: 1_784_505_600_000,
+        uuid: &mut uuid,
+    };
+    let filled = jadpo_runtime::recorded::filled(&json, op, &text, &mut making)
+        .and_then(|filled| serde_json::from_str::<J>(&filled).ok())
+        .ok_or_else(|| {
+            format!(
+                "its recording of `{operation}` isn't JSON, `{}`",
+                jadpo_runtime::recorded::file_name(operation)
+            )
+        })?;
+    let codec = op.output.and_then(|number| json.codec_of(number));
+    Ok((filled, op.output_at.clone(), codec))
+}
+
 // --- the screen --------------------------------------------------------------
 
-fn report(package: &str, name: &str, against: &Against, cases: Vec<Case>) -> Reply {
+/// What a run's screen and JSON say besides its cases.
+pub(crate) struct Ran<'a> {
+    pub capability: &'a str,
+    /// `Name.vN`.
+    pub package: &'a str,
+    /// The package as the command named it, for the hint.
+    pub name: &'a str,
+    pub against: &'a Against,
+    /// What the `--live` hint says the live run does; `None` when the
+    /// capability has no live run to suggest.
+    pub live_words: Option<&'a str>,
+}
+
+pub(crate) fn report(ran: &Ran<'_>, cases: Vec<Case>) -> Reply {
+    let (package, name, against, capability) = (ran.package, ran.name, ran.against, ran.capability);
     let mut screen = Screen::new();
     let mut diagnostics = Vec::new();
     for case in &cases {
@@ -1657,20 +1851,23 @@ fn report(package: &str, name: &str, against: &Against, cases: Vec<Case>) -> Rep
     facts.push(Fact::plain(against.words()));
     let conforms = failed == 0;
     let (outcome, headline) = if conforms {
-        (Outcome::Success, "ai conforms")
+        (Outcome::Success, format!("{capability} conforms"))
     } else {
-        (Outcome::Failure, "ai doesn't conform")
+        (Outcome::Failure, format!("{capability} doesn't conform"))
     };
     screen.push(Block::summary(outcome, headline, facts));
-    if conforms && !against.live() {
+    if conforms
+        && !against.live()
+        && let Some(words) = ran.live_words
+    {
         screen.push(Block::hint(
-            format!("jadpo package conform {name} ai --live"),
-            "runs it against the provider's API with the app's key",
+            format!("jadpo package conform {name} {capability} --live"),
+            words,
         ));
     }
     let data = Json::object([
         ("package", Json::from(package)),
-        ("capability", Json::from(AI)),
+        ("capability", Json::from(capability)),
         (
             "against",
             Json::from(if against.live() { "live" } else { "recordings" }),
@@ -1703,7 +1900,7 @@ fn report(package: &str, name: &str, against: &Against, cases: Vec<Case>) -> Rep
 }
 
 /// The project's, or the suite's app's, errors, which stop the suite.
-fn not_run(
+pub(crate) fn not_run(
     diagnostics: Vec<Diagnostic>,
     sources: std::collections::BTreeMap<String, String>,
 ) -> Reply {
@@ -1724,7 +1921,7 @@ fn not_run(
     }
 }
 
-fn defect(headline: &str) -> Reply {
+pub(crate) fn defect(headline: &str) -> Reply {
     Reply::failed(
         Diagnostic::new(&rule::CONFORM_FAILED, headline.to_string())
             .reason("The suite's own app didn't compile as it should.")
