@@ -522,8 +522,9 @@ pub(crate) async fn call_through(
     }
 }
 
-/// One batch of `queue`'s messages: each one's body and handle.
-async fn fetch(
+/// One batch of `queue`'s messages: each one's body and handle. Also
+/// what `jadpo package conform <package> receiving` asks (chunk K4).
+pub async fn fetch(
     executor: &dyn Executor,
     receiving: &Receiving<'_>,
     queue: &QueuePlan,
@@ -574,11 +575,24 @@ async fn acknowledge(
     ctx: &mut Ctx<'_>,
     handle: &str,
 ) {
+    let _ = acknowledged(executor, receiving, queue, plan, ctx, handle).await;
+}
+
+/// Acknowledges the message `handle` names, saying why it couldn't: what
+/// `jadpo package conform <package> receiving` asks (chunk K4).
+pub async fn acknowledged(
+    executor: &dyn Executor,
+    receiving: &Receiving<'_>,
+    queue: &QueuePlan,
+    plan: &AcknowledgePlan,
+    ctx: &mut Ctx<'_>,
+    handle: &str,
+) -> Result<(), StoreError> {
     let operation = (plan.called, plan.operation.as_str());
-    let Ok(given) = input(ctx, receiving, queue, operation, &plan.input, Some(handle)) else {
-        return;
-    };
-    let _ = call(executor, queue, ctx, operation, given).await;
+    let given = input(ctx, receiving, queue, operation, &plan.input, Some(handle))?;
+    call(executor, queue, ctx, operation, given)
+        .await
+        .map(|_| ())
 }
 
 /// What a message of `queue` with `body` becomes, in `ctx`.

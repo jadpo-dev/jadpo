@@ -27,6 +27,7 @@ operation emails.send
     fails MissingRequiredParameter
     fails ValidationError
     source written https://resend.com/docs/api-reference/emails/send-email
+    confirmed recordings/emails.send.json
 
 type EmailAttachment = Object
     /// One file sent with an email: its name, its bytes, sent in base64, and its media type.

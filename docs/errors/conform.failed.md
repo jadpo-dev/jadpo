@@ -13,6 +13,11 @@ means the app would misread what the provider sends, such as taking an
 answer the model stopped short as whole. So the suite fails, says which
 case and why, and a package isn't published until it passes.
 
+`email`'s and `receiving`'s suites fail the same way: an email part the
+request doesn't carry, a receipt or a mapped failure not read, a queue's
+messages or their handles not read where the mapping says, or a recording
+the local fake needs that the package doesn't have.
+
 ## What it looks like
 
 An app asking its models through its own provider package, Acme

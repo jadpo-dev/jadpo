@@ -162,6 +162,55 @@ check failed: 1 error, 4 files
 ```
 
 
+A capability mapping, `provides/<capability>.jadpo`, names one of
+Jadpo's capabilities a package may fill, and is data: no call or
+expression anywhere in it. `cache` is filled only by Jadpo's own drivers:
+
+```jadpo check project=k4-provide-cache file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=k4-provide-cache file=shared/providers/acme_cache/v1/package.jadpo hidden
+/// Acme's cache API.
+package AcmeCache.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=k4-provide-cache file=shared/providers/acme_cache/v1/provider.jadpo hidden
+/// Acme's cache API. The connection gives its address in `host:`.
+provider {
+    protocol: Protocol.json_http
+}
+```
+
+`shared/providers/acme_cache/v1/provides/cache.jadpo`:
+
+```jadpo check project=k4-provide-cache file=shared/providers/acme_cache/v1/provides/cache.jadpo expect=package.provider_invalid
+/// Would fill `cache`.
+provide cache {
+}
+```
+
+```text output
+error: `provide cache`: no package fills `cache`
+ --> shared/providers/acme_cache/v1/provides/cache.jadpo:2:9
+  |
+2 | provide cache {
+  |         ^^^^^ filled only by Jadpo's own drivers
+  reason: Jadpo owns the list of capabilities. `database`, `cache` and `schedules` are filled only by its built-in drivers, configured in `app.jadpo`; a package may fill `files`, `email`, `publishing`, `receiving`, `search`, `bot_check`, `documents`, `scanning` and `ai`.
+  next: Remove `shared/providers/acme_cache/v1/provides/cache.jadpo`; what the provider does beyond the capability is the package's own operations (agent)
+  rule: package.provider_invalid
+  help: https://jadpo.dev/docs/errors/package.provider_invalid
+
+check failed: 1 error, 4 files
+```
+
+A call or an expression in a mapping, such as `lower(message.to)`, is
+this error too: the computing belongs in a field's `decode:` or
+`encode:` in the package's types.
+
 `erasure: { call: customers.delete  by: CustomerId }` names the operation that
 erases a person and the type of the key it takes. So `call:` is one of the
 package's operations with `changes: true`, and `by:` the type of exactly one

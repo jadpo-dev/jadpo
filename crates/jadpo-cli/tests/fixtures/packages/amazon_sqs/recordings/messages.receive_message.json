@@ -1,0 +1,9 @@
+{
+  "Messages": [
+    {
+      "Body": "{Text}",
+      "MessageId": "{Text}",
+      "ReceiptHandle": "{Text}"
+    }
+  ]
+}

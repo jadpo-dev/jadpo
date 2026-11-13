@@ -21,8 +21,8 @@
 use std::collections::BTreeMap;
 
 use jadpo_db::{
-    Db, File, Folder, ItemKind, Locked, Ownership, PackageHome, Place, Project, Source, item_tree,
-    location, package_digest, parse_lock, symbols,
+    Db, File, Folder, ItemKind, Locked, Ownership, PackageHome, Place, Project, Source, location,
+    package_digest, parse_lock, symbols,
 };
 use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_syntax::ast::{self, AstNode, Decl};
@@ -1549,54 +1549,4 @@ fn folder_of(package: &str) -> String {
         Some((name, version)) => format!("{}/{}/{version}", jadpo_db::PACKAGES, to_snake(name)),
         None => format!("{}/{package}", jadpo_db::PACKAGES),
     }
-}
-
-/// The package declarations of a file that the first part of chunk 7.1
-/// doesn't run: a package's capability mappings but `receiving`'s (chunk
-/// 7.7c) and `email`'s (chunk 7.3c). Its events are read since chunk 7.7,
-/// each a webhook's event the app subscribes to, its actions since chunk
-/// 7.6, and its subscribers since chunk 7.6b.
-#[salsa::tracked(returns(ref))]
-pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
-    let location = location(db, project, file);
-    let Ownership::Package(home) = &location.ownership else {
-        return Vec::new();
-    };
-    let what = match location.place {
-        // `receiving`'s is read since chunk 7.7c ([`crate::receiving`]),
-        // `ai`'s since chunk 5.5v3b ([`crate::ai_mapping`]), `email`'s
-        // since chunk 7.3c ([`crate::mail`]).
-        Place::Folder(Folder::Provides)
-            if matches!(location.stem.as_str(), "receiving" | "ai")
-                || location.stem == jadpo_std::email::NAMESPACE =>
-        {
-            return Vec::new();
-        }
-        Place::Folder(Folder::Provides) => "A package's capability mappings",
-        _ => return Vec::new(),
-    };
-    let path = file.path(db);
-    let Some(source) = tree::source(db, file) else {
-        return Vec::new();
-    };
-    item_tree(db, file)
-        .items
-        .iter()
-        .map(|item| {
-            Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                format!("{what} aren't built yet"),
-            )
-            .at(
-                tree::name_span(&source, path, item.index, None),
-                "declared, not built",
-            )
-            .reason(format!(
-                "The language declares {} in `{}`, but this compiler can't run them yet.",
-                what.to_lowercase(),
-                home.versioned()
-            ))
-            .next(format!("Do without `{}` for now", item.name))
-        })
-        .collect()
 }

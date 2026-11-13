@@ -110,6 +110,7 @@ mod outside_calls;
 mod own_sources;
 mod package_actions;
 mod package_conform;
+mod package_conform_suites;
 mod package_import;
 mod package_new;
 mod package_plans;

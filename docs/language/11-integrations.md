@@ -6152,7 +6152,15 @@ provide email {
   enum tables, and `each:` with `as:` to map a list element by element,
   the current element named `item`. A mapping has no expressions or
   calls. Any computing is done in the package's decoders and encoders.
-  The compiler checks both sides of a mapping.
+  The compiler checks both sides of a mapping, and a call or expression
+  anywhere in one is `package.provider_invalid`.
+- **Only Jadpo's capabilities.** `provide` names one of the capabilities
+  in the table above that a package may fill. One that isn't a
+  capability, or `database`, `cache` or `schedules`, which only Jadpo's
+  own drivers fill, is `package.provider_invalid`. A mapping for a
+  capability whose mapping isn't read yet (`files`, `publishing`,
+  `search`, `bot_check`, `documents`, `scanning`) is
+  `toolchain.not_built_yet`; `email`'s, `receiving`'s and `ai`'s are read.
 - **Email attachments are part of the capability.** A `File` field on an
   `EmailMessage` is an attachment. It is read from its store when the
   message is sent, and checked against the mapping's
@@ -6219,16 +6227,40 @@ digest, and the app's own integrations run the suite in scheduled CI.
 Tests use one fake per capability, whatever the provider: `email.sent`
 for email, `published` for publishing.
 
-For `ai` ([AI](21-ai.md)), `jadpo package conform <package> ai` runs the
-suite in an app. By default it runs against the package's recordings and
-a local fake on this machine's loopback address. With `--live` it runs
-against the provider's API through the app's own connection, and it is
-refused (`conform.refused`) when there is no connection or its credential
-isn't set.
+`jadpo package conform <package> <capability>` runs the suite in an app,
+in a scratch app of its own holding the package as the app installed it,
+so each case goes through the package's mapping, its request, the package
+driver's HTTP and its own types, as the app's sending or receiving does.
+By default it runs against the package's recordings and a local fake on
+this machine's loopback address, and nothing leaves the machine: every
+request goes to the fake, so a package with fixed `hosts:` runs the same
+as one whose connection gives `host:`. With `--live` it runs against the
+provider's API through the app's own connection, and it is refused
+(`conform.refused`) when there is no connection or its credential or
+address isn't set. A case that fails is `conform.failed`.
 
-> Only the `ai` suite is built. Other capabilities' suites, the run pinned
-> to the digest for the registry, and the scheduled CI run aren't built
-> yet.
+- **`ai`** has six cases ([The conformance suite](21-ai.md#the-conformance-suite)).
+- **`email`** has four. A *message*, its parts sent where `input:` maps
+  them and the provider's id read where `receipt:` says; *text only*, a
+  message with no HTML sent with the part left out; an *attachment*, one
+  file's name and bytes sent; and a *rejection*, each failure `failures:`
+  maps answered as the provider refuses it and read as its
+  `EmailFailure`. The live run sends through the connection the app's
+  `email:` names, to the app's own sender address, so no one else gets
+  mail; it is refused when `email:` names another connection. A provider
+  can't be made to reject on request, so the live run skips the
+  rejection.
+- **`receiving`** has three. A batch of two *messages*, each body and
+  handle read where the mapping says; an *empty queue*, an answer with no
+  messages read as none; and *acknowledge*, a message acknowledged with
+  its handle sent. `receiving` has no live run: it would take the app's
+  own messages off its queue (`conform.refused`).
+
+> The suites of `ai`, `email` and `receiving` are built, the
+> capabilities whose mappings are read. The run pinned to the digest and
+> shown on the registry's listing, the app's own integrations running the
+> suite in scheduled CI, and the contract run aren't built yet. Another
+> capability's suite comes with its mapping.
 
 ### In development
 
@@ -8760,14 +8792,15 @@ These mistakes are specified but not reported yet:
 |---|---|
 | An operation whose scope the grant does not request; a call to a grant connection without `on_behalf_of:` | `jadpo check` |
 | A service image not yet accepted; an `asks:` host not granted by `outbound:` | `jadpo check`, naming the line that grants it |
-| A capability's connection whose package does not provide it, or a function call or expression in a `provide` mapping, for a capability other than `receiving` and `email` | `jadpo check` |
 
 The rest of the page's mistakes have examples under
 [Errors](#errors): the digest and the lock, an `emails/` folder, the
 index's keys, `provider.jadpo`'s keys, `hosts:` with `runs:`, reserved
-and taken names, a resource and an action of one name and a public
-action that emits (`package.action_invalid`), and subscribing to a
-non-public event (`package.not_public`) under "Package errors"; a
+and taken names, a `provide` mapping that computes a value or names no
+capability a package fills (`package.provider_invalid`), a resource and
+an action of one name and a public action that emits
+(`package.action_invalid`), and subscribing to a non-public event
+(`package.not_public`) under "Package errors"; a
 surface that differs at install and a link in CI under "Installing
 errors"; a decoder that fails on a recording and a field's `decode:` and
 `encode:` that don't round-trip under "Recording errors"; a connection's
