@@ -107,7 +107,11 @@ fn a_new_project_passes_check_fmt_and_test_as_written() {
         );
     }
     let tested = jadpo(&root, &["test"]);
-    assert_eq!(tested.stdout, "tested: 1 passed, 1 route test\n");
+    // Its route test, and the two generated for its route (area 13).
+    assert_eq!(
+        tested.stdout,
+        "tested: 3 passed, 1 route test, 2 generated tests\n"
+    );
 }
 
 #[test]

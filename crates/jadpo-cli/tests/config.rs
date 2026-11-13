@@ -680,7 +680,14 @@ fn tests_read_test_values_defaults_and_their_own_config() {
     );
     let output = jadpo(&root, &["test"]);
     assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
-    assert!(output.stdout.contains("2 passed"), "{}", output.stdout);
+    // Its two tests, and the two generated for its route (area 13).
+    assert!(
+        output
+            .stdout
+            .contains("4 passed, 2 action tests, 2 generated tests"),
+        "{}",
+        output.stdout
+    );
 }
 
 #[test]

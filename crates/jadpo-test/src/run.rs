@@ -21,7 +21,7 @@ use crate::database::{TestDatabases, TestHost};
 use crate::env::TestEnv;
 use crate::outcome::CrashPoint;
 use crate::outcome::{self, TestFailure};
-use crate::{Rerun, Test, TestKind, TestRecord};
+use crate::{Rerun, Test, TestKind, TestRecord, generated};
 
 /// A test run reads no environment variable.
 const NO_VARIABLES: fn(&str) -> Option<String> = |_| None;
@@ -59,6 +59,7 @@ pub(crate) fn run_all(
     prepared: &Arc<Prepared>,
     tests: &[Test],
     rerun: &Rerun,
+    generated: &generated::Table,
     databases: Option<&TestDatabases>,
     keep: Keep,
     maker: Option<Maker<'_>>,
@@ -75,7 +76,7 @@ pub(crate) fn run_all(
         return spread(
             || Boxed(make(settings.as_ref())),
             tests,
-            rerun,
+            (rerun, generated),
             sources,
             databases,
             keep,
@@ -90,7 +91,7 @@ pub(crate) fn run_all(
             }
         },
         tests,
-        rerun,
+        (rerun, generated),
         sources,
         databases,
         keep,
@@ -160,7 +161,7 @@ fn workers(count: usize) -> usize {
 fn spread<E: Executor>(
     make: impl Fn() -> E + Sync,
     tests: &[Test],
-    rerun: &Rerun,
+    (rerun, generated): (&Rerun, &generated::Table),
     sources: &(dyn Sources + Sync),
     databases: Option<&TestDatabases>,
     keep: Keep,
@@ -181,7 +182,10 @@ fn spread<E: Executor>(
             let Some(test) = tests.get(index) else {
                 break;
             };
-            done.push((index, one(&executor, test, rerun, sources, &stores, keep)));
+            done.push((
+                index,
+                one(&executor, test, (rerun, generated), sources, &stores, keep),
+            ));
         }
         done
     };
@@ -228,13 +232,16 @@ struct Stores<'a> {
 fn one<E: Executor>(
     executor: &E,
     test: &Test,
-    rerun: &Rerun,
+    (rerun, generated): (&Rerun, &generated::Table),
     sources: &dyn Sources,
     stores: &Stores<'_>,
     keep: Keep,
 ) -> Done {
     let mut kept = keep.record.then(Kept::default);
-    let failure = tested(executor, test, rerun, sources, stores, kept.as_mut());
+    let failure = match generated.get(&test.key) {
+        Some(made) => generated_test(executor, test, made, rerun, sources, stores, kept.as_mut()),
+        None => tested(executor, test, rerun, sources, stores, kept.as_mut()),
+    };
     let record =
         kept.map(|kept| TestRecord::new(&kept.entries, &verdict(failure.as_deref()), &kept.rows));
     (failure, record)
@@ -339,6 +346,7 @@ fn tested<E: Executor>(
             databases,
             runtime,
             callable,
+            exchanges: &[],
         };
         let first = stored.run(None, kept);
         if first.failure.is_some() {
@@ -380,6 +388,7 @@ fn tested<E: Executor>(
         order: None,
         crash: None,
         record: record.clone(),
+        exchanges: &[],
     };
     let ran = block_on(test_run::once(executor, &host, once))
         .unwrap_or_else(|_| test_run::stalled(places, record.as_deref()));
@@ -452,6 +461,8 @@ struct Stored<'s, E> {
     databases: &'s TestDatabases,
     runtime: &'s jadpo_host_native::Runtime,
     callable: u32,
+    /// A generated test's requests, sent in place of running `callable`.
+    exchanges: &'s [test_run::Exchange],
 }
 
 /// How one run of a test with a database went.
@@ -463,6 +474,8 @@ struct Ran {
     effects: Vec<(String, usize)>,
     /// Whether the crash it was asked to make happened.
     crashed: bool,
+    /// What a generated test's requests were answered with.
+    answers: Vec<test_run::Answer>,
 }
 
 impl<E: Executor> Stored<'_, E> {
@@ -486,6 +499,7 @@ impl<E: Executor> Stored<'_, E> {
                 order: Some(self.rerun.seed),
                 crash,
                 record: record.clone(),
+                exchanges: self.exchanges,
             },
         ));
         let failure = match &ran.outcome {
@@ -522,8 +536,88 @@ impl<E: Executor> Stored<'_, E> {
             reached: ran.reached,
             effects: ran.effects,
             crashed: ran.crashed,
+            answers: ran.answers,
         }
     }
+}
+
+/// Runs generated test `test` (area 13, "Tests generated for each route"; chunk W2): its
+/// requests, made for `executor`'s program, sent through the HTTP
+/// component on its own copy of the database when the project has one,
+/// and their answers held to what `made` says they must be. `None` when
+/// each is.
+fn generated_test<E: Executor>(
+    executor: &E,
+    test: &Test,
+    made: &generated::Generated,
+    rerun: &Rerun,
+    sources: &dyn Sources,
+    stores: &Stores<'_>,
+    kept: Option<&mut Kept>,
+) -> Option<Box<TestFailure>> {
+    let exchanges = match generated::exchanges(executor, &test.key, made) {
+        Ok(exchanges) => exchanges,
+        Err(why) => {
+            return Some(Box::new(outcome::generated(
+                sources,
+                test,
+                generated::Broken {
+                    request: made.label.clone(),
+                    does: "is made from its API's document".to_string(),
+                    expected: "what the document declares".to_string(),
+                    got: why,
+                },
+                rerun,
+            )));
+        }
+    };
+    let places = executor.places();
+    let (outcome, answers) =
+        if let (Some(databases), Some(runtime)) = (stores.databases, stores.runtime) {
+            let stored = Stored {
+                executor,
+                test,
+                rerun,
+                sources,
+                databases,
+                runtime,
+                callable: u32::MAX,
+                exchanges: &exchanges,
+            };
+            let ran = stored.run(None, kept);
+            if ran.failure.is_some() {
+                return ran.failure;
+            }
+            (None, ran.answers)
+        } else {
+            let record = recording(kept.as_deref());
+            let host = TestEnv::new(&test.key).host();
+            let once = test_run::Once {
+                key: &test.key,
+                callable: u32::MAX,
+                order: None,
+                crash: None,
+                record: record.clone(),
+                exchanges: &exchanges,
+            };
+            let ran = block_on(test_run::once(executor, &host, once))
+                .unwrap_or_else(|_| test_run::stalled(places, record.as_deref()));
+            if let (Some(record), Some(kept)) = (&record, kept) {
+                kept.entries = record.entries();
+            }
+            let failure = match &ran.outcome {
+                Outcome::Value(_) => None,
+                other => Some(Box::new(outcome::failure(
+                    places, sources, test, other, rerun, None,
+                ))),
+            };
+            (failure, ran.answers)
+        };
+    if outcome.is_some() {
+        return outcome;
+    }
+    generated::judge(made, &answers)
+        .map(|broken| Box::new(outcome::generated(sources, test, broken, rerun)))
 }
 
 #[cfg(test)]
@@ -603,12 +697,20 @@ mod tests {
             project: std::path::PathBuf::new(),
         };
         let sources: BTreeMap<String, String> = BTreeMap::new();
-        let failed: Vec<usize> = spread(Fake::new, &tests, &rerun, &sources, None, Keep::default())
-            .iter()
-            .enumerate()
-            .filter(|(_, (failure, _))| failure.is_some())
-            .map(|(n, _)| n)
-            .collect();
+        let generated = crate::generated::Table::new();
+        let failed: Vec<usize> = spread(
+            Fake::new,
+            &tests,
+            (&rerun, &generated),
+            &sources,
+            None,
+            Keep::default(),
+        )
+        .iter()
+        .enumerate()
+        .filter(|(_, (failure, _))| failure.is_some())
+        .map(|(n, _)| n)
+        .collect();
         let expected: Vec<usize> = (0..40).filter(|n: &usize| n.is_multiple_of(3)).collect();
         assert_eq!(failed, expected);
     }

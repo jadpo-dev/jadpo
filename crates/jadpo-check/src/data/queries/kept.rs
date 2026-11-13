@@ -227,7 +227,7 @@ impl Reader<'_> {
 /// two such values apart where code's `==` doesn't, so a query compares
 /// none and a unique rule covers none (chunk Q2).
 pub(crate) fn spelled_two_ways(lookup: &dyn crate::types::TypeView, ty: &Ty) -> Option<String> {
-    let reads = crate::data::columns::json_reads(lookup, ty);
+    let reads = crate::data::columns::json_reads(lookup, crate::data::columns::Born::NOW, ty);
     let mut seen = BTreeSet::new();
     let mut found = None;
     two_ways(&reads.shape, &reads.types, &mut seen, &mut found);

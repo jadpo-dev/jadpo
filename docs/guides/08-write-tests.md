@@ -384,12 +384,15 @@ jadpo test
 ```
 
 ```text
-tested: 5 passed, 2 action tests, 3 route tests
+tested: 12 passed, 2 action tests, 3 route tests, 7 generated tests
 ```
 
 Jadpo works out each test's kind from what it calls, and counts each
 kind apart, since an action test doesn't prove the route decodes its
-input or checks who is signed in. When a test fails, it shows each value
+input or checks who is signed in. The generated tests are its own, three
+at most for each route: that the route refuses bad input, that each
+failure it declares reaches a client as its API document says, and that
+it sends only the fields its output declares. When a test fails, it shows each value
 in the assertion and the command that reruns just that test:
 
 ```text
@@ -407,7 +410,7 @@ FAIL  finishing a book records when
   rule: test.assertion_failed
   rerun: jadpo test domains/reading/actions/finish_entry.test.jadpo:10 --seed 1
 
-test failed: 1 failed, 4 passed, 2 action tests, 3 route tests
+test failed: 1 failed, 11 passed, 2 action tests, 3 route tests, 7 generated tests
 ```
 
 To run fewer tests, name a file, `jadpo test <file>`, or a test,

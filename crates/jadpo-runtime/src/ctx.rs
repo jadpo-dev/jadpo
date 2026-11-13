@@ -118,6 +118,29 @@ pub struct Caller {
     pub multi_factor: bool,
 }
 
+/// What a generated test gives the request it sends (area 13, "Generated
+/// tests"): the caller it is answered as, in place of signing one in, since
+/// what the test checks comes after sign-in; and what its route answers
+/// with in place of running, a declared failure or an output made for its
+/// type, so the failure's envelope and the output's fields are seen as a
+/// client sees them. Only `jadpo test` gives one.
+#[derive(Clone, Debug, Default)]
+pub struct Generated {
+    pub caller: Option<Caller>,
+    pub forced: Option<Forced>,
+}
+
+/// What a generated test's request is answered with in place of what its
+/// route runs.
+#[derive(Clone, Debug)]
+pub enum Forced {
+    /// A failure the route's action declares, made with values for its
+    /// fields.
+    Failure(Box<crate::Failure>),
+    /// A value of the route's output.
+    Value(Value),
+}
+
 /// The system: who a schedule's run and a subscriber's delivery act as
 /// (area 9, `Access.system`; area 12), a caller of its own that only the
 /// runtime's runner makes ([`crate::runner`]), never a request (chunk
@@ -236,6 +259,9 @@ pub struct Ctx<'p> {
     /// a route test makes to a route with `confirm:`, by its device's
     /// number, with the call's site (area 8; chunk R1).
     confirming: Option<(u32, u32)>,
+    /// What a generated test gives the next request in place of signing
+    /// in and of what its route runs (area 13, "Tests generated for each route").
+    generated: Option<Generated>,
     /// What a test's `flags:` gives, by flag and value number (area 16).
     test_flags: Vec<(u32, u32)>,
     /// The flags' state the operation's first flag fixed, and each flag's
@@ -371,6 +397,7 @@ impl<'p> Ctx<'p> {
             inline: 0,
             settings: Vec::new(),
             confirming: None,
+            generated: None,
             test_flags: Vec::new(),
             flag_state: None,
             flag_values: Vec::new(),
@@ -808,6 +835,34 @@ impl<'p> Ctx<'p> {
     /// The test passkey `test_passkeys.confirm` gave, once.
     pub fn take_confirming(&mut self) -> Option<(u32, u32)> {
         self.confirming.take()
+    }
+
+    /// Gives the next request a generated test sends its caller and what
+    /// its route answers with (area 13, "Tests generated for each route"). Only `jadpo
+    /// test` gives one, so a deployable, built without `testing`, can't.
+    #[cfg(feature = "testing")]
+    pub fn set_generated(&mut self, generated: Generated) {
+        self.generated = Some(generated);
+    }
+
+    /// The caller a generated test's request is answered as, in place of
+    /// one it signs in, once.
+    pub fn take_admitted(&mut self) -> Option<Caller> {
+        self.generated.as_mut()?.caller.take()
+    }
+
+    /// What a generated test's request is answered with in place of what
+    /// its route runs, once.
+    pub fn take_forced(&mut self) -> Option<Forced> {
+        self.generated.as_mut()?.forced.take()
+    }
+
+    /// Whether a generated test's request answers with what it forces,
+    /// so a confirmation it would need is taken as given.
+    pub fn forcing(&self) -> bool {
+        self.generated
+            .as_ref()
+            .is_some_and(|generated| generated.forced.is_some())
     }
 
     /// Keeps why a sign-in was refused, for the request's log line.

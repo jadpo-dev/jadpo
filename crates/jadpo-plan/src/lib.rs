@@ -677,6 +677,10 @@ pub struct BackfillPlan {
     /// For a refit (chunk Q3), how the field's own column is read, so only
     /// the stored values its rules refuse are replaced.
     pub refits: Option<jadpo_std::read::Column>,
+    /// For an enum without data stored by the names its variants were
+    /// born with, each in declared order (area 5, "What a rename keeps"):
+    /// the value is written by its own; empty otherwise.
+    pub stored: Vec<String>,
 }
 
 impl Plan {
@@ -801,6 +805,7 @@ impl Plan {
                     write: backfill.plan.write,
                     validator: ValidatorId(0),
                     refits: backfill.plan.refits.clone(),
+                    stored: backfill.plan.stored.clone(),
                 });
                 backfill_reads.push(
                     backfill
@@ -1424,7 +1429,14 @@ impl Plan {
                 else {
                     continue;
                 };
-                let ty = TypeRef::Field(graph.node(id).key.clone());
+                let mut ty = TypeRef::Field(graph.node(id).key.clone());
+                // By the names born with, as its column stores it (area 5).
+                if let Some(field) = jadpo_check::data::data_model(db, project)
+                    .entity(&stored.entity)
+                    .and_then(|entity| entity.fields.iter().find(|f| f.name == stored.name))
+                {
+                    ty = crate::queries::stored_json(field, ty);
+                }
                 let number = match json_types.iter().position(|known| *known == ty) {
                     Some(at) => at,
                     None => {

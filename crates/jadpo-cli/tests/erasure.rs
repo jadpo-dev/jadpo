@@ -805,7 +805,13 @@ fn a_kept_record_passes_its_tests() {
     let root = kept_project("tests");
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("6 passed"), "{}", tested.stdout);
+    assert!(
+        tested
+            .stdout
+            .contains("9 passed, 4 action tests, 2 route tests, 3 generated tests"),
+        "{}",
+        tested.stdout
+    );
 }
 
 /// What erasure does with what a migration retired (area 5, "Removing

@@ -171,7 +171,12 @@ fn a_project_with_translations_checks_and_its_tests_pass() {
     let (_dir, root) = project();
     let done = jadpo(&root, &["test"]);
     assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
-    assert!(done.stdout.contains("3 passed"), "{}", done.stdout);
+    assert!(
+        done.stdout
+            .contains("5 passed, 1 pure test, 2 action tests, 2 generated tests"),
+        "{}",
+        done.stdout
+    );
 }
 
 #[test]
@@ -336,7 +341,8 @@ fn a_save_of_a_translation_file_reruns_the_tests_that_reach_its_key() {
     )
     .expect("starts");
     assert_eq!(first.reached, None);
-    assert_eq!(ran(&first).len(), 3);
+    // Its three, and the two generated for its route (area 13).
+    assert_eq!(ran(&first).len(), 5);
     watch.executions();
 
     // The words of `order_shipped` in French: the tests of the action that
@@ -351,9 +357,13 @@ fn a_save_of_a_translation_file_reruns_the_tests_that_reach_its_key() {
     let event = watch
         .apply(saved("domains/shop/translations/fr_fr.jadpo"))
         .expect("a change");
+    // With the tests generated for the route whose action reads them
+    // (area 13, "Tests generated for each route").
     let both: BTreeSet<String> = [
         "an order's shipping is told in French".to_string(),
         "the cart is described in each language".to_string(),
+        "POST /cart refuses bad input with { field, rule }".to_string(),
+        "POST /cart sends only the fields its output declares".to_string(),
     ]
     .into();
     assert_eq!(ran(&event), both);

@@ -246,7 +246,9 @@ fn jadpo_test_fakes_a_package_filling_ai() {
     let tested = jadpo(&root, &["test"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
     assert!(
-        tested.stdout.contains("5 passed"),
+        tested
+            .stdout
+            .contains("8 passed, 5 action tests, 3 generated tests"),
         "{}{}",
         tested.stdout,
         tested.stderr

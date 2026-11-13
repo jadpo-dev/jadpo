@@ -207,7 +207,9 @@ fn a_route_test_reads_a_scripted_stream_piece_by_piece() {
     let tested = jadpo(&root, &["test"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
     assert!(
-        tested.stdout.contains("6 passed"),
+        tested
+            .stdout
+            .contains("8 passed, 1 action test, 5 route tests, 2 generated tests"),
         "{}{}",
         tested.stdout,
         tested.stderr

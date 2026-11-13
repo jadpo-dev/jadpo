@@ -455,7 +455,13 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
     // The project's own route tests, on a disposable database.
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("3 passed"), "{}", tested.stdout);
+    assert!(
+        tested
+            .stdout
+            .contains("5 passed, 3 route tests, 2 generated tests"),
+        "{}",
+        tested.stdout
+    );
 }
 
 const FILES: &[(&str, &str)] = &[

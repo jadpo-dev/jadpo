@@ -741,7 +741,7 @@ jadpo test
 
 ```text
 checked: 19 files in 0.1 s
-tested: 4 passed, 2 action tests, 2 route tests in 1.0 s
+tested: 14 passed, 2 action tests, 2 route tests, 10 generated tests in 1.0 s
 ```
 
 `jadpo dev` serves it, with a throwaway database of its own. Every route

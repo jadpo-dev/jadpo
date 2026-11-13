@@ -525,6 +525,12 @@ subscriber send_reminder -> notify_owner
   names, so a rename made by hand shows as a removal and an addition, and
   `jadpo migrate new` refuses it, pointing you to `jadpo rename`
   ([Tools](14-tooling.md#jadpo-rename)).
+- **A born name is in use.** A declaration or member written by hand with
+  the name another of its kind was born with would take that one's key, so
+  `jadpo check` refuses it as
+  [`semantic.duplicate_declaration`](../errors/semantic.duplicate_declaration.md),
+  as `jadpo rename` refuses that name: a new `greet` while `welcome` was
+  born `greet`.
 - **Inside a callable**, branches and fault sites are numbered afresh in
   each build. Only declarations and fields need to be recognised across
   builds.

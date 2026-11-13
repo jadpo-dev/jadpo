@@ -594,6 +594,7 @@ impl Program {
                 write: plan.write,
                 validator: Some(self.validator(plan.validator)),
                 refits: plan.refits.clone(),
+                stored: plan.stored.clone(),
             })
             .collect()
     }
