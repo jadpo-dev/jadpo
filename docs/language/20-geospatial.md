@@ -1513,11 +1513,11 @@ test "an include and a count keep the patches the code delivers from" {
     var pimlico: DeliveryPatch = draw_patch(crumbs, PatchName("Pimlico"), west_end)
     var shoreditch: DeliveryPatch = draw_patch(crumbs, PatchName("Shoreditch"), east_end)
     var soho: DeliveryPatch = draw_patch(loaf, PatchName("Soho"), west_end)
-    var listed: Text = match bakery_reaching(crumbs.id, crumbs.spot) {
+    var patches_named: Text = match bakery_reaching(crumbs.id, crumbs.spot) {
         some(reach) -> text.join(list.map(reach.patches, card -> card.name), ", ")
         none -> ""
     }
-    assert listed == text.join([pimlico.name, westminster.name], ", ")
+    assert patches_named == text.join([pimlico.name, westminster.name], ", ")
     assert geo.contains(shoreditch.outline, crumbs.spot) == false
     var tallies: List<ReachTally> = reach_tallies(crumbs.spot)
     assert list.map(tallies, tally -> tally.bakery_id == crumbs.id) == [true, false]
