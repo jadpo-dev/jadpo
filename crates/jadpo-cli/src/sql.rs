@@ -255,6 +255,10 @@ fn explain_query(
         )));
     };
     let mut statements = Vec::new();
+    // An aggregate's records come before its totals (chunk Q4).
+    if let Some(decided) = &planned.read.decided {
+        statements_of(&decided.select, &mut statements);
+    }
     statements_of(&planned.read.select, &mut statements);
     let result = (|| {
         let runtime = jadpo_host_native::Runtime::new()
@@ -697,7 +701,10 @@ fn render(
         ("file".to_string(), place.to_string()),
         (
             "sends".to_string(),
-            if count == 1 {
+            if plan.read.decided.is_some() {
+                // An aggregate with `geo.` conditions (chunk Q4).
+                "2 statements: this one, then the totals of the records the code keeps".to_string()
+            } else if count == 1 {
                 "1 statement".to_string()
             } else {
                 format!("{count} statements: this one, and one for each include")
@@ -708,50 +715,45 @@ fn render(
     for setting in &plan.read.settings {
         fields.push(("first".to_string(), setting.clone()));
     }
-    // What the runtime works out again on the rows found (chunk 6.3b;
-    // area 20, chunk 5.5u5), named by its operations.
-    if let Some(recheck) = &plan.read.recheck {
-        let operation = |op: jadpo_std::Op| {
-            jadpo_std::OPERATIONS
-                .iter()
-                .find(|operation| operation.op == op)
-                .map(|operation| (operation.namespace, operation.name))
-        };
-        let mut then = Vec::new();
-        if !recheck.checks.is_empty() {
-            let mut namespaces: Vec<String> = Vec::new();
-            for check in &recheck.checks {
-                if let Some((namespace, _)) = operation(check.op)
-                    && !namespaces.contains(&format!("`{namespace}.`"))
-                {
-                    namespaces.push(format!("`{namespace}.`"));
-                }
-            }
-            then.push(format!(
-                "each row is held to its {} conditions in Jadpo's own code",
-                namespaces.join(" and ")
-            ));
+    // An aggregate with `geo.` conditions (chunk Q4): its records first,
+    // decided in code, then the totals of those kept.
+    if let Some(decided) = &plan.read.decided {
+        fields.push(("then".to_string(), then(&decided.recheck)));
+        statement(
+            &mut screen,
+            &mut statements,
+            format!("query {}", query.name),
+            fields,
+            &decided.select,
+            &names,
+            explained,
+        );
+        statement(
+            &mut screen,
+            &mut statements,
+            "totals".to_string(),
+            vec![(
+                "counts".to_string(),
+                "the records the code kept, by their id".to_string(),
+            )],
+            &plan.read.select,
+            &names,
+            explained,
+        );
+    } else {
+        if let Some(recheck) = &plan.read.recheck {
+            fields.push(("then".to_string(), then(recheck)));
         }
-        if let Some((namespace, name)) = recheck
-            .order
-            .as_ref()
-            .and_then(|order| operation(order.key.op))
-        {
-            then.push(format!(
-                "sorted by `{namespace}.{name}` as the code works it out, then `id`"
-            ));
-        }
-        fields.push(("then".to_string(), then.join("; ")));
+        statement(
+            &mut screen,
+            &mut statements,
+            format!("query {}", query.name),
+            fields,
+            &plan.read.select,
+            &names,
+            explained,
+        );
     }
-    statement(
-        &mut screen,
-        &mut statements,
-        format!("query {}", query.name),
-        fields,
-        &plan.read.select,
-        &names,
-        explained,
-    );
     includes(
         &mut screen,
         &mut statements,
@@ -780,6 +782,42 @@ fn render(
         ("statements", Json::array(statements)),
     ]);
     Reply::screen(screen, data)
+}
+
+/// What the runtime works out again on the rows a statement found (chunk
+/// 6.3b; area 20, chunk 5.5u5), named by its operations.
+fn then(recheck: &jadpo_std::read::Recheck) -> String {
+    let operation = |op: jadpo_std::Op| {
+        jadpo_std::OPERATIONS
+            .iter()
+            .find(|operation| operation.op == op)
+            .map(|operation| (operation.namespace, operation.name))
+    };
+    let mut then = Vec::new();
+    if !recheck.checks.is_empty() {
+        let mut namespaces: Vec<String> = Vec::new();
+        for check in &recheck.checks {
+            if let Some((namespace, _)) = operation(check.op)
+                && !namespaces.contains(&format!("`{namespace}.`"))
+            {
+                namespaces.push(format!("`{namespace}.`"));
+            }
+        }
+        then.push(format!(
+            "each row is held to its {} conditions in Jadpo's own code",
+            namespaces.join(" and ")
+        ));
+    }
+    if let Some((namespace, name)) = recheck
+        .order
+        .as_ref()
+        .and_then(|order| operation(order.key.op))
+    {
+        then.push(format!(
+            "sorted by `{namespace}.{name}` as the code works it out, then `id`"
+        ));
+    }
+    then.join("; ")
 }
 
 fn count_includes(includes: &[IncludeRead]) -> usize {
@@ -822,11 +860,16 @@ fn includes(
             include: Some(&keys),
             cursor: &[],
         };
+        let mut fields = vec![("follows".to_string(), follows)];
+        // Its records rechecked in code (chunk Q4).
+        if let Some(recheck) = &plan.recheck {
+            fields.push(("then".to_string(), then(recheck)));
+        }
         statement(
             screen,
             statements,
             format!("include {}", include.name),
-            vec![("follows".to_string(), follows)],
+            fields,
             &plan.select,
             &names,
             explained,
@@ -886,6 +929,7 @@ impl Names<'_> {
             Source::Fetch => {
                 "as many rows as it keeps, more if the code's recheck leaves it short".to_string()
             }
+            Source::Kept => "the ids of the records the code kept".to_string(),
             Source::Envelope { index, path, part } => {
                 let bounds = self.source(&Source::Arg {
                     index: *index,

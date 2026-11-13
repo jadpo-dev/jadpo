@@ -338,8 +338,10 @@ work below (Richard, 2026-11-08).
       filling a value held in several columns, a new required money field's
       among them, or reading one held so or as JSON; and `CHECK` constraints
       holding fields' rules. Split from Q3 (2026-11-12), which built refits.
-    - [ ] **Q4 A `geo.` condition in an include or an aggregate** `opus ·
-      high`: area 20, "What is built"; area 6, "The aggregates".
+    - [x] **Q4 A `geo.` condition in an include or an aggregate**: an
+      include's rows rechecked in code and an aggregate counting the
+      records the code keeps, in area 20, "In an include or an aggregate",
+      and its notes.
     - [ ] **Q5 Reading a second store** `opus · xhigh`: area 6, "One store per
       action". Reads of another store outside the action's transaction, in place of
       `toolchain.not_built_yet`.

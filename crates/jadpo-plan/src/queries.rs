@@ -730,6 +730,7 @@ impl Planner<'_> {
                 missing,
                 recheck,
                 layer: query.geometry.is_some(),
+                decided: None,
                 gate,
             },
         })
@@ -812,6 +813,16 @@ impl Planner<'_> {
             columns.add(&matched.name, self.column(target, matched)?);
             let record = self.record(target, &include.element, &include.includes, &mut columns)?;
             let sensitive = self.sensitive_read(target, &mut columns, false);
+            // The calls its `where:` searches an index for (`geo.` tests,
+            // chunk Q4), each worked out again in code on the rows found,
+            // from the field's own column, as a query's are.
+            let mut checks = Vec::new();
+            for call in jadpo_sql::condition::search_calls(&include.filter) {
+                let tested = field(target, &call.field)?;
+                let column = columns.add(&tested.name, self.column(target, tested)?);
+                checks.push(self.check(call, column)?);
+            }
+            let rechecked = !checks.is_empty();
             let (sql, unpoliced) = match include.kind {
                 IncludeKind::Parent | IncludeKind::Child => {
                     let mut conditions = vec![text::any(&matched.born, &keys)];
@@ -849,6 +860,10 @@ impl Planner<'_> {
                     let sorted = self.sorted(target, &include.order)?;
                     let order = self.order(&sorted);
                     let limit = match &include.limit {
+                        // Each record's rows are rechecked, so it asks for
+                        // as many as it keeps, and more if the recheck
+                        // leaves one short.
+                        Some(_) if rechecked => statement.param(Source::Fetch, SqlType::Int8),
                         Some(Bound::Literal(n)) => n.to_string(),
                         Some(Bound::Value(value)) => {
                             let source = self.source(value)?;
@@ -873,9 +888,23 @@ impl Planner<'_> {
             let includes = self.includes(target, &include.includes, &columns)?;
             let held = self.rules_held(target, &columns.names, &columns.kinds);
             let versions = versions(target, &columns.names);
+            let recheck = if rechecked {
+                Some(Recheck {
+                    checks,
+                    order: None,
+                    limit: match &include.limit {
+                        Some(Bound::Literal(n)) => Some(Size::Fixed(*n)),
+                        Some(Bound::Value(value)) => Some(Size::From(self.source(value)?)),
+                        None => None,
+                    },
+                })
+            } else {
+                None
+            };
             out.push(IncludeRead {
                 shape,
                 key,
+                recheck,
                 select: Select {
                     sql,
                     unpoliced,
@@ -1409,6 +1438,7 @@ impl Planner<'_> {
             missing: not_found,
             recheck: None,
             layer: false,
+            decided: None,
             gate: None,
         };
         Some(EntityPlan {

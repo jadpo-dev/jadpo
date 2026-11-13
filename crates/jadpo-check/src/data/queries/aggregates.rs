@@ -280,34 +280,14 @@ impl Reader<'_> {
             }
         }
 
-        // Conditions. The database counts, and a `geo.` condition's
-        // records are decided in Jadpo's code (area 20, chunk 5.5u5), so
-        // an aggregate can't hold one yet.
+        // Conditions. A `geo.` condition's records are decided in Jadpo's
+        // code first, and the database counts those it keeps (chunk Q4).
         let mut filter = Vec::new();
         for (present, member) in &sections.filters {
             self.search_refused = Some("an aggregate query");
             let read = self.filter_line(scope, entity, member, *present);
             self.search_refused = None;
-            if let Some(condition) = read {
-                if condition.searches() {
-                    ok = false;
-                    let at = member.value().map_or_else(
-                        || Self::span(path, member),
-                        |value| Self::span(path, &value),
-                    );
-                    self.out.push(
-                        Diagnostic::new(
-                            &rule::TOOLCHAIN_NOT_BUILT_YET,
-                            "A `geo.` condition in an aggregate query isn't built yet".to_string(),
-                        )
-                        .at(at, "in an aggregate")
-                        .reason("A `geo.` condition's records are found through a GiST index and each is held to Jadpo's own test as the query runs; an aggregate query's totals are worked out by the database, which doesn't decide as the code does.")
-                        .next("List the records with a query of their own, and count them in the action"),
-                    );
-                    continue;
-                }
-                filter.push(condition);
-            }
+            filter.extend(read);
         }
 
         // The groups, then the aggregates. An entry already reported is

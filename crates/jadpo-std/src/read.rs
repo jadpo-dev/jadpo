@@ -359,6 +359,10 @@ pub enum Source {
     /// 6.3b; area 20, chunk 5.5u5): the records it keeps at first, and more
     /// each time the recheck leaves it short ([`Recheck`]).
     Fetch,
+    /// The ids of the records an aggregate query's `geo.` conditions kept
+    /// as Jadpo's own code decided them ([`Decided`]; chunk Q4): what its
+    /// totals statement counts, as a `uuid[]`.
+    Kept,
     /// One side of an envelope a `BoundingBox` filter searches (area 20,
     /// chunk 5.5u5), worked out from the box the read's argument at
     /// `index` (or a field inside it, `path`) holds.
@@ -702,6 +706,14 @@ pub struct IncludeRead {
     /// Its statement, run once with the keys as `Source::Keys`; its first
     /// column is the key each of its rows matches.
     pub select: Select,
+    /// For an include whose conditions search an index (`geo.` tests,
+    /// chunk Q4): what each row its statement finds is held to again in
+    /// Jadpo's own code, before it joins its record's list. A list's
+    /// statement then limits each record's rows to [`Source::Fetch`], and
+    /// asks again for four times as many while a record's list comes out
+    /// short of its `limit:` and its rows didn't run out.
+    #[serde(default)]
+    pub recheck: Option<Recheck>,
 }
 
 /// How many records a page holds.
@@ -749,6 +761,11 @@ pub struct ReadPlan {
     /// For a map layer (area 6, chunk 5.5u8): the list's records are
     /// `Feature`s, given as one `FeatureCollection`.
     pub layer: bool,
+    /// For an aggregate query with `geo.` conditions (chunk Q4): the
+    /// records it finds first, each decided in Jadpo's own code, whose ids
+    /// its totals statement, `select`, then counts ([`Source::Kept`]).
+    #[serde(default)]
+    pub decided: Option<Decided>,
     /// For a query listed under root `policy { actions: }` (area 9,
     /// "Listing a query"): who may run it, checked as it starts, before
     /// its statement runs, wherever it is run from.
@@ -831,6 +848,21 @@ pub struct Recheck {
     /// and one more; a read of one record, found by a unique field, keeps
     /// every row that passes.
     pub limit: Option<Size>,
+}
+
+/// What an aggregate query with `geo.` conditions works out before its
+/// totals (area 20, "In an include or an aggregate"; chunk Q4): its
+/// statement finds, through the index, every record the conditions could
+/// hold for, and perhaps a few more, with each record's `id` and the
+/// fields its checks test; each row is held to `recheck`'s checks as a
+/// query's rows are, and the ids of those kept are what the totals count.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct Decided {
+    pub select: Select,
+    /// The checks, on `select`'s columns; never an order or a limit.
+    pub recheck: Recheck,
+    /// The column of `select` holding each record's `id`.
+    pub id: u32,
 }
 
 /// The failure a read or a write raises when the record it names isn't

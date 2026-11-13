@@ -2543,7 +2543,11 @@ as `jadpo_std::read::Recheck`: each `Check` an operation and its operands
 (a column of the row, a value from the read's arguments, a constant), run
 by `jadpo_value::run`, the code a function body's call runs, and an order
 by an operation's result (`geo.distance`), with the refetch-when-short
-loop `jadpo_runtime::read` keeps for any of them. An exact operation's
+loop `jadpo_runtime::read` keeps for any of them. An include holds its
+own (`IncludeRead::recheck`), refetching while one record's list comes
+out short; an aggregate query's are `ReadPlan::decided`, a statement
+finding the records before the grouped one, whose kept ids the totals
+read as `Source::Kept` (chunk Q4). An exact operation's
 other arguments are written into its expression, so
 `jadpo_sql::condition::index_expression` gives the same text for the
 B-tree the checker derives on it (`jadpo_graph::schema::Index::expression`,
