@@ -384,6 +384,12 @@ std_enum! {
         /// or Microsoft, named by `sign_in: { providers: }` (area 8,
         /// "Providers"; chunk A7b).
         Oidc: "oidc",
+        /// GitHub, which people sign in with through OAuth 2.0 and its API
+        /// rather than OpenID Connect (area 8, "Providers"; chunk N1).
+        Github: "github",
+        /// Sign in with Apple, decided and not built yet (area 8,
+        /// "Providers").
+        Apple: "apple",
         /// One address the app's chosen public events are posted to,
         /// signed, the `publishing` capability (area 12, "Where events
         /// travel"; area 16, "Outgoing webhooks").

@@ -90,12 +90,15 @@ pub struct AuthSettings {
     providers: Vec<Option<ProviderSettings>>,
 }
 
-/// A sign-in provider's settings, bound at startup: its issuer and client
-/// ID, with a key cache of its own, and its client secret. `Debug` shows
-/// neither.
+/// A sign-in provider's settings, bound at startup: its client ID and, for
+/// OpenID Connect, its issuer with a key cache of its own, and its client
+/// secret. `Debug` shows neither.
 #[derive(Clone)]
 pub(crate) struct ProviderSettings {
-    pub(crate) keys: super::external_token::Settings,
+    /// The issuer and its keys; `None` for GitHub, whose addresses are
+    /// fixed and which signs no ID token (chunk N1).
+    pub(crate) keys: Option<super::external_token::Settings>,
+    pub(crate) client_id: String,
     pub(crate) secret: String,
     /// The company whose accounts alone it signs in, as its
     /// `organisation:` setting holds it (chunk A10).
@@ -151,11 +154,16 @@ impl AuthSettings {
             .iter()
             .flat_map(|providers| &providers.providers)
             .map(|provider| {
+                let client_id = values.text(&provider.client_id)?;
                 Some(ProviderSettings {
-                    keys: super::external_token::Settings::new(
-                        values.text(&provider.issuer)?,
-                        values.text(&provider.client_id)?,
-                    )?,
+                    keys: match &provider.issuer {
+                        Some(issuer) => Some(super::external_token::Settings::new(
+                            values.text(issuer)?,
+                            client_id,
+                        )?),
+                        None => None,
+                    },
+                    client_id: client_id.to_string(),
                     secret: values.text(&provider.client_secret)?.to_string(),
                     organisation: match &provider.organisation {
                         Some(setting) => Some(values.text(setting)?.to_string()),

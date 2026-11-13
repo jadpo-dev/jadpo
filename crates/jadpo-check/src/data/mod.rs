@@ -278,7 +278,9 @@ pub(crate) fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
                         Some(Driver::OpenaiCompatible) => ConnectionKind::Model,
                         Some(Driver::CloudflareQueues) => ConnectionKind::CloudflareQueue,
                         Some(Driver::CloudflareRateLimits) => ConnectionKind::CloudflareRateLimits,
-                        Some(Driver::Oidc) => ConnectionKind::SignIn,
+                        Some(Driver::Oidc | Driver::Github | Driver::Apple) => {
+                            ConnectionKind::SignIn
+                        }
                         Some(Driver::Webhook) => ConnectionKind::Webhook,
                         None => ConnectionKind::Other,
                     },

@@ -982,7 +982,7 @@ connections, as `email:` names its connection. Google, Microsoft and
 other OpenID Connect providers are each `driver: Driver.oidc`, and the
 provider's discovery document gives the rest. GitHub and Apple aren't
 plain OpenID Connect, so they have the built-in drivers `Driver.github`
-and `Driver.apple`.
+([GitHub](#github)) and `Driver.apple`.
 
 ```jadpo fragment
 // app.jadpo
@@ -1024,6 +1024,297 @@ A provider account finds its user only through the link a first sign-in
 made ([A person the app has not seen](#a-person-the-app-has-not-seen)),
 never by the principal's `subject:` field or an email address, so without
 the action no one could sign in.
+
+#### GitHub
+
+GitHub signs people in with OAuth 2.0 and its API rather than OpenID
+Connect, so its connection is `driver: Driver.github`, with only
+`client_id:` and `credential:`. GitHub's addresses are fixed, so there is
+no `issuer:`, and a GitHub sign-in names no company, so `organisation:` on
+it is `connection.key_invalid`:
+
+```jadpo fragment
+// app.jadpo
+connections: {
+    github: {
+        driver: Driver.github
+        client_id: config.github_client_id
+        credential: config.github_client_secret
+    }
+}
+```
+
+Register an OAuth app with GitHub and give it
+`<origin>/auth/github/callback` as its callback address. The routes and
+their refusals are every provider's ([The routes](#the-routes)). What
+differs is how Jadpo learns who the person is:
+
+- The start sends the browser to `https://github.com/login/oauth/authorize`,
+  asking for `read:user user:email`, with a `state` and a PKCE challenge
+  as for any provider. GitHub signs no ID token, so there is no nonce.
+- The callback exchanges the code at
+  `https://github.com/login/oauth/access_token` with the client secret and
+  the PKCE verifier, then reads `https://api.github.com/user` and
+  `https://api.github.com/user/emails` with the access token it gets, once
+  each. The token is held only while the callback runs. It is never
+  stored, logged or sent anywhere else.
+- The subject is the account's numeric `id`, which never changes; its
+  login can, so it is never read. The address is the account's primary
+  one, and `address_verified` is `true` only when GitHub says
+  `verified: true` of it. The name is the account's `name`.
+- GitHub never says how the person signed in, so a session it starts is
+  `primary`. A role that needs `strength: AuthenticationStrength.multi_factor`
+  through `SignInMethod.github` alone can never be held:
+  `policy.requirement_unsatisfiable`.
+
+Here a forge makes an account the first time someone signs in with
+GitHub, once GitHub has verified their address. The test signs Mona in
+twice, the second time through the link her first sign-in made, and
+shows an address GitHub hasn't verified refused:
+
+```jadpo check project=github-accounts file=app.jadpo
+use accounts/entities { Member }
+
+application {
+    display_name: "Forge"
+    connections: {
+        github: {
+            driver: Driver.github
+            client_id: config.github_client_id
+            credential: config.github_client_secret
+        }
+    }
+}
+
+principal {
+    user: {
+        subject: Member.handle
+        active: Member.active == true
+    }
+}
+```
+
+```jadpo check project=github-accounts file=authentication.jadpo
+use accounts
+
+authentication {
+    browser_session: {
+        cookie: "forge_session"
+        origin: config.site
+    }
+    sign_in: {
+        providers: [github]
+    }
+    on_first_sign_in: accounts.open_account
+}
+```
+
+```jadpo check project=github-accounts file=domains/accounts/actions/open_account.jadpo
+use accounts/entities { Member }
+use accounts/failures { AlreadyJoined, NoVerifiedAddress }
+
+/// Makes an account for someone signing in with GitHub for the first
+/// time, once GitHub has verified their address.
+action open_account(first: FirstSignIn) fails NoVerifiedAddress, AlreadyJoined -> Member.id {
+    if (first.method != SignInMethod.github or not first.address_verified) {
+        reject NoVerifiedAddress {}
+    }
+    match first.subject {
+        none -> {
+            reject NoVerifiedAddress {}
+        }
+        some(subject) -> {
+            var member: Member = attempt Member.create {
+                set: {
+                    handle: subject
+                    email: first.address
+                    name: first.name
+                    active: true
+                }
+                conflict: {
+                    Member.handle: AlreadyJoined
+                }
+            }
+            return member.id
+        }
+    }
+}
+```
+
+```jadpo check project=github-accounts file=domains/accounts/routes/account.test.jadpo
+test "someone joins with GitHub and signs in again through the link" {
+    var first: Response = test_providers.sign_in(
+        SignInMethod.github,
+        TestAccount {
+            subject: "583231"
+            email: "mona@octo.example"
+            email_verified: true
+            name: "Mona Lisa Octocat"
+        }
+    )
+    assert first.status == 303
+    assert first.code == none
+    var second_visit: Response = test_providers.sign_in(
+        SignInMethod.github,
+        TestAccount {
+            subject: "583231"
+            email: none
+            email_verified: false
+            name: none
+        }
+    )
+    assert second_visit.code == none
+}
+
+test "an address GitHub hasn't verified makes no account" {
+    var refused: Response = test_providers.sign_in(
+        SignInMethod.github,
+        TestAccount {
+            subject: "7"
+            email: "hubot@octo.example"
+            email_verified: false
+            name: "Hubot"
+        }
+    )
+    assert refused.status == 303
+    assert refused.code == "sign_in_refused"
+}
+```
+
+```jadpo check project=github-accounts file=config.jadpo hidden
+config {
+    github_client_id: Text {
+        test: "Iv1.8a61f9b3a7aba766"
+    }
+    github_client_secret: Text {
+        secret: true
+    }
+    site: Url {
+        test: "https://forge.example"
+    }
+}
+```
+
+```jadpo check project=github-accounts file=domains/accounts/entities/member.jadpo hidden
+entity Member {
+    id: Uuid
+    handle: Text {
+        unique: true
+    }
+    email: Email?
+    name: Text?
+    active: Bool
+
+    policy: {
+        create: [Access.system]
+        read: [id, Access.system]
+    }
+}
+```
+
+```jadpo check project=github-accounts file=domains/accounts/failures/no_verified_address.jadpo hidden
+/// GitHub gave no address it has verified.
+type NoVerifiedAddress = Failure {
+    kind: FailureKind.rejected
+}
+```
+
+```jadpo check project=github-accounts file=domains/accounts/failures/already_joined.jadpo hidden
+/// Someone already signs in under that GitHub account.
+type AlreadyJoined = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=github-accounts file=domains/accounts/failures/not_a_member.jadpo hidden
+/// The caller isn't a member.
+type NotAMember = Failure {
+    kind: FailureKind.not_found
+}
+```
+
+```jadpo check project=github-accounts file=domains/accounts/types/member_card.jadpo hidden
+use accounts/entities { Member }
+
+type MemberCard = Output {
+    pick: [Member.id, Member.name, Member.email]
+}
+```
+
+```jadpo check project=github-accounts file=domains/accounts/queries/me.jadpo hidden
+use accounts/entities { Member }
+use accounts/types { MemberCard }
+use accounts/failures { NotAMember }
+
+/// The signed-in member.
+query me(user: Principal.user) fails NotAMember -> MemberCard {
+    from: Member
+    where: Member.id == user.id
+    missing: NotAMember
+}
+```
+
+```jadpo check project=github-accounts file=domains/accounts/routes/account.jadpo hidden migrate=initial
+use accounts/types { MemberCard }
+use accounts/queries { me }
+
+/// What a signed-in member reaches.
+routes Account {
+    prefix: /account
+    GET / {
+        output: MemberCard
+        run: me(current_principal.user)
+    }
+}
+```
+
+```jadpo check project=github-accounts file=api/main.jadpo_record hidden
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+api main
+    authentication browser_session
+
+GET /account
+    caller user
+    output MemberCard
+    status 200
+    fails not_a_member
+
+GET /auth/github/callback
+    generated provider sign-in
+    authentication none
+    redirect return_to
+    status 303
+
+POST /auth/github/start
+    generated provider sign-in
+    authentication none
+    input ProviderSignInStart (body)
+    output ProviderSignInAddress
+    status 200
+
+GET /openapi.json
+    generated openapi
+    status 200
+
+output MemberCard
+    email: Email?
+    id: Uuid
+    name: Text?
+
+output ProviderSignInAddress
+    address: Url
+
+input ProviderSignInStart
+    return_to: Text optional
+
+failure not_a_member
+    status 404
+```
+
+Sign in with Apple, `Driver.apple`, isn't built yet:
+`toolchain.not_built_yet` where it is written.
 
 #### Company accounts
 
@@ -1485,12 +1776,13 @@ port on your machine; the ready screen gives it on its `sign-in` line.
 
 The page lists the provider's test accounts. Each is one of the
 company's, when the connection has `organisation:`, and signs in with a
-second factor, so the staff roles that need them can be tried. Choosing
+second factor, so the staff roles that need them can be tried; GitHub's
+sign in as GitHub's do, `primary`. Choosing
 one signs in as it, as the provider's own page would: the browser goes back to
 `GET /auth/<name>/callback` with a code, and the route checks it as it
 checks the provider's. **Add a test account** takes what a provider says
 about a person, `TestAccount`'s fields: a subject (made up in Google's
-shape until you change it), an email, whether the provider verified it
+shape, or as a GitHub account's ID, until you change it), an email, whether the provider verified it
 and a name; adding one signs in as it. **Cancel sign-in** answers as a
 refusal at the provider does, so the callback's redirect names
 `sign_in_provider_failed`. The accounts are kept in
@@ -1508,7 +1800,7 @@ answers only requests addressed to this machine by name, and a choice
 only from its own page, so another site can't sign you in. A deployable
 never serves it nor accepts its codes.
 
-Not built yet: `Driver.github` and `Driver.apple`.
+Not built yet: `Driver.apple`.
 
 ### The old name
 
@@ -4936,7 +5228,7 @@ A feature not built yet is `toolchain.not_built_yet` where it is written.
 | Feature | Status |
 |---|---|
 | Everything else on this page | Built. |
-| `Driver.github`, `Driver.apple` and `oauth_provider:` | Not built yet. |
+| `Driver.apple` and `oauth_provider:` | Not built yet. |
 | Scope declarations and policy's scope restrictions | Not built yet. As [Policy](09-policy.md) specifies, an external method narrows scopes only when it declares the scopes it reads; undeclared provider scope or profile claims never replace application authority. |
 | OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([OAuth grants](11-integrations.md#oauth-grants)) | Not built yet. |
 
