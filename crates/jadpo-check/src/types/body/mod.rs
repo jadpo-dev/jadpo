@@ -645,7 +645,7 @@ struct Body<'a> {
     /// type its column holds, since a stored value may break the rules its
     /// field has now; `None` for one held otherwise (an enum's variant),
     /// which isn't offered.
-    refitted: Vec<(String, Option<Ty>)>,
+    refitted: Vec<(String, Option<Ty>, bool)>,
     /// The action being checked, by name: whether root `policy {
     /// actions: }` lists it decides which fields its updates may change
     /// (area 9).
@@ -744,7 +744,7 @@ struct BackfillTarget {
     value: ast::Expr,
     retired: Vec<(String, Ty)>,
     added: Vec<String>,
-    refitted: Vec<(String, Option<Ty>)>,
+    refitted: Vec<(String, Option<Ty>, bool)>,
 }
 
 fn text(name: &ast::NameRef) -> String {

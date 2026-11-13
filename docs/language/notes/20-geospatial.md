@@ -62,6 +62,7 @@ The numbers are the ones the compiler's messages cite.
 | Box filter (question 11) | On `Point` fields only, through an index on the column cast to `geometry`, which is exact for points; a shape field uses `geo.intersects` with a `Polygon` |
 | The rest of the page | Operations, storage, queries, precision, interop and what is left out, as written |
 | Altitudes | Every position in a geometry has an altitude or none does: `format` when read, the rule `altitudes_agree` when built |
+| A `geo.` condition in an include or an aggregate | (2026-11-13, chunk Q4, the obvious recommendation) The code decides there as in a query. An include's rows are rechecked before they join a list, and the include asks again for four times as many rows a record while one record's list comes out short with its rows not run out. An aggregate query sends two statements, the records first and then its usual grouped statement with `"id" = ANY($n)` of those the code kept, rather than working the totals out in the runtime: the totals keep every aggregate's exact SQL form, and only which records count moves to the code |
 | A layer from a route | A route may send a `FeatureCollection<G, P>` bare, as it sends a `List` or `Page` of an `Output`, so a mapping library fetches the layer itself; `P` holds only what clients may see (area 7). A query gives one for a `GET` route (area 6) |
 
 ## Evidence and reasoning behind the area page
@@ -129,12 +130,20 @@ double.
   and on CI's 3.6.4.
 - Verified plan for nearest first inside a radius: an index scan on
   `&&`, then `ST_DWithin`, then a sort of the matches.
+- An include's checks are its `IncludeRead`'s `recheck`, and an
+  aggregate's are `ReadPlan::decided`, whose kept ids its totals read as
+  `Source::Kept`. The totals statement keeps the `geo.` search beside
+  `"id" = ANY($n)`, so it reads only rows the first statement could have
+  found, whatever the isolation level.
 - Beyond the page's examples, `jadpo-cli`'s `geo_queries` test runs the
   page's queries over two thousand bakeries and three hundred patches,
   each giving the code's answer through its index (`EXPLAIN`), with boxes
   across and onto the antimeridian and round the pole, the recheck asking
   again, ties by `id`, and every case of `tools/references/geo_cases.py`
-  as a query.
+  as a query. It also counts the bakeries in those boxes with an
+  aggregate query, and tallies and includes the patches over a square's
+  hole, which `ST_Covers` holds and the code doesn't, an include asking
+  again when its first rows are turned down.
 
 ### GeoJSON features as standard types
 

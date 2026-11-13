@@ -114,8 +114,8 @@ impl Body<'_> {
     pub(super) fn refitted_field(&self, field: &str) -> Option<Option<super::Ty>> {
         self.refitted
             .iter()
-            .find(|(name, _)| name == field)
-            .map(|(_, ty)| ty.clone())
+            .find(|(name, ..)| name == field)
+            .map(|(_, ty, _)| ty.clone())
     }
 
     /// The error for a backfill reading a field this migration refits
@@ -124,6 +124,23 @@ impl Body<'_> {
     pub(super) fn backfill_reads_refitted(&mut self, span: Span, written: &str) {
         let key = self.flow.name.clone();
         let entity = key.split('.').next().unwrap_or_default().to_string();
+        let field = written.rsplit('.').next().unwrap_or_default();
+        if self
+            .refitted
+            .iter()
+            .any(|(name, _, converted)| *converted && name == field)
+        {
+            self.out.push(
+                crate::data::backfill::outside_row(&key, written, span, "a field this migration converts")
+                    .reason(format!(
+                        "`{written}` changes type in this migration, and a backfill reads its stored value only as the built-in type its old column holds, which an enum's variant, a structured value and a value held in several columns aren't."
+                    ))
+                    .next(format!(
+                        "Work the value out from `{entity}`'s other fields, or a constant"
+                    )),
+            );
+            return;
+        }
         self.out.push(
             crate::data::backfill::outside_row(&key, written, span, "a field this migration refits")
                 .reason(format!(

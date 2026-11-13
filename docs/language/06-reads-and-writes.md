@@ -759,8 +759,9 @@ The rules for an operation in a condition:
   `where_present:` line, in an include's `where:` and in an aggregate
   query, since the database works the operation out exactly. `order:`
   still takes fields only. A `geo.` test, which an index finds and code
-  decides, still stands on its own line or under `and`, and not in
-  includes or aggregates.
+  decides, still stands on its own line or under `and`, in an include and
+  an aggregate query too
+  ([In an include or an aggregate](20-geospatial.md#in-an-include-or-an-aggregate)).
 - **The index.** The compiler derives one B-tree index on each
   expression, however many queries and includes compare it, as it derives
   one for a field's test ([Indexes](05-data.md#indexes)). It is named
@@ -1124,7 +1125,10 @@ A query otherwise computes nothing, and aggregates are the exception. A
 time bucket and an average are written with their standard operations'
 [SQL forms](19-standard-library.md#sql-forms), and the rest are
 PostgreSQL's `count`, `sum`, `min` and `max`. So an aggregate query is
-always one statement, however many records it counts.
+one statement, however many records it counts. With a `geo.` condition
+it is two: the records first, for Jadpo's own code to decide, then the
+totals of those it kept
+([In an include or an aggregate](20-geospatial.md#in-an-include-or-an-aggregate)).
 
 ### The aggregates
 

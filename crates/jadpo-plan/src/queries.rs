@@ -181,7 +181,7 @@ impl Bind for Laying<'_, '_, '_> {
         laying: jadpo_std::read::Laying,
         ty: SqlType,
     ) -> Option<String> {
-        let field = self.entity.fields.iter().find(|f| f.born == column)?;
+        let field = self.entity.fields.iter().find(|f| f.column == column)?;
         let of = self.planner.given(self.entity, field, value)?;
         Some(self.statement.param(
             Source::Laid {
@@ -291,7 +291,7 @@ pub(crate) struct Columns {
 /// the column it is kept in, by the names it was born with, which never
 /// change (area 5, "Migrations").
 pub(crate) fn sealed_bound(entity: &EntityModel, field: &FieldModel) -> String {
-    format!("{}.{}", entity.table, field.born)
+    format!("{}.{}", entity.table, field.column)
 }
 
 /// One column an order sorts by (chunk Q1): a field's own, or a part of a
@@ -430,7 +430,7 @@ impl Planner<'_> {
                     VectorSearch::HalfPrecision(n) => {
                         let from = statement.bind(&nearest.value, SqlType::Vector)?;
                         Some(text::half_precision_distance(
-                            &vector.born,
+                            &vector.column,
                             nearest.metric,
                             &from,
                             n,
@@ -447,7 +447,7 @@ impl Planner<'_> {
                         ("distance".to_string(), Field::Column(at)),
                     ],
                 };
-                Some((distance, order, vector.born.clone(), nearest.most))
+                Some((distance, order, vector.column.clone(), nearest.most))
             }
             None => None,
         };
@@ -470,7 +470,7 @@ impl Planner<'_> {
                 let id_at = columns.add(&id.name, self.column(entity, id)?);
                 let measured = jadpo_sql::condition::measured(
                     &mut statement,
-                    &point_field.born,
+                    &point_field.column,
                     &order.point,
                 )?;
                 let key = Check {
@@ -730,6 +730,7 @@ impl Planner<'_> {
                 missing,
                 recheck,
                 layer: query.geometry.is_some(),
+                decided: None,
                 gate,
             },
         })
@@ -812,9 +813,19 @@ impl Planner<'_> {
             columns.add(&matched.name, self.column(target, matched)?);
             let record = self.record(target, &include.element, &include.includes, &mut columns)?;
             let sensitive = self.sensitive_read(target, &mut columns, false);
+            // The calls its `where:` searches an index for (`geo.` tests,
+            // chunk Q4), each worked out again in code on the rows found,
+            // from the field's own column, as a query's are.
+            let mut checks = Vec::new();
+            for call in jadpo_sql::condition::search_calls(&include.filter) {
+                let tested = field(target, &call.field)?;
+                let column = columns.add(&tested.name, self.column(target, tested)?);
+                checks.push(self.check(call, column)?);
+            }
+            let rechecked = !checks.is_empty();
             let (sql, unpoliced) = match include.kind {
                 IncludeKind::Parent | IncludeKind::Child => {
-                    let mut conditions = vec![text::any(&matched.born, &keys)];
+                    let mut conditions = vec![text::any(&matched.column, &keys)];
                     for line in &include.filter {
                         conditions.push(self.condition(&mut statement, target, line, false)?);
                     }
@@ -839,7 +850,7 @@ impl Planner<'_> {
                         let f = field(target, &order.field)?;
                         columns.add(&f.name, self.column(target, f)?);
                     }
-                    let mut conditions = vec![text::matches_key(&matched.born)];
+                    let mut conditions = vec![text::matches_key(&matched.column)];
                     for line in &include.filter {
                         conditions.push(self.condition(&mut statement, target, line, false)?);
                     }
@@ -849,6 +860,10 @@ impl Planner<'_> {
                     let sorted = self.sorted(target, &include.order)?;
                     let order = self.order(&sorted);
                     let limit = match &include.limit {
+                        // Each record's rows are rechecked, so it asks for
+                        // as many as it keeps, and more if the recheck
+                        // leaves one short.
+                        Some(_) if rechecked => statement.param(Source::Fetch, SqlType::Int8),
                         Some(Bound::Literal(n)) => n.to_string(),
                         Some(Bound::Value(value)) => {
                             let source = self.source(value)?;
@@ -873,9 +888,23 @@ impl Planner<'_> {
             let includes = self.includes(target, &include.includes, &columns)?;
             let held = self.rules_held(target, &columns.names, &columns.kinds);
             let versions = versions(target, &columns.names);
+            let recheck = if rechecked {
+                Some(Recheck {
+                    checks,
+                    order: None,
+                    limit: match &include.limit {
+                        Some(Bound::Literal(n)) => Some(Size::Fixed(*n)),
+                        Some(Bound::Value(value)) => Some(Size::From(self.source(value)?)),
+                        None => None,
+                    },
+                })
+            } else {
+                None
+            };
             out.push(IncludeRead {
                 shape,
                 key,
+                recheck,
                 select: Select {
                     sql,
                     unpoliced,
@@ -1165,7 +1194,7 @@ impl Planner<'_> {
                     }
                 }
                 _ => out.push(Sorted {
-                    column: field.born.clone(),
+                    column: field.column.clone(),
                     ty: column_type(field)?.param(),
                     collate: self.is_text(entity, field),
                     descending: order.descending,
@@ -1414,6 +1443,7 @@ impl Planner<'_> {
             missing: not_found,
             recheck: None,
             layer: false,
+            decided: None,
             gate: None,
         };
         Some(EntityPlan {
@@ -1513,13 +1543,13 @@ pub(crate) fn borns(entity: &EntityModel, names: &[String]) -> Vec<String> {
                 return field
                     .columns()
                     .get(part)
-                    .map_or_else(|| field.born.clone(), |(column, _)| column.clone());
+                    .map_or_else(|| field.column.clone(), |(column, _)| column.clone());
             }
             match field(entity, name) {
                 Some(field) => field
                     .columns()
                     .first()
-                    .map_or_else(|| field.born.clone(), |(column, _)| column.clone()),
+                    .map_or_else(|| field.column.clone(), |(column, _)| column.clone()),
                 None => name.to_string(),
             }
         })

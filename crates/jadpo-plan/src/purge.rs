@@ -182,8 +182,8 @@ fn expired(
     let since = field(entity, &retention.since)?;
     let mut purging = Purging::default();
     let cutoff = purging.param(PurgeSource::Cutoff, column_type(since)?.param());
-    let conditions = vec![text::less_than(&since.born, &cutoff)];
-    let sql = text::purge(&entity.table, &conditions, &since.born, PURGE_BATCH);
+    let conditions = vec![text::less_than(&since.column, &cutoff)];
+    let sql = text::purge(&entity.table, &conditions, &since.column, PURGE_BATCH);
     let (reached, cascades) = cascades_from(model, entity)?;
     let mut removed = Vec::new();
     for (at, name) in reached.iter().enumerate() {
@@ -236,7 +236,7 @@ fn cascades_from<'m>(
                 from: at,
                 to: number,
                 table: holder.table.as_str(),
-                column: field(holder, &field_name)?.born.as_str(),
+                column: field(holder, &field_name)?.column.as_str(),
             });
         }
         at += 1;
@@ -293,20 +293,20 @@ fn cleared(
     for changed in &entity.fields {
         if changed.generated == Some(jadpo_std::Generated::OnChange) {
             let now = purging.param(PurgeSource::Now, column_type(changed)?.param());
-            set.push((changed.born.clone(), now));
+            set.push((changed.column.clone(), now));
         }
     }
     let held: Vec<&str> = columns.iter().map(String::as_str).collect();
     let conditions = vec![
         text::any_present(&held),
-        text::less_than(&since.born, &cutoff),
+        text::less_than(&since.column, &cutoff),
     ];
     let sql = text::clear(
         &entity.table,
         &columns,
         &set,
         &conditions,
-        &since.born,
+        &since.column,
         PURGE_BATCH,
     );
     Some(PurgePlan {
@@ -336,7 +336,7 @@ pub(crate) fn plan(
     let mut conditions = vec![
         // Hidden: `visible:` doesn't hold.
         jadpo_sql::condition(&mut purging, entity, visible, true)?,
-        text::less_than(&since.born, &cutoff),
+        text::less_than(&since.column, &cutoff),
     ];
     match held_by(model, &entity.name) {
         Some(paths) => {
@@ -346,7 +346,7 @@ pub(crate) fn plan(
         }
         None => conditions.push(not_held_anywhere(model, entity)?),
     }
-    let sql = text::purge(&entity.table, &conditions, &since.born, PURGE_BATCH);
+    let sql = text::purge(&entity.table, &conditions, &since.column, PURGE_BATCH);
     Some(PurgePlan {
         entity: entity.name.clone(),
         kind: PurgeKind::Hidden,
@@ -424,7 +424,7 @@ fn not_held_anywhere(model: &DataModel, entity: &EntityModel) -> Option<String> 
     while let Some(current) = reached.get(at).cloned() {
         for (child, field_name, on_delete) in referring(model, &current) {
             let holder = model.entity(&child)?;
-            let column = field(holder, &field_name)?.born.as_str();
+            let column = field(holder, &field_name)?.column.as_str();
             let table = holder.table.as_str();
             match on_delete {
                 Some(OnDelete::Cascade) => {
@@ -462,7 +462,7 @@ fn not_held(model: &DataModel, entity: &EntityModel, path: &[(String, String)]) 
         let holder = model.entity(holder)?;
         steps.push((
             holder.table.as_str(),
-            field(holder, field_name)?.born.as_str(),
+            field(holder, field_name)?.column.as_str(),
         ));
     }
     Some(text::not_held(&entity.table, &steps))
@@ -487,11 +487,11 @@ pub(crate) fn reseals(model: &DataModel) -> Vec<jadpo_std::write::ResealPlan> {
                 bound: crate::queries::sealed_bound(entity, field),
                 select: text::reseal_select(
                     &entity.table,
-                    &field.born,
+                    &field.column,
                     jadpo_std::write::RESEAL_BATCH,
                 ),
-                update: text::reseal_update(&entity.table, &field.born),
-                count: text::reseal_count(&entity.table, &field.born),
+                update: text::reseal_update(&entity.table, &field.column),
+                count: text::reseal_count(&entity.table, &field.column),
             });
         }
     }

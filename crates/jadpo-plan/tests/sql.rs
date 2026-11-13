@@ -55,6 +55,7 @@ fn source(source: &Source) -> String {
         Source::Caller(part) => format!("caller {part:?}"),
         Source::Stored(value) => format!("literal {value:?}"),
         Source::Fetch => "rows to fetch".to_string(),
+        Source::Kept => "the ids the code kept".to_string(),
         Source::Envelope { index, path, part } => format!(
             "{part:?} of {}",
             self::source(&Source::Arg {
@@ -146,6 +147,9 @@ fn select(out: &mut String, select: &Select, depth: usize) {
                 Field::Record(inner) => format!("{name} = ({})", shown(inner)),
             })
             .collect();
+        if fields.is_empty() {
+            return record.ty.clone();
+        }
         format!("{}: {}", record.ty, fields.join(", "))
     }
     out.push_str(&format!("{indent}-- record {}\n", shown(&select.record)));
@@ -171,6 +175,31 @@ fn select(out: &mut String, select: &Select, depth: usize) {
             include.key
         ));
         self::select(out, &include.select, depth + 1);
+        if let Some(recheck) = &include.recheck {
+            rechecked(out, recheck, &format!("{indent}  "));
+        }
+    }
+}
+
+/// What a recheck holds each row to, and how many it keeps.
+fn rechecked(out: &mut String, recheck: &jadpo_std::read::Recheck, indent: &str) {
+    for check in &recheck.checks {
+        out.push_str(&format!("{indent}-- recheck: {}\n", self::check(check)));
+    }
+    if let Some(order) = &recheck.order {
+        out.push_str(&format!(
+            "{indent}-- recheck order: {}, the database's in column {}, ties by column {}\n",
+            self::check(&order.key),
+            order.measured,
+            order.id
+        ));
+    }
+    if let Some(limit) = &recheck.limit {
+        let limit = match limit {
+            Size::Fixed(n) => n.to_string(),
+            Size::From(from) => source(from),
+        };
+        out.push_str(&format!("{indent}-- recheck keeps: {limit}\n"));
     }
 }
 
@@ -196,26 +225,20 @@ fn read(name: &str, read: &ReadPlan) -> String {
             cursor.join(", ")
         ));
     }
+    // An aggregate's records, decided in code before its totals (chunk
+    // Q4).
+    if let Some(decided) = &read.decided {
+        out.push_str(&format!(
+            "-- first, the records, each id in column {}:\n",
+            decided.id
+        ));
+        select(&mut out, &decided.select, 0);
+        rechecked(&mut out, &decided.recheck, "");
+        out.push_str("-- then, the totals of those kept:\n");
+    }
     select(&mut out, &read.select, 0);
     if let Some(recheck) = &read.recheck {
-        for check in &recheck.checks {
-            out.push_str(&format!("-- recheck: {}\n", self::check(check)));
-        }
-        if let Some(order) = &recheck.order {
-            out.push_str(&format!(
-                "-- recheck order: {}, the database's in column {}, ties by column {}\n",
-                self::check(&order.key),
-                order.measured,
-                order.id
-            ));
-        }
-        if let Some(limit) = &recheck.limit {
-            let limit = match limit {
-                Size::Fixed(n) => n.to_string(),
-                Size::From(from) => source(from),
-            };
-            out.push_str(&format!("-- recheck keeps: {limit}\n"));
-        }
+        rechecked(&mut out, recheck, "");
     }
     out
 }

@@ -235,7 +235,7 @@ fn new(call: &Call) -> Reply {
                 let suggested = if set.list.is_empty() {
                     "initial".to_string()
                 } else {
-                    records::purpose(&changes, &next)
+                    records::purpose(&changes, &latest_schema, &next)
                 };
                 // At a terminal it is asked for (area 14, "`jadpo migrate`").
                 let environment = &call.environment;
@@ -799,6 +799,15 @@ fn changes_file(
             _ => open += 1,
         }
         let advice = match need.kind {
+            NeededKind::Backfill if need.converts => format!(
+                "    // `{key}` changes type: its values move to a new column, and
+    // the old one stays for servers still on the old build. Give
+    // the `{}` records already stored their value with `backfill:`,
+    // worked out from `{key}`, read as its old column holds it.
+    {key}: {{}}
+",
+                need.entity
+            ),
             NeededKind::Backfill => {
                 let example = field_type(model, &need.entity, &need.field)
                     .and_then(|ty| example_backfill(lookup, ty))
@@ -885,6 +894,13 @@ fn screen_for_new(
     for need in pending {
         let key = need.key();
         let (mut subject, next) = match need.kind {
+            NeededKind::Backfill if need.converts => (
+                format!(
+                    "`{key}` changes type: existing `{}` records need its new value",
+                    need.entity
+                ),
+                format!("Set `backfill:` for `{key}`, worked out from `{key}` as stored"),
+            ),
             NeededKind::Backfill => {
                 let example = field_type(model, &need.entity, &need.field)
                     .and_then(|ty| example_backfill(lookup, ty));
@@ -1075,6 +1091,16 @@ fn change_groups(
         let column = |schema: &Schema, column: &str| {
             table(schema, store, name).and_then(|t| t.columns.get(column).cloned())
         };
+        // A field moved to new columns, since its column's type changes
+        // other than by widening (chunk Q3b).
+        let converted = |field: Option<&String>| {
+            field.is_some_and(|field| {
+                match (table(before, store, name), table(after, store, name)) {
+                    (Some(was), Some(now)) => jadpo_graph::migration::retyped(&was, &now, field),
+                    _ => false,
+                }
+            })
+        };
         let row = match &change {
             Change::AddTable { table: t, .. } => (
                 ChangeMark::Added,
@@ -1124,6 +1150,8 @@ fn change_groups(
                     // An entity's searchable words (area 16, chunk B12).
                     if column(after, c).is_some_and(|c| c.generated.is_some()) {
                         "new search".into()
+                    } else if converted(column(after, c).and_then(|c| c.field).as_ref()) {
+                        "new type: filled from the old column".into()
                     } else {
                         "new field".into()
                     },
@@ -1151,6 +1179,11 @@ fn change_groups(
                     // its fields (area 16, chunk B12).
                     (Some(_), Some(now)) if now.generated.is_some() => {
                         "search made again from its fields".to_string()
+                    }
+                    (Some(was), Some(now))
+                        if !was.retired && now.retired && converted(now.field.as_ref()) =>
+                    {
+                        "retired: kept for servers on the old build".to_string()
                     }
                     (Some(was), Some(now)) if !was.retired && now.retired => {
                         "retired: the column and its data stay".to_string()
@@ -2040,6 +2073,7 @@ mod tests {
             field: "rank".into(),
             kind: NeededKind::Retire,
             in_jadpo: false,
+            converts: false,
         };
         let model = DataModel::default();
         let table = jadpo_check::types::TypeTable::default();

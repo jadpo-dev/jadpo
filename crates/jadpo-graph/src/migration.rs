@@ -32,6 +32,13 @@ pub struct Needed {
     /// every stored value in batches, checks it with the field's rules and
     /// replaces those they refuse with the backfill, worked out in Jadpo.
     pub in_jadpo: bool,
+    /// A backfill converting a field whose column changes type other than
+    /// by widening (area 5, "Changing a column's type"; chunk Q3b): the
+    /// field moves to new columns, which the backfill fills from the old
+    /// ones, read as the built-in type they hold, whether or not the field
+    /// may be `none`; the old columns stay, retired, for servers still on
+    /// the old build.
+    pub converts: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -499,6 +506,7 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
         field: String::new(),
         kind,
         in_jadpo: false,
+        converts: false,
     };
     for change in changes(before, after) {
         let (store, table, column) = match &change {
@@ -557,6 +565,7 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
                         field: held.field.clone().unwrap_or_else(|| column.clone()),
                         kind: NeededKind::DropField,
                         in_jadpo: false,
+                        converts: false,
                     };
                     if !out.iter().any(|other: &Needed| {
                         other.store == needed.store
@@ -592,8 +601,15 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
         // decide here would fill or fit one: [`migration_sql`] refuses it
         // or leaves it to `SET NOT NULL` instead (area 15, "Encrypted
         // fields"; chunk P9). Retiring one keeps its data, as any other's.
+        let field = now.field.clone().unwrap_or_else(|| column.clone());
+        // A field moved to new columns, since its column's type changes
+        // other than by widening (chunk Q3b): its old columns retire with
+        // nothing to decide, and its new ones are filled from them.
+        let converts = was.is_none() && !now.retired && retyped(old, new, &field);
         let kind = match was {
+            None if converts && !now.sealed => NeededKind::Backfill,
             None if !now.nullable && !now.sealed => NeededKind::Backfill,
+            Some(was) if !was.retired && now.retired && retyped(old, new, &field) => continue,
             Some(was) if !was.retired && now.retired => NeededKind::Retire,
             Some(_) if now.sealed => continue,
             Some(was) if was.nullable && !now.nullable && !now.retired => NeededKind::Backfill,
@@ -606,9 +622,10 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
             table: table.clone(),
             column: column.clone(),
             entity: entity.clone(),
-            field: now.field.clone().unwrap_or_else(|| column.clone()),
+            field,
             kind,
             in_jadpo: kind == NeededKind::Refit && was.is_some_and(|was| adds_pattern(was, now)),
+            converts,
         };
         // A field stored in two columns (an amount of money, area 19) is
         // one decision.
@@ -623,6 +640,25 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
         }
     }
     out
+}
+
+/// Whether field `field` (its born name) moves from the columns `old`
+/// holds it in to others in `new` (chunk Q3b): its column's type changes
+/// other than by widening, or its type now takes other columns, as an
+/// `Int` becoming an amount of money does. A column only added, as a
+/// standard type's new part, moves nothing.
+pub fn retyped(old: &Table, new: &Table, field: &str) -> bool {
+    let live = |table: &Table| -> BTreeSet<String> {
+        table
+            .columns
+            .iter()
+            .filter(|(_, column)| !column.retired && column.field.as_deref() == Some(field))
+            .map(|(name, _)| name.clone())
+            .collect()
+    };
+    let (was, now) = (live(old), live(new));
+    // A column only added, as a standard type's new part, moves nothing.
+    !was.is_empty() && !now.is_empty() && was.iter().any(|column| !now.contains(column))
 }
 
 /// Whether column `now` refuses a value `was` allowed; never when `was`
@@ -979,14 +1015,38 @@ pub fn migration_sql(
                     let key = new
                         .map(|t| t.primary_key.columns.clone())
                         .unwrap_or_default();
+                    // A value held in several columns, an amount of
+                    // money's two, is worked out once in Jadpo and fills
+                    // them all, from its first (chunk Q3b).
+                    let held_columns: Vec<(&str, &str, bool)> = match (decided(need), new) {
+                        (Some(Decided::InJadpo { .. }), Some(new)) => new
+                            .ordered()
+                            .into_iter()
+                            .filter(|(name, c)| {
+                                !c.retired
+                                    && c.field == col.field
+                                    && old.is_none_or(|old| !old.columns.contains_key(*name))
+                            })
+                            .map(|(name, c)| (name.as_str(), c.sql_type.as_str(), c.nullable))
+                            .collect(),
+                        _ => Vec::new(),
+                    };
+                    if held_columns.len() > 1 && held_columns[0].0 != column {
+                        continue;
+                    }
+                    let held_columns = if held_columns.len() > 1 {
+                        held_columns
+                    } else {
+                        vec![(column.as_str(), col.sql_type.as_str(), col.nullable)]
+                    };
                     let filled = backfill(
                         table,
                         &key,
-                        (column, &col.sql_type),
+                        &held_columns,
                         &[],
                         need,
                         &decided,
-                        batched.contains(store),
+                        (batched.contains(store), !need.converts || !col.nullable),
                     );
                     plan.fill(table, filled);
                 }
@@ -1125,11 +1185,11 @@ pub fn migration_sql(
                         let filled = backfill(
                             table,
                             &key,
-                            (column, &now.sql_type),
+                            &[(column.as_str(), now.sql_type.as_str(), now.nullable)],
                             &refit(was, now, column),
                             need,
                             &decided,
-                            batched.contains(store),
+                            (batched.contains(store), true),
                         );
                         plan.fill(table, filled);
                     }
@@ -1480,7 +1540,7 @@ struct Plan {
     /// The columns a backfill fills that become required only in the
     /// last steps, by table in the order first filled: each with what
     /// fills the rows written meanwhile.
-    required: Vec<(String, Vec<(String, Statement)>)>,
+    required: Vec<(String, Vec<Required>)>,
     constraints: Vec<Statement>,
     references: Vec<Statement>,
     indexes: Vec<Statement>,
@@ -1499,11 +1559,12 @@ impl Plan {
         self.columns.extend(filled.now);
         self.batches.extend(filled.batches);
         if let Some((column, meanwhile)) = filled.required {
+            let require = filled.require;
+            let mut columns = vec![(column, Some(meanwhile), require)];
+            columns.extend(filled.also.into_iter().map(|c| (c, None, require)));
             match self.required.iter_mut().find(|(t, _)| t == table) {
-                Some((_, columns)) => columns.push((column, meanwhile)),
-                None => self
-                    .required
-                    .push((table.to_string(), vec![(column, meanwhile)])),
+                Some((_, held)) => held.extend(columns),
+                None => self.required.push((table.to_string(), columns)),
             }
         }
     }
@@ -1532,8 +1593,13 @@ impl Plan {
                 sql: table::lock_against_writes(table),
                 does: "lock against writes",
             });
-            for (column, meanwhile) in filled {
-                fill.push(meanwhile.clone());
+            for (column, meanwhile, require) in filled {
+                fill.extend(meanwhile.clone());
+                // A converted field that may be `none` keeps the rows
+                // whose value is `none` (chunk Q3b).
+                if !require {
+                    continue;
+                }
                 let name = crate::schema::object_name(&[table.as_str(), column.as_str()], "filled");
                 checks.push(Statement {
                     sql: table::add_filled_check(table, &name, column),
@@ -1575,6 +1641,12 @@ impl Plan {
     }
 }
 
+/// A column a backfill fills that becomes required in the last steps:
+/// its name, what fills its rows written meanwhile (none for a later
+/// column of a value held in several, filled with the first), and
+/// whether it is made required at all (chunk Q3b).
+type Required = (String, Option<Statement>, bool);
+
 /// What a decision about one column runs, and where.
 #[derive(Default)]
 struct Filled {
@@ -1586,18 +1658,62 @@ struct Filled {
     /// required in its last steps, and what fills the rows written
     /// meanwhile there, with the table locked against writes.
     required: Option<(String, Statement)>,
+    /// Whether that column is then made required: not for a converted
+    /// field that may be `none` (chunk Q3b).
+    require: bool,
+    /// The other columns of a value held in several, made required with
+    /// it (chunk Q3b).
+    also: Vec<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
 fn backfill(
     table: &str,
     key: &[String],
-    (column, sql_type): (&str, &str),
+    columns: &[(&str, &str, bool)],
+    broken: &[String],
+    need: &Needed,
+    decided: &dyn Fn(&Needed) -> Option<Decided>,
+    (batched, require): (bool, bool),
+) -> Filled {
+    // A converted field that may be `none`, given `none`: its new column
+    // starts empty, with nothing to fill (chunk Q3b).
+    if !require
+        && let Some(Decided::Backfill(value)) = decided(need)
+        && value.starts_with("NULL")
+    {
+        return Filled::default();
+    }
+    let mut filled = filling(table, key, columns, broken, need, decided, batched);
+    filled.require = require;
+    // The other columns of a value held in several, each required too
+    // unless it may be `NULL`, as an object's part that may be `none` is.
+    filled.also = columns
+        .iter()
+        .skip(1)
+        .filter(|(_, _, nullable)| !nullable)
+        .map(|(column, ..)| column.to_string())
+        .collect();
+    if !require {
+        filled
+            .now
+            .retain(|statement| statement.does != "require a value");
+    }
+    filled
+}
+
+#[allow(clippy::too_many_arguments)]
+fn filling(
+    table: &str,
+    key: &[String],
+    columns: &[(&str, &str, bool)],
     broken: &[String],
     need: &Needed,
     decided: &dyn Fn(&Needed) -> Option<Decided>,
     batched: bool,
 ) -> Filled {
+    let (column, sql_type) = columns.first().map_or(("", ""), |(c, t, _)| (*c, *t));
+    let written: Vec<(&str, &str)> = columns.iter().map(|(c, t, _)| (*c, *t)).collect();
     match (need.kind, decided(need)) {
         // The same steps, each batch read, worked out in Jadpo and written
         // back by `jadpo migrate apply`, and the rows written meanwhile
@@ -1609,8 +1725,7 @@ fn backfill(
                         &need.key(),
                         table,
                         &key[0],
-                        column,
-                        sql_type,
+                        &written,
                         &reads,
                         &code,
                     ),
@@ -1619,14 +1734,7 @@ fn backfill(
                 required: Some((
                     column.to_string(),
                     Statement {
-                        sql: table::fill_in_jadpo(
-                            &need.key(),
-                            table,
-                            &key[0],
-                            column,
-                            sql_type,
-                            &reads,
-                        ),
+                        sql: table::fill_in_jadpo(&need.key(), table, &key[0], &written, &reads),
                         does: "fill rows written meanwhile in Jadpo",
                     },
                 )),
@@ -1785,7 +1893,7 @@ fn waiting(need: &Needed) -> Statement {
 }
 
 /// Whether a column type changes to one that holds every value it held.
-fn widens(from: &str, to: &str) -> bool {
+pub fn widens(from: &str, to: &str) -> bool {
     let rank = |t: &str| match t {
         "smallint" => Some(0),
         "integer" => Some(1),
@@ -2006,6 +2114,64 @@ mod tests {
         let text = done.to_document("x");
         assert!(text.contains("UPDATE \"todo\" SET \"rank\" = 3 WHERE \"rank\" IS NULL;"));
         assert!(text.contains("SET NOT NULL;"));
+    }
+
+    #[test]
+    fn a_converted_field_fills_its_new_column_and_retires_the_old_with_nothing_to_decide() {
+        // Chunk Q3b: `rank` was `bigint` and is now text, in `rank__2`.
+        let before = schema(&[
+            ("id", "uuid", false, false),
+            ("rank", "bigint", false, false),
+            ("note", "bigint", true, false),
+        ]);
+        let mut source = schema(&[
+            ("id", "uuid", false, false),
+            ("rank__2", "text", false, false),
+            ("note__2", "text", true, false),
+        ]);
+        for (column, field) in [("rank__2", "rank"), ("note__2", "note")] {
+            source
+                .stores
+                .get_mut("main")
+                .unwrap()
+                .tables
+                .get_mut("todo")
+                .unwrap()
+                .columns
+                .get_mut(column)
+                .unwrap()
+                .field = Some(field.into());
+        }
+        let after = next_snapshot(&before, &source);
+        let needed = decisions_needed(&before, &after);
+        assert_eq!(
+            needed
+                .iter()
+                .map(|n| (n.key(), n.kind, n.converts))
+                .collect::<Vec<_>>(),
+            [
+                ("Todo.note".to_string(), NeededKind::Backfill, true),
+                ("Todo.rank".to_string(), NeededKind::Backfill, true),
+            ]
+        );
+        let sql = migration_sql(&before, &after, &|need| {
+            Some(match need.field.as_str() {
+                "rank" => Decided::Computed("(\"todo\".\"rank\")::text".into()),
+                _ => Decided::Backfill("NULL::text".into()),
+            })
+        })
+        .expect("sql")
+        .to_document("x");
+        assert!(
+            sql.contains("ALTER TABLE \"todo\" ALTER COLUMN \"rank\" DROP NOT NULL;"),
+            "{sql}"
+        );
+        assert!(!sql.contains("TYPE text"), "{sql}");
+        assert!(
+            sql.contains("ALTER TABLE \"todo\" ALTER COLUMN \"rank__2\" SET NOT NULL;"),
+            "{sql}"
+        );
+        assert!(!sql.contains("\"note__2\" SET NOT NULL"), "{sql}");
     }
 
     #[test]

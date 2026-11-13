@@ -210,7 +210,7 @@ impl Planner<'_> {
                 .fields
                 .iter()
                 .find(|f| f.name == address)?
-                .born
+                .column
                 .clone(),
             None => "id".to_string(),
         };
@@ -261,7 +261,7 @@ impl Planner<'_> {
                 .fields
                 .iter()
                 .find(|f| f.name == address)?
-                .born
+                .column
                 .clone(),
             None => "id".to_string(),
         };
@@ -391,7 +391,7 @@ impl Planner<'_> {
             .fields
             .iter()
             .find(|f| f.name == address)?
-            .born
+            .column
             .clone();
         let mut bind = Lookup;
         let wheres = self.access(&mut bind, entity, Reach::Read)?;

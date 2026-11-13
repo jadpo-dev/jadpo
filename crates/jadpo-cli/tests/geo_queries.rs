@@ -15,6 +15,9 @@
 //!   query gives the page's answer.
 //! - The recheck asking again: a list whose first rows the code turns down,
 //!   and ties at the last place kept.
+//! - A `geo.` condition in an include, its list asking again when the code
+//!   turns its first rows down, and in an aggregate query, which counts
+//!   only what the code keeps (chunk Q4).
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools, which must have PostGIS (CI's image
@@ -1011,5 +1014,279 @@ fn every_predicate_case_gives_the_code_s_answer_as_a_query() {
         .map(String::from)
         .collect::<BTreeSet<_>>(),
         "the four where `ST_Covers` and the page part, each the page's answer"
+    );
+}
+
+/// A project of bakeries and the patches each delivers to, with an include
+/// and two aggregate queries holding `geo.` conditions (chunk Q4), each
+/// returned by an action of its name with `find_` before it, migrated.
+fn reach_project() -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("geo-queries-reach");
+    let _ = fs::remove_dir_all(&root);
+    write(&root, "app.jadpo", "application {}\n");
+    let domain = |path: &str, text: &str| write(&root, &format!("domains/baking/{path}"), text);
+    for (file, text) in [
+        (
+            "place_name",
+            "/// What a bakery or a patch is called.\ntype PlaceName = Text {\n    max_length: 80\n}\n",
+        ),
+        (
+            "patch_card",
+            "use baking/entities { Patch }\n\n/// A patch in a list.\ntype PatchCard = Output {\n    pick: [Patch.id, Patch.name]\n}\n",
+        ),
+        (
+            "bakery_reach",
+            "use baking/entities { Bakery }\nuse baking/types { PatchCard }\n\n/// A bakery with the patches that deliver to a door.\ntype BakeryReach = Output {\n    pick: [Bakery.id, Bakery.name]\n    patches: List<PatchCard>\n}\n",
+        ),
+        (
+            "bakery_count",
+            "/// How many bakeries a view shows.\ntype BakeryCount = Output {\n    bakeries: Int\n}\n",
+        ),
+        (
+            "patch_tally",
+            "use baking/entities { Bakery }\n\n/// How many of a bakery's patches hold a shape.\ntype PatchTally = Output {\n    bakery_id: Bakery.id\n    patches: Int\n}\n",
+        ),
+    ] {
+        domain(&format!("types/{file}.jadpo"), text);
+    }
+    domain(
+        "entities/bakery.jadpo",
+        "use baking/types { PlaceName }\n\n/// A shop that bakes and delivers.\nentity Bakery {\n    id: Uuid\n    name: PlaceName\n    spot: Point\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
+    );
+    domain(
+        "entities/patch.jadpo",
+        "use baking/entities { Bakery }\nuse baking/types { PlaceName }\n\n/// An area a bakery delivers to.\nentity Patch {\n    id: Uuid\n    bakery_id: Bakery.id {\n        on_delete: OnDelete.cascade\n    }\n    name: PlaceName\n    outline: Polygon\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
+    );
+    for (name, entities, ty, params, args, result, body) in [
+        (
+            "bakery_reaching",
+            "Bakery, Patch",
+            "BakeryReach",
+            "bakery_id: Bakery.id, shape: Polygon",
+            "bakery_id, shape",
+            "BakeryReach?",
+            "    from: Bakery\n    where: Bakery.id == bakery_id\n    include: {\n        patches: {\n            via: Patch.bakery_id\n            where: geo.contains(Patch.outline, shape)\n            order: [Patch.name asc]\n            limit: 3\n        }\n    }\n",
+        ),
+        (
+            "bakeries_counted",
+            "Bakery",
+            "BakeryCount",
+            "view: BoundingBox",
+            "view",
+            "BakeryCount",
+            "    from: Bakery\n    where: geo.within(Bakery.spot, view)\n    aggregate: {\n        bakeries: count()\n    }\n",
+        ),
+        (
+            "patches_tallied",
+            "Patch",
+            "PatchTally",
+            "shape: Polygon",
+            "shape",
+            "List<PatchTally>",
+            "    from: Patch\n    where: geo.contains(Patch.outline, shape)\n    group: {\n        bakery_id: Patch.bakery_id\n    }\n    aggregate: {\n        patches: count()\n    }\n    order: [patches desc]\n    limit: 50\n",
+        ),
+    ] {
+        domain(
+            &format!("queries/{name}.jadpo"),
+            &format!(
+                "use baking/entities {{ {entities} }}\nuse baking/types {{ {ty} }}\n\n/// Records found by where they are.\nquery {name}({params}) -> {result} {{\n{body}}}\n"
+            ),
+        );
+        domain(
+            &format!("actions/find_{name}.jadpo"),
+            &format!(
+                "{bakery}use baking/queries {{ {name} }}\nuse baking/types {{ {ty} }}\n\n/// What the query finds.\naction find_{name}({params}) -> {result} {{\n    return {name}({args})\n}}\n",
+                bakery = if params.contains("Bakery.id") {
+                    "use baking/entities { Bakery }\n"
+                } else {
+                    ""
+                }
+            ),
+        );
+    }
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    root
+}
+
+/// What `find_<query>` returns.
+fn found(live: &Live, query: &str, args: Vec<Value>) -> Value {
+    let action = format!("find_{query}");
+    let id = live.program.plan().find(&action).expect("the action");
+    let found = live.runtime.block_on(async {
+        let env = Env {
+            seed: Some(1),
+            clock: Clock::TEST,
+        };
+        let mut ctx = Ctx::of(&live.program, &live.host, env);
+        live.program.run(&mut ctx, id, args).await
+    });
+    let Outcome::Value(value) = found else {
+        panic!("{action}: expected a value, got {found:?}");
+    };
+    value
+}
+
+/// A record's field.
+fn field(value: &Value, name: &str) -> Value {
+    at(value, &[name.to_string()])
+}
+
+#[test]
+fn a_geo_condition_in_an_include_or_an_aggregate_gives_the_code_s_answer() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let root = reach_project();
+    let live = Live::new(&root, "geo_queries_reach");
+    // The page's grid of bakeries over London and the ones by the
+    // antimeridian and the pole.
+    let mut bakeries: Vec<(u64, String, Value)> = Vec::new();
+    for i in 0..2000u64 {
+        let latitude = format!("{:.4}", 51.40 + (i / 50) as f64 * 0.0041);
+        let longitude = format!("{:.4}", -0.35 + (i % 50) as f64 * 0.0097);
+        bakeries.push((
+            i + 1,
+            format!("Bakery {i:04}"),
+            point(&latitude, &longitude),
+        ));
+    }
+    for (n, name, latitude, longitude) in [
+        (3002, "On the edge", "51.5", "-0.2"),
+        (3007, "Date line east", "0.0", "180.0"),
+        (3008, "Date line west", "0.5", "-180.0"),
+        (3009, "Just east", "0.0", "179.5"),
+        (3010, "Just west", "0.0", "-179.5"),
+        (3011, "North Pole", "90.0", "37.0"),
+    ] {
+        bakeries.push((n, name.to_string(), point(latitude, longitude)));
+    }
+    live.insert(
+        "INSERT INTO bakery (id, name, spot) VALUES ($1, $2, ST_GeomFromGeoJSON($3)::geography)",
+        &bakeries
+            .iter()
+            .map(|(n, name, spot)| {
+                vec![
+                    SqlValue::Uuid(uuid(*n)),
+                    SqlValue::Text(name.clone()),
+                    geojson_of(spot),
+                ]
+            })
+            .collect::<Vec<_>>(),
+    );
+    // Bakery 1 has five holed squares, whose names come first, then a
+    // whole one; bakery 2 has two whole ones; bakery 3 one holed square.
+    // `ST_Covers` and the index hold the square over the hole in every
+    // holed square, and the code in none.
+    let mut patches: Vec<(u64, u64, String, &str)> = Vec::new();
+    for n in 0..5u64 {
+        patches.push((10 + n, 1, format!("A holed {n}"), SQUARE_HOLE));
+    }
+    patches.push((20, 1, "B whole".to_string(), SQUARE));
+    patches.push((21, 2, "C whole".to_string(), SQUARE));
+    patches.push((22, 2, "D whole".to_string(), SQUARE));
+    patches.push((23, 3, "E holed".to_string(), SQUARE_HOLE));
+    live.insert(
+        "INSERT INTO patch (id, bakery_id, name, outline) VALUES ($1, $2, $3, ST_GeomFromGeoJSON($4)::geography)",
+        &patches
+            .iter()
+            .map(|(n, bakery, name, outline)| {
+                vec![
+                    SqlValue::Uuid(uuid(*n)),
+                    SqlValue::Uuid(uuid(*bakery)),
+                    SqlValue::Text(name.clone()),
+                    geojson_of(&geometry("Polygon", outline)),
+                ]
+            })
+            .collect::<Vec<_>>(),
+    );
+    live.rows("ANALYZE bakery", &[]);
+    live.rows("ANALYZE patch", &[]);
+    let over_hole = geometry("Polygon", OVER_HOLE);
+    let names = |reach: &Value| -> Vec<String> {
+        let Value::List(patches) = field(reach, "patches") else {
+            panic!("a list of patches: {reach:?}");
+        };
+        patches
+            .iter()
+            .map(|card| match field(card, "name") {
+                Value::Text(name) => name.to_string(),
+                other => panic!("a name: {other:?}"),
+            })
+            .collect()
+    };
+
+    // The include asks again: its first three rows by name are holed
+    // squares, which the code turns down, so it asks for twelve and keeps
+    // the whole one.
+    let bakery = |n: u64| Value::Uuid(jadpo_runtime::uuid_text(&uuid(n)).into());
+    let reach = found(&live, "bakery_reaching", vec![bakery(1), over_hole.clone()]);
+    assert_eq!(names(&reach), ["B whole"]);
+    let reach = found(&live, "bakery_reaching", vec![bakery(2), over_hole.clone()]);
+    assert_eq!(names(&reach), ["C whole", "D whole"]);
+    let reach = found(&live, "bakery_reaching", vec![bakery(3), over_hole.clone()]);
+    assert_eq!(
+        names(&reach),
+        Vec::<String>::new(),
+        "its only patch turned down"
+    );
+    let corner = geometry(
+        "Polygon",
+        r#"{"type":"Polygon","coordinates":[[[5,5],[9,5],[9,9],[5,9],[5,5]]]}"#,
+    );
+    let reach = found(&live, "bakery_reaching", vec![bakery(1), corner]);
+    assert_eq!(
+        names(&reach),
+        ["A holed 0", "A holed 1", "A holed 2"],
+        "every square holds a corner away from the hole, three kept"
+    );
+
+    // The tallies count what the code keeps, where the database's own
+    // count of what the index finds would give bakery 1 six.
+    let Value::List(tallies) = found(&live, "patches_tallied", vec![over_hole.clone()]) else {
+        panic!("a list of tallies");
+    };
+    let tallied: Vec<(Value, Value)> = tallies
+        .iter()
+        .map(|tally| (field(tally, "bakery_id"), field(tally, "patches")))
+        .collect();
+    assert_eq!(
+        tallied,
+        [(bakery(2), Value::Int(2)), (bakery(1), Value::Int(1))]
+    );
+
+    // A count of the bakeries in each view is the code's, round the
+    // antimeridian and the pole too.
+    let patch = geometry("Polygon", LONDON_PATCH);
+    for view in [
+        geo::bounding_box(&patch).expect("the patch's view"),
+        bounding_box("51.45", "-0.3", "51.47", "-0.1"),
+        bounding_box("-1", "179", "1", "-179"),
+        bounding_box("-1", "-180", "1", "-179"),
+        bounding_box("-1", "179", "1", "180"),
+        bounding_box("80", "-180", "90", "180"),
+        bounding_box("80", "0", "90", "100"),
+        bounding_box("10", "10", "11", "11"),
+    ] {
+        let wanted = bakeries
+            .iter()
+            .filter(|(_, _, spot)| holds(geo::within(spot, &view, &Value::None)))
+            .count();
+        let counted = found(&live, "bakeries_counted", vec![view.clone()]);
+        assert_eq!(
+            field(&counted, "bakeries"),
+            Value::Int(i64::try_from(wanted).expect("a count")),
+            "{view:?}"
+        );
+    }
+    let counted = found(
+        &live,
+        "bakeries_counted",
+        vec![bounding_box("-1", "-180", "1", "-179")],
+    );
+    assert_eq!(
+        field(&counted, "bakeries"),
+        Value::Int(3),
+        "a box from -180 holds a point at 180"
     );
 }

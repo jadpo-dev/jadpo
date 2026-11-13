@@ -330,16 +330,21 @@ work below (Richard, 2026-11-08).
     - [x] **Q3 What `jadpo migrate new` still refuses**: a new `pattern:` and
       a computed backfill for a field that allows less, in area 5, "Changing
       what a field allows", and its notes, "Refits".
-    - [ ] **Q3b The rest of what `jadpo migrate new` refuses** `opus · high`:
-      area 5, "Migrations", "A stored value is checked when it is read" and
-      "Batches, locks and resuming". Column type changes other than widening
-      (the form of the conversion is a language decision, since changing a
-      column in place drops what servers on the old build read); a backfill
-      filling a value held in several columns, a new required money field's
-      among them, or reading one held so or as JSON; and `CHECK` constraints
-      holding fields' rules. Split from Q3 (2026-11-12), which built refits.
-    - [ ] **Q4 A `geo.` condition in an include or an aggregate** `opus ·
-      high`: area 20, "What is built"; area 6, "The aggregates".
+    - [x] **Q3b The rest of what `jadpo migrate new` refuses**: a column
+      type changed by the rename pattern, and backfills in Jadpo reading
+      and filling values held in several columns or as JSON, in area 5,
+      "Changing a column's type" and "How a backfill runs", and its notes.
+    - [ ] **Q3c `CHECK` constraints holding fields' rules** `opus · high`
+      **needs a maintainer** before building: area 5, "A stored value is
+      checked when it is read" and "Changing what a field allows". The
+      database holding each field's bounds, lengths and variants as it
+      holds its type. The decision: when a refit's narrower rule becomes a
+      check, since a server still on the old build may write a value it
+      refuses. Split from Q3b (2026-11-13).
+    - [x] **Q4 A `geo.` condition in an include or an aggregate**: an
+      include's rows rechecked in code and an aggregate counting the
+      records the code keeps, in area 20, "In an include or an aggregate",
+      and its notes.
     - [ ] **Q5 Reading a second store** `opus · xhigh`: area 6, "One store per
       action". Reads of another store outside the action's transaction, in place of
       `toolchain.not_built_yet`.

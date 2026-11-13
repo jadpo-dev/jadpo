@@ -15,8 +15,8 @@ use std::rc::Rc;
 
 use jadpo_std::policy::CallerPart;
 use jadpo_std::read::{
-    Cardinality, Check, Column, Field, FieldRules, IncludeShape, Laying, Operand, ReadPlan,
-    Recheck, Record, RowVersions, Select, Size, Source,
+    Cardinality, Check, Column, Decided, Field, FieldRules, IncludeShape, Laying, Operand,
+    ReadPlan, Recheck, Record, RowVersions, Select, Size, Source,
 };
 use jadpo_value::Value;
 
@@ -126,6 +126,7 @@ pub(crate) async fn read_as(
         size: 0,
         cursor: Vec::new(),
         keys: None,
+        kept: None,
         callers: callers(ctx),
         unpoliced: ctx.unpoliced(),
         fetch: Cell::new(0),
@@ -248,6 +249,7 @@ pub(crate) async fn read_detached(
         size: 0,
         cursor: Vec::new(),
         keys: None,
+        kept: None,
         callers: callers(ctx),
         unpoliced: ctx.unpoliced(),
         fetch: Cell::new(0),
@@ -309,6 +311,7 @@ pub(crate) async fn count(
         size: 0,
         cursor: Vec::new(),
         keys: None,
+        kept: None,
         callers: callers(ctx),
         unpoliced: ctx.unpoliced(),
         fetch: Cell::new(0),
@@ -418,6 +421,9 @@ struct Env<'a> {
     cursor: Vec<SqlValue>,
     /// An include's keys.
     keys: Option<SqlValue>,
+    /// The ids of the records an aggregate's `geo.` conditions kept
+    /// ([`Source::Kept`], chunk Q4).
+    kept: Option<SqlValue>,
     /// The caller's parts its policy reads.
     callers: [SqlValue; 7],
     /// Whether it runs its statements without their policy.
@@ -430,6 +436,29 @@ struct Env<'a> {
     loaded: Option<&'a RefCell<Vec<Loaded>>>,
     /// What it has read of sensitive fields, for its access records.
     accessed: Rc<RefCell<Vec<crate::logging::Accessed>>>,
+}
+
+impl<'a> Env<'a> {
+    /// This read's values for a statement of its own: an include's, with
+    /// its keys, or an aggregate's totals, with the ids the code kept. It
+    /// starts from no cursor and fetches as its own statement asks.
+    fn with(&self, keys: Option<SqlValue>, kept: Option<SqlValue>) -> Env<'a> {
+        Env {
+            args: self.args,
+            json: self.json,
+            ring: self.ring,
+            now: self.now,
+            size: self.size,
+            cursor: Vec::new(),
+            keys,
+            kept,
+            callers: self.callers.clone(),
+            unpoliced: self.unpoliced,
+            fetch: Cell::new(0),
+            loaded: self.loaded,
+            accessed: self.accessed.clone(),
+        }
+    }
 }
 
 /// The ids of rows one statement loaded, with how their versions are read
@@ -467,6 +496,10 @@ fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Probl
         // the plan was made (chunk 5.5w3b).
         Source::Stored(value) => value.clone(),
         Source::Fetch => SqlValue::Int8(env.fetch.get()),
+        Source::Kept => env
+            .kept
+            .clone()
+            .ok_or_else(|| Problem::Defect("totals without the records they count".into()))?,
         // A side of a box filter's envelopes (area 20, chunk 5.5u5).
         Source::Envelope { index, path, part } => {
             let bounds = value_at(
@@ -622,6 +655,17 @@ async fn run_read(
     for setting in &plan.settings {
         transaction.batch(setting).await.map_err(Problem::Store)?;
     }
+    // An aggregate with `geo.` conditions: its records decided first, and
+    // its totals of those kept (chunk Q4).
+    let counted;
+    let env = match &plan.decided {
+        Some(decided) => {
+            let kept = self::decided(&mut *transaction, decided, env).await?;
+            counted = env.with(None, Some(kept));
+            &counted
+        }
+        None => env,
+    };
     let mut rows = match &plan.recheck {
         Some(recheck) => rechecked(transaction, plan, recheck, env).await?,
         None => run(transaction, &plan.select, env).await?,
@@ -705,6 +749,87 @@ async fn rechecked(
         if exhausted || enough {
             kept.truncate(keep);
             return Ok(kept.into_iter().map(|(_, row)| row).collect());
+        }
+        fetch = fetch.saturating_mul(4);
+    }
+}
+
+/// The ids of the records an aggregate query with `geo.` conditions
+/// counts (chunk Q4; area 20, "In an include or an aggregate"): those its
+/// first statement finds through the index that pass each check as
+/// Jadpo's own code works it out, as a `uuid[]` for its totals.
+async fn decided(
+    transaction: &mut dyn Transaction,
+    decided: &Decided,
+    env: &Env<'_>,
+) -> Result<SqlValue, Problem> {
+    let rows = run(transaction, &decided.select, env).await?;
+    note_sensitive(&decided.select, &rows, env);
+    let mut kept = Vec::new();
+    for row in &rows {
+        if passes(&decided.recheck, &decided.select, row, env)?.is_some() {
+            match row.get(decided.id as usize) {
+                Some(id @ SqlValue::Uuid(_)) => kept.push(id.clone()),
+                _ => return Err(Problem::Defect("a record without its id".into())),
+            }
+        }
+    }
+    Ok(SqlValue::Array(SqlType::Uuid, kept))
+}
+
+/// The rows of an include whose conditions search an index (chunk Q4):
+/// those its statement finds that pass each check as Jadpo's own code
+/// works it out, in the order the statement gives each record's, and at
+/// most as many for each record as its `limit:` keeps. Its statement asks
+/// for as many rows for each record as it keeps, and again for four times
+/// as many while one record's rows came out short of that and the
+/// statement gave all it was asked for, so more could still pass.
+async fn included(
+    transaction: &mut dyn Transaction,
+    select: &Select,
+    recheck: &Recheck,
+    env: &Env<'_>,
+) -> Result<Vec<Row>, Problem> {
+    let keep = match &recheck.limit {
+        Some(Size::Fixed(n)) => Some(i64::try_from(*n).unwrap_or(i64::MAX)),
+        Some(Size::From(source)) => match value_at(source, env.args) {
+            Some(Value::Int(n)) => Some(n),
+            _ => return Err(Problem::Defect("a limit that isn't a whole number".into())),
+        },
+        None => None,
+    };
+    let keep = keep.map(|n| usize::try_from(n.max(0)).unwrap_or(usize::MAX));
+    let mut fetch = keep.unwrap_or(0).max(1);
+    loop {
+        env.fetch.set(i64::try_from(fetch).unwrap_or(i64::MAX));
+        let rows = run(&mut *transaction, select, env).await?;
+        // Each record's rows found and kept, by the key each row matches.
+        let mut found: BTreeMap<SqlValue, usize> = BTreeMap::new();
+        let mut kept: BTreeMap<SqlValue, usize> = BTreeMap::new();
+        let mut out = Vec::new();
+        for row in rows {
+            let key = row
+                .first()
+                .cloned()
+                .unwrap_or(SqlValue::Null(SqlType::Text));
+            *found.entry(key.clone()).or_default() += 1;
+            if passes(recheck, select, &row, env)?.is_none() {
+                continue;
+            }
+            let held = kept.entry(key).or_default();
+            if keep.is_none_or(|keep| *held < keep) {
+                *held += 1;
+                out.push(row);
+            }
+        }
+        let Some(keep) = keep else {
+            return Ok(out);
+        };
+        let short = found
+            .iter()
+            .any(|(key, n)| *n >= fetch && kept.get(key).copied().unwrap_or(0) < keep);
+        if !short {
+            return Ok(out);
         }
         fetch = fetch.saturating_mul(4);
     }
@@ -813,21 +938,13 @@ fn records<'a>(
             let mut matched: BTreeMap<SqlValue, Vec<Value>> = BTreeMap::new();
             if let Some(first) = keys.first() {
                 let element = first.ty();
-                let inner = Env {
-                    args: env.args,
-                    json: env.json,
-                    ring: env.ring,
-                    now: env.now,
-                    size: env.size,
-                    cursor: Vec::new(),
-                    keys: Some(SqlValue::Array(element, keys)),
-                    callers: env.callers.clone(),
-                    unpoliced: env.unpoliced,
-                    fetch: Cell::new(0),
-                    loaded: env.loaded,
-                    accessed: env.accessed.clone(),
+                let inner = env.with(Some(SqlValue::Array(element, keys)), None);
+                let child_rows = match &include.recheck {
+                    Some(recheck) => {
+                        included(&mut *transaction, &include.select, recheck, &inner).await?
+                    }
+                    None => run(&mut *transaction, &include.select, &inner).await?,
                 };
-                let child_rows = run(&mut *transaction, &include.select, &inner).await?;
                 let values =
                     records(&mut *transaction, &include.select, &child_rows, &inner).await?;
                 for (row, value) in child_rows.iter().zip(values) {
