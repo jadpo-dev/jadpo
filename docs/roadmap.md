@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-11-11. This page is the only list of outstanding work: the
+**Updated:** 2026-11-13. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record language decisions on the [area pages](language/README.md)
 and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
@@ -388,11 +388,17 @@ work below (Richard, 2026-11-08).
       clock in the report.
 12. Sign-in and scopes (areas 8, 9 and 19), added by the audit of
     2026-11-08.
-    - [ ] **N1 GitHub, Apple and token subjects** `opus · high`: area 8,
-      "Providers", "In `jadpo dev`" and "External tokens in tests and `jadpo dev`";
-      area 11, "No presets, no dependencies". `Driver.github` and
-      `Driver.apple`, the first for jadpo.dev's accounts, and a principal `subject:`
-      made of several columns or a structured value with `external_token`.
+    - [x] **N1 GitHub sign-in**: area 8, "GitHub" and its notes; compiler-runtime, "Sign-in providers".
+    - [ ] **N1b Token subjects** `opus · high`: area 8, "External tokens in
+      tests and `jadpo dev`" and "`subject:`". A principal `subject:` made of
+      several columns or a structured value with `external_token`. Such a
+      subject is read only by its first column today, for every way in, so
+      sessions, API tokens, service keys and signed parts read it whole too.
+    - [ ] **N1c Sign in with Apple** **needs a maintainer**: area 8,
+      "Providers". `Driver.apple`, once a maintainer decides how its client
+      secret is configured (an ES256 token the app signs with its private
+      key, team ID and key ID) and how its `form_post` callback is taken,
+      which needs a binding cookie a cross-site `POST` carries.
     - [ ] **N2 Scopes** `opus · xhigh`: area 8, "What is built"; area 9,
       "What is built"; area 19, "The token types"; area 11, "Mistakes not
       reported yet". Scope declarations, `scopes:` and policy's restrictions

@@ -35,6 +35,9 @@ pub struct Registration {
     /// The company its `organisation:` names (chunk A10): every account
     /// the page signs in belongs to it.
     pub organisation: Option<String>,
+    /// Whether it is GitHub, whose sign-in carries no nonce and whose
+    /// accounts' IDs are numbers (chunk N1).
+    pub github: bool,
 }
 
 /// The app's sign-in providers whose settings hold, as it started.
@@ -56,9 +59,10 @@ pub fn registrations(
             let settings = started.auth().provider(u32::try_from(at).ok()?)?;
             Some(Registration {
                 provider: provider.name.clone(),
-                client_id: settings.keys.audience().to_string(),
+                client_id: settings.client_id.clone(),
                 redirect_uri: format!("{origin}/auth/{}/callback", provider.name),
                 organisation: settings.organisation.clone(),
+                github: provider.driver == jadpo_std::http::ProviderDriver::Github,
             })
         })
         .collect()
@@ -176,7 +180,7 @@ impl Chooser<'_> {
         if !posted {
             let draft = Draft {
                 email_verified: true,
-                subject: self.new_subject(),
+                subject: self.new_subject(ask.registration.github),
                 ..Draft::default()
             };
             return page(&ask, &self.accounts.list(provider), &draft, false, 200);
@@ -197,7 +201,7 @@ impl Chooser<'_> {
                 None => {
                     let draft = Draft {
                         email_verified: true,
-                        subject: self.new_subject(),
+                        subject: self.new_subject(ask.registration.github),
                         notice: Some(format!(
                             "No test account has the subject {} now. Choose another, or add it again.",
                             code(&subject)
@@ -304,7 +308,7 @@ impl Chooser<'_> {
         if one("response_type") != "code"
             || one("code_challenge_method") != "S256"
             || state.is_empty()
-            || nonce.is_empty()
+            || (nonce.is_empty() && !registration.github)
             || challenge.is_empty()
         {
             return Err((
@@ -321,13 +325,18 @@ impl Chooser<'_> {
     }
 
     /// A subject for a new account, in the shape Google gives one: a 1
-    /// and twenty digits.
-    fn new_subject(&self) -> String {
+    /// and twenty digits; for GitHub, an account's ID, eight or nine
+    /// digits (chunk N1).
+    fn new_subject(&self, github: bool) -> String {
         let mut bytes = [0u8; 16];
         if !(self.random)(&mut bytes) {
             return String::new();
         }
-        let number = u128::from_be_bytes(bytes) % 100_000_000_000_000_000_000;
+        let random = u128::from_be_bytes(bytes);
+        if github {
+            return format!("{}", 10_000_000 + random % 190_000_000);
+        }
+        let number = random % 100_000_000_000_000_000_000;
         format!("1{number:020}")
     }
 }
@@ -745,6 +754,7 @@ mod tests {
             client_id: CLIENT.into(),
             redirect_uri: CALLBACK.into(),
             organisation: None,
+            github: false,
         }]
     }
 

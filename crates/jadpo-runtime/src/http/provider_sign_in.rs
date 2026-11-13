@@ -23,11 +23,24 @@
 //! - **Every refusal of the callback** answers `303` to `return_to`, or
 //!   `/` when the sign-in is unknown, with `?error=<code>` after it.
 //!
+//! - **A GitHub connection** (`Driver.github`, chunk N1) signs people in
+//!   with OAuth 2.0 at GitHub's own fixed addresses: the start asks for
+//!   `read:user user:email` with the same `state` and PKCE challenge and
+//!   no nonce, since GitHub signs no ID token. The callback exchanges the
+//!   code at `github.com` with the client secret and the verifier, then
+//!   asks `api.github.com` for `/user` and `/user/emails` with the access
+//!   token, once each. The subject is the account's numeric `id`, which
+//!   never changes (its login can); the address is its primary one,
+//!   verified only when GitHub says so; the name is its `name`. The access
+//!   token is held only while the callback runs: never stored, logged or
+//!   sent anywhere else. GitHub never says how the person signed in, so
+//!   its sessions are `primary`.
+//!
 //! In tests and `jadpo dev` the local issuer stands in for the provider:
 //! its authorization and token endpoints are its own, answered in
 //! process, and nothing is fetched.
 
-use jadpo_std::http::{IdentityPlan, ProviderPlan, ProviderStep, ProvidersPlan};
+use jadpo_std::http::{IdentityPlan, ProviderDriver, ProviderPlan, ProviderStep, ProvidersPlan};
 use jadpo_value::Value;
 
 use super::external_token::Endpoints;
@@ -58,6 +71,15 @@ const SIGN_IN_MS: i64 = 600_000;
 /// What the provider is asked for: the person's subject, address and
 /// name, and nothing that acts for them.
 const SCOPE: &str = "openid email profile";
+
+/// What GitHub is asked for (chunk N1): the account's profile, to read
+/// its ID and name, and its addresses, to read its primary one; neither
+/// writes anything or reaches a repository.
+const GITHUB_SCOPE: &str = "read:user user:email";
+
+/// The version of GitHub's REST API its account and addresses are read
+/// with.
+const GITHUB_API_VERSION: &str = "2022-11-28";
 
 /// The OpenID Connect `claims` parameter asking for the ID token's `amr`
 /// (chunk A10): Google gives it to verified apps that ask, Microsoft
@@ -211,18 +233,20 @@ impl<'a> Site<'a> {
         }
         let return_to = return_to(request)?;
         let now = ctx.now();
-        let endpoints = self
-            .settings
-            .keys
-            .endpoints(ctx.host(), now)
-            .await
-            .map_err(Stop::Fail)?;
-        let Endpoints {
-            authorization: Some(authorization),
-            ..
-        } = endpoints
-        else {
-            return Err(Stop::Fail(AUTHENTICATION_MISCONFIGURED));
+        let authorization = match &self.settings.keys {
+            // GitHub's own address (chunk N1).
+            None => jadpo_std::http::GITHUB_AUTHORIZE.to_string(),
+            Some(keys) => {
+                let endpoints = keys.endpoints(ctx.host(), now).await.map_err(Stop::Fail)?;
+                let Endpoints {
+                    authorization: Some(authorization),
+                    ..
+                } = endpoints
+                else {
+                    return Err(Stop::Fail(AUTHENTICATION_MISCONFIGURED));
+                };
+                authorization
+            }
         };
         // `jadpo dev`'s local issuer sends the browser to its
         // account-chooser page for this provider (chunk A7c).
@@ -271,16 +295,22 @@ impl<'a> Site<'a> {
         }
         transaction.commit().await.map_err(|_| unavailable())?;
         let redirect_uri = self.redirect_uri();
+        let github = self.provider.driver == ProviderDriver::Github;
         let mut query = vec![
             ("response_type", "code"),
-            ("client_id", self.settings.keys.audience()),
+            ("client_id", self.settings.client_id.as_str()),
             ("redirect_uri", redirect_uri.as_str()),
-            ("scope", SCOPE),
+            ("scope", if github { GITHUB_SCOPE } else { SCOPE }),
             ("state", state.as_str()),
-            ("nonce", nonce.as_str()),
+        ];
+        // GitHub signs no ID token, so has no nonce to carry (chunk N1).
+        if !github {
+            query.push(("nonce", nonce.as_str()));
+        }
+        query.extend([
             ("code_challenge", challenge.as_str()),
             ("code_challenge_method", "S256"),
-        ];
+        ]);
         // A role's requirement this provider can meet needs a second
         // factor, so the ID token is asked to say how the person signed
         // in, as RFC 8176's `amr` (chunk A10).
@@ -291,7 +321,10 @@ impl<'a> Site<'a> {
         // ID token's `hd` is checked all the same.
         if let (Some(organisation), Some(Organisation::HostedDomain)) = (
             self.settings.organisation.as_deref(),
-            Organisation::of(self.settings.keys.issuer()),
+            self.settings
+                .keys
+                .as_ref()
+                .and_then(|keys| Organisation::of(keys.issuer())),
         ) {
             query.push(("hd", organisation));
         }
@@ -378,15 +411,25 @@ impl<'a> Site<'a> {
             return Err(self.redirect(&return_to, PROVIDER_FAILED));
         };
         let (pkce, nonce) = derived(binding, &state);
+        let Some(keys) = &self.settings.keys else {
+            // GitHub: the account from its API (chunk N1).
+            let claims = self
+                .github(ctx, &code, &pkce, now)
+                .await
+                .map_err(|failure| self.redirect(&return_to, failure))?;
+            let user = self
+                .user(ctx, &claims)
+                .await
+                .map_err(|refused| self.redirect(&return_to, refused.failure))?;
+            return self.session(ctx, user, false, &return_to).await;
+        };
         let token = self
-            .exchange(ctx, &code, &pkce, now)
+            .exchange(ctx, keys, &code, &pkce, now)
             .await
             .map_err(|failure| self.redirect(&return_to, failure))?;
-        let issuer = self.settings.keys.issuer().to_string();
-        let client_id = self.settings.keys.audience().to_string();
-        let claims = self
-            .settings
-            .keys
+        let issuer = keys.issuer().to_string();
+        let client_id = keys.audience().to_string();
+        let claims = keys
             .verified(ctx.host(), now, &|keys: &[Value]| {
                 id_token(&token, keys, &issuer, &client_id, &nonce, now)
             })
@@ -428,6 +471,7 @@ impl<'a> Site<'a> {
     async fn exchange(
         &self,
         ctx: &mut Ctx<'_>,
+        keys: &super::external_token::Settings,
         code: &str,
         pkce: &str,
         now: i64,
@@ -436,24 +480,17 @@ impl<'a> Site<'a> {
         #[cfg(feature = "testing")]
         if let Some(local) = ctx.host().local_issuer() {
             return local
-                .redeem(
-                    code,
-                    pkce,
-                    self.settings.keys.audience(),
-                    &redirect,
-                    self.settings.keys.issuer(),
-                    now,
-                )
+                .redeem(code, pkce, keys.audience(), &redirect, keys.issuer(), now)
                 .ok_or(PROVIDER_FAILED);
         }
-        let endpoints = self.settings.keys.endpoints(ctx.host(), now).await?;
+        let endpoints = keys.endpoints(ctx.host(), now).await?;
         let token_endpoint = endpoints.token.ok_or(AUTHENTICATION_MISCONFIGURED)?;
         let outbound = ctx.host().outbound().ok_or(AUTHENTICATION_UNAVAILABLE)?;
         let body = form(&[
             ("grant_type", "authorization_code"),
             ("code", code),
             ("redirect_uri", &redirect),
-            ("client_id", self.settings.keys.audience()),
+            ("client_id", keys.audience()),
             ("client_secret", &self.settings.secret),
             ("code_verifier", pkce),
         ]);
@@ -470,6 +507,79 @@ impl<'a> Site<'a> {
             .and_then(serde_json::Value::as_str)
             .map(str::to_string)
             .ok_or(PROVIDER_FAILED)
+    }
+
+    /// What GitHub says of the account `code` signs in (chunk N1): the
+    /// code exchanged at GitHub's token endpoint, sent once, with the
+    /// client secret and the PKCE verifier, then the account's `/user` and
+    /// `/user/emails` read with the access token it gives. The token is
+    /// dropped when this returns. From the local issuer in process in a
+    /// test or `jadpo dev`.
+    async fn github(
+        &self,
+        ctx: &mut Ctx<'_>,
+        code: &str,
+        pkce: &str,
+        now: i64,
+    ) -> Result<IdClaims, (u16, &'static str, &'static str)> {
+        let redirect = self.redirect_uri();
+        #[cfg(feature = "testing")]
+        if let Some(local) = ctx.host().local_issuer() {
+            let account = local
+                .redeem_account(code, pkce, &self.settings.client_id, &redirect, now)
+                .ok_or(PROVIDER_FAILED)?;
+            let address = account.email.filter(|address| jadpo_std::is_email(address));
+            return Ok(IdClaims {
+                subject: account.subject,
+                address_verified: address.is_some() && account.email_verified,
+                address,
+                name: account.name.filter(|name| !name.trim().is_empty()),
+                hosted_domain: None,
+                tenant: None,
+                multi_factor: false,
+            });
+        }
+        #[cfg(not(feature = "testing"))]
+        let _ = now;
+        let outbound = ctx.host().outbound().ok_or(AUTHENTICATION_UNAVAILABLE)?;
+        let body = form(&[
+            ("client_id", self.settings.client_id.as_str()),
+            ("client_secret", &self.settings.secret),
+            ("code", code),
+            ("redirect_uri", &redirect),
+            ("code_verifier", pkce),
+        ]);
+        let (status, bytes) = outbound
+            .post_form(
+                jadpo_std::http::GITHUB_TOKEN,
+                &body,
+                ANSWER_BYTES,
+                EXCHANGE_MS,
+            )
+            .await
+            .map_err(|_| AUTHENTICATION_UNAVAILABLE)?;
+        if status != 200 {
+            return Err(github_refusal(status));
+        }
+        let access = github_access_token(&bytes).ok_or(PROVIDER_FAILED)?;
+        let headers = [
+            ("authorization", format!("Bearer {access}")),
+            ("accept", "application/vnd.github+json".to_string()),
+            ("user-agent", "Jadpo".to_string()),
+            ("x-github-api-version", GITHUB_API_VERSION.to_string()),
+        ];
+        let mut read = Vec::with_capacity(2);
+        for url in [jadpo_std::http::GITHUB_USER, jadpo_std::http::GITHUB_EMAILS] {
+            let (status, bytes) = outbound
+                .get_with(url, &headers, ANSWER_BYTES, EXCHANGE_MS)
+                .await
+                .map_err(|_| AUTHENTICATION_UNAVAILABLE)?;
+            if status != 200 {
+                return Err(github_refusal(status));
+            }
+            read.push(bytes);
+        }
+        github_account(&read[0], &read[1]).ok_or(PROVIDER_FAILED)
     }
 
     /// The user the account signs in: through its link, else the one
@@ -687,6 +797,70 @@ fn form(pairs: &[(&str, &str)]) -> String {
         })
         .collect::<Vec<_>>()
         .join("&")
+}
+
+/// Why GitHub's answer of `status` refuses a sign-in: GitHub couldn't
+/// answer (a 5xx), or it refused what it was asked.
+fn github_refusal(status: u16) -> (u16, &'static str, &'static str) {
+    if status >= 500 {
+        AUTHENTICATION_UNAVAILABLE
+    } else {
+        PROVIDER_FAILED
+    }
+}
+
+/// The access token GitHub's token endpoint answers with, asked for JSON:
+/// a bearer token of printable characters, at most 255 of them. Its
+/// refusals (`bad_verification_code`, `incorrect_client_credentials`)
+/// come as `error` with `200`, and give none.
+fn github_access_token(bytes: &[u8]) -> Option<String> {
+    let document = jadpo_value::jwt::strict_document(bytes)?;
+    let document = document.as_object()?;
+    if document.contains_key("error") {
+        return None;
+    }
+    let token_type = document.get("token_type")?.as_str()?;
+    if !token_type.eq_ignore_ascii_case("bearer") {
+        return None;
+    }
+    let token = document.get("access_token")?.as_str()?;
+    (!token.is_empty() && token.len() <= 255 && token.bytes().all(|b| b.is_ascii_graphic()))
+        .then(|| token.to_string())
+}
+
+/// What GitHub's `/user` and `/user/emails` say about the account (chunk
+/// N1): its numeric `id` as the subject, its `name`, and its primary
+/// address, verified only when GitHub says `verified: true`. Nothing else
+/// is read: not its login, which can change, nor its organisations.
+fn github_account(user: &[u8], emails: &[u8]) -> Option<IdClaims> {
+    let user = jadpo_value::jwt::strict_document(user)?;
+    let id = user.get("id")?.as_u64().filter(|id| *id > 0)?;
+    let name = user
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .map(str::to_string);
+    let emails = jadpo_value::jwt::strict_document(emails)?;
+    let primary = emails
+        .as_array()?
+        .iter()
+        .find(|entry| entry.get("primary") == Some(&serde_json::Value::Bool(true)));
+    let address = primary
+        .and_then(|entry| entry.get("email"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|address| jadpo_std::is_email(address))
+        .map(str::to_string);
+    let address_verified = address.is_some()
+        && primary.and_then(|entry| entry.get("verified")) == Some(&serde_json::Value::Bool(true));
+    Some(IdClaims {
+        subject: id.to_string(),
+        address,
+        address_verified,
+        name,
+        hosted_domain: None,
+        tenant: None,
+        multi_factor: false,
+    })
 }
 
 /// What an ID token says about the person, once it checks.
@@ -924,6 +1098,87 @@ mod tests {
         );
         assert_eq!(Organisation::of("https://accounts.google.com/"), None);
         assert_eq!(Organisation::of("https://id.example.com"), None);
+    }
+
+    /// GitHub's account (chunk N1): its numeric ID, never its login, its
+    /// name, and its primary address, verified only when GitHub says so.
+    #[test]
+    fn a_github_account_is_its_id_name_and_primary_address() {
+        let user = br#"{"login":"octocat","id":583231,"name":"The Octocat","email":"public@octo.example","site_admin":true}"#;
+        let emails = br#"[{"email":"old@octo.example","primary":false,"verified":true,"visibility":null},{"email":"octocat@octo.example","primary":true,"verified":true,"visibility":"public"}]"#;
+        assert_eq!(
+            github_account(user, emails),
+            Some(IdClaims {
+                subject: "583231".into(),
+                address: Some("octocat@octo.example".into()),
+                address_verified: true,
+                name: Some("The Octocat".into()),
+                hosted_domain: None,
+                tenant: None,
+                multi_factor: false,
+            })
+        );
+        // An address GitHub hasn't verified is unverified.
+        let unverified = br#"[{"email":"octocat@octo.example","primary":true,"verified":false}]"#;
+        assert!(github_account(user, unverified).is_some_and(|claims| !claims.address_verified));
+        let as_text = br#"[{"email":"octocat@octo.example","primary":true,"verified":"true"}]"#;
+        assert!(github_account(user, as_text).is_some_and(|claims| !claims.address_verified));
+        // No primary address, or none at all, is no address.
+        let none = br#"[{"email":"old@octo.example","primary":false,"verified":true}]"#;
+        let read = github_account(user, none).expect("an account");
+        assert_eq!((read.address, read.address_verified), (None, false));
+        assert!(github_account(user, b"[]").is_some_and(|claims| claims.address.is_none()));
+        // A blank or missing name is none.
+        let unnamed = br#"{"login":"octocat","id":583231,"name":null}"#;
+        assert!(github_account(unnamed, emails).is_some_and(|claims| claims.name.is_none()));
+        // No ID, one that isn't a positive whole number, or a document that
+        // isn't one, is no account.
+        for user in [
+            &br#"{"login":"octocat"}"#[..],
+            br#"{"id":"583231"}"#,
+            br#"{"id":0}"#,
+            br#"{"id":-4}"#,
+            br#"{"id":5.5}"#,
+            br#"{"id":1,"id":2}"#,
+            b"not JSON",
+        ] {
+            assert!(
+                github_account(user, emails).is_none(),
+                "{}",
+                String::from_utf8_lossy(user)
+            );
+        }
+        assert!(github_account(user, br#"{"email":"a@b.example"}"#).is_none());
+    }
+
+    /// GitHub's token endpoint, asked for JSON (chunk N1).
+    #[test]
+    fn githubs_access_token_is_a_bearer_token_or_nothing() {
+        assert_eq!(
+            github_access_token(
+                br#"{"access_token":"gho_16C7e42F292c6912E7710c838347Ae178B4a","token_type":"bearer","scope":"read:user,user:email"}"#
+            )
+            .as_deref(),
+            Some("gho_16C7e42F292c6912E7710c838347Ae178B4a")
+        );
+        for refused in [
+            &br#"{"error":"bad_verification_code","error_description":"The code passed is incorrect or expired."}"#[..],
+            br#"{"access_token":"gho_1","token_type":"bearer","error":"x"}"#,
+            br#"{"access_token":"gho_1","token_type":"mac"}"#,
+            br#"{"access_token":"gho_1"}"#,
+            br#"{"access_token":"","token_type":"bearer"}"#,
+            br#"{"access_token":"gho 1\r\nx-evil: 1","token_type":"bearer"}"#,
+            br#"{"access_token":1,"token_type":"bearer"}"#,
+            b"access_token=gho_1&token_type=bearer",
+        ] {
+            assert!(
+                github_access_token(refused).is_none(),
+                "{}",
+                String::from_utf8_lossy(refused)
+            );
+        }
+        assert_eq!(github_refusal(502), AUTHENTICATION_UNAVAILABLE);
+        assert_eq!(github_refusal(401), PROVIDER_FAILED);
     }
 
     /// A binding cookie or a `state` as a sign-in makes one: 32 bytes from
