@@ -375,10 +375,11 @@ pub async fn dev_subject(
             ],
         )
         .await?;
-    let Some([sql]) = rows.first().map(Vec::as_slice) else {
+    let Some(parts) = rows.first() else {
         return Ok(None);
     };
-    let value = crate::from_sql(sql, &principal.column).map_err(|why| refused(&why))?;
+    let value =
+        super::identity::subject_value(principal, parts, plan.json).map_err(|why| refused(&why))?;
     Ok(super::external_token::subject_text(
         &plan.json, external, &value,
     ))

@@ -100,12 +100,23 @@ impl Settings {
 }
 
 /// The subject `subject` is sent as in a token, as a provider sends it:
-/// its JSON text through the subject field's codec, unquoted.
+/// the text its type is read from (chunk N1b), a standard type's
+/// canonical text, else its JSON text through the subject field's codec,
+/// unquoted.
 pub(crate) fn subject_text(
     json: &crate::JsonCodecs<'_>,
     external: &jadpo_std::http::ExternalTokenPlan,
     subject: &Value,
 ) -> Option<String> {
+    // A standard object or choice, kept in several columns, whose JSON
+    // may be its fields rather than its text.
+    if let Some(entry) = matches!(subject, Value::Record(_) | Value::Variant(_))
+        .then(|| jadpo_value::standard::entry_of(subject))
+        .flatten()
+        .filter(|entry| entry.text.is_some())
+    {
+        return jadpo_value::standard::canonical(entry, subject).ok();
+    }
     let codec = json.codec_of(external.subject_type)?;
     let mut written = String::new();
     json.codecs.write(codec, subject, &mut written);

@@ -66,6 +66,53 @@ pub fn held_by_credential() -> String {
     format!("{} = s.{}", ident("id"), ident("principal_id"))
 }
 
+/// A caller's subject as a statement gives it (area 8, "`subject:`";
+/// chunk N1b): each of the subject field's columns, one for a value kept in
+/// one column or whole as its JSON and several for a standard type kept in
+/// several, named `subject`, `subject_1` and on, always after the
+/// statement's other columns, so a caller's row is its fixed columns and
+/// then its subject's.
+pub fn subject_columns(columns: &[String]) -> String {
+    columns
+        .iter()
+        .enumerate()
+        .map(|(at, column)| format!("{} AS {}", ident(column), ident(&subject_name(at))))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// [`subject_columns`]' names, read from `from`: `u."subject", u."subject_1"`.
+fn subject_names(from: &str, count: usize) -> String {
+    (0..count)
+        .map(|at| format!("{from}.{}", ident(&subject_name(at))))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn subject_name(at: usize) -> String {
+    match at {
+        0 => "subject".to_string(),
+        at => format!("subject_{at}"),
+    }
+}
+
+/// Whether a record's subject, kept in `columns`, is the one a statement is
+/// given (chunk N1b): its first column `$1`, as a subject in one column
+/// always was, and each other the parameter after the statement's `fixed`
+/// ones, in order. A part that is `NULL` matches nothing, so a subject is
+/// found only when every part of it is there and equal.
+pub fn subject_is(columns: &[String], fixed: usize) -> String {
+    columns
+        .iter()
+        .enumerate()
+        .map(|(at, column)| {
+            let position = if at == 0 { 0 } else { fixed + at - 1 };
+            format!("{} = {}", ident(column), crate::placeholder(position))
+        })
+        .collect::<Vec<_>>()
+        .join(" AND ")
+}
+
 /// How a passkey is found by its credential ID with its user's record
 /// (area 8, "Passkeys"): `$1` the credential ID, `$2` the time now, read
 /// from `table` beside `entity_table`'s record where `wheres` hold, its
@@ -87,15 +134,16 @@ pub fn passkey_lookup(table: &str, entity_table: &str, active: &str, wheres: &[S
 
 /// How a caller is looked up by a credential's verifier (area 8, question
 /// 12): `$1` the verifier, `$2` the time now, read from `table` beside
-/// `entity_table`'s record where `wheres` hold, its subject `subject`'s
-/// column and its `active` worked out as given; for a session or an API
-/// token (`session`), its `csrf_verifier` too, and after the rest how it
-/// was started, its `sign_in_method` and `strength` (chunk A10).
+/// `entity_table`'s record where `wheres` hold, its `active` worked out as
+/// given; for a session or an API token (`session`), its `csrf_verifier`
+/// too, and after those how it was started, its `sign_in_method` and
+/// `strength` (chunk A10); and last its subject, each of `subject`'s
+/// columns ([`subject_columns`]).
 pub fn caller_lookup(
     table: &str,
     session: bool,
     entity_table: &str,
-    subject: &str,
+    subject: &[String],
     active: &str,
     wheres: &[String],
 ) -> String {
@@ -108,12 +156,12 @@ pub fn caller_lookup(
         (String::new(), String::new())
     };
     format!(
-        "SELECT s.{id}, {csrf}u.{id}, u.{subject_name}, u.{active_name}, s.{ends}{started} FROM {table} AS s CROSS JOIN LATERAL (SELECT {id}, {subject} AS {subject_name}, {active} AS {active_name} FROM {entity_table} WHERE {wheres}) AS u WHERE s.{verifier} = $1 AND s.{ends} > $2",
+        "SELECT s.{id}, {csrf}u.{id}, u.{active_name}, s.{ends}{started}, {subject_names} FROM {table} AS s CROSS JOIN LATERAL (SELECT {id}, {active} AS {active_name}, {subject} FROM {entity_table} WHERE {wheres}) AS u WHERE s.{verifier} = $1 AND s.{ends} > $2",
         id = ident("id"),
-        subject_name = ident("subject"),
+        subject_names = subject_names("u", subject.len()),
         active_name = ident("active"),
         table = ident(table),
-        subject = ident(subject),
+        subject = subject_columns(subject),
         entity_table = ident(entity_table),
         wheres = wheres.join(" AND "),
         verifier = ident("verifier"),
@@ -139,6 +187,44 @@ pub fn user_by(entity_table: &str, column: &str, active: &str, wheres: &[String]
     )
 }
 
+/// How an external token finds its user by its subject (area 8,
+/// "`external_token`"; chunk N1b): [`user_by`], the subject kept in
+/// `subject`'s columns, its first `$1` and any other from `$3` on
+/// ([`subject_is`]).
+pub fn user_by_subject(
+    entity_table: &str,
+    subject: &[String],
+    active: &str,
+    wheres: &[String],
+) -> String {
+    let mut conditions = vec![subject_is(subject, 2)];
+    conditions.extend(wheres.iter().cloned());
+    conditions.push("$2::timestamptz IS NOT NULL".to_string());
+    format!(
+        "SELECT {id}, {active} AS {active_name} FROM {entity_table} WHERE {conditions} LIMIT 1",
+        id = ident("id"),
+        active_name = ident("active"),
+        entity_table = ident(entity_table),
+        conditions = conditions.join(" AND "),
+    )
+}
+
+/// A user's subject by its `id` `$1`, `$2` the time now, read from
+/// `entity_table` where `wheres` hold: each of its columns
+/// ([`subject_columns`]), which `jadpo dev token` and a route test's
+/// local issuer sign a token for (chunk N1b).
+pub fn subject_of(entity_table: &str, subject: &[String], wheres: &[String]) -> String {
+    let mut conditions = vec![format!("{} = $1", ident("id"))];
+    conditions.extend(wheres.iter().cloned());
+    conditions.push("$2::timestamptz IS NOT NULL".to_string());
+    format!(
+        "SELECT {subject} FROM {entity_table} WHERE {conditions} LIMIT 1",
+        subject = subject_columns(subject),
+        entity_table = ident(entity_table),
+        conditions = conditions.join(" AND "),
+    )
+}
+
 /// A person's address by their `id` `$1` (area 15, "Data requests"), read
 /// when an email needs it: active or not, since someone disabled still gets
 /// the data they asked for.
@@ -156,11 +242,12 @@ pub fn address_by_id(entity_table: &str, column: &str) -> String {
 /// one read: the user whose `subject` column is `$1`, else the one
 /// `links` links way in `$3` and subject `$4` to; `$2` the time now. Each
 /// read from `entity_table` where `wheres` hold, giving its `id`, its
-/// `active` worked out as given and its subject.
+/// `active` worked out as given and its subject's columns. A subject in
+/// several columns is given its other parts from `$5` on ([`subject_is`]).
 pub fn linked_user(
     links: &str,
     entity_table: &str,
-    subject: &str,
+    subject: &[String],
     active: &str,
     wheres: &[String],
 ) -> String {
@@ -168,22 +255,21 @@ pub fn linked_user(
         let mut conditions = vec![extra.to_string()];
         conditions.extend(wheres.iter().cloned());
         format!(
-            "SELECT {id}, {active} AS {active_name}, {subject} AS {subject_name} FROM {entity_table} WHERE {conditions}",
+            "SELECT {id}, {active} AS {active_name}, {subject} FROM {entity_table} WHERE {conditions}",
             id = ident("id"),
             active_name = ident("active"),
-            subject = ident(subject),
-            subject_name = ident("subject"),
+            subject = subject_columns(subject),
             entity_table = ident(entity_table),
             conditions = conditions.join(" AND "),
         )
     };
     format!(
-        "SELECT u.{id}, u.{active_name}, u.{subject_name} FROM (SELECT 0 AS {found}, f.* FROM ({direct}) AS f UNION ALL SELECT 1, l.* FROM {links} AS s CROSS JOIN LATERAL ({linked}) AS l WHERE s.{method} = $3 AND s.{link_subject} = $4) AS u WHERE $2::timestamptz IS NOT NULL ORDER BY u.{found} LIMIT 1",
+        "SELECT u.{id}, u.{active_name}, {subject_names} FROM (SELECT 0 AS {found}, f.* FROM ({direct}) AS f UNION ALL SELECT 1, l.* FROM {links} AS s CROSS JOIN LATERAL ({linked}) AS l WHERE s.{method} = $3 AND s.{link_subject} = $4) AS u WHERE $2::timestamptz IS NOT NULL ORDER BY u.{found} LIMIT 1",
         id = ident("id"),
         active_name = ident("active"),
-        subject_name = ident("subject"),
+        subject_names = subject_names("u", subject.len()),
         found = ident("found"),
-        direct = user(&format!("{} = $1", ident(subject))),
+        direct = user(&subject_is(subject, 4)),
         linked = user(&format!("{} = s.{}", ident("id"), ident("user_id"))),
         links = ident(links),
         method = ident("method"),
@@ -193,10 +279,10 @@ pub fn linked_user(
 
 /// A user by `$1` its `id`, `$2` the time now, read from `entity_table`
 /// where `wheres` hold: its `id`, its `active` worked out as given and its
-/// `subject` column. The user `on_first_sign_in:`'s action gave (chunk A7).
+/// subject's columns. The user `on_first_sign_in:`'s action gave (chunk A7).
 pub fn user_with_subject(
     entity_table: &str,
-    subject: &str,
+    subject: &[String],
     active: &str,
     wheres: &[String],
 ) -> String {
@@ -204,11 +290,10 @@ pub fn user_with_subject(
     conditions.extend(wheres.iter().cloned());
     conditions.push("$2::timestamptz IS NOT NULL".to_string());
     format!(
-        "SELECT {id}, {active} AS {active_name}, {subject} AS {subject_name} FROM {entity_table} WHERE {conditions} LIMIT 1",
+        "SELECT {id}, {active} AS {active_name}, {subject} FROM {entity_table} WHERE {conditions} LIMIT 1",
         id = ident("id"),
         active_name = ident("active"),
-        subject = ident(subject),
-        subject_name = ident("subject"),
+        subject = subject_columns(subject),
         entity_table = ident(entity_table),
         conditions = conditions.join(" AND "),
     )

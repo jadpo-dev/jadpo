@@ -13,12 +13,14 @@ exports that data when the person asks for a copy, erases it when they ask
 to be forgotten, deletes it when its time is up, and reports where it
 lives. The aim is that requests under GDPR, UK GDPR and CCPA/CPRA work out
 of the box. Built so far: `person: true`, the check that erasure can find
-every field marked `personal:`, [retention](#retention), which deletes
-data when its time is up, and [erasure](#erasure) of a person's records in
-every store, the bytes of their files included and their own record kept
-field by field where it must be, with the log that keeps them erased after
-a restore, and [export](#export) of everything held about a person but a
-`File` field's link. `personal:` is also read for
+every field marked `personal:`, and [retention](#retention), which deletes
+data when its time is up. [Erasure](#erasure) reaches a person's records
+in every store, the bytes of their files included and their own record
+kept field by field where it must be, and asks each provider that can
+erase to erase them too; a log keeps them erased after a restore.
+[Export](#export) gives everything held about a person, their files as
+signed links, and [data requests](#data-requests) let a person ask for
+either. `personal:` is also read for
 [the AI page's](21-ai.md#personal-data-sent-to-a-model) check of what
 reaches a model, and [the report](#the-personal-data-report) lists what each
 person entity holds, who may read it, how long it is kept, what erasure does
@@ -47,9 +49,9 @@ is the one fact Jadpo asks you to write down.
 | Marking | `personal:` on a field; nothing on an `Email`, a `PhoneNumber`, a name or a `PostalAddress`, which are personal data already | Hashes it in logs, lists it in the report | Partly: read for the AI check and the report's connections, checked that erasure can find it, and hashed in logs and histories ([Marked fields in logs](#marked-fields-in-logs)) |
 | The person | `person: true` on an entity | Finds every record that belongs to them | Yes |
 | Erasure | `erase:` on references it can't work out, and where its log is kept | Generates `User.erase(id)` across every store and cache | Partly: in every store and at each provider, with `PersonErased` and the erasure log; caches aren't built yet |
-| Export | nothing | Generates `User.export(id)` | Partly: all but routes that send one |
+| Export | nothing | Generates `User.export(id)` | Yes, with the routes under [Data requests](#data-requests) that send one |
 | Retention | `retention:` on a field or entity | Clears or deletes it when the time is up | Partly: not yet on an event |
-| Report | nothing | Writes `build/report/personal-data.md` | Yes |
+| Report | nothing | Writes `build/report/personal-data.md` | Partly: caches and OAuth grants, which don't exist yet, are listed as none |
 
 ## Marking personal fields
 <!-- topic: marking-personal-fields -->
@@ -1324,8 +1326,8 @@ A subscriber to it in an app with no person is
   ([`data.erasure_log_store`](../errors/data.erasure_log_store.md)). An app
   that erases someone must name one
   ([`data.erasure_log_required`](../errors/data.erasure_log_required.md)). A
-  database named this way needs no entity of its own, and a Worker keeps the
-  log in a database, since it has no disk.
+  database named this way needs no entity of its own. A Worker has no disk,
+  so it keeps the log in a database or in a `Driver.s3` store of files.
   The runtime replays the log every time it starts, erasing again
   anyone logged who is still there, in each store, so a restored backup is
   erased before the app serves anything. It asks each store about a thousand
@@ -2285,11 +2287,11 @@ This is not legal advice. A privacy professional reviews the report.
 | `erase:` on a reference or the person's own field | Built: each problem under [Erasure](#erasure) and "Erasure is complete" is an error where it is written, and a reference to a person from another store, which says `erase:` and no `on_delete:` ([Records in another store](#records-in-another-store)). |
 | `include_erased:` on a query | Built: it finds the people erasure keeps a record of too, and is held to what they keep. |
 | `User.erase(id)` | Partly built. Built: for a caller with `delete` on the person's record, one statement deletes the record, hidden or not, with the sign-in state of anyone it deletes who signs in, and deletes, anonymises or keeps each record of theirs as its reference says, however deep, records with a lifecycle removed outright. A record that belongs to several people keeps its marked fields until the last of them is erased, and another person's own record loses only the reference ([Records that belong to several people](#records-that-belong-to-several-people)). The person's own record stays field by field, hidden, where one of their fields says so ([The person's own record](#the-persons-own-record)). The bytes of each `File` it deletes or clears go once it commits ([Files](16-built-in-services.md#deleting-and-erasing)), and an audited record it deletes takes its history with it. Records in another store go by a generated subscriber once it commits, retried and shown ([Records in another store](#records-in-another-store)); it emits [`PersonErased`](#who-was-erased-personerased) in its transaction; and each person erased has an entry in the log, replayed at every start, on `jadpo dev`, a native deployable and a Worker ([What erasure doesn't rewrite](#what-erasure-doesnt-rewrite)). Not built yet: one that would keep an audited record, whose history still refers to the person ([Audit trail](16-built-in-services.md#audit-trail)), `toolchain.not_built_yet` where `erase` is called, so no erasure is ever partial; and caches. Each provider a connection's `erasure:` names is asked to erase the person after the commit, by a generated subscriber ([Erasure at providers](#erasure-at-providers)). |
-| `User.export(id)` | Partly built. Built: `PersonalDataExport`, its JSON document and its count of records, for a caller with read on the person's record: the person, every record erasure deletes with them and every record kept that refers to one, hidden or not, in every store, each with the API's field names and no credential, with each entity's retention and the connections it leaves through, interpreted and compiled. After a test's erasure commits and delivers, the runtime checks the person's export holds nothing, a fault if it doesn't. A `File` is exported as its signed link, however deep a structured value holds it ([Downloading](16-built-in-services.md#downloading)). |
-| `privacy:` in `application { }` and its routes | Built, interpreted and compiled: `erasure_log: { store: }`; `self_service:`, `path:` and `generate_routes:`; `exports:`, `erasures:` and `emails:`; `POST /privacy/requests`, `/requests/confirm`, `/requests/cancel` and `/exports/download`; signed-in `POST /privacy/export` and `/privacy/erasure`; `privacy.create_request`, `.request`, `.confirm`, `.cancel` and `.download`; each request a record with its deadline and its events; an export kept encrypted and given once; an erasure after its cooling-off, its cancel link and a completion email saying what was kept once every provider has confirmed; the alert and `PrivacyRequestOverdue` at the deadline; every email at its five levels; and `jadpo privacy requests`. A `File` a person's records hold is exported as a link that lasts as long as the export's. Keeping exports needs a store of files, which today means the disk driver, on the native target only. |
+| `User.export(id)` | Built: `PersonalDataExport`, its JSON document and its count of records, for a caller with read on the person's record: the person, every record erasure deletes with them and every record kept that refers to one, hidden or not, in every store, each with the API's field names and no credential, with each entity's retention and the connections it leaves through, interpreted and compiled. After a test's erasure commits and delivers, the runtime checks the person's export holds nothing, a fault if it doesn't. A `File` is exported as its signed link, however deep a structured value holds it ([Downloading](16-built-in-services.md#downloading)). |
+| `privacy:` in `application { }` and its routes | Built, interpreted and compiled: `erasure_log: { store: }`; `self_service:`, `path:` and `generate_routes:`; `exports:`, `erasures:` and `emails:`; `POST /privacy/requests`, `/requests/confirm`, `/requests/cancel` and `/exports/download`; signed-in `POST /privacy/export` and `/privacy/erasure`; `privacy.create_request`, `.request`, `.confirm`, `.cancel` and `.download`; each request a record with its deadline and its events; an export kept encrypted and given once; an erasure after its cooling-off, its cancel link and a completion email saying what was kept once every provider has confirmed; the alert and `PrivacyRequestOverdue` at the deadline; every email at its five levels; and `jadpo privacy requests`. A `File` a person's records hold is exported as a link that lasts as long as the export's. Exports and the erasure log may be kept in a store of files on either driver: the disk driver, native only, or the S3 driver, natively and on Workers. |
 | Encrypted fields | Built: `encrypted: true`, key-type, `TotpSecret` and `SecretText` fields, sealed on write and opened on read, interpreted, compiled and on Workers; each refusal above; rotation through `_PREVIOUS`, with `field_encryption.reseal` and `jadpo config rotation`. |
 | The personal-data report | Partly built: `jadpo check` writes `build/report/personal-data.md` and `.json`, for a project with no errors: for each person entity, every marked field with its category, store, who may read it and its retention or "kept until erased", what erasure does to each record, and the queries that say `include_erased: true`; each store with the setting that says where it is; [where personal data goes](#where-personal-data-goes), with whether each connection's copy is erased or kept for an accepted reason; keys waiting in the outbox; step records; and what the language covers. `jadpo package check` shows what a package sends, and the approval review shows the report's difference from the before side's, a person, a store and a connection at a time. Not built yet: caches and OAuth grants, which it lists as none, since neither exists. |
-| `erasure:` on a package and on a connection | Partly built. Built: each is read and checked, and a connection that receives personal data and can't erase it needs an `ErasureNotPossible` acceptance ([Erasure at providers](#erasure-at-providers)). Not built yet: calling the package's `erasure:`, so a connection that declares one is not yet asked to erase anyone. |
+| `erasure:` on a package and on a connection | Built: each is read and checked, a connection that receives personal data and can't erase it needs an `ErasureNotPossible` acceptance, and after an erasure commits a generated subscriber calls each connection's erasure operation, retried until its provider confirms ([Erasure at providers](#erasure-at-providers)). |
 | Marked fields in logs | Built: a marked field and a standard type that is personal data, written as a keyed hash in a failure's log event and an audited entity's history, interpreted and compiled. |
 | Sensitive fields and access records | Built: `privacy.exported`, `privacy.erased` once it commits, and a `privacy.read` event for each record a read of a sensitive field reads, a search among them, interpreted and compiled. A `create` or `update` that returns the record makes none, since the code wrote what it holds; an aggregate reads no one record, so it makes none. |
 | Everything else on this page | Not built yet. |

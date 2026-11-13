@@ -994,8 +994,7 @@ The example of `type.standard_clash` is under [Errors](#errors). The
 editor's quick fix is titled "Swap for the standard ...".
 
 Not built yet: the migration and acceptances a swap of a stored type
-needs ([Review and records](18-records-and-manifest.md)), and a general
-`jadpo rename`.
+needs ([Review and records](18-records-and-manifest.md)).
 
 ## What every operation follows
 <!-- topic: what-every-operation-follows -->
@@ -12905,14 +12904,14 @@ what Jadpo took from each, is in the
 |---|---|
 | Everything on this page not listed below | Built |
 | What keys held as data allow: `crypto.verify_totp` and HS256 in `crypto.verify_jwt` | Not built yet |
-| A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire, and `jadpo rename` | Not built yet: a swap waits on [Review and records](18-records-and-manifest.md), `jadpo rename` on [Tools](14-tooling.md) |
+| A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire | Not built yet: it waits on [Review and records](18-records-and-manifest.md) |
 | A backfill of a new required amount of money | Not built yet: `toolchain.not_built_yet` names it |
 | The UK modulus check in `BankAccount` | Not built yet: waits on Vocalink's permission to ship its tables |
 | Checking `UnLocode`, `IataAirport`, `IcaoAirport`, `IataAirline` and `Icd10Code` against their lists | Not built yet: waits on licences that allow shipping the lists |
 | [Policy](09-policy.md)'s scopes narrowing `OAuthScope` | Not built yet: waits on [Policy](09-policy.md) |
 | Legacy encodings in the file readers | Not built yet: waits on an application that needs one |
 | `jadpo replay`, and a calendar file's writer | Not built yet: `jadpo replay` waits on [Debugging](17-debugging-and-review.md), a calendar file's writer on an application that needs one |
-| What [Personal data](15-personal-data.md) does with each standard type's personal data category | Not built yet: waits on [Personal data](15-personal-data.md) |
+| What [Personal data](15-personal-data.md) does with each standard type's personal data category | Partly built: a field of such a type is hashed in logs and histories, and its reads are recorded when its category is sensitive ([What is built: Personal data](15-personal-data.md#what-is-built)). Not built yet: keeping it out of caches, which wait on the Redis driver |
 | The rest of geospatial and AI | Partly built: [What is built: Geospatial](20-geospatial.md#what-is-built) and [What is built: AI](21-ai.md#what-is-built) say which parts |
 
 ## Errors

@@ -327,6 +327,7 @@ pub(crate) async fn authenticate(
         identity,
         settings: started.auth(),
         route,
+        json: app.json,
     };
     if let Some(token) = found.cookies.first().copied() {
         let invalid = Refused {
@@ -393,15 +394,15 @@ pub(crate) async fn authenticate(
         };
         let key = verifier(credential);
         let row = look_up(ctx, service, &key).await?;
-        let Some(
+        let Some((
             [
                 SqlValue::Uuid(_),
                 id,
-                subject,
                 SqlValue::Bool(active),
                 SqlValue::Timestamp(ends),
             ],
-        ) = row.as_deref()
+            subject,
+        )) = row.as_deref().and_then(|row| split_row::<4>(row, service))
         else {
             return Err(Refused::new(INVALID_CREDENTIALS));
         };
@@ -409,7 +410,7 @@ pub(crate) async fn authenticate(
             return Err(Refused::new(SERVICE_DISABLED));
         }
         let caller = caller_of(
-            route,
+            &signing,
             service,
             PrincipalKind::Service,
             id,
@@ -434,7 +435,7 @@ pub(crate) async fn authenticate(
                 row: None,
                 verifier: key,
                 principal: *principal,
-                subject: subject.clone(),
+                subject: subject.to_vec(),
                 expires,
                 csrf: None,
                 by: SignedInBy::default(),
@@ -476,6 +477,8 @@ pub(crate) async fn authenticate(
             .json
             .codec_of(external.subject_type)
             .ok_or_else(|| Refused::new(AUTHENTICATION_MISCONFIGURED))?;
+        // The subject as the field's type reads text, laid out as its
+        // columns keep it (chunk N1b).
         let typed = app
             .json
             .codecs
@@ -485,17 +488,21 @@ pub(crate) async fn authenticate(
                 &jadpo_value::json::Path::default(),
                 &mut Vec::new(),
             )
-            .and_then(|value| crate::to_sql(&value, external.subject_sql).ok());
+            .and_then(|value| subject_parts(user, &value, app.json));
+        let now = SqlValue::Timestamp(ctx.now().saturating_mul(1000));
         // With `on_first_sign_in:`, a subject no user's field holds, or one
         // that isn't of its type, is found through the link a first
         // sign-in made, or decided by the action (chunk A7).
         if let Some(first) = &external.first_sign_in {
-            let params = [
-                typed.unwrap_or(SqlValue::Null(external.subject_sql)),
-                SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
-                SqlValue::Text(jadpo_std::SignInMethod::ExternalToken.name().to_string()),
-                SqlValue::Text(subject.clone()),
-            ];
+            let params = subject_params(
+                user,
+                typed.as_deref(),
+                [
+                    now,
+                    SqlValue::Text(jadpo_std::SignInMethod::ExternalToken.name().to_string()),
+                    SqlValue::Text(subject.clone()),
+                ],
+            );
             let rows = database
                 .query_once(&first.lookup, &params)
                 .await
@@ -514,23 +521,22 @@ pub(crate) async fn authenticate(
                     .await?
                 }
             };
-            let [id @ SqlValue::Uuid(_), SqlValue::Bool(active), subject] = row.as_slice() else {
+            let Some(([id @ SqlValue::Uuid(_), SqlValue::Bool(active)], subject)) =
+                split_row::<2>(&row, user)
+            else {
                 return Err(Refused::new(AUTHENTICATION_UNAVAILABLE));
             };
             if !active {
                 return Err(Refused::new(USER_DISABLED));
             }
-            let caller = caller_of(route, user, PrincipalKind::User, id, subject, None, by)?;
+            let caller = caller_of(&signing, user, PrincipalKind::User, id, subject, None, by)?;
             return Ok(Admitted::new(caller));
         }
         let subject = typed.ok_or_else(|| Refused::new(INVALID_CREDENTIALS))?;
         let rows = database
             .query_once(
                 &external.lookup,
-                &[
-                    subject.clone(),
-                    SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
-                ],
+                &subject_params(user, Some(&subject), [now]),
             )
             .await
             .map_err(|_| Refused::new(AUTHENTICATION_UNAVAILABLE))?;
@@ -543,7 +549,7 @@ pub(crate) async fn authenticate(
         if !active {
             return Err(Refused::new(USER_DISABLED));
         }
-        let caller = caller_of(route, user, PrincipalKind::User, id, &subject, None, by)?;
+        let caller = caller_of(&signing, user, PrincipalKind::User, id, &subject, None, by)?;
         return Ok(Admitted::new(caller));
     }
     Err(Refused::new(INVALID_CREDENTIALS))
@@ -555,6 +561,8 @@ struct Signing<'a> {
     identity: &'a IdentityPlan,
     settings: &'a AuthSettings,
     route: &'a RoutePlan,
+    /// The codecs a subject kept whole as its JSON is read with.
+    json: crate::JsonCodecs<'a>,
 }
 
 impl Signing<'_> {
@@ -636,7 +644,7 @@ async fn user_credential(
             return Err(Refused::new(CSRF_REJECTED));
         }
         let caller = caller_of(
-            route,
+            signing,
             user,
             PrincipalKind::User,
             &SqlValue::Uuid(claims.principal),
@@ -652,18 +660,18 @@ async fn user_credential(
     let row = look_up(ctx, user, &kept).await?;
     // An API token has no CSRF token, and never comes as the cookie; a
     // session never comes as a bearer.
-    let Some(
+    let Some((
         [
             SqlValue::Uuid(session),
             csrf,
             id,
-            subject,
             SqlValue::Bool(active),
             SqlValue::Timestamp(ends),
             way,
             strength,
         ],
-    ) = row.as_deref()
+        subject,
+    )) = row.as_deref().and_then(|row| split_row::<7>(row, user))
     else {
         return Err(invalid);
     };
@@ -680,7 +688,7 @@ async fn user_credential(
         return Err(Refused::new(CSRF_REJECTED));
     }
     let caller = caller_of(
-        route,
+        signing,
         user,
         PrincipalKind::User,
         id,
@@ -702,21 +710,28 @@ async fn user_credential(
             row: Some(*session),
             verifier: kept,
             principal: *principal,
-            subject: subject.clone(),
+            subject: subject.to_vec(),
             expires: now.saturating_add(delay).min(ends_ms),
             csrf,
             by,
         };
         if let Some(payload) = claims.to_json() {
             let signed = key.sign(&payload);
-            admitted.reissued = Some(if cookie {
-                Reissued::Cookie {
-                    value: format!("{secret}.{signed}"),
+            let value = format!("{secret}.{signed}");
+            // A browser drops a cookie longer than it keeps, which would
+            // sign the person out; a part that long, made by a large
+            // subject kept as JSON, isn't given, so each request reads the
+            // record instead (chunk N1b).
+            admitted.reissued = if !cookie {
+                Some(Reissued::Token(format!("{API_TOKEN_PREFIX}{value}")))
+            } else if value.len() <= LONGEST_COOKIE_VALUE {
+                Some(Reissued::Cookie {
+                    value,
                     max_age: (ends_ms.saturating_sub(now) / 1000).max(0),
-                }
+                })
             } else {
-                Reissued::Token(format!("{API_TOKEN_PREFIX}{secret}.{signed}"))
-            });
+                None
+            };
         }
     }
     Ok(admitted)
@@ -742,7 +757,7 @@ async fn exchanged(
     };
     if !signing.fresh() {
         let caller = caller_of(
-            signing.route,
+            signing,
             service,
             PrincipalKind::Service,
             &SqlValue::Uuid(claims.principal),
@@ -753,14 +768,16 @@ async fn exchanged(
         return Ok(Admitted::new(caller));
     }
     let row = look_up(ctx, service, &claims.verifier).await?;
-    let Some([SqlValue::Uuid(_), id, subject, SqlValue::Bool(active), _]) = row.as_deref() else {
+    let Some(([SqlValue::Uuid(_), id, SqlValue::Bool(active), _], subject)) =
+        row.as_deref().and_then(|row| split_row::<4>(row, service))
+    else {
         return Err(Refused::new(INVALID_CREDENTIALS));
     };
     if !*active {
         return Err(Refused::new(SERVICE_DISABLED));
     }
     let caller = caller_of(
-        signing.route,
+        signing,
         service,
         PrincipalKind::Service,
         id,
@@ -799,22 +816,23 @@ async fn look_up(
 }
 
 /// The caller a credential signed in, once the route accepts its kind,
-/// signed in as `by` says.
+/// signed in as `by` says: its subject read whole from its columns'
+/// values, `subject` (chunk N1b).
 fn caller_of(
-    route: &RoutePlan,
+    signing: &Signing<'_>,
     plan: &PrincipalPlan,
     kind: PrincipalKind,
     id: &SqlValue,
-    subject: &SqlValue,
+    subject: &[SqlValue],
     session: Option<[u8; 16]>,
     by: SignedInBy,
 ) -> Result<Caller, Refused> {
-    if route.caller.is_some_and(|wanted| wanted != kind) {
+    if signing.route.caller.is_some_and(|wanted| wanted != kind) {
         return Err(Refused::new(NOT_PERMITTED));
     }
     let id = crate::from_sql(id, &jadpo_std::read::Column::Uuid)
         .map_err(|_| Refused::new(AUTHENTICATION_UNAVAILABLE))?;
-    let subject = crate::from_sql(subject, &plan.column)
+    let subject = subject_value(plan, subject, signing.json)
         .map_err(|_| Refused::new(AUTHENTICATION_UNAVAILABLE))?;
     Ok(Caller {
         key: format!("{} {id}", kind.name()),
@@ -824,6 +842,95 @@ fn caller_of(
         multi_factor: by.multi_factor,
     })
 }
+
+/// A caller's row as a statement gives it: its `N` fixed columns, then its
+/// subject's, exactly as many as `plan` keeps it in (chunk N1b); `None`
+/// for a row of any other length.
+fn split_row<'r, const N: usize>(
+    row: &'r [SqlValue],
+    plan: &PrincipalPlan,
+) -> Option<(&'r [SqlValue; N], &'r [SqlValue])> {
+    if row.len() != N + plan.subject_sql.len() {
+        return None;
+    }
+    let (fixed, subject) = row.split_at(N);
+    Some((fixed.try_into().ok()?, subject))
+}
+
+/// The subject its columns' values, `parts`, hold (area 8, "`subject:`";
+/// chunk N1b): one column's value, a standard type made from its several,
+/// or a value read from its JSON.
+pub(crate) fn subject_value(
+    plan: &PrincipalPlan,
+    parts: &[SqlValue],
+    json: crate::JsonCodecs<'_>,
+) -> Result<Value, String> {
+    if parts.len() != plan.subject_sql.len() {
+        return Err("a subject without each of its columns".into());
+    }
+    crate::read::field_value(parts, std::slice::from_ref(&plan.column), 0, json)
+}
+
+/// `subject` laid out as its columns keep it, each sent as its type, as a
+/// write keeps the field (chunk N1b); `None` for a value that isn't one.
+pub(crate) fn subject_parts(
+    plan: &PrincipalPlan,
+    subject: &Value,
+    json: crate::JsonCodecs<'_>,
+) -> Option<Vec<SqlValue>> {
+    if matches!(subject, Value::None) {
+        return None;
+    }
+    let parts = match &plan.column {
+        jadpo_std::read::Column::Json(number) => vec![json.write(*number, subject).ok()?],
+        jadpo_std::read::Column::Compound { .. } => {
+            let values = jadpo_value::standard::to_parts(subject)?;
+            if values.len() != plan.subject_sql.len() {
+                return None;
+            }
+            values
+                .iter()
+                .zip(&plan.subject_sql)
+                .map(|(part, ty)| match part {
+                    Value::None => Some(SqlValue::Null(*ty)),
+                    part => crate::to_sql(part, *ty).ok(),
+                })
+                .collect::<Option<Vec<_>>>()?
+        }
+        _ => vec![crate::to_sql(subject, *plan.subject_sql.first()?).ok()?],
+    };
+    Some(parts)
+}
+
+/// A subject statement's parameters: the subject's first part as `$1`,
+/// then `fixed`, then its other parts, as [`jadpo_sql::identity::subject_is`]
+/// numbers them; each part `NULL` when there is no subject, so none is
+/// found by it (chunk N1b).
+pub(crate) fn subject_params<const N: usize>(
+    plan: &PrincipalPlan,
+    subject: Option<&[SqlValue]>,
+    fixed: [SqlValue; N],
+) -> Vec<SqlValue> {
+    let parts: Vec<SqlValue> = match subject {
+        Some(parts) => parts.to_vec(),
+        None => plan
+            .subject_sql
+            .iter()
+            .map(|ty| SqlValue::Null(*ty))
+            .collect(),
+    };
+    let mut parts = parts.into_iter();
+    let mut params = Vec::with_capacity(N + plan.subject_sql.len());
+    params.extend(parts.next());
+    params.extend(fixed);
+    params.extend(parts);
+    params
+}
+
+/// The longest session cookie's value a signed part is given in: well
+/// within the 4,096 bytes of name, value and attributes every browser
+/// keeps of a cookie (RFC 6265 §6.1).
+const LONGEST_COOKIE_VALUE: usize = 3_584;
 
 /// The credential an `Authorization` header carries: `Bearer <value>`,
 /// the scheme in any case.

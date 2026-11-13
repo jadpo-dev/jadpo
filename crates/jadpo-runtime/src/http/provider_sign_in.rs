@@ -594,12 +594,21 @@ impl<'a> Site<'a> {
         claims: &IdClaims,
     ) -> Result<([u8; 16], bool), Refused> {
         let first = &self.providers.first_sign_in;
-        let params = [
-            SqlValue::Null(self.providers.subject_sql),
-            SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
-            SqlValue::Text(self.provider.name.clone()),
-            SqlValue::Text(claims.subject.clone()),
-        ];
+        let user = self
+            .plan
+            .user
+            .as_ref()
+            .ok_or_else(|| Refused::new(AUTHENTICATION_MISCONFIGURED))?;
+        // No subject field matches: each of its parts is `NULL`.
+        let params = super::identity::subject_params(
+            user,
+            None,
+            [
+                SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
+                SqlValue::Text(self.provider.name.clone()),
+                SqlValue::Text(claims.subject.clone()),
+            ],
+        );
         let database = ctx
             .host()
             .database(&self.plan.store)

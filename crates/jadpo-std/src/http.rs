@@ -783,10 +783,9 @@ pub const PROVIDER_FAILED: &str = "sign_in_provider_failed";
 pub struct ProvidersPlan {
     pub providers: Vec<ProviderPlan>,
     /// The user a provider account signs in, through its link only: the
-    /// lookup is given `$1` as `NULL` of `subject_sql`, so no subject
-    /// field matches.
+    /// lookup is given each subject part as `NULL` of the user's
+    /// `subject_sql`, so no subject field matches.
     pub first_sign_in: FirstSignInPlan,
-    pub subject_sql: crate::SqlType,
 }
 
 /// How a sign-in provider signs people in (area 8, "Providers").
@@ -1579,7 +1578,9 @@ pub struct IdentityPlan {
 }
 
 /// External JWT authentication (area 8): configuration names and one
-/// subject-to-current-user query, `$1` subject and `$2` invocation time.
+/// subject-to-current-user query, `$1` subject and `$2` invocation time; a
+/// subject in several columns gives its first as `$1` and the others from
+/// `$3` on (chunk N1b).
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExternalTokenPlan {
     pub issuer: String,
@@ -1587,11 +1588,10 @@ pub struct ExternalTokenPlan {
     pub lookup: String,
     /// Subject field's codec in the program's JSON type table.
     pub subject_type: u32,
-    pub subject_sql: crate::SqlType,
     /// A user's subject by its `id`, which `jadpo dev token` signs a
     /// local issuer's token for (area 8, "External tokens in tests and
-    /// `jadpo dev`"; chunk A3): `$1` the `id`, `$2` the time now; no row
-    /// for a user the lifecycle doesn't show.
+    /// `jadpo dev`"; chunk A3): `$1` the `id`, `$2` the time now, giving
+    /// the subject's columns; no row for a user the lifecycle doesn't show.
     #[serde(default)]
     pub subject_of: Option<String>,
     /// What decides a first sign-in, when `on_first_sign_in:` is declared
@@ -1612,7 +1612,8 @@ pub struct FirstSignInPlan {
     pub action: Option<u32>,
     /// The user a token signs in, in one read: the one whose subject field
     /// is `$1` (the subject as the field's type, `NULL` when it isn't
-    /// one), else the one `jadpo_sign_in_links` links way in `$3` and
+    /// one; a subject in several columns its first, the others from `$5`
+    /// on), else the one `jadpo_sign_in_links` links way in `$3` and
     /// subject `$4` (as the token sent it) to; `$2` the time now.
     pub lookup: String,
     /// The user the action gave, by `$1` its `id`, `$2` the time now.
@@ -1677,14 +1678,20 @@ pub struct PrincipalPlan {
     /// The field `subject:` names, which a caller made from a record in a
     /// test reads (`Principal.user(user)`).
     pub subject: String,
-    /// How the subject's column reads back.
+    /// How the subject's column reads back: one column, a standard type's
+    /// several (`Column::Compound`) or JSON (`Column::Json`).
     pub column: Column,
+    /// The type each of the subject's columns is sent as, in order: one,
+    /// or a standard type's several (chunk N1b). A caller's statement gives
+    /// them last, after its other columns.
+    pub subject_sql: Vec<crate::SqlType>,
     /// How a credential finds it, `$1` the credential's verifier and `$2`
     /// the time now: for a user, a session's lookup, one row of the
     /// session's id, its CSRF token's verifier (`NULL` for an API token),
-    /// the record's `id` and subject, whether its `active:` holds and when
-    /// the session ends; for a service, a key's, the same without the CSRF
-    /// token's verifier.
+    /// the record's `id`, whether its `active:` holds, when the session
+    /// ends, how it was started, and the subject's columns; for a service,
+    /// a key's, the same without the CSRF token's verifier and how it was
+    /// started.
     /// None when no live session or key or visible record has it. `None`
     /// when nothing signs this kind of caller in.
     pub lookup: Option<String>,

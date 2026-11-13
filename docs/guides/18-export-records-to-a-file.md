@@ -90,7 +90,9 @@ application {
 
 A native app with a disk store runs on one server, since a second one wouldn't see
 the files, and the build's manifest records that. Cloudflare Workers has no disk, so
-a deployable for Workers can't use this driver.
+a deployable for Workers can't use this driver. A
+[`Driver.s3` bucket](../language/16-built-in-services.md#the-s3-driver) works on
+both.
 
 `connections:` and `Driver.disk` are built into Jadpo, and the name `price_lists` is
 yours.
@@ -438,21 +440,15 @@ if your page shows a progress bar.
 To send the file on, give an email a `File` field, which attaches it when the email is
 sent. [Send an email](12-send-an-email.md) shows how to send one.
 
+To let someone download it, return it in a route's output: a `File` there goes out as
+a [signed link](../language/16-built-in-services.md#downloading), valid for five
+minutes. [`jadpo files`](../language/14-tooling.md#jadpo-files) lists and fetches a
+store's files, and [`jadpo batches`](../language/14-tooling.md#jadpo-batches) lists and
+cancels runs.
+
 ## Read more
 
 [Files](../language/16-built-in-services.md#files),
 [Data formats](../language/19-standard-library.md#data-formats-json-csv-tsv-and-json-lines),
 [Batches](../language/12-jobs-and-events.md#batches) and
 [How an export writes its file](../language/16-built-in-services.md#how-an-export-writes-its-file).
-
-## Not built yet
-
-- A route that lets someone download a stored file isn't built yet, and neither is
-  a signed link to one. Send the file as an email attachment, or read it where the
-  disk store keeps it.
-- The disk store keeps an export on one native server; an export can go to a
-  [`Driver.s3` bucket](../language/16-built-in-services.md#the-s3-driver) instead.
-- `jadpo files`, the command for listing and fetching a store's files, isn't built yet.
-  Use the store's folder, as above.
-- `jadpo batches`, the command for listing and cancelling runs, isn't built yet. Keep
-  each run on a record, as `PriceList` does.
