@@ -872,7 +872,7 @@ impl Decide<'_> {
             code: super::backfill::fingerprint(self.db, self.project, body),
             refits,
             stored: field
-                .stored_variants
+                .born_variants
                 .iter()
                 .flatten()
                 .map(|(_, stored)| stored.clone())
@@ -913,7 +913,7 @@ fn decode_column(
                     ty: name.clone(),
                     variants: variants.iter().map(|v| v.name.clone()).collect(),
                     stored: field
-                        .stored_variants
+                        .born_variants
                         .iter()
                         .flatten()
                         .map(|(_, stored)| stored.clone())

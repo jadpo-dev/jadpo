@@ -2103,7 +2103,7 @@ fn written(
     match json {
         Some((codecs, number)) => codecs.write(number, &value),
         None if !backfill.stored.is_empty() => {
-            crate::read::stored_variant(&value, &backfill.stored, backfill.write)
+            crate::read::born_variant(&value, &backfill.stored, backfill.write)
         }
         None => crate::to_sql(&value, backfill.write),
     }

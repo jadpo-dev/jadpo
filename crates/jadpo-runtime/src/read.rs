@@ -585,7 +585,7 @@ fn lay(value: &Value, laying: &Laying, ty: SqlType, env: &Env<'_>) -> Result<Sql
         }
         Laying::Json(codec) => env.json.write(*codec, value).map_err(Problem::Defect)?,
         Laying::Given => SqlValue::Bool(true),
-        Laying::Variant(stored) => stored_variant(value, stored, ty).map_err(Problem::Defect)?,
+        Laying::Variant(stored) => born_variant(value, stored, ty).map_err(Problem::Defect)?,
     })
 }
 
@@ -1166,7 +1166,7 @@ pub fn to_sql(value: &Value, ty: SqlType) -> Result<SqlValue, String> {
 /// A variant of an enum without data as a parameter of type `ty`, by the
 /// name at its place in `stored`, the one it was born with (area 5, "What a
 /// rename keeps"): `NULL` for `none`, each item of a list so.
-pub fn stored_variant(value: &Value, stored: &[String], ty: SqlType) -> Result<SqlValue, String> {
+pub fn born_variant(value: &Value, stored: &[String], ty: SqlType) -> Result<SqlValue, String> {
     match (value, ty) {
         (Value::None, ty) => Ok(SqlValue::Null(ty)),
         (Value::Variant(variant), SqlType::Text) if variant.fields.is_empty() => stored
@@ -1177,7 +1177,7 @@ pub fn stored_variant(value: &Value, stored: &[String], ty: SqlType) -> Result<S
             *inner,
             items
                 .iter()
-                .map(|item| stored_variant(item, stored, *inner))
+                .map(|item| born_variant(item, stored, *inner))
                 .collect::<Result<Vec<_>, _>>()?,
         )),
         (value, ty) => Err(format!(
@@ -1744,7 +1744,7 @@ mod tests {
         // was born with (area 5, "What a rename keeps").
         let active = Value::variant("TodoStatus", 0, "active", Vec::new());
         let stored = vec!["open".to_string(), "done".to_string()];
-        let sql = stored_variant(&active, &stored, SqlType::Text).unwrap();
+        let sql = born_variant(&active, &stored, SqlType::Text).unwrap();
         assert_eq!(sql, SqlValue::Text("open".into()));
         let renamed = Column::Enum {
             ty: "TodoStatus".into(),

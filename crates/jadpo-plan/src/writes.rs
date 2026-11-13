@@ -1747,7 +1747,7 @@ fn field_columns(
     }
     // A variant, by the name it was born with where any differs from its
     // own (area 5, "What a rename keeps").
-    if field.stored_variants.is_some() {
+    if field.born_variants.is_some() {
         let source = WriteSource::Variant {
             of: Box::new(source.clone()),
             stored: crate::queries::stored_names(field),

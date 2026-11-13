@@ -526,7 +526,7 @@ fn params_of(
         // rename keeps").
         if let WriteSource::Variant { of, stored } = &param.source {
             let value = source_value(ctx, of, inputs, site, now)?;
-            match crate::read::stored_variant(&value, stored, param.ty) {
+            match crate::read::born_variant(&value, stored, param.ty) {
                 Ok(sql) => params.push(sql),
                 Err(what) => return Err(defect(ctx, &what, site)),
             }

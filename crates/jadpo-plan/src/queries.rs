@@ -1595,7 +1595,7 @@ pub(crate) fn plans(
 /// rename keeps"); empty when each is stored by its own.
 pub(crate) fn stored_names(field: &FieldModel) -> Vec<String> {
     field
-        .stored_variants
+        .born_variants
         .iter()
         .flatten()
         .map(|(_, stored)| stored.clone())

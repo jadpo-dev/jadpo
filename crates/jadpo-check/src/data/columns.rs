@@ -195,7 +195,7 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
 /// since a refinement only narrows.
 pub fn allows(table: &dyn TypeView, born: Born<'_>, field: &Ty) -> Allows {
     let mut out = Allows::default();
-    if let Some(stored) = stored_variants(table, born, field) {
+    if let Some(stored) = born_variants(table, born, field) {
         // As the column holds them: `Currency`'s by code (area 19), and
         // each by the name it was born with (area 5).
         out.values = stored.into_iter().map(|(_, stored)| stored).collect();
@@ -231,7 +231,7 @@ pub fn allows(table: &dyn TypeView, born: Born<'_>, field: &Ty) -> Allows {
 /// declared order, each with the text its column stores it as: its code
 /// for a standard enum stored by code (`Currency`, area 19), else the name
 /// it was born with (area 5). `None` for any other type.
-pub fn stored_variants(
+pub fn born_variants(
     table: &dyn TypeView,
     born: Born<'_>,
     field: &Ty,

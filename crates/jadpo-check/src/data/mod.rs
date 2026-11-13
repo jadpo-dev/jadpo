@@ -404,7 +404,7 @@ pub struct FieldModel {
     /// other than its own, each variant in declared order with the name its
     /// column stores: the name it was born with (area 5, "What a rename
     /// keeps"). `None` when each is stored by its own name, or by its code.
-    pub stored_variants: Option<Vec<(String, String)>>,
+    pub born_variants: Option<Vec<(String, String)>>,
     /// For a value stored as JSON, whether a type, field or variant inside
     /// it was born with another name, which its JSON keeps (area 5, "What
     /// a rename keeps"): its codec writes and reads the born names.
@@ -438,7 +438,7 @@ impl FieldModel {
                 (None, Some(_)) => jadpo_sql::Kept::Json(None),
                 (None, None) => jadpo_sql::Kept::One,
             },
-            variants: self.stored_variants.as_deref(),
+            variants: self.born_variants.as_deref(),
         }
     }
 
@@ -1419,7 +1419,7 @@ impl Reader<'_> {
             retention: None,
             erase: None,
             sealed: None,
-            stored_variants: None,
+            born_variants: None,
             json_renamed: false,
         };
         if ty.has_error() {
@@ -1498,10 +1498,10 @@ impl Reader<'_> {
         field.allows = columns::allows(self.lookup, born_names, &typed);
         if let Ty::Named(enum_name) = self.lookup.structure(&typed)
             && jadpo_std::standard::stored_by_code(&enum_name).is_none()
-            && let Some(stored) = columns::stored_variants(self.lookup, born_names, &typed)
+            && let Some(stored) = columns::born_variants(self.lookup, born_names, &typed)
             && stored.iter().any(|(now, stored)| now != stored)
         {
-            field.stored_variants = Some(stored);
+            field.born_variants = Some(stored);
         }
         if let Ty::Prim(builtin) = self.lookup.structure(ty.strip_nullable()) {
             field.builtin = Some(builtin);
