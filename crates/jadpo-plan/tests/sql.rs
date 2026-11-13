@@ -272,6 +272,7 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
             WriteSource::Json { of, codec } => format!("JSON {codec} of {of:?}"),
             WriteSource::Stored(value) => format!("literal {value:?}"),
             WriteSource::Sealed { of, .. } => format!("sealed {of:?}"),
+            WriteSource::Variant { of, stored } => format!("{of:?} stored as {stored:?}"),
         };
         out.push_str(&format!("-- ${}: {source} as {:?}\n", i + 1, param.ty));
     }

@@ -550,6 +550,16 @@ fn params_of(
             params.push(value.clone());
             continue;
         }
+        // A variant, by the name it was born with (area 5, "What a
+        // rename keeps").
+        if let WriteSource::Variant { of, stored } = &param.source {
+            let value = source_value(ctx, of, inputs, site, now)?;
+            match crate::read::born_variant(&value, stored, param.ty) {
+                Ok(sql) => params.push(sql),
+                Err(what) => return Err(defect(ctx, &what, site)),
+            }
+            continue;
+        }
         // A JSON-held value, written as its contract's JSON (chunk
         // 5.5w2b).
         if let WriteSource::Json { of, codec } = &param.source {
@@ -628,6 +638,10 @@ fn source_value(
         // Answered above, as its JSON.
         WriteSource::Json { .. } => {
             return Err(defect(ctx, "a JSON-held value read as a part", site));
+        }
+        // Answered above, by its stored name.
+        WriteSource::Variant { .. } => {
+            return Err(defect(ctx, "a stored variant read as a part", site));
         }
         // Answered above, bound already.
         WriteSource::Stored(_) => {

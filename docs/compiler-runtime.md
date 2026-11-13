@@ -3111,7 +3111,8 @@ fault is a 500 whose fault the host logs.
 **Sign-in providers** (area 8, "Providers"; chunk A7b). The checker
 reads each `Driver.oidc` connection in `jadpo_check::sign_in_providers`
 (`issuer:` a `Url`, `client_id:` a `Text`, `credential:` a secret
-setting) and `sign_in: { providers: }` into `Identity::providers`, once
+setting), and each `Driver.github` one (chunk N1) with no `issuer:`,
+`Provider::driver` saying which, and `sign_in: { providers: }` into `Identity::providers`, once
 a browser session's origin and `on_first_sign_in:` hold; the type table
 gives `SignInMethod` a value per provider after the language's own, read
 from the syntax alone (`sign_in_providers::declared`) so it needs no
@@ -3131,7 +3132,17 @@ external tokens' bounds; the code goes to the token endpoint through
 `global_fetch_strictly_public` set where providers are served). The ID
 token is checked by `id_token` (signature, exact `iss`, `aud`, `azp`,
 times, `nonce`) and only `sub`, `email`, `email_verified` and `name`
-reach `FirstSignIn`. The account's user comes from
+reach `FirstSignIn`. A GitHub provider (`ProviderDriver::Github`,
+chunk N1) has no discovery or keys (`ProviderSettings::keys` is `None`):
+its start goes to `GITHUB_AUTHORIZE` without a nonce, and its callback
+exchanges the code at `GITHUB_TOKEN` through `post_form`, then reads
+`GITHUB_USER` and `GITHUB_EMAILS` through `Outbound::get_with` (native
+`Outward` and Workers' fetch both send the runtime's headers, a header
+value that can't be sent refusing the request unnamed) with the access
+token, which only that call holds; `github_account` reads the numeric
+`id`, `name` and the primary address and its `verified`. The network
+report lists `github.com` and `api.github.com` for it. The account's
+user comes from
 `sign_in_links::first`, then a session starts with `SignedIn`, whose way
 in carries a provider's ordinal (`sign_in_events::Way`). In tests the
 local issuer is the provider: its `authorize` and `redeem` answer in

@@ -789,16 +789,36 @@ pub struct ProvidersPlan {
     pub subject_sql: crate::SqlType,
 }
 
-/// One sign-in provider, a connection on `Driver.oidc`.
+/// How a sign-in provider signs people in (area 8, "Providers").
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum ProviderDriver {
+    /// OpenID Connect, its addresses from the issuer's discovery document
+    /// and the person from its ID token (chunk A7b).
+    Oidc,
+    /// GitHub: OAuth 2.0 at GitHub's own fixed addresses, and the person
+    /// from its API's `/user` and `/user/emails` (chunk N1).
+    Github,
+}
+
+/// GitHub's addresses (chunk N1): where the browser signs in, where the
+/// code is exchanged, and the API's account and addresses.
+pub const GITHUB_AUTHORIZE: &str = "https://github.com/login/oauth/authorize";
+pub const GITHUB_TOKEN: &str = "https://github.com/login/oauth/access_token";
+pub const GITHUB_USER: &str = "https://api.github.com/user";
+pub const GITHUB_EMAILS: &str = "https://api.github.com/user/emails";
+
+/// One sign-in provider, a connection on `Driver.oidc` or `Driver.github`.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProviderPlan {
     /// The connection's name: its routes' segment and its `SignInMethod`.
     pub name: String,
     /// Its place in `SignInMethod`, after the language's own.
     pub ordinal: u32,
-    /// The settings its issuer (`Url`), client ID (`Text`) and client
-    /// secret (a secret) are read from, by name.
-    pub issuer: String,
+    /// Its driver.
+    pub driver: ProviderDriver,
+    /// The settings its issuer (`Url`, OpenID Connect only), client ID
+    /// (`Text`) and client secret (a secret) are read from, by name.
+    pub issuer: Option<String>,
     pub client_id: String,
     pub client_secret: String,
     /// The `Text` setting its `organisation:` is read from, by name: the

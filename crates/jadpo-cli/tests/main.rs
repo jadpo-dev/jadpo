@@ -85,6 +85,7 @@ mod generated_tests;
 mod geo_layers;
 mod geo_queries;
 mod geography;
+mod github_sign_in;
 mod http;
 mod inspect;
 mod installing;

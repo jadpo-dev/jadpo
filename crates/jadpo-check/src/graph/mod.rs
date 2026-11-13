@@ -157,6 +157,12 @@ fn host_identity(symbols: &dyn NameView, host: &str) -> (String, String) {
     }
 }
 
+/// The born name of the type or entity `host` names now, its domain
+/// carried as its key carries it (`planning.Label`).
+pub fn type_born(symbols: &dyn NameView, host: &str) -> String {
+    host_identity(symbols, host).1
+}
+
 /// The key of field `path` (`Note.body`, `Outcome.paid.receipt`) under the
 /// type or entity `host`.
 pub fn field_key(symbols: &dyn NameView, host: &str, path: &[String]) -> Key {

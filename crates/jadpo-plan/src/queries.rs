@@ -1232,7 +1232,10 @@ impl Planner<'_> {
             .types
             .graph()
             .named(Kind::Field, &format!("{}.{}", entity.name, field.name))?;
-        self.json_number(TypeRef::Field(self.types.graph().node(id).key.clone()))
+        self.json_number(stored_json(
+            field,
+            TypeRef::Field(self.types.graph().node(id).key.clone()),
+        ))
     }
 
     /// How a sealed field's bytes read once opened (area 15, "Encrypted
@@ -1250,9 +1253,10 @@ impl Planner<'_> {
                     .types
                     .graph()
                     .named(Kind::Field, &format!("{}.{}", entity.name, field.name))?;
-                SealedForm::Json(
-                    self.json_number(TypeRef::Field(self.types.graph().node(id).key.clone()))?,
-                )
+                SealedForm::Json(self.json_number(stored_json(
+                    field,
+                    TypeRef::Field(self.types.graph().node(id).key.clone()),
+                ))?)
             }
             Holds::Secret(kind) => SealedForm::Secret(kind.to_string()),
             Holds::Key => SealedForm::Key,
@@ -1318,6 +1322,7 @@ impl Planner<'_> {
                     Some(Column::Enum {
                         ty: name.clone(),
                         variants: variants.iter().map(|v| v.name.clone()).collect(),
+                        stored: stored_names(field),
                     })
                 }
                 _ => None,
@@ -1613,4 +1618,27 @@ pub(crate) fn plans(
     entity_plans.sort_by(|a, b| a.key.cmp(&b.key));
     let identity = planner.identity(db, project);
     (query_plans, entity_plans, identity)
+}
+
+/// The name each variant of an enum field's column is stored by, in
+/// declared order, where any is other than its own (area 5, "What a
+/// rename keeps"); empty when each is stored by its own.
+pub(crate) fn stored_names(field: &FieldModel) -> Vec<String> {
+    field
+        .born_variants
+        .iter()
+        .flatten()
+        .map(|(_, stored)| stored.clone())
+        .collect()
+}
+
+/// The type a field's stored JSON is written and read as: its own, by the
+/// names born with where any inside it was renamed (area 5, "What a rename
+/// keeps").
+pub(crate) fn stored_json(field: &FieldModel, ty: TypeRef) -> TypeRef {
+    if field.json_renamed {
+        crate::routes::with_born_names(ty)
+    } else {
+        ty
+    }
 }

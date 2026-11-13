@@ -90,6 +90,10 @@ pub struct InJadpo {
     /// stored value is checked with its rules now and only those they
     /// refuse are replaced.
     pub refits: Option<jadpo_std::read::Column>,
+    /// For an enum without data stored by the names its variants were
+    /// born with, each in declared order (area 5, "What a rename keeps"):
+    /// the value is written by its own; empty otherwise.
+    pub stored: Vec<String>,
 }
 
 /// A stored field a backfill worked out in Jadpo reads.
@@ -751,6 +755,14 @@ impl Render<'_> {
             Value::Bool(value) => Literal::Bool(value),
             Value::Duration(text) => Literal::Duration(text),
             Value::Variant(host, variant, fields) if fields.is_empty() => {
+                // By its key, which carries the name it was born with, as
+                // its column stores it (area 5, "What a rename keeps").
+                if let Some(id) = self
+                    .graph
+                    .named(jadpo_graph::Kind::Variant, &format!("{host}.{variant}"))
+                {
+                    return Some((variant_text(&self.graph.node(id).key)?, held));
+                }
                 let bound = jadpo_std::standard::storage::bind(
                     &jadpo_std::standard::storage::Stored::Variant {
                         ty: &host,
@@ -850,7 +862,8 @@ impl Render<'_> {
     }
 }
 
-/// An enum's plain variant as the text its column holds: its name, or a
+/// An enum's plain variant as the text its column holds: the name its key
+/// carries, the one it was born with (area 5, "What a rename keeps"), or a
 /// standard enum's code.
 fn variant_text(key: &Key) -> Option<String> {
     let (host, variant) = key.written().rsplit_once('.')?;

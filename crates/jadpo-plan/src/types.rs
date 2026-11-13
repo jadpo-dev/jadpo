@@ -60,6 +60,10 @@ pub struct Types {
     validator_ids: HashMap<TypeRef, ValidatorId>,
     shapes: Vec<ShapePlan>,
     shape_ids: HashMap<Key, ShapeId>,
+    /// Each shape whose fields' JSON members are the names they were born
+    /// with, where any differs from its own (area 5, "What a rename
+    /// keeps"), by key.
+    born_shape_ids: HashMap<Key, ShapeId>,
     failures: Vec<FailurePlan>,
     failure_ids: HashMap<Key, FailureId>,
     /// Each failure field that holds personal data, by its identity key:
@@ -86,6 +90,7 @@ impl Types {
             validator_ids: HashMap::new(),
             shapes: Vec::new(),
             shape_ids: HashMap::new(),
+            born_shape_ids: HashMap::new(),
             failures: Vec::new(),
             failure_ids: HashMap::new(),
             hashed_failure_fields: Default::default(),
@@ -219,6 +224,35 @@ impl Types {
         let id = ShapeId(self.shapes.len() as u32);
         self.shapes.push(plan);
         self.shape_ids.insert(key.clone(), id);
+        Some(id)
+    }
+
+    /// The number of `key`'s shape as a stored value holds it: each
+    /// field's JSON member the name it was born with (area 5, "What a
+    /// rename keeps"); its own shape when every field keeps its name.
+    pub(crate) fn born_shape_id(&mut self, key: &Key) -> Option<ShapeId> {
+        if let Some(id) = self.born_shape_ids.get(key) {
+            return Some(*id);
+        }
+        let own = self.shape_id(key)?;
+        let mut plan = self.shapes.get(own.0 as usize)?.clone();
+        let mut renamed = false;
+        for field in &mut plan.fields {
+            let born = Key::from_text(field.key.clone());
+            let born = born.name().rsplit('.').next().unwrap_or_default();
+            if field.wire.is_none() && !born.is_empty() && born != field.name {
+                field.wire = Some(born.to_string());
+                renamed = true;
+            }
+        }
+        let id = if renamed {
+            let id = ShapeId(self.shapes.len() as u32);
+            self.shapes.push(plan);
+            id
+        } else {
+            own
+        };
+        self.born_shape_ids.insert(key.clone(), id);
         Some(id)
     }
 

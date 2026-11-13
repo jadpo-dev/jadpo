@@ -248,6 +248,32 @@ impl LocalIssuer {
         code
     }
 
+    /// Exchanges `code` as GitHub's token endpoint and API do together
+    /// (chunk N1): once, for the client and the address it was given for,
+    /// with the PKCE `verifier` its challenge was made from; the account
+    /// it was given for, as GitHub's `/user` and `/user/emails` would
+    /// name it. `None` for any code that doesn't hold.
+    pub fn redeem_account(
+        &self,
+        code: &str,
+        verifier: &str,
+        client_id: &str,
+        redirect_uri: &str,
+        now: i64,
+    ) -> Option<Account> {
+        let grant = self.codes.lock().grants.remove(code)?;
+        let challenge =
+            jadpo_value::encoding::to_base64url(&jadpo_value::hash::sha256(verifier.as_bytes()));
+        if grant.client_id != client_id
+            || grant.redirect_uri != redirect_uri
+            || grant.challenge != challenge
+            || grant.expires <= now
+        {
+            return None;
+        }
+        Some(grant.account)
+    }
+
     /// Exchanges `code` as a provider's token endpoint does: once, for the
     /// client and the address it was given for, with the PKCE `verifier`
     /// its challenge was made from; the ID token from `issuer` naming the

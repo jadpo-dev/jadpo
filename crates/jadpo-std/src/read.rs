@@ -402,7 +402,7 @@ pub enum Source {
 
 /// How a value is laid out as the field a condition compares it with is
 /// kept ([`Source::Laid`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Laying {
     /// Its `n`th column, in its type's layout
     /// ([`crate::standard::storage::layout`]), as a write keeps it; `NULL`
@@ -414,6 +414,10 @@ pub enum Laying {
     /// `true` when it is there, `NULL` for `none`: what `where_present:`
     /// tests a value held in several columns by.
     Given,
+    /// A variant of an enum without data, as its column stores it: by the
+    /// name at its place here, the one it was born with (area 5, "What a
+    /// rename keeps"); `NULL` for `none`.
+    Variant(Vec<String>),
 }
 
 /// The sides of the two envelopes a `BoundingBox` filter searches, in
@@ -482,10 +486,13 @@ pub enum Column {
     /// (area 19).
     Percentage,
     /// A plain variant, stored as its name: the enum and its variants in
-    /// declared order.
+    /// declared order, and, where any is stored by another name, the one
+    /// each was born with, in the same order (area 5, "What a rename
+    /// keeps"); empty when each is stored by its own.
     Enum {
         ty: String,
         variants: Vec<String>,
+        stored: Vec<String>,
     },
     /// The first of the columns a compound standard type is stored in
     /// (`Money`'s amount and currency, area 19), by the type's name (a

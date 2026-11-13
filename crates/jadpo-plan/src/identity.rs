@@ -296,13 +296,18 @@ impl Planner<'_> {
                             .is_some_and(|ways| ways.contains(&provider.name))
                     };
                     let named = requirements.iter().any(|requirement| names(requirement));
-                    let asks_amr = requirements.iter().any(|requirement| {
-                        requirement.multi_factor
-                            && (requirement.sign_in.is_none() || names(requirement))
-                    });
+                    // GitHub never says how a person signed in, so it is
+                    // never asked (chunk N1).
+                    let github = provider.driver == jadpo_std::http::ProviderDriver::Github;
+                    let asks_amr = !github
+                        && requirements.iter().any(|requirement| {
+                            requirement.multi_factor
+                                && (requirement.sign_in.is_none() || names(requirement))
+                        });
                     jadpo_std::http::ProviderPlan {
                         name: provider.name.clone(),
                         ordinal: u32::try_from(own + at).unwrap_or(u32::MAX),
+                        driver: provider.driver,
                         issuer: provider.issuer.clone(),
                         client_id: provider.client_id.clone(),
                         client_secret: provider.secret.clone(),

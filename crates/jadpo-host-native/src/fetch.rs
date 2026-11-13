@@ -267,16 +267,40 @@ impl jadpo_runtime::Outbound for Outward {
         limit: usize,
         timeout_ms: u64,
     ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
+        self.get_with(url, &[], limit, timeout_ms)
+    }
+
+    /// A `GET` with the runtime's own headers (chunk N1): GitHub's API,
+    /// asked with a sign-in's access token. A header that can't be sent
+    /// refuses the request, naming neither it nor its value.
+    fn get_with<'a>(
+        &'a self,
+        url: &'a str,
+        headers: &'a [(&'a str, String)],
+        limit: usize,
+        timeout_ms: u64,
+    ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
         Box::pin(async move {
             let deadline = Instant::now() + wait(timeout_ms);
             let target = target(url)
                 .filter(|target| target.secure)
                 .ok_or("not HTTPS")?;
-            let request = hyper::Request::get(target.path.as_str())
-                .header(header::HOST, target.authority())
-                .header(header::ACCEPT, "*/*")
+            let mut request =
+                hyper::Request::get(target.path.as_str()).header(header::HOST, target.authority());
+            if !headers
+                .iter()
+                .any(|(name, _)| name.eq_ignore_ascii_case("accept"))
+            {
+                request = request.header(header::ACCEPT, "*/*");
+            }
+            for (name, value) in headers {
+                let value = header::HeaderValue::from_str(value)
+                    .map_err(|_| "a header it can't send".to_string())?;
+                request = request.header(*name, value);
+            }
+            let request = request
                 .body(Full::default())
-                .map_err(|error| format!("a request it can't send: {error}"))?;
+                .map_err(|_| "a request it can't send".to_string())?;
             // A `GET` changes nothing: it may be sent again.
             let (answer, lease) = self
                 .client

@@ -3122,6 +3122,7 @@ impl StandardType {
             (SqlType::Text, Holds::Enum(codes)) => Column::Enum {
                 ty: self.name.to_string(),
                 variants: codes.iter().map(|(name, _)| (*name).to_string()).collect(),
+                stored: Vec::new(),
             },
             (SqlType::Text, _) => Column::Text,
             (SqlType::Bytes, Holds::Bytes) => Column::Bytes,

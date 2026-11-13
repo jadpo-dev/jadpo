@@ -97,9 +97,12 @@ impl Requirement {
 #[derive(Clone, Debug, Default)]
 pub struct Ways {
     /// Each declared way that may be required (a provider, or
-    /// `external_token`), all of which can give a second factor through
-    /// their tokens' `amr`.
+    /// `external_token`).
     pub required: BTreeSet<String>,
+    /// Of those, the ways that can give a second factor, through their
+    /// tokens' `amr`: every one but a GitHub provider, whose sign-in never
+    /// says how the person signed in (chunk N1).
+    pub second_factor: BTreeSet<String>,
     /// Whether a passkey, a second factor itself, is declared.
     pub passkey: bool,
 }
@@ -115,8 +118,19 @@ impl Ways {
         if identity.external_token.is_some() {
             required.insert(SignInMethod::ExternalToken.name().to_string());
         }
+        let second_factor = required
+            .iter()
+            .filter(|way| {
+                !identity.providers.iter().any(|provider| {
+                    &provider.name == *way
+                        && provider.driver == jadpo_std::http::ProviderDriver::Github
+                })
+            })
+            .cloned()
+            .collect();
         Ways {
             required,
+            second_factor,
             passkey: identity.passkey.is_some(),
         }
     }
@@ -124,9 +138,19 @@ impl Ways {
     /// Whether some way the app declares meets `requirement`.
     pub fn meet(&self, requirement: &Requirement) -> bool {
         match &requirement.sign_in {
-            Some(ways) => ways.iter().any(|way| self.required.contains(way)),
-            None if requirement.multi_factor => self.passkey || !self.required.is_empty(),
+            Some(ways) => ways.iter().any(|way| self.can_give(way, requirement)),
+            None if requirement.multi_factor => self.passkey || !self.second_factor.is_empty(),
             None => true,
+        }
+    }
+
+    /// Whether `way` is declared and can sign a person in as strongly as
+    /// `requirement` asks.
+    fn can_give(&self, way: &str, requirement: &Requirement) -> bool {
+        if requirement.multi_factor {
+            self.second_factor.contains(way)
+        } else {
+            self.required.contains(way)
         }
     }
 }
@@ -152,10 +176,10 @@ impl Ways {
         match &requirement.sign_in {
             Some(ways) => ways
                 .iter()
-                .any(|way| self.required.contains(way) && carries(way)),
+                .any(|way| self.can_give(way, requirement) && carries(way)),
             None if requirement.multi_factor => {
                 (self.passkey && methods.contains(&M::BrowserSession))
-                    || self.required.iter().any(|way| carries(way))
+                    || self.second_factor.iter().any(|way| carries(way))
             }
             None => true,
         }
@@ -303,6 +327,14 @@ pub(crate) fn read(
             .at(at, "can never be met")
             .reason(if declared.is_empty() {
                 "A role counts only for someone whose sign-in meets its requirement, and the app declares no sign-in provider, `external_token:` or passkey that could.".to_string()
+            } else if requirement.multi_factor
+                && requirement.sign_in.as_ref().is_some_and(|named| {
+                    named.iter().any(|way| {
+                        ways.required.contains(way) && !ways.second_factor.contains(way)
+                    })
+                })
+            {
+                "A role counts only for someone whose sign-in meets its requirement, and GitHub never says how a person signed in, so a sign-in through it is `primary`, never `multi_factor`.".to_string()
             } else {
                 format!(
                     "A role counts only for someone whose sign-in meets its requirement; the ways in the app declares that a requirement may name are {}.",
