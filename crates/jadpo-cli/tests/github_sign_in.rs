@@ -79,7 +79,7 @@ authentication {
     sign_in: {
         providers: [github]
     }
-    on_first_sign_in: accounts.join
+    on_first_sign_in: accounts.open_account
 }
 "#,
     ),
@@ -126,13 +126,13 @@ type NotAMember = Failure {
 "#,
     ),
     (
-        "domains/accounts/actions/join.jadpo",
+        "domains/accounts/actions/open_account.jadpo",
         r#"use accounts/entities { Member }
-use accounts/failures { NoAddress, AlreadyJoined }
+use accounts/failures { AlreadyJoined, NoAddress }
 
 /// Makes an account for someone signing in with GitHub for the first
 /// time, once GitHub has verified their address.
-action join(first: FirstSignIn) fails NoAddress, AlreadyJoined -> Member.id {
+action open_account(first: FirstSignIn) fails NoAddress, AlreadyJoined -> Member.id {
     if (first.method != SignInMethod.github or not first.address_verified) {
         reject NoAddress {}
     }

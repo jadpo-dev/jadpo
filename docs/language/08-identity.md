@@ -1105,17 +1105,17 @@ authentication {
     sign_in: {
         providers: [github]
     }
-    on_first_sign_in: accounts.join
+    on_first_sign_in: accounts.open_account
 }
 ```
 
-```jadpo check project=github-accounts file=domains/accounts/actions/join.jadpo
+```jadpo check project=github-accounts file=domains/accounts/actions/open_account.jadpo
 use accounts/entities { Member }
-use accounts/failures { NoVerifiedAddress, AlreadyJoined }
+use accounts/failures { AlreadyJoined, NoVerifiedAddress }
 
 /// Makes an account for someone signing in with GitHub for the first
 /// time, once GitHub has verified their address.
-action join(first: FirstSignIn) fails NoVerifiedAddress, AlreadyJoined -> Member.id {
+action open_account(first: FirstSignIn) fails NoVerifiedAddress, AlreadyJoined -> Member.id {
     if (first.method != SignInMethod.github or not first.address_verified) {
         reject NoVerifiedAddress {}
     }
@@ -1154,7 +1154,7 @@ test "someone joins with GitHub and signs in again through the link" {
     )
     assert first.status == 303
     assert first.code == none
-    var again: Response = test_providers.sign_in(
+    var second_visit: Response = test_providers.sign_in(
         SignInMethod.github,
         TestAccount {
             subject: "583231"
@@ -1163,7 +1163,7 @@ test "someone joins with GitHub and signs in again through the link" {
             name: none
         }
     )
-    assert again.code == none
+    assert second_visit.code == none
 }
 
 test "an address GitHub hasn't verified makes no account" {
@@ -1195,7 +1195,7 @@ config {
 }
 ```
 
-```jadpo check project=github-accounts file=domains/accounts/entities/member.jadpo hidden migrate=initial
+```jadpo check project=github-accounts file=domains/accounts/entities/member.jadpo hidden
 entity Member {
     id: Uuid
     handle: Text {
@@ -1254,7 +1254,7 @@ query me(user: Principal.user) fails NotAMember -> MemberCard {
 }
 ```
 
-```jadpo check project=github-accounts file=domains/accounts/routes/account.jadpo hidden
+```jadpo check project=github-accounts file=domains/accounts/routes/account.jadpo hidden migrate=initial
 use accounts/types { MemberCard }
 use accounts/queries { me }
 
