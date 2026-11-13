@@ -109,8 +109,15 @@ pub fn footer(run: &Run) -> Block {
     if failed > 0 && passed > 0 {
         facts.push(Fact::plain(format!("{passed} passed")));
     }
+    // The tests the project wrote by kind, and those generated for its
+    // routes apart (area 13, "Tests generated for each route").
     let mut kinds: Vec<(TestKind, usize)> = Vec::new();
-    for result in &run.results {
+    let generated = run
+        .results
+        .iter()
+        .filter(|result| result.test.generated())
+        .count();
+    for result in run.results.iter().filter(|result| !result.test.generated()) {
         match kinds.iter_mut().find(|(kind, _)| *kind == result.test.kind) {
             Some((_, n)) => *n += 1,
             None => kinds.push((result.test.kind, 1)),
@@ -124,7 +131,7 @@ pub fn footer(run: &Run) -> Block {
     let mut counts: Vec<String> = if ran < run.total() {
         vec![format!("{ran} of {}", count(run.total(), "test", "tests"))]
     } else {
-        kinds
+        let mut counts: Vec<String> = kinds
             .iter()
             .map(|(kind, n)| {
                 count(
@@ -133,7 +140,11 @@ pub fn footer(run: &Run) -> Block {
                     &format!("{} tests", kind.word()),
                 )
             })
-            .collect()
+            .collect();
+        if generated > 0 {
+            counts.push(count(generated, "generated test", "generated tests"));
+        }
+        counts
     };
     if run.elapsed >= SHOW_TIME_FROM
         && let Some(last) = counts.last_mut()
@@ -231,6 +242,31 @@ fn report(test: &Test, failure: &TestFailure, root: Option<&str>, repeat: bool) 
             )));
             groups.push(items);
         }
+        Detail::Generated(info) => groups.push(vec![
+            Item::Field(Field::new(
+                "request",
+                vec![Text::Prose(format!("`{}` {}", info.request, info.does))],
+            )),
+            Item::Field(Field::value("expected", info.expected.as_str())),
+            Item::Field(Field::new(
+                "got",
+                vec![Text::value_in(Token::Failure, info.got.clone())],
+            )),
+            Item::Field(Field::new(
+                "reason",
+                vec![Text::Prose(format!(
+                    "`jadpo test` generates this test from `{}`'s declarations, and the API's OpenAPI document says how a client is answered; the route answered otherwise.",
+                    info.route
+                ))],
+            )),
+            Item::Field(Field::new(
+                "next",
+                vec![Text::Prose(format!(
+                    "This is a fault in Jadpo, not in your code: report it at {} with this output (human)",
+                    jadpo_runtime::BUG_REPORT_URL
+                ))],
+            )),
+        ]),
     }
     if joined && groups.len() > 1 {
         let rest = groups.remove(1);

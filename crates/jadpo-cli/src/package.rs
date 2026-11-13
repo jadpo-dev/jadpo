@@ -2891,6 +2891,13 @@ pub(crate) fn what_failed(failure: &jadpo_test::TestFailure) -> (String, String)
             "its recording doesn't decode".to_string(),
             format!("{}.", info.subject),
         ),
+        jadpo_test::Detail::Generated(info) => (
+            "its route breaks its API's document".to_string(),
+            format!(
+                "`{}` {}, and was answered {} where {} was expected.",
+                info.request, info.does, info.got, info.expected
+            ),
+        ),
     }
 }
 

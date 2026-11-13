@@ -1042,7 +1042,16 @@ async fn run_route(
     let mut reissued = None;
     let mut exchanged = None;
     let mut browser = false;
-    let caller = if route.authentication.needs_caller() {
+    // A generated test's request is answered as the caller it gives, in
+    // place of one signed in (area 13, "Tests generated for each route").
+    let admitted = if route.authentication.needs_caller() {
+        ctx.take_admitted()
+    } else {
+        None
+    };
+    let caller = if let Some(admitted) = admitted {
+        Some(admitted)
+    } else if route.authentication.needs_caller() {
         let checked = identity::authenticate(app, executor, ctx, request, route);
         match race(checked, &mut deadline).await {
             First::Left(Ok(admitted)) => {
@@ -1366,8 +1375,9 @@ async fn run_with_caller(
     };
     let mut deadline = deadline;
     // A person's confirmation with their passkey, before anything runs
-    // (area 8, "Confirm one request with a passkey").
-    if route.confirm {
+    // (area 8, "Confirm one request with a passkey"); taken as given for
+    // a generated test's request answered with what it forces.
+    if route.confirm && !ctx.forcing() {
         let person = confirmation::person(ctx.caller());
         let checked = confirmation::check(
             app,
@@ -1503,6 +1513,15 @@ async fn run_with_caller(
             // (area 7, "What a route runs"; chunk G2).
             if route.method == HttpMethod::Get {
                 ctx.read_only();
+            }
+            // A generated test's request answered with a declared failure
+            // or an output in place of what the route runs (area 13,
+            // "Tests generated for each route").
+            if let Some(forced) = ctx.take_forced() {
+                return Ok(match forced {
+                    crate::Forced::Failure(failure) => Outcome::Failed(failure),
+                    crate::Forced::Value(value) => Outcome::Value(value),
+                });
             }
             Ok(match &route.run {
                 Run::Action(callable) => {

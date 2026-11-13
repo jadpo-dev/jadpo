@@ -1430,6 +1430,39 @@ impl Body<'_> {
             self.pending_block = None;
             return ty;
         }
+        // `Stock(Product.stock - ordered) { min: OutOfStock }` in an update
+        // by `id`'s `set:`: a construction over stored fields mapping the
+        // rules it can break, which the statement checks as it writes
+        // (area 6, "A one-step update that refuses"; chunk Q2b).
+        if let Expr::CallExpr(call) = &head
+            && self.refusing.is_some()
+        {
+            let ty = self.call(call, None);
+            let construction = matches!(
+                self.facts.reaches.get(&node_key(call.syntax())),
+                Some(super::facts::Reach::Construct(_))
+            );
+            let reads_stored = call
+                .syntax()
+                .descendants()
+                .any(|node| self.facts.stored.contains(&node_key(&node)));
+            if !(construction && reads_stored) {
+                self.failure_value(&Expr::RecordExpr(record.clone()));
+                return Ty::Error;
+            }
+            let refusing = self.stored_arms(record.member_list(), call);
+            if let Some(failures) = &mut self.refusing {
+                for (_, failure) in &refusing.mapped {
+                    if !failures.contains(failure) {
+                        failures.push(failure.clone());
+                    }
+                }
+            }
+            self.facts
+                .refusing
+                .insert(node_key(record.syntax()), refusing);
+            return ty;
+        }
         let Some((first, rest)) = dotted(&head) else {
             self.infer(&head);
             self.failure_value(&Expr::RecordExpr(record.clone()));

@@ -169,7 +169,9 @@ reads each recording of the app's own integrations through its
 operation's decoders (`--kind recording`), and each recorded answer to a
 prompt through each type the prompt is asked for as. A recording made from
 an older version of the prompt is an alert on the report and in
-`data.alerts` ([Kinds of test](13-testing.md#kinds-of-test)).
+`data.alerts` ([Kinds of test](13-testing.md#kinds-of-test)). And it runs
+the tests it generates for each route the application declares, counted
+apart ([Tests generated for each route](13-testing.md#tests-generated-for-each-route)).
 
 To run fewer tests:
 

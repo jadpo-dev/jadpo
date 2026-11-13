@@ -224,7 +224,7 @@ fn compare(
     workerd: &Workerd,
     server: &Arc<Server>,
 ) -> Result<Compared, Problem> {
-    let interpreted = match crate::run(Options {
+    let mut interpreted = match crate::run(Options {
         cwd: folder.to_path_buf(),
         target: Some(".".into()),
         kind: Some(TestKind::Route),
@@ -242,6 +242,11 @@ fn compare(
         }
         ran => done(ran)?,
     };
+    // The tests generated for its routes are compared natively (area 13,
+    // "Tests generated for each route"): the Worker runs the tests a project writes.
+    interpreted
+        .results
+        .retain(|result| !result.test.generated());
     let loaded = jadpo_db::load(folder);
     let checked =
         crate::prepare(&loaded, folder).map_err(|ran| Problem::NotRun(format!("{ran:?}")))?;

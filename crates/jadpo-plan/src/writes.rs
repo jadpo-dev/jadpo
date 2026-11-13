@@ -25,7 +25,9 @@ use std::collections::HashMap;
 
 use jadpo_check::data::{DataModel, EntityModel, foreign_key, unique_constraint};
 use jadpo_check::lookups::WriteView;
-use jadpo_graph::body::{BinaryOp, Body, Callee, Expr, LocalKind, Node, SiteId, Stmt, UnaryOp};
+use jadpo_graph::body::{
+    BinaryOp, Body, Callee, ConflictArm, Expr, Fallible, LocalKind, Node, SiteId, Stmt, UnaryOp,
+};
 use jadpo_graph::schema::object_name;
 use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_std::read::MissingValue;
@@ -449,6 +451,21 @@ pub(crate) fn erasure_plan(
     }
 }
 
+/// A rule an update by `id` checks of a value it works out from stored
+/// fields, in the statement's `WHERE` (area 6, "A one-step update that
+/// refuses"; chunk Q2b): `min` of `Stock(Product.stock - ordered)`.
+struct RuleCheck {
+    /// The construction's site.
+    construction: SiteId,
+    /// The type it builds.
+    target: TypeRef,
+    rule: jadpo_std::RuleKey,
+    /// The field the update sets.
+    field: String,
+    /// The position among the write's `conflicts` of the arm mapping it.
+    arm: u32,
+}
+
 /// One write's statement as it is built.
 #[derive(Default)]
 struct Writing {
@@ -472,10 +489,26 @@ impl Writing {
         jadpo_sql::placeholder(at)
     }
 
-    /// The input `site`, worked out before the write runs.
+    /// The input `site`, worked out before the write runs, once however
+    /// often the statement or a probe begun from its inputs uses it.
     fn input(&mut self, site: SiteId, validator: Option<ValidatorId>) -> u32 {
+        if let Some(at) = self
+            .inputs
+            .iter()
+            .position(|input| *input == (site, validator))
+        {
+            return at as u32;
+        }
         self.inputs.push((site, validator));
         (self.inputs.len() - 1) as u32
+    }
+
+    /// A probe's statement, sent after the write's, from the same inputs.
+    fn probing(&self) -> Writing {
+        Writing {
+            inputs: self.inputs.clone(),
+            ..Writing::default()
+        }
     }
 }
 
@@ -542,6 +575,10 @@ impl Planner<'_> {
         };
         let mut writing = Writing::default();
         let mut guard: Option<(String, Option<String>, Vec<WriteParam>)> = None;
+        // The rules an update by `id` checks of the values it works out from
+        // stored fields, and what it asks when it writes no row (chunk Q2b).
+        let mut checked: Vec<RuleCheck> = Vec::new();
+        let mut stored_guard: Option<(String, Option<String>, Vec<WriteParam>)> = None;
         let unpoliced: Option<String>;
         let policy: Option<PolicyRefusal>;
         // What keeps the references it sets inside the tenant (area 9).
@@ -1084,6 +1121,58 @@ impl Planner<'_> {
                         false,
                     )?);
                 }
+                // Each rule a construction over stored fields maps joins the
+                // `WHERE`, so the value is checked as it is worked out;
+                // writing no row then asks which rule, if any, the value
+                // breaks now (area 6, "A one-step update that refuses";
+                // chunk Q2b).
+                if *by_id && *op == WriteOp::Update {
+                    checked = self.rule_checks(body, conflicts, entity_model)?;
+                }
+                if !checked.is_empty() {
+                    for check in &checked {
+                        let holds = self.rule_holds(body, check, entity_model, &mut writing)?;
+                        conditions.push(holds);
+                    }
+                    let mut asking = writing.probing();
+                    let id = asking.param(id_source.clone(), SqlType::Uuid);
+                    let mut asked = vec![text::equal("id", &id)];
+                    asked.extend(self.access(&mut asking, entity_model, Reach::Write)?);
+                    let mut holds = Vec::new();
+                    for check in &checked {
+                        holds.push(self.rule_holds(body, check, entity_model, &mut asking)?);
+                    }
+                    let mut bare = text::select_values(table, &holds);
+                    text::where_clause(&mut bare, &asked, "");
+                    let asked_policy =
+                        self.policy(&mut asking, entity_model, effect, &Row::Table)?;
+                    // A field the caller may not change refuses the write
+                    // before a rule can, as a transition's guard asks.
+                    let mut fields = Vec::new();
+                    for (key, _) in set {
+                        let name = self.types.field_name(key).to_string();
+                        if let Some(who) = self.field_policy(
+                            &mut asking,
+                            entity_model,
+                            &name,
+                            Effect::Update,
+                            &Row::Table,
+                        )? {
+                            fields.push(who);
+                        }
+                    }
+                    if asked_policy == jadpo_sql::policy::ANYONE && fields.is_empty() {
+                        stored_guard = Some((bare, None, asking.params));
+                    } else {
+                        if asked_policy != jadpo_sql::policy::ANYONE {
+                            asked.push(asked_policy);
+                        }
+                        asked.extend(fields);
+                        let mut probe = text::select_values(table, &holds);
+                        text::where_clause(&mut probe, &asked, "");
+                        stored_guard = Some((probe, Some(bare), asking.params));
+                    }
+                }
                 // A version is runtime state, not an application input. Reserve
                 // its own slot (never deduplicate it with a literal NULL).
                 let version = writing.params.len() as u32;
@@ -1132,6 +1221,10 @@ impl Planner<'_> {
         let mut refusals: Vec<Refusal> = Vec::new();
         let mut guarded_at = None;
         for (at, arm) in conflicts.iter().enumerate() {
+            // A rule of a value worked out from stored fields: below.
+            if arm.stored.is_some() {
+                continue;
+            }
             if arm.rule.kind() == Some(Kind::Transition) {
                 // The transition's `when:` refusing the record.
                 guarded_at = Some(refusals.len() as u32);
@@ -1147,6 +1240,21 @@ impl Planner<'_> {
             refusals.push(Refusal {
                 constraint,
                 raises: Raises::Arm(at as u32),
+            });
+        }
+        // Each rule a value worked out from stored fields can break, in the
+        // order its probe's columns say whether it holds (chunk Q2b).
+        let mut rules_at = Vec::new();
+        for check in &checked {
+            rules_at.push(refusals.len() as u32);
+            refusals.push(Refusal {
+                constraint: format!(
+                    "{}: {}.{}",
+                    check.rule.word(),
+                    entity_model.name,
+                    check.field
+                ),
+                raises: Raises::Arm(check.arm),
             });
         }
         for (field_name, value) in written_refs {
@@ -1208,12 +1316,20 @@ impl Planner<'_> {
                 sql,
                 unpoliced,
                 policy,
-                guard: match (guard, guarded_at) {
-                    (Some((sql, unpoliced, params)), Some(refusal)) => Some(Guard {
+                guard: match (guard, guarded_at, stored_guard) {
+                    (Some((sql, unpoliced, params)), Some(refusal), _) => Some(Guard {
                         sql,
                         unpoliced,
                         params,
                         refusal,
+                        rules: Vec::new(),
+                    }),
+                    (_, _, Some((sql, unpoliced, params))) => Some(Guard {
+                        sql,
+                        unpoliced,
+                        params,
+                        refusal: *rules_at.first()?,
+                        rules: rules_at,
                     }),
                     _ => None,
                 },
@@ -1372,6 +1488,134 @@ impl Planner<'_> {
             }
             _ => return None,
         })
+    }
+
+    /// Each rule a construction over stored fields can break, with the arm
+    /// that maps it, its own or `invalid:` (area 6, "A one-step update that
+    /// refuses"; chunk Q2b): construction by construction in the order
+    /// `set:` gives them, each one's rules in the order the checker found
+    /// them breakable.
+    fn rule_checks(
+        &self,
+        body: &Body,
+        conflicts: &[ConflictArm],
+        entity: &EntityModel,
+    ) -> Option<Vec<RuleCheck>> {
+        let mut constructions: Vec<(SiteId, String)> = Vec::new();
+        for arm in conflicts {
+            if let Some(stored) = &arm.stored
+                && !constructions
+                    .iter()
+                    .any(|(site, _)| *site == stored.construction)
+            {
+                let name = self.types.field_name(&arm.rule).to_string();
+                field(entity, &name)?;
+                constructions.push((stored.construction, name));
+            }
+        }
+        let mut out = Vec::new();
+        for (construction, field) in constructions {
+            let Node::Expr(Expr::Call {
+                callee: Callee::Construct(target),
+                fallible: Fallible::Construction { rules, .. },
+                ..
+            }) = &body.site(construction).node
+            else {
+                return None;
+            };
+            let mapping = |rule: Option<jadpo_std::RuleKey>| {
+                conflicts.iter().position(|arm| {
+                    arm.stored.as_ref().is_some_and(|stored| {
+                        stored.construction == construction && stored.rule == rule
+                    })
+                })
+            };
+            for rule in rules {
+                let arm = mapping(Some(*rule)).or_else(|| mapping(None))?;
+                out.push(RuleCheck {
+                    construction,
+                    target: target.clone(),
+                    rule: *rule,
+                    field: field.clone(),
+                    arm: u32::try_from(arm).ok()?,
+                });
+            }
+        }
+        Some(out)
+    }
+
+    /// Whether the value `check`'s construction holds keeps its rule, as
+    /// SQL the statement works out where it works the value out:
+    /// `("stock" - $1) >= 0`, a bound for each type along the chain that
+    /// sets one. An amount of money is held by its minor units, a duration
+    /// by its milliseconds and text by its length in characters, as Jadpo
+    /// holds them.
+    fn rule_holds(
+        &mut self,
+        body: &Body,
+        check: &RuleCheck,
+        entity: &EntityModel,
+        writing: &mut Writing,
+    ) -> Option<String> {
+        use jadpo_std::RuleKey;
+        let Node::Expr(Expr::Call { args, .. }) = &body.site(check.construction).node else {
+            return None;
+        };
+        let [Some(inner)] = args.as_slice() else {
+            return None;
+        };
+        let target = field(entity, &check.field)?;
+        let value = if target.compound == Some(MONEY) {
+            let amount = jadpo_std::standard_type(MONEY)?
+                .columns()
+                .iter()
+                .position(|(part, _)| *part == "amount")?;
+            self.stored_parts(body, *inner, entity, target, writing)?
+                .get(amount)?
+                .clone()
+        } else {
+            let ty = column_type(target)?.param();
+            self.stored_sql(body, *inner, entity, ty, writing)?
+        };
+        // A duration's bounds are its type's `min:` and `max:` too, held in
+        // milliseconds as its column holds it.
+        let (_, chain) = self.types.chain(&check.target)?;
+        let mut held = Vec::new();
+        for rules in &chain {
+            let millis = |bound: Option<jadpo_std::Dur>| bound.map(|d| d.millis.to_string());
+            let (bounded, bound): (fn(&str, &str) -> String, _) = match check.rule {
+                RuleKey::Min => (
+                    text::at_least,
+                    rules
+                        .min
+                        .map(|n| n.to_string())
+                        .or_else(|| millis(rules.min_duration)),
+                ),
+                RuleKey::Max => (
+                    text::at_most,
+                    rules
+                        .max
+                        .map(|n| n.to_string())
+                        .or_else(|| millis(rules.max_duration)),
+                ),
+                RuleKey::MinLength => (text::at_least, rules.min_length.map(|n| n.to_string())),
+                RuleKey::MaxLength => (text::at_most, rules.max_length.map(|n| n.to_string())),
+                _ => return None,
+            };
+            let Some(bound) = bound else {
+                continue;
+            };
+            let subject = match check.rule {
+                RuleKey::MinLength | RuleKey::MaxLength => text::char_length(&value),
+                _ => value.clone(),
+            };
+            held.push(bounded(&subject, &bound));
+        }
+        match held.len() {
+            0 => None,
+            1 => held.pop(),
+            _ => Some(jadpo_sql::policy::grouped(&held)),
+        }
     }
 
     /// A value of `target`'s type, kept in several columns or whole as its

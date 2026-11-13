@@ -19,7 +19,13 @@
 //! the second runs again; either way the count goes up by two. An amount
 //! of money an update by `id` works out holds what an amount holds: past
 //! 2^53 - 1 minor units either side its statement fails, as working it out
-//! in code is overflow (area 19; chunk Q2).
+//! in code is overflow (area 19; chunk Q2). A one-step update that refuses
+//! (chunk Q2b): a stock, an amount and a text worked out from what is
+//! stored, held to their types' rules by the statement, each refusal the
+//! failure its arm names and a product that isn't there its not-found
+//! failure; two buyers taking the last one at once, at read committed, the
+//! second refused and neither run again; and one refused, then restocked
+//! before it asks which rule refused it, run again once.
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
@@ -150,6 +156,46 @@ const FILES: &[(&str, &str)] = &[
         "use shop/entities { Shelf, ShelfNotFound }\nuse shop/actions { tally }\n\n/// Counts a visit through an action that reads the shelf first.\naction recount(shelf_id: Shelf.id) fails ShelfNotFound -> Shelf {\n    return attempt tally(shelf_id)\n}\n",
     ),
     (
+        "domains/shop/types/stock.jadpo",
+        "/// How many of a product are on the shelves.\ntype Stock = Int {\n    min: 0\n}\n",
+    ),
+    (
+        "domains/shop/types/till.jadpo",
+        "/// What a product's sales have taken.\ntype Till = Money {\n    currency: Currency.gbp\n    min: 0\n}\n",
+    ),
+    (
+        "domains/shop/entities/product.jadpo",
+        "use shop/types { Name, Stock, Till }\n\n/// A product on sale.\nentity Product {\n    id: Uuid\n    stock: Stock\n    till: Till\n    label: Name\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.public]\n    }\n}\n",
+    ),
+    (
+        "domains/shop/failures/out_of_stock.jadpo",
+        "/// There isn't enough stock to fill the order.\ntype OutOfStock = Failure {\n    kind: FailureKind.conflict\n    internal: {\n        product_id: Uuid\n    }\n}\n",
+    ),
+    (
+        "domains/shop/failures/till_short.jadpo",
+        "/// The till holds less than the refund.\ntype TillShort = Failure {\n    kind: FailureKind.conflict\n}\n",
+    ),
+    (
+        "domains/shop/failures/label_too_long.jadpo",
+        "/// The label would be too long.\ntype LabelTooLong = Failure {\n    kind: FailureKind.conflict\n}\n",
+    ),
+    (
+        "domains/shop/actions/add_product.jadpo",
+        "use shop/entities { Product }\nuse shop/types { Name, Stock, Till }\n\n/// Adds a product.\naction add_product(stock: Stock, till: Till, label: Name) -> Product {\n    return Product.create {\n        set: {\n            stock: stock\n            till: till\n            label: label\n        }\n    }\n}\n",
+    ),
+    (
+        "domains/shop/actions/take_stock.jadpo",
+        "use shop/entities { Product, ProductNotFound }\nuse shop/failures { OutOfStock }\nuse shop/types { Stock }\n\n/// Takes what was ordered from a product's stock, in one step.\naction take_stock(product_id: Product.id, ordered: Stock) fails ProductNotFound, OutOfStock -> Product {\n    return attempt Product.update(product_id) {\n        set: {\n            stock: Stock(Product.stock - ordered) {\n                min: OutOfStock {\n                    product_id: product_id\n                }\n            }\n        }\n    }\n}\n",
+    ),
+    (
+        "domains/shop/actions/refund.jadpo",
+        "use shop/entities { Product, ProductNotFound }\nuse shop/failures { TillShort }\nuse shop/types { Till }\n\n/// Pays a refund out of a product's till, in one step.\naction refund(product_id: Product.id, paid: Till) fails ProductNotFound, TillShort -> Product {\n    return attempt Product.update(product_id) {\n        set: {\n            till: Till(Product.till - paid) {\n                min: TillShort\n            }\n        }\n    }\n}\n",
+    ),
+    (
+        "domains/shop/actions/add_to_label.jadpo",
+        "use shop/entities { Product, ProductNotFound }\nuse shop/failures { LabelTooLong }\nuse shop/types { Name }\n\n/// Adds to a product's label, in one step.\naction add_to_label(product_id: Product.id, more: Name) fails ProductNotFound, LabelTooLong -> Product {\n    return attempt Product.update(product_id) {\n        set: {\n            label: Name(Product.label + more) {\n                max_length: LabelTooLong\n            }\n        }\n    }\n}\n",
+    ),
+    (
         "domains/shop/actions/revisit.jadpo",
         "use shop/entities { Shelf, ShelfNotFound }\nuse shop/actions { visit }\n\n/// Counts two visits through an action that reads nothing.\naction revisit(shelf_id: Shelf.id) fails ShelfNotFound -> Shelf {\n    attempt visit(shelf_id)\n    return attempt visit(shelf_id)\n}\n",
     ),
@@ -238,6 +284,37 @@ test \"a called action that fails and is handled keeps none of its writes\" {
 }
 ";
 
+const REFUSING: &str = "use shop/entities { Product, ProductNotFound }
+use shop/failures { LabelTooLong, OutOfStock, TillShort }
+use shop/types { Till }
+use shop/actions { add_product, add_to_label, refund }
+
+test \"a one-step update refuses what its value's rules don't allow, and keeps what was stored\" {
+    var product: Product = add_product(3, Till(money.from_minor(500, Currency.gbp)), \"Jam\")
+    var left: Product = attempt take_stock(product.id, 2)
+    assert left.stock == 1
+    assert take_stock(product.id, 2) fails OutOfStock
+    var last: Product = attempt take_stock(product.id, 1)
+    assert last.stock == 0
+    assert take_stock(product.id, 1) fails OutOfStock
+    var refunded: Product = attempt refund(product.id, Till(money.from_minor(450, Currency.gbp)))
+    assert refunded.till == Till(money.from_minor(50, Currency.gbp))
+    assert refund(product.id, Till(money.from_minor(51, Currency.gbp))) fails TillShort
+    var labelled: Product = attempt add_to_label(product.id, \" and marmalade\")
+    assert labelled.label == \"Jam and marmalade\"
+    assert add_to_label(product.id, \"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\") fails LabelTooLong
+    var kept: Product = attempt take_stock(product.id, 0)
+    assert kept.stock == 0
+    assert kept.till == Till(money.from_minor(50, Currency.gbp))
+    assert kept.label == \"Jam and marmalade\"
+}
+
+test \"a product that isn't there is not found, never refused\" {
+    assert take_stock(\"0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e\", 1) fails ProductNotFound
+    assert refund(\"0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e\", Till(money.from_minor(1, Currency.gbp))) fails ProductNotFound
+}
+";
+
 fn project(name: &str) -> PathBuf {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("writes-{name}"));
     let _ = fs::remove_dir_all(&root);
@@ -256,9 +333,14 @@ fn writes_do_what_area_6_says() {
     }
     let root = project("semantics");
     write(&root, "domains/shop/actions/add_shelf.test.jadpo", TESTS);
+    write(
+        &root,
+        "domains/shop/actions/take_stock.test.jadpo",
+        REFUSING,
+    );
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("8 passed"), "{}", tested.stdout);
+    assert!(tested.stdout.contains("10 passed"), "{}", tested.stdout);
 }
 
 // --- a concurrent change, forced -----------------------------------------------
@@ -659,13 +741,13 @@ async fn waiting_for_a_lock(watcher: &Postgres) -> bool {
     false
 }
 
-/// Runs `action` on `shelf_id` as two requests at once: their outcomes,
+/// Runs `action` with `args` as two requests at once: their outcomes,
 /// and each one's attempts and the levels its transactions began at.
 async fn race(
     program: &Program,
     url: &str,
     action: &str,
-    shelf_id: &str,
+    args: Vec<Value>,
 ) -> ((Outcome, Outcome), Vec<(u32, Vec<Isolation>)>, bool) {
     let shared = Rc::new(Race {
         watcher: postgres(url).expect("store"),
@@ -686,11 +768,11 @@ async fn race(
     let (first, second) = (racer(true), racer(false));
     let outcomes = both(
         async {
-            let outcome = call(program, &first, action, vec![Value::uuid(shelf_id)]).await;
+            let outcome = call(program, &first, action, args.clone()).await;
             shared.ended.set(true);
             outcome
         },
-        call(program, &second, action, vec![Value::uuid(shelf_id)]),
+        call(program, &second, action, args.clone()),
     )
     .await;
     let attempts = [&first, &second]
@@ -737,7 +819,8 @@ fn two_counters_at_once_rerun_only_when_their_action_reads_first() {
         // `visit`'s counter is its first statement and it loads no record,
         // so it runs at read committed: the second request waits for the
         // first's lock, adds to its count and commits, and neither reruns.
-        let ((a, b), attempts, waited) = race(&program, &url, "visit", &shelf_id).await;
+        let ((a, b), attempts, waited) =
+            race(&program, &url, "visit", vec![Value::uuid(&shelf_id)]).await;
         assert!(waited, "the second request waited for the first's lock");
         let counted = [field(&value(a), "visits"), field(&value(b), "visits")];
         assert_eq!(
@@ -758,7 +841,8 @@ fn two_counters_at_once_rerun_only_when_their_action_reads_first() {
         // `tally` reads the shelf before it counts, so it runs at repeatable
         // read: the second request's update finds the row changed since its
         // snapshot, and the whole action runs again, reading afresh.
-        let ((a, b), attempts, waited) = race(&program, &url, "tally", &shelf_id).await;
+        let ((a, b), attempts, waited) =
+            race(&program, &url, "tally", vec![Value::uuid(&shelf_id)]).await;
         assert!(waited, "the second request waited for the first's lock");
         let counted = [field(&value(a), "visits"), field(&value(b), "visits")];
         assert_eq!(counted, [Value::Int(3), Value::Int(4)]);
@@ -785,6 +869,96 @@ fn two_counters_at_once_rerun_only_when_their_action_reads_first() {
             [Isolation::RepeatableRead, Isolation::ReadCommitted]
         );
         assert_eq!(visits().await, vec![vec![SqlValue::Int8(7)]]);
+    });
+    drop(host);
+    drop(state);
+    databases.release(copy, false);
+}
+
+#[test]
+fn a_one_step_update_refuses_without_running_again() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let root = project("refusing");
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let state = Rc::new(State {
+        store: postgres(&url).expect("store"),
+        other: postgres(&url).expect("store"),
+        interfere: RefCell::new(None),
+        begun: Cell::new(0),
+        levels: RefCell::new(Vec::new()),
+        inserted: RefCell::new(Vec::new()),
+    });
+    let host = Harness::new(Interfering(Rc::clone(&state)));
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let till = Value::Money(jadpo_value::Money {
+            currency: jadpo_std::money::ordinal_of_code("GBP").expect("GBP"),
+            minor: 500,
+        });
+        let product = value(
+            call(
+                &program,
+                &host,
+                "add_product",
+                vec![Value::Int(1), till, Value::text("Jam")],
+            )
+            .await,
+        );
+        let Value::Uuid(product_id) = field(&product, "id") else {
+            panic!("a product id");
+        };
+        let take = || vec![Value::uuid(&product_id), Value::Int(1)];
+        let stock = || async { rows(&state.store, "SELECT \"stock\" FROM \"product\"").await };
+
+        // Two buyers take the last one at once. `take_stock` loads no
+        // record, so it runs at read committed: the second waits for the
+        // first's lock, finds none left and is refused, and neither runs
+        // again.
+        let ((a, b), attempts, waited) = race(&program, &url, "take_stock", take()).await;
+        assert!(waited, "the second buyer waited for the first's lock");
+        assert_eq!(
+            field(&value(a), "stock"),
+            Value::Int(0),
+            "the first took it"
+        );
+        match b {
+            Outcome::Failed(failure) => assert_eq!(failure.name, "OutOfStock"),
+            other => panic!("the second buyer was refused, not {other:?}"),
+        }
+        assert_eq!(
+            attempts,
+            vec![
+                (1, vec![Isolation::ReadCommitted]),
+                (1, vec![Isolation::ReadCommitted]),
+            ],
+            "each ended at its first attempt"
+        );
+        assert_eq!(
+            stock().await,
+            vec![vec![SqlValue::Int8(0)]],
+            "never below none"
+        );
+
+        // Refused, then restocked by another request before it asks which
+        // rule refused it: every rule holds now, so the row changed between
+        // its two statements, and the action runs again and takes one.
+        state.begun.set(0);
+        *state.interfere.borrow_mut() = Some(format!(
+            "UPDATE \"product\" SET \"stock\" = 5 WHERE \"id\" = '{product_id}'"
+        ));
+        let taken = value(call(&program, &host, "take_stock", take()).await);
+        assert_eq!(field(&taken, "stock"), Value::Int(4));
+        assert_eq!(state.begun.get(), 2, "it ran again once");
+        assert_eq!(stock().await, vec![vec![SqlValue::Int8(4)]]);
     });
     drop(host);
     drop(state);

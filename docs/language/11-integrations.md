@@ -3224,7 +3224,10 @@ cursor, and its input has one `PageCursor` field, where `page.next` is
 sent to ask for the next page. Work over many pages uses
 `batches.each(from:, each:, finished:, key:)`, which pages through in the
 background and resumes where it stopped
-([Walking records or a provider's list](12-jobs-and-events.md#walking-records-or-a-providers-list-batcheseach)).
+([Walking records or a provider's list](12-jobs-and-events.md#walking-records-or-a-providers-list-batcheseach)),
+and a file helper's write, such as `json_lines.write`, takes the same
+`from:` to write every page into a file
+([Data formats](19-standard-library.md#reading-and-writing-a-files-rows)).
 
 ### Calls and writes
 
@@ -8728,7 +8731,7 @@ package's name, as its types are.
 | The OpenAPI importer, and the scoped review of an import's types | Built. |
 | Provider calls, decoding, `wire_parts:` and retries | Built. |
 | A provider's failures read by `wire_status:` and `wire_name:` ([A provider's failures](#a-providers-failures)) | Built. |
-| Walking a list operation's pages with `batches.each` ([Pages of results](#pages-of-results)) | Not built yet: a provider's list operation as `batches.each`'s `from:` is `toolchain.not_built_yet` where it is written ([Jobs and events](12-jobs-and-events.md#walking-records-or-a-providers-list-batcheseach)). |
+| Walking a list operation's pages with `batches.each` or a file helper's write ([Pages of results](#pages-of-results)) | Built, but for a `batches.each` whose `each:` action makes outside calls ([Jobs and events](12-jobs-and-events.md#walking-records-or-a-providers-list-batcheseach)). |
 | No transaction open during a call, and several changing calls in one action | Built. |
 | Fakes, recordings and provider calls faked in development | Built. |
 | The `email` capability with SMTP and Resend | Built. |

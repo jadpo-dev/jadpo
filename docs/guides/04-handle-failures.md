@@ -259,7 +259,7 @@ jadpo test
 ```
 
 ```text
-tested: 3 passed, 2 action tests, 1 route test
+tested: 6 passed, 2 action tests, 1 route test, 3 generated tests
 ```
 
 ## Other places a failure comes from

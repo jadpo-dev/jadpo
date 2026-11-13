@@ -377,7 +377,12 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
             let raises = match &refusal.raises {
                 Raises::Arm(at) => conflicts.get(*at as usize).map_or_else(
                     || "the failure its arm names".to_string(),
-                    |arm| format!("{}, mapped in conflict:", arm.failure.written()),
+                    // A rule of a value worked out from stored fields is
+                    // mapped where `set:` gives it (chunk Q2b).
+                    |arm| match arm.stored {
+                        Some(_) => format!("{}, mapped in set:", arm.failure.written()),
+                        None => format!("{}, mapped in conflict:", arm.failure.written()),
+                    },
                 ),
                 Raises::NotFound(missing) => plan
                     .failure(missing.failure)
@@ -433,10 +438,37 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
                     _ => None,
                 })
                 .map_or_else(String::new, |arm| format!(" → {}", arm.failure.written()));
-            let mut asked = vec![(
-                "then".to_string(),
-                format!("a row means the record is there, so when: refused it{refused}"),
-            )];
+            let mut asked = if guard.rules.is_empty() {
+                vec![(
+                    "then".to_string(),
+                    format!("a row means the record is there, so when: refused it{refused}"),
+                )]
+            } else {
+                // Which rule of a value worked out from stored fields
+                // refused it, a column each (chunk Q2b).
+                let mut asked = vec![(
+                    "then".to_string(),
+                    "the first rule a row says doesn't hold refused it; a row where every rule holds changed since, so the action runs again".to_string(),
+                )];
+                for (n, at) in guard.rules.iter().enumerate() {
+                    let Some(refusal) = write.plan.refusals.get(*at as usize) else {
+                        continue;
+                    };
+                    let raises = match refusal.raises {
+                        Raises::Arm(arm) => {
+                            conflicts.get(arm as usize).map_or_else(String::new, |arm| {
+                                format!(" → {}", arm.failure.written())
+                            })
+                        }
+                        _ => String::new(),
+                    };
+                    asked.push((
+                        format!("column {}", n + 1),
+                        format!("{}{raises}", refusal.constraint),
+                    ));
+                }
+                asked
+            };
             let mut guard_params = Vec::new();
             for (n, param) in guard.params.iter().enumerate() {
                 let source = inputs(&param.source);

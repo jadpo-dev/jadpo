@@ -525,7 +525,7 @@ jadpo test
 ```
 
 ```text
-tested: 3 passed, 3 route tests
+tested: 8 passed, 3 route tests, 5 generated tests
 ```
 
 These three tests show the three things to know:

@@ -194,12 +194,17 @@ fn desk_at(name: &str, sandbox: &str, recordings: &[(&str, String)]) -> PathBuf 
     root
 }
 
+/// The tests a run lists, but those generated for the desk's route
+/// (area 13).
 fn tests_of(output: &Output) -> Vec<serde_json::Value> {
     let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
     document["data"]["tests"]
         .as_array()
         .cloned()
         .unwrap_or_default()
+        .into_iter()
+        .filter(|test| test["generated"] != true)
+        .collect()
 }
 
 /// `jadpo test` reads every recording of the app's own integrations as
@@ -223,7 +228,10 @@ fn jadpo_test_decodes_every_recording() {
     );
     assert_eq!(tests[0]["outcome"], "passed");
     let plain = jadpo(&root, &["test", "--seed", "1"]);
-    assert_eq!(plain.stdout, "tested: 1 passed, 1 recording test\n");
+    assert_eq!(
+        plain.stdout,
+        "tested: 4 passed, 1 recording test, 3 generated tests\n"
+    );
     // One recording runs alone by its file.
     let alone = jadpo(
         &root,
@@ -252,7 +260,7 @@ fn a_recording_its_decoders_refuse_fails_the_run() {
     assert_eq!(ran.code, 1, "{}{}", ran.stdout, ran.stderr);
     assert_eq!(
         ran.stdout,
-        "FAIL  bookings.create's recording decodes\n --> shared/providers/acme_couriers/v1/recordings/bookings.create.json:1\n\n  decode: `bookings.create`'s recording doesn't decode: `variant` on `status`\n  reason: Every decoder decodes every recorded answer: the operation's output type, or a decoder of its own, refuses what the provider sent here, so a real answer like it would fault the call.\n  next: Correct the type or its decoder against the recording and the provider's documentation (agent)\n\n  rule: test.recording_undecodable\n  rerun: jadpo test shared/providers/acme_couriers/v1/recordings/bookings.create.json:1 --seed 1\n\ntest failed: 1 failed, 1 recording test\n"
+        "FAIL  bookings.create's recording decodes\n --> shared/providers/acme_couriers/v1/recordings/bookings.create.json:1\n\n  decode: `bookings.create`'s recording doesn't decode: `variant` on `status`\n  reason: Every decoder decodes every recorded answer: the operation's output type, or a decoder of its own, refuses what the provider sent here, so a real answer like it would fault the call.\n  next: Correct the type or its decoder against the recording and the provider's documentation (agent)\n\n  rule: test.recording_undecodable\n  rerun: jadpo test shared/providers/acme_couriers/v1/recordings/bookings.create.json:1 --seed 1\n\ntest failed: 1 failed, 3 passed, 1 recording test, 3 generated tests\n"
     );
     let json = jadpo(&root, &["test", "--json", "--full", "--seed", "1"]);
     let tests = tests_of(&json);
@@ -433,7 +441,10 @@ fn jadpo_package_record_keeps_the_sandboxs_answer() {
     );
 
     let tested = jadpo(&root, &["test", "--seed", "1"]);
-    assert_eq!(tested.stdout, "tested: 1 passed, 1 recording test\n");
+    assert_eq!(
+        tested.stdout,
+        "tested: 4 passed, 1 recording test, 3 generated tests\n"
+    );
     let shown = jadpo(
         &root,
         &[
@@ -546,7 +557,7 @@ fn jadpo_package_record_keeps_a_fields_parts() {
     }
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(
-        tested.stdout, "tested: 1 passed, 1 recording test\n",
+        tested.stdout, "tested: 4 passed, 1 recording test, 3 generated tests\n",
         "{}",
         tested.stderr
     );

@@ -467,7 +467,7 @@ jadpo test
 ```
 
 ```text
-tested: 7 passed, 3 action tests, 4 route tests in 1.2 s
+tested: 20 passed, 3 action tests, 4 route tests, 13 generated tests in 1.2 s
 ```
 
 ## Try it

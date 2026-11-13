@@ -247,19 +247,27 @@ pub fn file_run_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagn
                     format!("{}.read", format.namespace()),
                     "A file has no query whose store keeps its run",
                 ),
-                jadpo_std::batch::BatchOp::Each
-                    if args.first().copied().flatten().is_some_and(|from| {
-                        matches!(
-                            checked.body.site(from).node,
-                            Node::Expr(Expr::Call {
-                                callee: Callee::Provider { .. },
-                                ..
-                            })
-                        )
-                    }) =>
+                op if op.walks_from()
+                    && super::facts::run_places(*op)
+                        .0
+                        .and_then(|at| args.get(at).copied().flatten())
+                        .is_some_and(|from| {
+                            matches!(
+                                checked.body.site(from).node,
+                                Node::Expr(Expr::Call {
+                                    callee: Callee::Provider { .. },
+                                    ..
+                                })
+                            )
+                        }) =>
                 {
                     (
-                        "batches.each".to_string(),
+                        match op {
+                            jadpo_std::batch::BatchOp::Write(format) => {
+                                format!("{}.write", format.namespace())
+                            }
+                            _ => "batches.each".to_string(),
+                        },
                         "A provider's list has no query whose store keeps its run",
                     )
                 }

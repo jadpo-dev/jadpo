@@ -697,8 +697,9 @@ impl Body<'_> {
         }
     }
 
-    /// `from:`: a call of a named query giving a `Page<T>`, whose
-    /// arguments are saved with the run; the item type `T`.
+    /// `from:`: a call of a named query giving a `Page<T>`, or of a
+    /// provider's list operation giving one, whose arguments are saved
+    /// with the run; the item type `T`.
     pub(super) fn batch_from(&mut self, from: &Expr, written: &str) -> Ty {
         let refused = |body: &mut Self, at: Span, label: &str| {
             body.out.push(
@@ -738,12 +739,12 @@ impl Body<'_> {
             Ty::Opaque(name, args) if name == "Page" && args.len() == 1 => args.into_iter().next(),
             _ => None,
         };
-        // `batches.each`'s `from:` may be a provider's list operation,
-        // walked by `page.next` (area 12; chunk J2): its input is saved
-        // with the run as a query's arguments are, and each page asked for
-        // with the cursor the page before gave in its `PageCursor` field.
-        if written == "batches.each"
-            && let Some(item) = item.as_ref()
+        // `from:` may be a provider's list operation, walked by
+        // `page.next` (area 12; chunk J2), `batches.each`'s or a file
+        // helper's write's (chunk J4): its input is saved with the run as a
+        // query's arguments are, and each page asked for with the cursor
+        // the page before gave in its `PageCursor` field.
+        if let Some(item) = item.as_ref()
             && let Some(Reach::Provider {
                 safe, action: None, ..
             }) = &reach

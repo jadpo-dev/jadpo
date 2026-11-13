@@ -209,6 +209,45 @@ fn a_project_with_errors_shows_them_and_no_sql() {
 }
 
 #[test]
+fn an_update_that_refuses_prints_the_rule_its_statement_checks() {
+    // A one-step update that refuses (area 6; chunk Q2b): the statement
+    // holds the worked-out stock to its type's `min: 0`, and the probe
+    // that tells the refusal from a missing product asks it again.
+    let root = folder("refusing");
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &root,
+        "domains/shop/types/stock.jadpo",
+        "/// How many are on the shelves.\ntype Stock = Int {\n    min: 0\n}\n",
+    );
+    write(
+        &root,
+        "domains/shop/entities/product.jadpo",
+        "use shop/types { Stock }\n\n/// A product on sale.\nentity Product {\n    id: Uuid\n    stock: Stock\n\n    policy: {\n        update: [Access.public]\n    }\n}\n",
+    );
+    write(
+        &root,
+        "domains/shop/failures/out_of_stock.jadpo",
+        "/// There isn't enough stock.\ntype OutOfStock = Failure {\n    kind: FailureKind.conflict\n}\n",
+    );
+    write(
+        &root,
+        "domains/shop/actions/take_stock.jadpo",
+        "use shop/entities { Product, ProductNotFound }\nuse shop/failures { OutOfStock }\nuse shop/types { Stock }\n\n/// Takes stock in one step.\naction take_stock(product_id: Product.id, ordered: Stock) fails ProductNotFound, OutOfStock -> Product {\n    return attempt Product.update(product_id) {\n        set: {\n            stock: Stock(Product.stock - ordered) {\n                min: OutOfStock\n            }\n        }\n    }\n}\n",
+    );
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
+        let out = jadpo(&root, args);
+        assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    }
+    let out = jadpo(&root, &["sql", "take_stock"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert_eq!(
+        out.stdout,
+        "write Product.update\n  UPDATE \"product\"\n  SET \"stock\" = (\"stock\" - $1)\n  WHERE \"id\" = $2\n    AND (\"stock\" - $1) >= 0\n    AND ($3::text IS NULL OR \"xmin\"::text = $3)\n  RETURNING \"id\", \"stock\"\n\n  writes: updates the Product with that id\n  file: domains/shop/actions/take_stock.jadpo:7\n  sends: 1 statement\n  $1: ordered · bigint\n  $2: product_id · uuid\n  $3: NULL::text · text\n  refused: min: Product.stock → OutOfStock, mapped in set:\n  no row: ProductNotFound\n\nwhen no row changed\n  SELECT (\"stock\" - $2) >= 0\n  FROM \"product\"\n  WHERE \"id\" = $1\n\n  then: the first rule a row says doesn't hold refused it; a row where every rule holds changed since, so the action runs again\n  column 1: min: Product.stock → OutOfStock\n  $1: product_id · uuid\n  $2: ordered · bigint\n"
+    );
+}
+
+#[test]
 fn an_action_prints_the_statement_each_write_sends() {
     let root = project("action");
     let out = jadpo(&root, &["sql", "archive_note"]);

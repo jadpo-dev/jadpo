@@ -1012,7 +1012,9 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
             .find(|(name, _)| name == project)
             .map(|(_, compared)| (compared.tests, compared.passed))
     };
-    assert_eq!(counted("docs/language/07-http.md todos"), Some((3, 3)));
+    // Its three route tests and the five generated for its routes (area
+    // 13, "Tests generated for each route").
+    assert_eq!(counted("docs/language/07-http.md todos"), Some((8, 8)));
     assert_eq!(counted("a return inside an inline function"), Some((2, 1)));
     assert_eq!(counted("an export run to its end"), Some((1, 1)));
     assert_eq!(counted("a package's action caught"), Some((2, 2)));
@@ -1120,9 +1122,11 @@ fn a_route_tests_spans_are_in_its_record() {
     let jadpo_test::Ran::Done(run) = ran else {
         panic!("it runs: {ran:?}")
     };
+    // The route tests the page writes, not those generated for its routes.
     let mut spans: Vec<(String, Vec<String>)> = run
         .results
         .iter()
+        .filter(|result| !result.test.generated())
         .map(|result| {
             let record: Vec<String> = result
                 .record

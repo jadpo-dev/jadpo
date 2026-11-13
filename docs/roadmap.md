@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-11-11. This page is the only list of outstanding work: the
+**Updated:** 2026-11-12. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record language decisions on the [area pages](language/README.md)
 and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
@@ -323,13 +323,10 @@ work below (Richard, 2026-11-08).
 
 10. Data and queries (areas 5, 6, 19 and 20), added by the audit of
     2026-11-08. Each keeps every test passing on both executors.
-    - [ ] **Q2b A one-step update that refuses** `opus · xhigh`: notes for
-      area 6, "A one-step update that refuses". A stored-value construction
-      in an update by `id`'s `set:` mapping the rules it can break, as
-      `stock: Stock(Product.stock - ordered) { min: OutOfStock }`: the
-      statement's `WHERE` checks them, and no row updated is the mapped
-      failure, so the update never reruns. Split from Q2 (2026-11-12),
-      which built the rest.
+    - [x] **Q2b A one-step update that refuses**: a construction over
+      stored fields in an update by `id`'s `set:` mapping the rules it can
+      break, checked by the statement's `WHERE`, in area 6, "A one-step
+      update that refuses", and its notes.
     - [x] **Q3 What `jadpo migrate new` still refuses**: a new `pattern:` and
       a computed backfill for a field that allows less, in area 5, "Changing
       what a field allows", and its notes, "Refits".
@@ -373,18 +370,17 @@ work below (Richard, 2026-11-08).
 11. Background work and tests (areas 12 and 13), added by the audit of
     2026-11-08.
     - [x] **J3 Delivery and operator gaps**: area 12, "How long between tries", "Running background work" and "Watching schedules", and its notes; `cli.signal_handler_failed`'s page.
-    - [ ] **J4 File writers over a provider's list** `opus · high`: area 19,
-      "Data formats"; area 12, "Walking records or a provider's list:
-      `batches.each`" and "How an export's run is kept". A file helper's write
-      (`csv.write`, `tsv.write`, `json_lines.write`, `json.write`) taking a
-      provider's list operation as `from:`, walked by `page.next`, in place
-      of `type.batch_from_invalid`.
+    - [x] **J4 File writers over a provider's list**: area 19, "`json_lines`"; area 12, "How an export's run is kept", and its notes.
     - [x] **W1 Data builders and `assert emitted`**: area 13, "Data builders", "Events and query cost" and its notes; compiler-runtime §2.5, "Data builders and `assert emitted`".
-    - [ ] **W2 Generated tests** `opus · xhigh`: area 13, "In the editor" and
-      "What is built". Every route refusing bad input with `{ field, rule }`, each
-      declared failure's envelope and the rest of that list, generated, run with
-      the project's and shown under the route they test. Area 15's after-`erase`
-      test for a person entity no test erases needs W1's data builders; every erasure a test makes is already checked.
+    - [x] **W2 Generated tests**: area 13, "Tests generated for each route" and its notes; compiler-runtime §2.5, "Generated tests".
+    - [ ] **W2b The generated erasure test** `opus · xhigh`: area 13, "Tests
+      generated for each route" and "What is built"; area 15, "Export". Area 15's
+      after-`erase` test for a person entity no test erases, through W1's data
+      builders, which today only a test's source makes: a builder the runner
+      can call makes the person and a record of each kind that belongs to them,
+      erases them, and the export must hold nothing. And the generated route
+      tests run inside workerd too, which today runs only the tests a project
+      writes.
     - [ ] **W3 What a failed test reports** `opus · high` after item 3's trace:
       area 13, "What a failed test reports". The trace, fakes, kept database and
       clock in the report.

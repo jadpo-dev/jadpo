@@ -10,8 +10,10 @@
 //! joined into the one file `finished:` receives in its `ExportSummary`; a
 //! `CsvFormat` naming who reads a CSV; an item whose row faults kept as a
 //! problem, by its place in the walk, never its value; a run resumed from
-//! the position its last page committed, no row written twice; and a
-//! cancelled run leaving no file and no pieces.
+//! the position its last page committed, no row written twice; a
+//! cancelled run leaving no file and no pieces; and a write over a
+//! provider's list, each page asked for with no transaction open and the
+//! cursor the page before gave (chunk J4).
 //!
 //! The store is the `files` capability's in-memory fake, on the shared
 //! test host.
@@ -87,7 +89,95 @@ action {name}(export_id: ItemExport.id, page: ItemPage, note: ItemNote?) -> Batc
             driver: Driver.disk
             path: "/var/lib/pantry/exports"
         }
+        suppliers: {
+            package: AcmeStock.v1
+            domains: [pantry]
+            environment: config.suppliers_environment
+        }
     }
+}
+"#
+            .to_string(),
+        ),
+        (
+            "config.jadpo",
+            "config {\n    suppliers_environment: ProviderEnvironment {\n        default: ProviderEnvironment.sandbox\n    }\n}\n"
+                .to_string(),
+        ),
+        (
+            "shared/providers/acme_stock/v1/package.jadpo",
+            "/// Acme Stock's supplier API.\npackage AcmeStock.v1 {\n    licence: Licence.proprietary\n    jadpo: \"1.0\"\n}\n"
+                .to_string(),
+        ),
+        (
+            "shared/providers/acme_stock/v1/provider.jadpo",
+            "/// Acme Stock's supplier API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.acme-stock.example\"\n        sandbox: \"https://sandbox.acme-stock.example\"\n    }\n    error_code: \"error.code\"\n}\n"
+                .to_string(),
+        ),
+        (
+            "shared/providers/acme_stock/v1/resources/stock.jadpo",
+            "public resource stock {\n    list: {\n        method: HttpMethod.get\n        path: \"/v1/stock\"\n        input: StockAsked\n        output: Page<Stocked>\n        changes: false\n        source: PackageSource.written\n    }\n}\n"
+                .to_string(),
+        ),
+        (
+            "shared/providers/acme_stock/v1/types/stock_asked.jadpo",
+            "/// Which page of the supplier's stock to list.\npublic type StockAsked = Object {\n    after: PageCursor?\n}\n"
+                .to_string(),
+        ),
+        (
+            "shared/providers/acme_stock/v1/types/stocked.jadpo",
+            "/// One line of the supplier's stock.\npublic type Stocked = Object {\n    code: StockCode\n    name: StockName\n}\n"
+                .to_string(),
+        ),
+        (
+            "shared/providers/acme_stock/v1/types/stock_code.jadpo",
+            "/// The supplier's code for a line of stock.\npublic type StockCode = Text {\n    max_length: 20\n}\n"
+                .to_string(),
+        ),
+        (
+            "shared/providers/acme_stock/v1/types/stock_name.jadpo",
+            "/// What the supplier calls a line of stock.\npublic type StockName = Text {\n    max_length: 60\n}\n"
+                .to_string(),
+        ),
+        (
+            "domains/pantry/types/supplied_line.jadpo",
+            r#"use shared/providers/acme_stock
+
+type SuppliedLine = Output {
+    code: AcmeStock.StockCode {
+        column: "Code"
+    }
+    name: AcmeStock.StockName {
+        column: "Item name"
+    }
+}
+"#
+            .to_string(),
+        ),
+        (
+            "domains/pantry/actions/export_supplied.jadpo",
+            r#"use app { exports, suppliers }
+use pantry/actions { exported }
+use pantry/entities { ItemExport }
+use pantry/types { SuppliedLine }
+use shared/providers/acme_stock
+
+action export_supplied(export_id: ItemExport.id) -> BatchRun {
+    var asked_for: AcmeStock.StockAsked = AcmeStock.StockAsked {
+        after: none
+    }
+    return csv.write(
+        exports,
+        name: "supplied.csv",
+        format: CsvFormat.spreadsheet,
+        from: suppliers.stock.list(asked_for),
+        each: stocked -> SuppliedLine {
+            code: stocked.code
+            name: stocked.name
+        },
+        finished: summary -> exported(summary, export_id),
+        key: export_id
+    )
 }
 "#
             .to_string(),
@@ -465,6 +555,38 @@ struct Stand {
     harness: Harness<Crashable>,
     files: Rc<MemoryFiles>,
     crash_in: Rc<Cell<Option<u32>>>,
+    suppliers: Rc<Supplier>,
+}
+
+/// The supplier's list of stock, two pages: the first `p2` names as the
+/// next, and the last. It keeps the cursor each page was asked after.
+#[derive(Default)]
+struct Supplier {
+    asked: std::cell::RefCell<Vec<Option<String>>>,
+}
+
+impl Capability for Supplier {
+    fn call<'a>(
+        &'a self,
+        call: &'a jadpo_runtime::capability::Call,
+    ) -> LocalFuture<'a, jadpo_runtime::capability::Answer> {
+        let after = match &call.input {
+            Value::Record(record) => match record.get("after") {
+                Some(Value::Text(cursor)) => Some(cursor.to_string()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let page = match after.as_deref() {
+            None => {
+                r#"{"items":[{"code":"S1","name":"Oats"},{"code":"S2","name":"Rye, dark"}],"next":"p2"}"#
+            }
+            Some("p2") => r#"{"items":[{"code":"S3","name":"=cmd"}],"next":null}"#,
+            Some(_) => r#"{"items":[],"next":null}"#,
+        };
+        self.asked.borrow_mut().push(after);
+        Box::pin(async move { jadpo_runtime::capability::Answer::Wire(Rc::from(page)) })
+    }
 }
 
 impl Stand {
@@ -481,11 +603,17 @@ impl Stand {
             harness,
             files: Rc::new(MemoryFiles::new()),
             crash_in,
+            suppliers: Rc::new(Supplier::default()),
         }
     }
 
     fn host(&self) -> Faked<&Harness<Crashable>> {
-        Faked::new(&self.harness).with("exports", Rc::clone(&self.files) as Rc<dyn Capability>)
+        Faked::new(&self.harness)
+            .with("exports", Rc::clone(&self.files) as Rc<dyn Capability>)
+            .with(
+                "suppliers",
+                Rc::clone(&self.suppliers) as Rc<dyn Capability>,
+            )
     }
 
     /// Runs `action` with `args`, giving its outcome and the work it left
@@ -861,6 +989,63 @@ fn an_export_resumes_from_its_last_committed_page_with_no_row_written_twice() {
         }
         assert_eq!(stand.written().await.text, expected);
         assert_eq!(run_row(&stand).await, ("finished".into(), None, 10, 0));
+    });
+}
+
+/// A writer's `from:` may be a provider's list (area 19, "Reading and
+/// writing a file's rows"; chunk J4): each page is asked for with no
+/// transaction open, after the one that read the run's position, with
+/// the cursor the page before gave, and its rows are a piece of the file.
+/// A page whose commit dies is asked for again with the same cursor, and
+/// its piece put again, so the file holds every row once.
+#[test]
+fn an_export_over_a_providers_list_writes_each_page_it_gives() {
+    let Some(loaded) = load("listed") else {
+        return;
+    };
+    let program = &loaded.program;
+    let stand = Stand::new(&loaded.url);
+    Runtime::new().expect("runtime").block_on(async {
+        let (made, _) = stand.call(program, "new_export", Vec::new()).await;
+        let export_id = field(&value(made), "id");
+        let (started, work) = stand
+            .call(program, "export_supplied", vec![export_id])
+            .await;
+        value(started);
+        assert!(
+            stand.suppliers.asked.borrow().is_empty(),
+            "nothing is asked for in the request"
+        );
+        // The second page's piece is put, and its commit dies.
+        stand.crash_in.set(Some(2));
+        let start = starts(&work).remove(0);
+        let (ran, _) = jadpo_runtime::batches::run(program, &stand.host(), &start).await;
+        assert!(matches!(ran, Ran::Paused(_)), "{ran:?}");
+        // A provider's list has no count to estimate the walk by.
+        let counted = stand
+            .rows("SELECT \"estimated_total\" FROM \"jadpo_batch_runs\"")
+            .await;
+        assert!(
+            matches!(counted.as_slice(), [row] if matches!(row.as_slice(), [SqlValue::Null(_)])),
+            "{counted:?}"
+        );
+        let later = T0 + jadpo_runtime::lease::LONGEST_MS + 1_000;
+        stand.harness.set_now(later);
+        let (resumed, _) = jadpo_runtime::batches::resume(program, &stand.host(), later).await;
+        assert_eq!(resumed.len(), 1, "{resumed:?}");
+        assert_eq!(resumed[0].1, Ran::Finished);
+        assert_eq!(
+            *stand.suppliers.asked.borrow(),
+            [None, Some("p2".to_string()), Some("p2".to_string())]
+        );
+        let written = stand.written().await;
+        assert_eq!(
+            written.text,
+            "\u{feff}Code,Item name\r\nS1,Oats\r\nS2,\"Rye, dark\"\r\nS3,'=cmd\r\n"
+        );
+        assert_eq!(written.name, "supplied.csv");
+        assert_eq!((written.items, written.problems), (3, 0));
+        assert_eq!(run_row(&stand).await, ("finished".into(), None, 3, 0));
     });
 }
 

@@ -166,6 +166,21 @@ pub(crate) enum BuildFact {
     Variant(String, String),
 }
 
+/// What the arms of a construction an update by `id` works out from
+/// stored fields decide (area 6, "A one-step update that refuses"; chunk
+/// Q2b).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Refusing {
+    /// The failure each arm names, by the rule's key; `None` for
+    /// `invalid:`, which covers the rest.
+    pub mapped: Vec<(Option<String>, String)>,
+    /// The rules it can break that no arm maps.
+    pub uncovered: Vec<String>,
+    /// Whether an arm's key is already reported, misspelt or repeated, so
+    /// what the arms cover is unclear.
+    pub unsure: bool,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Facts {
     /// Each expression's type: a literal's is the type it goes into.
@@ -237,6 +252,11 @@ pub(crate) struct Facts {
     pub emitted: BTreeMap<NodeKey, String>,
     /// Each stored field an update by `id` reads (`Post.view_count`).
     pub stored: BTreeSet<NodeKey>,
+    /// Each construction an update by `id` works out from stored fields
+    /// that maps the rules it can break, by its record:
+    /// `Stock(Product.stock - ordered) { min: OutOfStock }` (area 6, "A
+    /// one-step update that refuses"; chunk Q2b).
+    pub refusing: BTreeMap<NodeKey, Refusing>,
     /// Each read of a setting (`config.mail_sender`), with the setting's
     /// name (area 10).
     pub settings: BTreeMap<NodeKey, String>,

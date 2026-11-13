@@ -198,6 +198,34 @@ pub(crate) async fn write(
                 Err(error) => Err(error),
             };
             match found {
+                // An update by `id` holding a value it works out to its
+                // type's rules: the first rule the value breaks now refused
+                // it, and a row whose every rule holds changed between the
+                // two statements, a concurrent change (area 6, "A one-step
+                // update that refuses"; chunk Q2b).
+                Ok(rows) if !guard.rules.is_empty() && !rows.is_empty() => {
+                    let held = rows.first().map(Vec::as_slice).unwrap_or_default();
+                    let broken = guard
+                        .rules
+                        .iter()
+                        .zip(held)
+                        .find(|(_, holds)| **holds != SqlValue::Bool(true))
+                        .map(|(at, _)| *at);
+                    let Some(at) = broken else {
+                        ctx.concurrent_change();
+                        return Err(defect(ctx, "a concurrent change", site));
+                    };
+                    let mut cause = Failure::new("runtime refused", "RuleRefused", "rule_refused");
+                    cause.kind = Some("conflict".to_string());
+                    cause.status = Some(409);
+                    if let Some(refusal) = plan.refusals.get(at as usize) {
+                        cause
+                            .internal
+                            .push(("rule".to_string(), Value::text(&refusal.constraint)));
+                    }
+                    let cause = ctx.fail(cause, site);
+                    return Ok(Written::Refused { at, cause });
+                }
                 Ok(rows) if !rows.is_empty() => {
                     let mut cause =
                         Failure::new("runtime refused", "TransitionRefused", "transition_refused");

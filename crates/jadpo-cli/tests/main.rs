@@ -81,6 +81,7 @@ mod fix;
 mod flags;
 mod fmt;
 mod generated_limits;
+mod generated_tests;
 mod geo_layers;
 mod geo_queries;
 mod geography;

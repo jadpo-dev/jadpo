@@ -892,12 +892,29 @@ impl RuleArm {
 /// One arm of a write's `conflict:` (area 6, "When a write is refused"):
 /// the rule (a unique rule, a unique field, or a reference that refuses a
 /// delete) and the failure the caller gets when the store refuses it.
+/// An update by `id` lists here too each arm of a construction its `set:`
+/// works out from stored fields, after the `conflict:` arms (area 6, "A
+/// one-step update that refuses"; chunk Q2b): then `rule` is the field
+/// it sets, and `stored` says which construction and rule.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ConflictArm {
     pub rule: Key,
     pub failure: Key,
     /// The fields given to the failure, as `reject` gives them.
     pub fields: Vec<(Key, SiteId)>,
+    pub stored: Option<StoredRule>,
+}
+
+/// A rule a construction over stored fields can break, which the update's
+/// statement checks as it writes (area 6, "A one-step update that
+/// refuses"; chunk Q2b): `min` of `Stock(Product.stock - ordered)`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct StoredRule {
+    /// The construction's site, a [`Callee::Construct`] call.
+    pub construction: SiteId,
+    /// The rule it maps, `min`; `None` for `invalid:`, every rule the
+    /// construction can break without an arm of its own.
+    pub rule: Option<RuleKey>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

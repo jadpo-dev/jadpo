@@ -225,18 +225,28 @@ pub enum Raises {
 
 /// What a guarded transition asks when it changed no row (area 5,
 /// "Lifecycle"): whether the record is there and visible, in which case
-/// its `when:` refused it.
+/// its `when:` refused it. An update by `id` whose statement holds a value
+/// it works out to its type's rules asks the same of the record, and
+/// which rule its value breaks now (area 6, "A one-step update that
+/// refuses"; chunk Q2b).
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Guard {
     /// `SELECT 1` of the record by `id`, under the lifecycle's `visible:`
-    /// and policy.
+    /// and policy; for an update whose rules it checks, `SELECT` of
+    /// whether each rule holds, a column each.
     pub sql: String,
     /// The same without policy.
     pub unpoliced: Option<String>,
     /// Its parameters, from the write's inputs.
     pub params: Vec<WriteParam>,
-    /// The position in `refusals` its refusal takes.
+    /// The position in `refusals` its refusal takes: a transition's
+    /// `when:`.
     pub refusal: u32,
+    /// For an update whose rules it checks: the position in `refusals` of
+    /// the rule each column says holds, in order. The first that doesn't
+    /// is the refusal; a row whose every rule holds changed since the
+    /// update, a concurrent change. Empty for a transition.
+    pub rules: Vec<u32>,
 }
 
 /// What a write that policy limits means when it changed no row (area 9,

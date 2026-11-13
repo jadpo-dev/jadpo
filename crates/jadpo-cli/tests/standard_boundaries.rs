@@ -471,9 +471,10 @@ fn every_standard_type_crosses_every_built_boundary() {
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    // Each case's test, and those generated for its routes (area 13).
     let count = cases().len();
     assert!(
-        tested.stdout.contains(&format!("{count} passed")),
+        tested.stdout.contains(&format!(" {count} route tests, ")),
         "{}",
         tested.stdout
     );
