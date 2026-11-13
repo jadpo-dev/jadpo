@@ -4219,7 +4219,7 @@ These limits may change once they have been measured on real runs.
 | Everything else on this page | Built. |
 | Publishing chosen public events outward | Partly built: through `Driver.webhook`, to one address, signed and retried; to Cloudflare Queues, SQS and Pub/Sub not built yet ([Publishing events outward](#publishing-events-outward)). |
 | `batches.each` and the file helpers' writes over a provider's list operation, walked by `page.next` | Built, but for a `batches.each` whose `each:` action makes outside calls, which is `toolchain.not_built_yet` ([How a run is kept](#how-a-run-is-kept)). |
-| Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging](17-debugging-and-review.md)), and a record's entry in the [personal-data report](15-personal-data.md) | Not built yet. |
+| Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging](17-debugging-and-review.md)) | Not built yet. |
 | Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for [telemetry](16-built-in-services.md). |
 | The console's timeline | Not built yet ([Debugging](17-debugging-and-review.md)). |
 

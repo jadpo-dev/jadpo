@@ -1706,6 +1706,22 @@ def summary_of(markdown, fallback):
 # written, and where the bundle holds it.
 SKILL = Path('docs/agent-skill/SKILL.md')
 SKILL_IN_BUNDLE = Path('skills/jadpo/SKILL.md')
+SITE = 'https://jadpo.dev/'
+
+
+def versioned_skill(skill, version):
+    """The skill as a release's bundle holds it: each link to the site's newest
+    copy, such as `https://jadpo.dev/docs/primer.md`, put under the release's
+    `/v/<major>.<minor>/`, where the site serves that bundle's own pages. A link
+    already under `/v/` is left alone, and a bundle with no version keeps the
+    skill byte for byte."""
+    minor = re.match(r'(\d+\.\d+)\.\d+', version or '')
+    if not minor:
+        return skill
+    under = f'{SITE}v/{minor.group(1)}/'.encode()
+    return re.sub(re.escape(SITE.encode()) + rb'(?!v/)', under, skill)
+
+
 # Each release's notes (docs/writing.md, "How release notes read"), which the
 # bundle carries byte for byte, outside index.json.
 RELEASES = Path('docs/releases')
@@ -2248,11 +2264,12 @@ class Bundle:
             nav = self.reference.nav({entry['id']: entry for entry in index['pages']}, self.type_groups,
                                      site_path, self.version)
             (out / 'nav.json').write_text(json.dumps(nav, indent=2, ensure_ascii=False) + '\n')
-        # The agent skill goes in byte for byte, outside the index.
+        # The agent skill goes in outside the index, its links to the site
+        # put under the release's own `/v/<minor>/`.
         skill = self.root / SKILL
         if skill.exists():
             (out / SKILL_IN_BUNDLE).parent.mkdir(parents=True, exist_ok=True)
-            (out / SKILL_IN_BUNDLE).write_bytes(skill.read_bytes())
+            (out / SKILL_IN_BUNDLE).write_bytes(versioned_skill(skill.read_bytes(), self.version))
         for notes in sorted((self.root / RELEASES).glob('*.md')):
             (out / RELEASES_IN_BUNDLE).mkdir(parents=True, exist_ok=True)
             (out / RELEASES_IN_BUNDLE / notes.name).write_bytes(notes.read_bytes())
