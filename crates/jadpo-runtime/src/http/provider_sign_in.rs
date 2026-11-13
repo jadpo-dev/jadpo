@@ -568,18 +568,22 @@ impl<'a> Site<'a> {
             ("user-agent", "Jadpo".to_string()),
             ("x-github-api-version", GITHUB_API_VERSION.to_string()),
         ];
-        let mut read = Vec::with_capacity(2);
-        for url in [jadpo_std::http::GITHUB_USER, jadpo_std::http::GITHUB_EMAILS] {
-            let (status, bytes) = outbound
-                .get_with(url, &headers, ANSWER_BYTES, EXCHANGE_MS)
-                .await
-                .map_err(|_| AUTHENTICATION_UNAVAILABLE)?;
-            if status != 200 {
-                return Err(github_refusal(status));
+        let ask = |url: &'static str| {
+            let headers = &headers;
+            async move {
+                let (status, bytes) = outbound
+                    .get_with(url, headers, ANSWER_BYTES, EXCHANGE_MS)
+                    .await
+                    .map_err(|_| AUTHENTICATION_UNAVAILABLE)?;
+                if status != 200 {
+                    return Err(github_refusal(status));
+                }
+                Ok(bytes)
             }
-            read.push(bytes);
-        }
-        github_account(&read[0], &read[1]).ok_or(PROVIDER_FAILED)
+        };
+        let user = ask(jadpo_std::http::GITHUB_USER).await?;
+        let emails = ask(jadpo_std::http::GITHUB_EMAILS).await?;
+        github_account(&user, &emails).ok_or(PROVIDER_FAILED)
     }
 
     /// The user the account signs in: through its link, else the one

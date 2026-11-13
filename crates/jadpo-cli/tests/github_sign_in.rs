@@ -217,6 +217,9 @@ fn project(name: &str) -> PathBuf {
     root
 }
 
+/// An API request: its address and headers.
+type Asked = (String, Vec<(String, String)>);
+
 /// What the stand-in GitHub was asked to sign in, by code.
 struct Grant {
     challenge: String,
@@ -234,7 +237,7 @@ struct GitHub {
     /// The access tokens it gave, each with the account it reads.
     tokens: RefCell<BTreeMap<String, (Value, Value)>>,
     /// Each API request: its address and headers.
-    asked: RefCell<Vec<(String, Vec<(String, String)>)>>,
+    asked: RefCell<Vec<Asked>>,
     /// Every address any request went to.
     reached: RefCell<Vec<String>>,
     /// What its API answers with instead, when set.
@@ -496,7 +499,7 @@ fn someone_signs_in_with_github_through_the_runtime_alone() {
         )),
         asked["code_challenge"]
     );
-    let api: Vec<(String, Vec<(String, String)>)> = host.github.asked.borrow().clone();
+    let api: Vec<Asked> = host.github.asked.borrow().clone();
     assert_eq!(
         api.iter().map(|(at, _)| at.as_str()).collect::<Vec<_>>(),
         [USER, EMAILS]
