@@ -17,6 +17,11 @@
 //!   `scale:` places, by the count of values, `NULL` when there are none.
 //! - A time bucket is its `temporal` operation's SQL form.
 //!
+//! With a `geo.` condition (area 20, "In an include or an aggregate";
+//! chunk Q4) it sends two: the records first, found through the index and
+//! each decided in Jadpo's own code, then the totals of those it kept,
+//! `"id" = ANY($n)` beside the query's conditions.
+//!
 //! A group sorts in Jadpo's own order: text by code point, an enum's
 //! variants in their declared order (`array_position` of the codes they
 //! are stored as), the rest as PostgreSQL orders them.
@@ -25,6 +30,7 @@ use super::*;
 use jadpo_check::data::queries::{AggregateKind, Entry, GroupKey, Grouping};
 use jadpo_sql::aggregate;
 use jadpo_sql::form::{self, Arg, Held};
+use jadpo_std::read::Decided;
 use jadpo_std::{Builtin, Op};
 
 /// One entry's SQL: what the grouped rows select for it, each with the
@@ -69,6 +75,16 @@ impl Planner<'_> {
         };
         conditions.extend(self.access(&mut statement, entity, reach)?);
         let policy = self.policy(&mut statement, entity, Effect::Read, &Row::Table)?;
+        // With `geo.` conditions (chunk Q4), the records are found first and
+        // decided in code, and the totals count only those kept, by `id`.
+        let decided = if jadpo_sql::condition::search_calls(&query.filter).is_empty() {
+            None
+        } else {
+            let id = field(entity, "id")?;
+            let kept = statement.param(Source::Kept, SqlType::Uuid.array());
+            conditions.push(text::any(&id.born, &kept));
+            Some(self.decided(query, entity, reach)?)
+        };
         let limit = match &query.limit {
             Some(Bound::Literal(n)) => Some(n.to_string()),
             Some(Bound::Value(value)) => {
@@ -157,8 +173,72 @@ impl Planner<'_> {
                 missing: None,
                 recheck: None,
                 layer: false,
+                decided,
                 gate: self.query_gate(&query.name),
             },
+        })
+    }
+
+    /// The statement finding an aggregate query's records when it has
+    /// `geo.` conditions, and what the code holds each to (chunk Q4): each
+    /// record's `id` and the fields the conditions test, under every
+    /// condition, the lifecycle's and policy's, the `geo.` tests searching
+    /// their index a millimetre wide, as a query's do.
+    fn decided(
+        &mut self,
+        query: &QueryModel,
+        entity: &EntityModel,
+        reach: Reach,
+    ) -> Option<Decided> {
+        let mut statement = Statement::default();
+        let mut columns = Columns::default();
+        let id = field(entity, "id")?;
+        let id_at = columns.add(&id.name, self.column(entity, id)?);
+        let mut checks = Vec::new();
+        for call in jadpo_sql::condition::search_calls(&query.filter) {
+            let tested = field(entity, &call.field)?;
+            let column = columns.add(&tested.name, self.column(entity, tested)?);
+            checks.push(self.check(call, column)?);
+        }
+        // Deciding reads each record's tested fields, so a sensitive one
+        // is an access record of each, as a list of them would be.
+        let sensitive = self.sensitive_read(entity, &mut columns, false);
+        let mut conditions: Vec<String> = Vec::new();
+        for line in &query.filter {
+            conditions.push(self.condition(&mut statement, entity, line, false)?);
+        }
+        conditions.extend(self.access(&mut statement, entity, reach)?);
+        let policy = self.policy(&mut statement, entity, Effect::Read, &Row::Table)?;
+        let names = borns(entity, &columns.names);
+        let write = |conditions: &[String]| {
+            let mut sql = text::select(&names, &entity.table, "");
+            text::where_clause(&mut sql, conditions, "");
+            sql
+        };
+        let (sql, unpoliced) = both(&write, conditions, policy);
+        let held = self.rules_held(entity, &columns.names, &columns.kinds);
+        Some(Decided {
+            select: Select {
+                sql,
+                unpoliced,
+                permitted: None,
+                params: statement.into_params(),
+                columns: columns.kinds,
+                held,
+                record: Record {
+                    ty: entity.name.clone(),
+                    fields: Vec::new(),
+                },
+                includes: Vec::new(),
+                versions: None,
+                sensitive,
+            },
+            recheck: Recheck {
+                checks,
+                order: None,
+                limit: None,
+            },
+            id: id_at,
         })
     }
 

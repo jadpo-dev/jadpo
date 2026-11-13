@@ -1327,8 +1327,10 @@ same metres the query ordered by.
 ### Where a condition can go
 
 A `geo.` condition is a `where:` line of its own, or joined to the others
-with `and`. An index finds the records a condition holds for, never those
-it doesn't, so a `geo.` condition can't be under `not` or `or`. Under
+with `and`, in a query, an include's `where:` or an aggregate query
+([In an include or an aggregate](#in-an-include-or-an-aggregate)). An
+index finds the records a condition holds for, never those it doesn't,
+so a `geo.` condition can't be under `not` or `or`. Under
 `or`, the rows the code turns down would need the other side's answer,
 which the statement doesn't give. Its value is always given, so it isn't
 a `where_present:` line.
@@ -1336,6 +1338,216 @@ a `where_present:` line.
 A record whose field is `none` meets no `geo.` condition. The values are
 parameters, or fields inside a parameter. `within`'s `distance:` may also
 be a length written out, proved never negative as in code.
+
+### In an include or an aggregate
+
+A `geo.` condition can also be a line of an include's `where:`, or a
+condition of a query that counts and adds up its records
+([Counts, sums and groups](06-reads-and-writes.md#counts-sums-and-groups)).
+The code decides there too: an include gives each record the related
+records that `list.filter` with the same operation would keep, and an
+aggregate's totals are of exactly the records it would keep.
+
+- **An include** searches the index as a query does, and the runtime
+  holds each record it finds to the condition again before it joins its
+  list. Each record's list is still ordered and limited on its own; when
+  the code turns rows down and a list comes out short of its `limit:`
+  though more rows were there, the include asks again for four times as
+  many, as a query does.
+- **An aggregate query** sends two statements. The first finds its
+  records through the index, each with its `id` and the fields the
+  conditions test, and the code decides each one. The second is the
+  query's usual grouped statement, counting only the records the code
+  kept: `"id" = ANY($n)` beside its conditions.
+
+Here a bakery's page lists the patches that deliver to a customer's door,
+and the bakeries delivering there are counted, those with the most
+patches there first:
+
+```jadpo check project=geo-storage file=domains/baking/types/bakery_reach.jadpo
+use baking/entities { Bakery }
+use baking/types { PatchCard }
+
+/// A bakery, with the patches it delivers to a door from.
+type BakeryReach = Output {
+    pick: [Bakery.id, Bakery.name]
+    patches: List<PatchCard>
+}
+```
+
+```jadpo check project=geo-storage file=domains/baking/queries/bakery_reaching.jadpo
+use baking/entities { Bakery, DeliveryPatch }
+use baking/types { BakeryReach }
+
+/// A bakery, with its patches that deliver to a customer's door.
+query bakery_reaching(bakery_id: Bakery.id, customer: Point) -> BakeryReach? {
+    from: Bakery
+    where: Bakery.id == bakery_id
+    include: {
+        patches: {
+            via: DeliveryPatch.bakery_id
+            where: geo.contains(DeliveryPatch.outline, customer)
+            order: [DeliveryPatch.name asc]
+            limit: 10
+        }
+    }
+}
+```
+
+```jadpo check project=geo-storage file=domains/baking/types/reach_tally.jadpo
+use baking/entities { Bakery }
+
+/// How many of a bakery's patches deliver to a door.
+type ReachTally = Output {
+    bakery_id: Bakery.id
+    patches: Int
+}
+```
+
+```jadpo check project=geo-storage file=domains/baking/queries/reach_tallies.jadpo migrate=geo_reach
+use baking/entities { DeliveryPatch }
+use baking/types { ReachTally }
+
+/// The bakeries delivering to a customer's door, the most patches first.
+query reach_tallies(customer: Point) -> List<ReachTally> {
+    from: DeliveryPatch
+    where: geo.contains(DeliveryPatch.outline, customer)
+    group: {
+        bakery_id: DeliveryPatch.bakery_id
+    }
+    aggregate: {
+        patches: count()
+    }
+    order: [patches desc]
+    limit: 10
+}
+```
+
+A customer on the edge of two of a bakery's patches is delivered to from
+both, and a patch across town is neither listed nor counted:
+
+```jadpo check project=geo-storage file=domains/baking/queries/bakery_reaching.test.jadpo
+use baking/entities { Bakery, DeliveryPatch }
+use baking/types { BakeryName, PatchName, ReachTally }
+use baking/actions { draw_patch, open_bakery }
+use baking/queries { reach_tallies }
+
+test "an include and a count keep the patches the code delivers from" {
+    var crumbs: Bakery = open_bakery(
+        BakeryName("Crumbs"),
+        Point {
+            latitude: 51.5
+            longitude: -0.2
+            altitude: none
+        }
+    )
+    var loaf: Bakery = open_bakery(
+        BakeryName("Loaf"),
+        Point {
+            latitude: 51.5072
+            longitude: -0.1276
+            altitude: none
+        }
+    )
+    var west_end: Polygon = Polygon {
+        outer: [
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            }
+        ]
+        holes: []
+    }
+    var east_end: Polygon = Polygon {
+        outer: [
+            Point {
+                latitude: 51.51
+                longitude: -0.09
+                altitude: none
+            },
+            Point {
+                latitude: 51.51
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.53
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.53
+                longitude: -0.09
+                altitude: none
+            },
+            Point {
+                latitude: 51.51
+                longitude: -0.09
+                altitude: none
+            }
+        ]
+        holes: []
+    }
+    var westminster: DeliveryPatch = draw_patch(crumbs, PatchName("Westminster"), west_end)
+    var pimlico: DeliveryPatch = draw_patch(crumbs, PatchName("Pimlico"), west_end)
+    var shoreditch: DeliveryPatch = draw_patch(crumbs, PatchName("Shoreditch"), east_end)
+    var soho: DeliveryPatch = draw_patch(loaf, PatchName("Soho"), west_end)
+    var patches_named: Text = match bakery_reaching(crumbs.id, crumbs.spot) {
+        some(reach) -> text.join(list.map(reach.patches, card -> card.name), ", ")
+        none -> ""
+    }
+    assert patches_named == text.join([pimlico.name, westminster.name], ", ")
+    assert geo.contains(shoreditch.outline, crumbs.spot) == false
+    var tallies: List<ReachTally> = reach_tallies(crumbs.spot)
+    assert list.map(tallies, tally -> tally.bakery_id == crumbs.id) == [true, false]
+    assert list.map(tallies, tally -> tally.bakery_id == soho.bakery_id) == [false, true]
+    assert list.map(tallies, tally -> tally.patches) == [2, 1]
+}
+```
+
+`jadpo sql reach_tallies` shows the two statements:
+
+```sql
+-- reach_tallies, its records with the outline the code decides by
+SELECT "id", "outline"
+FROM "delivery_patch"
+WHERE ST_DWithin("outline", $1, 0.001)
+
+-- then the totals of those it keeps
+SELECT "bakery_id", "patches"
+FROM (
+  SELECT
+    "bakery_id" AS "bakery_id",
+    count(*) AS "patches"
+  FROM "delivery_patch"
+  WHERE ST_DWithin("outline", $1, 0.001)
+    AND "id" = ANY($2)
+  GROUP BY "bakery_id"
+) AS "grouped"
+ORDER BY "patches" DESC, "bakery_id" ASC
+LIMIT 10
+```
 
 ### What each form takes
 
@@ -1928,4 +2140,3 @@ what to use instead:
 |---|---|
 | Everything on this page but the rows below | Built. |
 | Geometries in Redis | Not built yet: waits for entities in Redis ([Reading and writing entities in Redis](06-reads-and-writes.md#reading-and-writing-entities-in-redis)). Until then nothing stores a geometry there. A Redis entity will keep a geometry as its GeoJSON, and every geometry, with and without altitude, comes back from its GeoJSON unchanged, except that a polygon wound clockwise comes back wound by the right-hand rule, which PostGIS storage doesn't do. |
-| A `geo.` condition in an include or an aggregate query | Not built yet (`toolchain.not_built_yet`): an include's records aren't checked again by the code yet, and an aggregate's totals are the database's ([The aggregates](06-reads-and-writes.md#the-aggregates)). |

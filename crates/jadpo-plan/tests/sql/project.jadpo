@@ -886,6 +886,61 @@ query patches_crossing(round: LineString, after: PageCursor?) -> Page<DeliveryPa
     }
 }
 
+// A `geo.` condition in an include, its records rechecked, and in an
+// aggregate, which counts those the code keeps (chunk Q4).
+
+type PatchCard = Output {
+    pick: [DeliveryPatch.id]
+}
+
+type BakeryReach = Output {
+    pick: [Bakery.id, Bakery.name]
+    patches: List<PatchCard>
+}
+
+query bakery_reaching(bakery_id: Bakery.id, customer: Point) -> BakeryReach? {
+    from: Bakery
+    where: Bakery.id == bakery_id
+    include: {
+        patches: {
+            via: DeliveryPatch.bakery_id
+            where: geo.contains(DeliveryPatch.outline, customer)
+            order: [DeliveryPatch.id asc]
+            limit: 10
+        }
+    }
+}
+
+type BakeryCount = Output {
+    bakeries: Int
+}
+
+query bakeries_counted(view: BoundingBox) -> BakeryCount {
+    from: Bakery
+    where: geo.within(Bakery.spot, view)
+    aggregate: {
+        bakeries: count()
+    }
+}
+
+type PatchTally = Output {
+    bakery_id: DeliveryPatch.bakery_id
+    patches: Int
+}
+
+query patches_tallied(customer: Point) -> List<PatchTally> {
+    from: DeliveryPatch
+    where: geo.contains(DeliveryPatch.outline, customer)
+    group: {
+        bakery_id: DeliveryPatch.bakery_id
+    }
+    aggregate: {
+        patches: count()
+    }
+    order: [patches desc]
+    limit: 10
+}
+
 type BookTitle = Text {
     max_length: 200
 }
