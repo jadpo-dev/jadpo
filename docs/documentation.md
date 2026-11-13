@@ -380,9 +380,14 @@ confirms both. The skill is versioned with the language: a release's
 bundle holds the skill of that release. Its links are full URLs, because
 the bundle's text is served as it is.
 
-The bundle holds it at `skills/jadpo/SKILL.md`, a byte-for-byte copy with
-no entry in the bundle's index. The site serves that file as it is (the
-`ETag` from its hash) at `/.well-known/agent-skills/jadpo/SKILL.md`, and
+The bundle holds it at `skills/jadpo/SKILL.md`, with no entry in the
+bundle's index. It is the file as written, but for its links to the site:
+each one to the newest copy, such as `https://jadpo.dev/docs/primer.md`, is
+put under the release's own `https://jadpo.dev/v/<major>.<minor>/`, so a
+release's skill sends an agent to that release's primer, `llms.txt` and
+topics. A link already under `/v/` stays as written. The site serves that
+file as it is (the `ETag` from its hash) at
+`/.well-known/agent-skills/jadpo/SKILL.md`, and
 builds `/.well-known/agent-skills/index.json` from the front matter: for
 each skill its `name`, `description`, `type` (`skill-md`), `url` and
 `digest` (`sha256:` and the hex digest of the file). `/v/<version>/…`

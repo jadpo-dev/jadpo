@@ -501,6 +501,6 @@ To let each person see only their own records, see
 
 ## Not built yet
 
-Signing in with GitHub or Apple isn't built yet, since neither is plain
-OpenID Connect. Use magic links, passkeys, or Google and other OpenID
+Signing in with Apple isn't built yet. Use magic links, passkeys,
+[GitHub](../language/08-identity.md#github), or Google and other OpenID
 Connect providers.

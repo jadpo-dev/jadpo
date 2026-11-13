@@ -538,4 +538,3 @@ email is sent.
 
 - The inbox's link from a mail to its trace, and `jadpo trace`, aren't built
   yet. A mail's `trace` line is an id you can look for in your logs.
-- The privacy emails Jadpo sends with data requests aren't built yet.

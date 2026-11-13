@@ -1006,8 +1006,7 @@ Every command takes `--json`, and `jadpo help --json` describes them all
 | Upgrade a package | `jadpo package update <name> --plan`, then without `--plan` | Fix compile errors, then as above |
 | Explain a production event | `jadpo incident <event>` | `jadpo test new --from-event` |
 
-Not built yet: `jadpo rename`, `jadpo incident` and
-`jadpo test new --from-event`.
+Not built yet: `jadpo incident` and `jadpo test new --from-event`.
 
 ## Examples: an API change, a package upgrade and an incident
 <!-- topic: records-worked-examples (was three-journeys) -->
