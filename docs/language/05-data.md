@@ -569,7 +569,10 @@ use people/entities { Contact }
 use people/failures { AddressTaken }
 
 /// Adds a contact at `email`, and at `reserve_email` if they have one.
-action add_contact(email: EmailWithName, reserve_email: EmailWithName?) fails AddressTaken -> Contact {
+action add_contact(
+    email: EmailWithName,
+    reserve_email: EmailWithName?
+) fails AddressTaken -> Contact {
     return attempt Contact.create {
         set: {
             email: email
