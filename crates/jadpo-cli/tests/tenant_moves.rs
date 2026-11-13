@@ -432,5 +432,11 @@ fn a_move_needs_what_a_create_in_the_new_tenant_would() {
     write(&root, "domains/work/routes/moves.test.jadpo", TESTS);
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("3 passed"), "{}", tested.stdout);
+    assert!(
+        tested
+            .stdout
+            .contains("9 passed, 3 route tests, 6 generated tests"),
+        "{}",
+        tested.stdout
+    );
 }

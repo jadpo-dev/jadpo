@@ -238,5 +238,11 @@ fn a_get_route_sends_a_query_s_layer_as_plain_geojson() {
     // The project's own route test, on a disposable database.
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("1 passed"), "{}", tested.stdout);
+    assert!(
+        tested
+            .stdout
+            .contains("2 passed, 1 route test, 1 generated test"),
+        "{}",
+        tested.stdout
+    );
 }

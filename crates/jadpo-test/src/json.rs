@@ -15,6 +15,13 @@ pub fn json(run: &Run) -> Json {
     for result in &run.results {
         *ran.entry(result.test.kind).or_insert(0usize) += 1;
     }
+    // How many of them the compiler generated for the project's routes
+    // (area 13, "Tests generated for each route"), each counted with its kind too.
+    let generated = run
+        .results
+        .iter()
+        .filter(|result| result.test.generated())
+        .count();
     // Without `--full`, a kind no test has says nothing, nor does a filter
     // not asked for, and a test that passed is counted, not listed, as on
     // the screen (chunk A14).
@@ -49,6 +56,14 @@ pub fn json(run: &Run) -> Json {
                     "ranByKind",
                     kinds(&|kind| ran.get(&kind).copied().unwrap_or(0)),
                 ),
+                (
+                    "generated",
+                    if run.full || generated > 0 {
+                        generated.into()
+                    } else {
+                        Json::Null
+                    },
+                ),
             ]),
         ),
         (
@@ -66,7 +81,17 @@ pub fn json(run: &Run) -> Json {
                                 _ => None,
                             }
                         });
-                        test(i + 1, result, first)
+                        let mut entry = test(i + 1, result, first);
+                        // With `--full`, what a generated test sent and
+                        // what each answer was to be (area 13).
+                        if run.full
+                            && let Json::Object(fields) = &mut entry
+                        {
+                            let made = run.generated.get(&result.test.key);
+                            fields
+                                .push(("requests".to_string(), made.map_or(Json::Null, requests)));
+                        }
+                        entry
                     }),
             ),
         ),
@@ -90,6 +115,39 @@ pub fn json(run: &Run) -> Json {
     } else {
         document.pruned()
     }
+}
+
+/// What generated test `made` sends: each request's first line, what it
+/// does and what its answer is to be.
+fn requests(made: &crate::generated::Generated) -> Json {
+    use crate::generated::Expect;
+    Json::array(made.planned.iter().map(|planned| {
+        let expected = match &planned.expect {
+            Expect::Problem { field, rule } => Json::object([
+                ("status", Json::from(422i64)),
+                ("code", Json::from("invalid_input")),
+                ("field", Json::from(field)),
+                ("rule", Json::from(rule)),
+            ]),
+            Expect::Failure {
+                status,
+                code,
+                details,
+            } => Json::object([
+                ("status", Json::from(i64::from(*status))),
+                ("code", Json::from(code)),
+                ("details", Json::array(details.iter().map(Json::from))),
+            ]),
+            Expect::Output { status, .. } => {
+                Json::object([("status", Json::from(i64::from(*status)))])
+            }
+        };
+        Json::object([
+            ("request", Json::from(planned.sent.line().as_str())),
+            ("does", Json::from(&planned.sent.does)),
+            ("expected", expected),
+        ])
+    }))
 }
 
 fn selection(selection: &Selection, full: bool) -> Json {
@@ -121,6 +179,14 @@ fn test(order: usize, result: &TestResult, repeat: Option<(usize, &FaultInfo)>) 
         ("endLine".to_string(), test.end_line.into()),
         ("kind".to_string(), test.kind.word().into()),
         (
+            "generated".to_string(),
+            if test.generated() {
+                true.into()
+            } else {
+                Json::Null
+            },
+        ),
+        (
             "outcome".to_string(),
             if result.failure.is_some() {
                 "failed"
@@ -135,7 +201,9 @@ fn test(order: usize, result: &TestResult, repeat: Option<(usize, &FaultInfo)>) 
             Detail::Assertion(assertion) => (assertion_json(assertion), Json::Null, Json::Null),
             Detail::Failure(info) => (Json::Null, failure_json(info), Json::Null),
             Detail::Fault(info) => (Json::Null, Json::Null, fault_json(info, repeat)),
-            Detail::Fake(_) | Detail::Recording(_) => (Json::Null, Json::Null, Json::Null),
+            Detail::Fake(_) | Detail::Recording(_) | Detail::Generated(_) => {
+                (Json::Null, Json::Null, Json::Null)
+            }
         };
         let fake = match &failure.detail {
             Detail::Fake(info) => Json::object([
@@ -183,6 +251,16 @@ fn test(order: usize, result: &TestResult, repeat: Option<(usize, &FaultInfo)>) 
             ]),
             _ => Json::Null,
         };
+        let generated = match &failure.detail {
+            Detail::Generated(info) => Json::object([
+                ("route", Json::from(&info.route)),
+                ("request", Json::from(&info.request)),
+                ("does", Json::from(&info.does)),
+                ("expected", Json::from(&info.expected)),
+                ("got", Json::from(&info.got)),
+            ]),
+            _ => Json::Null,
+        };
         entries.push((
             "failure".to_string(),
             Json::object([
@@ -201,6 +279,7 @@ fn test(order: usize, result: &TestResult, repeat: Option<(usize, &FaultInfo)>) 
                 ("fault", fault),
                 ("fake", fake),
                 ("recording", recording),
+                ("generated", generated),
                 (
                     "delivery",
                     failure.delivery.as_ref().map_or(Json::Null, |delivery| {
@@ -387,7 +466,7 @@ pub fn schema() -> Json {
                 ),
                 (
                     "counts",
-                    "total, ran, passed, failed, and totalByKind and ranByKind for pure, action, route and schedule",
+                    "total, ran, passed, failed, totalByKind and ranByKind for pure, action, route and schedule, and generated, how many that ran the compiler generated for the project's routes (each counted with its kind too)",
                 ),
                 (
                     "tests",
@@ -472,6 +551,14 @@ pub fn schema() -> Json {
                     "kind",
                     "pure, action, route, schedule or recording (a recording of the app's own integration, read by its operation's decoders, or of a prompt's answer, read through each type the prompt is asked for as)",
                 ),
+                (
+                    "generated",
+                    "true for a test the compiler generated for a route, which sits at the route it tests; left out otherwise",
+                ),
+                (
+                    "requests",
+                    "With --full: for a generated test, each request it sends, { request (its first line), does, expected: { status, and code, field and rule for bad input, code and details for a failure } }; null for a test the project writes",
+                ),
                 ("outcome", "passed or failed"),
                 ("failure", "Only when it failed"),
             ]),
@@ -504,6 +591,10 @@ pub fn schema() -> Json {
                 (
                     "recording",
                     "For test.recording_undecodable and test.round_trip_failed: the package and the operation, or for a prompt's recording the prompt and the recording's name, the field and rule a decoder refused (when one did), the value recorded and the one written back (for a round trip), and the message",
+                ),
+                (
+                    "generated",
+                    "For a generated test that failed: the route it tests, the request whose answer broke the route's API document (its first line), what it does, what the document says it is answered with and what it was answered with",
                 ),
                 (
                     "delivery",

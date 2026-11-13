@@ -455,7 +455,7 @@ jadpo test
 ```
 
 ```text
-tested: 4 passed, 4 route tests
+tested: 7 passed, 4 route tests, 3 generated tests
 ```
 
 Other tests sign in with `as: Principal.user(member)` in a `request`,

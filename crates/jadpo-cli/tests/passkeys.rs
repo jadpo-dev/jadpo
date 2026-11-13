@@ -1418,7 +1418,12 @@ fn a_route_test_signs_in_with_test_passkeys() {
     let done = jadpo_cli::run(&["test".to_string()], &env);
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
-    assert!(done.stdout.contains("5 passed"), "{}", done.stdout);
+    assert!(
+        done.stdout
+            .contains("11 passed, 5 route tests, 6 generated tests"),
+        "{}",
+        done.stdout
+    );
 }
 
 // --- confirming one request with a passkey (chunk R1) --------------------------

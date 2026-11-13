@@ -415,7 +415,7 @@ jadpo test
 ```
 
 ```text
-tested: 3 passed, 2 action tests, 1 route test
+tested: 5 passed, 2 action tests, 1 route test, 2 generated tests
 ```
 
 ## How long entries last

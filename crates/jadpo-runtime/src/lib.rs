@@ -182,8 +182,8 @@ pub use boundary::{
     outcome_unknown, refused, unavailable,
 };
 pub use ctx::{
-    Binding, CallKey, Caller, Capabilities, Ctx, EmitRefused, Held, SessionEffect, SignInRefused,
-    System,
+    Binding, CallKey, Caller, Capabilities, Ctx, EmitRefused, Forced, Generated, Held,
+    SessionEffect, SignInRefused, System,
 };
 pub use env::{Clock, Env};
 pub use executor::{Executor, Stalled, YieldNow, block_on, yield_now};

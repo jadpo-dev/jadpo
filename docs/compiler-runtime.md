@@ -2232,6 +2232,27 @@ whose value is `Expr::Emitted { event, fields }`, its fields' values handed
 to `test_steps::emitted`, which compares them with `==` and otherwise gives
 `AssertionDetail::Emitted`: the event wanted and each of its type kept.
 
+**Generated tests** (area 13, "Tests generated for each route"; chunk W2).
+`jadpo_test::generated::discover` reads each API's OpenAPI document
+(`jadpo_check::routes::openapi::documents`) and, for each route the
+application declares, plans up to three tests from it and the route's
+codecs, the values made by `fakes::generated`: requests each making one
+problem for the bad-input test, and the route's valid request answered
+with each failure the document lists, and with a value of its output.
+Each is a route `Test` keyed `generated <check> <route key>` at the
+route's place. A run sends its requests through `test_run::once`, whose
+`Once::exchanges` stand in for a callable: each `test_run::Exchange` goes
+through `http::handle` in the test's context with a `Generated` on the
+`Ctx` (only with `testing`), whose caller `run_route` takes in place of
+authenticating and whose `Forced` outcome `run_with_caller` answers with
+once the key is claimed, in place of what the route runs. A forced failure
+is made by `Failure::of` from the program's `FailurePlan`, as the program
+raises one, and a forced output is read through the program's codecs, so
+each executor writes the envelope and the output as a client gets them.
+Each `Answer` comes back in `Ran::answers`, and `generated::judge` holds
+it to the document. The compiled run compares their records with the
+interpreter's as any test's; the workerd comparison leaves them out.
+
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one
 [language test project](https://raw.githubusercontent.com/gleam-lang/gleam/main/test/language/Makefile)

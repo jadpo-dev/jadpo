@@ -141,11 +141,13 @@ jadpo test
 ```
 
 ```text
-tested: 1 passed, 1 route test
+tested: 3 passed, 1 route test, 2 generated tests
 ```
 
-The test sent the starter route a request and checked its answer. On
-the next page you look at what `jadpo new` wrote, and replace the
+The test sent the starter route a request and checked its answer. The
+two generated tests are `jadpo test`'s own: for every route, it checks
+that bad input is refused and that the answer holds only what the
+route's output declares. On the next page you look at what `jadpo new` wrote, and replace the
 starter with the todo app's first route.
 
 ## When something is wrong

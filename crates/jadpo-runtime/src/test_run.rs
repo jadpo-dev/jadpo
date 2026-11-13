@@ -101,6 +101,39 @@ pub struct Once<'a> {
     /// The record each statement, event and outside call is kept in, when
     /// the run keeps one; the host's stores keep theirs in it too.
     pub record: Option<Rc<Record>>,
+    /// For a generated test (area 13, "Tests generated for each route"), the requests it
+    /// sends in place of running `callable`, which is then not a test's;
+    /// empty for every other test.
+    pub exchanges: &'a [Exchange],
+}
+
+/// One request a generated test sends (area 13, "Tests generated for each route"),
+/// through the HTTP component in the test's own context as a route test's
+/// is, answered as `generated` says: as its caller, and with what it
+/// forces in place of what the route runs.
+#[derive(Clone, Debug)]
+pub struct Exchange {
+    pub request: crate::http::Request,
+    pub generated: crate::Generated,
+}
+
+/// What a generated test's request was answered with, as a client reads
+/// it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Answer {
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
+    pub body: String,
+}
+
+impl Answer {
+    /// The first header called `name`, compared without case.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(header, _)| header.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
 }
 
 /// How one run of a test went.
@@ -117,6 +150,9 @@ pub struct Ran {
     pub usage: Vec<Usage>,
     /// What its keyed provider calls did, by operation.
     pub effects: Vec<(String, usize)>,
+    /// What each of a generated test's requests was answered with, in the
+    /// order they were sent; empty for every other test.
+    pub answers: Vec<Answer>,
 }
 
 /// Runs one test on `executor` over `host`, which holds its stores, as
@@ -163,7 +199,12 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
             None => ctx.track_steps(),
         }
     }
-    let outcome = executor.run(&mut ctx, once.callable, Vec::new()).await;
+    let mut answers = Vec::new();
+    let outcome = if once.exchanges.is_empty() {
+        executor.run(&mut ctx, once.callable, Vec::new()).await
+    } else {
+        exchanged(executor, &mut ctx, once.exchanges, &mut answers).await
+    };
     let outcome = export_after_erasure(&mut ctx, plan, once.order, outcome).await;
     if let Some(record) = &once.record {
         record.push(Entry::Outcome(crate::record::outcome(
@@ -186,7 +227,36 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
         crashed: ctx.crashed(),
         usage,
         effects: fake.effects(),
+        answers,
     }
+}
+
+/// Sends a generated test's requests, each through the HTTP component in
+/// the test's context, keeping what each was answered with in `answers`:
+/// a `Unit` value, or the fault behind a 500, which ends the test as a
+/// route test's does.
+async fn exchanged(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    exchanges: &[Exchange],
+    answers: &mut Vec<Answer>,
+) -> Outcome {
+    let app = executor.app();
+    for exchange in exchanges {
+        ctx.set_generated(exchange.generated.clone());
+        let id = crate::http::request_id(ctx, u64::from(ctx.actions()));
+        let mut response = crate::http::handle(&app, executor, ctx, &exchange.request, &id).await;
+        ctx.set_generated(crate::Generated::default());
+        if let Some(fault) = response.fault.take() {
+            return Outcome::Fault(fault);
+        }
+        answers.push(Answer {
+            status: response.status,
+            headers: response.headers,
+            body: String::from_utf8_lossy(&response.body).into_owned(),
+        });
+    }
+    Outcome::Value(jadpo_value::Value::Unit)
 }
 
 /// The check generated for each person a test erases (area 15, "Export"):
@@ -247,6 +317,7 @@ pub fn stalled(places: &Places, record: Option<&Record>) -> Ran {
         crashed: false,
         usage: Vec::new(),
         effects: Vec::new(),
+        answers: Vec::new(),
     }
 }
 
