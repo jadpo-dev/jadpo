@@ -189,8 +189,7 @@ provider {
 
 ```jadpo check project=k4-provide-cache file=shared/providers/acme_cache/v1/provides/cache.jadpo expect=package.provider_invalid
 /// Would fill `cache`.
-provide cache {
-}
+provide cache {}
 ```
 
 ```text output

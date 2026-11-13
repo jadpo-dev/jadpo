@@ -1455,27 +1455,16 @@ no answer, or an answer that doesn't decode keeps nothing
 ### `jadpo package conform`
 
 `conform <package> <capability>` runs a capability's conformance suite
-against a package that fills it ([Proving a package
-works](11-integrations.md#proving-a-package-works)), in a scratch app
-holding the package as installed. By default it uses the package's
-recordings and a local fake on the loopback address, every request sent
-there whatever host the package names, so nothing leaves your machine.
+([Proving a package works](11-integrations.md#proving-a-package-works))
+in a scratch app holding the package as installed. By default it uses the
+package's recordings and a local fake on the loopback address, so nothing
+leaves your machine. `ai` runs six cases ([AI](21-ai.md)), `email` four
+and `receiving` three.
 
-- `ai` runs six cases: a typed answer, a refusal, a cut-off, a stream, an
-  embedding of the declared length, and the usage reported ([AI](21-ai.md)).
-- `email` runs four: a message, its receipt read; text only; an
-  attachment; each mapped failure read as the email's.
-- `receiving` runs three: a batch of messages, an empty queue, and a
-  message acknowledged by its handle.
-
-`--live` runs them against the provider's API, through the app's
-connection to the package. It is refused without that connection,
-without its credential or address set, or without `ai:` or `email:`
-through it (`conform.refused`). The live `email` run sends one email to
-the app's own sender address. `receiving` has no live run, since it
-would take the app's own messages off its queue. A case that fails is
-`conform.failed`. A capability whose mapping isn't read yet has no suite
-(`toolchain.not_built_yet`).
+`--live` runs them against the provider's API through the app's
+connection to the package, and is refused without it, its credential or
+address, or `ai:` or `email:` through it (`conform.refused`). `receiving`
+has no live run. A case that fails is `conform.failed`.
 
 ### `jadpo package protocol`
 
@@ -3991,7 +3980,7 @@ commands replace (`schema`, `artifacts`, `watch`).
 | `acceptance.no_reason` | `check`, `build` | An acceptance this change adds has no `///` line above `acceptance` saying why a person accepted the changes it lists |
 | `acceptance.unmatched` | `check`, `build` | Acceptance lists a change this change doesn't make |
 | `conform.failed` | `package conform` | A package's answers to `jadpo package conform` don't fit the capability it fills, or the suite couldn't run |
-| `conform.refused` | `package conform` | The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, or `ai:` doesn't ask its models through it |
+| `conform.refused` | `package conform` | The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, `ai:` or `email:` doesn't go through it, or the capability is `receiving`, which has no live run |
 | `protocol.mismatch` | `package protocol` | A registry's OpenAPI document differs from the registry protocol |
 | `protocol.unreadable` | `package protocol` | The document given to `jadpo package protocol` couldn't be read as OpenAPI's JSON |
 | `recording.failed` | `package record`, `ai record` | A recording by `jadpo package record` or `jadpo ai record` got no answer worth keeping from the sandbox or the model, or its call couldn't be made |

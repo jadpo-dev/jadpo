@@ -453,7 +453,7 @@ fn a_mapping_is_data_and_names_a_capability_a_package_fills() {
     write(
         &root,
         &format!("{home}/provides/sms.jadpo"),
-        "/// Would fill `sms`.\nprovide sms {\n}\n",
+        "/// Would fill `sms`.\nprovide sms {}\n",
     );
     let out = jadpo(&root, &["check", "--json"]);
     assert_eq!(out.code, 1, "{}", said(&out));
