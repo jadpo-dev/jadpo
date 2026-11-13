@@ -105,7 +105,7 @@ spdx = { version = "=0.13.6", default-features = false }
 # attributes, which Jadpo's policy never allows. html5ever is ammonia's
 # own parser, pinned to the release ammonia takes, read directly by
 # `markup::plain_text`, which walks the tree the sanitiser keeps.
-ammonia = { version = "=4.2.4", default-features = false }
+ammonia = { version = "=4.2.5", default-features = false }
 html5ever = { version = "=0.40.1", default-features = false }
 # CommonMark for `markup.to_html` (area 19, "Text formats"; jadpo-value
 # only): pulldown-cmark, MIT, pure Rust and built for wasm32, with only its
