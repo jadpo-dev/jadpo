@@ -2348,6 +2348,9 @@ The database works a stored field out only with `+` and `-`, which give
 the same result in SQL as in Jadpo (`+` joining text is written `||`).
 They must sit inside a construction the declared ranges prove:
 `ViewCount(...)` here, since a count of at least 0 plus 1 is at least 0.
+A construction the ranges don't prove maps each rule it can break
+instead, and the statement checks them
+([A one-step update that refuses](#a-one-step-update-that-refuses)).
 Both sides are of one kind, a whole number added to a decimal aside: an
 `Instant` moved by a `Duration`, which SQL keeps in columns of two types,
 is `data.update_by_id_value`. Anything else needs the record loaded
@@ -2371,6 +2374,127 @@ the field's `scale`, since PostgreSQL would round the sum its own way
 (half away from zero) rather than Jadpo's. A literal counts by its own
 places and any other value by its type's `scale`. A value whose type sets
 no `scale` is refused (`data.stored_decimal_scale`).
+
+### A one-step update that refuses
+
+Taking stock can leave less than none, so the declared ranges can't prove
+`Stock(Product.stock - ordered)`. The construction maps the rule it can
+break to a failure instead, in a block after it, as any construction does
+([Construction failures by rule](02-values-and-types.md#construction-failures-by-rule)):
+
+```jadpo check project=refusing file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=refusing file=domains/shop/types/stock.jadpo hidden
+/// How many of a product are on the shelves.
+type Stock = Int {
+    min: 0
+}
+```
+
+```jadpo check project=refusing file=domains/shop/entities/product.jadpo hidden
+use shop/types { Stock }
+
+/// A product on sale.
+entity Product {
+    id: Uuid
+    stock: Stock
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+```
+
+```jadpo check project=refusing file=domains/shop/failures/out_of_stock.jadpo
+/// There isn't enough stock to fill the order.
+type OutOfStock = Failure {
+    kind: FailureKind.conflict
+    message: "There isn't enough stock."
+}
+```
+
+```jadpo check project=refusing file=domains/shop/actions/take_stock.jadpo migrate=initial
+use shop/entities { Product, ProductNotFound }
+use shop/types { Stock }
+use shop/failures { OutOfStock }
+
+/// Takes what was ordered from a product's stock, in one step.
+action take_stock(
+    product_id: Product.id,
+    ordered: Stock
+) fails ProductNotFound, OutOfStock -> Product {
+    return attempt Product.update(product_id) {
+        set: {
+            stock: Stock(Product.stock - ordered) {
+                min: OutOfStock
+            }
+        }
+    }
+}
+```
+
+The database checks the rule in the statement that works the value out,
+and no row updated means the product isn't there or the rule refused it:
+
+```sql
+UPDATE "product"
+SET "stock" = ("stock" - $1)
+WHERE "id" = $2
+  AND ("stock" - $1) >= 0
+  ...
+```
+
+When it changes no row, the runtime asks once more which it was,
+`SELECT ("stock" - $2) >= 0 FROM "product" WHERE "id" = $1`: no row is
+`ProductNotFound`, and a row whose rule doesn't hold is `OutOfStock`.
+`jadpo sql take_stock` shows both statements. The update stays one step,
+and the action loads no record, so it runs at read committed
+([Which isolation level an action runs at](#which-isolation-level-an-action-runs-at)).
+Two buyers taking the last one at once never rerun each other: the second
+waits for the first's lock, finds none left and fails with `OutOfStock`.
+A row that changed between the two statements so that every rule holds,
+restocked meanwhile, runs the action again, as any concurrent change
+does. Both are checked live against PostgreSQL in
+`crates/jadpo-cli/tests/writes.rs`.
+
+These tests run on PostgreSQL:
+
+```jadpo check project=refusing file=domains/shop/actions/take_stock.test.jadpo
+use shop/entities { Product, ProductNotFound }
+use shop/failures { OutOfStock }
+
+test "stock is taken down to none, and never below" {
+    var product: Product = make.Product {
+        stock: 3
+    }
+    var left: Product = attempt take_stock(product.id, 2)
+    assert left.stock == 1
+    assert take_stock(product.id, 2) fails OutOfStock
+    var emptied: Product = attempt take_stock(product.id, 1)
+    assert emptied.stock == 0
+}
+
+test "a product that isn't there is not found, not out of stock" {
+    assert take_stock("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e", 1) fails ProductNotFound
+}
+```
+
+- **Each arm names a `conflict` failure,** since what refuses the update
+  is the value stored, not the request
+  ([Turning one failure into another](04-failures.md#turning-one-failure-into-another)).
+  `invalid:` covers every rule without an arm of its own, and the write
+  fails with each failure the arms name, so `fails` lists them.
+- **The database checks `min` and `max`** of a number, of an amount of
+  money in its minor units and of a duration, and **`min_length` and
+  `max_length` of text**, which it counts in characters as Jadpo does. A
+  rule it can't check as Jadpo does, a `pattern` or a `format`, is
+  `data.stored_value_unproven`, as is a rule no arm maps.
+- **An arm for a rule that can't break** is `failure.rule_cannot_break`,
+  as on any construction.
 
 ### Which isolation level an action runs at
 
@@ -2403,8 +2527,9 @@ An action loads a record when it:
   ([Erasure](15-personal-data.md#erasure)).
 
 A create, and an update, delete or other transition by `id`, counters
-among them, loads nothing: the store checks a reference a create sets in
-the same statement. Calling a function never loads a record.
+and updates that refuse among them, loads nothing: the store checks a
+reference a create sets in the same statement, and a refused update asks
+afresh which rule refused it. Calling a function never loads a record.
 
 `jadpo check` decides each action and fixture from these and the actions
 and fixtures it calls. It writes the level into the manifest as

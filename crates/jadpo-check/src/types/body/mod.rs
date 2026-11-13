@@ -626,6 +626,11 @@ struct Body<'a> {
     /// While an update by `id` of this entity checks its values: the
     /// entity whose stored fields they may read (area 6, "Counters").
     stored: Option<String>,
+    /// While an update by `id` checks its `set:`: a construction over
+    /// stored fields may map the rules it can break, and the failures its
+    /// arms name, which the write can fail with (area 6, "A one-step
+    /// update that refuses"; chunk Q2b).
+    refusing: Option<Vec<String>>,
     /// While a computed backfill is checked (area 5, chunk 5.6b): the
     /// fields of `stored`'s entity this migration retires, with their
     /// types, which the backfill may read though the entity no longer
@@ -695,6 +700,7 @@ impl<'a> Body<'a> {
             loops: 0,
             pending_block: None,
             stored: None,
+            refusing: None,
             retired: Vec::new(),
             added: Vec::new(),
             refitted: Vec::new(),
