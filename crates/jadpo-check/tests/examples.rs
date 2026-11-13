@@ -567,6 +567,7 @@ const BODY: &[&str] = &[
     "write transition conflict arm",
     "write conflict arm",
     "write conflict arm with fields",
+    "write update refusing a stored value's rule",
     "expr stored",
     "build object",
     "build variant with fields",
@@ -1098,6 +1099,9 @@ fn body_features(
                     }
                     if conflicts.iter().any(|arm| !arm.fields.is_empty()) {
                         out.insert("write conflict arm with fields");
+                    }
+                    if conflicts.iter().any(|arm| arm.stored.is_some()) {
+                        out.insert("write update refusing a stored value's rule");
                     }
                 }
                 Expr::Stored { .. } => {
