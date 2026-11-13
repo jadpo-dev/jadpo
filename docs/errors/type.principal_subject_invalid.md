@@ -57,8 +57,8 @@ principal {
 }
 
 config {
-    issuer: Url
     audience: Text
+    issuer: Url
 }
 
 authentication {
@@ -167,8 +167,8 @@ principal {
 }
 
 config {
-    issuer: Url
     audience: Text
+    issuer: Url
 }
 
 authentication {
@@ -195,6 +195,9 @@ entity Member {
     badge: Badge
 }
 ```
+
+A token now names a member by the subject their provider sends, and the
+badge stays on their record.
 
 ## Related
 

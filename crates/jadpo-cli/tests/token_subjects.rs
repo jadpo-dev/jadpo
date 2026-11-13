@@ -56,14 +56,14 @@ principal {
     (
         "config.jadpo",
         r#"config {
-    session_signing_key: SigningKey
+    audience: Text {
+        default: "fleet"
+    }
     browser_origin: Url
     issuer: Url {
         default: "https://id.fleet.example/"
     }
-    audience: Text {
-        default: "fleet"
-    }
+    session_signing_key: SigningKey
 }
 "#,
     ),
@@ -293,10 +293,12 @@ routes Me {
 use fleet/actions { join, register_van }
 
 test "a courier signs in as their whole mailbox, each way in" {
-    var ann: Courier = attempt join(EmailWithName {
-        name: "Ann Lee"
-        address: "ann@fleet.example"
-    })
+    var ann: Courier = attempt join(
+        EmailWithName {
+            name: "Ann Lee"
+            address: "ann@fleet.example"
+        }
+    )
     var by_session: Response = request {
         method: HttpMethod.get
         path: "/me"
@@ -312,10 +314,12 @@ test "a courier signs in as their whole mailbox, each way in" {
 }
 
 test "a van signs in with its key as its whole registration" {
-    var bo: Courier = attempt join(EmailWithName {
-        name: "Bo Diaz"
-        address: "bo@fleet.example"
-    })
+    var bo: Courier = attempt join(
+        EmailWithName {
+            name: "Bo Diaz"
+            address: "bo@fleet.example"
+        }
+    )
     var van: Van = attempt register_van(
         VehicleRegistration {
             country: Country.gb
@@ -433,8 +437,8 @@ principal {
     (
         "config.jadpo",
         r#"config {
-    session_signing_key: SigningKey
     browser_origin: Url
+    session_signing_key: SigningKey
 }
 "#,
     ),
@@ -575,10 +579,12 @@ use club/types { CardScheme, MembershipCard }
 use club/actions { enrol }
 
 test "a member signs in as their whole card" {
-    var ann: Member = attempt enrol(MembershipCard {
-        scheme: CardScheme.senior
-        number: "S-0042"
-    })
+    var ann: Member = attempt enrol(
+        MembershipCard {
+            scheme: CardScheme.senior
+            number: "S-0042"
+        }
+    )
     var own: Response = request {
         method: HttpMethod.get
         path: "/me"
