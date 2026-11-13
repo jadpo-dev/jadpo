@@ -3483,13 +3483,16 @@ See [Built-in emails](16-built-in-services.md) for both settings.
 
 | What you wrote | Error |
 |---|---|
-| A name in `providers:` that isn't a connection on `Driver.oidc` | `semantic.auth_setting_invalid` |
+| A name in `providers:` that isn't a connection on `Driver.oidc` or `Driver.github` | `semantic.auth_setting_invalid` |
 | A provider named `magic_link`, `passkey` or `external_token`, or named twice | `semantic.auth_setting_invalid` |
 | `providers:` without `browser_session:`, or without its `origin:` | `semantic.auth_setting_required` |
 | `providers:` without `on_first_sign_in:` | `semantic.auth_setting_required` |
 | A `Driver.oidc` connection without `issuer:`, `client_id:` or `credential:` | `connection.key_missing` |
-| `issuer:` not reading a `Url` setting, `client_id:` not a `Text` one, or `credential:` not a secret one | `connection.value_invalid` |
-| Any other setting on a `Driver.oidc` connection | `connection.key_invalid` |
+| A `Driver.github` connection without `client_id:` or `credential:` | `connection.key_missing` |
+| `issuer:` not reading a `Url` setting, `client_id:` or `organisation:` not a `Text` one, or `credential:` not a secret one | `connection.value_invalid` |
+| `issuer:` or `organisation:` on a `Driver.github` connection | `connection.key_invalid` |
+| `organisation:` on a `Driver.oidc` connection whose issuer setting's `default:` or `test:` is neither Google's nor a Microsoft tenant's | `connection.key_invalid` |
+| Any other setting on a `Driver.oidc` or `Driver.github` connection | `connection.key_invalid` |
 | A route your app writes at `/auth/<name>/start` or `/auth/<name>/callback` | `route.path_overlap` |
 | `SignInMethod.<name>` for a provider the app doesn't name | `type.unknown_enum_variant` |
 | `test_providers.sign_in` anywhere but a test | `semantic.request_invalid` |

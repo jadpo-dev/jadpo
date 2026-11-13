@@ -611,7 +611,7 @@ types = "Money"
                               '- `--color <when>`: Choose when to use colour\n', page)
                 self.assertIn(f'`jadpo {name} --json` writes one JSON document to standard output', page)
 
-    def test_the_agent_skill_goes_in_byte_for_byte(self):
+    def test_the_agent_skill_goes_in_byte_for_byte_without_a_version(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             catalogue, pages, errors = tree(root)
@@ -624,6 +624,28 @@ types = "Money"
             self.assertEqual(len(docs.check_skill(root)), 2)
             (root / docs.SKILL).unlink()
             self.assertIn('is missing', docs.check_skill(root)[0])
+
+    def test_a_releases_skill_links_its_own_version(self):
+        skill = (b'Read https://jadpo.dev/docs/primer.md and https://jadpo.dev/llms.txt, '
+                 b'each at `https://jadpo.dev/docs/<id>.md`, or under `https://jadpo.dev/v/<version>/`; '
+                 b'https://github.com/jadpo-dev/jadpo stays.\n')
+        self.assertEqual(docs.versioned_skill(skill, '0.5.0'),
+                         b'Read https://jadpo.dev/v/0.5/docs/primer.md and https://jadpo.dev/v/0.5/llms.txt, '
+                         b'each at `https://jadpo.dev/v/0.5/docs/<id>.md`, or under `https://jadpo.dev/v/<version>/`; '
+                         b'https://github.com/jadpo-dev/jadpo stays.\n')
+        self.assertEqual(docs.versioned_skill(skill, '1.2.3-rc.1'),
+                         skill.replace(b'https://jadpo.dev/docs', b'https://jadpo.dev/v/1.2/docs')
+                         .replace(b'https://jadpo.dev/llms', b'https://jadpo.dev/v/1.2/llms'))
+        self.assertEqual(docs.versioned_skill(skill, None), skill)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalogue, pages, errors = tree(root)
+            (root / docs.SKILL).parent.mkdir(parents=True)
+            (root / docs.SKILL).write_bytes(skill)
+            docs.Bundle(pages, errors, {'version': '0.5.0', 'rules': list(catalogue.values()), 'commands': []},
+                        root).write(root / 'bundle')
+            self.assertEqual((root / 'bundle' / docs.SKILL_IN_BUNDLE).read_bytes(),
+                             docs.versioned_skill(skill, '0.5.0'))
 
     def test_release_notes_go_in_byte_for_byte_and_are_checked(self):
         with tempfile.TemporaryDirectory() as tmp:

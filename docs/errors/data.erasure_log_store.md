@@ -134,7 +134,7 @@ entity User {
 ```
 
 Each person erased is now a file in that folder. A Worker has no disk, so it
-keeps the log in a database.
+keeps the log in a database or in a `Driver.s3` store of files.
 
 ## Related
 

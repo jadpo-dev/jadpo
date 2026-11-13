@@ -378,7 +378,7 @@ status = [
   "15-personal-data: `privacy:` in",
   "15-personal-data: The personal-data report",
 ]
-missing = "exporting a person's data, the exports and erasures behind `privacy:`, jadpo privacy requests and most of the report"
+missing = "erasing someone whose audited records would be kept, caches, and OAuth grants in the report"
 topics = [
   "personal-data",
   "marking-personal-fields",
@@ -519,7 +519,7 @@ status = [
   "12-jobs-and-events: Everything else on this page",
   "12-jobs-and-events: `batches.each` and the file helpers' writes over a provider's list operation",
 ]
-missing = "walking a provider's list"
+missing = "a `batches.each` whose `each:` action makes outside calls"
 topics = [
   "batches-work-over-many-items",
   "batch-work-keeps-its-progress",
@@ -594,7 +594,7 @@ details = [
 [[group.page]]
 title = "Files"
 status = ["16-built-in-services: Files"]
-missing = "image variants, scanning and one store of files held from two databases"
+missing = "image variants and scanning"
 topics = [
   "files",
   "uploading",
@@ -608,7 +608,7 @@ details = [
 [[group.page]]
 title = "Feature flags"
 status = ["16-built-in-services: Flags"]
-missing = "turning a flag on for a named tenant; erasing a person from the flag tables"
+missing = "turning a flag on for a named tenant"
 topics = [
   "feature-flags",
 ]
@@ -643,7 +643,7 @@ topics = [
 [[group.page]]
 title = "Audit trail"
 status = ["16-built-in-services: Audit"]
-missing = "personal fields in a history, and more on its page"
+missing = "a `File` field in a history, and more on its page"
 topics = [
   "audit-trail",
 ]
@@ -931,7 +931,7 @@ id = "commands"
 title = "Commands"
 summary = "Every jadpo command, what it does and how to run it."
 status = ["14-tooling: Commands"]
-missing = "`services`, `dev grants`, `search reindex`, the debugging commands, `path` and privacy requests"
+missing = "`services`, `dev grants`, `search reindex`, the debugging commands and `path`"
 
 [[group.page.section]]
 id = "the-jadpo-command"
