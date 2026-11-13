@@ -341,6 +341,8 @@ work below (Richard, 2026-11-08).
       holds its type. The decision: when a refit's narrower rule becomes a
       check, since a server still on the old build may write a value it
       refuses. Split from Q3b (2026-11-13).
+    - [x] **Q12 Unique values with an empty part**: area 5, "A value with
+      an empty part", and its notes, "Unique over empty parts".
     - [x] **Q4 A `geo.` condition in an include or an aggregate**: an
       include's rows rechecked in code and an aggregate counting the
       records the code keeps, in area 20, "In an include or an aggregate",

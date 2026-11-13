@@ -44,7 +44,7 @@
 
 use std::ops::ControlFlow;
 
-use jadpo_std::migration::Part;
+use jadpo_std::migration::{Part, SearchPiece};
 use jadpo_std::{Isolation, SqlType, Step, Work};
 
 use crate::{Database, SqlValue, StoreError, Transaction};
@@ -229,6 +229,17 @@ pub enum MigrateError {
         rows: u64,
         first: String,
     },
+    /// `name` makes the unique rule `rule`, and stored records hold the
+    /// same value under it: `sets` sets of them were found (at most ten),
+    /// the first `records`, the `id`s of its first few, of `of` in all,
+    /// never a value. The step rolled back (area 5, "Unique rules").
+    Duplicates {
+        name: String,
+        rule: String,
+        sets: u64,
+        records: Vec<String>,
+        of: u64,
+    },
     /// A migration needs `extension` at version `least` or later, and the
     /// database server offers `found`: pgvector 0.8.0 for an HNSW index,
     /// whose `nearest` queries run with its iterative scans (area 21,
@@ -351,15 +362,17 @@ pub async fn migrate_with(
             continue;
         }
         let applied = async {
-            transaction.batch(&migration.sql).await?;
-            record(transaction.as_mut(), migration).await
+            batch_checking_keys(transaction.as_mut(), &migration.name, &migration.sql).await?;
+            record(transaction.as_mut(), migration)
+                .await
+                .map_err(MigrateError::from)
         }
         .await;
         match applied {
             Ok(()) => transaction.commit().await?,
             Err(error) => {
                 let _ = transaction.rollback().await;
-                return Err(error.into());
+                return Err(error);
             }
         }
         ran.push(migration.name.clone());
@@ -373,6 +386,46 @@ pub async fn migrate_with(
             });
         }
     }
+}
+
+/// Runs `sql`, statements of migration `name`, as one batch, but for
+/// each search for the stored records a new unique rule would refuse,
+/// which it runs where it stands: while one finds any, the migration is
+/// refused, naming them (area 5, "Unique rules").
+async fn batch_checking_keys(
+    transaction: &mut dyn Transaction,
+    name: &str,
+    sql: &str,
+) -> Result<(), MigrateError> {
+    if !sql.contains(jadpo_std::migration::DUPLICATES_MARKER) {
+        return Ok(transaction.batch(sql).await?);
+    }
+    for piece in jadpo_std::migration::split_at_searches(sql) {
+        match piece {
+            SearchPiece::Sql(sql) => transaction.batch(&sql).await?,
+            SearchPiece::Duplicates { rule, query } => {
+                let rows = transaction.query(&query, &[]).await?;
+                let Some(first) = rows.first() else {
+                    continue;
+                };
+                let (records, of) = match first.as_slice() {
+                    [SqlValue::Text(ids), SqlValue::Int8(of)] => (
+                        ids.split(' ').map(String::from).collect(),
+                        u64::try_from(*of).unwrap_or(0),
+                    ),
+                    _ => (Vec::new(), 0),
+                };
+                return Err(MigrateError::Duplicates {
+                    name: name.to_string(),
+                    rule,
+                    sets: u64::try_from(rows.len()).unwrap_or(u64::MAX),
+                    records,
+                    of,
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Records `migration` as applied.
@@ -578,7 +631,9 @@ async fn one_step<'s>(
             };
             for part in &parts {
                 match part {
-                    Part::Sql(sql) => transaction.batch(sql).await?,
+                    Part::Sql(sql) => {
+                        batch_checking_keys(transaction, &migration.name, sql).await?
+                    }
                     // The rows written meanwhile, worked out in Jadpo
                     // with the table locked against writes (chunk 5.6b2).
                     Part::Fill(fill) => {

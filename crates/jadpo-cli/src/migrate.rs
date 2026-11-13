@@ -1800,6 +1800,40 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
             format!("Run `jadpo migrate apply` with the build that wrote `{name}` (its commit), then with this one"),
             Decider::Human,
         ),
+        // Stored records a new unique rule would refuse, by their `id`s,
+        // never a value (area 5, "Unique rules").
+        MigrateError::Duplicates {
+            name,
+            rule,
+            sets,
+            records,
+            of,
+        } => {
+            let listed: Vec<String> = records.iter().map(|id| format!("`{id}`")).collect();
+            let more = match of.saturating_sub(records.len() as u64) {
+                0 => String::new(),
+                left => format!(", and {left} more"),
+            };
+            Diagnostic::new(
+                &rule::MIGRATION_APPLY_FAILED,
+                format!("Stored records share a value under `{rule}`"),
+            )
+            .reason(format!(
+                "`{name}` makes the unique rule `{rule}`, and {} of stored records hold the same value under it, two values equal in every part, an empty one included, being one value. The first set's records are {}{more}. The step that found them was rolled back, and nothing after it ran.",
+                if sets == 1 {
+                    "1 set".to_string()
+                } else if sets >= 10 {
+                    "at least 10 sets".to_string()
+                } else {
+                    format!("{sets} sets")
+                },
+                listed.join(", "),
+            ))
+            .next_for(
+                "Change or delete all but one record of each set, then run `jadpo migrate apply` again",
+                Decider::Human,
+            )
+        }
         // A structured field's stored values its type no longer reads
         // (chunk 5.9c), by count and rule, never a value.
         MigrateError::Unreadable {

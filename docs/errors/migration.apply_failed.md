@@ -75,7 +75,9 @@ for them.
 The same error names the migration and the field when the step that
 failed is a backfill: one that stopped at a record, or stored values a
 changed type no longer reads, each with what to change before applying
-again. `jadpo seed` applies pending migrations before it runs, and
+again. It names the rule and the first records by `id` when stored
+records hold the same value under a unique rule the migration makes
+([A value with an empty part](../language/05-data.md#a-value-with-an-empty-part)). `jadpo seed` applies pending migrations before it runs, and
 stops with this error when one fails.
 
 ## How to fix it

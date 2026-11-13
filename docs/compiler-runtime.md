@@ -2699,7 +2699,17 @@ a backfill, a `-- rewrite` step (`jadpo_std::Work`). The plan numbers
 each such field's type (`Plan::migration_json`), and `Backfills::unreadable`
 reads each stored value with its codec; a refused check is
 `MigrateError::Unreadable`. A structured field's backfill is always
-`Decided::InJadpo`, its value written through the codec.
+`Decided::InJadpo`, its value written through the codec. A snapshot's
+unique key records whether it counts `NULL`s as equal
+(`Unique::nulls_not_distinct`, a key over a value kept in several
+columns with a part that may be empty) and, for a field that may be
+`none`, the condition it holds a row under (`Unique::predicate`, which
+makes it a partial unique index). A unique rule added to an existing
+table is preceded by a `-- duplicates <Rule>:` line and one query
+(`jadpo_sql::table::duplicates`), first in the section when the table
+had its columns; `jadpo_runtime` runs it where it stands
+(`jadpo_std::migration::split_at_searches`) and refuses with
+`MigrateError::Duplicates` while it finds records holding one value.
 
 **A person's erasure.** `jadpo-plan`'s `Planner::erase` writes
 `User.erase` as one statement (`jadpo_sql::statement::erase`, from
