@@ -189,6 +189,7 @@ mod tenant_reach;
 mod test_command;
 mod thresholds;
 mod tick_deletes;
+mod token_subjects;
 mod translation_exchange;
 mod translation_jadpo;
 mod translation_tooling;

@@ -84,18 +84,18 @@ impl Planner<'_> {
                     jadpo_graph::Kind::Field,
                     &format!("{}.{}", entity.name, subject.name),
                 )?;
+                let columns = subject_columns(subject);
                 Some(jadpo_std::http::ExternalTokenPlan {
                     issuer: external.issuer.clone(),
                     audience: external.audience.clone(),
-                    lookup: self.user_lookup(user, Some(&user.subject))?,
+                    lookup: self.subject_lookup(user, &columns)?,
                     subject_type: self
                         .json_number(TypeRef::Field(self.types.graph().node(id).key.clone()))?,
-                    subject_sql: jadpo_check::data::sql_type(subject)?.param(),
-                    subject_of: self.access(&mut Lookup, entity, Reach::Read).map(|wheres| {
-                        statements::address_of(&entity.table, &subject.born, &wheres)
-                    }),
+                    subject_of: self
+                        .access(&mut Lookup, entity, Reach::Read)
+                        .map(|wheres| statements::subject_of(&entity.table, &columns, &wheres)),
                     first_sign_in: match identity.links_store() {
-                        Some(_) => Some(self.linked_lookup(user, &subject.born)?),
+                        Some(_) => Some(self.linked_lookup(user, &columns)?),
                         None => None,
                     },
                 })
@@ -224,6 +224,29 @@ impl Planner<'_> {
         ))
     }
 
+    /// How an external token finds its user by its subject, kept in
+    /// `columns` (area 8, "`external_token`"; chunk N1b): its first `$1`,
+    /// `$2` the time now, and any other from `$3` on.
+    fn subject_lookup(
+        &self,
+        variant: &jadpo_check::identity::Variant,
+        columns: &[String],
+    ) -> Option<String> {
+        let entity = self.model.entity(&variant.entity)?;
+        let mut bind = Lookup;
+        let active = match &variant.active {
+            Some(condition) => Some(jadpo_sql::condition(&mut bind, entity, condition, false)?),
+            None => None,
+        };
+        let wheres = self.access(&mut bind, entity, Reach::Read)?;
+        Some(statements::user_by_subject(
+            &entity.table,
+            columns,
+            &statements::active(active.as_deref()),
+            &wheres,
+        ))
+    }
+
     /// How a magic link finds its user, by the field `address` names or,
     /// without one, by its `id` (area 8, "Magic links"): `$1` the address
     /// or the `id`, `$2` the time now.
@@ -321,20 +344,19 @@ impl Planner<'_> {
                     }
                 })
                 .collect(),
-            first_sign_in: self.linked_lookup(user, &subject.born)?,
-            subject_sql: jadpo_check::data::sql_type(subject)?.param(),
+            first_sign_in: self.linked_lookup(user, &subject_columns(subject))?,
         })
     }
 
     /// How an external token's first sign-in is found again (area 8, "A
-    /// person the app has not seen"; chunk A7): by the subject field
-    /// `subject`'s column, else through its link, and the user the action
+    /// person the app has not seen"; chunk A7): by the subject field's
+    /// columns, `subject`, else through its link, and the user the action
     /// gave by its `id`. The action is numbered once every callable is
     /// (`crate::Plan`).
     fn linked_lookup(
         &self,
         variant: &jadpo_check::identity::Variant,
-        subject: &str,
+        subject: &[String],
     ) -> Option<jadpo_std::http::FirstSignInPlan> {
         let entity = self.model.entity(&variant.entity)?;
         let mut bind = Lookup;
@@ -407,11 +429,18 @@ impl Planner<'_> {
         let entity = self.model.entity(&variant.entity)?;
         let subject = entity.fields.iter().find(|f| f.name == variant.subject)?;
         let column = self.column(entity, subject)?;
+        let subject_sql = subject
+            .columns()
+            .iter()
+            .map(|(_, ty)| SqlType::of_column(ty).map(SqlType::param))
+            .collect::<Option<Vec<_>>>()
+            .filter(|types| !types.is_empty())?;
         let mut plan = PrincipalPlan {
             entity: entity.name.clone(),
             store: variant.store.clone(),
             subject: subject.name.clone(),
             column,
+            subject_sql,
             lookup: None,
         };
         if !looked_up {
@@ -432,10 +461,20 @@ impl Planner<'_> {
             table,
             csrf,
             &entity.table,
-            &subject.born,
+            &subject_columns(subject),
             &statements::active(active.as_deref()),
             &wheres,
         ));
         Some(plan)
     }
+}
+
+/// The columns a subject field is kept in, by name, in its layout's order:
+/// one, or a standard type's several (chunk N1b).
+fn subject_columns(subject: &jadpo_check::data::FieldModel) -> Vec<String> {
+    subject
+        .columns()
+        .into_iter()
+        .map(|(column, _)| column)
+        .collect()
 }

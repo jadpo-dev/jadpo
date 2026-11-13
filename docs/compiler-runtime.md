@@ -3079,9 +3079,12 @@ unsupported algorithms and malformed/duplicate JSON before provider I/O; known-i
 refreshing valid cached keys. Outer HTTP deadlines drop native fetches
 and abort Workers fetches through an `AbortController` drop guard.
 Generated API/OpenAPI metadata, redacted failure wording and the network
-inventory expose the method's runtime-owned egress. Multi-column and
-structured subject fields remain compile-time `toolchain.not_built_yet`
-gates. Without `on_first_sign_in:` an unknown subject is 403
+inventory expose the method's runtime-owned egress. A subject field kept
+in several columns is read from the token's text as its type reads text
+and matched on every column (`jadpo_sql::identity::subject_is`: its first
+`$1`, the others after the statement's fixed parameters); one whose type
+has no text form is `type.principal_subject_invalid` (chunk N1b).
+Without `on_first_sign_in:` an unknown subject is 403
 `sign_in_refused`. Scope declarations are not built yet; area 9 says an
 external method narrows only when it declares the scopes it reads.
 
@@ -3196,7 +3199,12 @@ delay, `http::identity::authenticate` signs a request in from a good
 signed part without a statement, unless the route is `fresh`; otherwise it
 runs the lookup and returns a `Renewed` credential, which the response
 carries in `Set-Cookie` or `X-Jadpo-Token` unless the action started or
-ended the session. The plan appends a `RoutePlan` with `Run::Exchange` for
+ended the session. A caller's lookup gives the subject's columns last
+(`PrincipalPlan::subject_sql`, one or a standard type's several, or one
+holding JSON), read whole by the field's `Column`, and a part keeps each
+(`s`, a list when there are several or the one holds JSON); a cookie whose
+part would pass 3,584 bytes isn't renewed, so its requests read the record
+(chunk N1b). The plan appends a `RoutePlan` with `Run::Exchange` for
 `POST /auth/exchange` in the first API that accepts service keys, whose
 sign-in signs the token the response gives; the API record, OpenAPI and
 `jadpo routes` list it from `Identity::exchanges`.

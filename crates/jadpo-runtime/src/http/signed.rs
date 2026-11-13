@@ -232,7 +232,9 @@ pub(crate) struct Claims {
     /// record up by.
     pub verifier: String,
     pub principal: [u8; 16],
-    pub subject: SqlValue,
+    /// The subject's columns' values (chunk N1b): one, or a standard
+    /// type's several.
+    pub subject: Vec<SqlValue>,
     /// When it stops signing in, in milliseconds since 1970.
     pub expires: i64,
     /// A browser session's CSRF token's verifier.
@@ -255,7 +257,19 @@ impl Claims {
         }
         object.insert("v".into(), self.verifier.clone().into());
         object.insert("p".into(), hex(&self.principal).into());
-        object.insert("s".into(), subject_text(&self.subject)?.into());
+        // A subject in one column is its text, as it always was; one in
+        // several, or kept as JSON, is a list of its parts (chunk N1b),
+        // which a release that predates it reads as no part at all, so its
+        // request reads the record.
+        let subject: serde_json::Value = match self.subject.as_slice() {
+            [one] if !matches!(one, SqlValue::Json(_)) => subject_text(one)?.into(),
+            parts => parts
+                .iter()
+                .map(|part| subject_text(part).map(serde_json::Value::from))
+                .collect::<Option<Vec<_>>>()?
+                .into(),
+        };
+        object.insert("s".into(), subject);
         object.insert("e".into(), self.expires.into());
         if let Some(csrf) = &self.csrf {
             object.insert("c".into(), csrf.clone().into());
@@ -302,7 +316,14 @@ impl Claims {
             },
             verifier: text("v")?.to_string(),
             principal: unhex16(text("p")?)?,
-            subject: subject_value(text("s")?)?,
+            subject: match object.get("s")? {
+                serde_json::Value::String(one) => vec![subject_value(one)?],
+                serde_json::Value::Array(parts) => parts
+                    .iter()
+                    .map(|part| subject_value(part.as_str()?))
+                    .collect::<Option<Vec<_>>>()?,
+                _ => return None,
+            },
             expires: object.get("e")?.as_i64()?,
             csrf: text("c").map(str::to_string),
             by: super::identity::SignedInBy {
@@ -313,9 +334,12 @@ impl Claims {
     }
 }
 
-/// A subject as a signed part keeps it: its column's kind, then its text.
+/// A subject's column as a signed part keeps it: its kind, then its text;
+/// `NULL`, a part a standard type may leave out, as `z` (chunk N1b).
 fn subject_text(value: &SqlValue) -> Option<String> {
     Some(match value {
+        SqlValue::Null(_) => "z".to_string(),
+        SqlValue::Json(text) => format!("j{text}"),
         SqlValue::Text(text) => format!("t{text}"),
         SqlValue::Int2(n) => format!("2{n}"),
         SqlValue::Int4(n) => format!("4{n}"),
@@ -335,6 +359,9 @@ fn subject_value(text: &str) -> Option<SqlValue> {
     let kind = chars.next()?;
     let rest = chars.as_str();
     Some(match kind {
+        // A part's `NULL` is never compared or sent, only read back.
+        'z' if rest.is_empty() => SqlValue::Null(jadpo_std::read::SqlType::Text),
+        'j' => SqlValue::Json(rest.to_string()),
         't' => SqlValue::Text(rest.to_string()),
         '2' => SqlValue::Int2(rest.parse().ok()?),
         '4' => SqlValue::Int4(rest.parse().ok()?),
@@ -468,7 +495,19 @@ mod tests {
             SqlValue::Int4(7),
             SqlValue::Uuid([7; 16]),
             SqlValue::Numeric("12.50".into()),
-        ] {
+        ]
+        .map(|one| vec![one])
+        .into_iter()
+        // A standard type's several columns, one of them left out, and a
+        // value kept whole as its JSON (chunk N1b).
+        .chain([
+            vec![
+                SqlValue::Text("GB".into()),
+                SqlValue::Text("AB12 CDE".into()),
+                SqlValue::Null(jadpo_std::read::SqlType::Text),
+            ],
+            vec![SqlValue::Json(r#"{"line":"Fragile","note":null}"#.into())],
+        ]) {
             let claims = Claims {
                 method: AuthenticationMethod::BrowserSession,
                 row: Some([1; 16]),
@@ -494,7 +533,7 @@ mod tests {
             row: Some([1; 16]),
             verifier: "ab".repeat(32),
             principal: [2; 16],
-            subject: SqlValue::Text("ann".into()),
+            subject: vec![SqlValue::Text("ann".into())],
             expires: 1_792_504_800_000,
             csrf: None,
             by: super::super::identity::SignedInBy::through("google", false),
@@ -522,7 +561,7 @@ mod tests {
             row: Some([1; 16]),
             verifier: "ab".repeat(32),
             principal: [2; 16],
-            subject: SqlValue::Text("ann".into()),
+            subject: vec![SqlValue::Text("ann".into())],
             expires: 1_792_504_800_000,
             csrf: Some("cd".repeat(32)),
             by: Default::default(),

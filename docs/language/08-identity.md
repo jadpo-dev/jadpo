@@ -99,6 +99,15 @@ organisations sharing one app, see [Tenancy](09-policy.md#tenancy)), it
 must be a field every tenant shares, so one person is one record. Jadpo
 looks the caller up by this field whenever it needs their current record.
 
+The field may hold a value kept in several columns, such as a
+`VehicleRegistration`'s country and plate, or kept whole as its JSON, such
+as an object of your own
+([Storage types](05-data.md#storage-types)). Every way in reads it
+whole, so the caller's `subject` is the field's whole value. An external
+token's subject is text, so with
+`external_token` the field's type must be read from text
+([`external_token`](#external_token)).
+
 ### `active:`
 
 `active:` says when a record may still sign in. It is a condition on the
@@ -622,6 +631,14 @@ one [`on_first_sign_in:`](#a-person-the-app-has-not-seen) has linked to
 a user. Without it, a subject no user has is refused with
 `sign_in_refused` (403).
 
+The token's subject is read as the `subject:` field's type reads text,
+as a path's placeholder is. A field kept in several columns, such as a
+`VehicleRegistration`, is read from its text, `GB AB12 CDE`, and matches a
+user only when every column does: a part left out, such as an
+`EmailWithName`'s name, matches no one. A type with no text form, such as an
+object kept as JSON, can't be named by a token, so with `external_token`
+it is the compile error `type.principal_subject_invalid`.
+
 Only the subject is used. Every request reads that user's current record,
 which must still meet the principal's `active:` condition and be a record
 the entity's lifecycle shows. Profile and permission claims from the
@@ -923,10 +940,6 @@ test "a request with no token is refused" {
     assert own_card.status == 401
 }
 ```
-
-Not built yet: with `external_token`, a principal `subject:` field made
-of several columns, or of a structured value, is
-`toolchain.not_built_yet`.
 
 ## Checking the person: `sign_in:`
 <!-- topic: checking-the-person-sign-in -->

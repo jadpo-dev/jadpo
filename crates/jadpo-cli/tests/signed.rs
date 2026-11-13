@@ -173,10 +173,10 @@ impl Host for Clocked {
 }
 
 /// 2026-10-16T09:00:00Z.
-const START: i64 = 1_792_141_200_000;
-const MINUTE: i64 = 60_000;
+pub(super) const START: i64 = 1_792_141_200_000;
+pub(super) const MINUTE: i64 = 60_000;
 
-const KEY: &str = "0123456789abcdef0123456789abcdef-current";
+pub(super) const KEY: &str = "0123456789abcdef0123456789abcdef-current";
 const OLD_KEY: &str = "fedcba9876543210fedcba9876543210-previous";
 const ORIGIN: &str = "https://notes.example";
 
@@ -482,7 +482,7 @@ fn jadpo(cwd: &Path, args: &[&str]) {
 
 /// The project, migrated into a database of its own, served by the
 /// runtime with the settings `variables` give.
-struct Live {
+pub(super) struct Live {
     dir: PathBuf,
     prepared: Arc<Prepared>,
     program: Program,
@@ -494,10 +494,16 @@ struct Live {
 
 impl Live {
     fn new(name: &str) -> Live {
+        Live::with(name, FILES)
+    }
+
+    /// The project `files`, migrated and served as [`Live::new`]'s is, its
+    /// settings `SESSION_SIGNING_KEY` and `BROWSER_ORIGIN` (chunk N1b).
+    pub(super) fn with(name: &str, files: &[(&str, &str)]) -> Live {
         let dir = std::env::temp_dir().join(format!("jadpo-signed-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let root = dir.join("notes");
-        for (path, text) in FILES {
+        for (path, text) in files {
             let path = root.join(path);
             std::fs::create_dir_all(path.parent().expect("parent")).expect("folders");
             std::fs::write(path, text).expect("write");
@@ -562,12 +568,12 @@ impl Live {
         self.program = Self::program(&self.prepared, key, previous);
     }
 
-    fn at(&self, now: i64) {
+    pub(super) fn at(&self, now: i64) {
         self.host.now.set(now);
     }
 
     /// The response, and how many round trips to PostgreSQL it took.
-    fn send(&self, request: &Request) -> (Response, u32) {
+    pub(super) fn send(&self, request: &Request) -> (Response, u32) {
         let before = self.counting.trips.get();
         let app = self.program.app();
         let response = self.runtime.block_on(serve_request(
@@ -580,7 +586,7 @@ impl Live {
         (response, self.counting.trips.get() - before)
     }
 
-    fn sql(&self, statement: &str) {
+    pub(super) fn sql(&self, statement: &str) {
         let database = self.host.database("main").expect("main");
         self.runtime
             .block_on(database.query_once(statement, &[]))
@@ -594,7 +600,7 @@ impl Drop for Live {
     }
 }
 
-fn request(method: &str, path: &str, headers: &[(&str, &str)], body: &str) -> Request {
+pub(super) fn request(method: &str, path: &str, headers: &[(&str, &str)], body: &str) -> Request {
     let mut headers: Vec<(String, String)> = headers
         .iter()
         .map(|(name, value)| (name.to_string(), value.to_string()))
@@ -612,7 +618,7 @@ fn request(method: &str, path: &str, headers: &[(&str, &str)], body: &str) -> Re
     }
 }
 
-fn json(response: &Response) -> serde_json::Value {
+pub(super) fn json(response: &Response) -> serde_json::Value {
     serde_json::from_slice(&response.body).unwrap_or_else(|_| {
         panic!(
             "not JSON ({}): {}",
@@ -622,7 +628,7 @@ fn json(response: &Response) -> serde_json::Value {
     })
 }
 
-fn code(response: &Response) -> String {
+pub(super) fn code(response: &Response) -> String {
     json(response)["error"]["code"]
         .as_str()
         .unwrap_or_default()
@@ -630,7 +636,7 @@ fn code(response: &Response) -> String {
 }
 
 /// A cookie a response sets, by name: its value.
-fn cookie(response: &Response, name: &str) -> Option<String> {
+pub(super) fn cookie(response: &Response, name: &str) -> Option<String> {
     response
         .headers
         .iter()

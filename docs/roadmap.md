@@ -387,11 +387,7 @@ work below (Richard, 2026-11-08).
 12. Sign-in and scopes (areas 8, 9 and 19), added by the audit of
     2026-11-08.
     - [x] **N1 GitHub sign-in**: area 8, "GitHub" and its notes; compiler-runtime, "Sign-in providers".
-    - [ ] **N1b Token subjects** `opus · high`: area 8, "External tokens in
-      tests and `jadpo dev`" and "`subject:`". A principal `subject:` made of
-      several columns or a structured value with `external_token`. Such a
-      subject is read only by its first column today, for every way in, so
-      sessions, API tokens, service keys and signed parts read it whole too.
+    - [x] **N1b Token subjects**: area 8, "`subject:`" and "`external_token`", and its notes; compiler-runtime, "Signed sessions".
     - [ ] **N1c Sign in with Apple** **needs a maintainer**: area 8,
       "Providers". `Driver.apple`, once a maintainer decides how its client
       secret is configured (an ES256 token the app signs with its private
