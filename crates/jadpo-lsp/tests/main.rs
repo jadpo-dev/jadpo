@@ -13,6 +13,7 @@ mod query_sql;
 mod quick_fixes;
 mod records;
 mod references;
+mod rename;
 mod route_hover;
 mod support;
 mod translations;

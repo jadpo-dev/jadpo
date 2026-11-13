@@ -115,7 +115,6 @@ D1 first: the site starts once D1 has merged.
   and feature requests read, answered and turned into pull requests by an
   agent that holds no secrets and cannot merge or release, since issue text
   is anyone's; its pull requests pass the same gate and review.
-- [ ] **D8b Rename in the editor** `opus · high`: area 14, "Editor support", through `jadpo_check::rename`, the code `jadpo rename` runs.
 
 ## Phase 10 — Golden todo
 
@@ -377,12 +376,7 @@ work below (Richard, 2026-11-08).
 11. Background work and tests (areas 12 and 13), added by the audit of
     2026-11-08.
     - [x] **J3 Delivery and operator gaps**: area 12, "How long between tries", "Running background work" and "Watching schedules", and its notes; `cli.signal_handler_failed`'s page.
-    - [ ] **J4 File writers over a provider's list** `opus · high`: area 19,
-      "Data formats"; area 12, "Walking records or a provider's list:
-      `batches.each`" and "How an export's run is kept". A file helper's write
-      (`csv.write`, `tsv.write`, `json_lines.write`, `json.write`) taking a
-      provider's list operation as `from:`, walked by `page.next`, in place
-      of `type.batch_from_invalid`.
+    - [x] **J4 File writers over a provider's list**: area 19, "`json_lines`"; area 12, "How an export's run is kept", and its notes.
     - [x] **W1 Data builders and `assert emitted`**: area 13, "Data builders", "Events and query cost" and its notes; compiler-runtime §2.5, "Data builders and `assert emitted`".
     - [ ] **W2 Generated tests** `opus · xhigh`: area 13, "In the editor" and
       "What is built". Every route refusing bad input with `{ field, rule }`, each

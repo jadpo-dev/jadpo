@@ -595,7 +595,10 @@ end.
 
 A write helper takes the store to write to, the file's `name:`, a
 `from:` giving the items, an `each:` that returns the row to write for
-each item, and a `finished:`, which receives the stored file.
+each item, and a `finished:`, which receives the stored file. Its
+`from:` is what `batches.each` takes: a named query's call, or a
+provider's list operation's, walked by `page.next`
+([Data formats](19-standard-library.md#reading-and-writing-a-files-rows)).
 
 ### Walking records or a provider's list: `batches.each`
 
@@ -1492,7 +1495,9 @@ also says how each row is written.
 ### Where it is kept
 
 As for `batches.each`: in the store `from:`'s query reads, which
-`finished:`'s action writes too.
+`finished:`'s action writes too. A provider's list has no query, so a
+write over one keeps its run as `batches.each` over one does
+([Where a run is kept](#where-a-run-is-kept)).
 
 ### Each page is stored after its page commits
 
@@ -1502,7 +1507,10 @@ so each page goes in three steps:
 
 1. A transaction locks the run's row and reads, as the system, the page
    after the position that committed. It commits, having written
-   nothing.
+   nothing. Over a provider's list it reads only the position, and the
+   page is asked for once it has ended, with the cursor the position
+   holds, as `batches.each` asks for one: one piece of the file for each
+   page the provider gives, whatever its size.
 2. With no transaction open, `each:` works out each item's row, and the
    page's rows are put in the store as a piece of the file of their own,
    under a key made from the run's id and the piece's number.
@@ -4210,7 +4218,7 @@ These limits may change once they have been measured on real runs.
 |---|---|
 | Everything else on this page | Built. |
 | Publishing chosen public events outward | Partly built: through `Driver.webhook`, to one address, signed and retried; to Cloudflare Queues, SQS and Pub/Sub not built yet ([Publishing events outward](#publishing-events-outward)). |
-| `batches.each` over a provider's list operation, walked by `page.next` | Built, but for an `each:` action that makes outside calls, which is `toolchain.not_built_yet` ([How a run is kept](#how-a-run-is-kept)). |
+| `batches.each` and the file helpers' writes over a provider's list operation, walked by `page.next` | Built, but for a `batches.each` whose `each:` action makes outside calls, which is `toolchain.not_built_yet` ([How a run is kept](#how-a-run-is-kept)). |
 | Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging](17-debugging-and-review.md)), and a record's entry in the [personal-data report](15-personal-data.md) | Not built yet. |
 | Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for [telemetry](16-built-in-services.md). |
 | The console's timeline | Not built yet ([Debugging](17-debugging-and-review.md)). |

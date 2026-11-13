@@ -955,7 +955,9 @@ async fn step(
     // runs a batch, the tick among them, would otherwise hold each inline
     // and could run out of a thread's stack.
     let stepped = match (&plan.from, &plan.to) {
-        (BatchFrom::Query(_), Some(write)) => {
+        // A file helper's write, over a query's pages or a provider's list
+        // (chunk J4).
+        (BatchFrom::Query(_) | BatchFrom::Listed(_), Some(write)) => {
             Box::pin(export::page(
                 executor,
                 &mut ctx,

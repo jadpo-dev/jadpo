@@ -220,7 +220,7 @@ fn batch_of(body: &Body, args: &[Option<SiteId>], op: BatchOp) -> (BatchFact, Ve
         skip.push(site);
     }
     // A provider's list `from:` calls is the run's, made after the action
-    // commits (chunk J2).
+    // commits: `batches.each`'s (chunk J2) or a writer's (chunk J4).
     if let Some((
         site,
         Node::Expr(Expr::Call {
@@ -228,7 +228,7 @@ fn batch_of(body: &Body, args: &[Option<SiteId>], op: BatchOp) -> (BatchFact, Ve
             ..
         }),
     )) = node(from.and_then(|at| args.get(at).copied().flatten()))
-        && op == BatchOp::Each
+        && op.walks_from()
     {
         fact.listed = true;
         skip.push(site);

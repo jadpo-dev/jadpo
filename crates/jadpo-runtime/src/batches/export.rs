@@ -1,12 +1,14 @@
 //! A file helper's write (area 12, "How an export's run is kept"; area 19,
 //! "Data formats"; chunk 6.4b2): `csv.write`, `tsv.write`,
 //! `json_lines.write` or `json.write`'s file form, writing a named query's
-//! pages into one stored file.
+//! pages, or a provider's list's (chunk J4), into one stored file.
 //!
 //! No outside call goes out while a transaction is open (chunk 7.0c), so
 //! each page goes in three steps. Its transaction locks the run's row,
 //! reads the page after the position that committed, and commits, writing
-//! nothing. Then, with no transaction open, each item's row is worked out
+//! nothing; a provider's list's page is asked for once that transaction
+//! has ended, with the cursor the position holds, as `batches.each` asks
+//! for one ([`super::listed::ask`]). Then, with no transaction open, each item's row is worked out
 //! by `each:` ([`crate::Executor::row`]) and the page's rows are put in the
 //! store as a piece of the file of their own, under a key made from the
 //! run's id and the piece's number ([`crate::files::put_piece`]). Last, a
@@ -29,7 +31,7 @@
 
 use jadpo_std::BatchState;
 use jadpo_std::CsvFormat;
-use jadpo_std::batch::{BatchEach, BatchPlan, FileWrite, RowFormat};
+use jadpo_std::batch::{BatchEach, BatchFrom, BatchPlan, FileWrite, RowFormat};
 use jadpo_value::Value;
 
 use super::{
@@ -299,56 +301,24 @@ pub(super) async fn page(
         open.rollback().await;
         return written(executor, ctx, plan, write, start, saved, &held, &place, now).await;
     }
-    // The query's count, as its first page reads it, the total the run
-    // estimates (chunk 6.4b3).
-    let likely_total = if held.position.is_none() {
-        match counted(&mut open, batches, plan, saved.values).await {
-            Ok(likely_total) => likely_total,
-            Err(unread) => {
-                open.rollback().await;
-                return match unread {
-                    Unread::Changed => Step::Changed,
-                    Unread::Paused(why) | Unread::Refused(why) => Step::Ended(Ran::Paused(why)),
-                };
+    let (items, next, likely_total) = match &plan.from {
+        // A provider's list (chunk J4): the transaction has read where the
+        // run got to and writes nothing, so it ends before the page is
+        // asked for, as the system with no transaction open.
+        BatchFrom::Listed(listed) => {
+            open.rollback().await;
+            match super::listed::ask(executor, ctx, listed, start, saved, place.after.as_deref())
+                .await
+            {
+                Ok((items, next)) => (items, next, None),
+                Err(step) => return step,
             }
         }
-    } else {
-        None
+        _ => match queried(open, batches, plan, saved, &held, &place, (&id, now)).await {
+            Ok(page) => page,
+            Err(step) => return step,
+        },
     };
-    let (items, next) = match read_page(
-        &mut open,
-        batches,
-        plan,
-        saved.values,
-        place.after.as_deref(),
-    )
-    .await
-    {
-        Ok(page) => page,
-        Err(Unread::Changed) => {
-            open.rollback().await;
-            return Step::Changed;
-        }
-        Err(Unread::Paused(why)) => {
-            open.rollback().await;
-            return Step::Ended(Ran::Paused(why));
-        }
-        Err(Unread::Refused(why)) => {
-            let ended = end_in(&mut open, &id, BatchState::Failed, Some(&why), now).await;
-            return finish(open, ended, Ran::Failed(why)).await;
-        }
-    };
-    // The page's transaction commits, having written nothing, before
-    // anything goes out.
-    match open.commit().await {
-        Ok(()) => {}
-        Err(StoreError::ConcurrentChange) => return Step::Changed,
-        Err(error) => {
-            return Step::Ended(Ran::Paused(format!(
-                "its page's read couldn't commit ({error:?})"
-            )));
-        }
-    }
     // Each item's row, with no transaction open; one that faults is its
     // item's problem, by its place in the walk.
     let mut rows: Vec<Value> = Vec::with_capacity(items.len());
@@ -472,6 +442,66 @@ pub(super) async fn page(
         Err(error) => Step::Ended(Ran::Paused(format!(
             "its batch couldn't commit ({error:?})"
         ))),
+    }
+}
+
+/// A query's page after `place`, read in `open`'s transaction, the
+/// count the first page reads the total the run estimates (chunk 6.4b3);
+/// then the transaction commits, having written nothing, before anything
+/// goes out. Its items, the cursor of the page after it and that total,
+/// or the step that ends the batch.
+async fn queried(
+    mut open: Batch<'_, '_>,
+    batches: Batches<'_>,
+    plan: &BatchPlan,
+    saved: Saved<'_>,
+    held: &Held,
+    place: &Place,
+    (id, now): (&SqlValue, i64),
+) -> Result<(Vec<Value>, Option<String>, Option<i64>), Step> {
+    let likely_total = if held.position.is_none() {
+        match counted(&mut open, batches, plan, saved.values).await {
+            Ok(likely_total) => likely_total,
+            Err(unread) => {
+                open.rollback().await;
+                return Err(match unread {
+                    Unread::Changed => Step::Changed,
+                    Unread::Paused(why) | Unread::Refused(why) => Step::Ended(Ran::Paused(why)),
+                });
+            }
+        }
+    } else {
+        None
+    };
+    let (items, next) = match read_page(
+        &mut open,
+        batches,
+        plan,
+        saved.values,
+        place.after.as_deref(),
+    )
+    .await
+    {
+        Ok(page) => page,
+        Err(Unread::Changed) => {
+            open.rollback().await;
+            return Err(Step::Changed);
+        }
+        Err(Unread::Paused(why)) => {
+            open.rollback().await;
+            return Err(Step::Ended(Ran::Paused(why)));
+        }
+        Err(Unread::Refused(why)) => {
+            let ended = end_in(&mut open, id, BatchState::Failed, Some(&why), now).await;
+            return Err(finish(open, ended, Ran::Failed(why)).await);
+        }
+    };
+    match open.commit().await {
+        Ok(()) => Ok((items, next, likely_total)),
+        Err(StoreError::ConcurrentChange) => Err(Step::Changed),
+        Err(error) => Err(Step::Ended(Ran::Paused(format!(
+            "its page's read couldn't commit ({error:?})"
+        )))),
     }
 }
 

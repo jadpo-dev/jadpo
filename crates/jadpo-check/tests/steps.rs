@@ -466,6 +466,92 @@ fn a_run_over_a_providers_list_whose_items_call_out_is_not_built_yet() {
     );
 }
 
+/// A file helper's write takes a provider's list operation as `from:`
+/// too (area 19, "Reading and writing a file's rows"; chunk J4), walked by
+/// `page.next` as `batches.each` walks one, under the same rules: an
+/// input with one `PageCursor` field and an operation that changes
+/// nothing. Its call is the run's, not the action's that starts it.
+#[test]
+fn a_write_over_a_providers_list_walks_it_by_its_cursor() {
+    let keep = "/// Keeps one member.\naction keep(member: AcmePay.PayReply) -> Unit {\n    assert member.id == member.id\n}\n";
+    let line = (
+        "domains/billing/types/member_line.jadpo",
+        "use shared/providers/acme_pay\n\n/// One member's line in the file.\ntype MemberLine = Output {\n    member: AcmePay.Reference\n}\n",
+    );
+    let path = "domains/billing/actions/list_members.jadpo";
+    let write = |writer: &str, input: &str| {
+        let after = if input == "MemberPage" {
+            "\n            after: none"
+        } else {
+            ""
+        };
+        let format = if writer == "csv" || writer == "tsv" {
+            "\n        format: CsvFormat.spreadsheet,"
+        } else {
+            ""
+        };
+        format!(
+            "use app {{ pay, sheets }}\nuse billing/types {{ MemberLine }}\nuse shared/providers/acme_pay\n\n/// Writes each member into a file.\naction list_members() -> BatchRun {{\n    return {writer}.write(\n        sheets,\n        name: \"members\",{format}\n        from: pay.members.list(AcmePay.{input} {{\n            reference: \"all\"{after}\n        }}),\n        each: member -> MemberLine {{\n            member: member.id\n        }}\n    )\n}}\n"
+        )
+    };
+    let listed = members("MemberPage", "        changes: false\n");
+    for writer in ["csv", "tsv", "json_lines", "json"] {
+        let good = write(writer, "MemberPage");
+        assert_eq!(
+            problems(
+                keep,
+                &[
+                    (listed.0.as_str(), listed.1.as_str()),
+                    MEMBER_PAGE,
+                    line,
+                    (path, good.as_str())
+                ]
+            ),
+            Vec::<String>::new(),
+            "{writer}"
+        );
+    }
+    // An input with no `PageCursor` has nowhere to send the next page's
+    // cursor.
+    let no_cursor = members("PayRequest", "        changes: false\n");
+    let refused = write("json_lines", "PayRequest");
+    let found = found(
+        keep,
+        &[
+            (no_cursor.0.as_str(), no_cursor.1.as_str()),
+            line,
+            (path, refused.as_str()),
+        ],
+        "type.batch_from_invalid",
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        found[0].message,
+        "`json_lines.write`'s `from:` can't ask `pay.members.list` for its next page"
+    );
+    // A list that changes something would change it again when a page is
+    // asked for again.
+    let changing = members("MemberPage", "        changes: true\n");
+    let good = write("json_lines", "MemberPage");
+    assert_eq!(
+        problems(
+            keep,
+            &[
+                (changing.0.as_str(), changing.1.as_str()),
+                MEMBER_PAGE,
+                line,
+                (path, good.as_str())
+            ]
+        )
+        .iter()
+        .filter(|problem| problem.contains("type.batch_from_invalid"))
+        .collect::<Vec<_>>(),
+        [&format!(
+            "{path} type.batch_from_invalid: `json_lines.write`'s `from:` lists through `pay.members.list`, which changes something"
+        )]
+    );
+}
+
 #[test]
 fn several_from_a_runs_item_are_refused_at_the_run() {
     let keep = format!(

@@ -39,6 +39,11 @@ language server does everything else.
 - **Find references**: every place a name is used, read from the
   compiler's own resolution. A private name of the same spelling in
   another domain is never counted.
+- **Rename** (F2) a declaration or a field from any place its name is
+  written. It makes the edits `jadpo rename` makes: every use, the file
+  named after it and the test beside it, and the line that keeps a
+  renamed entity field's stored data. It refuses what the command
+  refuses, with the same reason.
 - **Completion** as you type a word, a `.`, a `:` or a digit:
   - names in scope, with the `use` line a name needs;
   - a value's fields, and a namespace's operations with their signatures;
@@ -103,8 +108,6 @@ command does.
 
 ## Not here yet
 
-- **Rename** isn't here yet. It will come with `jadpo rename`, which keeps
-  a renamed entity field's stored data.
 - **Email templates** aren't highlighted.
 
 To work on the extension itself, see [DEVELOPING.md](DEVELOPING.md).
