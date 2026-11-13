@@ -100,7 +100,7 @@ impl Planner<'_> {
                         from: follow.from,
                         to: follow.to,
                         table: holder.table.as_str(),
-                        column: field(holder, &follow.field)?.born.as_str(),
+                        column: field(holder, &follow.field)?.column.as_str(),
                     })
                 })
                 .collect::<Option<Vec<_>>>()?;
@@ -127,7 +127,7 @@ impl Planner<'_> {
                     continue;
                 }
                 for reference in &kept.references {
-                    let column = field(holder, &reference.field)?.born.as_str();
+                    let column = field(holder, &reference.field)?.column.as_str();
                     note(holder, text::found_in(column, reference.target));
                 }
             }

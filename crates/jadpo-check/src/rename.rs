@@ -851,8 +851,8 @@ fn kept(db: &dyn Db, project: Project, node: &Node, owner: Option<&Node>) -> Opt
                 .strip_prefix(&format!("{}.", owner.key.name()))?;
             let field = entity.fields.iter().find(|field| field.born == own)?;
             Some(match field.compound {
-                Some(_) => format!("the columns of {}.{}", entity.table, field.born),
-                None => format!("column {}.{}", entity.table, field.born),
+                Some(_) => format!("the columns of {}.{}", entity.table, field.column),
+                None => format!("column {}.{}", entity.table, field.column),
             })
         }
         _ => None,
@@ -885,7 +885,7 @@ fn stored_member(model: &crate::data::DataModel, node: &Node, owner: &Node) -> O
                 .as_ref()
                 .is_some_and(|reads| !matches!(reads.shape, Shape::Value(_)) && holds(reads));
             if in_column || in_json {
-                columns.push(format!("{}.{}", entity.table, field.born));
+                columns.push(format!("{}.{}", entity.table, field.column));
             }
         }
     }

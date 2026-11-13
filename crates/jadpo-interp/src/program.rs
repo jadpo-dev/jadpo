@@ -591,7 +591,7 @@ impl Program {
                             .map(|held| (held.field.clone(), self.validator(held.validator)))
                     })
                     .collect(),
-                write: plan.write,
+                write: plan.write.clone(),
                 validator: Some(self.validator(plan.validator)),
                 refits: plan.refits.clone(),
                 stored: plan.stored.clone(),

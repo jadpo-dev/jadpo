@@ -135,7 +135,7 @@ fn erase_parts<'m>(
             from: follow.from,
             to: follow.to,
             table: holder.table.as_str(),
-            column: field(holder, &follow.field)?.born.as_str(),
+            column: field(holder, &follow.field)?.column.as_str(),
         });
     }
     let mut keeps = Vec::new();
@@ -144,7 +144,7 @@ fn erase_parts<'m>(
         let mut references = Vec::new();
         for reference in &kept.references {
             references.push((
-                field(holder, &reference.field)?.born.as_str(),
+                field(holder, &reference.field)?.column.as_str(),
                 reference.target,
                 reference.outcome == jadpo_std::Erasure::Anonymised,
             ));
@@ -172,7 +172,7 @@ fn erase_parts<'m>(
         for changed in &holder.fields {
             if changed.generated == Some(jadpo_std::Generated::OnChange) {
                 let now = writing.param(WriteSource::Now, column_type(changed)?.param());
-                set.push((changed.born.clone(), now));
+                set.push((changed.column.clone(), now));
             }
         }
         // Where the record may belong to another person too, its own
@@ -183,7 +183,7 @@ fn erase_parts<'m>(
         if !clears.is_empty() {
             for (name, person) in &kept.through {
                 others.push(text::Other {
-                    column: field(holder, name)?.born.as_str(),
+                    column: field(holder, name)?.column.as_str(),
                     erased: erased(person),
                 });
             }
@@ -238,14 +238,14 @@ fn erase_parts<'m>(
         let mut set = Vec::new();
         for changed in &entity.fields {
             if changed.generated == Some(jadpo_std::Generated::OnChange) {
-                set.push((changed.born.clone(), now.clone()));
+                set.push((changed.column.clone(), now.clone()));
             }
         }
         // What it refers to may go, and it stays.
         let mut references = Vec::new();
         let referring = part.kept.iter().find(|held| held.entity == entity.name);
         for reference in referring.iter().flat_map(|held| &held.references) {
-            let column = field(entity, &reference.field)?.born.as_str();
+            let column = field(entity, &reference.field)?.column.as_str();
             if !clears.iter().any(|cleared| cleared == column) {
                 references.push((column, reference.target));
             }
@@ -269,7 +269,7 @@ fn erase_parts<'m>(
     for (at, name) in &people {
         let mut held = Vec::new();
         for key in provider_keys.iter().filter(|key| key.entity == *name) {
-            let column = field(deleted.get(*at)?, &key.field)?.born.as_str();
+            let column = field(deleted.get(*at)?, &key.field)?.column.as_str();
             held.push((key.connection.as_str(), column));
         }
         if !held.is_empty() {
@@ -359,7 +359,7 @@ pub(crate) fn erasure_plan(
                 let holder = model.entity(part.deleted.get(follow.to)?)?;
                 references.push((
                     holder.table.as_str(),
-                    field(holder, &follow.field)?.born.as_str(),
+                    field(holder, &follow.field)?.column.as_str(),
                 ));
             }
             for kept in &part.kept {
@@ -367,7 +367,7 @@ pub(crate) fn erasure_plan(
                 for reference in kept.references.iter().filter(|held| held.target == 0) {
                     references.push((
                         holder.table.as_str(),
-                        field(holder, &reference.field)?.born.as_str(),
+                        field(holder, &reference.field)?.column.as_str(),
                     ));
                 }
             }
@@ -620,7 +620,7 @@ impl Planner<'_> {
                                 || Some(jadpo_sql::NULL.to_string()),
                                 |(_, value)| jadpo_sql::value(&mut writing, value, &field.column()),
                             )?;
-                        names.push(field.born.clone());
+                        names.push(field.column.clone());
                         new.push((field.name.clone(), value.clone()));
                         values.push(value);
                         continue;
@@ -742,7 +742,7 @@ impl Planner<'_> {
                     for (name, value) in &transition.set {
                         let field = field(entity_model, name)?;
                         let value = jadpo_sql::value(&mut writing, value, &field.column())?;
-                        assignments.push(text::equal(&field.born, &value));
+                        assignments.push(text::equal(&field.column, &value));
                         changed.push((name.clone(), value.clone()));
                         if *op == WriteOp::Update
                             && let Some(who) = self.field_policy(
@@ -760,7 +760,7 @@ impl Planner<'_> {
                         if field.generated == Some(jadpo_std::Generated::OnChange) {
                             let ty = column_type(field)?.param();
                             let now = writing.param(WriteSource::Now, ty);
-                            assignments.push(text::equal(&field.born, &now));
+                            assignments.push(text::equal(&field.column, &now));
                         }
                     }
                 } else if *op == WriteOp::Update {
@@ -800,7 +800,7 @@ impl Planner<'_> {
                             } else {
                                 let sql =
                                     self.stored_sql(body, *value, entity_model, ty, &mut writing)?;
-                                vec![(field.born.clone(), sql)]
+                                vec![(field.column.clone(), sql)]
                             }
                         } else {
                             let input = writing.input(*value, Some(validator));
@@ -981,9 +981,9 @@ impl Planner<'_> {
                                 },
                                 SqlType::Bool,
                             );
-                            assignments.push(text::set_when(&field.born, &any, &now));
+                            assignments.push(text::set_when(&field.column, &any, &now));
                         } else {
-                            assignments.push(text::equal(&field.born, &now));
+                            assignments.push(text::equal(&field.column, &now));
                         }
                     }
                     if assignments.is_empty() {
@@ -1013,7 +1013,7 @@ impl Planner<'_> {
                         Some((_, value)) => Some(value.clone()),
                         None => Some(jadpo_sql::policy::qualified(
                             table,
-                            &field(entity_model, name)?.born,
+                            &field(entity_model, name)?.column,
                         )),
                     };
                     kept = self.kept_in_tenant(entity_model, &names, &new_value, false)?;
@@ -1457,7 +1457,7 @@ impl Planner<'_> {
         Some(match &body.site(site).node {
             Node::Expr(Expr::Stored { field: key }) => {
                 let field = field(entity, self.types.field_name(key))?;
-                text::column(&field.born)
+                text::column(&field.column)
             }
             Node::Expr(Expr::Binary {
                 op: op @ (BinaryOp::Add | BinaryOp::Subtract),
@@ -1788,7 +1788,7 @@ impl Planner<'_> {
         match rule.kind()? {
             Kind::Field => {
                 let field = field(entity, part)?;
-                Some(object_name(&[&entity.table, &field.born], "key"))
+                Some(object_name(&[&entity.table, &field.column], "key"))
             }
             Kind::UniqueRule => Some(unique_constraint(entity, part)),
             Kind::Reference => Some(foreign_key(entity, field(entity, part)?)),
@@ -1967,7 +1967,7 @@ fn field_columns(
             bound: crate::queries::sealed_bound(entity, field),
             id: Box::new(id),
         };
-        return Some(vec![(field.born.clone(), writing.param(source, ty))]);
+        return Some(vec![(field.column.clone(), writing.param(source, ty))]);
     }
     // A `File` it sets is held to the field's settings before the
     // statement runs (area 16, "What a write checks"; chunk B1).
@@ -1987,7 +1987,7 @@ fn field_columns(
             of: Box::new(source.clone()),
             codec,
         };
-        return Some(vec![(field.born.clone(), writing.param(source, ty))]);
+        return Some(vec![(field.column.clone(), writing.param(source, ty))]);
     }
     // A variant, by the name it was born with where any differs from its
     // own (area 5, "What a rename keeps").
@@ -1996,11 +1996,11 @@ fn field_columns(
             of: Box::new(source.clone()),
             stored: crate::queries::stored_names(field),
         };
-        return Some(vec![(field.born.clone(), writing.param(source, ty))]);
+        return Some(vec![(field.column.clone(), writing.param(source, ty))]);
     }
     if field.compound.is_none() {
         return Some(vec![(
-            field.born.clone(),
+            field.column.clone(),
             writing.param(source.clone(), ty),
         )]);
     }

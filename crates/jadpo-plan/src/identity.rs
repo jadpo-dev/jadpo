@@ -92,10 +92,10 @@ impl Planner<'_> {
                         .json_number(TypeRef::Field(self.types.graph().node(id).key.clone()))?,
                     subject_sql: jadpo_check::data::sql_type(subject)?.param(),
                     subject_of: self.access(&mut Lookup, entity, Reach::Read).map(|wheres| {
-                        statements::address_of(&entity.table, &subject.born, &wheres)
+                        statements::address_of(&entity.table, &subject.column, &wheres)
                     }),
                     first_sign_in: match identity.links_store() {
-                        Some(_) => Some(self.linked_lookup(user, &subject.born)?),
+                        Some(_) => Some(self.linked_lookup(user, &subject.column)?),
                         None => None,
                     },
                 })
@@ -210,7 +210,7 @@ impl Planner<'_> {
                 .fields
                 .iter()
                 .find(|f| f.name == address)?
-                .born
+                .column
                 .clone(),
             None => "id".to_string(),
         };
@@ -238,7 +238,7 @@ impl Planner<'_> {
                 .fields
                 .iter()
                 .find(|f| f.name == address)?
-                .born
+                .column
                 .clone(),
             None => "id".to_string(),
         };
@@ -316,7 +316,7 @@ impl Planner<'_> {
                     }
                 })
                 .collect(),
-            first_sign_in: self.linked_lookup(user, &subject.born)?,
+            first_sign_in: self.linked_lookup(user, &subject.column)?,
             subject_sql: jadpo_check::data::sql_type(subject)?.param(),
         })
     }
@@ -364,7 +364,7 @@ impl Planner<'_> {
             .fields
             .iter()
             .find(|f| f.name == address)?
-            .born
+            .column
             .clone();
         let mut bind = Lookup;
         let wheres = self.access(&mut bind, entity, Reach::Read)?;
@@ -427,7 +427,7 @@ impl Planner<'_> {
             table,
             csrf,
             &entity.table,
-            &subject.born,
+            &subject.column,
             &statements::active(active.as_deref()),
             &wheres,
         ));

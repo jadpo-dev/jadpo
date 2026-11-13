@@ -69,14 +69,15 @@ const CREATE_STEPS: &str = "CREATE TABLE IF NOT EXISTS jadpo_migration_steps (\n
 /// migrate apply` hands the runtime, from the project's interpreter.
 pub trait Backfills {
     /// The value of `field`'s backfill in `migration` for each of `rows`,
-    /// in order, bound for its column through the storage codec: each row
-    /// the columns the backfill reads, as its SQL selects them.
+    /// in order, bound for its columns through the storage codec, one or a
+    /// compound type's several (chunk Q3b): each row the columns the
+    /// backfill reads, as its SQL selects them.
     fn work_out(
         &self,
         migration: &str,
         field: &str,
         rows: &[&[SqlValue]],
-    ) -> Result<Vec<SqlValue>, Unworked>;
+    ) -> Result<Vec<Vec<SqlValue>>, Unworked>;
 
     /// For each of `values`, a value of the structured field `field` as
     /// its JSON column holds it, `None` when the field's type as of
@@ -113,7 +114,7 @@ impl Backfills for NoBackfills {
         _migration: &str,
         _field: &str,
         _rows: &[&[SqlValue]],
-    ) -> Result<Vec<SqlValue>, Unworked> {
+    ) -> Result<Vec<Vec<SqlValue>>, Unworked> {
         Err(Unworked::Unavailable)
     }
 }
@@ -953,21 +954,36 @@ async fn in_jadpo(
             keys.len()
         )));
     }
-    let ty = match values.first() {
-        Some(SqlValue::Null(_)) | None => {
-            return Err(fault(format!("`{field}`'s backfill gave no value")));
+    // A converted field that may be `none` keeps `none` where its value
+    // is, a row left as it is (chunk Q3b).
+    let mut kept_keys = Vec::with_capacity(keys.len());
+    let mut kept: Vec<Vec<SqlValue>> = Vec::with_capacity(values.len());
+    for (key, row) in keys.into_iter().zip(values) {
+        if row.iter().all(|value| matches!(value, SqlValue::Null(_))) {
+            continue;
         }
-        Some(value) => value.ty(),
+        kept_keys.push(key);
+        kept.push(row);
+    }
+    let Some(width) = kept.first().map(Vec::len) else {
+        return Ok(0);
     };
-    let filled = transaction
-        .execute(
-            write,
-            &[
-                SqlValue::Array(SqlType::Uuid, keys),
-                SqlValue::Array(ty, values),
-            ],
-        )
-        .await?;
+    if kept.iter().any(|row| row.len() != width) {
+        return Err(fault(format!(
+            "`{field}`'s backfill gave rows of different widths"
+        )));
+    }
+    let mut params = vec![SqlValue::Array(SqlType::Uuid, kept_keys)];
+    for at in 0..width {
+        let column: Vec<SqlValue> = kept.iter().filter_map(|row| row.get(at).cloned()).collect();
+        let ty = column
+            .iter()
+            .find(|value| !matches!(value, SqlValue::Null(_)))
+            .or(column.first())
+            .map_or(SqlType::Text, SqlValue::ty);
+        params.push(SqlValue::Array(ty, column));
+    }
+    let filled = transaction.execute(write, &params).await?;
     Ok(filled)
 }
 

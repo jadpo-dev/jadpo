@@ -466,7 +466,7 @@ fn privacy_steps(
     let entity = model.entity(&user.entity)?;
     let address = jadpo_check::privacy::address_field(identity, user)
         .and_then(|name| entity.fields.iter().find(|field| field.name == name))
-        .map(|field| jadpo_sql::identity::address_by_id(&entity.table, &field.born));
+        .map(|field| jadpo_sql::identity::address_by_id(&entity.table, &field.column));
     let translations = jadpo_check::translations::plan(db, project);
     let kept = jadpo_check::privacy::kept_entities(db, project)
         .iter()
@@ -663,13 +663,17 @@ pub struct BackfillPlan {
     pub field: String,
     /// The callable, whose parameters are the stored fields it reads.
     pub callable: u32,
-    /// How each of their columns is read, in parameter order.
+    /// How each of their columns is read, in parameter order: a field
+    /// held in several columns as a compound type's first column and then
+    /// its parts (chunk Q3b).
     pub reads: Vec<jadpo_std::read::Column>,
-    /// The rules each value read is held to, in the same order (chunk
-    /// 5.9d): `None` for a field the migration retires.
+    /// The rules each value read is held to, one for each parameter
+    /// (chunk 5.9d): `None` for a field the migration retires, and for one
+    /// kept as JSON, which its codec reads with its rules.
     pub held: Vec<Option<jadpo_std::read::FieldRules>>,
-    /// The column type its value is written as.
-    pub write: jadpo_std::SqlType,
+    /// The column types its value is written as: one, or each of a
+    /// compound type's (chunk Q3b).
+    pub write: Vec<jadpo_std::SqlType>,
     /// Its field's rules, its type's included, which each value is kept
     /// and checked by, as a value of the field's type is (chunk 6.1a): a
     /// decimal at the type's places, rounded half to even.
@@ -799,10 +803,10 @@ impl Plan {
                         .plan
                         .reads
                         .iter()
-                        .map(|read| read.decode.clone())
+                        .flat_map(|read| read.decode.iter().cloned())
                         .collect(),
                     held: Vec::new(),
-                    write: backfill.plan.write,
+                    write: backfill.plan.write.clone(),
                     validator: ValidatorId(0),
                     refits: backfill.plan.refits.clone(),
                     stored: backfill.plan.stored.clone(),
@@ -879,9 +883,24 @@ impl Plan {
                 backfill.validator = types.validator_id(&TypeRef::Field(key));
                 // Each stored value it reads is held to its field's rules,
                 // as a query's read is (chunk 5.9d).
+                // A field kept as JSON, by its codec (chunk Q3b).
+                let json_read: Vec<bool> = {
+                    let mut out = Vec::new();
+                    for column in &backfill.reads {
+                        match column {
+                            jadpo_std::read::Column::Part => {}
+                            other => out.push(matches!(other, jadpo_std::read::Column::Json(_))),
+                        }
+                    }
+                    out
+                };
                 backfill.held = reads
                     .iter()
-                    .map(|read| {
+                    .zip(json_read.iter().chain(std::iter::repeat(&false)))
+                    .map(|(read, json)| {
+                        if *json {
+                            return None;
+                        }
                         let read = read.as_ref()?;
                         let key = jadpo_check::graph::field_key(
                             &lookup,
@@ -1449,6 +1468,46 @@ impl Plan {
                     field: stored.field,
                     number: u32::try_from(number).unwrap_or(u32::MAX),
                 });
+            }
+            // A field kept as JSON that a backfill in Jadpo reads, by its
+            // field's type, as a query reads it (chunk Q3b).
+            let model = jadpo_check::data::data_model(db, project);
+            for ((backfill, (entity, _)), names) in backfills
+                .iter_mut()
+                .zip(&backfill_fields)
+                .zip(&backfill_reads)
+            {
+                let mut names = names.iter();
+                for column in backfill.reads.iter_mut() {
+                    if matches!(column, jadpo_std::read::Column::Part) {
+                        continue;
+                    }
+                    let name = names.next().cloned().flatten();
+                    let jadpo_std::read::Column::Json(number) = column else {
+                        continue;
+                    };
+                    let Some(name) = name else {
+                        continue;
+                    };
+                    let Some(id) = graph.named(Kind::Field, &format!("{entity}.{name}")) else {
+                        continue;
+                    };
+                    let mut ty = TypeRef::Field(graph.node(id).key.clone());
+                    if let Some(field) = model
+                        .entity(entity)
+                        .and_then(|e| e.fields.iter().find(|f| f.name == name))
+                    {
+                        ty = crate::queries::stored_json(field, ty);
+                    }
+                    let at = match json_types.iter().position(|known| *known == ty) {
+                        Some(at) => at,
+                        None => {
+                            json_types.push(ty);
+                            json_types.len() - 1
+                        }
+                    };
+                    *number = u32::try_from(at).unwrap_or(u32::MAX);
+                }
             }
         }
         // Each provider operation's input and output (area 11, chunk 7.2c).

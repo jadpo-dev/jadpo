@@ -1035,6 +1035,18 @@ impl Change {
                 None => format!("column `{name}.{column}`"),
             }
         };
+        // A field moved to new columns, since its column's type changes
+        // other than by widening (area 5; chunk Q3b).
+        let converted = |store: &str, name: &str, column: &str| {
+            let (Some(was), Some(now)) = (table(before, store, name), table(after, store, name))
+            else {
+                return false;
+            };
+            now.columns
+                .get(column)
+                .and_then(|c| c.field.as_deref())
+                .is_some_and(|field| crate::migration::retyped(&was, &now, field))
+        };
         // An entity's searchable words (area 16, "Search"; chunk B12): the
         // one generated column, read as the search it is.
         let generated = |store: &str, name: &str, column: &str| {
@@ -1085,6 +1097,18 @@ impl Change {
                 }
             }
             Change::ReviveTable { table, .. } => format!("retired table `{table}` comes back"),
+            Change::AddColumn {
+                store,
+                table,
+                column,
+            }
+            | Change::AlterColumn {
+                store,
+                table,
+                column,
+            } if converted(store, table, column) => {
+                format!("{} changes type", field(store, table, column))
+            }
             Change::AddColumn {
                 store,
                 table,

@@ -343,6 +343,12 @@ pub struct EntityModel {
 pub struct FieldModel {
     pub name: String,
     pub born: String,
+    /// The name its column, or a compound type's columns, are named from:
+    /// its born name, until a migration changes its column's type other
+    /// than by widening it, which keeps the old column for servers still
+    /// on the old build and moves the field to a new one, `<born>__2`
+    /// (area 5, "Changing a column's type"; chunk Q3b).
+    pub column: String,
     pub ty: Ty,
     pub nullable: bool,
     /// The column type; `None` when the field can't be stored.
@@ -426,7 +432,7 @@ impl FieldModel {
     /// Its column as a condition or a literal written into SQL sees it.
     pub fn column(&self) -> jadpo_sql::Column<'_> {
         jadpo_sql::Column {
-            name: &self.born,
+            name: &self.column,
             nullable: self.nullable,
             ty: sql_type(self),
             builtin: self.builtin,
@@ -473,13 +479,13 @@ impl FieldModel {
                 .iter()
                 .map(|(part, ty)| {
                     if part.is_empty() {
-                        (self.born.clone(), sql_type.clone())
+                        (self.column.clone(), sql_type.clone())
                     } else {
-                        (format!("{}_{part}", self.born), (*ty).to_string())
+                        (format!("{}_{part}", self.column), (*ty).to_string())
                     }
                 })
                 .collect(),
-            None => vec![(self.born.clone(), sql_type.clone())],
+            None => vec![(self.column.clone(), sql_type.clone())],
         }
     }
 }
@@ -679,12 +685,84 @@ pub fn entity_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
         retentions: Vec::new(),
         out: Vec::new(),
     };
-    let model = reader.entity(&symbol.path, &decl)?;
+    let mut model = reader.entity(&symbol.path, &decl)?;
+    place_columns(db, project, &mut model);
     Some(EntityRead {
         model: Arc::new(model),
         spans: reader.spans,
         problems: reader.out,
     })
+}
+
+/// Names each field's columns from the one the latest migration's
+/// snapshot holds it in (area 5, "Changing a column's type"; chunk Q3b).
+/// A column whose type changes other than by widening is never altered in
+/// place, since servers still on the old build read and write it: the
+/// field moves to new columns, named `<born>__2` (then `__3`), which no
+/// field's own name can be, and the migration fills them from the old
+/// ones, which stay until a later migration drops them. So does a field
+/// whose columns would take back a retired column's name.
+fn place_columns(db: &dyn Db, project: Project, entity: &mut EntityModel) {
+    let set = migrations::migrations(db, project);
+    let Some(latest) = set.list.last().and_then(migrations::Migration::schema) else {
+        return;
+    };
+    let Some(table) = entity
+        .store
+        .as_ref()
+        .and_then(|store| latest.stores.get(store))
+        .and_then(|store| store.tables.get(&entity.table))
+    else {
+        return;
+    };
+    let generation = |name: &str, born: &str| -> Option<u32> {
+        let rest = name.strip_prefix(born)?.strip_prefix("__")?;
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        let after = &rest[digits.len()..];
+        (after.is_empty() || after.starts_with('_'))
+            .then(|| digits.parse().ok())
+            .flatten()
+    };
+    for field in &mut entity.fields {
+        let live: Vec<&String> = table
+            .columns
+            .iter()
+            .filter(|(_, column)| !column.retired && column.field.as_deref() == Some(&field.born))
+            .map(|(name, _)| name)
+            .collect();
+        if live.is_empty() {
+            continue;
+        }
+        if let Some(at) = live
+            .iter()
+            .filter_map(|name| generation(name, &field.born))
+            .max()
+        {
+            field.column = format!("{}__{at}", field.born);
+        }
+        let moves = field.columns().iter().any(|(name, sql_type)| {
+            table.columns.get(name).is_some_and(|held| {
+                held.retired
+                    || (held.sql_type != *sql_type
+                        && !jadpo_graph::migration::widens(&held.sql_type, sql_type))
+            })
+        });
+        if !moves {
+            continue;
+        }
+        let taken = |base: &str| {
+            table
+                .columns
+                .keys()
+                .any(|name| name == base || name.starts_with(&format!("{base}_")))
+        };
+        let next = (2u32..)
+            .map(|at| format!("{}__{at}", field.born))
+            .find(|base| !taken(base));
+        if let Some(next) = next {
+            field.column = next;
+        }
+    }
 }
 
 /// The entity called `name`, without positions: what every check that
@@ -1398,6 +1476,7 @@ impl Reader<'_> {
         let nullable = self.lookup.is_nullable(&ty);
         let mut field = FieldModel {
             name: name.to_string(),
+            column: born.clone(),
             born,
             ty: ty.clone(),
             nullable,
@@ -3618,7 +3697,7 @@ fn search_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &m
                 cast: found.cast.map(str::to_string),
                 with: Vec::new(),
             };
-            let column = field.born.clone();
+            let column = field.column.clone();
             if table.indexes.values().any(|index| {
                 index.columns == [column.clone()] && index.method.as_ref() == Some(&method)
             }) {
@@ -3717,7 +3796,7 @@ fn expression_indexes(model: &DataModel, queries: &[queries::QueryModel], schema
             continue;
         }
         let table_name = entity.table.as_str();
-        let column = field.born.as_str();
+        let column = field.column.as_str();
         let mut name = physical::object_name(&[table_name, column, call.name()], "idx");
         // Another expression of the same operation and field: its own
         // index, named apart by its expression's digest.
@@ -3736,7 +3815,7 @@ fn expression_indexes(model: &DataModel, queries: &[queries::QueryModel], schema
                         .into_iter()
                         .map(|(column, _)| column)
                         .collect(),
-                    None => vec![field.born.clone()],
+                    None => vec![field.column.clone()],
                 },
                 reason: format!("query {query}"),
                 predicate: visible_predicate(entity),
@@ -3789,7 +3868,7 @@ fn nearest_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &
             continue;
         }
         let method = hnsw_method(nearest.metric, nearest.dimensions, Vec::new());
-        let column = field.born.clone();
+        let column = field.column.clone();
         // One the entity declares, tuned or not, serves it.
         if table.indexes.values().any(|index| {
             index.columns == [column.clone()]
@@ -3865,7 +3944,7 @@ fn table_of(
             .iter()
             .filter_map(|name| entity.fields.iter().find(|f| &f.name == name))
             .filter(|field| field.json.is_some())
-            .map(|field| field.born.clone())
+            .map(|field| field.column.clone())
             .collect()
     };
     let mut position = 0u32;
@@ -3880,14 +3959,14 @@ fn table_of(
                 field
                     .fixed
                     .iter()
-                    .find(|(suffix, _)| name == &format!("{}_{suffix}", field.born))
+                    .find(|(suffix, _)| name == &format!("{}_{suffix}", field.column))
                     .map(|(_, code)| vec![code.clone()])
             });
             let fixable = entry.is_some_and(|entry| {
                 entry
                     .fixed_parts()
                     .iter()
-                    .any(|(suffix, _)| name == &format!("{}_{suffix}", field.born))
+                    .any(|(suffix, _)| name == &format!("{}_{suffix}", field.column))
             });
             let allows = match entry {
                 None => field.allows.clone(),
@@ -3960,7 +4039,7 @@ fn table_of(
         }
         if field.unique && field.name != "id" {
             out.unique.insert(
-                physical::object_name(&[table, &field.born], "key"),
+                physical::object_name(&[table, &field.column], "key"),
                 physical::Unique {
                     columns: key_columns(
                         columns.iter().map(|(name, _)| name.clone()).collect(),
@@ -3982,9 +4061,9 @@ fn table_of(
             // same, since erasure finds its records by it.
             if let Some(on_delete) = reference.on_delete {
                 out.foreign_keys.insert(
-                    physical::object_name(&[table, &field.born], "fkey"),
+                    physical::object_name(&[table, &field.column], "fkey"),
                     physical::ForeignKey {
-                        columns: vec![field.born.clone()],
+                        columns: vec![field.column.clone()],
                         table: target.table.clone(),
                         on_delete: match on_delete {
                             OnDelete::Restricted => physical::OnDelete::Restrict,
@@ -4003,10 +4082,10 @@ fn table_of(
                     .any(|rule| rule.fields.first() == Some(&field.name));
             if !covered {
                 out.indexes.insert(
-                    physical::object_name(&[table, &field.born], "idx"),
+                    physical::object_name(&[table, &field.column], "idx"),
                     physical::Index {
                         expression: None,
-                        columns: vec![field.born.clone()],
+                        columns: vec![field.column.clone()],
                         reason: format!("reference {}.{}", entity.born, field.born),
                         predicate: None,
                         collate: Vec::new(),
@@ -4081,7 +4160,7 @@ fn table_of(
             .fields
             .iter()
             .filter_map(|name| entity.fields.iter().find(|f| &f.name == name))
-            .map(|f| f.born.clone())
+            .map(|f| f.column.clone())
             .collect();
         let column = jadpo_std::search::COLUMN;
         out.columns.insert(
@@ -4190,7 +4269,7 @@ pub fn index_name(entity: &EntityModel, index: &str) -> String {
 
 /// The name the database knows a reference's foreign key by.
 pub fn foreign_key(entity: &EntityModel, field: &FieldModel) -> String {
-    physical::object_name(&[&entity.table, &field.born], "fkey")
+    physical::object_name(&[&entity.table, &field.column], "fkey")
 }
 
 /// One unique rule of an entity (area 5, "Unique rules"): a field's own

@@ -1839,12 +1839,16 @@ pub struct Backfill<'v> {
     /// `Todo.priority`.
     pub field: String,
     pub callable: u32,
+    /// How each column it reads is read: a field held in several as a
+    /// compound type's first column and then its parts (chunk Q3b).
     pub reads: Vec<jadpo_std::read::Column>,
-    /// The field each value read is of and its validator, in the order of
-    /// `reads`, which a value read is held to (chunk 5.9d): `None` for a
-    /// field the migration retires.
+    /// The field each value read is of and its validator, one for each
+    /// parameter, which a value read is held to (chunk 5.9d): `None` for
+    /// a field the migration retires.
     pub held: Vec<Option<(String, &'v Validator)>>,
-    pub write: SqlType,
+    /// The column types its value is written as: one, or each of a
+    /// compound type's (chunk Q3b).
+    pub write: Vec<SqlType>,
     /// The field's rules, its type's included: a decimal is kept at the
     /// type's places, rounded half to even, and a value its rules refuse
     /// stops the backfill.
@@ -1928,7 +1932,7 @@ impl crate::Backfills for InJadpo<'_> {
         migration: &str,
         field: &str,
         rows: &[&[SqlValue]],
-    ) -> Result<Vec<SqlValue>, crate::Unworked> {
+    ) -> Result<Vec<Vec<SqlValue>>, crate::Unworked> {
         use crate::Unworked;
         let backfill = self
             .backfills
@@ -1941,10 +1945,16 @@ impl crate::Backfills for InJadpo<'_> {
             if row.len() != backfill.reads.len() {
                 return Err(stopped("its row didn't hold every column it reads".into()));
             }
-            let values = row
+            // Each field it reads from its columns, as a query reads it: a
+            // compound type's from its several, one kept as JSON through
+            // its codec (chunk Q3b).
+            let codecs = self.json.unwrap_or(crate::JsonCodecs::NONE);
+            let values = backfill
+                .reads
                 .iter()
-                .zip(&backfill.reads)
-                .map(|(sql, column)| crate::from_sql(sql, column))
+                .enumerate()
+                .filter(|(_, column)| !matches!(column, jadpo_std::read::Column::Part))
+                .map(|(at, _)| crate::read::field_value(row, &backfill.reads, at as u32, codecs))
                 .collect::<Result<Vec<_>, String>>()
                 .map_err(|why| stopped(format!("a column it reads held {why}")))?;
             // Each stored value read keeps its field's rules, as a query's
@@ -1961,8 +1971,8 @@ impl crate::Backfills for InJadpo<'_> {
         // end here, on a host with no store.
         // A structured value is written through its type's route codec
         // (chunk 5.9c).
-        let json = match backfill.write {
-            SqlType::Json => Some(
+        let json = match backfill.write.as_slice() {
+            [SqlType::Json] => Some(
                 self.json_of(migration, field)
                     .ok_or(Unworked::Unavailable)?,
             ),
@@ -1970,7 +1980,7 @@ impl crate::Backfills for InJadpo<'_> {
         };
         let host = MemoryHost::new();
         let mut ctx = Ctx::of(self.executor, &host, Env::default());
-        let mut out: Vec<SqlValue> = Vec::with_capacity(rows.len());
+        let mut out: Vec<Vec<SqlValue>> = Vec::with_capacity(rows.len());
         let mut stop: Option<Unworked> = None;
         let places = self.executor.places();
         let ran = crate::block_on(items(
@@ -2062,7 +2072,7 @@ fn written(
     outcome: Outcome,
     places: &crate::Places,
     json: Option<(crate::JsonCodecs<'_>, u32)>,
-) -> Result<SqlValue, String> {
+) -> Result<Vec<SqlValue>, String> {
     let value = match outcome {
         Outcome::Value(value) => value,
         Outcome::Fault(fault) => {
@@ -2100,13 +2110,35 @@ fn written(
         }
         None => value,
     };
-    match json {
+    // A value held in several columns, each its part (chunk Q3b).
+    if let [_, _, ..] = backfill.write.as_slice() {
+        if matches!(value, Value::None) {
+            return Ok(backfill
+                .write
+                .iter()
+                .map(|ty| SqlValue::Null(*ty))
+                .collect());
+        }
+        let parts = jadpo_value::standard::to_parts(&value)
+            .ok_or_else(|| "its value has no parts to write".to_string())?;
+        if parts.len() != backfill.write.len() {
+            return Err("its value doesn't have one part for each column".into());
+        }
+        return parts
+            .iter()
+            .zip(&backfill.write)
+            .map(|(part, ty)| crate::to_sql(part, *ty))
+            .collect();
+    }
+    let ty = backfill.write.first().copied().unwrap_or(SqlType::Text);
+    let one = match json {
         Some((codecs, number)) => codecs.write(number, &value),
         None if !backfill.stored.is_empty() => {
-            crate::read::born_variant(&value, &backfill.stored, backfill.write)
+            crate::read::born_variant(&value, &backfill.stored, ty)
         }
-        None => crate::to_sql(&value, backfill.write),
-    }
+        None => crate::to_sql(&value, ty),
+    }?;
+    Ok(vec![one])
 }
 
 #[cfg(test)]
@@ -2879,7 +2911,7 @@ mod tests {
                 callable: 0,
                 reads: vec![jadpo_std::read::Column::Decimal],
                 held: vec![None],
-                write: SqlType::Numeric,
+                write: vec![SqlType::Numeric],
                 validator: Some(&cost),
                 refits: None,
                 stored: Vec::new(),
@@ -2893,9 +2925,9 @@ mod tests {
         assert_eq!(
             in_jadpo.work_out("20261019T1200_add_cost", "Order.cost", &rows),
             Ok(vec![
-                SqlValue::Numeric("2.34".into()),
-                SqlValue::Numeric("2.36".into()),
-                SqlValue::Numeric("7.00".into()),
+                vec![SqlValue::Numeric("2.34".into())],
+                vec![SqlValue::Numeric("2.36".into())],
+                vec![SqlValue::Numeric("7.00".into())],
             ])
         );
         let over = [SqlValue::Numeric("1.00".into())];
@@ -2942,7 +2974,7 @@ mod tests {
                 callable: 0,
                 reads: vec![jadpo_std::read::Column::Decimal],
                 held: vec![Some(("Order.price".into(), &price))],
-                write: SqlType::Numeric,
+                write: vec![SqlType::Numeric],
                 validator: None,
                 refits: None,
                 stored: Vec::new(),

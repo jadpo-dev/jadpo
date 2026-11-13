@@ -88,7 +88,7 @@ impl Planner<'_> {
     /// record's value.
     fn value_of(&self, entity: &EntityModel, name: &str, row: &Row<'_>) -> Option<String> {
         match row {
-            Row::Table => Some(qualified(&entity.table, &field(entity, name)?.born)),
+            Row::Table => Some(qualified(&entity.table, &field(entity, name)?.column)),
             Row::New { values, .. } => values
                 .iter()
                 .find(|(field, _)| field == name)
@@ -112,7 +112,7 @@ impl Planner<'_> {
             None => None,
         };
         let scope = match (&membership.scope, scope) {
-            (Some(column), Some(value)) => Some((field(model, column)?.born.clone(), value)),
+            (Some(column), Some(value)) => Some((field(model, column)?.column.clone(), value)),
             _ => None,
         };
         // Each role as its column holds it, bound as the storage codec
@@ -153,7 +153,7 @@ impl Planner<'_> {
                 counted.push((value, needs));
             }
             Some(Box::new(jadpo_sql::policy::Counts {
-                column: role_field.born.clone(),
+                column: role_field.column.clone(),
                 roles: counted,
             }))
         } else {
@@ -165,14 +165,14 @@ impl Planner<'_> {
                 for variant in roles {
                     bound.push(stored(bind, &variant)?);
                 }
-                Some((role_field.born.clone(), bound))
+                Some((role_field.column.clone(), bound))
             }
             _ => None,
         };
         Some(Membership {
             table: model.table.clone(),
             alias: alias.to_string(),
-            member: field(model, &membership.member)?.born.clone(),
+            member: field(model, &membership.member)?.column.clone(),
             caller: bind.caller(CallerPart::User),
             scope,
             roles,
@@ -362,7 +362,7 @@ impl Planner<'_> {
         for (i, name) in self.access.root.tenant_memberships.iter().enumerate() {
             let held = self.access.membership(name)?;
             let model = self.model.entity(&held.entity)?;
-            let scope = &field(model, held.scope.as_deref()?)?.born;
+            let scope = &field(model, held.scope.as_deref()?)?.column;
             out.push(jadpo_sql::policy::unheld(
                 &model.table,
                 &format!("jadpo_f{i}"),
@@ -380,7 +380,7 @@ impl Planner<'_> {
         for (i, name) in self.access.root.tenant_memberships.iter().enumerate() {
             let held = self.access.membership(name)?;
             let model = self.model.entity(&held.entity)?;
-            let scope = &field(model, held.scope.as_deref()?)?.born;
+            let scope = &field(model, held.scope.as_deref()?)?.column;
             out.push(Who::Condition(jadpo_sql::policy::held_in(
                 &model.table,
                 &format!("jadpo_s{i}"),
@@ -421,7 +421,7 @@ impl Planner<'_> {
             .map(|at| {
                 let value = match changed.iter().rev().find(|(name, _)| *name == at.name) {
                     Some((_, value)) => value.clone(),
-                    None => qualified(&entity.table, &at.born),
+                    None => qualified(&entity.table, &at.column),
                 };
                 (at.name.clone(), value)
             })
@@ -487,15 +487,15 @@ impl Planner<'_> {
             out.push(jadpo_sql::policy::outside_tenant(
                 &target.table,
                 &format!("jadpo_r{}", out.len()),
-                &field(target, "id")?.born,
+                &field(target, "id")?.column,
                 &new(&at.name)?,
-                &field(target, &theirs.via)?.born,
+                &field(target, &theirs.via)?.column,
                 tenancy.as_deref()?,
             ));
         }
         if moved {
             let tenancy = new(&own.via)?;
-            let id = qualified(&entity.table, &field(entity, "id")?.born);
+            let id = qualified(&entity.table, &field(entity, "id")?.column);
             for child in &self.model.entities {
                 let Some((theirs, _)) = self.access.kept_in_tenant(&child.name, &entity.name)
                 else {
@@ -511,9 +511,9 @@ impl Planner<'_> {
                     out.push(jadpo_sql::policy::outside_tenant(
                         &child.table,
                         &format!("jadpo_r{}", out.len()),
-                        &at.born,
+                        &at.column,
                         &id,
-                        &field(child, &theirs.via)?.born,
+                        &field(child, &theirs.via)?.column,
                         &tenancy,
                     ));
                 }

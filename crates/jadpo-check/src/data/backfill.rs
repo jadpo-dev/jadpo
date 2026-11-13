@@ -75,10 +75,10 @@ pub struct InJadpo {
     /// parameter, in the order of [`InJadpo::reads`].
     pub body: Arc<Body>,
     pub reads: Vec<Read>,
-    /// The column type its value is written as, through the storage codec,
-    /// and as the SQL names it (`numeric(12,2)`).
-    pub write: jadpo_std::SqlType,
-    pub sql_type: String,
+    /// The column types its value is written as, through the storage
+    /// codec: one, or each of a compound standard type's columns in its
+    /// entry's order, an amount of money's two (chunk Q3b).
+    pub write: Vec<jadpo_std::SqlType>,
     /// The places a decimal is stored at, rounded half to even.
     pub scale: Option<u32>,
     /// The field it fills, by its entity's name and its own as they are
@@ -101,10 +101,13 @@ pub struct InJadpo {
 pub struct Read {
     /// Its born name.
     pub field: String,
-    /// Its column, as the snapshot before the migration has it.
-    pub column: String,
-    /// How its column's value is read.
-    pub decode: jadpo_std::read::Column,
+    /// Its columns, as the snapshot before the migration has them: one,
+    /// or a compound standard type's several (chunk Q3b).
+    pub columns: Vec<String>,
+    /// How each of them is read: a compound type's first column
+    /// ([`jadpo_std::read::Column::Compound`]) then its parts, and a value
+    /// kept as JSON by a codec the plan numbers.
+    pub decode: Vec<jadpo_std::read::Column>,
     /// Its name now, whose rules each value read is held to (chunk 5.9d);
     /// `None` for a field the migration retires, read as its built-in
     /// type alone, whose declaration is gone.

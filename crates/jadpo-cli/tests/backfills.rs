@@ -520,13 +520,13 @@ impl jadpo_runtime::Backfills for FromFlag {
         _migration: &str,
         field: &str,
         rows: &[&[SqlValue]],
-    ) -> Result<Vec<SqlValue>, jadpo_runtime::Unworked> {
+    ) -> Result<Vec<Vec<SqlValue>>, jadpo_runtime::Unworked> {
         assert_eq!(field, "Todo.priority");
         Ok(rows
             .iter()
             .map(|row| match row {
-                [SqlValue::Bool(true)] => SqlValue::Text("high".into()),
-                _ => SqlValue::Text("normal".into()),
+                [SqlValue::Bool(true)] => vec![SqlValue::Text("high".into())],
+                _ => vec![SqlValue::Text("normal".into())],
             })
             .collect())
     }
