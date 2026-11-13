@@ -149,7 +149,8 @@ POSTGRES = [
     # their rows read back interpreted and compiled.
     ('live PostgreSQL: jadpo migrate, backfills and renames',
      [('jadpo-cli', 'migrate'), ('jadpo-cli', 'backfills'), ('jadpo-cli', 'json_migrations'),
-      ('jadpo-cli', 'removals'), ('jadpo-cli', 'rename'), ('jadpo-cli', 'domain')], []),
+      ('jadpo-cli', 'removals'), ('jadpo-cli', 'rename'), ('jadpo-cli', 'domain'),
+      ('jadpo-cli', 'conversions')], []),
     # Every standard type stored and read back, its column laid out as its
     # entry says, and each literal in SQL the value the runtime binds
     # (area 19, chunks 5.5w and 5.5w3b); an application's structured

@@ -740,10 +740,14 @@ fn place_columns(db: &dyn Db, project: Project, entity: &mut EntityModel) {
         {
             field.column = format!("{}__{at}", field.born);
         }
+        // A sealed column's type is `bytea` either way; turning
+        // `encrypted:` on or off is refused, not moved (area 15).
         let moves = field.columns().iter().any(|(name, sql_type)| {
             table.columns.get(name).is_some_and(|held| {
                 held.retired
-                    || (held.sql_type != *sql_type
+                    || (!held.sealed
+                        && field.sealed.is_none()
+                        && held.sql_type != *sql_type
                         && !jadpo_graph::migration::widens(&held.sql_type, sql_type))
             })
         });

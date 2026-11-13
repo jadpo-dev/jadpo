@@ -645,7 +645,8 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
 /// Whether field `field` (its born name) moves from the columns `old`
 /// holds it in to others in `new` (chunk Q3b): its column's type changes
 /// other than by widening, or its type now takes other columns, as an
-/// `Int` becoming an amount of money does.
+/// `Int` becoming an amount of money does. A column only added, as a
+/// standard type's new part, moves nothing.
 pub fn retyped(old: &Table, new: &Table, field: &str) -> bool {
     let live = |table: &Table| -> BTreeSet<String> {
         table
@@ -656,7 +657,8 @@ pub fn retyped(old: &Table, new: &Table, field: &str) -> bool {
             .collect()
     };
     let (was, now) = (live(old), live(new));
-    !was.is_empty() && !now.is_empty() && was != now
+    // A column only added, as a standard type's new part, moves nothing.
+    !was.is_empty() && !now.is_empty() && was.iter().any(|column| !now.contains(column))
 }
 
 /// Whether column `now` refuses a value `was` allowed; never when `was`
@@ -1016,7 +1018,7 @@ pub fn migration_sql(
                     // A value held in several columns, an amount of
                     // money's two, is worked out once in Jadpo and fills
                     // them all, from its first (chunk Q3b).
-                    let together: Vec<(&str, &str, bool)> = match (decided(need), new) {
+                    let held_columns: Vec<(&str, &str, bool)> = match (decided(need), new) {
                         (Some(Decided::InJadpo { .. }), Some(new)) => new
                             .ordered()
                             .into_iter()
@@ -1029,18 +1031,18 @@ pub fn migration_sql(
                             .collect(),
                         _ => Vec::new(),
                     };
-                    if together.len() > 1 && together[0].0 != column {
+                    if held_columns.len() > 1 && held_columns[0].0 != column {
                         continue;
                     }
-                    let together = if together.len() > 1 {
-                        together
+                    let held_columns = if held_columns.len() > 1 {
+                        held_columns
                     } else {
                         vec![(column.as_str(), col.sql_type.as_str(), col.nullable)]
                     };
                     let filled = backfill(
                         table,
                         &key,
-                        &together,
+                        &held_columns,
                         &[],
                         need,
                         &decided,
