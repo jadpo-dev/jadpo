@@ -664,8 +664,9 @@ test "a body cut into segments" {
 /// B14, `crate::file_downloads`), a file uploaded (chunk B5,
 /// `crate::file_uploads`), files sent as attachments and to a provider
 /// (chunk B14, `crate::file_sends`), any of the app's objects sent to a
-/// provider (`crate::any_object`), and the audit trail (chunk B11,
-/// `crate::audit`).
+/// provider (`crate::any_object`), the audit trail (chunk B11,
+/// `crate::audit`), and a principal's subject kept in several columns and
+/// as JSON (chunk N1b, `crate::token_subjects`).
 fn parity_projects() -> Vec<(String, PathBuf)> {
     let caught: Vec<(String, String)> = PACKAGE_CAUGHT
         .iter()
@@ -815,6 +816,22 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
         (
             "an audit trail".into(),
             corpus_project(&crate::audit::files(), "compiled-audit").expect("it checks"),
+        ),
+        (
+            "a subject kept in several columns".into(),
+            corpus_project(
+                &crate::token_subjects::several_columns(),
+                "compiled-subject-columns",
+            )
+            .expect("it checks"),
+        ),
+        (
+            "a subject kept as JSON".into(),
+            corpus_project(
+                &crate::token_subjects::kept_as_json(),
+                "compiled-subject-json",
+            )
+            .expect("it checks"),
         ),
         (
             "marked fields in logs".into(),
@@ -969,6 +986,8 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "a person's export",
         "a file's bytes deleted",
         "an audit trail",
+        "a subject kept in several columns",
+        "a subject kept as JSON",
         "marked fields in logs",
         "examples 11-cake-shop",
         "examples 12-recipe-book",

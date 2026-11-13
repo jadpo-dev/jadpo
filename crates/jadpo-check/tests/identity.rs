@@ -691,22 +691,49 @@ fn on_first_sign_in_decides_an_external_tokens_first_sign_in() {
     );
 }
 
+/// A subject kept in several columns is read from a token's text, as its
+/// type reads text (chunk N1b); one kept as JSON, whose type has no text
+/// form, could never be named by a token.
 #[test]
-fn external_compound_subjects_are_explicitly_not_built() {
-    let source = r#"principal { user: { subject: Member.identity } }
-config { issuer: Url audience: Text }
-authentication { external_token: { issuer: config.issuer audience: config.audience } }
-entity Member {
+fn an_external_token_reads_a_subject_its_type_reads_from_text() {
+    let subject = |field: &str| {
+        let source = format!(
+            r#"principal {{ user: {{ subject: Member.identity }} }}
+config {{ issuer: Url audience: Text }}
+authentication {{ external_token: {{ issuer: config.issuer audience: config.audience }} }}
+type Badge = Object {{
+    scheme: Text
+    number: Text
+}}
+entity Member {{
     id: Uuid
-    identity: Money { unique: true }
-}
-"#;
-    let found = support::problems(Layout::Loose, &[("main.jadpo", source)]);
+    identity: {field} {{ unique: true }}
+}}
+"#
+        );
+        support::problems(Layout::Loose, &[("main.jadpo", source.as_str())])
+    };
+    for several in ["EmailWithName", "VehicleRegistration"] {
+        let found = subject(several);
+        assert!(
+            !found
+                .iter()
+                .any(|problem| problem.contains("type.principal_subject")
+                    || problem.contains("toolchain.not_built_yet")),
+            "{several}: {found:?}"
+        );
+    }
+    let found = subject("Badge");
     assert!(
-        found
+        found.iter().any(|problem| problem.contains(
+            "type.principal_subject_invalid: A token's subject can't be read as `Member.identity`"
+        )),
+        "{found:?}"
+    );
+    assert!(
+        !found
             .iter()
-            .any(|problem| problem.contains("toolchain.not_built_yet:")
-                && problem.contains("subject")),
+            .any(|problem| problem.contains("toolchain.not_built_yet")),
         "{found:?}"
     );
 }

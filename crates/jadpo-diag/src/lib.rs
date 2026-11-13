@@ -1563,7 +1563,7 @@ rules! {
     TYPE_PRINCIPAL_ACTIVE_INVALID: "type.principal_active_invalid", area 8, Error, Agent,
         "The `active:` of `principal { }` is something other than a condition on the entity's own fields, such as a field on its own";
     TYPE_PRINCIPAL_SUBJECT_INVALID: "type.principal_subject_invalid", area 8, Error, Agent,
-        "The `subject:` of `principal { }` isn't written as a field of a stored entity, `<Entity>.<field>`";
+        "The `subject:` of `principal { }` isn't written as a field of a stored entity, `<Entity>.<field>`, or with `external_token` names one whose type a token's text can't be read as";
     TYPE_PRINCIPAL_SUBJECT_NOT_UNIQUE: "type.principal_subject_not_unique", area 8, Error, Agent,
         "The `subject:` of `principal { }` names a field without `unique: true`, so it could find more than one record";
     TYPE_RANDOM_CONTEXT: "type.random_context", area 19, Error, Agent,

@@ -1620,35 +1620,48 @@ impl Reader<'_> {
         if !ok {
             return None;
         }
-        let unsupported_subject = self
+        // A token names its subject as text (RFC 7519's StringOrURI),
+        // read as the subject field's type reads text, so a field whose
+        // type has no text form could never be named by one (chunk N1b).
+        let unreadable = self
             .out
             .variants
             .iter()
             .find(|variant| variant.kind == PrincipalKind::User)
             .and_then(|variant| {
-                crate::data::entity_model(
+                let entity = crate::data::entity_model(
                     self.db,
                     self.project,
                     crate::lookups::Name::new(self.db, variant.entity.clone()),
                 )
-                .as_ref()
-                .and_then(|entity| {
-                    entity
-                        .fields
-                        .iter()
-                        .find(|field| field.name == variant.subject)
+                .clone()?;
+                let field = entity
+                    .fields
+                    .iter()
+                    .find(|field| field.name == variant.subject)?;
+                let read_from_text = field.json.is_none()
+                    && field.compound_entry().is_none_or(|standard| {
+                        standard.text.is_some() || standard.name == jadpo_std::RANGE
+                    });
+                (!read_from_text).then(|| {
+                    (
+                        format!("{}.{}", entity.name, field.name),
+                        field.ty.to_string(),
+                    )
                 })
-                .map(|field| {
-                    field.compound.is_some()
-                        || field.json.is_some()
-                        || field.sealed.is_some()
-                        || crate::data::sql_type(field).is_none()
-                })
-            })
-            .unwrap_or(false);
-        if unsupported_subject {
-            self.later(span.clone(), "A compound external-token subject",
-                "External-token subjects currently use a unique field with a scalar stored form; multi-column and structured subject lookups are not built yet");
+            });
+        if let Some((subject, ty)) = unreadable {
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::TYPE_PRINCIPAL_SUBJECT_INVALID,
+                    format!("A token's subject can't be read as `{subject}`"),
+                )
+                .at(span.clone(), "a token names its subject as text")
+                .reason(format!(
+                    "A provider's token names the person as text, read as the `subject:` field's type reads it, and `{ty}` has no text form, so no token could name a user."
+                ))
+                .next("Make `subject:` a unique field whose type is read from text, such as `Text` or a type built on it"),
+            );
             return None;
         }
         self.out.external_token = Some(ExternalToken {
