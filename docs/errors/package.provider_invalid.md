@@ -196,7 +196,7 @@ provide cache {}
 error: `provide cache`: no package fills `cache`
  --> shared/providers/acme_cache/v1/provides/cache.jadpo:2:9
   |
-2 | provide cache {
+2 | provide cache {}
   |         ^^^^^ filled only by Jadpo's own drivers
   reason: Jadpo owns the list of capabilities. `database`, `cache` and `schedules` are filled only by its built-in drivers, configured in `app.jadpo`; a package may fill `files`, `email`, `publishing`, `receiving`, `search`, `bot_check`, `documents`, `scanning` and `ai`.
   next: Remove `shared/providers/acme_cache/v1/provides/cache.jadpo`; what the provider does beyond the capability is the package's own operations (agent)
