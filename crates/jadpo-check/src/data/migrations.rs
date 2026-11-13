@@ -871,6 +871,12 @@ impl Decide<'_> {
             fills: (entity.name.clone(), field.name.clone()),
             code: super::backfill::fingerprint(self.db, self.project, body),
             refits,
+            stored: field
+                .born_variants
+                .iter()
+                .flatten()
+                .map(|(_, stored)| stored.clone())
+                .collect(),
         })
     }
 }
@@ -906,6 +912,12 @@ fn decode_column(
                 Some(jadpo_std::read::Column::Enum {
                     ty: name.clone(),
                     variants: variants.iter().map(|v| v.name.clone()).collect(),
+                    stored: field
+                        .born_variants
+                        .iter()
+                        .flatten()
+                        .map(|(_, stored)| stored.clone())
+                        .collect(),
                 })
             }
             _ => None,

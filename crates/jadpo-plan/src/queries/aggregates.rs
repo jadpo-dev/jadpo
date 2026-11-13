@@ -192,11 +192,19 @@ impl Planner<'_> {
                 let kind = self.column(entity, field)?;
                 let sort = match &kind {
                     Column::Text => aggregate::text_order(&alias),
-                    Column::Enum { ty, variants } => {
-                        let codes: Vec<&str> = variants
-                            .iter()
-                            .map(|variant| jadpo_std::standard::stored_variant(ty, variant))
-                            .collect();
+                    Column::Enum {
+                        ty,
+                        variants,
+                        stored,
+                    } => {
+                        let codes: Vec<&str> = if stored.is_empty() {
+                            variants
+                                .iter()
+                                .map(|variant| jadpo_std::standard::stored_variant(ty, variant))
+                                .collect()
+                        } else {
+                            stored.iter().map(String::as_str).collect()
+                        };
                         aggregate::enum_order(&alias, &codes)
                     }
                     _ => alias.clone(),

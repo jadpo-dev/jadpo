@@ -389,6 +389,10 @@ pub struct Column<'a> {
     pub scale: Option<u32>,
     /// How the field is kept, when that isn't one column of its own type.
     pub kept: Kept,
+    /// For an enum without data whose column holds a variant by a name
+    /// other than its own, each variant in declared order with the name
+    /// stored: the one it was born with (area 5, "What a rename keeps").
+    pub variants: Option<&'a [(String, String)]>,
 }
 
 /// The standard type an amount of money is.
@@ -797,6 +801,9 @@ fn among(
                 Kept::Json(codec) => {
                     bind.laid(field.name, other, Laying::Json(codec?), ty.array())?
                 }
+                _ if let Some(variants) = field.variants => {
+                    bind.laid(field.name, other, stored_names(variants), ty.array())?
+                }
                 _ => bind.bind(other, ty.array())?,
             };
             if negated {
@@ -1022,6 +1029,7 @@ fn result_column(call: &Call) -> Column<'static> {
         builtin,
         scale: None,
         kept: Kept::One,
+        variants: None,
     }
 }
 
@@ -1247,6 +1255,7 @@ fn search(bind: &mut dyn Bind, column: &str, call: &Call) -> Option<String> {
                 },
                 scale: None,
                 kept: Kept::One,
+                variants: None,
             };
             let point = bind.bind(value, SqlType::Geography)?;
             let distance = self::value(bind, distance, &length)?;
@@ -1305,6 +1314,20 @@ pub fn value(bind: &mut dyn Bind, value: &Value, column: &Column<'_>) -> Option<
     if let Kept::Json(codec) = column.kept {
         return bind.laid(column.name, value, Laying::Json(codec?), ty);
     }
+    // An enum whose column stores a variant by the name it was born with
+    // (area 5, "What a rename keeps"): a variant written out is that name,
+    // and one given as the read runs is laid out so.
+    if let Some(variants) = column.variants {
+        return match value {
+            Value::Variant { variant, .. } => {
+                let (_, stored) = variants.iter().find(|(now, _)| now == variant)?;
+                bind.stored(SqlValue::Text(stored.clone()))
+            }
+            Value::Literal(_) | Value::List(_) => None,
+            Value::Now => bind.bind(value, ty),
+            other => bind.laid(column.name, other, stored_names(variants), ty),
+        };
+    }
     match value {
         Value::Literal(literal) => bind.stored(self::literal(literal, column)?),
         Value::Variant {
@@ -1323,6 +1346,12 @@ pub fn value(bind: &mut dyn Bind, value: &Value, column: &Column<'_>) -> Option<
         Value::List(_) => None,
         other => bind.bind(other, ty),
     }
+}
+
+/// How a variant given as a read runs is laid out for a column that
+/// stores `variants` by their born names: each by its place.
+fn stored_names(variants: &[(String, String)]) -> Laying {
+    Laying::Variant(variants.iter().map(|(_, stored)| stored.clone()).collect())
 }
 
 /// A literal given to `column`, as the runtime would bind it: decoded for
@@ -1350,6 +1379,7 @@ mod tests {
                 builtin: Some(Builtin::Text),
                 scale: None,
                 kept: super::Kept::One,
+                variants: None,
             })
         }
     }
@@ -1403,6 +1433,7 @@ mod tests {
                 builtin: None,
                 scale: None,
                 kept,
+                variants: None,
             })
         }
     }
@@ -1644,6 +1675,7 @@ mod tests {
                 builtin,
                 scale,
                 kept: super::Kept::One,
+                variants: None,
             })
         }
     }
@@ -1813,6 +1845,7 @@ mod tests {
                 builtin: None,
                 scale: None,
                 kept: super::Kept::One,
+                variants: None,
             })
         }
     }
@@ -1917,6 +1950,7 @@ mod tests {
                 builtin: None,
                 scale: None,
                 kept: super::Kept::One,
+                variants: None,
             })
         }
     }

@@ -1143,7 +1143,7 @@ for the field's type:
 | `Bool`, `Text`, `Bytes` | `boolean`, `text`, `bytea` |
 | `Instant`, `CalendarDate` | `timestamptz(3)`, `date` |
 | `Duration` | `bigint`, in milliseconds |
-| `Enum` without data | `text` holding the variant name; a standard enum holds its code, `GBP`, `Europe/London` |
+| `Enum` without data | `text` holding the name the variant was born with; a standard enum holds its code, `GBP`, `Europe/London` |
 | `Money` ([Money and payments](19-standard-library.md#money-and-payments)) | two columns, always: `<field>_amount bigint` of minor units and `<field>_currency char(3)`, with a check constraint holding the currency to the one a type fixes |
 | `ZonedTime` ([Zones and local times](10-configuration-and-time.md#zones-and-local-times)) | two columns: `<field>_instant timestamptz(3)` and `<field>_zone text` holding its zone's code |
 | `Enum` with data, `Object`, `List`, `Set`, `Map` | `jsonb` |
@@ -1153,8 +1153,10 @@ in the API's JSON, which caches and Redis entities hold too
 ([Structured values](#structured-values)).
 
 The database enforces types, required fields, keys and references. The
-application checks each field's own rules. Renaming an enum variant
-changes stored values, so it needs a migration.
+application checks each field's own rules. A variant, and a field or a
+variant inside a value stored as JSON, is stored by the name it was born
+with, so renaming one keeps what is stored
+([What a rename keeps](#what-a-rename-keeps)).
 
 ### Standard types in columns
 
@@ -1730,6 +1732,26 @@ gets the runtime's [system tables](#system-tables), prefixed `jadpo_`.
 
 Not built yet: changing a column's type other than widening it.
 `jadpo migrate new` says so.
+
+### What a rename keeps
+
+Stored values hold born names, as tables and columns do. A variant of an
+enum a column stores is kept, and recorded in the snapshot, by the name it
+was born with, and so is each type, field and variant inside a value
+stored as JSON, which is otherwise exactly its contract JSON. The codec
+writes and reads those names on both executors, so renaming a variant or
+a field with [`jadpo rename`](14-tooling.md#jadpo-rename) keeps every
+stored value and leaves nothing to migrate:
+
+```text
+variant planning.Status.open -> active
+```
+
+`Status.active` is still `open` in `todo.status`, and in each label stored
+as JSON that holds one; a todo written after the rename is stored the same
+way. The JSON a route sends, and an export's, use the names now. A rule
+across an object's fields names them as written, so renaming a field that
+such a rule names, inside a value stored as JSON, is a change to migrate.
 
 ### Removing data
 
@@ -2335,7 +2357,7 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | Index kinds: geographic, HNSW and JSON | Built. |
 | A database implied only when something needs one | Not built yet: it comes with the first feature that can run without one. |
 | Seeds and `jadpo seed` | Built. |
-| `jadpo rename` | Built: it writes the identity registry, so a renamed field keeps its column and a renamed entity its table ([Tools](14-tooling.md#jadpo-rename)). |
+| `jadpo rename` | Built: it writes the identity registry, so a renamed field keeps its column, a renamed entity its table, and a renamed variant or field of an object stored as JSON the name its stored values hold ([Tools](14-tooling.md#jadpo-rename)). |
 
 ## Errors
 

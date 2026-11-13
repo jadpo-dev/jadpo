@@ -18,6 +18,7 @@ pub mod application;
 pub mod approval;
 pub mod assets;
 pub mod batches;
+pub mod born_names;
 mod case;
 pub mod client_address;
 pub mod completion;
@@ -238,6 +239,7 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.push(empty_project(files.len()));
         }
         out.extend(domain_problems(db, project).iter().cloned());
+        out.extend(born_names::born_name_problems(db, project).iter().cloned());
         // An installed package's file this compiler already checked with no
         // problem at the package's digest isn't checked again (the package
         // cache, chunk 7.1c2): a package's code sees only its own names, so

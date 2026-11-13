@@ -8,7 +8,70 @@ use jadpo_graph::schema::{Allows, Column, Holds, Key, Table, object_name};
 use jadpo_graph::stored_json;
 use jadpo_std::{Builtin, Num};
 
+use crate::lookups::NameView;
 use crate::types::{Def, Ty, TypeView};
+
+/// The names a stored value keeps (area 5, "What a rename keeps"): each
+/// type, field and variant inside it by the name it was born with, read
+/// through the identity registry, so `jadpo rename` keeps what is stored
+/// under the old name. Without a symbol table, the names now.
+#[derive(Clone, Copy)]
+pub struct Born<'n>(pub Option<&'n dyn NameView>);
+
+impl Born<'_> {
+    /// The names now.
+    pub const NOW: Born<'static> = Born(None);
+
+    /// The born name of field `path` of the type or entity `host`, its own
+    /// part only: `line` for `Label.text` born `Label.line`.
+    pub fn field(&self, host: &str, path: &[String]) -> String {
+        let now = path.last().cloned().unwrap_or_default();
+        match self.0 {
+            Some(names) => own(crate::graph::field_key(names, host, path).name(), &now),
+            None => now,
+        }
+    }
+
+    /// The born name of variant `variant` of enum `host`, its own part.
+    pub fn variant(&self, host: &str, variant: &str) -> String {
+        match self.0 {
+            Some(names) => own(
+                crate::graph::variant_key(names, host, variant).name(),
+                variant,
+            ),
+            None => variant.to_string(),
+        }
+    }
+
+    /// The name a stored value's reads know type `name` by: its name, its
+    /// own part the one it was born with. A type that moves between
+    /// domains keeps its own part, so its domain never shows.
+    pub fn ty(&self, name: &str) -> String {
+        let Some(names) = self.0 else {
+            return name.to_string();
+        };
+        let born = crate::graph::type_born(names, name);
+        let (outer, now) = match name.rsplit_once('.') {
+            Some((outer, now)) => (Some(outer), now),
+            None => (None, name),
+        };
+        let born = own(&born, now);
+        match outer {
+            _ if born == now => name.to_string(),
+            Some(outer) => format!("{outer}.{born}"),
+            None => born,
+        }
+    }
+}
+
+/// The last part of a dotted born name, or `now` when there is none.
+fn own(born: &str, now: &str) -> String {
+    born.rsplit('.')
+        .next()
+        .filter(|part| !part.is_empty())
+        .unwrap_or(now)
+        .to_string()
+}
 
 /// The most digits a Jadpo decimal holds (area 2).
 const DECIMAL_DIGITS: u32 = 38;
@@ -130,17 +193,12 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
 /// settings count) allows beyond its column type: an enum's variants, and
 /// the bounds, lengths and patterns its rules set, most specific first,
 /// since a refinement only narrows.
-pub fn allows(table: &dyn TypeView, field: &Ty) -> Allows {
+pub fn allows(table: &dyn TypeView, born: Born<'_>, field: &Ty) -> Allows {
     let mut out = Allows::default();
-    if let Ty::Named(name) = table.structure(field)
-        && let Some(Def::Enum { variants }) = table.def(&name)
-        && variants.iter().all(|v| v.fields.is_none())
-    {
-        // As the column holds them: `Currency`'s by code (area 19).
-        out.values = variants
-            .iter()
-            .map(|v| jadpo_std::standard::stored_variant(&name, &v.name).to_string())
-            .collect();
+    if let Some(stored) = born_variants(table, born, field) {
+        // As the column holds them: `Currency`'s by code (area 19), and
+        // each by the name it was born with (area 5).
+        out.values = stored.into_iter().map(|(_, stored)| stored).collect();
         out.values.sort();
     }
     for (_, rules) in table.rule_chain(field) {
@@ -169,15 +227,49 @@ pub fn allows(table: &dyn TypeView, field: &Ty) -> Allows {
     out
 }
 
+/// The variants of the enum without data a field typed `field` holds, in
+/// declared order, each with the text its column stores it as: its code
+/// for a standard enum stored by code (`Currency`, area 19), else the name
+/// it was born with (area 5). `None` for any other type.
+pub fn born_variants(
+    table: &dyn TypeView,
+    born: Born<'_>,
+    field: &Ty,
+) -> Option<Vec<(String, String)>> {
+    let Ty::Named(name) = table.structure(field) else {
+        return None;
+    };
+    let Some(Def::Enum { variants }) = table.def(&name) else {
+        return None;
+    };
+    if variants.iter().any(|v| v.fields.is_some()) {
+        return None;
+    }
+    let coded = jadpo_std::standard::stored_by_code(&name).is_some();
+    Some(
+        variants
+            .iter()
+            .map(|v| {
+                let stored = if coded {
+                    jadpo_std::standard::stored_variant(&name, &v.name).to_string()
+                } else {
+                    born.variant(&name, &v.name)
+                };
+                (v.name.clone(), stored)
+            })
+            .collect(),
+    )
+}
+
 /// What a structured field typed `field` (`Parcel.label`, so its own
 /// settings count) reads when stored whole as its type's JSON (area 5,
 /// "Storage types"; chunk 5.9c): the value's shape and every object and
 /// enum of the application's inside it, with the rules along each part's
 /// chain, as the route codec reads it back. Its `?` is the column's
 /// `NULL`, so the value itself is never `none`.
-pub fn json_reads(table: &dyn TypeView, field: &Ty) -> stored_json::Reads {
+pub fn json_reads(table: &dyn TypeView, born: Born<'_>, field: &Ty) -> stored_json::Reads {
     let mut types = BTreeMap::new();
-    let shape = match json_shape(table, field, &mut types) {
+    let shape = match json_shape(table, born, field, &mut types) {
         stored_json::Shape::Optional(inner) => *inner,
         shape => shape,
     };
@@ -186,6 +278,7 @@ pub fn json_reads(table: &dyn TypeView, field: &Ty) -> stored_json::Reads {
 
 fn json_shape(
     table: &dyn TypeView,
+    born: Born<'_>,
     ty: &Ty,
     types: &mut BTreeMap<String, stored_json::Named>,
 ) -> stored_json::Shape {
@@ -204,17 +297,18 @@ fn json_shape(
         };
         let shape = match &inner {
             // A field's own rules are kept with the type it is.
-            Ty::Field(..) => json_shape_of(table, &inner, types),
-            _ => json_shape(table, &inner, types),
+            Ty::Field(..) => json_shape_of(table, born, &inner, types),
+            _ => json_shape(table, born, &inner, types),
         };
         return Shape::Optional(Box::new(shape));
     }
-    json_shape_of(table, ty, types)
+    json_shape_of(table, born, ty, types)
 }
 
 /// [`json_shape`] of a type that isn't `none`.
 fn json_shape_of(
     table: &dyn TypeView,
+    born: Born<'_>,
     ty: &Ty,
     types: &mut BTreeMap<String, stored_json::Named>,
 ) -> stored_json::Shape {
@@ -232,7 +326,7 @@ fn json_shape_of(
             let (min_length, max_length) = lengths();
             Shape::List {
                 set: matches!(structure, Ty::Set(_)),
-                item: Box::new(json_shape(table, item, types)),
+                item: Box::new(json_shape(table, born, item, types)),
                 min_length,
                 max_length,
             }
@@ -240,18 +334,21 @@ fn json_shape_of(
         Ty::Map(key, value) => {
             let (min_length, max_length) = lengths();
             Shape::Map {
-                key: Box::new(json_shape(table, key, types)),
-                value: Box::new(json_shape(table, value, types)),
+                key: Box::new(json_shape(table, born, key, types)),
+                value: Box::new(json_shape(table, born, value, types)),
                 min_length,
                 max_length,
             }
         }
         Ty::Named(name) if jadpo_std::standard_type(name).is_none() => match table.def(name) {
             Some(Def::Fields { fields, rules, .. }) => {
-                if !types.contains_key(name) {
+                // Each by the name it was born with (area 5, "What a
+                // rename keeps").
+                let named = born.ty(name);
+                if !types.contains_key(&named) {
                     // Held first, so a type that holds itself stops here.
                     types.insert(
-                        name.clone(),
+                        named.clone(),
                         Named::Object {
                             fields: BTreeMap::new(),
                             rules: Vec::new(),
@@ -267,23 +364,25 @@ fn json_shape_of(
                         .into_iter()
                         .map(|field| {
                             let at = Ty::Field(name.clone(), vec![field.clone()]);
-                            (field, json_shape(table, &at, types))
+                            let stored = born.field(name, std::slice::from_ref(&field));
+                            (stored, json_shape(table, born, &at, types))
                         })
                         .collect();
                     types.insert(
-                        name.clone(),
+                        named.clone(),
                         Named::Object {
                             fields,
                             rules: written,
                         },
                     );
                 }
-                Shape::Named(name.clone())
+                Shape::Named(named)
             }
             Some(Def::Enum { variants }) => {
-                if !types.contains_key(name) {
+                let named = born.ty(name);
+                if !types.contains_key(&named) {
                     types.insert(
-                        name.clone(),
+                        named.clone(),
                         Named::Enum {
                             variants: BTreeMap::new(),
                         },
@@ -310,16 +409,18 @@ fn json_shape_of(
                                             name.clone(),
                                             vec![variant.clone(), field.clone()],
                                         );
-                                        (field, json_shape(table, &at, types))
+                                        let stored =
+                                            born.field(name, &[variant.clone(), field.clone()]);
+                                        (stored, json_shape(table, born, &at, types))
                                     })
                                     .collect()
                             });
-                            (variant, fields)
+                            (born.variant(name, &variant), fields)
                         })
                         .collect();
-                    types.insert(name.clone(), Named::Enum { variants });
+                    types.insert(named.clone(), Named::Enum { variants });
                 }
-                Shape::Named(name.clone())
+                Shape::Named(named)
             }
             _ => Shape::Value(json_scalar(structure.to_string(), &rules)),
         },

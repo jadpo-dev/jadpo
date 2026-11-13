@@ -1853,6 +1853,10 @@ pub struct Backfill<'v> {
     /// stored value is checked with `validator` and only those it refuses
     /// are replaced: `None` for any other backfill.
     pub refits: Option<jadpo_std::read::Column>,
+    /// For an enum without data stored by the names its variants were
+    /// born with, each in declared order (area 5, "What a rename keeps"):
+    /// the value is written by its own; empty otherwise.
+    pub stored: Vec<String>,
 }
 
 /// Works out the latest migration's backfills that have no SQL form with
@@ -2098,6 +2102,9 @@ fn written(
     };
     match json {
         Some((codecs, number)) => codecs.write(number, &value),
+        None if !backfill.stored.is_empty() => {
+            crate::read::born_variant(&value, &backfill.stored, backfill.write)
+        }
         None => crate::to_sql(&value, backfill.write),
     }
 }
@@ -2875,6 +2882,7 @@ mod tests {
                 write: SqlType::Numeric,
                 validator: Some(&cost),
                 refits: None,
+                stored: Vec::new(),
             }],
         );
         let rows: Vec<Vec<SqlValue>> = ["2.345", "2.355", "7"]
@@ -2937,6 +2945,7 @@ mod tests {
                 write: SqlType::Numeric,
                 validator: None,
                 refits: None,
+                stored: Vec::new(),
             }],
         );
         let kept = [SqlValue::Numeric("12.50".into())];

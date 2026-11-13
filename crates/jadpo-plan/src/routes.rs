@@ -711,13 +711,27 @@ pub(crate) fn table(
 pub(crate) struct Codecs<'t> {
     types: &'t mut Types,
     codecs: Vec<Codec>,
-    ids: HashMap<(TypeRef, FilesAs), CodecId>,
+    ids: HashMap<(TypeRef, FilesAs, bool), CodecId>,
     /// The locales the application supports, when it declares them: a
     /// `Locale` on the wire is one of these or an invalid value (area 10,
     /// "Locales").
     locales: Option<jadpo_std::LocalePlan>,
     /// How a `File` is written in the type whose codec is being made.
     files: FilesAs,
+    /// Whether the type whose codec is being made is stored, so each type,
+    /// field and variant in it is written by the name it was born with
+    /// (area 5, "What a rename keeps").
+    born: bool,
+}
+
+/// The wrapper [`with_born_names`] asks for a stored type's codec by.
+const BORN_NAMES: &str = "born names";
+
+/// `ty`, written and read with each field and variant inside it by the
+/// name it was born with, as an entity's column stores it (area 5, "What a
+/// rename keeps").
+pub(crate) fn with_born_names(ty: TypeRef) -> TypeRef {
+    TypeRef::Std(BORN_NAMES.to_string(), vec![ty])
 }
 
 /// How a codec writes a `File` (chunk B14): as the record the runtime
@@ -789,6 +803,7 @@ impl<'t> Codecs<'t> {
             ids: HashMap::new(),
             locales: None,
             files: FilesAs::Kept,
+            born: false,
         }
     }
 
@@ -848,7 +863,16 @@ impl<'t> Codecs<'t> {
             self.files = before;
             return id;
         }
-        let at = (ty.clone(), self.files);
+        if let TypeRef::Std(name, args) = ty
+            && let [inner] = args.as_slice()
+            && name == BORN_NAMES
+        {
+            let before = std::mem::replace(&mut self.born, true);
+            let id = self.codec(inner);
+            self.born = before;
+            return id;
+        }
+        let at = (ty.clone(), self.files, self.born);
         if let Some(id) = self.ids.get(&at) {
             return *id;
         }
@@ -920,6 +944,16 @@ impl<'t> Codecs<'t> {
         id
     }
 
+    /// The shape of the object or variant `key`, its fields' JSON members
+    /// their born names when the codec being made is a stored one's.
+    fn shape_of(&mut self, key: &Key) -> Option<jadpo_std::types::ShapeId> {
+        if self.born {
+            self.types.born_shape_id(key)
+        } else {
+            self.types.shape_id(key)
+        }
+    }
+
     /// The codec of `ty` as if it weren't nullable.
     fn made(&mut self, ty: &TypeRef) -> Codec {
         match self.what(ty) {
@@ -935,7 +969,7 @@ impl<'t> Codecs<'t> {
                 }
             }
             Made::Object(key) => {
-                let Some(shape) = self.types.shape_id(&key) else {
+                let Some(shape) = self.shape_of(&key) else {
                     return self.made_unknown();
                 };
                 let keys: Vec<String> = self
@@ -998,7 +1032,7 @@ impl<'t> Codecs<'t> {
                     .into_iter()
                     .map(|(name, ordinal, key, payload, wire_name)| {
                         let fields = if payload {
-                            self.types.shape_id(&key).map(|shape| {
+                            self.shape_of(&key).map(|shape| {
                                 let keys: Vec<String> = self
                                     .types
                                     .shape(shape)
@@ -1013,8 +1047,15 @@ impl<'t> Codecs<'t> {
                         } else {
                             None
                         };
+                        // Stored, by the name it was born with (area 5).
+                        let born = key.name().rsplit('.').next().unwrap_or(&name);
+                        let wire = match wire_name {
+                            Some(wire) => wire,
+                            None if self.born => born.to_string(),
+                            None => name.clone(),
+                        };
                         VariantCodec {
-                            wire: wire_name.unwrap_or_else(|| name.clone()),
+                            wire,
                             name,
                             ordinal,
                             fields,

@@ -400,6 +400,15 @@ pub struct FieldModel {
     /// application's `field_encryption_key:` (area 15, "Encrypted fields";
     /// chunk P9), which no SQL reads or writes.
     pub sealed: Option<sealed::Holds>,
+    /// For an enum without data whose column holds a variant by a name
+    /// other than its own, each variant in declared order with the name its
+    /// column stores: the name it was born with (area 5, "What a rename
+    /// keeps"). `None` when each is stored by its own name, or by its code.
+    pub born_variants: Option<Vec<(String, String)>>,
+    /// For a value stored as JSON, whether a type, field or variant inside
+    /// it was born with another name, which its JSON keeps (area 5, "What
+    /// a rename keeps"): its codec writes and reads the born names.
+    pub json_renamed: bool,
 }
 
 /// A `File` field's settings (area 16, "Files"): the `files` connection
@@ -429,6 +438,7 @@ impl FieldModel {
                 (None, Some(_)) => jadpo_sql::Kept::Json(None),
                 (None, None) => jadpo_sql::Kept::One,
             },
+            variants: self.born_variants.as_deref(),
         }
     }
 
@@ -1360,6 +1370,21 @@ impl Reader<'_> {
         }
     }
 
+    /// What field `name` of `entity` reads, kept as JSON, by the names
+    /// they were born with (area 5, "What a rename keeps"); `renamed` says
+    /// whether any of them is other than its name now.
+    fn json_reads(
+        &self,
+        entity: &str,
+        name: &str,
+        renamed: &mut bool,
+    ) -> jadpo_graph::stored_json::Reads {
+        let typed = Ty::Field(entity.to_string(), vec![name.to_string()]);
+        let reads = columns::json_reads(self.lookup, columns::Born(Some(self.lookup)), &typed);
+        *renamed = reads != columns::json_reads(self.lookup, columns::Born::NOW, &typed);
+        reads
+    }
+
     /// One field, with its data settings checked.
     fn field(&mut self, path: &str, entity: &str, name: &str, value: &Expr) -> Option<FieldModel> {
         let written = TypeRef::from_expr(value);
@@ -1394,6 +1419,8 @@ impl Reader<'_> {
             retention: None,
             erase: None,
             sealed: None,
+            born_variants: None,
+            json_renamed: false,
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -1466,10 +1493,16 @@ impl Reader<'_> {
             ));
             return Some(field);
         }
-        field.allows = columns::allows(
-            self.lookup,
-            &Ty::Field(entity.to_string(), vec![name.to_string()]),
-        );
+        let typed = Ty::Field(entity.to_string(), vec![name.to_string()]);
+        let born_names = columns::Born(Some(self.lookup));
+        field.allows = columns::allows(self.lookup, born_names, &typed);
+        if let Ty::Named(enum_name) = self.lookup.structure(&typed)
+            && jadpo_std::standard::stored_by_code(&enum_name).is_none()
+            && let Some(stored) = columns::born_variants(self.lookup, born_names, &typed)
+            && stored.iter().any(|(now, stored)| now != stored)
+        {
+            field.born_variants = Some(stored);
+        }
         if let Ty::Prim(builtin) = self.lookup.structure(ty.strip_nullable()) {
             field.builtin = Some(builtin);
         }
@@ -1528,10 +1561,7 @@ impl Reader<'_> {
                 && column == "jsonb"
             {
                 field.allows = physical::Allows {
-                    json: Some(columns::json_reads(
-                        self.lookup,
-                        &Ty::Field(entity.to_string(), vec![name.to_string()]),
-                    )),
+                    json: Some(self.json_reads(entity, name, &mut field.json_renamed)),
                     ..physical::Allows::default()
                 };
             }
@@ -1609,10 +1639,7 @@ impl Reader<'_> {
                 // no migration's SQL reads but `jadpo migrate apply` checks
                 // stored values against (chunk 5.9c).
                 field.allows = physical::Allows {
-                    json: Some(columns::json_reads(
-                        self.lookup,
-                        &Ty::Field(entity.to_string(), vec![name.to_string()]),
-                    )),
+                    json: Some(self.json_reads(entity, name, &mut field.json_renamed)),
                     ..physical::Allows::default()
                 };
                 field.sql_type = Some(sql);

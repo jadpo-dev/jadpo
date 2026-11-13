@@ -676,9 +676,13 @@ next: jadpo check  says whether the change needs an acceptance
 A rename keeps what is stored under the old name. It adds a line to the
 identity registry, mapping the name now to the name it was born with
 ([Stable identity](18-records-and-manifest.md#stable-identity)), so a
-stored field keeps its column and its rows, and an entity its table:
-`jadpo migrate new` finds nothing to migrate, and the screen says what was
-`kept`. A second rename changes the line, and a rename back to the born
+stored field keeps its column and its rows, and an entity its table. A
+variant of an enum a column stores, and a field of an object stored as
+JSON, keep the name they were stored by, since stored values hold born
+names ([What a rename keeps](05-data.md#what-a-rename-keeps)): `jadpo
+migrate new` finds nothing to migrate, and the screen says what was
+`kept`, `value open in todo.status, todo.label` for a variant and `member
+line in todo.label` for a field kept inside JSON. A second rename changes the line, and a rename back to the born
 name removes it. The records the rename changes, such as
 `access.jadpo_record` here, are written again, and `jadpo check` says
 whether the change needs a person's
@@ -698,15 +702,12 @@ does. A name is in use where the new one has to be unique: among its
 owner's fields and variants, in its library, in its domain for a private
 function or type, and across the project for everything else. So is a
 name another declaration of its kind was born with, which stored records
-still know it by. A name that isn't one for its kind, the name it has, a
+still know it by; `jadpo check` refuses a declaration written by hand
+with such a name the same way, as
+[`semantic.duplicate_declaration`](../errors/semantic.duplicate_declaration.md). A name that isn't one for its kind, the name it has, a
 domain, a route and a test are refused the same way. A rename whose
 result would have an error the project didn't have changes nothing and
 shows the error. It takes `--json`.
-
-Not built yet: renaming a variant of an enum a column stores, or a field
-of an object stored as JSON. Their stored values hold the names they were
-written with, so such a rename stops with `migration.out_of_date`, and
-nothing changes.
 
 ### `jadpo domain`
 

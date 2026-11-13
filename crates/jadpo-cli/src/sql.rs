@@ -611,6 +611,10 @@ fn input_name(source: &WriteSource, write: &WriteSitePlan, body: &Body, text: &s
             format!("{} as JSON", input_name(of, write, body, text))
         }
         WriteSource::Stored(value) => stored(value),
+        // A variant, by the name it was born with (area 5).
+        WriteSource::Variant { of, .. } => {
+            format!("{} by its born name", input_name(of, write, body, text))
+        }
         // A sealed field's value, never readable in the statement (chunk
         // P9).
         WriteSource::Sealed { of, .. } => {
@@ -927,6 +931,7 @@ impl Names<'_> {
                     jadpo_std::read::Laying::Part(at) => format!("{of}, its column {}", at + 1),
                     jadpo_std::read::Laying::Json(_) => format!("{of}, as its JSON"),
                     jadpo_std::read::Laying::Given => format!("whether {of} is given"),
+                    jadpo_std::read::Laying::Variant(_) => format!("{of}, by its born name"),
                 }
             }
         }

@@ -556,11 +556,11 @@ fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Probl
                     };
                     let laid = items
                         .iter()
-                        .map(|item| lay(item, *laying, *inner, env))
+                        .map(|item| lay(item, laying, *inner, env))
                         .collect::<Result<Vec<SqlValue>, Problem>>()?;
                     SqlValue::Array(*inner, laid)
                 }
-                ty => lay(&value, *laying, ty, env)?,
+                ty => lay(&value, laying, ty, env)?,
             }
         }
     })
@@ -570,21 +570,22 @@ fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Probl
 /// columns, as a write keeps it ([`jadpo_value::standard::to_parts`]), its
 /// JSON, written by the codec a write keeps it with, or whether it is
 /// there. `none` is `NULL`.
-fn lay(value: &Value, laying: Laying, ty: SqlType, env: &Env<'_>) -> Result<SqlValue, Problem> {
+fn lay(value: &Value, laying: &Laying, ty: SqlType, env: &Env<'_>) -> Result<SqlValue, Problem> {
     if matches!(value, Value::None) {
         return Ok(SqlValue::Null(ty));
     }
     Ok(match laying {
         Laying::Part(at) => {
             let part = jadpo_value::standard::to_parts(value)
-                .and_then(|parts| parts.get(at as usize).cloned())
+                .and_then(|parts| parts.get(*at as usize).cloned())
                 .ok_or_else(|| {
                     Problem::Defect("a value without the part it is compared by".into())
                 })?;
             to_sql(&part, ty).map_err(Problem::Defect)?
         }
-        Laying::Json(codec) => env.json.write(codec, value).map_err(Problem::Defect)?,
+        Laying::Json(codec) => env.json.write(*codec, value).map_err(Problem::Defect)?,
         Laying::Given => SqlValue::Bool(true),
+        Laying::Variant(stored) => born_variant(value, stored, ty).map_err(Problem::Defect)?,
     })
 }
 
@@ -1162,6 +1163,30 @@ pub fn to_sql(value: &Value, ty: SqlType) -> Result<SqlValue, String> {
     }
 }
 
+/// A variant of an enum without data as a parameter of type `ty`, by the
+/// name at its place in `stored`, the one it was born with (area 5, "What a
+/// rename keeps"): `NULL` for `none`, each item of a list so.
+pub fn born_variant(value: &Value, stored: &[String], ty: SqlType) -> Result<SqlValue, String> {
+    match (value, ty) {
+        (Value::None, ty) => Ok(SqlValue::Null(ty)),
+        (Value::Variant(variant), SqlType::Text) if variant.fields.is_empty() => stored
+            .get(variant.ordinal as usize)
+            .map(|name| SqlValue::Text(name.clone()))
+            .ok_or_else(|| format!("a `{}` with no stored name", variant.ty)),
+        (Value::List(items) | Value::Set(items), SqlType::Array(inner)) => Ok(SqlValue::Array(
+            *inner,
+            items
+                .iter()
+                .map(|item| born_variant(item, stored, *inner))
+                .collect::<Result<Vec<_>, _>>()?,
+        )),
+        (value, ty) => Err(format!(
+            "{} that a `{ty:?}` column can't hold",
+            value.described()
+        )),
+    }
+}
+
 /// A column's value as the runtime holds it.
 pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
     Ok(match (sql, column) {
@@ -1197,7 +1222,26 @@ pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
         (SqlValue::Uuid(bytes), Column::Uuid) => Value::uuid(&uuid_text(bytes)),
         (SqlValue::Timestamp(micros), Column::Instant) => Value::Instant(micros.div_euclid(1000)),
         (SqlValue::Date(day), Column::Date) => Value::Date(*day),
-        (SqlValue::Text(stored), Column::Enum { ty, variants }) => {
+        // By the name each variant was born with, where any differs from
+        // its own (area 5, "What a rename keeps").
+        (
+            SqlValue::Text(text),
+            Column::Enum {
+                ty,
+                variants,
+                stored,
+            },
+        ) if !stored.is_empty() => {
+            let ordinal = stored
+                .iter()
+                .position(|name| name == text)
+                .ok_or_else(|| format!("a stored name that isn't a variant of `{ty}`"))?;
+            let name = variants
+                .get(ordinal)
+                .ok_or_else(|| format!("a stored name that isn't a variant of `{ty}`"))?;
+            Value::variant(ty, ordinal as u32, name, Vec::new())
+        }
+        (SqlValue::Text(stored), Column::Enum { ty, variants, .. }) => {
             let name = &jadpo_std::standard::variant_stored(ty, stored).to_string();
             let ordinal = variants
                 .iter()
@@ -1674,6 +1718,7 @@ mod tests {
         let column = Column::Enum {
             ty: "TodoStatus".into(),
             variants: vec!["open".into(), "done".into()],
+            stored: Vec::new(),
         };
         let why = from_sql(&SqlValue::Text(secret.into()), &column).expect_err("not a variant");
         assert!(!why.contains(secret), "{why}");
@@ -1692,8 +1737,22 @@ mod tests {
         let column = Column::Enum {
             ty: "TodoStatus".into(),
             variants: vec!["open".into(), "done".into()],
+            stored: Vec::new(),
         };
         assert_eq!(from_sql(&sql, &column).unwrap(), open);
+        // A variant renamed `active` is still stored as `open`, the name it
+        // was born with (area 5, "What a rename keeps").
+        let active = Value::variant("TodoStatus", 0, "active", Vec::new());
+        let stored = vec!["open".to_string(), "done".to_string()];
+        let sql = born_variant(&active, &stored, SqlType::Text).unwrap();
+        assert_eq!(sql, SqlValue::Text("open".into()));
+        let renamed = Column::Enum {
+            ty: "TodoStatus".into(),
+            variants: vec!["active".into(), "done".into()],
+            stored,
+        };
+        assert_eq!(from_sql(&sql, &renamed).unwrap(), active);
+        assert!(from_sql(&SqlValue::Text("active".into()), &renamed).is_err());
         assert_eq!(
             to_sql(&Value::list(vec![Value::Int(1)]), SqlType::Int8.array()).unwrap(),
             SqlValue::Array(SqlType::Int8, vec![SqlValue::Int8(1)])
