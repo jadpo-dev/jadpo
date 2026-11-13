@@ -1688,7 +1688,9 @@ migration {
   run, so the editor, the build and CI all stop. Loose files, with no
   `app.jadpo`, have no migrations, so the check is a project's.
 - **Decisions only where needed:** a value for existing rows of a
-  required field, or retiring a field or an entity.
+  required field, or of a field whose column changes type
+  ([Changing a column's type](#changing-a-columns-type)), or retiring a
+  field or an entity.
 - **Removing data takes two migrations**, and a person
   ([Removing data](#removing-data)).
 - **Renames keep their data.** The identity registry, a file Jadpo keeps
@@ -1730,8 +1732,67 @@ and indexes `<table>_<name>_key`, `_fkey` and `_idx`, cut short with a
 digest past PostgreSQL's 63 bytes. Each store that holds an entity also
 gets the runtime's [system tables](#system-tables), prefixed `jadpo_`.
 
-Not built yet: changing a column's type other than widening it.
-`jadpo migrate new` says so.
+### Changing a column's type
+
+A column whose type changes other than by widening (a wider whole
+number, more digits) is never altered in place, since servers still on
+the old build read and write it. The migration follows the rename
+pattern instead:
+
+1. it adds a new column of the new type, named after the field with
+   `__2` (then `__3`), a name no field can take;
+2. it fills it from the old column, through the conversion the field's
+   `backfill:` gives;
+3. the new build reads and writes the new column;
+4. the old column stays, retired, until a later migration drops it with
+   `--drop`, once no server reads it
+   ([Removing data](#removing-data)).
+
+The old column retires with nothing to decide. The field needs a
+`backfill:` even when it may be `none`, since its stored values would
+otherwise be lost. The backfill reads the field as the built-in type its
+old column holds, as a refit does; an old column holding an enum's
+variant, a structured value or a value in several columns isn't
+offered, so such a field's value is worked out from the record's other
+fields. A type that takes other columns, an `Int` becoming an amount of
+money, moves the same way. Here a code held as a number becomes text:
+
+```jadpo check project=retyping file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=retyping file=domains/shop/entities/item.jadpo hidden migrate=initial
+entity Item {
+    id: Uuid
+    code: Int
+}
+```
+
+```jadpo check project=retyping file=domains/shop/entities/item.jadpo migrate=code_as_text
+entity Item {
+    id: Uuid
+    code: Text
+}
+```
+
+database/migrations/20261020T1401_code_as_text/changes.jadpo:
+
+```jadpo check project=retyping file=database/migrations/20261020T1401_code_as_text/changes.jadpo migrate=finish
+/// Keeps codes as text.
+migration {
+    Item.code: {
+        backfill: text.from(Item.code)  // read as the number it was
+    }
+}
+```
+
+The migration's SQL adds `code__2` as `text`, fills it in batches by
+`UPDATE` (`"code__2" = ("item"."code")::text`), as any computed backfill
+is filled ([How a backfill runs](#how-a-backfill-runs)), and makes it
+required; `code` stays, no longer required, with its values. A server
+still on the old build may change `code` after its row was filled, and
+that change doesn't reach `code__2`, so deploy the new build once the
+migration has run.
 
 ### What a rename keeps
 
@@ -2050,11 +2111,13 @@ last ended, in key order, `FOR NO KEY UPDATE`, so a request on the old
 build can't change a field the value is worked out from before the batch
 commits. It writes the values back in one `UPDATE … FROM unnest($1, $2)`
 filling only rows still without one. The step that locks the table reads
-and fills the rows written meanwhile the same way. It reads values held in
-one column (the built-in types, an enum without data, and a standard type
-held in one, such as a percentage or a quantity, read and bound as a
-query and a write do), and fills those, or a structured value held as
-JSON, through the codec.
+and fills the rows written meanwhile the same way. It reads and fills a
+value as a query and a write do: one held in one column (the built-in
+types, an enum without data, and a standard type held in one, such as a
+percentage or a quantity), one held in several (an amount of money's
+two, a standard object's parts), each column filled from an array of its
+own, and a structured value held as JSON, through the codec. A sealed
+value and a vector have no form a backfill reads or writes.
 
 Only the latest migration's backfills are worked out with the project's
 code. An earlier migration's backfill in Jadpo that has rows to fill stops
@@ -2117,9 +2180,6 @@ batches in Jadpo (slower than SQL)`), and whether it carried on from an
 earlier run. `--json` gives them as `backfills`, each with its `how` (`"in
 Jadpo"`). `jadpo migrate new` lists "fill existing rows in batches in
 Jadpo" for one worked out in Jadpo.
-
-Not built yet: a backfill in Jadpo that fills a value held in several
-columns, or reads a field held so or as JSON.
 
 ## System tables
 <!-- topic: system-tables -->
@@ -2350,9 +2410,9 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | Standard types stored in named columns, and the standard collections | Built: each is stored, read back, and compared and ordered in a query as code compares and orders it. |
 | Manifest nodes | Built: a node for each entity's placement, unique rule, index and reference, with `references` edges between entities, one for each system table and migration snapshot, and one for each lifecycle and transition (`lifecycle Todo`, `transition Todo.delete`, with its `when:`, whether it can refuse a record and the fields it sets). |
 | Removing data | Built: retiring a field or an entity, moving an entity to another store and `--drop`, each needing its [acceptance](18-records-and-manifest.md#acceptances) ([Removing data](#removing-data)). Copying an entity's records to its new store is yours to do. |
-| Other schema changes in `jadpo migrate new` | Partly built: a new `pattern:` on a stored field, refitted in Jadpo. Not built yet: column type changes other than widening. Turning `encrypted:` on or off is refused for good: it needs a data migration ([Encrypted fields](15-personal-data.md#encrypted-fields)). |
+| Other schema changes in `jadpo migrate new` | Built: a new `pattern:` on a stored field, refitted in Jadpo, and a column type changed other than by widening, by the rename pattern ([Changing a column's type](#changing-a-columns-type)). Turning `encrypted:` on or off is refused for good: it needs a data migration ([Encrypted fields](15-personal-data.md#encrypted-fields)). |
 | A worked-out backfill for a field that allows less | Built: by `UPDATE` in batches, or in Jadpo. |
-| A backfill in Jadpo that fills a value held in several columns, or reads a field held so or as JSON | Not built yet. |
+| A backfill in Jadpo that fills a value held in several columns, or reads a field held so or as JSON | Built. |
 | Entities in Redis and record caches (`caches:`) | Not built yet. Clearing only the cached entries a change affects isn't designed yet. |
 | Index kinds: geographic, HNSW and JSON | Built. |
 | A database implied only when something needs one | Not built yet: it comes with the first feature that can run without one. |

@@ -181,7 +181,7 @@ impl Bind for Laying<'_, '_, '_> {
         laying: jadpo_std::read::Laying,
         ty: SqlType,
     ) -> Option<String> {
-        let field = self.entity.fields.iter().find(|f| f.born == column)?;
+        let field = self.entity.fields.iter().find(|f| f.column == column)?;
         let of = self.planner.given(self.entity, field, value)?;
         Some(self.statement.param(
             Source::Laid {
@@ -291,7 +291,7 @@ pub(crate) struct Columns {
 /// the column it is kept in, by the names it was born with, which never
 /// change (area 5, "Migrations").
 pub(crate) fn sealed_bound(entity: &EntityModel, field: &FieldModel) -> String {
-    format!("{}.{}", entity.table, field.born)
+    format!("{}.{}", entity.table, field.column)
 }
 
 /// One column an order sorts by (chunk Q1): a field's own, or a part of a
@@ -430,7 +430,7 @@ impl Planner<'_> {
                     VectorSearch::HalfPrecision(n) => {
                         let from = statement.bind(&nearest.value, SqlType::Vector)?;
                         Some(text::half_precision_distance(
-                            &vector.born,
+                            &vector.column,
                             nearest.metric,
                             &from,
                             n,
@@ -447,7 +447,7 @@ impl Planner<'_> {
                         ("distance".to_string(), Field::Column(at)),
                     ],
                 };
-                Some((distance, order, vector.born.clone(), nearest.most))
+                Some((distance, order, vector.column.clone(), nearest.most))
             }
             None => None,
         };
@@ -470,7 +470,7 @@ impl Planner<'_> {
                 let id_at = columns.add(&id.name, self.column(entity, id)?);
                 let measured = jadpo_sql::condition::measured(
                     &mut statement,
-                    &point_field.born,
+                    &point_field.column,
                     &order.point,
                 )?;
                 let key = Check {
@@ -825,7 +825,7 @@ impl Planner<'_> {
             let rechecked = !checks.is_empty();
             let (sql, unpoliced) = match include.kind {
                 IncludeKind::Parent | IncludeKind::Child => {
-                    let mut conditions = vec![text::any(&matched.born, &keys)];
+                    let mut conditions = vec![text::any(&matched.column, &keys)];
                     for line in &include.filter {
                         conditions.push(self.condition(&mut statement, target, line, false)?);
                     }
@@ -850,7 +850,7 @@ impl Planner<'_> {
                         let f = field(target, &order.field)?;
                         columns.add(&f.name, self.column(target, f)?);
                     }
-                    let mut conditions = vec![text::matches_key(&matched.born)];
+                    let mut conditions = vec![text::matches_key(&matched.column)];
                     for line in &include.filter {
                         conditions.push(self.condition(&mut statement, target, line, false)?);
                     }
@@ -1194,7 +1194,7 @@ impl Planner<'_> {
                     }
                 }
                 _ => out.push(Sorted {
-                    column: field.born.clone(),
+                    column: field.column.clone(),
                     ty: column_type(field)?.param(),
                     collate: self.is_text(entity, field),
                     descending: order.descending,
@@ -1543,13 +1543,13 @@ pub(crate) fn borns(entity: &EntityModel, names: &[String]) -> Vec<String> {
                 return field
                     .columns()
                     .get(part)
-                    .map_or_else(|| field.born.clone(), |(column, _)| column.clone());
+                    .map_or_else(|| field.column.clone(), |(column, _)| column.clone());
             }
             match field(entity, name) {
                 Some(field) => field
                     .columns()
                     .first()
-                    .map_or_else(|| field.born.clone(), |(column, _)| column.clone()),
+                    .map_or_else(|| field.column.clone(), |(column, _)| column.clone()),
                 None => name.to_string(),
             }
         })

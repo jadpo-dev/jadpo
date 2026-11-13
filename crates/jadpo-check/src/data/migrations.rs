@@ -325,7 +325,16 @@ pub fn retired_fields(db: &dyn Db, project: Project, entity: &str) -> Vec<(Strin
 /// rules the field has now, so it isn't read as the field's type. `None`
 /// for one held otherwise, an enum's variant among them, which isn't
 /// offered, as a retired one isn't.
-pub fn refitted_fields(db: &dyn Db, project: Project, entity: &str) -> Vec<(String, Option<Ty>)> {
+///
+/// So is each field the latest migration converts, since its column's type
+/// changes other than by widening (chunk Q3b), marked `true`: read as the
+/// built-in type its old column holds, which may be `none` when that
+/// column could be, and `None` for one held otherwise.
+pub fn refitted_fields(
+    db: &dyn Db,
+    project: Project,
+    entity: &str,
+) -> Vec<(String, Option<Ty>, bool)> {
     let set = migrations(db, project);
     let (before, after) = (set.before_latest(), set.latest_schema());
     let mut out = Vec::new();
@@ -335,6 +344,32 @@ pub fn refitted_fields(db: &dyn Db, project: Project, entity: &str) -> Vec<(Stri
                 continue;
             }
             let was = before.stores.get(store).and_then(|s| s.tables.get(name));
+            for field in converted(was, table) {
+                let old: Vec<&schema::Column> = was
+                    .map(|was| {
+                        was.columns
+                            .values()
+                            .filter(|c| !c.retired && c.field.as_deref() == Some(field.as_str()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let ty = match old.as_slice() {
+                    [column]
+                        if column.allows.as_ref().is_none_or(|a| a.values.is_empty())
+                            && !column.sealed =>
+                    {
+                        retired_type(&column.sql_type).map(|prim| {
+                            if column.nullable {
+                                Ty::Prim(prim).nullable()
+                            } else {
+                                Ty::Prim(prim)
+                            }
+                        })
+                    }
+                    _ => None,
+                };
+                out.push((field, ty, true));
+            }
             for (column, now) in &table.columns {
                 let Some(held) = was.and_then(|t| t.columns.get(column)) else {
                     continue;
@@ -351,9 +386,9 @@ pub fn refitted_fields(db: &dyn Db, project: Project, entity: &str) -> Vec<(Stri
                     .map(Ty::Prim);
                 if !out
                     .iter()
-                    .any(|(known, _): &(String, Option<Ty>)| known == field)
+                    .any(|(known, ..): &(String, Option<Ty>, bool)| known == field)
                 {
-                    out.push((field.clone(), ty));
+                    out.push((field.clone(), ty, false));
                 }
             }
         }
@@ -374,8 +409,14 @@ pub fn added_fields(db: &dyn Db, project: Project, entity: &str) -> Vec<String> 
                 continue;
             }
             let was = before.stores.get(store).and_then(|s| s.tables.get(name));
+            let converted = converted(was, table);
             for (column, now) in &table.columns {
                 if now.retired || was.is_some_and(|t| t.columns.contains_key(column)) {
+                    continue;
+                }
+                // A converted field's new columns are filled from its old
+                // ones, which the backfill reads (chunk Q3b).
+                if now.field.as_ref().is_some_and(|f| converted.contains(f)) {
                     continue;
                 }
                 if let Some(field) = &now.field
@@ -384,6 +425,26 @@ pub fn added_fields(db: &dyn Db, project: Project, entity: &str) -> Vec<String> 
                     out.push(field.clone());
                 }
             }
+        }
+    }
+    out
+}
+
+/// The fields of a table, by born name, that a migration from `was` to
+/// `now` moves to new columns, since a column's type changes other than
+/// by widening (chunk Q3b).
+fn converted(was: Option<&schema::Table>, now: &schema::Table) -> Vec<String> {
+    let Some(was) = was else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = Vec::new();
+    for column in now.columns.values() {
+        if let Some(field) = &column.field
+            && !column.retired
+            && !out.contains(field)
+            && jadpo_graph::migration::retyped(was, now, field)
+        {
+            out.push(field.clone());
         }
     }
     out
@@ -659,7 +720,11 @@ impl Decide<'_> {
                 match (computed.sql, computed.jadpo) {
                     (Some(sql), _) => Some(Decided::Computed(sql)),
                     (None, Some(jadpo)) => Some(Decided::InJadpo {
-                        reads: jadpo.reads.iter().map(|read| read.column.clone()).collect(),
+                        reads: jadpo
+                            .reads
+                            .iter()
+                            .flat_map(|read| read.columns.iter().cloned())
+                            .collect(),
                         code: jadpo.code,
                     }),
                     (None, None) => None,
@@ -773,11 +838,17 @@ impl Decide<'_> {
             .get(&need.store)
             .and_then(|store| store.tables.get(&need.table))
             .map(|table| {
-                table
-                    .columns
-                    .iter()
-                    .filter_map(|(column, def)| Some((def.field.clone()?, column.clone())))
-                    .collect()
+                // A field's live column, not one an earlier conversion
+                // retired (chunk Q3b).
+                let mut out = BTreeMap::new();
+                for (column, def) in &table.columns {
+                    if let Some(field) = &def.field
+                        && (!def.retired || !out.contains_key(field))
+                    {
+                        out.insert(field.clone(), column.clone());
+                    }
+                }
+                out
             })
             .unwrap_or_default();
         let scale = field_model(self.model, &need.entity, &need.field).and_then(|f| f.scale);
@@ -805,11 +876,11 @@ impl Decide<'_> {
 
     /// How `jadpo migrate apply` works out in Jadpo a computed backfill
     /// with no SQL form (chunk 5.6b2), whose typed body is `body` and which
-    /// reads the row's `columns` (by born name): `None` when it reads a
-    /// value held in several columns or as JSON, or fills one held in
-    /// several columns, which this compiler doesn't read or write one value
-    /// at a time yet. A structured value it fills is written through the
-    /// route codec (chunk 5.9c).
+    /// reads the row's `columns` (by born name): `None` when it reads or
+    /// fills a sealed value or a vector. A structured value it fills is
+    /// written through the route codec (chunk 5.9c), and a value held in
+    /// several columns or as JSON is read and written as a query and a
+    /// write do (chunk Q3b).
     fn in_jadpo(
         &self,
         need: &Needed,
@@ -819,44 +890,81 @@ impl Decide<'_> {
     ) -> Option<super::backfill::InJadpo> {
         let entity = self.model.entities.iter().find(|e| e.born == need.entity)?;
         let field = field_model(self.model, &need.entity, &need.field)?;
-        // A structured value is written through the route codec (chunk
-        // 5.9c); any other only when held in one column.
-        let own = match field.json {
-            None => Some(decode_column(self.lookup, &entity.name, field)?),
-            Some(_) => None,
-        };
         // A refit reads the field's own column too, checking each value
-        // with the field's rules now (chunk Q3).
+        // with the field's rules now (chunk Q3): one held in one column.
         let refits = match need.kind {
-            NeededKind::Refit => Some(own?),
+            NeededKind::Refit if field.json.is_none() => {
+                Some(decode_column(self.lookup, &entity.name, field)?)
+            }
+            NeededKind::Refit => return None,
             _ => None,
         };
-        let sql_type = field.sql_type.clone()?;
-        let write = jadpo_std::SqlType::of_column(&sql_type)?;
+        let write = field
+            .columns()
+            .iter()
+            .map(|(_, sql_type)| jadpo_std::SqlType::of_column(sql_type))
+            .collect::<Option<Vec<_>>>()?;
+        if write.is_empty()
+            || (field.json.is_none() && decode_columns(self.lookup, &entity.name, field).is_none())
+        {
+            return None;
+        }
+        // Each field's columns before the migration, by born name.
+        let held: BTreeMap<String, Vec<String>> = self
+            .before
+            .stores
+            .get(&need.store)
+            .and_then(|store| store.tables.get(&need.table))
+            .map(|table| {
+                let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+                for (column, def) in table.ordered() {
+                    if let Some(field) = &def.field
+                        && !def.retired
+                    {
+                        out.entry(field.clone()).or_default().push(column.clone());
+                    }
+                }
+                out
+            })
+            .unwrap_or_default();
         let (function, names) = super::backfill::as_function(body);
         // A field retired or refitted is read as the built-in type its
         // column holds (chunk Q3).
         let mut retired = retired_fields(self.db, self.project, &need.entity);
-        for (field, ty) in refitted_fields(self.db, self.project, &need.entity) {
+        for (field, ty, _) in refitted_fields(self.db, self.project, &need.entity) {
             retired.push((field, ty.unwrap_or(Ty::Error)));
         }
         let mut reads = Vec::new();
         for name in names {
-            let (decode, now) = match retired.iter().find(|(field, _)| *field == name) {
-                Some((_, Ty::Prim(builtin))) => {
-                    (jadpo_std::read::Column::of_builtin(*builtin)?, None)
+            let (decode, now, columns) = match retired.iter().find(|(field, _)| *field == name) {
+                Some((_, Ty::Prim(builtin))) => (
+                    vec![jadpo_std::read::Column::of_builtin(*builtin)?],
+                    None,
+                    vec![columns.get(&name)?.clone()],
+                ),
+                Some((_, Ty::Nullable(inner))) if matches!(**inner, Ty::Prim(_)) => {
+                    let Ty::Prim(builtin) = **inner else {
+                        return None;
+                    };
+                    (
+                        vec![jadpo_std::read::Column::of_builtin(builtin)?],
+                        None,
+                        vec![columns.get(&name)?.clone()],
+                    )
                 }
                 Some(_) => return None,
                 None => {
                     let read = field_model(self.model, &need.entity, &name)?;
-                    (
-                        decode_column(self.lookup, &entity.name, read)?,
-                        Some(read.name.clone()),
-                    )
+                    let decode = decode_columns(self.lookup, &entity.name, read)?;
+                    let columns = held.get(&name)?.clone();
+                    if columns.len() != decode.len() {
+                        return None;
+                    }
+                    (decode, Some(read.name.clone()), columns)
                 }
             };
             reads.push(super::backfill::Read {
-                column: columns.get(&name)?.clone(),
+                columns,
                 field: name,
                 decode,
                 name: now,
@@ -866,7 +974,6 @@ impl Decide<'_> {
             body: Arc::new(function),
             reads,
             write,
-            sql_type,
             scale,
             fills: (entity.name.clone(), field.name.clone()),
             code: super::backfill::fingerprint(self.db, self.project, body),
@@ -879,6 +986,37 @@ impl Decide<'_> {
                 .collect(),
         })
     }
+}
+
+/// How a field's columns are read, as the plan reads them for a query
+/// (chunk Q3b): its one column, a compound standard type's first column
+/// and then its parts, or a value kept as JSON by the codec the plan
+/// numbers for the field's type (`Json(0)` here); `None` for a sealed
+/// value or a vector.
+fn decode_columns(
+    lookup: &dyn TypeView,
+    entity: &str,
+    field: &super::FieldModel,
+) -> Option<Vec<jadpo_std::read::Column>> {
+    use jadpo_std::read::Column;
+    if field.sealed.is_some() || super::holds_vector(field) {
+        return None;
+    }
+    if field.json.is_some() {
+        return Some(vec![Column::Json(0)]);
+    }
+    if field.compound_entry().is_some() {
+        let mut out = vec![Column::Compound {
+            ty: field.compound_type(),
+            may_be_none: field.nullable,
+        }];
+        out.extend((1..field.columns().len()).map(|_| Column::Part));
+        return Some(out);
+    }
+    if let Some(geometry) = field.geometry {
+        return Some(vec![Column::Geography(geometry.to_string())]);
+    }
+    decode_column(lookup, entity, field).map(|column| vec![column])
 }
 
 /// How a field's one column is read, as the plan reads it for a query:
@@ -1241,12 +1379,17 @@ fn out_of_date(
     next: &Schema,
 ) -> Diagnostic {
     let changes = readable_changes(latest, next);
-    let shown: Vec<String> = changes
-        .iter()
-        .take(5)
-        .map(|c| c.describe(latest, next))
-        .collect();
-    let more = changes.len().saturating_sub(shown.len());
+    // A field that changes type moves to new columns: one change, however
+    // many columns it takes (chunk Q3b).
+    let mut described: Vec<String> = Vec::new();
+    for change in &changes {
+        let text = change.describe(latest, next);
+        if !described.contains(&text) {
+            described.push(text);
+        }
+    }
+    let shown: Vec<String> = described.iter().take(5).cloned().collect();
+    let more = described.len().saturating_sub(shown.len());
     let listed = if more > 0 {
         format!("{}, and {more} more", shown.join(", "))
     } else {
@@ -1277,7 +1420,7 @@ fn out_of_date(
                 "the latest migration's snapshot (`{}`)",
                 last.snapshot_path()
             ),
-            purpose(&changes, next),
+            purpose(&changes, latest, next),
         ),
         None => (
             "No migration creates these entities' tables yet",
@@ -1306,8 +1449,23 @@ fn record_invalid(path: &str, why: &str) -> Diagnostic {
     .next("Restore it from version control")
 }
 
+/// The born name of the field whose column `column` is, when the
+/// migration from `before` to `after` moves it to new columns (chunk Q3b).
+fn converted_field(
+    before: &Schema,
+    after: &Schema,
+    store: &str,
+    table: &str,
+    column: &str,
+) -> Option<String> {
+    let was = before.stores.get(store)?.tables.get(table)?;
+    let now = after.stores.get(store)?.tables.get(table)?;
+    let field = now.columns.get(column)?.field.clone()?;
+    jadpo_graph::migration::retyped(was, now, &field).then_some(field)
+}
+
 /// A purpose naming the first change: `add_priority`, `add_tag`.
-pub fn purpose(changes: &[Change], after: &Schema) -> String {
+pub fn purpose(changes: &[Change], before: &Schema, after: &Schema) -> String {
     for change in changes {
         match change {
             Change::AddTable { store, table } => {
@@ -1339,6 +1497,21 @@ pub fn purpose(changes: &[Change], after: &Schema) -> String {
             }
             Change::AlterColumn { table, column, .. } if column == jadpo_std::search::COLUMN => {
                 return format!("change_{table}_search");
+            }
+            // A field moved to new columns, by its own name (chunk Q3b).
+            Change::AddColumn {
+                store,
+                table,
+                column,
+            }
+            | Change::AlterColumn {
+                store,
+                table,
+                column,
+            } if converted_field(before, after, store, table, column).is_some() => {
+                let field =
+                    converted_field(before, after, store, table, column).unwrap_or_default();
+                return format!("change_{field}");
             }
             Change::AddColumn { column, .. } => return format!("add_{column}"),
             Change::RemoveColumn { column, .. } => return format!("drop_{column}"),
@@ -1580,10 +1753,10 @@ fn computed_problems(
         )
         .at(span.clone(), "no SQL form")
         .reason(format!(
-            "Something in this backfill has no SQL form, so `jadpo migrate apply` would work its values out in Jadpo, row by row; it reads values held in one column, and fills those or a structured value held as JSON, and `{key}` is held in several columns or reads a field held so or as JSON."
+            "Something in this backfill has no SQL form, so `jadpo migrate apply` would work its values out in Jadpo, row by row; it reads and fills every stored value but a sealed one and a vector, and `{key}` is one of those or reads one."
         ))
         .next(format!(
-            "Work `{key}`'s value out with operators, `if`, `match` and standard operations that have a SQL form for now"
+            "Work `{key}`'s value out with operators, `if`, `match` and standard operations that have a SQL form, or from fields that aren't sealed or vectors"
         )),
     ]
 }
@@ -1620,6 +1793,10 @@ fn misfit(
         (DecisionValue::Invalid(what, span), _) => Some((
             span.clone(),
             format!("{what} isn't a decision `jadpo migrate new` understands."),
+        )),
+        (_, NeededKind::Backfill) if need.converts => Some((
+            decision.span.clone(),
+            format!("`{key}` changes type, and the records already stored need a value of its new type, so its decision is `{{ backfill: <value> }}`, worked out from `{key}` as its old column holds it."),
         )),
         (_, NeededKind::Backfill) => Some((
             decision.span.clone(),
@@ -1728,6 +1905,15 @@ fn required(
         ),
     };
     let (what, next) = match need.kind {
+        NeededKind::Backfill if need.converts => (
+            format!(
+                "`{key}`'s column changes type other than by widening, so its values move to a new column, filled from the old one, which stays for servers still on the old build; the `{}` records already stored need a value of its new type.",
+                need.entity
+            ),
+            format!(
+                "Set `backfill:` for `{key}`, worked out from `{key}`, which a backfill reads as the built-in type its old column holds"
+            ),
+        ),
         NeededKind::Backfill => (
             format!(
                 "`{key}` is required, and the `{}` records already stored have no value for it.",

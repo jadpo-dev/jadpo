@@ -106,7 +106,7 @@ pub(crate) fn index_columns(
                         .collect()
                 }
             }
-            (false, None) => vec![field.born.clone()],
+            (false, None) => vec![field.column.clone()],
         };
         if at < equal {
             tested.extend(columns.iter().cloned());

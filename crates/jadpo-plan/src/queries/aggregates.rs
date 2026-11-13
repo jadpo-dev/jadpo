@@ -255,7 +255,7 @@ impl Planner<'_> {
             Some(field_name) => Some(field(entity, field_name)?),
             None => None,
         };
-        let column = field.map(|f| jadpo_sql::ident(&f.born));
+        let column = field.map(|f| jadpo_sql::ident(&f.column));
         // Most entries are one expression, selected by name and passed
         // out as it is.
         let one = |expr: String, kind: Column, group: bool| Selected {

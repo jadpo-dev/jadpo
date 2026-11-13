@@ -159,15 +159,19 @@ pub fn backfill_in_batches(
 /// as an `UPDATE` would lock them; the write takes their keys and values
 /// as two arrays (`$1`, `$2`) and fills those still without one, so a
 /// batch run twice fills nothing twice.
+///
+/// A value held in several columns (an amount of money's two, chunk Q3b)
+/// fills each of `columns` from an array of its own, the first deciding
+/// which rows are still without a value.
 pub fn backfill_in_jadpo(
     field: &str,
     table: &str,
     key: &str,
-    column: &str,
-    sql_type: &str,
+    columns: &[(&str, &str)],
     reads: &[String],
     code: &str,
 ) -> String {
+    let column = columns.first().map_or("", |(column, _)| *column);
     let (t, c) = (ident(table), ident(column));
     format!(
         "{marker}{field}: {how}, {BATCH_ROWS} rows a batch, each batch its own transaction, slower than by UPDATE since something in it has no SQL form; its code's digest {code}\n\
@@ -178,7 +182,7 @@ pub fn backfill_in_jadpo(
         how = jadpo_std::IN_JADPO,
         k = ident(key),
         read = jadpo_read(table, key, reads),
-        write = jadpo_write(table, key, column, sql_type),
+        write = jadpo_write(table, key, columns),
     )
 }
 
@@ -190,10 +194,10 @@ pub fn fill_in_jadpo(
     field: &str,
     table: &str,
     key: &str,
-    column: &str,
-    sql_type: &str,
+    columns: &[(&str, &str)],
     reads: &[String],
 ) -> String {
+    let column = columns.first().map_or("", |(column, _)| *column);
     format!(
         "{marker}{field} {how}: the rows written meanwhile\n\
          {read} WHERE {c} IS NULL ORDER BY {k};\n\
@@ -203,7 +207,7 @@ pub fn fill_in_jadpo(
         c = ident(column),
         k = ident(key),
         read = jadpo_read(table, key, reads),
-        write = jadpo_write(table, key, column, sql_type),
+        write = jadpo_write(table, key, columns),
     )
 }
 
@@ -328,11 +332,32 @@ fn jadpo_read(table: &str, key: &str, reads: &[String]) -> String {
     format!("SELECT {} FROM {}", columns.join(", "), ident(table))
 }
 
-/// Fills `column` from two arrays, the keys and their values.
-fn jadpo_write(table: &str, key: &str, column: &str, sql_type: &str) -> String {
-    let (t, k, c) = (ident(table), ident(key), ident(column));
+/// Fills `columns` from arrays, the keys and then each column's values,
+/// the rows whose first column is still without one: one column's values
+/// are `"value"`, several columns' `"value_1"` on (chunk Q3b).
+fn jadpo_write(table: &str, key: &str, columns: &[(&str, &str)]) -> String {
+    let (t, k) = (ident(table), ident(key));
+    let first = ident(columns.first().map_or("", |(column, _)| *column));
+    let named = |at: usize| match columns.len() {
+        1 => "\"value\"".to_string(),
+        _ => format!("\"value_{}\"", at + 1),
+    };
+    let set: Vec<String> = columns
+        .iter()
+        .enumerate()
+        .map(|(at, (column, _))| format!("{} = \"jadpo_value\".{}", ident(column), named(at)))
+        .collect();
+    let mut arrays = vec!["$1::uuid[]".to_string()];
+    let mut names = vec!["\"key\"".to_string()];
+    for (at, (_, sql_type)) in columns.iter().enumerate() {
+        arrays.push(format!("${}::{sql_type}[]", at + 2));
+        names.push(named(at));
+    }
     format!(
-        "UPDATE {t} SET {c} = \"jadpo_value\".\"value\" FROM unnest($1::uuid[], $2::{sql_type}[]) AS \"jadpo_value\"(\"key\", \"value\") WHERE {t}.{k} = \"jadpo_value\".\"key\" AND {t}.{c} IS NULL"
+        "UPDATE {t} SET {} FROM unnest({}) AS \"jadpo_value\"({}) WHERE {t}.{k} = \"jadpo_value\".\"key\" AND {t}.{first} IS NULL",
+        set.join(", "),
+        arrays.join(", "),
+        names.join(", ")
     )
 }
 
