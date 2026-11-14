@@ -60,6 +60,7 @@ pub mod ai;
 pub mod audit;
 pub mod batch;
 mod builtin;
+pub mod caches;
 pub mod canonical;
 pub mod compiled;
 pub mod config;

@@ -26,8 +26,11 @@
 //!   key that starts its window if it isn't there, one more on its count,
 //!   and the time its window has left, so every server counting in the
 //!   store shares one count and one window, timed by the store's clock.
-//!   [`Redis::run`] sends any commands, for what comes next (caches,
-//!   entities in Redis).
+//!   [`Redis::look`], [`Redis::keep`] and [`Redis::clear`] keep a cache's
+//!   entries (area 5, "Caches"; chunk Q9): each entry a key that expires
+//!   with its `keep:`, a generation for each entity, and a set per entity
+//!   of the entries that read it. [`Redis::run`] sends any commands, for
+//!   what comes next (entities in Redis).
 
 pub mod address;
 pub mod resp;
@@ -41,6 +44,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
+use jadpo_runtime::caches::{Cache, Looked};
 use jadpo_runtime::ratelimit::{CountingStore, Unasked};
 use jadpo_runtime::{Allowed, LocalFuture};
 use jadpo_std::http::RateLimit;
@@ -554,6 +558,225 @@ impl Io {
     }
 }
 
+/// The words of one command.
+fn words(parts: &[&[u8]]) -> Vec<Vec<u8>> {
+    parts.iter().map(|part| part.to_vec()).collect()
+}
+
+/// A generation as Redis keeps it: a whole number's text, or nothing for
+/// one never cleared.
+fn generation(reply: &Reply) -> Result<u64, Error> {
+    match reply {
+        Reply::Bulk(None) => Ok(0),
+        Reply::Bulk(Some(bytes)) => std::str::from_utf8(bytes)
+            .ok()
+            .and_then(|text| text.parse::<u64>().ok())
+            .ok_or(Error::Unreadable("a generation")),
+        _ => Err(Error::Unreadable("a generation")),
+    }
+}
+
+/// The generations an `MGET` of them answered.
+fn generations(reply: Option<&Reply>, count: usize) -> Result<Vec<u64>, Error> {
+    match reply {
+        Some(Reply::Array(Some(items))) if items.len() == count => {
+            items.iter().map(generation).collect()
+        }
+        _ => Err(Error::Unreadable("each entity's generation")),
+    }
+}
+
+/// How many keys one `DEL` of a clear's entries names.
+const KEYS_PER_DEL: usize = 512;
+
+impl Redis {
+    /// The generations of `tags` and the entry under `key`, in one `MGET`
+    /// (area 5, "Caches"; chunk Q9).
+    pub async fn look(&self, key: &str, tags: &[String]) -> Result<Looked, Error> {
+        let mut command = vec![b"MGET".to_vec()];
+        command.extend(
+            tags.iter()
+                .map(|tag| jadpo_std::caches::generation_key(tag).into_bytes()),
+        );
+        command.push(key.as_bytes().to_vec());
+        let replies = self.run(&[command]).await?;
+        if let Some(message) = replies.iter().find_map(Reply::refused) {
+            return Err(Error::Refused(message.to_string()));
+        }
+        let Some(Reply::Array(Some(items))) = replies.first() else {
+            return Err(Error::Unreadable("an entry and its generations"));
+        };
+        let Some((entry, kept)) = items.split_last() else {
+            return Err(Error::Unreadable("an entry and its generations"));
+        };
+        if kept.len() != tags.len() {
+            return Err(Error::Unreadable("an entry and its generations"));
+        }
+        Ok(Looked {
+            generations: kept.iter().map(generation).collect::<Result<_, _>>()?,
+            entry: match entry {
+                Reply::Bulk(bytes) => bytes.clone(),
+                _ => return Err(Error::Unreadable("an entry")),
+            },
+        })
+    }
+
+    /// Keeps `entry` under `key` for `keep_ms`, listed under each of
+    /// `tags`, in one transaction, then reads the generations of `tags`
+    /// again, in the same write.
+    pub async fn keep(
+        &self,
+        key: &str,
+        entry: &[u8],
+        keep_ms: u64,
+        tags: &[String],
+    ) -> Result<Vec<u64>, Error> {
+        let keep = keep_ms.max(1).to_string();
+        let listed = jadpo_std::caches::LISTING_KEEP_MS.to_string();
+        let mut commands = vec![
+            words(&[b"MULTI"]),
+            words(&[b"SET", key.as_bytes(), entry, b"PX", keep.as_bytes()]),
+        ];
+        for tag in tags {
+            let listing = jadpo_std::caches::listing_key(tag);
+            commands.push(words(&[b"SADD", listing.as_bytes(), key.as_bytes()]));
+            commands.push(words(&[b"PEXPIRE", listing.as_bytes(), listed.as_bytes()]));
+        }
+        commands.push(words(&[b"EXEC"]));
+        let exec = commands.len().saturating_sub(1);
+        let mut read = vec![b"MGET".to_vec()];
+        read.extend(
+            tags.iter()
+                .map(|tag| jadpo_std::caches::generation_key(tag).into_bytes()),
+        );
+        if !tags.is_empty() {
+            commands.push(read);
+        }
+        let replies = self.run(&commands).await?;
+        if let Some(message) = replies.iter().find_map(Reply::refused) {
+            return Err(Error::Refused(message.to_string()));
+        }
+        match replies.get(exec) {
+            Some(Reply::Array(Some(answers)))
+                if answers.iter().all(|answer| answer.refused().is_none()) => {}
+            Some(Reply::Array(Some(answers))) => {
+                let message = answers.iter().find_map(Reply::refused).unwrap_or("");
+                return Err(Error::Refused(message.to_string()));
+            }
+            _ => return Err(Error::Unreadable("a transaction's answers")),
+        }
+        if tags.is_empty() {
+            return Ok(Vec::new());
+        }
+        generations(replies.last(), tags.len())
+    }
+
+    /// Deletes the entry under `key`.
+    pub async fn forget(&self, key: &str) -> Result<(), Error> {
+        let replies = self.run(&[words(&[b"DEL", key.as_bytes()])]).await?;
+        match replies.iter().find_map(Reply::refused) {
+            Some(message) => Err(Error::Refused(message.to_string())),
+            None => Ok(()),
+        }
+    }
+
+    /// Clears every entry that reads any of `tags`: in one transaction,
+    /// one more on each one's generation, and its list of entries taken;
+    /// then each entry those lists named deleted.
+    pub async fn clear(&self, tags: &[String]) -> Result<(), Error> {
+        if tags.is_empty() {
+            return Ok(());
+        }
+        let mut commands = vec![words(&[b"MULTI"])];
+        for tag in tags {
+            let generation = jadpo_std::caches::generation_key(tag);
+            let listing = jadpo_std::caches::listing_key(tag);
+            commands.push(words(&[b"INCR", generation.as_bytes()]));
+            commands.push(words(&[b"SMEMBERS", listing.as_bytes()]));
+            commands.push(words(&[b"DEL", listing.as_bytes()]));
+        }
+        commands.push(words(&[b"EXEC"]));
+        let replies = self.run(&commands).await?;
+        if let Some(message) = replies.iter().find_map(Reply::refused) {
+            return Err(Error::Refused(message.to_string()));
+        }
+        let Some(Reply::Array(Some(answers))) = replies.last() else {
+            return Err(Error::Unreadable("a transaction's answers"));
+        };
+        if let Some(message) = answers.iter().find_map(Reply::refused) {
+            return Err(Error::Refused(message.to_string()));
+        }
+        let mut entries: Vec<Vec<u8>> = Vec::new();
+        for answer in answers.iter().skip(1).step_by(3) {
+            let Reply::Array(Some(members)) = answer else {
+                return Err(Error::Unreadable("a list of entries"));
+            };
+            for member in members {
+                let Reply::Bulk(Some(key)) = member else {
+                    return Err(Error::Unreadable("a list of entries"));
+                };
+                entries.push(key.clone());
+            }
+        }
+        entries.sort();
+        entries.dedup();
+        for keys in entries.chunks(KEYS_PER_DEL) {
+            let mut command = vec![b"DEL".to_vec()];
+            command.extend(keys.iter().cloned());
+            let replies = self.run(&[command]).await?;
+            if let Some(message) = replies.iter().find_map(Reply::refused) {
+                return Err(Error::Refused(message.to_string()));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// How an ask's error is told to the runtime.
+fn unasked(error: Error) -> Unasked {
+    match error {
+        Error::Unreachable => Unasked::Unreachable,
+        Error::TimedOut => Unasked::TimedOut,
+        Error::Refused(_) | Error::Unreadable(_) | Error::Insecure => Unasked::Failed,
+    }
+}
+
+/// What a host keeps its caches in (area 5, "Caches"; chunk Q9). Redis
+/// keeps its own time, so `now` is never read.
+impl Cache for Redis {
+    fn look<'a>(
+        &'a self,
+        key: &'a str,
+        tags: &'a [String],
+        _now: i64,
+    ) -> LocalFuture<'a, Result<Looked, Unasked>> {
+        Box::pin(async move { Redis::look(self, key, tags).await.map_err(unasked) })
+    }
+
+    fn keep<'a>(
+        &'a self,
+        key: &'a str,
+        entry: &'a [u8],
+        keep_ms: u64,
+        tags: &'a [String],
+        _now: i64,
+    ) -> LocalFuture<'a, Result<Vec<u64>, Unasked>> {
+        Box::pin(async move {
+            Redis::keep(self, key, entry, keep_ms, tags)
+                .await
+                .map_err(unasked)
+        })
+    }
+
+    fn forget<'a>(&'a self, key: &'a str) -> LocalFuture<'a, Result<(), Unasked>> {
+        Box::pin(async move { Redis::forget(self, key).await.map_err(unasked) })
+    }
+
+    fn clear<'a>(&'a self, tags: &'a [String], _now: i64) -> LocalFuture<'a, Result<(), Unasked>> {
+        Box::pin(async move { Redis::clear(self, tags).await.map_err(unasked) })
+    }
+}
+
 /// What a host counts its rate limits in (area 16, "Where the counts are
 /// kept").
 impl CountingStore for Redis {
@@ -562,15 +785,7 @@ impl CountingStore for Redis {
         key: &'a str,
         limit: RateLimit,
     ) -> LocalFuture<'a, Result<Allowed, Unasked>> {
-        Box::pin(async move {
-            Redis::count(self, key, limit)
-                .await
-                .map_err(|error| match error {
-                    Error::Unreachable => Unasked::Unreachable,
-                    Error::TimedOut => Unasked::TimedOut,
-                    Error::Refused(_) | Error::Unreadable(_) | Error::Insecure => Unasked::Failed,
-                })
-        })
+        Box::pin(async move { Redis::count(self, key, limit).await.map_err(unasked) })
     }
 }
 

@@ -140,7 +140,7 @@ pub fn operation_key(db: &dyn Db, project: Project, through: &str, operation: &s
 fn capability(kind: ConnectionKind) -> &'static str {
     match kind {
         ConnectionKind::Postgres => "database",
-        ConnectionKind::Redis => "cache",
+        ConnectionKind::Redis | ConnectionKind::Memory => "cache",
         ConnectionKind::Files => "files",
         ConnectionKind::Smtp => "email",
         ConnectionKind::Model => "ai",

@@ -1109,8 +1109,86 @@ every existing one reads.
 <!-- topic: caches -->
 
 Nothing is cached unless you add it. A cache keeps a copy of data in a
-Redis store, so busy pages read it quickly. You can cache single records,
-on an entity, or a query's results, on the query:
+Redis store, so busy pages read it quickly. A query's `cache:` keeps its
+results for the routes that run it. It names its `store:`, a Redis store
+declared in `app.jadpo`, and `keep:`, the oldest an entry can be. Here the
+shop's list of products on the shelf is cached for ten minutes:
+
+```jadpo check project=caches file=app.jadpo
+application {
+    connections: {
+        cache: {
+            driver: Driver.redis
+            url: config.redis_url
+        }
+    }
+}
+```
+
+```jadpo check project=caches file=config.jadpo
+config {
+    redis_url: RedisUrl
+}
+```
+
+```jadpo check project=caches file=domains/shop/types/stock.jadpo
+/// How many of a product are on the shelf.
+type Stock = Int {
+    min: 0
+    max: 100000
+}
+```
+
+```jadpo check project=caches file=domains/shop/types/product_name.jadpo
+type ProductName = Text {
+    min_length: 1
+    max_length: 100
+}
+```
+
+```jadpo check project=caches file=domains/shop/entities/product.jadpo
+use shop/types { ProductName, Stock }
+
+/// Something the shop sells.
+entity Product {
+    id: Uuid
+    name: ProductName
+    stock: Stock
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+```
+
+```jadpo check project=caches file=domains/shop/types/product_card.jadpo
+use shop/entities { Product }
+
+/// A product as a list shows it.
+type ProductCard = Output {
+    pick: [Product.id, Product.name, Product.stock]
+}
+```
+
+```jadpo check project=caches file=domains/shop/queries/on_the_shelf.jadpo migrate=initial
+use shop/entities { Product }
+use shop/types { ProductCard }
+
+/// Every product, by name: the shop's busiest page.
+query on_the_shelf() -> List<ProductCard> {
+    from: Product
+    order: [Product.name asc]
+    limit: 50
+    cache: {
+        store: cache
+        keep: 10m
+    }
+}
+```
+
+You can cache single records too, on an entity, looked up by `id`:
 
 ```jadpo fragment
 entity Product {
@@ -1122,21 +1200,7 @@ entity Product {
         }
     }
 }
-
-query category_page(category_id: Category.id, page: PageRequest) -> Page<ProductCard> {
-    from: Product
-    where: Product.category_id == category_id
-    cache: {
-        store: cache
-        keep: 10m
-    }
-}
 ```
-
-`caches: { records: }` on an entity caches single products, looked up by
-`id`. `cache:` on a query caches that query's results. Each names its
-`store:`, a Redis store declared in `app.jadpo`, and `keep:`, the oldest
-an entry can be.
 
 - **Writes always go to the database**, never to the cache, and code never
   names cache keys.
@@ -1144,7 +1208,9 @@ an entry can be.
   after every committed change, clears each cached entry the change could
   affect. A change to a `Product` clears every cached result of every
   query that reads products: some extra database reads, but never a stale
-  list.
+  list. A query reads the entities its statements name: its own, its
+  includes', and those its policy reads. Deleting a record changes the
+  records that refer to it too, so it clears what reads them.
 - **Only pages read caches.** Reads inside actions, policy checks and
   sign-in always read the database, so a decision is never made from a
   stale copy.
@@ -1169,11 +1235,87 @@ cart or a sign-up in progress, is an entity in a Redis store instead
 cache may and may never hold, are in
 [Cache drivers and what a cache may hold](16-built-in-services.md#cache-drivers-and-what-a-cache-may-hold).
 
-Not built yet: caches, so every read today goes to the database. An entity's
-`caches:` is `toolchain.not_built_yet` where it is written, and a query's
-`cache:` is `query.unknown_section`.
-Clearing only the affected entries, for example the category pages a product
-moved out of and into, isn't designed yet.
+A query's results are kept per caller and per arguments, each entry
+under a hash of them, never an argument as written. `keep:` is from `1s`
+to `1d`. A query whose records give a sensitive field, whose every read is
+recorded, or a `File`, which goes out as a link that lasts five minutes,
+can't be cached (`query.cache_invalid`). A route that sends raw bytes reads
+the store.
+
+A test checks a cached read by reading, writing elsewhere and reading
+again. Here a route runs `on_the_shelf`, and a product counted again shows
+its new count on the next read:
+
+```jadpo check project=caches file=domains/shop/routes/products.jadpo hidden
+use shop/types { ProductCard }
+use shop/queries { on_the_shelf }
+
+routes Products {
+    prefix: /products
+
+    GET / {
+        authentication: RouteAuthentication.none
+        output: List<ProductCard>
+        run: on_the_shelf()
+    }
+}
+```
+
+```jadpo check project=caches file=domains/shop/actions/restock.jadpo hidden
+use shop/entities { Product, ProductNotFound }
+use shop/types { Stock }
+
+/// Counts a product's shelf again.
+action restock(product_id: Product.id, stock: Stock) fails ProductNotFound -> Product {
+    return attempt Product.update(product_id) {
+        set: {
+            stock: stock
+        }
+    }
+}
+```
+
+```jadpo check project=caches file=domains/shop/routes/products.test.jadpo
+use shop/entities { Product }
+use shop/types { ProductCard }
+use shop/actions { restock }
+
+test "a new count shows at once, though the list is cached" {
+    var tea: Product = make.Product {
+        name: "Tea"
+        stock: 4
+    }
+    var before: Response = request {
+        method: HttpMethod.get
+        path: "/products"
+    }
+    assert before.output == [
+        ProductCard {
+            id: tea.id
+            name: "Tea"
+            stock: 4
+        }
+    ]
+    var recounted: Product = attempt restock(tea.id, 12)
+    assert recounted.stock == 12
+    var after: Response = request {
+        method: HttpMethod.get
+        path: "/products"
+    }
+    assert after.output == [
+        ProductCard {
+            id: tea.id
+            name: "Tea"
+            stock: 12
+        }
+    ]
+}
+```
+
+Not built yet: an entity's `caches:`, `toolchain.not_built_yet` where it is
+written, since a record cache applies policy to each record as it is read,
+in Jadpo's own code. Clearing only the affected entries, for example the
+category pages a product moved out of and into, isn't designed yet.
 
 ## Entities in Redis
 <!-- topic: entities-in-redis -->
@@ -2534,6 +2676,7 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | Other schema changes in `jadpo migrate new` | Built: a new `pattern:` on a stored field, refitted in Jadpo, and a column type changed other than by widening, by the rename pattern ([Changing a column's type](#changing-a-columns-type)). Turning `encrypted:` on or off is refused for good: it needs a data migration ([Encrypted fields](15-personal-data.md#encrypted-fields)). |
 | A worked-out backfill for a field that allows less | Built: by `UPDATE` in batches, or in Jadpo. |
 | A backfill in Jadpo that fills a value held in several columns, or reads a field held so or as JSON | Built. |
+| A query's `cache:` | Built: a route's display read served from the query's cache in Redis or `Driver.memory`, per caller and arguments, and every cached result reading an entity a committed change wrote cleared, an erasure's and a purge's included ([Caches](#caches)). |
 | Entities in Redis and record caches (`caches:`) | Not built yet. Clearing only the cached entries a change affects isn't designed yet. |
 | Index kinds: geographic, HNSW and JSON | Built. |
 | A database implied only when something needs one | Not built yet: it comes with the first feature that can run without one. |
@@ -2580,6 +2723,7 @@ source.
 - [`data.lifecycle_purge_visible`](../errors/data.lifecycle_purge_visible.md)
 - [`data.lifecycle_purge_after`](../errors/data.lifecycle_purge_after.md)
 - [`data.lifecycle_purge_since`](../errors/data.lifecycle_purge_since.md)
+- [`query.cache_invalid`](../errors/query.cache_invalid.md)
 - [`migration.out_of_date`](../errors/migration.out_of_date.md)
 - [`migration.record_invalid`](../errors/migration.record_invalid.md)
 - [`migration.decision_required`](../errors/migration.decision_required.md)

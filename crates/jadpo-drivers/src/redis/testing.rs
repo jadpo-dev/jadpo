@@ -3,7 +3,8 @@
 //!
 //! - [`Double`]: an in-process stand-in for a Redis server, answering the
 //!   commands the driver sends (`AUTH`, `SELECT`, `PING`, `MULTI`, `EXEC`,
-//!   `SET` with `PX` and `NX`, `INCR`, `PTTL`, `GET`, `DEL`, `FLUSHDB`) as
+//!   `SET` with `PX` and `NX`, `INCR`, `PTTL`, `GET`, `MGET`, `DEL`,
+//!   `SADD`, `SMEMBERS`, `PEXPIRE`, `FLUSHDB`) as
 //!   Redis does, over RESP, with expiry on a clock the caller gives, and
 //!   keeping what each connection sent.
 //! - [`TcpDouble`]: the double on a port of this machine, each connection
@@ -29,12 +30,17 @@ use super::resp::{self, Reply};
 /// The variable that names the run's Redis server, as CI's does.
 pub const REDIS_URL_VARIABLE: &str = "JADPO_TEST_REDIS_URL";
 
-/// One stored value and when it expires, in milliseconds.
+/// One stored value and when it expires, in milliseconds: text, or a set
+/// of members.
 #[derive(Clone, Debug)]
 struct Entry {
     value: Vec<u8>,
+    members: Option<std::collections::BTreeSet<Vec<u8>>>,
     expires: Option<i64>,
 }
+
+/// Redis's answer to a command on a key holding the other kind of value.
+const WRONG_TYPE: &str = "WRONGTYPE Operation against a key holding the wrong kind of value";
 
 /// One connection's state: whether it has signed in, its database and the
 /// transaction it is queueing.
@@ -185,8 +191,73 @@ impl Double {
                 keys.clear();
                 Reply::Status("OK".into())
             }
-            "GET" => Reply::Bulk(keys.get(&key).map(|entry| entry.value.clone())),
-            "DEL" => Reply::Integer(i64::from(keys.remove(&key).is_some())),
+            "GET" => match keys.get(&key) {
+                Some(Entry {
+                    members: Some(_), ..
+                }) => Reply::Error(WRONG_TYPE.into()),
+                found => Reply::Bulk(found.map(|entry| entry.value.clone())),
+            },
+            "MGET" => Reply::Array(Some(
+                words
+                    .iter()
+                    .skip(1)
+                    .map(|key| {
+                        Reply::Bulk(
+                            keys.get(key)
+                                .filter(|entry| entry.members.is_none())
+                                .map(|entry| entry.value.clone()),
+                        )
+                    })
+                    .collect(),
+            )),
+            "DEL" => Reply::Integer(
+                words
+                    .iter()
+                    .skip(1)
+                    .filter(|key| keys.remove(*key).is_some())
+                    .count() as i64,
+            ),
+            "SADD" => {
+                let entry = keys.entry(key).or_insert(Entry {
+                    value: Vec::new(),
+                    members: Some(std::collections::BTreeSet::new()),
+                    expires: None,
+                });
+                let Some(members) = entry.members.as_mut() else {
+                    return Reply::Error(WRONG_TYPE.into());
+                };
+                let added = words
+                    .iter()
+                    .skip(2)
+                    .filter(|member| members.insert((*member).clone()))
+                    .count();
+                Reply::Integer(added as i64)
+            }
+            "SMEMBERS" => match keys.get(&key) {
+                None => Reply::Array(Some(Vec::new())),
+                Some(Entry {
+                    members: Some(members),
+                    ..
+                }) => Reply::Array(Some(
+                    members
+                        .iter()
+                        .map(|member| Reply::Bulk(Some(member.clone())))
+                        .collect(),
+                )),
+                Some(_) => Reply::Error(WRONG_TYPE.into()),
+            },
+            "PEXPIRE" => {
+                let Some(ms) = words.get(2).and_then(|ms| text(ms).parse::<i64>().ok()) else {
+                    return Reply::Error("ERR value is not an integer or out of range".into());
+                };
+                match keys.get_mut(&key) {
+                    Some(entry) => {
+                        entry.expires = Some(now + ms);
+                        Reply::Integer(1)
+                    }
+                    None => Reply::Integer(0),
+                }
+            }
             "SET" => {
                 let Some(value) = words.get(2) else {
                     return Reply::Error("ERR wrong number of arguments for 'set' command".into());
@@ -215,6 +286,7 @@ impl Double {
                     key,
                     Entry {
                         value: value.clone(),
+                        members: None,
                         expires,
                     },
                 );
@@ -223,8 +295,12 @@ impl Double {
             "INCR" => {
                 let entry = keys.entry(key).or_insert(Entry {
                     value: b"0".to_vec(),
+                    members: None,
                     expires: None,
                 });
+                if entry.members.is_some() {
+                    return Reply::Error(WRONG_TYPE.into());
+                }
                 match text(&entry.value).parse::<i64>() {
                     Ok(count) => {
                         entry.value = (count + 1).to_string().into_bytes();

@@ -30,6 +30,7 @@ fn route(method: HttpMethod, path: &str, run: Run) -> RoutePlan {
         })
         .collect();
     RoutePlan {
+        cache: None,
         key: format!("route {} {path}", method.word()),
         method,
         segments,

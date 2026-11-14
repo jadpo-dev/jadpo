@@ -223,6 +223,7 @@ mod tests {
                 methods: Vec::new(),
             }],
             routes: vec![RoutePlan {
+                cache: None,
                 key: "route GET /widgets".into(),
                 method: HttpMethod::Get,
                 segments: vec![Segment::Fixed("widgets".into())],

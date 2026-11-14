@@ -445,6 +445,7 @@ pub(crate) fn erasure_plan(
         })
         .collect();
     ErasurePlan {
+        clears: Vec::new(),
         people,
         log,
         providers,
@@ -1311,6 +1312,7 @@ impl Planner<'_> {
         )?;
         Some(WriteSitePlan {
             plan: WritePlan {
+                clears: Vec::new(),
                 store,
                 op: *op,
                 sql,
@@ -1416,6 +1418,7 @@ impl Planner<'_> {
         )?;
         Some(WriteSitePlan {
             plan: WritePlan {
+                clears: Vec::new(),
                 store,
                 op: WriteOp::Delete,
                 sql,

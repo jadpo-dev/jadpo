@@ -1460,6 +1460,12 @@ async fn run_with_caller(
     }
     ctx.set_request_id(request_id);
     let claimed = Cell::new(false);
+    // The revision the request carries, which skips what a cache kept
+    // before it (area 7, "Write revisions").
+    let revision = route
+        .cache
+        .as_ref()
+        .and_then(|_| crate::caches::revision_of(request));
     // What was left for after the response before this route ran: only
     // its own action's work is waited for (chunk 6.3).
     let earlier = ctx.deferred().len();
@@ -1568,8 +1574,15 @@ async fn run_with_caller(
                     crate::FaultKind::Defect("an exchange with no key to trade".into()),
                     Frame::ENTRY,
                 )),
-                Run::Query(plan) => {
-                    match crate::store(
+                // A display read, served from its query's cache when it
+                // declares one (area 6, "Where a read comes from"; chunk
+                // Q9). An answer sent as raw bytes or holding a file's
+                // signed link is never kept.
+                Run::Query(plan) => match &route.cache {
+                    Some(cache) if route.sends.is_none() && !route.links => {
+                        crate::caches::read(ctx, app, route, (cache, plan), &args, revision).await
+                    }
+                    _ => match crate::store(
                         ctx,
                         StoreOp::Read(plan),
                         app.failures,
@@ -1583,8 +1596,8 @@ async fn run_with_caller(
                         Stored::Failed(failure) => Outcome::Failed(failure),
                         Stored::Conflict { cause, .. } => Outcome::Failed(cause),
                         Stored::Fault(fault) => Outcome::Fault(fault),
-                    }
-                }
+                    },
+                },
             })
         };
         let outcome = match race(work, &mut deadline).await {
@@ -1787,6 +1800,18 @@ async fn run_with_caller(
         // unless what ran started or ended the session it came with.
         if let (None, Some(reissued), Some(plan)) = (&session, &reissued, &app.table.identity) {
             response.headers.extend(identity::renewal(plan, reissued));
+        }
+        // A write's revision, which a client sends back to skip what a
+        // cache kept before it (area 7, "Write revisions"; chunk Q9).
+        if let Some(keep_ms) = app.table.revisions
+            && route.method != HttpMethod::Get
+            && matches!(route.run, Run::Action(_))
+            && (200..300).contains(&response.status)
+        {
+            response.headers.extend(crate::caches::revision_headers(
+                crate::steps::wall(ctx),
+                keep_ms,
+            ));
         }
         if keep.is_none()
             && let Some(guard) = guard

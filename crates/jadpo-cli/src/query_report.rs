@@ -31,9 +31,13 @@ struct Call {
     /// What calls it: `action add_note`, `route GET /notes`.
     caller: String,
     place: String,
-    /// Where it reads: the store, or the store in the action's
-    /// transaction.
-    from: &'static str,
+    /// Where it reads: the store, the store in the action's
+    /// transaction, or a route's own read's cache (chunk Q9).
+    from: String,
+    /// The same, for the `.json` twin: `store`, `transaction` or `cache`.
+    kind: &'static str,
+    /// For a cached read, its cache and its `keep:`.
+    cache: Option<jadpo_check::caches::QueryCache>,
 }
 
 /// One route, action, schedule or subscriber, with the most queries one
@@ -109,7 +113,9 @@ pub fn report(db: &dyn jadpo_db::Db, project: jadpo_db::Project, graph: &Graph) 
                     query: query.name.clone(),
                     caller: format!("action {}", callable.key.name()),
                     place: place(&callable.file, line),
-                    from: "the store, in the action's transaction",
+                    from: "the store, in the action's transaction".to_string(),
+                    kind: "transaction",
+                    cache: None,
                 });
             }
         }
@@ -148,11 +154,26 @@ pub fn report(db: &dyn jadpo_db::Db, project: jadpo_db::Project, graph: &Graph) 
                 match target.kind {
                     Kind::Query => {
                         queries += query_sends(&target.name);
+                        // A route's own read comes from its query's
+                        // cache when it declares one (area 6, "Where a
+                        // read comes from"; chunk Q9).
+                        let cache = (kind == Kind::Route)
+                            .then(|| jadpo_check::caches::query_cache(db, project, &target.name))
+                            .flatten();
                         calls.push(Call {
                             query: target.name.clone(),
                             caller: format!("{} {}", kind.word(), node.name),
                             place: node_place(&node.key),
-                            from: "the store",
+                            from: match &cache {
+                                Some(cache) => format!(
+                                    "the cache `{}`, up to `{}` old, else the store",
+                                    cache.store,
+                                    jadpo_std::caches::keep_text(cache.keep_ms)
+                                ),
+                                None => "the store".to_string(),
+                            },
+                            kind: if cache.is_some() { "cache" } else { "store" },
+                            cache,
                         });
                     }
                     Kind::Action => {
@@ -233,8 +254,8 @@ fn render(statements: &[StatementRead], calls: &[Call], runs: &[Runs]) -> Report
         markdown.push_str("Nothing calls a query yet.\n\n");
     } else {
         markdown.push_str(
-            "A route's own read may come from its query's cache once caches are built; every read \
-             inside an action is current.\n\n| query | called by | at | reads from |\n|---|---|---|---|\n",
+            "A route's own read comes from its query's cache when the query declares one, unless the \
+             request carries a later revision; every read inside an action is current.\n\n| query | called by | at | reads from |\n|---|---|---|---|\n",
         );
         for call in calls {
             markdown.push_str(&format!(
@@ -301,14 +322,11 @@ fn render(statements: &[StatementRead], calls: &[Call], runs: &[Runs]) -> Report
                 entry.set("query", call.query.as_str());
                 entry.set("calledBy", call.caller.as_str());
                 entry.set("at", call.place.as_str());
-                entry.set(
-                    "readsFrom",
-                    if call.from == "the store" {
-                        "store"
-                    } else {
-                        "transaction"
-                    },
-                );
+                entry.set("readsFrom", call.kind);
+                if let Some(cache) = &call.cache {
+                    entry.set("cache", cache.store.as_str());
+                    entry.set("keepMs", i64::try_from(cache.keep_ms).unwrap_or(i64::MAX));
+                }
                 entry
             })
             .collect::<Vec<_>>(),

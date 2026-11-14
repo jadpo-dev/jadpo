@@ -661,6 +661,23 @@ pub trait Host {
     fn slots(&self) -> &crate::slots::Slots {
         crate::slots::Slots::process()
     }
+
+    /// The cache connection `connection` names (area 5, "Caches"; chunk
+    /// Q9): its Redis driver, or this server's memory for `Driver.memory`;
+    /// every cache in memory under `jadpo dev`, and a test's own, emptied
+    /// between tests (area 13). `None` on a host with no caches, whose
+    /// reads all go to the database.
+    fn cache(&self, connection: &str) -> Option<std::rc::Rc<dyn crate::caches::Cache>> {
+        let _ = connection;
+        None
+    }
+
+    /// Whether each cache is being asked, and the clears each owes: the
+    /// process's, which a server's workers share, and an isolate's on
+    /// Workers ([`crate::caches::CacheHealth::process`]).
+    fn cache_health(&self) -> &crate::caches::CacheHealth {
+        crate::caches::CacheHealth::process()
+    }
 }
 
 /// A host borrowed is the host: what a wrapper such as
@@ -764,6 +781,14 @@ impl<H: Host + ?Sized> Host for &H {
 
     fn slots(&self) -> &crate::slots::Slots {
         (**self).slots()
+    }
+
+    fn cache(&self, connection: &str) -> Option<std::rc::Rc<dyn crate::caches::Cache>> {
+        (**self).cache(connection)
+    }
+
+    fn cache_health(&self) -> &crate::caches::CacheHealth {
+        (**self).cache_health()
     }
 }
 

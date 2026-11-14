@@ -56,7 +56,7 @@ pub(crate) use vectors::{metric, vector_type};
 pub use aggregates::{AggregateKind, Entry, EntryOrder, GroupKey, Grouping};
 
 /// The sections a query declaration holds (area 6, "Named queries").
-pub const SECTIONS: [&str; 12] = [
+pub const SECTIONS: [&str; 13] = [
     "from",
     "geometry",
     "where",
@@ -69,6 +69,7 @@ pub const SECTIONS: [&str; 12] = [
     "include",
     "missing",
     "include_erased",
+    "cache",
 ];
 
 /// The settings of an include written as a block (area 6, "Children and

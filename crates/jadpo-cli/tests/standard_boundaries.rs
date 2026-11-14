@@ -641,6 +641,14 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "checks a schedule's `every:`, a duration read by the contract's own reader",
     ),
     (
+        "crates/jadpo-check/src/caches.rs",
+        "checks a query cache's `keep:`, a duration read by the contract's own reader (chunk Q9)",
+    ),
+    (
+        "crates/jadpo-runtime/src/caches.rs",
+        "hashes a cached read's arguments into its key, a value's text never sent (chunk Q9)",
+    ),
+    (
         "crates/jadpo-check/src/thresholds.rs",
         "checks a threshold's limits and `within:`, durations read by the contract's own reader (chunk B13)",
     ),

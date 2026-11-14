@@ -48,7 +48,7 @@ pub fn not_permitted() -> Failure {
 
 /// The caller's parts a statement's policy reads, in [`CallerPart`]'s
 /// order.
-fn callers(ctx: &Ctx<'_>) -> [SqlValue; 8] {
+pub(crate) fn callers(ctx: &Ctx<'_>) -> [SqlValue; 8] {
     [
         ctx.caller_param(CallerPart::User),
         ctx.caller_param(CallerPart::Service),
