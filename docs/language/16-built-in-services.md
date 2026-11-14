@@ -3963,10 +3963,10 @@ with it, at the addresses its owner registers:
 
 `domains/market/entities/shop.jadpo`:
 
-```jadpo check project=outgoing-webhooks file=domains/market/entities/shop.jadpo migrate=initial
+```jadpo check project=outgoing-webhooks file=domains/market/entities/shop.jadpo
 use market/entities { Seller }
-use market/events { OrderPlaced }
 use market/types { ShopName }
+use market/events { OrderPlaced }
 
 /// A seller's shop, whose own systems hear of each order placed with it.
 public entity Shop {
@@ -4058,9 +4058,9 @@ authentication {
 
 ```jadpo check project=outgoing-webhooks file=config.jadpo hidden
 config {
-    main_url: PostgresUrl
     /// What each webhook address's secret is kept sealed with.
     field_encryption_key: EncryptionKey
+    main_url: PostgresUrl
 }
 ```
 
@@ -4151,8 +4151,8 @@ public entity Seller {
 
 ```jadpo check project=outgoing-webhooks file=domains/market/actions/join.jadpo hidden
 use market/entities { Seller }
-use market/failures { HandleTaken }
 use market/types { Handle, SellerView }
+use market/failures { HandleTaken }
 
 /// Signs a seller up.
 action join(handle: Handle) fails HandleTaken -> SellerView {
@@ -4202,10 +4202,10 @@ action list_webhooks(shop_id: Shop.id) -> WebhookList {
 }
 ```
 
-```jadpo check project=outgoing-webhooks file=domains/market/actions/place_order.jadpo hidden
+```jadpo check project=outgoing-webhooks file=domains/market/actions/place_order.jadpo hidden migrate=initial
 use market/entities { Shop }
-use market/events { OrderPlaced }
 use market/types { OrderReference }
+use market/events { OrderPlaced }
 
 /// Places an order with a shop, which its addresses hear of.
 action place_order(shop_id: Shop.id, reference: OrderReference) -> Unit {
@@ -4222,18 +4222,20 @@ to the address once its action commits, and a test's host catches it, so
 nothing leaves the machine:
 
 ```jadpo check project=outgoing-webhooks file=domains/market/actions/add_webhook.test.jadpo
-use market/actions { join, list_webhooks, open_shop, place_order }
 use market/entities { Seller }
 use market/types { NewWebhook, SellerView, ShopView, WebhookAdded, WebhookList }
+use market/actions { join, list_webhooks, open_shop, place_order }
 
 test "a shop's address is registered and hears of its orders" {
     var joined: SellerView = attempt join("corner-books")
     var seller: Seller = attempt Seller.get(joined.id)
     var shop: ShopView = open_shop("Corner Books", Principal.user(seller))
-    var added: WebhookAdded = add_webhook(NewWebhook {
-        shop_id: shop.id
-        url: "https://hooks.corner-books.example/orders"
-    })
+    var added: WebhookAdded = add_webhook(
+        NewWebhook {
+            shop_id: shop.id
+            url: "https://hooks.corner-books.example/orders"
+        }
+    )
     assert text.starts_with(added.secret, "whsec_")
     var listed: WebhookList = list_webhooks(shop.id)
     assert list.count(listed.webhooks) == 1

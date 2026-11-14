@@ -207,8 +207,8 @@ public entity Seller {
         file(
             "domains/market/entities/shop.jadpo",
             "use market/entities { Seller }
-use market/events { OrderPlaced }
 use market/types { ShopName }
+use market/events { OrderPlaced }
 
 /// A seller's shop, whose own systems hear of each order placed with it.
 public entity Shop {
@@ -247,8 +247,8 @@ public type OrderPlaced = Event {
         file(
             "domains/market/actions/join.jadpo",
             "use market/entities { Seller }
-use market/failures { HandleTaken }
 use market/types { Handle, SellerView }
+use market/failures { HandleTaken }
 
 /// Signs a seller up.
 action join(handle: Handle) fails HandleTaken -> SellerView {
@@ -328,8 +328,8 @@ action drop_webhook(webhook: WebhookId) -> Unit {
         file(
             "domains/market/actions/place_order.jadpo",
             "use market/entities { Shop }
-use market/events { OrderPlaced }
 use market/types { OrderReference }
+use market/events { OrderPlaced }
 
 /// Places an order with a shop, which its addresses hear of.
 action place_order(shop_id: Shop.id, reference: OrderReference) -> Unit {
@@ -343,18 +343,20 @@ action place_order(shop_id: Shop.id, reference: OrderReference) -> Unit {
         ),
         file(
             "domains/market/actions/add_webhook.test.jadpo",
-            "use market/actions { drop_webhook, join, list_webhooks, open_shop, place_order }
-use market/entities { Seller }
+            "use market/entities { Seller }
 use market/types { NewWebhook, SellerView, ShopView, WebhookAdded, WebhookId, WebhookList }
+use market/actions { drop_webhook, join, list_webhooks, open_shop, place_order }
 
 test \"a shop's address is registered, hears of its orders and is removed\" {
     var joined: SellerView = attempt join(\"corner-books\")
     var seller: Seller = attempt Seller.get(joined.id)
     var shop: ShopView = open_shop(\"Corner Books\", Principal.user(seller))
-    var added: WebhookAdded = add_webhook(NewWebhook {
-        shop_id: shop.id
-        url: \"https://hooks.corner-books.example/orders\"
-    })
+    var added: WebhookAdded = add_webhook(
+        NewWebhook {
+            shop_id: shop.id
+            url: \"https://hooks.corner-books.example/orders\"
+        }
+    )
     assert text.starts_with(added.secret, \"whsec_\")
     var listed: WebhookList = list_webhooks(shop.id)
     assert list.count(listed.webhooks) == 1

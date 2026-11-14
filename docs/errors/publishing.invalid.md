@@ -139,13 +139,13 @@ error: `ParcelShipped` isn't public
 check failed: 1 error, 3 files
 ```
 
-An event an entity's `webhooks:` lists that names none of its records is
-the same error:
+An event an entity's `webhooks:` lists that doesn't name exactly one of
+its records is the same error:
 
 ```jadpo check project=e-publishing-invalid-webhooks file=config.jadpo hidden
 config {
-    main_url: PostgresUrl
     field_encryption_key: EncryptionKey
+    main_url: PostgresUrl
 }
 ```
 
@@ -161,26 +161,26 @@ application {
 }
 ```
 
-```jadpo check project=e-publishing-invalid-webhooks file=domains/market/events/order_placed.jadpo hidden
-/// An order was placed.
-public type OrderPlaced = Event {
-    reference: Text {
-        max_length: 20
-    }
+```jadpo check project=e-publishing-invalid-webhooks file=domains/market/events/order_moved.jadpo hidden
+use market/entities { Shop }
+
+/// An order moved to a shop.
+public type OrderMoved = Event {
+    shop_id: Shop.id
 }
 ```
 
 `domains/market/entities/shop.jadpo`:
 
-```jadpo check project=e-publishing-invalid-webhooks file=domains/market/entities/shop.jadpo expect=publishing.invalid migrate=initial
-use market/events { OrderPlaced }
+```jadpo check project=e-publishing-invalid-webhooks file=domains/market/entities/shop.jadpo migrate=initial
+use market/events { OrderMoved }
 
 /// A shop, whose own systems hear of its orders.
-entity Shop {
+public entity Shop {
     id: Uuid
 
     webhooks: {
-        events: [OrderPlaced]
+        events: [OrderMoved]
     }
 
     policy: {
@@ -191,7 +191,30 @@ entity Shop {
 }
 ```
 
+`domains/market/events/order_moved.jadpo`, its event naming two shops:
+
+```jadpo check project=e-publishing-invalid-webhooks file=domains/market/events/order_moved.jadpo expect=publishing.invalid
+use market/entities { Shop }
+
+/// An order moved from one shop to another.
+public type OrderMoved = Event {
+    from_id: Shop.id
+    to_id: Shop.id
+}
+```
+
 ```text output
+error: `OrderMoved` names two `Shop` records, `from_id` and `to_id`
+ --> domains/market/entities/shop.jadpo:8:18
+  |
+8 |         events: [OrderMoved]
+  |                  ^^^^^^^^^^ which one's addresses?
+  reason: An entity's `webhooks:` lists, in `events:`, the events the addresses its records register receive: each a `public` event of one of the app's domains, since it becomes each customer's contract, with one field typed `<Entity>.id` naming the record whose addresses it goes to, so an event never reaches another customer.
+  next: Keep one field typed `Shop.id` in `OrderMoved`, naming the record whose addresses receive it (agent)
+  rule: publishing.invalid
+  help: https://jadpo.dev/docs/errors/publishing.invalid
+
+check failed: 1 error, 4 files
 ```
 
 ## How to fix it
@@ -270,9 +293,66 @@ Each `ParcelShipped` is now posted to the address in
 with `config.partner_hook_secret`, and tried again while the partner's
 server is down.
 
-**If the event goes to the addresses a customer registers**, give it a
-field typed `<Entity>.id` naming the record whose addresses receive it,
-`shop_id: Shop.id` here, and set it where the event is emitted.
+**If the event goes to the addresses a customer registers**, keep one
+field typed `<Entity>.id`, naming the record whose addresses receive it,
+and set it where the event is emitted. In
+`domains/market/events/order_moved.jadpo`:
+
+```jadpo fragment
+public type OrderMoved = Event {
+    shop_id: Shop.id
+}
+```
+
+```jadpo check project=e-publishing-invalid-webhooks-fix file=domains/market/events/order_moved.jadpo hidden
+use market/entities { Shop }
+
+/// An order moved to a shop.
+public type OrderMoved = Event {
+    shop_id: Shop.id
+}
+```
+
+```jadpo check project=e-publishing-invalid-webhooks-fix file=config.jadpo hidden
+config {
+    field_encryption_key: EncryptionKey
+    main_url: PostgresUrl
+}
+```
+
+```jadpo check project=e-publishing-invalid-webhooks-fix file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.main_url
+        }
+    }
+    field_encryption_key: config.field_encryption_key
+}
+```
+
+```jadpo check project=e-publishing-invalid-webhooks-fix file=domains/market/entities/shop.jadpo hidden migrate=initial
+use market/events { OrderMoved }
+
+/// A shop, whose own systems hear of its orders.
+public entity Shop {
+    id: Uuid
+
+    webhooks: {
+        events: [OrderMoved]
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+```
+
+Each `OrderMoved` now goes to the addresses of the shop its `shop_id`
+names, and to no other shop's.
 
 ## Related
 

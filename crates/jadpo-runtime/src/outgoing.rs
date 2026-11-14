@@ -162,7 +162,7 @@ fn defect(ctx: &mut Ctx<'_>, what: &str, site: u32) -> Box<Fault> {
 }
 
 /// The webhooks entity's plan, when the program has one.
-fn plan<'p>(executor: &'p dyn crate::Executor) -> Option<&'p WebhooksPlan> {
+fn plan(executor: &dyn crate::Executor) -> Option<&WebhooksPlan> {
     executor.plan().events?.webhooks.as_ref()
 }
 
