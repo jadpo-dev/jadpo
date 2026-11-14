@@ -1,6 +1,6 @@
 # `publishing.invalid`
 
-A connection in `publishing:` isn't one events are published through, or lists an event that can't leave the app.
+A connection in `publishing:` isn't one events are published through, an entity's `webhooks:` lists an event that names none of its records, or either lists an event that can't leave the app.
 
 ## Why Jadpo refuses it
 
@@ -14,6 +14,12 @@ domain offers as `public` leaves, or the built-in `AuditEntryRecorded`
 while an entity keeps an audit trail, and each is named outside by its
 `wire_name:`, or its domain and name, no two alike through one
 connection. Jadpo never guesses which events you meant to share.
+
+An entity's `webhooks:` lists the events the addresses its records
+register receive, chosen the same way, and each one names the record
+whose addresses get it in its one field typed `<Entity>.id`. Without that
+field, or with two, Jadpo can't tell which customer an event belongs to,
+and it never sends one customer's event to another's address.
 
 ## What it looks like
 
@@ -133,6 +139,61 @@ error: `ParcelShipped` isn't public
 check failed: 1 error, 3 files
 ```
 
+An event an entity's `webhooks:` lists that names none of its records is
+the same error:
+
+```jadpo check project=e-publishing-invalid-webhooks file=config.jadpo hidden
+config {
+    main_url: PostgresUrl
+    field_encryption_key: EncryptionKey
+}
+```
+
+```jadpo check project=e-publishing-invalid-webhooks file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.main_url
+        }
+    }
+    field_encryption_key: config.field_encryption_key
+}
+```
+
+```jadpo check project=e-publishing-invalid-webhooks file=domains/market/events/order_placed.jadpo hidden
+/// An order was placed.
+public type OrderPlaced = Event {
+    reference: Text {
+        max_length: 20
+    }
+}
+```
+
+`domains/market/entities/shop.jadpo`:
+
+```jadpo check project=e-publishing-invalid-webhooks file=domains/market/entities/shop.jadpo expect=publishing.invalid migrate=initial
+use market/events { OrderPlaced }
+
+/// A shop, whose own systems hear of its orders.
+entity Shop {
+    id: Uuid
+
+    webhooks: {
+        events: [OrderPlaced]
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+```
+
+```text output
+```
+
 ## How to fix it
 
 **If the event should reach another system**, give its address and the
@@ -208,6 +269,10 @@ Each `ParcelShipped` is now posted to the address in
 `config.partner_hook_url` once the action that emits it commits, signed
 with `config.partner_hook_secret`, and tried again while the partner's
 server is down.
+
+**If the event goes to the addresses a customer registers**, give it a
+field typed `<Entity>.id` naming the record whose addresses receive it,
+`shop_id: Shop.id` here, and set it where the event is emitted.
 
 ## Related
 

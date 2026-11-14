@@ -1379,7 +1379,7 @@ pub async fn revoke(
 /// statement without policy only for a call a test makes without a
 /// caller. A policed call whose plan has no policed statement runs
 /// nothing: `None`, never the statement without policy.
-fn policed(
+pub(crate) fn policed(
     ctx: &Ctx<'_>,
     plain: &str,
     gated: Option<&jadpo_std::policy::Gated>,
@@ -1403,7 +1403,7 @@ fn policed(
 
 /// The fault a policed credential statement the plan has no policy for
 /// is: a mistake in the plan, which refuses rather than runs unpoliced.
-fn unpoliced(ctx: &mut Ctx<'_>, site: u32) -> Box<Fault> {
+pub(crate) fn unpoliced(ctx: &mut Ctx<'_>, site: u32) -> Box<Fault> {
     defect(
         ctx,
         "a credential statement with no policy for a caller",
@@ -1412,7 +1412,7 @@ fn unpoliced(ctx: &mut Ctx<'_>, site: u32) -> Box<Fault> {
 }
 
 /// Runs `statement` in the running action's transaction in `store`.
-async fn execute(
+pub(crate) async fn execute(
     ctx: &mut Ctx<'_>,
     store: &str,
     statement: &str,
@@ -1425,7 +1425,7 @@ async fn execute(
 }
 
 /// A store's refusal of a session's statement, as what the runtime raises.
-fn stopped(ctx: &mut Ctx<'_>, error: StoreError, site: u32) -> Stored {
+pub(crate) fn stopped(ctx: &mut Ctx<'_>, error: StoreError, site: u32) -> Stored {
     match crate::read::refused(ctx, error, site) {
         Interrupt::Failed(failure) => Stored::Failed(failure),
         Interrupt::Fault(fault) => Stored::Fault(fault),

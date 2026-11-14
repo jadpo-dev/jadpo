@@ -25,6 +25,10 @@ pub struct EventsPlan {
     /// What a data request's steps need (area 15, "Data requests"): its
     /// subscriber's target is [`Target::PrivacySteps`].
     pub privacy: Option<crate::privacy::PrivacySteps>,
+    /// The entity whose records register addresses for outgoing webhooks
+    /// (area 16; chunk C1b): each event its `webhooks:` lists has a
+    /// subscriber whose target is [`Target::Webhooks`].
+    pub webhooks: Option<crate::outgoing::WebhooksPlan>,
 }
 
 impl EventsPlan {
@@ -126,8 +130,11 @@ impl SubscriberPlan {
             }
             Target::ErasureAt { connection } => vec![connection.clone()],
             Target::PrivacySteps { exports } => exports.iter().cloned().collect(),
+            // Each customer's addresses are their own: one that can't be
+            // reached holds no other's deliveries behind a breaker.
             Target::ErasureLog(crate::erasure::ErasureLog::Database { .. })
             | Target::ErasureIn { .. }
+            | Target::Webhooks { .. }
             | Target::Elsewhere => Vec::new(),
         }
     }
@@ -187,6 +194,12 @@ pub enum Target {
         connection: String,
         type_name: String,
     },
+    /// An event posted to every address the record it names registered
+    /// (area 16, "Outgoing webhooks"; chunk C1b): the record's `id` is the
+    /// event's field `holder`, and each address is sent the event under
+    /// `type_name`, signed with its own secret, through the runtime-owned
+    /// [`crate::outgoing::CONNECTION`].
+    Webhooks { type_name: String, holder: String },
     /// A file's bytes deleted from the store of files `connection` once
     /// no record holds it (area 16, "Deleting and erasing"; chunk B3):
     /// the event is [`crate::files::FILE_RELEASED`], and its delivery

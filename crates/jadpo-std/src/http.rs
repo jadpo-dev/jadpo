@@ -1190,7 +1190,9 @@ impl PrincipalKind {
 
 /// What an action does with sessions, API tokens and service keys (area
 /// 8): the operations the compiler generates in the `sessions` namespace
-/// and on the principal's service entity.
+/// and on the principal's service entity; and with the addresses customers
+/// register for outgoing webhooks (area 16; chunk C1b), the operations it
+/// generates on the entity whose `webhooks:` section lists events.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SessionOp {
     /// `sessions.start(user_id)`.
@@ -1210,6 +1212,15 @@ pub enum SessionOp {
     Keys,
     /// `Service.revoke_key(key_id)`.
     RevokeKey,
+    /// `Customer.register_webhook(customer_id, url)` (area 16, "Outgoing
+    /// webhooks"; chunk C1b): keeps an address the customer's record
+    /// receives its events at, and gives its `WebhookSecret`, shown once.
+    RegisterWebhook,
+    /// `Customer.webhooks(customer_id)`: the record's addresses, as
+    /// `RegisteredWebhook`s, never their secrets.
+    Webhooks,
+    /// `Customer.remove_webhook(webhook_id)`.
+    RemoveWebhook,
     /// `magic_links.request(address, locale, return_to)` (area 8, "Writing
     /// the routes yourself"; chunk 7.3b3): asks for a link and a code, as
     /// `POST /auth/magic-link` does.
@@ -1255,7 +1266,7 @@ pub enum SessionOp {
 }
 
 impl SessionOp {
-    pub const ALL: [SessionOp; 20] = [
+    pub const ALL: [SessionOp; 23] = [
         SessionOp::Start,
         SessionOp::End,
         SessionOp::IssueToken,
@@ -1264,6 +1275,9 @@ impl SessionOp {
         SessionOp::IssueKey,
         SessionOp::Keys,
         SessionOp::RevokeKey,
+        SessionOp::RegisterWebhook,
+        SessionOp::Webhooks,
+        SessionOp::RemoveWebhook,
         SessionOp::MagicLinkRequest,
         SessionOp::MagicLinkRedeem,
         SessionOp::MagicLinkRedeemCode,
@@ -1288,6 +1302,9 @@ impl SessionOp {
             SessionOp::IssueKey => "issue_key",
             SessionOp::Keys => "keys",
             SessionOp::RevokeKey => "revoke_key",
+            SessionOp::RegisterWebhook => "register_webhook",
+            SessionOp::Webhooks => "webhooks",
+            SessionOp::RemoveWebhook => "remove_webhook",
             SessionOp::MagicLinkRequest => "request",
             SessionOp::MagicLinkRedeem => "redeem",
             SessionOp::MagicLinkRedeemCode => "redeem_code",
@@ -1305,7 +1322,7 @@ impl SessionOp {
     /// The namespace it is called through: `sessions`, `magic_links`, or
     /// none for the service entity's.
     pub fn namespace(self) -> Option<&'static str> {
-        if self.on_service() {
+        if self.on_service() || self.on_webhooks() {
             None
         } else if self.magic_link() {
             Some(MAGIC_LINKS)
@@ -1398,9 +1415,29 @@ impl SessionOp {
         )
     }
 
+    /// The operation `<Customer>.<name>` names on the entity whose
+    /// `webhooks:` section lists events (area 16; chunk C1b).
+    pub fn webhook_op(name: &str) -> Option<SessionOp> {
+        SessionOp::ALL
+            .into_iter()
+            .find(|op| op.on_webhooks() && op.name() == name)
+    }
+
+    /// Whether it is one of the operations on the entity whose records
+    /// register addresses for outgoing webhooks.
+    pub fn on_webhooks(self) -> bool {
+        matches!(
+            self,
+            SessionOp::RegisterWebhook | SessionOp::Webhooks | SessionOp::RemoveWebhook
+        )
+    }
+
     /// Whether it only reads.
     pub fn reads_only(self) -> bool {
-        matches!(self, SessionOp::Tokens | SessionOp::Keys)
+        matches!(
+            self,
+            SessionOp::Tokens | SessionOp::Keys | SessionOp::Webhooks
+        )
     }
 
     /// The sign-in method it needs declared.
@@ -1422,6 +1459,11 @@ impl SessionOp {
             | SessionOp::TestPasskeySignIn
             | SessionOp::TestPasskeyConfirm
             | SessionOp::TestProviderSignIn => crate::AuthenticationMethod::BrowserSession,
+            // An outgoing webhook's address signs nothing in: these are
+            // checked by their entity's `webhooks:`, never by a method.
+            SessionOp::RegisterWebhook | SessionOp::Webhooks | SessionOp::RemoveWebhook => {
+                crate::AuthenticationMethod::BrowserSession
+            }
             SessionOp::IssueToken | SessionOp::Tokens | SessionOp::RevokeToken => {
                 crate::AuthenticationMethod::ApiToken
             }
@@ -1489,6 +1531,7 @@ pub fn builtin_object_fields(name: &str) -> Option<&'static [(&'static str, crat
         DECODE_PROBLEM => Some(&DECODE_PROBLEM_FIELDS),
         crate::files::FILE_LINK => Some(&FILE_LINK_RECORD_FIELDS),
         crate::files::UPLOAD_SLOT => Some(&UPLOAD_SLOT_RECORD_FIELDS),
+        crate::outgoing::REGISTERED_WEBHOOK => Some(&crate::outgoing::REGISTERED_FIELDS),
         _ => None,
     }
 }

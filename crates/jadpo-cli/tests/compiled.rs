@@ -764,6 +764,14 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             corpus_project(&crate::publishing::files(), "compiled-publishing").expect("it checks"),
         ),
         (
+            "addresses customers register".into(),
+            corpus_project(
+                &crate::outgoing_webhooks::files(),
+                "compiled-outgoing-webhooks",
+            )
+            .expect("it checks"),
+        ),
+        (
             "a file's bytes deleted".into(),
             corpus_project(&crate::file_deletes::files(), "compiled-file-deletes")
                 .expect("it checks"),

@@ -338,6 +338,10 @@ pub struct EntityModel {
     /// Its `audit:` (area 16, "Audit trail"; chunk B11), when it has one
     /// that reads: every change to its records is kept in its history.
     pub audit: Option<audit::AuditModel>,
+    /// Whether it has a `webhooks:` section (area 16, "Outgoing webhooks";
+    /// chunk C1b): its records register addresses that receive the events
+    /// it lists, kept in its store. [`crate::outgoing`] reads the section.
+    pub webhooks: bool,
 }
 
 /// One field of an entity.
@@ -971,6 +975,7 @@ impl Reader<'_> {
             search: None,
             search_written: false,
             audit: None,
+            webhooks: false,
         };
         let mut store: Option<(String, Span)> = None;
         let mut lifecycle = None;
@@ -1067,6 +1072,16 @@ impl Reader<'_> {
                         .is_some_and(|value| crate::types::looks_like_type(&value)) =>
                 {
                     audited = Some((member.clone(), key_span));
+                }
+                // `webhooks:` (area 16, "Outgoing webhooks"; chunk C1b),
+                // whose events [`crate::outgoing`] reads. A field may still
+                // be named `webhooks`.
+                "webhooks"
+                    if !member
+                        .value()
+                        .is_some_and(|value| crate::types::looks_like_type(&value)) =>
+                {
+                    entity.webhooks = true;
                 }
                 _ => match member.value() {
                     Some(value) if crate::types::looks_like_type(&value) => {
@@ -1323,14 +1338,14 @@ impl Reader<'_> {
             SECTIONS
                 .iter()
                 .copied()
-                .chain(["person", "retention", "search", "audit"]),
+                .chain(["person", "retention", "search", "audit", "webhooks"]),
         );
         let mut problem = Diagnostic::new(
             &rule::DATA_UNKNOWN_SECTION,
             format!("`{written}` isn't something an entity holds"),
         )
         .at(span.clone(), "not a field or a section");
-        let reason = "An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:`, `membership:`, `person:`, `retention:`, `search:` and `audit:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.";
+        let reason = "An entity's file holds only its data definition: fields (`name: Type`), and the sections `store:`, `unique:`, `indexes:`, `lifecycle:`, `caches:`, `policy:`, `membership:`, `person:`, `retention:`, `search:`, `audit:` and `webhooks:`. Its identity is always the field `id`; actions, queries and failures go in the domain's own folders.";
         problem = match near {
             Some(near) if near != written => problem
                 .reason(format!("{reason} Did you mean `{near}`?"))
@@ -1602,6 +1617,9 @@ impl Reader<'_> {
         if let Some(credential) = held_credential(self.lookup, &ty, &mut Vec::new()) {
             let (what, kept, given) = match credential {
                 jadpo_std::Builtin::ApiToken => ("An API token", "an API token", "token"),
+                jadpo_std::Builtin::WebhookSecret => {
+                    ("A webhook's secret", "a webhook's secret", "secret")
+                }
                 jadpo_std::Builtin::SignInCode => ("A sign-in code", "a sign-in code", "code"),
                 jadpo_std::Builtin::SignInToken => {
                     ("A sign-in link's token", "a sign-in link's token", "token")
@@ -1612,6 +1630,8 @@ impl Reader<'_> {
                 "A sign-in code is made as the email carrying it is sent, and the runtime keeps only its verifier, so a copy of the database signs no one in; the application's own email and sending are given it only to send it.".to_string()
             } else if credential == jadpo_std::Builtin::SignInToken {
                 "A sign-in link's token is made as the email carrying it is sent, and the runtime keeps only its verifier, so a copy of the database signs no one in; the application's own route is given it only to redeem it.".to_string()
+            } else if credential == jadpo_std::Builtin::WebhookSecret {
+                "A webhook's secret is shown once, in the output of the action that registers its address, and the runtime keeps it sealed with the application's `field_encryption_key:` beside the address, where only its deliveries open it.".to_string()
             } else {
                 format!(
                     "{what} is shown once, in the output of the action that issues it, and the runtime keeps only its verifier, so a copy of the database signs no one in."
@@ -1623,7 +1643,12 @@ impl Reader<'_> {
                 format!("Remove `{name}`; redeem the token, never keep it")
             } else {
                 format!(
-                    "Remove `{name}`, and give the {given} in the output of the action that issues it"
+                    "Remove `{name}`, and give the {given} in the output of the action that {}",
+                    if credential == jadpo_std::Builtin::WebhookSecret {
+                        "registers its address"
+                    } else {
+                        "issues it"
+                    }
                 )
             };
             self.out.push(
@@ -3172,6 +3197,7 @@ fn held_credential(
         Ty::Prim(
             credential @ (jadpo_std::Builtin::ApiToken
             | jadpo_std::Builtin::ServiceKey
+            | jadpo_std::Builtin::WebhookSecret
             | jadpo_std::Builtin::SignInCode
             | jadpo_std::Builtin::SignInToken),
         ) => Some(credential),
@@ -3496,6 +3522,26 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             store.tables.insert(
                 system::AUDIT.table.to_string(),
                 columns::system_table(&system::AUDIT),
+            );
+        }
+    }
+    // The addresses customers register go beside the records that register
+    // them, so a registration is checked against its record's grants in
+    // one statement; what each delivery has reached goes beside the
+    // deliveries, in every store (area 16, "Outgoing webhooks"; chunk C1b).
+    if model.entities.iter().any(|entity| entity.webhooks) {
+        for entity in model.entities.iter().filter(|entity| entity.webhooks) {
+            if let Some(store) = entity.store.as_ref().and_then(|s| schema.stores.get_mut(s)) {
+                store.tables.insert(
+                    system::WEBHOOK_ADDRESSES.table.to_string(),
+                    columns::system_table(&system::WEBHOOK_ADDRESSES),
+                );
+            }
+        }
+        for store in schema.stores.values_mut() {
+            store.tables.insert(
+                system::WEBHOOK_SENDS.table.to_string(),
+                columns::system_table(&system::WEBHOOK_SENDS),
             );
         }
     }

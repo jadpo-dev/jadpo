@@ -2136,6 +2136,9 @@ pub struct Row {
     pub address: Option<String>,
     pub setting: Option<String>,
     pub image: Option<String>,
+    /// For the outgoing webhooks' exception, the entity whose records
+    /// register the addresses it reaches (chunk C1b).
+    pub registered: Option<String>,
     /// When it is reached: `None` always, or the environment's setting
     /// and value.
     pub when: Option<(String, &'static str)>,
@@ -2167,6 +2170,7 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
             address: None,
             setting: None,
             image: None,
+            registered: None,
             when: None,
             reached_for: package.clone(),
             domains: connection.domains.clone(),
@@ -2249,6 +2253,7 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
             address: None,
             setting: Some(url.setting.clone()),
             image: None,
+            registered: None,
             when: None,
             reached_for: match url.kind {
                 ConnectionKind::Redis => "cache".to_string(),
@@ -2298,6 +2303,7 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
             address,
             setting,
             image: None,
+            registered: None,
             when: None,
             reached_for: "email".to_string(),
             domains: if mailer.as_deref() == Some(smtp.name.as_str()) {
@@ -2333,6 +2339,7 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
             address,
             setting,
             image: None,
+            registered: None,
             when: None,
             reached_for: "ai".to_string(),
             domains: if named.as_deref() == Some(model.name.as_str()) {
@@ -2382,9 +2389,45 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
             address,
             setting,
             image: None,
+            registered: None,
             when: None,
             reached_for: "publishing".to_string(),
             domains: publishing_domains,
+        });
+    }
+    // The runtime-owned exception the addresses customers register are
+    // reached through (area 16, "Outgoing webhooks"; chunk C1b), listed
+    // once, by the domains whose events it delivers.
+    if let Some(entity) = &crate::outgoing::webhooks(db, project).entity {
+        let mut delivering: Vec<String> = if domains {
+            entity
+                .events
+                .iter()
+                .filter_map(|event| {
+                    let name = event.key.name();
+                    let (domain, rest) = name.split_once('.')?;
+                    rest.starts_with(|c: char| c.is_ascii_uppercase())
+                        .then(|| domain.to_string())
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        delivering.sort();
+        delivering.dedup();
+        rows.push(Row {
+            connection: jadpo_std::outgoing::CONNECTION.to_string(),
+            host: format!(
+                "any public HTTPS address a `{}` registers",
+                entity.entity
+            ),
+            address: None,
+            setting: None,
+            image: None,
+            registered: Some(entity.entity.clone()),
+            when: None,
+            reached_for: "runtime outgoing webhooks: public HTTPS addresses only, checked as each is reached, no redirects".to_string(),
+            domains: delivering,
         });
     }
     let identity = crate::identity::identity(db, project);
@@ -2392,7 +2435,7 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
         rows.push(Row {
             connection: "external_token".into(),
             host: format!("the issuer in `config.{}` and the public HTTPS keys address its verified discovery document names", external.issuer),
-            address: None, setting: Some(external.issuer.clone()), image: None,
+            address: None, setting: Some(external.issuer.clone()), image: None, registered: None,
             when: None, reached_for: "runtime identity discovery and signing keys; public HTTPS, no redirects".into(), domains: Vec::new(),
         });
     }
@@ -2410,6 +2453,7 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
                     address: Some(host.to_string()),
                     setting: None,
                     image: None,
+                    registered: None,
                     when: None,
                     reached_for: reached_for.into(),
                     domains: Vec::new(),
@@ -2420,7 +2464,7 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
         rows.push(Row {
             connection: provider.name.clone(),
             host: format!("the issuer in `config.{issuer}` and the public HTTPS keys and token addresses its verified discovery document names"),
-            address: None, setting: Some(issuer.clone()), image: None,
+            address: None, setting: Some(issuer.clone()), image: None, registered: None,
             when: None, reached_for: "runtime sign-in: discovery, signing keys and the code exchange; public HTTPS, no redirects".into(), domains: Vec::new(),
         });
     }
@@ -2438,6 +2482,12 @@ fn report_of(
          Every host the app can reach, and the connection that reaches it. Jadpo code reaches \
          the network only through connections in `app.jadpo`. Written by `jadpo check`.\n\n",
     );
+    if let Some(row) = rows.iter().find(|row| row.registered.is_some()) {
+        markdown.push_str(&format!(
+            "Outgoing webhooks are runtime-owned egress: each address a `{}` registers is reached over HTTPS only, at a public address checked as each attempt is made, with no redirect followed. Nothing else in the app reaches an address that isn't a connection's.\n\n",
+            row.registered.as_deref().unwrap_or_default()
+        ));
+    }
     if identity.external_token.is_some() {
         markdown.push_str("External identity discovery is runtime-owned egress: only the configured issuer and its exactly matched discovery document's public HTTPS keys address, with certificate checks and no redirects. Token headers never choose an address.\n\n");
     }
@@ -2478,6 +2528,9 @@ fn report_of(
         if let Some(image) = &row.image {
             entry.set("service", image.as_str());
         }
+        if let Some(entity) = &row.registered {
+            entry.set("registered_by", entity.as_str());
+        }
         if let Some((setting, word)) = &row.when {
             let mut when = Value::object();
             when.set("setting", setting.as_str());
@@ -2485,6 +2538,11 @@ fn report_of(
             entry.set("when", when);
         }
         match row.reached_for.split_once(", ") {
+            _ if row.registered.is_some() => {
+                entry.set("for", "outgoing webhooks");
+                entry.set("public_https", true);
+                entry.set("redirects", false);
+            }
             Some((reached_for, _)) if row.reached_for.starts_with("database, ") => {
                 entry.set("for", reached_for);
                 match databases.tls_of(&row.connection) {

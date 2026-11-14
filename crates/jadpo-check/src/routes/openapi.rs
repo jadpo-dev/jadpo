@@ -575,6 +575,14 @@ fn published_events(
         refs.insert(event.key.clone());
         events.insert(event.type_name.clone(), reference(&wire.name(&event.key)));
     }
+    // And each one the addresses customers register receive, signed the
+    // same way (area 16, "Outgoing webhooks"; chunk C1b).
+    if let Some(entity) = &crate::outgoing::webhooks(db, project).entity {
+        for event in &entity.events {
+            refs.insert(event.key.clone());
+            events.insert(event.type_name.clone(), reference(&wire.name(&event.key)));
+        }
+    }
     if events.is_empty() {
         return None;
     }

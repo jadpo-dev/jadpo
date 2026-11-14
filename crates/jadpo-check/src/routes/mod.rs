@@ -1170,6 +1170,7 @@ pub fn is_issued(ty: &Ty) -> bool {
             if args.is_empty()
                 && (name == jadpo_std::http::ISSUED_TOKEN
                     || name == jadpo_std::http::ISSUED_KEY
+                    || name == jadpo_std::outgoing::REGISTERED_WEBHOOK
                     || name == jadpo_std::files::UPLOAD_SLOT)
     )
 }

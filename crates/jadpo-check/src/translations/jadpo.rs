@@ -107,6 +107,15 @@ pub fn features(db: &dyn Db, project: Project) -> BTreeSet<Feature> {
     if crate::privacy::privacy(db, project).takes_requests() {
         out.insert(Feature::Privacy);
     }
+    // Registering an address for outgoing webhooks can be refused (area
+    // 16; chunk C1b).
+    if crate::data::data_model(db, project)
+        .entities
+        .iter()
+        .any(|entity| entity.webhooks)
+    {
+        out.insert(Feature::OutgoingWebhooks);
+    }
     if let Some(magic) = crate::identity::identity(db, project).magic_links() {
         out.insert(Feature::MagicLink);
         // The application's own routes meet `magic_links.request`'s

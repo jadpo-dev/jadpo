@@ -2271,6 +2271,17 @@ pub async fn session(
         (SessionOp::RevokeToken | SessionOp::RevokeKey, [id]) => {
             identity::revoke(ctx, plan, op.on_service(), id, at).await
         }
+        // The webhooks entity's addresses (area 16, "Outgoing webhooks";
+        // chunk C1b), boxed so this frame stays small.
+        (SessionOp::RegisterWebhook, _) => {
+            Box::pin(crate::outgoing::register(executor, ctx, args, at)).await
+        }
+        (SessionOp::Webhooks, [holder]) => {
+            Box::pin(crate::outgoing::listed(executor, ctx, holder, at)).await
+        }
+        (SessionOp::RemoveWebhook, [id]) => {
+            Box::pin(crate::outgoing::remove(executor, ctx, id, at)).await
+        }
         _ => {
             return Stored::Fault(ctx.fault(
                 crate::FaultKind::Defect(format!(

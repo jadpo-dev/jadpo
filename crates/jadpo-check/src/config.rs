@@ -841,6 +841,7 @@ impl Reader<'_> {
             | Prim::PageSize
             | Prim::ApiToken
             | Prim::ServiceKey
+            | Prim::WebhookSecret
             | Prim::SignInCode
             | Prim::SignInToken
             | Prim::PresentationText => {

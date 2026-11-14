@@ -40,6 +40,7 @@ mod emails;
 mod export;
 mod flags;
 mod identity;
+mod outgoing;
 mod policy;
 mod providers;
 mod purge;
@@ -407,6 +408,41 @@ fn events_plan(
             });
         }
     }
+    // Each event the addresses customers register receive, with the
+    // subscriber that posts it to each address the record it names has:
+    // tried as a subscriber is by default, then left for an operator (area
+    // 16, "Outgoing webhooks"; chunk C1b).
+    if let Some(entity) = &jadpo_check::outgoing::webhooks(db, project).entity {
+        for event in &entity.events {
+            let subscriber = SubscriberPlan {
+                key: jadpo_std::outgoing::subscriber(&entity.entity, event.key.as_str()),
+                name: format!(
+                    "send {} to the addresses {} registers",
+                    event.type_name, entity.entity
+                ),
+                event: event.key.as_str().to_string(),
+                target: Target::Webhooks {
+                    type_name: event.type_name.clone(),
+                    holder: event.holder.clone(),
+                },
+                attempts: defaults.attempts,
+                within_ms: defaults.within_ms,
+                // It reads the addresses as the system, and the event is
+                // posted as it is.
+                tenant: TenantFrom::Nowhere,
+                store: None,
+                connections: Vec::new(),
+                through: None,
+                file: entity.path.clone(),
+                line: 1,
+            };
+            subscribers.push(if running {
+                subscriber
+            } else {
+                subscriber.elsewhere()
+            });
+        }
+    }
     // A data request's steps, each a delivery due when the step is: tried
     // for as long as a request may take, then left for an operator (area
     // 15, "Data requests").
@@ -445,6 +481,8 @@ fn events_plan(
         files,
         erasure,
         privacy,
+        // The planner's, set where the routes' plans are made.
+        webhooks: None,
     }
 }
 
@@ -937,7 +975,7 @@ impl Plan {
                 found.iter().map(|(_, _, _, body)| body.as_ref()),
             )
         });
-        let (queries, entities, identity) =
+        let (queries, entities, identity, webhooks) =
             queries::plans(db, project, &mut types, &json_types, &|key| {
                 pruning.is_none_or(|pruning| pruning.keep.callables.contains(key))
                     || used.as_ref().is_some_and(|used| used.gets.contains(key))
@@ -1606,7 +1644,7 @@ impl Plan {
             }
         }
         let running = pruning.is_none_or(|pruning| pruning.runs().subscribers);
-        let events = events_plan(
+        let mut events = events_plan(
             db,
             project,
             &callable_number,
@@ -1614,6 +1652,9 @@ impl Plan {
             &setting_number,
             running,
         );
+        // What the webhooks entity's operations run, which a deployable
+        // serving its routes needs whether or not it delivers (chunk C1b).
+        events.webhooks = webhooks;
         let schedules = schedules_plan(
             db,
             project,

@@ -44,6 +44,10 @@ pub enum Reach {
     Sessions(bool),
     /// A read of either: `sessions.tokens` or `Service.keys`.
     ReadsSessions(bool),
+    /// A write to the addresses customers register for outgoing webhooks,
+    /// beside the records registering them, or with `false` a read of
+    /// them (area 16; chunk C1b).
+    Addresses(bool),
     /// `batches.each` walking a query, by name (area 12): its run is kept
     /// in the query's store, which its items' writes and its position
     /// commit to together, so starting it writes that store.
@@ -62,6 +66,7 @@ fn reaches_of(fact: &Fact) -> Vec<Reach> {
         Fact::Action(callee) => Reach::Calls(callee.name().to_string()),
         Fact::Gets(entity) => Reach::Reads(entity.clone()),
         Fact::Queries(query) => Reach::Queries(query.clone()),
+        Fact::Session(op) if op.on_webhooks() => Reach::Addresses(!op.reads_only()),
         Fact::Session(op) if op.reads_only() => Reach::ReadsSessions(op.on_service()),
         Fact::Session(op) => Reach::Sessions(op.on_service()),
         Fact::Batch(batch) => {
@@ -376,7 +381,11 @@ fn session_effects(db: &dyn Db, project: Project, file: File) -> BTreeSet<String
             matches!(
                 fact,
                 Fact::Session(
-                    SessionOp::Start | SessionOp::End | SessionOp::IssueToken | SessionOp::IssueKey
+                    SessionOp::Start
+                        | SessionOp::End
+                        | SessionOp::IssueToken
+                        | SessionOp::IssueKey
+                        | SessionOp::RegisterWebhook
                 )
             )
         });
@@ -461,6 +470,17 @@ fn query_entity<'db>(db: &'db dyn Db, project: Project, query: Name<'db>) -> Opt
 /// write's, or with `reads`, a `get`'s or a query's.
 fn store_of(db: &dyn Db, project: Project, reach: &Reach, reads: bool) -> Option<(String, String)> {
     let name = |text: &str| Name::new(db, text.to_string());
+    if let Reach::Addresses(writes) = reach {
+        if !writes && !reads {
+            return None;
+        }
+        let entity = crate::policy::reach::webhooks_entity(db, project)?;
+        let store = entity_store(db, project, name(&entity)).clone()?;
+        return Some((
+            store,
+            jadpo_std::system::WEBHOOK_ADDRESSES.table.to_string(),
+        ));
+    }
     let keys = match reach {
         Reach::Sessions(keys) => Some(*keys),
         Reach::ReadsSessions(keys) if reads => Some(*keys),
@@ -609,7 +629,7 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                     reached(callee).written.clone(),
                     format!("calls `{callee}`, which writes"),
                 ),
-                Reach::Sessions(_) | Reach::Runs(true) => (
+                Reach::Sessions(_) | Reach::Runs(true) | Reach::Addresses(true) => (
                     store_of(db, project, &reach, false).into_iter().collect(),
                     "writes".to_string(),
                 ),
@@ -620,7 +640,8 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                 Reach::Reads(_)
                 | Reach::Queries(_)
                 | Reach::ReadsSessions(_)
-                | Reach::Runs(false) => {
+                | Reach::Runs(false)
+                | Reach::Addresses(false) => {
                     continue;
                 }
             };
@@ -770,7 +791,7 @@ fn second_store_read(
                     .collect(),
                 format!("calls `{callee}`, which uses"),
             ),
-            Reach::Writes(_) | Reach::Sessions(_) | Reach::Runs(true) => (
+            Reach::Writes(_) | Reach::Sessions(_) | Reach::Runs(true) | Reach::Addresses(true) => (
                 store_of(db, project, reach, true).into_iter().collect(),
                 "writes".to_string(),
             ),
@@ -778,7 +799,11 @@ fn second_store_read(
                 store_of(db, project, reach, true).into_iter().collect(),
                 format!("starts a batch over `{query}`, whose run is kept with"),
             ),
-            Reach::Reads(_) | Reach::Queries(_) | Reach::ReadsSessions(_) | Reach::Runs(false) => (
+            Reach::Reads(_)
+            | Reach::Queries(_)
+            | Reach::ReadsSessions(_)
+            | Reach::Runs(false)
+            | Reach::Addresses(false) => (
                 store_of(db, project, reach, true).into_iter().collect(),
                 "reads".to_string(),
             ),

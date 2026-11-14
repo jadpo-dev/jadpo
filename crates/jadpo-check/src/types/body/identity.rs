@@ -533,6 +533,10 @@ impl Body<'_> {
             SessionOp::TestProviderSignIn => {
                 return self.test_provider_call(call, callee, written);
             }
+            // The webhooks entity's, checked by [`Self::webhook_call`].
+            SessionOp::RegisterWebhook | SessionOp::Webhooks | SessionOp::RemoveWebhook => {
+                return failed(self);
+            }
         };
         if args.len() != params.len() || args.iter().any(|arg| arg.name().is_some()) {
             let at = call
@@ -1168,5 +1172,133 @@ impl Body<'_> {
             );
         }
         self.session_call(op, call, callee, written)
+    }
+
+    /// `Entity.register_webhook(id, url)`, `Entity.webhooks(id)` or
+    /// `Entity.remove_webhook(webhook_id)`: the operations generated on the
+    /// entity whose `webhooks:` lists events (area 16, "Outgoing webhooks";
+    /// chunk C1b), as `Service.issue_key` is on the service's. Only an
+    /// action calls them, which keeps what they write in its transaction;
+    /// on any other entity they are no operation at all.
+    pub(super) fn webhook_call(
+        &mut self,
+        entity: &str,
+        op: SessionOp,
+        call: &ast::CallExpr,
+        callee: &ast::Expr,
+        written: &str,
+    ) -> (Ty, CallKind, Reach) {
+        let span = self.span(callee);
+        let failed = |body: &mut Self| {
+            body.args_only(call);
+            (
+                Ty::Error,
+                CallKind::Effect(written.to_string()),
+                Reach::Unknown,
+            )
+        };
+        let holder = crate::policy::reach::webhooks_entity(self.db, self.project);
+        if holder.as_deref() != Some(entity) {
+            let message = format!("`{entity}` has no operation `{}`", op.name());
+            self.out.push(
+                Diagnostic::new(&rule::SEMANTIC_UNKNOWN_CALLEE, message)
+                    .at(span, "not an operation")
+                    .reason(match &holder {
+                        Some(holder) => format!(
+                            "`register_webhook`, `webhooks` and `remove_webhook` belong to the entity whose `webhooks:` lists the events its records' addresses receive, `{holder}`."
+                        ),
+                        None => "`register_webhook`, `webhooks` and `remove_webhook` belong to the entity whose `webhooks:` lists the events its records' addresses receive, and no entity has one.".to_string(),
+                    })
+                    .next(match &holder {
+                        Some(holder) => format!("Call `{holder}.{}`", op.name()),
+                        None => format!(
+                            "Add `webhooks: {{ events: [<Event>] }}` to `{entity}`, listing the events its records' addresses receive"
+                        ),
+                    }),
+            );
+            return failed(self);
+        }
+        if self.context != Context::Action {
+            let who = super::capital(self.context.with_a());
+            let does = if op.reads_only() {
+                "reads the addresses the runtime keeps".to_string()
+            } else {
+                "writes the addresses the runtime keeps, in the transaction of the action that calls it".to_string()
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_AUTH_SESSIONS_CONTEXT,
+                    format!("{who} can't call `{written}`"),
+                )
+                .at(span, "outside an action")
+                .reason(format!("`{written}` {does}, so only an action calls it."))
+                .next(format!("Call `{written}` in an action")),
+            );
+            return failed(self);
+        }
+        let args: Vec<ast::Arg> = call
+            .arg_list()
+            .iter()
+            .flat_map(|list| list.args())
+            .collect();
+        let id = Ty::Field(entity.to_string(), vec!["id".to_string()]);
+        type Param<'a> = (&'a str, &'a str, Ty);
+        let record = "the record's";
+        let (params, result): (Vec<Param>, Ty) = match op {
+            SessionOp::RegisterWebhook => (
+                vec![
+                    ("holder", record, id),
+                    ("url", "the address, a", Ty::Prim(Prim::Url)),
+                ],
+                Ty::Prim(Prim::WebhookSecret),
+            ),
+            SessionOp::Webhooks => (
+                vec![("holder", record, id)],
+                Ty::List(Box::new(Ty::Opaque(
+                    jadpo_std::outgoing::REGISTERED_WEBHOOK.to_string(),
+                    Vec::new(),
+                ))),
+            ),
+            _ => (
+                vec![("webhook_id", "the address's", Ty::Prim(Prim::Uuid))],
+                Ty::Prim(Prim::Unit),
+            ),
+        };
+        if args.len() != params.len() || args.iter().any(|arg| arg.name().is_some()) {
+            let at = call
+                .arg_list()
+                .map_or_else(|| self.span(call), |list| self.span(&list));
+            let takes: Vec<String> = params
+                .iter()
+                .map(|(_, whose, ty)| format!("{whose} `{ty}`"))
+                .collect();
+            let takes = crate::and_list(&takes);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_ARGUMENT_COUNT,
+                    format!("`{written}` takes {takes}"),
+                )
+                .at(at, format!("{} given", args.len()))
+                .reason(format!("`{written}` takes {takes}, in that order."))
+                .next(format!("Pass {takes}")),
+            );
+            return failed(self);
+        }
+        for (arg, (name, _, ty)) in args.iter().zip(&params) {
+            let Some(value) = arg.expr() else { continue };
+            match ty {
+                // An address is a `Url`, or a type built on one.
+                Ty::Prim(Prim::Uuid) => {
+                    let inferred = (!super::is_literal(&value)).then(|| self.infer(&value));
+                    self.built_on_argument(&value, inferred, &[Prim::Uuid], written, name);
+                }
+                _ => self.check(&value, ty),
+            }
+        }
+        (
+            result,
+            CallKind::Effect(written.to_string()),
+            Reach::Session(op),
+        )
     }
 }
