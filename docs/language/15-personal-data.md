@@ -2007,6 +2007,8 @@ For each person entity it lists:
   [several changing calls](12-jobs-and-events.md#several-changing-calls-in-one-action),
   which hold providers' answers, encrypted, until the action commits (an
   answer over 1 MB is a fault);
+- the prompts whose calls and answers are kept, with their store and how
+  long ([Keeping prompts and answers](21-ai.md#keeping-prompts-and-answers));
 - connections holding OAuth grants, and whose grants they are;
 - sensitive fields, flagged.
 

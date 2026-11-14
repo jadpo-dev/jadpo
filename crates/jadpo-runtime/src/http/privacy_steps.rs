@@ -818,7 +818,7 @@ async fn kept_records(
         else {
             continue;
         };
-        let after = match ctx.setting(retention.setting) {
+        let after = match retention.setting.and_then(|setting| ctx.setting(setting)) {
             Some(Value::Duration(after)) => *after,
             _ => 0,
         };

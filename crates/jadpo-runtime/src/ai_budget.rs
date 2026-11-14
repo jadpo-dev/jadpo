@@ -670,6 +670,7 @@ mod tests {
                 cost: None,
             }),
             prices: vec![],
+            keep: None,
         }
     }
     fn ai(plan: &jadpo_std::ai::AiPlan) -> Ai<'_> {

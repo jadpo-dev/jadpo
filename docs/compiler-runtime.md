@@ -5543,7 +5543,30 @@ its prompt's `ai.generate` sites decode into; `recorded(...)` lowers to
 `AiFakeAnswer::Recorded`, which the interpreter scripts with the answer
 `prompt_recordings::answer` fills (area 11's `recorded::filled_value`),
 and `jadpo test` runs `prompt_recordings::check_file` for each as a
-`recording` test, listing stale ones as `Run::alerts`.
+`recording` test, listing stale ones as `Run::alerts`. A package's
+`embed:` splits an `ai.embed_all` into requests of its `batch:`
+(`embed::batches`), sent one after another under one `Retry::timed`
+window, each answer placed among every text (`embed::placed`) and joined
+(`embed::joined`), so the step, the rerun digest (every body, a line
+each) and the budget's charge stay the call's own.
+
+**Kept prompts and answers** (area 21, "Keeping prompts and answers").
+`jadpo_check::ai_keep` reads `ai: { keep_content: }` into
+`AiSettings::keep` and checks it once the rest reads (`keep_problems`);
+`jadpo_std::system::AI_CONTENT` joins its store's schema, and the plan
+carries `AiPlan::keep`. After an `ai.generate` call a model answered,
+`jadpo_runtime::ai_keep::keep` writes one row with `KEEP`, its messages
+and answer sealed with `Started::field_ring` under
+`KEPT_MESSAGES_BOUND` and `KEPT_ANSWER_BOUND`, and the caller's record by
+its principal's `id`. The table is one of `purge::SIGN_IN_STATE`, so
+erasure and retention delete it with the caller's sessions; the export
+plan reads it as an `AiContent` part (`export::kept_part`, two
+`Column::Sealed` columns); `purge::reseals` re-seals both columns; the
+tick deletes rows past `keep:` (`SchedulesPlan::ai_content`,
+`ai_keep::OLD_CONTENT`); and `personal_held::kept_prompts` adds the
+report's section. `crates/jadpo-cli/tests/kept_ai_calls.rs` runs it
+through `jadpo test` and reads the rows erasure and the tick leave; its
+tests run compiled in the gate's compiled step.
 
 **Webhooks as events** (area 11). The
 checker reads a provider's `webhooks:` into `connections::WebhookReach`

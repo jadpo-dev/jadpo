@@ -41,6 +41,19 @@ pub(crate) fn plans(
     let lookup = Lookup::new(db, project);
     let access = jadpo_check::policy::access(db, project);
     let sent = sent(db, project);
+    // The calls `ai: { keep_content: }` kept for someone who signs in,
+    // read beside their record (chunk K6).
+    let sign_in = crate::purge::sign_in_state(db, project);
+    let settings = jadpo_check::ai::settings(db, project);
+    let kept = settings
+        .keep
+        .as_ref()
+        .and_then(|keep| keep.keep_ms)
+        .map(|keep_ms| Kept {
+            sign_in: &sign_in,
+            keep: jadpo_std::iso_duration(i64::try_from(keep_ms).unwrap_or(i64::MAX)),
+            recipients: settings.connection.iter().cloned().collect(),
+        });
     let mut planner = Planner {
         model,
         lookup: &lookup,
@@ -63,11 +76,24 @@ pub(crate) fn plans(
             if !keep(&key) {
                 return None;
             }
-            Some((key, planner.export(model, person, erasure, sent, setting)?))
+            Some((
+                key,
+                planner.export(model, person, erasure, sent, setting, kept.as_ref())?,
+            ))
         })
         .collect();
     out.sort_by(|a, b| a.0.cmp(&b.0));
     out
+}
+
+/// What an export reads of the calls `ai: { keep_content: }` kept (chunk
+/// K6): for each entity someone signs in as, the tables of sign-in state
+/// its store holds, among them the kept calls'; how long each is kept, as
+/// the wire writes it; and where they were sent.
+struct Kept<'k> {
+    sign_in: &'k std::collections::BTreeMap<String, Vec<(&'static str, &'static str)>>,
+    keep: String,
+    recipients: Vec<String>,
 }
 
 impl Planner<'_> {
@@ -78,6 +104,7 @@ impl Planner<'_> {
         erasure: &Erasure,
         sent: &[Sent],
         setting: &dyn Fn(&str) -> Option<u32>,
+        kept: Option<&Kept<'_>>,
     ) -> Option<ExportPlan> {
         let store = person.store.clone()?;
         let access = self.export_access(person, erasure, &store)?;
@@ -141,6 +168,25 @@ impl Planner<'_> {
                     erasure_keeps_own(here, &deleted, entity),
                 )?);
             }
+            // The calls kept for each record found that someone signs in
+            // as, in a store holding them.
+            if let Some(kept) = kept {
+                let table = jadpo_std::system::AI_CONTENT.table;
+                let conditions: Vec<String> = deleted
+                    .iter()
+                    .enumerate()
+                    .skip(usize::from(!own))
+                    .filter(|(_, entity)| {
+                        kept.sign_in
+                            .get(&entity.name)
+                            .is_some_and(|tables| tables.iter().any(|(held, _)| *held == table))
+                    })
+                    .map(|(at, _)| text::found_in("principal_id", at))
+                    .collect();
+                if !conditions.is_empty() {
+                    parts.push(self.kept_part(name, &deleted, &follows, &conditions)?);
+                }
+            }
         }
         let entities: Vec<&str> = parts.iter().map(|part| part.entity.as_str()).collect();
         let mut kinds = Vec::new();
@@ -150,6 +196,21 @@ impl Planner<'_> {
                 continue;
             }
             listed.push(entity);
+            if entity == jadpo_std::ai::KEPT_EXPORT
+                && let Some(kept) = kept
+            {
+                kinds.push(ExportKind {
+                    entity: entity.to_string(),
+                    retention: vec![ExportRetention {
+                        field: None,
+                        setting: None,
+                        written: Some(kept.keep.clone()),
+                        since: "made_at".to_string(),
+                    }],
+                    recipients: kept.recipients.clone(),
+                });
+                continue;
+            }
             kinds.push(export_kind(model.entity(entity)?, sent, setting)?);
         }
         Some(ExportPlan {
@@ -322,6 +383,118 @@ impl Planner<'_> {
     }
 }
 
+impl Planner<'_> {
+    /// The calls `ai: { keep_content: }` kept for the records the walk
+    /// found that `conditions` pick, each with its prompt, model and when,
+    /// its messages and answer opened from their seals.
+    fn kept_part(
+        &mut self,
+        store: &str,
+        deleted: &[&EntityModel],
+        follows: &[text::Followed<'_>],
+        conditions: &[String],
+    ) -> Option<ExportPart> {
+        use jadpo_std::Builtin;
+        use jadpo_std::read::SealedForm;
+        let text = || TypeRef::Builtin(Builtin::Text);
+        let messages = TypeRef::List(Box::new(TypeRef::Std(
+            jadpo_std::standard::ai::CHAT_MESSAGE.to_string(),
+            Vec::new(),
+        )));
+        let answer = TypeRef::Nullable(Box::new(text()));
+        let messages_number = self.json_number(messages)?;
+        let answer_number = self.json_number(answer)?;
+        let fields: [(&str, Column, u32); 6] = [
+            (
+                "id",
+                Column::Uuid,
+                self.json_number(TypeRef::Builtin(Builtin::Uuid))?,
+            ),
+            ("prompt", Column::Text, self.json_number(text())?),
+            ("model", Column::Text, self.json_number(text())?),
+            (
+                "made_at",
+                Column::Instant,
+                self.json_number(TypeRef::Builtin(Builtin::Instant))?,
+            ),
+            (
+                "messages",
+                Column::Sealed {
+                    form: SealedForm::Json(messages_number),
+                    bound: jadpo_std::ai::KEPT_MESSAGES_BOUND.to_string(),
+                    id: 0,
+                },
+                messages_number,
+            ),
+            (
+                "answer",
+                Column::Sealed {
+                    form: SealedForm::Json(answer_number),
+                    bound: jadpo_std::ai::KEPT_ANSWER_BOUND.to_string(),
+                    id: 0,
+                },
+                answer_number,
+            ),
+        ];
+        let mut columns = Columns::default();
+        let mut record = Vec::new();
+        let mut exported = Vec::new();
+        for (name, kind, number) in fields {
+            let at = columns.add(name, kind);
+            record.push((name.to_string(), Field::Column(at)));
+            exported.push((name.to_string(), number));
+        }
+        let mut statement = Statement::default();
+        let id = statement.param(
+            Source::Arg {
+                index: 0,
+                path: Vec::new(),
+            },
+            SqlType::Uuid,
+        );
+        let tables: Vec<&str> = deleted.iter().map(|entity| entity.table.as_str()).collect();
+        let picked = text::export_pick(conditions, None);
+        let sql = text::export_records(
+            text::EraseRoot::Given(&id),
+            &tables,
+            follows,
+            &columns.names,
+            jadpo_std::system::AI_CONTENT.table,
+            &[picked],
+        );
+        Some(ExportPart {
+            entity: jadpo_std::ai::KEPT_EXPORT.to_string(),
+            read: ReadPlan {
+                store: store.to_string(),
+                settings: Vec::new(),
+                cardinality: Cardinality::List,
+                select: Select {
+                    sql,
+                    unpoliced: None,
+                    permitted: None,
+                    params: statement.into_params(),
+                    columns: columns.kinds,
+                    held: Vec::new(),
+                    record: Record {
+                        ty: jadpo_std::ai::KEPT_EXPORT.to_string(),
+                        fields: record,
+                    },
+                    includes: Vec::new(),
+                    versions: None,
+                    sensitive: None,
+                },
+                page: None,
+                missing: None,
+                recheck: None,
+                layer: false,
+                decided: None,
+                gate: None,
+            },
+            fields: exported,
+        })
+    }
+}
+
 /// Whether records of `entity` in this store's walk may be someone erased
 /// and kept field by field, who holds nothing now: a person whose own
 /// `Erasure.retained` field keeps theirs.
@@ -344,7 +517,8 @@ fn export_kind(
     if let Some(kept) = &entity.retention {
         retention.push(ExportRetention {
             field: None,
-            setting: setting(&kept.setting)?,
+            setting: Some(setting(&kept.setting)?),
+            written: None,
             since: kept.since.clone(),
         });
     }
@@ -352,7 +526,8 @@ fn export_kind(
         if let Some(kept) = &field.retention {
             retention.push(ExportRetention {
                 field: Some(field.name.clone()),
-                setting: setting(&kept.setting)?,
+                setting: Some(setting(&kept.setting)?),
+                written: None,
                 since: kept.since.clone(),
             });
         }

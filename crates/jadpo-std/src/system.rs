@@ -937,6 +937,44 @@ pub const AI_USAGE: SystemTable = SystemTable {
     indexes: &[],
 };
 
+/// The prompts and answers `ai: { keep_content: }` keeps (area 21,
+/// "Prompts and answers in logs"; chunk K6), in the store it names: one
+/// row per `ai.generate` call of a prompt it lists that a model answered,
+/// with the prompt's name, the model, when and the signed-in caller it was
+/// made for, if any. The messages sent and the answer are sealed with the
+/// field key, each bound to its column and the row's `id`, as an
+/// encrypted field is. Deleted with the caller's record, by erasure as
+/// with their sessions, and by the tick once `keep:` has passed.
+pub const AI_CONTENT: SystemTable = SystemTable {
+    table: "jadpo_ai_content",
+    columns: &[
+        column("id", SqlType::Uuid, false),
+        column("made_at", SqlType::Timestamp, false),
+        column("prompt", SqlType::Text, false),
+        column("model", SqlType::Text, false),
+        // The signed-in caller's record, `NULL` for a call made for no
+        // one: an address's, a subscriber's or a schedule's.
+        column("principal_id", SqlType::Uuid, true),
+        column("messages", SqlType::Bytes, false),
+        // `NULL` when the model answered with no text: a refusal or a
+        // cut-off with none.
+        column("answer", SqlType::Bytes, true),
+    ],
+    primary_key: &["id"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[
+        SystemIndex {
+            columns: &["principal_id"],
+            reason: "system ai content",
+        },
+        SystemIndex {
+            columns: &["made_at"],
+            reason: "system ai content",
+        },
+    ],
+};
+
 /// An audited entity's history (area 16, "Audit trail"; chunk B11): one
 /// row per change to one of its records, written in the transaction that
 /// makes the change, in the store the entity lives in. Rows are only ever
@@ -1168,7 +1206,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 34] = [
+pub const ALL: [&SystemTable; 35] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -1195,6 +1233,7 @@ pub const ALL: [&SystemTable; 34] = [
     &PARKED_MESSAGES,
     &POLLS,
     &AI_USAGE,
+    &AI_CONTENT,
     &AUDIT,
     &ERASURE_LOG,
     &FLAGS,

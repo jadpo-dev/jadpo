@@ -71,6 +71,11 @@ impl Provider {
 /// The support desk asking its model through `provider`'s package,
 /// installed with `jadpo package add`, its address `.env.local`'s.
 fn desk(name: &str, provider: Provider) -> PathBuf {
+    desk_with(name, provider, &package_path(provider))
+}
+
+/// [`desk`], installing the package from `installed`.
+fn desk_with(name: &str, provider: Provider, installed: &Path) -> PathBuf {
     let root = folder(name);
     let (connection, package, model, embedding) = match provider {
         Provider::OpenAi => (
@@ -137,11 +142,7 @@ fn desk(name: &str, provider: Provider) -> PathBuf {
     }
     let added = jadpo(
         &root,
-        &[
-            "package",
-            "add",
-            package_path(provider).to_str().expect("a path"),
-        ],
+        &["package", "add", installed.to_str().expect("a path")],
     );
     assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
     for args in [&["records", "update"][..], &["migrate", "new", "initial"]] {
@@ -669,6 +670,132 @@ fn anthropic_doesnt_embed() {
     );
     let said = format!("{}{}", checked.stdout, checked.stderr);
     assert!(said.contains("error: `anthropic` doesn't embed"), "{said}");
+}
+
+/// A provider that takes fewer texts at once than an `ai.embed_all` sends:
+/// the package splits them into its `batch:`, one request after another
+/// in order, and the call gives every vector in its texts' order, charged
+/// what each request used. A request that fails ends the call, and nothing
+/// after it is sent.
+#[test]
+fn an_embedding_of_more_texts_than_a_batch_is_split_across_requests() {
+    let installed = folder("batched-package").join("openai");
+    copy(&package_path(Provider::OpenAi), &installed);
+    let mapping = installed.join("provides/ai.jadpo");
+    let written = fs::read_to_string(&mapping).expect("the mapping");
+    assert!(written.contains("batch: 2048"), "{written}");
+    fs::write(&mapping, written.replace("batch: 2048", "batch: 2")).expect("written");
+    let root = desk_with("batched", Provider::OpenAi, &installed);
+    write(
+        &root,
+        "domains/support/actions/meanings_of.jadpo",
+        "use support/failures { AssistantUnavailable }\nuse support/types { QuestionMeaning, Questions, SeveralMeanings }\n\n/// Several questions' meanings, in order.\naction meanings_of(asked: Questions) fails AssistantUnavailable -> SeveralMeanings {\n    var meanings: List<QuestionMeaning> = attempt ai.embed_all(asked.questions, as: QuestionMeaning) {\n        timed_out: AssistantUnavailable\n        over_budget: AssistantUnavailable\n        too_long: AssistantUnavailable\n    }\n    return SeveralMeanings {\n        meanings: meanings\n    }\n}\n",
+    );
+    write(
+        &root,
+        "domains/support/types/questions.jadpo",
+        "use support/types { CustomerQuestion }\n\n/// Several questions, as the desk sends them.\ntype Questions = Input {\n    questions: List<CustomerQuestion>\n}\n",
+    );
+    write(
+        &root,
+        "domains/support/types/several_meanings.jadpo",
+        "use support/types { QuestionMeaning }\n\n/// Several questions' meanings, sent back.\ntype SeveralMeanings = Output {\n    meanings: List<QuestionMeaning>\n}\n",
+    );
+    write(
+        &root,
+        "domains/support/routes/meanings.jadpo",
+        "use support/actions { meaning_of, meanings_of }\nuse support/types { Asked, Meaning, Questions, SeveralMeanings }\n\n/// Questions' meanings.\nroutes Meanings {\n    prefix: /meanings\n\n    /// Anyone asks one.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: Asked\n        output: Meaning\n        run: meaning_of(input)\n    }\n\n    /// Anyone asks several.\n    POST /several {\n        authentication: RouteAuthentication.none\n        input: Questions\n        output: SeveralMeanings\n        run: meanings_of(input)\n    }\n}\n",
+    );
+    let policy = fs::read_to_string(root.join("policy.jadpo")).expect("policy");
+    write(
+        &root,
+        "policy.jadpo",
+        &policy.replace(
+            "        support.meaning_of: [Access.public]\n",
+            "        support.meaning_of: [Access.public]\n        support.meanings_of: [Access.public]\n",
+        ),
+    );
+    let updated = jadpo(&root, &["records", "update"]);
+    assert_eq!(updated.code, 0, "{}{}", updated.stdout, updated.stderr);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let provider = FakeProvider::start();
+    let dev = dev(&root, &provider);
+    // Each request's answer, its items in an order of the provider's own.
+    let answer = |vectors: &[[f32; 3]], tokens: u64| {
+        let data: Vec<serde_json::Value> = vectors
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(index, vector)| serde_json::json!({"object": "embedding", "embedding": vector, "index": index}))
+            .collect();
+        serde_json::json!({
+            "object": "list",
+            "data": data,
+            "model": "text-embedding-3-small",
+            "usage": {"prompt_tokens": tokens, "total_tokens": tokens}
+        })
+        .to_string()
+    };
+    provider.answer(200, &answer(&[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], 4));
+    provider.answer(200, &answer(&[[0.0, 0.0, 1.0], [0.6, 0.8, 0.0]], 4));
+    provider.answer(200, &answer(&[[0.0, 0.6, 0.8]], 2));
+    let questions = ["Sesame?", "Rye?", "Spelt?", "Oats?", "Nuts?"];
+    let several = dev.send(
+        "POST",
+        "/meanings/several",
+        &[],
+        &serde_json::json!({ "questions": questions }).to_string(),
+    );
+    assert_eq!(several.status, 200, "{several:?}");
+    assert_eq!(
+        several.json()["meanings"],
+        serde_json::json!([
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [0.6, 0.8, 0],
+            [0, 0.6, 0.8]
+        ])
+    );
+    let sent = provider.requests();
+    let inputs: Vec<serde_json::Value> = sent
+        .iter()
+        .map(|sent| sent.json()["input"].clone())
+        .collect();
+    assert_eq!(
+        inputs,
+        [
+            serde_json::json!(["Sesame?", "Rye?"]),
+            serde_json::json!(["Spelt?", "Oats?"]),
+            serde_json::json!(["Nuts?"])
+        ]
+    );
+    assert!(sent.iter().all(|sent| sent.path == "/embeddings"));
+    // Charged what each request's answer says it used.
+    let usage = jadpo(&root, &["ai", "usage", "--json"]);
+    assert_eq!(usage.code, 0, "{}{}", usage.stdout, usage.stderr);
+    let usage: serde_json::Value = serde_json::from_str(&usage.stdout).expect("json");
+    assert_eq!(usage["data"]["today"]["tokens"], 10, "{usage:#}");
+
+    // The second request refused: the call ends there, and the third
+    // text is never sent.
+    provider.answer(200, &answer(&[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], 4));
+    provider.answer(400, r#"{"error": {"message": "Too long.", "type": "invalid_request_error", "code": "context_length_exceeded"}}"#);
+    let refused = dev.send(
+        "POST",
+        "/meanings/several",
+        &[],
+        &serde_json::json!({ "questions": questions }).to_string(),
+    );
+    assert_eq!(refused.status, 503, "{refused:?}");
+    assert_eq!(refused.json()["error"]["code"], "assistant_unavailable");
+    assert_eq!(
+        provider.requests().len(),
+        5,
+        "nothing sent after the refusal"
+    );
+    drop(dev);
 }
 
 /// Each package's recordings are its provider's documented answers, kept

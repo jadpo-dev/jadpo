@@ -228,6 +228,7 @@ fn main() {
                     cost: None,
                 }),
                 prices: vec![],
+                keep: None,
             };
             let plan = Plan {
                 ai: Some(&ai),

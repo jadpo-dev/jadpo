@@ -457,6 +457,43 @@ pub fn step_records(db: &dyn Db, project: Project) -> (String, Vec<Value>) {
     (markdown, json)
 }
 
+/// The prompts `ai: { keep_content: }` keeps the calls of (area 21,
+/// "Prompts and answers in logs"; chunk K6): a section, and its JSON, only
+/// when it keeps any.
+pub fn kept_prompts(db: &dyn Db, project: Project) -> Option<(String, Vec<Value>)> {
+    let settings = crate::ai::settings(db, project);
+    let keep = settings.keep.as_ref().filter(|keep| keep.complete())?;
+    let store = keep.store.clone()?;
+    let days = keep.keep_ms? / 86_400_000;
+    let kept = if days == 1 {
+        "1 day".to_string()
+    } else {
+        format!("{days} days")
+    };
+    let mut markdown = String::from(
+        "## Prompts and answers kept\n\nEach call of these prompts is kept with its answer, encrypted, as `health` data: exported and erased with the person signed in when it was made, and deleted once its time is up.\n\n",
+    );
+    markdown.push_str(&table(
+        &["Prompt", "Store", "Kept for"],
+        keep.prompts
+            .iter()
+            .map(|prompt| vec![format!("`{prompt}`"), format!("`{store}`"), kept.clone()]),
+    ));
+    markdown.push('\n');
+    let json = keep
+        .prompts
+        .iter()
+        .map(|prompt| {
+            let mut entry = Value::object();
+            entry.set("prompt", prompt.as_str());
+            entry.set("store", store.as_str());
+            entry.set("kept_for", kept.as_str());
+            entry
+        })
+        .collect();
+    Some((markdown, json))
+}
+
 /// What a report always says about grants, which aren't built yet.
 pub const OAUTH: &str =
     "## OAuth grants\n\nNo connection holds an OAuth grant: grants aren't built yet.\n\n";

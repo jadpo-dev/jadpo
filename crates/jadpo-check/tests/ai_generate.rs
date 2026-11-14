@@ -164,11 +164,134 @@ fn ai_s_settings_are_checked() {
             "app.jadpo ai.settings_invalid: `conection` isn't one of `ai:`'s settings",
         ]
     );
+}
+
+/// `keep_content:` keeps the calls of the prompts it lists, sealed with
+/// the field key, for as long as `keep:` says (chunk K6): each prompt is
+/// one of the application's, `keep:` a duration from a day to ten years,
+/// and the field key is required. A streamed prompt isn't kept yet.
+#[test]
+fn keep_content_is_checked() {
+    let answer = action("", ALL_ARMS);
+    let config = CONFIG.1.replace(
+        "config {\n",
+        "config {\n    field_encryption_key: EncryptionKey\n",
+    );
+    let kept = |keep: &str, key: bool, extra: &[(&str, &str)]| {
+        let app = format!(
+            "application {{\n    connections: {{\n        local_model: {{\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }}\n    }}\n{}    ai: {{\n        connection: local_model\n        models: {{\n            default: config.drafting_model\n        }}\n{LIMITS}        keep_content: {{\n{keep}        }}\n    }}\n}}\n",
+            if key {
+                "    field_encryption_key: config.field_encryption_key\n"
+            } else {
+                ""
+            }
+        );
+        let db = Database::default();
+        let mut all: Vec<(&str, &str)> = vec![("app.jadpo", &app), ("config.jadpo", &config)];
+        all.extend_from_slice(&TYPES);
+        all.push((ACTION_PATH, &answer));
+        all.extend_from_slice(extra);
+        let project = support::project_with_migrated_records(&db, Layout::Project, &all, &[PROMPT]);
+        jadpo_check::check(&db, project)
+            .iter()
+            .map(|d| {
+                let path = d
+                    .primary
+                    .as_ref()
+                    .map_or("", |label| label.span.path.as_str());
+                format!("{path} {}: {}", d.rule.id, d.message)
+            })
+            .collect::<Vec<String>>()
+    };
+    let both = "            prompts: [answer_question]\n            keep: 30d\n";
+    assert_eq!(kept(both, true, &[]), NONE);
     assert_eq!(
-        with(
-            "        connection: local_model\n        models: {\n            default: config.drafting_model\n        }\n        keep_content: {\n            keep: 30d\n        }\n"
+        kept(
+            "            prompts: [answer_question]\n            store: main\n            keep: 3650d\n",
+            true,
+            &[]
         ),
-        ["app.jadpo toolchain.not_built_yet: `ai: { keep_content: }` isn't built yet"]
+        NONE
+    );
+    assert_eq!(
+        kept(both, false, &[]),
+        [
+            "app.jadpo data.field_encryption_key_required: `ai: { keep_content: }` keeps calls sealed, but `application { }` names no key to seal them with"
+        ]
+    );
+    assert_eq!(
+        kept(
+            "            prompts: [answer_questions]\n            keep: 30d\n",
+            true,
+            &[]
+        ),
+        [
+            "app.jadpo ai.settings_invalid: `answer_questions` isn't one of the application's prompts"
+        ]
+    );
+    assert_eq!(
+        kept("            prompts: [answer_question]\n", true, &[]),
+        ["app.jadpo ai.settings_invalid: `keep_content:` has no `keep:`"]
+    );
+    assert_eq!(
+        kept("            keep: 30d\n", true, &[]),
+        ["app.jadpo ai.settings_invalid: `keep_content:` has no `prompts:`"]
+    );
+    assert_eq!(
+        kept(
+            "            prompts: [answer_question]\n            keep: 12h\n",
+            true,
+            &[]
+        ),
+        ["app.jadpo ai.settings_invalid: `keep:` must be a duration from `1d` to `3650d`"]
+    );
+    assert_eq!(
+        kept(
+            "            prompts: []\n            keep: 30d\n",
+            true,
+            &[]
+        ),
+        ["app.jadpo ai.settings_invalid: `prompts:` lists no prompt"]
+    );
+    assert_eq!(
+        kept(
+            "            prompts: [answer_question, answer_question]\n            keep: 30d\n",
+            true,
+            &[]
+        ),
+        ["app.jadpo ai.settings_invalid: `prompts:` lists `answer_question` twice"]
+    );
+    assert_eq!(
+        kept(
+            "            prompts: [answer_question]\n            keep: 30d\n            kept: 30d\n",
+            true,
+            &[]
+        ),
+        ["app.jadpo ai.settings_invalid: `kept` isn't one of `keep_content:`'s settings"]
+    );
+    assert_eq!(
+        kept(
+            "            prompts: [answer_question]\n            keep: 30d\n            store: local_model\n",
+            true,
+            &[]
+        ),
+        ["app.jadpo ai.settings_invalid: `store: local_model` isn't a database"]
+    );
+    // A streamed prompt's answer is read by its route after the action has
+    // ended, so keeping it whole isn't built yet.
+    let streamed = "use support/failures { AssistantUnavailable }\nuse support/prompts { AnswerQuestion }\nuse support/types { CustomerQuestion }\n\n/// Streams an answer as it is written.\naction stream_answer(question: CustomerQuestion) fails AssistantUnavailable -> AiStream {\n    return attempt ai.stream(AnswerQuestion { question: question }) {\n        refused: AssistantUnavailable\n        timed_out: AssistantUnavailable\n        over_budget: AssistantUnavailable\n        too_long: AssistantUnavailable\n    }\n}\n";
+    assert_eq!(
+        of(
+            "toolchain.not_built_yet",
+            kept(
+                both,
+                true,
+                &[("domains/support/actions/stream_answer.jadpo", streamed)]
+            )
+        ),
+        [
+            "app.jadpo toolchain.not_built_yet: Keeping a streamed prompt's calls isn't built yet: `answer_question` is streamed"
+        ]
     );
 }
 

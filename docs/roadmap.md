@@ -305,10 +305,7 @@ work below (Richard, 2026-11-08).
      when each is built and tested against doubles, with nothing sent to a
      third party.
    - [x] **K5 Types from recordings and recipes' tests**: area 11, "Recordings" and "Package subscribers and recipes in `sample/`"; area 14, "`jadpo package record`"; and the notes for area 11.
-   - [ ] **K6 What's left of `ai`** `opus · high` after P9: area 21,
-     "Budgets" and "Streams, embeddings and the OpenAI and Anthropic
-     packages". `keep_content:`, kept in encrypted fields, and an `embed:`
-     with a `batch:` below 100, split across requests.
+   - [x] **K6 What's left of `ai`**: area 21, "Keeping prompts and answers" and "Streams, embeddings and the OpenAI and Anthropic packages"; and the notes for area 21.
 6. Product work: the developer console and MCP, acting as an OAuth
    provider, D1 (area 5, "Actions on D1", with `jadpo sql` for SQLite) and
    row-level security (opt-in, design notes for area 6). The console holds

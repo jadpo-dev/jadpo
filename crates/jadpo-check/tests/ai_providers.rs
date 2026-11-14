@@ -271,7 +271,8 @@ fn each_mistake_in_streaming_and_embedding_is_reported() {
             "{from} -> {to}"
         );
     }
-    // A provider that takes fewer texts at once than `ai.embed_all` sends.
+    // A provider that takes fewer texts at once than `ai.embed_all` sends:
+    // the runtime splits them across requests.
     let found = problems_with_extra(
         APP,
         Some(&provides(&format!(
@@ -280,13 +281,7 @@ fn each_mistake_in_streaming_and_embedding_is_reported() {
         ))),
         EMBEDDINGS,
     );
-    assert_eq!(
-        found,
-        [format!(
-            "{PROVIDES} toolchain.not_built_yet: Embedding fewer than 100 texts a request isn't built yet"
-        )],
-        "{found:#?}"
-    );
+    assert!(found.is_empty(), "{found:#?}");
 }
 
 /// `schema: { envelope: }` names the provider's own shape; Anthropic's has

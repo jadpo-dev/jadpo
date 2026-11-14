@@ -346,6 +346,7 @@ pub fn ticked_fields(
         deleted.step_records,
         deleted.parked,
         deleted.ai_usage,
+        deleted.ai_content,
     ]
     .iter()
     .fold(0u64, |sum, rows| sum.saturating_add(*rows));
