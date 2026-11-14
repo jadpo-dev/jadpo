@@ -4150,9 +4150,9 @@ counts in its own memory ([When it can't count](#when-it-cant-count)).
 `driver: Driver.redis` reaches any Redis-compatible service, natively and on
 Workers. Its one setting is `url:`, read from a `RedisUrl` setting, which is
 always secret
-([Connection types](10-configuration-and-time.md#connection-types)), as
+([Connection types](10-configuration-and-time.md#connection-types));
 [Where the counts are kept](#where-the-counts-are-kept-rate_limits--store-)
-shows. What it does today is count rate limits there. Caches and entities in
+shows one. What it does today is count rate limits. Caches and entities in
 Redis will use the same connections ([Caches](05-data.md#caches)).
 
 ### The address

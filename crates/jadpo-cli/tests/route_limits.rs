@@ -205,12 +205,20 @@ fn a_routes_limit_is_counted_on_jadpo_dev() {
 }
 
 /// `jadpo dev` counts in its own memory whatever the store (chunk Q8): it is
-/// one server, and the Redis address it gives a test's secret is one no one
-/// listens at, so it answers as with no store.
+/// one server, so it answers as with no store, and nothing reaches the
+/// Redis its address names.
 #[test]
 fn jadpo_dev_counts_in_memory_whatever_the_store() {
+    let double = jadpo_drivers::redis::testing::TcpDouble::start(
+        jadpo_drivers::redis::testing::Double::new(),
+    );
     let dir = tempdir::Dir::new("route-limits-redis-dev");
     redis_project_at(dir.path(), "native");
+    std::fs::write(
+        dir.path().join(".env.local"),
+        format!("REDIS_URL={}\n", double.url(None)),
+    )
+    .expect("written");
     let env = Environment::empty().with_cwd(dir.path());
     let records = run(&["records".to_string(), "update".to_string()], &env);
     assert_eq!(records.code, 0, "{}{}", records.stdout, records.stderr);
@@ -223,6 +231,7 @@ fn jadpo_dev_counts_in_memory_whatever_the_store() {
             .collect();
         (reply.status, head)
     });
+    assert_eq!(double.connections(), 0, "dev never asks the store");
 }
 
 /// `jadpo routes` and OpenAPI say what each route is limited to (area 16,

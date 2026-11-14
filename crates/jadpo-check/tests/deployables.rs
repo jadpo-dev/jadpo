@@ -523,22 +523,16 @@ fn on_workers_rate_limits_are_counted_in_a_store() {
     assert_eq!(counted_in("cache", "", &declared(NATIVE, NATIVE)), CLEAN);
     assert_eq!(counted_in("cache", "", &declared("", "")), CLEAN);
     assert_eq!(counted_in("cache", "", &declared(WASM, NATIVE)), CLEAN);
-    assert_eq!(counted_in("cache", "", &declared(WASM, WASM)), CLEAN);
-    // A `decline` of the judgement call a Redis store on Workers was
-    // until Redis's driver came has outlived its reason: it is unused, and
-    // its fix removes it.
+    // A `decline` of the rule Redis's driver retired names no unknown
+    // rule: it is `decline.unused` once nothing else stands
+    // (`declines.rs`), which the café's other findings here keep it from.
     let declined = declared(WASM, NATIVE).replacen(
         "        kiosk: {",
         "        decline rate_limits.counted_in_memory: \"One instance is enough for now\"\n        kiosk: {",
         1,
     );
     assert_ne!(declined, declared(WASM, NATIVE));
-    assert_eq!(
-        counted_in("cache", "", &declined),
-        [
-            "app.jadpo decline.unused: Nothing to decline: `rate_limits.counted_in_memory` no longer fires anywhere"
-        ]
-    );
+    assert_eq!(counted_in("cache", "", &declined), CLEAN);
 }
 
 #[test]

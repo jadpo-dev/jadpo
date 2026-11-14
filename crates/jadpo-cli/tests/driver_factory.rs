@@ -224,17 +224,27 @@ fn a_redis_connection_is_built_into_the_store_rate_limits_are_counted_in() {
             .unwrap_or_else(|problems| panic!("the settings read: {problems:?}"));
         let program = Program::new(prepared.clone()).with_config(&values);
         let table = program.runtime_plan().connections;
-        assert_eq!(table.len(), 1);
-        assert_eq!(table[0].name, "cache");
+        let cache = table
+            .iter()
+            .find(|connection| connection.name == "cache")
+            .expect("the Redis connection");
         assert!(matches!(
-            table[0].driver,
+            cache.driver,
             ConnectionDriver::Redis { url: Some(_) }
         ));
         jadpo_host_native::Drivers::build(table, program.started(), &jadpo_host_native::supplies())
     };
 
+    // The implied `main` has no address here; the store is built.
     let drivers = build(format!("redis://:s3cret@127.0.0.1:{}", double.port()));
-    assert!(drivers.unbuilt().is_empty(), "{:?}", drivers.unbuilt());
+    assert!(
+        drivers
+            .unbuilt()
+            .iter()
+            .all(|unbuilt| unbuilt.connection != "cache"),
+        "{:?}",
+        drivers.unbuilt()
+    );
     let store = drivers.counting_store("cache").expect("the store");
     let limit = jadpo_std::http::RateLimit {
         requests: 1,
@@ -254,7 +264,12 @@ fn a_redis_connection_is_built_into_the_store_rate_limits_are_counted_in() {
     assert_eq!(double.state().sent[0], "AUTH");
 
     let unread = build("redis://:s3cret@127.0.0.1:6379/0?ssl=true".to_string());
-    let unbuilt: Vec<String> = unread.unbuilt().iter().map(ToString::to_string).collect();
+    let unbuilt: Vec<String> = unread
+        .unbuilt()
+        .iter()
+        .filter(|unbuilt| unbuilt.connection == "cache")
+        .map(ToString::to_string)
+        .collect();
     assert_eq!(
         unbuilt,
         ["`cache`'s Driver.redis can't be built: its `url:` has options after `?`, which the Redis driver doesn't read"]

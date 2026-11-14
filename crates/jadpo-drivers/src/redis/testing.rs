@@ -13,6 +13,15 @@
 //!   `redis-server` or `valkey-server` on `PATH`. A run with neither says
 //!   so on a `skipped:` line, and under CI fails instead.
 
+// Test support, which only tests build: a broken double or a missing
+// server should stop the test that reached it.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+
 use std::collections::BTreeMap;
 
 use super::resp::{self, Reply};
