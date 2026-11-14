@@ -469,7 +469,13 @@ impl<'a> Plan<'a> {
     /// "Where events travel"): every `Driver.webhook` connection, by name,
     /// which a test's host and `jadpo dev` catch in place of sending.
     pub fn publishing_connections(self) -> Vec<&'a str> {
-        jadpo_std::connections::webhooks(self.connections).collect()
+        let mut out: Vec<&'a str> = jadpo_std::connections::webhooks(self.connections).collect();
+        // And the runtime-owned exception the addresses customers register
+        // are reached through (area 16; chunk C1b).
+        if self.events.is_some_and(|events| events.webhooks.is_some()) {
+            out.push(jadpo_std::outgoing::CONNECTION);
+        }
+        out
     }
 
     /// The program's stores of files (area 16): every `Driver.disk`

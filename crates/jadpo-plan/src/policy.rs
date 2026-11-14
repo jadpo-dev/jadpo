@@ -669,7 +669,7 @@ impl Planner<'_> {
         effect: Effect,
         own: usize,
         holder: &str,
-        statement: fn(&str) -> String,
+        statement: impl Fn(&str) -> String,
     ) -> Option<jadpo_std::policy::Gated> {
         let mut bind = After {
             own,

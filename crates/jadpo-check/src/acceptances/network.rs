@@ -45,6 +45,10 @@ pub fn record_text(db: &dyn Db, project: Project) -> Option<Option<String>> {
             format!("config.{setting}")
         } else if let Some(image) = &row.image {
             format!("service {image}")
+        } else if let Some(entity) = &row.registered {
+            // The outgoing webhooks' exception (chunk C1b): any public
+            // address that entity's records register.
+            format!("addresses {entity} registers")
         } else {
             continue;
         };
@@ -86,6 +90,9 @@ fn reached_for(row: &crate::connections::Row) -> String {
     let said = row.reached_for.as_str();
     if row.connection == "external_token" {
         return "identity".to_string();
+    }
+    if row.registered.is_some() {
+        return "outgoing webhooks".to_string();
     }
     for word in ["database", "cache", "email", "ai"] {
         if said == word || said.starts_with(&format!("{word},")) {

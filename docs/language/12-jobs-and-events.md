@@ -3511,9 +3511,10 @@ action ship_parcel(tracking_code: TrackingCode) -> Unit {
   events the app publishes in `x-jadpo-events`
   ([The `x-jadpo` fields](07-http.md#the-x-jadpo-fields)).
 
-Publishing to Cloudflare Queues, SQS or Pub/Sub, and to addresses your
-customers register ([Outgoing webhooks](16-built-in-services.md#outgoing-webhooks)),
-aren't built yet.
+Addresses your customers register are posted to the same way, each
+signed with its own secret, through the runtime's one network exception
+([Outgoing webhooks](16-built-in-services.md#outgoing-webhooks)).
+Publishing to Cloudflare Queues, SQS or Pub/Sub isn't built yet.
 
 ### Running background work
 
@@ -4217,7 +4218,7 @@ These limits may change once they have been measured on real runs.
 | Feature | Status |
 |---|---|
 | Everything else on this page | Built. |
-| Publishing chosen public events outward | Partly built: through `Driver.webhook`, to one address, signed and retried; to Cloudflare Queues, SQS and Pub/Sub not built yet ([Publishing events outward](#publishing-events-outward)). |
+| Publishing chosen public events outward | Partly built: through `Driver.webhook`, to one address, and to the addresses customers register ([Outgoing webhooks](16-built-in-services.md#outgoing-webhooks)), signed and retried; to Cloudflare Queues, SQS and Pub/Sub not built yet ([Publishing events outward](#publishing-events-outward)). |
 | `batches.each` and the file helpers' writes over a provider's list operation, walked by `page.next` | Built, but for a `batches.each` whose `each:` action makes outside calls, which is `toolchain.not_built_yet` ([How a run is kept](#how-a-run-is-kept)). |
 | Each step's state in `jadpo watch`, and in `jadpo trace` with the request timelines ([Debugging](17-debugging-and-review.md)) | Not built yet. |
 | Sending the metrics and the alerts' log events to a monitoring tool | Not built yet: waits for [telemetry](16-built-in-services.md). |

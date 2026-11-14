@@ -238,8 +238,8 @@ work below (Richard, 2026-11-08).
    B13, taken in order. B1 to B8 build files outwards from what a field
    holds; B9 to B13 touch other crates and pages and may run beside them.
    The disk driver in production moved here from item 5; the `search`,
-   `bot_check` and `scanning` capabilities, image variants, the
-   `telemetry:` section and custom metrics stay under item 5.
+   `bot_check` and `scanning` capabilities and image variants stay under
+   item 5; the `telemetry:` section and custom metrics are item 13.
    - [ ] **B16 What the audit trail doesn't keep yet** `opus · xhigh`
      area 16, "What the audit trail doesn't keep yet"; area 15,
      "What is built". A `File` field, a field with its own `retention:`, a
@@ -269,25 +269,13 @@ work below (Richard, 2026-11-08).
    per owner (`grants:`, `on_behalf_of:`, `OAuthGrant`, `jadpo dev grants add`
    and grants as test fixtures); search (an engine's `store:` and `jadpo
    search reindex`), `bot_check` and `scanning` capabilities, with image
-   variants, each with its fake;
-   telemetry's `telemetry:` section, custom metrics and the local
-   `jadpo traces`, `metrics` and `logs`; `jadpo watch`; a service's new or
+   variants, each with its fake; `jadpo watch`; a service's new or
    changed container image and its `outbound:` grants, each with a
    `PackageChange` acceptance; packages from other Jadpo
    apps (`jadpo package add` from a folder or a URL) and the cross-app break
    check; choosing a provider when deploying,
    when an app other people run needs it.
-   - [ ] **C1b Outgoing webhooks to customers' addresses** `opus · xhigh`:
-     area 16, "Outgoing webhooks"; area 11, "The network report"; notes for
-     area 16, "Addresses customers register". A customer registers an address
-     through operations generated on the customer's entity, as
-     `Service.issue_key` works, under policy; the runtime generates each
-     address's Standard Webhooks secret, shows it once and stores it sealed
-     with `field_encryption_key:`. The runtime-owned network exception is
-     built on the `Outward` client (HTTPS only, public addresses checked at
-     every attempt, no redirects), listed once in the network report.
-     Done when an event reaches an address a customer registered, signed
-     with that address's own secret, and a private address is refused.
+   - [x] **C1b Outgoing webhooks to customers' addresses**: area 16, "Outgoing webhooks", and its notes, "Addresses customers register, as built" and "Delivering to customers' addresses"; compiler-runtime, "Addresses customers register".
    - [ ] **K1 Importers other than OpenAPI** `opus · high`, when first
      needed: area 11, "An importer" and "Installing safely"; area 14,
      "Commands for packages". `smithy`, `postman`, `har` (a capture's
@@ -365,11 +353,9 @@ work below (Richard, 2026-11-08).
       runs at", and its notes; compiler-runtime, "Isolation and migrations".
     - [ ] **Q6 A database only when something needs one** `opus · high`, with
       the first feature that can run without one: area 5, "Stores".
-    - [ ] **Q7 A standard type swapped under stored data** `opus · high`:
-      area 19, "Reference lists ship with Jadpo" and "Names each release adds";
-      area 18, "Acceptances". The data migration and acceptances for a
-      `type.standard_exists` or `type.standard_clash` swap of a type already
-      stored or on the wire.
+    - [x] **Q7 A standard type swapped under stored data**: the swap's
+      records, migration and acceptances, in area 19, "Swap to the standard
+      type", and its notes, "A swap under stored data".
     - [x] **Q11 Born names kept for every rename**: a variant and a field
       inside JSON stored by born name, and a born name written by hand
       refused, in area 5, "What a rename keeps", area 14, "`jadpo rename`",
@@ -419,7 +405,59 @@ work below (Richard, 2026-11-08).
       reported yet". Scope declarations, `scopes:` and policy's restrictions
       with `oauth_token` and `external_token`, `OAuthScope` narrowing, and an
       operation whose scope a grant doesn't request.
-13. What waits on someone else, added by the audit of 2026-11-08. These
+13. Telemetry other services can read (areas 16, 17 and 18), added
+    2026-11-14. Apps chained across Jadpo and other services, traced end to
+    end, with what a monitoring, analytics or backup service needs to read
+    them, and nothing such a service gets that any other vendor couldn't
+    use: a vendor stays an endpoint and a header. E1, in item 3, puts path
+    IDs on requests.
+    - [ ] **O1 The `telemetry:` section** `opus · xhigh`: area 16,
+      "Telemetry"; area 17, "Traces, metrics and logs in development".
+      `telemetry:` sending traces, metrics and logs over OTLP, custom
+      metrics and `telemetry.note`, and the local `jadpo traces`, `metrics`
+      and `logs`. Done when spans, metrics and logs reach a local OTLP
+      collector double on both executors, carrying no field values, and a
+      personal field given as a label is refused.
+    - [ ] **O2 Trace context and outside request IDs** `opus · high`
+      **needs a maintainer** before building: area 16, "Telemetry"; area
+      7, where `x-request-id` is written; area 11, "How provider calls are
+      made" and "How webhooks are received". Today an incoming
+      `traceparent` is always continued, and request IDs in any other
+      format are dropped. Recommended: Jadpo's own `request_id` and trace
+      stay primary; a caller listed as trusted (another app of the same
+      installation) has its `traceparent` continued, and any other gets a
+      new trace with a span link to its own; B3, Jaeger's
+      `uber-trace-id`, `X-Amzn-Trace-Id`, `X-Cloud-Trace-Context`,
+      `X-Request-Id`, `X-Correlation-Id` and `cf-ray` are read and kept as
+      searchable `jadpo.external_id.<source>` attributes, never merged, so
+      a reused ID finds several requests; and a package declares the
+      header its provider's answers and webhooks carry a request ID in
+      (Stripe's `Request-Id`, GitHub's `X-GitHub-Delivery`), kept on the
+      call's span.
+    - [ ] **O3 The build manifest as an open protocol** `opus · high`
+      **needs a maintainer** before building: area 16, "What is sent";
+      area 18, "The manifest". A deploy uploads each build's manifest, but
+      the pages don't say where or in what form. Recommended: a published
+      endpoint and format, with a conformance test like the registry
+      protocol's, so any monitoring product decodes `jadpo.path`, source
+      locations and the build id the same way.
+    - [ ] **O4 Who may read an app's telemetry** **needs a maintainer**:
+      area 9; area 18, "The manifest". A service showing telemetry to
+      readers with different permissions needs the app's roles and what
+      each may see. Recommended: the manifest carries them, read from the
+      app's own policy, so there is no second permission system.
+    - [ ] **O5 What a backup service reads** **needs a maintainer**: area
+      15, "What erasure doesn't rewrite"; area 19, "Encrypted fields". The
+      erasure log's replay on restore is designed; how a service outside
+      the app reads the log, and holds the keys a restore needs apart from
+      the backups, isn't.
+    - [ ] **O6 When the collector can't be reached** **needs a
+      maintainer**: area 16, "Telemetry". The pages don't say what an app
+      does when its endpoint is down, which an installation running
+      without the internet depends on. Recommended: a bounded buffer on
+      disk natively and in memory on Workers, oldest dropped first, and
+      what was dropped counted in a metric.
+14. What waits on someone else, added by the audit of 2026-11-08. These
     can't start until what each names has happened.
     - [ ] **L1 Lists that need a licence** **needs a maintainer**: area 19,
       "What is built". The UK modulus check in `BankAccount`, on Vocalink's

@@ -330,7 +330,11 @@ pub fn build(call: &Call) -> Reply {
                                     identity.external_token.is_some()
                                         || identity.providers.is_some()
                                 },
-                            ),
+                            )
+                                // And the addresses customers register for
+                                // outgoing webhooks, which only public
+                                // addresses may answer (chunk C1b).
+                                || plan.events().webhooks.is_some(),
                             required: &required,
                             hyperdrive: &hyperdrive,
                             ticks: plan.schedules().ticks(),

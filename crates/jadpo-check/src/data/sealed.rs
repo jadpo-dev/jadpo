@@ -344,16 +344,36 @@ pub fn key_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             return out;
         }
+        // Each address a record registers for outgoing webhooks keeps its
+        // Standard Webhooks secret sealed, since signing needs it back
+        // (area 16, "Outgoing webhooks"; chunk C1b).
+        if read.model.webhooks {
+            out.push(
+                Diagnostic::new(
+                    &rule::DATA_FIELD_ENCRYPTION_KEY_REQUIRED,
+                    format!(
+                        "`{name}`'s webhook addresses keep their secrets sealed, but `application {{ }}` names no key to seal them with"
+                    ),
+                )
+                .at(spans.name.clone(), "has `webhooks:`")
+                .reason(format!(
+                    "Each address a `{name}` registers for outgoing webhooks has a Standard Webhooks secret of its own, which every delivery signs with, so the runtime keeps it sealed with the application's one key, which `application {{ field_encryption_key: }}` names, rather than as a verifier. Jadpo won't make up a secret for you: losing this key loses every address's secret for good, so it is a new value each environment has to be given and keep safe."
+                ))
+                .next("Add `field_encryption_key: config.field_encryption_key` to `application { }` in `app.jadpo`, declare `field_encryption_key: EncryptionKey` in `config.jadpo`, and run `jadpo config set field_encryption_key --generate`"),
+            );
+            return out;
+        }
     }
     out
 }
 
-/// Whether the project keeps anything sealed.
+/// Whether the project keeps anything sealed: a sealed field, or the
+/// secret of an address registered for outgoing webhooks.
 pub fn any_sealed(db: &dyn Db, project: Project) -> bool {
     data_model(db, project)
         .entities
         .iter()
-        .any(|entity| entity.fields.iter().any(|field| field.sealed.is_some()))
+        .any(|entity| entity.webhooks || entity.fields.iter().any(|field| field.sealed.is_some()))
 }
 
 /// `entity`'s sealed field called `field`, read as a record's field of

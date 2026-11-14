@@ -550,11 +550,12 @@ impl Lexer<'_> {
         // rest of a path: `use bakery;/actions`), a `{`, a `(` or a `[`
         // (the arguments of `assert set_oven;("TOAST", 0)`, which no line
         // starts with), or what only follows a value, such as the `?` of
-        // `flour: Grams;?`, a `,` or an infix operator.
-        let starts_line = code
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_alphanumeric() || matches!(c, '_' | '"' | '\'' | '-' | '!'));
+        // `flour: Grams;?`, a `,` or an infix operator, `!=` among them.
+        let starts_line = !code.starts_with("!=")
+            && code
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphanumeric() || matches!(c, '_' | '"' | '\'' | '-' | '!'));
         let ends_line = ends_line && starts_line;
         // A `;` that opens its line: the spaces after it are the line's
         // indent, so only the `;` goes.

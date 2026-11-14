@@ -722,6 +722,9 @@ pub enum Via {
     /// It publishes the app's chosen events through it (area 12, "Where
     /// events travel").
     Publishing,
+    /// It reads the addresses customers register there, delivering their
+    /// events (area 16, "Outgoing webhooks"; chunk C1b).
+    Addresses,
 }
 
 impl Via {
@@ -739,6 +742,9 @@ impl Via {
             Via::Exports => "by keeping a data request's exports there".to_string(),
             Via::ErasureAt => "by asking its provider to erase people".to_string(),
             Via::Publishing => "by publishing the app's events through it".to_string(),
+            Via::Addresses => {
+                "by reading the webhook addresses its records register there".to_string()
+            }
         }
     }
 }
@@ -926,6 +932,15 @@ fn reach(
         // (area 12, "Where events travel").
         for published in &crate::published::publishing(db, project).list {
             connection(&mut out, &published.connection, Via::Publishing);
+        }
+        // A delivery to the addresses customers register reads them from
+        // the store of the records registering them (area 16; chunk C1b).
+        if let Some(entity) = &crate::outgoing::webhooks(db, project).entity
+            && let Some(store) = crate::data::data_model(db, project)
+                .entity(&entity.entity)
+                .and_then(|model| model.store.clone())
+        {
+            connection(&mut out, &store, Via::Addresses);
         }
     }
     roots.extend(named_by_the_runtime(db, project, deployable));

@@ -71,6 +71,7 @@ pub(crate) fn no_json_form(
             Prim::Unit => Some((found.to_string(), "no value at all".to_string())),
             Prim::ApiToken
             | Prim::ServiceKey
+            | Prim::WebhookSecret
             | Prim::PostgresUrl
             | Prim::RedisUrl
             | Prim::SigningKey

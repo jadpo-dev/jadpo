@@ -100,6 +100,14 @@ fn used_publics(db: &dyn Db, project: Project) -> BTreeSet<String> {
             }
         }
     }
+    // An event the addresses customers register receive is offered
+    // outside the app, whose `webhooks:` is in its own domain (area 16,
+    // "Outgoing webhooks"; chunk C1b).
+    for name in &crate::outgoing::webhooks(db, project).listed {
+        if publics.contains_key(name) {
+            used.insert(name.clone());
+        }
+    }
     let mut queue: Vec<String> = used.iter().cloned().collect();
     while let Some(name) = queue.pop() {
         let Some(public) = publics.get(&name) else {

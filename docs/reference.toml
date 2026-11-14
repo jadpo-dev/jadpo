@@ -727,7 +727,7 @@ topics = [
 [[group.page]]
 title = "Outgoing webhooks"
 status = ["16-built-in-services: Outgoing webhooks"]
-missing = "addresses customers register"
+missing = "addresses the records of a second entity register"
 topics = [
   "outgoing-webhooks",
 ]

@@ -122,6 +122,84 @@ impl Capability for Webhook {
     }
 }
 
+/// The runtime-owned exception the addresses customers register are
+/// reached through (area 16, "Outgoing webhooks"; chunk C1b), the
+/// `outgoing_webhooks` capability: each call is one event already signed
+/// for one address ([`jadpo_runtime::outgoing::Outgoing`]), posted over the
+/// host's guarded HTTP, never its open one: natively `Outward`, HTTPS only
+/// and connected only to a public address the name gives as the attempt
+/// is made, no redirect followed. Its answer is read as [`Webhook`]'s; an
+/// address the guard refuses is `misconfigured`, since it would be refused
+/// again.
+pub struct Outgoing {
+    fetch: Rc<dyn Fetch>,
+}
+
+impl std::fmt::Debug for Outgoing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Outgoing").finish_non_exhaustive()
+    }
+}
+
+impl Outgoing {
+    /// The exception's driver over `fetch`, which must be the host's
+    /// guarded HTTP ([`crate::factory::Supplies::outward`]).
+    pub fn new(fetch: Rc<dyn Fetch>) -> Outgoing {
+        Outgoing { fetch }
+    }
+
+    /// The request `outgoing` is posted as.
+    pub fn request(outgoing: &jadpo_runtime::outgoing::Outgoing) -> Request {
+        let published = &outgoing.published;
+        let mut headers = vec![
+            ("content-type".to_string(), "application/json".to_string()),
+            ("webhook-id".to_string(), published.id.clone()),
+            (
+                "webhook-timestamp".to_string(),
+                outgoing.timestamp.to_string(),
+            ),
+            ("webhook-signature".to_string(), outgoing.signature.clone()),
+        ];
+        if let Some(traceparent) = &published.traceparent {
+            headers.push(("traceparent".to_string(), traceparent.clone()));
+        }
+        Request {
+            method: HttpMethod::Post,
+            url: outgoing.url.clone(),
+            headers,
+            body: Some(published.body.clone()),
+            raw_body: None,
+            timeout_ms: jadpo_std::publishing::TIMEOUT_MS,
+            reading: Reading::default(),
+            // Sent under its id, a receiver keeps it once.
+            repeatable: true,
+        }
+    }
+}
+
+impl Capability for Outgoing {
+    fn call<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, Answer> {
+        Box::pin(async move {
+            let outgoing = match (
+                call.operation.as_str(),
+                jadpo_runtime::outgoing::Outgoing::from_value(&call.input),
+            ) {
+                (jadpo_std::outgoing::POST, Some(outgoing)) => outgoing,
+                _ => return Answer::Misconfigured,
+            };
+            let request = Outgoing::request(&outgoing);
+            match self.fetch.fetch(&request).await {
+                Ok(response) => answer(response.status, &response.headers),
+                Err(FetchError::NotSent(_)) => Answer::Unavailable,
+                Err(FetchError::NoAnswer(_)) => Answer::Unknown,
+                Err(FetchError::TimedOut) => Answer::TimedOut,
+                // Not HTTPS, or no public address: refused again next time.
+                Err(FetchError::Refused(_)) => Answer::Misconfigured,
+            }
+        })
+    }
+}
+
 /// What a receiver answering `status` with `headers` says of the event.
 fn answer(status: u16, headers: &[(String, String)]) -> Answer {
     match status {
@@ -312,5 +390,91 @@ mod tests {
             .is_err()
         );
         assert!(Webhook::new(fetch, Rc::new(|| 0), "https://hooks.example/jadpo", "").is_err());
+    }
+
+    /// An address a customer registered is posted the event already
+    /// signed for it, and nothing else: the driver holds no secret. An
+    /// address the guarded client refuses, not HTTPS or not public, is
+    /// `misconfigured`; the rest of its answers are read as a
+    /// connection's.
+    #[test]
+    fn an_outgoing_post_is_sent_as_signed_and_its_answer_read() {
+        let secret = secret_from(9);
+        let signed = jadpo_runtime::outgoing::Outgoing::signed(
+            "https://hooks.customer.example/in?shop=4",
+            &published(),
+            &secret,
+            1_792_504_800_250,
+        );
+        let fetch = Rc::new(Scripted::default());
+        fetch.answers.borrow_mut().push(status(204));
+        let outgoing = Outgoing::new(Rc::clone(&fetch) as Rc<dyn Fetch>);
+        assert!(matches!(
+            block_on(outgoing.call(&signed.call())),
+            Answer::Value(_)
+        ));
+        let sent = fetch.sent.borrow();
+        let request = sent.first().expect("one request");
+        assert_eq!(request.method, HttpMethod::Post);
+        assert_eq!(request.url, "https://hooks.customer.example/in?shop=4");
+        assert!(request.repeatable, "sent again under its id");
+        assert_eq!(request.header("webhook-timestamp"), Some("1792504800"));
+        let received = jadpo_runtime::http::Request {
+            headers: request.headers.clone(),
+            body: request.body.clone().unwrap_or_default().into_bytes(),
+            ..jadpo_runtime::http::Request::default()
+        };
+        assert_eq!(
+            jadpo_runtime::webhooks::check(
+                &jadpo_std::provider::SignatureScheme::StandardWebhooks,
+                &[secret.as_str()],
+                &received,
+                1_792_504_801_000,
+            ),
+            Ok(Some(1_792_504_800_000))
+        );
+        assert!(
+            !request
+                .headers
+                .iter()
+                .any(|(_, value)| value.contains(secret.trim_start_matches("whsec_"))),
+            "the secret is never sent"
+        );
+        drop(sent);
+        for (answer, expected) in [
+            (
+                Err(FetchError::Refused(
+                    "`localhost` has no public address".into(),
+                )),
+                "misconfigured",
+            ),
+            (
+                Err(FetchError::Refused("not HTTPS".into())),
+                "misconfigured",
+            ),
+            (status(302), "misconfigured"),
+            (status(503), "unavailable"),
+            (status(410), "failed"),
+        ] {
+            let fetch = Rc::new(Scripted::default());
+            fetch.answers.borrow_mut().push(answer);
+            let outgoing = Outgoing::new(Rc::clone(&fetch) as Rc<dyn Fetch>);
+            let word = match block_on(outgoing.call(&signed.call())) {
+                Answer::Value(_) => "value",
+                Answer::Unavailable | Answer::RetryAfter(_) => "unavailable",
+                Answer::Misconfigured => "misconfigured",
+                Answer::Failed(code) if code == REFUSED => "failed",
+                _ => "other",
+            };
+            assert_eq!(word, expected);
+        }
+        // A call that isn't a signed post is refused before anything goes.
+        let fetch = Rc::new(Scripted::default());
+        let outgoing = Outgoing::new(Rc::clone(&fetch) as Rc<dyn Fetch>);
+        assert!(matches!(
+            block_on(outgoing.call(&published().call("outgoing_webhooks"))),
+            Answer::Misconfigured
+        ));
+        assert!(fetch.sent.borrow().is_empty());
     }
 }

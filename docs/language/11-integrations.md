@@ -2865,6 +2865,11 @@ one-line change in review. For the app above:
 | `couriers` | `https://sandbox.acme-couriers.example` | `config.couriers_environment` is `sandbox` | `AcmeCouriers.v1` | `shipping` |
 | `ledger` | the address in `config.ledger_address` | always | `Ledger.v1` | `billing` |
 
+The runtime's one exception for the addresses customers register for
+outgoing webhooks is listed once, as `outgoing_webhooks`, with the entity
+whose records register them, for the domains whose events it delivers
+([Outgoing webhooks](16-built-in-services.md#outgoing-webhooks)).
+
 A database or cache connection is listed at the address in its `url:`
 setting, for the domains whose entities it stores. A database's `For`
 says `without TLS` when its connection says `tls: false`, and names the

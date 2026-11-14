@@ -2,7 +2,8 @@
 //! "A release adding a standard type"; chunk 5.5a2): the quick fix on `type.standard_clash` and
 //! `type.standard_exists`, which runs the code `jadpo fix <name> swap`
 //! runs (`jadpo_check::fixes`) and is unavailable, with the errors it
-//! would add, where the command stops.
+//! would add, where the command stops, and where the swap changes stored
+//! data, whose migration only the command writes (chunk Q7).
 //!
 //! The rename needs a name, which a quick fix can't ask for, so it is the
 //! editor's rename on the declaration's name (`crate::rename`). As "Make this a setting" is, the edit is made in
@@ -96,6 +97,14 @@ impl Server {
             }
         };
         fixes::restore(loaded, &fixed);
+        // A swap that changes stored data takes its migration, whose
+        // folder `jadpo fix` writes as `jadpo migrate new` does (chunk Q7).
+        if fixed.migrates {
+            return Some(action(Some(format!(
+                "The swap changes stored data, so its migration goes with it: run `jadpo fix {} swap`",
+                finding.name
+            ))));
+        }
         let edit = self.workspace_edit(&fixed.files)?;
         Some(CodeAction {
             edit: Some(edit),

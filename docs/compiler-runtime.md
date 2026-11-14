@@ -528,8 +528,20 @@ see the declaration, a matched field by what each body name resolved to
 and by `Type.field` as written, a `use` line, the declaration's file
 moved for a rename) and every refusal, and `apply` makes them, fixes
 imports, formats what was formatted and checks the result, undoing a fix
-that adds an error by rule and headline. Each standard type's data entry
-carries the `release` that added it, which the clash names.
+that adds an error by rule and headline. A swap under stored data or on
+the wire (chunk Q7) also writes, in `apply`, each record it puts out of
+date, and leaves two errors uncounted: `acceptance.missing`, a person's,
+and `migration.out_of_date` where none was due, which sets `migrates`.
+`jadpo fix` then plans the migration from the edited texts with `migrate
+new`'s writer (`plan_swap`) before writing anything. `Decide::swapped`
+reads the conversion from the snapshots: an old `jsonb` column recorded
+as one of the app's objects, a field now of a standard object, and the
+shape match on the recorded fields. It decides the field as a backfill in
+Jadpo whose code digest is the conversion's, so the SQL is an ordinary
+one, and the plan carries the `Swap` in place of a callable; the runner
+reads each part from its member by the part's text reader and writes it
+as any backfill's value. Each standard type's data entry carries the
+`release` that added it, which the clash names.
 
 **Renaming.** `jadpo_check::rename` is `jadpo rename`'s code and the
 editor's rename's (`at` resolves the name under the cursor as go to
@@ -5558,9 +5570,46 @@ connection (`Through::Published`), so personal data in it reaches the
 personal-data report and needs `ErasureNotPossible`; a deployable that
 runs subscribers reaches the connection (`Via::Publishing`) and keeps
 each published event's codec. Each API's OpenAPI document carries
-`x-jadpo-events` (`openapi::published_events`). Addresses customers
-register, and the runtime-owned network exception that would guard them,
-aren't built.
+`x-jadpo-events` (`openapi::published_events`).
+
+**Addresses customers register** (area 16, "Outgoing webhooks"; chunk
+C1b). `jadpo_check::outgoing::webhooks` reads the one entity whose
+`webhooks:` lists events (`EntityModel::webhooks`), each read by
+`published::Reader` as `publishing:`'s are and given the one field typed
+`<Entity>.id` that names its record (`WebhookEvent::holder`). The
+generated operations are `SessionOp::RegisterWebhook`, `Webhooks` and
+`RemoveWebhook`, typed by `types::body::identity::webhook_call` and
+reaching the entity's store (`stores::Reach::Addresses`) and its
+`update` or `read` grant (`policy::reach`); `register_webhook`'s response
+is never kept for a repeat (`unkept_responses`). The plan's
+`jadpo_std::outgoing::WebhooksPlan` (in `EventsPlan::webhooks`) holds
+the statements of `jadpo_sql::outgoing`, gated by the entity's grants as
+a service's keys are (`Planner::gated`): `register_webhook` first holds
+the record `FOR NO KEY UPDATE` and counts its addresses, and each event
+has a subscriber `webhooks <Entity> <event>` whose target is
+`Target::Webhooks`. Both executors reach `jadpo_runtime::outgoing`
+through `http::session`: an address `address_problem` refuses is
+`webhook_address_invalid`, an eleventh `webhook_addresses_full`, and a
+kept one is sealed with `Started::field_ring` bound to
+`jadpo_webhook_addresses.secret` and its `id`, the secret made from the
+invocation's secret randomness. `runner::to_addresses` reads the
+record's addresses (`outgoing::due`, skipping those in
+`jadpo_webhook_sends`), opens each secret, signs the event as
+`publishing::signature` does at the host's time, and sends one keyed
+`post` of `outgoing::Outgoing` through the seam to
+`jadpo_std::outgoing::CONNECTION`, so the secret never reaches the seam;
+a `2xx` is kept as reached (`outgoing::reached`), and the delivery ends
+as the first answer worth retrying, else the first refusal. The driver
+factory builds `jadpo_drivers::webhook::Outgoing` for that connection
+only over `Supplies::outward`, which a deployable's host alone gives:
+natively `fetch::Outward`, whose `Fetch` refuses anything but HTTPS and
+connects only to a public address the name resolves to at that
+connection; on Workers `WorkersOutbound`'s, with
+`global_fetch_strictly_public` in the generated Wrangler file. `jadpo
+dev` logs it (`PublishLog`), a test's host catches it
+(`Plan::publishing_connections`), and the secrets are re-sealed with the
+sealed fields (`purge::reseals`). The network report's row and
+`network.jadpo_record`'s entry come from `connections::Row::registered`.
 
 **Files and a file's run** (area 16; area 12, "How a file's run is kept"). The `files` capability's
 first part is on the seam: `jadpo_runtime::files` sends a store's `put`

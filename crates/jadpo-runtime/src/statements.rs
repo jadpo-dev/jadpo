@@ -502,6 +502,14 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
         ("outbox::PARK_LOST", crate::outbox::PARK_LOST.to_string()),
         ("outbox::RELEASE", crate::outbox::RELEASE.to_string()),
         ("outbox::SETTLE", crate::outbox::SETTLE.to_string()),
+        ("outgoing::LIST", crate::outgoing::LIST.to_string()),
+        (
+            "outgoing::RECORD_SENT",
+            crate::outgoing::RECORD_SENT.to_string(),
+        ),
+        ("outgoing::REGISTER", crate::outgoing::REGISTER.to_string()),
+        ("outgoing::REMOVE", crate::outgoing::REMOVE.to_string()),
+        ("outgoing::SENT", crate::outgoing::SENT.to_string()),
         ("schedules::CLAIM", crate::schedules::CLAIM.to_string()),
         (
             "schedules::CLAIM_REQUESTED",

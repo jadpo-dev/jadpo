@@ -3974,17 +3974,377 @@ else in your app, a package included, can reach an address that isn't a
 declared connection.
 
 Publishing to one address the operator gives, a connection with `driver:
-Driver.webhook`, is built: each chosen event is posted to it, typed from the
-event, signed and retried
+Driver.webhook`, is built too: each chosen event is posted to it, typed
+from the event, signed and retried
 ([Publishing events outward](12-jobs-and-events.md#publishing-events-outward)).
 That address is a declared connection, listed in the network report as any
-connection is, so it needs no exception.
+connection is, so it needs no exception. Receiving a webhook is
+[Receive a webhook](../guides/17-receive-a-webhook.md).
 
-Addresses your customers register aren't built yet
-([What is built](#what-is-built)), and nothing stands in for them: your app
-reaches only the connections it declares, so it can't send to an address a
-customer gives it. Receiving a webhook is built
-([Receive a webhook](../guides/17-receive-a-webhook.md)).
+### Addresses customers register
+
+The customer's entity lists, in `webhooks:`, the events its records'
+addresses receive. Here each stall on a market hears of the orders placed
+with it, at the addresses its trader registers:
+
+`app.jadpo`:
+
+```jadpo check project=outgoing-webhooks file=app.jadpo
+use market/entities { Trader }
+
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.main_url
+        }
+    }
+    events: {
+        store: main
+    }
+    field_encryption_key: config.field_encryption_key
+}
+
+principal {
+    user: {
+        subject: Trader.handle
+    }
+}
+```
+
+`config.jadpo`:
+
+```jadpo check project=outgoing-webhooks file=config.jadpo
+config {
+    /// What each webhook address's secret is kept sealed with.
+    field_encryption_key: EncryptionKey
+    main_url: PostgresUrl
+}
+```
+
+`domains/market/entities/trader.jadpo`:
+
+```jadpo check project=outgoing-webhooks file=domains/market/entities/trader.jadpo
+/// Someone who trades on the market.
+public entity Trader {
+    id: Uuid
+    handle: Text {
+        min_length: 3
+        max_length: 40
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        update: [id]
+    }
+}
+```
+
+`domains/market/entities/stall.jadpo`:
+
+```jadpo check project=outgoing-webhooks file=domains/market/entities/stall.jadpo
+use market/entities { Trader }
+use market/events { OrderPlaced }
+
+/// A trader's stall, whose own systems hear of each order placed with it.
+public entity Stall {
+    id: Uuid
+    owner_id: Trader.id {
+        on_delete: OnDelete.restricted
+    }
+    name: Text {
+        max_length: 60
+    }
+
+    webhooks: {
+        events: [OrderPlaced]
+    }
+
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+        update: [owner_id]
+    }
+}
+```
+
+`domains/market/events/order_placed.jadpo`:
+
+```jadpo check project=outgoing-webhooks file=domains/market/events/order_placed.jadpo
+use market/entities { Stall }
+
+/// An order was placed with a stall.
+public type OrderPlaced = Event {
+    wire_name: "order.placed"
+    stall_id: Stall.id
+    reference: Text {
+        max_length: 20
+    }
+    ordered_at: Instant
+}
+```
+
+`domains/market/types/new_webhook.jadpo`:
+
+```jadpo check project=outgoing-webhooks file=domains/market/types/new_webhook.jadpo
+use market/entities { Stall }
+
+/// Where a stall wants its orders sent.
+type NewWebhook = Input {
+    stall_id: Stall.id
+    address: Url
+}
+```
+
+`domains/market/types/webhook_added.jadpo`:
+
+```jadpo check project=outgoing-webhooks file=domains/market/types/webhook_added.jadpo
+/// A new address's secret, which its receiver checks each event with.
+type WebhookAdded = Output {
+    signing_secret: WebhookSecret
+}
+```
+
+`domains/market/actions/add_webhook.jadpo`:
+
+```jadpo check project=outgoing-webhooks file=domains/market/actions/add_webhook.jadpo
+use market/entities { Stall }
+use market/types { NewWebhook, WebhookAdded }
+
+/// Registers an address a stall's orders are sent to, and gives its
+/// secret, the one time anyone sees it.
+action add_webhook(input: NewWebhook) -> WebhookAdded {
+    return WebhookAdded {
+        signing_secret: Stall.register_webhook(input.stall_id, input.address)
+    }
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/types/webhook_list.jadpo hidden
+/// A stall's addresses, never their secrets.
+type WebhookList = Output {
+    on_file: List<RegisteredWebhook>
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/types/stall_view.jadpo hidden
+use market/entities { Stall }
+
+/// A stall.
+type StallView = Output {
+    pick: [Stall.id, Stall.name]
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/types/trader_view.jadpo hidden
+use market/entities { Trader }
+
+/// A trader.
+type TraderView = Output {
+    pick: [Trader.id, Trader.handle]
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/failures/handle_taken.jadpo hidden
+/// Another trader has the handle.
+type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/actions/join_market.jadpo hidden
+use market/entities { Trader }
+use market/types { TraderView }
+use market/failures { HandleTaken }
+
+/// Signs a trader up.
+action join_market(handle: Trader.handle) fails HandleTaken -> TraderView {
+    var trader: Trader = attempt Trader.create {
+        set: {
+            handle: handle
+        }
+        conflict: {
+            Trader.handle: HandleTaken
+        }
+    }
+    return TraderView {
+        id: trader.id
+        handle: trader.handle
+    }
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/actions/open_stall.jadpo hidden
+use market/entities { Stall }
+use market/types { StallView }
+
+/// Opens a stall for the trader calling.
+action open_stall(name: Stall.name, owner: Principal.user) -> StallView {
+    var stall: Stall = Stall.create {
+        set: {
+            owner_id: owner.id
+            name: name
+        }
+    }
+    return StallView {
+        id: stall.id
+        name: stall.name
+    }
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/actions/list_webhooks.jadpo hidden
+use market/entities { Stall }
+use market/types { WebhookList }
+
+/// A stall's addresses.
+action list_webhooks(stall_id: Stall.id) -> WebhookList {
+    return WebhookList {
+        on_file: Stall.webhooks(stall_id)
+    }
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/actions/place_order.jadpo hidden migrate=initial
+use market/entities { Stall }
+use market/events { OrderPlaced }
+
+/// Places an order with a stall, which its addresses hear of.
+action place_order(stall_id: Stall.id, reference: OrderPlaced.reference) -> Unit {
+    emit OrderPlaced {
+        stall_id: stall_id
+        reference: reference
+        ordered_at: clock.now
+    }
+}
+```
+
+A test registers an address and places an order. The order is delivered
+to the address once its action commits, and a test's host catches it, so
+nothing leaves the machine:
+
+```jadpo check project=outgoing-webhooks file=domains/market/actions/add_webhook.test.jadpo
+use market/entities { Trader }
+use market/types { NewWebhook, StallView, TraderView, WebhookAdded, WebhookList }
+use market/actions { join_market, list_webhooks, open_stall, place_order }
+
+test "a stall's address is registered and hears of its orders" {
+    var trader_view: TraderView = attempt join_market("corner-books")
+    var trader: Trader = attempt Trader.get(trader_view.id)
+    var corner_stall: StallView = open_stall("Corner Books", Principal.user(trader))
+    var fresh_hook: WebhookAdded = add_webhook(
+        NewWebhook {
+            stall_id: corner_stall.id
+            address: "https://hooks.corner-books.example/orders"
+        }
+    )
+    assert text.starts_with(fresh_hook.signing_secret, "whsec_")
+    var on_record: WebhookList = list_webhooks(corner_stall.id)
+    assert list.count(on_record.on_file) == 1
+    place_order(corner_stall.id, "A-1001")
+}
+```
+
+- **Which events.** Each one `webhooks:` lists is a `public` event of
+  one of your domains, as `publishing:`'s are, since it becomes each
+  customer's contract, holding no `File` or `FileContents`, and named
+  outside by its `wire_name:` or its domain and name, no two alike. It
+  has exactly one field typed `<Entity>.id`, here `stall_id: Stall.id`,
+  which names the record whose addresses receive it, so an event never
+  reaches another customer's address. An event with no such field, with
+  two, or with one that may be `none`, is
+  [`publishing.invalid`](../errors/publishing.invalid.md). The records of
+  one entity register addresses: `webhooks:` on a second entity is
+  `toolchain.not_built_yet`.
+- **The operations.** Jadpo keeps the addresses, as it keeps a service's
+  keys, and generates three operations on the entity to register, list
+  and remove them: `Stall.register_webhook(stall_id, url)`,
+  `Stall.webhooks(stall_id)` and `Stall.remove_webhook(webhook_id)`
+  ([Service credentials](08-identity.md#service-credentials)). Only an
+  action calls them (`type.auth_sessions_context`), and each is limited
+  by the record's grants, as a key's are.
+- **`register_webhook(id, url)`** takes the record's `id` and a `Url`,
+  and needs the record's `update` grant, `not_permitted` otherwise. It
+  keeps the address in the action's transaction and gives its own
+  Standard Webhooks secret as a `WebhookSecret`: `whsec_` and the Base64
+  of 32 random bytes, text an `Output` can send. The secret is shown
+  once: the response that carries it is never kept for an idempotent
+  repeat, and a `WebhookSecret` can't be stored in an entity
+  (`type.auth_credential_stored`). An address that isn't HTTPS to a public
+  host is the built-in `webhook_address_invalid` (`invalid_value`, 422):
+  `localhost`, an IPv4 or IPv6 address that is private, loopback,
+  link-local or otherwise not public, one written other than in its usual
+  form (`127.1`), a user name or password, a fragment, or more than 2,048
+  bytes. A record has at most ten addresses, and an eleventh is
+  `webhook_addresses_full` (`conflict`, 409). Both pass through an action
+  without being listed in its `fails`, as sign-in's do.
+- **`webhooks(id)`** lists the record's addresses, oldest first, as
+  `RegisteredWebhook`s, which code reads `id`, `url` and `registered_at`
+  from, never the secret, when the caller may `read` the record; for any
+  other, the list is empty. On the wire each is an object of those three
+  fields.
+- **`remove_webhook(webhook_id)`** deletes one by its `id`, with its
+  record's `update` grant; an `id` no address has removes nothing. A
+  customer moves to a new secret by registering the address again and
+  removing the old one once its receiver has the new secret. Until then
+  the address is sent each event twice, each signed with its own secret,
+  under the same id.
+- **The secret is kept sealed.** Signing needs the secret back, and a
+  verifier, as a key's is, can't sign, so each secret is sealed with the
+  application's `field_encryption_key:`
+  ([Encrypted fields](15-personal-data.md#encrypted-fields)), bound to
+  its address, in the `jadpo_webhook_addresses` system table of the
+  entity's store. An app with `webhooks:` names a key, or it is
+  [`data.field_encryption_key_required`](../errors/data.field_encryption_key_required.md).
+  The key's re-seal moves the secrets to a new key with the sealed
+  fields, and `jadpo config rotation` counts them as `Stall.webhooks`. A
+  secret is never logged, listed or handed to the call that sends: each
+  attempt opens it, signs the event, and hands on only the signed post.
+- **What is sent.** What a `Driver.webhook` connection sends
+  ([Publishing events outward](12-jobs-and-events.md#publishing-events-outward)):
+  a `POST` of `{"id": "…", "type": "order.placed", "data": {…}}`, signed
+  as Standard Webhooks signs, with `webhook-id` the event's id,
+  `webhook-timestamp` the time it is sent, `webhook-signature` under the
+  address's own secret, and `traceparent`. A Jadpo app receives it with
+  `SignatureScheme.standard_webhooks` and the secret it was given.
+- **Delivered to each address.** Each event's delivery reads the
+  addresses its record has as it is tried, and posts to each in turn, at
+  least once, tried as a subscriber's is: 10 attempts within 24 hours. An
+  address that answers `2xx` has it, and a retry posts only to the
+  others, under the same id. Each answer is read as a `Driver.webhook`'s:
+  a `408`, a `429`, a `5xx` or no answer is tried again; a redirect, a
+  `401`, a `403` or an address the guards refuse is `misconfigured`; any
+  other refusal is `refused`. The delivery is tried again while any
+  address's answer is worth it, and otherwise ends as the first refusal
+  says, waiting in `jadpo deliveries` for an operator, so one address
+  that can't take an event never stops the others getting it. No
+  circuit breaker holds them, since one customer's address that can't be
+  reached says nothing of another's. A record that is gone, or has no
+  addresses, is sent nothing.
+- **The guards, at every attempt.** Each attempt looks the address's
+  host up again and connects only to a public address it gives, so a
+  name that resolves somewhere private by then, as rebinding a name
+  does, is refused before anything is sent. The connection is HTTPS with
+  its certificate checked, and a redirect is an answer, never followed.
+  Natively this is the runtime's own outward client; on Workers, the
+  same checks of the address as written, and the platform's strictly
+  public `fetch`, which the generated Wrangler file turns on.
+- **Reports.** The network report lists the exception once, as
+  `outgoing_webhooks`, the addresses a `Stall` registers. It is kept in
+  `network.jadpo_record`, so the change that first adds `webhooks:` needs
+  `outgoing_webhooks: NetworkChange.host_added`
+  ([Acceptances](18-records-and-manifest.md#acceptances)). Personal data
+  in an event leaves through `outgoing_webhooks`, which can't be asked to
+  erase it, so the [personal-data report](15-personal-data.md) lists it
+  there and it needs an `ErasureNotPossible` acceptance. Each API's
+  OpenAPI document lists the events in `x-jadpo-events`. No connection
+  may be called `outgoing_webhooks`.
+- **In development and tests nothing leaves.** `jadpo dev` logs each
+  event in place of sending it, `… publish order.placed ✓ logged to
+  outgoing_webhooks`, and a test's host catches it.
 
 ## What isn't built in
 <!-- topic: not-built-in -->
@@ -4021,7 +4381,7 @@ This is why each is here and where you set it up.
 | Documents | Yes, through the `documents` capability | Templates typed and translated as email's; rendered in subscribers | `type X = Document` in `documents/`; a `documents:` connection in `app.jadpo` |
 | Search | Yes, through the `search` capability | Index, query and migration generated from one declaration; results always pass policy | `search:` section on an entity; PostgreSQL |
 | Bot protection | Yes, through the `bot_check` capability | Jadpo's own public endpoints need it; the token never enters a route's input | `bot_check:` in `application { }`, `bot_check: true` on a route or feature |
-| Outgoing webhooks | Yes | Payloads typed from events; signing and retries generated; one guarded network exception | `publishing:` in `application { }`, through a `Driver.webhook` connection; customers' addresses later |
+| Outgoing webhooks | Yes | Payloads typed from events; signing and retries generated; one guarded network exception | `publishing:` in `application { }`, through a `Driver.webhook` connection; the addresses customers register, `webhooks:` on the customer's entity |
 | Field encryption | Yes | Encrypted fields kept out of logs, indexes and filters | [Encrypted fields](15-personal-data.md#encrypted-fields) |
 | Realtime, admin screens, payments, CMS, analytics, quotas, media transformations | No, or later | The compiler gains little, or the feature is not a backend's | Not built in; media services (Cloudinary, Uploadcare) are ordinary packages |
 
@@ -5469,7 +5829,7 @@ The errors this page describes are built with the feature they belong to.
 | Search | Partly built: on PostgreSQL, `search: { fields: language: }` with its generated column, GIN index and migrations, `matches` with a `SearchText`, the best matches first in keyset pages, and policy over every search ([Search](#search)). Not built yet: an engine's `store:`, `toolchain.not_built_yet` where it is written, and `jadpo search reindex`, which come with the `search` capability's packages. |
 | Documents | Not built yet: the application's `documents:` is `toolchain.not_built_yet` where it is written. |
 | Bot protection | Not built yet: the application's `bot_check:` and a route's are `toolchain.not_built_yet` where they are written. |
-| Outgoing webhooks | Partly built: chosen events posted to one address, a `Driver.webhook` connection, signed as Standard Webhooks signs and retried ([Outgoing webhooks](#outgoing-webhooks)). Not built yet: addresses customers register, and the network exception that guards them. |
+| Outgoing webhooks | Partly built: chosen events posted to one address, a `Driver.webhook` connection, and to the addresses customers register through the operations generated on the entity whose `webhooks:` lists them, each with its own secret, sealed, signed as Standard Webhooks signs and retried, through the one runtime-owned network exception ([Outgoing webhooks](#outgoing-webhooks)). Not built yet: the records of a second entity registering addresses. |
 | The `telemetry:` section | Not built yet: it is `toolchain.not_built_yet` where it is written. Nor is telemetry in the developer console, or `jadpo traces`, `jadpo metrics` and `jadpo logs`, which read it in development. |
 | Path IDs | Not built yet for requests. Each body's ways are numbered, and the gate compares the paths each test's bodies took when it runs them interpreted and compiled, but no request carries a `path` or a `path_key`, and `jadpo path` isn't built. |
 | Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([What Jadpo generates from thresholds](#what-jadpo-generates-from-thresholds)). A route's, action's, schedule's or subscriber's most queries per request, where its `queries:` starts, in the query report. Not built yet: acting on the per-request limits, which comes with the `telemetry:` section, starting values from production, and an agent's proposals through MCP. |
