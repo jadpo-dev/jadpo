@@ -2241,7 +2241,13 @@ mod tests {
         };
         let model = DataModel::default();
         let table = jadpo_check::types::TypeTable::default();
-        let (text, open) = changes_file(None, std::slice::from_ref(&need), &BTreeMap::new(), &model, &table);
+        let (text, open) = changes_file(
+            None,
+            std::slice::from_ref(&need),
+            &BTreeMap::new(),
+            &model,
+            &table,
+        );
         assert_eq!(open, 1);
         assert!(text.starts_with("migration {\n") && text.contains("    Todo.rank: {}\n"));
         let (again, open) = changes_file(Some(&text), &[need], &BTreeMap::new(), &model, &table);

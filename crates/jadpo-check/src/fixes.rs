@@ -718,7 +718,7 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Fixed, Stopped> {
     // The records that stand up to date: those the swap changes are
     // brought up to date with it, as `jadpo records update` would.
     let fine: BTreeSet<String> = crate::records::standings(&loaded.db, project)
-        .into_iter()
+        .iter()
         .filter(|standing| standing.state == crate::records::State::UpToDate)
         .map(|standing| standing.path.clone())
         .collect();

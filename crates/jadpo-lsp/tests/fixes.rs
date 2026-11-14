@@ -225,7 +225,10 @@ fn a_swap_that_changes_stored_data_is_offered_unavailable() {
     .expect("sql");
     std::fs::write(
         root.join(SLOT),
-        slot.replace("decline type.standard_exists: \"Kept until the swap\"\n", ""),
+        slot.replace(
+            "decline type.standard_exists: \"Kept until the swap\"\n",
+            "",
+        ),
     )
     .expect("the decline taken away");
     let mut server = start(&root, false);

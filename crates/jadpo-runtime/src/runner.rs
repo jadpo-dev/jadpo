@@ -2140,8 +2140,13 @@ fn swapped_part(
     };
     match kind {
         Part::Of(builtin) | Part::Bounded { of: builtin, .. } => {
-            jadpo_value::standard::scalar_text(*builtin, &text)
-                .map_err(|_| format!("doesn't read as {} `{}`", article(builtin.name()), builtin.name()))
+            jadpo_value::standard::scalar_text(*builtin, &text).map_err(|_| {
+                format!(
+                    "doesn't read as {} `{}`",
+                    article(builtin.name()),
+                    builtin.name()
+                )
+            })
         }
         Part::Whole(min, max) => match jadpo_value::standard::scalar_text(Builtin::Int, &text) {
             Ok(Value::Int(n)) if (*min..=*max).contains(&n) => Ok(Value::Int(n)),

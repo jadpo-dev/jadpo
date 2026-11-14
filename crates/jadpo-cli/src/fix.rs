@@ -235,9 +235,9 @@ pub fn fix(call: &Call) -> Reply {
         screen.push(Block::hint(
             format!("jadpo acceptance new {purpose}"),
             if accepts == 1 {
-                "drafts the acceptance a person gives the change".to_string()
+                "writes the draft a person gives the reason for".to_string()
             } else {
-                format!("drafts the acceptance a person gives the {accepts} changes")
+                format!("writes the draft a person gives the reason for, listing {accepts} changes")
             },
         ));
     } else if errors_left > 0 {
@@ -279,9 +279,9 @@ pub fn fix(call: &Call) -> Reply {
         ("files", Json::array(files)),
         (
             "migration",
-            planned
-                .as_ref()
-                .map_or(Json::Null, |planned| Json::from(planned.relative().as_str())),
+            planned.as_ref().map_or(Json::Null, |planned| {
+                Json::from(planned.relative().as_str())
+            }),
         ),
         ("acceptances", accepts.into()),
         ("errorsLeft", errors_left.into()),

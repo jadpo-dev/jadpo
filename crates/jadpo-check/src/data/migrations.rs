@@ -774,7 +774,12 @@ impl Decide<'_> {
         if need.kind != NeededKind::Backfill || !need.converts {
             return None;
         }
-        let table = self.before.stores.get(&need.store)?.tables.get(&need.table)?;
+        let table = self
+            .before
+            .stores
+            .get(&need.store)?
+            .tables
+            .get(&need.table)?;
         let (column, held) = table.columns.iter().find(|(_, column)| {
             !column.retired && column.field.as_deref() == Some(need.field.as_str())
         })?;
@@ -1098,7 +1103,10 @@ pub fn swap_digest(swap: &jadpo_std::migration::Swap) -> String {
         swap.standard
     );
     for (part, member) in &swap.parts {
-        text.push_str(&format!("\n{part}: {}", member.as_deref().unwrap_or("none")));
+        text.push_str(&format!(
+            "\n{part}: {}",
+            member.as_deref().unwrap_or("none")
+        ));
     }
     jadpo_graph::migration::section_digest(&text)
 }
@@ -1128,7 +1136,9 @@ fn recorded_parts(
         }
     };
     let is_enum = |shape: &Shape| match shape {
-        Shape::Named(name) => matches!(types.get(name), Some(Named::Enum { variants }) if variants.values().all(Option::is_none)),
+        Shape::Named(name) => {
+            matches!(types.get(name), Some(Named::Enum { variants }) if variants.values().all(Option::is_none))
+        }
         Shape::Value(scalar) => jadpo_std::standard_type(&scalar.ty)
             .is_some_and(|entry| matches!(entry.holds, Holds::Enum(_))),
         _ => false,
@@ -1140,8 +1150,7 @@ fn recorded_parts(
                 let found = fields.iter().find(|(name, field)| {
                     wanted.names.contains(&name.as_str())
                         && wanted.list_of.is_none()
-                        && (built_on(field, wanted.built_on)
-                            || (wanted.or_enum && is_enum(field)))
+                        && (built_on(field, wanted.built_on) || (wanted.or_enum && is_enum(field)))
                         && !matched.iter().any(|(_, taken)| taken == *name)
                 });
                 match found {
@@ -1153,7 +1162,8 @@ fn recorded_parts(
         }
         None => {
             for (name, field) in fields {
-                if !parts.iter().any(|(part, _)| part == name) || !matches!(field, Shape::Value(_)) {
+                if !parts.iter().any(|(part, _)| part == name) || !matches!(field, Shape::Value(_))
+                {
                     return None;
                 }
                 matched.push((name.clone(), name.clone()));
@@ -2245,7 +2255,10 @@ mod tests {
         assert_eq!(
             recorded_parts(
                 range,
-                &fields(&[("starts_at", value("Instant")), ("ends_at", value("Instant"))]),
+                &fields(&[
+                    ("starts_at", value("Instant")),
+                    ("ends_at", value("Instant"))
+                ]),
                 &types,
             ),
             Some(vec![
@@ -2290,7 +2303,11 @@ mod tests {
         assert_eq!(
             recorded_parts(
                 colour,
-                &fields(&[("r", value("Int")), ("g", value("Int")), ("b", value("Int"))]),
+                &fields(&[
+                    ("r", value("Int")),
+                    ("g", value("Int")),
+                    ("b", value("Int"))
+                ]),
                 &types,
             ),
             None

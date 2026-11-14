@@ -102,7 +102,9 @@ Swapped Slot for the standard InstantRange
     // Nothing is left to decide: the migration converts both fields.
     let changes = file(&root, &name, "changes.jadpo");
     assert!(
-        changes.contains("    // `Booking.slot` was a `Slot`, swapped for the standard `InstantRange`:\n"),
+        changes.contains(
+            "    // `Booking.slot` was a `Slot`, swapped for the standard `InstantRange`:\n"
+        ),
         "{changes}"
     );
     assert!(changes.contains("`Booking.held` was a `Slot`"), "{changes}");
@@ -174,10 +176,16 @@ fn a_stored_value_that_isnt_the_standard_type_stops_the_migration() {
     assert_eq!(applied.code, 1, "{}{}", applied.stdout, applied.stderr);
     let said = format!("{}{}", applied.stdout, applied.stderr);
     assert!(said.contains("start_not_after_end"), "{said}");
-    assert!(said.contains("00000000-0000-4000-8000-000000000001"), "{said}");
+    assert!(
+        said.contains("00000000-0000-4000-8000-000000000001"),
+        "{said}"
+    );
     assert!(!said.contains("2026-10-26"), "{said}");
     assert_eq!(
-        rows(&url, r#"SELECT count(*) FROM "booking" WHERE "slot__2" IS NULL"#),
+        rows(
+            &url,
+            r#"SELECT count(*) FROM "booking" WHERE "slot__2" IS NULL"#
+        ),
         [["1"]]
     );
 }
@@ -289,7 +297,7 @@ fn a_type_on_the_wire_waits_for_a_persons_acceptance() {
     );
     assert!(
         fixed.stdout.ends_with(
-            "Swapped Slot for the standard InstantRange\n\nnext: jadpo acceptance new swap_slot  drafts the acceptance a person gives the change\n"
+            "Swapped Slot for the standard InstantRange\n\nnext: jadpo acceptance new swap_slot  writes the draft a person gives the reason for\n"
         ),
         "{}",
         fixed.stdout
