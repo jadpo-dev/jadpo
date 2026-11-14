@@ -43,6 +43,7 @@ pub fn call_as(ctx: &mut Ctx<'_>, caller: Option<&Value>) {
             sign_in: (kind == PrincipalKind::User)
                 .then(|| jadpo_std::SignInMethod::MagicLink.name().to_string()),
             multi_factor: false,
+            scopes: None,
         })
     });
     match caller {
@@ -60,8 +61,16 @@ pub async fn admit(ctx: &mut Ctx<'_>, gate: &Gate, site: u32) -> Stored {
     if ctx.unpoliced() {
         return Stored::Value(Value::Unit);
     }
+    // A narrowed token needs one of the scopes the gate asks for, or with
+    // none listed is refused, before its callers are asked (chunk N2).
+    if let (Some(held), Some(wanted)) = (ctx.narrowed(), &gate.scopes)
+        && !wanted.iter().any(|scope| held.contains(scope))
+    {
+        return Stored::Failed(ctx.fail(not_permitted(), site));
+    }
     let admitted = match &gate.callers {
         _ if ctx.system().is_some() => gate.system,
+        Callers::Anyone => true,
         Callers::Signed => ctx.caller().is_some(),
         Callers::Nobody => false,
         Callers::Roles { store, sql, params } => {

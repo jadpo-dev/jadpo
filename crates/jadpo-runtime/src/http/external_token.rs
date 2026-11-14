@@ -151,17 +151,36 @@ fn https(url: &str) -> bool {
 impl Settings {
     /// Verifies using bounded cached public keys. A cache is owned by this
     /// application's startup state, never global or keyed by token claims.
+    #[cfg(test)]
     pub(crate) async fn subject(
         &self,
         host: &dyn crate::Host,
         token: &str,
         now: i64,
     ) -> Result<(String, bool), Failure> {
+        self.signed_in(host, token, now, None)
+            .await
+            .map(|checked| (checked.subject, checked.multi_factor))
+    }
+
+    /// What a token says once it checks, verified with bounded cached
+    /// public keys, a cache owned by this application's startup state,
+    /// never global or keyed by token claims: its subject, whether its
+    /// `amr` names a second factor, and, when `declared` gives the
+    /// scope-tokens its way in declares, those its `scope` claim carries
+    /// (chunk N2).
+    pub(crate) async fn signed_in(
+        &self,
+        host: &dyn crate::Host,
+        token: &str,
+        now: i64,
+        declared: Option<&[String]>,
+    ) -> Result<Checked, Failure> {
         if jadpo_value::jwt::preflight_jwt(token).is_err() {
             return Err(INVALID_CREDENTIALS);
         }
         self.verified(host, now, &|keys: &[Value]| {
-            check_subject(token, keys, &self.issuer, &self.audience, now)
+            check_token(token, keys, &self.issuer, &self.audience, now, declared)
         })
         .await
     }
@@ -401,8 +420,21 @@ fn verified_subject(
         .map(|(subject, _)| subject)
 }
 
+/// What a token that checks says (area 8): its subject, whether its `amr`
+/// names a second factor, and the scopes it carries when its way in
+/// narrows it (chunk N2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Checked {
+    pub subject: String,
+    pub multi_factor: bool,
+    /// The declared scope-tokens its `scope` claim carries, in declared
+    /// order; `None` when its way in declares none.
+    pub scopes: Option<Vec<String>>,
+}
+
 /// The subject of `token` once it checks, and whether its `amr` names a
 /// second factor ([`second_factor`]; chunk A10).
+#[cfg(test)]
 pub(crate) fn check_subject(
     token: &str,
     keys: &[Value],
@@ -410,6 +442,20 @@ pub(crate) fn check_subject(
     audience: &str,
     now: i64,
 ) -> Result<(String, bool), jadpo_value::Fault> {
+    check_token(token, keys, issuer, audience, now, None)
+        .map(|checked| (checked.subject, checked.multi_factor))
+}
+
+/// What `token` says once it checks ([`Checked`]): with `declared`, the
+/// scope-tokens of those its `scope` claim carries ([`scopes_carried`]).
+pub(crate) fn check_token(
+    token: &str,
+    keys: &[Value],
+    issuer: &str,
+    audience: &str,
+    now: i64,
+    declared: Option<&[String]>,
+) -> Result<Checked, jadpo_value::Fault> {
     let refused = || jadpo_value::Fault::Broke(jadpo_std::RuleKey::Malformed);
     if token.len() > JWT_MAX_LENGTH {
         return Err(refused());
@@ -420,12 +466,43 @@ pub(crate) fn check_subject(
         return Err(refused());
     };
     let methods = amr(&members);
+    let scopes = match declared {
+        Some(declared) => Some(scopes_carried(&members, declared).ok_or_else(refused)?),
+        None => None,
+    };
     match claims.get("sub") {
-        Some(Value::Text(subject)) if !subject.is_empty() => {
-            Ok((subject.to_string(), second_factor(&methods)))
-        }
+        Some(Value::Text(subject)) if !subject.is_empty() => Ok(Checked {
+            subject: subject.to_string(),
+            multi_factor: second_factor(&methods),
+            scopes,
+        }),
         _ => Err(refused()),
     }
+}
+
+/// The scope-tokens of `declared` a token's `scope` claim carries (area 9,
+/// "Scopes"; chunk N2), in declared order: the claim is one text of
+/// scope-tokens separated by spaces (RFC 8693 §4.2, RFC 9068 §2.2.3), and
+/// each is compared whole and exactly. No claim carries none; a claim
+/// that isn't text is `None`, so the token is refused as malformed rather
+/// than read some other way. A scope-token the app doesn't declare is
+/// ignored: it can't let anything in.
+pub(crate) fn scopes_carried(
+    members: &serde_json::Map<String, serde_json::Value>,
+    declared: &[String],
+) -> Option<Vec<String>> {
+    let carried: Vec<&str> = match members.get("scope") {
+        None => Vec::new(),
+        Some(serde_json::Value::String(text)) => text.split(' ').collect(),
+        Some(_) => return None,
+    };
+    Some(
+        declared
+            .iter()
+            .filter(|scope| carried.contains(&scope.as_str()))
+            .cloned()
+            .collect(),
+    )
 }
 
 /// A token's `amr` claim's texts, when it is a list (RFC 8176).
@@ -516,6 +593,82 @@ mod tests {
         );
         assert!(verified_subject(&token, &[key()], ISSUER, "another-app", NOW).is_none());
         assert!(verified_subject(&token, &[], ISSUER, AUDIENCE, NOW).is_none());
+    }
+
+    /// The scope-tokens a token whose claims are `claims` carries of
+    /// `declared`, once it checks (chunk N2).
+    fn carried(claims: serde_json::Value, declared: &[&str]) -> Option<Vec<String>> {
+        let token = token(HEADER, &claims.to_string());
+        let declared: Vec<String> = declared.iter().map(|scope| scope.to_string()).collect();
+        check_token(&token, &[key()], ISSUER, AUDIENCE, NOW, Some(&declared))
+            .ok()?
+            .scopes
+    }
+
+    #[test]
+    fn a_token_carries_only_the_declared_scopes_its_scope_claim_names_exactly() {
+        let declared = ["notes:read", "notes.write", "https://notes.example/admin"];
+        let mut scoped = claims();
+        scoped["scope"] = "openid notes.write profile notes:read".into();
+        assert_eq!(
+            carried(scoped, &declared),
+            Some(vec!["notes:read".to_string(), "notes.write".to_string()]),
+            "each declared scope it names, in declared order, and nothing else"
+        );
+        for (claim, why) in [
+            ("NOTES:READ", "compared exactly, case and all"),
+            ("notes:readwrite", "compared whole"),
+            ("notes:", "compared whole"),
+            ("notes:read,notes.write", "separated by spaces only"),
+            ("", "an empty claim"),
+            ("https://notes.example/admin/", "compared exactly"),
+        ] {
+            let mut scoped = claims();
+            scoped["scope"] = claim.into();
+            assert_eq!(
+                carried(scoped, &declared),
+                Some(Vec::new()),
+                "{why}: {claim:?}"
+            );
+        }
+        assert_eq!(
+            carried(claims(), &declared),
+            Some(Vec::new()),
+            "a token with no scope claim carries none"
+        );
+        let mut spaced = claims();
+        spaced["scope"] = "  notes:read   notes:read ".into();
+        assert_eq!(
+            carried(spaced, &declared),
+            Some(vec!["notes:read".to_string()]),
+            "repeated and extra spaces carry each scope once"
+        );
+    }
+
+    #[test]
+    fn a_scope_claim_that_isnt_text_refuses_the_token() {
+        let declared = ["notes:read"];
+        for claim in [
+            serde_json::json!(["notes:read"]),
+            serde_json::json!({"notes:read": true}),
+            serde_json::json!(true),
+            serde_json::json!(null),
+        ] {
+            let mut scoped = claims();
+            scoped["scope"] = claim.clone();
+            let token = token(HEADER, &scoped.to_string());
+            let declared: Vec<String> = declared.iter().map(|scope| scope.to_string()).collect();
+            assert!(
+                check_token(&token, &[key()], ISSUER, AUDIENCE, NOW, Some(&declared)).is_err(),
+                "{claim}"
+            );
+            // A way in that declares no scopes reads no scope claim at all.
+            assert!(
+                check_token(&token, &[key()], ISSUER, AUDIENCE, NOW, None)
+                    .is_ok_and(|checked| checked.scopes.is_none()),
+                "{claim}"
+            );
+        }
     }
 
     #[test]
@@ -922,6 +1075,46 @@ mod tests {
                 Err(INVALID_CREDENTIALS)
             );
         }
+    }
+
+    #[test]
+    fn a_local_issuer_writes_the_scopes_it_is_given() {
+        let issuer = local_issuer();
+        let local = Local {
+            provider: Provider::new(),
+            issuer: LocalIssuer::from_seed(issuer.seed()).expect("read back"),
+        };
+        local.provider.offline.set(true);
+        let settings = settings();
+        let declared = vec!["notes:read".to_string(), "notes.write".to_string()];
+        let scoped = issuer
+            .token_scoped(
+                ISSUER,
+                AUDIENCE,
+                "provisioned-subject",
+                NOW,
+                false,
+                Some(&["notes.write".to_string()]),
+            )
+            .expect("signed");
+        let checked = crate::block_on(settings.signed_in(&local, &scoped, NOW, Some(&declared)))
+            .expect("completes")
+            .expect("checks");
+        assert_eq!(checked.scopes, Some(vec!["notes.write".to_string()]));
+        let none = issuer
+            .token_scoped(
+                ISSUER,
+                AUDIENCE,
+                "provisioned-subject",
+                NOW,
+                false,
+                Some(&[]),
+            )
+            .expect("signed");
+        let checked = crate::block_on(settings.signed_in(&local, &none, NOW, Some(&declared)))
+            .expect("completes")
+            .expect("checks");
+        assert_eq!(checked.scopes, Some(Vec::new()));
     }
 
     #[test]

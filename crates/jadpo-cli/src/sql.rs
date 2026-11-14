@@ -659,6 +659,7 @@ fn caller(part: jadpo_std::policy::CallerPart) -> String {
         }
         CallerPart::SignInMethod => "the way the caller's session was started, or none",
         CallerPart::MultiFactor => "whether the caller's session proved a second factor",
+        CallerPart::Scopes => "the scopes a narrowed token carries, or none for any other caller",
     }
     .to_string()
 }

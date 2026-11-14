@@ -1641,6 +1641,7 @@ mod tests {
                 session: None,
                 sign_in: None,
                 multi_factor: false,
+                scopes: None,
             }));
         };
         assert_eq!(
@@ -1680,6 +1681,69 @@ mod tests {
     }
 
     #[test]
+    fn a_narrowed_token_passes_a_gate_only_with_a_scope_it_asks_for() {
+        let ran = |gate: Gate, scopes: Option<Vec<String>>| {
+            let host = Recorded::new(0);
+            let mut body = Write::new(true, ok);
+            body.gate = Some(gate);
+            let places = Places::new();
+            let mut ctx = Ctx::new(&places, &host, Env::default());
+            ctx.set_caller(Some(crate::Caller {
+                value: Value::Unit,
+                key: "user 1".into(),
+                session: None,
+                sign_in: None,
+                multi_factor: false,
+                scopes,
+            }));
+            let outcome = block_on(action(&mut ctx, &mut body)).expect("nothing waits");
+            let code = match outcome {
+                Outcome::Failed(failure) => Some(failure.code),
+                _ => None,
+            };
+            (code, body.runs)
+        };
+        let gate = |callers: Callers, scopes: Option<Vec<&str>>| Gate {
+            callers,
+            system: false,
+            scopes: scopes.map(|scopes| scopes.into_iter().map(str::to_string).collect()),
+        };
+        let carrying = |scopes: &[&str]| Some(scopes.iter().map(|s| s.to_string()).collect());
+        let refused = (Some("not_permitted".to_string()), 0);
+        // A listed action, which no scope names, refuses every narrowed
+        // token, even one anyone at all may call, and lets in the rest.
+        for callers in [Callers::Anyone, Callers::Signed] {
+            assert_eq!(
+                ran(
+                    gate(callers.clone(), Some(Vec::new())),
+                    carrying(&["notes:read"])
+                ),
+                refused
+            );
+            assert_eq!(
+                ran(gate(callers.clone(), Some(Vec::new())), None),
+                (None, 1)
+            );
+        }
+        // An upload slot's: one of the scopes it asks for, compared whole.
+        let slot = || gate(Callers::Signed, Some(vec!["notes:write", "notes:create"]));
+        assert_eq!(ran(slot(), carrying(&["notes:create"])), (None, 1));
+        assert_eq!(ran(slot(), carrying(&["notes:read", "notes"])), refused);
+        assert_eq!(ran(slot(), carrying(&[])), refused);
+        assert_eq!(ran(slot(), None), (None, 1));
+        // The scope never stands in for the callers the gate names.
+        assert_eq!(
+            ran(
+                gate(Callers::Nobody, Some(vec!["notes:read"])),
+                carrying(&["notes:read"])
+            ),
+            refused
+        );
+        // A listed query's: its statements ask for the scope themselves.
+        assert_eq!(ran(gate(Callers::Signed, None), carrying(&[])), (None, 1));
+    }
+
+    #[test]
     fn the_system_passes_a_gate_only_when_its_line_names_access_system() {
         let ran = |gate: Gate, set: fn(&mut Ctx<'_>)| {
             let host = Recorded::new(0);
@@ -1702,11 +1766,13 @@ mod tests {
                 session: None,
                 sign_in: None,
                 multi_factor: false,
+                scopes: None,
             }));
         };
         let only_system = Gate {
             callers: Callers::Nobody,
             system: true,
+            scopes: None,
         };
         assert_eq!(ran(only_system.clone(), system), None);
         assert_eq!(
@@ -1722,6 +1788,7 @@ mod tests {
         let either = Gate {
             callers: Callers::Signed,
             system: true,
+            scopes: None,
         };
         assert_eq!(ran(either.clone(), system), None);
         assert_eq!(ran(either, signed_in), None);

@@ -41,10 +41,13 @@ pub(crate) struct RequestFact {
     pub route: jadpo_graph::Key,
     /// The route's placeholders, in its order.
     pub params: Vec<String>,
+    /// `scopes:`: the scope-tokens its user's external token carries,
+    /// joined by spaces as a `scope` claim joins them (chunk N2).
+    pub scopes: Option<String>,
 }
 
 /// What a `request` block holds.
-const ITEMS: [&str; 8] = [
+const ITEMS: [&str; 9] = [
     "method",
     "path",
     "params",
@@ -53,6 +56,7 @@ const ITEMS: [&str; 8] = [
     "as",
     "sign_in",
     "strength",
+    "scopes",
 ];
 
 impl Body<'_> {
@@ -108,6 +112,8 @@ impl Body<'_> {
         // How `as:`'s user signed in (chunk A10): by magic link with one
         // factor unless these say otherwise.
         let mut ways: Vec<(&str, Expr, jadpo_diag::Span)> = Vec::new();
+        // `scopes:`: the scopes `as:`'s user's token carries (chunk N2).
+        let mut scopes: Option<(Option<Expr>, jadpo_diag::Span)> = None;
         // Each item, and each placeholder in `params:`, is given once, so
         // there is never a question of which counts (area 13).
         let mut given: Vec<(String, jadpo_diag::Span)> = Vec::new();
@@ -124,7 +130,7 @@ impl Body<'_> {
                         format!("`{item}:` is given twice"),
                         key_span,
                         first.clone(),
-                        "A request gives each of `method:`, `path:`, `params:`, `input:`, `idempotency_key:`, `as:`, `sign_in:` and `strength:` once, so there is never a question of which counts.",
+                        "A request gives each of `method:`, `path:`, `params:`, `input:`, `idempotency_key:`, `as:`, `sign_in:`, `strength:` and `scopes:` once, so there is never a question of which counts.",
                         format!("Remove one `{item}:`"),
                     ));
                     self.skip_member(&member);
@@ -207,6 +213,7 @@ impl Body<'_> {
                         caller = Some((value, key_span));
                     }
                 }
+                "scopes" => scopes = Some((member.value(), key_span)),
                 "sign_in" | "strength" => {
                     if let Some(value) = member.value() {
                         let word = if item == "sign_in" {
@@ -226,7 +233,7 @@ impl Body<'_> {
                         )
                         .at(key_span, "unknown item")
                         .reason(format!(
-                            "A request holds `method:`, `path:`, `params:`, `input:`, `idempotency_key:`, `as:`, and with `as:` `sign_in:` and `strength:`.{}",
+                            "A request holds `method:`, `path:`, `params:`, `input:`, `idempotency_key:`, `as:`, and with `as:` `sign_in:`, `strength:` and `scopes:`.{}",
                             near.map_or_else(String::new, |near| format!(
                                 " Did you mean `{near}`?"
                             ))
@@ -438,6 +445,27 @@ impl Body<'_> {
                 );
             }
         }
+        // `scopes:` says which scopes `as:`'s user's token carries, so it
+        // needs a user signing in, through a way in that narrows (chunk N2).
+        let mut carried = None;
+        if let Some((value, key_span)) = scopes {
+            match self.request_scopes(value.as_ref(), &key_span) {
+                Some(_) if !user_signs_in && ok => {
+                    ok = false;
+                    self.out.push(
+                        Diagnostic::new(
+                            &rule::SEMANTIC_REQUEST_INVALID,
+                            "`scopes:` says which scopes `as:`'s user's token carries, and this request signs no user in",
+                        )
+                        .at(key_span, "no user signs in")
+                        .reason("With `scopes:`, `as:`'s user signs in with an external token carrying those scopes, narrowed as a token issued to another application is (area 9, \"Scopes\").")
+                        .next("Give `as: Principal.user(...)`, or remove this line"),
+                    );
+                }
+                Some(tokens) => carried = Some(tokens.join(" ")),
+                None => ok = false,
+            }
+        }
         if !ok {
             return Ty::Error;
         }
@@ -446,12 +474,85 @@ impl Body<'_> {
             RequestFact {
                 route: route.key.clone(),
                 params: order,
+                scopes: carried,
             },
         );
         Ty::Opaque(
             RESPONSE.to_string(),
             vec![route.output.clone().unwrap_or(Ty::Prim(Prim::Unit))],
         )
+    }
+
+    /// `scopes: [OAuthScope.todos_read]`'s scope-tokens (chunk N2): each a
+    /// scope `external_token: { scopes: }` declares, given once, in a
+    /// list, which may be empty for a token carrying none. `None` when it
+    /// isn't, once reported.
+    fn request_scopes(
+        &mut self,
+        value: Option<&Expr>,
+        key_span: &jadpo_diag::Span,
+    ) -> Option<Vec<String>> {
+        let identity = self.identity();
+        if !identity.narrows() {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_REQUEST_INVALID,
+                    "`scopes:` gives a token's scopes, and no way in narrows its tokens",
+                )
+                .at(key_span.clone(), "nothing to narrow")
+                .reason("`scopes:` signs `as:`'s user in with an external token carrying those scopes, and `external_token:` declares no `scopes:`, so no token is narrowed.")
+                .next("Declare the scopes in `external_token: { scopes: }`, or remove this line"),
+            );
+            return None;
+        }
+        let Some(Expr::ListExpr(list)) = value else {
+            let at = value.map_or_else(|| key_span.clone(), |value| self.span(value));
+            self.scopes_problem(
+                at,
+                "`scopes:` takes a list of scopes, `[OAuthScope.<name>]`",
+            );
+            return None;
+        };
+        let mut out: Vec<String> = Vec::new();
+        let mut named: Vec<String> = Vec::new();
+        for item in list.exprs() {
+            let at = self.span(&item);
+            let name = dotted(&item).and_then(|(first, rest)| {
+                let [only] = rest.as_slice() else {
+                    return None;
+                };
+                (tree::name_ref_text(&first)?.as_str()
+                    == jadpo_std::standard::security::OAUTH_SCOPE)
+                    .then(|| tree::name_ref_text(only))?
+            });
+            let Some(name) = name else {
+                self.scopes_problem(at, "`scopes:` lists scopes, each `OAuthScope.<name>`");
+                return None;
+            };
+            let Some(scope) = identity.scope(&name) else {
+                self.scopes_problem(
+                    at,
+                    &format!("`OAuthScope.{name}` isn't a scope `external_token:` declares"),
+                );
+                return None;
+            };
+            if named.contains(&name) {
+                self.scopes_problem(at, &format!("`OAuthScope.{name}` is listed twice"));
+                return None;
+            }
+            named.push(name);
+            out.push(scope.token.clone());
+        }
+        Some(out)
+    }
+
+    fn scopes_problem(&mut self, span: jadpo_diag::Span, message: &str) {
+        self.out.push(
+            Diagnostic::new(&rule::SEMANTIC_REQUEST_INVALID, message.to_string())
+                .at(span, "not a declared scope")
+                .reason("`scopes:` lists the scopes `as:`'s user's external token carries, each once, as `OAuthScope.<name>` naming a scope `external_token: { scopes: }` declares; `[]` is a token carrying none.")
+                .next("List the token's scopes as `[OAuthScope.<name>]`"),
+        );
     }
 
     /// `request { method: HttpMethod.get link: ... range: ... }`: a file's
@@ -651,6 +752,13 @@ impl Body<'_> {
     /// One item already reported, its value or its block's values read so
     /// their names count as used.
     fn skip_member(&mut self, member: &ast::Member) {
+        // `scopes:` names declared scopes, not values to read (chunk N2).
+        if member
+            .member_key()
+            .is_some_and(|key| tree::written(key.syntax()) == "scopes")
+        {
+            return;
+        }
         if let Some(value) = member.value() {
             self.infer(&value);
         }

@@ -268,6 +268,20 @@ pub fn all_of(parts: &[String]) -> String {
     }
 }
 
+/// What a narrowed token needs (area 9, "Scopes"; chunk N2), `held` the
+/// caller's scope-tokens joined by spaces, `NULL` for a caller that isn't
+/// narrowed: with `token`, that it carries that scope-token, compared
+/// whole; with none, that the caller isn't narrowed at all. A scope-token
+/// holds no space (RFC 6749 §3.3), so splitting on spaces finds each.
+pub fn scope_held(held: &str, token: Option<&str>) -> String {
+    match token {
+        Some(token) => format!(
+            "({held}::text IS NULL OR {token}::text = ANY(string_to_array({held}::text, ' ')))"
+        ),
+        None => format!("{held}::text IS NULL"),
+    }
+}
+
 /// `(a AND b ...)`: several conditions as one, inside another's `OR`.
 pub fn grouped(parts: &[String]) -> String {
     format!("({})", parts.join(" AND "))

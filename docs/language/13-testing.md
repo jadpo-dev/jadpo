@@ -998,6 +998,32 @@ var stock: Response = request {
   admin signed in, as the admin's own request would.
 - Either without `as:` naming a user is `semantic.request_invalid`.
 
+A token issued to another application is narrowed to the scopes it
+carries ([Scopes](09-policy.md#scopes)), so a request says which, with
+`scopes:` beside `as:`:
+
+```jadpo fragment
+var scoped_note: Response = request {
+    method: HttpMethod.get
+    path: "/notebook/{note_id}"
+    params: {
+        note_id: note.id
+    }
+    as: Principal.user(ann)
+    scopes: [OAuthScope.notes_read]
+}
+```
+
+- `scopes:` lists scopes `external_token:` declares, each once, as
+  `OAuthScope.<name>`; `[]` is a token carrying none. The user signs in
+  with a token from the local issuer whose `scope` claim holds exactly
+  those, even on an API that takes browser sessions too.
+- Without `scopes:`, a request on an API that takes only external tokens
+  carries none, so a test says what its token may do.
+- `scopes:` without `as:` naming a user, a scope the app doesn't declare,
+  and `scopes:` in an app whose `external_token:` declares none are
+  `semantic.request_invalid`.
+
 A call with a caller, outside a request, runs as someone signed in by
 magic link with one factor too, so a role that needs a way in is tested
 through a route.
@@ -2748,7 +2774,7 @@ Not built yet: caches.
 | Pure and action tests | Built: `jadpo test` runs `test "…" { }` and `assert` in the interpreter, for tests that call functions and actions. Each test gets its own environment (its seed and clock, its database and fakes), tests run on a thread per core, and the results are reported in the order seed's order. Each action or fixture a test calls commits on its own, through the runtime's action boundary; an action it calls joins its transaction. |
 | Kind of test | Built: the kind comes from what a test calls (an action, query or fixture makes it an action test, a `request` a route test, a schedule's `.run()` a schedule test), and the footer and `--json` count each kind. |
 | Schedule tests | Built: `schedule.run()` in a test runs the schedule once at the test's clock, its action called as the system with no tenant, with its own database like an action test; `--kind schedule` runs only these; anywhere but a test it is `semantic.not_callable`. |
-| Route tests | Built: `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token, and a service through a real service key; `sign_in:` and `strength:` record how the user signed in, by magic link with one factor when left out; a caller signs in once per test, and its later requests signed in the same way send the same session or key. Every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). An optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. A streaming route's `Response` has `pieces` in place of `output`, its events read to the last. A route with `sends:` has the body in its `Output`'s field. `request { link: range: }` follows a file's signed link, whole or by range, and gives `status`, `code` and `body`, and `request { upload: body: }` sends a file to a slot's address, or a part with `part:` and optionally `dropped:`, giving `status` and `code` ([Route tests](#route-tests)). |
+| Route tests | Built: `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token, and a service through a real service key; `sign_in:` and `strength:` record how the user signed in, by magic link with one factor when left out, and `scopes:` the scopes the user's external token carries; a caller signs in once per test, and its later requests signed in the same way send the same session or key. Every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). An optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. A streaming route's `Response` has `pieces` in place of `output`, its events read to the last. A route with `sends:` has the body in its `Output`'s field. `request { link: range: }` follows a file's signed link, whole or by range, and gives `status`, `code` and `body`, and `request { upload: body: }` sends a file to a slot's address, or a part with `part:` and optionally `dropped:`, giving `status` and `code` ([Route tests](#route-tests)). |
 | Assertion messages | Partly built: a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). Not built yet: the trace, fakes, kept database and clock in the report. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Built: `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
 | Events | Built: what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good, or stops as `diverged`, ends the test as `test.subscriber_failed` ("Caches and events"). |

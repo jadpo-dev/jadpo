@@ -645,6 +645,39 @@ the entity's lifecycle shows. Profile and permission claims from the
 provider are never stored as the user's identity, and never become
 policy grants.
 
+When the provider issues tokens to other applications, such as a partner's
+app acting for a person, `scopes:` declares the scopes those tokens
+carry: each a name, and the scope-token the provider writes for it, exactly
+as it spells it:
+
+```jadpo fragment
+authentication {
+    external_token: {
+        issuer: config.oidc_issuer
+        audience: config.oidc_audience
+        scopes: {
+            notes_read: "notes:read"
+            notes_write: "https://notes.example/write"
+        }
+    }
+}
+```
+
+With `scopes:`, every token is narrowed to the declared scopes its
+`scope` claim names: one text of scope-tokens separated by spaces (RFC
+9068), each compared whole and exactly. A scope-token the app doesn't
+declare is ignored, and a token with no `scope` claim carries none. A
+`scope` claim that isn't text is `invalid_credentials` (401).
+[Scopes](09-policy.md#scopes) says what a narrowed token may then do.
+Without `scopes:`, no token is narrowed: it may do whatever its person may.
+
+- A scope's name is in lower snake case, and policy names it
+  `OAuthScope.<name>`.
+- Its scope-token is an `OAuthScope`: 1 to 256 printable ASCII characters
+  other than a space, `"` and `\`.
+- Each name and each scope-token is declared once, and `scopes:` declares
+  at least one. Any other mistake is `semantic.auth_setting_invalid`.
+
 To check a token's signature, Jadpo fetches two documents from the
 provider itself: its discovery document, a JSON file at a fixed address
 under the issuer that says where its keys are, and its key set (JWKS),
@@ -718,7 +751,10 @@ subject, so the request goes through the same checks as a real token:
 the user must exist, be `active:` and be shown by the lifecycle. In
 `jadpo dev`, `jadpo dev token <user-id>` prints a bearer token for that
 user's subject, for running a frontend or `curl` against the app without
-the provider. Neither key is ever accepted by a deployable.
+the provider; with `scopes:`, it carries every declared scope. A route
+test's token carries the scopes its `scopes:` lists, and none without it
+([Signing in for a route test](13-testing.md#signing-in-for-a-route-test)).
+Neither key is ever accepted by a deployable.
 
 Here the `staff` API takes only the provider's tokens, and `main` takes
 browser sessions. The route test signs a librarian in on `staff` with
@@ -5245,7 +5281,8 @@ A feature not built yet is `toolchain.not_built_yet` where it is written.
 |---|---|
 | Everything else on this page | Built. |
 | `Driver.apple` and `oauth_provider:` | Not built yet. |
-| Scope declarations and policy's scope restrictions | Not built yet. As [Policy](09-policy.md) specifies, an external method narrows scopes only when it declares the scopes it reads; undeclared provider scope or profile claims never replace application authority. |
+| Scope declarations, `external_token: { scopes: }`, with [policy's scopes](09-policy.md#scopes) | Built. |
+| Scopes on `oauth_token` | Not built yet: they come with `oauth_provider:`, which declares its own. |
 | OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting routes and `on_behalf_of:` ([OAuth grants](11-integrations.md#oauth-grants)) | Not built yet. |
 
 ## Errors

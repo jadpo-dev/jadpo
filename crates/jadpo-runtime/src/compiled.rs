@@ -1227,14 +1227,15 @@ pub async fn schedule(cx: &mut Ctx<'_>, p: &Program, action: u32, at: u32, caugh
 
 /// A route test's request through route `route` (area 13): `args` are
 /// the route's placeholders and input, then, as `given` says (`keyed`,
-/// `signed`, `way`, `strong`), the `Idempotency-Key` it sends, the caller
-/// it signs in as, and how that caller signed in (chunk A10).
+/// `signed`, `way`, `strong`, `scoped`), the `Idempotency-Key` it sends,
+/// the caller it signs in as, how that caller signed in (chunk A10) and
+/// the scopes its token carries (chunk N2).
 pub async fn request(
     cx: &mut Ctx<'_>,
     p: &Program,
     route: u32,
     args: Vec<Value>,
-    given: [bool; 4],
+    given: [bool; 5],
 ) -> Ran {
     let sent = crate::http::RequestValues::split(&args, given);
     crate::http::route_test(&p.app(), p, cx, route, sent)

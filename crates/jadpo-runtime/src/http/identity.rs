@@ -458,8 +458,18 @@ pub(crate) async fn authenticate(
             .auth()
             .external()
             .ok_or_else(|| Refused::new(AUTHENTICATION_MISCONFIGURED))?;
-        let (subject, multi_factor) = settings
-            .subject(ctx.host(), credential, ctx.now())
+        // With `scopes:`, the token is narrowed to the declared scopes its
+        // `scope` claim carries (chunk N2).
+        let declared: Option<Vec<String>> = external
+            .scopes
+            .as_ref()
+            .map(|scopes| scopes.iter().map(|(_, token)| token.clone()).collect());
+        let super::external_token::Checked {
+            subject,
+            multi_factor,
+            scopes,
+        } = settings
+            .signed_in(ctx.host(), credential, ctx.now(), declared.as_deref())
             .await
             .map_err(Refused::new)?;
         // A provider's token signs in through `external_token` each time
@@ -529,7 +539,8 @@ pub(crate) async fn authenticate(
             if !active {
                 return Err(Refused::new(USER_DISABLED));
             }
-            let caller = caller_of(&signing, user, PrincipalKind::User, id, subject, None, by)?;
+            let mut caller = caller_of(&signing, user, PrincipalKind::User, id, subject, None, by)?;
+            caller.scopes = scopes;
             return Ok(Admitted::new(caller));
         }
         let subject = typed.ok_or_else(|| Refused::new(INVALID_CREDENTIALS))?;
@@ -549,7 +560,8 @@ pub(crate) async fn authenticate(
         if !active {
             return Err(Refused::new(USER_DISABLED));
         }
-        let caller = caller_of(&signing, user, PrincipalKind::User, id, &subject, None, by)?;
+        let mut caller = caller_of(&signing, user, PrincipalKind::User, id, &subject, None, by)?;
+        caller.scopes = scopes;
         return Ok(Admitted::new(caller));
     }
     Err(Refused::new(INVALID_CREDENTIALS))
@@ -840,6 +852,7 @@ fn caller_of(
         session,
         sign_in: by.method,
         multi_factor: by.multi_factor,
+        scopes: None,
     })
 }
 
@@ -1530,6 +1543,22 @@ pub async fn test_credentials(
     caller: &Value,
     by: &SignedInBy,
 ) -> Result<Vec<(String, String)>, Box<Fault>> {
+    test_credentials_scoped(ctx, app, settings, route, caller, by, None).await
+}
+
+/// [`test_credentials`], with `scopes` (`scopes:`, area 9, "Scopes";
+/// chunk N2): given, the user signs in with an external token from the
+/// local issuer whose `scope` claim carries exactly those scope-tokens,
+/// on a route whose API takes external tokens, whatever else it takes.
+pub async fn test_credentials_scoped(
+    ctx: &mut Ctx<'_>,
+    app: &super::App<'_>,
+    settings: &AuthSettings,
+    route: u32,
+    caller: &Value,
+    by: &SignedInBy,
+    scopes: Option<&[String]>,
+) -> Result<Vec<(String, String)>, Box<Fault>> {
     let table = app.table;
     let site = 0;
     let Some(plan) = &table.identity else {
@@ -1565,14 +1594,41 @@ pub async fn test_credentials(
             .and_then(|route| table.apis.get(route.api as usize))
             .is_some_and(|api| api.methods.contains(&method))
     };
+    // A token narrowed to `scopes:` is an external token, which the
+    // route's API must take (chunk N2).
+    if let Some(scopes) = scopes {
+        let external = plan
+            .external_token
+            .as_ref()
+            .filter(|_| kind == PrincipalKind::User)
+            .filter(|_| accepts(AuthenticationMethod::ExternalToken));
+        let Some(external) = external else {
+            return Err(defect(
+                ctx,
+                "a request with `scopes:` to a route whose API takes no external tokens",
+                site,
+            ));
+        };
+        return external_test_token(
+            ctx,
+            app,
+            settings,
+            external,
+            caller,
+            by.multi_factor,
+            Some(scopes),
+        );
+    }
     // An API that takes external tokens and not browser sessions: a token
-    // from the local issuer, and nothing kept.
+    // from the local issuer, and nothing kept. Narrowed by a way in that
+    // declares scopes, it carries none unless the request gives
+    // `scopes:`, so a test says what its token may do.
     if kind == PrincipalKind::User
         && !accepts(AuthenticationMethod::BrowserSession)
         && accepts(AuthenticationMethod::ExternalToken)
         && let Some(external) = &plan.external_token
     {
-        return external_test_token(ctx, app, settings, external, caller, by.multi_factor);
+        return external_test_token(ctx, app, settings, external, caller, by.multi_factor, None);
     }
     let session = plan.cookie.clone().zip(plan.csrf_cookie()).filter(|_| {
         kind == PrincipalKind::User
@@ -1718,6 +1774,7 @@ fn external_test_token(
     external: &jadpo_std::http::ExternalTokenPlan,
     caller: &Value,
     multi_factor: bool,
+    scopes: Option<&[String]>,
 ) -> Result<Vec<(String, String)>, Box<Fault>> {
     let site = 0;
     let Some(configured) = settings.external() else {
@@ -1740,19 +1797,20 @@ fn external_test_token(
     let token = {
         let now = ctx.now();
         ctx.host().local_issuer().and_then(|issuer| {
-            issuer.token_with(
+            issuer.token_scoped(
                 configured.issuer(),
                 configured.audience(),
                 &subject,
                 now,
                 multi_factor,
+                scopes,
             )
         })
     };
     // A deployable holds no local issuer, so signs no test in this way.
     #[cfg(not(feature = "testing"))]
     let token: Option<String> = {
-        let _ = (configured, &subject, multi_factor);
+        let _ = (configured, &subject, multi_factor, scopes);
         None
     };
     let Some(token) = token else {
