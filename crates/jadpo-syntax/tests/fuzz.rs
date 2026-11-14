@@ -119,6 +119,15 @@ fn a_semicolon_after_a_declaration_word_is_not_split() {
     check("use; shared/types { Pence }\n");
 }
 
+/// A `;` before `!=` isn't split onto a line of its own, which `!=`
+/// can't start.
+#[test]
+fn a_semicolon_before_an_infix_not_equal_is_not_split() {
+    check(
+        "entity Todo {\n    id: Uuid\n    deleted_at: Instant?\n\n    lifecycle: {\n        visible: deleted_at; != none\n    }\n}\n",
+    );
+}
+
 #[test]
 fn a_semicolon_opening_a_line_keeps_its_indent() {
     check("library security {\n    constant a: Int = 5\n    /// B.\n;    constant b: Int = 3\n}\n");
