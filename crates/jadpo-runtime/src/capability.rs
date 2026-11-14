@@ -843,9 +843,15 @@ impl<H: Host> Host for Faked<H> {
         self.host.telemetry()
     }
 
-    /// The host's own log, which a test's record or a deployable's log
-    /// and its telemetry hear.
+    /// Into the test's record it keeps, when it keeps one; otherwise the
+    /// host's own log, which a deployable's log, `jadpo dev`'s and their
+    /// telemetry hear (chunk O1).
     fn log(&self, event: &str, fields: serde_json::Map<String, serde_json::Value>) {
+        #[cfg(feature = "testing")]
+        if let Some(record) = self.record.as_deref() {
+            crate::record::logged(Some(record), event, fields);
+            return;
+        }
         self.host.log(event, fields);
     }
 

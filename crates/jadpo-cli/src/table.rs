@@ -2088,7 +2088,7 @@ pub static COMMANDS: &[Command] = &[
             },
             Example {
                 description: "See one route's",
-                command: "jadpo metrics --route \"POST /todos\"",
+                command: "jadpo metrics --route \"POST /greeting\"",
             },
         ],
         arguments_rule: &rule::CLI_TELEMETRY_ARGUMENTS,
@@ -2102,7 +2102,7 @@ pub static COMMANDS: &[Command] = &[
         summary: "List the log events jadpo dev kept",
         description: "Lists the events the app logged under `jadpo dev` (area 17), oldest first: \
                       each one's time, level, event, request and fields, which never hold a \
-                      value the log's rules hash. `--level` chooses the lowest level listed; \
+                      value the log's rules hash. `--level` lists events from that level up; \
                       the other filters choose the requests whose events are listed; \
                       `--follow` keeps printing as new ones arrive.",
         arguments: &[],
@@ -3023,7 +3023,7 @@ pub fn in_help_order() -> Vec<&'static Command> {
 const ROUTE_FLAG: Flag = Flag {
     name: "--route",
     value: Some("route"),
-    description: "Only this route's requests, `POST /todos` or `/todos`",
+    description: "Only this route's requests, `POST /greeting` or `/greeting`",
     values: &[],
 };
 const ACTION_FLAG: Flag = Flag {

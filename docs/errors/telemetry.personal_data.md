@@ -14,12 +14,12 @@ or a value of a type that is personal data whatever holds it, such as an
 
 ## What it looks like
 
-`count_visit` counts visits by the visitor's plan, and gives the plan
-field, which is marked as personal data, as the label:
+`count_visit` counts visits by the visitor's subscription level, and
+gives that field, which is marked as personal data, as the label:
 
 ```jadpo check project=e-telemetry-personal-data expect=telemetry.personal_data
 /// What a visitor pays for.
-type Plan = Enum {
+type SubscriptionLevel = Enum {
     free
     paid
 }
@@ -27,31 +27,31 @@ type Plan = Enum {
 /// Someone who visits.
 entity Visitor {
     id: Uuid
-    plan: Plan {
+    subscription_level: SubscriptionLevel {
         personal: PersonalData.financial
     }
     person: true
 }
 
-/// Visits, by plan.
+/// Visits, by subscription level.
 metric visits = Counter {
-    by: [plan]
+    by: [subscription_level]
 }
 
 /// Counts a visit by `visitor`.
 action count_visit(visitor: Visitor) {
-    telemetry.visits.add(1, plan: visitor.plan)
+    telemetry.visits.add(1, subscription_level: visitor.subscription_level)
 }
 ```
 
 ```text output
-error: `telemetry.visits.add` would send `Visitor.plan`, marked `personal:`, as a label
- --> main.jadpo:23:35
+error: `telemetry.visits.add` would send `Visitor.subscription_level`, marked `personal:`, as a label
+ --> main.jadpo:23:49
    |
-23 |     telemetry.visits.add(1, plan: visitor.plan)
-   |                                   ^^^^^^^^^^^^ personal data
+23 |     telemetry.visits.add(1, subscription_level: visitor.subscription_level)
+   |                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^ personal data
   reason: A metric's labels and a note's attributes go to the monitoring service as they are, with nothing hashed, so a personal field is never one: the people it is about never agreed to it leaving the app this way.
-  next: Give `plan:` something that isn't personal data, or remove it (agent)
+  next: Give `subscription_level:` something that isn't personal data, or remove it (agent)
   rule: telemetry.personal_data
   help: https://jadpo.dev/docs/errors/telemetry.personal_data
 

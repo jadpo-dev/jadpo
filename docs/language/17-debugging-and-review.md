@@ -922,5 +922,5 @@ personal value in a report follows the rules for
 | Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines and `jadpo trace`, `test new --from` and `call` | Not built yet. |
 | `jadpo dev grants add` | Not built yet. |
 | The developer console, MCP (`jadpo mcp`) and the review web view | Not built yet. |
-| `jadpo traces`, `metrics` and `logs` | Built: what `jadpo dev` keeps of each request's telemetry, filtered and followed ([Traces, metrics and logs in development](#traces-metrics-and-logs-in-development)). Not built yet: `--path`, which comes with path IDs on requests. |
+| `jadpo traces`, `metrics` and `logs` | Partly built: what `jadpo dev` keeps of each request's telemetry, filtered and followed ([Traces, metrics and logs in development](#traces-metrics-and-logs-in-development)). Not built yet: `--path`, which comes with path IDs on requests. |
 | `jadpo watch`; path coverage, production counts in review, `jadpo replay` and query cost | Not built yet. |

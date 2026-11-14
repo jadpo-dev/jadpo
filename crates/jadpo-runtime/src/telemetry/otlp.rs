@@ -734,9 +734,9 @@ pub fn logs(
     }] })
 }
 
-/// Of the logs payload `payload`, the records at `lowest` or above, or
+/// Of the logs payload `payload`, the records at `floor_level` or above, or
 /// `None` when none is.
-pub fn logs_from(payload: &Json, lowest: Level) -> Option<Json> {
+pub fn logs_from(payload: &Json, floor_level: Level) -> Option<Json> {
     let mut payload = payload.clone();
     let mut any = false;
     for resource in payload.get_mut("resourceLogs")?.as_array_mut()? {
@@ -747,7 +747,7 @@ pub fn logs_from(payload: &Json, lowest: Level) -> Option<Json> {
                     .get("severityNumber")
                     .and_then(Json::as_u64)
                     .unwrap_or_default()
-                    >= u64::from(lowest.severity_number())
+                    >= u64::from(floor_level.severity_number())
             });
             any |= !records.is_empty();
         }

@@ -32,7 +32,7 @@ error: `send:`'s `logs:` must be a `LogLevel`
 4 |             logs: "warn"
   |                   ^^^^^^ not a `LogLevel`
   reason: `telemetry:` sends the app's traces, metrics and logs over OpenTelemetry's protocol: `endpoint:` is a `Url` setting, `credential:` a header's name and a secret setting, `send:` which signals go out and `detail:` how much of each request. Leave `endpoint:` and `credential:` out to read `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS`.
-  next: Write the lowest level sent, such as `logs: LogLevel.warn` (agent)
+  next: Write the level logs are sent from, such as `logs: LogLevel.warn` (agent)
   rule: telemetry.settings_invalid
   help: https://jadpo.dev/docs/errors/telemetry.settings_invalid
 

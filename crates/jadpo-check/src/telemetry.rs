@@ -347,7 +347,8 @@ impl Reader<'_, '_, '_> {
                             "`send:`'s `logs:` must be a `LogLevel`".into(),
                             at,
                             "not a `LogLevel`",
-                            "Write the lowest level sent, such as `logs: LogLevel.warn`".into(),
+                            "Write the level logs are sent from, such as `logs: LogLevel.warn`"
+                                .into(),
                         );
                     }
                 },

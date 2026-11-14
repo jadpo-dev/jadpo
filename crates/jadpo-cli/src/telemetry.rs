@@ -439,7 +439,7 @@ fn command(call: &Call, which: Which) -> Reply {
                 return Reply::failed(arguments(
                     call,
                     format!("`jadpo {}` takes no `--level`", which.name()),
-                    "`--level` chooses the lowest level of log `jadpo logs` lists.".to_string(),
+                    "`--level` chooses the level `jadpo logs` lists events from.".to_string(),
                     "Use `--level` with `jadpo logs`".to_string(),
                 ));
             }
@@ -513,13 +513,13 @@ impl View {
             .collect();
         let log_payloads = payloads(root, Signal::Logs);
         let any_logs = !log_payloads.is_empty();
-        let lowest = level.map_or(0, |level| u64::from(level.severity_number()));
+        let from_level = level.map_or(0, |level| u64::from(level.severity_number()));
         let mut logs = Vec::new();
         for payload in &log_payloads {
             for resource in payload["resourceLogs"].as_array().into_iter().flatten() {
                 for scope in resource["scopeLogs"].as_array().into_iter().flatten() {
                     for record in scope["logRecords"].as_array().into_iter().flatten() {
-                        if record["severityNumber"].as_u64().unwrap_or_default() < lowest {
+                        if record["severityNumber"].as_u64().unwrap_or_default() < from_level {
                             continue;
                         }
                         let mut fields = attributes(&record["attributes"]);

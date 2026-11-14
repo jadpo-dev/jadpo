@@ -303,7 +303,7 @@
         },
         {
           "comment": "contextual keywords: reserved only in these positions.",
-          "match": "^\\s*(package|resource|provide|seed)\\b(?=\\s+[A-Za-z_]|\\s*\\{)(?:\\s+([A-Za-z_][A-Za-z0-9_.]*))?",
+          "match": "^\\s*(package|resource|provide|metric|seed)\\b(?=\\s+[A-Za-z_]|\\s*\\{)(?:\\s+([A-Za-z_][A-Za-z0-9_.]*))?",
           "captures": {
             "1": {
               "name": "keyword.declaration.jadpo"

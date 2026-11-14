@@ -1939,27 +1939,27 @@ You declare your own metrics in a domain's `monitoring.jadpo`
 record them in that domain's actions:
 
 ```jadpo check project=telemetry file=domains/billing/monitoring.jadpo
-/// Checkouts that completed, by plan.
+/// Checkouts that completed, by subscription level.
 metric checkouts_completed = Counter {
-    by: [plan]
+    by: [subscription_level]
 }
 ```
 
-```jadpo check project=telemetry file=domains/billing/types/plan.jadpo hidden
+```jadpo check project=telemetry file=domains/billing/types/subscription_level.jadpo hidden
 /// What an account pays for.
-type Plan = Enum {
+type SubscriptionLevel = Enum {
     free
     paid
 }
 ```
 
 ```jadpo check project=telemetry file=domains/billing/actions/complete_checkout.jadpo
-use billing/types { Plan }
+use billing/types { SubscriptionLevel }
 
-/// Completes a checkout on `plan`.
-action complete_checkout(plan: Plan) {
-    telemetry.checkouts_completed.add(1, plan: plan)
-    telemetry.note(plan: plan)
+/// Completes a checkout at `subscription_level`.
+action complete_checkout(subscription_level: SubscriptionLevel) {
+    telemetry.checkouts_completed.add(1, subscription_level: subscription_level)
+    telemetry.note(subscription_level: subscription_level)
 }
 ```
 
@@ -5879,7 +5879,7 @@ The errors this page describes are built with the feature they belong to.
 | Documents | Not built yet: the application's `documents:` is `toolchain.not_built_yet` where it is written. |
 | Bot protection | Not built yet: the application's `bot_check:` and a route's are `toolchain.not_built_yet` where they are written. |
 | Outgoing webhooks | Partly built: chosen events posted to one address, a `Driver.webhook` connection, and to the addresses customers register through the operations generated on the entity whose `webhooks:` lists them, each with its own secret, sealed, signed as Standard Webhooks signs and retried, through the one runtime-owned network exception ([Outgoing webhooks](#outgoing-webhooks)). Not built yet: the records of a second entity registering addresses. |
-| The `telemetry:` section | Built: `telemetry:` with `endpoint:`, `credential:`, `send:` and `detail:`, or the standard OpenTelemetry variables, sending each request's trace, metrics and log events over OTLP as JSON, interpreted and compiled natively, and from a Workers deployable in each request's `waitUntil`, which no test has yet run under workerd; custom metrics in `monitoring.jadpo` and `telemetry.note`, a personal field refused as either; `jadpo dev`'s copy on the machine, `--export-telemetry`, and `jadpo traces`, `jadpo metrics` and `jadpo logs` ([Telemetry](#telemetry)). Not built yet: spans of schedule runs and deliveries of their own, `jadpo.path` and `jadpo.path_key`, which come with path IDs on requests, the queue's size and its oldest delivery's age, which come with a tick's metrics, a request id from outside, and telemetry in the developer console. |
+| The `telemetry:` section | Partly built: `telemetry:` with `endpoint:`, `credential:`, `send:` and `detail:`, or the standard OpenTelemetry variables, sending each request's trace, metrics and log events over OTLP as JSON, interpreted and compiled natively, and from a Workers deployable in each request's `waitUntil`, which no test has yet run under workerd; custom metrics in `monitoring.jadpo` and `telemetry.note`, a personal field refused as either; `jadpo dev`'s copy on the machine, `--export-telemetry`, and `jadpo traces`, `jadpo metrics` and `jadpo logs` ([Telemetry](#telemetry)). Not built yet: spans of schedule runs and deliveries of their own, `jadpo.path` and `jadpo.path_key`, which come with path IDs on requests, the queue's size and its oldest delivery's age, which come with a tick's metrics, a request id from outside, and telemetry in the developer console. |
 | Path IDs | Not built yet for requests. Each body's ways are numbered, and the gate compares the paths each test's bodies took when it runs them interpreted and compiled, but no request carries a `path` or a `path_key`, and `jadpo path` isn't built. |
 | Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([What Jadpo generates from thresholds](#what-jadpo-generates-from-thresholds)). A route's, action's, schedule's or subscriber's most queries per request, where its `queries:` starts, in the query report. The per-request limits decide which traces `telemetry:` sends whole (`Trace.slow`), and every duration a threshold names is a bucket of its subject's duration histogram ([Telemetry](#telemetry)). Not built yet: starting values from production, and an agent's proposals through MCP. |
 
