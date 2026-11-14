@@ -54,6 +54,11 @@ pub enum Builtin {
     ApiToken,
     /// A service key as `Service.issue_key` gives it, once (area 8).
     ServiceKey,
+    /// An outgoing webhook address's Standard Webhooks secret as
+    /// `Customer.register_webhook` gives it, once (area 16, "Outgoing
+    /// webhooks"; chunk C1b): `whsec_` and its Base64, text an `Output`
+    /// can send, which no entity can keep.
+    WebhookSecret,
     /// A magic link's six-digit code (area 8, "Magic links"), text so a
     /// leading `0` stays: what the application's own sign-in email
     /// writes out and its own sending sends, which no entity can keep.
@@ -132,7 +137,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
 };
 
 impl Builtin {
-    pub const ALL: [Builtin; 49] = [
+    pub const ALL: [Builtin; 50] = [
         Builtin::Bool,
         Builtin::Int,
         Builtin::Decimal,
@@ -173,6 +178,7 @@ impl Builtin {
         Builtin::SearchText,
         Builtin::ApiToken,
         Builtin::ServiceKey,
+        Builtin::WebhookSecret,
         Builtin::SignInCode,
         Builtin::SignInToken,
         Builtin::PostgresUrl,
@@ -208,6 +214,7 @@ impl Builtin {
             Builtin::SearchText => "SearchText",
             Builtin::ApiToken => "ApiToken",
             Builtin::ServiceKey => "ServiceKey",
+            Builtin::WebhookSecret => "WebhookSecret",
             Builtin::SignInCode => "SignInCode",
             Builtin::SignInToken => "SignInToken",
             Builtin::PostgresUrl => "PostgresUrl",
@@ -236,6 +243,7 @@ impl Builtin {
             | Builtin::SearchText
             | Builtin::ApiToken
             | Builtin::ServiceKey
+            | Builtin::WebhookSecret
             | Builtin::SignInCode
             | Builtin::SignInToken
             | Builtin::PostgresUrl
@@ -263,6 +271,7 @@ impl Builtin {
                 | Builtin::SearchText
                 | Builtin::ApiToken
                 | Builtin::ServiceKey
+                | Builtin::WebhookSecret
                 | Builtin::SignInCode
                 | Builtin::SignInToken
                 | Builtin::PostgresUrl

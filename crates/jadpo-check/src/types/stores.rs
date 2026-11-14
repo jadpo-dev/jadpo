@@ -12,11 +12,9 @@
 //! actions' share by name. Only a problem's position reads the typed body
 //! again.
 //!
-//! An action may read another store outside its transaction (area 6), but
-//! that isn't built yet: the runtime runs all of an action's store
-//! operations in the one transaction its first begins, so a read of a
-//! second store is `toolchain.not_built_yet` where it brings that store
-//! in, rather than a fault as it runs.
+//! An action may read another store outside its transaction (area 6;
+//! chunk Q5): the runtime reads it in a snapshot of that store's own, so
+//! only a second store written is refused.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -44,6 +42,10 @@ pub enum Reach {
     Sessions(bool),
     /// A read of either: `sessions.tokens` or `Service.keys`.
     ReadsSessions(bool),
+    /// A write to the addresses customers register for outgoing webhooks,
+    /// beside the records registering them, or with `false` a read of
+    /// them (area 16; chunk C1b).
+    Addresses(bool),
     /// `batches.each` walking a query, by name (area 12): its run is kept
     /// in the query's store, which its items' writes and its position
     /// commit to together, so starting it writes that store.
@@ -62,6 +64,7 @@ fn reaches_of(fact: &Fact) -> Vec<Reach> {
         Fact::Action(callee) => Reach::Calls(callee.name().to_string()),
         Fact::Gets(entity) => Reach::Reads(entity.clone()),
         Fact::Queries(query) => Reach::Queries(query.clone()),
+        Fact::Session(op) if op.on_webhooks() => Reach::Addresses(!op.reads_only()),
         Fact::Session(op) if op.reads_only() => Reach::ReadsSessions(op.on_service()),
         Fact::Session(op) => Reach::Sessions(op.on_service()),
         Fact::Batch(batch) => {
@@ -376,7 +379,11 @@ fn session_effects(db: &dyn Db, project: Project, file: File) -> BTreeSet<String
             matches!(
                 fact,
                 Fact::Session(
-                    SessionOp::Start | SessionOp::End | SessionOp::IssueToken | SessionOp::IssueKey
+                    SessionOp::Start
+                        | SessionOp::End
+                        | SessionOp::IssueToken
+                        | SessionOp::IssueKey
+                        | SessionOp::RegisterWebhook
                 )
             )
         });
@@ -442,7 +449,11 @@ pub fn used_stores(db: &dyn Db, project: Project) -> BTreeMap<String, BTreeMap<S
 
 /// The store the entity called `entity` lives in.
 #[salsa::tracked(returns(ref))]
-fn entity_store<'db>(db: &'db dyn Db, project: Project, entity: Name<'db>) -> Option<String> {
+pub(crate) fn entity_store<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    entity: Name<'db>,
+) -> Option<String> {
     crate::data::entity_model(db, project, entity)
         .as_ref()?
         .store
@@ -451,7 +462,11 @@ fn entity_store<'db>(db: &'db dyn Db, project: Project, entity: Name<'db>) -> Op
 
 /// The entity the query called `query` reads.
 #[salsa::tracked(returns(ref))]
-fn query_entity<'db>(db: &'db dyn Db, project: Project, query: Name<'db>) -> Option<String> {
+pub(crate) fn query_entity<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    query: Name<'db>,
+) -> Option<String> {
     crate::data::queries::query_model(db, project, query)
         .as_ref()
         .map(|query| query.entity.clone())
@@ -461,6 +476,17 @@ fn query_entity<'db>(db: &'db dyn Db, project: Project, query: Name<'db>) -> Opt
 /// write's, or with `reads`, a `get`'s or a query's.
 fn store_of(db: &dyn Db, project: Project, reach: &Reach, reads: bool) -> Option<(String, String)> {
     let name = |text: &str| Name::new(db, text.to_string());
+    if let Reach::Addresses(writes) = reach {
+        if !writes && !reads {
+            return None;
+        }
+        let entity = crate::policy::reach::webhooks_entity(db, project)?;
+        let store = entity_store(db, project, name(&entity)).clone()?;
+        return Some((
+            store,
+            jadpo_std::system::WEBHOOK_ADDRESSES.table.to_string(),
+        ));
+    }
     let keys = match reach {
         Reach::Sessions(keys) => Some(*keys),
         Reach::ReadsSessions(keys) if reads => Some(*keys),
@@ -540,9 +566,9 @@ fn stores_reached(
     out
 }
 
-/// The stores the action or fixture called `name` writes, and those it
-/// uses at all, through every action it calls: what a file's checks read
-/// of the project's stores, one action at a time.
+/// The stores the action or fixture called `name` writes, through every
+/// action it calls: what a file's checks read of the project's stores, one
+/// action at a time.
 #[salsa::tracked(returns(ref))]
 fn stores_of<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Stores {
     let name = name.text(db);
@@ -551,31 +577,28 @@ fn stores_of<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Stores 
             .get(name)
             .cloned()
             .unwrap_or_default(),
-        used: used_stores(db, project)
-            .get(name)
-            .cloned()
-            .unwrap_or_default(),
     }
 }
 
 /// What one action or fixture reaches: each store with an entity it
-/// writes there, and each with an entity it uses there.
+/// writes there.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 struct Stores {
     written: BTreeMap<String, String>,
-    used: BTreeMap<String, String>,
 }
 
-/// Whether any action or fixture uses more than one store.
+/// Whether any action or fixture writes more than one store.
 #[salsa::tracked(returns(copy))]
 fn any_spans_stores(db: &dyn Db, project: Project) -> bool {
-    used_stores(db, project)
+    written_stores(db, project)
         .values()
         .any(|stores| stores.len() > 1)
 }
 
 /// The actions and fixtures in `file` that write more than one store,
-/// each reported at the write or call that brings in a second.
+/// each reported at the write or call that brings in a second. Reading
+/// another store is never one: it is read outside the action's
+/// transaction (area 6, "One store per action").
 #[salsa::tracked(returns(ref))]
 pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     if !any_spans_stores(db, project) {
@@ -584,12 +607,6 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     let reached = |name: &str| stores_of(db, project, Name::new(db, name.to_string()));
     let path = file.path(db);
     let mut out = Vec::new();
-    for (name, found) in reaches(db, project, file) {
-        let own = reached(&name);
-        if own.written.len() <= 1 && own.used.len() > 1 {
-            out.extend(second_store_read(db, project, path, &name, &found));
-        }
-    }
     for (name, found) in reaches(db, project, file) {
         if reached(&name).written.len() <= 1 {
             continue;
@@ -609,7 +626,7 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                     reached(callee).written.clone(),
                     format!("calls `{callee}`, which writes"),
                 ),
-                Reach::Sessions(_) | Reach::Runs(true) => (
+                Reach::Sessions(_) | Reach::Runs(true) | Reach::Addresses(true) => (
                     store_of(db, project, &reach, false).into_iter().collect(),
                     "writes".to_string(),
                 ),
@@ -620,7 +637,8 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                 Reach::Reads(_)
                 | Reach::Queries(_)
                 | Reach::ReadsSessions(_)
-                | Reach::Runs(false) => {
+                | Reach::Runs(false)
+                | Reach::Addresses(false) => {
                     continue;
                 }
             };
@@ -742,69 +760,4 @@ pub fn batch_store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Di
         );
     }
     out
-}
-
-/// Where action `name`, which writes at most one store, first uses
-/// another: the store it writes is its own, or, writing none, the first it
-/// uses.
-fn second_store_read(
-    db: &dyn Db,
-    project: Project,
-    path: &str,
-    name: &str,
-    found: &[(Reach, (u32, u32))],
-) -> Option<Diagnostic> {
-    let reached = |name: &str| stores_of(db, project, Name::new(db, name.to_string()));
-    let mut own: Option<(String, String)> = reached(name)
-        .written
-        .iter()
-        .next()
-        .map(|(store, entity)| (store.clone(), entity.clone()));
-    for (reach, (start, end)) in found {
-        let (stores, how): (Vec<(String, String)>, String) = match reach {
-            Reach::Calls(callee) => (
-                reached(callee)
-                    .used
-                    .iter()
-                    .map(|(s, e)| (s.clone(), e.clone()))
-                    .collect(),
-                format!("calls `{callee}`, which uses"),
-            ),
-            Reach::Writes(_) | Reach::Sessions(_) | Reach::Runs(true) => (
-                store_of(db, project, reach, true).into_iter().collect(),
-                "writes".to_string(),
-            ),
-            Reach::Batch(query) => (
-                store_of(db, project, reach, true).into_iter().collect(),
-                format!("starts a batch over `{query}`, whose run is kept with"),
-            ),
-            Reach::Reads(_) | Reach::Queries(_) | Reach::ReadsSessions(_) | Reach::Runs(false) => (
-                store_of(db, project, reach, true).into_iter().collect(),
-                "reads".to_string(),
-            ),
-        };
-        for (store, entity) in stores {
-            let Some((own_store, own_entity)) = &own else {
-                own = Some((store, entity));
-                continue;
-            };
-            if store == *own_store {
-                continue;
-            }
-            return Some(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("Reading a second store in `{name}` isn't built yet"),
-                )
-                .at(Span::new(path, *start, *end), format!("store `{store}`"))
-                .reason(format!(
-                    "An action may read another store outside its transaction, but this compiler runs all of an action's store operations in the one transaction its first begins; `{name}` uses `{own_entity}` (store `{own_store}`), and here it {how} `{entity}` (store `{store}`)."
-                ))
-                .next(format!(
-                    "Read `{entity}` before `{name}` runs, and pass in what it needs, for now"
-                )),
-            );
-        }
-    }
-    None
 }

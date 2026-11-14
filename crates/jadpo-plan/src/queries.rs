@@ -1577,6 +1577,7 @@ pub(crate) fn plans(
     Vec<QueryPlan>,
     Vec<EntityPlan>,
     Option<jadpo_std::http::IdentityPlan>,
+    Option<jadpo_std::outgoing::WebhooksPlan>,
 ) {
     let model = jadpo_check::data::data_model(db, project);
     let queries = jadpo_check::data::queries::query_models(db, project);
@@ -1617,7 +1618,8 @@ pub(crate) fn plans(
         .collect();
     entity_plans.sort_by(|a, b| a.key.cmp(&b.key));
     let identity = planner.identity(db, project);
-    (query_plans, entity_plans, identity)
+    let webhooks = planner.webhooks(db, project);
+    (query_plans, entity_plans, identity, webhooks)
 }
 
 /// The name each variant of an enum field's column is stored by, in

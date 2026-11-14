@@ -260,6 +260,43 @@ impl Outward {
     }
 }
 
+/// The addresses customers register for outgoing webhooks (area 16,
+/// "Outgoing webhooks"; chunk C1b), posted through the same guard: HTTPS
+/// only, connected only to a public address the name gives as this
+/// attempt is made, so a name that resolves somewhere private since it was
+/// registered is refused; no redirect followed. A refusal by the guard is
+/// [`FetchError::Refused`], which the exception's driver fails as
+/// `misconfigured`.
+impl Fetch for Outward {
+    fn fetch<'a>(&'a self, request: &'a Request) -> LocalFuture<'a, Result<Response, FetchError>> {
+        Box::pin(async move {
+            let deadline = Instant::now() + wait(request.timeout_ms);
+            let target = target(&request.url)
+                .filter(|target| target.secure)
+                .ok_or_else(|| FetchError::Refused("not HTTPS".into()))?;
+            let (answer, lease) = self
+                .client
+                .send(
+                    &target,
+                    outgoing(request, &target)?,
+                    request.repeatable,
+                    deadline,
+                )
+                .await?;
+            let (head, body) = answer.into_parts();
+            let body = tokio::time::timeout_at(deadline, whole(body, MOST_ANSWER))
+                .await
+                .map_err(|_| FetchError::TimedOut)??;
+            lease.give_back(keeps(&head.headers));
+            Ok(Response {
+                status: head.status.as_u16(),
+                headers: headers(&head.headers),
+                body,
+            })
+        })
+    }
+}
+
 impl jadpo_runtime::Outbound for Outward {
     fn get<'a>(
         &'a self,
@@ -1099,6 +1136,61 @@ mod tests {
         let aws = Outward::reaching("sns.eu-west-2.amazonaws.com", at);
         let long = runtime.block_on(aws.get("https://sns.eu-west-2.amazonaws.com/a", 4, 1000));
         assert_eq!(long, Err("an answer too long".to_string()));
+    }
+
+    /// A post to an address a customer registered (chunk C1b) keeps to
+    /// the same guard: plain HTTP, and a name or an address that resolves
+    /// only somewhere private as the post is made, IPv4 or IPv6, are
+    /// refused before anything connects; a redirect is its answer, never
+    /// followed.
+    #[test]
+    fn a_post_to_a_customers_address_keeps_to_https_and_public_addresses() {
+        let runtime = crate::Runtime::new().unwrap();
+        let outward = Outward::default();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let refused = |url: String| match runtime.block_on(outward.fetch(&request(url))) {
+            Err(FetchError::Refused(why)) => why,
+            other => panic!("not refused: {other:?}"),
+        };
+        assert_eq!(refused(format!("http://127.0.0.1:{port}/in")), "not HTTPS");
+        assert_eq!(refused("http://hooks.example.com/in".into()), "not HTTPS");
+        for (url, host) in [
+            (format!("https://localhost:{port}/in"), "localhost"),
+            (format!("https://127.0.0.1:{port}/in"), "127.0.0.1"),
+            (format!("https://[::1]:{port}/in"), "::1"),
+            (
+                format!("https://[::ffff:127.0.0.1]:{port}/in"),
+                "::ffff:127.0.0.1",
+            ),
+            (
+                "https://169.254.169.254/latest".to_string(),
+                "169.254.169.254",
+            ),
+            ("https://10.0.0.8/in".to_string(), "10.0.0.8"),
+            ("https://[fe80::1]/in".to_string(), "fe80::1"),
+        ] {
+            assert_eq!(refused(url), format!("`{host}` has no public address"));
+        }
+        assert!(listener.accept().is_err(), "nothing connected");
+
+        let elsewhere = TcpListener::bind("127.0.0.1:0").unwrap();
+        elsewhere.set_nonblocking(true).unwrap();
+        let (base, server) = serve_once(format!(
+            "HTTP/1.1 307 Temporary Redirect\r\nLocation: http://127.0.0.1:{}/in\r\nContent-Length: 0\r\n\r\n",
+            elsewhere.local_addr().unwrap().port()
+        ));
+        let at = base.strip_prefix("http://").unwrap().parse().unwrap();
+        let customer = Outward::reaching("hooks.customer.example", at);
+        let answer = runtime
+            .block_on(customer.fetch(&request("https://hooks.customer.example/in".into())))
+            .expect("an answer");
+        assert_eq!(answer.status, 307);
+        let seen = server.join().unwrap();
+        assert!(seen.starts_with("POST /in HTTP/1.1\r\n"), "{seen}");
+        assert!(seen.contains("Host: hooks.customer.example\r\n"), "{seen}");
+        assert!(elsewhere.accept().is_err(), "the redirect wasn't followed");
     }
 
     /// Nothing listening is a call that never left; a server that never

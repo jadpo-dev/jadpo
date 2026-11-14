@@ -2660,12 +2660,23 @@ own connection, holding the first's lock until the second is seen waiting
 for it: the counter commits twice with one attempt each, and a counter
 after a read reruns the second (`crates/jadpo-cli/tests/writes.rs`).
 The driver also sends `time` values and one-dimensional arrays.
-`Host::database(store)` gives each store by its connection's name, and an
-action's transaction is begun in the store its first store operation
-names; asking for a second store in one action is a fault, since an action
-writes one store (area 5), and the checker refuses an action that reads
-a second store (`toolchain.not_built_yet`): reads outside the
-transaction are not built yet. `jadpo_runtime::migrate` and `standing` apply a
+`Host::database(store)` gives each store by its connection's name. An
+action's transaction is in its own store, which its plan names
+(`CallablePlan::store`, `ActionPlan::store`, through `ActionBody::store`):
+the one it writes, counting the actions it calls, else the one its outbox
+or its record of steps is kept in; a body with no plan, and a batch,
+begins it in the first store it uses, or the batch's. Asking to write
+another store is a fault, since an action writes one store (area 5) and
+the checker refuses two (`store.action_spans_stores`). A read of another
+store runs outside the transaction (area 6, "One store per action"; chunk
+Q5): `Boundary::outside` begins a read-only snapshot of that store at
+repeatable read at its first read there, every later read of it shares
+it, and it is rolled back as the action ends (`Boundary::end_outside`)
+and before an outside call goes out, with the action's own snapshot. Its
+rows are never held to their versions (`Ctx::loaded` keeps only the
+action's own store's), and the isolation level counts only the records an
+action that writes loads in its own store (`types::loading`), since no
+level of its transaction holds a read of another. `jadpo_runtime::migrate` and `standing` apply a
 store's pending migrations (each `jadpo_std::Migration`, as the checker
 reads it from the migration folders) and say where it stands, recording each in the
 store's `jadpo_migrations` table under the table's lock (a row lock, never
@@ -5540,9 +5551,46 @@ connection (`Through::Published`), so personal data in it reaches the
 personal-data report and needs `ErasureNotPossible`; a deployable that
 runs subscribers reaches the connection (`Via::Publishing`) and keeps
 each published event's codec. Each API's OpenAPI document carries
-`x-jadpo-events` (`openapi::published_events`). Addresses customers
-register, and the runtime-owned network exception that would guard them,
-aren't built.
+`x-jadpo-events` (`openapi::published_events`).
+
+**Addresses customers register** (area 16, "Outgoing webhooks"; chunk
+C1b). `jadpo_check::outgoing::webhooks` reads the one entity whose
+`webhooks:` lists events (`EntityModel::webhooks`), each read by
+`published::Reader` as `publishing:`'s are and given the one field typed
+`<Entity>.id` that names its record (`WebhookEvent::holder`). The
+generated operations are `SessionOp::RegisterWebhook`, `Webhooks` and
+`RemoveWebhook`, typed by `types::body::identity::webhook_call` and
+reaching the entity's store (`stores::Reach::Addresses`) and its
+`update` or `read` grant (`policy::reach`); `register_webhook`'s response
+is never kept for a repeat (`unkept_responses`). The plan's
+`jadpo_std::outgoing::WebhooksPlan` (in `EventsPlan::webhooks`) holds
+the statements of `jadpo_sql::outgoing`, gated by the entity's grants as
+a service's keys are (`Planner::gated`): `register_webhook` first holds
+the record `FOR NO KEY UPDATE` and counts its addresses, and each event
+has a subscriber `webhooks <Entity> <event>` whose target is
+`Target::Webhooks`. Both executors reach `jadpo_runtime::outgoing`
+through `http::session`: an address `address_problem` refuses is
+`webhook_address_invalid`, an eleventh `webhook_addresses_full`, and a
+kept one is sealed with `Started::field_ring` bound to
+`jadpo_webhook_addresses.secret` and its `id`, the secret made from the
+invocation's secret randomness. `runner::to_addresses` reads the
+record's addresses (`outgoing::due`, skipping those in
+`jadpo_webhook_sends`), opens each secret, signs the event as
+`publishing::signature` does at the host's time, and sends one keyed
+`post` of `outgoing::Outgoing` through the seam to
+`jadpo_std::outgoing::CONNECTION`, so the secret never reaches the seam;
+a `2xx` is kept as reached (`outgoing::reached`), and the delivery ends
+as the first answer worth retrying, else the first refusal. The driver
+factory builds `jadpo_drivers::webhook::Outgoing` for that connection
+only over `Supplies::outward`, which a deployable's host alone gives:
+natively `fetch::Outward`, whose `Fetch` refuses anything but HTTPS and
+connects only to a public address the name resolves to at that
+connection; on Workers `WorkersOutbound`'s, with
+`global_fetch_strictly_public` in the generated Wrangler file. `jadpo
+dev` logs it (`PublishLog`), a test's host catches it
+(`Plan::publishing_connections`), and the secrets are re-sealed with the
+sealed fields (`purge::reseals`). The network report's row and
+`network.jadpo_record`'s entry come from `connections::Row::registered`.
 
 **Files and a file's run** (area 16; area 12, "How a file's run is kept"). The `files` capability's
 first part is on the seam: `jadpo_runtime::files` sends a store's `put`

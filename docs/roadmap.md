@@ -277,17 +277,7 @@ work below (Richard, 2026-11-08).
    apps (`jadpo package add` from a folder or a URL) and the cross-app break
    check; choosing a provider when deploying,
    when an app other people run needs it.
-   - [ ] **C1b Outgoing webhooks to customers' addresses** `opus · xhigh`:
-     area 16, "Outgoing webhooks"; area 11, "The network report"; notes for
-     area 16, "Addresses customers register". A customer registers an address
-     through operations generated on the customer's entity, as
-     `Service.issue_key` works, under policy; the runtime generates each
-     address's Standard Webhooks secret, shows it once and stores it sealed
-     with `field_encryption_key:`. The runtime-owned network exception is
-     built on the `Outward` client (HTTPS only, public addresses checked at
-     every attempt, no redirects), listed once in the network report.
-     Done when an event reaches an address a customer registered, signed
-     with that address's own secret, and a private address is refused.
+   - [x] **C1b Outgoing webhooks to customers' addresses**: area 16, "Outgoing webhooks", and its notes, "Addresses customers register, as built" and "Delivering to customers' addresses"; compiler-runtime, "Addresses customers register".
    - [ ] **K1 Importers other than OpenAPI** `opus · high`, when first
      needed: area 11, "An importer" and "Installing safely"; area 14,
      "Commands for packages". `smithy`, `postman`, `har` (a capture's
@@ -359,9 +349,10 @@ work below (Richard, 2026-11-08).
       include's rows rechecked in code and an aggregate counting the
       records the code keeps, in area 20, "In an include or an aggregate",
       and its notes.
-    - [ ] **Q5 Reading a second store** `opus · xhigh`: area 6, "One store per
-      action". Reads of another store outside the action's transaction, in place of
-      `toolchain.not_built_yet`.
+    - [x] **Q5 Reading a second store**: reads of another store in a
+      read-only snapshot of its own, outside the action's transaction, in
+      area 6, "One store per action" and "Which isolation level an action
+      runs at", and its notes; compiler-runtime, "Isolation and migrations".
     - [ ] **Q6 A database only when something needs one** `opus · high`, with
       the first feature that can run without one: area 5, "Stores".
     - [x] **Q7 A standard type swapped under stored data**: the swap's

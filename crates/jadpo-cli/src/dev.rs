@@ -187,8 +187,8 @@ enum Event {
 }
 
 /// `jadpo dev`'s stand-in for every connection that publishes events
-/// outward: each event is logged on the screen and delivered, and nothing
-/// leaves the machine (area 11, "Nothing leaves the machine in `jadpo
+/// outward, and for the addresses customers register: each event is logged
+/// on the screen and delivered, and nothing leaves the machine (area 11, "Nothing leaves the machine in `jadpo
 /// dev`").
 struct PublishLog(Arc<Shared>);
 
@@ -198,7 +198,13 @@ impl jadpo_runtime::capability::Capability for PublishLog {
         call: &'a jadpo_runtime::capability::Call,
     ) -> jadpo_runtime::LocalFuture<'a, jadpo_runtime::capability::Answer> {
         Box::pin(async move {
+            // An event for a connection's address, or one signed for an
+            // address a customer registered (area 16; chunk C1b).
             let Some(published) = jadpo_runtime::publishing::Published::from_value(&call.input)
+                .or_else(|| {
+                    jadpo_runtime::outgoing::Outgoing::from_value(&call.input)
+                        .map(|outgoing| outgoing.published)
+                })
             else {
                 return jadpo_runtime::capability::Answer::Misconfigured;
             };
@@ -1147,8 +1153,11 @@ pub fn serve_unwatched_to(
                 if plan.events().emails.connection.as_deref() == Some(connection) {
                     return Some(0);
                 }
-                if jadpo_std::connections::webhooks(plan.connections())
-                    .any(|name| name == connection)
+                // Every event published outward, the addresses customers
+                // register among them, is logged, never sent.
+                if connection == jadpo_std::outgoing::CONNECTION
+                    || jadpo_std::connections::webhooks(plan.connections())
+                        .any(|name| name == connection)
                 {
                     return Some(2);
                 }

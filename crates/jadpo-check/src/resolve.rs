@@ -1178,6 +1178,11 @@ impl Names<'_> {
         if jadpo_std::http::SessionOp::key_op(&name).is_some() {
             return;
         }
+        // So are the webhooks entity's address operations (area 16; chunk
+        // C1b), which know which entity has `webhooks:`.
+        if jadpo_std::http::SessionOp::webhook_op(&name).is_some() {
+            return;
+        }
         let mut operations: Vec<String> =
             ENTITY_OPERATIONS.iter().map(|op| op.to_string()).collect();
         operations.extend(symbol.transitions.iter().cloned());

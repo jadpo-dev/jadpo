@@ -853,7 +853,7 @@ rules! {
     PUBLISH_TYPE_UNREVIEWED: "publish.type_unreviewed", area 14, Error, Agent,
         "A provider package's public type isn't in its `reviewed:` list";
     PUBLISHING_INVALID: "publishing.invalid", area 12, Error, Agent,
-        "A connection in `publishing:` isn't one events are published through, or lists an event that can't leave the app";
+        "A connection in `publishing:` isn't one events are published through, an entity's `webhooks:` lists an event that names none of its records, or either lists an event that can't leave the app";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "An aggregate in a query is missing an argument it needs, or is given one it doesn't take";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,

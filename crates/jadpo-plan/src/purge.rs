@@ -494,6 +494,19 @@ pub(crate) fn reseals(model: &DataModel) -> Vec<jadpo_std::write::ResealPlan> {
                 count: text::reseal_count(&entity.table, &field.column),
             });
         }
+        // The secrets of the addresses its records register for outgoing
+        // webhooks, sealed beside them (area 16; chunk C1b).
+        if entity.webhooks {
+            let table = jadpo_std::system::WEBHOOK_ADDRESSES.table;
+            out.push(jadpo_std::write::ResealPlan {
+                field: format!("{}.{}", entity.name, jadpo_std::outgoing::SECTION),
+                store: store.clone(),
+                bound: jadpo_std::outgoing::SECRET_BOUND.to_string(),
+                select: text::reseal_select(table, "secret", jadpo_std::write::RESEAL_BATCH),
+                update: text::reseal_update(table, "secret"),
+                count: text::reseal_count(table, "secret"),
+            });
+        }
     }
     out
 }

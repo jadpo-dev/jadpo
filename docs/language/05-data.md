@@ -67,8 +67,10 @@ entity Order {
 }
 ```
 
-An action writes to at most one store. Work that spans two stores goes
-through an event and a subscriber ([Background work](12-jobs-and-events.md)).
+An action writes to at most one store, and may read others outside its
+transaction ([One store per action](06-reads-and-writes.md#one-store-per-action)).
+Work that writes two stores goes through an event and a subscriber
+([Background work](12-jobs-and-events.md)).
 An entity in Redis must say when its records expire
 ([Entities in Redis](#entities-in-redis)).
 

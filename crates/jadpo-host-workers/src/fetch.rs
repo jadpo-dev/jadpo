@@ -418,6 +418,46 @@ impl Outbound for WorkersOutbound {
     }
 }
 
+/// The addresses customers register for outgoing webhooks (area 16,
+/// "Outgoing webhooks"; chunk C1b), posted under the same guard: HTTPS
+/// only, no address written as one that isn't public and no `localhost`,
+/// the platform's network refusing a name that resolves somewhere private
+/// (`global_fetch_strictly_public`, which the generated Wrangler file sets
+/// where outgoing webhooks are delivered); no redirect followed. A refusal
+/// by the guard is [`FetchError::Refused`].
+impl Fetch for WorkersOutbound {
+    fn fetch<'a>(&'a self, request: &'a Request) -> LocalFuture<'a, Result<Response, FetchError>> {
+        Box::pin(async move {
+            let parsed = web_sys::Url::new(&request.url)
+                .map_err(|_| FetchError::Refused("not an address".into()))?;
+            if parsed.protocol() != "https:" {
+                return Err(FetchError::Refused("not HTTPS".into()));
+            }
+            if self.reach.as_deref() != Some(parsed.origin().as_str()) {
+                outbound_host(&parsed.hostname()).map_err(FetchError::Refused)?;
+            }
+            let abort = AbortController::new().map_err(|error| refused(&error))?;
+            let _cancellation = AbortOnDrop(abort.clone());
+            let went = Cell::new(false);
+            let exchange = async {
+                let place = self.opening.place().await;
+                went.set(true);
+                let answer = send(request, &abort, place).await?;
+                let body = whole(&answer, MOST_ANSWER).await?;
+                Ok(Response {
+                    status: answer.status(),
+                    headers: headers(&answer),
+                    body,
+                })
+            };
+            match within(request.timeout_ms, exchange).await {
+                Some(done) => done,
+                None => Err(ran_out(&went, &abort)),
+            }
+        })
+    }
+}
+
 impl WorkersOutbound {
     /// A `GET` of `url`, or with `form` a `POST` of it, under the guards,
     /// with `headers` besides its own.

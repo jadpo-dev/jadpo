@@ -2750,6 +2750,7 @@ key in the `jadpo: { }` group, and a failure's is its code:
 | Passkeys | the app signs users in with [passkeys](08-identity.md#passkeys) | `passkey_challenge_expired`, `passkey_rejected`, `passkey_already_registered`, `passkey_limit_reached`, `passkey_not_found` |
 | Confirming a request | a route asks for a passkey's confirmation ([Confirm one request with a passkey](08-identity.md#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)) | `confirmation_required` |
 | External identity tokens | an API accepts external identity tokens ([Ways to sign in](08-identity.md#ways-to-sign-in)) | `authentication_misconfigured` |
+| Outgoing webhooks | an entity's records register addresses for [outgoing webhooks](16-built-in-services.md#outgoing-webhooks) | `webhook_address_invalid`, `webhook_addresses_full` |
 
 The failures of signing in that only some methods can give
 (`user_disabled`, `service_disabled`, `csrf_rejected`) are on only where an

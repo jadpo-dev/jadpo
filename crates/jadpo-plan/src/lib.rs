@@ -40,6 +40,7 @@ mod emails;
 mod export;
 mod flags;
 mod identity;
+mod outgoing;
 mod policy;
 mod providers;
 mod purge;
@@ -113,6 +114,12 @@ pub struct CallablePlan {
     /// the one it writes or the one `events: { store: }` names (area 12,
     /// chunk 6.1b).
     pub outbox: Option<String>,
+    /// For an action or fixture: the store a transaction of its own is in,
+    /// the one it writes, counting the actions it calls, else the one its
+    /// outbox or its record is kept in. A read of any other store runs
+    /// outside that transaction (area 6, "One store per action"; chunk
+    /// Q5). `None` begins it in the first store it uses.
+    pub store: Option<String>,
     /// For an action whose longest way makes several changing calls, run
     /// where its key survives a retry: where the runtime keeps its record
     /// and its step shape (area 12, "Several changing calls in one
@@ -407,6 +414,41 @@ fn events_plan(
             });
         }
     }
+    // Each event the addresses customers register receive, with the
+    // subscriber that posts it to each address the record it names has:
+    // tried as a subscriber is by default, then left for an operator (area
+    // 16, "Outgoing webhooks"; chunk C1b).
+    if let Some(entity) = &jadpo_check::outgoing::webhooks(db, project).entity {
+        for event in &entity.events {
+            let subscriber = SubscriberPlan {
+                key: jadpo_std::outgoing::subscriber(&entity.entity, event.key.as_str()),
+                name: format!(
+                    "send {} to the addresses {} registers",
+                    event.type_name, entity.entity
+                ),
+                event: event.key.as_str().to_string(),
+                target: Target::Webhooks {
+                    type_name: event.type_name.clone(),
+                    holder: event.holder.clone(),
+                },
+                attempts: defaults.attempts,
+                within_ms: defaults.within_ms,
+                // It reads the addresses as the system, and the event is
+                // posted as it is.
+                tenant: TenantFrom::Nowhere,
+                store: None,
+                connections: Vec::new(),
+                through: None,
+                file: entity.path.clone(),
+                line: 1,
+            };
+            subscribers.push(if running {
+                subscriber
+            } else {
+                subscriber.elsewhere()
+            });
+        }
+    }
     // A data request's steps, each a delivery due when the step is: tried
     // for as long as a request may take, then left for an operator (area
     // 15, "Data requests").
@@ -445,6 +487,8 @@ fn events_plan(
         files,
         erasure,
         privacy,
+        // The planner's, set where the routes' plans are made.
+        webhooks: None,
     }
 }
 
@@ -951,7 +995,7 @@ impl Plan {
                 found.iter().map(|(_, _, _, body)| body.as_ref()),
             )
         });
-        let (queries, entities, identity) =
+        let (queries, entities, identity, webhooks) =
             queries::plans(db, project, &mut types, &json_types, &|key| {
                 pruning.is_none_or(|pruning| pruning.keep.callables.contains(key))
                     || used.as_ref().is_some_and(|used| used.gets.contains(key))
@@ -1210,6 +1254,8 @@ impl Plan {
         // What the runtime keeps for an action with several changing calls
         // (area 12; chunk 7.5b).
         let record_plans = jadpo_check::types::record_plans(db, project);
+        // The stores each action and fixture writes (area 6).
+        let written = jadpo_check::types::written_stores(db, project);
         // Each `batches.each` call, as its site decodes it (area 12).
         let mut batch_sites: Vec<sites::BatchSite> = Vec::new();
         for (key, kind, file, body) in found {
@@ -1315,9 +1361,22 @@ impl Plan {
                 .then(|| jadpo_check::events::outbox_store(db, project, key.name()))
                 .flatten();
             let record = record_plans.get(&key).cloned();
+            // Where its transaction is (area 6, "One store per action";
+            // chunk Q5): the store it writes, else its outbox's or its
+            // record's, so a read of any other store runs outside it.
+            let store = matches!(kind, Kind::Action | Kind::Fixture)
+                .then(|| {
+                    written
+                        .get(key.name())
+                        .and_then(|stores| stores.keys().next().cloned())
+                        .or_else(|| outbox.clone())
+                        .or_else(|| record.as_ref().map(|record| record.store.clone()))
+                })
+                .flatten();
             let paths = jadpo_graph::paths::number(&body);
             callables.push(CallablePlan {
                 outbox,
+                store,
                 record,
                 key,
                 kind,
@@ -1620,7 +1679,7 @@ impl Plan {
             }
         }
         let running = pruning.is_none_or(|pruning| pruning.runs().subscribers);
-        let events = events_plan(
+        let mut events = events_plan(
             db,
             project,
             &callable_number,
@@ -1628,6 +1687,9 @@ impl Plan {
             &setting_number,
             running,
         );
+        // What the webhooks entity's operations run, which a deployable
+        // serving its routes needs whether or not it delivers (chunk C1b).
+        events.webhooks = webhooks;
         let schedules = schedules_plan(
             db,
             project,
@@ -1843,6 +1905,7 @@ impl Plan {
                         isolation: callable.isolation,
                         gate: callable.gate.clone(),
                         outbox: callable.outbox.clone(),
+                        store: callable.store.clone(),
                         record: callable.record.clone(),
                     },
                 )

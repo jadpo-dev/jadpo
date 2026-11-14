@@ -16,6 +16,14 @@
 //! caller handles (an outcome `match`) runs inside a savepoint: when it
 //! fails, what it wrote and emitted is undone and the caller carries on,
 //! since the action is all-or-nothing whoever calls it (area 6).
+//!
+//! An action's transaction is in its own store, the one its plan names
+//! (the store it writes, counting what it calls), or, with none, the first
+//! store it uses. It may read another store, outside that transaction
+//! (area 6, "One store per action"; chunk Q5): each other store it reads
+//! is read in a read-only snapshot of that store's own, begun at its first
+//! read there, which every read of that store shares and which is rolled
+//! back when the action ends or an outside call goes out.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -44,6 +52,16 @@ pub(crate) struct Boundary {
     transaction: Option<Box<dyn Transaction>>,
     /// The store it was begun in.
     store: Option<String>,
+    /// The store its transaction is in, as the outermost action's plan
+    /// says: the one it writes, counting the actions it calls, else the
+    /// one its events or its record are kept in. `None` for a body with no
+    /// such plan, whose transaction is in the first store it uses.
+    own: Option<String>,
+    /// A read-only snapshot of each other store it has read, by store,
+    /// begun at its first read there (area 6, "One store per action";
+    /// chunk Q5): nothing in one commits with the action, and none is
+    /// open while an outside call is out.
+    outside: BTreeMap<String, Box<dyn Transaction>>,
     /// What the action emitted, for after it commits.
     outbox: Vec<Event>,
     /// The runs it asked to stop, when the application keeps its runs in
@@ -112,9 +130,12 @@ pub(crate) struct Boundary {
 }
 
 impl Boundary {
-    pub(crate) fn new(isolation: Isolation) -> Boundary {
+    /// A boundary whose transaction begins at `isolation`, in `own` when
+    /// its plan names the store, otherwise in the first store it uses.
+    pub(crate) fn new(isolation: Isolation, own: Option<String>) -> Boundary {
         Boundary {
             isolation,
+            own,
             ..Default::default()
         }
     }
@@ -135,9 +156,10 @@ impl Boundary {
     /// Its transaction in `store`, begun at the first store operation at
     /// its isolation level in the store `capabilities` give (area 6), or
     /// again after an outside call closed the last ([`Boundary::close_snapshot`]).
-    /// An action writes one store (area 5), so asking for a second is a
-    /// fault. `writes` when what runs in it may write: then an outside call
-    /// can't close it.
+    /// A read of another store than its own runs outside it, in that
+    /// store's snapshot ([`Boundary::outside`]). An action writes one store
+    /// (area 5), so asking to write a second is a fault. `writes` when what
+    /// runs in it may write: then an outside call can't close it.
     pub(crate) async fn transaction(
         &mut self,
         capabilities: &Capabilities<'_>,
@@ -147,11 +169,15 @@ impl Boundary {
         if self.read_only && writes {
             return Err(StoreError::Fault(READ_ONLY_WRITE.into()));
         }
-        if let Some(open) = &self.store
-            && open != store
+        let own = self.own.as_deref().or(self.store.as_deref());
+        if let Some(own) = own
+            && own != store
         {
+            if !writes {
+                return self.outside(capabilities, store).await;
+            }
             return Err(StoreError::Fault(format!(
-                "an action writes one store, and this one already uses `{open}`, not `{store}`"
+                "an action writes one store, and this one writes `{own}`, not `{store}`"
             )));
         }
         if self.transaction.is_none() {
@@ -177,11 +203,47 @@ impl Boundary {
         }
     }
 
+    /// The snapshot of `store`, another store than its own, begun now at
+    /// its first read there: read-only at repeatable read, so every read of
+    /// that store in the action sees one state of it (area 6, "One store
+    /// per action"; chunk Q5).
+    async fn outside(
+        &mut self,
+        capabilities: &Capabilities<'_>,
+        store: &str,
+    ) -> Result<&mut dyn Transaction, StoreError> {
+        if !self.outside.contains_key(store) {
+            let Some(database) = capabilities.database(store) else {
+                return Err(StoreError::Fault(format!("no store called `{store}`")));
+            };
+            let snapshot = database.begin_read_only(Isolation::RepeatableRead).await?;
+            self.outside.insert(store.to_string(), snapshot);
+        }
+        match self.outside.get_mut(store) {
+            Some(snapshot) => Ok(snapshot.as_mut()),
+            None => Err(StoreError::Fault("no snapshot".into())),
+        }
+    }
+
+    /// Rolls back the snapshot of each other store it read, having written
+    /// nothing there: as it ends, and before an outside call goes out. A
+    /// store that can't roll one back loses its connection, which ends it.
+    pub(crate) async fn end_outside(&mut self) {
+        for (_, snapshot) in std::mem::take(&mut self.outside) {
+            let _ = snapshot.rollback().await;
+        }
+    }
+
     /// Keeps `ids`, rows of `versions`' table its open transaction just
-    /// loaded, while it has only read: the rows whose versions an outside
-    /// call reads before it closes the transaction (chunk 7.4).
-    pub(crate) fn loaded(&mut self, versions: &RowVersions, ids: Vec<SqlValue>) {
-        if self.transaction.is_none() || self.wrote || ids.is_empty() {
+    /// loaded in `store`, while it has only read: the rows whose versions
+    /// an outside call reads before it closes the transaction (chunk 7.4).
+    /// Rows read in another store's snapshot are held to nothing.
+    pub(crate) fn loaded(&mut self, store: &str, versions: &RowVersions, ids: Vec<SqlValue>) {
+        if self.transaction.is_none()
+            || self.wrote
+            || ids.is_empty()
+            || self.store.as_deref() != Some(store)
+        {
             return;
         }
         let (_, kept) = self
@@ -196,8 +258,16 @@ impl Boundary {
     /// transaction"; chunk 7.4): the snapshot reads the versions of the
     /// rows it loaded, which a write after the call is held to, and rolls
     /// back, having written nothing. A transaction that has written is
-    /// left open, and the call refused.
+    /// left open, and the call refused. Each other store's snapshot is
+    /// rolled back too (chunk Q5).
     pub(crate) async fn close_snapshot(&mut self) -> Result<(), StoreError> {
+        let closed = self.close_own_snapshot().await;
+        self.end_outside().await;
+        closed
+    }
+
+    /// [`Boundary::close_snapshot`] of its own transaction.
+    async fn close_own_snapshot(&mut self) -> Result<(), StoreError> {
         if self.wrote {
             return Ok(());
         }
@@ -467,6 +537,15 @@ pub trait ActionBody<'p> {
         None
     }
 
+    /// The store a boundary of its own begins its transaction in, as its
+    /// plan says: the one it writes, counting the actions it calls, else
+    /// the one its events or its record are kept in. A read of any other
+    /// store runs outside the transaction (area 6, "One store per action";
+    /// chunk Q5). `None` begins it in the first store it uses.
+    fn store(&self) -> Option<&str> {
+        None
+    }
+
     /// For an action whose longest way makes several changing calls, run
     /// where its key survives a retry: where the record of its steps is
     /// kept, its step shape, and the key its answers are sealed with, as
@@ -621,6 +700,7 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
     let read_only = ctx.take_read_only();
     let hold = ctx.own_boundary();
     let isolation = body.isolation();
+    let own_store = body.store().map(str::to_string);
     let mut attempt = 1;
     // Run again after a concurrent change, its keyed calls take the same
     // steps, so each sends the same key (area 12, "Keys"; chunk 7.2c).
@@ -632,7 +712,7 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
     loop {
         ctx.set_steps(steps);
         crate::steps::rewind(ctx);
-        ctx.open_boundary(isolation);
+        ctx.open_boundary(isolation, own_store.clone());
         if read_only && let Some(boundary) = ctx.boundary_mut() {
             boundary.set_read_only();
         }
@@ -647,7 +727,8 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
         if matches!(outcome, Outcome::Value(_)) {
             outcome = sealed(ctx, body.outbox(), outcome).await;
         }
-        let boundary = ctx.close_boundary();
+        let mut boundary = ctx.close_boundary();
+        boundary.end_outside().await;
         let succeeded = matches!(outcome, Outcome::Value(_));
         if hold && succeeded && !boundary.concurrent_change {
             ctx.keep_held(Held {
@@ -1670,7 +1751,7 @@ mod tests {
                 if ctx.read_transaction("main").await.is_err() {
                     return refused();
                 }
-                ctx.loaded(&versions(), vec![SqlValue::Uuid(ROW)]);
+                ctx.loaded("main", &versions(), vec![SqlValue::Uuid(ROW)]);
                 if ctx.close_snapshot().await.is_err() {
                     return refused();
                 }
@@ -1896,5 +1977,327 @@ mod tests {
         let mut body = Write::new(true, ok);
         assert_eq!(run(&host, &mut body), ok());
         assert_eq!(body.runs, 3);
+    }
+
+    // --- reads of another store (area 6, "One store per action"; chunk Q5)
+
+    /// Two stores, `main` and `catalogue`, each writing down what happens
+    /// to it, every line prefixed with its name, in one log.
+    #[derive(Default)]
+    struct Shared {
+        lines: RefCell<Vec<String>>,
+    }
+
+    struct Named {
+        name: &'static str,
+        log: Rc<Shared>,
+    }
+
+    impl Named {
+        fn line(&self, what: &str) {
+            self.log
+                .lines
+                .borrow_mut()
+                .push(format!("{} {what}", self.name));
+        }
+    }
+
+    struct NamedTx(Named);
+
+    impl Transaction for NamedTx {
+        fn query<'a>(
+            &'a mut self,
+            sql: &'a str,
+            _params: &'a [SqlValue],
+        ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>> {
+            self.0.line(sql);
+            Box::pin(async move {
+                Ok(match sql {
+                    "VERSIONS" => vec![vec![SqlValue::Uuid(ROW), SqlValue::Text("1".into())]],
+                    _ => Vec::new(),
+                })
+            })
+        }
+
+        fn execute<'a>(
+            &'a mut self,
+            sql: &'a str,
+            _params: &'a [SqlValue],
+        ) -> LocalFuture<'a, Result<u64, StoreError>> {
+            self.0.line(sql);
+            Box::pin(async { Ok(1) })
+        }
+
+        fn batch<'a>(&'a mut self, _sql: &'a str) -> LocalFuture<'a, Result<(), StoreError>> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
+            self.0.line("commit");
+            Box::pin(async { Ok(()) })
+        }
+
+        fn rollback(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
+            self.0.line("rollback");
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    impl Database for Named {
+        fn begin_at(
+            &self,
+            isolation: Isolation,
+        ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+            self.line(&format!("begin {}", isolation.word()));
+            let tx = NamedTx(Named {
+                name: self.name,
+                log: Rc::clone(&self.log),
+            });
+            Box::pin(async move { Ok(Box::new(tx) as Box<dyn Transaction>) })
+        }
+
+        fn begin_read_only(
+            &self,
+            isolation: Isolation,
+        ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+            self.line(&format!("begin {} read only", isolation.word()));
+            let tx = NamedTx(Named {
+                name: self.name,
+                log: Rc::clone(&self.log),
+            });
+            Box::pin(async move { Ok(Box::new(tx) as Box<dyn Transaction>) })
+        }
+    }
+
+    struct TwoStores {
+        main: Named,
+        catalogue: Named,
+        log: Rc<Shared>,
+    }
+
+    impl TwoStores {
+        fn new() -> TwoStores {
+            let log = Rc::new(Shared::default());
+            TwoStores {
+                main: Named {
+                    name: "main",
+                    log: Rc::clone(&log),
+                },
+                catalogue: Named {
+                    name: "catalogue",
+                    log: Rc::clone(&log),
+                },
+                log,
+            }
+        }
+
+        fn lines(&self) -> Vec<String> {
+            self.log.lines.borrow().clone()
+        }
+    }
+
+    impl Host for TwoStores {
+        fn database(&self, store: &str) -> Option<&dyn Database> {
+            match store {
+                "main" => Some(&self.main),
+                "catalogue" => Some(&self.catalogue),
+                _ => None,
+            }
+        }
+
+        fn random(&self, _bytes: &mut [u8]) -> bool {
+            false
+        }
+    }
+
+    /// What a body does, step by step, against the two stores.
+    #[derive(Clone, Copy, Debug)]
+    enum Step {
+        /// Reads `store`, loading a row of `table` there.
+        Read(&'static str, &'static str),
+        Write(&'static str),
+        /// An outside call goes out: the snapshot closes.
+        Call,
+    }
+
+    /// A body running `steps`, whose plan says its transaction is in
+    /// `store`; a step the store refuses ends it with what it said.
+    struct Steps {
+        store: Option<&'static str>,
+        steps: Vec<Step>,
+        isolation: Isolation,
+    }
+
+    impl<'p> ActionBody<'p> for Steps {
+        fn isolation(&self) -> Isolation {
+            self.isolation
+        }
+
+        fn store(&self) -> Option<&str> {
+            self.store
+        }
+
+        fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
+            Box::pin(async move {
+                for step in self.steps.clone() {
+                    let done = match step {
+                        Step::Read(store, table) => {
+                            let read = match ctx.read_transaction(store).await {
+                                Ok(transaction) => transaction.query(table, &[]).await.map(|_| ()),
+                                Err(error) => Err(error),
+                            };
+                            if read.is_ok() {
+                                let versions = RowVersions {
+                                    table: table.into(),
+                                    id: 0,
+                                    sql: "VERSIONS".into(),
+                                };
+                                ctx.loaded(store, &versions, vec![SqlValue::Uuid(ROW)]);
+                            }
+                            read
+                        }
+                        Step::Write(store) => match ctx.transaction(store).await {
+                            Ok(transaction) => transaction.execute("WRITE", &[]).await.map(|_| ()),
+                            Err(error) => Err(error),
+                        },
+                        Step::Call => ctx.close_snapshot().await,
+                    };
+                    if let Err(error) = done {
+                        return Outcome::Value(Value::text(&format!("{error:?}")));
+                    }
+                }
+                Outcome::Value(Value::Unit)
+            })
+        }
+    }
+
+    fn run_steps(host: &TwoStores, body: &mut Steps) -> Outcome {
+        let places = Places::new();
+        let mut ctx = Ctx::new(&places, host, Env::default());
+        block_on(action(&mut ctx, body)).expect("nothing waits")
+    }
+
+    #[test]
+    fn a_read_of_another_store_runs_in_a_read_only_snapshot_of_its_own() {
+        let host = TwoStores::new();
+        let mut body = Steps {
+            store: Some("main"),
+            steps: vec![
+                Step::Read("catalogue", "product"),
+                Step::Read("main", "shelf"),
+                Step::Write("main"),
+                Step::Read("catalogue", "product"),
+            ],
+            isolation: Isolation::ReadCommitted,
+        };
+        assert_eq!(run_steps(&host, &mut body), ok());
+        assert_eq!(
+            host.lines(),
+            [
+                // Its first read is of `catalogue`, which isn't its own
+                // store: a snapshot of `catalogue`'s own, at repeatable
+                // read, which every read of `catalogue` in the action
+                // shares.
+                "catalogue begin repeatable_read read only",
+                "catalogue product",
+                // Its own transaction, in the store it writes, at its level.
+                "main begin read_committed",
+                "main shelf",
+                "main WRITE",
+                "catalogue product",
+                // Rolled back as the action ends, having written nothing.
+                "catalogue rollback",
+                "main commit",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_write_to_another_store_is_still_a_fault() {
+        let host = TwoStores::new();
+        let mut body = Steps {
+            store: Some("main"),
+            steps: vec![Step::Write("main"), Step::Write("catalogue")],
+            isolation: Isolation::RepeatableRead,
+        };
+        let Outcome::Value(Value::Text(said)) = run_steps(&host, &mut body) else {
+            panic!("refused");
+        };
+        assert!(said.contains("writes one store"), "{said}");
+        // And from its first statement, a read of another store first.
+        let host = TwoStores::new();
+        let mut body = Steps {
+            store: Some("main"),
+            steps: vec![Step::Read("catalogue", "product"), Step::Write("catalogue")],
+            isolation: Isolation::RepeatableRead,
+        };
+        let Outcome::Value(Value::Text(said)) = run_steps(&host, &mut body) else {
+            panic!("refused");
+        };
+        assert!(said.contains("writes one store"), "{said}");
+    }
+
+    #[test]
+    fn an_outside_call_closes_the_other_stores_snapshot_and_checks_only_its_own_rows() {
+        let host = TwoStores::new();
+        let mut body = Steps {
+            store: Some("main"),
+            steps: vec![
+                Step::Read("main", "shelf"),
+                Step::Read("catalogue", "product"),
+                Step::Call,
+                Step::Read("catalogue", "product"),
+                Step::Write("main"),
+            ],
+            isolation: Isolation::RepeatableRead,
+        };
+        assert_eq!(run_steps(&host, &mut body), ok());
+        assert_eq!(
+            host.lines(),
+            [
+                "main begin repeatable_read",
+                "main shelf",
+                "catalogue begin repeatable_read read only",
+                "catalogue product",
+                // Only the rows loaded in its own store are held to their
+                // versions; nothing in `catalogue` is.
+                "main VERSIONS",
+                "main rollback",
+                "catalogue rollback",
+                "catalogue begin repeatable_read read only",
+                "catalogue product",
+                "main begin repeatable_read",
+                "main WRITE",
+                "catalogue rollback",
+                "main commit",
+            ]
+        );
+    }
+
+    #[test]
+    fn with_no_store_of_its_own_the_first_store_it_uses_holds_its_transaction() {
+        let host = TwoStores::new();
+        let mut body = Steps {
+            store: None,
+            steps: vec![
+                Step::Read("catalogue", "product"),
+                Step::Read("main", "shelf"),
+                Step::Read("catalogue", "product"),
+            ],
+            isolation: Isolation::RepeatableRead,
+        };
+        assert_eq!(run_steps(&host, &mut body), ok());
+        assert_eq!(
+            host.lines(),
+            [
+                "catalogue begin repeatable_read",
+                "catalogue product",
+                "main begin repeatable_read read only",
+                "main shelf",
+                "catalogue product",
+                "main rollback",
+                "catalogue commit",
+            ]
+        );
     }
 }

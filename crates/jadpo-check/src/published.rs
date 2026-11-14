@@ -325,6 +325,9 @@ pub fn publishing(db: &dyn Db, project: Project) -> Publishing {
                 project,
                 path: &found.path,
                 lookup: &lookup,
+                ownership: &Ownership::Root,
+                reason: REASON,
+                audit: true,
                 out: &mut out.problems,
             };
             let Some(block) = member.block() else {
@@ -369,25 +372,33 @@ pub fn publishing(db: &dyn Db, project: Project) -> Publishing {
     out
 }
 
-struct Reader<'r, 'db> {
-    db: &'db dyn Db,
-    project: Project,
-    path: &'r str,
-    lookup: &'r Lookup<'db>,
-    out: &'r mut Vec<Diagnostic>,
+/// What reads a list of events to publish: `publishing:`'s, or an
+/// entity's `webhooks:` ([`crate::outgoing`]).
+pub(crate) struct Reader<'r, 'db> {
+    pub(crate) db: &'db dyn Db,
+    pub(crate) project: Project,
+    pub(crate) path: &'r str,
+    pub(crate) lookup: &'r Lookup<'db>,
+    /// Where the list is written, which its names are read in.
+    pub(crate) ownership: &'r Ownership,
+    /// What a refusal says the list is for.
+    pub(crate) reason: &'static str,
+    /// Whether `AuditEntryRecorded` may be listed.
+    pub(crate) audit: bool,
+    pub(crate) out: &'r mut Vec<Diagnostic>,
 }
 
 impl Reader<'_, '_> {
-    fn invalid(&mut self, span: Span, message: String, label: &str, next: &str) {
+    pub(crate) fn invalid(&mut self, span: Span, message: String, label: &str, next: &str) {
         self.out.push(
             Diagnostic::new(&rule::PUBLISHING_INVALID, message)
                 .at(span, label.to_string())
-                .reason(REASON)
+                .reason(self.reason)
                 .next(next.to_string()),
         );
     }
 
-    fn span(&self, node: &impl AstNode) -> Span {
+    pub(crate) fn span(&self, node: &impl AstNode) -> Span {
         node_span(self.path, node.syntax())
     }
 
@@ -459,7 +470,7 @@ impl Reader<'_, '_> {
     }
 
     /// `events: [...]`: each a public event, with where it is written.
-    fn events(&mut self, member: &ast::Member) -> Option<Vec<(PublishedEvent, Span)>> {
+    pub(crate) fn events(&mut self, member: &ast::Member) -> Option<Vec<(PublishedEvent, Span)>> {
         let Some(Expr::ListExpr(list)) = member.value() else {
             self.invalid(
                 self.span(member),
@@ -472,7 +483,7 @@ impl Reader<'_, '_> {
         let mut out: Vec<(PublishedEvent, Span)> = Vec::new();
         let names = Names {
             path: self.path,
-            ownership: &Ownership::Root,
+            ownership: self.ownership,
             table: self.lookup,
             types: self.lookup,
             std: StdNames::get(),
@@ -528,6 +539,7 @@ impl Reader<'_, '_> {
         if let Ty::Opaque(name, args) = ty
             && args.is_empty()
             && name == jadpo_std::audit::AUDIT_ENTRY_RECORDED
+            && self.audit
         {
             let audited = crate::data::data_model(self.db, self.project)
                 .entities
@@ -547,6 +559,19 @@ impl Reader<'_, '_> {
                 name: written.to_string(),
                 type_name: jadpo_std::publishing::default_type(jadpo_std::audit::AUDIT_EVENT_KEY),
             });
+        }
+        // An audit entry is the runtime's own, naming no customer's record.
+        if let Ty::Opaque(name, args) = ty
+            && args.is_empty()
+            && name == jadpo_std::audit::AUDIT_ENTRY_RECORDED
+        {
+            self.invalid(
+                at.clone(),
+                format!("`{name}` can't go to the webhook addresses records register"),
+                "the runtime's own event",
+                "List an event of your own that names the record whose addresses receive it",
+            );
+            return None;
         }
         let event = match ty {
             Ty::Named(name) if self.lookup.base(name) == Some(FieldsBase::Event) => name.clone(),

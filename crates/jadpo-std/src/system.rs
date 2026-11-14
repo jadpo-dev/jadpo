@@ -1097,6 +1097,51 @@ pub const FLAG_CHANGES: SystemTable = SystemTable {
     }],
 };
 
+/// The addresses customers register for outgoing webhooks (area 16,
+/// "Outgoing webhooks"; chunk C1b), beside the records that register them:
+/// each address's `url`, the record it was registered on (`holder_id`),
+/// and its Standard Webhooks secret, sealed with the application's
+/// `field_encryption_key:` (bound to this column and the address's `id`),
+/// since signing needs it back. Nothing here is ever listed with its
+/// secret.
+pub const WEBHOOK_ADDRESSES: SystemTable = SystemTable {
+    table: "jadpo_webhook_addresses",
+    columns: &[
+        column("id", SqlType::Uuid, false),
+        column("holder_id", SqlType::Uuid, false),
+        column("url", SqlType::Text, false),
+        column("secret", SqlType::Bytes, false),
+        column("registered_at", SqlType::Timestamp, false),
+    ],
+    primary_key: &["id"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["holder_id"],
+        reason: "system webhook addresses",
+    }],
+};
+
+/// Each address an event's delivery to a customer's addresses has
+/// reached (chunk C1b), beside the delivery: an attempt after a failure
+/// sends the event only to the addresses not here, so an address that
+/// took it isn't sent it again. Deleted with its delivery.
+pub const WEBHOOK_SENDS: SystemTable = SystemTable {
+    table: "jadpo_webhook_sends",
+    columns: &[
+        column("delivery", SqlType::Uuid, false),
+        column("address_id", SqlType::Uuid, false),
+        column("reached_at", SqlType::Timestamp, false),
+    ],
+    primary_key: &["delivery", "address_id"],
+    unique: &[],
+    foreign_keys: &[SystemForeignKey {
+        columns: &["delivery"],
+        table: DELIVERIES.table,
+    }],
+    indexes: &[],
+};
+
 /// What must commit with an action's own writes, in every store that
 /// holds an entity, since any of them can be written: the outbox, its
 /// deliveries, handled records and idempotency keys; the log of what
@@ -1123,7 +1168,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 32] = [
+pub const ALL: [&SystemTable; 34] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -1156,6 +1201,8 @@ pub const ALL: [&SystemTable; 32] = [
     &FLAG_CHANGES,
     &HOUSEKEEPING,
     &FILES,
+    &WEBHOOK_ADDRESSES,
+    &WEBHOOK_SENDS,
 ];
 
 /// The system table called `name`, without its prefix; `None` for a name

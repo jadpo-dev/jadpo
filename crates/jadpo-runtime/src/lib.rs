@@ -132,6 +132,7 @@ mod migrate;
 pub mod operators;
 pub mod outbox;
 mod outcome;
+pub mod outgoing;
 mod outside;
 pub mod paths;
 mod places;

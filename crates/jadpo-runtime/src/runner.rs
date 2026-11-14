@@ -765,6 +765,27 @@ async fn attempt(
                 )),
             }
         }
+        // A chosen event posted to each address the record it names has
+        // registered (area 16, "Outgoing webhooks"; chunk C1b), each signed
+        // with its own secret, under the event's id.
+        Target::Webhooks { type_name, holder } => {
+            let traceparent = delivery
+                .trace
+                .map(|parent| ctx.new_span(parent))
+                .or_else(|| ctx.trace())
+                .map(|trace| trace.header());
+            Box::pin(to_addresses(
+                ctx,
+                &events,
+                &delivery,
+                type_name,
+                holder,
+                traceparent,
+                budget,
+                within,
+            ))
+            .await
+        }
         // A person's erasure in another store, or their entry in the log,
         // after the main commit (area 15; chunk P4c): each safe to repeat,
         // and each settled as any delivery is, so a store that can't do it
@@ -1223,6 +1244,89 @@ async fn send(
         Err(Unanswered::Failure(failure)) => Outcome::Failed(failure),
         Err(Unanswered::Fault(kind)) => Outcome::Fault(ctx.fault(kind, Frame::ENTRY)),
     })
+}
+
+/// The event `delivery` carries posted to each address the record its
+/// field `holder` names has registered and this delivery hasn't reached
+/// yet, under `type_name` (area 16, "Outgoing webhooks"; chunk C1b). Each
+/// is signed with its own secret as it is sent, and kept as reached once
+/// it answers `2xx`, so a retry sends the event only to those that didn't
+/// take it. A record with no addresses has nothing to send. How the
+/// delivery ends is the first answer worth trying again, else the first
+/// refusal, else success: one address that can't take it never stops the
+/// others getting it.
+#[allow(clippy::too_many_arguments)]
+async fn to_addresses(
+    ctx: &mut Ctx<'_>,
+    events: &crate::outbox::Events<'_>,
+    delivery: &crate::outbox::Delivery,
+    type_name: &str,
+    holder: &str,
+    traceparent: Option<String>,
+    budget: &Budget<'_>,
+    mut within: Option<&mut crate::LocalFuture<'_, ()>>,
+) -> Result<Outcome, Cut> {
+    let defect = |ctx: &mut Ctx<'_>, what: String| {
+        Ok(Outcome::Fault(
+            ctx.fault(FaultKind::Defect(what), Frame::ENTRY),
+        ))
+    };
+    let Some(plan) = events.plan.webhooks.as_ref() else {
+        return defect(ctx, "an event for addresses with no `webhooks:`".into());
+    };
+    let Value::Record(record) = &delivery.value else {
+        return defect(ctx, "an event that isn't a record".into());
+    };
+    let Some(named) = record.get(holder).cloned() else {
+        return defect(
+            ctx,
+            format!("an event without its record's field `{holder}`"),
+        );
+    };
+    let published = match crate::publishing::published(events, delivery, type_name, traceparent) {
+        Ok(published) => published,
+        Err(what) => return defect(ctx, what),
+    };
+    let addresses = match crate::outgoing::due(ctx, plan, delivery, &named).await {
+        Ok(addresses) => addresses,
+        // A store that can't be read now is tried again.
+        Err(_) => return Ok(Outcome::Failed(Box::new(crate::unavailable()))),
+    };
+    let mut again: Option<Outcome> = None;
+    let mut refused: Option<Outcome> = None;
+    for address in addresses {
+        let secret = match &address.secret {
+            Ok(secret) => secret.clone(),
+            // A secret no key opens can never sign: the address is
+            // misconfigured for good, until it is registered again.
+            Err(_) => {
+                refused.get_or_insert(Outcome::Failed(Box::new(crate::misconfigured())));
+                continue;
+            }
+        };
+        let now = crate::steps::wall(ctx);
+        let call = crate::outgoing::Outgoing::signed(&address.url, &published, &secret, now).call();
+        drop(secret);
+        let sent = send(ctx, call, budget, within.as_deref_mut()).await?;
+        match &sent {
+            Outcome::Value(_) => {
+                let ended = crate::steps::wall(ctx);
+                crate::outgoing::reached(ctx, delivery, &address.id, ended).await;
+            }
+            outcome
+                if matches!(
+                    crate::outbox::after(outcome),
+                    crate::outbox::After::Retry { .. }
+                ) =>
+            {
+                again.get_or_insert(sent);
+            }
+            _ => {
+                refused.get_or_insert(sent);
+            }
+        }
+    }
+    Ok(again.or(refused).unwrap_or(Outcome::Value(Value::Unit)))
 }
 
 /// Eight random bytes for a retry's jitter, from the host; none from a
@@ -1717,7 +1821,7 @@ impl<'c, 'p> Batch<'c, 'p> {
                 "a batch opened inside a running action".into(),
             ));
         }
-        ctx.open_boundary(isolation);
+        ctx.open_boundary(isolation, Some(store.to_string()));
         if let Err(error) = ctx.transaction(store).await {
             ctx.close_boundary();
             return Err(error);
@@ -1727,14 +1831,17 @@ impl<'c, 'p> Batch<'c, 'p> {
         Ok(Batch { ctx, saved })
     }
 
-    /// Opens a batch whose transaction begins at its first store operation
-    /// rather than at once: one item whose action makes outside calls, a
-    /// batch of its own (area 12, "How a run goes"; chunk 7.4b). What it
-    /// reads before a call is a snapshot the call closes, and the run's
-    /// own statements ([`Batch::writing`]) run in the transaction after
-    /// it, with the item's writes. `ctx` must be running no action.
+    /// Opens a batch in `store` whose transaction begins at its first
+    /// store operation there rather than at once: one item whose action
+    /// makes outside calls, a batch of its own (area 12, "How a run goes";
+    /// chunk 7.4b). What it reads before a call is a snapshot the call
+    /// closes, and the run's own statements ([`Batch::writing`]) run in the
+    /// transaction after it, with the item's writes; what it reads of
+    /// another store runs outside it (chunk Q5). `ctx` must be running no
+    /// action.
     pub fn open_for_calls(
         ctx: &'c mut Ctx<'p>,
+        store: &str,
         isolation: Isolation,
         system: System,
     ) -> Result<Batch<'c, 'p>, StoreError> {
@@ -1743,7 +1850,7 @@ impl<'c, 'p> Batch<'c, 'p> {
                 "a batch opened inside a running action".into(),
             ));
         }
-        ctx.open_boundary(isolation);
+        ctx.open_boundary(isolation, Some(store.to_string()));
         let saved = ctx.runner();
         ctx.become_system(system);
         Ok(Batch { ctx, saved })
@@ -1793,6 +1900,7 @@ impl<'c, 'p> Batch<'c, 'p> {
         let Batch { ctx, saved } = self;
         let written = crate::boundary::seal(ctx, None).await;
         let mut boundary = ctx.close_boundary();
+        boundary.end_outside().await;
         if let Err(error) = written {
             ctx.restore_runner(saved);
             if let Some(transaction) = boundary.take_transaction() {
@@ -1819,6 +1927,7 @@ impl<'c, 'p> Batch<'c, 'p> {
     pub async fn rollback(self) {
         let Batch { ctx, saved } = self;
         let mut boundary = ctx.close_boundary();
+        boundary.end_outside().await;
         ctx.restore_runner(saved);
         if let Some(transaction) = boundary.take_transaction() {
             let _ = transaction.rollback().await;

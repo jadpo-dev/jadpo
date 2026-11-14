@@ -262,11 +262,16 @@ fn system_now_ms() -> i64 {
         .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(0))
 }
 
-/// What a native deployable gives the driver factory: [`supplies`] and the
+/// What a native deployable gives the driver factory: [`supplies`], the
 /// server's own disk, each `Driver.disk` store kept at its connection's
-/// `path:` (area 16, "The disk driver"; chunk B2).
+/// `path:` (area 16, "The disk driver"; chunk B2), and HTTP under the
+/// runtime's guard ([`fetch::Outward`]) for outgoing webhooks.
 pub fn deployable_supplies() -> Supplies {
-    supplies().with_disk(Rc::new(files::ServerDisk))
+    supplies()
+        .with_disk(Rc::new(files::ServerDisk))
+        // The addresses customers register are reached only through the
+        // runtime's own guard (area 16, "Outgoing webhooks"; chunk C1b).
+        .with_outward(Rc::new(fetch::Outward::default()))
 }
 
 /// The runtime's host natively, one per worker thread: each connection's
