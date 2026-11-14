@@ -2789,8 +2789,8 @@ diarist's notes with `notes:read`, and writes them with `notes.write`:
 
 ```jadpo check project=scoped-notes
 config {
-    issuer: Url
     audience: Text
+    issuer: Url
 }
 
 principal {
