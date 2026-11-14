@@ -96,12 +96,13 @@ pub fn json(run: &Run) -> Json {
                                 _ => Json::Null,
                             };
                             fields.push(("requests".to_string(), sent));
-                            if let Some(Made::Erasure(erasure)) = made {
-                                fields.push((
-                                    "makes".to_string(),
-                                    Json::array(erasure.makes.iter().map(Json::from)),
-                                ));
-                            }
+                            let makes = match made {
+                                Some(Made::Erasure(erasure)) => {
+                                    Json::array(erasure.makes.iter().map(Json::from))
+                                }
+                                _ => Json::Null,
+                            };
+                            fields.push(("makes".to_string(), makes));
                         }
                         entry
                     }),
@@ -573,7 +574,7 @@ pub fn schema() -> Json {
                 ),
                 (
                     "makes",
-                    "With --full: for the test generated for a person entity, the entity of each record it makes before it erases the person, in order; left out for any other test",
+                    "With --full: for the test generated for a person entity, the entity of each record it makes before it erases the person, in order; null for any other test",
                 ),
                 ("outcome", "passed or failed"),
                 ("failure", "Only when it failed"),
