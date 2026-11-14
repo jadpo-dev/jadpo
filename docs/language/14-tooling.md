@@ -303,6 +303,12 @@ session only. Each request's line lists its calls, and each call is logged
 for `jadpo calls` ([Provider calls in
 development](11-integrations.md#provider-calls-in-development)).
 
+**Telemetry.** Every request's trace, metrics and log events are kept on
+your machine for `jadpo traces`, `jadpo metrics` and `jadpo logs`.
+`--export-telemetry` also sends them where the `telemetry:` section
+says, and stops the start when it has nowhere to send
+([Telemetry](16-built-in-services.md#telemetry)).
+
 **Stopping.** Ctrl-c or SIGTERM stops it cleanly: the server finishes the
 requests it has, its background work gives back what it holds, and it
 exits 0. A second signal ends it at once ([Running background
@@ -1681,6 +1687,9 @@ the files it keeps, and check a deploy before it happens.
 |---|---|
 | `jadpo flags` | Lists feature flags; `set`, `reset`, `remove` |
 | `jadpo calls` | The development call log |
+| `jadpo traces` | The requests `jadpo dev` traced |
+| `jadpo metrics` | The metrics of those requests, added up |
+| `jadpo logs` | The events the app logged under `jadpo dev` |
 | `jadpo email` | The dev inbox and the sending domain's records |
 | `jadpo files` | Lists, reads and copies a store's files |
 | `jadpo batches` | Lists batch runs; `show`, `cancel` |
@@ -1751,6 +1760,24 @@ Shows the provider calls `jadpo dev` made, faked or real. It takes
 
 An unknown action, call, operation or answer is `cli.calls_arguments`,
 with the nearest ([Debugging](17-debugging-and-review.md)).
+
+### `jadpo traces`, `jadpo metrics` and `jadpo logs`
+
+Read the traces, metrics and logs `jadpo dev` keeps on your machine, the
+last 500 requests' worth in `build/dev/telemetry/`
+([Traces, metrics and logs in development](17-debugging-and-review.md#traces-metrics-and-logs-in-development)).
+Each takes `--json` and the same filters, which choose requests:
+`--route`, `--action`, `--domain`, `--failure`, `--slower-than` and
+`--request`. `--follow` keeps printing as new ones arrive.
+
+- `jadpo traces` is a table of the requests, oldest first: each one's id,
+  route, how it ended, its time, its spans and its trace's id.
+- `jadpo metrics` adds up the metrics of the requests chosen, a line for
+  each series, with how many values it has and what they come to.
+- `jadpo logs` lists the events those requests logged, each with its
+  time, level, request and fields; `--level` chooses the lowest level.
+
+A filter it can't read is `cli.telemetry_arguments`.
 
 ### `jadpo email`
 
@@ -1942,7 +1969,7 @@ naming the nearest rule.
 
 Not built yet: the debugging commands of [Debugging and
 review](17-debugging-and-review.md), which are proposed there:
-`jadpo trace <id>`, `jadpo traces`, `jadpo metrics`, `jadpo logs`,
+`jadpo trace <id>`,
 `jadpo watch`, `jadpo why` for anything but a schedule, `jadpo call`,
 `jadpo console`, `jadpo mcp`, `jadpo replay` and `jadpo test new --from`;
 `jadpo path` ([Path IDs](16-built-in-services.md#path-ids)); and
@@ -4197,6 +4224,7 @@ yet, or that other commands replace.
 | `cli.sql_arguments` | `sql` | A `jadpo sql` command names no query or action, one the project doesn't declare, or an action that writes nothing |
 | `cli.sql_explain_unavailable` | `sql --explain` | A `jadpo sql --explain` command can't make the disposable database it plans a query's statements on |
 | `cli.suggest_arguments` | `suggest` | A `jadpo suggest` command names an action it doesn't have, or a suggestion the last scan didn't find |
+| `cli.telemetry_arguments` | `traces`, `metrics`, `logs` | `jadpo traces`, `jadpo metrics` or `jadpo logs` is given something it doesn't take, or a filter it can't read |
 | `cli.test_arguments` | `test` | A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use, or asks for `--affected` with nothing to compare with or `--interactive` where it can't open |
 | `cli.toolchain_arguments` | `toolchain` | A `jadpo toolchain` command names an action it doesn't have, or a release that isn't kept |
 | `cli.translations_arguments` | `translations` | A `jadpo translations` command names no action, one it doesn't have, or a locale the project doesn't translate into |

@@ -29,6 +29,9 @@ pub enum ItemKind {
     Package,
     Resource,
     Provide,
+    /// `metric name = Counter { }` in a domain's `monitoring.jadpo` (area
+    /// 16, "Custom metrics").
+    Metric,
     /// `application { }`, `config { }` and the other unnamed singletons;
     /// the item's name is the keyword.
     Singleton,
@@ -60,6 +63,7 @@ impl ItemKind {
             ItemKind::Package => "package",
             ItemKind::Resource => "resource",
             ItemKind::Provide => "provider mapping",
+            ItemKind::Metric => "metric",
             ItemKind::Singleton => "setting block",
         }
     }
@@ -450,6 +454,7 @@ fn lower(decl: &Decl, index: u32) -> Option<Item> {
             index,
         ),
         Decl::ProvideDecl(decl) => item(ItemKind::Provide, name_of(decl.name())?, false, index),
+        Decl::MetricDecl(decl) => item(ItemKind::Metric, name_of(decl.name())?, false, index),
         Decl::SingletonDecl(decl) => {
             let keyword = decl.keyword()?.text().to_string();
             let (connections, packages, connected) = connections(decl.member_list());

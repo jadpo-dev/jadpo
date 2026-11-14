@@ -377,6 +377,13 @@ impl<'a> Canon<'a> {
             Callee::Batch(op) => format!("batches.{}", op.name()),
             Callee::Files { connection, op } => format!("{connection}.{}", op.name()),
             Callee::AdvanceClock => "clock.advance".into(),
+            Callee::Telemetry(jadpo_std::telemetry::Recording::Note { .. }) => {
+                "telemetry.note".into()
+            }
+            Callee::Telemetry(jadpo_std::telemetry::Recording::Metric { metric, kind, .. }) => {
+                let name = metric.rsplit('.').next().unwrap_or(metric);
+                format!("telemetry.{name}.{}", kind.operation())
+            }
             Callee::Unknown => "…".into(),
             other => other
                 .key()

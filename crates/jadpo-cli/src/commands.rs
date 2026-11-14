@@ -41,6 +41,7 @@ pub use crate::sql::sql;
 use crate::suggest::nearest;
 pub use crate::suggestions::suggest;
 use crate::table::{self, SHELLS};
+pub use crate::telemetry::{logs, metrics, traces};
 pub use crate::test::test;
 pub use crate::translations::translations;
 

@@ -74,6 +74,7 @@ pub enum SyntaxKind {
     END_KW,
     INCLUDE_KW,
     MATCHES_KW,
+    METRIC_KW,
     NEAREST_KW,
     PACKAGE_KW,
     PROVIDE_KW,
@@ -122,6 +123,7 @@ pub enum SyntaxKind {
     PACKAGE_DECL,
     RESOURCE_DECL,
     PROVIDE_DECL,
+    METRIC_DECL,
     SINGLETON_DECL,
     VISIBILITY,
     DECLINE,
@@ -195,7 +197,7 @@ pub enum SyntaxKind {
 
 use self::SyntaxKind::*;
 
-const ALL: [SyntaxKind; 185] = [
+const ALL: [SyntaxKind; 187] = [
     EOF,
     L_BRACE,
     R_BRACE,
@@ -264,6 +266,7 @@ const ALL: [SyntaxKind; 185] = [
     END_KW,
     INCLUDE_KW,
     MATCHES_KW,
+    METRIC_KW,
     NEAREST_KW,
     PACKAGE_KW,
     PROVIDE_KW,
@@ -312,6 +315,7 @@ const ALL: [SyntaxKind; 185] = [
     PACKAGE_DECL,
     RESOURCE_DECL,
     PROVIDE_DECL,
+    METRIC_DECL,
     SINGLETON_DECL,
     VISIBILITY,
     DECLINE,
@@ -517,6 +521,7 @@ impl SyntaxKind {
             "end" => END_KW,
             "include" => INCLUDE_KW,
             "matches" => MATCHES_KW,
+            "metric" => METRIC_KW,
             "nearest" => NEAREST_KW,
             "package" => PACKAGE_KW,
             "provide" => PROVIDE_KW,
@@ -600,6 +605,7 @@ impl SyntaxKind {
             END_KW => "end",
             INCLUDE_KW => "include",
             MATCHES_KW => "matches",
+            METRIC_KW => "metric",
             NEAREST_KW => "nearest",
             PACKAGE_KW => "package",
             PROVIDE_KW => "provide",
@@ -684,6 +690,7 @@ macro_rules! T {
     [end] => { $crate::SyntaxKind::END_KW };
     [include] => { $crate::SyntaxKind::INCLUDE_KW };
     [matches] => { $crate::SyntaxKind::MATCHES_KW };
+    [metric] => { $crate::SyntaxKind::METRIC_KW };
     [nearest] => { $crate::SyntaxKind::NEAREST_KW };
     [package] => { $crate::SyntaxKind::PACKAGE_KW };
     [provide] => { $crate::SyntaxKind::PROVIDE_KW };

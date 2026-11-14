@@ -16,7 +16,7 @@ use crate::tree::{self, node_span};
 
 /// The sections `application { }` holds and this compiler builds, in the
 /// order the error lists them, each read by its area's check.
-pub const SECTIONS: [&str; 20] = [
+pub const SECTIONS: [&str; 21] = [
     // Area 1: the Jadpo release line.
     "jadpo",
     // Area 8: the app's name, and how long a revoked caller may act.
@@ -32,10 +32,11 @@ pub const SECTIONS: [&str; 20] = [
     // Area 10: the client's address, and the root translations' review.
     "client_address",
     "translations",
-    // Area 16: rate limits' store, flags' store, and email.
+    // Area 16: rate limits' store, flags' store, email, and telemetry.
     "rate_limits",
     "flags",
     "email",
+    "telemetry",
     // Area 12: where events, schedules and steps are kept, queues read,
     // and the events published outward.
     "events",
@@ -54,7 +55,7 @@ pub const SECTIONS: [&str; 20] = [
 
 /// The sections an area page decides that this compiler doesn't build,
 /// each with why accepting it would mislead.
-pub const NOT_BUILT: [(&str, &str); 5] = [
+pub const NOT_BUILT: [(&str, &str); 4] = [
     (
         "bot_check",
         "Checking a challenge token before a route or Jadpo's own public endpoints run is bot protection, which isn't built yet: accepted, every request would get through.",
@@ -70,10 +71,6 @@ pub const NOT_BUILT: [(&str, &str); 5] = [
     (
         "scanning",
         "Scanning every upload through a `scanning` connection isn't built yet: accepted, files would be kept unscanned.",
-    ),
-    (
-        "telemetry",
-        "Sending traces, metrics and logs through `telemetry:` isn't built yet: accepted, nothing would be sent.",
     ),
 ];
 

@@ -200,6 +200,8 @@ pub struct WorkersHost {
     /// The deployable's log, which a rate-limiting binding that can't be
     /// asked is logged to once an isolate (chunk 8.4b).
     log: Option<Log>,
+    /// The isolate's telemetry (chunk O1).
+    telemetry: Option<Rc<jadpo_runtime::telemetry::Telemetry>>,
     /// When the cron invocation it serves began on the monotonic clock:
     /// each tick it runs has what is left of the cron's 15 minutes.
     cron: Option<u64>,
@@ -275,6 +277,7 @@ impl WorkersHost {
             outbound: WorkersOutbound::default().counted(Rc::clone(&opening)),
             rate_limits: None,
             log: None,
+            telemetry: None,
             cron: None,
             handed_on: None,
             opening,
@@ -315,6 +318,16 @@ impl WorkersHost {
     /// isolate (chunk 8.4b).
     pub fn with_log(mut self, log: Log) -> WorkersHost {
         self.log = Some(log);
+        self
+    }
+
+    /// Sends the program's telemetry through the isolate's `telemetry`
+    /// (chunk O1), which hears every event the runtime logs.
+    pub fn with_telemetry(
+        mut self,
+        telemetry: Option<Rc<jadpo_runtime::telemetry::Telemetry>>,
+    ) -> WorkersHost {
+        self.telemetry = telemetry;
         self
     }
 
@@ -529,9 +542,16 @@ impl Host for WorkersHost {
     }
 
     fn log(&self, event: &str, fields: serde_json::Map<String, serde_json::Value>) {
+        if let Some(telemetry) = &self.telemetry {
+            telemetry.log(Host::now_ms(self), event, &fields);
+        }
         if let Some(log) = &self.log {
             log.event_of(event, fields);
         }
+    }
+
+    fn telemetry(&self) -> Option<&jadpo_runtime::telemetry::Telemetry> {
+        self.telemetry.as_deref()
     }
 
     /// Web Crypto's `getRandomValues` ([`web_crypto_random`]).

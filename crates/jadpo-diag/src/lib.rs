@@ -232,6 +232,8 @@ rules! {
         "A `jadpo sql --explain` command can't make the disposable database it plans a query's statements on";
     CLI_SUGGEST_ARGUMENTS: "cli.suggest_arguments", area 14, Error, Agent,
         "A `jadpo suggest` command names an action it doesn't have, or a suggestion the last scan didn't find";
+    CLI_TELEMETRY_ARGUMENTS: "cli.telemetry_arguments", area 17, Error, Agent,
+        "`jadpo traces`, `jadpo metrics` or `jadpo logs` is given something it doesn't take, or a filter it can't read";
     CLI_TEST_ARGUMENTS: "cli.test_arguments", area 14, Error, Agent,
         "A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use, or asks for `--affected` with nothing to compare with or `--interactive` where it can't open";
     CLI_TOOLCHAIN_ARGUMENTS: "cli.toolchain_arguments", area 14, Error, Agent,
@@ -1272,6 +1274,14 @@ rules! {
         "A variable is declared with `let`, `const` or `val`, words from other languages, where Jadpo writes `var`";
     SYNTAX_VARIABLE_TYPE_REQUIRED: "syntax.variable_type_required", area 2, Error, Agent,
         "A variable or a constant is declared without a type";
+    TELEMETRY_METRIC_INVALID: "telemetry.metric_invalid", area 16, Error, Agent,
+        "A `metric` isn't in a domain's `monitoring.jadpo`, isn't a `Counter`, `Measure` or `Gauge`, or doesn't list its labels by name";
+    TELEMETRY_PERSONAL_DATA: "telemetry.personal_data", area 16, Error, Agent,
+        "A personal field is given as a metric's label or a note's attribute, which would send it to the monitoring service";
+    TELEMETRY_RECORD_INVALID: "telemetry.record_invalid", area 16, Error, Agent,
+        "A `telemetry.` call names a metric its domain doesn't declare, records it the wrong way, or gives a value, label or attribute of a type it can't carry";
+    TELEMETRY_SETTINGS_INVALID: "telemetry.settings_invalid", area 16, Error, Agent,
+        "The application's `telemetry:` section holds something it doesn't take, or a value it can't use";
     TEST_ASSERTION_FAILED: "test.assertion_failed", area 13, Error, Agent,
         "A test's `assert` doesn't hold: its condition is false, or a call checked with `assert … fails` returned or failed differently";
     TEST_DATABASE_UNAVAILABLE: "test.database_unavailable", area 14, Error, Human,

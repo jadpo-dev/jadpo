@@ -1819,18 +1819,17 @@ action builds an `Output` of its own from the entries it reads.
 <!-- topic: telemetry -->
 
 The generated runtime reports what it does as OpenTelemetry traces,
-metrics and logs, the open standard most monitoring tools accept. With
-no `telemetry:` section, nothing is sent. To send it, add one to
-`application { }`. It isn't a connection, because there is one protocol
-and no vendor-specific code: a vendor is an endpoint and a header. Its
-host is still listed in the network report
+metrics and logs, the open standard most monitoring tools accept, over
+its protocol, OTLP, as JSON over HTTP. With no `telemetry:` section,
+nothing is sent. To send it, add one to `application { }`. It isn't a
+connection, because there is one protocol and no vendor-specific code: a
+vendor is an endpoint and a header. Its host is listed in the network
+report as `telemetry`
 ([The network report](11-integrations.md#the-network-report)).
 
-Not built yet: `telemetry:` is `toolchain.not_built_yet` where it is written, so
-this is the design. Here telemetry goes to Honeycomb:
+Here telemetry goes to Honeycomb:
 
-```jadpo fragment
-// app.jadpo
+```jadpo check project=telemetry file=app.jadpo
 application {
     telemetry: {
         endpoint: config.telemetry_endpoint
@@ -1854,99 +1853,149 @@ application {
 }
 ```
 
+```jadpo check project=telemetry file=config.jadpo hidden
+config {
+    telemetry_endpoint: Url
+    telemetry_key: SecretText {
+        secret: true
+    }
+}
+```
+
+`endpoint:` is a `Url` setting, the collector's address, to which each
+signal's path is added (`/v1/traces`, `/v1/metrics`, `/v1/logs`).
+`credential:` names the header the service reads its key from and a
+secret setting holding the key. Anything else in the section is
+[`telemetry.settings_invalid`](../errors/telemetry.settings_invalid.md).
+
 ### `send:`, which signals go out
 
 `send:` says which signals go out, and the lowest level of log sent.
 Leave it out and traces and metrics are sent, with logs from
-`LogLevel.warn`.
+`LogLevel.warn`. The logs are the runtime's own events
+([Logging](04-failures.md#logging)): a fault behind a 500 is an error, an
+alert a warning, a failure that ends a request and an access record
+information.
 
 ### `detail:`, how much of each request
 
 `detail:` says how much of each request is sent. `full_traces:` lists
 when a request's whole trace is sent: it failed, it faulted, it crossed a
-threshold, or its path is new to this process. `samples:` says how many
-ordinary traces each path sends, `per_path:` within `every:`, so there is
-always a normal request to compare a bad one with. The values in the
-example are what you get by default, as
-[Monitoring](#monitoring) describes.
+threshold's per-request limit, or its path is new to this process.
+`samples:` says how many ordinary traces each path sends, `per_path:`
+within `every:`, so there is always a normal request to compare a bad
+one with. Every other request sends its metrics alone. The values in the
+example are what you get by default, as [Monitoring](#monitoring)
+describes. Until requests carry path IDs ([Path IDs](#path-ids)), a
+request's path is its route.
 
 ### The standard variables
 
-`endpoint:` and `credential:` come from settings bound to the standard
-`OTEL_*` names
-([Environment variable names](10-configuration-and-time.md#environment-variable-names)),
-so a host that sets `OTEL_EXPORTER_OTLP_ENDPOINT` and
-`OTEL_EXPORTER_OTLP_HEADERS` needs nothing else. Your app's code can't
-read these settings.
+Leave `endpoint:` out and the runtime reads `OTEL_EXPORTER_OTLP_ENDPOINT`;
+leave `credential:` out and it sends the headers
+`OTEL_EXPORTER_OTLP_HEADERS` lists, comma-separated `name=value` pairs.
+So a host that sets both needs nothing else, and your app's code can't
+read them. A deployable whose section has nowhere to send doesn't start,
+naming the variable to set.
 
 ### What is sent
 
-- **Traces.** One span for each route, action, query, provider call,
-  cache read, schedule run and event delivery, named after the
-  declaration (`POST /todos`, `create_todo`, `todos_for_owner`).
-  Incoming and outgoing `traceparent` headers are honoured, and a trace
-  continues from the action that emitted an event into its subscriber.
-- **Metrics.** Requests and durations for each route, failures for each
-  code, query durations, provider calls and retries, cache hits,
-  rate-limit refusals, the size of the queue and the age of the oldest
-  waiting delivery.
+- **Traces.** One span for each request, named after its route (`POST
+  /todos`), and under it one for each action (`create_todo`), query
+  (`todos_for_owner`), read, write and provider call, nested as they
+  ran. An incoming `traceparent` header is continued. A delivery
+  carries the trace of the action that emitted its event, but schedule
+  runs and deliveries don't send spans of their own yet.
+- **Metrics.** Each request's duration by route, status and failure
+  (`http.server.request.duration`), each action's
+  (`jadpo.run.duration`), each query's, read's and write's
+  (`jadpo.query.duration`), provider calls and their durations
+  (`jadpo.provider.calls`), failures by code (`jadpo.failures`) and
+  rate-limit refusals (`jadpo.rate_limit.refusals`), each duration
+  histogram with a bucket at every threshold's duration. They are sent
+  with delta temporality, one request's worth at a time, which a
+  collector adds up.
 - **No values from your app's data,** unless you add them deliberately.
   Spans carry names, identifiers and failure codes, never field values,
-  as logs do ([Logging](04-failures.md#logging)), and marked personal
-  fields are hashed. The two deliberate ways to add a value are custom
-  metric labels and `telemetry.note`, below, and both refuse personal
-  fields.
-- **Jadpo's own data, to every provider.** Path IDs, stable identities,
-  source locations and the build id travel as attributes named
-  `jadpo.…`, such as `jadpo.path` and `jadpo.path_key`. A monitoring
-  product decodes them against the build manifest
-  ([The manifest](18-records-and-manifest.md#the-manifest)), which a
-  deploy uploads once for each build.
+  and a log event's fields follow the log's rules
+  ([Logging](04-failures.md#logging)). The two deliberate ways to add a
+  value are custom metric labels and `telemetry.note`, below, and both
+  refuse personal fields.
+- **Jadpo's own data, to every provider.** The build id travels as
+  `jadpo.build`, and each action's and query's place in the source, its
+  stable identity and its domain's name as `jadpo.source`,
+  `jadpo.identity` and `jadpo.name`. A monitoring product decodes them
+  against the build manifest
+  ([The manifest](18-records-and-manifest.md#the-manifest)).
+
+Health checks send nothing, and a payload the collector refuses or
+doesn't answer is counted in the host's log as `telemetry.send_failed`,
+never sent twice.
 
 ### Custom metrics
 
 You declare your own metrics in a domain's `monitoring.jadpo`
 ([Project layout](01-project-layout-and-modules.md#project-layout)) and
-record them in code.
+record them in that domain's actions:
 
-Not built yet: `metric` and `telemetry.` come with the `telemetry:` section, so
-this is the design:
-
-```jadpo fragment
-// domains/billing/monitoring.jadpo
+```jadpo check project=telemetry file=domains/billing/monitoring.jadpo
 /// Checkouts that completed, by plan.
 metric checkouts_completed = Counter {
     by: [plan]
 }
+```
 
-// domains/billing/actions/complete_checkout.jadpo
-telemetry.checkouts_completed.add(1, plan: account.plan)
+```jadpo check project=telemetry file=domains/billing/types/plan.jadpo hidden
+/// What an account pays for.
+type Plan = Enum {
+    free
+    paid
+}
+```
+
+```jadpo check project=telemetry file=domains/billing/actions/complete_checkout.jadpo
+use billing/types { Plan }
+
+/// Completes a checkout on `plan`.
+action complete_checkout(plan: Plan) {
+    telemetry.checkouts_completed.add(1, plan: plan)
+    telemetry.note(plan: plan)
+}
 ```
 
 A metric is one of three kinds:
 
-- a `Counter`, a count that only rises, recorded with `add`;
+- a `Counter`, a count that only rises, recorded with `add` and an `Int`;
 - a `Measure`, a distribution such as a duration or an amount, recorded
-  with `record`;
-- a `Gauge`, a value at a moment, recorded with `set`.
+  with `record` and an `Int`, a `Decimal` or a `Duration`, in
+  milliseconds;
+- a `Gauge`, a value at a moment, recorded with `set` and an `Int` or a
+  `Decimal`.
 
 A metric's labels, its `by:`, may only be enums and `Bool`, so the
-number of series stays bounded.
+number of series stays bounded, and each is given at every record. A
+metric is sent under its domain's name and its own,
+`billing.checkouts_completed`, with its `///` line as its description.
 
 `telemetry.note(name: value)` adds an attribute to the current trace,
 for a fact no span carries. It takes text, numbers, `Bool` and enums. A
-personal field given as a label or an attribute is a compile error.
+personal field given as a label or an attribute, or a value of a type
+that is personal data whatever holds it, such as an `Email`, is a
+compile error
+([`telemetry.personal_data`](../errors/telemetry.personal_data.md)).
 There are no custom spans, because every action and query is already
-one.
+one. A declaration that doesn't read is
+[`telemetry.metric_invalid`](../errors/telemetry.metric_invalid.md), and
+a call that doesn't match it
+[`telemetry.record_invalid`](../errors/telemetry.record_invalid.md).
 
 ### In development
 
-`jadpo dev` exports nothing unless you give it `--export-telemetry`. The
-traces, metrics and logs stay on your machine, and you will read them from
-the command line with `jadpo traces`, `jadpo metrics` and `jadpo logs`,
-filtering and watching them as you do the development call log
-([Traces, metrics and logs in development](17-debugging-and-review.md#traces-metrics-and-logs-in-development)),
-and in the developer console. None of those commands is built yet.
+`jadpo dev` exports nothing unless you give it `--export-telemetry`. It
+keeps every trace, metric and log on your machine, whatever `detail:`
+sends, and you read them with `jadpo traces`, `jadpo metrics` and `jadpo
+logs`
+([Traces, metrics and logs in development](17-debugging-and-review.md#traces-metrics-and-logs-in-development)).
 
 ## Path IDs
 <!-- topic: path-ids -->
@@ -2096,9 +2145,8 @@ watches, is
 ### Thresholds per request
 
 These judge one request: its duration and its number of queries. They are
-checked and kept in the runtime's plan, and nothing reads them yet. They come
-into use with `telemetry:`, when the runtime will keep each request's spans in
-memory until the request ends, then send:
+checked and kept in the runtime's plan. With `telemetry:`, the runtime keeps
+each request's spans in memory until the request ends, then sends:
 
 - the full trace when a threshold was crossed, the request failed or
   faulted, or its path is new to this process;
@@ -2108,8 +2156,7 @@ memory until the request ends, then send:
 `telemetry: { detail: }` sets both ([Telemetry](#telemetry)):
 `full_traces:` names the first list and `samples:` the second.
 
-A process that crashes loses the requests it hasn't sent yet, and long
-jobs send on a timeout. This keeps the volume low without losing
+A process that crashes loses the requests it hasn't sent yet. This keeps the volume low without losing
 anything structural: the compiler knows every path, so the number of
 per-path metrics can't grow without bound.
 
@@ -5765,8 +5812,10 @@ domain, and its subject, as an acceptance names it, is
 The per-request limits, `duration:` and `queries:`, go into the
 runtime's plan with the identity key of what each watches, so both
 executors and every deployable hold the same thresholds. They are what
-the `telemetry:` section judges each request by once it is built; until
-then nothing reads them.
+the `telemetry:` section judges each request by: one that goes past
+either has its whole trace sent (`Trace.slow`). Every duration a
+threshold names, per request or across them, is also kept, as a bucket
+of its subject's duration histogram.
 
 ### The rules in `build/monitoring/`
 
@@ -5830,9 +5879,9 @@ The errors this page describes are built with the feature they belong to.
 | Documents | Not built yet: the application's `documents:` is `toolchain.not_built_yet` where it is written. |
 | Bot protection | Not built yet: the application's `bot_check:` and a route's are `toolchain.not_built_yet` where they are written. |
 | Outgoing webhooks | Partly built: chosen events posted to one address, a `Driver.webhook` connection, and to the addresses customers register through the operations generated on the entity whose `webhooks:` lists them, each with its own secret, sealed, signed as Standard Webhooks signs and retried, through the one runtime-owned network exception ([Outgoing webhooks](#outgoing-webhooks)). Not built yet: the records of a second entity registering addresses. |
-| The `telemetry:` section | Not built yet: it is `toolchain.not_built_yet` where it is written. Nor is telemetry in the developer console, or `jadpo traces`, `jadpo metrics` and `jadpo logs`, which read it in development. |
+| The `telemetry:` section | Built: `telemetry:` with `endpoint:`, `credential:`, `send:` and `detail:`, or the standard OpenTelemetry variables, sending each request's trace, metrics and log events over OTLP as JSON, interpreted and compiled natively, and from a Workers deployable in each request's `waitUntil`, which no test has yet run under workerd; custom metrics in `monitoring.jadpo` and `telemetry.note`, a personal field refused as either; `jadpo dev`'s copy on the machine, `--export-telemetry`, and `jadpo traces`, `jadpo metrics` and `jadpo logs` ([Telemetry](#telemetry)). Not built yet: spans of schedule runs and deliveries of their own, `jadpo.path` and `jadpo.path_key`, which come with path IDs on requests, the queue's size and its oldest delivery's age, which come with a tick's metrics, a request id from outside, and telemetry in the developer console. |
 | Path IDs | Not built yet for requests. Each body's ways are numbered, and the gate compares the paths each test's bodies took when it runs them interpreted and compiled, but no request carries a `path` or a `path_key`, and `jadpo path` isn't built. |
-| Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([What Jadpo generates from thresholds](#what-jadpo-generates-from-thresholds)). A route's, action's, schedule's or subscriber's most queries per request, where its `queries:` starts, in the query report. Not built yet: acting on the per-request limits, which comes with the `telemetry:` section, starting values from production, and an agent's proposals through MCP. |
+| Monitoring thresholds | Partly built: `thresholds { }` in each domain's `monitoring.jadpo`, each threshold checked to watch a route, action, query, schedule or subscriber of its domain with limits that apply to it; the per-request limits in the runtime's plan, the across-request limits and the disk floors written to `build/monitoring/` as Prometheus and OpenSLO rules and carried in the manifest; and a limit raised or removed, or a floor lowered, refused by `check` until a `ThresholdChange` acceptance names it ([What Jadpo generates from thresholds](#what-jadpo-generates-from-thresholds)). A route's, action's, schedule's or subscriber's most queries per request, where its `queries:` starts, in the query report. The per-request limits decide which traces `telemetry:` sends whole (`Trace.slow`), and every duration a threshold names is a bucket of its subject's duration histogram ([Telemetry](#telemetry)). Not built yet: starting values from production, and an agent's proposals through MCP. |
 
 ## Errors
 
@@ -5862,5 +5911,9 @@ The errors this page describes are built with the feature they belong to.
 - [`flag.store_required`](../errors/flag.store_required.md)
 - [`flag.unknown`](../errors/flag.unknown.md)
 - [`flag.value_untested`](../errors/flag.value_untested.md)
+- [`telemetry.metric_invalid`](../errors/telemetry.metric_invalid.md)
+- [`telemetry.personal_data`](../errors/telemetry.personal_data.md)
+- [`telemetry.record_invalid`](../errors/telemetry.record_invalid.md)
+- [`telemetry.settings_invalid`](../errors/telemetry.settings_invalid.md)
 - [`threshold.declaration_invalid`](../errors/threshold.declaration_invalid.md)
 - [`threshold.subject_unknown`](../errors/threshold.subject_unknown.md)

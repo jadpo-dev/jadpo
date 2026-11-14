@@ -1229,6 +1229,23 @@ impl Emitter<'_> {
                     #rendered
                 })
             }
+            Callee::Telemetry(recording) => {
+                let (lets, names) = self.arguments(args, id);
+                let at = number(id.0);
+                let made = recording_tokens(recording);
+                let ran = self.tri(quote!(rt::telemetry(
+                    cx,
+                    RECORDING.get_or_init(|| #made),
+                    &[#(#names),*],
+                    #at
+                )));
+                quote!({
+                    #(#lets)*
+                    static RECORDING: ::std::sync::OnceLock<jadpo_std::telemetry::Recording> =
+                        ::std::sync::OnceLock::new();
+                    #ran
+                })
+            }
             Callee::Escape => {
                 let [Some(arg)] = args else {
                     let defect = self.defect("an escape of nothing", id);
@@ -2471,6 +2488,30 @@ fn batch_op(op: jadpo_std::batch::BatchOp) -> TokenStream {
         BatchOp::Write(write) => {
             let write = format(write);
             quote!(jadpo_std::batch::BatchOp::Write(#write))
+        }
+    }
+}
+
+/// What a `telemetry.` call records, as code that makes it once (chunk
+/// O1).
+fn recording_tokens(recording: &jadpo_std::telemetry::Recording) -> TokenStream {
+    match recording {
+        jadpo_std::telemetry::Recording::Metric {
+            metric,
+            kind,
+            labels,
+        } => {
+            let kind = format_ident!("{}", format!("{kind:?}"));
+            quote!(jadpo_std::telemetry::Recording::Metric {
+                metric: #metric.to_string(),
+                kind: jadpo_std::telemetry::MetricKind::#kind,
+                labels: vec![#(#labels.to_string()),*],
+            })
+        }
+        jadpo_std::telemetry::Recording::Note { names } => {
+            quote!(jadpo_std::telemetry::Recording::Note {
+                names: vec![#(#names.to_string()),*],
+            })
         }
     }
 }

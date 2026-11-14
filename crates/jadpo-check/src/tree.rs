@@ -32,6 +32,7 @@ pub fn decl_name(decl: &Decl) -> Option<ast::Name> {
         Decl::SeedDecl(d) => d.name(),
         Decl::ResourceDecl(d) => d.name(),
         Decl::ProvideDecl(d) => d.name(),
+        Decl::MetricDecl(d) => d.name(),
         Decl::TestDecl(_) | Decl::PackageDecl(_) | Decl::SingletonDecl(_) => None,
     }
 }

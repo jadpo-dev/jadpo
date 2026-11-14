@@ -189,6 +189,7 @@ mod swaps;
 mod system;
 mod system_statements;
 mod system_tenants;
+mod telemetry;
 mod tenant_moves;
 mod tenant_reach;
 #[path = "test.rs"]

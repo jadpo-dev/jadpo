@@ -89,6 +89,10 @@ pub(crate) enum Reach {
     },
     /// `clock.advance(duration)` in a test (area 13).
     AdvanceClock,
+    /// `telemetry.<metric>.add(...)` and its kin, or `telemetry.note(...)`
+    /// (area 16; chunk O1): what it records, its labels or attributes in
+    /// the order their arguments are written.
+    Telemetry(jadpo_std::telemetry::Recording),
     /// `fixture_file("<name>", store: <store>)` in a test (area 13,
     /// "Files"): the store, the file's path in the project, its
     /// `FileType` variant and its name as written.

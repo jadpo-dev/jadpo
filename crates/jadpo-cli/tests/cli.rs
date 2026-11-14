@@ -75,6 +75,9 @@ Look things up
   impact        List what a change to a name reaches
   ai            Show prompts, record, usage   show, record, usage
   calls         Show provider calls in dev    list, show, script
+  traces        List the requests jadpo dev traced
+  metrics       Add up the metrics jadpo dev kept
+  logs          List the log events jadpo dev kept
   email         Read the dev inbox and check mail
   why           Explain why a schedule didn't run
 
@@ -164,6 +167,9 @@ Look things up
   impact        List what a change to a name reaches
   ai            Show prompts, record, usage   show · record · usage
   calls         Show provider calls in dev    list · show · script
+  traces        List the requests jadpo dev traced
+  metrics       Add up the metrics jadpo dev kept
+  logs          List the log events jadpo dev kept
   email         Read the dev inbox and check mail
   why           Explain why a schedule didn't run
 

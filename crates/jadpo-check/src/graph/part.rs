@@ -224,7 +224,9 @@ impl Part<'_> {
             Decl::PackageDecl(d) => self.package(d),
             Decl::ResourceDecl(d) => self.resource(d),
             Decl::ProvideDecl(d) => self.mapping(d),
-            Decl::SingletonDecl(_) => {}
+            // A metric isn't a node of the graph yet (chunk O1): the
+            // plan carries it by name.
+            Decl::MetricDecl(_) | Decl::SingletonDecl(_) => {}
         }
     }
 

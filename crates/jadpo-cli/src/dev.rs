@@ -73,6 +73,9 @@ pub struct DevArgs {
     /// `--sandbox <operation>`: lets it through to the sandbox for this
     /// session.
     pub sandbox: Vec<String>,
+    /// `--export-telemetry`: sends the app's traces, metrics and logs to
+    /// the collector `telemetry:` names, as a deployable does (chunk O1).
+    pub export_telemetry: bool,
 }
 
 pub fn dev(call: &Call) -> Reply {
@@ -129,6 +132,7 @@ pub fn dev(call: &Call) -> Reply {
             .into_iter()
             .map(str::to_string)
             .collect(),
+        export_telemetry: call.flag("--export-telemetry"),
     })))
 }
 
@@ -968,6 +972,17 @@ pub fn serve_unwatched_to(
             }
         };
     let call_log = Arc::new(Mutex::new(crate::dev_calls::LogFile::open(&root)));
+    // Where `--export-telemetry` sends the app's telemetry (chunk O1): the
+    // collector `telemetry:` names, or the standard variables', read as
+    // the session starts.
+    let exporting = match exported(args, &first) {
+        Ok(exporting) => exporting.map(Arc::new),
+        Err(problem) => {
+            report_failure(&mut out, *problem);
+            return 1;
+        }
+    };
+    let telemetry_lock = Arc::new(Mutex::new(()));
     // The stores, and their migrations applied.
     let mut disposable = None;
     let urls = match stores(&first, args.url.as_deref(), &mut disposable) {
@@ -1053,6 +1068,8 @@ pub fn serve_unwatched_to(
     let make_log = Arc::clone(&call_log);
     let make_root = root.clone();
     let make_inbox_lock = Arc::new(Mutex::new(()));
+    let make_exporting = exporting.clone();
+    let make_telemetry_lock = Arc::clone(&telemetry_lock);
     let make: MakeHandler = Arc::new(move |worker: &WorkerThread| {
         let current = Current {
             shared: Arc::clone(&make_shared),
@@ -1094,7 +1111,12 @@ pub fn serve_unwatched_to(
             .with_call_log(Rc::new(DevCalls {
                 log: crate::dev_calls::DevLog(Arc::clone(&make_log)),
                 shared: Arc::clone(&make_shared),
-            }));
+            }))
+            .with_telemetry(Rc::new(dev_telemetry(
+                &make_root,
+                &make_telemetry_lock,
+                make_exporting.as_deref(),
+            )));
         if let Some(issuer) = make_seed
             .as_deref()
             .and_then(jadpo_runtime::http::local_issuer::LocalIssuer::from_seed)
@@ -1414,6 +1436,87 @@ fn watch_only(
         }
     }
     0
+}
+
+/// Where `--export-telemetry` sends: the endpoint, its headers and what
+/// the section sends.
+type Exporting = (
+    String,
+    Vec<(String, String)>,
+    jadpo_std::telemetry::TelemetryPlan,
+);
+
+/// Where the session sends the app's telemetry: nowhere without
+/// `--export-telemetry`; with it, the endpoint and credential `telemetry:`
+/// names, or with no section the standard OpenTelemetry variables, or
+/// the problem that stops the start, naming the variable to set.
+fn exported(args: &DevArgs, first: &Ready) -> Result<Option<Exporting>, Box<Diagnostic>> {
+    if !args.export_telemetry {
+        return Ok(None);
+    }
+    let runtime = first.prepared.plan().runtime();
+    let plan = runtime.telemetry.clone().unwrap_or_default();
+    let variable = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
+    match jadpo_runtime::telemetry::destination(
+        &plan,
+        Some(&runtime.config),
+        Some(&first.config),
+        &variable,
+    ) {
+        Ok((endpoint, headers)) => Ok(Some((endpoint, headers, plan))),
+        Err(unsendable) => Err(Box::new(
+            Diagnostic::new(
+                &rule::CLI_DEV_START_FAILED,
+                "`--export-telemetry` has nowhere to send".to_string(),
+            )
+            .reason(format!(
+                "{}. `jadpo dev` keeps its traces, metrics and logs on this machine either way; `--export-telemetry` also sends them, to the collector `telemetry: {{ endpoint: }}` names, or `OTEL_EXPORTER_OTLP_ENDPOINT`.",
+                upper_first(&unsendable.message())
+            ))
+            .next("Set the collector's address, or run `jadpo dev` without `--export-telemetry`"),
+        )),
+    }
+}
+
+fn upper_first(text: &str) -> String {
+    let mut chars = text.chars();
+    chars
+        .next()
+        .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+        .unwrap_or_default()
+}
+
+/// One worker's telemetry: kept in `build/dev/telemetry/`, and sent where
+/// `exporting` says.
+fn dev_telemetry(
+    root: &Path,
+    lock: &Arc<Mutex<()>>,
+    exporting: Option<&Exporting>,
+) -> jadpo_runtime::telemetry::Telemetry {
+    let resource = jadpo_runtime::telemetry::Resource {
+        service: root.file_name().map_or_else(
+            || "app".to_string(),
+            |name| name.to_string_lossy().to_string(),
+        ),
+        build: "dev".to_string(),
+        compiler: env!("CARGO_PKG_VERSION").to_string(),
+        target: "dev".to_string(),
+        instance: jadpo_runtime::instance::named()
+            .unwrap_or("jadpo-dev")
+            .to_string(),
+    };
+    let telemetry = jadpo_runtime::telemetry::Telemetry::new(resource).keeping(Rc::new(
+        crate::telemetry::DevTelemetry::new(root, Arc::clone(lock)),
+    ));
+    match exporting {
+        Some((endpoint, headers, plan)) => telemetry.sending(jadpo_runtime::telemetry::Sending {
+            endpoint: endpoint.clone(),
+            headers: headers.clone(),
+            plan: plan.clone(),
+            transport: Rc::new(jadpo_host_native::fetch::NativeFetch::new()),
+        }),
+        None => telemetry,
+    }
 }
 
 /// A version of the project ready to serve.

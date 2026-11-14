@@ -503,23 +503,71 @@ today, as it does any flag it doesn't have (`cli.unknown_flag`).
 <!-- topic: traces-metrics-and-logs-in-development -->
 
 In development, your app's telemetry, its traces, metrics and logs, stays
-on your machine ([Telemetry](16-built-in-services.md#telemetry)).
-`jadpo dev --export-telemetry` sends it on to a collector. You will read it
-from the command line, as you read the call log, though none of these
-commands is built yet:
+on your machine ([Telemetry](16-built-in-services.md#telemetry)): `jadpo
+dev` keeps every request's, whatever `telemetry: { detail: }` sends, the
+last 500 in `build/dev/`, which is never committed. `jadpo dev
+--export-telemetry` also sends it on to the collector the `telemetry:`
+section names, or `OTEL_EXPORTER_OTLP_ENDPOINT`, and doesn't start when
+there is nowhere to send. You read it from the command line, as you read
+the call log:
 
 | Command | Shows |
 |---|---|
-| `jadpo traces` | Recent requests, schedule runs and deliveries, one line each, opening into `jadpo trace <id>` |
-| `jadpo metrics` | The metrics the runtime records and your app's own (`monitoring.jadpo`), per route, action or path |
-| `jadpo logs` | Your app's logs, including those of its [services](11-integrations.md#services), by level |
+| `jadpo traces` | The requests, one line each: its id, route, how it ended, its time, its spans and its trace's id |
+| `jadpo metrics` | The metrics the runtime records and your app's own (`monitoring.jadpo`), added up over the requests, a line each series |
+| `jadpo logs` | The events your app logged, by level, each with its request |
 
-Each command takes the same filters: by route, action, domain, path,
-failure and slowness (`--slower-than 200ms`). `--follow` keeps printing
-as new entries arrive, and `--json` gives the output as data. The
-developer console will show the same data.
+Each command takes the same filters, which choose requests: by route
+(`--route "POST /todos"`), action, domain, failure, slowness
+(`--slower-than 200ms`) and request id. Metrics and logs are those of the
+requests chosen, and `jadpo logs --level warn` lists only the levels at
+or above. `--follow` keeps printing as new entries arrive, and `--json`
+gives the output as data. Here a greeter has answered three visitors and
+refused one:
 
-These commands' screens look like those of `jadpo watch` and `jadpo calls`.
+```text
+$ jadpo traces
+  request   route           answer             time  spans  trace
+  req_d52b  POST /greeting  + 200              1 ms      1  14052497
+  req_4fa9  POST /greeting  + 200              0 ms      1  2b57bf6f
+  req_6051  POST /greeting  + 200              0 ms      1  387692c6
+  req_e603  POST /greeting  x nobody_to_greet  1 ms      1  0f7ddfd0
+
+traces: 4 requests, 3 answered, 1 failed
+
+next: jadpo logs --request req_e603  shows what that request logged
+
+$ jadpo metrics
+  metric                        by                               count     value
+  greeting.greetings            warm=true                            3         3
+  http.server.request.duration  POST /greeting 422 nobody_to...      1  avg 1 ms
+  http.server.request.duration  POST /greeting 200                   3  avg 0 ms
+  jadpo.failures                /greeting nobody_to_greet            1         1
+  jadpo.run.duration            action greeting.greet failure        1  avg 0 ms
+  jadpo.run.duration            action greeting.greet value          3  avg 0 ms
+
+metrics: 4 metrics, 6 series, 4 requests
+
+next: jadpo metrics --route <route>  adds up one route's requests alone
+
+$ jadpo logs
+  time          level  event             request   fields
+  21:59:48.008  info   failure.rejected  req_e603  code=nobody_to_greet inter...
+
+logs: 1 event
+
+next: jadpo logs --level warn  lists only what should be looked at
+```
+
+In a terminal, how each request ended is `✓ 200` or `✗ nobody_to_greet`
+in their colours, and a warning or an error is drawn in its own. With
+nothing kept yet, each says `No traces yet` and points at `jadpo dev`;
+with filters that match nothing, `No traces match` and the filters. A
+filter it can't read is
+[`cli.telemetry_arguments`](../errors/cli.telemetry_arguments.md).
+`--path` comes with path IDs on requests
+([Path IDs](16-built-in-services.md#path-ids)), and the developer console
+will show the same data.
 
 ## Capturing a failing request as a test
 <!-- topic: capturing-a-failing-request-as-a-test -->
@@ -874,4 +922,5 @@ personal value in a report follows the rules for
 | Mapped `.jadpo` stacks, `jadpo incident`, the other forms of `why`, timelines and `jadpo trace`, `test new --from` and `call` | Not built yet. |
 | `jadpo dev grants add` | Not built yet. |
 | The developer console, MCP (`jadpo mcp`) and the review web view | Not built yet. |
-| `jadpo traces`, `metrics`, `logs` and `watch`; path coverage, production counts in review, `jadpo replay` and query cost | Not built yet. |
+| `jadpo traces`, `metrics` and `logs` | Built: what `jadpo dev` keeps of each request's telemetry, filtered and followed ([Traces, metrics and logs in development](#traces-metrics-and-logs-in-development)). Not built yet: `--path`, which comes with path IDs on requests. |
+| `jadpo watch`; path coverage, production counts in review, `jadpo replay` and query cost | Not built yet. |

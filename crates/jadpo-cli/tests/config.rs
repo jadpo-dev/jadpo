@@ -484,6 +484,7 @@ impl Dev {
             choice: ColorChoice::Never,
             fake: Vec::new(),
             sandbox: Vec::new(),
+            export_telemetry: false,
         };
         let thread = {
             let mut out = out.clone();

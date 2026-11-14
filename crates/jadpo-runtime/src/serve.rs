@@ -126,6 +126,7 @@ impl Serving {
     /// [`Host::defer`] (chunk 6.1a).
     pub async fn handle(&self, request: &Request) -> Response {
         let began = self.host.monotonic_ms();
+        let start_ms = self.host.now_ms();
         let program = self.program();
         // The flags' state, read again when it is due (area 16).
         if let Some(now) = self.host.now_ms() {
@@ -153,14 +154,48 @@ impl Serving {
             std::mem::take(&mut response.deferred),
         );
         let spans = std::mem::take(&mut response.spans);
+        let ms = since(self.host.as_ref(), began);
         if let Some(observer) = &self.observer {
             observer.answered(&Answered {
                 request,
                 response: &response,
                 program: program.as_ref(),
-                ms: since(self.host.as_ref(), began),
+                ms,
                 spans: &spans,
             });
+        }
+        let recorded = std::mem::take(&mut response.recorded);
+        if let Some(telemetry) = self.host.telemetry()
+            && let Some(start_ms) = start_ms
+            && !health(&response)
+        {
+            let fault = response
+                .fault
+                .as_ref()
+                .map(|fault| fault.kind.classification());
+            let invocation = crate::telemetry::Invocation {
+                what: crate::telemetry::What::Request {
+                    method: &request.method,
+                    route: response.route.as_deref(),
+                    status: response.status,
+                    request_id: response.header("x-request-id"),
+                },
+                trace: response.trace,
+                parent: response.parent_span,
+                start_ms,
+                began,
+                ms,
+                spans: &spans,
+                recorded: &recorded,
+                failure: if fault.is_none() {
+                    response.code.as_deref()
+                } else {
+                    None
+                },
+                fault,
+                program: program.as_ref(),
+            };
+            telemetry.answered(self.host.as_ref(), &invocation);
         }
         response
     }
@@ -180,6 +215,11 @@ impl Serving {
                 let ms = since(host.as_ref(), began);
                 observer.ticked(program.as_ref(), &ticked, now, ms);
             }
+            // What was logged since the last request goes with the tick,
+            // so a quiet server's logs still reach the collector.
+            if let Some(telemetry) = host.telemetry() {
+                telemetry.flush(host.as_ref());
+            }
             Some(ticked)
         })
     }
@@ -188,6 +228,15 @@ impl Serving {
     pub fn tick_every_ms(&self) -> u64 {
         schedules::tick_every_ms(self.program().plan().schedules())
     }
+}
+
+/// Whether `response` answered a health check, which a platform asks
+/// every few seconds: no trace, metric or log is sent for one.
+fn health(response: &Response) -> bool {
+    response
+        .route
+        .as_deref()
+        .is_some_and(|route| route.starts_with("GET /health/"))
 }
 
 /// The milliseconds since `began` on `host`'s monotonic clock; 0 on a

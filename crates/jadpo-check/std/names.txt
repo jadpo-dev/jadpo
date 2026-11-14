@@ -110,6 +110,7 @@ oauth:
 prompts: render
 email: sent
 make:
+telemetry: note
 
 # Names too generic for a domain or a library (area 1).
 [generic]

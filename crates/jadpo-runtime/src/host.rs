@@ -502,6 +502,14 @@ pub trait Host {
         None
     }
 
+    /// The program's telemetry on this host (area 16, "Telemetry"; chunk
+    /// O1): what [`crate::serve::Serving`] hands each request's trace,
+    /// metrics and logs to, and the host's log hands each event. `None`
+    /// on a host that sends and keeps none, as a test's.
+    fn telemetry(&self) -> Option<&crate::telemetry::Telemetry> {
+        None
+    }
+
     /// Runs `work` once the response being answered has been handed back,
     /// without holding that response up: what the runner gives it to run
     /// a committed action's follow-on work in the background (area 12,
@@ -699,6 +707,10 @@ impl<H: Host + ?Sized> Host for &H {
 
     fn outbound(&self) -> Option<&dyn Outbound> {
         (**self).outbound()
+    }
+
+    fn telemetry(&self) -> Option<&crate::telemetry::Telemetry> {
+        (**self).telemetry()
     }
 
     fn defer(&self, work: LocalFuture<'static, ()>) {

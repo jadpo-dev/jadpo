@@ -297,6 +297,40 @@ impl Fetch for Outward {
     }
 }
 
+/// Telemetry sent to the collector (area 16, "Telemetry"; chunk O1): a
+/// `POST` of one OTLP payload, over HTTPS or plain HTTP to any address the
+/// endpoint names, since a collector is often on the same machine. Sent
+/// once: a payload lost is counted, never sent twice.
+impl jadpo_runtime::telemetry::Transport for NativeFetch {
+    fn post<'a>(
+        &'a self,
+        url: &'a str,
+        headers: &'a [(String, String)],
+        body: Vec<u8>,
+        timeout_ms: u64,
+    ) -> LocalFuture<'a, Result<u16, String>> {
+        Box::pin(async move {
+            let request = Request {
+                method: jadpo_std::HttpMethod::Post,
+                url: url.to_string(),
+                headers: headers.to_vec(),
+                body: None,
+                raw_body: Some(body),
+                timeout_ms,
+                reading: Default::default(),
+                repeatable: false,
+            };
+            match self.fetch(&request).await {
+                Ok(answer) => Ok(answer.status),
+                Err(FetchError::TimedOut) => Err("timed out".to_string()),
+                Err(
+                    FetchError::NotSent(why) | FetchError::NoAnswer(why) | FetchError::Refused(why),
+                ) => Err(why),
+            }
+        })
+    }
+}
+
 impl jadpo_runtime::Outbound for Outward {
     fn get<'a>(
         &'a self,

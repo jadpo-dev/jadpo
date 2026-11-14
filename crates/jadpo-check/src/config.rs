@@ -979,7 +979,8 @@ fn is_sink(expr: &ast::FieldExpr) -> bool {
         .and_then(|key| key.names().last())
         .and_then(|name| name_text(&name));
     // An SMTP server's `credential: { username: password: }` (area 16;
-    // chunk 7.3): its parts are the credential's.
+    // chunk 7.3), and telemetry's `credential: { value: }` (chunk O1):
+    // their parts are the credential's.
     let in_credential = || {
         member
             .syntax()
@@ -992,7 +993,8 @@ fn is_sink(expr: &ast::FieldExpr) -> bool {
             .is_some_and(|key| key == "credential")
     };
     let sink = key.as_deref().is_some_and(|key| {
-        SECRET_SINKS.contains(&key) || (matches!(key, "username" | "password") && in_credential())
+        SECRET_SINKS.contains(&key)
+            || (matches!(key, "username" | "password" | "value") && in_credential())
     });
     if !sink {
         return false;

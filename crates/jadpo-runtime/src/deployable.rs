@@ -116,6 +116,11 @@ impl Log {
         Log { stamp, sink }
     }
 
+    /// The stamp each line carries.
+    pub fn stamp(&self) -> Stamp {
+        self.stamp
+    }
+
     /// Logs `event` with `fields`.
     pub fn event<const N: usize>(&self, event: &str, fields: [(&str, Value); N]) {
         (self.sink)(&self.line(event, fields));
@@ -432,8 +437,54 @@ pub fn start(
     if let Some(refused) = refused {
         return Err(vec![client_address_refused(&refused)]);
     }
+    // A `telemetry:` with nowhere to send stops the start, naming the
+    // variable that would say where (chunk O1).
+    if let Some(plan) = program.plan().telemetry {
+        let variable = |name: &str| variables.variable(name);
+        if let Err(unsendable) = crate::telemetry::destination(
+            plan,
+            Some(&program.runtime().config),
+            Some(&values),
+            &variable,
+        ) {
+            return Err(vec![problem(unsendable.code(), unsendable.message())]);
+        }
+    }
     let program = program.with_config_on(&values, target);
     Ok((program, values))
+}
+
+/// The telemetry a deployable stamped `stamp` sends for `program`, its
+/// settings given `values` and the standard variables read through
+/// `variable`, through `transport`: `None` when the program has no
+/// `telemetry:` section, or nowhere to send, which its start has already
+/// reported (chunk O1).
+pub fn telemetry(
+    program: &dyn Executor,
+    values: &ConfigValues,
+    variable: &dyn Fn(&str) -> Option<String>,
+    stamp: &Stamp,
+    transport: std::rc::Rc<dyn crate::telemetry::Transport>,
+) -> Option<crate::telemetry::Telemetry> {
+    let plan = program.plan();
+    let section = plan.telemetry?;
+    let (endpoint, headers) =
+        crate::telemetry::destination(section, plan.config, Some(values), variable).ok()?;
+    let resource = crate::telemetry::Resource {
+        service: stamp.deployable.to_string(),
+        build: stamp.build.to_string(),
+        compiler: stamp.compiler.to_string(),
+        target: stamp.target.to_string(),
+        instance: crate::instance::named().unwrap_or("jadpo").to_string(),
+    };
+    Some(
+        crate::telemetry::Telemetry::new(resource).sending(crate::telemetry::Sending {
+            endpoint,
+            headers,
+            plan: section.clone(),
+            transport,
+        }),
+    )
 }
 
 /// A connection whose driver a host's factory didn't build

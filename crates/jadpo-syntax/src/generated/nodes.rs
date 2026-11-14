@@ -87,6 +87,7 @@ pub enum Decl {
     PackageDecl(PackageDecl),
     ResourceDecl(ResourceDecl),
     ProvideDecl(ProvideDecl),
+    MetricDecl(MetricDecl),
     SingletonDecl(SingletonDecl),
 }
 
@@ -108,6 +109,7 @@ impl AstNode for Decl {
             || kind == PACKAGE_DECL
             || kind == RESOURCE_DECL
             || kind == PROVIDE_DECL
+            || kind == METRIC_DECL
             || kind == SINGLETON_DECL
     }
     fn cast(syntax: SyntaxNode) -> Option<Self> {
@@ -160,6 +162,9 @@ impl AstNode for Decl {
         if kind == PROVIDE_DECL {
             return Some(Self::ProvideDecl(ProvideDecl { syntax }));
         }
+        if kind == METRIC_DECL {
+            return Some(Self::MetricDecl(MetricDecl { syntax }));
+        }
         if kind == SINGLETON_DECL {
             return Some(Self::SingletonDecl(SingletonDecl { syntax }));
         }
@@ -183,6 +188,7 @@ impl AstNode for Decl {
             Self::PackageDecl(it) => it.syntax(),
             Self::ResourceDecl(it) => it.syntax(),
             Self::ProvideDecl(it) => it.syntax(),
+            Self::MetricDecl(it) => it.syntax(),
             Self::SingletonDecl(it) => it.syntax(),
         }
     }
@@ -281,6 +287,12 @@ impl From<ResourceDecl> for Decl {
 impl From<ProvideDecl> for Decl {
     fn from(node: ProvideDecl) -> Decl {
         Decl::ProvideDecl(node)
+    }
+}
+
+impl From<MetricDecl> for Decl {
+    fn from(node: MetricDecl) -> Decl {
+        Decl::MetricDecl(node)
     }
 }
 
@@ -1394,6 +1406,45 @@ impl ProvideDecl {
         support::token(&self.syntax, PROVIDE_KW)
     }
     pub fn name(&self) -> Option<Name> {
+        support::child(&self.syntax)
+    }
+    pub fn member_list(&self) -> Option<MemberList> {
+        support::child(&self.syntax)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MetricDecl {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for MetricDecl {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == METRIC_DECL
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl MetricDecl {
+    pub fn metric_kw_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, METRIC_KW)
+    }
+    pub fn name(&self) -> Option<Name> {
+        support::child(&self.syntax)
+    }
+    pub fn eq_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, EQ)
+    }
+    pub fn base(&self) -> Option<Type> {
         support::child(&self.syntax)
     }
     pub fn member_list(&self) -> Option<MemberList> {

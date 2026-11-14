@@ -1512,6 +1512,7 @@ impl Lower<'_> {
                 operation: operation.clone(),
             },
             Reach::AdvanceClock => Callee::AdvanceClock,
+            Reach::Telemetry(recording) => Callee::Telemetry(recording.clone()),
             Reach::FixtureFile {
                 store,
                 path,
@@ -1838,6 +1839,7 @@ impl Lower<'_> {
             | Reach::Files(..)
             | Reach::Provider { .. }
             | Reach::AdvanceClock
+            | Reach::Telemetry(_)
             | Reach::FixtureFile { .. }
             | Reach::Translation { .. }
             | Reach::Prompt(_)
