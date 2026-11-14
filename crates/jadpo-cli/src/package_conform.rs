@@ -569,8 +569,149 @@ pub(crate) fn supplies(against: &Against) -> jadpo_drivers::factory::Supplies {
     }
 }
 
+/// The capabilities whose suites are built.
+pub(crate) const SUITES: [&str; 3] = [AI, jadpo_std::email::NAMESPACE, "receiving"];
+
+/// One suite's run against a package as a release holds it (chunk K4b):
+/// what `jadpo package check` shows and the verifier's answer pins to the
+/// release's digest.
+pub(crate) struct Conformed {
+    pub capability: String,
+    pub conforms: bool,
+    /// Each case's key, state and few words.
+    pub cases: Vec<(String, String, String)>,
+    /// Why the suite couldn't run, when it couldn't.
+    pub problem: Option<String>,
+}
+
+impl Conformed {
+    /// Its line on the facts' grid: `email: conforms, 4 passed`.
+    pub(crate) fn line(&self) -> String {
+        let count = |state: &str| self.cases.iter().filter(|(_, s, _)| s == state).count();
+        let mut counts = Vec::new();
+        for (state, n) in [
+            ("failed", count("failed")),
+            ("passed", count("passed")),
+            ("skipped", count("skipped")),
+        ] {
+            if n > 0 {
+                counts.push(format!("{n} {state}"));
+            }
+        }
+        let said = if self.conforms {
+            "conforms"
+        } else {
+            "doesn't conform"
+        };
+        match &self.problem {
+            Some(_) => format!("{}: {said}, the suite couldn't run", self.capability),
+            None => format!("{}: {said}, {}", self.capability, counts.join(", ")),
+        }
+    }
+
+    /// Its JSON: `digest` is the verifier's to fill.
+    pub(crate) fn json(&self) -> Json {
+        Json::object([
+            ("capability", Json::from(self.capability.as_str())),
+            ("conforms", self.conforms.into()),
+            ("against", Json::from("recordings")),
+            (
+                "cases",
+                Json::array(self.cases.iter().map(|(case, state, detail)| {
+                    Json::object([
+                        ("case", Json::from(case.as_str())),
+                        ("state", Json::from(state.as_str())),
+                        ("detail", Json::from(detail.as_str())),
+                    ])
+                })),
+            ),
+            (
+                "problem",
+                self.problem.as_deref().map_or(Json::Null, Json::from),
+            ),
+            ("digest", Json::Null),
+        ])
+    }
+}
+
+/// The suite of each capability the package in `folder` fills whose suite
+/// is built, run as `jadpo package conform <package> <capability>` runs it
+/// in `app`, the scratch app the package was compiled in: against its
+/// recordings and a local fake on this machine's loopback address, so
+/// nothing leaves the machine (chunk K4b).
+pub(crate) fn release_runs(app: &Path, package: &str, folder: &Path) -> Vec<Conformed> {
+    filled_capabilities(folder)
+        .into_iter()
+        .filter(|capability| SUITES.contains(&capability.as_str()))
+        .map(|capability| {
+            let call = Call {
+                arguments: vec!["conform".into(), package.into(), capability.clone()],
+                flags: Vec::new(),
+                values: Vec::new(),
+                cwd: Some(app.to_path_buf()),
+                environment: Environment::empty(),
+            };
+            match conform(&call) {
+                Reply::Report { data, .. } => conformed_from(capability, &data),
+                Reply::Failed(problem) => Conformed {
+                    capability,
+                    conforms: false,
+                    cases: Vec::new(),
+                    problem: Some(problem.message.clone()),
+                },
+                _ => Conformed {
+                    capability,
+                    conforms: false,
+                    cases: Vec::new(),
+                    problem: Some("The suite gave no report".to_string()),
+                },
+            }
+        })
+        .collect()
+}
+
+/// A suite's run, from the data its report gives `--json`.
+fn conformed_from(capability: String, data: &Json) -> Conformed {
+    let field = |json: &'_ Json, name: &str| -> Option<Json> {
+        match json {
+            Json::Object(entries) => entries
+                .iter()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value.clone()),
+            _ => None,
+        }
+    };
+    let text = |json: &Json, name: &str| match field(json, name) {
+        Some(Json::Str(text)) => text,
+        _ => String::new(),
+    };
+    let cases = match field(data, "cases") {
+        Some(Json::Array(cases)) => cases
+            .iter()
+            .map(|case| {
+                (
+                    text(case, "case"),
+                    text(case, "state"),
+                    text(case, "detail"),
+                )
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let conforms = field(data, "conforms") == Some(Json::Bool(true));
+    // The project's or the suite's own app's errors stopped it.
+    let problem =
+        (field(data, "cases").is_none()).then(|| "The suite's app has errors".to_string());
+    Conformed {
+        capability,
+        conforms,
+        cases,
+        problem,
+    }
+}
+
 /// The capabilities the package in `folder` fills: its `provides/` files.
-fn filled_capabilities(folder: &Path) -> Vec<String> {
+pub(crate) fn filled_capabilities(folder: &Path) -> Vec<String> {
     let mut out: Vec<String> = std::fs::read_dir(folder.join("provides"))
         .into_iter()
         .flatten()

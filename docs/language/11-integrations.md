@@ -2019,6 +2019,7 @@ The verifier works out a release's **facts** from the compiled graph:
 | Types an app may store | Its library types |
 | Failures, per operation and function | The surface |
 | Confirmed operations, and the last passing contract run | Recordings and scheduled runs |
+| Whether it conforms to each capability it fills | Each suite, run against its recordings and pinned to the digest ([Proving a package works](#proving-a-package-works)) |
 | The Jadpo releases it compiles and passes its tests with | The compatibility runs |
 | Standard types it could use and doesn't | `package.standard_candidate` |
 
@@ -2301,8 +2302,8 @@ code runs and what can come back from it.
 
 `result` has every field, `null` or empty where it has no value: `passed`,
 `package`, `version`, `bar`, `problems`, `surface`, `facts`, `descriptions`,
-`change_record`, `fingerprints`, `fixes`, `previous`, `jadpo`, `checked_with`,
-`left_out`, and for a
+`change_record`, `fingerprints`, `fixes`, `previous`, `conformance`, `jadpo`,
+`checked_with`, `left_out`, and for a
 release that passed its `digest` and `archive`: the tar archive of
 [`GET archives/{digest}`](#the-registry-protocol), in base64, which is how
 the registry comes to hold a release's files. A release whose whole answer
@@ -2318,7 +2319,14 @@ and `swap`, the files a swap changes as `jadpo fix --json` lists them, `null`
 when it can't be swapped or a swap would add an error. A rename waits on the
 name its author picks, so it is offered and not previewed. It comes from the
 source, so the second run can't change it. `jadpo package verify --json` gives
-the same. The source and the diff are asked for on their own, since neither would fit
+the same. `conformance` is each capability's suite as the second run ran it
+([Proving a package works](#proving-a-package-works)): its `capability`,
+whether it `conforms`, what it ran `against` (`recordings`), its `cases`
+(each `case`, `state` and `detail`), the `problem` that stopped it, `null`
+when none did, and `digest`, the release's, for a release that passed and
+`null` otherwise; it is empty for a package that fills no capability. It is
+kept with the release and not in `facts`, since every `jadpo` already
+released reads a release's facts strictly. The source and the diff are asked for on their own, since neither would fit
 beside the archive; each is at most 8 MiB of its answer, past which
 `truncated` says some was left out. They are what the package's author wrote,
 so a model reads them as data. `could_not_check` says nothing
@@ -6257,10 +6265,20 @@ address isn't set. A case that fails is `conform.failed`.
   its handle sent. `receiving` has no live run: it would take the app's
   own messages off its queue (`conform.refused`).
 
+**The run a release shows.** `jadpo package check` and the
+[verifier](#the-verifier) run the suite of each capability a package fills,
+as `jadpo package conform` runs it against its recordings and a local fake,
+in the pass that runs the package's code. The release's facts say how each
+ran, `conformance  email: conforms, 4 passed`, and the verifier's answer
+holds each run with the release's digest, so a run speaks only for the
+files it ran against. A suite that fails refuses nothing: the release can
+be published, and the registry leaves it out of that capability's listing.
+
 > The suites of `ai`, `email` and `receiving` are built, the
-> capabilities whose mappings are read. The run pinned to the digest and
-> shown on the registry's listing, the app's own integrations running the
-> suite in scheduled CI, and the contract run aren't built yet. Another
+> capabilities whose mappings are read, and so is the run a release shows,
+> pinned to its digest; the registry's listing reads it from the
+> verifier's answer. The app's own integrations running the suite in
+> scheduled CI, and the contract run, aren't built yet. Another
 > capability's suite comes with its mapping.
 
 ### In development
