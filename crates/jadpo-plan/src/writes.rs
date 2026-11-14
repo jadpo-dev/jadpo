@@ -2072,3 +2072,236 @@ pub(crate) fn plans(
     }
     (out, at)
 }
+
+/// What the test generated for each person entity makes and erases (area
+/// 13, "Tests generated for each route"; area 15, "Export"; chunk W2b): the
+/// person's record, one record of each kind that belongs to them and the
+/// records those can't be without, each made as a data builder makes one
+/// (area 13, "Data builders"), then the person's erasure. Each create and
+/// the erasure are planned as a site of a body of their own would be, so
+/// they run what `make` and `erase` run; both run with no caller, as a
+/// builder's create runs in a test. A person no builder can make, or
+/// whose erasure isn't built, has none; a kind of theirs no builder can
+/// make is left out.
+pub(crate) fn erasure_tests(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    types: &mut Types,
+    json: &std::cell::RefCell<Vec<TypeRef>>,
+) -> Vec<jadpo_std::testing::ErasureTest> {
+    let persons = jadpo_check::persons::persons(db, project);
+    if persons.people.is_empty() {
+        return Vec::new();
+    }
+    let model = jadpo_check::data::data_model(db, project);
+    let lookup = jadpo_check::lookups::Lookup::new(db, project);
+    let access = jadpo_check::policy::access(db, project);
+    let mut planner = Planner {
+        model,
+        lookup: &lookup,
+        types,
+        access,
+        action: None,
+        json,
+        sign_in: crate::purge::sign_in_state(db, project),
+        retired: retired_columns(db, project),
+        flag_stores: stores_holding_flags(db, project),
+        provider_keys: jadpo_check::provider_erasure::provider_keys(db, project),
+    };
+    persons
+        .people
+        .iter()
+        .filter_map(|(name, person)| planner.erasure_test(name, person))
+        .collect()
+}
+
+impl Planner<'_> {
+    /// The test generated for person entity `name`, whose records are
+    /// `person`'s.
+    fn erasure_test(
+        &mut self,
+        name: &str,
+        person: &jadpo_check::persons::Person,
+    ) -> Option<jadpo_std::testing::ErasureTest> {
+        use jadpo_std::testing::{ErasureTest, Role};
+        let model: &DataModel = self.model;
+        let person_model = model.entity(name)?;
+        let mut makes = Vec::new();
+        let fills = jadpo_check::types::builder_fills(self.lookup, name, &[])?;
+        let own = self.making(name, Role::Person, (&[], fills), None, &mut makes)?;
+        for kind in &person.records {
+            // Every reference it has to the person names them, so the
+            // record belongs to them through each.
+            let through: Vec<String> = person
+                .through
+                .iter()
+                .filter(|(entity, _)| entity == kind)
+                .map(|(_, field)| field.clone())
+                .collect();
+            let Some(fills) = jadpo_check::types::builder_fills(self.lookup, kind, &through) else {
+                continue;
+            };
+            let role = if model.entity(kind).is_some_and(|entity| entity.person) {
+                Role::OtherPerson
+            } else {
+                Role::Theirs
+            };
+            let mut tried = makes.clone();
+            if self
+                .making(kind, role, (&through, fills), Some((name, own)), &mut tried)
+                .is_some()
+            {
+                makes = tried;
+            }
+        }
+        // The erasure's one input is the person's `id`.
+        let erase = self.erase(person_model, SiteId(1))?;
+        Some(ErasureTest {
+            person: name.to_string(),
+            makes,
+            erase: unpoliced(erase.plan),
+        })
+    }
+
+    /// Plans the create of one record of `entity`, after each record it
+    /// can't be without, adding them to `makes`: its place there. `given`
+    /// are its references to the person, `person`'s record at its place,
+    /// and `fills` what fills its other fields; a reference to the person
+    /// among those it needs names theirs too.
+    fn making(
+        &mut self,
+        entity: &str,
+        role: jadpo_std::testing::Role,
+        (given, fills): (&[String], Vec<(String, jadpo_check::types::Filled)>),
+        person: Option<(&str, u32)>,
+        makes: &mut Vec<jadpo_std::testing::Making>,
+    ) -> Option<u32> {
+        use jadpo_check::types::Filled;
+        use jadpo_std::testing::{Fill, Making, Role};
+        let mut sites = vec![placeholder(Expr::Unchecked)];
+        let mut set: Vec<(Key, SiteId)> = Vec::new();
+        let mut filling: Vec<Fill> = Vec::new();
+        let value = |sites: &mut Vec<jadpo_graph::body::Site>, ty: TypeRef| {
+            let mut site = placeholder(Expr::Made { distinct: false });
+            site.ty = ty;
+            sites.push(site);
+            SiteId(sites.len() as u32 - 1)
+        };
+        for field in given {
+            let key =
+                jadpo_check::graph::field_key(self.lookup, entity, std::slice::from_ref(field));
+            let (_, at) = person?;
+            set.push((key.clone(), value(&mut sites, TypeRef::Field(key))));
+            filling.push(Fill::Record(at));
+        }
+        for (field, filled) in fills {
+            let key =
+                jadpo_check::graph::field_key(self.lookup, entity, std::slice::from_ref(&field));
+            let fill = match filled {
+                Filled::Absent(_) => Fill::Absent,
+                Filled::Made { ty, distinct } => {
+                    let ty = jadpo_check::graph::type_ref(self.lookup, &ty);
+                    let mut json = self.json.borrow_mut();
+                    let number = match json.iter().position(|known| *known == ty) {
+                        Some(at) => at,
+                        None => {
+                            json.push(ty);
+                            json.len() - 1
+                        }
+                    };
+                    Fill::Made {
+                        json: number as u32,
+                        distinct,
+                        validator: None,
+                    }
+                }
+                Filled::Reference(nested) => match person {
+                    Some((name, at)) if nested.entity == name => Fill::Record(at),
+                    _ => {
+                        let at = self.making(
+                            &nested.entity,
+                            Role::Needed,
+                            (&[], nested.filled),
+                            person,
+                            makes,
+                        )?;
+                        Fill::Record(at)
+                    }
+                },
+            };
+            set.push((key.clone(), value(&mut sites, TypeRef::Field(key))));
+            filling.push(fill);
+        }
+        sites[0] = placeholder(Expr::Write {
+            entity: self.types.named(entity)?,
+            op: WriteOp::Create,
+            transition: None,
+            target: None,
+            erase: false,
+            by_id: false,
+            set,
+            patch: None,
+            when_supplied: Vec::new(),
+            conflicts: Vec::new(),
+            missing: Vec::new(),
+            not_found: None,
+            fallible: Fallible::Never,
+            attaches: false,
+        });
+        let body = Body {
+            sites,
+            ..Body::default()
+        };
+        let planned = self.write(&body, SiteId(0))?;
+        // Each input in the create's order, the value its site stands for,
+        // kept as its field keeps it.
+        let inputs = planned
+            .inputs
+            .iter()
+            .map(|(site, validator)| {
+                let fill = filling.get((site.0 as usize).checked_sub(1)?)?.clone();
+                Some(match fill {
+                    Fill::Made { json, distinct, .. } => Fill::Made {
+                        json,
+                        distinct,
+                        validator: validator.map(|id| id.0),
+                    },
+                    other => other,
+                })
+            })
+            .collect::<Option<Vec<Fill>>>()?;
+        makes.push(Making {
+            entity: entity.to_string(),
+            role,
+            create: unpoliced(planned.plan),
+            inputs,
+        });
+        Some(makes.len() as u32 - 1)
+    }
+}
+
+/// A site of a body planned on its own, at no place, holding `expr`.
+fn placeholder(expr: Expr) -> jadpo_graph::body::Site {
+    jadpo_graph::body::Site {
+        start: 0,
+        end: 0,
+        line: 0,
+        ty: TypeRef::None,
+        node: Node::Expr(expr),
+        pauses: false,
+    }
+}
+
+/// `plan` as it runs with no caller: its statement without policy.
+fn unpoliced(mut plan: WritePlan) -> WritePlan {
+    if let Some(sql) = plan.unpoliced.take() {
+        plan.sql = sql;
+    }
+    plan.policy = None;
+    if let Some(guard) = &mut plan.guard
+        && let Some(sql) = guard.unpoliced.take()
+    {
+        guard.sql = sql;
+    }
+    plan
+}
