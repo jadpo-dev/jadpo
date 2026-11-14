@@ -82,6 +82,7 @@ mod first_records;
 mod fix;
 mod flags;
 mod fmt;
+mod generated_erasure;
 mod generated_limits;
 mod generated_tests;
 mod geo_layers;

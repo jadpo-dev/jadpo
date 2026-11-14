@@ -33,7 +33,7 @@ pub(crate) const MAKE: &str = "make";
 
 /// What checking one `make.Entity { ... }` decided, for its typed form.
 #[derive(Clone, Debug)]
-pub(crate) struct MakeFact {
+pub struct MakeFact {
     pub entity: String,
     /// Each field it leaves out, in the entity's order, with what fills
     /// it.
@@ -47,7 +47,7 @@ pub(crate) struct MakeFact {
 
 /// What fills a field a builder leaves out.
 #[derive(Clone, Debug)]
-pub(crate) enum Filled {
+pub enum Filled {
     /// `none`, for a field that may be absent.
     Absent(Ty),
     /// A valid value of the field's type, `distinct` when a unique rule
@@ -56,6 +56,142 @@ pub(crate) enum Filled {
     /// The `id` of a record of the referenced entity, made by its own
     /// builder with every field filled.
     Reference(Box<MakeFact>),
+}
+
+/// What a builder the test runner calls fills each field of `entity`
+/// with when it is given `given` (area 13, "Data builders"; chunk W2b):
+/// what `make.<entity> { ... }` giving those fields fills the rest with,
+/// so the runner's builders and a test's are one generator. `None` when a
+/// field, its own or a referenced record's, can't be filled.
+pub fn builder_fills(
+    lookup: &crate::lookups::Lookup<'_>,
+    entity: &str,
+    given: &[String],
+) -> Option<Vec<(String, Filled)>> {
+    let filling = Filling {
+        table: lookup,
+        writes: lookup,
+    };
+    filling
+        .filled(entity, given, &mut vec![entity.to_string()])
+        .ok()
+}
+
+/// Why a builder can't fill an entity's fields: the entities being made
+/// when it gave up, the outermost first, and each field it can't fill
+/// with why.
+struct Unfillable {
+    making: Vec<String>,
+    fields: Vec<(String, &'static str)>,
+}
+
+/// What decides what a builder fills each field with: the type table and
+/// what writes can break.
+struct Filling<'a> {
+    table: &'a dyn super::super::table::TypeView,
+    writes: &'a dyn crate::lookups::WriteView,
+}
+
+impl Filling<'_> {
+    /// What fills each field of `entity` not named in `given`, `making`
+    /// being the entities whose records are being made around it.
+    fn filled(
+        &self,
+        entity: &str,
+        given: &[String],
+        making: &mut Vec<String>,
+    ) -> Result<Vec<(String, Filled)>, Unfillable> {
+        let rules = self.writes.write_rules(entity).cloned().unwrap_or_default();
+        let fields: Vec<FieldDef> = self
+            .table
+            .fields(entity)
+            .map(<[_]>::to_vec)
+            .unwrap_or_default();
+        let mut out = Vec::new();
+        let mut unfillable: Vec<(String, &'static str)> = Vec::new();
+        for field in &fields {
+            // A field the lifecycle owns starts at its `initial:` value.
+            if field.name == "id"
+                || field.generated
+                || given.contains(&field.name)
+                || rules.owned.contains(&field.name)
+            {
+                continue;
+            }
+            let ty = self
+                .table
+                .field_type(entity, std::slice::from_ref(&field.name));
+            if self.table.is_nullable(&field.declared) {
+                out.push((field.name.clone(), Filled::Absent(ty)));
+                continue;
+            }
+            if let Some(target) = rules.reference(&field.name) {
+                let target = target.to_string();
+                if making.contains(&target) {
+                    unfillable.push((
+                        field.name.clone(),
+                        "a reference back to a record being made",
+                    ));
+                    continue;
+                }
+                making.push(target.clone());
+                let nested = self.filled(&target, &[], making)?;
+                making.pop();
+                out.push((
+                    field.name.clone(),
+                    Filled::Reference(Box::new(MakeFact {
+                        entity: target,
+                        filled: nested,
+                        missing: Vec::new(),
+                        attaches: false,
+                    })),
+                ));
+                continue;
+            }
+            if let Some(why) = self.unmakeable(&field.declared, &ty) {
+                unfillable.push((field.name.clone(), why));
+                continue;
+            }
+            let distinct = rules
+                .unique
+                .iter()
+                .any(|unique| unique.fields.contains(&field.name));
+            out.push((field.name.clone(), Filled::Made { ty, distinct }));
+        }
+        if unfillable.is_empty() {
+            Ok(out)
+        } else {
+            Err(Unfillable {
+                making: making.clone(),
+                fields: unfillable,
+            })
+        }
+    }
+
+    /// Why no value of a field declared `declared`, typed `ty`, can be
+    /// made: a file, a key, or text that must match a pattern.
+    fn unmakeable(&self, declared: &Ty, ty: &Ty) -> Option<&'static str> {
+        let opaque = |wanted: &str| matches!(declared.strip_nullable(), Ty::Opaque(name, _) if name == wanted);
+        if opaque(jadpo_std::files::FILE) || opaque(jadpo_std::files::FILE_UPLOAD) {
+            return Some("a file, which only a store makes");
+        }
+        if self
+            .table
+            .base_prim(declared)
+            .is_some_and(|prim| prim.is_key())
+        {
+            return Some("a key, which only `crypto.new_key` makes");
+        }
+        if self
+            .table
+            .rule_chain(ty)
+            .iter()
+            .any(|(_, rules)| rules.pattern.is_some())
+        {
+            return Some("text that must match a pattern");
+        }
+        None
+    }
 }
 
 impl Body<'_> {
@@ -179,8 +315,7 @@ impl Body<'_> {
                 missing.push((field, failure));
             }
         }
-        let mut making = vec![name.clone()];
-        let Some(filled) = self.filled(&name, &named, &mut making, &written, &head_span) else {
+        let Some(filled) = self.filled(&name, &named, &written, &head_span) else {
             return Ty::Named(name);
         };
         self.facts.makes.insert(
@@ -195,78 +330,28 @@ impl Body<'_> {
         Ty::Named(name)
     }
 
-    /// What fills each field of `entity` a builder doesn't name in `given`,
-    /// `making` being the entities whose records are being made around
-    /// it; `None` when one can't be filled, which is reported.
+    /// What fills each field of `entity` a builder doesn't name in `given`;
+    /// `None` when one can't be filled, which is reported.
     fn filled(
         &mut self,
         entity: &str,
         given: &[String],
-        making: &mut Vec<String>,
         written: &str,
         span: &Span,
     ) -> Option<Vec<(String, Filled)>> {
-        let rules = self.writes.write_rules(entity).cloned().unwrap_or_default();
-        let fields: Vec<FieldDef> = self
-            .table
-            .fields(entity)
-            .map(<[_]>::to_vec)
-            .unwrap_or_default();
-        let mut out = Vec::new();
-        let mut unfillable: Vec<(String, &'static str)> = Vec::new();
-        for field in &fields {
-            // A field the lifecycle owns starts at its `initial:` value.
-            if field.name == "id"
-                || field.generated
-                || given.contains(&field.name)
-                || rules.owned.contains(&field.name)
-            {
-                continue;
-            }
-            let ty = self
-                .table
-                .field_type(entity, std::slice::from_ref(&field.name));
-            if self.table.is_nullable(&field.declared) {
-                out.push((field.name.clone(), Filled::Absent(ty)));
-                continue;
-            }
-            if let Some(target) = rules.reference(&field.name) {
-                let target = target.to_string();
-                if making.contains(&target) {
-                    unfillable.push((
-                        field.name.clone(),
-                        "a reference back to a record being made",
-                    ));
-                    continue;
-                }
-                making.push(target.clone());
-                let nested = self.filled(&target, &[], making, written, span);
-                making.pop();
-                let nested = nested?;
-                out.push((
-                    field.name.clone(),
-                    Filled::Reference(Box::new(MakeFact {
-                        entity: target,
-                        filled: nested,
-                        missing: Vec::new(),
-                        attaches: false,
-                    })),
-                ));
-                continue;
-            }
-            if let Some(why) = self.unmakeable(&field.declared, &ty) {
-                unfillable.push((field.name.clone(), why));
-                continue;
-            }
-            let distinct = rules
-                .unique
-                .iter()
-                .any(|unique| unique.fields.contains(&field.name));
-            out.push((field.name.clone(), Filled::Made { ty, distinct }));
-        }
-        if unfillable.is_empty() {
-            return Some(out);
-        }
+        let filling = Filling {
+            table: self.table,
+            writes: self.writes,
+        };
+        let Unfillable {
+            making,
+            fields: unfillable,
+        } = match filling.filled(entity, given, &mut vec![entity.to_string()]) {
+            Ok(filled) => return Some(filled),
+            Err(unfillable) => unfillable,
+        };
+        // The entity it gave up on, and the chain of records around it.
+        let entity = making.last().map_or(entity, String::as_str);
         let listed: Vec<String> = unfillable
             .iter()
             .map(|(name, _)| format!("`{name}`"))
@@ -302,31 +387,6 @@ impl Body<'_> {
                 ))
                 .next(next),
         );
-        None
-    }
-
-    /// Why no value of a field declared `declared`, typed `ty`, can be
-    /// made: a file, a key, or text that must match a pattern.
-    fn unmakeable(&self, declared: &Ty, ty: &Ty) -> Option<&'static str> {
-        let opaque = |wanted: &str| matches!(declared.strip_nullable(), Ty::Opaque(name, _) if name == wanted);
-        if opaque(jadpo_std::files::FILE) || opaque(jadpo_std::files::FILE_UPLOAD) {
-            return Some("a file, which only a store makes");
-        }
-        if self
-            .table
-            .base_prim(declared)
-            .is_some_and(|prim| prim.is_key())
-        {
-            return Some("a key, which only `crypto.new_key` makes");
-        }
-        if self
-            .table
-            .rule_chain(ty)
-            .iter()
-            .any(|(_, rules)| rules.pattern.is_some())
-        {
-            return Some("text that must match a pattern");
-        }
         None
     }
 

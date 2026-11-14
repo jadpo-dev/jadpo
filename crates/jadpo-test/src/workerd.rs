@@ -13,9 +13,11 @@
 //! changed compiles nothing; binds the module with wasm-bindgen's library
 //! (`jadpo_codegen::workers::bind`); and serves it under the workerd
 //! pinned in `tools/fixtures/workers/`, its network the machine's own and nothing
-//! past it. Then, for each project, it runs the route tests on the
-//! interpreter with records, seed 1, and asks the Worker to run each one
-//! by its key: on a copy of each store's database made on a server the
+//! past it. Then, for each project, it runs the route tests and the tests
+//! the compiler generates (area 13, "Tests generated for each route";
+//! chunk W2b) on the interpreter with records, seed 1, and asks the Worker
+//! to run each one by its key, a generated test with what it runs in
+//! place of a body: on a copy of each store's database made on a server the
 //! Worker reaches over `connect()` (the run's when it is named by a URL,
 //! else one of this process's own on `127.0.0.1`), a fresh copy for each
 //! run, crashed again at each step it reached as `jadpo test` crashes a
@@ -227,7 +229,6 @@ fn compare(
     let mut interpreted = match crate::run(Options {
         cwd: folder.to_path_buf(),
         target: Some(".".into()),
-        kind: Some(TestKind::Route),
         seed: Some(SEED),
         record: true,
         ..Options::default()
@@ -242,11 +243,19 @@ fn compare(
         }
         ran => done(ran)?,
     };
-    // The tests generated for its routes are compared natively (area 13,
-    // "Tests generated for each route"): the Worker runs the tests a project writes.
+    // Its route tests and the tests generated for it, its routes' and its
+    // person entities' (area 13, "Tests generated for each route").
     interpreted
         .results
-        .retain(|result| !result.test.generated());
+        .retain(|result| result.test.kind == TestKind::Route || result.test.generated());
+    if interpreted.results.is_empty() {
+        return Ok(Compared {
+            tests: 0,
+            passed: 0,
+            requests: 0,
+        });
+    }
+    let generated = Arc::clone(&interpreted.generated);
     let loaded = jadpo_db::load(folder);
     let checked =
         crate::prepare(&loaded, folder).map_err(|ran| Problem::NotRun(format!("{ran:?}")))?;
@@ -260,7 +269,8 @@ fn compare(
     };
     let mut ran: Vec<(Test, TestRecord, bool)> = Vec::new();
     for result in &interpreted.results {
-        let (record, passed) = remote.test(&result.test).map_err(Problem::Harness)?;
+        let made = generated.get(&result.test.key);
+        let (record, passed) = remote.test(&result.test, made).map_err(Problem::Harness)?;
         ran.push((result.test.clone(), record, passed));
     }
     drop(databases);
@@ -288,17 +298,28 @@ struct Remote<'r> {
 
 impl Remote<'_> {
     /// Runs `test` inside the Worker as `jadpo test` runs one: its record,
-    /// and whether it passed.
-    fn test(&self, test: &Test) -> Result<(TestRecord, bool), String> {
-        let first = self.once(test, None, true)?;
+    /// and whether it passed. A generated test, `made`, runs what it says
+    /// once, a route test's answers held to its API's document, as
+    /// natively.
+    fn test(
+        &self,
+        test: &Test,
+        made: Option<&crate::generated::Made>,
+    ) -> Result<(TestRecord, bool), String> {
+        let first = self.once(test, None, true, made)?;
         let mut failed = judged(&first, true).map(|rule| rule.id.to_string());
+        if let (None, Some(crate::generated::Made::Route(route))) = (&failed, made)
+            && crate::generated::judge(route, &first.answers).is_some()
+        {
+            failed = Some(rule::TEST_ASSERTION_FAILED.id.to_string());
+        }
         // A test that reaches an action with several changing calls runs
         // again with a crash at each boundary of each step it reached
         // (chunk 7.5d), as natively.
-        if failed.is_none() {
+        if failed.is_none() && made.is_none() {
             let mut trouble = None;
             let crashed = crash_runs(&first.reached, &first.effects, |at, boundary| {
-                match self.once(test, Some((at, boundary)), false) {
+                match self.once(test, Some((at, boundary)), false, None) {
                     Ok(ran) => CrashRun {
                         failure: judged(&ran, false),
                         effects: ran.effects,
@@ -340,6 +361,7 @@ impl Remote<'_> {
         test: &Test,
         crash: Option<(usize, Boundary)>,
         record: bool,
+        made: Option<&crate::generated::Made>,
     ) -> Result<Answered, String> {
         let stored = matches!(
             test.kind,
@@ -360,6 +382,7 @@ impl Remote<'_> {
         // Only a test with a database delivers between its steps, runs the
         // batches its steps start and counts the steps it reaches, as
         // natively.
+        let (requests, erasing) = made.map(crate::generated::asked).unwrap_or_default();
         let asked = Asked {
             program: self.program,
             key: test.key.clone(),
@@ -367,6 +390,8 @@ impl Remote<'_> {
             stores,
             crash,
             record: record.then(crate::differential::digest_key),
+            requests,
+            erasing,
         };
         let answered = self.workerd.post("/run", &asked.to_json());
         if let (Some(databases), Some(copy)) = (self.databases, copy) {
@@ -558,6 +583,7 @@ mod tests {
             reached: Vec::new(),
             crashed: false,
             effects: Vec::new(),
+            answers: Vec::new(),
         }
     }
 
