@@ -17,6 +17,13 @@
 //! besides them is [`Caught`]. [`rows`] reads what a test's database holds
 //! when it ends, for its record.
 //!
+//! A test the compiler generates runs here in place of a body (area 13,
+//! "Tests generated for each route"): a route's requests, made into
+//! exchanges from plain data by [`exchanges`], so a test Worker makes its
+//! own; and a person entity's erasure (chunk W2b), the records the plan's
+//! test section says to make, those [`erasure_makes`] finds a value can be
+//! made for, then the erasure.
+//!
 //! The test runner (`jadpo-test`) chooses the tests, makes each one's
 //! databases, crashes a run at each step it reached, and reports.
 
@@ -105,6 +112,11 @@ pub struct Once<'a> {
     /// sends in place of running `callable`, which is then not a test's;
     /// empty for every other test.
     pub exchanges: &'a [Exchange],
+    /// For the test generated for a person entity (area 13, "Tests
+    /// generated for each route"; chunk W2b), the entity's name: the
+    /// records its plan makes and the erasure it runs, in place of running
+    /// `callable`, which is then not a test's.
+    pub erasing: Option<&'a str>,
 }
 
 /// One request a generated test sends (area 13, "Tests generated for each route"),
@@ -200,7 +212,9 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
         }
     }
     let mut answers = Vec::new();
-    let outcome = if once.exchanges.is_empty() {
+    let outcome = if let Some(person) = once.erasing {
+        erasure(executor, &mut ctx, person).await
+    } else if once.exchanges.is_empty() {
         executor.run(&mut ctx, once.callable, Vec::new()).await
     } else {
         exchanged(executor, &mut ctx, once.exchanges, &mut answers).await
@@ -259,6 +273,423 @@ async fn exchanged(
     Outcome::Value(jadpo_value::Value::Unit)
 }
 
+/// One request a generated route test sends (area 13, "Tests generated
+/// for each route"), as plain data a test Worker is sent too: the route
+/// it goes to, by its number in the route table, the request, and what it
+/// is answered with in place of what the route runs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Requested {
+    pub route: u32,
+    pub method: String,
+    pub path: String,
+    pub query: Option<String>,
+    pub headers: Vec<(String, String)>,
+    pub body: String,
+    pub forcing: Forcing,
+}
+
+/// What a generated route test's request is answered with in place of
+/// what its route runs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Forcing {
+    Nothing,
+    /// The declared failure with this code, its client fields' values as
+    /// JSON.
+    Failure {
+        code: String,
+        client: Vec<(String, serde_json::Value)>,
+    },
+    /// A value of the route's output, as JSON.
+    Output(serde_json::Value),
+}
+
+/// The exchanges a generated route test with key `key` sends, made for
+/// `executor`'s program on this thread from `requests`: each answered as
+/// a caller of the kind its route takes, with a new identity from the
+/// test's key, and with what it forces read as the program's values.
+/// `Err` names what the program lacks that the request needs.
+pub fn exchanges(
+    executor: &dyn Executor,
+    key: &str,
+    requests: &[Requested],
+) -> Result<Vec<Exchange>, String> {
+    let app = executor.app();
+    let mut out = Vec::new();
+    for requested in requests {
+        let route = app
+            .table
+            .routes
+            .get(requested.route as usize)
+            .ok_or_else(|| format!("route {} isn't in the program's routes", requested.route))?;
+        let caller = route
+            .authentication
+            .needs_caller()
+            .then(|| generated_caller(&app, route, key))
+            .flatten();
+        let forced = match &requested.forcing {
+            Forcing::Nothing => None,
+            Forcing::Failure { code, client } => Some(crate::Forced::Failure(Box::new(
+                generated_failure(&app, code, client)
+                    .ok_or_else(|| format!("the program declares no failure `{code}`"))?,
+            ))),
+            Forcing::Output(json) => {
+                let codec = route.output.ok_or("the route sends no output")?;
+                let mut problems = Vec::new();
+                let value = app
+                    .codecs
+                    .read(
+                        codec,
+                        json,
+                        &jadpo_value::json::Path::default(),
+                        &mut problems,
+                    )
+                    .ok_or("its output's value doesn't read")?;
+                Some(crate::Forced::Value(value))
+            }
+        };
+        out.push(Exchange {
+            request: crate::http::Request {
+                method: requested.method.clone(),
+                path: requested.path.clone(),
+                query: requested.query.clone(),
+                headers: requested.headers.clone(),
+                body: requested.body.clone().into_bytes(),
+                address: Some("generated test".to_string()),
+                ..crate::http::Request::default()
+            },
+            generated: crate::Generated { caller, forced },
+        });
+    }
+    Ok(out)
+}
+
+/// A caller of the kind `route` takes, with an identity made from `key`.
+fn generated_caller(
+    app: &crate::http::App<'_>,
+    route: &jadpo_std::http::RoutePlan,
+    key: &str,
+) -> Option<crate::Caller> {
+    use jadpo_std::http::PrincipalKind;
+    let identity = app.table.identity.as_ref()?;
+    let kind = route.caller.or_else(|| {
+        if identity.user.is_some() {
+            Some(PrincipalKind::User)
+        } else if identity.service.is_some() {
+            Some(PrincipalKind::Service)
+        } else {
+            None
+        }
+    })?;
+    // A new identity from the test's key, read as a stored id is.
+    let seed = seed(key);
+    let mut bytes = [0u8; 16];
+    bytes[..8].copy_from_slice(&seed.to_be_bytes());
+    bytes[8..].copy_from_slice(&splitmix(seed).to_be_bytes());
+    let id = crate::from_sql(&SqlValue::Uuid(bytes), &jadpo_std::read::Column::Uuid).ok()?;
+    Some(crate::Caller {
+        key: format!("{} {id}", kind.name()),
+        value: crate::http::identity::principal_of(kind, id, jadpo_value::Value::None, true),
+        session: None,
+        sign_in: None,
+        multi_factor: true,
+    })
+}
+
+/// The declared failure with code `code`, made as the program raises it,
+/// its client fields holding `client`'s values.
+fn generated_failure(
+    app: &crate::http::App<'_>,
+    code: &str,
+    client: &[(String, serde_json::Value)],
+) -> Option<crate::Failure> {
+    let plan = app.failures.iter().find(|plan| plan.code == code)?;
+    let codecs = app.table.failure(&plan.key);
+    let values = plan
+        .fields
+        .iter()
+        .map(|field| {
+            let json = client.iter().find(|(name, _)| *name == field.name);
+            let codec = codecs.and_then(|codecs| {
+                codecs
+                    .client
+                    .iter()
+                    .find(|(name, _)| *name == field.name)
+                    .map(|(_, id)| *id)
+            });
+            match (json, codec) {
+                (Some((_, json)), Some(codec)) => {
+                    let mut problems = Vec::new();
+                    app.codecs
+                        .read(
+                            codec,
+                            json,
+                            &jadpo_value::json::Path::default(),
+                            &mut problems,
+                        )
+                        .unwrap_or(jadpo_value::Value::None)
+                }
+                _ => jadpo_value::Value::None,
+            }
+        })
+        .collect();
+    let slots: Vec<Option<u32>> = (0..plan.fields.len())
+        .map(|at| u32::try_from(at).ok())
+        .collect();
+    crate::Failure::of(plan, &slots, values)
+}
+
+/// Which of the records `test` plans can be made, by their places in its
+/// `makes`, in order (area 13, "Tests generated for each route"; chunk
+/// W2b): the person's own and the records it needs, and each kind of
+/// theirs whose values can all be made, with what it needs. A value is
+/// made as a fake's generated default is; a type whose rules no such
+/// value keeps leaves its kind out, as a route whose types no value can
+/// be made for gets only its bad-input test. `None` when the person's own
+/// record can't be made, or their export has no plan to check it by.
+pub fn erasure_makes(plan: Plan<'_>, test: &jadpo_std::testing::ErasureTest) -> Option<Vec<usize>> {
+    use jadpo_std::testing::{Fill, Role};
+    if !plan
+        .exports
+        .iter()
+        .any(|export| export.entity == test.person)
+    {
+        return None;
+    }
+    let codecs = plan.json.codecs;
+    let reads = |json: u32, distinct: bool| {
+        let Some(codec) = plan.json.codec_of(json) else {
+            return false;
+        };
+        let mut uuid = || "00000000-0000-4000-8000-000000000000".to_string();
+        let mut making = crate::fakes::Making {
+            now: Clock::TEST.now(),
+            uuid: &mut uuid,
+        };
+        let mark = distinct.then_some("0a1b2c3d");
+        let made = crate::fakes::generated_marked(&codecs, codec, &mut making, mark);
+        codecs
+            .read_value(codec, &jadpo_value::Value::text(&made.to_string()))
+            .is_ok()
+    };
+    // Whether each can be made, its own values and the records it needs.
+    let mut makeable: Vec<bool> = Vec::with_capacity(test.makes.len());
+    for making in &test.makes {
+        let ok = making.inputs.iter().all(|fill| match fill {
+            Fill::Absent => true,
+            Fill::Made { json, distinct, .. } => reads(*json, *distinct),
+            Fill::Record(at) => makeable.get(*at as usize).copied().unwrap_or(false),
+        });
+        makeable.push(ok);
+    }
+    // The person's own, and each kind of theirs that can be made, with
+    // everything they need: each record a needed one names was made
+    // before it, so one walk back from the last finds them all.
+    let own = test
+        .makes
+        .iter()
+        .position(|making| making.role == Role::Person)?;
+    if makeable.get(own) != Some(&true) {
+        return None;
+    }
+    let mut used: Vec<bool> = test
+        .makes
+        .iter()
+        .zip(&makeable)
+        .map(|(making, ok)| *ok && making.role != Role::Needed)
+        .collect();
+    for at in (0..test.makes.len()).rev() {
+        if used.get(at) != Some(&true) {
+            continue;
+        }
+        let Some(making) = test.makes.get(at) else {
+            continue;
+        };
+        for fill in &making.inputs {
+            if let Fill::Record(needed) = fill
+                && let Some(slot) = used.get_mut(*needed as usize)
+            {
+                *slot = true;
+            }
+        }
+    }
+    Some(
+        used.iter()
+            .enumerate()
+            .filter(|(_, used)| **used)
+            .map(|(at, _)| at)
+            .collect(),
+    )
+}
+
+/// The test generated for person entity `person` (area 13, "Tests
+/// generated for each route"; area 15, "Export"; chunk W2b): builders the
+/// runner calls make the person's record, one record of each kind that
+/// belongs to them and what those need, each a step of its own, as a
+/// builder's create in a test is; their export then holds the person and
+/// each record of theirs. The person is erased, as a step too, and
+/// [`export_after_erasure`] holds their export to nothing once its
+/// deliveries are done. A record a builder can't make, or an export that
+/// doesn't hold what was made, is a fault naming the entity, never a
+/// value.
+async fn erasure(executor: &dyn Executor, ctx: &mut Ctx<'_>, person: &str) -> Outcome {
+    use jadpo_std::testing::{Fill, Role};
+    use jadpo_value::Value;
+    let defect = |what: String| {
+        Outcome::Fault(Box::new(Fault {
+            kind: FaultKind::Defect(what),
+            frames: Vec::new(),
+        }))
+    };
+    let plan = executor.plan();
+    let Some(test) = plan
+        .testing()
+        .erasures
+        .iter()
+        .find(|test| test.person == person)
+    else {
+        return defect(format!(
+            "a generated test erasing a `{person}` with no plan"
+        ));
+    };
+    let Some(chosen) = erasure_makes(plan, test) else {
+        return defect(format!(
+            "a generated test erasing a `{person}` no builder can make"
+        ));
+    };
+    let mut ids: Vec<Option<Value>> = vec![None; test.makes.len()];
+    let mut theirs: i64 = 0;
+    for at in chosen {
+        let Some(making) = test.makes.get(at) else {
+            continue;
+        };
+        let entity = &making.entity;
+        let mut inputs = Vec::with_capacity(making.inputs.len());
+        for fill in &making.inputs {
+            let value = match fill {
+                Fill::Absent => Value::None,
+                Fill::Record(made) => match ids.get(*made as usize).cloned().flatten() {
+                    Some(id) => id,
+                    None => return defect(format!("a `{entity}` made before what it needs")),
+                },
+                Fill::Made {
+                    json,
+                    distinct,
+                    validator,
+                } => {
+                    let value = match crate::effects::made_value(ctx, plan.json, *json, *distinct) {
+                        Ok(value) => value,
+                        Err(why) => return defect(format!("{why}, making a `{entity}`")),
+                    };
+                    // Kept as its field keeps it, as a builder's value is.
+                    let kept = validator
+                        .and_then(|number| plan.json.codecs.validators.get(number as usize));
+                    match kept {
+                        Some(validator) => match validator.store(value) {
+                            Some(value) => value,
+                            None => {
+                                return Outcome::Fault(Box::new(Fault {
+                                    kind: FaultKind::DecimalOverflow,
+                                    frames: Vec::new(),
+                                }));
+                            }
+                        },
+                        None => value,
+                    }
+                }
+            };
+            inputs.push(value);
+        }
+        // With no caller, as a builder's create in a test runs.
+        crate::call_as(ctx, None);
+        let made = crate::store(
+            ctx,
+            crate::StoreOp::Write(&making.create),
+            plan.failures,
+            plan.json,
+            &inputs,
+            crate::Frame::ENTRY,
+        )
+        .await;
+        let record = match made {
+            crate::Stored::Value(Value::Record(record)) => record,
+            crate::Stored::Value(_) => {
+                return defect(format!("a `{entity}` made without a record"));
+            }
+            crate::Stored::Failed(failure) | crate::Stored::Conflict { cause: failure, .. } => {
+                return defect(format!(
+                    "a `{entity}` a builder couldn't make, refused with `{}`",
+                    failure.code
+                ));
+            }
+            crate::Stored::Fault(fault) => return Outcome::Fault(fault),
+        };
+        if let Some(slot) = ids.get_mut(at) {
+            *slot = record.get("id").cloned();
+        }
+        if making.role == Role::Theirs {
+            theirs += 1;
+        }
+        if let Err(ended) =
+            crate::test_steps::after_step(executor, ctx, false, crate::Frame::ENTRY).await
+        {
+            return ended;
+        }
+    }
+    let own = test
+        .makes
+        .iter()
+        .position(|making| making.role == Role::Person)
+        .and_then(|at| ids.get(at).cloned().flatten());
+    let Some(id) = own else {
+        return defect(format!("a generated test with no `{person}` made to erase"));
+    };
+    let Ok(Value::Text(text)) = jadpo_value::standard::from(&id) else {
+        return defect(format!("a `{person}` whose `id` isn't one"));
+    };
+    // Before the erasure, the export holds them and each record of theirs
+    // the test made, so the check after it proves something.
+    if let Some(export) = plan.exports.iter().find(|export| export.entity == person) {
+        let wanted = 1 + theirs;
+        match crate::export::records_held(ctx, export, plan.json, &text).await {
+            Ok(held) if held >= wanted => {}
+            Ok(held) => {
+                return defect(format!(
+                    "`{person}.export` holding {held} record(s) before `{person}.erase`, fewer than the {wanted} the test made of theirs"
+                ));
+            }
+            Err(crate::read::Interrupt::Fault(fault)) => return Outcome::Fault(fault),
+            Err(_) => {
+                return defect(format!(
+                    "a read of `{person}.export` before `{person}.erase` that failed"
+                ));
+            }
+        }
+    }
+    crate::call_as(ctx, None);
+    match crate::store(
+        ctx,
+        crate::StoreOp::Write(&test.erase),
+        plan.failures,
+        plan.json,
+        std::slice::from_ref(&id),
+        crate::Frame::ENTRY,
+    )
+    .await
+    {
+        crate::Stored::Value(_) => {}
+        crate::Stored::Failed(failure) | crate::Stored::Conflict { cause: failure, .. } => {
+            return defect(format!("`{person}.erase` refused with `{}`", failure.code));
+        }
+        crate::Stored::Fault(fault) => return Outcome::Fault(fault),
+    }
+    if let Err(ended) =
+        crate::test_steps::after_step(executor, ctx, false, crate::Frame::ENTRY).await
+    {
+        return ended;
+    }
+    Outcome::Value(Value::Unit)
+}
+
 /// The check generated for each person a test erases (area 15, "Export"):
 /// once its erasure's deliveries are done, an export of them must hold
 /// nothing. A test that passed but left records behind is a fault, naming
@@ -281,7 +712,7 @@ async fn export_after_erasure(
             Ok(records) => {
                 return Outcome::Fault(Box::new(Fault {
                     kind: FaultKind::Defect(format!(
-                        "after `{entity}.erase`, `{entity}.export` still holds {records} record(s)"
+                        "`{entity}.export` still holding {records} record(s) after `{entity}.erase`"
                     )),
                     frames: Vec::new(),
                 }));
@@ -290,7 +721,7 @@ async fn export_after_erasure(
             Err(_) => {
                 return Outcome::Fault(Box::new(Fault {
                     kind: FaultKind::Defect(format!(
-                        "reading `{entity}.export` after `{entity}.erase` failed"
+                        "a read of `{entity}.export` after `{entity}.erase` that failed"
                     )),
                     frames: Vec::new(),
                 }));

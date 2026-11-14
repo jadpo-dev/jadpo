@@ -15,8 +15,9 @@ pub fn json(run: &Run) -> Json {
     for result in &run.results {
         *ran.entry(result.test.kind).or_insert(0usize) += 1;
     }
-    // How many of them the compiler generated for the project's routes
-    // (area 13, "Tests generated for each route"), each counted with its kind too.
+    // How many of them the compiler generated for the project's routes and
+    // person entities (area 13, "Tests generated for each route"), each
+    // counted with its kind too.
     let generated = run
         .results
         .iter()
@@ -83,13 +84,24 @@ pub fn json(run: &Run) -> Json {
                         });
                         let mut entry = test(i + 1, result, first);
                         // With `--full`, what a generated test sent and
-                        // what each answer was to be (area 13).
+                        // what each answer was to be, or what the test
+                        // generated for a person makes (area 13).
                         if run.full
                             && let Json::Object(fields) = &mut entry
                         {
+                            use crate::generated::Made;
                             let made = run.generated.get(&result.test.key);
-                            fields
-                                .push(("requests".to_string(), made.map_or(Json::Null, requests)));
+                            let sent = match made {
+                                Some(Made::Route(made)) => requests(made),
+                                _ => Json::Null,
+                            };
+                            fields.push(("requests".to_string(), sent));
+                            if let Some(Made::Erasure(erasure)) = made {
+                                fields.push((
+                                    "makes".to_string(),
+                                    Json::array(erasure.makes.iter().map(Json::from)),
+                                ));
+                            }
                         }
                         entry
                     }),
@@ -466,7 +478,7 @@ pub fn schema() -> Json {
                 ),
                 (
                     "counts",
-                    "total, ran, passed, failed, totalByKind and ranByKind for pure, action, route and schedule, and generated, how many that ran the compiler generated for the project's routes (each counted with its kind too)",
+                    "total, ran, passed, failed, totalByKind and ranByKind for pure, action, route and schedule, and generated, how many that ran the compiler generated for the project's routes and person entities (each counted with its kind too)",
                 ),
                 (
                     "tests",
@@ -553,11 +565,15 @@ pub fn schema() -> Json {
                 ),
                 (
                     "generated",
-                    "true for a test the compiler generated for a route, which sits at the route it tests; left out otherwise",
+                    "true for a test the compiler generated for a route, which sits at the route it tests, or for a person entity no test erases, which sits at the entity; left out otherwise",
                 ),
                 (
                     "requests",
-                    "With --full: for a generated test, each request it sends, { request (its first line), does, expected: { status, and code, field and rule for bad input, code and details for a failure } }; null for a test the project writes",
+                    "With --full: for a generated route test, each request it sends, { request (its first line), does, expected: { status, and code, field and rule for bad input, code and details for a failure } }; null for any other test",
+                ),
+                (
+                    "makes",
+                    "With --full: for the test generated for a person entity, the entity of each record it makes before it erases the person, in order; left out for any other test",
                 ),
                 ("outcome", "passed or failed"),
                 ("failure", "Only when it failed"),

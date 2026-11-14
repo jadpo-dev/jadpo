@@ -1040,11 +1040,26 @@ impl Plan {
         };
         let setting_number = |name: &str| setting_of(&config::key(registry, name));
         let (mut writes, write_ids) = writes::plans(db, project, &mut types, &bodies, &json_types);
+        // What the test generated for each person entity makes and erases
+        // (area 13; chunk W2b), which only `jadpo test` runs, so a
+        // deployable plans none.
+        let mut erasure_tests = if pruning.is_none() {
+            writes::erasure_tests(db, project, &mut types, &json_types)
+        } else {
+            Vec::new()
+        };
         // Each audited entity's entries are emitted as `AuditEntryRecorded`
         // to its subscribers (area 16, "Sending audit entries elsewhere").
         let audit_subscribers = audit::subscribers(db, project);
-        for write in &mut writes {
-            if let Some(audit) = &mut write.plan.audit {
+        let erasure_creates = erasure_tests
+            .iter_mut()
+            .flat_map(|test| test.makes.iter_mut().map(|making| &mut making.create));
+        for plan in writes
+            .iter_mut()
+            .map(|write| &mut write.plan)
+            .chain(erasure_creates)
+        {
+            if let Some(audit) = &mut plan.audit {
                 audit.subscribers = audit_subscribers.clone();
             }
         }
@@ -1845,6 +1860,7 @@ impl Plan {
         testing.operation_recordings = recordings.operations;
         testing.recorded = recordings.recorded;
         testing.prompt_recordings = prompt_recordings;
+        testing.erasures = erasure_tests;
         let (validators, shapes, failures) = types.take_tables();
         // What compiled code's sites name by number (chunk 8.1f): each
         // outside call's site, numbered in callable and site order.

@@ -21,18 +21,26 @@
 //! shows it under the route it tests; [`exchanges`] makes a run's
 //! requests on its own thread, and [`judge`] holds their answers to what
 //! the document says.
+//!
+//! [`erasures`] finds the test generated for each person entity no test
+//! erases (area 15, "Export"; chunk W2b), at the entity's place: builders
+//! the runner calls make the person and a record of each kind that
+//! belongs to them, the person is erased, and their export must then hold
+//! nothing. The runtime runs it from the plan
+//! (`jadpo_runtime::test_run`), whichever executor runs the test.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use jadpo_graph::{Graph, Kind};
+use jadpo_graph::{EdgeKind, Graph, Kind};
 use jadpo_interp::Prepared;
+use jadpo_runtime::Executor;
 use jadpo_runtime::fakes::{Making, generated};
 use jadpo_runtime::http::App;
-use jadpo_runtime::test_run::{Answer, Exchange};
-use jadpo_runtime::{Caller, Executor, Failure, Forced};
+pub use jadpo_runtime::test_run::Forcing;
+use jadpo_runtime::test_run::{Answer, Exchange, Requested};
 use jadpo_std::HttpMethod;
-use jadpo_std::http::{PrincipalKind, RoutePlan, Run, Segment};
+use jadpo_std::http::{RoutePlan, Run, Segment};
 use jadpo_value::json::Path;
 use serde_json::{Map, Value as J};
 
@@ -101,20 +109,6 @@ impl Sent {
     }
 }
 
-/// What a request is answered with in place of what its route runs.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Forcing {
-    Nothing,
-    /// The declared failure with this code, its client fields' values as
-    /// JSON.
-    Failure {
-        code: String,
-        client: Vec<(String, J)>,
-    },
-    /// A value of the route's output, as JSON.
-    Output(J),
-}
-
 /// What an answer must be.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expect {
@@ -155,8 +149,36 @@ pub struct Generated {
     pub document: Arc<J>,
 }
 
+/// The test generated for a person entity no test erases (chunk W2b).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Erasure {
+    /// The person entity, by name.
+    pub person: String,
+    /// The entity of each record it makes, by name, in the order it makes
+    /// them.
+    pub makes: Vec<String>,
+    /// The key of each of those entities: a change to one reaches it.
+    pub entities: BTreeSet<String>,
+}
+
+/// One generated test: a route's, or a person entity's.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Made {
+    Route(Generated),
+    Erasure(Erasure),
+}
+
 /// Every generated test of a run, by key.
-pub type Table = BTreeMap<String, Generated>;
+pub type Table = BTreeMap<String, Made>;
+
+/// What generated test `made` runs, as plain data a test Worker is sent:
+/// a route test's requests, or the person entity whose erasure it runs.
+pub fn asked(made: &Made) -> (Vec<Requested>, Option<String>) {
+    match made {
+        Made::Route(generated) => (generated.requested(), None),
+        Made::Erasure(erasure) => (Vec::new(), Some(erasure.person.clone())),
+    }
+}
 
 /// Every generated test of `prepared`'s routes, each as a test of its
 /// route's place in `graph`, by the documents `documents` gives (each
@@ -253,13 +275,13 @@ pub fn discover(
             });
             table.insert(
                 key,
-                Generated {
+                Made::Route(Generated {
                     check,
                     route: number,
                     label: route.label(),
                     planned,
                     document: Arc::clone(&document),
-                },
+                }),
             );
         }
     }
@@ -270,8 +292,146 @@ pub fn discover(
 /// /todos`; `None` for any other test's.
 pub fn route_key(key: &str) -> Option<&str> {
     let rest = key.strip_prefix(GENERATED_KEY)?;
-    let (_, route) = rest.split_once(' ')?;
-    Some(route)
+    let (check, route) = rest.split_once(' ')?;
+    (check != ERASURE).then_some(route)
+}
+
+/// The word an erasure test's key has after [`GENERATED_KEY`]:
+/// `generated erasure entity User`.
+const ERASURE: &str = "erasure";
+
+/// The test generated for each person entity no test erases (area 13,
+/// "Tests generated for each route"; area 15, "Export"; chunk W2b), each at
+/// its entity's place in `graph`, with what it makes. A person a test
+/// reaches an erasure of, through what it calls, the routes it sends
+/// requests through, the schedules it runs and the subscribers of what
+/// those emit, is checked by that test's own run; a person no builder can
+/// make has none.
+pub fn erasures(prepared: &Arc<Prepared>, graph: &Graph) -> (Vec<Test>, Table) {
+    let mut tests = Vec::new();
+    let mut table = Table::new();
+    let planned = &prepared.plan().testing().erasures;
+    if planned.is_empty() {
+        return (tests, table);
+    }
+    let program = jadpo_interp::Program::new(Arc::clone(prepared));
+    let executor: &dyn Executor = &program;
+    let plan = executor.plan();
+    let erased = erased_by_tests(prepared, graph);
+    for test in planned {
+        if erased.contains(&test.person) {
+            continue;
+        }
+        let Some(chosen) = jadpo_runtime::test_run::erasure_makes(plan, test) else {
+            continue;
+        };
+        let Some(node) = graph
+            .named(Kind::Entity, &test.person)
+            .map(|id| graph.node(id))
+        else {
+            continue;
+        };
+        let Some(place) = node.place.clone() else {
+            continue;
+        };
+        let makes: Vec<String> = chosen
+            .iter()
+            .filter_map(|at| test.makes.get(*at))
+            .map(|making| making.entity.clone())
+            .collect();
+        // What it makes, and everything the person's erasure and export
+        // reach, which the export's parts read.
+        let reached = plan
+            .exports
+            .iter()
+            .filter(|export| export.entity == test.person)
+            .flat_map(|export| export.parts.iter().map(|part| &part.entity));
+        let entities = makes
+            .iter()
+            .chain(reached)
+            .filter_map(|entity| graph.named(Kind::Entity, entity))
+            .map(|id| graph.node(id).key.as_str().to_string())
+            .collect();
+        let key = format!("{GENERATED_KEY}{ERASURE} {}", node.key.as_str());
+        tests.push(Test {
+            key: key.clone(),
+            name: format!(
+                "{person}.erase leaves nothing in {person}.export",
+                person = test.person
+            ),
+            file: place.file.clone(),
+            line: place.lines.0,
+            end_line: place.lines.1,
+            kind: TestKind::Action,
+        });
+        table.insert(
+            key,
+            Made::Erasure(Erasure {
+                person: test.person.clone(),
+                makes,
+                entities,
+            }),
+        );
+    }
+    (tests, table)
+}
+
+/// The person entities, by name, some test reaches an erasure of: through
+/// what it calls, the routes it sends requests through and the actions
+/// they run, the schedules it runs, and the subscribers of the events
+/// those emit, however deep.
+fn erased_by_tests(prepared: &Prepared, graph: &Graph) -> BTreeSet<String> {
+    use jadpo_graph::body::{Expr, Node};
+    let plan = prepared.plan();
+    let mut erases: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for callable in plan.callables() {
+        for site in &callable.body.sites {
+            if let Node::Expr(Expr::Write {
+                erase: true,
+                entity,
+                ..
+            }) = &site.node
+            {
+                let name = graph
+                    .get(entity)
+                    .map_or_else(|| entity.name().to_string(), |node| node.name.clone());
+                erases.entry(callable.key.as_str()).or_default().push(name);
+            }
+        }
+    }
+    if erases.is_empty() {
+        return BTreeSet::new();
+    }
+    let mut seen = vec![false; graph.len()];
+    let mut queue: Vec<_> = graph
+        .ids()
+        .filter(|id| graph.node(*id).kind == Kind::Test)
+        .collect();
+    for id in &queue {
+        seen[id.index()] = true;
+    }
+    while let Some(id) = queue.pop() {
+        let mut next: Vec<_> = [EdgeKind::Calls, EdgeKind::Runs]
+            .into_iter()
+            .flat_map(|kind| graph.outgoing(id, kind))
+            .collect();
+        for event in graph.outgoing(id, EdgeKind::Emits) {
+            next.extend(graph.incoming(event, EdgeKind::Subscribes));
+        }
+        for reached in next {
+            if !seen[reached.index()] {
+                seen[reached.index()] = true;
+                queue.push(reached);
+            }
+        }
+    }
+    graph
+        .ids()
+        .filter(|id| seen[id.index()])
+        .filter_map(|id| erases.get(graph.node(id).key.as_str()))
+        .flatten()
+        .cloned()
+        .collect()
 }
 
 /// What makes values for a route's requests: from a clock fixed at the
@@ -870,132 +1030,35 @@ fn replaced_segment(path: &str, segments: &[Segment], name: &str) -> String {
 }
 
 /// The requests generated test `generated` sends, made for `executor`'s
-/// program on this thread: each answered as a caller of the kind its
-/// route takes, with a new identity from the test's key, and with what it
-/// forces read as the program's values. `Err` names a failure the
-/// document declares that the program has none of.
+/// program on this thread by the runtime, as a test Worker makes them:
+/// each answered as a caller of the kind its route takes, with a new
+/// identity from the test's key, and with what it forces read as the
+/// program's values. `Err` names a failure the document declares that the
+/// program has none of.
 pub fn exchanges(
     executor: &dyn Executor,
     key: &str,
     generated: &Generated,
 ) -> Result<Vec<Exchange>, String> {
-    let app = executor.app();
-    let route = app
-        .table
-        .routes
-        .get(generated.route as usize)
-        .ok_or_else(|| format!("{} isn't in the program's routes", generated.label))?;
-    let caller = route
-        .authentication
-        .needs_caller()
-        .then(|| caller(&app, route, key))
-        .flatten();
-    let mut out = Vec::new();
-    for planned in &generated.planned {
-        let forced = match &planned.forcing {
-            Forcing::Nothing => None,
-            Forcing::Failure { code, client } => Some(Forced::Failure(Box::new(
-                failure(&app, code, client)
-                    .ok_or_else(|| format!("the program declares no failure `{code}`"))?,
-            ))),
-            Forcing::Output(json) => {
-                let codec = route.output.ok_or("the route sends no output")?;
-                let mut problems = Vec::new();
-                let value = app
-                    .codecs
-                    .read(codec, json, &Path::default(), &mut problems)
-                    .ok_or("its output's value doesn't read")?;
-                Some(Forced::Value(value))
-            }
-        };
-        let sent = &planned.sent;
-        out.push(Exchange {
-            request: jadpo_runtime::http::Request {
-                method: sent.method.clone(),
-                path: sent.path.clone(),
-                query: sent.query.clone(),
-                headers: sent.headers.clone(),
-                body: sent.body.clone().into_bytes(),
-                address: Some("generated test".to_string()),
-                ..jadpo_runtime::http::Request::default()
-            },
-            generated: jadpo_runtime::Generated {
-                caller: caller.clone(),
-                forced,
-            },
-        });
+    jadpo_runtime::test_run::exchanges(executor, key, &generated.requested())
+}
+
+impl Generated {
+    /// Its requests as plain data, each with what it forces.
+    pub fn requested(&self) -> Vec<Requested> {
+        self.planned
+            .iter()
+            .map(|planned| Requested {
+                route: self.route,
+                method: planned.sent.method.clone(),
+                path: planned.sent.path.clone(),
+                query: planned.sent.query.clone(),
+                headers: planned.sent.headers.clone(),
+                body: planned.sent.body.clone(),
+                forcing: planned.forcing.clone(),
+            })
+            .collect()
     }
-    Ok(out)
-}
-
-/// A caller of the kind `route` takes, with an identity made from `key`.
-fn caller(app: &App<'_>, route: &RoutePlan, key: &str) -> Option<Caller> {
-    let identity = app.table.identity.as_ref()?;
-    let kind = route.caller.or_else(|| {
-        if identity.user.is_some() {
-            Some(PrincipalKind::User)
-        } else if identity.service.is_some() {
-            Some(PrincipalKind::Service)
-        } else {
-            None
-        }
-    })?;
-    // A new identity from the test's key, read as a stored id is.
-    let seed = jadpo_runtime::test_run::seed(key);
-    let mut bytes = [0u8; 16];
-    bytes[..8].copy_from_slice(&seed.to_be_bytes());
-    bytes[8..].copy_from_slice(&jadpo_runtime::test_run::splitmix(seed).to_be_bytes());
-    let id = jadpo_runtime::from_sql(
-        &jadpo_runtime::SqlValue::Uuid(bytes),
-        &jadpo_std::read::Column::Uuid,
-    )
-    .ok()?;
-    Some(Caller {
-        key: format!("{} {id}", kind.name()),
-        value: jadpo_runtime::http::identity::principal_of(
-            kind,
-            id,
-            jadpo_value::Value::None,
-            true,
-        ),
-        session: None,
-        sign_in: None,
-        multi_factor: true,
-    })
-}
-
-/// The declared failure with code `code`, made as the program raises it,
-/// its client fields holding `client`'s values.
-fn failure(app: &App<'_>, code: &str, client: &[(String, J)]) -> Option<Failure> {
-    let plan = app.failures.iter().find(|plan| plan.code == code)?;
-    let codecs = app.table.failure(&plan.key);
-    let values = plan
-        .fields
-        .iter()
-        .map(|field| {
-            let json = client.iter().find(|(name, _)| *name == field.name);
-            let codec = codecs.and_then(|codecs| {
-                codecs
-                    .client
-                    .iter()
-                    .find(|(name, _)| *name == field.name)
-                    .map(|(_, id)| *id)
-            });
-            match (json, codec) {
-                (Some((_, json)), Some(codec)) => {
-                    let mut problems = Vec::new();
-                    app.codecs
-                        .read(codec, json, &Path::default(), &mut problems)
-                        .unwrap_or(jadpo_value::Value::None)
-                }
-                _ => jadpo_value::Value::None,
-            }
-        })
-        .collect();
-    let slots: Vec<Option<u32>> = (0..plan.fields.len())
-        .map(|at| u32::try_from(at).ok())
-        .collect();
-    Failure::of(plan, &slots, values)
 }
 
 /// Why a generated test failed: the request that broke what the document

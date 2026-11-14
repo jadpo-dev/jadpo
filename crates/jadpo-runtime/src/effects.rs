@@ -459,14 +459,29 @@ fn made(
     number: Option<u32>,
     distinct: bool,
 ) -> Result<Value, Refused> {
-    let Some(codec) = number.and_then(|number| effects.json.types.get(number as usize).copied())
-    else {
+    let Some(number) = number else {
         return Err(defect("a made value the plan gave no codec"));
+    };
+    made_value(ctx, effects.json, number, distinct).map_err(defect)
+}
+
+/// What [`made`] makes, for a builder the runner calls too (area 13,
+/// "Tests generated for each route"; chunk W2b): a value of the type the
+/// JSON table numbers `number`, or what stopped one being made.
+#[cfg(feature = "testing")]
+pub(crate) fn made_value(
+    ctx: &mut Ctx<'_>,
+    json: JsonCodecs<'_>,
+    number: u32,
+    distinct: bool,
+) -> Result<Value, &'static str> {
+    let Some(codec) = json.types.get(number as usize).copied() else {
+        return Err("a made value the plan gave no codec");
     };
     let now = ctx.now();
     let mark = if distinct {
         let Some(bytes) = ctx.new_id() else {
-            return Err(defect("no random bytes for a made value"));
+            return Err("no random bytes for a made value");
         };
         Some(jadpo_value::encoding::to_hex(&bytes[12..16]))
     } else {
@@ -477,11 +492,11 @@ fn made(
         now,
         uuid: &mut uuid,
     };
-    let codecs = effects.json.codecs;
-    let json = crate::fakes::generated_marked(&codecs, codec, &mut making, mark.as_deref());
+    let codecs = json.codecs;
+    let made = crate::fakes::generated_marked(&codecs, codec, &mut making, mark.as_deref());
     codecs
-        .read_value(codec, &Value::text(&json.to_string()))
-        .map_err(|_| defect("a made value that doesn't keep its type's rules"))
+        .read_value(codec, &Value::text(&made.to_string()))
+        .map_err(|_| "a made value that doesn't keep its type's rules")
 }
 
 /// A `crypto` operation (area 19, "Hashing and cryptography"), in

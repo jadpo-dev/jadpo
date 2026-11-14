@@ -40,6 +40,72 @@ pub struct TestingPlan {
     /// Every recording of a prompt's answer, which `jadpo test` reads
     /// (area 21, "Tests").
     pub prompt_recordings: Vec<PromptRecording>,
+    /// What the test generated for each person entity makes and erases
+    /// (area 13, "Tests generated for each route"; area 15, "Export";
+    /// chunk W2b), by the entity's name: a person whose record no builder
+    /// can make, or whose erasure isn't built, has none.
+    pub erasures: Vec<ErasureTest>,
+}
+
+/// The test generated for a person entity (chunk W2b): data builders the
+/// runner calls make the person and a record of each kind that belongs to
+/// them, then the person is erased, and their export must hold nothing.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ErasureTest {
+    /// The person entity, by name: `User`.
+    pub person: String,
+    /// The records it makes, in order, each after the records it refers
+    /// to.
+    pub makes: Vec<Making>,
+    /// `<person>.erase` by the `id` of the person's record, its one input.
+    pub erase: crate::write::WritePlan,
+}
+
+/// One record the test makes, through its entity's create, as a data
+/// builder makes one (area 13, "Data builders").
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Making {
+    /// Its entity, by name.
+    pub entity: String,
+    /// Why the test makes it.
+    pub role: Role,
+    /// The create, run with no caller, as a builder's in a test is.
+    pub create: crate::write::WritePlan,
+    /// What fills each of the create's inputs, in order.
+    pub inputs: Vec<Fill>,
+}
+
+/// Why the test makes a record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Role {
+    /// The person's own record, which the test erases.
+    Person,
+    /// One record of a kind that belongs to the person, which their
+    /// export holds.
+    Theirs,
+    /// One record of another person entity that refers to them, which
+    /// belongs to them but isn't in their export: it is that person's.
+    OtherPerson,
+    /// A record one of the others refers to and can't be without.
+    Needed,
+}
+
+/// What fills one input of a create the test makes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Fill {
+    /// `none`, for a field that may be absent.
+    Absent,
+    /// A value of the type the plan's JSON table numbers `json`, keeping
+    /// its rules, made as a fake's generated default is; `distinct` for a
+    /// field a unique rule holds. It is kept as its field keeps it, by
+    /// the validator numbered `validator`.
+    Made {
+        json: u32,
+        distinct: bool,
+        validator: Option<u32>,
+    },
+    /// The `id` of the record made at this place in the test's `makes`.
+    Record(u32),
 }
 
 /// What a test gives itself (area 13, "Test settings").

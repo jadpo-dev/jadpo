@@ -503,7 +503,8 @@ pub fn validate(options: &Options) -> Option<Ran> {
     select::resolve(options).err()
 }
 
-/// The keys of the tests a change from `before` to `graph` reaches. What
+/// The keys of the tests a change from `before` to `graph` reaches, with
+/// the routes and entities it reaches, which name generated tests. What
 /// changed is every node that is new or whose digest differs, and the
 /// target of every [`Follow::Forwards`] edge from one of those, or from a
 /// node `before` had and `graph` hasn't; then reverse reachability over
@@ -579,10 +580,18 @@ pub fn affected(graph: &Graph, before: &Graph) -> BTreeSet<String> {
         }
     }
     // A route reached is the tests generated for it reached (area 13,
-    // "Tests generated for each route"), which name it.
+    // "Tests generated for each route"), which name it, and an entity
+    // reached the test generated for each person whose erasure reaches it
+    // (chunk W2b).
     graph
         .ids()
-        .filter(|id| seen[id.index()] && matches!(graph.node(*id).kind, Kind::Test | Kind::Route))
+        .filter(|id| {
+            seen[id.index()]
+                && matches!(
+                    graph.node(*id).kind,
+                    Kind::Test | Kind::Route | Kind::Entity
+                )
+        })
         .map(|id| graph.node(id).key.as_str().to_string())
         .collect()
 }
@@ -715,5 +724,35 @@ mod tests {
             reached.into_iter().collect::<Vec<_>>(),
             [Key::new(Kind::Test, "places an order").as_str()]
         );
+    }
+
+    /// A changed entity is reached itself, so the test generated for a
+    /// person whose erasure reaches it runs again (chunk W2b), and so is a
+    /// field's entity when the field changes.
+    #[test]
+    fn a_changed_entity_or_field_reaches_its_entity() {
+        let build = |entity: &str, field: &str| {
+            let mut builder = Builder::new();
+            for (kind, name, digest, parent) in [
+                (Kind::Entity, "Todo", entity, None),
+                (Kind::Field, "Todo.title", field, Some("Todo")),
+                (Kind::Entity, "User", "1", None),
+            ] {
+                let mut node = Node::new(Key::new(kind, name), kind, name);
+                node.digest = Some(Digest::of([name, digest]));
+                node.parent = parent.map(|parent| Key::new(Kind::Entity, parent));
+                builder.node(node);
+            }
+            builder.build()
+        };
+        let todo = [Key::new(Kind::Entity, "Todo").as_str().to_string()];
+        let reached = |after: &Graph| {
+            affected(after, &build("1", "1"))
+                .into_iter()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(reached(&build("2", "1")), todo);
+        assert_eq!(reached(&build("1", "2")), todo);
+        assert!(reached(&build("1", "1")).is_empty());
     }
 }

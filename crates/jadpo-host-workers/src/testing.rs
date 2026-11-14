@@ -10,7 +10,10 @@
 //! posted to the Worker): which program, the test's key, the run's order
 //! seed for a test with a database, the address of a copy of each store's
 //! database on the run's server, which the Worker reaches over
-//! `connect()`, a crash to make and whether to keep a record. The Worker runs it as `jadpo test` runs one
+//! `connect()`, a crash to make and whether to keep a record, and for a
+//! test the compiler generated, what it runs in place of a body: a route
+//! test's requests, or the person entity whose erasure it runs (area 13,
+//! "Tests generated for each route"; chunk W2b). The Worker runs it as `jadpo test` runs one
 //! ([`jadpo_runtime::test_run::once`]): on a host of its own holding those
 //! stores, their statements kept in the record, with every file kept in
 //! memory and every email caught, as a test's host has them, no randomness
@@ -37,7 +40,7 @@ use jadpo_runtime::crashes::{Boundary, Reached};
 use jadpo_runtime::http::address::Target;
 use jadpo_runtime::record::{Entry, Record, Recorded};
 use jadpo_runtime::test_authenticator::SoftwareAuthenticators;
-use jadpo_runtime::test_run::{self, Caught, Once};
+use jadpo_runtime::test_run::{self, Answer, Caught, Forcing, Once, Requested};
 use jadpo_runtime::{Database, Executor, Host, LocalFuture, MemoryHost, Outcome, StoreError};
 use serde_json::{Value, json};
 use wasm_bindgen::{JsCast, JsValue};
@@ -69,6 +72,11 @@ pub struct Asked {
     /// keyed with: the asking process's own, so they are compared with its
     /// records' (chunk 8.4a).
     pub record: Option<[u8; 32]>,
+    /// For a route test the compiler generated, the requests it sends in
+    /// place of a body; empty for any other test.
+    pub requests: Vec<Requested>,
+    /// For the test generated for a person entity, its name.
+    pub erasing: Option<String>,
 }
 
 impl Asked {
@@ -84,6 +92,8 @@ impl Asked {
                 "boundary": boundary.word(),
             })),
             "record": self.record.map(|key| key.iter().map(|byte| format!("{byte:02x}")).collect::<String>()),
+            "requests": self.requests.iter().map(requested_json).collect::<Vec<_>>(),
+            "erasing": self.erasing,
         })
         .to_string()
     }
@@ -123,8 +133,74 @@ impl Asked {
                 Value::Null => None,
                 key => Some(digest_key(key)?),
             },
+            requests: match at(&value, "requests") {
+                Value::Null => Vec::new(),
+                requests => list(requests, "requests")?
+                    .iter()
+                    .map(requested_of)
+                    .collect::<Result<_, _>>()?,
+            },
+            erasing: at(&value, "erasing").as_str().map(str::to_string),
         })
     }
+}
+
+/// A generated route test's request as JSON.
+fn requested_json(requested: &Requested) -> Value {
+    let forcing = match &requested.forcing {
+        Forcing::Nothing => json!({ "nothing": true }),
+        Forcing::Failure { code, client } => json!({
+            "failure": {
+                "code": code,
+                "client": client.iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
+            },
+        }),
+        Forcing::Output(output) => json!({ "output": output }),
+    };
+    json!({
+        "route": requested.route,
+        "method": requested.method,
+        "path": requested.path,
+        "query": requested.query,
+        "headers": requested.headers.iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
+        "body": requested.body,
+        "forcing": forcing,
+    })
+}
+
+/// A generated route test's request from the JSON [`requested_json`]
+/// writes.
+fn requested_of(value: &Value) -> Result<Requested, String> {
+    let pairs = |value: &Value, name: &str| -> Result<Vec<(String, Value)>, String> {
+        list(value, name)?
+            .iter()
+            .map(|pair| Ok((text_of(at(pair, 0), name)?, at(pair, 1).clone())))
+            .collect()
+    };
+    let forcing = at(value, "forcing");
+    let forcing = if let Some(output) = forcing.get("output") {
+        Forcing::Output(output.clone())
+    } else if let Some(failure) = forcing.get("failure") {
+        Forcing::Failure {
+            code: text_of(at(failure, "code"), "forcing.failure.code")?,
+            client: pairs(at(failure, "client"), "forcing.failure.client")?,
+        }
+    } else {
+        Forcing::Nothing
+    };
+    Ok(Requested {
+        route: u32::try_from(number(at(value, "route"), "route")?)
+            .map_err(|error| error.to_string())?,
+        method: text_of(at(value, "method"), "method")?,
+        path: text_of(at(value, "path"), "path")?,
+        query: at(value, "query").as_str().map(str::to_string),
+        headers: pairs(at(value, "headers"), "headers")?
+            .into_iter()
+            .map(|(name, value)| Ok((name, text_of(&value, "headers")?)))
+            .collect::<Result<_, String>>()?,
+        body: text_of(at(value, "body"), "body")?,
+        forcing,
+    })
 }
 
 /// A record's key from its 64 hex digits.
@@ -164,6 +240,9 @@ pub struct Answered {
     pub crashed: bool,
     /// What its keyed provider calls did, by operation.
     pub effects: Vec<(String, usize)>,
+    /// What each of a generated route test's requests was answered with,
+    /// in order; empty for any other test.
+    pub answers: Vec<Answer>,
 }
 
 impl Answered {
@@ -185,6 +264,11 @@ impl Answered {
             })).collect::<Vec<_>>(),
             "crashed": self.crashed,
             "effects": self.effects.iter().map(|(operation, times)| json!([operation, times])).collect::<Vec<_>>(),
+            "answers": self.answers.iter().map(|answer| json!({
+                "status": answer.status,
+                "headers": answer.headers.iter().map(|(name, value)| json!([name, value])).collect::<Vec<_>>(),
+                "body": answer.body,
+            })).collect::<Vec<_>>(),
         })
         .to_string()
     }
@@ -233,6 +317,28 @@ impl Answered {
                     ))
                 })
                 .collect::<Result<_, String>>()?,
+            answers: match at(&value, "answers") {
+                Value::Null => Vec::new(),
+                answers => list(answers, "answers")?
+                    .iter()
+                    .map(|answer| {
+                        Ok(Answer {
+                            status: u16::try_from(number(at(answer, "status"), "answers.status")?)
+                                .map_err(|error| error.to_string())?,
+                            headers: list(at(answer, "headers"), "answers.headers")?
+                                .iter()
+                                .map(|pair| {
+                                    Ok((
+                                        text_of(at(pair, 0), "answers.headers")?,
+                                        text_of(at(pair, 1), "answers.headers")?,
+                                    ))
+                                })
+                                .collect::<Result<_, String>>()?,
+                            body: text_of(at(answer, "body"), "answers.body")?,
+                        })
+                    })
+                    .collect::<Result<_, String>>()?,
+            },
         })
     }
 }
@@ -338,10 +444,18 @@ fn program(programs: &[MakeProgram], place: usize) -> Result<Rc<Program>, String
 async fn ran(programs: &[MakeProgram], asked: &Asked) -> Result<Answered, String> {
     let program = program(programs, asked.program)?;
     let executor: &dyn Executor = &*program;
-    let callable = executor
-        .plan()
-        .callable(&asked.key)
-        .ok_or_else(|| format!("the program has no test {}", asked.key))?;
+    // A generated test runs what its requests or its erasure say, in place
+    // of a body (area 13, "Tests generated for each route"; chunk W2b).
+    let generated = asked.erasing.is_some() || !asked.requests.is_empty();
+    let callable = if generated {
+        u32::MAX
+    } else {
+        executor
+            .plan()
+            .callable(&asked.key)
+            .ok_or_else(|| format!("the program has no test {}", asked.key))?
+    };
+    let exchanges = test_run::exchanges(executor, &asked.key, &asked.requests)?;
     let record = asked.record.map(|key| Rc::new(Record::new(key)));
     let once = Once {
         key: &asked.key,
@@ -349,7 +463,8 @@ async fn ran(programs: &[MakeProgram], asked: &Asked) -> Result<Answered, String
         order: asked.order,
         crash: asked.crash,
         record: record.clone(),
-        exchanges: &[],
+        exchanges: &exchanges,
+        erasing: asked.erasing.as_deref(),
     };
     // A test without a database runs on a host with no store, as natively.
     let (ran, rows) = if asked.order.is_some() {
@@ -384,6 +499,7 @@ async fn ran(programs: &[MakeProgram], asked: &Asked) -> Result<Answered, String
         reached: ran.reached,
         crashed: ran.crashed,
         effects: ran.effects,
+        answers: ran.answers,
     })
 }
 
@@ -568,6 +684,39 @@ mod tests {
             stores: BTreeMap::from([("main".into(), "postgresql://jadpo@127.0.0.1:5432/t".into())]),
             crash: Some((2, Boundary::AfterSend)),
             record: Some(core::array::from_fn(|at| at as u8 * 7)),
+            requests: vec![
+                Requested {
+                    route: 3,
+                    method: "POST".into(),
+                    path: "/items".into(),
+                    query: Some("not_a_field=x".into()),
+                    headers: vec![("content-type".into(), "application/json".into())],
+                    body: "{}".into(),
+                    forcing: Forcing::Failure {
+                        code: "shelf_full".into(),
+                        client: vec![("room".into(), json!(50))],
+                    },
+                },
+                Requested {
+                    route: 0,
+                    method: "GET".into(),
+                    path: "/items/1".into(),
+                    query: None,
+                    headers: Vec::new(),
+                    body: String::new(),
+                    forcing: Forcing::Output(json!({ "id": "a" })),
+                },
+                Requested {
+                    route: 0,
+                    method: "GET".into(),
+                    path: "/items".into(),
+                    query: None,
+                    headers: Vec::new(),
+                    body: String::new(),
+                    forcing: Forcing::Nothing,
+                },
+            ],
+            erasing: None,
         };
         assert_eq!(Asked::read(&asked.to_json()), Ok(asked));
         let without = Asked {
@@ -577,6 +726,8 @@ mod tests {
             stores: BTreeMap::new(),
             crash: None,
             record: None,
+            requests: Vec::new(),
+            erasing: Some("User".into()),
         };
         assert_eq!(Asked::read(&without.to_json()), Ok(without));
         let answered = Answered {
@@ -595,6 +746,11 @@ mod tests {
             }],
             crashed: true,
             effects: vec![("pay.payments.create".into(), 1)],
+            answers: vec![Answer {
+                status: 422,
+                headers: vec![("x-request-id".into(), "req_1".into())],
+                body: "{\"error\":{}}".into(),
+            }],
         };
         assert_eq!(Answered::read(&answered.to_json()), Ok(answered));
         assert!(Asked::read("{\"program\": \"one\"}").is_err());
