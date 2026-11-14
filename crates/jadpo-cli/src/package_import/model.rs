@@ -366,7 +366,7 @@ fn resource_file(name: &str, resource: &Resource) -> String {
     out
 }
 
-fn type_file(name: &str, ty: &TypeDecl) -> String {
+pub(crate) fn type_file(name: &str, ty: &TypeDecl) -> String {
     match ty {
         TypeDecl::Object {
             doc: written,

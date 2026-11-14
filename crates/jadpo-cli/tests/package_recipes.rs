@@ -192,7 +192,7 @@ fn repository(name: &str, action: &str) -> tempdir::Dir {
     write(
         root,
         "sample/config.jadpo",
-        "config {\n    couriers_environment: ProviderEnvironment\n    couriers_key: Text {\n        secret: true\n    }\n}\n",
+        "config {\n    couriers_environment: ProviderEnvironment {\n        default: ProviderEnvironment.sandbox\n    }\n    couriers_key: Text {\n        secret: true\n    }\n}\n",
     );
     write(
         root,
@@ -268,4 +268,75 @@ fn recipes_with_no_sample_app_fail_the_bar() {
         checked.stdout
     );
     assert!(checked.stdout.contains("  rule: publish.sample_missing\n"));
+}
+
+/// A test of the recipe `track_parcels`, its courier's answer scripted,
+/// asserting the parcel is `delivered`.
+fn track_test(delivered: &str) -> String {
+    format!(
+        "use app {{ couriers }}\nuse shared/providers/couriers\n\ntest \"a parcel is tracked through the courier\" {{\n    fakes: {{\n        couriers.parcels.track: [\n            Couriers.ParcelStatus {{\n                code: \"PX1\"\n                delivered: true\n            }}\n        ]\n    }}\n\n    var status: Couriers.ParcelStatus = track_parcel(\"PX1\")\n    assert status.delivered == {delivered}\n}}\n"
+    )
+}
+
+/// A recipe's own tests run in `sample/` with it (area 11, "Package
+/// subscribers and recipes in `sample/`"; chunk K5): the row counts them
+/// when they pass.
+#[test]
+fn a_recipes_own_tests_run_in_the_sample_app() {
+    let dir = repository("recipe-tests", TRACK);
+    write(
+        dir.path(),
+        "recipes/track_parcels/actions/track_parcel.test.jadpo",
+        &track_test("true"),
+    );
+    let row = bar_row(dir.path(), "recipes");
+    assert_eq!(row["state"], "passed", "{row}");
+    assert_eq!(row["detail"], "1 recipe compiles in sample/, 1 test passes");
+    let checked = jadpo(dir.path(), &["package", "check"]);
+    assert!(
+        checked
+            .stdout
+            .contains("  recipes       passed                        1 recipe, 1 test passes\n"),
+        "{}",
+        checked.stdout
+    );
+}
+
+/// A recipe test that fails fails the row, its report shown at its own
+/// path in the package.
+#[test]
+fn a_failing_recipe_test_fails_the_bar_at_its_own_path() {
+    let dir = repository("recipe-test-fails", TRACK);
+    write(
+        dir.path(),
+        "recipes/track_parcels/actions/track_parcel.test.jadpo",
+        &track_test("false"),
+    );
+    let row = bar_row(dir.path(), "recipes");
+    assert_eq!(row["state"], "failed", "{row}");
+    assert_eq!(
+        row["detail"],
+        "1 recipe compiles in sample/, 1 of 1 test failed"
+    );
+    let checked = jadpo(dir.path(), &["package", "check"]);
+    assert_eq!(checked.code, 1, "{}{}", checked.stdout, checked.stderr);
+    assert!(
+        checked
+            .stdout
+            .contains("error: 1 of 1 recipe test failed in sample/\n"),
+        "{}",
+        checked.stdout
+    );
+    assert!(
+        checked.stdout.contains(
+            "FAIL  a parcel is tracked through the courier\n --> recipes/track_parcels/actions/track_parcel.test.jadpo:"
+        ),
+        "{}",
+        checked.stdout
+    );
+    assert!(
+        checked.stdout.contains("rerun: jadpo package check"),
+        "{}",
+        checked.stdout
+    );
 }

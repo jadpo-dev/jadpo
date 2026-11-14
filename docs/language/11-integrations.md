@@ -1441,7 +1441,9 @@ the sandbox for each one (see "Tests and fakes").
 >   help: https://jadpo.dev/docs/errors/recording.failed
 > ```
 >
-> The choices are in "Recordings" below.
+> An operation with no `output:` has its type written from the answer
+> first, then the answer is recorded through it. The choices are in
+> "Recordings" below.
 
 ### Installing safely
 
@@ -1544,8 +1546,7 @@ the sandbox for each one (see "Tests and fakes").
 
 Not built yet: importers other than `openapi`;
 adding another Jadpo app's OpenAPI document with `jadpo package add`;
-writing an operation's output type from the sandbox's answer when it has
-none; and a HAR capture's operations.
+and a HAR capture's operations.
 
 `jadpo package add <name>` is designed to look in a fixed order and record which
 step it used, so an agent never improvises where to look: the registry, the
@@ -4976,13 +4977,13 @@ listed in the surface. Library packages may ship recipes too.
 > `jadpo package check`'s `recipes` row compiles each recipe on its own,
 > copied into the one domain of the package's `sample/` app as `jadpo
 > package recipe` copies it, the package placed as the sample's own
-> integration; a recipe that doesn't compile is shown at its own path,
+> integration, then runs the recipe's own tests there; a recipe that
+> doesn't compile, or a test of it that fails, is shown at its own path,
 > `recipes/<recipe>/...`, and a package with recipes and no such sample
 > is `publish.sample_missing`. The choices are under "Package
 > subscribers and recipes in `sample/`".
 
-Not built yet: services run by Jadpo (`runs:`), and running a recipe's
-tests in `sample/`.
+Not built yet: services run by Jadpo (`runs:`).
 
 ## Several changing calls through a package
 <!-- topic: several-changing-provider-calls -->
@@ -8050,11 +8051,59 @@ how it is checked and how you make one.
   ([Several changing calls through a package](#several-changing-calls-through-a-package)),
   from a scope of its own and this run's randomness, so recording again
   is a new request. A refusal, no answer, or an answer that doesn't
-  again leaves the file as it was.
+  decode leaves the file as it was.
+- **An operation with no `output:`** has its output type written from
+  the sandbox's answer before it is recorded, the answer along
+  `output_at:` read as the JSON Schema it shows and that schema as the
+  importer reads an operation's lowest `2xx` answer: an object
+  `<Resource><Operation>Output` (`BookingsCreateOutput`), each object
+  inside it `<Parent><Field>` and a list's items `<Parent>Element`, every
+  member it sent `lower_snake_case` with the provider's spelling as
+  `wire_name:`, each type `public` in its own file in `types/`, with the
+  importer's exact mappings and its shapes and findings ("Shape and
+  name detection"). A name the package already gives a type, a failure
+  or a file in `types/` is never taken. The operation gets `output:`
+  after its `input:`, or its `path:`. One answer says less than a
+  description, so what it only suggests is written the safe way and
+  listed under "To check": text written as an instant, a calendar date
+  or a UUID is read as `Instant`, `CalendarDate` or `Uuid`; a member sent
+  as `null` is optional `Text`; an empty list's items are `Text`; a list
+  member some items lack is optional; and a list whose items differ in
+  kind is left out. The new types start unreviewed. An answer no type
+  can be written from (`null`, or a list of several kinds) writes and
+  records nothing (`recording.failed`), and so does one the types
+  written can't read: each file is put back as it was. Judgement calls
+  `jadpo check` makes in the types written (`package.standard_candidate`)
+  don't stop the recording; `check` shows them.
 
-> Writing an operation's output type from a recorded answer isn't built
-> yet, so recording an operation with no `output:` is
-> `toolchain.not_built_yet`.
+> Recording an operation with no `output:`:
+>
+> ```text
+> $ jadpo package record couriers bookings.create --input '{"postcode": "N1 9GU"}'
+> ✓ Recorded `couriers.bookings.create` from the sandbox
+>     sent    POST https://sandbox.acme-couriers.example/v1/bookings
+>     output  written from the answer, 1 type
+>     answer  decodes as BookingsCreateOutput
+>     values  4 placeholders
+>     file    shared/providers/acme_couriers/v1/recordings/bookings.create.json
+>
+> Written from the answer
+>   shared/providers/acme_couriers/v1/resources/bookings.jadpo
+>   shared/providers/acme_couriers/v1/types/bookings_create_output.jadpo
+>
+> To check
+>   Read as `Instant` from how its value is written: check the provider's
+>   documentation, then keep it or make it `Text` (agent)
+>     BookingsCreateOutput.collect_at
+>
+>   Sent as `null`, so written as optional `Text`: check its type against the
+>   provider's documentation (agent)
+>     BookingsCreateOutput.note
+>
+> ✓ operation recorded  AcmeCouriers.v1 bookings.create · confirmed · 1 type written · 2 to check
+>
+> → jadpo check  shows what to review in the types written
+> ```
 
 ## The scoped review and unconfirmed operations
 <!-- topic: the-scoped-review-and-unconfirmed-operations -->
@@ -8623,8 +8672,18 @@ What a package's own subscribers hear and emit, and how
   `sample/<file>`, once. A package with recipes and no `sample/app.jadpo`,
   or a sample with no domain or several, is `publish.sample_missing`.
   The row isn't shown for a package with no recipes, and waits when the
-  package has errors. A recipe's own tests run in `sample/` once a recipe
-  has some.
+  package has errors.
+- **A recipe's own tests** (its `.test.jadpo` files) run in the scratch
+  app it compiled in, each file as `jadpo test <file>` runs one, once the
+  recipe compiles, so they test the recipe as an app that copies it
+  has it; the generated tests and the sample's own aren't run. A recipe
+  that needs tables has its first migration written there first, as
+  `jadpo migrate new <recipe>` writes one. The row then reads `1 recipe,
+  2 tests pass`, or `1 of 2 recipe tests failed` with each failed test's
+  report at `recipes/<recipe>/<file>` and its `rerun` `jadpo package
+  check`; `--json` gives it whole, `1 recipe compiles in sample/, 2 tests
+  pass`. With no test database the row waits, saying so, and a run
+  refused before it starts is shown as its problems.
 
 ## How polls and `max_concurrent:` run
 <!-- topic: how-polls-and-max-concurrent-run -->

@@ -861,6 +861,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "crates/jadpo-cli/src/acceptance.rs",
         "names an acceptance's file by the minute, as a migration's folder is, by the contract's own writer (chunk A8)",
     ),
+    (
+        "crates/jadpo-cli/src/package_import/answer.rs",
+        "tells whether a provider's text is written as an instant or a date, by the contract's own readers, to write a type from its answer (chunk K5); it sends nothing",
+    ),
 ];
 
 /// The function `name` of `code`: from its signature to the first line

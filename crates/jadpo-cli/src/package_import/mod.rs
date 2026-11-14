@@ -11,8 +11,9 @@
 //! for the agent; then the footer and the one next command, `jadpo
 //! check`. `--json` gives the files, the counts and every finding.
 
+pub(crate) mod answer;
 mod merge;
-mod model;
+pub(crate) mod model;
 mod notation;
 mod openapi;
 
@@ -486,31 +487,8 @@ fn report(
         });
     }
     // What is left to check, grouped by what to do.
-    let mut grouped: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-    let mut order: Vec<&str> = Vec::new();
-    for finding in findings {
-        if !grouped.contains_key(finding.next.as_str()) {
-            order.push(&finding.next);
-        }
-        grouped.entry(&finding.next).or_default().push(&finding.at);
-    }
-    if !order.is_empty() {
-        let mut lines = Vec::new();
-        for (i, next) in order.iter().enumerate() {
-            if i > 0 {
-                lines.push(String::new());
-            }
-            lines.extend(wrap(&format!("{next} (agent)"), WIDTH));
-            lines.extend(
-                wrap(&grouped[next].join(", "), WIDTH - 2)
-                    .into_iter()
-                    .map(|line| format!("  {line}")),
-            );
-        }
-        screen.push(Block::Section {
-            heading: "To check".to_string(),
-            lines,
-        });
+    if let Some(block) = to_check(findings) {
+        screen.push(block);
     }
     // The one scoped review instruction, and the calls unconfirmed
     // (chunk 7.2e2).
@@ -606,6 +584,38 @@ fn report(
         ),
     ]);
     Reply::screen(screen, data)
+}
+
+/// What is left to check, grouped by what to do, each group's places
+/// listed under its step for the agent; `None` when nothing is.
+pub(crate) fn to_check(findings: &[model::Finding]) -> Option<Block> {
+    let mut grouped: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    let mut order: Vec<&str> = Vec::new();
+    for finding in findings {
+        if !grouped.contains_key(finding.next.as_str()) {
+            order.push(&finding.next);
+        }
+        grouped.entry(&finding.next).or_default().push(&finding.at);
+    }
+    if order.is_empty() {
+        return None;
+    }
+    let mut lines = Vec::new();
+    for (i, next) in order.iter().enumerate() {
+        if i > 0 {
+            lines.push(String::new());
+        }
+        lines.extend(wrap(&format!("{next} (agent)"), WIDTH));
+        lines.extend(
+            wrap(&grouped[next].join(", "), WIDTH - 2)
+                .into_iter()
+                .map(|line| format!("  {line}")),
+        );
+    }
+    Some(Block::Section {
+        heading: "To check".to_string(),
+        lines,
+    })
 }
 
 /// `Tidepool.v1` as its name and version.

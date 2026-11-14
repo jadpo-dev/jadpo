@@ -301,10 +301,7 @@ work below (Richard, 2026-11-08).
      the provider's sandbox, every written operation no recording confirms
      needing one. Done when each is built and tested against doubles, with
      nothing sent to a third party.
-   - [ ] **K5 Types from recordings and recipes' tests** `opus · high`:
-     area 11, "Recordings", "Recipes" and "Installing safely". An operation's
-     output type written from a recorded or sandbox answer, and a recipe's
-     tests run in `sample/`.
+   - [x] **K5 Types from recordings and recipes' tests**: area 11, "Recordings" and "Package subscribers and recipes in `sample/`"; area 14, "`jadpo package record`"; and the notes for area 11.
    - [ ] **K6 What's left of `ai`** `opus · high` after P9: area 21,
      "Budgets" and "Streams, embeddings and the OpenAI and Anthropic
      packages". `keep_content:`, kept in encrypted fields, and an `embed:`

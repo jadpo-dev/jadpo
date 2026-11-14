@@ -187,6 +187,66 @@ pub fn read(
     })
 }
 
+/// The types an operation's answer is read as, worked out from one
+/// answer (area 11, "Recordings"; chunk K5): its output's type as an
+/// operation's `output:` is written, the declarations it needs, what is
+/// left to check and what was mapped to a standard type.
+pub struct Answered {
+    pub output: Option<String>,
+    pub types: BTreeMap<String, TypeDecl>,
+    pub findings: Vec<Finding>,
+    pub mapped: Vec<Mapped>,
+}
+
+/// The types `schema`, the JSON Schema of an answer of operation `at`
+/// (`bookings.create`), is read as, the way an imported operation's
+/// lowest `2xx` answer is: an object `<stem>Output`, each object inside it
+/// `<Parent><Field>`, with the same exact mappings, shapes and findings.
+/// No name in `taken`, the package's own, is given again.
+pub fn answered(schema: &Value, at: &str, stem: &str, taken: BTreeSet<String>) -> Answered {
+    let empty = Value::Null;
+    let mut reader = Reader {
+        document: &empty,
+        exact: false,
+        names: BTreeMap::new(),
+        taken,
+        types: BTreeMap::new(),
+        failures: BTreeMap::new(),
+        findings: Vec::new(),
+        queue: Vec::new(),
+        done: BTreeSet::new(),
+        mapped: Vec::new(),
+    };
+    let name = format!("{stem}Output");
+    let output = reader.ty(schema, at, &name).and_then(|ty| {
+        if ty.optional {
+            return None;
+        }
+        if ty.rules.is_empty() {
+            return Some(ty.text);
+        }
+        let name = reader.unique(name.clone());
+        reader.types.insert(
+            name.clone(),
+            TypeDecl::Refined {
+                doc: None,
+                base: ty.text,
+                rules: ty.rules,
+            },
+        );
+        Some(name)
+    });
+    reader.drain();
+    reader.siblings();
+    reader.mapped.sort_by(|a, b| a.at.cmp(&b.at));
+    Answered {
+        output,
+        types: reader.types,
+        findings: reader.findings,
+        mapped: reader.mapped,
+    }
+}
+
 /// An operation as found, before it is named.
 struct Read {
     method: &'static str,
@@ -634,6 +694,11 @@ impl Reader<'_> {
     /// Jadpo form. `at` names it for findings, and `synthesised` is the
     /// name an object inside it would get.
     fn ty(&mut self, schema: &Value, at: &str, synthesised: &str) -> Option<Ty> {
+        // What a schema worked out from one answer couldn't tell (chunk
+        // K5), said where the field is.
+        if let Some(note) = schema.get(super::answer::GUESSED).and_then(Value::as_str) {
+            self.find(at.to_string(), note.to_string());
+        }
         if let Some(text) = schema.get("x-jadpo-constraints").and_then(Value::as_str)
             && let Some(written) = notation::parse(text)
         {
