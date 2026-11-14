@@ -3,8 +3,9 @@
 //! beside `api/`, so a change that widens access is a diff in the pull
 //! request and an acceptance has a before side to judge it against.
 //!
-//! It holds what a widening is read from: the tenant, each entity's grants
-//! and where its records belong, each field's own narrower grants, the
+//! It holds what a widening is read from: the tenant, the scopes external
+//! tokens are narrowed to, each entity's grants, the scope each effect
+//! needs and where its records belong, each field's own narrower grants, the
 //! actions and queries listed under `actions:`, every decline of a rule
 //! the catalogue marks as a security rule, the sign-in settings that have
 //! a limit (area 8, "Magic links"), and the company's own git locations
@@ -84,9 +85,27 @@ pub fn record_text(db: &dyn Db, project: Project) -> Option<Option<String>> {
 fn entries(db: &dyn Db, project: Project) -> Vec<Entry> {
     let access = crate::policy::access(db, project);
     let lookup = Lookup::new(db, project);
+    let identity = crate::identity::identity(db, project);
     let mut out = Vec::new();
     if let Some(tenant) = &access.root.tenant {
         out.push(Entry::new(format!("tenant {tenant}")));
+    }
+    // The scopes external tokens are narrowed to, each by its name and the
+    // scope-token it reads (chunk N2): removing them, or a name reading
+    // another token, lets tokens do more.
+    if let Some(scopes) = identity.scopes.as_ref().filter(|_| access.narrows) {
+        let mut entry = Entry::new("scopes external_token");
+        let mut scopes: Vec<&crate::identity::Scope> = scopes.iter().collect();
+        scopes.sort_by(|a, b| a.name.cmp(&b.name));
+        for scope in scopes {
+            // In quotes, so no scope-token reads as a comment.
+            entry.push(format!(
+                "scope {} {}",
+                scope.name,
+                format::quote(&scope.token)
+            ));
+        }
+        out.push(entry);
     }
     let mut entities: Vec<(String, &crate::policy::EntityPolicy)> = access
         .entities
@@ -110,6 +129,11 @@ fn entries(db: &dyn Db, project: Project) -> Vec<Entry> {
             match &policy.tenancy {
                 Some(tenancy) => entry.push(format!("tenant {}", tenancy.via)),
                 None => entry.push("shared"),
+            }
+        }
+        if access.narrows {
+            for (effect, need) in &policy.scopes {
+                entry.push(format!("scope {} {}", effect.word(), need.written));
             }
         }
         out.push(entry);

@@ -2098,6 +2098,24 @@ impl Lower<'_> {
         if let Some(method) = value("method").and_then(|member| member.value()) {
             self.scan(method.syntax());
         }
+        // `scopes:`, the scope-tokens the checker read from it, sent as one
+        // text as a `scope` claim holds them (chunk N2).
+        let scopes = match (&fact.scopes, value("scopes")) {
+            (Some(tokens), Some(member)) => {
+                let range = member
+                    .value()
+                    .map_or_else(|| range(member.syntax()), |value| range(value.syntax()));
+                if let Some(written) = member.value() {
+                    self.scan(written.syntax());
+                }
+                Some(self.made(
+                    range,
+                    TypeRef::Builtin(Prim::Text),
+                    typed::Node::Expr(typed::Expr::Literal(Literal::Text(tokens.clone()))),
+                ))
+            }
+            _ => None,
+        };
         typed::Expr::Request {
             route: fact.route.clone(),
             params,
@@ -2106,6 +2124,7 @@ impl Lower<'_> {
             caller,
             sign_in,
             strength,
+            scopes,
         }
     }
 

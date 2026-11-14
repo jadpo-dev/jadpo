@@ -833,6 +833,24 @@ pub fn policy_nodes(
                 _ => None,
             })
     };
+    // Each scope a way in narrows its tokens to (area 8, "Scopes"; chunk
+    // N2), with a `scopes` edge to each grant whose effect needs it.
+    let identity = crate::identity::identity(db, project);
+    for scope in identity.scopes.iter().flatten() {
+        let now = format!(
+            "{}.{}",
+            jadpo_std::standard::security::OAUTH_SCOPE,
+            scope.name
+        );
+        let mut node = Node::new(
+            registry.key(Kind::OauthScope, &now, None),
+            Kind::OauthScope,
+            now,
+        );
+        node.place = place(&scope.span.path, &scope.span);
+        node.digest = Some(Digest::of([scope.name.as_str(), scope.token.as_str()]));
+        nodes.push(node);
+    }
     for name in crate::data::entity_names(db, project) {
         let Some(read) =
             crate::policy::policy_read(db, project, crate::lookups::Name::new(db, name.clone()))
@@ -872,6 +890,12 @@ pub fn policy_nodes(
                 who: list.written.clone(),
             };
             edges.push((node.key.clone(), EdgeKind::Grants, entity.clone()));
+            if let Some(need) = policy.scopes.get(&effect)
+                && identity.narrows()
+            {
+                let scope = registry.key(Kind::OauthScope, &need.written, None);
+                edges.push((scope, EdgeKind::Scopes, node.key.clone()));
+            }
             nodes.push(node);
         }
         for field in &policy.fields {

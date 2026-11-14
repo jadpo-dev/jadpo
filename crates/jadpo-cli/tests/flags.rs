@@ -338,6 +338,7 @@ fn signed_in(person: &Value) -> Caller {
         session: None,
         sign_in: None,
         multi_factor: false,
+        scopes: None,
     }
 }
 

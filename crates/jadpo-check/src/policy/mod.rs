@@ -148,9 +148,28 @@ pub struct EntityPolicy {
     /// The fields whose own `policy:` narrows these grants, in declared
     /// order.
     pub fields: Vec<FieldPolicy>,
+    /// `scopes:`: for each effect it names, the scope a narrowed token
+    /// must carry as well as a grant (area 9, "Scopes"; chunk N2). An
+    /// effect it leaves out is refused to every narrowed token.
+    pub scopes: BTreeMap<Effect, ScopeNeed>,
+}
+
+/// The scope an effect needs of a narrowed token (chunk N2).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ScopeNeed {
+    /// As written: `OAuthScope.todos_read`.
+    pub written: String,
+    /// The scope-token the token carries for it: `todos:read`.
+    pub token: String,
 }
 
 impl EntityPolicy {
+    /// The scope-token a narrowed token needs for `effect` on these
+    /// records; `None` when no scope lets one in.
+    pub fn scope(&self, effect: Effect) -> Option<&str> {
+        self.scopes.get(&effect).map(|need| need.token.as_str())
+    }
+
     /// What `effect` grants, resolved; empty when nobody.
     pub fn grants(&self, effect: Effect) -> &[Grant] {
         self.lists
@@ -470,6 +489,9 @@ pub struct Access {
     /// Each entity's policy, by entity name; an entity without `policy:`
     /// has one whose every list is empty.
     pub entities: BTreeMap<String, EntityPolicy>,
+    /// Whether a way in narrows its tokens to their scopes (chunk N2): then
+    /// every statement also asks a narrowed caller for its effect's scope.
+    pub narrows: bool,
 }
 
 impl Access {
@@ -1636,6 +1658,7 @@ pub fn policy_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
         shared: false,
         fixed: Vec::new(),
         fields: Vec::new(),
+        scopes: BTreeMap::new(),
     };
     let mut tenant_written: Option<(Expr, Span)> = None;
     let mut places: Vec<(String, Span)> = Vec::new();
@@ -1680,12 +1703,8 @@ pub fn policy_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
             }
             seen.insert(word.clone(), span.clone());
             if word == "scopes" {
-                problems.push(
-                    Diagnostic::new(&rule::TOOLCHAIN_NOT_BUILT_YET, "A policy's `scopes:` isn't built yet")
-                        .at(span, "decided, not built")
-                        .reason("`scopes:` narrows what a token issued to another application may do. OAuth tokens and declared external-token scope mappings are not built yet; an external method without those mappings carries no policy scopes.")
-                        .next("Leave `scopes:` out for now"),
-                );
+                places.push((word.clone(), node_span(&path, member.syntax())));
+                policy.scopes = scopes(db, project, &path, &member, &mut problems);
                 continue;
             }
             places.push((word.clone(), node_span(&path, member.syntax())));
@@ -1916,6 +1935,149 @@ fn lookup_name_span(path: &str, decl: &ast::EntityDecl) -> Span {
         || node_span(path, decl.syntax()),
         |name| node_span(path, name.syntax()),
     )
+}
+
+/// An entity's `scopes: { read: OAuthScope.todos_read }` (area 9,
+/// "Scopes"; chunk N2): for each effect it names, the scope a narrowed
+/// token must carry beside a grant, one of those `authentication.jadpo`
+/// declares. A mistake is reported and leaves its effect out, which only
+/// narrows: an effect with no scope is refused to every narrowed token.
+fn scopes(
+    db: &dyn Db,
+    project: Project,
+    path: &str,
+    member: &ast::Member,
+    problems: &mut Vec<Diagnostic>,
+) -> BTreeMap<Effect, ScopeNeed> {
+    let mut out: BTreeMap<Effect, ScopeNeed> = BTreeMap::new();
+    let Some(list) = member.block() else {
+        let at = member.value().map_or_else(
+            || node_span(path, member.syntax()),
+            |value| node_span(path, value.syntax()),
+        );
+        problems.push(binding(
+            at,
+            "`scopes:` isn't a block".to_string(),
+            "not a block",
+            "`scopes:` names, for each effect, the scope a token issued to another application needs as well as a grant: `scopes: { read: OAuthScope.todos_read }`.",
+            "Write `scopes: { <effect>: OAuthScope.<name> }`",
+        ));
+        return out;
+    };
+    let identity = crate::identity::identity(db, project);
+    let mut seen: BTreeMap<Effect, Span> = BTreeMap::new();
+    for item in list.member_items() {
+        let MemberItem::Member(entry) = item else {
+            if !matches!(item, MemberItem::Elision(_)) {
+                problems.push(effect_unknown(
+                    path,
+                    item.syntax(),
+                    &tree::written(item.syntax()),
+                ));
+            }
+            continue;
+        };
+        let Some(key) = entry.member_key() else {
+            continue;
+        };
+        let word = tree::written(key.syntax());
+        let span = node_span(path, key.syntax());
+        let Some(effect) = Effect::from_word(&word) else {
+            let near = nearest(&word, Effect::ALL.map(Effect::word));
+            let problem = Diagnostic::new(
+                &rule::POLICY_EFFECT_UNKNOWN,
+                format!("`{word}` isn't an effect a scope narrows"),
+            )
+            .at(span.clone(), "not an effect")
+            .reason("`scopes:` names the scope each of `create`, `read`, `update` and `delete` needs of a token issued to another application.");
+            problems.push(match near {
+                Some(near) => problem.next(format!("Use `{near}`")).edit(span, near),
+                None => problem.next(format!("Remove `{word}:`")),
+            });
+            continue;
+        };
+        if let Some(first) = seen.get(&effect) {
+            problems.push(
+                Diagnostic::new(
+                    &rule::POLICY_EFFECT_DUPLICATE,
+                    format!("`scopes:` gives `{word}:` twice"),
+                )
+                .at(span, "given again")
+                .also(first.clone(), "first given here")
+                .reason("Each effect needs one scope, so \"which scope lets a token do this?\" is always one line.")
+                .next(format!("Remove the second `{word}:`")),
+            );
+            continue;
+        }
+        seen.insert(effect, span.clone());
+        let Some(value) = entry.value() else {
+            continue;
+        };
+        let written = tree::written(value.syntax());
+        let at = node_span(path, value.syntax());
+        let named = pair(&value)
+            .filter(|(ty, _)| ty == jadpo_std::standard::security::OAUTH_SCOPE)
+            .map(|(_, name)| name);
+        let Some(name) = named else {
+            problems.push(binding(
+                at,
+                format!("`{word}: {written}` isn't a scope"),
+                "not `OAuthScope.<name>`",
+                "Each effect names one scope, `OAuthScope.<name>`, which a token must carry as well as a grant; a list would read as \"any of\".",
+                "Write `OAuthScope.<name>`, naming a scope `authentication.jadpo` declares",
+            ));
+            continue;
+        };
+        let Some(scope) = identity.scope(&name) else {
+            let declared: Vec<&str> = identity
+                .scopes
+                .iter()
+                .flatten()
+                .map(|scope| scope.name.as_str())
+                .collect();
+            let (reason, next) = if identity.scopes.is_none() {
+                (
+                    "A scope narrows a token issued to another application, and no way in declares the scopes its tokens carry: `external_token:` declares them in `scopes: { <name>: \"<scope-token>\" }`.".to_string(),
+                    format!("Declare `{name}` in `external_token: {{ scopes: }}`, or remove `scopes:`"),
+                )
+            } else {
+                let near = nearest(&name, declared.iter().copied());
+                let listed: Vec<String> = declared
+                    .iter()
+                    .map(|scope| format!("`OAuthScope.{scope}`"))
+                    .collect();
+                (
+                    format!(
+                        "`OAuthScope` here is one of the scopes `authentication.jadpo` declares: {}.{}",
+                        crate::and_list(&listed),
+                        near.map_or_else(String::new, |near| format!(
+                            " Did you mean `OAuthScope.{near}`?"
+                        ))
+                    ),
+                    match near {
+                        Some(near) => format!("Use `OAuthScope.{near}`"),
+                        None => format!("Declare `{name}` in `external_token: {{ scopes: }}`"),
+                    },
+                )
+            };
+            problems.push(binding(
+                at,
+                format!("`OAuthScope.{name}` isn't a declared scope"),
+                "no such scope",
+                &reason,
+                &next,
+            ));
+            continue;
+        };
+        out.insert(
+            effect,
+            ScopeNeed {
+                written,
+                token: scope.token.clone(),
+            },
+        );
+    }
+    out
 }
 
 fn effect_unknown(path: &str, node: &jadpo_syntax::SyntaxNode, word: &str) -> Diagnostic {
@@ -2330,6 +2492,7 @@ pub fn access(db: &dyn Db, project: Project) -> Arc<Access> {
         root: root_read(db, project).model.clone(),
         memberships: (**memberships(db, project)).clone(),
         entities,
+        narrows: crate::identity::identity(db, project).narrows(),
     })
 }
 

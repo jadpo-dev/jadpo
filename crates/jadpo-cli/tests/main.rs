@@ -160,6 +160,7 @@ mod route_limits;
 mod rule_slice;
 mod s3_files;
 mod schedules;
+mod scopes;
 mod search;
 mod secret_boundaries;
 mod seeds;

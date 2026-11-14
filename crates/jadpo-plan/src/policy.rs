@@ -207,18 +207,66 @@ impl Planner<'_> {
         )
     }
 
-    /// The condition `grants` add for a statement whose record is `row`:
-    /// any of them, and the tenancy.
+    /// The condition `grants` add for a statement doing `effect` whose
+    /// record is `row`: any of them, the tenancy, and the scope a narrowed
+    /// token needs for `effect` ([`Planner::scoped`]).
     pub(crate) fn granted(
         &self,
         bind: &mut dyn CallerBind,
         entity: &EntityModel,
+        effect: Effect,
         grants: &[Grant],
         row: &Row<'_>,
     ) -> Option<String> {
         let condition = self.any_grant(bind, entity, grants, row)?;
         let system = grants.contains(&Grant::System);
-        self.in_tenant(bind, entity, condition, row, system)
+        let condition = self.in_tenant(bind, entity, condition, row, system)?;
+        Some(match self.scoped(bind, entity, effect) {
+            None => condition,
+            Some(scope) if condition == jadpo_sql::policy::ANYONE => scope,
+            Some(scope) => jadpo_sql::policy::all_of(&[condition, scope]),
+        })
+    }
+
+    /// What a narrowed token needs to do `effect` to `entity`'s records
+    /// (area 9, "Scopes"; chunk N2), whatever grants decide it: the scope
+    /// its `scopes:` names for `effect`, else nothing lets one in. `None`
+    /// when no way in narrows, so the statement is as it always was. A
+    /// caller that isn't narrowed binds `NULL` and passes; scopes only
+    /// ever take away.
+    fn scoped(
+        &self,
+        bind: &mut dyn CallerBind,
+        entity: &EntityModel,
+        effect: Effect,
+    ) -> Option<String> {
+        if !self.access.narrows {
+            return None;
+        }
+        let held = bind.caller(CallerPart::Scopes);
+        let token = self
+            .access
+            .entity(&entity.name)
+            .and_then(|policy| policy.scope(effect))
+            .and_then(|token| bind.stored(jadpo_std::SqlValue::Text(token.to_string())));
+        Some(jadpo_sql::policy::scope_held(&held, token.as_deref()))
+    }
+
+    /// The scope-tokens of `entity`'s `effects`, any one of which lets a
+    /// narrowed token through a gate (chunk N2).
+    fn scopes_of(&self, entity: &EntityModel, effects: &[Effect]) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for effect in effects {
+            if let Some(token) = self
+                .access
+                .entity(&entity.name)
+                .and_then(|policy| policy.scope(*effect))
+                && !out.iter().any(|held| held == token)
+            {
+                out.push(token.to_string());
+            }
+        }
+        out
     }
 
     /// Whether the caller passes any of `grants` on `row`, without the
@@ -435,7 +483,13 @@ impl Planner<'_> {
             values: &values,
             founds: false,
         };
-        Some(Some(self.granted(bind, entity, &grants, &row)?))
+        Some(Some(self.granted(
+            bind,
+            entity,
+            Effect::Create,
+            &grants,
+            &row,
+        )?))
     }
 
     /// What keeps the references a write sets inside the tenant (area 9,
@@ -553,7 +607,7 @@ impl Planner<'_> {
         row: &Row<'_>,
     ) -> Option<String> {
         let grants = self.grants(entity, effect);
-        self.granted(bind, entity, &grants, row)
+        self.granted(bind, entity, effect, &grants, row)
     }
 
     /// What the plan checks as an action starts, from who its line under
@@ -562,21 +616,39 @@ impl Planner<'_> {
     /// signed in, a role held across the whole application, or nobody;
     /// and the system when the line names `Access.system` (`system`).
     /// A gate it can't plan refuses every request rather than none.
-    pub(crate) fn gate(&self, gate: &LineGate, system: bool) -> Option<Gate> {
+    ///
+    /// Where a way in narrows (chunk N2), a gate asks a narrowed token for
+    /// one of `scopes` too, or with `Some` of none refuses it; and anyone
+    /// at all is a gate of its own, for that alone.
+    pub(crate) fn gate(
+        &self,
+        gate: &LineGate,
+        system: bool,
+        scopes: Option<Vec<String>>,
+    ) -> Option<Gate> {
+        let scopes = scopes.filter(|_| self.access.narrows);
         let callers = match gate {
-            LineGate::Anyone | LineGate::Statements => return None,
+            LineGate::Statements => return None,
+            LineGate::Anyone if scopes.is_none() => return None,
+            LineGate::Anyone => Callers::Anyone,
             LineGate::Signed => Callers::Signed,
             LineGate::Nobody => Callers::Nobody,
             LineGate::Roles(roles) => self.roles_gate(roles).unwrap_or(Callers::Nobody),
         };
-        Some(Gate { callers, system })
+        Some(Gate {
+            callers,
+            system,
+            scopes,
+        })
     }
 
-    /// Who may ask for a slot for a field of an entity whose `create` and
-    /// `update` grants are `grants`, with no record to test them on.
-    fn slot_gate(&self, grants: &[Grant]) -> Option<Gate> {
+    /// Who may ask for a slot for a field of `entity`, whose `create` and
+    /// `update` grants are `grants`, with no record to test them on; a
+    /// narrowed token needs the scope of one of the two.
+    fn slot_gate(&self, entity: &EntityModel, grants: &[Grant]) -> Option<Gate> {
+        let scopes = Some(self.scopes_of(entity, &[Effect::Create, Effect::Update]));
         if grants.contains(&Grant::Public) {
-            return self.gate(&LineGate::Anyone, false);
+            return self.gate(&LineGate::Anyone, false, scopes);
         }
         let system = grants.contains(&Grant::System);
         let signed = grants.iter().any(|grant| {
@@ -603,7 +675,7 @@ impl Planner<'_> {
         } else {
             LineGate::Nobody
         };
-        self.gate(&line, system)
+        self.gate(&line, system, scopes)
     }
 
     /// Who may run the query called `name`, when root `policy { actions:
@@ -614,7 +686,9 @@ impl Planner<'_> {
             .access
             .root
             .query_gate(name, &self.access.memberships)?;
-        self.gate(&gate, false)
+        // Its records are still filtered by their entity's `read:`, whose
+        // statements ask a narrowed token for the read scope.
+        self.gate(&gate, false, None)
     }
 
     /// A caller holding one of `roles`, each held across the whole
@@ -769,7 +843,7 @@ pub(crate) fn uploads(
                 store: file.store.clone(),
                 max_size: file.max_size,
                 types: file.types.clone(),
-                gate: planner.slot_gate(&grants),
+                gate: planner.slot_gate(held, &grants),
             };
             Some(((entity.clone(), field.clone()), plan))
         })
@@ -810,7 +884,12 @@ pub(crate) fn gates(
             let gate = jadpo_check::policy::reach::line_gate(db, project, &line.action)
                 .unwrap_or(LineGate::Nobody);
             let system = line.who.contains(&jadpo_check::policy::ActionWho::System);
-            Some((line.action.clone(), planner.gate(&gate, system)?))
+            // No entity's `scopes:` names a listed action, so a narrowed
+            // token can't call one that is checked as it starts.
+            Some((
+                line.action.clone(),
+                planner.gate(&gate, system, Some(Vec::new()))?,
+            ))
         })
         .collect()
 }

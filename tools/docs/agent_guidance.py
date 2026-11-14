@@ -78,7 +78,6 @@ PRIMER_NOT_BUILT = (
     ('04-failures', 'Logging', 'failure logging'),
     ('08-identity', '`Driver.apple`', 'sign-in with Apple or your own OAuth provider'),
     ('08-identity', 'OAuth grants', 'OAuth grants'),
-    ('08-identity', 'Scope declarations', 'token scopes'),
     ('15-personal-data', 'Everything else on this page', 'most of personal data'),
     ('17-debugging-and-review', 'The developer console', 'the developer console and MCP'),
     ('13-testing', 'Data builders', 'data builders and `assert emitted` in tests'),

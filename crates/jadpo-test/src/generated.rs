@@ -961,6 +961,7 @@ fn caller(app: &App<'_>, route: &RoutePlan, key: &str) -> Option<Caller> {
         session: None,
         sign_in: None,
         multi_factor: true,
+        scopes: None,
     })
 }
 

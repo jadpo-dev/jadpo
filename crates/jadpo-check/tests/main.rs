@@ -120,6 +120,7 @@ mod routes;
 mod scale;
 mod schedule_checks;
 mod schedules;
+mod scopes;
 mod search;
 mod secret_boundaries;
 mod secrets;

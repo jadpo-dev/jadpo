@@ -85,7 +85,17 @@ async fn body(
                         signed,
                         way,
                         strong,
-                    } => request(program, ctx, route, &args, [keyed, signed, way, strong]).await,
+                        scoped,
+                    } => {
+                        request(
+                            program,
+                            ctx,
+                            route,
+                            &args,
+                            [keyed, signed, way, strong, scoped],
+                        )
+                        .await
+                    }
                     Target::Download => jadpo_runtime::http::downloads::link_test(
                         &program.app(),
                         program,
@@ -315,7 +325,7 @@ async fn request(
     ctx: &mut Ctx<'_>,
     route: u32,
     args: &[Value],
-    given: [bool; 4],
+    given: [bool; 5],
 ) -> Result<Value, Stop> {
     let sent = jadpo_runtime::http::RequestValues::split(args, given);
     jadpo_runtime::http::route_test(&program.app(), program, ctx, route, sent)

@@ -804,6 +804,224 @@ query companies() -> List<CompanyCard> {
     );
 }
 
+/// The notebook a scope narrows (area 9, "Scopes"; chunk N2): `declared`
+/// is external tokens' `scopes:`, and `Note` reads with `notes_read`.
+fn notebook(declared: &str) -> Plan {
+    planned(format!(
+        r#"config {{
+    issuer: Url
+    audience: Text
+}}
+
+principal {{
+    user: {{
+        subject: Writer.handle
+    }}
+}}
+
+authentication {{
+    browser_session: {{
+        cookie: "notebook_session"
+    }}
+    external_token: {{
+        issuer: config.issuer
+        audience: config.audience
+{declared}
+    }}
+}}
+
+type Handle = Text {{
+    max_length: 40
+}}
+
+entity Writer {{
+    id: Uuid
+    handle: Handle {{
+        unique: true
+    }}
+
+    policy: {{
+        read: [id]
+    }}
+}}
+
+entity Note {{
+    id: Uuid
+    writer_id: Writer.id {{
+        on_delete: OnDelete.cascade
+    }}
+    text: Handle
+
+    policy: {{
+        read: [Access.public]
+        delete: [writer_id]
+{needs}
+    }}
+}}
+
+type NoteCard = Output {{
+    pick: [Note.id, Note.text]
+}}
+
+query notes() -> List<NoteCard> {{
+    from: Note
+    order: [Note.text asc]
+    limit: 100
+}}
+
+query writers() -> List<Writer> {{
+    from: Writer
+    order: [Writer.handle asc]
+    limit: 100
+}}
+"#,
+        needs = if declared.is_empty() {
+            ""
+        } else {
+            "        scopes: {\n            read: OAuthScope.notes_read\n        }"
+        }
+    ))
+}
+
+#[test]
+fn a_narrowed_token_needs_its_effects_scope_in_every_statement() {
+    let scoped = notebook("        scopes: {\n            notes_read: \"notes:read\"\n        }");
+    let read = |plan: &Plan, name: &str| {
+        plan.queries()
+            .iter()
+            .find(|query| query.name == name)
+            .map(|query| query.read.select.clone())
+            .expect("the query")
+    };
+    let scopes = |select: &jadpo_std::read::Select| {
+        select
+            .params
+            .iter()
+            .any(|param| param.source == Source::Caller(jadpo_std::policy::CallerPart::Scopes))
+    };
+    // `Access.public` is a grant like any other: a narrowed token also
+    // needs `notes:read`, compared whole, and anyone else binds `NULL`.
+    let notes = read(&scoped, "notes");
+    assert!(
+        notes.sql.contains("::text IS NULL OR ")
+            && notes.sql.contains("::text = ANY(string_to_array(")
+            && notes.params.iter().any(|param| {
+                param.source == Source::Stored(jadpo_std::SqlValue::Text("notes:read".into()))
+            })
+            && scopes(&notes),
+        "{}",
+        notes.sql
+    );
+    // An entity whose `scopes:` names no read refuses every narrowed token.
+    let writers = read(&scoped, "writers");
+    assert!(
+        writers.sql.contains("::text IS NULL") && !writers.sql.contains("string_to_array"),
+        "{}",
+        writers.sql
+    );
+    // No way in narrows: the statements are as they always were.
+    let plain = notebook("");
+    for name in ["notes", "writers"] {
+        let select = read(&plain, name);
+        assert!(
+            !select.sql.contains("string_to_array") && !scopes(&select),
+            "{}",
+            select.sql
+        );
+    }
+    assert!(
+        !read(&plain, "notes").sql.contains("WHERE"),
+        "anyone reads a note, with nothing to test: {}",
+        read(&plain, "notes").sql
+    );
+}
+
+/// A gate checked as an action starts, with what it asks of a narrowed
+/// token (chunk N2): `declared` is external tokens' `scopes:`. An upload
+/// slot's is the notebook's route test (`jadpo-cli`'s `scopes`).
+fn gated(declared: &str) -> Plan {
+    planned(format!(
+        r#"config {{
+    issuer: Url
+    audience: Text
+}}
+
+principal {{
+    user: {{
+        subject: Writer.handle
+    }}
+}}
+
+authentication {{
+    browser_session: {{
+        cookie: "notebook_session"
+    }}
+    external_token: {{
+        issuer: config.issuer
+        audience: config.audience
+{declared}
+    }}
+}}
+
+policy {{
+    actions: {{
+        ping: [Access.public]
+        pong: [Access.authenticated]
+    }}
+}}
+
+type Handle = Text {{
+    max_length: 40
+}}
+
+entity Writer {{
+    id: Uuid
+    handle: Handle {{
+        unique: true
+    }}
+
+    policy: {{
+        read: [id]
+    }}
+}}
+
+action ping() -> Unit {{
+}}
+
+action pong() -> Unit {{
+}}
+"#
+    ))
+}
+
+#[test]
+fn a_gate_asks_a_narrowed_token_for_its_scope_or_refuses_it() {
+    use jadpo_std::policy::Callers;
+    let gate_of = |plan: &Plan, name: &str| {
+        plan.callables()
+            .iter()
+            .find(|callable| callable.key.name() == name)
+            .and_then(|callable| callable.gate.clone())
+    };
+    let scoped = gated("        scopes: {\n            notes_read: \"notes:read\"\n        }");
+    // A listed action no entity's scope names refuses every narrowed
+    // token, the one anyone at all may call included.
+    let ping = gate_of(&scoped, "ping").expect("a gate");
+    assert_eq!(
+        (ping.callers, ping.scopes),
+        (Callers::Anyone, Some(Vec::new()))
+    );
+    let pong = gate_of(&scoped, "pong").expect("a gate");
+    assert_eq!(
+        (pong.callers, pong.scopes),
+        (Callers::Signed, Some(Vec::new()))
+    );
+    // No way in narrows: the gates are as they always were.
+    let plain = gated("");
+    assert_eq!(gate_of(&plain, "ping"), None);
+    assert_eq!(gate_of(&plain, "pong").and_then(|gate| gate.scopes), None);
+}
+
 /// Someone who signs in goes, when their retention ends, with the sign-in
 /// state their store keeps: here their API tokens' sessions (area 15,
 /// "Retention"; chunk P2), in the statement that deletes them.

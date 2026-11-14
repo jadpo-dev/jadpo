@@ -2231,9 +2231,14 @@ compares the change with the default branch at its merge base through
   (`"main POST /payouts/{payout_id: Uuid}/send":
   PolicyChange.confirmation_removed`);
 - a decline of `policy.call_ungranted`, a security rule
-  (`PolicyChange.call_ungranted_declined`).
+  (`PolicyChange.call_ungranted_declined`);
+- scopes loosened: `external_token:`'s `scopes:` removed, so its tokens
+  are no longer narrowed; a declared scope reading another scope-token; or
+  an effect naming a scope it didn't, or another
+  (`PolicyChange.scopes_loosened`).
 
-Narrowing needs no one: a caller removed, a restriction added, a query
+Narrowing needs no one: a caller removed, a restriction added, an
+effect's scope removed or tokens narrowed for the first time, a query
 newly listed, a new route even one anyone may call, a new entity that
 belongs to the tenant. Access also widens when an output gains a field or
 an action starts touching another entity; [`jadpo
@@ -2274,10 +2279,9 @@ generated API description lists the 403 wherever it can happen.
 Writes are checked in the same statement as the change, so a membership
 removed a moment earlier can't slip through.
 
-A token issued to another application ([Sign-in and identity](08-identity.md))
-carries scopes, which say what that application may do. Scopes only
-narrow: the token may do what both the person's grants and its scopes
-allow.
+A token issued to another application carries scopes, which say what
+that application may do. Scopes only narrow: the token may do what both
+the person's grants and its scopes allow ([Scopes](#scopes)).
 
 ### Policy, end to end
 
@@ -2768,6 +2772,120 @@ test "someone outside a company can't start a project in it" {
 }
 ```
 
+## Scopes
+<!-- topic: scopes -->
+
+A person can let another application act for them, such as a partner's app
+holding a token their company's identity provider issued it. Such a token
+carries scopes: what the person let that application do.
+[`external_token:`](08-identity.md#external_token) declares the scopes its
+tokens carry, and every such token is narrowed to them. It may do what
+both the person's grants and its scopes allow, and never more than the
+person could do themselves.
+
+An entity's `policy:` says, in `scopes:`, which scope a narrowed token
+needs for each effect, as well as a grant. Here a partner's app reads a
+writer's notes with `notes:read`, and writes them with `notes.write`:
+
+```jadpo check project=scoped-notes
+config {
+    issuer: Url
+    audience: Text
+}
+
+principal {
+    user: {
+        subject: Writer.handle
+    }
+}
+
+authentication {
+    browser_session: {
+        cookie: "notebook_session"
+    }
+    external_token: {
+        issuer: config.issuer
+        audience: config.audience
+        scopes: {
+            notes_read: "notes:read"
+            notes_write: "notes.write"
+        }
+    }
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+entity Writer {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+    }
+}
+
+entity Note {
+    id: Uuid
+    writer_id: Writer.id {
+        on_delete: OnDelete.cascade
+    }
+    text: Text
+
+    policy: {
+        create: [writer_id]
+        read: [writer_id]
+        update: [writer_id]
+        delete: [writer_id]
+        scopes: {
+            create: OAuthScope.notes_write
+            read: OAuthScope.notes_read
+            update: OAuthScope.notes_write
+        }
+    }
+}
+```
+
+- Each effect names one scope, `OAuthScope.<name>`. `OAuthScope` here
+  holds only the scopes `authentication.jadpo` declares, so a misspelt or
+  undeclared scope is `policy.binding_invalid`. A list would read as "any
+  of", and a scope must hold as well as a grant, so there is none.
+- An effect `scopes:` leaves out is refused to every narrowed token. So
+  no token deletes a note, and none reads a `Writer`, whose policy names
+  no scope: a new entity is never open to other applications by accident.
+- `Access.public` and `Access.authenticated` are grants like any other: a
+  narrowed token still needs the effect's scope.
+- Browser sessions, API tokens and service keys carry no scopes, and
+  neither do schedules and subscribers, so scopes never touch them. Nor do
+  they touch a token from a provider whose `external_token:` declares none.
+
+A narrowed token is refused as any caller policy refuses is ([When policy
+says no](#when-policy-says-no)): a note it may not read is the code's own
+`not_found` failure, a list leaves it out, and a create is 403
+`not_permitted`. The check is in each statement's `WHERE`, as every grant
+is.
+
+Some things no effect's scope covers, so a narrowed token is refused them:
+
+- an action listed under `actions:` that is checked as it starts, since
+  no entity's `scopes:` names it. A listed query is let through, and its
+  records are still filtered by their entity's `read:` scope;
+- starting a session or issuing an API token, `sessions.start` and
+  `sessions.issue_token` (403 `not_permitted`), since either would carry
+  the person's whole authority;
+- a slot for an upload, unless it carries the scope of its entity's
+  `create:` or `update:`.
+
+The [permissions report](#the-permissions-report) gives each entity a
+"scope" row, with "refused" where no scope lets a narrowed token in, and
+`access.jadpo_record` keeps the declared scopes and each effect's.
+Loosening them needs a person ([Protecting policy](#protecting-policy)). A
+route test says which scopes its token carries with `scopes:`
+([Signing in for a route test](13-testing.md#signing-in-for-a-route-test)).
+
 ## Caches and personal data
 <!-- topic: caches-and-personal-data -->
 
@@ -2789,7 +2907,8 @@ Everything on this page is built except the features below. Each is
 | Feature | Status |
 |---|---|
 | Grants, user fields, membership roles, roles that need a way in (`requires:`), `Access.authenticated`, `Access.public` and `Access.system`, tenancy, `actions:` with listed queries and `policy.call_ungranted`, field restrictions, the permissions report, and the refusals under "When policy says no" | Built. |
-| `scopes:`, with the tokens issued to other applications (`oauth_token`, `external_token`) | Not built yet. Browser sessions and service keys work without them. |
+| [Scopes](#scopes): `scopes:`, with the tokens `external_token` narrows | Built. |
+| Scopes on `oauth_token` tokens | Not built yet: they come with acting as an OAuth provider ([What is built: Sign-in and identity](08-identity.md#what-is-built)). |
 | An acceptance for a change that widens access, with `access.jadpo_record` ([Acceptances](18-records-and-manifest.md#acceptances)) | Built. |
 | The approval report that shows the report's changes in plain terms ([Reviewing a change](17-debugging-and-review.md#reviewing-a-change)) | Built. |
 

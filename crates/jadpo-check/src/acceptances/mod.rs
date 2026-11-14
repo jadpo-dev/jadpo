@@ -575,6 +575,10 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
             "removing a listing changes who can run it",
             "It now takes its permission from its entities' grants, which may let more callers in.",
         ),
+        "PolicyChange.scopes_loosened" => (
+            "loosening scopes lets tokens issued to other applications do more",
+            "A token that was refused, or needed another scope, is now let in, as far as its person's grants allow.",
+        ),
         "PolicyChange.sign_in_loosened" => (
             "loosening sign-in past its limit weakens it",
             "Past its limit, a setting makes guessing or reusing a sign-in link or code easier.",

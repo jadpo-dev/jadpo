@@ -505,6 +505,7 @@ async fn call(
         session: None,
         sign_in: None,
         multi_factor: false,
+        scopes: None,
     }));
     ctx.set_trace(trace);
     let outcome = program.run(&mut ctx, id, args).await;

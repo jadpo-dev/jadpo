@@ -665,8 +665,9 @@ test "a body cut into segments" {
 /// `crate::file_uploads`), files sent as attachments and to a provider
 /// (chunk B14, `crate::file_sends`), any of the app's objects sent to a
 /// provider (`crate::any_object`), the audit trail (chunk B11,
-/// `crate::audit`), and a principal's subject kept in several columns and
-/// as JSON (chunk N1b, `crate::token_subjects`).
+/// `crate::audit`), a principal's subject kept in several columns and
+/// as JSON (chunk N1b, `crate::token_subjects`), and tokens narrowed to
+/// their scopes (chunk N2, `crate::scopes`).
 fn parity_projects() -> Vec<(String, PathBuf)> {
     let caught: Vec<(String, String)> = PACKAGE_CAUGHT
         .iter()
@@ -842,6 +843,10 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             .expect("it checks"),
         ),
         (
+            "tokens narrowed to their scopes".into(),
+            corpus_project(&crate::scopes::notebook(), "compiled-scopes").expect("it checks"),
+        ),
+        (
             "marked fields in logs".into(),
             corpus_project(&crate::marked_logs::files(), "compiled-marked-logs")
                 .expect("it checks"),
@@ -996,6 +1001,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "an audit trail",
         "a subject kept in several columns",
         "a subject kept as JSON",
+        "tokens narrowed to their scopes",
         "marked fields in logs",
         "examples 11-cake-shop",
         "examples 12-recipe-book",
