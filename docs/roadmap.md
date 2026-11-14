@@ -353,19 +353,18 @@ work below (Richard, 2026-11-08).
       runs at", and its notes; compiler-runtime, "Isolation and migrations".
     - [ ] **Q6 A database only when something needs one** `opus · high`, with
       the first feature that can run without one: area 5, "Stores".
-    - [ ] **Q7 A standard type swapped under stored data** `opus · high`:
-      area 19, "Reference lists ship with Jadpo" and "Names each release adds";
-      area 18, "Acceptances". The data migration and acceptances for a
-      `type.standard_exists` or `type.standard_clash` swap of a type already
-      stored or on the wire.
+    - [x] **Q7 A standard type swapped under stored data**: the swap's
+      records, migration and acceptances, in area 19, "Swap to the standard
+      type", and its notes, "A swap under stored data".
     - [x] **Q11 Born names kept for every rename**: a variant and a field
       inside JSON stored by born name, and a born name written by hand
       refused, in area 5, "What a rename keeps", area 14, "`jadpo rename`",
       area 18, "Stable identity", and their notes.
-    - [ ] **Q8 The Redis driver** `opus · xhigh`: area 11, "No presets, no
-      dependencies"; area 16, "Where the counts are kept: `rate_limits: { store: }`" and "A
-      Redis store on Workers". `Driver.redis` natively and on Workers, and
-      rate limits counted there rather than in each server's memory.
+    - [x] **Q8 The Redis driver**: `Driver.redis` natively and on Workers,
+      and rate limits counted there, in area 16, "Where the counts are kept",
+      "A Redis store on Workers" and "The Redis driver", and its notes; area
+      11, "No presets, no dependencies"; compiler-runtime §2.6, "What both
+      executors share, and round trips".
     - [ ] **Q9 Caches** `opus · xhigh` after Q8: area 5, "Caches"; area 6,
       "Where a read comes from"; area 7, "Write revisions"; area 13, "What is
       built"; area 11, "Targets". An entity's `caches:`, a query's `cache:`, the

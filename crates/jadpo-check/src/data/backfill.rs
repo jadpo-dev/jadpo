@@ -94,6 +94,10 @@ pub struct InJadpo {
     /// born with, each in declared order (area 5, "What a rename keeps"):
     /// the value is written by its own; empty otherwise.
     pub stored: Vec<String>,
+    /// For a field `jadpo fix` swapped for a standard type (chunk Q7), the
+    /// conversion by its shape that takes the place of a body: `body` is
+    /// then empty, and the one column read is the old one's JSON.
+    pub swap: Option<jadpo_std::migration::Swap>,
 }
 
 /// A stored field a backfill worked out in Jadpo reads.

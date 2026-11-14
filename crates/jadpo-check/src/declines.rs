@@ -302,7 +302,14 @@ pub(crate) fn answer(
                 }
             }
             Some(found) => problems.push(not_declinable(decline, found.id)),
-            None => problems.push(unknown_rule(decline)),
+            None => match jadpo_diag::retired(&decline.rule) {
+                Some(why) if !installed.contains(&&decline.path) => {
+                    let text = texts.get(&decline.path).map_or("", String::as_str);
+                    unused.push(retired_decline(decline, text, why));
+                }
+                Some(_) => {}
+                None => problems.push(unknown_rule(decline)),
+            },
         }
         if decline
             .reason
@@ -416,6 +423,23 @@ fn unused_decline(decline: &Decline, text: &str) -> Diagnostic {
     .at(decline.rule_span.clone(), "no such finding here")
     .reason(format!(
         "This line declines `{rule}` on {}, but `jadpo check` finds no `{rule}` there now, so the decline has outlived its reason.",
+        place(decline)
+    ))
+    .next("Remove the `decline` line")
+    .edit(removed.span, removed.replacement)
+}
+
+/// A decline of a rule that no longer fires anywhere ([`jadpo_diag::RETIRED`]).
+fn retired_decline(decline: &Decline, text: &str, why: &str) -> Diagnostic {
+    let removed = removal(text, decline);
+    let rule = &decline.rule;
+    Diagnostic::new(
+        &rule::DECLINE_UNUSED,
+        format!("Nothing to decline: `{rule}` no longer fires anywhere"),
+    )
+    .at(decline.rule_span.clone(), "no such finding")
+    .reason(format!(
+        "This line declines `{rule}` on {}, but Jadpo no longer reports `{rule}`: {why}. The decline has outlived its reason.",
         place(decline)
     ))
     .next("Remove the `decline` line")

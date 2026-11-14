@@ -281,7 +281,7 @@ config {
 | **Package** | Jadpo source shared between apps, laid out as `shared/` is. A *library package* holds types, failures and pure functions (`Postcodes.uk.parse`); a *provider package* describes one outside API: its operations, types, failures, webhook events and how it is reached ([Kinds of package](#kinds-of-package), [The package format](#the-package-format)) | `packages/<name>/<version>/` when installed; the app's own in `shared/providers/` | Compiled into the app and run in its process. A package is never a process, a container or native code of its own |
 | **Provider** | The outside API a provider package describes: Stripe, a courier, another Jadpo app. The package's `provider.jadpo` says how it is reached | Nowhere in the app: it is the other end of the call | Wherever its owner runs it: on the internet (`hosts:`), or at an address a setting gives (`host:` on the connection) |
 | **Connection** | One named entry in `connections:` in `app.jadpo`: a built-in driver (`driver: Driver.x`) or a provider package (`package: X.vN`), with its settings, its credential and the domains whose actions may call it. One connection is one resource: a database, a store of files, one account at a provider ([Connecting in `app.jadpo`](#connecting-in-appjadpo)) | `app.jadpo`, its values read from `config.jadpo` settings | Opened by the runtime, inside the app |
-| **Driver** | Native code in Jadpo's runtime that speaks one protocol: PostgreSQL, SMTP, the disk, Cloudflare Queues, OpenAI-compatible model servers, OpenID Connect, GitHub's sign-in, S3. Redis isn't built yet. Drivers arrive only with a Jadpo release, never in a package ([No presets, no dependencies](#no-presets-no-dependencies)) | `driver:` on a connection | Inside the app, talking to a server the operator runs |
+| **Driver** | Native code in Jadpo's runtime that speaks one protocol: PostgreSQL, SMTP, the disk, Cloudflare Queues, OpenAI-compatible model servers, OpenID Connect, GitHub's sign-in, S3, Redis. Drivers arrive only with a Jadpo release, never in a package ([No presets, no dependencies](#no-presets-no-dependencies)) | `driver:` on a connection | Inside the app, talking to a server the operator runs |
 | **Capability** | A job Jadpo itself does, with one API in app code whatever fills it: `database`, `email`, `files`, `ai` and the rest. One connection fills it: a driver, or a provider package whose `provides/<capability>.jadpo` maps the job onto its operations ([Capabilities](#capabilities)) | Chosen in `app.jadpo`: `email: { connection: mail }`, `store: sheets` on a `File` field | Wherever the connection that fills it runs |
 | **Built-in service** | A backend feature Jadpo provides, so the app installs nothing: feature flags, rate limits, files, email, audit, search ([Built-in services](16-built-in-services.md)). Email, files and search do their outside work through a capability; flags, rate limits and audit keep their state in the app's own stores | Where [Built-in services](16-built-in-services.md) says: `flags.jadpo`, `rate_limit:`, `type X = EmailMessage`, `File` fields | Inside the app's runtime. It is a feature, not a process or a container |
 
@@ -361,7 +361,7 @@ deployable is a Worker. Neither is an image.
 ### What is built of these
 
 Of what this page describes, these aren't built yet: running a service in a
-container; the Redis driver; OAuth grants; the `cache`, `documents`,
+container; OAuth grants; the `cache`, `documents`,
 `bot_check` and `scanning` capabilities; `publishing` through anything but
 `Driver.webhook`; an outside engine for `search`; importers other than
 `openapi`; and choosing a provider when deploying.
@@ -897,7 +897,7 @@ names. A failure can instead say the status its provider refuses with,
 
 **Built-in drivers are configured in `app.jadpo`, never packaged.** A
 driver is native code in Jadpo's runtime that speaks one protocol.
-PostgreSQL, SMTP, S3 and OpenID Connect are drivers, and Redis will be. A
+PostgreSQL, Redis, SMTP, S3 and OpenID Connect are drivers. A
 vendor that speaks one of them is that driver with the vendor's settings: Neon
 is the PostgreSQL driver with its pooling mode, Gmail is the SMTP driver with
 its host and port, and Cloudflare R2 is `driver: Driver.s3` with its host
@@ -922,7 +922,8 @@ avatars: {
 - **Each driver's page lists the settings for common services**, so an
   agent looks them up rather than guessing: R2, Backblaze B2,
   DigitalOcean Spaces, MinIO and Amazon S3; Neon, Supabase and Amazon
-  RDS; Gmail, Microsoft 365 and Amazon SES's SMTP; Google and Microsoft.
+  RDS; Upstash and Amazon ElastiCache; Gmail, Microsoft 365 and Amazon
+  SES's SMTP; Google and Microsoft.
   Each is a working connection, checked with the pages' other examples.
   `jadpo check` warns when it recognises a host that is missing one of
   its settings.

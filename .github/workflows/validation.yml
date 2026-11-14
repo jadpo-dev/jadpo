@@ -131,6 +131,19 @@ jobs:
     # The live PostgreSQL steps share one server, named by
     # JADPO_TEST_DATABASE_URL, and run at once; local runs start one
     # disposable server for the run instead.
+    # Redis for the tests that count rate limits in a real server (chunk
+    # Q8), named by JADPO_TEST_REDIS_URL: a deployable's, a Worker's and the
+    # native host's. The rest count in the in-process double.
+    services:
+      redis:
+        image: redis:7.4.6-alpine@sha256:3b73847e72874be07e6657b129a94761662b79bc0f679273757d4218573b2a98
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -195,6 +208,7 @@ jobs:
         env:
           JADPO_REQUIRE_SANDBOX: '1'
           JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
+          JADPO_TEST_REDIS_URL: redis://127.0.0.1:6379
           # Pull requests note a feature no example uses yet; a run started
           # by hand with require-examples fails on it.
           REQUIRE_EXAMPLES: ${{ inputs.require-examples && '--require-examples' || '' }}
@@ -215,6 +229,19 @@ jobs:
     # The corpus and the golden todo's native cases run side by side, each
     # about 10 to 16 minutes, plus building and saving the cache.
     timeout-minutes: 45
+    # Redis for the tests that count rate limits in a real server (chunk
+    # Q8), named by JADPO_TEST_REDIS_URL: a deployable's, a Worker's and the
+    # native host's. The rest count in the in-process double.
+    services:
+      redis:
+        image: redis:7.4.6-alpine@sha256:3b73847e72874be07e6657b129a94761662b79bc0f679273757d4218573b2a98
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -263,6 +290,7 @@ jobs:
       - name: The corpus compiled, its tests interpreted and compiled
         env:
           JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
+          JADPO_TEST_REDIS_URL: redis://127.0.0.1:6379
         run: python3 tools/verify.py --group compiled
       # The projects the step wrote into target/tmp/ hold folders called
       # `tests`, which the cache action takes for cargo's own and fails to
@@ -277,6 +305,19 @@ jobs:
     # The Workers deployable's test serves teaching example 23 under
     # workerd against a PostgreSQL server the Worker reaches over TCP
     # (chunk 8.2d), named by JADPO_TEST_DATABASE_URL.
+    # Redis for the tests that count rate limits in a real server (chunk
+    # Q8), named by JADPO_TEST_REDIS_URL: a deployable's, a Worker's and the
+    # native host's. The rest count in the in-process double.
+    services:
+      redis:
+        image: redis:7.4.6-alpine@sha256:3b73847e72874be07e6657b129a94761662b79bc0f679273757d4218573b2a98
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -320,6 +361,7 @@ jobs:
       - name: The shared and runtime crates for wasm32
         env:
           JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
+          JADPO_TEST_REDIS_URL: redis://127.0.0.1:6379
         run: python3 tools/verify.py --group wasm32
 
   # The next release rehearsed (tools/release/rehearsal.py): a copy of the

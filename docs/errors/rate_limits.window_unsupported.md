@@ -42,7 +42,7 @@ error: `within: 1h` can't be counted in Cloudflare's rate-limiting binding
    |                         ^^ not 10 or 60 seconds
 18 |         store: limits
    |                ------ counted in the binding
-  reason: Cloudflare's rate-limiting binding counts only windows of 10 or 60 seconds. A Redis connection can count any window, but until Redis's driver comes each of a Worker's instances would count it in its own memory, which is the judgement call `rate_limits.counted_in_memory`.
+  reason: Cloudflare's rate-limiting binding counts only windows of 10 or 60 seconds. A Redis connection counts any window from a second to a day, on Workers as natively.
   next: Write `within: 1m` or `within: 10s`, with `requests:` to suit, or name a Redis connection in `rate_limits: { store: }` (agent)
   rule: rate_limits.window_unsupported
   help: https://jadpo.dev/docs/errors/rate_limits.window_unsupported
@@ -88,9 +88,8 @@ application {
 }
 ```
 
-The API now allows five requests a minute. A Redis store can count any
-window, but on Workers it raises
-[`rate_limits.counted_in_memory`](rate_limits.counted_in_memory.md).
+The API now allows five requests a minute. A Redis store would count the hour
+as written ([A Redis store on Workers](../language/16-built-in-services.md#a-redis-store-on-workers)).
 
 ## Related
 

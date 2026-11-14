@@ -117,11 +117,15 @@ impl SqlType {
             SqlType::LocalTimestamp => &SqlType::LocalTimestamp,
             SqlType::Json => &SqlType::Json,
             SqlType::Array(inner) => return SqlType::Array(inner),
-            // Arrays of ranges, vectors, doubles and geographies are never
-            // sent.
-            SqlType::Range(_) | SqlType::Vector | SqlType::Float8 | SqlType::Geography => {
-                &SqlType::Text
-            }
+            // A backfill's values of a range, written back in one
+            // statement (chunk Q7).
+            SqlType::Range(SqlType::Date) => &SqlType::Range(&SqlType::Date),
+            SqlType::Range(SqlType::Timestamp) => &SqlType::Range(&SqlType::Timestamp),
+            SqlType::Range(SqlType::Numeric) => &SqlType::Range(&SqlType::Numeric),
+            SqlType::Range(_) => &SqlType::Range(&SqlType::Int8),
+            // Arrays of vectors, doubles and geographies are never sent as
+            // themselves: a geography's is sent as text (chunk Q7).
+            SqlType::Vector | SqlType::Float8 | SqlType::Geography => &SqlType::Text,
         })
     }
 

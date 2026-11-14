@@ -510,7 +510,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         # have, so tokio-postgres is proven to build for wasm32 too.
         crates = wasm_crates()
         packages = [arg for name in crates for arg in ('-p', name)]
-        features = (['--features', 'jadpo-drivers/postgres,jadpo-drivers/package,jadpo-drivers/smtp']
+        features = (['--features', 'jadpo-drivers/postgres,jadpo-drivers/package,jadpo-drivers/smtp,jadpo-drivers/redis']
                     if 'jadpo-drivers' in crates else [])
         # A deployable holds no testing machinery (chunk 8.1e): the native
         # host's deployable example built without the runtime's `testing`

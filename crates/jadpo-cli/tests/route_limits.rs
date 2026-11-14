@@ -54,6 +54,27 @@ pub(crate) fn worker_application() -> String {
     )
 }
 
+/// The application counting its rate limits in Redis, its deployable built
+/// for `target` (chunk Q8).
+pub(crate) fn redis_application(target: &str) -> String {
+    format!(
+        "application {{\n{APIS}    connections: {{\n        cache: {{\n            driver: Driver.redis\n            url: config.redis_url\n        }}\n    }}\n    rate_limits: {{\n        store: cache\n    }}\n    deployables: {{\n        desk: {{\n            serves: [main, partners]\n            target: Target.{target}\n        }}\n    }}\n}}\n"
+    )
+}
+
+/// The setting a Redis store's address is read from, its variable
+/// `REDIS_URL`.
+pub(crate) const REDIS_CONFIG: &str = "config {\n    redis_url: RedisUrl\n}\n";
+
+/// Writes the project at `root` counting in Redis, built for `target`.
+pub(crate) fn redis_project_at(root: &Path, target: &str) {
+    project_at(root, &redis_application(target));
+    let config = root.join("config.jadpo");
+    if std::fs::read_to_string(&config).ok().as_deref() != Some(REDIS_CONFIG) {
+        std::fs::write(&config, REDIS_CONFIG).expect("written");
+    }
+}
+
 /// Writes the project at `root`.
 pub(crate) fn project_at(root: &Path, application: &str) {
     let limited = |requests: u32, within: &str, by: &str| {
@@ -181,6 +202,36 @@ fn a_routes_limit_is_counted_on_jadpo_dev() {
             .collect();
         (reply.status, head)
     });
+}
+
+/// `jadpo dev` counts in its own memory whatever the store (chunk Q8): it is
+/// one server, so it answers as with no store, and nothing reaches the
+/// Redis its address names.
+#[test]
+fn jadpo_dev_counts_in_memory_whatever_the_store() {
+    let double = jadpo_drivers::redis::testing::TcpDouble::start(
+        jadpo_drivers::redis::testing::Double::new(),
+    );
+    let dir = tempdir::Dir::new("route-limits-redis-dev");
+    redis_project_at(dir.path(), "native");
+    std::fs::write(
+        dir.path().join(".env.local"),
+        format!("REDIS_URL={}\n", double.url(None)),
+    )
+    .expect("written");
+    let env = Environment::empty().with_cwd(dir.path());
+    let records = run(&["records".to_string(), "update".to_string()], &env);
+    assert_eq!(records.code, 0, "{}{}", records.stdout, records.stderr);
+    let dev = Dev::start_without_database(dir.path());
+    answers_as_every_host_does(|method, path| {
+        let reply = dev.send(method, path, &[], "");
+        let head = ["ratelimit-policy", "ratelimit", "retry-after"]
+            .iter()
+            .filter_map(|name| reply.header(name).map(|value| format!("{name}: {value}\n")))
+            .collect();
+        (reply.status, head)
+    });
+    assert_eq!(double.connections(), 0, "dev never asks the store");
 }
 
 /// `jadpo routes` and OpenAPI say what each route is limited to (area 16,

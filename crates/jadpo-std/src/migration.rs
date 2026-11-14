@@ -16,6 +16,25 @@ pub struct Migration {
     pub sql: String,
 }
 
+/// A stored value of an application's type that `jadpo fix` swapped for
+/// a standard type (area 19, "Swap to the standard type"; chunk Q7), kept
+/// as that type's JSON in the field's old column: `jadpo migrate apply`
+/// converts each by its shape, every part of the standard type read from
+/// the member of the stored object the swap renamed, and the value kept
+/// and checked by the field's rules, as any backfill in Jadpo is.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Swap {
+    /// The application's type, as the snapshot before the migration
+    /// records it.
+    pub from: String,
+    /// The standard type it was swapped for.
+    pub standard: String,
+    /// Each of the standard type's parts, in its entry's order, with the
+    /// member of the stored object it is read from: `None` for an
+    /// optional part the application's type didn't have.
+    pub parts: Vec<(String, Option<String>)>,
+}
+
 /// The line that opens a backfill filled in batches (area 5, "Computed
 /// backfills"; chunk 5.6b), as `jadpo migrate new` writes it: the field
 /// and how each batch is worked out, then two statements, one counting

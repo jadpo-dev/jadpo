@@ -2790,7 +2790,7 @@ route GET /todos {
 }
 ```
 
-Caches aren't built yet: they need the Redis driver.
+Caches aren't built yet.
 
 ## Reading and writing entities in Redis
 <!-- topic: queries-on-entities-in-redis -->
@@ -2821,7 +2821,7 @@ is allowed:
 - **One store per action** applies as everywhere: an action writing a Redis
   entity writes nothing in another store.
 
-None of this is built yet: there is no Redis driver.
+None of this is built yet.
 
 ## Reads across domains
 <!-- topic: reads-across-domains -->
@@ -2841,7 +2841,7 @@ var owners: List<OwnerView> = identity.users_by_ids(owner_ids)
 | Feature | Status |
 |---|---|
 | Everything else on this page | Built. |
-| Caches and entities in Redis | Not built yet: there is no Redis driver ("Where a read comes from", "Entities in Redis"). |
+| Caches and entities in Redis | Not built yet ("Where a read comes from", "Entities in Redis"). |
 
 ## Errors
 

@@ -159,7 +159,7 @@ Rust 1.88 or later).
 | `jadpo-codegen` | Rust source from graph and plan, one crate per project (§2.5, "Compiled code"); drives cargo | |
 | `jadpo-value` | Runtime values, operators, JSON codecs, validation, standard-library implementations | yes |
 | `jadpo-runtime` | Everything in §2.6, behind a `Host` trait | yes |
-| `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL, the package driver (JSON over HTTP), the S3 driver over the same HTTP, and SMTP; Redis is not built yet | yes |
+| `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL, the package driver (JSON over HTTP), the S3 driver over the same HTTP, SMTP, and Redis | yes |
 | `jadpo-host-native` | tokio and hyper: the HTTP listener, timers, the background work a response leaves, the disk driver `jadpo dev` keeps files with, HTTP for the package driver; the inbox with email | |
 | `jadpo-host-workers` | wasm-bindgen and Jadpo's own bindings to Workers: `connect()` sockets, `fetch()`, timers, `waitUntil`, bindings (§2.6, "The Workers host"); with `testing`, a test Worker's handler (§2.6, "Route tests on workerd") | yes |
 | `jadpo-term` | The [CLI design language](cli-design-language.md): rich, plain and JSON output | |
@@ -528,8 +528,20 @@ see the declaration, a matched field by what each body name resolved to
 and by `Type.field` as written, a `use` line, the declaration's file
 moved for a rename) and every refusal, and `apply` makes them, fixes
 imports, formats what was formatted and checks the result, undoing a fix
-that adds an error by rule and headline. Each standard type's data entry
-carries the `release` that added it, which the clash names.
+that adds an error by rule and headline. A swap under stored data or on
+the wire (chunk Q7) also writes, in `apply`, each record it puts out of
+date, and leaves two errors uncounted: `acceptance.missing`, a person's,
+and `migration.out_of_date` where none was due, which sets `migrates`.
+`jadpo fix` then plans the migration from the edited texts with `migrate
+new`'s writer (`plan_swap`) before writing anything. `Decide::swapped`
+reads the conversion from the snapshots: an old `jsonb` column recorded
+as one of the app's objects, a field now of a standard object, and the
+shape match on the recorded fields. It decides the field as a backfill in
+Jadpo whose code digest is the conversion's, so the SQL is an ordinary
+one, and the plan carries the `Swap` in place of a callable; the runner
+reads each part from its member by the part's text reader and writes it
+as any backfill's value. Each standard type's data entry carries the
+`release` that added it, which the clash names.
 
 **Renaming.** `jadpo_check::rename` is `jadpo rename`'s code and the
 editor's rename's (`at` resolves the name under the cursor as go to
@@ -3589,16 +3601,34 @@ and the answer, as `jadpo dev` does (`http::Worker` is what the
 component keeps between one worker's requests). Rate limits are a host
 capability (`Host::rate_limit(key, limit, now)`, a future, as Redis or a
 Workers binding needs): natively `NativeHost` counts in bounded memory,
-`RateLimits`, one table for all of a server's workers,
-and a test's host counts nothing. On Workers
-there is no native default: area 16 keeps counts in memory only where
-memory lasts, and its "Rate limits" decision requires a Redis connection or
-Cloudflare's rate-limiting binding there, with the isolate's memory
-counting only while that can't be reached, which is the one reading both
-give: the plan's route table carries the store
+`RateLimits`, one table for all of a server's workers, unless a
+deployable's worker is told to count in the Redis store `rate_limits:`
+names (`NativeHost::counting_in`), and a test's host counts nothing. On
+Workers there is no native default: area 16 keeps counts in memory only
+where memory lasts, and its "Rate limits" decision requires a Redis
+connection or Cloudflare's rate-limiting binding there, with the isolate's
+memory counting only while that can't be reached, which is the one reading
+both give: the plan's route table carries the store
 `rate_limits:` names (`RateLimitStore`, with a binding for each limit
 on Cloudflare's), the Workers host counts in it, and `jadpo check`
-refuses a Workers deployable that serves an API without one. A route's or an
+refuses a Workers deployable that serves an API without one. Both hosts
+ask a Redis store the same way (chunk Q8): `ratelimit::counted_by_store` asks the
+factory's driver (`Drivers::counting_store`, a `ratelimit::CountingStore`)
+unless the server's or isolate's `StoreHealth` says it failed in the last
+`STORE_PAUSE_MS`, and gives `None`, for the host's memory, when it can't
+count, logging `rate_limits.fallback` once an outage. The driver
+(`jadpo_drivers::redis`) speaks RESP over the host's `Transport`: one
+connection a driver, run by a task the transport spawns, every caller's
+commands queued to it and their replies handed back in order, so a native
+worker pipelines its requests' counts on one connection while a Worker
+opens one an invocation, ended by the driver's drop as 8.4e asks. A count
+is one `MULTI` (`SET <key> 0 PX <window> NX`, `INCR`, `PTTL`) under
+`redis::rate_limit_key`, BLAKE3 of the key, bounded by `redis::ASK_MS`,
+after which the connection is broken so the next ask opens another.
+`redis::testing`, behind the `redis-testing` feature that only tests
+turn on, is the double they count in, in-process or on a port, and the
+run's real server when it has one (`JADPO_TEST_REDIS_URL`, as CI's
+jobs set). A route's or an
 API's own `rate_limit:` reaches the runtime on its `RoutePlan`
 (`RouteRateLimit`, its count's key starting with the route's key or `api
 <name>`), counted in place of the defaults through the same capability. A
@@ -3956,7 +3986,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
 | Outbox | Delivery, retries, dead letters and a circuit breaker, run by the runner after the response, natively as a task on the worker's thread | `waitUntil` after the response, what one invocation leaves handed on to a fresh one, swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters | Cloudflare cron |
-| Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise one bounded table in memory for all of a server's workers; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, "Rate limits"); the isolate's memory only while it can't be reached |
+| Rate limits, caches | Rate limits through `Host::rate_limit`: the Redis store `rate_limits:` names, through `ratelimit::counted_by_store`, otherwise, or while it can't count, one bounded table in memory for all of a server's workers; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, "Rate limits"); the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
 | AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake; `ai.embed` and `ai.embed_all`, the fake's embeddings and prompts' recordings; `ai.stream` read piece by piece and sent as server-sent events | same, through Workers' `fetch` |
@@ -4264,7 +4294,8 @@ and `Started` (`Drivers::build`) over what the host supplies
 `package::Fetch`, a `factory::Disk`): PostgreSQL over the transport, one
 package driver over HTTP shared by every package and
 `Driver.openai_compatible` connection, the SMTP driver for its server
-over the transport, the disk's store, and nothing for a Cloudflare
+over the transport, the Redis driver for its address over the transport
+(chunk Q8), the disk's store, and nothing for a Cloudflare
 queue, whose batches come to the Workers consumer. A connection it can't
 build (a target its driver doesn't run on, a part the host doesn't
 supply, a setting with no value, a driver this build lacks) is kept as

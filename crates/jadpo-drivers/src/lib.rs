@@ -22,13 +22,15 @@
 //! - [`webhook`]: the webhook driver, behind the `package` feature: the
 //!   `publishing` capability, each chosen event posted to one address over
 //!   the same [`package::Fetch`], signed as Standard Webhooks signs.
+//! - [`redis`]: the Redis driver, behind the `redis` feature: RESP over
+//!   the host's [`Transport`], one connection carrying every caller's
+//!   commands, and the rate limits counted in it (chunk Q8).
 //! - [`factory`]: each connection's driver built from the plan's
 //!   connections table and what the program started with, over what the
 //!   host supplies (chunk 8.1d).
 //!
 //! Built so far: PostgreSQL (chunk 3.1), the package driver (chunk 7.2c),
-//! SMTP (chunk 7.3), the factory (chunk 8.1d) and S3. Redis comes with
-//! its area.
+//! SMTP (chunk 7.3), the factory (chunk 8.1d), S3 and Redis (chunk Q8).
 
 // A panic aborts a Workers instance, so runtime code reports faults as
 // values (docs/compiler-runtime.md §2.6); tests may still unwrap.
@@ -48,6 +50,8 @@ pub mod factory;
 #[cfg(feature = "package")]
 pub mod package;
 pub mod postgres;
+#[cfg(feature = "redis")]
+pub mod redis;
 #[cfg(feature = "package")]
 pub mod s3;
 #[cfg(feature = "smtp")]

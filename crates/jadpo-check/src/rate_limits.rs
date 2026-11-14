@@ -336,7 +336,7 @@ fn window_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             )
             .at(at.clone(), "not 10 or 60 seconds")
             .also(store_at.clone(), "counted in the binding")
-            .reason("Cloudflare's rate-limiting binding counts only windows of 10 or 60 seconds. A Redis connection can count any window, but until Redis's driver comes each of a Worker's instances would count it in its own memory, which is the judgement call `rate_limits.counted_in_memory`.")
+            .reason("Cloudflare's rate-limiting binding counts only windows of 10 or 60 seconds. A Redis connection counts any window from a second to a day, on Workers as natively.")
             .next("Write `within: 1m` or `within: 10s`, with `requests:` to suit, or name a Redis connection in `rate_limits: { store: }`"),
         );
     }

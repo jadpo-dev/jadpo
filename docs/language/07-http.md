@@ -2172,8 +2172,7 @@ where an app uses it.
 | Streaming | Built: a route whose action returns an `AiStream` sends a model's answer as server-sent events ([Streaming a model's answer](#streaming-a-models-answer), and `route.stream_invalid`). |
 | Failure wording from a build | Built: `jadpo check` writes `<api>.failures.<locale>.json` beside each OpenAPI document, and `jadpo build` copies each served API's beside its deployable, in `build/target/<deployable>/openapi/` ([`jadpo build`](14-tooling.md#jadpo-build)). |
 | `x-jadpo-events` | Partly built: each API's document carries it ([The `x-jadpo` fields](#the-x-jadpo-fields)); the importer doesn't read it yet. |
-| Rate limits | Built: a route's own `rate_limit:` and an API's ([Rate limits](16-built-in-services.md#rate-limits)). |
-| The Redis store for rate limits | Not built yet ([Rate limits](16-built-in-services.md#rate-limits)). |
+| Rate limits | Built: a route's own `rate_limit:` and an API's, counted in the Redis store `rate_limits:` names, natively and on Workers ([Rate limits](16-built-in-services.md#rate-limits)). |
 | Classifying breaking changes and their acceptances | Built ([Acceptances](18-records-and-manifest.md#acceptances)). |
 | The `Jadpo-Revision` header | Not built yet: it comes with caches ([Write revisions](#write-revisions)). |
 

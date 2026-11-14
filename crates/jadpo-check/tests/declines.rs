@@ -114,6 +114,30 @@ fn an_unused_decline_waits_while_other_errors_stand() {
     );
 }
 
+/// A decline of a rule Jadpo has retired has outlived its reason, as one
+/// whose rule no longer fires there has: it is unused, and its edit
+/// removes it, rather than naming a rule Jadpo doesn't know (chunk Q8).
+#[test]
+fn a_decline_of_a_retired_rule_is_unused() {
+    let db = Database::default();
+    let text = "type Coins = Int {\n    min: 0\n}\n\ndecline rate_limits.counted_in_memory: \"One instance is enough\"\nfunction cap_total(total: Coins) -> Coins {\n    return total\n}\n";
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", text)]);
+    let found = jadpo_check::check(&db, project);
+    let rules: Vec<&str> = found.iter().map(|d| d.rule.id).collect();
+    assert_eq!(rules, ["decline.unused"]);
+    assert_eq!(
+        found[0].message,
+        "Nothing to decline: `rate_limits.counted_in_memory` no longer fires anywhere"
+    );
+    let edit = &found[0].next.as_ref().expect("next").edits[0];
+    let mut fixed = text.to_string();
+    fixed.replace_range(
+        edit.span.start as usize..edit.span.end as usize,
+        &edit.replacement,
+    );
+    assert!(!fixed.contains("decline"), "{fixed}");
+}
+
 #[test]
 fn a_rule_that_cant_be_declined_is_not_declinable() {
     let text = "type Coins = Int {\n    min: 0\n}\n\ndecline semantic.unknown_name: \"It is fine\"\nfunction f(a: Coins) -> Coins {\n    return a\n}\n";

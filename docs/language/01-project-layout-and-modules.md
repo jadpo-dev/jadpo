@@ -221,7 +221,6 @@ the action" in place of "above it".
 | [`step.late_failure`](../errors/step.late_failure.md) | [Background work](12-jobs-and-events.md) | An action can fail for good after a changing call took effect |
 | `email.field_unused` | [Built-in services](16-built-in-services.md) | An email's field is written by no template and no subject |
 | `email.health_problem` | [Built-in services](16-built-in-services.md) | An email's template fails a check of the mail health score |
-| `rate_limits.counted_in_memory` | [Built-in services](16-built-in-services.md) | A deployable built for Workers would count its rate limits in each instance's memory |
 | [`type.unit_as_number`](../errors/type.unit_as_number.md) | [Values and types](02-values-and-types.md) | A type named for a unit, a currency's minor unit or a percentage is built on a plain number |
 | `type.standard_exists` | [Standard library](19-standard-library.md) | A type has a standard type's shape under another name |
 | `type.variant_retired` | [Standard library](19-standard-library.md) | Code writes a retired code |
@@ -246,7 +245,8 @@ the nearest declinable rule.
 A decline whose rule no longer fires on its declaration is
 [`decline.unused`](../errors/decline.unused.md), so declines don't outlive
 their reason. A second decline of the same rule on one declaration is
-unused too.
+unused too, and so is a decline of a rule Jadpo has retired
+(`rate_limits.counted_in_memory`).
 
 `decline.unused` is judged only once every other finding is answered: no
 syntax errors, and every other error is itself declinable or about a

@@ -31,7 +31,7 @@ error: `layout.unused_declaration` can't be declined
   |
 5 | decline layout.unused_declaration: "Kept for next quarter"
   |         ^^^^^^^^^^^^^^^^^^^^^^^^^ a plain mistake
-  reason: Only judgement calls can be declined: `constant.similar_exists`, `data.personal_unread`, `email.field_unused`, `email.health_problem`, `library.similar_exists`, `package.standard_candidate`, `policy.call_ungranted`, `query.nearest_exact`, `rate_limits.counted_in_memory`, `step.late_failure`, `translation.field_unused`, `type.batch_order_updatable`, `type.password_sent_to_provider`, `type.standard_exists`, `type.unit_as_number` and `type.variant_retired`. `layout.unused_declaration` reports a mistake, which only a fix answers.
+  reason: Only judgement calls can be declined: `constant.similar_exists`, `data.personal_unread`, `email.field_unused`, `email.health_problem`, `library.similar_exists`, `package.standard_candidate`, `policy.call_ungranted`, `query.nearest_exact`, `step.late_failure`, `translation.field_unused`, `type.batch_order_updatable`, `type.password_sent_to_provider`, `type.standard_exists`, `type.unit_as_number` and `type.variant_retired`. `layout.unused_declaration` reports a mistake, which only a fix answers.
   next: Remove the `decline` line, and fix what `layout.unused_declaration` reports if it fires (agent)
   rule: decline.not_declinable
   help: https://jadpo.dev/docs/errors/decline.not_declinable

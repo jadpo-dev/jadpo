@@ -50,7 +50,10 @@ jadpo fix Uuid swap
 ```
 
 Your declaration goes, every reference to it now means the standard type,
-and each field the shape matched is read by the standard field's name.
+and each field the shape matched is read by the standard field's name. A
+type that is already stored, or in an API's record, also gets the data
+migration and its records brought up to date, and a person accepts the
+change as any API or data change.
 
 **If it means something else**, rename it:
 

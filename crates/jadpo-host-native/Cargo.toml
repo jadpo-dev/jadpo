@@ -17,7 +17,8 @@ jadpo-runtime.workspace = true
 jadpo-std.workspace = true
 # The values the disk driver is sent and answers (chunk 6.4b).
 jadpo-value.workspace = true
-jadpo-drivers = { workspace = true, features = ["postgres", "package", "smtp"] }
+# Every driver a native deployable may reach; Redis since chunk Q8.
+jadpo-drivers = { workspace = true, features = ["postgres", "package", "smtp", "redis"] }
 # `signal`: a server drains on SIGTERM, and on ctrl-c under `jadpo dev`
 # (chunk 6.7), which adds signal-hook-registry to the lock.
 tokio = { workspace = true, features = ["rt", "net", "sync", "time", "signal"] }
@@ -50,6 +51,8 @@ path = "tests/main.rs"
 
 [dev-dependencies]
 rcgen.workspace = true
+# The Redis double a store's tests count in (chunk Q8).
+jadpo-drivers = { workspace = true, features = ["redis-testing"] }
 
 [features]
 # The runtime's fakes, recordings, crash points and the plan's dev and test

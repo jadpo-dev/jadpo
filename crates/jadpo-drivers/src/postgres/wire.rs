@@ -43,6 +43,10 @@ pub(crate) mod oid {
     pub const TSTZRANGE: u32 = 3910;
     pub const DATERANGE: u32 = 3912;
     pub const INT8RANGE: u32 = 3926;
+    pub const NUMRANGE_ARRAY: u32 = 3907;
+    pub const TSTZRANGE_ARRAY: u32 = 3911;
+    pub const DATERANGE_ARRAY: u32 = 3913;
+    pub const INT8RANGE_ARRAY: u32 = 3927;
     /// No type: PostgreSQL infers the parameter's from where it is used.
     /// A vector is sent so, since the extension's type has a number each
     /// database gives it (chunk 5.5v1).
@@ -113,11 +117,19 @@ pub(crate) fn param_oid(ty: SqlType) -> u32 {
             SqlType::Date => oid::DATE_ARRAY,
             SqlType::Time => oid::TIME_ARRAY,
             SqlType::Json => oid::JSONB_ARRAY,
-            // Arrays of arrays, of local timestamps, of ranges, of
-            // vectors, of doubles and of geographies are never sent.
+            // A backfill's values of a range, written back in one
+            // statement (chunk Q7).
+            SqlType::Range(element) => match range_oid(**element) {
+                oid::DATERANGE => oid::DATERANGE_ARRAY,
+                oid::TSTZRANGE => oid::TSTZRANGE_ARRAY,
+                oid::NUMRANGE => oid::NUMRANGE_ARRAY,
+                _ => oid::INT8RANGE_ARRAY,
+            },
+            // Arrays of arrays, of local timestamps, of vectors and of
+            // doubles are never sent; an array of geographies is sent as
+            // text (chunk Q7).
             SqlType::Array(_)
             | SqlType::LocalTimestamp
-            | SqlType::Range(_)
             | SqlType::Vector
             | SqlType::Float8
             | SqlType::Geography => oid::TEXT_ARRAY,
@@ -571,7 +583,14 @@ fn array_to_wire(element: SqlType, items: &[SqlValue], out: &mut Vec<u8>) -> Res
     let dimensions: i32 = if items.is_empty() { 0 } else { 1 };
     out.extend_from_slice(&dimensions.to_be_bytes());
     out.extend_from_slice(&0i32.to_be_bytes());
-    out.extend_from_slice(&param_oid(element).to_be_bytes());
+    // A geography's type is the extension's, with no fixed number, so an
+    // array of them is sent as text, each its extended WKB in hex, which
+    // `$n::geography[]` reads (chunk Q7).
+    let element_oid = match element {
+        SqlType::Geography => oid::TEXT,
+        other => param_oid(other),
+    };
+    out.extend_from_slice(&element_oid.to_be_bytes());
     if dimensions == 1 {
         out.extend_from_slice(&count.to_be_bytes());
         out.extend_from_slice(&1i32.to_be_bytes());
@@ -579,7 +598,13 @@ fn array_to_wire(element: SqlType, items: &[SqlValue], out: &mut Vec<u8>) -> Res
     for item in items {
         let at = out.len();
         out.extend_from_slice(&0i32.to_be_bytes());
-        if !encode(item, out)? {
+        if let (SqlType::Geography, SqlValue::Geography(shape)) = (element, item) {
+            let mut wkb = Vec::new();
+            geography_to_wire(shape, &mut wkb)?;
+            for byte in wkb {
+                out.extend_from_slice(format!("{byte:02X}").as_bytes());
+            }
+        } else if !encode(item, out)? {
             return Err("an array element was `NULL`".into());
         }
         let length = i32::try_from(out.len() - at - 4)
