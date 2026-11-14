@@ -111,8 +111,10 @@ The declaration is removed, and every place that used `Booking` now uses
 `InstantRange`, with its fields read by `InstantRange`'s names, such as
 `start`. Where data arrives in another shape, such as a provider's
 `starts_at`, convert it at the edge where it arrives. A type that is
-already stored, or in an API's record, also gets the data migration, and
-the change goes through review as any API or data change does.
+already stored, or in an API's record, also gets its records brought up
+to date and the data migration, which converts each stored value by its
+shape. The change goes through review as any API or data change does:
+`jadpo acceptance new swap_booking` drafts the acceptance a person gives.
 
 **If it means something else**, keep it, and write a decline line with
 the reason directly above the declaration. main.jadpo becomes:

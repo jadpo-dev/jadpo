@@ -27,7 +27,11 @@
 //! result. A fix never adds an error: one whose result has an error the
 //! project didn't have before (by rule and headline) is undone and
 //! refused with those errors. Errors the project already had stay, and
-//! the command says how many are left. The command writes what [`apply`]
+//! the command says how many are left. A swap of a type already stored or
+//! on the wire (chunk Q7) also brings each record it changes up to date,
+//! and leaves the migration it needs, when none was due, and the
+//! acceptances a person gives: [`Fixed::migrates`] says the command
+//! writes the migration, and the editor offers no such swap. The command writes what [`apply`]
 //! gives back; the editor sends it as one workspace edit and puts the
 //! server's texts back with [`restore`].
 
@@ -673,13 +677,31 @@ fn sees(symbol: &Symbol, from: &Ownership) -> bool {
 
 // --- applying -------------------------------------------------------------------
 
-/// What [`apply`] did: every file it changed, the declaration's first.
+/// What [`apply`] did: every file it changed, the declaration's first,
+/// then each record it brought up to date.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fixed {
     pub files: Vec<FileChange>,
-    /// The errors the project still has, every one of which it had
-    /// before.
+    /// The errors the project still has: every one it had before, and
+    /// those the swap of a type already stored or on the wire leaves for
+    /// its migration and for a person (chunk Q7).
     pub errors_left: usize,
+    /// Whether the swap changes what is stored, so the migration that
+    /// converts the stored values goes with it: `jadpo fix` writes it, as
+    /// `jadpo migrate new` would (chunk Q7).
+    pub migrates: bool,
+    /// The changes a person accepts before the swap goes in, each
+    /// `acceptance.missing` (area 18, "Acceptances"; chunk Q7).
+    pub accepts: Vec<Diagnostic>,
+}
+
+/// Whether `problem` is one a swap of a type already stored or on the
+/// wire leaves, rather than an error it adds (area 19, "Swap to the
+/// standard type"; chunk Q7): the migration it needs, while the project
+/// had no migration to write before, or a change a person accepts.
+fn left_for_later(problem: &Diagnostic, migrated: bool) -> bool {
+    problem.rule.id == rule::ACCEPTANCE_MISSING.id
+        || (problem.rule.id == rule::MIGRATION_OUT_OF_DATE.id && !migrated)
 }
 
 /// Makes the plan's edits in `loaded`, then fixes imports, formats and
@@ -688,7 +710,18 @@ pub struct Fixed {
 pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Fixed, Stopped> {
     let project = loaded.project;
     let finding = &plan.finding;
-    let before_errors = headlines(&crate::check(&loaded.db, project), Some(finding));
+    let had = crate::check(&loaded.db, project);
+    let before_errors = headlines(&had, Some(finding));
+    // A migration the project already needed would take the swap's
+    // conversion in with changes of its own, so the swap stops then.
+    let migrated = had.iter().any(|p| p.rule.id.starts_with("migration."));
+    // The records that stand up to date: those the swap changes are
+    // brought up to date with it, as `jadpo records update` would.
+    let fine: BTreeSet<String> = crate::records::standings(&loaded.db, project)
+        .into_iter()
+        .filter(|standing| standing.state == crate::records::State::UpToDate)
+        .map(|standing| standing.path.clone())
+        .collect();
     let text_of =
         |loaded: &Loaded, path: &str| loaded.file(path).map(|file| file.text(&loaded.db).clone());
     let mut paths: BTreeSet<String> = plan.edits.keys().cloned().collect();
@@ -771,14 +804,45 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Fixed, Stopped> {
         }
     }
 
-    // 4. Checked: a fix never adds an error.
+    // 4. The records the swap puts out of date, written from the source
+    //    (chunk Q7): the API record of a type on the wire, the event
+    //    record of one an event carries.
+    let mut records: BTreeMap<String, (Option<String>, Option<String>)> = BTreeMap::new();
+    for standing in crate::records::standings(&loaded.db, project) {
+        if standing.state != crate::records::State::OutOfDate || !fine.contains(&standing.path) {
+            continue;
+        }
+        for (path, fix) in &standing.fixes {
+            let now = match fix {
+                crate::records::Fix::Write(text) => Some(text.clone()),
+                crate::records::Fix::Remove => None,
+            };
+            records.insert(path.clone(), (loaded.record(path), now));
+        }
+    }
+    for (path, (_, now)) in &records {
+        loaded.set_record(path, now.clone());
+    }
+
+    // 5. Checked: a fix never adds an error, but for the migration and
+    //    the acceptances a swap of a type already stored or on the wire
+    //    leaves (chunk Q7).
     let problems = crate::check(&loaded.db, project);
     let mut had = before_errors;
     let mut added: Vec<Diagnostic> = Vec::new();
+    let mut migrates = false;
+    let mut accepts: Vec<Diagnostic> = Vec::new();
     for problem in &problems {
         let key = (problem.rule.id.to_string(), problem.message.clone());
         match had.get_mut(&key) {
             Some(count) if *count > 0 => *count -= 1,
+            _ if left_for_later(problem, migrated) => {
+                if problem.rule.id == rule::ACCEPTANCE_MISSING.id {
+                    accepts.push(problem.clone());
+                } else {
+                    migrates = true;
+                }
+            }
             _ => added.push(problem.clone()),
         }
     }
@@ -789,6 +853,9 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Fixed, Stopped> {
     if !added.is_empty() {
         let sources = jadpo_db::source_texts(&loaded.db, project);
         crate::setting_move::restore_texts(loaded, &before);
+        for (path, (was, _)) in &records {
+            loaded.set_record(path, was.clone());
+        }
         return Err(Stopped {
             problems: added,
             sources,
@@ -874,9 +941,28 @@ pub fn apply(loaded: &mut Loaded, plan: &Plan) -> Result<Fixed, Stopped> {
             rows,
         });
     }
+    for (path, (was, now)) in records {
+        let (mark, note) = match (&was, &now) {
+            (None, _) => (Mark::Added, "record, written from the source"),
+            (_, None) => (Mark::Removed, "record, nothing left to record"),
+            _ => (Mark::Changed, "record, brought up to date"),
+        };
+        files.push(FileChange {
+            rows: vec![Row {
+                mark,
+                subject: file_name(&path),
+                note: note.to_string(),
+            }],
+            path,
+            before: was,
+            after: now,
+        });
+    }
     Ok(Fixed {
         files,
         errors_left: problems.len(),
+        migrates,
+        accepts,
     })
 }
 
@@ -905,7 +991,11 @@ pub fn restore(loaded: &mut Loaded, fixed: &Fixed) {
     let before: BTreeMap<String, Option<String>> = fixed
         .files
         .iter()
+        .filter(|change| !jadpo_db::is_record(&change.path))
         .map(|change| (change.path.clone(), change.before.clone()))
         .collect();
     crate::setting_move::restore_texts(loaded, &before);
+    for change in fixed.files.iter().filter(|c| jadpo_db::is_record(&c.path)) {
+        loaded.set_record(&change.path, change.before.clone());
+    }
 }

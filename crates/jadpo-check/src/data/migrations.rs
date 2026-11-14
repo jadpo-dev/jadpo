@@ -707,7 +707,19 @@ impl Decide<'_> {
     /// What a needed decision is, as SQL: `None` for one still to make,
     /// or that doesn't fit, or a computed backfill that can't run yet.
     pub fn decided(&self, need: &Needed) -> Option<Decided> {
-        let decision = self.decisions.iter().find(|d| d.key == need.key())?;
+        // A field `jadpo fix` swapped for a standard type, with no decision
+        // written, is converted by its shape (chunk Q7).
+        let Some(decision) = self
+            .decisions
+            .iter()
+            .find(|d| d.key == need.key() && !matches!(d.value, DecisionValue::Pending))
+        else {
+            let (column, swap) = self.swapped(need)?;
+            return Some(Decided::InJadpo {
+                reads: vec![column],
+                code: swap_digest(&swap),
+            });
+        };
         match (&decision.value, need.kind) {
             (
                 DecisionValue::Backfill(value, _),
@@ -747,6 +759,92 @@ impl Decide<'_> {
             }
             _ => None,
         }
+    }
+
+    /// The conversion of a field whose type `jadpo fix` swapped for a
+    /// standard one (area 19, "Swap to the standard type"; chunk Q7), and
+    /// the old column it reads: a field moving to new columns whose old
+    /// one held an object of the application's as JSON, and whose type
+    /// now is a standard type held by its parts, every one of which the
+    /// object's recorded fields give by the shape `type.standard_exists`
+    /// matches (or by the part's own name, for a standard type with no
+    /// shape, as a clash's own name gives). `None` for any other change,
+    /// which needs its decision written.
+    pub fn swapped(&self, need: &Needed) -> Option<(String, jadpo_std::migration::Swap)> {
+        if need.kind != NeededKind::Backfill || !need.converts {
+            return None;
+        }
+        let table = self.before.stores.get(&need.store)?.tables.get(&need.table)?;
+        let (column, held) = table.columns.iter().find(|(_, column)| {
+            !column.retired && column.field.as_deref() == Some(need.field.as_str())
+        })?;
+        if held.sql_type != "jsonb" {
+            return None;
+        }
+        let reads = held.allows.as_ref()?.json.as_ref()?;
+        let from = match &reads.shape {
+            jadpo_graph::stored_json::Shape::Named(name) => name,
+            jadpo_graph::stored_json::Shape::Optional(inner) => match &**inner {
+                jadpo_graph::stored_json::Shape::Named(name) => name,
+                _ => return None,
+            },
+            _ => return None,
+        };
+        let jadpo_graph::stored_json::Named::Object { fields, .. } = reads.types.get(from)? else {
+            return None;
+        };
+        let field = field_model(self.model, &need.entity, &need.field)?;
+        let standard = match self.lookup.structure(&field.ty) {
+            Ty::Nullable(inner) => match self.lookup.structure(&inner) {
+                Ty::Named(name) | Ty::Opaque(name, _) => name,
+                _ => return None,
+            },
+            Ty::Named(name) | Ty::Opaque(name, _) => name,
+            _ => return None,
+        };
+        let entry = jadpo_std::standard_type(&standard)?;
+        let parts = recorded_parts(entry, fields, &reads.types)?;
+        Some((
+            column.clone(),
+            jadpo_std::migration::Swap {
+                from: from.clone(),
+                standard: entry.name.to_string(),
+                parts,
+            },
+        ))
+    }
+
+    /// How `jadpo migrate apply` converts a swapped field (chunk Q7), as a
+    /// backfill in Jadpo with no code of its own: it reads the old column's
+    /// JSON and writes the field's new columns through the storage codec.
+    pub fn swap_plan(&self, need: &Needed) -> Option<super::backfill::InJadpo> {
+        let (column, swap) = self.swapped(need)?;
+        let entity = self.model.entities.iter().find(|e| e.born == need.entity)?;
+        let field = field_model(self.model, &need.entity, &need.field)?;
+        let write = field
+            .columns()
+            .iter()
+            .map(|(_, sql_type)| jadpo_std::SqlType::of_column(sql_type))
+            .collect::<Option<Vec<_>>>()?;
+        if write.is_empty() {
+            return None;
+        }
+        Some(super::backfill::InJadpo {
+            body: Arc::new(jadpo_graph::body::Body::default()),
+            reads: vec![super::backfill::Read {
+                field: need.field.clone(),
+                columns: vec![column],
+                decode: vec![jadpo_std::read::Column::Text],
+                name: None,
+            }],
+            write,
+            scale: field.scale,
+            fills: (entity.name.clone(), field.name.clone()),
+            code: swap_digest(&swap),
+            refits: None,
+            stored: Vec::new(),
+            swap: Some(swap),
+        })
     }
 
     /// Why the decision written about `need` doesn't fit its change, when
@@ -984,8 +1082,99 @@ impl Decide<'_> {
                 .flatten()
                 .map(|(_, stored)| stored.clone())
                 .collect(),
+            swap: None,
         })
     }
+}
+
+/// The digest of a swapped field's conversion (chunk Q7), standing for
+/// the code a backfill in Jadpo would run: the toolchain's version, whose
+/// runtime converts, and which part is read from which member.
+pub fn swap_digest(swap: &jadpo_std::migration::Swap) -> String {
+    let mut text = format!(
+        "jadpo {}\nswap {} for {}",
+        env!("CARGO_PKG_VERSION"),
+        swap.from,
+        swap.standard
+    );
+    for (part, member) in &swap.parts {
+        text.push_str(&format!("\n{part}: {}", member.as_deref().unwrap_or("none")));
+    }
+    jadpo_graph::migration::section_digest(&text)
+}
+
+/// Each part of the standard type `entry` with the member of a recorded
+/// object (`fields`, by name) it is read from, when the object is the
+/// standard type by its shape (area 19, "Packages use the standard
+/// types"): every field matched once, built on what the part is, and
+/// every part the type requires given (chunk Q7). A standard type with no
+/// shape, which only a clash swaps, is matched by its parts' own names.
+fn recorded_parts(
+    entry: &'static jadpo_std::StandardType,
+    fields: &BTreeMap<String, jadpo_graph::stored_json::Shape>,
+    types: &BTreeMap<String, jadpo_graph::stored_json::Named>,
+) -> Option<Vec<(String, Option<String>)>> {
+    use jadpo_graph::stored_json::{Named, Shape};
+    use jadpo_std::standard::{Holds, Part};
+    let Holds::Object(parts) = entry.holds else {
+        return None;
+    };
+    // What a recorded field is built on, when it is one value.
+    let built_on = |shape: &Shape, on: &[Builtin]| -> bool {
+        match shape {
+            Shape::Value(scalar) => Builtin::from_name(&scalar.ty)
+                .is_some_and(|b| on.contains(&b) || on.contains(&b.representation())),
+            _ => false,
+        }
+    };
+    let is_enum = |shape: &Shape| match shape {
+        Shape::Named(name) => matches!(types.get(name), Some(Named::Enum { variants }) if variants.values().all(Option::is_none)),
+        Shape::Value(scalar) => jadpo_std::standard_type(&scalar.ty)
+            .is_some_and(|entry| matches!(entry.holds, Holds::Enum(_))),
+        _ => false,
+    };
+    let mut matched: Vec<(String, String)> = Vec::new();
+    match entry.shape {
+        Some(shape) => {
+            for wanted in shape {
+                let found = fields.iter().find(|(name, field)| {
+                    wanted.names.contains(&name.as_str())
+                        && wanted.list_of.is_none()
+                        && (built_on(field, wanted.built_on)
+                            || (wanted.or_enum && is_enum(field)))
+                        && !matched.iter().any(|(_, taken)| taken == *name)
+                });
+                match found {
+                    Some((name, _)) => matched.push((wanted.names[0].to_string(), name.clone())),
+                    None if wanted.optional => {}
+                    None => return None,
+                }
+            }
+        }
+        None => {
+            for (name, field) in fields {
+                if !parts.iter().any(|(part, _)| part == name) || !matches!(field, Shape::Value(_)) {
+                    return None;
+                }
+                matched.push((name.clone(), name.clone()));
+            }
+        }
+    }
+    if matched.len() != fields.len() {
+        return None;
+    }
+    let mut out = Vec::new();
+    for (part, kind) in parts {
+        let member = matched
+            .iter()
+            .find(|(standard, _)| standard == part)
+            .map(|(_, member)| member.clone());
+        if member.is_none() && !matches!(kind, Part::Optional(_)) {
+            return None;
+        }
+        out.push((part.to_string(), member));
+    }
+    Some(out)
 }
 
 /// How a field's columns are read, as the plan reads them for a query
@@ -1083,18 +1272,17 @@ pub fn jadpo_backfills(db: &dyn Db, project: Project) -> Vec<JadpoBackfill> {
     };
     let before = set.before_latest();
     let path = migration.changes_path();
-    let Some(file) = project
+    // A migration converting only swapped fields (chunk Q7) has no
+    // `changes.jadpo` to read.
+    let file = project
         .files(db)
         .iter()
         .copied()
-        .find(|f| f.path(db) == &path)
-    else {
-        return out;
+        .find(|f| f.path(db) == &path);
+    let decisions = match file.and_then(|file| tree::source(db, file)) {
+        Some(source) => read_decisions(&path, &source).0,
+        None => Vec::new(),
     };
-    let Some(source) = tree::source(db, file) else {
-        return out;
-    };
-    let (decisions, _) = read_decisions(&path, &source);
     let model = data_model(db, project);
     let lookup = Lookup::new(db, project);
     let decide = Decide {
@@ -1103,11 +1291,23 @@ pub fn jadpo_backfills(db: &dyn Db, project: Project) -> Vec<JadpoBackfill> {
         lookup: &lookup,
         model,
         decisions: &decisions,
-        file: Some(file),
+        file,
         before: &before,
     };
     for need in decisions_needed(&before, after) {
         let Some(decision) = decisions.iter().find(|d| d.key == need.key()) else {
+            if let Some(plan) = decide.swap_plan(&need) {
+                out.push(JadpoBackfill {
+                    migration: migration.name.clone(),
+                    field: need.key(),
+                    file: path.clone(),
+                    line: 1,
+                    plan,
+                });
+            }
+            continue;
+        };
+        let Some(file) = file else {
             continue;
         };
         let DecisionValue::Backfill(value, span) = &decision.value else {
@@ -1601,7 +1801,9 @@ fn decision_problems(
         ) {
             // A structured field's stored values are checked when no
             // `backfill:` rewrites them (chunk 5.9c).
-            if need.kind.optional() {
+            // A field swapped for a standard type is converted by its
+            // shape (chunk Q7).
+            if need.kind.optional() || decide.swapped(need).is_some() {
                 continue;
             }
             let span = written.map_or_else(|| at.clone(), |d| d.span.clone());
@@ -2010,4 +2212,88 @@ pub fn store_steps(set: &Migrations) -> BTreeMap<String, Vec<jadpo_std::Migratio
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use jadpo_graph::stored_json::{Named, Scalar, Shape};
+
+    use super::recorded_parts;
+
+    fn value(ty: &str) -> Shape {
+        Shape::Value(Scalar {
+            ty: ty.to_string(),
+            ..Scalar::default()
+        })
+    }
+
+    fn fields(pairs: &[(&str, Shape)]) -> BTreeMap<String, Shape> {
+        pairs
+            .iter()
+            .map(|(name, shape)| (name.to_string(), shape.clone()))
+            .collect()
+    }
+
+    /// A stored object is converted by the shape `type.standard_exists`
+    /// matches, each part from the member the swap renames (chunk Q7).
+    #[test]
+    fn a_stored_object_gives_each_part_from_the_member_its_shape_matches() {
+        let range = jadpo_std::standard_type("InstantRange").expect("InstantRange");
+        let types: BTreeMap<String, Named> = BTreeMap::new();
+        assert_eq!(
+            recorded_parts(
+                range,
+                &fields(&[("starts_at", value("Instant")), ("ends_at", value("Instant"))]),
+                &types,
+            ),
+            Some(vec![
+                ("start".to_string(), Some("starts_at".to_string())),
+                ("end".to_string(), Some("ends_at".to_string())),
+            ])
+        );
+        let point = jadpo_std::standard_type("Point").expect("Point");
+        assert_eq!(
+            recorded_parts(
+                point,
+                &fields(&[("lat", value("Decimal")), ("lng", value("Decimal"))]),
+                &types,
+            ),
+            Some(vec![
+                ("latitude".to_string(), Some("lat".to_string())),
+                ("longitude".to_string(), Some("lng".to_string())),
+                ("altitude".to_string(), None),
+            ])
+        );
+    }
+
+    /// Anything else needs its decision: a field the shape doesn't have,
+    /// one built on something else, or a part the type requires that
+    /// the object hasn't, a colour's alpha.
+    #[test]
+    fn an_object_that_isnt_the_shape_isnt_converted() {
+        let types: BTreeMap<String, Named> = BTreeMap::new();
+        let range = jadpo_std::standard_type("InstantRange").expect("InstantRange");
+        for wrong in [
+            fields(&[
+                ("starts_at", value("Instant")),
+                ("ends_at", value("Instant")),
+                ("room", value("Text")),
+            ]),
+            fields(&[("starts_at", value("Text")), ("ends_at", value("Instant"))]),
+            fields(&[("starts_at", value("Instant"))]),
+        ] {
+            assert_eq!(recorded_parts(range, &wrong, &types), None, "{wrong:?}");
+        }
+        let colour = jadpo_std::standard_type("Colour").expect("Colour");
+        assert_eq!(
+            recorded_parts(
+                colour,
+                &fields(&[("r", value("Int")), ("g", value("Int")), ("b", value("Int"))]),
+                &types,
+            ),
+            None
+        );
+    }
 }

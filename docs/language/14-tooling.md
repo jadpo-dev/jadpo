@@ -1139,7 +1139,11 @@ type](19-standard-library.md#a-release-that-adds-a-standard-type)).
   what changed, file by file.
 
 A fix whose result would add an error changes nothing and shows the
-error. A name with nothing to fix, a fix it doesn't take, or a name already
+error. A swap of a type already stored or on the wire also brings the
+records it changes up to date and writes its data migration, then names
+`jadpo acceptance new` for the acceptances a person gives
+([Swap to the standard type](19-standard-library.md#swap-to-the-standard-type)).
+A name with nothing to fix, a fix it doesn't take, or a name already
 taken is `cli.fix_arguments`. It takes `--json`. Its rename isn't
 `jadpo rename`: it writes no identity line.
 
@@ -2333,7 +2337,9 @@ never behave differently.
   call](01-project-layout-and-modules.md#keeping-code-as-it-is-with-a-reason)).
 - **"Swap for the standard ..."**, a quick fix on `type.standard_clash` and
   `type.standard_exists`, works as `jadpo fix <name> swap` does. Where the
-  command stops, it is unavailable and shows the error it would add.
+  command stops, it is unavailable and shows the error it would add, and
+  where the swap changes stored data it is unavailable too, since only
+  the command writes the migration.
   Renaming instead needs a new name, so it is the editor's
   [rename](#rename) on the declaration's name ([A release that adds a
   standard type](19-standard-library.md#a-release-that-adds-a-standard-type)).

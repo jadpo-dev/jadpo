@@ -2,7 +2,9 @@
 //! 5.5a2): the quick fix on `type.standard_clash` and
 //! `type.standard_exists`, whose edit is the one `jadpo fix <name> swap`
 //! makes (both run `jadpo_check::fixes`), and which is unavailable, with
-//! the error it would add, where the command stops.
+//! the error it would add, where the command stops, and where the swap
+//! changes stored data, whose migration only the command writes (chunk
+//! Q7).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -186,5 +188,50 @@ fn a_swap_that_would_add_an_error_is_offered_unavailable() {
     assert_eq!(
         action["disabled"]["reason"],
         "The swap would add an error: `Weekday` has no variant `sat`"
+    );
+}
+
+#[test]
+fn a_swap_that_changes_stored_data_is_offered_unavailable() {
+    let slot = "/// When a room is booked, from its start to its end.\ndecline type.standard_exists: \"Kept until the swap\"\ntype Slot = Object {\n    starts_at: Instant\n    ends_at: Instant\n}\n";
+    let files: &[(&str, &str)] = &[
+        ("app.jadpo", "application {}\n"),
+        (SLOT, slot),
+        (
+            "domains/rooms/entities/booking.jadpo",
+            "use rooms/types { Slot }\n\n/// A room booked for a slot.\nentity Booking {\n    id: Uuid\n    slot: Slot\n}\n",
+        ),
+    ];
+    let root = project("lsp-swap-stored", files);
+    // The first migration, as `jadpo migrate new initial` writes it.
+    let loaded = jadpo_db::load(&root);
+    let after = jadpo_graph::migration::next_snapshot(
+        &jadpo_graph::schema::Schema::default(),
+        jadpo_check::data::schema(&loaded.db, loaded.project),
+    );
+    let sql = jadpo_graph::migration::migration_sql(
+        &jadpo_graph::schema::Schema::default(),
+        &after,
+        &|_| None,
+    )
+    .expect("the first migration");
+    let folder = root.join("database/migrations/20261020T1400_initial");
+    std::fs::create_dir_all(&folder).expect("folder");
+    std::fs::write(folder.join("snapshot.json"), after.to_document()).expect("snapshot");
+    std::fs::write(
+        folder.join("postgres.sql"),
+        sql.to_document("20261020T1400_initial"),
+    )
+    .expect("sql");
+    std::fs::write(
+        root.join(SLOT),
+        slot.replace("decline type.standard_exists: \"Kept until the swap\"\n", ""),
+    )
+    .expect("the decline taken away");
+    let mut server = start(&root, false);
+    let action = swap(&actions(&mut server, &root, SLOT, 1, 6));
+    assert_eq!(
+        action["disabled"]["reason"],
+        "The swap changes stored data, so its migration goes with it: run `jadpo fix Slot swap`"
     );
 }

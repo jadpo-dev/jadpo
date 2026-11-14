@@ -1861,6 +1861,10 @@ pub struct Backfill<'v> {
     /// born with, each in declared order (area 5, "What a rename keeps"):
     /// the value is written by its own; empty otherwise.
     pub stored: Vec<String>,
+    /// For a field `jadpo fix` swapped for a standard type (chunk Q7), the
+    /// conversion by its shape that runs in place of `callable`: the one
+    /// column read is the old one's JSON.
+    pub swap: Option<jadpo_std::migration::Swap>,
 }
 
 /// Works out the latest migration's backfills that have no SQL form with
@@ -1939,6 +1943,11 @@ impl crate::Backfills for InJadpo<'_> {
             .iter()
             .find(|backfill| backfill.migration == migration && backfill.field == field)
             .ok_or(Unworked::Unavailable)?;
+        // A swapped field's stored values, converted by their shape (chunk
+        // Q7): no code of its own runs.
+        if let Some(swap) = &backfill.swap {
+            return swapped(backfill, swap, rows, self.executor.places());
+        }
         let mut args = Vec::with_capacity(rows.len());
         for (at, row) in rows.iter().enumerate() {
             let stopped = |reason: String| Unworked::Stopped { at, reason };
@@ -2044,6 +2053,115 @@ impl crate::Backfills for InJadpo<'_> {
     }
 }
 
+/// Each of `rows`' values of a field `jadpo fix` swapped for a standard
+/// type (area 19, "Swap to the standard type"; chunk Q7), from its old
+/// column's JSON: each of the standard type's parts read from the member
+/// the swap renamed, by the part's own reader, then kept, checked and
+/// written as any backfill's value is. `NULL` is `none`. Why a value
+/// doesn't convert names the type, the member and the rule, never the
+/// value.
+fn swapped(
+    backfill: &Backfill<'_>,
+    swap: &jadpo_std::migration::Swap,
+    rows: &[&[SqlValue]],
+    places: &crate::Places,
+) -> Result<Vec<Vec<SqlValue>>, crate::Unworked> {
+    use crate::Unworked;
+    let entry = jadpo_std::standard_type(&swap.standard).ok_or(Unworked::Unavailable)?;
+    let jadpo_std::standard::Holds::Object(parts) = entry.holds else {
+        return Err(Unworked::Unavailable);
+    };
+    let from = &swap.from;
+    let mut out = Vec::with_capacity(rows.len());
+    for (at, row) in rows.iter().enumerate() {
+        let stopped = |reason: String| Unworked::Stopped { at, reason };
+        let value = match row.first() {
+            Some(SqlValue::Null(_)) => Value::None,
+            Some(SqlValue::Json(text)) => {
+                let json: serde_json::Value = serde_json::from_str(text)
+                    .map_err(|_| stopped(format!("its stored `{from}` isn't JSON")))?;
+                let object = json
+                    .as_object()
+                    .ok_or_else(|| stopped(format!("its stored `{from}` isn't an object")))?;
+                let mut fields = Vec::with_capacity(parts.len());
+                for ((part, member), (_, kind)) in swap.parts.iter().zip(parts) {
+                    let held = member.as_ref().and_then(|member| object.get(member));
+                    let value = swapped_part(kind, held).map_err(|why| {
+                        stopped(format!(
+                            "its stored `{from}`'s `{}` {why}, so it isn't {} `{}`'s `{part}`",
+                            member.as_deref().unwrap_or(part),
+                            if entry.name.starts_with(['A', 'E', 'I', 'O', 'U']) {
+                                "an"
+                            } else {
+                                "a"
+                            },
+                            entry.name
+                        ))
+                    })?;
+                    fields.push((Rc::from(part.as_str()), value));
+                }
+                Value::Record(Rc::new(jadpo_value::Record {
+                    ty: Rc::from(entry.name),
+                    fields,
+                    omitted: None,
+                }))
+            }
+            _ => return Err(stopped(format!("its old column held no stored `{from}`"))),
+        };
+        out.push(
+            written(backfill, Outcome::Value(value), places, None)
+                .map_err(|reason| Unworked::Stopped { at, reason })?,
+        );
+    }
+    Ok(out)
+}
+
+/// A standard type's part read from the JSON member `held` (chunk Q7):
+/// a JSON string, number or `true` or `false` read as the part's text, by
+/// the reader every boundary reads it with; why not, never the value.
+fn swapped_part(
+    kind: &jadpo_std::standard::Part,
+    held: Option<&serde_json::Value>,
+) -> Result<Value, String> {
+    use jadpo_std::Builtin;
+    use jadpo_std::standard::Part;
+    if let Part::Optional(inner) = kind {
+        return match held {
+            None | Some(serde_json::Value::Null) => Ok(Value::None),
+            Some(_) => swapped_part(inner, held),
+        };
+    }
+    let text = match held {
+        None | Some(serde_json::Value::Null) => return Err("is missing".into()),
+        Some(serde_json::Value::String(text)) => text.clone(),
+        Some(serde_json::Value::Number(number)) => number.to_string(),
+        Some(serde_json::Value::Bool(bool)) => bool.to_string(),
+        Some(_) => return Err("isn't one value".into()),
+    };
+    match kind {
+        Part::Of(builtin) | Part::Bounded { of: builtin, .. } => {
+            jadpo_value::standard::scalar_text(*builtin, &text)
+                .map_err(|_| format!("doesn't read as {} `{}`", article(builtin.name()), builtin.name()))
+        }
+        Part::Whole(min, max) => match jadpo_value::standard::scalar_text(Builtin::Int, &text) {
+            Ok(Value::Int(n)) if (*min..=*max).contains(&n) => Ok(Value::Int(n)),
+            Ok(_) => Err(format!("is outside {min} to {max}")),
+            Err(_) => Err("doesn't read as a whole number".into()),
+        },
+        Part::Standard(name) => jadpo_value::standard::parse(&text, name)
+            .map_err(|_| format!("doesn't read as {} `{name}`", article(name))),
+        _ => Err("has no reader here".into()),
+    }
+}
+
+fn article(name: &str) -> &'static str {
+    if name.starts_with(['A', 'E', 'I', 'O', 'U']) {
+        "an"
+    } else {
+        "a"
+    }
+}
+
 /// Why the field's rules refuse `value`, a stored value of `field`'s
 /// column read as `column` holds it, never the value: `None` when they
 /// allow it (chunk Q3). A value the column can't read as its type now (a
@@ -2131,6 +2249,15 @@ fn written(
             .collect();
     }
     let ty = backfill.write.first().copied().unwrap_or(SqlType::Text);
+    // A standard object one column holds natively, a range's, is bound as
+    // that column holds it (chunk Q7).
+    let value = match &value {
+        Value::Record(_) if json.is_none() => match jadpo_value::standard::to_parts(&value) {
+            Some(mut parts) if parts.len() == 1 => parts.remove(0),
+            _ => value,
+        },
+        _ => value,
+    };
     let one = match json {
         Some((codecs, number)) => codecs.write(number, &value),
         None if !backfill.stored.is_empty() => {
@@ -2914,6 +3041,7 @@ mod tests {
                 write: vec![SqlType::Numeric],
                 validator: Some(&cost),
                 refits: None,
+                swap: None,
                 stored: Vec::new(),
             }],
         );
@@ -2977,6 +3105,7 @@ mod tests {
                 write: vec![SqlType::Numeric],
                 validator: None,
                 refits: None,
+                swap: None,
                 stored: Vec::new(),
             }],
         );

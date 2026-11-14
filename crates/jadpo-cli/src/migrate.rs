@@ -292,6 +292,22 @@ fn new(call: &Call) -> Reply {
         .iter()
         .filter_map(|need| decisions_of.misfit(need).map(|why| (need.key(), why)))
         .collect();
+    // Each field `jadpo fix` swapped for a standard type, which the
+    // migration converts by its shape with nothing to decide (chunk Q7).
+    let swapped: BTreeMap<String, (String, String)> = needed
+        .iter()
+        .filter(|need| {
+            !decisions_of
+                .decisions
+                .iter()
+                .any(|d| d.key == need.key() && !matches!(d.value, DecisionValue::Pending))
+        })
+        .filter_map(|need| {
+            decisions_of
+                .swapped(need)
+                .map(|(_, swap)| (need.key(), (swap.from, swap.standard)))
+        })
+        .collect();
     let written = match write(
         &folder,
         &name,
@@ -299,6 +315,7 @@ fn new(call: &Call) -> Reply {
         &sql,
         &needed,
         pending.len(),
+        &swapped,
         model,
         &lookup,
     ) {
@@ -318,6 +335,94 @@ fn new(call: &Call) -> Reply {
         set, latest, &before, &after, &relative, &name, &sql, &pending, &misfits, written,
         unfinished, model, &lookup,
     )
+}
+
+/// The migration a swap of a type already stored writes (area 19, "Swap
+/// to the standard type"; chunk Q7), worked out from `loaded` as the fix
+/// left it, before anything is written: what `jadpo migrate new <purpose>`
+/// would write there, each swapped field converted by its shape.
+pub(crate) struct Planned {
+    name: String,
+    after: Schema,
+    sql: Sql,
+    needed: Vec<Needed>,
+    pending: usize,
+    swapped: BTreeMap<String, (String, String)>,
+}
+
+impl Planned {
+    /// Its folder, `database/migrations/<name>/`.
+    pub(crate) fn relative(&self) -> String {
+        format!("{}/{}/", records::FOLDER, self.name)
+    }
+}
+
+/// Plans the swap's migration, named for `purpose`; why it can't be, as
+/// the error `jadpo migrate new` would give.
+pub(crate) fn plan_swap(loaded: &Loaded, purpose: &str) -> Result<Planned, Box<Diagnostic>> {
+    let (db, project) = (&loaded.db, loaded.project);
+    let set = records::migrations(db, project);
+    let model = data_model(db, project);
+    let lookup = jadpo_check::lookups::Lookup::new(db, project);
+    let before = set.latest_schema();
+    let after = next_snapshot(&before, schema(db, project));
+    let needed = decisions_needed(&before, &after);
+    let decide = Decide {
+        db,
+        project,
+        lookup: &lookup,
+        model,
+        decisions: &[],
+        file: None,
+        before: &before,
+    };
+    let sql = match migration_sql(&before, &after, &|need: &Needed| decide.decided(need)) {
+        Ok(sql) => sql,
+        Err(refusals) => return Err(Box::new(refusal(&refusals))),
+    };
+    let pending = needed
+        .iter()
+        .filter(|need| !need.kind.optional() && decide.decided(need).is_none())
+        .count();
+    let swapped = needed
+        .iter()
+        .filter_map(|need| {
+            decide
+                .swapped(need)
+                .map(|(_, swap)| (need.key(), (swap.from, swap.standard)))
+        })
+        .collect();
+    Ok(Planned {
+        name: folder_name(set, purpose),
+        after,
+        sql,
+        needed,
+        pending,
+        swapped,
+    })
+}
+
+/// Writes the planned migration's folder under `root`: each file, with
+/// what it is, as `jadpo migrate new` lists them.
+pub(crate) fn write_planned(
+    root: &Path,
+    loaded: &Loaded,
+    planned: &Planned,
+) -> std::io::Result<Vec<(String, String)>> {
+    let folder = root.join(records::FOLDER).join(&planned.name);
+    let lookup = jadpo_check::lookups::Lookup::new(&loaded.db, loaded.project);
+    write(
+        &folder,
+        &planned.name,
+        &planned.after,
+        &planned.sql,
+        &planned.needed,
+        planned.pending,
+        &planned.swapped,
+        data_model(&loaded.db, loaded.project),
+        &lookup,
+    )
+    .map(|written| written.files)
 }
 
 /// The decision `--drop <name>` makes, as `changes.jadpo` will say it.
@@ -440,19 +545,22 @@ fn nothing(set: &Migrations) -> Reply {
 }
 
 fn refused(refusals: &[Refusal]) -> Reply {
+    Reply::failed(refusal(refusals))
+}
+
+/// Why a migration can't be written yet.
+fn refusal(refusals: &[Refusal]) -> Diagnostic {
     let listed: Vec<String> = refusals.iter().map(|r| r.change.clone()).collect();
     let reason = refusals
         .first()
         .map(|r| r.reason.clone())
         .unwrap_or_default();
-    Reply::failed(
-        Diagnostic::new(
-            &rule::TOOLCHAIN_NOT_BUILT_YET,
-            "This migration isn't built yet",
-        )
-        .reason(format!("It would need {}. {reason}", and_list(&listed)))
-        .next("Undo that change for now, then run `jadpo migrate new` again"),
+    Diagnostic::new(
+        &rule::TOOLCHAIN_NOT_BUILT_YET,
+        "This migration isn't built yet",
     )
+    .reason(format!("It would need {}. {reason}", and_list(&listed)))
+    .next("Undo that change for now, then run `jadpo migrate new` again")
 }
 
 fn and_list(items: &[String]) -> String {
@@ -672,6 +780,7 @@ fn write(
     sql: &Sql,
     needed: &[Needed],
     open: usize,
+    swapped: &BTreeMap<String, (String, String)>,
     model: &DataModel,
     lookup: &dyn jadpo_check::types::TypeView,
 ) -> std::io::Result<Written> {
@@ -708,7 +817,7 @@ fn write(
     if !needed.is_empty() {
         let path = folder.join("changes.jadpo");
         let existing = std::fs::read_to_string(&path).ok();
-        let (text, _) = changes_file(existing.as_deref(), needed, model, lookup);
+        let (text, _) = changes_file(existing.as_deref(), needed, swapped, model, lookup);
         std::fs::write(&path, &text)?;
         for (number, line) in (1u32..).zip(text.lines()) {
             for need in needed {
@@ -718,10 +827,19 @@ fn write(
             }
         }
         let optional = needed.iter().all(|need| need.kind.optional());
+        let converted = needed
+            .iter()
+            .all(|need| need.kind.optional() || swapped.contains_key(&need.key()));
         files.push((
             "changes.jadpo".to_string(),
             // A decision written but not one that fits is still open.
             match open {
+                // Only fields swapped for a standard type, which the
+                // migration converts by their shape (chunk Q7).
+                0 if converted && !optional => {
+                    "no decision needed: each stored value is converted to its standard type"
+                        .to_string()
+                }
                 // Only a structured field's stored values to check, which
                 // a `backfill:` rewrites instead (chunk 5.9c).
                 0 if optional => {
@@ -742,6 +860,7 @@ fn write(
 fn changes_file(
     existing: Option<&str>,
     needed: &[Needed],
+    swapped: &BTreeMap<String, (String, String)>,
     model: &DataModel,
     lookup: &dyn jadpo_check::types::TypeView,
 ) -> (String, usize) {
@@ -763,6 +882,17 @@ fn changes_file(
             }
             added.push_str(&format!(
                 "    // `{key}`'s type may not read every value stored before, so\n    // `jadpo migrate apply` checks each one and refuses the migration\n    // while one doesn't read. To rewrite those instead, write\n    // `{key}: {{ backfill: <value> }}` and run `jadpo migrate new`.\n"
+            ));
+            continue;
+        }
+        // A field swapped for a standard type is converted by its shape,
+        // which is said in a comment, once, and never open (chunk Q7).
+        if let Some((from, standard)) = swapped.get(&key) {
+            if existing.is_some_and(|text| text.contains(&format!("`{key}"))) {
+                continue;
+            }
+            added.push_str(&format!(
+                "    // `{key}` was a `{from}`, swapped for the standard `{standard}`:\n    // `jadpo migrate apply` converts each value stored before by its\n    // shape, and stops at a record whose value doesn't convert. To give\n    // them another value instead, write\n    // `{key}: {{ backfill: <value> }}` and run `jadpo migrate new`.\n"
             ));
             continue;
         }
@@ -2111,10 +2241,10 @@ mod tests {
         };
         let model = DataModel::default();
         let table = jadpo_check::types::TypeTable::default();
-        let (text, open) = changes_file(None, std::slice::from_ref(&need), &model, &table);
+        let (text, open) = changes_file(None, std::slice::from_ref(&need), &BTreeMap::new(), &model, &table);
         assert_eq!(open, 1);
         assert!(text.starts_with("migration {\n") && text.contains("    Todo.rank: {}\n"));
-        let (again, open) = changes_file(Some(&text), &[need], &model, &table);
+        let (again, open) = changes_file(Some(&text), &[need], &BTreeMap::new(), &model, &table);
         assert_eq!((again, open), (text, 1));
     }
 }

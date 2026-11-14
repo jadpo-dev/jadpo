@@ -838,9 +838,28 @@ quick fix ([A release that adds a standard type](#a-release-that-adds-a-standard
 Where the provider sends another form, convert at the edge, in a
 package's `wire:` or `decode:`.
 
-For a type already stored or in an API record, the fix writes the edit
-and the data migration, and the change goes through the existing
-`ApiChange` and `DataChange` [acceptances](18-records-and-manifest.md#acceptances).
+For a type already stored or in an API record, the fix writes the edit,
+brings up to date the records it changes, and writes the data
+migration, as `jadpo migrate new swap_<name>` would. The change goes
+through the existing `ApiChange` and `DataChange`
+[acceptances](18-records-and-manifest.md#acceptances), which a person
+gives: the fix ends by naming `jadpo acceptance new swap_<name>`.
+
+- **What the migration does.** A field of the type moves to the standard
+  type's columns, as any field whose column changes type does
+  ([Changing a column's type](05-data.md#changing-a-columns-type)). Its
+  new columns are filled in Jadpo from the old column's JSON, with
+  nothing to decide: each part of the standard type is read from the
+  member the swap renamed, by the part's own reader, then kept and checked
+  by the field's rules. `changes.jadpo` says so in a comment.
+- **A value that doesn't convert** stops the migration at its record,
+  naming the record's key and the rule, never the value, as any backfill
+  that faults does. A `backfill:` written for the field replaces the
+  conversion.
+- **A migration already due.** Where the project already needed a
+  migration, the fix writes none: the `jadpo migrate new` it needs
+  converts the swapped fields with the rest, since the conversion is
+  read from the snapshots, as it is after a swap made by hand.
 
 ### Decline, with a reason, on the type itself
 
@@ -876,11 +895,6 @@ under [Errors](#errors)).
 The `Country`, `Language` and `PhoneNumber` lists ship with each Jadpo
 release, as the time-zone database does. Fixed reference data is declared
 in the release, as these enums, not by applications.
-
-Not built yet: the data migration and the acceptances for swapping a type
-already stored or on the wire come with
-[Review and records](18-records-and-manifest.md), and until then such a
-swap stops.
 
 ## A release that adds a standard type
 <!-- topic: standard-type-clashes (was a-release-that-adds-a-standard-type) -->
@@ -975,9 +989,11 @@ project didn't have, by rule and headline, changes nothing and shows that
 error. A swap to a standard enum that lacks a variant your code names is
 refused this way. Errors the project already had stay, so you fix one
 finding at a time even while other errors stand: `jadpo check` shows
-them, and `jadpo fix` says how many findings are left. So a swap of a
-type already stored or in an API record stops, until its migration and
-acceptances are built.
+them, and `jadpo fix` says how many findings are left. A swap of a type
+already stored or in an API record leaves two kinds of error for later,
+which it doesn't count as added: the migration it writes, and the
+acceptances a person gives
+([Swap to the standard type](#swap-to-the-standard-type)).
 
 ### Names each release adds
 
@@ -991,10 +1007,9 @@ as its release notes list them:
 | 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `ApiKey`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `Barcode`, `BasisPoints`, `BearerToken`, `Bearing`, `Bic`, `Bitrate`, `BloodGlucose`, `BloodPressure`, `BloodType`, `BookingReference`, `BoundingBox`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Certificate`, `ChatMessage`, `ChatRole`, `Cidr`, `Circle`, `ClothingSize`, `ClothingSizeSystem`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Crs`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Dimensions`, `Discount`, `Doi`, `DomainName`, `DosageInstruction`, `Dose`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `EastingNorthing`, `Email`, `EmailWithName`, `Embedding`, `Emoji`, `EncryptedValue`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `Feature`, `FeatureCollection`, `FileName`, `FilePath`, `FileType`, `FlightNumber`, `Fraction`, `FrameRate`, `Frequency`, `Geohash`, `Geometry`, `GitRef`, `GivenName`, `H3Cell`, `Hash`, `HeartRate`, `Hmac`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Jurisdiction`, `Jwk`, `Jwt`, `JwtClaims`, `Language`, `Latitude`, `LawfulBasis`, `Lei`, `Length`, `LineString`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `Longitude`, `LotNumber`, `MacAddress`, `MapTile`, `Markdown`, `MaskedCardNumber`, `Mass`, `ModelId`, `Money`, `Month`, `Mpan`, `Mprn`, `MultiLineString`, `MultiPoint`, `MultiPolygon`, `Nationality`, `NetworkPort`, `NhsNumber`, `OAuthScope`, `OidcClaims`, `OneTimeCode`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `Password`, `PasswordCheck`, `PasswordHash`, `PasswordPolicy`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `Point`, `Polygon`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Rating`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `RouteOfAdministration`, `SecretText`, `SemanticVersion`, `SerialNumber`, `ShoeSize`, `ShoeSizeSystem`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TokenCount`, `TokenUsage`, `TotpSecret`, `TraceId`, `TraceParent`, `TrackingNumber`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UnitQuantity`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `Vector`, `VehicleRegistration`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebAuthnCredential`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 The example of `type.standard_clash` is under [Errors](#errors). The
-editor's quick fix is titled "Swap for the standard ...".
-
-Not built yet: the migration and acceptances a swap of a stored type
-needs ([Review and records](18-records-and-manifest.md)).
+editor's quick fix is titled "Swap for the standard ...". It is
+unavailable where the swap changes stored data, since only `jadpo fix`
+writes the migration.
 
 ## What every operation follows
 <!-- topic: what-every-operation-follows -->
@@ -12904,7 +12919,8 @@ what Jadpo took from each, is in the
 |---|---|
 | Everything on this page not listed below | Built |
 | What keys held as data allow: `crypto.verify_totp` and HS256 in `crypto.verify_jwt` | Not built yet |
-| A `type.standard_exists` or `type.standard_clash` swap of a type already stored or on the wire | Not built yet: it waits on [Review and records](18-records-and-manifest.md) |
+| A swapped type held inside a value stored as JSON, such as a `List<Slot>` | Not built yet: the migration checks those values and refuses while one is stored |
+| Converting a swapped type held in a column of its own, such as a `type.standard_clash` on a `Text` | Not built yet: its migration asks for the `backfill:` any column changing type takes |
 | A backfill of a new required amount of money | Not built yet: `toolchain.not_built_yet` names it |
 | The UK modulus check in `BankAccount` | Not built yet: waits on Vocalink's permission to ship its tables |
 | Checking `UnLocode`, `IataAirport`, `IcaoAirport`, `IataAirline` and `Icd10Code` against their lists | Not built yet: waits on licences that allow shipping the lists |

@@ -528,8 +528,20 @@ see the declaration, a matched field by what each body name resolved to
 and by `Type.field` as written, a `use` line, the declaration's file
 moved for a rename) and every refusal, and `apply` makes them, fixes
 imports, formats what was formatted and checks the result, undoing a fix
-that adds an error by rule and headline. Each standard type's data entry
-carries the `release` that added it, which the clash names.
+that adds an error by rule and headline. A swap under stored data or on
+the wire (chunk Q7) also writes, in `apply`, each record it puts out of
+date, and leaves two errors uncounted: `acceptance.missing`, a person's,
+and `migration.out_of_date` where none was due, which sets `migrates`.
+`jadpo fix` then plans the migration from the edited texts with `migrate
+new`'s writer (`plan_swap`) before writing anything. `Decide::swapped`
+reads the conversion from the snapshots: an old `jsonb` column recorded
+as one of the app's objects, a field now of a standard object, and the
+shape match on the recorded fields. It decides the field as a backfill in
+Jadpo whose code digest is the conversion's, so the SQL is an ordinary
+one, and the plan carries the `Swap` in place of a callable; the runner
+reads each part from its member by the part's text reader and writes it
+as any backfill's value. Each standard type's data entry carries the
+`release` that added it, which the clash names.
 
 **Renaming.** `jadpo_check::rename` is `jadpo rename`'s code and the
 editor's rename's (`at` resolves the name under the cursor as go to
