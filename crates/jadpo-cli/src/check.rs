@@ -154,6 +154,28 @@ pub(crate) fn checked_before_as(
     })
 }
 
+/// Gives `loaded` the before side `jadpo check` compares it with, read
+/// from git at the default branch's merge base, so the acceptances a
+/// change needs are judged: what `jadpo fix` checks a swap against
+/// (chunk Q7). Without one, nothing is judged, as for `jadpo check`.
+pub(crate) fn judge_acceptances(call: &Call, loaded: &mut jadpo_db::Loaded) {
+    if loaded.project.layout(&loaded.db) != Layout::Project {
+        return;
+    }
+    let day = judged_day(call, &loaded.root, JudgedOn::Today);
+    loaded.set_judged_on(Some(day));
+    let has_acceptances = loaded
+        .project
+        .files(&loaded.db)
+        .iter()
+        .any(|file| jadpo_check::acceptances::files::is_acceptance(file.path(&loaded.db)))
+        || jadpo_check::acceptances::data::removes_data(&loaded.db, loaded.project);
+    if let Ok(before) = crate::before::read(&loaded.root, None, has_acceptances) {
+        loaded.set_before(before);
+        crate::before::judge_views(loaded, day);
+    }
+}
+
 /// What `jadpo check` shows of `checked`, run from `cwd` in `elapsed`:
 /// each diagnostic, then the summary, whose headline is `failed` when
 /// there are errors.

@@ -353,11 +353,9 @@ work below (Richard, 2026-11-08).
       runs at", and its notes; compiler-runtime, "Isolation and migrations".
     - [ ] **Q6 A database only when something needs one** `opus · high`, with
       the first feature that can run without one: area 5, "Stores".
-    - [ ] **Q7 A standard type swapped under stored data** `opus · high`:
-      area 19, "Reference lists ship with Jadpo" and "Names each release adds";
-      area 18, "Acceptances". The data migration and acceptances for a
-      `type.standard_exists` or `type.standard_clash` swap of a type already
-      stored or on the wire.
+    - [x] **Q7 A standard type swapped under stored data**: the swap's
+      records, migration and acceptances, in area 19, "Swap to the standard
+      type", and its notes, "A swap under stored data".
     - [x] **Q11 Born names kept for every rename**: a variant and a field
       inside JSON stored by born name, and a born name written by hand
       refused, in area 5, "What a rename keeps", area 14, "`jadpo rename`",

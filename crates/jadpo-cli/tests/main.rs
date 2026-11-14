@@ -184,6 +184,7 @@ mod step_records;
 mod step_replays;
 mod suggest;
 mod suggest_share;
+mod swaps;
 mod system;
 mod system_statements;
 mod system_tenants;

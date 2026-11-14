@@ -37,6 +37,17 @@
 //!   *Stopped* (a result with an error the project didn't have) is each
 //!   such error in the one shape, then `✗ fix stopped  1 error after the
 //!   fix · nothing changed`.
+//! - *A swap under stored data* (chunk Q7, designed the same way, its
+//!   assumptions marked): the change list goes on with each record the
+//!   swap brought up to date (`~ main.jadpo_record  record, brought up to
+//!   date`), then the migration's folder with each file `jadpo migrate
+//!   new` would list (`+ postgres.sql  9 statements: …`), so the reviewer
+//!   sees every file the swap wrote in one list, in the order it was
+//!   written. The status line is the swap's. The hint is the next thing
+//!   only a person can do: `jadpo acceptance new swap_slot` while a change
+//!   waits for an acceptance (assumption: an agent runs it to draft one
+//!   and then stops, as area 18 says), else `jadpo check` when errors are
+//!   left.
 //! - *States.* Nothing to fix (`✓ Nothing to fix`); findings; a swap,
 //!   with the file left empty removed; a rename, with the file named
 //!   after the declaration moved; refused; stopped; files that don't parse
@@ -47,7 +58,7 @@ use std::path::PathBuf;
 
 use jadpo_check::fixes::{self, Finding, Fix, FixKind};
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_term::{Block, Fact, Json, Outcome, Screen, shown_path};
+use jadpo_term::{Block, ChangeMark, Fact, Json, Outcome, Screen, shown_path};
 
 use crate::config::{change_groups, files_json, write_files};
 use crate::fmt::project_needed;
@@ -73,6 +84,9 @@ pub fn fix(call: &Call) -> Reply {
         return project_needed("fix");
     };
     let mut loaded = jadpo_db::load(&root);
+    // A swap of a type on the wire needs a person's acceptance, judged
+    // against the before side as `jadpo check` judges it (chunk Q7).
+    crate::check::judge_acceptances(call, &mut loaded);
     // Editing a file that doesn't parse could change the wrong text, so
     // syntax errors stop it, as in every command that writes source.
     let syntax: Vec<Diagnostic> = jadpo_check::check(&loaded.db, loaded.project)
@@ -139,9 +153,56 @@ pub fn fix(call: &Call) -> Reply {
             };
         }
     };
+    // A swap of a type already stored takes the migration converting
+    // what is stored (chunk Q7), worked out before anything is written,
+    // so one that can't be changes nothing.
+    let purpose = format!("swap_{}", jadpo_db::to_snake(&finding.name));
+    let planned = if fixed.migrates {
+        match crate::migrate::plan_swap(&loaded, &purpose) {
+            Ok(planned) => Some(planned),
+            Err(problem) => {
+                fixes::restore(&mut loaded, &fixed);
+                return Reply::failed(*problem);
+            }
+        }
+    } else {
+        None
+    };
     if let Err(problem) = write_files(&root, &fixed.files, &command(&finding, &fix)) {
         return Reply::failed(*problem);
     }
+    let mut migration: Vec<(String, String)> = Vec::new();
+    if let Some(planned) = &planned {
+        match crate::migrate::write_planned(&root, &loaded, planned) {
+            Ok(files) => migration = files,
+            Err(error) => {
+                return Reply::failed(
+                    Diagnostic::new(
+                        &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+                        format!("`{}` couldn't be written", planned.relative()),
+                    )
+                    .reason(format!(
+                        "Writing it failed: {error}. The swap's source files were written."
+                    ))
+                    .next("Check the folder can be written, then run `jadpo migrate new` to write the migration"),
+                );
+            }
+        }
+    }
+    // What the project still has, its migration written: the errors it
+    // had, and the changes a person accepts.
+    let (errors_left, accepts) = if planned.is_some() {
+        let mut written = jadpo_db::load(&root);
+        crate::check::judge_acceptances(call, &mut written);
+        let problems = jadpo_check::check(&written.db, written.project);
+        let accepts = problems
+            .iter()
+            .filter(|p| p.rule.id == rule::ACCEPTANCE_MISSING.id)
+            .count();
+        (problems.len(), accepts)
+    } else {
+        (fixed.errors_left, fixed.accepts.len())
+    };
     let text = match &fix {
         Fix::Swap if finding.name == finding.standard => format!(
             "Swapped the application's {} for the standard one",
@@ -153,28 +214,54 @@ pub fn fix(call: &Call) -> Reply {
         ),
         Fix::Rename(new) => format!("Renamed {} to {new}", finding.name),
     };
+    let mut groups = change_groups(&fixed.files);
+    if let Some(planned) = &planned {
+        groups.push((
+            planned.relative(),
+            migration
+                .iter()
+                .map(|(file, what)| (ChangeMark::Added, vec![file.clone(), what.clone()]))
+                .collect(),
+        ));
+    }
     let mut screen = Screen::new()
-        .with(Block::Changes {
-            note: None,
-            groups: change_groups(&fixed.files),
-        })
+        .with(Block::Changes { note: None, groups })
         .with(Block::Status {
             outcome: Outcome::Success,
             text,
             rows: Vec::new(),
         });
-    if fixed.errors_left > 0 {
+    if accepts > 0 {
         screen.push(Block::hint(
-            "jadpo check",
-            if fixed.errors_left == 1 {
-                "shows the error the project still has".to_string()
+            format!("jadpo acceptance new {purpose}"),
+            if accepts == 1 {
+                "writes the draft a person gives the reason for".to_string()
             } else {
-                format!(
-                    "shows the {} errors the project still has",
-                    fixed.errors_left
-                )
+                format!("writes the draft a person gives the reason for, listing {accepts} changes")
             },
         ));
+    } else if errors_left > 0 {
+        screen.push(Block::hint(
+            "jadpo check",
+            if errors_left == 1 {
+                "shows the error the project still has".to_string()
+            } else {
+                format!("shows the {errors_left} errors the project still has")
+            },
+        ));
+    }
+    let mut files = files_json(&fixed.files);
+    if let Some(planned) = &planned {
+        for (file, _) in &migration {
+            files.push(Json::object([
+                (
+                    "path",
+                    Json::from(format!("{}{file}", planned.relative()).as_str()),
+                ),
+                ("change", Json::from("added")),
+                ("rows", Json::array(Vec::<Json>::new())),
+            ]));
+        }
     }
     let data = Json::object([
         ("fixed", true.into()),
@@ -189,8 +276,15 @@ pub fn fix(call: &Call) -> Reply {
                 Fix::Swap => Json::Null,
             },
         ),
-        ("files", Json::array(files_json(&fixed.files))),
-        ("errorsLeft", fixed.errors_left.into()),
+        ("files", Json::array(files)),
+        (
+            "migration",
+            planned.as_ref().map_or(Json::Null, |planned| {
+                Json::from(planned.relative().as_str())
+            }),
+        ),
+        ("acceptances", accepts.into()),
+        ("errorsLeft", errors_left.into()),
     ]);
     Reply::screen(screen, data)
 }

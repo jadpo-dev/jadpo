@@ -1871,7 +1871,11 @@ otherwise be lost. The backfill reads the field as the built-in type its
 old column holds, as a refit does; an old column holding an enum's
 variant, a structured value or a value in several columns isn't
 offered, so such a field's value is worked out from the record's other
-fields. A type that takes other columns, an `Int` becoming an amount of
+fields. A field whose type `jadpo fix` swapped for a standard type needs
+no backfill: each value its old column holds as JSON is converted by its
+shape
+([Swap to the standard type](19-standard-library.md#swap-to-the-standard-type)).
+A type that takes other columns, an `Int` becoming an amount of
 money, moves the same way. Here a code held as a number becomes text:
 
 ```jadpo check project=retyping file=app.jadpo hidden

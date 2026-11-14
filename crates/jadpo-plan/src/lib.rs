@@ -729,6 +729,9 @@ pub struct BackfillPlan {
     /// born with, each in declared order (area 5, "What a rename keeps"):
     /// the value is written by its own; empty otherwise.
     pub stored: Vec<String>,
+    /// For a field `jadpo fix` swapped for a standard type (chunk Q7), the
+    /// conversion that takes the place of a callable, which is then none.
+    pub swap: Option<jadpo_std::migration::Swap>,
 }
 
 impl Plan {
@@ -839,10 +842,17 @@ impl Plan {
                     Kind::Function,
                     &format!("backfill {} {}", backfill.migration, backfill.field),
                 );
+                // A swapped field's conversion runs no code of its own
+                // (chunk Q7).
+                let swap = backfill.plan.swap.clone();
                 backfills.push(BackfillPlan {
                     migration: backfill.migration.clone(),
                     field: backfill.field.clone(),
-                    callable: found.len() as u32,
+                    callable: if swap.is_some() {
+                        u32::MAX
+                    } else {
+                        found.len() as u32
+                    },
                     reads: backfill
                         .plan
                         .reads
@@ -854,6 +864,7 @@ impl Plan {
                     validator: ValidatorId(0),
                     refits: backfill.plan.refits.clone(),
                     stored: backfill.plan.stored.clone(),
+                    swap: swap.clone(),
                 });
                 backfill_reads.push(
                     backfill
@@ -864,6 +875,9 @@ impl Plan {
                         .collect::<Vec<_>>(),
                 );
                 backfill_fields.push(backfill.plan.fills.clone());
+                if swap.is_some() {
+                    continue;
+                }
                 backfill_lines.insert(key.clone(), (backfill.field.clone(), backfill.line));
                 found.push((
                     key,
