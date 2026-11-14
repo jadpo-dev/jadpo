@@ -291,6 +291,9 @@ impl WorkersHost {
         Supplies::on(Target::Workers)
             .with_transport(Rc::new(transport))
             .with_fetch(Rc::new(WorkersFetch::counted(Rc::clone(&self.opening))))
+            // The addresses customers register, only under the runtime's
+            // own guard (area 16; chunk C1b).
+            .with_outward(Rc::new(self.outbound.clone()))
             .with_clock(Rc::new(|| js_sys::Date::now() as i64))
     }
 

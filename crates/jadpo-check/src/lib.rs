@@ -51,6 +51,7 @@ pub mod mail_health;
 mod naming;
 mod not_type;
 mod not_value;
+pub mod outgoing;
 pub mod own_sources;
 pub mod package_code;
 pub mod packages;
@@ -460,6 +461,7 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .cloned(),
         );
         out.extend(published::publishing(db, project).problems.iter().cloned());
+        out.extend(outgoing::webhooks(db, project).problems.iter().cloned());
         out.extend(polls::declared(db, project).problems.iter().cloned());
         out.extend(polls::polls(db, project).problems.iter().cloned());
         out.extend(rate_limits::rate_limits_problems(db, project));

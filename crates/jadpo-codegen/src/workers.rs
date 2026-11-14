@@ -202,7 +202,9 @@ pub struct Wrangler<'a> {
     pub hyperdrive: &'a [Hyperdrive],
     /// Whether its tick has a store to keep or sweep.
     pub ticks: bool,
-    /// External identity discovery must use the public Internet on Workers.
+    /// What the runtime fetches on its own account must use the public
+    /// Internet on Workers: external identity discovery, and the addresses
+    /// customers register for outgoing webhooks (chunk C1b).
     pub public_identity: bool,
     /// The rate-limiting bindings its rate limits are counted in.
     pub rate_limits: &'a [jadpo_std::http::RateLimitBinding],

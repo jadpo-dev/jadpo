@@ -87,6 +87,7 @@ pub mod money;
 pub mod names;
 mod num;
 mod operations;
+pub mod outgoing;
 pub mod percentage;
 pub mod policy;
 pub mod privacy;

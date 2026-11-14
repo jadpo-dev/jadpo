@@ -85,6 +85,20 @@ pub fn acts_of<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> BTree
                 Fact::Gets(entity) => Act::Entity(entity.clone(), Effect::Read),
                 Fact::Uploads(entity) => Act::Uploads(entity.clone()),
                 Fact::Queries(query) => Act::Queries(query.clone()),
+                // An outgoing webhook's address is its record's: listing
+                // them reads the record, registering or removing one
+                // changes it (area 16; chunk C1b).
+                Fact::Session(op) if op.on_webhooks() => {
+                    let Some(entity) = webhooks_entity(db, project) else {
+                        continue;
+                    };
+                    let effect = if op.reads_only() {
+                        Effect::Read
+                    } else {
+                        Effect::Update
+                    };
+                    Act::Entity(entity, effect)
+                }
                 Fact::Session(op) => {
                     let identity = crate::identity::identity(db, project);
                     let user = identity
@@ -150,7 +164,22 @@ pub fn session_act(op: SessionOp, user: Option<&str>, service: Option<&str>) -> 
         SessionOp::IssueKey | SessionOp::RevokeKey => {
             Act::Entity(service?.to_string(), Effect::Update)
         }
+        // The webhooks entity's, which [`webhooks_entity`] names.
+        SessionOp::RegisterWebhook | SessionOp::Webhooks | SessionOp::RemoveWebhook => {
+            return None;
+        }
     })
+}
+
+/// The entity whose records register addresses for outgoing webhooks
+/// (area 16; chunk C1b): the first, in name order, with a `webhooks:`
+/// section, read cleanly or not.
+pub fn webhooks_entity(db: &dyn Db, project: Project) -> Option<String> {
+    crate::data::data_model(db, project)
+        .entities
+        .iter()
+        .find(|entity| entity.webhooks)
+        .map(|entity| entity.name.clone())
 }
 
 /// The entities whose records the action called `action` creates, changes

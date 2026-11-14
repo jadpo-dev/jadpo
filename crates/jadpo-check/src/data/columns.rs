@@ -100,6 +100,7 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
         Ty::Prim(
             prim @ (Builtin::ApiToken
             | Builtin::ServiceKey
+            | Builtin::WebhookSecret
             | Builtin::SignInCode
             | Builtin::SignInToken),
         ) => {
@@ -135,6 +136,7 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
             | Builtin::SearchText
             | Builtin::ApiToken
             | Builtin::ServiceKey
+            | Builtin::WebhookSecret
             | Builtin::SignInCode
             | Builtin::SignInToken
             | Builtin::PostgresUrl

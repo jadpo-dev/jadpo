@@ -63,6 +63,13 @@ pub struct Supplies {
     #[cfg(feature = "package")]
     pub fetch: Option<Rc<dyn crate::package::Fetch>>,
     pub disk: Option<Rc<dyn Disk>>,
+    /// HTTP under the runtime's own guard, HTTPS only to public addresses
+    /// with no redirect followed: what the addresses customers register
+    /// for outgoing webhooks are reached through (area 16; chunk C1b).
+    /// Only a deployable's host gives it; `jadpo dev` and a test log or
+    /// catch those events instead.
+    #[cfg(feature = "package")]
+    pub outward: Option<Rc<dyn crate::package::Fetch>>,
     /// What a request signed for now reads the time from (the S3 driver).
     #[cfg(feature = "package")]
     pub clock: Option<crate::s3::Clock>,
@@ -74,7 +81,8 @@ impl fmt::Debug for Supplies {
         out.field("target", &self.target)
             .field("transport", &self.transport.is_some());
         #[cfg(feature = "package")]
-        out.field("fetch", &self.fetch.is_some());
+        out.field("fetch", &self.fetch.is_some())
+            .field("outward", &self.outward.is_some());
         out.field("disk", &self.disk.is_some());
         #[cfg(feature = "package")]
         out.field("clock", &self.clock.is_some());
@@ -90,6 +98,8 @@ impl Supplies {
             transport: None,
             #[cfg(feature = "package")]
             fetch: None,
+            #[cfg(feature = "package")]
+            outward: None,
             disk: None,
             #[cfg(feature = "package")]
             clock: None,
@@ -104,6 +114,13 @@ impl Supplies {
     #[cfg(feature = "package")]
     pub fn with_fetch(mut self, fetch: Rc<dyn crate::package::Fetch>) -> Supplies {
         self.fetch = Some(fetch);
+        self
+    }
+
+    /// `outward`, HTTP under the runtime's own guard.
+    #[cfg(feature = "package")]
+    pub fn with_outward(mut self, outward: Rc<dyn crate::package::Fetch>) -> Supplies {
+        self.outward = Some(outward);
         self
     }
 
@@ -234,6 +251,15 @@ impl Drivers {
         });
         #[cfg(not(feature = "package"))]
         let http: Option<Rc<dyn Capability>> = None;
+        // The runtime-owned exception for the addresses customers register
+        // (area 16; chunk C1b), over the guarded HTTP alone.
+        #[cfg(feature = "package")]
+        if let Some(outward) = &supplies.outward {
+            out.capabilities.insert(
+                jadpo_std::outgoing::CONNECTION.to_string(),
+                Rc::new(crate::webhook::Outgoing::new(Rc::clone(outward))),
+            );
+        }
         for connection in connections {
             let built = if connection.runs_on(supplies.target) {
                 build_one(connection, started, supplies, http.as_ref())

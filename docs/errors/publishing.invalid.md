@@ -1,6 +1,6 @@
 # `publishing.invalid`
 
-A connection in `publishing:` isn't one events are published through, or lists an event that can't leave the app.
+A connection in `publishing:` isn't one events are published through, an entity's `webhooks:` lists an event that names none of its records, or either lists an event that can't leave the app.
 
 ## Why Jadpo refuses it
 
@@ -14,6 +14,12 @@ domain offers as `public` leaves, or the built-in `AuditEntryRecorded`
 while an entity keeps an audit trail, and each is named outside by its
 `wire_name:`, or its domain and name, no two alike through one
 connection. Jadpo never guesses which events you meant to share.
+
+An entity's `webhooks:` lists the events the addresses its records
+register receive, chosen the same way, and each one names the record
+whose addresses get it in its one field typed `<Entity>.id`. Without that
+field, or with two, Jadpo can't tell which customer an event belongs to,
+and it never sends one customer's event to another's address.
 
 ## What it looks like
 
@@ -133,6 +139,84 @@ error: `ParcelShipped` isn't public
 check failed: 1 error, 3 files
 ```
 
+An event an entity's `webhooks:` lists that doesn't name exactly one of
+its records is the same error:
+
+```jadpo check project=e-publishing-invalid-webhooks file=config.jadpo hidden
+config {
+    field_encryption_key: EncryptionKey
+    main_url: PostgresUrl
+}
+```
+
+```jadpo check project=e-publishing-invalid-webhooks file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.main_url
+        }
+    }
+    field_encryption_key: config.field_encryption_key
+}
+```
+
+```jadpo check project=e-publishing-invalid-webhooks file=domains/market/events/order_moved.jadpo hidden
+use market/entities { Stall }
+
+/// An order moved to a stall.
+public type OrderMoved = Event {
+    stall_id: Stall.id
+}
+```
+
+`domains/market/entities/stall.jadpo`:
+
+```jadpo check project=e-publishing-invalid-webhooks file=domains/market/entities/stall.jadpo migrate=initial
+use market/events { OrderMoved }
+
+/// A stall, whose own systems hear of its orders.
+public entity Stall {
+    id: Uuid
+
+    webhooks: {
+        events: [OrderMoved]
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+```
+
+`domains/market/events/order_moved.jadpo`, its event naming two stalls:
+
+```jadpo check project=e-publishing-invalid-webhooks file=domains/market/events/order_moved.jadpo expect=publishing.invalid
+use market/entities { Stall }
+
+/// An order moved from one stall to another.
+public type OrderMoved = Event {
+    from_id: Stall.id
+    to_id: Stall.id
+}
+```
+
+```text output
+error: `OrderMoved` names two `Stall` records, `from_id` and `to_id`
+ --> domains/market/entities/stall.jadpo:8:18
+  |
+8 |         events: [OrderMoved]
+  |                  ^^^^^^^^^^ which one's addresses?
+  reason: An entity's `webhooks:` lists, in `events:`, the events the addresses its records register receive: each a `public` event of one of the app's domains, since it becomes the contract of each record's receivers, with one field typed `<Entity>.id` naming the record whose addresses it goes to, so an event never reaches another record's address.
+  next: Keep one field typed `Stall.id` in `OrderMoved`, naming the record whose addresses receive it (agent)
+  rule: publishing.invalid
+  help: https://jadpo.dev/docs/errors/publishing.invalid
+
+check failed: 1 error, 4 files
+```
+
 ## How to fix it
 
 **If the event should reach another system**, give its address and the
@@ -208,6 +292,67 @@ Each `ParcelShipped` is now posted to the address in
 `config.partner_hook_url` once the action that emits it commits, signed
 with `config.partner_hook_secret`, and tried again while the partner's
 server is down.
+
+**If the event goes to the addresses a customer registers**, keep one
+field typed `<Entity>.id`, naming the record whose addresses receive it,
+and set it where the event is emitted. In
+`domains/market/events/order_moved.jadpo`:
+
+```jadpo fragment
+public type OrderMoved = Event {
+    stall_id: Stall.id
+}
+```
+
+```jadpo check project=e-publishing-invalid-webhooks-fix file=domains/market/events/order_moved.jadpo hidden
+use market/entities { Stall }
+
+/// An order moved to a stall.
+public type OrderMoved = Event {
+    stall_id: Stall.id
+}
+```
+
+```jadpo check project=e-publishing-invalid-webhooks-fix file=config.jadpo hidden
+config {
+    field_encryption_key: EncryptionKey
+    main_url: PostgresUrl
+}
+```
+
+```jadpo check project=e-publishing-invalid-webhooks-fix file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.main_url
+        }
+    }
+    field_encryption_key: config.field_encryption_key
+}
+```
+
+```jadpo check project=e-publishing-invalid-webhooks-fix file=domains/market/entities/stall.jadpo hidden migrate=initial
+use market/events { OrderMoved }
+
+/// A stall, whose own systems hear of its orders.
+public entity Stall {
+    id: Uuid
+
+    webhooks: {
+        events: [OrderMoved]
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+```
+
+Each `OrderMoved` now goes to the addresses of the stall its `stall_id`
+names, and to no other stall's.
 
 ## Related
 

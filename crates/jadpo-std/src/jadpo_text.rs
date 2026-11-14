@@ -57,6 +57,10 @@ pub enum Feature {
     /// Data requests (area 15): the address-check email and their
     /// failures, on once `privacy:`'s routes are.
     Privacy,
+    /// Outgoing webhooks to the addresses customers register (area 16;
+    /// chunk C1b): the failures of registering one, on once an entity
+    /// has `webhooks:`.
+    OutgoingWebhooks,
 }
 
 impl Feature {
@@ -77,6 +81,7 @@ impl Feature {
             Feature::Providers => "Sign-in providers",
             Feature::Confirmation => "Confirming a request",
             Feature::Privacy => "Data requests",
+            Feature::OutgoingWebhooks => "Outgoing webhooks",
         }
     }
 
@@ -96,6 +101,7 @@ impl Feature {
             Feature::Providers => "providers",
             Feature::Confirmation => "confirmation",
             Feature::Privacy => "privacy",
+            Feature::OutgoingWebhooks => "outgoing_webhooks",
         }
     }
 
@@ -115,10 +121,11 @@ impl Feature {
             Feature::Providers => "the application signs users in through a provider",
             Feature::Confirmation => "a route asks for a passkey's confirmation",
             Feature::Privacy => "the application takes data requests",
+            Feature::OutgoingWebhooks => "an entity's records register webhook addresses",
         }
     }
 
-    pub const ALL: [Feature; 13] = [
+    pub const ALL: [Feature; 14] = [
         Feature::Requests,
         Feature::SignIn,
         Feature::UserSignIn,
@@ -132,6 +139,7 @@ impl Feature {
         Feature::Providers,
         Feature::Confirmation,
         Feature::Privacy,
+        Feature::OutgoingWebhooks,
     ];
 }
 
@@ -266,7 +274,7 @@ impl Message {
 }
 
 /// Every message, in the order `jadpo translations builtin` lists a feature's.
-pub static MESSAGES: [Message; 65] = [
+pub static MESSAGES: [Message; 67] = [
     failure(
         "invalid_request",
         Feature::Requests,
@@ -690,6 +698,18 @@ pub static MESSAGES: [Message; 65] = [
         Feature::Privacy,
         "A request was made for someone the application holds nothing about.",
         "We can't find that person.",
+    ),
+    failure(
+        "webhook_address_invalid",
+        Feature::OutgoingWebhooks,
+        "A webhook address isn't an HTTPS address on the public internet.",
+        "That address can't receive webhooks. Use an https:// address on the public internet.",
+    ),
+    failure(
+        "webhook_addresses_full",
+        Feature::OutgoingWebhooks,
+        "A record has as many webhook addresses as it may.",
+        "You have as many webhook addresses as you can. Remove one to add another.",
     ),
 ];
 

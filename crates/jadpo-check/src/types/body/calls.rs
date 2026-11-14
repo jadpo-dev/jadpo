@@ -316,6 +316,18 @@ impl Body<'_> {
                     self.walk(|walk| walk.member_values(block));
                     return self.key_call(&head, op, call, callee, &written);
                 }
+                // The webhooks entity's addresses (area 16; chunk C1b),
+                // unless a lifecycle's transition has the name.
+                if let Some(op) = jadpo_std::http::SessionOp::webhook_op(&rest[0])
+                    && !self
+                        .writes
+                        .write_rules(&head)
+                        .is_some_and(|rules| rules.transition(&rest[0]).is_some())
+                {
+                    let block = self.pending_block.take();
+                    self.walk(|walk| walk.member_values(block));
+                    return self.webhook_call(&head, op, call, callee, &written);
+                }
                 let block = self.pending_block.take();
                 if self.context.is_pure() {
                     self.persistence(span, &written);

@@ -36,11 +36,14 @@
 # what a person's export gives (area 15), their fields in `jadpo-std`'s
 # `erasure`. `AnyObject` is a provider package's input field that takes
 # any of the app's object types (areas 2 and 11), in `jadpo-std`'s
-# `provider`.
+# `provider`. `RegisteredWebhook` is what the webhooks entity's `webhooks`
+# lists of the addresses its records register (area 16), its fields in
+# `jadpo-std`'s `outgoing`.
 [types]
 Page Nearest
 File FileContents FileUpload UploadSlot Principal Response Access AiStream
-IssuedToken IssuedKey DecodeProblem FirstSignIn MagicLinkEmail MagicLinkRequest
+IssuedToken IssuedKey RegisteredWebhook DecodeProblem FirstSignIn MagicLinkEmail
+MagicLinkRequest
 MagicLinkRedeemed SignedIn SignInRefused SignInCodesDisabled PasskeyAdded
 PasskeyRemoved TestPasskey SentEmail MagicLinkAsk MagicLinkConfirmation
 PrivacyAsk PrivacyConfirmation PrivacyCancellation PrivacyRequestAccepted

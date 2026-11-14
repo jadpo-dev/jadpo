@@ -518,6 +518,7 @@ pub fn issued_name(name: &str) -> Option<&'static str> {
         jadpo_std::http::DECODE_PROBLEM,
         jadpo_std::files::FILE_LINK,
         jadpo_std::files::UPLOAD_SLOT,
+        jadpo_std::outgoing::REGISTERED_WEBHOOK,
     ]
     .into_iter()
     .find(|issued| *issued == name)
@@ -638,6 +639,8 @@ pub fn issued_schema(name: &str) -> Value {
         "description",
         if name == jadpo_std::http::ISSUED_KEY {
             "A service key as it is listed: when it started and when it ends, never the key itself."
+        } else if name == jadpo_std::outgoing::REGISTERED_WEBHOOK {
+            "An address registered for outgoing webhooks: where its events are posted and when it was registered, never its secret."
         } else if name == jadpo_std::http::DECODE_PROBLEM {
             "The first problem a JSON document had: the field's path, list positions as numbers, and the rule it broke, never the value."
         } else {

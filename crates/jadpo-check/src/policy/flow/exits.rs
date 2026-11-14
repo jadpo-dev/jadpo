@@ -410,10 +410,19 @@ impl Walk<'_> {
     /// events travel").
     pub(super) fn published(&mut self, flow: &Flow<'_>, event: &Key, prov: &Prov) {
         let publishing = crate::published::publishing(flow.db, flow.project);
-        let connections: Vec<String> = publishing
+        let mut connections: Vec<String> = publishing
             .of_event(event.as_str())
             .map(|(connection, _)| connection.to_string())
             .collect();
+        // An event the addresses customers register receive leaves
+        // through the runtime-owned exception (area 16; chunk C1b), which
+        // can't be asked to erase either.
+        if crate::outgoing::webhooks(flow.db, flow.project)
+            .of_event(event.as_str())
+            .is_some()
+        {
+            connections.push(jadpo_std::outgoing::CONNECTION.to_string());
+        }
         if connections.is_empty() {
             return;
         }
