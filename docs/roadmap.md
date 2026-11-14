@@ -314,10 +314,7 @@ work below (Richard, 2026-11-08).
      showing a scheduled job that runs `jadpo test --kind contract`. Done
      when each is built and tested against doubles, with nothing sent to a
      third party.
-   - [ ] **K5 Types from recordings and recipes' tests** `opus · high`:
-     area 11, "Recordings", "Recipes" and "Installing safely". An operation's
-     output type written from a recorded or sandbox answer, and a recipe's
-     tests run in `sample/`.
+   - [x] **K5 Types from recordings and recipes' tests**: area 11, "Recordings" and "Package subscribers and recipes in `sample/`"; area 14, "`jadpo package record`"; and the notes for area 11.
    - [ ] **K6 What's left of `ai`** `opus · high` after P9: area 21,
      "Budgets" and "Streams, embeddings and the OpenAI and Anthropic
      packages". `keep_content:`, kept in encrypted fields, and an `embed:`
@@ -356,6 +353,8 @@ work below (Richard, 2026-11-08).
       holds its type. The decision: when a refit's narrower rule becomes a
       check, since a server still on the old build may write a value it
       refuses. Split from Q3b (2026-11-13).
+    - [x] **Q12 Unique values with an empty part**: area 5, "A value with
+      an empty part", and its notes, "Unique over empty parts".
     - [x] **Q4 A `geo.` condition in an include or an aggregate**: an
       include's rows rechecked in code and an aggregate counting the
       records the code keeps, in area 20, "In an include or an aggregate",

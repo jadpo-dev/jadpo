@@ -465,13 +465,58 @@ pub fn drop_index(name: &str) -> String {
     format!("DROP INDEX {}", ident(name))
 }
 
-/// Adds the unique constraint `name` on `columns` of `table`.
-pub fn add_unique(table: &str, name: &str, columns: &[String]) -> String {
+/// Adds the unique constraint `name` on `columns` of `table`, counting
+/// their `NULL`s as equal when `nulls_equal` (`NULLS NOT DISTINCT`,
+/// PostgreSQL 15 and later): a key over a value kept in several columns,
+/// one of which may be `NULL` while the value is there, so two values
+/// equal in every part, an empty one included, are one value (area 5,
+/// "Unique rules").
+pub fn add_unique(table: &str, name: &str, columns: &[String], nulls_equal: bool) -> String {
     format!(
-        "ALTER TABLE {} ADD CONSTRAINT {} UNIQUE ({})",
+        "ALTER TABLE {} ADD CONSTRAINT {} UNIQUE{} ({})",
         ident(table),
         ident(name),
+        if nulls_equal {
+            " NULLS NOT DISTINCT"
+        } else {
+            ""
+        },
         idents(columns)
+    )
+}
+
+/// A value kept in `parts`, each a column and whether it may be `NULL`
+/// while the value is there, being there: its first column that never
+/// is `NULL` while it is, or any column not `NULL`.
+pub fn holds_value(parts: &[(&str, bool)]) -> String {
+    match parts.iter().find(|(_, may_be_null)| !may_be_null) {
+        Some((column, _)) => format!("{} IS NOT NULL", ident(column)),
+        None => format!(
+            "({})",
+            parts
+                .iter()
+                .map(|(column, _)| format!("{} IS NOT NULL", ident(column)))
+                .collect::<Vec<_>>()
+                .join(" OR ")
+        ),
+    }
+}
+
+/// The rows of `table` whose `columns` hold the same values as another
+/// row's, `NULL`s counted as equal, among those `predicate` lets through:
+/// what keeps a unique key over them from being made. Each row is one
+/// set of such rows: the `id`s of its first 5, in order and between
+/// spaces, and how many there are; the first 10 sets (area 5, "Unique
+/// rules").
+pub fn duplicates(table: &str, columns: &[IndexColumn<'_>], predicate: Option<&str>) -> String {
+    let partial = predicate
+        .map(|predicate| format!(" WHERE {predicate}"))
+        .unwrap_or_default();
+    format!(
+        "SELECT array_to_string((array_agg({id}::text ORDER BY {id}))[1:5], ' '), count(*) FROM {}{partial} GROUP BY {} HAVING count(*) > 1 ORDER BY min({id}::text) LIMIT 10",
+        ident(table),
+        index_columns(columns, None),
+        id = ident("id"),
     )
 }
 
@@ -490,12 +535,31 @@ pub fn json_digest(column: &str) -> String {
 /// holds as that JSON's digest (chunk Q2). PostgreSQL names the index in
 /// a duplicate's error as it names a constraint, so a write maps it to
 /// its rule the same way.
-pub fn create_unique_index(table: &str, name: &str, columns: &[IndexColumn<'_>]) -> String {
+///
+/// It counts `NULL`s as equal when `nulls_equal`, and holds only the rows
+/// `predicate` lets through when given: a key over a field that may be
+/// `none`, holding only the records that hold a value, so any number may
+/// hold none.
+pub fn create_unique_index(
+    table: &str,
+    name: &str,
+    columns: &[IndexColumn<'_>],
+    nulls_equal: bool,
+    predicate: Option<&str>,
+) -> String {
+    let partial = predicate
+        .map(|predicate| format!(" WHERE {predicate}"))
+        .unwrap_or_default();
     format!(
-        "CREATE UNIQUE INDEX {} ON {} ({})",
+        "CREATE UNIQUE INDEX {} ON {} ({}){}{partial}",
         ident(name),
         ident(table),
-        index_columns(columns, None)
+        index_columns(columns, None),
+        if nulls_equal {
+            " NULLS NOT DISTINCT"
+        } else {
+            ""
+        },
     )
 }
 

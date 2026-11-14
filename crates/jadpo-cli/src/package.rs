@@ -1628,13 +1628,22 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
             (Some(_), true) if !running => items.push(Item::later("recipes", "not run")),
             (Some(_), true) => {
                 if let Some(ran) = crate::package_recipe::in_sample(&folder, &compiled) {
-                    items.push(if ran.passed {
+                    let item = if ran.waiting {
+                        Item::later("recipes", ran.detail)
+                    } else if ran.passed {
                         Item::passed("recipes", ran.detail)
                     } else {
                         Item::failed("recipes", ran.detail)
+                    };
+                    items.push(match ran.whole {
+                        Some(whole) => item.whole(whole),
+                        None => item,
                     });
                     diagnostics.extend(ran.problems);
                     sources.extend(ran.sources);
+                    // Each failed recipe test's report, after the package's
+                    // own (chunk K5).
+                    test_blocks.extend(ran.blocks);
                 }
             }
             _ => items.push(Item::later("recipes", "the package has errors")),

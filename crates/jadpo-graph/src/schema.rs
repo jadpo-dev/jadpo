@@ -218,6 +218,25 @@ pub struct Unique {
     /// 1 MiB (area 5, "Unique rules"; chunk Q2). A key holding one is a
     /// unique index rather than a constraint.
     pub digest: Vec<String>,
+    /// Whether its columns' `NULL`s count as equal (`NULLS NOT
+    /// DISTINCT`): a key over a value kept in several columns, one of
+    /// which may be `NULL` while the value is there (`EmailWithName`'s
+    /// name), so two values equal in every part, an empty one included,
+    /// are one value (area 5, "Unique rules").
+    pub nulls_not_distinct: bool,
+    /// The condition a row's value must meet to be held, for a field that
+    /// may be `none` whose key counts `NULL`s as equal: it holds a value,
+    /// so any number of records may hold none. A key with one is a
+    /// partial unique index rather than a constraint.
+    pub predicate: Option<String>,
+}
+
+impl Unique {
+    /// Whether it is a unique index rather than a constraint: one holding
+    /// a value's digest, or only some rows.
+    pub fn is_index(&self) -> bool {
+        !self.digest.is_empty() || self.predicate.is_some()
+    }
 }
 
 /// A check constraint: `column` holds one of `values`, written as text;
@@ -496,6 +515,13 @@ impl Table {
             // Written only when it holds one, so older snapshots stay
             // canonical (chunk Q2).
             entry.set_some("digest", strings(&rule.digest));
+            // Written only when set, so older snapshots stay canonical.
+            if rule.nulls_not_distinct {
+                entry.set("nulls_not_distinct", true);
+            }
+            if let Some(predicate) = &rule.predicate {
+                entry.set("where", predicate);
+            }
             unique.set(name, entry);
         }
         value.set_some("unique", unique);
@@ -601,6 +627,8 @@ impl Table {
                     columns: list_of(entry, "columns")?,
                     rule: text_of(entry, "rule")?,
                     digest: list_of(entry, "digest").unwrap_or_default(),
+                    nulls_not_distinct: flag(entry, "nulls_not_distinct"),
+                    predicate: entry.get("where").and_then(Value::as_str).map(String::from),
                 },
             );
         }

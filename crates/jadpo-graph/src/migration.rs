@@ -14,7 +14,7 @@ use jadpo_std::Num;
 
 use jadpo_sql::table;
 
-use crate::schema::{Allows, Change, Column, Holds, Schema, Store, Table, changes};
+use crate::schema::{Allows, Change, Column, Holds, Schema, Store, Table, Unique, changes};
 
 /// A decision a change needs before its SQL can be written.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1250,7 +1250,7 @@ pub fn migration_sql(
             Change::DropUnique { name, .. }
                 if old
                     .and_then(|t| t.unique.get(name))
-                    .is_some_and(|u| !u.digest.is_empty()) =>
+                    .is_some_and(Unique::is_index) =>
             {
                 plan.drop.push(Statement {
                     sql: table::drop_index(name),
@@ -1271,6 +1271,21 @@ pub fn migration_sql(
             }),
             Change::AddUnique { table, name, .. } => {
                 if let Some(new) = new {
+                    // Over columns the table had, before anything else,
+                    // so a refused migration has applied nothing; over a
+                    // column it adds, once it is filled.
+                    let had = new.unique.get(name).is_some_and(|unique| {
+                        unique
+                            .columns
+                            .iter()
+                            .all(|column| old.is_some_and(|old| old.columns.contains_key(column)))
+                    });
+                    let found = unique_duplicates(table, name, new);
+                    if had {
+                        plan.duplicates.extend(found);
+                    } else {
+                        plan.constraints.extend(found);
+                    }
                     plan.constraints.push(add_unique(table, name, new));
                 }
             }
@@ -1429,10 +1444,12 @@ pub fn migration_sql(
             .collect();
         let last = plan.last_steps();
         // Checks come first, so a migration refused for a stored value its
-        // type no longer reads has applied nothing (chunk 5.9c).
+        // type no longer reads (chunk 5.9c), or for records a new unique
+        // rule would hold the same, has applied nothing.
         let statements: Vec<Statement> = plan
-            .checks
+            .duplicates
             .into_iter()
+            .chain(plan.checks)
             .chain(created)
             .chain(plan.drop)
             .chain(plan.create)
@@ -1530,6 +1547,9 @@ pub fn extensions(schema: &Schema, store: &str) -> BTreeSet<&'static str> {
 /// steps make any column required (chunk 5.8b).
 #[derive(Default)]
 struct Plan {
+    /// Each new unique rule's search for the stored records that break
+    /// it, over columns the table had (area 5, "Unique rules").
+    duplicates: Vec<Statement>,
     /// Each structured field's check of its stored values (chunk 5.9c).
     checks: Vec<Statement>,
     drop: Vec<Statement>,
@@ -1915,29 +1935,58 @@ pub fn widens(from: &str, to: &str) -> bool {
     }
 }
 
+/// A unique key's columns as an index holds them: a value kept as JSON
+/// by its digest (chunk Q2).
+fn key_columns(unique: &Unique) -> Vec<table::IndexColumn<'_>> {
+    unique
+        .columns
+        .iter()
+        .map(|column| table::IndexColumn {
+            name: column,
+            collate: false,
+            digest: unique.digest.contains(column),
+        })
+        .collect()
+}
+
 fn add_unique(table: &str, name: &str, def: &Table) -> Statement {
     let unique = def.unique.get(name);
     let columns = unique.map(|u| u.columns.as_slice()).unwrap_or_default();
-    // One holding a value kept as JSON holds its digest, which only an
-    // index can (chunk Q2).
+    // One holding a value kept as JSON holds its digest, and one over a
+    // field that may be `none` only the rows holding a value, which only
+    // an index can (chunk Q2).
     let sql = match unique {
-        Some(unique) if !unique.digest.is_empty() => {
-            let columns: Vec<table::IndexColumn<'_>> = columns
-                .iter()
-                .map(|column| table::IndexColumn {
-                    name: column,
-                    collate: false,
-                    digest: unique.digest.contains(column),
-                })
-                .collect();
-            table::create_unique_index(table, name, &columns)
-        }
-        _ => table::add_unique(table, name, columns),
+        Some(unique) if unique.is_index() => table::create_unique_index(
+            table,
+            name,
+            &key_columns(unique),
+            unique.nulls_not_distinct,
+            unique.predicate.as_deref(),
+        ),
+        Some(unique) => table::add_unique(table, name, columns, unique.nulls_not_distinct),
+        None => table::add_unique(table, name, columns, false),
     };
     Statement {
         sql,
         does: "add unique rule",
     }
+}
+
+/// Before a unique rule is made over a table that may hold rows, the
+/// query finding the records that would break it, after a marker the
+/// runtime reads: `jadpo migrate apply` refuses the migration, naming
+/// them, while it finds any (area 5, "Unique rules").
+fn unique_duplicates(table: &str, name: &str, def: &Table) -> Option<Statement> {
+    let unique = def.unique.get(name)?;
+    let query = table::duplicates(table, &key_columns(unique), unique.predicate.as_deref());
+    Some(Statement {
+        sql: format!(
+            "{}{}: refused while stored records share a value\n{query}",
+            jadpo_std::migration::DUPLICATES_MARKER,
+            unique.rule
+        ),
+        does: "find records the unique rule refuses",
+    })
 }
 
 fn add_check(table: &str, name: &str, def: &Table) -> Statement {

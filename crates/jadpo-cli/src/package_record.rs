@@ -11,7 +11,10 @@
 //! checkout, never an installed package, whose files its lock's digest
 //! holds; it refuses a connection whose environment is live, or whose
 //! credential nothing sets. The operation's input is given as JSON, as a
-//! route's body is written, with `--input`.
+//! route's body is written, with `--input`. An operation with no
+//! `output:` has its output type written from the answer first (chunk
+//! K5, [`crate::package_import::answer`]), and every file written is put
+//! back when the answer isn't recorded.
 //!
 //! ```text
 //! ✓ Recorded `couriers.pickups.create` from the sandbox
@@ -129,18 +132,9 @@ pub fn record(call: &Call) -> Reply {
         Ok(folder) => folder,
         Err(diagnostic) => return Reply::failed(*diagnostic),
     };
-    if op.output.is_none() {
-        return Reply::failed(
-            Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                format!("`{name}` has no `output:` to check its answer against"),
-            )
-            .reason("Area 11 decides that `jadpo package record` writes an operation's output type from the answer when it has none, and that comes with mapping imported types to standard types (chunk 7.2e).")
-            .next_marked(format!(
-                "Give `{operation}` an `output:` from the provider's documentation, then record it (agent)"
-            )),
-        );
-    }
+    // An operation with no `output:` has its type written from the
+    // sandbox's answer (area 11, "Provenance and confirmation"; chunk K5).
+    let writing = op.output.is_none();
     let program = Program::new(std::sync::Arc::clone(&ready.prepared)).with_config(&ready.config);
     let json = program.stored_json();
     // Its input, as a route's body is written.
@@ -240,27 +234,14 @@ pub fn record(call: &Call) -> Reply {
     ctx.allow_standalone_calls();
     let done = runtime.block_on(program.call_provider(&mut ctx, connection, operation, input));
     let kept = seen.0.borrow().clone();
-    let failed = |headline: String, reason: String, next: String| {
-        Reply::failed(
-            Diagnostic::new(&rule::RECORDING_FAILED, headline)
-                .reason(reason)
-                .next_marked(next),
-        )
-    };
     let output_name = output_type_name(&root, &chosen.package, operation);
-    let answer = match (done, kept.answer) {
+    let answer = match (done, kept.answer.clone()) {
         (Done::Value(_), Some(answer)) => answer,
         (Done::Fault(_), Some(answer)) => {
             // Why the operation's types refuse the answer, field by field.
             let why = match recorded::check(&mut ctx, &json, op, &answer, &program) {
-                Err(Unread::Undecoded { field, rule }) if field.is_empty() => {
-                    format!("`{rule}`")
-                }
-                Err(Unread::Undecoded { field, rule }) => format!("`{rule}` on `{field}`"),
-                Err(Unread::NothingAt(path)) => format!("nothing at `{path}`"),
-                Err(Unread::DecoderFailed(how)) => format!("its `decode:` ending with {how}"),
-                Err(Unread::NotJson) => "it isn't JSON".to_string(),
-                _ => "its decoding".to_string(),
+                Err(unread) => unread_text(&unread),
+                Ok(_) => "its decoding".to_string(),
             };
             return failed(
                 format!("The sandbox's answer to `{name}` doesn't decode as `{output_name}`"),
@@ -305,84 +286,337 @@ pub fn record(call: &Call) -> Reply {
             );
         }
     };
-    let Ok(text) = recorded::keep(&mut ctx, &json, op, &answer) else {
-        return failed(
-            format!("The sandbox's answer to `{name}` couldn't be kept"),
-            "It decoded as the operation's output, but couldn't be written again as its recording."
-                .to_string(),
-            "Report it to Jadpo's maintainers with this report (human)".to_string(),
-        );
+    let found = Found {
+        root: &root,
+        connection,
+        operation,
+        package: &chosen.package,
+        folder: &folder,
+        exchange: &kept,
+        answer: &answer,
     };
-    let file = folder.join(recorded::file_name(operation));
-    let before = std::fs::read_to_string(&file).ok();
-    let written = before.as_deref() != Some(text.as_str());
-    if written {
-        let saved = file
-            .parent()
-            .map_or(Ok(()), std::fs::create_dir_all)
-            .and_then(|()| std::fs::write(&file, &text));
-        if let Err(error) = saved {
-            return crate::package::write_failed(
-                "package record",
-                &recorded::file_name(operation),
-                &error.to_string(),
-            );
+    if !writing {
+        return found.kept(&ready, None).unwrap_or_else(|reply| reply);
+    }
+    let output_at = op.output_at.clone();
+    drop(ctx);
+    // Its output type, written from the answer, then the answer kept as
+    // any answer is; nothing written stays when it can't be.
+    let wrote = match write_output(&found, output_at.as_deref()) {
+        Ok(wrote) => wrote,
+        Err(reply) => return reply,
+    };
+    let written: Vec<String> = wrote.saved.iter().map(|(path, _)| path.clone()).collect();
+    let again = crate::dev::prepare_allowing(&root, &call.environment, true, &|diagnostic| {
+        // Its judgement calls, which `jadpo check` shows, don't stop it.
+        diagnostic.rule.declinable
+            && diagnostic
+                .primary
+                .as_ref()
+                .is_some_and(|label| written.iter().any(|path| label.span.path.ends_with(path)))
+    });
+    let again = match again {
+        Ok(again) => again,
+        Err((diagnostics, sources)) => {
+            // Shown as the files were written, then put back.
+            let reply = refused_by_errors(diagnostics, sources);
+            wrote.undo();
+            return reply;
+        }
+    };
+    match found.kept(&again, Some(&wrote)) {
+        Ok(reply) => reply,
+        Err(reply) => {
+            wrote.undo();
+            reply
         }
     }
-    // When it was recorded, which the package's facts give as its last
-    // contract run (area 11, "What a release shows"; Richard, 2026-11-07).
-    let when = folder.join(jadpo_check::release::RECORDED);
-    let kept_when = recorded_at(
-        std::fs::read_to_string(&when).ok().as_deref(),
-        operation,
-        &instant_text(crate::registry::now_seconds()),
-    );
-    if let Err(error) = std::fs::write(&when, kept_when) {
-        return crate::package::write_failed(
-            "package record",
-            jadpo_check::release::RECORDED,
-            &error.to_string(),
-        );
+}
+
+/// Why an answer isn't one of its operation's, as a reason says it.
+fn unread_text(unread: &Unread) -> String {
+    match unread {
+        Unread::Undecoded { field, rule } if field.is_empty() => format!("`{rule}`"),
+        Unread::Undecoded { field, rule } => format!("`{rule}` on `{field}`"),
+        Unread::NothingAt(path) => format!("nothing at `{path}`"),
+        Unread::DecoderFailed(how) => format!("its `decode:` ending with {how}"),
+        Unread::NotJson => "it isn't JSON".to_string(),
+        _ => "its decoding".to_string(),
     }
-    let shown = shown_path(&root, &file);
-    let (placeholders, as_sent) = counts(&text);
-    let mut values = crate::package::plural(placeholders, "placeholder", "placeholders");
-    if as_sent > 0 {
-        values.push_str(&format!(", {as_sent} kept as sent"));
+}
+
+/// A `recording.failed` refusal.
+fn failed(headline: String, reason: String, next: String) -> Reply {
+    Reply::failed(
+        Diagnostic::new(&rule::RECORDING_FAILED, headline)
+            .reason(reason)
+            .next_marked(next),
+    )
+}
+
+/// The sandbox's answer to one operation, and where it is recorded.
+struct Found<'a> {
+    root: &'a Path,
+    connection: &'a str,
+    /// `bookings.create`.
+    operation: &'a str,
+    /// `AcmeCouriers.v1`.
+    package: &'a str,
+    folder: &'a Path,
+    exchange: &'a Exchange,
+    answer: &'a str,
+}
+
+/// An output type written from an answer: what was written, and each
+/// file's text before, to put back when the answer isn't kept.
+struct Wrote {
+    written: crate::package_import::answer::Written,
+    /// Each file saved, its path from the project's root, and its text
+    /// before (`None` for a new file).
+    saved: Vec<(String, Option<String>)>,
+    root: PathBuf,
+}
+
+impl Wrote {
+    /// Puts every file back as it was.
+    fn undo(&self) {
+        for (path, before) in &self.saved {
+            let full = self.root.join(path);
+            let _ = match before {
+                Some(text) => std::fs::write(&full, text),
+                None => std::fs::remove_file(&full),
+            };
+        }
     }
-    let request = format!("{} {}", kept.method, kept.url);
-    let mut screen = Screen::new().with(Block::Status {
-        outcome: Outcome::Success,
-        text: match (written, before.is_some()) {
-            (true, false) => format!("Recorded `{name}` from the sandbox"),
-            (true, true) => format!("Recorded `{name}` again from the sandbox"),
-            (false, _) => format!("Recorded `{name}` from the sandbox, as before"),
+}
+
+/// Writes operation `found.operation`'s output type from its answer, at
+/// `output_at` in it: the types in the package's `types/` and `output:`
+/// on the operation.
+fn write_output(found: &Found<'_>, output_at: Option<&str>) -> Result<Wrote, Reply> {
+    let name = format!("{}.{}", found.connection, found.operation);
+    let unwritten = |why: String| {
+        failed(
+            format!("No output type could be written from the sandbox's answer to `{name}`"),
+            format!("{why} Nothing was written or recorded."),
+            format!(
+                "Give `{}` an `output:` from the provider's documentation, then run it again (agent)",
+                found.operation
+            ),
+        )
+    };
+    let Ok(document) = serde_json::from_str::<serde_json::Value>(found.answer) else {
+        return Err(unwritten("The answer isn't JSON.".to_string()));
+    };
+    let value = match output_at {
+        Some(path) => match jadpo_runtime::provider::at_path(&document, path) {
+            Some(value) => value,
+            None => {
+                return Err(unwritten(format!(
+                    "The answer has nothing at `{path}`, where `output_at:` says the output is."
+                )));
+            }
         },
-        rows: vec![
-            ("sent".to_string(), request.clone()),
-            ("answer".to_string(), format!("decodes as {output_name}")),
-            ("values".to_string(), values),
-            ("file".to_string(), shown.clone()),
-        ],
-    });
-    screen.push(Block::summary(
-        Outcome::Success,
-        "operation recorded",
-        [
-            Fact::plain(format!("{} {operation}", chosen.package)),
+        None => &document,
+    };
+    let (resource, operation) = found
+        .operation
+        .split_once('.')
+        .unwrap_or((found.operation, ""));
+    let written =
+        match crate::package_import::answer::written(found.folder, resource, operation, value) {
+            Ok(written) => written,
+            Err(crate::package_import::answer::Unwritten(why)) => return Err(unwritten(why)),
+        };
+    let shown_folder = shown_path(found.root, found.folder);
+    let mut wrote = Wrote {
+        written,
+        saved: Vec::new(),
+        root: found.root.to_path_buf(),
+    };
+    for (path, text) in wrote.written.files.clone() {
+        let full = found.folder.join(&path);
+        let before = std::fs::read_to_string(&full).ok();
+        let saved = full
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::write(&full, &text));
+        wrote.saved.push((format!("{shown_folder}/{path}"), before));
+        if let Err(error) = saved {
+            wrote.undo();
+            return Err(crate::package::write_failed(
+                "package record",
+                &path,
+                &error.to_string(),
+            ));
+        }
+    }
+    Ok(wrote)
+}
+
+impl Found<'_> {
+    /// Keeps the answer as the operation's recording, through `ready`'s
+    /// program, once its output type reads it, and says so; `Err` when
+    /// nothing was recorded.
+    fn kept(&self, ready: &crate::dev::Ready, wrote: Option<&Wrote>) -> Result<Reply, Reply> {
+        let (connection, operation) = (self.connection, self.operation);
+        let name = format!("{connection}.{operation}");
+        let program =
+            Program::new(std::sync::Arc::clone(&ready.prepared)).with_config(&ready.config);
+        let json = program.stored_json();
+        let plan = ready.prepared.plan().providers();
+        let table = ready.prepared.plan().connections();
+        let Some((_, op)) = plan.operation(table, connection, operation) else {
+            return Err(failed(
+                format!("`{name}` is gone from the package"),
+                "The operation the answer came from isn't in the package as it now reads."
+                    .to_string(),
+                "Report it to Jadpo's maintainers with this report (human)".to_string(),
+            ));
+        };
+        let host = jadpo_host_native::NativeHost::new();
+        let mut ctx = Ctx::of(&program, &host, Env::default());
+        let output_name = match wrote {
+            Some(wrote) => wrote.written.output.clone(),
+            None => output_type_name(self.root, self.package, operation),
+        };
+        // The type written from the answer reads it, as any answer is
+        // read, before anything is kept.
+        if wrote.is_some()
+            && let Err(unread) = recorded::check(&mut ctx, &json, op, self.answer, &program)
+        {
+            return Err(failed(
+                format!(
+                    "The sandbox's answer to `{name}` doesn't decode as `{output_name}`, written from it"
+                ),
+                format!(
+                    "Reading it found {}. Nothing was written or recorded.",
+                    unread_text(&unread)
+                ),
+                format!(
+                    "Give `{operation}` an `output:` from the provider's documentation, then run it again (agent)"
+                ),
+            ));
+        }
+        let Ok(text) = recorded::keep(&mut ctx, &json, op, self.answer) else {
+            return Err(failed(
+                format!("The sandbox's answer to `{name}` couldn't be kept"),
+                "It decoded as the operation's output, but couldn't be written again as its recording."
+                    .to_string(),
+                "Report it to Jadpo's maintainers with this report (human)".to_string(),
+            ));
+        };
+        let file = self.folder.join(recorded::file_name(operation));
+        let before = std::fs::read_to_string(&file).ok();
+        let written = before.as_deref() != Some(text.as_str());
+        if written {
+            let saved = file
+                .parent()
+                .map_or(Ok(()), std::fs::create_dir_all)
+                .and_then(|()| std::fs::write(&file, &text));
+            if let Err(error) = saved {
+                return Err(crate::package::write_failed(
+                    "package record",
+                    &recorded::file_name(operation),
+                    &error.to_string(),
+                ));
+            }
+        }
+        // When it was recorded, which the package's facts give as its last
+        // contract run (area 11, "What a release shows"; Richard, 2026-11-07).
+        let when = self.folder.join(jadpo_check::release::RECORDED);
+        let kept_when = recorded_at(
+            std::fs::read_to_string(&when).ok().as_deref(),
+            operation,
+            &instant_text(crate::registry::now_seconds()),
+        );
+        if let Err(error) = std::fs::write(&when, kept_when) {
+            return Err(crate::package::write_failed(
+                "package record",
+                jadpo_check::release::RECORDED,
+                &error.to_string(),
+            ));
+        }
+        Ok(self.shown(&file, &text, written, before.is_some(), &output_name, wrote))
+    }
+
+    /// The screen: what was sent, the type written and the recording.
+    fn shown(
+        &self,
+        file: &Path,
+        text: &str,
+        written: bool,
+        again: bool,
+        output_name: &str,
+        wrote: Option<&Wrote>,
+    ) -> Reply {
+        let (connection, operation) = (self.connection, self.operation);
+        let name = format!("{connection}.{operation}");
+        let shown = shown_path(self.root, file);
+        let (placeholders, as_sent) = counts(text);
+        let mut values = crate::package::plural(placeholders, "placeholder", "placeholders");
+        if as_sent > 0 {
+            values.push_str(&format!(", {as_sent} kept as sent"));
+        }
+        let request = format!("{} {}", self.exchange.method, self.exchange.url);
+        let mut rows = vec![("sent".to_string(), request.clone())];
+        if let Some(wrote) = wrote {
+            rows.push((
+                "output".to_string(),
+                format!(
+                    "written from the answer, {}",
+                    crate::package::plural(wrote.written.types.len(), "type", "types")
+                ),
+            ));
+        }
+        rows.push(("answer".to_string(), format!("decodes as {output_name}")));
+        rows.push(("values".to_string(), values));
+        rows.push(("file".to_string(), shown.clone()));
+        let mut screen = Screen::new().with(Block::Status {
+            outcome: Outcome::Success,
+            text: match (written, again) {
+                (true, false) => format!("Recorded `{name}` from the sandbox"),
+                (true, true) => format!("Recorded `{name}` again from the sandbox"),
+                (false, _) => format!("Recorded `{name}` from the sandbox, as before"),
+            },
+            rows,
+        });
+        let mut facts = vec![
+            Fact::plain(format!("{} {operation}", self.package)),
             Fact::plain("confirmed"),
-        ],
-    ));
-    screen.push(Block::hint(
-        "jadpo test",
-        "decodes the recording with every decoder",
-    ));
-    Reply::screen(
-        screen,
-        Json::object([
-            ("connection", Json::from(connection.as_str())),
-            ("operation", Json::from(operation.as_str())),
-            ("package", Json::from(chosen.package.as_str())),
+        ];
+        if let Some(wrote) = wrote {
+            screen.push(Block::Section {
+                heading: "Written from the answer".to_string(),
+                lines: wrote.saved.iter().map(|(path, _)| path.clone()).collect(),
+            });
+            if let Some(block) = crate::package_import::to_check(&wrote.written.findings) {
+                screen.push(block);
+            }
+            facts.push(Fact::plain(format!(
+                "{} written",
+                crate::package::plural(wrote.written.types.len(), "type", "types")
+            )));
+            if !wrote.written.findings.is_empty() {
+                facts.push(Fact::plain(format!(
+                    "{} to check",
+                    wrote.written.findings.len()
+                )));
+            }
+        }
+        screen.push(Block::summary(
+            Outcome::Success,
+            "operation recorded",
+            facts,
+        ));
+        screen.push(match wrote {
+            Some(_) => Block::hint("jadpo check", "shows what to review in the types written"),
+            None => Block::hint("jadpo test", "decodes the recording with every decoder"),
+        });
+        let mut data = vec![
+            ("connection", Json::from(connection)),
+            ("operation", Json::from(operation)),
+            ("package", Json::from(self.package)),
             ("file", Json::from(shown.as_str())),
             ("written", written.into()),
             ("placeholders", Json::from(placeholders as i64)),
@@ -390,12 +624,55 @@ pub fn record(call: &Call) -> Reply {
             (
                 "sent",
                 Json::object([
-                    ("method", Json::from(kept.method.as_str())),
-                    ("url", Json::from(kept.url.as_str())),
+                    ("method", Json::from(self.exchange.method.as_str())),
+                    ("url", Json::from(self.exchange.url.as_str())),
                 ]),
             ),
-        ]),
-    )
+        ];
+        if let Some(wrote) = wrote {
+            let written = &wrote.written;
+            data.push((
+                "output",
+                Json::object([
+                    ("type", Json::from(written.output.as_str())),
+                    (
+                        "types",
+                        Json::array(written.types.iter().map(|ty| Json::from(ty.as_str()))),
+                    ),
+                    (
+                        "files",
+                        Json::array(
+                            wrote
+                                .saved
+                                .iter()
+                                .map(|(path, _)| Json::from(path.as_str())),
+                        ),
+                    ),
+                    (
+                        "mapped",
+                        Json::array(written.mapped.iter().map(|mapped| {
+                            Json::object([
+                                ("at", Json::from(mapped.at.as_str())),
+                                ("standard", Json::from(mapped.standard.as_str())),
+                                ("by", Json::from(mapped.by)),
+                            ])
+                        })),
+                    ),
+                    (
+                        "findings",
+                        Json::array(written.findings.iter().map(|finding| {
+                            Json::object([
+                                ("at", Json::from(finding.at.as_str())),
+                                ("next", Json::from(finding.next.as_str())),
+                                ("decides", Json::from("agent")),
+                            ])
+                        })),
+                    ),
+                ]),
+            ));
+        }
+        Reply::screen(screen, Json::object(data))
+    }
 }
 
 /// Why `command` won't call through provider connection `chosen` (area
