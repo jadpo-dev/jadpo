@@ -1442,38 +1442,8 @@ the sandbox for each one (see "Tests and fakes").
 > ```
 >
 > An operation with no `output:` has its type written from the answer
-> first, as the importer reads an answer, then the answer is recorded
-> through it. What one answer only suggests is listed to check, and the
-> types start unreviewed:
->
-> ```text
-> $ jadpo package record couriers bookings.create --input '{"postcode": "N1 9GU"}'
-> ✓ Recorded `couriers.bookings.create` from the sandbox
->     sent    POST https://sandbox.acme-couriers.example/v1/bookings
->     output  written from the answer, 1 type
->     answer  decodes as BookingsCreateOutput
->     values  4 placeholders
->     file    shared/providers/acme_couriers/v1/recordings/bookings.create.json
->
-> Written from the answer
->   shared/providers/acme_couriers/v1/resources/bookings.jadpo
->   shared/providers/acme_couriers/v1/types/bookings_create_output.jadpo
->
-> To check
->   Read as `Instant` from how its value is written: check the provider's
->   documentation, then keep it or make it `Text` (agent)
->     BookingsCreateOutput.collect_at
->
->   Sent as `null`, so written as optional `Text`: check its type against the
->   provider's documentation (agent)
->     BookingsCreateOutput.note
->
-> ✓ operation recorded  AcmeCouriers.v1 bookings.create · confirmed · 1 type written · 2 to check
->
-> → jadpo check  shows what to review in the types written
-> ```
->
-> The choices are in "Recordings" below.
+> first, then the answer is recorded through it. The choices are in
+> "Recordings" below.
 
 ### Installing safely
 
@@ -8105,6 +8075,35 @@ how it is checked and how you make one.
   written can't read: each file is put back as it was. Judgement calls
   `jadpo check` makes in the types written (`package.standard_candidate`)
   don't stop the recording; `check` shows them.
+
+> Recording an operation with no `output:`:
+>
+> ```text
+> $ jadpo package record couriers bookings.create --input '{"postcode": "N1 9GU"}'
+> ✓ Recorded `couriers.bookings.create` from the sandbox
+>     sent    POST https://sandbox.acme-couriers.example/v1/bookings
+>     output  written from the answer, 1 type
+>     answer  decodes as BookingsCreateOutput
+>     values  4 placeholders
+>     file    shared/providers/acme_couriers/v1/recordings/bookings.create.json
+>
+> Written from the answer
+>   shared/providers/acme_couriers/v1/resources/bookings.jadpo
+>   shared/providers/acme_couriers/v1/types/bookings_create_output.jadpo
+>
+> To check
+>   Read as `Instant` from how its value is written: check the provider's
+>   documentation, then keep it or make it `Text` (agent)
+>     BookingsCreateOutput.collect_at
+>
+>   Sent as `null`, so written as optional `Text`: check its type against the
+>   provider's documentation (agent)
+>     BookingsCreateOutput.note
+>
+> ✓ operation recorded  AcmeCouriers.v1 bookings.create · confirmed · 1 type written · 2 to check
+>
+> → jadpo check  shows what to review in the types written
+> ```
 
 ## The scoped review and unconfirmed operations
 <!-- topic: the-scoped-review-and-unconfirmed-operations -->
