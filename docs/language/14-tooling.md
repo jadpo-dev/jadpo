@@ -1447,12 +1447,12 @@ checks the answer against the operation's output type and keeps it as
 a linked checkout, its plain values replaced by placeholders, and writes
 when it was made, `recorded <resource>.<operation> <instant>`, in
 `recordings/recorded.jadpo_record`, which the package's facts read as
-its last contract run. An operation with no `output:` has its output
-type written from the answer first, as the importer reads an answer,
-with what one answer only suggests listed to check
+its last contract run. An operation with no `output:` gets its output
+type from the answer first, as the importer reads one, with its guesses
+listed to check
 ([Recordings](11-integrations.md#recordings)). A refusal,
-no answer, or an answer that doesn't decode, or that no type can be
-written from, keeps nothing (`recording.failed`). A missing or wrong
+no answer, or an answer that doesn't decode or yield a type keeps
+nothing (`recording.failed`). A missing or wrong
 `--input` is `cli.package_arguments`.
 
 ### `jadpo package conform`
@@ -1460,8 +1460,7 @@ written from, keeps nothing (`recording.failed`). A missing or wrong
 `conform <package> <capability>` runs a capability's conformance suite
 ([Proving a package works](11-integrations.md#proving-a-package-works))
 in a scratch app holding the package as installed. By default it uses the
-package's recordings and a local fake on the loopback address, so nothing
-leaves your machine. `ai` runs six cases ([AI](21-ai.md)), `email` four
+package's recordings and a local fake, so nothing leaves your machine. `ai` runs six cases ([AI](21-ai.md)), `email` four
 and `receiving` three.
 
 `--live` runs them against the provider's API through the app's
@@ -1474,9 +1473,8 @@ has no live run. A case that fails is `conform.failed`.
 `protocol <document>` is [the registry protocol](11-integrations.md#the-registry-protocol)'s
 conformance test: it checks a registry application's OpenAPI document against
 the protocol's table, so that application's CI needs only `jadpo`, at the
-release it targets. The document is a file, such as the
-`build/openapi/main.json` that `jadpo check` writes, an `https://` address, or
-an `http://` address on this machine. It needs no project.
+release it targets. The document is a file, such as `jadpo check`'s
+`build/openapi/main.json`, an `https://` address, or a local `http://` one. It needs no project.
 
 A document that conforms is one line:
 
@@ -1484,7 +1482,7 @@ A document that conforms is one line:
 ✓ Conforms to the registry protocol  build/openapi/main.json · 13 requests
 ```
 
-When its output isn't a terminal, as in CI, the line is plain text:
+Outside a terminal, as in CI, it is plain text:
 
 ```text
 Conforms to the registry protocol: build/openapi/main.json, 13 requests
@@ -1492,8 +1490,8 @@ Conforms to the registry protocol: build/openapi/main.json, 13 requests
 
 One that differs is `protocol.mismatch` with each difference under its request,
 and exits 1; `--json` gives `document`, `conforms`, `requests` and
-`mismatches`, each with its `operation` and `problem`. A document it can't read
-is `protocol.unreadable`, which is not a difference.
+`mismatches`, each with its `operation` and `problem`. An unreadable document is
+`protocol.unreadable`, not a difference.
 
 ### `jadpo package check`
 
@@ -1530,10 +1528,10 @@ and publishing a package](11-integrations.md#developing-and-publishing-a-package
   new code. One that fails is a change the types don't show, refused within
   a major version unless the new version's section marks it a fix
   (`publish.behaviour_changed`).
-- Each capability the package fills runs its conformance suite against its
-  recordings, and the facts say how it ran (`conformance  email: conforms,
-  4 passed`); a failure refuses nothing ([Proving a package
-  works](11-integrations.md#proving-a-package-works)). `--json` gives it as
+- Each capability the package fills runs its conformance suite on its
+  recordings, shown as a fact that refuses nothing (`conformance  email:
+  conforms, 4 passed`; [Proving a package
+  works](11-integrations.md#proving-a-package-works)); `--json` has
   `conformance`, `null` where nothing ran.
 
 The bar is shown a row per item: passed, failed or not checked yet. When
