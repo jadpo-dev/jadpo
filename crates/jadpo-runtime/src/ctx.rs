@@ -189,6 +189,9 @@ pub struct Held {
     pub issued: bool,
     /// What the body did to a `same_browser:` magic link's cookie.
     pub binding: Option<Binding>,
+    /// The cached entries its writes may have changed, cleared once it
+    /// commits (area 5, "Caches"; chunk Q9).
+    pub clears: Vec<jadpo_std::caches::Clear>,
 }
 
 impl fmt::Debug for Held {

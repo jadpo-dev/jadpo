@@ -326,6 +326,8 @@ rules! {
         "A connection gives a key its package or driver doesn't take";
     CONNECTION_KEY_MISSING: "connection.key_missing", area 11, Error, Agent,
         "A connection leaves out a key its package or driver needs";
+    CONNECTION_MEMORY_CACHE: "connection.memory_cache", area 16, Declinable, Human,
+        "A cache connection keeps its cache in each server's own memory";
     CONNECTION_PACKAGE_UNKNOWN: "connection.package_unknown", area 11, Error, Agent,
         "A connection names a package the app doesn't hold, or a library package, which needs no connection";
     CONNECTION_VALUE_INVALID: "connection.value_invalid", area 11, Error, Agent,
@@ -854,6 +856,8 @@ rules! {
         "A provider package's public type isn't in its `reviewed:` list";
     PUBLISHING_INVALID: "publishing.invalid", area 12, Error, Agent,
         "A connection in `publishing:` isn't one events are published through, an entity's `webhooks:` lists an event that names none of its records, or either lists an event that can't leave the app";
+    QUERY_CACHE_INVALID: "query.cache_invalid", area 5, Error, Agent,
+        "A query's `cache:` names no cache, keeps its entries too long or too briefly, or caches what a cache may not hold";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "An aggregate in a query is missing an argument it needs, or is given one it doesn't take";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,

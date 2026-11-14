@@ -2790,7 +2790,9 @@ route GET /todos {
 }
 ```
 
-Caches aren't built yet.
+A request skips an entry read before the revision it carries, by its
+`Jadpo-Revision` header or its cookie ([Write revisions](07-http.md#write-revisions)),
+and keeps what it reads from the store for the requests after it.
 
 ## Reading and writing entities in Redis
 <!-- topic: queries-on-entities-in-redis -->
@@ -2841,7 +2843,8 @@ var owners: List<OwnerView> = identity.users_by_ids(owner_ids)
 | Feature | Status |
 |---|---|
 | Everything else on this page | Built. |
-| Caches and entities in Redis | Not built yet ("Where a read comes from", "Entities in Redis"). |
+| Where a read comes from | Built: a route's display read of a query with `cache:` comes from its cache, skipped by a later revision ("Where a read comes from"). |
+| Entities in Redis | Not built yet ("Reading and writing entities in Redis"). |
 
 ## Errors
 

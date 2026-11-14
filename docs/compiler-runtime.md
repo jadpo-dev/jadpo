@@ -1465,7 +1465,9 @@ store operation (`Ctx::transaction`); a concurrent change runs the whole
 body again, up to `RERUN_ATTEMPTS` (3) times, then fails `unavailable`; a
 body that fails rolls back; and what it emitted is delivered only after it
 commits. The second of area 6's budget isn't built: the boundary counts
-attempts only. Caches are not built yet. An action called inside another whose failure the caller
+attempts only. Once it commits, what its writes may have changed in a
+cache is cleared before the response goes (`boundary::cleared`, the
+`WritePlan::clears` each write it ran gathered; caches, below). An action called inside another whose failure the caller
 handles (`ActionBody::caught`: the call is an outcome `match`'s subject or
 an `assert … fails`'s) runs inside a savepoint: when it fails, the
 transaction returns to it, undoing its writes, a refused statement among
@@ -3645,6 +3647,47 @@ time it checks a request's deadline (`Step::Yield`,
 doesn't hold the requests its worker serves until its deadline; an inline
 function inside a collection operation still only stops there.
 
+**Caches** (area 5, "Caches"; chunk Q9). A route whose `run:` is a
+query with `cache:` carries a `RouteCache` on its `RoutePlan`: the cache
+connection, `keep:` in milliseconds, the entities its statements name
+(`jadpo_plan::caches::Tables::read_by` over `ReadPlan::statements`, each
+entity's table as `jadpo_sql::ident` writes it, so policy's subqueries
+count), and the query's key with a digest of its read plan. Every
+`WritePlan` and `PurgePlan` carries `clears`, by cache, the entities among
+those a cache reads that its statement names, a delete's referrers too,
+and the `ErasurePlan` and an erasure's write everything every cache
+holds; the plan works them out from every cached query, a deployable's
+pruned plan planning those it doesn't serve apart, since its writes still
+clear them. `RouteTable::revisions` is the longest `keep:`, `None` with no
+cache. The runtime's `caches::read`, which both executors reach through
+the HTTP component, keys an entry by BLAKE3 of the route cache's key, the
+arguments (a secret among them reads the store) and every caller part
+(`read::callers`), asks `Cache::look` for the entry and the entities'
+generations in one round trip, and on a miss, or an entry under other
+generations or read before the request's revision, reads the store and
+`keep`s the answer as `{"generations", "filled", "value"}`, the value in
+the route's output codec, deleting it when the generations moved while it
+read. The boundary gathers each write's `clears` and, once it commits,
+`caches::clear` adds one to each generation and deletes the entries each
+entity's list names; a cache that can't answer is owed the clear in
+`CacheHealth` (the process's, so a server's workers share it), left alone
+for `STORE_PAUSE_MS`, tried once more through `Host::defer` and before its
+next use, and no entry reading what it owes is served meanwhile. Hosts give
+the cache by connection (`Host::cache`): natively and on Workers the
+factory's driver, a Redis connection (`jadpo_drivers::redis`'s `look`,
+`keep`, `forget`, `clear`) or `MemoryCache::process` for `Driver.memory`;
+`NativeHost::caching_in_memory`, `jadpo dev`'s, every cache in the
+process's memory; and `test_run::once` each cache a test's own
+`MemoryCache`, through `Faked::with_caches`, so both executors and
+workerd run the same code. A successful write route's response carries
+`Jadpo-Revision` and its cookie when `revisions` is set
+(`caches::revision_headers`). Proved against the in-process double and,
+when the run has one, a real Redis (`jadpo-host-native`'s
+`redis_caches`), and end to end under `jadpo dev` against live
+PostgreSQL (`jadpo-cli`'s `caches`): a change behind the app's back unseen,
+a later revision skipping, a write clearing, and an erasure leaving no
+copy.
+
 **The client's address.** The address a request counts as,
 for the default rate limits, `jadpo dev`'s request lines and the request
 timeline, is chosen in the runtime from plan data and not by a host:
@@ -3961,7 +4004,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
 | Outbox | Delivery, retries, dead letters and a circuit breaker, run by the runner after the response, natively as a task on the worker's thread | `waitUntil` after the response, what one invocation leaves handed on to a fresh one, swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters | Cloudflare cron |
-| Rate limits, caches | Rate limits through `Host::rate_limit`: the Redis store `rate_limits:` names, through `ratelimit::counted_by_store`, otherwise, or while it can't count, one bounded table in memory for all of a server's workers; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, "Rate limits"); the isolate's memory only while it can't be reached |
+| Rate limits, caches | Rate limits through `Host::rate_limit`: the Redis store `rate_limits:` names, through `ratelimit::counted_by_store`, otherwise, or while it can't count, one bounded table in memory for all of a server's workers; a route's display read through `caches::read`, the cache `Host::cache` gives, cleared after each commit | Redis or Cloudflare's rate-limiting binding required (area 16, "Rate limits"); the isolate's memory only while it can't be reached; caches in Redis only |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
 | AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake; `ai.embed` and `ai.embed_all`, the fake's embeddings and prompts' recordings; `ai.stream` read piece by piece and sent as server-sent events | same, through Workers' `fetch` |
@@ -3971,7 +4014,7 @@ doubles the async signatures and lets bugs hide on one target.
 
 **Capability drivers.** `Database` (begin, query, execute, commit,
 rollback, and one statement on its own) and `Passkeys` are traits of
-their own, and `Cache` will be when caches are built; every outside capability's driver,
+their own, and so is `caches::Cache` (look, keep, forget, clear); every outside capability's driver,
 `files`', `email`'s, `publishing`'s and a package's alike, is one trait,
 `capability::Capability`, named by its connection, so the capability
 seam logs, records, guards and fakes them all one way (below). Rate

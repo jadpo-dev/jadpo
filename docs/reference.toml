@@ -378,7 +378,7 @@ status = [
   "15-personal-data: `privacy:` in",
   "15-personal-data: The personal-data report",
 ]
-missing = "erasing someone whose audited records would be kept, caches, and OAuth grants in the report"
+missing = "erasing someone whose audited records would be kept, and OAuth grants in the report"
 topics = [
   "personal-data",
   "marking-personal-fields",
@@ -703,7 +703,11 @@ details = [
 
 [[group.page]]
 title = "Caches"
-status = ["05-data: Entities in Redis and record caches"]
+status = [
+  "05-data: A query's `cache:`",
+  "05-data: Entities in Redis and record caches",
+]
+missing = "record caches"
 topics = [
   "caches",
   "caches-drivers-and-what-they-hold",
@@ -1079,7 +1083,7 @@ topics = [
 [topic_status]
 logging = ["04-failures: Logging"]
 entities-in-redis = ["05-data: Entities in Redis and record caches"]
-queries-on-entities-in-redis = ["06-reads-and-writes: Caches and entities in Redis"]
+queries-on-entities-in-redis = ["06-reads-and-writes: Entities in Redis"]
 personal-data-export = ["15-personal-data: `User.export(id)`"]
 data-requests = ["15-personal-data: `privacy:` in `application { }`"]
 write-revisions = ["07-http: The `Jadpo-Revision` header"]

@@ -365,15 +365,20 @@ work below (Richard, 2026-11-08).
       "A Redis store on Workers" and "The Redis driver", and its notes; area
       11, "No presets, no dependencies"; compiler-runtime §2.6, "What both
       executors share, and round trips".
-    - [ ] **Q9 Caches** `opus · xhigh` after Q8: area 5, "Caches"; area 6,
-      "Where a read comes from"; area 7, "Write revisions"; area 13, "What is
-      built"; area 11, "Targets". An entity's `caches:`, a query's `cache:`, the
-      `cache` capability, the `Jadpo-Revision` header, an in-memory cache checked
-      against its target, caches in tests and erasure reaching a cache.
-      Clearing only the entries a change affects isn't designed (L3).
+    - [x] **Q9 Caches**: a query's `cache:` in Redis or `Driver.memory`, the
+      `Jadpo-Revision` header, caches in tests and erasure reaching every cache,
+      in area 5, "Caches", and its notes; area 6, "Where a read comes from";
+      area 7, "Write revisions"; area 16, "How a cache is kept"; compiler-runtime,
+      "Caches".
     - [ ] **Q10 Entities and geometries in Redis** `opus · xhigh` after Q9: area 5,
       "Entities in Redis"; area 6, "Reading and writing entities in Redis"; area
       20, "What is built".
+    - [ ] **Q9b Record caches** `opus · xhigh` after Q10: area 5, "Caches"; area
+      9, "Caches and personal data"; area 15, "Sensitive fields". An entity's
+      `caches: { records: }`, single records by `id` kept whole and policy
+      applied to each as it is read, in Jadpo's own code as Q10's Redis
+      entities apply it, sensitive fields left out. Split from Q9 (2026-11-14).
+      Clearing only the entries a change affects isn't designed (L3).
 11. Background work and tests (areas 12 and 13), added by the audit of
     2026-11-08.
     - [x] **J3 Delivery and operator gaps**: area 12, "How long between tries", "Running background work" and "Watching schedules", and its notes; `cli.signal_handler_failed`'s page.

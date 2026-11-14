@@ -127,6 +127,9 @@ pub(crate) struct Boundary {
     /// erasing"; chunk B3): then, in a store keeping the record of held
     /// files, the commit leaves the events that delete their bytes.
     releases: bool,
+    /// The cached entries its writes may have changed, cleared once it
+    /// commits (area 5, "Caches"; chunk Q9).
+    clears: Vec<jadpo_std::caches::Clear>,
 }
 
 impl Boundary {
@@ -430,6 +433,18 @@ impl Boundary {
 
     pub(crate) fn take_transaction(&mut self) -> Option<Box<dyn Transaction>> {
         self.transaction.take()
+    }
+
+    /// Keeps what a write may have changed in a cache, to clear once it
+    /// commits.
+    pub(crate) fn clearing(&mut self, clears: &[jadpo_std::caches::Clear]) {
+        self.clears.extend(clears.iter().cloned());
+    }
+
+    /// What its writes may have changed in a cache, to clear once it
+    /// commits.
+    pub(crate) fn take_clears(&mut self) -> Vec<jadpo_std::caches::Clear> {
+        std::mem::take(&mut self.clears)
     }
 
     /// Keeps a person it erased, to report only once it commits.
@@ -740,6 +755,7 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
                 session: boundary.session,
                 issued: boundary.issued,
                 binding: boundary.binding,
+                clears: boundary.clears,
             });
             return outcome;
         }
@@ -770,6 +786,7 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
                 confirm_erased(ctx, boundary.erased);
                 ctx.note_emitted(boundary.emitted);
                 committed(ctx, boundary.sealed);
+                cleared(ctx, &boundary.clears).await;
                 return outcome;
             }
             Ended::RolledBack => return outcome,
@@ -809,6 +826,17 @@ pub(crate) fn confirm_erased(ctx: &mut Ctx<'_>, erased: Vec<Erased>) {
         ctx.host().log("privacy.erased", erased.fields);
         ctx.note_erased(erased.entity, erased.id);
     }
+}
+
+/// Clears what a committed action's writes may have changed in a cache
+/// (area 5, "The running app keeps caches current"; chunk Q9), before its
+/// response goes.
+pub(crate) async fn cleared(ctx: &Ctx<'_>, clears: &[jadpo_std::caches::Clear]) {
+    if clears.is_empty() {
+        return;
+    }
+    let now = crate::steps::wall(ctx);
+    crate::caches::clear(ctx.host(), &crate::caches::merged(clears), now).await;
 }
 
 /// Leaves the deliveries of what a committed action emitted for the
@@ -1022,6 +1050,7 @@ pub async fn commit_held(
         kept,
         erased,
         emitted,
+        clears,
         ..
     } = held;
     if let Some((store, sql, params)) = then {
@@ -1054,6 +1083,7 @@ pub async fn commit_held(
         confirm_erased(ctx, erased);
         ctx.note_emitted(emitted);
         committed(ctx, deliveries);
+        cleared(ctx, &clears).await;
         return Ok(());
     }
     if let Some(open) = transaction {
@@ -1063,6 +1093,7 @@ pub async fn commit_held(
     confirm_erased(ctx, erased);
     ctx.note_emitted(emitted);
     committed(ctx, deliveries);
+    cleared(ctx, &clears).await;
     Ok(())
 }
 

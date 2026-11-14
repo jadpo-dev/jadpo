@@ -36,6 +36,7 @@ mod batches;
 mod binary;
 mod build;
 mod build_reports;
+mod caches;
 mod call_snapshots;
 mod capability_deliveries;
 mod check;

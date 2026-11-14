@@ -2142,7 +2142,14 @@ and browsers get the same value as a cookie. A client that sends it back
 skips caches ([Reads and writes](06-reads-and-writes.md)); one that does
 not may see a cached copy up to its `keep:`.
 
-> The `Jadpo-Revision` header isn't built yet: it comes with caches.
+The revision is the server's clock, in milliseconds, as the write
+answered. Each successful write of an app that declares a cache carries
+it: `Jadpo-Revision: 1792504800000`, and
+`Set-Cookie: jadpo_revision=1792504800000; Path=/; Max-Age=<s>; HttpOnly; Secure; SameSite=Strict`,
+lasting the app's longest `keep:`, after which no entry it could skip is
+left. A request carrying a revision skips each entry whose read began
+before it, and keeps what it reads instead. A read carries none, and nor
+does a write's repeat answered from its `Idempotency-Key`.
 
 ## What is built
 <!-- topic: http-built -->
@@ -2174,7 +2181,7 @@ where an app uses it.
 | `x-jadpo-events` | Partly built: each API's document carries it ([The `x-jadpo` fields](#the-x-jadpo-fields)); the importer doesn't read it yet. |
 | Rate limits | Built: a route's own `rate_limit:` and an API's, counted in the Redis store `rate_limits:` names, natively and on Workers ([Rate limits](16-built-in-services.md#rate-limits)). |
 | Classifying breaking changes and their acceptances | Built ([Acceptances](18-records-and-manifest.md#acceptances)). |
-| The `Jadpo-Revision` header | Not built yet: it comes with caches ([Write revisions](#write-revisions)). |
+| The `Jadpo-Revision` header | Built: each successful write of an app with a cache answers with its revision as a header and a cookie, which a later read sends back to skip what a cache kept before it ([Write revisions](#write-revisions)). |
 
 ## Errors
 

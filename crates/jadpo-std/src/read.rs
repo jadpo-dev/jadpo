@@ -783,6 +783,40 @@ pub struct ReadPlan {
     pub gate: Option<crate::policy::Gate>,
 }
 
+impl ReadPlan {
+    /// The text of every statement it may run: its own, with policy and
+    /// without, each include's, and an aggregate's first read (chunk Q9),
+    /// what a cache reads the entities it depends on from.
+    pub fn statements(&self) -> Vec<&str> {
+        fn of<'s>(select: &'s Select, out: &mut Vec<&'s str>) {
+            out.push(&select.sql);
+            out.extend(select.unpoliced.as_deref());
+            for include in &select.includes {
+                of(&include.select, out);
+            }
+        }
+        let mut out: Vec<&str> = self.settings.iter().map(String::as_str).collect();
+        of(&self.select, &mut out);
+        if let Some(decided) = &self.decided {
+            of(&decided.select, &mut out);
+        }
+        out
+    }
+
+    /// Whether it reads a sensitive field anywhere, whose every read is
+    /// recorded (area 15, "Access records").
+    pub fn reads_sensitive(&self) -> bool {
+        fn of(select: &Select) -> bool {
+            select.sensitive.is_some() || select.includes.iter().any(|include| of(&include.select))
+        }
+        of(&self.select)
+            || self
+                .decided
+                .as_ref()
+                .is_some_and(|decided| of(&decided.select))
+    }
+}
+
 /// How far, in metres, the statement of a query with `geo.` conditions
 /// searches past what the condition says (area 20, "Queries", chunk
 /// 5.5u5): PostGIS measures in doubles, good to some nanometres, and Jadpo

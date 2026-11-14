@@ -508,4 +508,19 @@ impl<'a> Plan<'a> {
     pub fn mail_connection(self) -> Option<&'a str> {
         self.events?.emails.connection.as_deref()
     }
+
+    /// The connections a route's query keeps its cache in (area 5,
+    /// "Caches"; chunk Q9), each once, in name order: what a test's host
+    /// keeps a cache of its own in memory for.
+    pub fn cache_connections(self) -> Vec<&'a str> {
+        let mut out: Vec<&str> = self
+            .routes
+            .into_iter()
+            .flat_map(|table| &table.routes)
+            .filter_map(|route| route.cache.as_ref().map(|cache| cache.store.as_str()))
+            .collect();
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
 }

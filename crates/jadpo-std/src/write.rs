@@ -153,6 +153,12 @@ pub struct WritePlan {
     /// row its statement returns, the person entity's name, each row a
     /// person whose `PersonErased` commits with it.
     pub erased: Vec<(i32, String)>,
+    /// The cached entries it may change, cleared once it commits (area 5,
+    /// "Caches"; chunk Q9): by cache, every entity it writes and, for a
+    /// delete, every entity referring to one; for an erasure, everything
+    /// every cache holds.
+    #[serde(default)]
+    pub clears: Vec<crate::caches::Clear>,
 }
 
 /// A `File` field a write sets, and what the file it is given must be
@@ -383,6 +389,10 @@ pub struct PurgePlan {
     /// (area 10, "Retention periods"): the period is what the application
     /// started with, so a run is given it (`purge_after`).
     pub after_setting: Option<u32>,
+    /// The cached entries a batch may change, cleared once it commits
+    /// (area 5, "Caches"; chunk Q9), as a write's are.
+    #[serde(default)]
+    pub clears: Vec<crate::caches::Clear>,
 }
 
 impl PurgePlan {

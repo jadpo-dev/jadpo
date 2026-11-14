@@ -121,10 +121,13 @@ impl<'k> Pruning<'k> {
     }
 
     /// Whether connection `name` of kind `kind` is kept: one it reaches,
-    /// or a database or Redis, which every deployable's tick sweeps.
+    /// or a database or Redis, which every deployable's tick sweeps, or a
+    /// cache in memory, which its writes clear (chunk Q9).
     pub(crate) fn keeps_connection(&self, name: &str, kind: &ConnectionKind) -> bool {
-        matches!(kind, ConnectionKind::Postgres | ConnectionKind::Redis)
-            || self.keep.connections.contains(name)
+        matches!(
+            kind,
+            ConnectionKind::Postgres | ConnectionKind::Redis | ConnectionKind::Memory
+        ) || self.keep.connections.contains(name)
     }
 
     /// Notes that a kept part asked for setting `name`.

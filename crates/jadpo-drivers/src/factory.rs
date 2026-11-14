@@ -22,8 +22,12 @@
 //!   host counts rate limits in the Worker's bindings itself (chunk 8.2m2).
 //! - `Driver.redis`: [`crate::redis::Redis`] at its `url:`'s address, over
 //!   the transport, which a host counts rate limits in
-//!   ([`Drivers::counting_store`]; chunk Q8); nothing connects until it is
-//!   first asked.
+//!   ([`Drivers::counting_store`]; chunk Q8) and keeps caches in
+//!   ([`Drivers::cache`]; chunk Q9); nothing connects until it is first
+//!   asked.
+//! - `Driver.memory`: this process's memory for the connection, a cache
+//!   every worker of a server shares
+//!   ([`jadpo_runtime::caches::MemoryCache::process`]; chunk Q9).
 //!
 //! A connection whose driver doesn't run on the host's target, or that the
 //! host or the program's settings can't build, is kept as [`Unbuilt`] with
@@ -216,7 +220,10 @@ pub struct Drivers {
     #[cfg(feature = "postgres")]
     databases: BTreeMap<String, crate::postgres::Postgres>,
     #[cfg(feature = "redis")]
-    redis: BTreeMap<String, crate::redis::Redis>,
+    redis: BTreeMap<String, Rc<crate::redis::Redis>>,
+    /// Each `Driver.memory` connection's cache, this process's memory
+    /// (chunk Q9).
+    memory: BTreeMap<String, jadpo_runtime::caches::MemoryCache>,
     capabilities: BTreeMap<String, Rc<dyn Capability>>,
     unbuilt: Vec<Unbuilt>,
 }
@@ -229,6 +236,7 @@ impl fmt::Debug for Drivers {
         out.field("databases", &self.databases.keys().collect::<Vec<_>>());
         #[cfg(feature = "redis")]
         out.field("redis", &self.redis.keys().collect::<Vec<_>>());
+        out.field("memory", &self.memory.keys().collect::<Vec<_>>());
         out.field(
             "capabilities",
             &self.capabilities.keys().collect::<Vec<_>>(),
@@ -244,6 +252,8 @@ enum Built {
     Database(crate::postgres::Postgres),
     #[cfg(feature = "redis")]
     Redis(crate::redis::Redis),
+    /// A cache in this process's memory, `Driver.memory` (chunk Q9).
+    Memory(jadpo_runtime::caches::MemoryCache),
     Capability(Rc<dyn Capability>),
     /// A driver nothing calls: a queue Cloudflare pushes.
     Nothing,
@@ -284,7 +294,10 @@ impl Drivers {
                 }
                 #[cfg(feature = "redis")]
                 Ok(Built::Redis(store)) => {
-                    out.redis.insert(connection.name.clone(), store);
+                    out.redis.insert(connection.name.clone(), Rc::new(store));
+                }
+                Ok(Built::Memory(cache)) => {
+                    out.memory.insert(connection.name.clone(), cache);
                 }
                 Ok(Built::Capability(driver)) => {
                     out.capabilities.insert(connection.name.clone(), driver);
@@ -318,7 +331,7 @@ impl Drivers {
         return self
             .redis
             .get(connection)
-            .map(|store| store as &dyn CountingStore);
+            .map(|store| store.as_ref() as &dyn CountingStore);
         #[cfg(not(feature = "redis"))]
         {
             let _ = connection;
@@ -329,7 +342,7 @@ impl Drivers {
     /// The Redis connection `connection`.
     #[cfg(feature = "redis")]
     pub fn redis(&self, connection: &str) -> Option<&crate::redis::Redis> {
-        self.redis.get(connection)
+        self.redis.get(connection).map(Rc::as_ref)
     }
 
     /// `store` as the Redis connection `connection`, in place of what the
@@ -338,8 +351,23 @@ impl Drivers {
     pub fn with_redis(mut self, connection: &str, store: crate::redis::Redis) -> Drivers {
         self.unbuilt
             .retain(|unbuilt| unbuilt.connection != connection);
-        self.redis.insert(connection.to_string(), store);
+        self.redis.insert(connection.to_string(), Rc::new(store));
         self
+    }
+
+    /// The cache `connection` names (area 5, "Caches"; chunk Q9): a Redis
+    /// connection's driver, or this process's memory for `Driver.memory`.
+    pub fn cache(&self, connection: &str) -> Option<Rc<dyn jadpo_runtime::caches::Cache>> {
+        if let Some(cache) = self.memory.get(connection) {
+            return Some(Rc::new(cache.clone()));
+        }
+        #[cfg(feature = "redis")]
+        return self
+            .redis
+            .get(connection)
+            .map(|store| Rc::clone(store) as Rc<dyn jadpo_runtime::caches::Cache>);
+        #[cfg(not(feature = "redis"))]
+        None
     }
 
     /// The connections whose drivers weren't built, and why.
@@ -354,6 +382,7 @@ impl Drivers {
         self.databases.retain(|name, _| keep(name));
         #[cfg(feature = "redis")]
         self.redis.retain(|name, _| keep(name));
+        self.memory.retain(|name, _| keep(name));
         self.capabilities.retain(|name, _| keep(name));
         self.unbuilt.retain(|unbuilt| keep(&unbuilt.connection));
         self
@@ -379,6 +408,9 @@ fn build_one(
             postgres(url, *tls, authority, supplies)
         }
         ConnectionDriver::Redis { url } => redis(text(url.ok_or(Why::Unset(None))?)?, supplies),
+        ConnectionDriver::Memory => Ok(Built::Memory(jadpo_runtime::caches::MemoryCache::process(
+            &connection.name,
+        ))),
         ConnectionDriver::Disk { path, floor } => {
             let disk = supplies.disk.as_ref().ok_or(Why::NotSupplied("a disk"))?;
             disk.store(&connection.name, path.as_deref(), *floor)
