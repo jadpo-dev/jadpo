@@ -44,6 +44,7 @@ use hyper::service::service_fn;
 use hyper_util::rt::{TokioIo, TokioTimer};
 use jadpo_runtime::http::{BODY_LIMIT, Request, Response};
 use jadpo_runtime::serve::{Observer, Serving};
+use jadpo_runtime::ratelimit::StoreHealth;
 use jadpo_runtime::{Executor, LocalFuture, RateLimits};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -207,6 +208,8 @@ impl Handler for AppHandler {
 pub struct WorkerThread {
     index: usize,
     limits: Arc<RateLimits>,
+    /// Whether the rate limits' store is being asked (chunk Q8).
+    health: Arc<StoreHealth>,
 }
 
 impl WorkerThread {
@@ -221,7 +224,7 @@ impl WorkerThread {
     /// requests reach (area 16, "Rate limits"; chunk 8.1l): what a worker
     /// serving an application starts from.
     pub fn host(&self) -> NativeHost {
-        NativeHost::new().with_rate_limits(Arc::clone(&self.limits))
+        NativeHost::new().with_rate_limits(Arc::clone(&self.limits), Arc::clone(&self.health))
     }
 }
 
@@ -278,6 +281,7 @@ pub fn serve(listener: TcpListener, workers: usize, make: MakeHandler) -> io::Re
     listener.set_nonblocking(true)?;
     let (stop, stopped) = tokio::sync::watch::channel(false);
     let limits = Arc::new(RateLimits::default());
+    let health = Arc::new(StoreHealth::default());
     let workers = workers.max(1);
     let mut senders = Vec::with_capacity(workers);
     let mut threads = Vec::with_capacity(workers + 1);
@@ -287,6 +291,7 @@ pub fn serve(listener: TcpListener, workers: usize, make: MakeHandler) -> io::Re
         let thread = WorkerThread {
             index,
             limits: Arc::clone(&limits),
+            health: Arc::clone(&health),
         };
         let make = Arc::clone(&make);
         // Jadpo code runs here, so a recursion to the runtime's limit ends

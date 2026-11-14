@@ -744,17 +744,21 @@ fn unknown(name: &str, declared: &jadpo_check::deployables::Deployables) -> Diag
 
 /// The drivers a Worker built from `plan` links beyond the package
 /// driver: PostgreSQL when the project keeps a database, since every
-/// deployable's tick reaches each store, and SMTP when it reaches an SMTP
-/// connection, the only ones its plan holds (chunk 8.1o3).
+/// deployable's tick reaches each store, SMTP when it reaches an SMTP
+/// connection, the only ones its plan holds (chunk 8.1o3), and Redis when
+/// the project has a Redis connection, which every deployable reaches
+/// (chunk Q8).
 fn drivers(plan: &Plan) -> Drivers {
     let connections = &plan.runtime().connections;
+    let any = |driver: fn(&ConnectionDriver) -> bool| {
+        connections
+            .iter()
+            .any(|connection| driver(&connection.driver))
+    };
     Drivers {
-        postgres: connections
-            .iter()
-            .any(|connection| matches!(connection.driver, ConnectionDriver::Postgres { .. })),
-        smtp: connections
-            .iter()
-            .any(|connection| matches!(connection.driver, ConnectionDriver::Smtp(_))),
+        postgres: any(|driver| matches!(driver, ConnectionDriver::Postgres { .. })),
+        smtp: any(|driver| matches!(driver, ConnectionDriver::Smtp(_))),
+        redis: any(|driver| matches!(driver, ConnectionDriver::Redis { .. })),
     }
 }
 

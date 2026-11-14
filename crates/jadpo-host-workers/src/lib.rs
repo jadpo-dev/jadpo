@@ -15,9 +15,9 @@
 //!   the work an invocation hands on run in a fresh one, a request to the
 //!   Worker itself through the loopback binding `ctx.exports` gives its
 //!   own [`HAND_ON_ENTRYPOINT`], whatever name it was deployed under, rate
-//!   limits counted in Cloudflare's rate-limiting binding when
-//!   `rate_limits:` names one, and in the isolate's memory while it can't
-//!   be asked, and Workers' budgets for background work (30 seconds after a
+//!   limits counted in Cloudflare's rate-limiting binding or the Redis
+//!   connection `rate_limits:` names (chunk Q8), and in the isolate's
+//!   memory while that can't be asked, and Workers' budgets for background work (30 seconds after a
 //!   response and for work handed on, counted from the start of the
 //!   invocation that takes it on, 15 minutes for the cron, which the
 //!   ticks one cron runs share); the six connections an invocation may have
@@ -88,6 +88,7 @@ use jadpo_runtime::budget::Invocation;
 use jadpo_runtime::capability::Capability;
 use jadpo_runtime::deployable::Log;
 use jadpo_runtime::http::address::Target;
+use jadpo_runtime::ratelimit::{self as limits, StoreHealth};
 use jadpo_runtime::slots::Slots;
 use jadpo_runtime::webauthn::WebAuthn;
 use jadpo_runtime::{Allowed, Database, Host, LocalFuture, Outbound, Passkeys, RateLimits};
@@ -382,6 +383,13 @@ fn isolate_limits() -> &'static RateLimits {
     LIMITS.get_or_init(RateLimits::default)
 }
 
+/// Whether the isolate asks its Redis store (chunk Q8): one that couldn't
+/// count is left alone for 10 seconds, whichever invocation asks next.
+fn isolate_health() -> &'static StoreHealth {
+    static HEALTH: OnceLock<StoreHealth> = OnceLock::new();
+    HEALTH.get_or_init(StoreHealth::default)
+}
+
 /// The most bytes one `getRandomValues` fills.
 const MOST_RANDOM: usize = 65_536;
 
@@ -553,7 +561,10 @@ impl Host for WorkersHost {
     /// second, logged once an isolate (chunk 8.4b). A binding says only
     /// whether the request is within the limit, so a refusal is told to
     /// try again after the window's whole length, the longest it can have
-    /// to wait.
+    /// to wait. A Redis store counts every instance's requests in one count
+    /// (chunk Q8), over the invocation's own connection, and the isolate's
+    /// memory counts while it can't ([`limits::in_store`]: left alone for
+    /// 10 seconds once it couldn't, and logged once each time it stops).
     fn rate_limit<'a>(
         &'a self,
         key: &'a str,
@@ -576,6 +587,19 @@ impl Host for WorkersHost {
                     }
                     Err(why) => ratelimit::fell_back(self.log.as_ref(), &binding, why),
                 }
+            } else if let Some(store) = &self.rate_limits
+                && let Some(counting) = self.drivers().counting_store(&store.connection)
+                && let Some(allowed) = limits::in_store(
+                    isolate_health(),
+                    &store.connection,
+                    counting,
+                    (key, limit),
+                    self.monotonic_ms(),
+                    |fields| Host::log(self, "rate_limits.fallback", fields),
+                )
+                .await
+            {
+                return allowed;
             }
             isolate_limits().allow(key, limit, now)
         })

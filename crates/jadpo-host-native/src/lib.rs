@@ -84,6 +84,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use jadpo_drivers::{Endpoint, Stream, Transport, Trust};
+use jadpo_runtime::ratelimit::{self, StoreHealth};
 use jadpo_runtime::{Allowed, Database, Host, LocalFuture, RateLimits, StoreError};
 use jadpo_std::http::RateLimit;
 use tokio::task::LocalSet;
@@ -272,10 +273,12 @@ pub fn deployable_supplies() -> Supplies {
 /// The runtime's host natively, one per worker thread: each connection's
 /// driver as the factory built it ([`NativeHost::with_drivers`]), a store
 /// given in place of one, the operating system's randomness for new
-/// identities and request ids, the system clock, rate-limit counters in
-/// bounded memory, the native default until a Redis connection is named
-/// (area 16), shared by all of a server's workers
-/// ([`http::WorkerThread::host`]; chunk 8.1l) and a host's own otherwise,
+/// identities and request ids, the system clock, rate limits counted in
+/// the Redis connection `rate_limits:` names when it is told to count there
+/// ([`NativeHost::counting_in`]; chunk Q8), and otherwise, or while that
+/// store can't count, in bounded memory (area 16), shared by all of a
+/// server's workers ([`http::WorkerThread::host`]; chunk 8.1l) and a
+/// host's own otherwise,
 /// and the work responses leave for after they are sent
 /// ([`Host::defer`]), which the HTTP worker takes as each response is
 /// handed back ([`NativeHost::take_deferred`]) and runs as tasks of its
@@ -301,6 +304,11 @@ pub struct NativeHost {
     /// The rate-limit counters: the server's one table, which its workers
     /// share (chunk 8.1l).
     limits: Arc<RateLimits>,
+    /// The store `rate_limits:` names, when a deployable counts there: a
+    /// Redis connection (chunk Q8). `jadpo dev` and a test name none.
+    counted_in: Option<String>,
+    /// Whether that store is being asked, which the server's workers share.
+    health: Arc<StoreHealth>,
     deferred: Deferred,
     /// The background work it has running (deferred work, ticks, work
     /// handed on), and whether it is shutting down (chunk 6.7).
@@ -397,9 +405,24 @@ impl NativeHost {
     }
 
     /// Counts rate limits in `limits`: the table every worker of a server
-    /// shares (chunk 8.1l).
-    pub(crate) fn with_rate_limits(mut self, limits: Arc<RateLimits>) -> NativeHost {
+    /// shares (chunk 8.1l), and asks the store as `health` says, which
+    /// they share too.
+    pub(crate) fn with_rate_limits(
+        mut self,
+        limits: Arc<RateLimits>,
+        health: Arc<StoreHealth>,
+    ) -> NativeHost {
         self.limits = limits;
+        self.health = health;
+        self
+    }
+
+    /// Counts rate limits in connection `store`, the one `rate_limits:`
+    /// names, when its driver counts (a Redis connection's), and in memory
+    /// while it can't (area 16, "Where the counts are kept"; chunk Q8):
+    /// what a deployable's workers do. `None` counts in memory alone.
+    pub fn counting_in(mut self, store: Option<&str>) -> NativeHost {
+        self.counted_in = store.map(str::to_string);
         self
     }
 
@@ -564,16 +587,35 @@ impl Host for NativeHost {
         i64::try_from(elapsed.as_millis()).ok()
     }
 
-    /// Counted in memory: the server's one table, which its workers share
-    /// (chunk 8.1l).
+    /// Counted in the store it was told to count in, while that counts
+    /// ([`ratelimit::in_store`]: one that can't is left alone for 10
+    /// seconds, and logged once each time it stops); otherwise in memory,
+    /// the server's one table, which its workers share (chunk 8.1l).
     fn rate_limit<'a>(
         &'a self,
         key: &'a str,
         limit: RateLimit,
         now: i64,
     ) -> LocalFuture<'a, Allowed> {
-        let allowed = self.limits.allow(key, limit, now);
-        Box::pin(async move { allowed })
+        let store = self.counted_in.as_deref().and_then(|connection| {
+            Some((connection, self.drivers.counting_store(connection)?))
+        });
+        let Some((connection, store)) = store else {
+            let allowed = self.limits.allow(key, limit, now);
+            return Box::pin(async move { allowed });
+        };
+        Box::pin(async move {
+            let counted = ratelimit::in_store(
+                &self.health,
+                connection,
+                store,
+                (key, limit),
+                self.monotonic_ms(),
+                |fields| self.log("rate_limits.fallback", fields),
+            )
+            .await;
+            counted.unwrap_or_else(|| self.limits.allow(key, limit, now))
+        })
     }
 }
 

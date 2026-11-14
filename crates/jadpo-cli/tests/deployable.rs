@@ -1458,6 +1458,77 @@ fn a_deployable_counts_a_routes_own_limit_as_dev_does() {
     assert_eq!(ended(&mut child, 30), Some(0));
 }
 
+/// Two servers counting their rate limits in one Redis store (area 16,
+/// "Where the counts are kept"; chunk Q8): the requests of
+/// `route_limits.rs` sent to each in turn get the answers one server gives,
+/// since they share one count, here in the Redis double and then in a real
+/// Redis server when the run has one.
+#[test]
+fn two_deployables_share_one_count_in_redis() {
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let root = target
+        .parent()
+        .unwrap_or(target)
+        .join("jadpo-compiled/deployable/route-limits-redis");
+    super::route_limits::redis_project_at(&root, "native");
+    jadpo(&root, &["records", "update"]);
+    jadpo(&root, &["build", "--json"]);
+    let binary = root.join("build/target/desk/desk");
+    let double = jadpo_drivers::redis::testing::TcpDouble::start(
+        jadpo_drivers::redis::testing::Double::signing_in(None, "desk"),
+    );
+    let real = jadpo_drivers::redis::testing::real(2);
+    let mut stores = vec![("the double", double.url(Some("desk")))];
+    stores.extend(real.iter().map(|real| ("real Redis", real.url.clone())));
+    for (store, url) in stores {
+        let servers: Vec<_> = (0..2)
+            .map(|_| {
+                let (child, lines) = start(
+                    &binary,
+                    &[("HOST", "127.0.0.1"), ("PORT", "0"), ("REDIS_URL", &url)],
+                );
+                let started = next(&lines, 60);
+                assert_eq!(started["event"], "runtime.started", "{store}: {started}");
+                let address = started["address"]
+                    .as_str()
+                    .expect("its address")
+                    .to_string();
+                (child, lines, address)
+            })
+            .collect();
+        let turn = std::cell::Cell::new(0);
+        super::route_limits::answers_as_every_host_does(|method, path| {
+            let (_, _, address) = &servers[turn.get() % 2];
+            turn.set(turn.get() + 1);
+            let (status, head, _) = exchanged(address, method, path, "");
+            (status, head)
+        });
+        for (mut child, lines, _) in servers {
+            let stopped = Command::new("kill")
+                .args(["-TERM", &child.id().to_string()])
+                .status()
+                .expect("kill runs");
+            assert!(stopped.success());
+            assert_eq!(ended(&mut child, 30), Some(0));
+            let logged: Vec<Value> = lines.try_iter().collect();
+            assert!(
+                logged
+                    .iter()
+                    .all(|event| event["event"] != "rate_limits.fallback"),
+                "{store}: the store counted every request: {logged:?}"
+            );
+        }
+    }
+    let keys = double.keys();
+    assert!(
+        !keys.is_empty()
+            && keys
+                .iter()
+                .all(|key| key.starts_with(jadpo_drivers::redis::RATE_LIMIT_PREFIX)),
+        "{keys:?}"
+    );
+}
+
 /// A refused magic link or address check says which limit it was over, as
 /// on `jadpo dev` (`generated_limits.rs`): `generate_routes`' own routes,
 /// and the app's own routes over the same operations.

@@ -1244,7 +1244,7 @@ takes its place.
 A record is stored as one JSON value, the same JSON the API sends, like a
 cache entry.
 
-Not built yet: entities in Redis, which come with the Redis driver.
+Not built yet: entities in Redis.
 
 ## Storage types
 <!-- topic: storage-types -->

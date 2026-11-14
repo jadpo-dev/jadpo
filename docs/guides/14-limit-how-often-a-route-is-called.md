@@ -114,8 +114,9 @@ as well as tighten it. This route's requests have a count of their own and use
 none of the caller's default allowance.
 
 `within:` takes whole seconds, from `1s` to `24h`, and a server program counts any
-of them. Cloudflare Workers counts only `10s` and `1m`, so this route runs on both,
-and a longer window such as `1h` is a compile error on a Worker.
+of them, as does Redis. Cloudflare's rate-limiting binding on Workers counts only
+`10s` and `1m`, so this route runs on both, and a longer window such as `1h` is a
+compile error on a Worker counting there.
 
 `jadpo routes` shows each route's limit, and the route's OpenAPI entry lists it
 as `x-jadpo-rate-limit`, so a client can see it:
@@ -245,13 +246,18 @@ needs a cap of its own as well.
 
 Where the counts are kept decides how exact they are:
 
-- **A native app** counts in each server's memory. Several servers each give
-  the whole allowance, and a restart starts every count again.
+- **A native app** counts in each server's memory unless it names a store.
+  Several servers each give the whole allowance, and a restart starts every
+  count again.
+- **In Redis**, natively or on Workers, every server and instance shares one
+  count: a connection with `driver: Driver.redis`, named in
+  `rate_limits: { store: }`. While Redis can't be reached, each counts in its
+  own memory.
 - **On Cloudflare Workers** a Worker's instances share no memory, so a deployable
-  must name a store, Cloudflare's rate-limiting binding.
-  [Deploy to Cloudflare Workers](11-deploy-to-workers.md) sets it up. Its counts
-  are kept in each Cloudflare location and shared only after a delay, so it is
-  approximate: a client gets well past a small limit, such as 10 a minute,
+  must name a store: Redis, or Cloudflare's rate-limiting binding, which
+  [Deploy to Cloudflare Workers](11-deploy-to-workers.md) sets up. The binding's
+  counts are kept in each Cloudflare location and shared only after a delay, so
+  it is approximate: a client gets well past a small limit, such as 10 a minute,
   before its first 429. It stops a flood, not one request too many.
 
 A count that must hold exactly, such as free trials per account, is your app's
@@ -262,12 +268,11 @@ exact, and refuse the request in your action when it is used up.
 
 [Rate limits](../language/16-built-in-services.md#rate-limits),
 [Rate-limited requests](../language/07-http.md#rate-limited-requests),
-[Client addresses](../language/10-configuration-and-time.md#client-addresses) and
-[Rate limits on Workers](../language/16-built-in-services.md#rate-limits-on-workers).
+[Client addresses](../language/10-configuration-and-time.md#client-addresses),
+[Rate limits on Workers](../language/16-built-in-services.md#rate-limits-on-workers) and
+[The Redis driver](../language/16-built-in-services.md#the-redis-driver).
 
 ## Not built yet
 
-- Sharing counts between native servers through Redis isn't built yet. A
-  deployable whose store is Redis counts in its own memory for now.
 - Turning a limit off has no syntax yet. To loosen one, raise `requests:` or
   shorten `within:`.

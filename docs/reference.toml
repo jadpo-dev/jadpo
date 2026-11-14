@@ -619,17 +619,15 @@ details = [
 
 [[group.page]]
 title = "Rate limits"
-status = [
-  "16-built-in-services: Rate limits",
-  "07-http: The Redis store for rate limits",
-]
-missing = "the Redis store; turning a limit off"
+status = ["16-built-in-services: Rate limits"]
+missing = "turning a limit off"
 topics = [
   "rate-limits",
   "rate-limited-requests",
 ]
 details = [
   "rate-limits-on-workers",
+  "the-redis-driver",
 ]
 
 [[group.page]]

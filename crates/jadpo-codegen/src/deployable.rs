@@ -94,6 +94,9 @@ pub struct Drivers {
     pub postgres: bool,
     /// SMTP, for a deployable that sends email through an SMTP server.
     pub smtp: bool,
+    /// Redis, for a project with a Redis connection, which every
+    /// deployable reaches: its rate limits are counted there (chunk Q8).
+    pub redis: bool,
 }
 
 impl Drivers {
@@ -105,6 +108,9 @@ impl Drivers {
         }
         if self.smtp {
             out.push("smtp");
+        }
+        if self.redis {
+            out.push("redis");
         }
         out
     }

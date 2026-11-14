@@ -253,6 +253,3 @@ and [Database and other connection URLs](../language/10-configuration-and-time.m
 
 - There are no prebuilt `jadpo` downloads yet, so you build on a
   machine where you built `jadpo`, as on page 1.
-- Counting rate limits in Redis isn't built yet, so a server program
-  counts sign-in emails per address in its own memory. Run one copy of
-  it.

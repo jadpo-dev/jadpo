@@ -23,6 +23,15 @@ package = ["dep:blake3", "dep:jadpo-value", "dep:serde_json"]
 # MIME message and handed to its server in an SMTP conversation over the
 # host's `Transport` (chunk 8.1b).
 smtp = ["dep:jadpo-value", "tokio/io-util"]
+# The Redis driver (area 16; chunk Q8): RESP over the host's `Transport`,
+# one connection a driver carrying every caller's commands, and what rate
+# limits are counted with; each count's key a hash of what it counts.
+redis = ["dep:blake3"]
+# The in-process Redis double, the same double on a port of this machine,
+# and a real server when the run has one: what tests reach Redis through.
+# Only tests turn it on (as dev-dependencies), so no deployable or
+# released `jadpo` holds it.
+redis-testing = ["redis"]
 
 [dependencies]
 jadpo-runtime.workspace = true

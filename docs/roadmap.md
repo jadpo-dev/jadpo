@@ -374,10 +374,11 @@ work below (Richard, 2026-11-08).
       inside JSON stored by born name, and a born name written by hand
       refused, in area 5, "What a rename keeps", area 14, "`jadpo rename`",
       area 18, "Stable identity", and their notes.
-    - [ ] **Q8 The Redis driver** `opus · xhigh`: area 11, "No presets, no
-      dependencies"; area 16, "Where the counts are kept: `rate_limits: { store: }`" and "A
-      Redis store on Workers". `Driver.redis` natively and on Workers, and
-      rate limits counted there rather than in each server's memory.
+    - [x] **Q8 The Redis driver**: `Driver.redis` natively and on Workers,
+      and rate limits counted there, in area 16, "Where the counts are kept",
+      "A Redis store on Workers" and "The Redis driver", and its notes; area
+      11, "No presets, no dependencies"; compiler-runtime §2.6, "What both
+      executors share, and round trips".
     - [ ] **Q9 Caches** `opus · xhigh` after Q8: area 5, "Caches"; area 6,
       "Where a read comes from"; area 7, "Write revisions"; area 13, "What is
       built"; area 11, "Targets". An entity's `caches:`, a query's `cache:`, the

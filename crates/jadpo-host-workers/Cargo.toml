@@ -52,6 +52,9 @@ postgres = ["jadpo-drivers/postgres"]
 # SMTP over `connect()`, for a deployable that sends the app's email
 # through an SMTP server (chunk 8.2b).
 smtp = ["jadpo-drivers/smtp"]
+# Redis over `connect()`, for a deployable whose rate limits are counted in
+# a Redis connection (chunk Q8).
+redis = ["jadpo-drivers/redis"]
 # A test's server on this machine reached over HTTPS by the outbound guard
 # (`WorkersOutbound::reaching`): never built outside a test.
 test-outbound = []

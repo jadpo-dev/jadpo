@@ -436,9 +436,10 @@ On a first run, `jadpo migrate new initial` writes the migration and `jadpo
 records update` the records, as `jadpo check`'s `next:` lines say. Commit what
 they write.
 
-This limit's window is a minute, which every target can count. A longer one,
-such as `within: 1h`, runs on the native target but not on Workers, whose store
-counts only 10 or 60 seconds ([Counting on Workers](#counting-on-workers)).
+This limit's window is a minute, which every store can count. A longer one,
+such as `within: 1h`, runs natively and in a Redis store on Workers, but not in
+Cloudflare's binding, which counts only 10 or 60 seconds
+([Counting on Workers](#counting-on-workers)).
 
 `requests:` is a whole number of at least 1. `within:` is whole seconds
 from `1s` to `24h`; a longer allowance is a plan's limit, which is your
@@ -517,11 +518,34 @@ without you writing anything.
 
 With no store named, each server counts in its own memory. A store shared
 between servers is named with `rate_limits: { store: cache }` in
-`app.jadpo`'s `application { }` block. Redis is the store for that, and
-its driver isn't built yet, so for now a Redis store counts in each
-server's memory too ([What is built](#what-is-built)). If a store can't be
-reached, each server counts in its own memory, so limits stay roughly
-right and no request fails. Caches follow the same rule
+`app.jadpo`'s `application { }` block, and every server then counts in it, so
+a client has one allowance however many servers its requests reach. Redis is
+the store for that, natively and on Workers
+([The Redis driver](#the-redis-driver)):
+
+```jadpo check project=rate-limits-in-redis file=app.jadpo
+application {
+    connections: {
+        cache: {
+            driver: Driver.redis
+            url: config.redis_url
+        }
+    }
+    rate_limits: {
+        store: cache
+    }
+}
+```
+
+```jadpo check project=rate-limits-in-redis file=config.jadpo
+config {
+    redis_url: RedisUrl
+}
+```
+
+If the store can't be reached, each server counts in its own memory, so
+limits stay roughly right and no request fails
+([When it can't count](#when-it-cant-count)). Caches follow the same rule
 ([Caches](05-data.md#caches)).
 
 The store must be a connection with `driver: Driver.redis` or
@@ -578,22 +602,21 @@ the Wrangler file's `ratelimits`.
 This store can count only windows of 10 or 60 seconds. A limit with any
 other window, such as `within: 1h`, is a compile error
 (`rate_limits.window_unsupported`), which names Redis as a store that can
-count it. It is never counted over another window instead. Until Redis's
-driver comes a Redis store counts in each instance's memory
-([A Redis store on Workers](#a-redis-store-on-workers)), so for now a limit
-on Workers is in practice per 10 seconds or per minute. The default limits
-are all per minute, so only a limit you write yourself can raise this.
+count it. It is never counted over another window instead. A Redis store
+counts any window on Workers too
+([A Redis store on Workers](#a-redis-store-on-workers)).
 
 A limit counted in the binding is approximate. Cloudflare keeps a count in
 each of its locations and shares it only after a delay, so a client gets well
 past the number you wrote before the first 429, and at small numbers, such as 10
 a minute, a limit barely holds ([What the binding
 promises](#what-the-binding-promises)). It guards against a flood of requests,
-not an exact count. Jadpo has no
-exact store on Workers: a counter in a Durable Object isn't built, and Redis's
-driver isn't either. A limit that must hold exactly, such as a number of free
-trials or of jobs waiting, is your app's own data: count it in a record in your
-database, where a transaction keeps the count exact.
+not an exact count. A Redis store keeps one count for every instance, but only
+while it can be reached: when it can't, each instance counts in its own memory.
+A counter in a Durable Object isn't built. So a limit that must hold exactly,
+such as a number of free trials or of jobs waiting, is your app's own data:
+count it in a record in your database, where a transaction keeps the count
+exact.
 
 The binding says only whether a request is within the limit, so a
 refused client is told to try again after the window's whole length. If
@@ -602,7 +625,6 @@ within 500 ms, the instance counts in its own memory instead. That is
 logged once for each instance, and no request fails for it.
 
 [Rate limits on Workers](#rate-limits-on-workers) has the details.
-[What is built](#what-is-built) says how a Redis store counts.
 
 ### What a limit doesn't promise
 
@@ -626,6 +648,10 @@ What else falls short depends on where the counts are kept:
 - **In Cloudflare's binding, on Workers.** Counts are per Cloudflare location
   and rough: a limit of 5 let 24 through when measured
   ([What the binding promises](#what-the-binding-promises)).
+- **In Redis.** One count and one window for every server and instance, timed
+  by Redis's own clock. While Redis can't be reached, each counts in its own
+  memory, as above. A count Redis loses, to a restart that keeps no data or to
+  eviction when its memory is full, starts again.
 
 ## Cache drivers and what a cache may hold
 <!-- topic: caches-drivers-and-what-they-hold -->
@@ -640,7 +666,7 @@ hold.
 Upstash, Valkey, Amazon ElastiCache and Redis itself all use the Redis
 driver, on the native target and on Workers. Each service's settings are
 listed on the driver's page, as every driver's are
-([Connecting in `app.jadpo`](11-integrations.md#connecting-in-appjadpo)).
+([The Redis driver](#the-redis-driver)).
 
 ### `Driver.memory`
 
@@ -4057,7 +4083,10 @@ asking, but well past the number you wrote. Here is what it did, measured once, 
 Once its window had passed, the 5-in-10-seconds route answered again. Each
 429 gave the window's length in `Retry-After`. Those are one run's numbers,
 not a promise: they show how far past a limit a client can get, and it may
-differ elsewhere and under other traffic.
+differ elsewhere and under other traffic. The windows and the Wrangler
+entries aren't yet checked against the real edge in the gate: the workerd
+pinned in `tools/fixtures/workers/` has no binding of its own, and its types
+give only `limit({ key })` and `success`.
 
 Cloudflare documents the binding as approximate, and these are its other
 terms. A limit on Workers is only as strong as this:
@@ -4104,20 +4133,86 @@ So use the binding to shed abuse, not to enforce a total
 
 ### A Redis store on Workers
 
-Until Redis's driver comes with caches, a deployable whose store is
-Redis counts in its own memory, the same fallback as when the store
-can't be reached. A Worker's instances share no memory, so a deployable
-built for Workers that serves an API with a Redis store is
-`rate_limits.counted_in_memory`. It is a judgement call, since Jadpo has
-no warnings. You answer it with Cloudflare's binding, or with a
-`decline` line above the deployable that keeps Redis and counts in
-memory until its driver comes. A native deployable with a Redis store is
-unaffected.
+A deployable built for Workers whose store is Redis counts there from every
+instance and every Cloudflare location, in one count, over any window from a
+second to a day, as a native server does. Choose it over the binding when a
+limit must hold across locations, or count a window the binding can't.
 
-The windows and the Wrangler entries aren't yet checked against the real
-edge: the workerd pinned in `tools/fixtures/workers/` has no binding of
-its own, and its types give only `limit({ key })` and `success`
-([What is built](#what-is-built)).
+A Worker's sockets belong to the request that opened them, so each request
+opens its own connection to Redis over `connect()`, which costs a round trip,
+and a TLS handshake for `rediss://`, before the count. A Redis close to where
+the Worker runs keeps that short. When the store can't count, the instance
+counts in its own memory ([When it can't count](#when-it-cant-count)).
+
+## The Redis driver
+<!-- topic: the-redis-driver -->
+
+`driver: Driver.redis` reaches any Redis-compatible service, natively and on
+Workers. Its one setting is `url:`, read from a `RedisUrl` setting, which is
+always secret
+([Connection types](10-configuration-and-time.md#connection-types)), as
+[Where the counts are kept](#where-the-counts-are-kept-rate_limits--store-)
+shows. What it does today is count rate limits there. Caches and entities in
+Redis will use the same connections ([Caches](05-data.md#caches)).
+
+### The address
+
+- **`rediss://` is TLS from the first byte**, the server's certificate checked
+  for the address's host against Mozilla's roots natively and the platform's
+  on Workers. `redis://` is plain TCP, for a server on a private network or on
+  this machine.
+- **A user and a password sign in**, and a database number after the host
+  chooses that database, both written before anything else on each
+  connection. The port is 6379 unless the address gives another.
+- **What the driver can't read** leaves the connection unbuilt, so none of
+  it is quietly ignored: options after `?`, which it reads none of, and a user
+  with no password. The deployable's `runtime.started` line names the
+  connection and why, never the address, and its rate limits are counted in
+  memory.
+- **One server.** The driver talks to one server, so a cluster that shards
+  keys across servers, such as Redis Cluster or ElastiCache with cluster mode
+  on, isn't one it can use.
+
+There are no presets: each service is the driver with its own address.
+
+| Service | `url:` |
+|---|---|
+| Upstash | `rediss://default:<password>@<endpoint>:6379`, the database's TLS address |
+| Amazon ElastiCache, cluster mode off | `rediss://:<auth token>@<primary endpoint>:6379`, with encryption in transit on |
+| Redis or Valkey you run | `rediss://<user>:<password>@<host>:6379/<database>`, or `redis://` on a private network |
+| This machine | `redis://localhost:6379` |
+
+### How a count is kept
+
+Each count is one key, `jadpo:rate_limit:` and a hash of what it counts, never
+the address or the user's id as written. One transaction starts the key's
+window when it isn't there, adds the request and reads how long the window has
+left, so the servers share one window, timed by Redis's clock, and a refused
+client's `Retry-After` is what is left of it. The key expires with its window.
+
+Every app's keys start the same way, so two apps counting in one database share
+their counts. Give each app a database of its own, `/1` or `/2` at the end of
+its address, or a Redis of its own where the service has one database.
+
+Natively each of a server's workers keeps one connection, opened when it first
+counts and again once it breaks, and each request's count is written to it as
+it comes, the answers read back in order. On Workers each request opens its
+own ([A Redis store on Workers](#a-redis-store-on-workers)).
+
+### When it can't count
+
+A count that hasn't answered within a second, opening the connection included,
+isn't waited for, and nor is one the store refuses, such as a wrong password,
+or one whose connection breaks. The server, or the Worker's instance, counts
+that request in its own memory, and every request after it for 10 seconds
+without asking, then asks again. No request fails for it.
+
+Each time the store stops answering is logged once, as `rate_limits.fallback`,
+with the connection, why (`unreachable`, `timed_out` or `failed`) and what that
+means, never a key. `GET /health/ready` doesn't ask Redis, as it doesn't ask a
+cache. `jadpo dev` counts in its own memory whatever the store, since it is one
+server, and a route test counts nothing
+([What a client sees](#what-a-client-sees)).
 
 ## The dev inbox and the health score
 <!-- topic: the-dev-inbox-and-the-health-score -->
@@ -5366,7 +5461,7 @@ The errors this page describes are built with the feature they belong to.
 | The privacy emails | Built: the address check, export ready, erasure confirmed and erasure completed, each at the five levels ([Every built-in email](#every-built-in-email)), interpreted and compiled. |
 | Mail packages | Built: a mail package as the connection, partials and `email.sent` ([Mail packages, partials and `email.sent`](#mail-packages-partials-and-emailsent)). |
 | The dev inbox and the health score | Partly built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
-| Rate limits | Partly built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store on Workers, Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built yet: Redis's driver, which comes with caches. Until then a deployable whose store is Redis counts in its own memory, which on Workers is the judgement call `rate_limits.counted_in_memory`. Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |
+| Rate limits | Partly built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store: a Redis connection, natively and on Workers ([The Redis driver](#the-redis-driver)), or on Workers Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |
 | Outside calls | Built: the one place in the runtime every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([How every outside call is made safe](#how-every-outside-call-is-made-safe)). |
 | Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` and [`Driver.s3`](#the-s3-driver) connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included, a `File` inside a structured field held as a `File` field's is ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). A `File` an `Output` or a person's export reaches goes out as a signed link valid for five minutes, served from the disk with single ranges, `If-Range` and an ETag from the file's hash ([Downloading](#downloading)). A client's file reaches a store through a [slot](#uploading), single or [in parts](#large-uploads-go-in-parts): `Entity.field_upload()`, the disk driver's upload address, and a `FileUpload` attached by an ordinary create or update. A test keeps a fixture file in its in-memory store with `fixture_file`, and tells the store to fail every call or every write ([Files](13-testing.md#files)). `jadpo files` lists a store's files on either driver, or `jadpo dev`'s copy, shows, gets and puts one, and copies every file and the erasure log from one store into another, a disk store's folder among them ([`jadpo files`](14-tooling.md#jadpo-files)). A `File` an operation's `input:` or a webhook's `reply:` holds is sent as its bytes ([What a `File` holds](#what-a-file-holds)), and fields in entities of two databases may name one store of files, each counting its own records' holders ([Deleting and erasing](#deleting-and-erasing)). Not built yet: image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
 | Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flag rules: declaring, reading, testing](#flag-rules-declaring-reading-testing)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flag rules: changing, listing, removing](#flag-rules-changing-listing-removing)). A person's erasure takes their `id` out of `jadpo_flags` and `jadpo_flag_changes`, and `jadpo migrate new --drop jadpo_flags` drops both once the last flag has gone ([The log](#the-log), [Removing](#removing)). Not built yet: named tenants, which wait for tenancy to be settled for flags. |
@@ -5396,7 +5491,6 @@ The errors this page describes are built with the feature they belong to.
 - [`email.sent_context`](../errors/email.sent_context.md)
 - [`search.settings_invalid`](../errors/search.settings_invalid.md)
 - [`search.undeclared`](../errors/search.undeclared.md)
-- [`rate_limits.counted_in_memory`](../errors/rate_limits.counted_in_memory.md)
 - [`rate_limits.store_invalid`](../errors/rate_limits.store_invalid.md)
 - [`rate_limits.store_required`](../errors/rate_limits.store_required.md)
 - [`rate_limits.window_unsupported`](../errors/rate_limits.window_unsupported.md)

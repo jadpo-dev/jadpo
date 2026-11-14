@@ -3565,10 +3565,9 @@ services](11-integrations.md)):
 
 A deployable built for Workers that serves an API needs a store for its
 rate limits, `rate_limits: { store: }` ([Rate
-limits](16-built-in-services.md#rate-limits); `rate_limits.store_required`).
-Until Redis's driver comes, a Redis store there would leave each instance
-counting in its own memory. That is a judgement call, which a `decline`
-line answers (`rate_limits.counted_in_memory`). Here `web` is a Worker:
+limits](16-built-in-services.md#rate-limits); `rate_limits.store_required`):
+Redis, which counts there as natively, or Cloudflare's rate-limiting binding.
+Here `web` is a Worker, counting in Redis with `back_office`:
 
 `app.jadpo`:
 
@@ -3591,7 +3590,6 @@ application {
         store: cache
     }
     deployables: {
-        decline rate_limits.counted_in_memory: "One instance of `web` is enough until Redis's driver comes"
         web: {
             serves: [main]
             runs: [Trigger.subscribers]
