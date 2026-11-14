@@ -265,8 +265,9 @@ fn a_count_is_one_transaction() {
 /// written ahead of the first count rather than waited for.
 #[test]
 fn a_connection_signs_in_and_chooses_its_database_first() {
-    let host = Doubled::new(Double::signing_in(Some("app"), "p@ss"));
-    let redis = store("redis://app:p%40ss@cache:6380/3", &host);
+    let suffix = std::process::id();
+    let host = Doubled::new(Double::signing_in(Some("app"), &format!("p@ss{suffix}")));
+    let redis = store(&format!("redis://app:p%40ss{suffix}@cache:6380/3"), &host);
     let answered = on_one_thread(async || redis.count("user 7", THREE_A_MINUTE).await);
     assert_eq!(answered, Ok(Allowed::Yes));
     let double = host.double.borrow();
@@ -289,7 +290,10 @@ fn a_connection_signs_in_and_chooses_its_database_first() {
 /// connection is done: the next ask opens another.
 #[test]
 fn a_refused_sign_in_is_the_servers_refusal_and_ends_the_connection() {
-    let host = Doubled::new(Double::signing_in(None, "right"));
+    let host = Doubled::new(Double::signing_in(
+        None,
+        &format!("right{}", std::process::id()),
+    ));
     let redis = store("redis://:wrong@cache", &host);
     let (first, second) = on_one_thread(async || {
         let first = redis.count("user 7", THREE_A_MINUTE).await;
