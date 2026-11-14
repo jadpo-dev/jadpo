@@ -211,6 +211,91 @@ fn an_action_starts_loading_when_an_action_it_calls_does() {
     );
 }
 
+/// A shop keeping its products in a database of their own, `catalogue`,
+/// and its shelves in `main` (area 6, "One store per action"; chunk Q5).
+const TWO_STORES: &[(&str, &str)] = &[
+    (
+        "app.jadpo",
+        "application {\n    connections: {\n        main: {\n            driver: Driver.postgres\n        }\n        catalogue: {\n            driver: Driver.postgres\n        }\n    }\n}\n",
+    ),
+    (
+        "domains/shop/types/count.jadpo",
+        "type Count = Int {\n    min: 0\n}\n",
+    ),
+    (
+        "domains/shop/entities/product.jadpo",
+        "use shop/types { Count }\n\nentity Product {\n    id: Uuid\n    stock: Count\n\n    store: catalogue\n}\n",
+    ),
+    (
+        "domains/shop/entities/shelf.jadpo",
+        "use shop/types { Count }\n\nentity Shelf {\n    id: Uuid\n    visits: Count\n}\n",
+    ),
+    (
+        "domains/shop/queries/stocked.jadpo",
+        "use shop/entities { Product }\n\nquery stocked() -> List<Product> {\n    from: Product\n    order: [Product.stock desc]\n    limit: 10\n}\n",
+    ),
+    // Read committed: what each loads is in `catalogue`, outside the
+    // transaction in `main`.
+    (
+        "domains/shop/actions/count_view.jadpo",
+        "use shop/entities { Product, ProductNotFound, Shelf }\n\naction count_view(product_id: Product.id) fails ProductNotFound -> Shelf {\n    var product: Product = attempt Product.get(product_id)\n    return Shelf.create {\n        set: {\n            visits: product.stock\n        }\n    }\n}\n",
+    ),
+    (
+        "domains/shop/actions/count_stocked.jadpo",
+        "use shop/entities { Product, Shelf, ShelfNotFound }\nuse shop/queries { stocked }\n\naction count_stocked(shelf_id: Shelf.id) fails ShelfNotFound -> List<Product> {\n    var products: List<Product> = stocked()\n    attempt Shelf.delete(shelf_id)\n    return products\n}\n",
+    ),
+    (
+        "domains/shop/actions/count_handed.jadpo",
+        "use shop/entities { Product, Shelf }\n\naction count_handed(product: Product) -> Shelf {\n    return Shelf.create {\n        set: {\n            visits: product.stock\n        }\n    }\n}\n",
+    ),
+    (
+        "domains/shop/actions/count_after_look_up.jadpo",
+        "use shop/entities { Product, ProductNotFound, Shelf }\nuse shop/actions { look_up }\n\naction count_after_look_up(product_id: Product.id) fails ProductNotFound -> Shelf {\n    var product: Product = attempt look_up(product_id)\n    return Shelf.create {\n        set: {\n            visits: product.stock\n        }\n    }\n}\n",
+    ),
+    // Repeatable read: a record loaded in `main`, itself or through an
+    // action it calls; and an action that writes no store, which counts
+    // whatever it loads.
+    (
+        "domains/shop/actions/tally_beside.jadpo",
+        "use shop/entities { Product, ProductNotFound, Shelf, ShelfNotFound }\n\naction tally_beside(product_id: Product.id, shelf_id: Shelf.id) fails ProductNotFound, ShelfNotFound -> Shelf {\n    var product: Product = attempt Product.get(product_id)\n    var shelf: Shelf = attempt Shelf.get(shelf_id)\n    return Shelf.update(shelf) {\n        set: {\n            visits: product.stock\n        }\n    }\n}\n",
+    ),
+    (
+        "domains/shop/actions/retally.jadpo",
+        "use shop/entities { Product, ProductNotFound, Shelf, ShelfNotFound }\nuse shop/actions { tally_beside }\n\naction retally(product_id: Product.id, shelf_id: Shelf.id) fails ProductNotFound, ShelfNotFound -> Shelf {\n    return attempt tally_beside(product_id, shelf_id)\n}\n",
+    ),
+    (
+        "domains/shop/actions/look_up.jadpo",
+        "use shop/entities { Product, ProductNotFound }\n\naction look_up(product_id: Product.id) fails ProductNotFound -> Product {\n    return attempt Product.get(product_id)\n}\n",
+    ),
+];
+
+#[test]
+fn a_record_read_from_a_store_the_action_doesnt_write_loads_nothing_in_its_transaction() {
+    let db = Database::default();
+    let found = decided(&db, TWO_STORES);
+    let read_committed = at(Isolation::ReadCommitted, None);
+    let rr = |because: Loads| at(Isolation::RepeatableRead, Some(because));
+    let expected: BTreeMap<String, Decided> = [
+        // `get`, a query, a record as a parameter and an action it calls,
+        // each loading a `Product` in `catalogue`, while what it writes
+        // is in `main`.
+        ("action count_view", read_committed.clone()),
+        ("action count_stocked", read_committed.clone()),
+        ("action count_handed", read_committed.clone()),
+        ("action count_after_look_up", read_committed.clone()),
+        // The `Shelf` it reads in `main`, past the `Product` it read
+        // first; and through the action it calls.
+        ("action tally_beside", rr(Loads::Gets("Shelf".into()))),
+        ("action retally", rr(Loads::Calls("tally_beside".into()))),
+        // Writing no store, it counts what it loads anywhere.
+        ("action look_up", rr(Loads::Gets("Product".into()))),
+    ]
+    .into_iter()
+    .map(|(key, decided)| (key.to_string(), decided))
+    .collect();
+    assert_eq!(found, expected);
+}
+
 #[test]
 fn the_graph_and_the_manifest_carry_each_actions_and_fixtures_level() {
     let db = Database::default();

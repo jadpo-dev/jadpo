@@ -161,7 +161,7 @@ pub(crate) async fn read_as(
     // The rows it loaded, whose versions an outside call reads before it
     // closes the snapshot they were read in (chunk 7.4).
     for (versions, ids) in loaded.take() {
-        ctx.loaded(&versions, ids);
+        ctx.loaded(&plan.store, &versions, ids);
     }
     let (rows, values, hidden) = match result {
         Ok(found) => found,
