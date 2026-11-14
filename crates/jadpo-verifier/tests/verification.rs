@@ -600,6 +600,41 @@ fn only_the_run_says_what_its_tests_showed() {
     assert_eq!(answer["previous"]["ran"], 2);
 }
 
+/// Each suite's run comes from the pass that runs the package's code, and
+/// is pinned to the digest of the files it ran against (chunk K4b).
+#[test]
+fn the_runs_suites_are_pinned_to_the_releases_digest() {
+    let Some(sandbox) = sandbox() else { return };
+    let set = set("verify-conformance");
+    let (url, commit) = set.repository(PACKAGE);
+    let facts = json!({ "kind": "library" });
+    let run = json!({
+        "capability": "email",
+        "conforms": true,
+        "against": "recordings",
+        "cases": [{ "case": "message", "state": "passed", "detail": "sent" }],
+        "problem": null,
+        "digest": null,
+    });
+    let jadpo = stand_in(
+        set.tools.path(),
+        &report(true, &facts, &[("conformance", Value::Null)]),
+        &says(&report(
+            true,
+            &facts,
+            &[("bar", ran_bar()), ("conformance", json!([run]))],
+        )),
+    );
+    let verifier = verifier(sandbox, set.repositories.path(), set.scratch.path(), jadpo);
+    let answer = checked(verifier.verify(&set.request(&url, &commit, &verifier, None)));
+    assert_eq!(answer["passed"], true, "{answer}");
+    let pinned = &answer["conformance"][0];
+    assert_eq!(pinned["capability"], "email", "{answer}");
+    assert_eq!(pinned["conforms"], true);
+    assert!(pinned["digest"].is_string(), "{answer}");
+    assert_eq!(pinned["digest"], answer["digest"]);
+}
+
 #[test]
 fn a_run_that_spins_is_stopped_and_fails_the_release() {
     let Some(sandbox) = sandbox() else { return };

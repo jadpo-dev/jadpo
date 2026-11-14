@@ -180,6 +180,7 @@ fn answer(passed: bool, bar: Vec<Value>, problems: Vec<Value>, left_out: &[Strin
         "fingerprints": [],
         "fixes": [],
         "previous": null,
+        "conformance": [],
         "jadpo": null,
         "checked_with": [],
         "left_out": left_out,
@@ -351,13 +352,26 @@ impl Verifier {
                 .iter()
                 .map(|(path, bytes)| (path.as_str(), bytes.as_slice()))
                 .collect();
-            checked["digest"] = json!(Digest::of_files(&view).as_str());
+            let digest = Digest::of_files(&view);
+            checked["digest"] = json!(digest.as_str());
             checked["archive"] = json!(base64(&packed));
+            // Each suite's run is pinned to the digest of the files it ran
+            // against (area 11, "Proving a package works"; chunk K4b).
+            if let Some(runs) = checked["conformance"].as_array_mut() {
+                for run in runs {
+                    run["digest"] = json!(digest.as_str());
+                }
+            }
             let length = serde_json::to_vec(&checked).map_or(usize::MAX, |bytes| bytes.len());
             if length > ANSWER_LIMIT {
                 checked["passed"] = json!(false);
                 checked["digest"] = Value::Null;
                 checked["archive"] = Value::Null;
+                if let Some(runs) = checked["conformance"].as_array_mut() {
+                    for run in runs {
+                        run["digest"] = Value::Null;
+                    }
+                }
                 let detail = format!("its answer is past {} MB", ANSWER_LIMIT / 1_000_000);
                 if let Some(bar) = checked["bar"].as_array_mut() {
                     bar.retain(|row| row["item"] != "files");
@@ -765,6 +779,8 @@ fn combine(source: &Report, ran: &Report, left_out: &[String]) -> Value {
     let mut problems = diagnostics.clone();
     let mut change_record = data["change_record"].clone();
     let mut previous = Value::Null;
+    // Only running the package's code runs its suites (chunk K4b).
+    let mut conformance = json!([]);
     match ran {
         Report::Stopped(why) => {
             passed = false;
@@ -800,6 +816,9 @@ fn combine(source: &Report, ran: &Report, left_out: &[String]) -> Value {
                 ));
             }
             previous = run["previous"].clone();
+            if run["conformance"].is_array() {
+                conformance = run["conformance"].clone();
+            }
             // A problem the source found is said once: the run's whole list
             // holds it again.
             problems = diagnostics.clone();
@@ -830,6 +849,7 @@ fn combine(source: &Report, ran: &Report, left_out: &[String]) -> Value {
         "fingerprints": data["fingerprints"],
         "fixes": data["fixes"],
         "previous": previous,
+        "conformance": conformance,
         "jadpo": data["jadpo"],
         "checked_with": [data["jadpo"]],
         "left_out": left_out,
