@@ -4250,7 +4250,11 @@ runs is reached from its next start. `jadpo package record`, `jadpo ai
 record` and `jadpo package conform` build their one connection's driver
 the same way (`Drivers::keeping`); against its local fake the suite's is
 built over a fetch that sends every request there (`conform_fake::ToFake`),
-so a package with fixed `hosts:` runs as one given `host:` does. `jadpo test` builds none: a test
+so a package with fixed `hosts:` runs as one given `host:` does. `jadpo
+package check` and `verify` run each suite as that command runs it, in the
+scratch app the package is compiled in (`package_conform::release_runs`),
+and the verifier's service writes the release's digest into each run it
+hands back. `jadpo test` builds none: a test
 reaches no real driver, so its host gives each connection's stand-in by
 kind from the table (the in-memory files, the mail fake, a package's and
 `ai`'s fakes through `Faked`). *Rejected:* a closure per

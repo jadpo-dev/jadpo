@@ -702,6 +702,31 @@ pub(crate) fn facts_block(facts: &Facts) -> Block {
     }
 }
 
+/// The facts with each conformance run, a line a capability, after the
+/// operations a recording confirms (chunk K4b):
+///
+/// ```text
+///   contract     1 of 1 operation confirmed
+///   conformance  email: conforms, 4 passed
+/// ```
+pub(crate) fn with_conformance(block: Block, runs: &[crate::package_conform::Conformed]) -> Block {
+    match block {
+        Block::Answer {
+            headline,
+            mut fields,
+        } if !runs.is_empty() => {
+            let lines: Vec<String> = runs.iter().map(|run| run.line()).collect();
+            let at = fields
+                .iter()
+                .position(|(name, _)| name == "contract")
+                .map_or(fields.len(), |at| at + 1);
+            fields.insert(at, ("conformance".to_string(), lines.join("\n")));
+            Block::Answer { headline, fields }
+        }
+        block => block,
+    }
+}
+
 /// The change record, a line an entry.
 pub(crate) fn changes_block(since: &str, record: &[ChangeEntry]) -> Block {
     let rows = record
