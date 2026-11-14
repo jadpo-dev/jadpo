@@ -652,3 +652,130 @@ fn jadpo_package_record_checks_what_it_is_asked_for() {
         wrong.stderr
     );
 }
+
+// --- an output type written from the answer (chunk K5) ------------------------
+
+/// [`desk_at`], `bookings.create` declaring no `output:`, so the desk's
+/// action reads nothing from what it answers.
+fn desk_without_output(name: &str, sandbox: &str) -> PathBuf {
+    let root = desk_at(name, sandbox, &[]);
+    write(
+        &root,
+        &format!("{PACKAGE}/resources/bookings.jadpo"),
+        "public resource bookings {\n    create: {\n        method: HttpMethod.post\n        path: \"/v1/bookings\"\n        input: CreateBooking\n        changes: true\n        idempotent: true\n        failures: [SlotTaken]\n        source: PackageSource.written\n        docs: \"https://docs.acme-couriers.example/bookings\"\n    }\n}\n",
+    );
+    fs::remove_file(root.join(format!("{PACKAGE}/types/booking.jadpo"))).expect("removed");
+    fs::remove_file(root.join(format!("{PACKAGE}/libraries/slots.jadpo"))).expect("removed");
+    fs::remove_file(root.join(format!("{PACKAGE}/types/window_code.jadpo"))).expect("removed");
+    fs::remove_file(root.join(format!("{PACKAGE}/types/slot_window.jadpo"))).expect("removed");
+    fs::remove_file(root.join(format!("{PACKAGE}/failures/window_unknown.jadpo")))
+        .expect("removed");
+    write(
+        &root,
+        "domains/shipping/actions/book.jadpo",
+        "use app { couriers }\nuse shipping/failures { SlotGone }\nuse shipping/types { Booked, BookingForm }\nuse shared/providers/acme_couriers\n\n/// Books a collection.\naction book(form: BookingForm) fails SlotGone -> Booked {\n    attempt couriers.bookings.create(AcmeCouriers.CreateBooking {\n        postcode: form.postcode\n    }) {\n        slot_taken: SlotGone\n    }\n    return Booked {\n        id: \"pending\"\n        status: AcmeCouriers.Status.booked\n    }\n}\n",
+    );
+    let updated = jadpo(&root, &["records", "update"]);
+    assert_eq!(updated.code, 0, "{}{}", updated.stdout, updated.stderr);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    root
+}
+
+/// `jadpo package record` on an operation with no `output:` writes its
+/// output type from the sandbox's answer, as the importer reads an
+/// answer, beside the operation's `input:`, then keeps the answer as its
+/// recording through that type; what one answer only suggests is left to
+/// check, and `jadpo check` and `jadpo test` pass on what it wrote.
+#[test]
+fn jadpo_package_record_writes_the_output_type_from_the_answer() {
+    let sandbox = FakeProvider::start();
+    let root = desk_without_output("record-writes", &sandbox.url);
+    write(&root, ".env.local", "COURIERS_API_KEY=sk_test_481\n");
+    sandbox.answer(
+        200,
+        r#"{"id": "bk_481", "collectAt": "2026-10-21T09:00:00Z", "status": "booked", "pieces": 2, "note": null}"#,
+    );
+    let recorded = record(&root, &[]);
+    assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
+    assert_eq!(
+        recorded.stdout,
+        format!(
+            "Recorded `couriers.bookings.create` from the sandbox\n    sent    POST {}/v1/bookings\n    output  written from the answer, 1 type\n    answer  decodes as BookingsCreateOutput\n    values  4 placeholders\n    file    {PACKAGE}/recordings/bookings.create.json\n\nWritten from the answer\n  {PACKAGE}/resources/bookings.jadpo\n  {PACKAGE}/types/bookings_create_output.jadpo\n\nTo check\n  Read as `Instant` from how its value is written: check the provider's\n  documentation, then keep it or make it `Text` (agent)\n    BookingsCreateOutput.collect_at\n\n  Sent as `null`, so written as optional `Text`: check its type against the\n  provider's documentation (agent)\n    BookingsCreateOutput.note\n\noperation recorded: AcmeCouriers.v1 bookings.create, confirmed, 1 type written, 2 to check\n\nnext: jadpo check  shows what to review in the types written\n",
+            sandbox.url
+        )
+    );
+    assert_eq!(sandbox.requests().len(), 1);
+    assert_eq!(
+        fs::read_to_string(root.join(format!("{PACKAGE}/resources/bookings.jadpo")))
+            .expect("the resource"),
+        "public resource bookings {\n    create: {\n        method: HttpMethod.post\n        path: \"/v1/bookings\"\n        input: CreateBooking\n        output: BookingsCreateOutput\n        changes: true\n        idempotent: true\n        failures: [SlotTaken]\n        source: PackageSource.written\n        docs: \"https://docs.acme-couriers.example/bookings\"\n    }\n}\n"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join(format!("{PACKAGE}/types/bookings_create_output.jadpo")))
+            .expect("the type"),
+        "/// What `bookings.create` answers, written from the provider's sandbox's answer.\npublic type BookingsCreateOutput = Object {\n    collect_at: Instant {\n        wire_name: \"collectAt\"\n    }\n    id: Text\n    note: Text?\n    pieces: Int\n    status: Text\n}\n"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join(format!("{PACKAGE}/recordings/bookings.create.json")))
+            .expect("the recording"),
+        "{\n  \"collectAt\": \"{Instant}\",\n  \"id\": \"{Text}\",\n  \"note\": null,\n  \"pieces\": \"{Int}\",\n  \"status\": \"{Text}\"\n}\n"
+    );
+    // What it wrote is the package's own code: it checks, the new type is
+    // to review and the call confirmed, and the recording decodes.
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    assert!(
+        checked.stdout.contains("BookingsCreateOutput"),
+        "{}",
+        checked.stdout
+    );
+    assert!(
+        !checked.stdout.contains("Not yet confirmed"),
+        "{}",
+        checked.stdout
+    );
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(
+        tested.stdout.contains("1 recording test"),
+        "{}",
+        tested.stdout
+    );
+    let json = record(&root, &["--json"]);
+    let document: serde_json::Value = serde_json::from_str(&json.stdout).expect("JSON");
+    assert!(document["data"]["output"].is_null(), "{document}");
+}
+
+/// An answer no type can be written from writes nothing and records
+/// nothing, and the package is as it was.
+#[test]
+fn jadpo_package_record_writes_nothing_from_an_answer_with_no_type() {
+    let sandbox = FakeProvider::start();
+    let root = desk_without_output("record-writes-nothing", &sandbox.url);
+    write(&root, ".env.local", "COURIERS_API_KEY=sk_test_481\n");
+    let resource = root.join(format!("{PACKAGE}/resources/bookings.jadpo"));
+    let before = fs::read_to_string(&resource).expect("the resource");
+    sandbox.answer(200, r#"[1, "two"]"#);
+    let refused = record(&root, &[]);
+    assert_eq!(refused.code, 1, "{}{}", refused.stdout, refused.stderr);
+    assert!(
+        refused.stderr.contains(
+            "error: No output type could be written from the sandbox's answer to `couriers.bookings.create`"
+        ),
+        "{}",
+        refused.stderr
+    );
+    assert!(
+        refused.stderr.contains("rule: recording.failed"),
+        "{}",
+        refused.stderr
+    );
+    assert_eq!(fs::read_to_string(&resource).expect("the resource"), before);
+    assert!(!root.join(format!("{PACKAGE}/recordings")).exists());
+    assert!(
+        !root
+            .join(format!("{PACKAGE}/types/bookings_create_output.jadpo"))
+            .exists()
+    );
+}

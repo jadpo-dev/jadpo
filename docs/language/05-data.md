@@ -523,6 +523,121 @@ On a tenant's records, a rule holds within each tenant: its key holds the
 tenancy reference too
 ([A unique rule holds within its tenant](09-policy.md#a-unique-rule-holds-within-its-tenant)).
 
+### A value with an empty part
+
+A value kept in several columns may leave a part empty: an
+`EmailWithName` with no name, or a field of a choice's variant that
+another variant doesn't have. Two values equal in every part, empty
+parts included, are the same value, so a unique rule refuses the second,
+whether it is a field's `unique: true` or a rule over several fields. Its
+key counts the empty columns as equal, `UNIQUE NULLS NOT DISTINCT`, which
+PostgreSQL has from version 15.
+
+A field that may be `none` holds no value at all, so any number of
+records may hold `none`. Its key holds only the records that hold a
+value, a unique index
+(`CREATE UNIQUE INDEX "contact_reserve_email_key" ON "contact" ("reserve_email_name", "reserve_email_address") NULLS NOT DISTINCT WHERE "reserve_email_address" IS NOT NULL`),
+and a write's conflict names it as it names any rule. Here a contact's
+address is held once, with or without a name:
+
+```jadpo check project=unique-empty-part file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=unique-empty-part file=domains/people/failures/address_taken.jadpo hidden
+/// Another contact has this address.
+type AddressTaken = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=unique-empty-part file=domains/people/entities/contact.jadpo migrate=initial
+/// Someone to write to.
+entity Contact {
+    id: Uuid
+    email: EmailWithName {
+        unique: true  // the address and its name, which may be none
+    }
+    reserve_email: EmailWithName? {
+        unique: true  // any number of contacts have none
+    }
+}
+```
+
+```jadpo check project=unique-empty-part file=domains/people/actions/add_contact.jadpo hidden
+use people/entities { Contact }
+use people/failures { AddressTaken }
+
+/// Adds a contact at `email`, and at `reserve_email` if they have one.
+action add_contact(
+    email: EmailWithName,
+    reserve_email: EmailWithName?
+) fails AddressTaken -> Contact {
+    return attempt Contact.create {
+        set: {
+            email: email
+            reserve_email: reserve_email
+        }
+        conflict: {
+            Contact.email: AddressTaken
+            Contact.reserve_email: AddressTaken
+        }
+    }
+}
+```
+
+```jadpo check project=unique-empty-part file=domains/people/actions/add_contact.test.jadpo
+use people/entities { Contact }
+use people/failures { AddressTaken }
+
+test "an address with no name is held once" {
+    var ada: EmailWithName = EmailWithName {
+        name: none
+        address: "ada@example.com"
+    }
+    var first: Contact = attempt add_contact(ada, none)
+    var second: Contact = attempt add_contact(
+        EmailWithName {
+            name: "Ada Lovelace"
+            address: "ada@example.com"
+        },
+        none
+    )
+    assert first.reserve_email == none
+    assert second.reserve_email == none
+    assert add_contact(ada, none) fails AddressTaken
+    var shared_reserve: EmailWithName = EmailWithName {
+        name: none
+        address: "shared@example.com"
+    }
+    var grace_contact: Contact = attempt add_contact(
+        EmailWithName {
+            name: none
+            address: "grace@example.com"
+        },
+        shared_reserve
+    )
+    assert grace_contact.reserve_email == shared_reserve
+    assert add_contact(
+        EmailWithName {
+            name: none
+            address: "mary@example.com"
+        },
+        shared_reserve
+    ) fails AddressTaken
+}
+```
+
+A key made before Jadpo counted empty parts as equal is made again by
+the next migration. Like any unique rule added to a table that holds
+records, it first looks for records that hold the same value, and while
+it finds any, `jadpo migrate apply` refuses it with
+`migration.apply_failed`, naming the first set's records by `id`, never
+their values. The search runs before the migration changes
+anything, unless it reads a column the migration adds, and the step that
+finds them rolls back. Change or delete all but one record of each set,
+then apply it again.
+
 ### A unique rule over a structured value
 
 A rule may cover a field kept whole as its JSON

@@ -4027,6 +4027,27 @@ fn table_of(
             .map(|field| field.column.clone())
             .collect()
     };
+    // A field's columns, each with whether it may be `NULL` while the
+    // field holds a value: an object's part that may be `none`
+    // (`EmailWithName`'s name), or a choice's field its variant doesn't use.
+    let parts = |field: &FieldModel| -> Vec<(String, bool)> {
+        let entry = field.compound_entry();
+        field
+            .columns()
+            .into_iter()
+            .enumerate()
+            .map(|(at, (column, _))| (column, entry.is_some_and(|e| e.part_may_be_none(at))))
+            .collect()
+    };
+    // Whether a key over `fields` counts `NULL`s as equal: two values equal
+    // in every part, an empty one included, are one value (area 5, "Unique
+    // rules"; 2026-11-13).
+    let empty_parts = |fields: &[String]| -> bool {
+        fields
+            .iter()
+            .filter_map(|name| entity.fields.iter().find(|f| &f.name == name))
+            .any(|field| parts(field).iter().any(|(_, empty)| *empty))
+    };
     let mut position = 0u32;
     for field in &entity.fields {
         let columns = field.columns();
@@ -4118,6 +4139,17 @@ fn table_of(
             continue;
         }
         if field.unique && field.name != "id" {
+            let nulls_not_distinct = empty_parts(std::slice::from_ref(&field.name));
+            // One that may be `none` keys only the records holding a
+            // value, so any number may hold none.
+            let predicate = (nulls_not_distinct && field.nullable).then(|| {
+                let parts = parts(field);
+                let parts: Vec<(&str, bool)> = parts
+                    .iter()
+                    .map(|(column, empty)| (column.as_str(), *empty))
+                    .collect();
+                jadpo_sql::table::holds_value(&parts)
+            });
             out.unique.insert(
                 physical::object_name(&[table, &field.column], "key"),
                 physical::Unique {
@@ -4129,6 +4161,8 @@ fn table_of(
                     // A value kept whole as its JSON is keyed by its
                     // digest (chunk Q2).
                     digest: digested(std::slice::from_ref(&field.name)),
+                    nulls_not_distinct,
+                    predicate,
                 },
             );
         }
@@ -4186,6 +4220,10 @@ fn table_of(
                 ),
                 rule: format!("{}.{}", entity.born, rule.name),
                 digest: digested(&rule.fields),
+                // A rule's fields are required, so none is `none` as a
+                // whole (`data.unique_nullable_field`).
+                nulls_not_distinct: empty_parts(&rule.fields),
+                predicate: None,
             },
         );
     }

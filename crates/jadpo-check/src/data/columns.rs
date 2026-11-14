@@ -581,6 +581,8 @@ pub fn system_table(system: &jadpo_std::system::SystemTable) -> Table {
                     columns: strings(u.columns),
                     rule: u.rule.to_string(),
                     digest: Vec::new(),
+                    nulls_not_distinct: false,
+                    predicate: None,
                 },
             )
         })

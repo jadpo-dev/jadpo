@@ -286,9 +286,17 @@ const SAMPLE: &str = "sample";
 /// over.
 pub(crate) struct InSample {
     pub passed: bool,
+    /// The recipes' tests couldn't run, for want of a test database, so
+    /// the row waits rather than fails.
+    pub waiting: bool,
     pub detail: String,
+    /// The row's detail whole, for `--json`, where the screen's is
+    /// shortened to fit beside it (chunk K5).
+    pub whole: Option<String>,
     pub problems: Vec<jadpo_diag::Diagnostic>,
     pub sources: std::collections::BTreeMap<String, String>,
+    /// Each failed recipe test's report (chunk K5).
+    pub blocks: Vec<jadpo_term::Block>,
 }
 
 /// Compiles each recipe of the package in `folder`, `compiled` there,
@@ -296,7 +304,9 @@ pub(crate) struct InSample {
 /// as `jadpo package recipe` copies it, with the package placed as the
 /// sample's own integration, as `jadpo package check` places it. A
 /// recipe's migrations and records are the app's to write once copied,
-/// so they aren't asked for. `None` when the package ships no recipes.
+/// so they aren't asked for. A recipe that compiles has its own tests
+/// run there (chunk K5), its first migration written in the scratch app
+/// when it needs one. `None` when the package ships no recipes.
 pub(crate) fn in_sample(folder: &Path, compiled: &crate::package::Compiled) -> Option<InSample> {
     let recipes = folders_in(&folder.join(RECIPES));
     if recipes.is_empty() {
@@ -329,11 +339,15 @@ pub(crate) fn in_sample(folder: &Path, compiled: &crate::package::Compiled) -> O
     });
     let mut out = InSample {
         passed: true,
+        waiting: false,
         detail: String::new(),
+        whole: None,
         problems: Vec::new(),
         sources: std::collections::BTreeMap::new(),
+        blocks: Vec::new(),
     };
     let mut failing: Vec<String> = Vec::new();
+    let mut tested = Tested::default();
     for recipe in &recipes {
         let mut recipe_files = Vec::new();
         files_in(&folder.join(RECIPES).join(recipe), "", &mut recipe_files);
@@ -385,7 +399,9 @@ pub(crate) fn in_sample(folder: &Path, compiled: &crate::package::Compiled) -> O
                 format!("{SAMPLE}/{path}")
             }
         };
-        let problems: Vec<jadpo_diag::Diagnostic> = jadpo_check::check(&loaded.db, loaded.project)
+        let all = jadpo_check::check(&loaded.db, loaded.project);
+        let migrate = all.iter().any(|d| d.rule.id.starts_with("migration."));
+        let problems: Vec<jadpo_diag::Diagnostic> = all
             .into_iter()
             .filter(|d| {
                 d.rule.id != jadpo_diag::rule::PACKAGE_RESERVED_NAME.id
@@ -403,6 +419,13 @@ pub(crate) fn in_sample(folder: &Path, compiled: &crate::package::Compiled) -> O
             })
             .collect();
         if problems.is_empty() {
+            let tests: Vec<&String> = recipe_files
+                .iter()
+                .filter(|file| file.ends_with(".test.jadpo"))
+                .collect();
+            if !tests.is_empty() {
+                tested.run(&scratch.0, recipe, &into, &tests, migrate, &place, &mut out);
+            }
             continue;
         }
         failing.push(recipe.clone());
@@ -423,7 +446,8 @@ pub(crate) fn in_sample(folder: &Path, compiled: &crate::package::Compiled) -> O
             }
         }
     }
-    out.passed = failing.is_empty();
+    out.passed = failing.is_empty() && tested.failed == 0 && !tested.refused;
+    out.waiting = out.passed && tested.waiting;
     out.detail = match failing.as_slice() {
         [] => format!(
             "{} in sample/",
@@ -432,7 +456,181 @@ pub(crate) fn in_sample(folder: &Path, compiled: &crate::package::Compiled) -> O
         [one] if recipes.len() == 1 => format!("{one} doesn't compile"),
         _ => format!("{} of {} don't compile", failing.len(), recipes.len()),
     };
+    // The screen keeps what fits beside the row; `--json` has it whole.
+    if let Some(said) = tested.said() {
+        let whole = format!("{}, {said}", out.detail);
+        if failing.is_empty() {
+            out.detail = tested.short(recipes.len());
+        }
+        out.whole = Some(whole);
+    }
+    if tested.failed > 0 {
+        out.problems.push(
+            jadpo_diag::Diagnostic::new(
+                &jadpo_diag::rule::TEST_FAILED,
+                format!(
+                    "{} of {} failed in sample/",
+                    tested.failed,
+                    plural(tested.total, "recipe test", "recipe tests")
+                ),
+            )
+            .reason("A recipe is published only when its own tests pass, run in the package's `sample/` app with the recipe copied into its domain; each failed test's report is below.")
+            .next("Fix each failure, then run `jadpo package check` again"),
+        );
+    }
     Some(out)
+}
+
+/// What running the recipes' own tests in `sample/` found (chunk K5).
+#[derive(Default)]
+struct Tested {
+    total: usize,
+    failed: usize,
+    /// No test database, so some didn't run.
+    waiting: bool,
+    /// A recipe's tests were refused before they ran.
+    refused: bool,
+}
+
+impl Tested {
+    /// Runs recipe `recipe`'s test files `tests`, copied into `into` of
+    /// the scratch app at `scratch`, its first migration written first
+    /// when it needs one; each failure is reported at its place in the
+    /// package's folder, as `place` names it.
+    #[allow(clippy::too_many_arguments)]
+    fn run(
+        &mut self,
+        scratch: &Path,
+        recipe: &str,
+        into: &str,
+        tests: &[&String],
+        migrate: bool,
+        place: &dyn Fn(&str) -> String,
+        out: &mut InSample,
+    ) {
+        if migrate {
+            // One that can't be written shows its problems as the tests
+            // are refused below.
+            let _ = crate::run::run(
+                &["migrate".to_string(), "new".to_string(), recipe.to_string()],
+                &jadpo_term::Environment::empty().with_cwd(scratch),
+            );
+        }
+        let mut failed: Vec<jadpo_test::TestResult> = Vec::new();
+        let mut kept: Option<Box<jadpo_test::Run>> = None;
+        for test in tests {
+            let ran = jadpo_test::run(jadpo_test::Options {
+                cwd: scratch.to_path_buf(),
+                target: Some(format!("{into}/{test}")),
+                full: true,
+                ..jadpo_test::Options::default()
+            });
+            match ran {
+                jadpo_test::Ran::Done(mut run) => {
+                    for mut result in std::mem::take(&mut run.results) {
+                        self.total += 1;
+                        if result.failure.is_none() {
+                            continue;
+                        }
+                        self.failed += 1;
+                        result.test.file = place(&result.test.file);
+                        if let Some(failure) = &mut result.failure {
+                            failure.map_paths(place);
+                            // A package's recipes run here, not in an app.
+                            failure.rerun = "jadpo package check".to_string();
+                        }
+                        failed.push(result);
+                    }
+                    kept.get_or_insert(run);
+                }
+                jadpo_test::Ran::Stopped(diagnostic)
+                    if diagnostic.rule.id == jadpo_diag::rule::TEST_DATABASE_UNAVAILABLE.id =>
+                {
+                    if !self.waiting {
+                        out.problems.push(*diagnostic);
+                    }
+                    self.waiting = true;
+                    return;
+                }
+                jadpo_test::Ran::Refused {
+                    diagnostics,
+                    sources,
+                    ..
+                } => {
+                    self.refused = true;
+                    for (path, text) in sources {
+                        out.sources.insert(place(&path), text);
+                    }
+                    for mut diagnostic in diagnostics {
+                        if let Some(label) = &mut diagnostic.primary {
+                            label.span.path = place(&label.span.path);
+                        }
+                        for label in &mut diagnostic.secondary {
+                            label.span.path = place(&label.span.path);
+                        }
+                        out.problems.push(diagnostic);
+                    }
+                    return;
+                }
+                // A file with no test in it runs none.
+                _ => {}
+            }
+        }
+        if let Some(mut run) = kept
+            && !failed.is_empty()
+        {
+            run.results = failed;
+            let mut blocks = jadpo_test::screen(&run).into_blocks();
+            blocks.pop();
+            out.blocks.extend(blocks);
+        }
+    }
+
+    /// The row's detail on the screen, for `recipes` recipes that all
+    /// compile: `1 recipe, 2 tests pass`.
+    fn short(&self, recipes: usize) -> String {
+        if self.refused {
+            "recipe tests not run".to_string()
+        } else if self.waiting {
+            "tests wait for a test database".to_string()
+        } else if self.failed == 0 {
+            format!(
+                "{}, {} {}",
+                plural(recipes, "recipe", "recipes"),
+                plural(self.total, "test", "tests"),
+                if self.total == 1 { "passes" } else { "pass" }
+            )
+        } else {
+            format!(
+                "{} of {} failed",
+                self.failed,
+                plural(self.total, "recipe test", "recipe tests")
+            )
+        }
+    }
+
+    /// The recipes' tests, as the row says them; `None` when none ran.
+    fn said(&self) -> Option<String> {
+        if self.refused {
+            Some("tests not run".to_string())
+        } else if self.waiting {
+            Some("tests waiting for a test database".to_string())
+        } else if self.total == 0 {
+            None
+        } else if self.failed == 0 {
+            Some(format!(
+                "{} {}",
+                plural(self.total, "test", "tests"),
+                if self.total == 1 { "passes" } else { "pass" }
+            ))
+        } else {
+            Some(format!(
+                "{} of {} failed",
+                self.failed,
+                plural(self.total, "test", "tests")
+            ))
+        }
+    }
 }
 
 /// `publish.sample_missing`: the package's recipes have no sample app
@@ -462,6 +660,9 @@ fn sample_missing(
     };
     InSample {
         passed: false,
+        waiting: false,
+        blocks: Vec::new(),
+        whole: None,
         detail: detail.to_string(),
         problems: vec![
             jadpo_diag::Diagnostic::new(&jadpo_diag::rule::PUBLISH_SAMPLE_MISSING, message)

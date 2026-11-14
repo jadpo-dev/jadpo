@@ -115,7 +115,10 @@ decides which of Acme's services the call reaches.
 
 An answer the operation's types don't read is refused the same way,
 with the field that didn't decode and the type to correct, which your
-agent can do. `jadpo ai record` says the same of a model that gave no
+agent can do. So is an answer to an operation with no `output:` that no
+type can be written from, such as `null` or a list of several kinds of
+value: nothing is written, and your agent gives the operation an
+`output:` from the provider's documentation. `jadpo ai record` says the same of a model that gave no
 answer, or a fixture that failed before anything was asked.
 
 ## How to fix it

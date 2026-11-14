@@ -1445,6 +1445,19 @@ pub(crate) fn prepare(
     env: &Environment,
     run: bool,
 ) -> Result<Ready, (Vec<Diagnostic>, BTreeMap<String, String>)> {
+    prepare_allowing(root, env, run, &|_| false)
+}
+
+/// [`prepare`], running whatever `allowed` lets through as well as what
+/// never stops a run: `jadpo package record`'s judgement calls in the
+/// types it has just written from an answer (chunk K5), which `jadpo
+/// check` then shows.
+pub(crate) fn prepare_allowing(
+    root: &Path,
+    env: &Environment,
+    run: bool,
+    allowed: &dyn Fn(&Diagnostic) -> bool,
+) -> Result<Ready, (Vec<Diagnostic>, BTreeMap<String, String>)> {
     let loaded = jadpo_db::load(root);
     let (db, project) = (&loaded.db, loaded.project);
     let diagnostics = jadpo_check::check(db, project);
@@ -1481,7 +1494,7 @@ pub(crate) fn prepare(
     );
     let mut blocking: Vec<Diagnostic> = diagnostics
         .into_iter()
-        .filter(jadpo_check::blocks_running)
+        .filter(|diagnostic| jadpo_check::blocks_running(diagnostic) && !allowed(diagnostic))
         .collect();
     if !blocking.is_empty() {
         // A linked package's problems show in its checkout (area 11).

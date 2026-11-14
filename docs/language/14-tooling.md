@@ -1431,7 +1431,7 @@ code. Every file under the package's `recipes/<recipe>/` is copied to the
 same path under `domains/<domain>/`, all or nothing, and never over a file
 the app has. The screen lists each file written, then `jadpo check` as
 the hint. `jadpo package check` compiles each recipe in the package's
-`sample/` app.
+`sample/` app and runs the recipe's own tests there.
 
 ### `jadpo package record`
 
@@ -1447,10 +1447,13 @@ checks the answer against the operation's output type and keeps it as
 a linked checkout, its plain values replaced by placeholders, and writes
 when it was made, `recorded <resource>.<operation> <instant>`, in
 `recordings/recorded.jadpo_record`, which the package's facts read as
-its last contract run. A refusal,
-no answer, or an answer that doesn't decode keeps nothing
-(`recording.failed`). A missing or wrong `--input` is
-`cli.package_arguments`.
+its last contract run. An operation with no `output:` has its output
+type written from the answer first, as the importer reads an answer,
+with what one answer only suggests listed to check
+([Recordings](11-integrations.md#recordings)). A refusal,
+no answer, or an answer that doesn't decode, or that no type can be
+written from, keeps nothing (`recording.failed`). A missing or wrong
+`--input` is `cli.package_arguments`.
 
 ### `jadpo package conform`
 
