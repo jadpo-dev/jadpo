@@ -2648,12 +2648,23 @@ own connection, holding the first's lock until the second is seen waiting
 for it: the counter commits twice with one attempt each, and a counter
 after a read reruns the second (`crates/jadpo-cli/tests/writes.rs`).
 The driver also sends `time` values and one-dimensional arrays.
-`Host::database(store)` gives each store by its connection's name, and an
-action's transaction is begun in the store its first store operation
-names; asking for a second store in one action is a fault, since an action
-writes one store (area 5), and the checker refuses an action that reads
-a second store (`toolchain.not_built_yet`): reads outside the
-transaction are not built yet. `jadpo_runtime::migrate` and `standing` apply a
+`Host::database(store)` gives each store by its connection's name. An
+action's transaction is in its own store, which its plan names
+(`CallablePlan::store`, `ActionPlan::store`, through `ActionBody::store`):
+the one it writes, counting the actions it calls, else the one its outbox
+or its record of steps is kept in; a body with no plan, and a batch,
+begins it in the first store it uses, or the batch's. Asking to write
+another store is a fault, since an action writes one store (area 5) and
+the checker refuses two (`store.action_spans_stores`). A read of another
+store runs outside the transaction (area 6, "One store per action"; chunk
+Q5): `Boundary::outside` begins a read-only snapshot of that store at
+repeatable read at its first read there, every later read of it shares
+it, and it is rolled back as the action ends (`Boundary::end_outside`)
+and before an outside call goes out, with the action's own snapshot. Its
+rows are never held to their versions (`Ctx::loaded` keeps only the
+action's own store's), and the isolation level counts only the records an
+action that writes loads in its own store (`types::loading`), since no
+level of its transaction holds a read of another. `jadpo_runtime::migrate` and `standing` apply a
 store's pending migrations (each `jadpo_std::Migration`, as the checker
 reads it from the migration folders) and say where it stands, recording each in the
 store's `jadpo_migrations` table under the table's lock (a row lock, never

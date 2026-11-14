@@ -346,9 +346,10 @@ work below (Richard, 2026-11-08).
       include's rows rechecked in code and an aggregate counting the
       records the code keeps, in area 20, "In an include or an aggregate",
       and its notes.
-    - [ ] **Q5 Reading a second store** `opus · xhigh`: area 6, "One store per
-      action". Reads of another store outside the action's transaction, in place of
-      `toolchain.not_built_yet`.
+    - [x] **Q5 Reading a second store**: reads of another store in a
+      read-only snapshot of its own, outside the action's transaction, in
+      area 6, "One store per action" and "Which isolation level an action
+      runs at", and its notes; compiler-runtime, "Isolation and migrations".
     - [ ] **Q6 A database only when something needs one** `opus · high`, with
       the first feature that can run without one: area 5, "Stores".
     - [ ] **Q7 A standard type swapped under stored data** `opus · high`:

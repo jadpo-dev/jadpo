@@ -113,6 +113,12 @@ pub struct CallablePlan {
     /// the one it writes or the one `events: { store: }` names (area 12,
     /// chunk 6.1b).
     pub outbox: Option<String>,
+    /// For an action or fixture: the store a transaction of its own is in,
+    /// the one it writes, counting the actions it calls, else the one its
+    /// outbox or its record is kept in. A read of any other store runs
+    /// outside that transaction (area 6, "One store per action"; chunk
+    /// Q5). `None` begins it in the first store it uses.
+    pub store: Option<String>,
     /// For an action whose longest way makes several changing calls, run
     /// where its key survives a retry: where the runtime keeps its record
     /// and its step shape (area 12, "Several changing calls in one
@@ -1196,6 +1202,8 @@ impl Plan {
         // What the runtime keeps for an action with several changing calls
         // (area 12; chunk 7.5b).
         let record_plans = jadpo_check::types::record_plans(db, project);
+        // The stores each action and fixture writes (area 6).
+        let written = jadpo_check::types::written_stores(db, project);
         // Each `batches.each` call, as its site decodes it (area 12).
         let mut batch_sites: Vec<sites::BatchSite> = Vec::new();
         for (key, kind, file, body) in found {
@@ -1301,9 +1309,22 @@ impl Plan {
                 .then(|| jadpo_check::events::outbox_store(db, project, key.name()))
                 .flatten();
             let record = record_plans.get(&key).cloned();
+            // Where its transaction is (area 6, "One store per action";
+            // chunk Q5): the store it writes, else its outbox's or its
+            // record's, so a read of any other store runs outside it.
+            let store = matches!(kind, Kind::Action | Kind::Fixture)
+                .then(|| {
+                    written
+                        .get(key.name())
+                        .and_then(|stores| stores.keys().next().cloned())
+                        .or_else(|| outbox.clone())
+                        .or_else(|| record.as_ref().map(|record| record.store.clone()))
+                })
+                .flatten();
             let paths = jadpo_graph::paths::number(&body);
             callables.push(CallablePlan {
                 outbox,
+                store,
                 record,
                 key,
                 kind,
@@ -1829,6 +1850,7 @@ impl Plan {
                         isolation: callable.isolation,
                         gate: callable.gate.clone(),
                         outbox: callable.outbox.clone(),
+                        store: callable.store.clone(),
                         record: callable.record.clone(),
                     },
                 )

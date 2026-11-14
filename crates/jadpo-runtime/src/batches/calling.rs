@@ -145,7 +145,7 @@ pub(super) async fn page(
     let (Some(each), Some(query)) = (plan.each.action(), plan.from.query()) else {
         return Step::Ended(Ran::Failed("a run with no action to call".into()));
     };
-    let mut open = match Batch::open_for_calls(ctx, plan.isolation, saved.system) {
+    let mut open = match Batch::open_for_calls(ctx, &plan.store, plan.isolation, saved.system) {
         Ok(open) => open,
         Err(error) => {
             return Step::Ended(Ran::Paused(format!(
@@ -297,7 +297,7 @@ async fn walked(
     (now, lease_until): (i64, i64),
 ) -> Step {
     let id = SqlValue::Uuid(start.run);
-    let open = match Batch::open_for_calls(ctx, plan.isolation, saved.system) {
+    let open = match Batch::open_for_calls(ctx, &plan.store, plan.isolation, saved.system) {
         Ok(open) => open,
         Err(error) => {
             return Step::Ended(Ran::Paused(format!(
@@ -344,7 +344,7 @@ pub(super) async fn row(
     (now, lease_until): (i64, i64),
 ) -> Step {
     let id = SqlValue::Uuid(start.run);
-    let mut open = match Batch::open_for_calls(ctx, plan.isolation, saved.system) {
+    let mut open = match Batch::open_for_calls(ctx, &plan.store, plan.isolation, saved.system) {
         Ok(open) => open,
         Err(error) => {
             return Step::Ended(Ran::Paused(format!(
@@ -565,7 +565,7 @@ pub(super) async fn finished(
     let Some(call) = &plan.finished else {
         return Step::Ended(Ran::Failed("a run with no `finished:` to call".into()));
     };
-    let mut open = match Batch::open_for_calls(ctx, plan.isolation, saved.system) {
+    let mut open = match Batch::open_for_calls(ctx, &plan.store, plan.isolation, saved.system) {
         Ok(open) => open,
         Err(error) => {
             return Step::Ended(Ran::Paused(format!(

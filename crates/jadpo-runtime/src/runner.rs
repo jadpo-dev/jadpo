@@ -1717,7 +1717,7 @@ impl<'c, 'p> Batch<'c, 'p> {
                 "a batch opened inside a running action".into(),
             ));
         }
-        ctx.open_boundary(isolation);
+        ctx.open_boundary(isolation, Some(store.to_string()));
         if let Err(error) = ctx.transaction(store).await {
             ctx.close_boundary();
             return Err(error);
@@ -1727,14 +1727,17 @@ impl<'c, 'p> Batch<'c, 'p> {
         Ok(Batch { ctx, saved })
     }
 
-    /// Opens a batch whose transaction begins at its first store operation
-    /// rather than at once: one item whose action makes outside calls, a
-    /// batch of its own (area 12, "How a run goes"; chunk 7.4b). What it
-    /// reads before a call is a snapshot the call closes, and the run's
-    /// own statements ([`Batch::writing`]) run in the transaction after
-    /// it, with the item's writes. `ctx` must be running no action.
+    /// Opens a batch in `store` whose transaction begins at its first
+    /// store operation there rather than at once: one item whose action
+    /// makes outside calls, a batch of its own (area 12, "How a run goes";
+    /// chunk 7.4b). What it reads before a call is a snapshot the call
+    /// closes, and the run's own statements ([`Batch::writing`]) run in the
+    /// transaction after it, with the item's writes; what it reads of
+    /// another store runs outside it (chunk Q5). `ctx` must be running no
+    /// action.
     pub fn open_for_calls(
         ctx: &'c mut Ctx<'p>,
+        store: &str,
         isolation: Isolation,
         system: System,
     ) -> Result<Batch<'c, 'p>, StoreError> {
@@ -1743,7 +1746,7 @@ impl<'c, 'p> Batch<'c, 'p> {
                 "a batch opened inside a running action".into(),
             ));
         }
-        ctx.open_boundary(isolation);
+        ctx.open_boundary(isolation, Some(store.to_string()));
         let saved = ctx.runner();
         ctx.become_system(system);
         Ok(Batch { ctx, saved })
@@ -1793,6 +1796,7 @@ impl<'c, 'p> Batch<'c, 'p> {
         let Batch { ctx, saved } = self;
         let written = crate::boundary::seal(ctx, None).await;
         let mut boundary = ctx.close_boundary();
+        boundary.end_outside().await;
         if let Err(error) = written {
             ctx.restore_runner(saved);
             if let Some(transaction) = boundary.take_transaction() {
@@ -1819,6 +1823,7 @@ impl<'c, 'p> Batch<'c, 'p> {
     pub async fn rollback(self) {
         let Batch { ctx, saved } = self;
         let mut boundary = ctx.close_boundary();
+        boundary.end_outside().await;
         ctx.restore_runner(saved);
         if let Some(transaction) = boundary.take_transaction() {
             let _ = transaction.rollback().await;
