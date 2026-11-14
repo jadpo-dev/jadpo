@@ -1959,7 +1959,7 @@ fn scopes(
             at,
             "`scopes:` isn't a block".to_string(),
             "not a block",
-            "`scopes:` names, for each effect, the scope a token issued to another application needs as well as a grant: `scopes: { read: OAuthScope.todos_read }`.",
+            "`scopes:` names, for each effect, the scope a token issued to another application needs as well as a grant: `scopes: { read: OAuthScope.<name> }`.",
             "Write `scopes: { <effect>: OAuthScope.<name> }`",
         ));
         return out;

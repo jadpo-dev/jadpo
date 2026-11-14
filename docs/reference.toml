@@ -494,6 +494,7 @@ topics = [
   "the-permissions-report",
   "protecting-policy",
   "when-policy-says-no",
+  "scopes",
 ]
 built = [
   "policy-built",

@@ -2785,7 +2785,7 @@ person could do themselves.
 
 An entity's `policy:` says, in `scopes:`, which scope a narrowed token
 needs for each effect, as well as a grant. Here a partner's app reads a
-writer's notes with `notes:read`, and writes them with `notes.write`:
+diarist's notes with `notes:read`, and writes them with `notes.write`:
 
 ```jadpo check project=scoped-notes
 config {
@@ -2795,7 +2795,7 @@ config {
 
 principal {
     user: {
-        subject: Writer.handle
+        subject: Diarist.handle
     }
 }
 
@@ -2817,7 +2817,7 @@ type Handle = Text {
     max_length: 40
 }
 
-entity Writer {
+entity Diarist {
     id: Uuid
     handle: Handle {
         unique: true
@@ -2830,16 +2830,16 @@ entity Writer {
 
 entity Note {
     id: Uuid
-    writer_id: Writer.id {
+    diarist_id: Diarist.id {
         on_delete: OnDelete.cascade
     }
     text: Text
 
     policy: {
-        create: [writer_id]
-        read: [writer_id]
-        update: [writer_id]
-        delete: [writer_id]
+        create: [diarist_id]
+        read: [diarist_id]
+        update: [diarist_id]
+        delete: [diarist_id]
         scopes: {
             create: OAuthScope.notes_write
             read: OAuthScope.notes_read
@@ -2854,7 +2854,7 @@ entity Note {
   undeclared scope is `policy.binding_invalid`. A list would read as "any
   of", and a scope must hold as well as a grant, so there is none.
 - An effect `scopes:` leaves out is refused to every narrowed token. So
-  no token deletes a note, and none reads a `Writer`, whose policy names
+  no token deletes a note, and none reads a `Diarist`, whose policy names
   no scope: a new entity is never open to other applications by accident.
 - `Access.public` and `Access.authenticated` are grants like any other: a
   narrowed token still needs the effect's scope.

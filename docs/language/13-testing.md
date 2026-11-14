@@ -1003,10 +1003,12 @@ carries ([Scopes](09-policy.md#scopes)), so a request says which, with
 `scopes:` beside `as:`:
 
 ```jadpo fragment
-var read: Response = request {
+var scoped_note: Response = request {
     method: HttpMethod.get
     path: "/notebook/{note_id}"
-    params: { note_id: note.id }
+    params: {
+        note_id: note.id
+    }
     as: Principal.user(ann)
     scopes: [OAuthScope.notes_read]
 }

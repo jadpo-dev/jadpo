@@ -1607,7 +1607,7 @@ impl Reader<'_> {
                     "`scopes:` isn't a block of scopes",
                 )
                 .at(at, "not a block")
-                .reason("`scopes:` names each scope a token is narrowed to and the scope-token the provider writes for it: `scopes: { todos_read: \"todos:read\" }`.")
+                .reason("`scopes:` names each scope a token is narrowed to and the scope-token the provider writes for it: `scopes: { <name>: \"<scope-token>\" }`.")
                 .next("Write `scopes: { <name>: \"<scope-token>\" }`"),
             );
             return Vec::new();
@@ -1641,7 +1641,7 @@ impl Reader<'_> {
                     )
                     .at(at, "not in lower snake case")
                     .reason("A scope's name is how policy names it, `OAuthScope.<name>`, so it is written as every value's name is: lower case words joined by `_`. The scope-token the provider spells it with goes after the colon.")
-                    .next("Name it in lower snake case, such as `todos_read`"),
+                    .next("Name it in lower snake case: lower case words joined by `_`"),
                 );
                 continue;
             }
@@ -1657,7 +1657,7 @@ impl Reader<'_> {
                             format!("`{name}:` isn't given its scope-token"),
                         )
                         .at(value_at, "not text")
-                        .reason("Each scope gives, in quotes, the scope-token the provider writes in a token's `scope` claim for it, exactly: `todos_read: \"todos:read\"`.")
+                        .reason("Each scope gives, in quotes, the scope-token the provider writes in a token's `scope` claim for it, exactly: `<name>: \"<scope-token>\"`.")
                         .next(format!("Write `{name}: \"<scope-token>\"`")),
                     );
                     continue;

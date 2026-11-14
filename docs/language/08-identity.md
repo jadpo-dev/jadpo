@@ -651,12 +651,14 @@ carry: each a name, and the scope-token the provider writes for it, exactly
 as it spells it:
 
 ```jadpo fragment
-external_token: {
-    issuer: config.oidc_issuer
-    audience: config.oidc_audience
-    scopes: {
-        notes_read: "notes:read"
-        notes_write: "https://notes.example/write"
+authentication {
+    external_token: {
+        issuer: config.oidc_issuer
+        audience: config.oidc_audience
+        scopes: {
+            notes_read: "notes:read"
+            notes_write: "https://notes.example/write"
+        }
     }
 }
 ```
