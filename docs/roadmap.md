@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-11-13. This page is the only list of outstanding work: the
+**Updated:** 2026-11-14. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record language decisions on the [area pages](language/README.md)
 and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
@@ -156,7 +156,7 @@ The application itself is built in the jadpo.dev repository against
 [the registry protocol](language/11-integrations.md#the-registry-protocol);
 these chunks are what is left on either side.
 
-- [ ] **R10b What an app's contract run sends** `opus · high` after K4b: area
+- [ ] **R10b What an app's contract run sends** `opus · high` after K4c: area
   11, "What a release shows" and "The registry protocol". The app's opt-in,
   and `jadpo test --kind contract` reporting an answer a package can no longer
   decode to `POST decode-failures` with `jadpo_registry::report::shape_of`.
@@ -170,7 +170,9 @@ these chunks are what is left on either side.
   to `protocol::PUBLIC_KEYS`; `POST decode-failures` kept and shown; `fixes`
   and the `pre-release` verifier image used in compatibility runs;
   REG-35 (publishers verified by a domain they prove, shown by `jadpo package
-  add`); REG-36 (the last contract run on a package's page). Sign-up beyond
+  add`); REG-36 (the last contract run on a package's page); a
+  capability's listing holding only releases whose verification's
+  `conformance` passed, pinned to their digest. Sign-up beyond
   the short list waits on terms and a privacy notice.
 - [ ] **R12 Jadpo HQ** **needs a maintainer**: area 14, "HQ's agent" and
   "`jadpo suggest`". The service `jadpo suggest share` sends to, built against
@@ -292,15 +294,26 @@ work below (Richard, 2026-11-08).
      operations) and `dts`.
    - [x] **K2 What else a provider call can be**: area 11, "How provider calls are made", "How connections to packages are read" and "How webhooks are received", and its notes.
    - [x] **K4 Capability mappings and conformance suites**: area 11, "How a package provides a capability" and "Proving a package works"; area 14, "`jadpo package conform`"; and the notes for area 11.
-   - [ ] **K4b Conformance runs pinned, scheduled and against the sandbox** `opus · high`:
-     area 11, "Proving a package works", "What a release shows" and
-     "Faked answers"; area 14, "Commands for packages". A passing
-     `jadpo package conform` run pinned to the package's digest and shown
-     on its listing; the app's own integrations running the suite in
-     scheduled CI; and `jadpo test --kind contract`, the same cases against
-     the provider's sandbox, every written operation no recording confirms
-     needing one. Done when each is built and tested against doubles, with
-     nothing sent to a third party.
+   - [x] **K4b The conformance run a release shows**: area 11, "Proving a package works", "What a release shows" and "The verifier"; area 14, "`jadpo package check`" and "`jadpo package verify`"; and the notes for area 11.
+   - [ ] **K4c Contract runs against the sandbox** `opus · high`
+     **needs a maintainer** to confirm what a contract case is: area 11,
+     "Proving a package works", "Tests and fakes" and "Provenance and
+     confirmation"; area 13, "Kinds of test"; area 14, "`jadpo test`". The
+     app's own integrations running the suite in scheduled CI, and
+     `jadpo test --kind contract`, the same cases against the provider's
+     sandbox, every written operation no recording confirms needing one.
+     The pages don't say what a case is or what generates scheduled CI.
+     Recommended: a case is one of the app's tests that reaches a provider
+     operation, run with its unscripted calls sent through the connection
+     to the sandbox and its scripted ones still scripted, the connection's
+     settings read from the environment as `jadpo dev` reads them and one
+     whose environment chooses `live` refused; an unconfirmed written
+     operation no case reaches fails the run; the run also takes each of
+     the app's own integrations' suites through `--live` where the app
+     uses the capability through it; and Jadpo generates no CI, the guide
+     showing a scheduled job that runs `jadpo test --kind contract`. Done
+     when each is built and tested against doubles, with nothing sent to a
+     third party.
    - [ ] **K5 Types from recordings and recipes' tests** `opus · high`:
      area 11, "Recordings", "Recipes" and "Installing safely". An operation's
      output type written from a recorded or sandbox answer, and a recipe's

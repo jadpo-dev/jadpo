@@ -1641,6 +1641,13 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         }
     }
 
+    // The suite of each capability it fills, against its recordings, in
+    // the run that runs its code (chunk K4b): what the registry lists it
+    // for a capability by. A suite that fails is shown, and refuses
+    // nothing.
+    let conformance = (running && compiled_cleanly && found.is_some())
+        .then(|| crate::package_conform::release_runs(&compiled.scratch.0, &package, &folder));
+
     // What a release shows, once it compiles: a package with errors may
     // hold calls that can't be followed.
     let facts = compiled_cleanly
@@ -2082,7 +2089,10 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         screen.push(block);
     }
     if let Some(facts) = &facts {
-        screen.push(package_release::facts_block(facts));
+        screen.push(package_release::with_conformance(
+            package_release::facts_block(facts),
+            conformance.as_deref().unwrap_or_default(),
+        ));
     }
     // Where its personal data goes (chunk V5), once it compiles: a package
     // with errors may hold calls that can't be followed.
@@ -2203,6 +2213,10 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
         (Some(ran), Some(since)) => package_release::behaviour_json(since, ran),
         _ => Json::Null,
     };
+    // `null` where nothing ran: `--no-run`, or a package with errors.
+    let conformance_json = conformance.as_ref().map_or(Json::Null, |runs| {
+        Json::array(runs.iter().map(crate::package_conform::Conformed::json))
+    });
     let data = if verifying {
         Json::object([
             ("package", Json::from(package.as_str())),
@@ -2224,6 +2238,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
                 package_release::fingerprints_json(&fingerprints),
             ),
             ("previous", behaviour_json),
+            ("conformance", conformance_json.clone()),
             ("fixes", package_release::fixes_json(&compiled)),
             ("jadpo", Json::from(crate::help::VERSION)),
             (
@@ -2245,6 +2260,7 @@ pub(crate) fn bar(call: &Call, folder: &Path, mode: Mode) -> Reply {
             ),
             ("change_record", record_json),
             ("previous", behaviour_json),
+            ("conformance", conformance_json),
             ("surface", file_json(written)),
             (
                 "changelog",

@@ -1527,6 +1527,19 @@ and publishing a package](11-integrations.md#developing-and-publishing-a-package
   new code. One that fails is a change the types don't show, refused within
   a major version unless the new version's section marks it a fix
   (`publish.behaviour_changed`).
+- A provider package that fills a capability runs its conformance suite
+  against its recordings and a local fake, as `jadpo package conform` does,
+  and the facts say how each ran, after `contract`. A suite that fails
+  refuses nothing, since the registry only leaves the package out of that
+  capability's listing ([Proving a package
+  works](11-integrations.md#proving-a-package-works)). `--json` gives each
+  run as `conformance`, `null` where nothing ran:
+
+  ```text
+  Facts
+    contract     1 of 1 operation confirmed
+    conformance  email: conforms, 4 passed
+  ```
 
 The bar is shown a row per item: passed, failed or not checked yet. When
 the package compiles and its version is allowed, `surface.jadpo_record` is
@@ -1620,7 +1633,8 @@ the new version's list in `CHANGELOG.md` are compared rather than written
 
 `--json` writes everything a release shows: the bar's rows, the surface,
 facts, change record, each public declaration's fingerprints, what the
-previous release's examples and tests gave, and the Jadpo release it was
+previous release's examples and tests gave, each capability's conformance
+run (`conformance`, `null` under `--no-run`), and the Jadpo release it was
 checked with and the one its `jadpo:` declares ([How they are worked
 out](11-integrations.md#how-a-releases-facts-change-record-and-fingerprints-are-worked-out)).
 
@@ -1657,8 +1671,8 @@ Not built yet:
   repository is under one of `packages:`'s `own_sources:`.
 - `jadpo package import` for `smithy`, `postman`, `har` and `dts`. They
   are `toolchain.not_built_yet` until first needed.
-- `jadpo package conform` for any capability but `ai`, which is
-  `toolchain.not_built_yet`.
+- `jadpo package conform` for a capability other than `ai`, `email` and
+  `receiving`, which is `toolchain.not_built_yet` until its mapping is read.
 
 ## Commands for services, calls, email and stored data
 <!-- topic: commands-for-services-calls-email-and-stored-data -->
