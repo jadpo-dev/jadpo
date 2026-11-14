@@ -148,7 +148,10 @@ impl Redis {
     pub async fn run(&self, commands: &[Vec<Vec<u8>>]) -> Result<Vec<Reply>, Error> {
         let link = self.link();
         let answer = Rc::new(Answer::default());
-        let bytes: Vec<u8> = commands.iter().flat_map(|words| resp::command(words)).collect();
+        let bytes: Vec<u8> = commands
+            .iter()
+            .flat_map(|words| resp::command(words))
+            .collect();
         link.shared.queue.borrow_mut().push_back(Job {
             bytes,
             replies: commands.len(),
@@ -193,7 +196,9 @@ impl Redis {
             return Err(Error::Unreadable("a transaction's answers"));
         };
         let [_, Reply::Integer(count), Reply::Integer(left)] = answers.as_slice() else {
-            return Err(Error::Unreadable("a count and the time its window has left"));
+            return Err(Error::Unreadable(
+                "a count and the time its window has left",
+            ));
         };
         if *count <= i64::from(limit.requests) {
             return Ok(Allowed::Yes);
@@ -214,11 +219,14 @@ impl Redis {
             return Rc::clone(link);
         }
         let shared = Rc::new(Shared::default());
-        let hello = self.address.hello();
-        if !hello.is_empty() {
+        let opening = self.address.opening();
+        if !opening.is_empty() {
             shared.queue.borrow_mut().push_back(Job {
-                bytes: hello.iter().flat_map(|words| resp::command(words)).collect(),
-                replies: hello.len(),
+                bytes: opening
+                    .iter()
+                    .flat_map(|words| resp::command(words))
+                    .collect(),
+                replies: opening.len(),
                 answer: None,
             });
         }
@@ -236,7 +244,10 @@ impl Redis {
 /// The key a rate limit's count for `key` is kept under.
 pub fn rate_limit_key(key: &str) -> String {
     let hash = blake3::hash(key.as_bytes()).to_hex();
-    format!("{RATE_LIMIT_PREFIX}{}", hash.get(..32).unwrap_or(hash.as_str()))
+    format!(
+        "{RATE_LIMIT_PREFIX}{}",
+        hash.get(..32).unwrap_or(hash.as_str())
+    )
 }
 
 /// One connection, as its driver holds it: dropped, it tells the task
@@ -325,12 +336,8 @@ impl Future for Waiting<'_> {
 /// Runs one connection: opens it, secures it when its address says to,
 /// then writes what callers queue and reads their replies until the
 /// driver lets it go or it breaks.
-fn drive(
-    transport: Rc<dyn Transport>,
-    address: Rc<Address>,
-    shared: Rc<Shared>,
-) -> impl Future<Output = ()> + 'static {
-    async move {
+async fn drive(transport: Rc<dyn Transport>, address: Rc<Address>, shared: Rc<Shared>) {
+    {
         let ended = match open(&*transport, &address).await {
             Ok(stream) => {
                 let mut io = Io::new(stream);
@@ -426,7 +433,11 @@ impl Io {
         let ended = self.moved(cx, shared);
         if let Poll::Ready(Err(why)) = &ended {
             shared.break_with(why.clone());
-            let why = shared.broken.borrow().clone().unwrap_or_else(|| why.clone());
+            let why = shared
+                .broken
+                .borrow()
+                .clone()
+                .unwrap_or_else(|| why.clone());
             for pending in self.pending.drain(..) {
                 if let Some(answer) = pending.answer {
                     answer.give(Err(why.clone()));
@@ -546,13 +557,19 @@ impl Io {
 /// What a host counts its rate limits in (area 16, "Where the counts are
 /// kept").
 impl CountingStore for Redis {
-    fn count<'a>(&'a self, key: &'a str, limit: RateLimit) -> LocalFuture<'a, Result<Allowed, Unasked>> {
+    fn count<'a>(
+        &'a self,
+        key: &'a str,
+        limit: RateLimit,
+    ) -> LocalFuture<'a, Result<Allowed, Unasked>> {
         Box::pin(async move {
-            Redis::count(self, key, limit).await.map_err(|error| match error {
-                Error::Unreachable => Unasked::Unreachable,
-                Error::TimedOut => Unasked::TimedOut,
-                Error::Refused(_) | Error::Unreadable(_) | Error::Insecure => Unasked::Failed,
-            })
+            Redis::count(self, key, limit)
+                .await
+                .map_err(|error| match error {
+                    Error::Unreachable => Unasked::Unreachable,
+                    Error::TimedOut => Unasked::TimedOut,
+                    Error::Refused(_) | Error::Unreadable(_) | Error::Insecure => Unasked::Failed,
+                })
         })
     }
 }

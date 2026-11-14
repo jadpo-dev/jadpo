@@ -111,18 +111,26 @@ fn a_store_that_doesnt_answer_leaves_the_server_counting_in_memory() {
     let runtime = Runtime::new().expect("a runtime");
     let (answers, first, rest) = runtime.block_on(async {
         let began = Instant::now();
-        let first = host.rate_limit("address 203.0.113.9", TWO_A_MINUTE, 0).await;
+        let first = host
+            .rate_limit("address 203.0.113.9", TWO_A_MINUTE, 0)
+            .await;
         let found_out = began.elapsed();
         let began = Instant::now();
         let mut answers = vec![first];
         for _ in 0..3 {
-            answers.push(host.rate_limit("address 203.0.113.9", TWO_A_MINUTE, 0).await);
+            answers.push(
+                host.rate_limit("address 203.0.113.9", TWO_A_MINUTE, 0)
+                    .await,
+            );
         }
         (answers, found_out, began.elapsed())
     });
     assert_eq!(&answers[..2], [Allowed::Yes, Allowed::Yes]);
     assert!(matches!(answers[2], Allowed::No { .. }), "{answers:?}");
-    assert!(first.as_millis() >= 900 && first.as_millis() < 3_000, "{first:?}");
+    assert!(
+        first.as_millis() >= 900 && first.as_millis() < 3_000,
+        "{first:?}"
+    );
     assert!(rest.as_millis() < 200, "not asked again: {rest:?}");
     assert_eq!(double.connections(), 1);
     let lines = LINES.lock().expect("the lines");
@@ -134,5 +142,8 @@ fn a_store_that_doesnt_answer_leaves_the_server_counting_in_memory() {
     assert_eq!(fallbacks.len(), 1, "{lines:?}");
     assert_eq!(fallbacks[0]["connection"], "cache");
     assert_eq!(fallbacks[0]["reason"], "timed_out");
-    assert!(!lines.iter().any(|line| line.contains("203.0.113.9")), "{lines:?}");
+    assert!(
+        !lines.iter().any(|line| line.contains("203.0.113.9")),
+        "{lines:?}"
+    );
 }

@@ -135,7 +135,7 @@ impl Address {
 
     /// The commands that sign in and choose the database, before anything
     /// else on a new connection; none when it needs neither.
-    pub fn hello(&self) -> Vec<Vec<Vec<u8>>> {
+    pub fn opening(&self) -> Vec<Vec<Vec<u8>>> {
         let mut out = Vec::new();
         match (&self.user, &self.password) {
             (Some(user), Some(password)) => out.push(vec![
@@ -193,7 +193,7 @@ mod tests {
         assert_eq!(upstash.password.as_deref(), Some("s3cr@t"));
         assert_eq!(upstash.database, 0);
         assert_eq!(
-            upstash.hello(),
+            upstash.opening(),
             [vec![
                 b"AUTH".to_vec(),
                 b"default".to_vec(),
@@ -206,13 +206,13 @@ mod tests {
             (local.host.as_str(), local.port, local.tls, local.database),
             ("localhost", 6379, false, 0)
         );
-        assert!(local.hello().is_empty());
+        assert!(local.opening().is_empty());
 
         let numbered = Address::parse("redis://:pw@[::1]:6380/12").expect("an address");
         assert_eq!((numbered.host.as_str(), numbered.port), ("::1", 6380));
         assert_eq!(numbered.user, None);
         assert_eq!(
-            numbered.hello(),
+            numbered.opening(),
             [
                 vec![b"AUTH".to_vec(), b"pw".to_vec()],
                 vec![b"SELECT".to_vec(), b"12".to_vec()]

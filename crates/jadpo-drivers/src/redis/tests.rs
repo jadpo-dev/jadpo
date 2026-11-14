@@ -331,7 +331,10 @@ fn rediss_is_tls_from_the_first_byte() {
     let answered = on_one_thread(async || redis.count("user 7", THREE_A_MINUTE).await);
     assert_eq!(answered, Err(Error::Insecure));
     assert_eq!(answered.unwrap_err().reason(), "failed");
-    assert!(host.double.borrow().sent.is_empty(), "nothing sent in the clear");
+    assert!(
+        host.double.borrow().sent.is_empty(),
+        "nothing sent in the clear"
+    );
 
     let plain = Doubled::new(Double::new());
     let redis = store("redis://cache", &plain);
@@ -457,7 +460,10 @@ fn a_dropped_driver_closes_its_connection() {
     let host = Doubled::new(Double::new());
     on_one_thread(async || {
         let redis = store("redis://cache", &host);
-        assert_eq!(redis.count("user 7", THREE_A_MINUTE).await, Ok(Allowed::Yes));
+        assert_eq!(
+            redis.count("user 7", THREE_A_MINUTE).await,
+            Ok(Allowed::Yes)
+        );
         drop(redis);
     });
     assert_eq!(host.goodbyes.get(), 1);
@@ -475,7 +481,7 @@ fn any_commands_are_run_in_one_write() {
     let replies = on_one_thread(async || {
         redis
             .run(&[
-                words(&["SET", "greeting", "hello"]),
+                words(&["SET", "greeting", "kept"]),
                 words(&["GET", "greeting"]),
                 words(&["INCR", "greeting"]),
                 words(&["PING"]),
@@ -486,7 +492,7 @@ fn any_commands_are_run_in_one_write() {
         replies,
         Ok(vec![
             Reply::Status("OK".into()),
-            Reply::Bulk(Some(b"hello".to_vec())),
+            Reply::Bulk(Some(b"kept".to_vec())),
             Reply::Error("ERR value is not an integer or out of range".into()),
             Reply::Status("PONG".into()),
         ])
@@ -505,12 +511,21 @@ fn the_double_answers_as_redis_does() {
             now,
         )
     };
-    assert_eq!(say(&["SET", "k", "0", "PX", "1000", "NX"], 0), Reply::Status("OK".into()));
-    assert_eq!(say(&["SET", "k", "0", "PX", "1000", "NX"], 1), Reply::Bulk(None));
+    assert_eq!(
+        say(&["SET", "k", "0", "PX", "1000", "NX"], 0),
+        Reply::Status("OK".into())
+    );
+    assert_eq!(
+        say(&["SET", "k", "0", "PX", "1000", "NX"], 1),
+        Reply::Bulk(None)
+    );
     assert_eq!(say(&["INCR", "k"], 2), Reply::Integer(1));
     assert_eq!(say(&["PTTL", "k"], 400), Reply::Integer(600));
     assert_eq!(say(&["PTTL", "k"], 1_000), Reply::Integer(-2), "expired");
-    assert_eq!(say(&["EXEC"], 0), Reply::Error("ERR EXEC without MULTI".into()));
+    assert_eq!(
+        say(&["EXEC"], 0),
+        Reply::Error("ERR EXEC without MULTI".into())
+    );
     assert_eq!(say(&["MULTI"], 0), Reply::Status("OK".into()));
     assert_eq!(say(&["INCR", "n"], 0), Reply::Status("QUEUED".into()));
     assert_eq!(

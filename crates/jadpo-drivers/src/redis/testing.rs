@@ -198,7 +198,8 @@ impl Double {
                     match text(option).to_ascii_uppercase().as_str() {
                         "NX" => only_new = true,
                         "PX" => {
-                            let Some(ms) = options.next().and_then(|ms| text(ms).parse::<i64>().ok())
+                            let Some(ms) =
+                                options.next().and_then(|ms| text(ms).parse::<i64>().ok())
                             else {
                                 return Reply::Error("ERR syntax error".into());
                             };
@@ -281,7 +282,9 @@ pub fn commands(input: &mut Vec<u8>) -> Result<Vec<Vec<Vec<u8>>>, resp::Unreadab
             .into_iter()
             .map(|word| match word {
                 Reply::Bulk(Some(bytes)) => Ok(bytes),
-                _ => Err(resp::Unreadable("a command's word that isn't a bulk string")),
+                _ => Err(resp::Unreadable(
+                    "a command's word that isn't a bulk string",
+                )),
             })
             .collect::<Result<_, _>>()?;
         out.push(words);
@@ -577,7 +580,7 @@ mod tcp {
             .set_read_timeout(Some(Duration::from_secs(5)))
             .map_err(|error| error.to_string())?;
         let mut sent = Vec::new();
-        let mut words: Vec<Vec<Vec<u8>>> = address.hello();
+        let mut words: Vec<Vec<Vec<u8>>> = address.opening();
         words.push(vec![b"FLUSHDB".to_vec()]);
         for command in &words {
             sent.extend(resp::command(command));

@@ -208,7 +208,11 @@ fn a_redis_connection_is_built_into_the_store_rate_limits_are_counted_in() {
         "app.jadpo",
         "application {\n    connections: {\n        cache: {\n            driver: Driver.redis\n            url: config.redis_url\n        }\n    }\n    rate_limits: {\n        store: cache\n    }\n}\n",
     );
-    write(&root, "config.jadpo", "config {\n    redis_url: RedisUrl\n}\n");
+    write(
+        &root,
+        "config.jadpo",
+        "config {\n    redis_url: RedisUrl\n}\n",
+    );
     jadpo(&root, &["records", "update"]);
     let out = jadpo(&root, &["check"]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
@@ -272,7 +276,9 @@ fn a_redis_connection_is_built_into_the_store_rate_limits_are_counted_in() {
         .collect();
     assert_eq!(
         unbuilt,
-        ["`cache`'s Driver.redis can't be built: its `url:` has options after `?`, which the Redis driver doesn't read"]
+        [
+            "`cache`'s Driver.redis can't be built: its `url:` has options after `?`, which the Redis driver doesn't read"
+        ]
     );
     assert!(!unbuilt[0].contains("s3cret"));
     assert!(unread.counting_store("cache").is_none());

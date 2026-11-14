@@ -14,7 +14,7 @@
 //! own and any window from a second to a day.
 //!
 //! A store shared between servers, a Redis connection's driver, counts
-//! through [`CountingStore`] (chunk Q8), and [`in_store`] is how every
+//! through [`CountingStore`] (chunk Q8), and [`counted_by_store`] is how every
 //! host asks it: while it can count, its answer stands; when it can't, the
 //! host counts in its own memory, as area 16 says, and doesn't ask it
 //! again for [`STORE_PAUSE_MS`], so a store that can't be reached holds up
@@ -308,7 +308,10 @@ impl StoreHealth {
     /// milliseconds: always on a host with no such clock.
     fn asks(&self, store: &str, now: Option<u64>) -> bool {
         let stores = self.stores.lock().unwrap_or_else(PoisonError::into_inner);
-        match (stores.get(store).and_then(|health| health.paused_until), now) {
+        match (
+            stores.get(store).and_then(|health| health.paused_until),
+            now,
+        ) {
             (Some(until), Some(now)) => now >= until,
             _ => true,
         }
@@ -341,7 +344,7 @@ impl StoreHealth {
 /// stops answering, `log` is given the `rate_limits.fallback` event's
 /// fields once: the connection, why (`unreachable`, `timed_out` or
 /// `failed`) and what that means, never a key.
-pub async fn in_store(
+pub async fn counted_by_store(
     health: &StoreHealth,
     connection: &str,
     store: &dyn CountingStore,
@@ -578,7 +581,7 @@ mod tests {
         let health = StoreHealth::default();
         let logged = std::cell::RefCell::new(Vec::new());
         let ask = |at: u64| {
-            now(in_store(
+            now(counted_by_store(
                 &health,
                 "cache",
                 &store,
@@ -602,9 +605,9 @@ mod tests {
         assert_eq!(logged[0]["reason"], "timed_out");
         assert_eq!(logged[1]["reason"], "failed");
         assert!(
-            logged
-                .iter()
-                .all(|fields| !fields.values().any(|value| value.to_string().contains("203.0.113.9"))),
+            logged.iter().all(|fields| !fields
+                .values()
+                .any(|value| value.to_string().contains("203.0.113.9"))),
             "never a key: {logged:?}"
         );
     }

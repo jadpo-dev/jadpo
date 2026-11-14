@@ -310,7 +310,8 @@ impl Drivers {
     /// factory built for it: a test's.
     #[cfg(feature = "redis")]
     pub fn with_redis(mut self, connection: &str, store: crate::redis::Redis) -> Drivers {
-        self.unbuilt.retain(|unbuilt| unbuilt.connection != connection);
+        self.unbuilt
+            .retain(|unbuilt| unbuilt.connection != connection);
         self.redis.insert(connection.to_string(), store);
         self
     }

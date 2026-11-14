@@ -29,8 +29,7 @@ smtp = ["dep:jadpo-value", "tokio/io-util"]
 redis = ["dep:blake3"]
 # The in-process Redis double, the same double on a port of this machine,
 # and a real server when the run has one: what tests reach Redis through.
-# Only tests turn it on (as dev-dependencies), so no deployable or
-# released `jadpo` holds it.
+# Only tests turn it on, so no deployable or released `jadpo` holds it.
 redis-testing = ["redis"]
 
 [dependencies]

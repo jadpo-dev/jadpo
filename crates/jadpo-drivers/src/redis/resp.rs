@@ -242,7 +242,9 @@ mod tests {
     fn a_refusal_is_found_inside_a_transactions_answers() {
         let answered = Reply::Array(Some(vec![
             Reply::Status("OK".into()),
-            Reply::Error("WRONGTYPE Operation against a key holding the wrong kind of value".into()),
+            Reply::Error(
+                "WRONGTYPE Operation against a key holding the wrong kind of value".into(),
+            ),
         ]));
         assert_eq!(
             answered.refused(),

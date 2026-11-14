@@ -563,7 +563,7 @@ impl Host for WorkersHost {
     /// try again after the window's whole length, the longest it can have
     /// to wait. A Redis store counts every instance's requests in one count
     /// (chunk Q8), over the invocation's own connection, and the isolate's
-    /// memory counts while it can't ([`limits::in_store`]: left alone for
+    /// memory counts while it can't ([`limits::counted_by_store`]: left alone for
     /// 10 seconds once it couldn't, and logged once each time it stops).
     fn rate_limit<'a>(
         &'a self,
@@ -589,7 +589,7 @@ impl Host for WorkersHost {
                 }
             } else if let Some(store) = &self.rate_limits
                 && let Some(counting) = self.drivers().counting_store(&store.connection)
-                && let Some(allowed) = limits::in_store(
+                && let Some(allowed) = limits::counted_by_store(
                     isolate_health(),
                     &store.connection,
                     counting,

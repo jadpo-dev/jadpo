@@ -588,7 +588,7 @@ impl Host for NativeHost {
     }
 
     /// Counted in the store it was told to count in, while that counts
-    /// ([`ratelimit::in_store`]: one that can't is left alone for 10
+    /// ([`ratelimit::counted_by_store`]: one that can't is left alone for 10
     /// seconds, and logged once each time it stops); otherwise in memory,
     /// the server's one table, which its workers share (chunk 8.1l).
     fn rate_limit<'a>(
@@ -597,15 +597,16 @@ impl Host for NativeHost {
         limit: RateLimit,
         now: i64,
     ) -> LocalFuture<'a, Allowed> {
-        let store = self.counted_in.as_deref().and_then(|connection| {
-            Some((connection, self.drivers.counting_store(connection)?))
-        });
+        let store = self
+            .counted_in
+            .as_deref()
+            .and_then(|connection| Some((connection, self.drivers.counting_store(connection)?)));
         let Some((connection, store)) = store else {
             let allowed = self.limits.allow(key, limit, now);
             return Box::pin(async move { allowed });
         };
         Box::pin(async move {
-            let counted = ratelimit::in_store(
+            let counted = ratelimit::counted_by_store(
                 &self.health,
                 connection,
                 store,

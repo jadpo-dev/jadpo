@@ -3575,7 +3575,7 @@ both give: the plan's route table carries the store
 `rate_limits:` names (`RateLimitStore`, with a binding for each limit
 on Cloudflare's), the Workers host counts in it, and `jadpo check`
 refuses a Workers deployable that serves an API without one. Both hosts
-ask a Redis store the same way (chunk Q8): `ratelimit::in_store` asks the
+ask a Redis store the same way (chunk Q8): `ratelimit::counted_by_store` asks the
 factory's driver (`Drivers::counting_store`, a `ratelimit::CountingStore`)
 unless the server's or isolate's `StoreHealth` says it failed in the last
 `STORE_PAUSE_MS`, and gives `None`, for the host's memory, when it can't
@@ -3949,7 +3949,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
 | Outbox | Delivery, retries, dead letters and a circuit breaker, run by the runner after the response, natively as a task on the worker's thread | `waitUntil` after the response, what one invocation leaves handed on to a fresh one, swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters | Cloudflare cron |
-| Rate limits, caches | Rate limits through `Host::rate_limit`: the Redis store `rate_limits:` names, through `ratelimit::in_store`, otherwise, or while it can't count, one bounded table in memory for all of a server's workers; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, "Rate limits"); the isolate's memory only while it can't be reached |
+| Rate limits, caches | Rate limits through `Host::rate_limit`: the Redis store `rate_limits:` names, through `ratelimit::counted_by_store`, otherwise, or while it can't count, one bounded table in memory for all of a server's workers; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, "Rate limits"); the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
 | AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake; `ai.embed` and `ai.embed_all`, the fake's embeddings and prompts' recordings; `ai.stream` read piece by piece and sent as server-sent events | same, through Workers' `fetch` |
