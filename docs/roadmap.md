@@ -238,8 +238,8 @@ work below (Richard, 2026-11-08).
    B13, taken in order. B1 to B8 build files outwards from what a field
    holds; B9 to B13 touch other crates and pages and may run beside them.
    The disk driver in production moved here from item 5; the `search`,
-   `bot_check` and `scanning` capabilities, image variants, the
-   `telemetry:` section and custom metrics stay under item 5.
+   `bot_check` and `scanning` capabilities and image variants stay under
+   item 5; the `telemetry:` section and custom metrics are item 13.
    - [ ] **B16 What the audit trail doesn't keep yet** `opus · xhigh`
      area 16, "What the audit trail doesn't keep yet"; area 15,
      "What is built". A `File` field, a field with its own `retention:`, a
@@ -269,9 +269,7 @@ work below (Richard, 2026-11-08).
    per owner (`grants:`, `on_behalf_of:`, `OAuthGrant`, `jadpo dev grants add`
    and grants as test fixtures); search (an engine's `store:` and `jadpo
    search reindex`), `bot_check` and `scanning` capabilities, with image
-   variants, each with its fake;
-   telemetry's `telemetry:` section, custom metrics and the local
-   `jadpo traces`, `metrics` and `logs`; `jadpo watch`; a service's new or
+   variants, each with its fake; `jadpo watch`; a service's new or
    changed container image and its `outbound:` grants, each with a
    `PackageChange` acceptance; packages from other Jadpo
    apps (`jadpo package add` from a folder or a URL) and the cross-app break
@@ -406,7 +404,59 @@ work below (Richard, 2026-11-08).
       reported yet". Scope declarations, `scopes:` and policy's restrictions
       with `oauth_token` and `external_token`, `OAuthScope` narrowing, and an
       operation whose scope a grant doesn't request.
-13. What waits on someone else, added by the audit of 2026-11-08. These
+13. Telemetry other services can read (areas 16, 17 and 18), added
+    2026-11-14. Apps chained across Jadpo and other services, traced end to
+    end, with what a monitoring, analytics or backup service needs to read
+    them, and nothing such a service gets that any other vendor couldn't
+    use: a vendor stays an endpoint and a header. E1, in item 3, puts path
+    IDs on requests.
+    - [ ] **O1 The `telemetry:` section** `opus · xhigh`: area 16,
+      "Telemetry"; area 17, "Traces, metrics and logs in development".
+      `telemetry:` sending traces, metrics and logs over OTLP, custom
+      metrics and `telemetry.note`, and the local `jadpo traces`, `metrics`
+      and `logs`. Done when spans, metrics and logs reach a local OTLP
+      collector double on both executors, carrying no field values, and a
+      personal field given as a label is refused.
+    - [ ] **O2 Trace context and outside request IDs** `opus · high`
+      **needs a maintainer** before building: area 16, "Telemetry"; area
+      7, where `x-request-id` is written; area 11, "How provider calls are
+      made" and "How webhooks are received". Today an incoming
+      `traceparent` is always continued, and request IDs in any other
+      format are dropped. Recommended: Jadpo's own `request_id` and trace
+      stay primary; a caller listed as trusted (another app of the same
+      installation) has its `traceparent` continued, and any other gets a
+      new trace with a span link to its own; B3, Jaeger's
+      `uber-trace-id`, `X-Amzn-Trace-Id`, `X-Cloud-Trace-Context`,
+      `X-Request-Id`, `X-Correlation-Id` and `cf-ray` are read and kept as
+      searchable `jadpo.external_id.<source>` attributes, never merged, so
+      a reused ID finds several requests; and a package declares the
+      header its provider's answers and webhooks carry a request ID in
+      (Stripe's `Request-Id`, GitHub's `X-GitHub-Delivery`), kept on the
+      call's span.
+    - [ ] **O3 The build manifest as an open protocol** `opus · high`
+      **needs a maintainer** before building: area 16, "What is sent";
+      area 18, "The manifest". A deploy uploads each build's manifest, but
+      the pages don't say where or in what form. Recommended: a published
+      endpoint and format, with a conformance test like the registry
+      protocol's, so any monitoring product decodes `jadpo.path`, source
+      locations and the build id the same way.
+    - [ ] **O4 Who may read an app's telemetry** **needs a maintainer**:
+      area 9; area 18, "The manifest". A service showing telemetry to
+      readers with different permissions needs the app's roles and what
+      each may see. Recommended: the manifest carries them, read from the
+      app's own policy, so there is no second permission system.
+    - [ ] **O5 What a backup service reads** **needs a maintainer**: area
+      15, "What erasure doesn't rewrite"; area 19, "Encrypted fields". The
+      erasure log's replay on restore is designed; how a service outside
+      the app reads the log, and holds the keys a restore needs apart from
+      the backups, isn't.
+    - [ ] **O6 When the collector can't be reached** **needs a
+      maintainer**: area 16, "Telemetry". The pages don't say what an app
+      does when its endpoint is down, which an installation running
+      without the internet depends on. Recommended: a bounded buffer on
+      disk natively and in memory on Workers, oldest dropped first, and
+      what was dropped counted in a metric.
+14. What waits on someone else, added by the audit of 2026-11-08. These
     can't start until what each names has happened.
     - [ ] **L1 Lists that need a licence** **needs a maintainer**: area 19,
       "What is built". The UK modulus check in `BankAccount`, on Vocalink's
