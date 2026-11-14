@@ -7053,10 +7053,12 @@ leaves out the claims it doesn't have. It is stored in a column per
 claim, and shown by its subject, else its issuer, else its id, else its
 expiry. A token's other claims (`scope`, `email`) are read with `as:`.
 
-**`OAuthScope`** is one RFC 6749 scope-token of 1 to 256 characters.
-The enum [Policy](09-policy.md) generates from the scopes
-`authentication.jadpo` declares narrows this type to them, as a closed
-subset, rather than reusing its name.
+**`OAuthScope`** is one RFC 6749 scope-token of 1 to 256 printable ASCII
+characters other than a space, `"` and `\`. [Policy's
+scopes](09-policy.md#scopes) narrow this type to the scopes
+`authentication.jadpo` declares, as a closed subset, rather than
+declaring a type of their own: `OAuthScope.notes_read` names a declared
+scope, and a name none declares is refused.
 
 **`OidcClaims`** holds OpenID Connect Core's subject (1 to 255 printable
 ASCII characters) and the claims a sign-in reads: `name` and
@@ -7076,8 +7078,7 @@ email, else its subject.
 > randomness, and both build for WebAssembly. Both only verify, so
 > RUSTSEC-2023-0071 (Marvin), which leaks an RSA private key through the
 > timing of decryption and signing, doesn't touch them. RS384, RS512,
-> PS256, ES384 and the other algorithms aren't built, and neither is
-> `OAuthScope`.
+> PS256, ES384 and the other algorithms aren't built.
 
 ## Secret values
 <!-- topic: secret-values -->
@@ -12924,7 +12925,6 @@ what Jadpo took from each, is in the
 | A backfill of a new required amount of money | Not built yet: `toolchain.not_built_yet` names it |
 | The UK modulus check in `BankAccount` | Not built yet: waits on Vocalink's permission to ship its tables |
 | Checking `UnLocode`, `IataAirport`, `IcaoAirport`, `IataAirline` and `Icd10Code` against their lists | Not built yet: waits on licences that allow shipping the lists |
-| [Policy](09-policy.md)'s scopes narrowing `OAuthScope` | Not built yet: waits on [Policy](09-policy.md) |
 | Legacy encodings in the file readers | Not built yet: waits on an application that needs one |
 | `jadpo replay`, and a calendar file's writer | Not built yet: `jadpo replay` waits on [Debugging](17-debugging-and-review.md), a calendar file's writer on an application that needs one |
 | What [Personal data](15-personal-data.md) does with each standard type's personal data category | Partly built: a field of such a type is hashed in logs and histories, and its reads are recorded when its category is sensitive ([What is built: Personal data](15-personal-data.md#what-is-built)). Not built yet: keeping it out of caches, which wait on the Redis driver |

@@ -962,11 +962,11 @@ declares the `webhooks` API, and health beside any API; and
 `service_nodes`, a `config_field` for each setting, a `flag` for each
 feature flag (using the enum it holds), the `locale_set application`,
 and, beside any API, `rate_limit address` and `rate_limit
-caller`, using the connection they are counted in. `cache` and
-`oauth_scope` stay reserved: nothing the language builds declares one yet
-(`caches:` comes with Redis entities, area 5; scope declarations with OAuth
-grants and tokens for other applications, areas 8 and 11), and they are
-built with those (decided in chunk 10.3g).
+caller`, using the connection they are counted in; and an `oauth_scope`
+for each scope `external_token:` declares, with a `scopes` edge to each
+grant whose effect needs it. `cache` stays reserved: nothing the language
+builds declares one yet (`caches:` comes with Redis entities, area 5), and
+it is built with those (decided in chunk 10.3g).
 
 Each site says whether it can pause (§2.5): an effect (a
 store read or write, `emit`, an integration call, `clock.now`, a new
@@ -3247,6 +3247,34 @@ callback against `hd` or `tid` by the issuer (`jadpo_std::http::organisation_cla
 writes a `TestAccount`'s company as `hd` and `tid` and its strength as
 `amr`, and `jadpo dev`'s chooser gives each account the connection's
 company and a second factor.
+
+**Scopes** (area 9, "Scopes"; area 8, "`external_token`"; chunk N2).
+The checker reads `external_token: { scopes: }` into `Identity::scopes`
+(`identity::Scope`: a name and its scope-token), and an entity's
+`scopes:` into `EntityPolicy::scopes`, each effect's `ScopeNeed` with the
+token resolved; `Access::narrows` says whether any way in narrows. The
+plan's `Planner::granted` ANDs `Planner::scoped` after the tenancy, for
+every effect whatever grants decide it: `jadpo_sql::policy::scope_held`
+over `CallerPart::Scopes` and the effect's token bound as a literal, so
+the condition is in each statement's `WHERE` and a single record's
+`permitted` column, and nothing changes in an app that narrows nothing. A
+`Gate` carries `scopes`: none for a listed action's (refusing a narrowed
+caller, with `Callers::Anyone` for a line anyone may call), its entity's
+`create` and `update` tokens for an upload slot's, and `None` for a
+listed query's. `ExternalTokenPlan::scopes` gives the runtime the
+declared tokens; `external_token::check_token` reads the `scope` claim
+into `Checked::scopes` (`scopes_carried`), which `authenticate` puts on
+the `Caller`, bound as a space-joined text and read by
+`policy::admit`; `http::session` refuses `sessions.start` and
+`sessions.issue_token` to a narrowed caller. A route test's `scopes:` is
+one text site after `strength:` (`Expr::Request::scopes`, the fifth
+`given` flag), which `test_credentials_scoped` signs into the local
+issuer's token (`LocalIssuer::token_scoped`); `jadpo dev token` signs in
+every declared scope. The report, the access record
+(`acceptances::access`) and `compare::access_needs`'s
+`PolicyChange.scopes_loosened` read the same models, and the graph has an
+`oauth_scope` node per declared scope with a `scopes` edge to each grant
+that needs it.
 
 **Signed sessions** (area 8). The identity reads
 `revocation_delay:`, each method's `signing_key:` (a `SigningKey`

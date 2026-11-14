@@ -241,7 +241,7 @@ fn help_json_documents_the_manifest_schema() {
     assert!(
         kinds
             .iter()
-            .any(|k| k["kind"] == "oauth_scope" && k["status"] == "reserved")
+            .any(|k| k["kind"] == "oauth_scope" && k["status"] == "built")
     );
     assert!(schema["nodeFields"]["digest"].is_string());
 }

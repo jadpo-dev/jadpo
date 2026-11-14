@@ -116,6 +116,10 @@ pub struct Caller {
     /// Whether that sign-in proved more than one factor: a passkey, or a
     /// provider's token whose `amr` names a second factor.
     pub multi_factor: bool,
+    /// The scope-tokens a narrowed token carries of those its way in
+    /// declares (area 9, "Scopes"; chunk N2): `None` for every caller that
+    /// isn't narrowed, which scopes never touch.
+    pub scopes: Option<Vec<String>>,
 }
 
 /// What a generated test gives the request it sends (area 13, "Generated
@@ -992,6 +996,13 @@ impl<'p> Ctx<'p> {
         self.unpoliced
     }
 
+    /// The scope-tokens the caller's token carries, when its way in
+    /// narrows it (area 9, "Scopes"; chunk N2); `None` for a caller scopes
+    /// don't touch, the system and no one.
+    pub fn narrowed(&self) -> Option<&[String]> {
+        self.caller.as_ref()?.scopes.as_deref()
+    }
+
     /// The value of part `part` of the caller, for the policy compiled into
     /// a statement: the signed-in user's or service's `id`, `NULL` for
     /// anyone else, whether anyone is signed in, whether the system runs
@@ -1022,6 +1033,10 @@ impl<'p> Ctx<'p> {
                     .as_ref()
                     .is_some_and(|caller| caller.multi_factor),
             ),
+            CallerPart::Scopes => match self.narrowed() {
+                Some(scopes) => SqlValue::Text(scopes.join(" ")),
+                None => SqlValue::Null(SqlType::Text),
+            },
             CallerPart::User | CallerPart::Service => {
                 let wanted = if part == CallerPart::User {
                     jadpo_std::http::PrincipalKind::User

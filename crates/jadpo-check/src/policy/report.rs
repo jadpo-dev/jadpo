@@ -193,6 +193,13 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             ));
         }
     }
+    if access.narrows {
+        markdown.push_str(
+            "A token issued to another application is narrowed to its scopes: the \"scope\" row \
+             names the scope it must carry as well as a grant, and \"refused\" means no scope \
+             lets one in. Every other caller is unaffected.\n\n",
+        );
+    }
     if access
         .entities
         .values()
@@ -224,6 +231,19 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             cell(policy, Effect::Update),
             cell(policy, Effect::Delete),
         ));
+        if access.narrows {
+            let scope = |effect: Effect| match policy.scopes.get(&effect) {
+                Some(need) => format!("`{}`", need.written),
+                None => "refused".to_string(),
+            };
+            markdown.push_str(&format!(
+                "| scope | {} | {} | {} | {} |\n",
+                scope(Effect::Create),
+                scope(Effect::Read),
+                scope(Effect::Update),
+                scope(Effect::Delete),
+            ));
+        }
         for field in &policy.fields {
             markdown.push_str(&format!(
                 "| `{}` | {} | {} | {} | {} |\n",
@@ -270,6 +290,15 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             grants.set(effect.word(), written);
         }
         entry.set("grants", grants);
+        // The scope each effect needs of a narrowed token (chunk N2),
+        // where a way in narrows: an effect left out is refused to one.
+        if access.narrows {
+            let mut scopes = Value::object();
+            for (effect, need) in &policy.scopes {
+                scopes.set(effect.word(), need.written.as_str());
+            }
+            entry.set("scopes", scopes);
+        }
         match (&access.root.tenant, &policy.tenancy) {
             (Some(_), Some(tenancy)) => entry.set("tenant", tenancy.via.as_str()),
             (Some(_), None) => entry.set("tenant", "shared"),

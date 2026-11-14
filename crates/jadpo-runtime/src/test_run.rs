@@ -395,6 +395,7 @@ fn generated_caller(
         session: None,
         sign_in: None,
         multi_factor: true,
+        scopes: None,
     })
 }
 

@@ -2805,6 +2805,7 @@ mod tests {
             session: None,
             sign_in: None,
             multi_factor: false,
+            scopes: None,
         }));
     }
 

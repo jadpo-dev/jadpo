@@ -1641,6 +1641,12 @@ pub struct ExternalTokenPlan {
     /// (area 8, "A person the app has not seen"; chunk A7).
     #[serde(default)]
     pub first_sign_in: Option<FirstSignInPlan>,
+    /// The scope-tokens `scopes:` declares, each by its name (area 8,
+    /// "Scopes"; chunk N2): every token is narrowed to those its `scope`
+    /// claim carries of these. `None` when it declares none, so no token
+    /// is narrowed.
+    #[serde(default)]
+    pub scopes: Option<Vec<(String, String)>>,
 }
 
 /// How an external token's subject no user has is decided and found

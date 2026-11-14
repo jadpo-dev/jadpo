@@ -225,10 +225,23 @@ pub(crate) fn token(call: &Call) -> Reply {
         }
         Err(error) => return unreadable(crate::schedules::store_error(&error)),
     };
-    let Some(token) = kept
-        .issuer
-        .token(&kept.configured_issuer, &kept.audience, &subject, now)
-    else {
+    // With `scopes:`, a development token carries every scope the app
+    // declares, as a client granted all of them would; a route test says
+    // which its token carries (area 9, "Scopes"; chunk N2).
+    let scopes: Option<Vec<String>> = plan
+        .routes
+        .and_then(|routes| routes.identity.as_ref())
+        .and_then(|identity| identity.external_token.as_ref())
+        .and_then(|external| external.scopes.as_ref())
+        .map(|scopes| scopes.iter().map(|(_, token)| token.clone()).collect());
+    let Some(token) = kept.issuer.token_scoped(
+        &kept.configured_issuer,
+        &kept.audience,
+        &subject,
+        now,
+        false,
+        scopes.as_deref(),
+    ) else {
         return unreadable("the token couldn't be signed".to_string());
     };
     let expires = (now.div_euclid(1000) + LOCAL_TOKEN_SECONDS) * 1000;

@@ -293,7 +293,7 @@ policy {
 }
 
 #[test]
-fn scopes_wait_for_their_chunk_and_a_fields_own_policy_reads() {
+fn a_scope_no_way_in_declares_is_refused_and_a_fields_own_policy_reads() {
     let found = with(
         r#"entity Draft {
     id: Uuid
@@ -319,7 +319,11 @@ fn scopes_wait_for_their_chunk_and_a_fields_own_policy_reads() {
         .iter()
         .filter_map(|line| line.split_whitespace().nth(1))
         .collect();
-    assert_eq!(rules, ["toolchain.not_built_yet:"], "{found:#?}");
+    assert_eq!(rules, ["policy.binding_invalid:"], "{found:#?}");
+    assert!(
+        found[0].contains("`OAuthScope.drafts_read` isn't a declared scope"),
+        "{found:#?}"
+    );
 }
 
 /// The rules each problem in `found` names, in order.

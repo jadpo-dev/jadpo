@@ -434,6 +434,7 @@ fn a_caller_the_record_lets_in_is_refused_the_field() {
                 session: None,
                 sign_in: None,
                 multi_factor: false,
+                scopes: None,
             }));
             program.run(&mut ctx, id, args).await
         };

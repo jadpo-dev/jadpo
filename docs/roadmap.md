@@ -266,8 +266,10 @@ work below (Richard, 2026-11-08).
    services run by Jadpo (`runs:`, Docker or Podman hidden behind
    `jadpo services`, and `jadpo dev` starting them); the `documents`
    capability, with its `Document` base and `documents/` folder; OAuth grants
-   per owner (`grants:`, `on_behalf_of:`, `OAuthGrant`, `jadpo dev grants add`
-   and grants as test fixtures); search (an engine's `store:` and `jadpo
+   per owner (`grants:`, `on_behalf_of:`, `OAuthGrant`, `jadpo dev grants add`,
+   grants as test fixtures, and calling an operation whose scope the grant
+   doesn't request refused when compiling, area 11, "Mistakes not reported
+   yet"); search (an engine's `store:` and `jadpo
    search reindex`), `bot_check` and `scanning` capabilities, with image
    variants, each with its fake; `jadpo watch`; a service's new or
    changed container image and its `outbound:` grants, each with a
@@ -398,11 +400,7 @@ work below (Richard, 2026-11-08).
       secret is configured (an ES256 token the app signs with its private
       key, team ID and key ID) and how its `form_post` callback is taken,
       which needs a binding cookie a cross-site `POST` carries.
-    - [ ] **N2 Scopes** `opus · xhigh`: area 8, "What is built"; area 9,
-      "What is built"; area 19, "The token types"; area 11, "Mistakes not
-      reported yet". Scope declarations, `scopes:` and policy's restrictions
-      with `oauth_token` and `external_token`, `OAuthScope` narrowing, and an
-      operation whose scope a grant doesn't request.
+    - [x] **N2 Scopes**: area 9, "Scopes" and its notes; area 8, "`external_token`" and its notes; area 13, "Signing in for a route test"; compiler-runtime, "Scopes".
 13. Telemetry other services can read (areas 16, 17 and 18), added
     2026-11-14. Apps chained across Jadpo and other services, traced end to
     end, with what a monitoring, analytics or backup service needs to read

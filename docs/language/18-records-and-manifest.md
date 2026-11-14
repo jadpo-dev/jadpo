@@ -28,7 +28,7 @@ it.
 |---|---|---|---|---|---|
 | API record | Each API's routes, fields and failure codes | `api/<api>.jadpo_record` | Yes | `jadpo api update` | `check`, reviewers, client teams |
 | Event record | Each domain's events, the fields they carry and the types those name ([The event record](12-jobs-and-events.md#the-event-record)) | `domains/<domain>/events/events.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
-| Access record | Who can do what: each entity's and field's grants, where records belong, the actions and queries listed separately, the security rules declined, the sign-in settings that have a limit and your company's own git locations ([Acceptances](#acceptances)) | `access.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
+| Access record | Who can do what: each entity's and field's grants, the scopes tokens are narrowed to and each effect's, where records belong, the actions and queries listed separately, the security rules declined, the sign-in settings that have a limit and your company's own git locations ([Acceptances](#acceptances)) | `access.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
 | Network record | Every outside host the app can reach, by connection ([The network report](11-integrations.md#the-network-report)) | `network.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
 | Migrations | Each step of the database, with a snapshot of the whole schema | `database/migrations/` | Yes | `jadpo migrate new` | `migrate apply`, `check` |
 | Identity registry | What each renamed thing was born as | `database/identities.jadpo_record` | Yes | `jadpo fmt --layout`, `jadpo rename` and `jadpo domain …` | the compiler, `migrate`, `incident` |
@@ -835,6 +835,7 @@ Each change the compiler reports, and the subject it names:
 | `PolicyChange.listing_removed` | `catalogue.staff_books` | An action's or a query's line under `actions:` is gone |
 | `PolicyChange.call_ungranted_declined` | `lending.borrow` | A new `decline policy.call_ungranted:`, on the declaration it sits above |
 | `PolicyChange.sign_in_loosened` | `magic_link.expires_after` | A setting past its limit and looser than before |
+| `PolicyChange.scopes_loosened` | `external_token`, `OAuthScope.notes_read`, `notes.Note.read` | `external_token:`'s `scopes:` removed, a declared scope reading another scope-token, or an effect naming a scope it didn't, or another ([Scopes](09-policy.md#scopes)) |
 | `PolicyChange.role_requirements_changed` | `desk.StaffRole.admin` | A role's `requires:` line changed, tighter or looser, or a role's line added or removed |
 | `PolicyChange.own_source_added` | `"github.com/acme/"` | An entry in `packages:`'s `own_sources:` that wasn't there, or one that now covers more; not one below an entry already there, which lets nothing new in |
 | `DomainChange.created` | `billing` | A folder under `domains/` that wasn't there |

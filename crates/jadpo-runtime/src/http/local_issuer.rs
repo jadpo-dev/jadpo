@@ -187,6 +187,21 @@ impl LocalIssuer {
         now: i64,
         multi_factor: bool,
     ) -> Option<String> {
+        self.token_scoped(issuer, audience, subject, now, multi_factor, None)
+    }
+
+    /// [`LocalIssuer::token_with`], its `scope` claim the scope-tokens
+    /// `scopes` gives, joined by spaces, when it gives any (area 9,
+    /// "Scopes"; chunk N2); with `None` or none it has no `scope` claim.
+    pub fn token_scoped(
+        &self,
+        issuer: &str,
+        audience: &str,
+        subject: &str,
+        now: i64,
+        multi_factor: bool,
+        scopes: Option<&[String]>,
+    ) -> Option<String> {
         use jadpo_value::encoding::to_base64url;
         let issued = now.div_euclid(1000);
         let header = serde_json::json!({"alg": "EdDSA", "kid": LOCAL_KEY_ID, "typ": "JWT"});
@@ -199,6 +214,11 @@ impl LocalIssuer {
         });
         if multi_factor && let Some(object) = claims.as_object_mut() {
             object.insert("amr".into(), serde_json::json!(["pwd", "mfa"]));
+        }
+        if let Some(scopes) = scopes.filter(|scopes| !scopes.is_empty())
+            && let Some(object) = claims.as_object_mut()
+        {
+            object.insert("scope".into(), serde_json::json!(scopes.join(" ")));
         }
         let body = format!(
             "{}.{}",

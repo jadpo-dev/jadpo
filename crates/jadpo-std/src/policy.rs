@@ -46,6 +46,12 @@ pub enum CallerPart {
     /// Whether the caller's session proved more than one factor
     /// (`AuthenticationStrength.multi_factor`).
     MultiFactor,
+    /// The scope-tokens a narrowed token carries of those its way in
+    /// declares, joined by spaces as a `scope` claim joins them (area 9,
+    /// "Scopes"; chunk N2): `NULL` for every caller that isn't narrowed,
+    /// whom scopes don't touch, and an empty text for a narrowed token
+    /// that carries none, which every effect refuses.
+    Scopes,
 }
 
 impl CallerPart {
@@ -54,7 +60,7 @@ impl CallerPart {
         match self {
             CallerPart::User | CallerPart::Service | CallerPart::SystemTenant => SqlType::Uuid,
             CallerPart::Signed | CallerPart::System | CallerPart::MultiFactor => SqlType::Bool,
-            CallerPart::SignInMethod => SqlType::Text,
+            CallerPart::SignInMethod | CallerPart::Scopes => SqlType::Text,
         }
     }
 }
@@ -69,6 +75,15 @@ pub struct Gate {
     /// subscriber's delivery may call it (area 12; chunk 6.1a). Nothing a
     /// request runs is the system.
     pub system: bool,
+    /// What it asks of a narrowed token besides its callers (area 9,
+    /// "Scopes"; chunk N2): one of these scope-tokens, an upload slot's
+    /// being its entity's `create` and `update` scopes; none at all for an
+    /// action listed under `actions:`, since no entity's scope names it,
+    /// so a narrowed token is refused. `None` where the statements behind
+    /// it ask for the scope themselves (a listed query), and where no way
+    /// in narrows.
+    #[serde(default)]
+    pub scopes: Option<Vec<String>>,
 }
 
 impl Gate {
@@ -77,6 +92,7 @@ impl Gate {
         Gate {
             callers,
             system: false,
+            scopes: None,
         }
     }
 }
@@ -84,6 +100,9 @@ impl Gate {
 /// The callers a [`Gate`] lets in besides the system.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Callers {
+    /// Anyone at all: a gate only for what it asks of a narrowed token
+    /// (chunk N2).
+    Anyone,
     /// Anyone signed in.
     Signed,
     /// A caller holding one of the roles its line names: `SELECT 1` of

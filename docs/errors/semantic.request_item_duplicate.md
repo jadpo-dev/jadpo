@@ -80,7 +80,7 @@ error: `input:` is given twice
    |         ----- first given here
 48 |         input: AddMemo {
    |         ^^^^^ given again
-  reason: A request gives each of `method:`, `path:`, `params:`, `input:`, `idempotency_key:`, `as:`, `sign_in:` and `strength:` once, so there is never a question of which counts.
+  reason: A request gives each of `method:`, `path:`, `params:`, `input:`, `idempotency_key:`, `as:`, `sign_in:`, `strength:` and `scopes:` once, so there is never a question of which counts.
   next: Remove one `input:` (agent)
   rule: semantic.request_item_duplicate
   help: https://jadpo.dev/docs/errors/semantic.request_item_duplicate
