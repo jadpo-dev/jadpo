@@ -48,6 +48,13 @@ pub const CHECK_MARKER: &str = "-- check ";
 /// in Jadpo's marker is.
 pub const REWRITE_MARKER: &str = "-- rewrite ";
 
+/// The line that opens the search for stored records a new unique rule
+/// would refuse (area 5, "Unique rules"): the rule, then one statement
+/// giving each set of records holding the same value, the `id`s of its
+/// first few and how many there are. `jadpo migrate apply` runs it where
+/// it stands and refuses the migration, naming them, while it finds any.
+pub const DUPLICATES_MARKER: &str = "-- duplicates ";
+
 /// The line that opens a step of statements of its own (chunk 5.8b),
 /// followed by what it does: a backfill's last steps, each its own
 /// transaction, so the one that reads every row holds no lock that keeps
@@ -127,6 +134,54 @@ pub struct Batches {
     /// In Jadpo: the statement writing a batch's values back, as
     /// [`Fill::write`] does.
     pub write: Option<String>,
+}
+
+/// A piece of a step's statements, as [`split_at_searches`] splits
+/// them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SearchPiece {
+    /// Statements run as one batch.
+    Sql(String),
+    /// The search for the stored records `rule` would refuse: `query`
+    /// gives each set of them.
+    Duplicates { rule: String, query: String },
+}
+
+/// `sql`, a step's statements, split at each search for the records a
+/// new unique rule would refuse, in order.
+pub fn split_at_searches(sql: &str) -> Vec<SearchPiece> {
+    let mut out = Vec::new();
+    let mut once = String::new();
+    let mut lines = sql.lines();
+    while let Some(line) = lines.next() {
+        let Some(rest) = line.strip_prefix(DUPLICATES_MARKER) else {
+            once.push_str(line);
+            once.push('\n');
+            continue;
+        };
+        if !once.trim().is_empty() {
+            out.push(SearchPiece::Sql(once.trim().to_string()));
+        }
+        once.clear();
+        let rule = rest.split(':').next().unwrap_or_default().trim();
+        let mut query = String::new();
+        for line in lines.by_ref() {
+            query.push_str(line);
+            if let Some(done) = query.strip_suffix(';') {
+                query = done.to_string();
+                break;
+            }
+            query.push('\n');
+        }
+        out.push(SearchPiece::Duplicates {
+            rule: rule.to_string(),
+            query: query.trim().to_string(),
+        });
+    }
+    if !once.trim().is_empty() {
+        out.push(SearchPiece::Sql(once.trim().to_string()));
+    }
+    out
 }
 
 /// How a migration creates an extension, as `jadpo migrate new` writes it.

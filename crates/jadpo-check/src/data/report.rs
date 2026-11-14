@@ -140,9 +140,12 @@ pub(crate) fn serving(
     };
     let keys = || {
         std::iter::once((&table.primary_key.name, &table.primary_key.columns)).chain(
+            // A key holding only the records with a value serves no
+            // query on its own.
             table
                 .unique
                 .iter()
+                .filter(|(_, unique)| unique.predicate.is_none())
                 .map(|(name, unique)| (name, &unique.columns)),
         )
     };

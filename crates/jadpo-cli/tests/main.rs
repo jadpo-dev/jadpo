@@ -197,6 +197,7 @@ mod translation_jadpo;
 mod translation_tooling;
 mod translations;
 mod type_review;
+mod unique_parts;
 mod vectors;
 mod verifier;
 mod watch;
