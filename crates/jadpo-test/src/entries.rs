@@ -710,6 +710,7 @@ mod tests {
     /// `GET /sheet`, which runs an action and writes `output` as JSON.
     fn route() -> RoutePlan {
         RoutePlan {
+            cache: None,
             key: "route GET /sheet".into(),
             method: HttpMethod::Get,
             segments: vec![Segment::Fixed("sheet".into())],

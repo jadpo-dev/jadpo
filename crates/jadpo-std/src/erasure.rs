@@ -148,6 +148,10 @@ pub struct ErasurePlan {
     pub log: Option<ErasureLog>,
     /// Each connection that can ask its provider to erase someone.
     pub providers: Vec<ProviderErasure>,
+    /// Everything every cache holds, cleared once each store's share of an
+    /// erasure commits (area 15, "What erasure reaches"; chunk Q9).
+    #[serde(default)]
+    pub clears: Vec<crate::caches::Clear>,
 }
 
 impl ErasurePlan {

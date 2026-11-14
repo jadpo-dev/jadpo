@@ -157,6 +157,7 @@ fn audited(entity: &EntityModel, setting: &dyn Fn(&str) -> Option<u32>) -> Optio
     );
     let cutoff = purging.param(PurgeSource::Cutoff, SqlType::Timestamp);
     Some(PurgePlan {
+        clears: Vec::new(),
         entity: entity.name.clone(),
         kind: PurgeKind::Audit,
         store,
@@ -202,6 +203,7 @@ fn expired(
         text::with_removed(&sql, &leading, &removed)
     };
     Some(PurgePlan {
+        clears: Vec::new(),
         entity: entity.name.clone(),
         kind: PurgeKind::Retention,
         store,
@@ -313,6 +315,7 @@ fn cleared(
         PURGE_BATCH,
     );
     Some(PurgePlan {
+        clears: Vec::new(),
         entity: entity.name.clone(),
         kind: PurgeKind::FieldRetention(field_model.name.clone()),
         store,
@@ -351,6 +354,7 @@ pub(crate) fn plan(
     }
     let sql = text::purge(&entity.table, &conditions, &since.column, PURGE_BATCH);
     Some(PurgePlan {
+        clears: Vec::new(),
         entity: entity.name.clone(),
         kind: PurgeKind::Hidden,
         store,

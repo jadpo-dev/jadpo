@@ -497,6 +497,7 @@ fn table(keys: Option<&str>, required: bool) -> RouteTable {
             methods: Vec::new(),
         }],
         routes: vec![RoutePlan {
+            cache: None,
             key: "route POST /widgets".into(),
             method: HttpMethod::Post,
             segments: vec![

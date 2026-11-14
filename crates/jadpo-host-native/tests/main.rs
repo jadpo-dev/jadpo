@@ -4,6 +4,7 @@
 
 mod authority;
 mod fetch;
+mod redis_caches;
 mod redis_limits;
 mod slow_clients;
 mod smtp_tls;

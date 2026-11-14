@@ -1860,6 +1860,11 @@ pub struct RoutePlan {
     /// good ([`CACHE_IMMUTABLE`]; chunk G3).
     #[serde(default)]
     pub immutable: bool,
+    /// For a `GET` that runs a query with `cache:` (area 5, "Caches"):
+    /// where its answers are kept, unless a request carries a newer
+    /// revision (area 6, "Where a read comes from"; chunk Q9).
+    #[serde(default)]
+    pub cache: Option<crate::caches::RouteCache>,
     /// The store an action keeps this route's `Idempotency-Key`s in: the
     /// one it writes, so a key commits with the writes it answers for.
     /// `None` for a `GET`, and for an action that writes no store, which
@@ -2101,6 +2106,12 @@ pub struct RouteTable {
     /// Where rate limits are counted; `None` when `app.jadpo` names no
     /// store, and the host counts in its own memory.
     pub rate_limits: Option<RateLimitStore>,
+    /// The longest `keep:` of the application's caches, in milliseconds,
+    /// which a write's revision cookie lasts (area 7, "Write revisions";
+    /// chunk Q9); `None` for an application with no cache, whose writes
+    /// carry no revision.
+    #[serde(default)]
+    pub revisions: Option<u64>,
 }
 
 impl RouteTable {

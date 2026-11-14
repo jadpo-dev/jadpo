@@ -194,6 +194,9 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
         Some(record) => faked.with_record(Rc::clone(record)),
         None => faked,
     };
+    // Every cache in memory of its own, empty at first (area 13, "Events
+    // and caches in tests"; chunk Q9).
+    let faked = faked.with_caches(plan.cache_connections());
     let mut ctx = Ctx::of(executor, &faked, env(plan, once.key, once.callable));
     ctx.set_settings(plan.test_settings(once.callable));
     ctx.set_test_flags(plan.test_flags(once.callable));
@@ -1083,6 +1086,14 @@ impl<H: Host> Host for AtClock<H> {
 
     fn slots(&self) -> &crate::slots::Slots {
         self.host.slots()
+    }
+
+    fn cache(&self, connection: &str) -> Option<Rc<dyn crate::caches::Cache>> {
+        self.host.cache(connection)
+    }
+
+    fn cache_health(&self) -> &crate::caches::CacheHealth {
+        self.host.cache_health()
     }
 }
 

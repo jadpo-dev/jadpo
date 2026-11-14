@@ -57,6 +57,7 @@ pub(crate) fn table(
                     },
                 },
                 ConnectionKind::Redis => ConnectionDriver::Redis { url: url(name) },
+                ConnectionKind::Memory => ConnectionDriver::Memory,
                 ConnectionKind::Files
                     if files.iter().any(|store| {
                         store.name == *name && store.driver == jadpo_std::Driver::S3

@@ -613,6 +613,12 @@ impl Host for WorkersHost {
     fn slots(&self) -> &Slots {
         isolate_slots()
     }
+
+    /// The cache's Redis connection, over the invocation's own connection
+    /// (chunk Q9); `Driver.memory` is refused for Workers when it is built.
+    fn cache(&self, connection: &str) -> Option<std::rc::Rc<dyn jadpo_runtime::caches::Cache>> {
+        self.drivers().cache(connection)
+    }
 }
 
 #[cfg(test)]

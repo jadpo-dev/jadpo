@@ -239,7 +239,16 @@ async fn run(
             Err(stop) => interrupted(stop),
         },
         StoreOp::Write(plan) => match write(ctx, plan, json, args, site).await {
-            Ok(Written::Value(value)) => Stored::Value(value),
+            Ok(Written::Value(value)) => {
+                // What it may have changed in a cache, cleared once the
+                // action commits (area 5, "Caches"; chunk Q9).
+                if !plan.clears.is_empty()
+                    && let Some(boundary) = ctx.boundary_mut()
+                {
+                    boundary.clearing(&plan.clears);
+                }
+                Stored::Value(value)
+            }
             // By `id`, no record has it: the entity's not-found failure.
             Ok(Written::Missing(concealed)) => {
                 match missing(ctx, plan.missing.as_ref(), failures, args) {

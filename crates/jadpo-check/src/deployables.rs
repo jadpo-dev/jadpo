@@ -725,6 +725,9 @@ pub enum Via {
     /// It reads the addresses customers register there, delivering their
     /// events (area 16, "Outgoing webhooks"; chunk C1b).
     Addresses,
+    /// It keeps a query's cache there, or clears it as it writes (area 5,
+    /// "Caches"; chunk Q9).
+    Caches,
 }
 
 impl Via {
@@ -744,6 +747,9 @@ impl Via {
             Via::Publishing => "by publishing the app's events through it".to_string(),
             Via::Addresses => {
                 "by reading the webhook addresses its records register there".to_string()
+            }
+            Via::Caches => {
+                "by keeping its queries' results there and clearing them as it writes".to_string()
             }
         }
     }
@@ -944,6 +950,13 @@ fn reach(
         }
     }
     roots.extend(named_by_the_runtime(db, project, deployable));
+    // Every deployable may read a query's cache or clear it as it writes
+    // (area 5, "Caches"; chunk Q9).
+    for name in crate::data::queries::query_names(db, project) {
+        if let Some(cache) = crate::caches::query_cache(db, project, name) {
+            connection(&mut out, &cache.store, Via::Caches);
+        }
+    }
     // Every start replays the erasure log, whatever it serves or runs, and
     // a deployable running subscribers keeps it (area 15; chunk P4c).
     if let Some((log, _)) = &crate::privacy::privacy(db, project).log {
@@ -1100,6 +1113,22 @@ pub fn target_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 {
                     None
                 }
+                (DeployTarget::Wasm, Some(ConnectionKind::Memory)) => Some(Refusal {
+                    message: format!(
+                        "`{}` can't keep a cache in `{name}` on Workers, which keeps no memory between requests",
+                        deployable.name
+                    ),
+                    label: "`Driver.memory`",
+                    reason: format!(
+                        "`{name}` keeps a cache in each server's own memory (`Driver.memory`), and a Worker's instances keep none between requests; `{}` uses it {}.",
+                        deployable.name,
+                        via.words()
+                    ),
+                    next: format!(
+                        "Give `{name}` `driver: Driver.redis` and a `url:`, which Workers reaches, or build `{}` for `Target.native`",
+                        deployable.name
+                    ),
+                }),
                 (DeployTarget::Wasm, Some(ConnectionKind::Files)) => Some(Refusal {
                     message: format!(
                         "`{}` can't use `{name}` on Workers, which has no disk",

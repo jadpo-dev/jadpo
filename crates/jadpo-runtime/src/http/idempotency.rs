@@ -417,6 +417,7 @@ mod tests {
             });
         }
         RoutePlan {
+            cache: None,
             key: key.into(),
             method: HttpMethod::Post,
             segments,

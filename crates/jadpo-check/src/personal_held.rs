@@ -84,10 +84,17 @@ fn field_row(
     let readers = who_reads(access.entity(&entity.name), &field.name);
     let store = entity.store.clone().unwrap_or_default();
     let (keep, retention) = kept(entity, field);
+    let caches = crate::caches::caches_holding(db, project, &entity.name, &field.name);
+    let kept_in = if caches.is_empty() {
+        format!("`{store}`")
+    } else {
+        let named: Vec<String> = caches.iter().map(|cache| format!("`{cache}`")).collect();
+        format!("`{store}`, cached in {}", crate::and_list(&named))
+    };
     let cells = [
         format!("`{}.{}`", entity.name, field.name),
         category_cell(holding),
-        format!("`{store}`"),
+        kept_in,
         readers.clone(),
         keep.clone(),
     ];
@@ -101,8 +108,12 @@ fn field_row(
         categories.iter().any(|c| ai_personal::is_sensitive(c)),
     );
     json.set("store", store);
-    // No entity can have a cache yet (area 5, `caches:` is refused).
-    json.set("caches", Vec::<Value>::new());
+    // Each cache a query giving it keeps its copies in (area 5, "Caches";
+    // chunk Q9).
+    json.set(
+        "caches",
+        caches.into_iter().map(Value::from).collect::<Vec<Value>>(),
+    );
     json.set("read_by", readers);
     match retention {
         Some(retention) => json.set("retention", retention),

@@ -50,7 +50,7 @@ fn split(name: &str) -> (&str, &str) {
 const CHAIN: usize = 256;
 
 /// Every type plan a project's bodies use, and the queries over its graph.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Types {
     graph: Arc<Graph>,
     /// Each rule across an object's fields, by key, with its typed body

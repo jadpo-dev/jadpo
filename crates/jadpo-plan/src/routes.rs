@@ -85,6 +85,7 @@ pub(crate) fn table(
     pruning: Option<&crate::deployable::Pruning<'_>>,
 ) -> RouteTable {
     let serving = |api: &str| pruning.is_none_or(|pruning| pruning.keep.serves(api));
+    let tables = crate::caches::Tables::of(db, project);
     // A query a kept route answers with, by name, noted when it isn't kept.
     let query_named = |name: &str| {
         let found = queries.iter().find(|query| query.name == name);
@@ -195,6 +196,9 @@ pub(crate) fn table(
             .as_ref()
             .filter(|_| !stream)
             .map(|ty| codecs.codec(&jadpo_check::graph::type_ref(&lookup, ty)));
+        // Where a display read of a query with `cache:` keeps its answers
+        // (area 5, "Caches"; chunk Q9).
+        let mut cache = None;
         let (run, keys) = if let Some(op) = route.run.generated {
             (
                 Run::Listing {
@@ -206,6 +210,7 @@ pub(crate) fn table(
             let Some(query) = query_named(&route.run.name) else {
                 continue;
             };
+            cache = crate::caches::route_cache(db, project, &tables, query);
             (Run::Query(Box::new(query.read.clone())), None)
         } else {
             let Some(key) = jadpo_check::graph::declaration_key(&lookup, &route.run.name) else {
@@ -322,6 +327,7 @@ pub(crate) fn table(
             stream,
             sends: route.sends.clone(),
             immutable: route.immutable,
+            cache,
             links: route
                 .output
                 .as_ref()
@@ -372,6 +378,7 @@ pub(crate) fn table(
             sends: None,
             links: false,
             immutable: false,
+            cache: None,
             keys: None,
             args: Vec::new(),
             authentication: route.authentication,
@@ -411,6 +418,7 @@ pub(crate) fn table(
             sends: None,
             links: false,
             immutable: false,
+            cache: None,
             keys: None,
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Required,
@@ -462,6 +470,7 @@ pub(crate) fn table(
                 sends: None,
                 links: false,
                 immutable: false,
+                cache: None,
                 keys: None,
                 args: Vec::new(),
                 authentication: step.authentication(),
@@ -497,6 +506,7 @@ pub(crate) fn table(
                     sends: None,
                     links: false,
                     immutable: false,
+                    cache: None,
                     keys: None,
                     args: Vec::new(),
                     authentication: step.authentication(),
@@ -536,6 +546,7 @@ pub(crate) fn table(
                 sends: None,
                 links: false,
                 immutable: false,
+                cache: None,
                 keys: None,
                 args: Vec::new(),
                 authentication: step.authentication(),
@@ -574,6 +585,7 @@ pub(crate) fn table(
                 sends: None,
                 links: false,
                 immutable: false,
+                cache: None,
                 keys: None,
                 args: Vec::new(),
                 authentication: step.authentication(),
@@ -622,6 +634,7 @@ pub(crate) fn table(
                 sends: None,
                 links: false,
                 immutable: false,
+                cache: None,
                 keys: None,
                 args: Vec::new(),
                 authentication: served.authentication,
@@ -670,6 +683,7 @@ pub(crate) fn table(
             sends: None,
             links: false,
             immutable: false,
+            cache: None,
             keys: None,
             args: Vec::new(),
             authentication: served.authentication,

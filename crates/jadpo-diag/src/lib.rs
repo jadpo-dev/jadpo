@@ -326,6 +326,8 @@ rules! {
         "A connection gives a key its package or driver doesn't take";
     CONNECTION_KEY_MISSING: "connection.key_missing", area 11, Error, Agent,
         "A connection leaves out a key its package or driver needs";
+    CONNECTION_MEMORY_CACHE: "connection.memory_cache", area 16, Declinable, Human,
+        "A cache connection keeps its cache in each server's own memory";
     CONNECTION_PACKAGE_UNKNOWN: "connection.package_unknown", area 11, Error, Agent,
         "A connection names a package the app doesn't hold, or a library package, which needs no connection";
     CONNECTION_VALUE_INVALID: "connection.value_invalid", area 11, Error, Agent,
@@ -860,6 +862,8 @@ rules! {
         "An aggregate in a query is worked out over a field it can't add up, compare or average";
     QUERY_AGGREGATE_UNKNOWN: "query.aggregate_unknown", area 6, Error, Agent,
         "An `aggregate:` section isn't a block of `count`, `sum`, `min`, `max` or `average` entries";
+    QUERY_CACHE_INVALID: "query.cache_invalid", area 5, Error, Agent,
+        "A query's `cache:` names no cache, keeps its entries too long or too briefly, or caches what a cache may not hold";
     QUERY_CONDITION_UNSUPPORTED: "query.condition_unsupported", area 6, Error, Agent,
         "A query's `where:` or `where_present:` line holds a condition the database can't serve";
     QUERY_FROM_NOT_ENTITY: "query.from_not_entity", area 6, Error, Agent,
@@ -1967,6 +1971,7 @@ mod tests {
         assert_eq!(
             declinable,
             [
+                "connection.memory_cache",
                 "constant.similar_exists",
                 "data.personal_unread",
                 "email.field_unused",

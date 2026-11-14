@@ -155,6 +155,11 @@ pub async fn purge_after(
         };
         transaction.commit().await?;
         let removed = rows.len() as u64;
+        // What it deleted or cleared leaves no cached copy (area 5,
+        // "Caches"; chunk Q9).
+        if removed > 0 && !plan.clears.is_empty() {
+            crate::caches::clear(host, &crate::caches::merged(&plan.clears), now).await;
+        }
         purged.batches.push(removed);
         if removed < u64::from(PURGE_BATCH) {
             purged.finished = true;
