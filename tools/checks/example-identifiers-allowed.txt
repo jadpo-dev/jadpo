@@ -48,6 +48,9 @@ var
 # Words the language itself defines: a feature flag's `owner:` (area 16,
 # "Feature flags")
 owner
+# Words the language itself defines: a write's revision, the `Jadpo-Revision`
+# header and its cookie (area 7, "Write revisions"; chunk Q9)
+revision
 # Words the language itself defines: `Enum.all` lists an enum's variants
 # (area 19, "Closed value sets are enums"), and the standard types' names and parts
 all

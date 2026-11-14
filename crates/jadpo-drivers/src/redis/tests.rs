@@ -544,8 +544,8 @@ fn tags(names: &[&str]) -> Vec<String> {
 /// clear moves the generation of each entity it names and deletes each
 /// entry that read one, and leaves the rest; an entry forgotten is gone.
 async fn a_cache_keeps_reads_and_clears(redis: &Redis) {
-    let product = tags(&["Product"]);
-    let both = tags(&["Category", "Product"]);
+    let product = tags(&["Teapot"]);
+    let both = tags(&["Category", "Teapot"]);
     let looked = redis.look("jadpo:cache:entry:a", &product).await;
     assert_eq!(
         looked,
@@ -650,7 +650,7 @@ fn a_silent_cache_times_out() {
     host.timer_fires.set(true);
     let redis = store("redis://cache", &host);
     let looked = on_one_thread(async || {
-        Cache::look(&redis, "jadpo:cache:entry:a", &tags(&["Product"]), 0).await
+        Cache::look(&redis, "jadpo:cache:entry:a", &tags(&["Teapot"]), 0).await
     });
     assert_eq!(looked, Err(Unasked::TimedOut));
 }

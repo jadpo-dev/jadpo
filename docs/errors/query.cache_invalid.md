@@ -113,6 +113,22 @@ records give a sensitive field or a `File` are this error too.
     }
 ```
 
+```jadpo check project=e-query-cache-invalid-fix-1 file=domains/shop/queries/products.jadpo hidden
+use shop/entities { Product }
+use shop/types { ProductCard }
+
+/// Every product.
+query products() -> List<ProductCard> {
+    from: Product
+    order: [Product.id asc]
+    limit: 50
+    cache: {
+        store: cache
+        keep: 10m
+    }
+}
+```
+
 ```jadpo check project=e-query-cache-invalid-fix-1 file=app.jadpo hidden
 application {
     connections: {
@@ -156,22 +172,6 @@ use shop/entities { Product }
 /// A product as a list shows it.
 type ProductCard = Output {
     pick: [Product.id, Product.name]
-}
-```
-
-```jadpo check project=e-query-cache-invalid-fix-1 file=domains/shop/queries/products.jadpo hidden
-use shop/entities { Product }
-use shop/types { ProductCard }
-
-/// Every product.
-query products() -> List<ProductCard> {
-    from: Product
-    order: [Product.id asc]
-    limit: 50
-    cache: {
-        store: cache
-        keep: 10m
-    }
 }
 ```
 

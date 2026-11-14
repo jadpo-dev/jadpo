@@ -1109,8 +1109,86 @@ every existing one reads.
 <!-- topic: caches -->
 
 Nothing is cached unless you add it. A cache keeps a copy of data in a
-Redis store, so busy pages read it quickly. You can cache single records,
-on an entity, or a query's results, on the query:
+Redis store, so busy pages read it quickly. A query's `cache:` keeps its
+results for the routes that run it. It names its `store:`, a Redis store
+declared in `app.jadpo`, and `keep:`, the oldest an entry can be. Here the
+shop's list of products on the shelf is cached for ten minutes:
+
+```jadpo check project=caches file=app.jadpo
+application {
+    connections: {
+        cache: {
+            driver: Driver.redis
+            url: config.redis_url
+        }
+    }
+}
+```
+
+```jadpo check project=caches file=config.jadpo
+config {
+    redis_url: RedisUrl
+}
+```
+
+```jadpo check project=caches file=domains/shop/types/stock.jadpo
+/// How many of a product are on the shelf.
+type Stock = Int {
+    min: 0
+    max: 100000
+}
+```
+
+```jadpo check project=caches file=domains/shop/types/product_name.jadpo
+type ProductName = Text {
+    min_length: 1
+    max_length: 100
+}
+```
+
+```jadpo check project=caches file=domains/shop/entities/product.jadpo
+use shop/types { ProductName, Stock }
+
+/// Something the shop sells.
+entity Product {
+    id: Uuid
+    name: ProductName
+    stock: Stock
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+```
+
+```jadpo check project=caches file=domains/shop/types/product_card.jadpo
+use shop/entities { Product }
+
+/// A product as a list shows it.
+type ProductCard = Output {
+    pick: [Product.id, Product.name, Product.stock]
+}
+```
+
+```jadpo check project=caches file=domains/shop/queries/on_the_shelf.jadpo migrate=initial
+use shop/entities { Product }
+use shop/types { ProductCard }
+
+/// Every product, by name: the shop's busiest page.
+query on_the_shelf() -> List<ProductCard> {
+    from: Product
+    order: [Product.name asc]
+    limit: 50
+    cache: {
+        store: cache
+        keep: 10m
+    }
+}
+```
+
+You can cache single records too, on an entity, looked up by `id`:
 
 ```jadpo fragment
 entity Product {
@@ -1122,21 +1200,7 @@ entity Product {
         }
     }
 }
-
-query category_page(category_id: Category.id, page: PageRequest) -> Page<ProductCard> {
-    from: Product
-    where: Product.category_id == category_id
-    cache: {
-        store: cache
-        keep: 10m
-    }
-}
 ```
-
-`caches: { records: }` on an entity caches single products, looked up by
-`id`. `cache:` on a query caches that query's results. Each names its
-`store:`, a Redis store declared in `app.jadpo`, and `keep:`, the oldest
-an entry can be.
 
 - **Writes always go to the database**, never to the cache, and code never
   names cache keys.
@@ -1179,82 +1243,8 @@ can't be cached (`query.cache_invalid`). A route that sends raw bytes reads
 the store.
 
 A test checks a cached read by reading, writing elsewhere and reading
-again. Here the list of products on the shelf is cached, and a product
-counted again shows its new count on the next read:
-
-```jadpo check project=caches file=app.jadpo
-application {
-    connections: {
-        cache: {
-            driver: Driver.redis
-            url: config.redis_url
-        }
-    }
-}
-```
-
-```jadpo check project=caches file=config.jadpo hidden
-config {
-    redis_url: RedisUrl
-}
-```
-
-```jadpo check project=caches file=domains/shop/types/stock.jadpo hidden
-/// How many of a product are on the shelf.
-type Stock = Int {
-    min: 0
-    max: 100000
-}
-```
-
-```jadpo check project=caches file=domains/shop/types/product_name.jadpo hidden
-type ProductName = Text {
-    min_length: 1
-    max_length: 100
-}
-```
-
-```jadpo check project=caches file=domains/shop/entities/product.jadpo hidden
-use shop/types { ProductName, Stock }
-
-/// Something the shop sells.
-entity Product {
-    id: Uuid
-    name: ProductName
-    stock: Stock
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public]
-        update: [Access.public]
-    }
-}
-```
-
-```jadpo check project=caches file=domains/shop/types/product_card.jadpo hidden
-use shop/entities { Product }
-
-/// A product as a list shows it.
-type ProductCard = Output {
-    pick: [Product.id, Product.name, Product.stock]
-}
-```
-
-```jadpo check project=caches file=domains/shop/queries/on_the_shelf.jadpo migrate=initial
-use shop/entities { Product }
-use shop/types { ProductCard }
-
-/// Every product, by name: the shop's busiest page.
-query on_the_shelf() -> List<ProductCard> {
-    from: Product
-    order: [Product.name asc]
-    limit: 50
-    cache: {
-        store: cache
-        keep: 10m
-    }
-}
-```
+again. Here a route runs `on_the_shelf`, and a product counted again shows
+its new count on the next read:
 
 ```jadpo check project=caches file=domains/shop/routes/products.jadpo hidden
 use shop/types { ProductCard }
@@ -1306,8 +1296,8 @@ test "a new count shows at once, though the list is cached" {
             stock: 4
         }
     ]
-    var counted: Product = attempt restock(tea.id, 12)
-    assert counted.stock == 12
+    var recounted: Product = attempt restock(tea.id, 12)
+    assert recounted.stock == 12
     var after: Response = request {
         method: HttpMethod.get
         path: "/products"

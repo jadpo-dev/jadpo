@@ -465,7 +465,7 @@ pub fn memory_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     )
                     .at(node_span(path, name.syntax()), "each server's own cache")
                     .reason(format!(
-                        "`{connection}` has `driver: Driver.memory`, so each server keeps a cache of its own, emptied on every restart, and a change one server clears from its cache is still served by the others until their entries reach their `keep:`. One server, or a Redis connection, keeps every copy current."
+                        "`{connection}` has `driver: Driver.memory`, so each server keeps a cache of its own, lost on every restart, and a change one server clears from its cache is still served by the others until their entries reach their `keep:`. One server, or a Redis connection, keeps every copy current."
                     ))
                     .next(format!(
                         "Give `{connection}` `driver: Driver.redis` and a `url:`, which every server shares"

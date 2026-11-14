@@ -31,7 +31,7 @@ error: `cache` keeps a cache in each server's own memory
   |
 3 |         cache: {
   |         ^^^^^ each server's own cache
-  reason: `cache` has `driver: Driver.memory`, so each server keeps a cache of its own, emptied on every restart, and a change one server clears from its cache is still served by the others until their entries reach their `keep:`. One server, or a Redis connection, keeps every copy current.
+  reason: `cache` has `driver: Driver.memory`, so each server keeps a cache of its own, lost on every restart, and a change one server clears from its cache is still served by the others until their entries reach their `keep:`. One server, or a Redis connection, keeps every copy current.
   next: Give `cache` `driver: Driver.redis` and a `url:`, which every server shares, or write `decline connection.memory_cache: "<why>"` above it if this is deliberate (human)
   rule: connection.memory_cache
   help: https://jadpo.dev/docs/errors/connection.memory_cache

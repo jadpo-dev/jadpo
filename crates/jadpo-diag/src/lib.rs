@@ -856,14 +856,14 @@ rules! {
         "A provider package's public type isn't in its `reviewed:` list";
     PUBLISHING_INVALID: "publishing.invalid", area 12, Error, Agent,
         "A connection in `publishing:` isn't one events are published through, an entity's `webhooks:` lists an event that names none of its records, or either lists an event that can't leave the app";
-    QUERY_CACHE_INVALID: "query.cache_invalid", area 5, Error, Agent,
-        "A query's `cache:` names no cache, keeps its entries too long or too briefly, or caches what a cache may not hold";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "An aggregate in a query is missing an argument it needs, or is given one it doesn't take";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,
         "An aggregate in a query is worked out over a field it can't add up, compare or average";
     QUERY_AGGREGATE_UNKNOWN: "query.aggregate_unknown", area 6, Error, Agent,
         "An `aggregate:` section isn't a block of `count`, `sum`, `min`, `max` or `average` entries";
+    QUERY_CACHE_INVALID: "query.cache_invalid", area 5, Error, Agent,
+        "A query's `cache:` names no cache, keeps its entries too long or too briefly, or caches what a cache may not hold";
     QUERY_CONDITION_UNSUPPORTED: "query.condition_unsupported", area 6, Error, Agent,
         "A query's `where:` or `where_present:` line holds a condition the database can't serve";
     QUERY_FROM_NOT_ENTITY: "query.from_not_entity", area 6, Error, Agent,
@@ -1971,6 +1971,7 @@ mod tests {
         assert_eq!(
             declinable,
             [
+                "connection.memory_cache",
                 "constant.similar_exists",
                 "data.personal_unread",
                 "email.field_unused",

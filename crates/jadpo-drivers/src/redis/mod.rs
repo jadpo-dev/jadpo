@@ -587,7 +587,7 @@ fn generations(reply: Option<&Reply>, count: usize) -> Result<Vec<u64>, Error> {
 }
 
 /// How many keys one `DEL` of a clear's entries names.
-const DELETED_AT_ONCE: usize = 512;
+const KEYS_PER_DEL: usize = 512;
 
 impl Redis {
     /// The generations of `tags` and the entry under `key`, in one `MGET`
@@ -720,7 +720,7 @@ impl Redis {
         }
         entries.sort();
         entries.dedup();
-        for keys in entries.chunks(DELETED_AT_ONCE) {
+        for keys in entries.chunks(KEYS_PER_DEL) {
             let mut command = vec![b"DEL".to_vec()];
             command.extend(keys.iter().cloned());
             let replies = self.run(&[command]).await?;
