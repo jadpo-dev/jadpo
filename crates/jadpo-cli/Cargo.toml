@@ -87,6 +87,9 @@ sha2.workspace = true
 rcgen.workspace = true
 # A test's server on this machine standing in for AWS's SNS host.
 jadpo-host-native = { workspace = true, features = ["test-outbound"] }
+# The Redis double, and the run's real server, that rate limits are counted
+# in by a deployable and a Worker under test (chunk Q8).
+jadpo-drivers = { workspace = true, features = ["redis-testing"] }
 regex.workspace = true
 tokio.workspace = true
 

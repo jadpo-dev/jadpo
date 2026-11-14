@@ -920,8 +920,6 @@ rules! {
         "A query's block holds a section Jadpo doesn't know";
     QUERY_VALUE_UNSUPPORTED: "query.value_unsupported", area 6, Error, Agent,
         "A query uses a value it would have to work out, or reads inside one that may be absent";
-    RATE_LIMITS_COUNTED_IN_MEMORY: "rate_limits.counted_in_memory", area 16, Declinable, Agent,
-        "A deployable built for Workers would count its rate limits in each instance's memory";
     RATE_LIMITS_STORE_INVALID: "rate_limits.store_invalid", area 16, Error, Agent,
         "The `rate_limits:` block names a store that can't count rate limits, or holds something it doesn't take";
     RATE_LIMITS_STORE_REQUIRED: "rate_limits.store_required", area 16, Error, Agent,
@@ -1655,6 +1653,23 @@ pub fn find(id: &str) -> Option<&'static Rule> {
     CATALOGUE.iter().find(|rule| rule.id == id)
 }
 
+/// The declinable rules that no longer fire anywhere, each with why: a
+/// `decline` line naming one has outlived its reason, so it is
+/// `decline.unused`, which removes it, rather than a rule Jadpo doesn't
+/// know (area 1, "Keeping code as it is, with a reason"; chunk Q8).
+pub const RETIRED: &[(&str, &str)] = &[(
+    "rate_limits.counted_in_memory",
+    "a Redis store counts a Worker's rate limits in one count its instances share",
+)];
+
+/// Why rule `id` no longer fires, when it is one of [`RETIRED`].
+pub fn retired(id: &str) -> Option<&'static str> {
+    RETIRED
+        .iter()
+        .find(|(retired, _)| *retired == id)
+        .map(|(_, why)| *why)
+}
+
 /// What a declinable rule's next step adds: the line that declines it,
 /// and for a security rule that a person accepts the decline.
 pub fn decline_offer(rule: &Rule) -> String {
@@ -1960,7 +1975,6 @@ mod tests {
                 "package.standard_candidate",
                 "policy.call_ungranted",
                 "query.nearest_exact",
-                "rate_limits.counted_in_memory",
                 "step.late_failure",
                 "translation.field_unused",
                 "type.batch_order_updatable",

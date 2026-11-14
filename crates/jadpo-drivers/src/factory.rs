@@ -20,6 +20,10 @@
 //!   its batches to the Workers host's consumer, which calls no driver.
 //! - `Driver.cloudflare_rate_limits`: nothing to build, since the Workers
 //!   host counts rate limits in the Worker's bindings itself (chunk 8.2m2).
+//! - `Driver.redis`: [`crate::redis::Redis`] at its `url:`'s address, over
+//!   the transport, which a host counts rate limits in
+//!   ([`Drivers::counting_store`]; chunk Q8); nothing connects until it is
+//!   first asked.
 //!
 //! A connection whose driver doesn't run on the host's target, or that the
 //! host or the program's settings can't build, is kept as [`Unbuilt`] with
@@ -34,6 +38,7 @@ use std::rc::Rc;
 
 use jadpo_runtime::Started;
 use jadpo_runtime::capability::Capability;
+use jadpo_runtime::ratelimit::CountingStore;
 use jadpo_std::connections::{Connection, ConnectionDriver, Target};
 
 use crate::Transport;
@@ -210,6 +215,8 @@ impl jadpo_runtime::deployable::NotBuilt for Unbuilt {
 pub struct Drivers {
     #[cfg(feature = "postgres")]
     databases: BTreeMap<String, crate::postgres::Postgres>,
+    #[cfg(feature = "redis")]
+    redis: BTreeMap<String, crate::redis::Redis>,
     capabilities: BTreeMap<String, Rc<dyn Capability>>,
     unbuilt: Vec<Unbuilt>,
 }
@@ -220,6 +227,8 @@ impl fmt::Debug for Drivers {
         let mut out = f.debug_struct("Drivers");
         #[cfg(feature = "postgres")]
         out.field("databases", &self.databases.keys().collect::<Vec<_>>());
+        #[cfg(feature = "redis")]
+        out.field("redis", &self.redis.keys().collect::<Vec<_>>());
         out.field(
             "capabilities",
             &self.capabilities.keys().collect::<Vec<_>>(),
@@ -233,6 +242,8 @@ impl fmt::Debug for Drivers {
 enum Built {
     #[cfg(feature = "postgres")]
     Database(crate::postgres::Postgres),
+    #[cfg(feature = "redis")]
+    Redis(crate::redis::Redis),
     Capability(Rc<dyn Capability>),
     /// A driver nothing calls: a queue Cloudflare pushes.
     Nothing,
@@ -271,6 +282,10 @@ impl Drivers {
                 Ok(Built::Database(database)) => {
                     out.databases.insert(connection.name.clone(), database);
                 }
+                #[cfg(feature = "redis")]
+                Ok(Built::Redis(store)) => {
+                    out.redis.insert(connection.name.clone(), store);
+                }
                 Ok(Built::Capability(driver)) => {
                     out.capabilities.insert(connection.name.clone(), driver);
                 }
@@ -296,6 +311,37 @@ impl Drivers {
         self.databases.get(connection)
     }
 
+    /// The store `connection`, a Redis connection, that rate limits are
+    /// counted in; none without the `redis` feature.
+    pub fn counting_store(&self, connection: &str) -> Option<&dyn CountingStore> {
+        #[cfg(feature = "redis")]
+        return self
+            .redis
+            .get(connection)
+            .map(|store| store as &dyn CountingStore);
+        #[cfg(not(feature = "redis"))]
+        {
+            let _ = connection;
+            None
+        }
+    }
+
+    /// The Redis connection `connection`.
+    #[cfg(feature = "redis")]
+    pub fn redis(&self, connection: &str) -> Option<&crate::redis::Redis> {
+        self.redis.get(connection)
+    }
+
+    /// `store` as the Redis connection `connection`, in place of what the
+    /// factory built for it: a test's.
+    #[cfg(feature = "redis")]
+    pub fn with_redis(mut self, connection: &str, store: crate::redis::Redis) -> Drivers {
+        self.unbuilt
+            .retain(|unbuilt| unbuilt.connection != connection);
+        self.redis.insert(connection.to_string(), store);
+        self
+    }
+
     /// The connections whose drivers weren't built, and why.
     pub fn unbuilt(&self) -> &[Unbuilt] {
         &self.unbuilt
@@ -306,6 +352,8 @@ impl Drivers {
     pub fn keeping(mut self, keep: impl Fn(&str) -> bool) -> Drivers {
         #[cfg(feature = "postgres")]
         self.databases.retain(|name, _| keep(name));
+        #[cfg(feature = "redis")]
+        self.redis.retain(|name, _| keep(name));
         self.capabilities.retain(|name, _| keep(name));
         self.unbuilt.retain(|unbuilt| keep(&unbuilt.connection));
         self
@@ -330,7 +378,7 @@ fn build_one(
             };
             postgres(url, *tls, authority, supplies)
         }
-        ConnectionDriver::Redis { .. } => Err(Why::NotInThisBuild),
+        ConnectionDriver::Redis { url } => redis(text(url.ok_or(Why::Unset(None))?)?, supplies),
         ConnectionDriver::Disk { path, floor } => {
             let disk = supplies.disk.as_ref().ok_or(Why::NotSupplied("a disk"))?;
             disk.store(&connection.name, path.as_deref(), *floor)
@@ -470,6 +518,23 @@ fn postgres(
     _: Option<&str>,
     _: &Supplies,
 ) -> Result<Built, Why> {
+    Err(Why::NotInThisBuild)
+}
+
+/// A Redis store at `url` (chunk Q8), over the transport.
+#[cfg(feature = "redis")]
+fn redis(url: &str, supplies: &Supplies) -> Result<Built, Why> {
+    let transport = supplies
+        .transport
+        .as_ref()
+        .ok_or(Why::NotSupplied("a transport"))?;
+    crate::redis::Redis::new(url, Rc::clone(transport))
+        .map(Built::Redis)
+        .map_err(Why::Invalid)
+}
+
+#[cfg(not(feature = "redis"))]
+fn redis(_: &str, _: &Supplies) -> Result<Built, Why> {
     Err(Why::NotInThisBuild)
 }
 

@@ -2719,7 +2719,7 @@ In the second, the delivery fails with `NoChef`, which is worth
 retrying, so it waits 30 seconds. Starting the shift doesn't move the
 clock, and the retry runs once `clock.advance(30s)` reaches it.
 
-Not built yet: caches, which need the Redis driver.
+Not built yet: caches.
 
 ## What is built
 <!-- topic: testing-built -->
@@ -2748,7 +2748,7 @@ Not built yet: caches, which need the Redis driver.
 | The trace `--keep-failed` keeps, for `jadpo trace` | Not built yet: it comes with [Debugging and review](17-debugging-and-review.md). |
 | Interactive mode | Built: `jadpo test --interactive` opens the keyboard view on the alternate screen: each domain and file with its tests and their last results (the project's record keeps passes as well as failures), search as you type, `enter` on a file or test, `a`, `f`, `o` for a failure's report as `jadpo test` prints it, `w` to watch, on the same long-lived session as `--watch`. A build with errors shows them in the view. On quit, the last run's footer is left in the scrollback. It refuses `--json`, a missing terminal, and a path, `--name`, `--kind`, `--failed` or `--affected`, as `cli.test_arguments`. |
 | Generated tests | Partly built: for every route the application declares, `jadpo test` runs a test that it refuses bad input with `{ field, rule }`, one that each failure its OpenAPI document lists reaches the client in its envelope with its status, and one that its output sends no member its schema doesn't declare, each at the route's lines and counted apart, interpreted and natively compiled ("Tests generated for each route"). Every person a test erases is checked once its deliveries are done, and an [`export`](15-personal-data.md#export) of them that holds anything ends the test as a fault. Not built yet: a generated test for a person entity no test erases, and generated tests inside workerd. |
-| Caches in tests | Not built yet: caches need the Redis driver. |
+| Caches in tests | Not built yet. |
 | Golden application contract | Built: the shared black-box harness in `benchmarks/contract/` executes all 44 versioned application cases interpreted, on generated native code and on compiled workerd, with real credential verification, raw invalid inputs, physical SQL observation, persisted-state assertions, controlled clocks and provider faults. These checks supplement authored Jadpo tests; they add no application-facing test controls. Full-gate ownership is interpreted and native in `compiled`, workerd in `wasm32`, and verifier negative controls in `lint`. |
 | `test.no_tests` | Built: raised by `jadpo test` only ([Tools](14-tooling.md)), when the project has no tests or a file, line, name, kind or `--failed` picks none. |
 

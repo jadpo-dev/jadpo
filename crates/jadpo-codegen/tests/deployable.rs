@@ -183,7 +183,7 @@ fn a_worker_is_its_program_and_a_cdylib_exporting_fetch() {
     let mut worker = deployable(&stores);
     worker.host = Host::Workers(Drivers {
         postgres: true,
-        smtp: false,
+        ..Drivers::default()
     });
     worker.stamp.target = "wasm";
     let generated = workspace(&plan, &worker).expect("written");
@@ -258,11 +258,20 @@ fn a_worker_is_its_program_and_a_cdylib_exporting_fetch() {
     worker.host = Host::Workers(Drivers {
         postgres: true,
         smtp: true,
+        redis: false,
     });
     let both = workspace(&plan, &worker).expect("written");
     assert!(
         text(&both.files, "deployable/Cargo.toml").contains("features = [\"postgres\", \"smtp\"]")
     );
+    // A Worker whose rate limits are counted in Redis links its driver
+    // (chunk Q8).
+    worker.host = Host::Workers(Drivers {
+        redis: true,
+        ..Drivers::default()
+    });
+    let counted = workspace(&plan, &worker).expect("written");
+    assert!(text(&counted.files, "deployable/Cargo.toml").contains("features = [\"redis\"]"));
 }
 
 #[test]

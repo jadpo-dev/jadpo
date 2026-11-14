@@ -12,13 +12,24 @@
 //! Several servers each count their own, which a Redis connection (area
 //! 16) counts once. A route's own limit (`rate_limit:`) has a key of its
 //! own and any window from a second to a day.
+//!
+//! A store shared between servers, a Redis connection's driver, counts
+//! through [`CountingStore`] (chunk Q8), and [`counted_by_store`] is how every
+//! host asks it: while it can count, its answer stands; when it can't, the
+//! host counts in its own memory, as area 16 says, and doesn't ask it
+//! again for [`STORE_PAUSE_MS`], so a store that can't be reached holds up
+//! one request in that time rather than every one. Each time it stops
+//! answering is logged once, as `rate_limits.fallback`, naming the
+//! connection and why, never a key.
 
 use std::collections::hash_map::RandomState;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::hash::BuildHasher;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use jadpo_std::http::{RATE_LIMIT_MEMORY, RateLimit};
+
+use crate::LocalFuture;
 
 /// About how much memory one counter takes: its key, held once; its
 /// window and count with the map's own overhead; and up to two places in
@@ -236,6 +247,150 @@ impl RateLimits {
     }
 }
 
+/// Why a store shared between servers couldn't count a request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Unasked {
+    /// It couldn't be reached, or the connection to it was lost.
+    Unreachable,
+    /// It didn't answer in time.
+    TimedOut,
+    /// It answered with something other than a count: a refusal, such as
+    /// a password it doesn't take, or what isn't its protocol.
+    Failed,
+}
+
+impl Unasked {
+    /// How `rate_limits.fallback` names it.
+    pub fn word(self) -> &'static str {
+        match self {
+            Unasked::Unreachable => "unreachable",
+            Unasked::TimedOut => "timed_out",
+            Unasked::Failed => "failed",
+        }
+    }
+}
+
+/// A store servers share their rate limits' counts in (area 16, "Where
+/// the counts are kept"): a Redis connection's driver.
+pub trait CountingStore {
+    /// Counts one more request for `key` against `limit`, or says why it
+    /// couldn't.
+    fn count<'a>(
+        &'a self,
+        key: &'a str,
+        limit: RateLimit,
+    ) -> LocalFuture<'a, Result<Allowed, Unasked>>;
+}
+
+/// How long a server, or a Worker's instance, counts in its own memory
+/// once its store couldn't count a request, before it asks the store
+/// again: 10 seconds.
+pub const STORE_PAUSE_MS: u64 = 10_000;
+
+/// Whether each store is being asked, as one server or one Worker's
+/// instance sees it: shared by a server's workers, like its table.
+#[derive(Debug, Default)]
+pub struct StoreHealth {
+    stores: Mutex<BTreeMap<String, Health>>,
+}
+
+/// One store's health.
+#[derive(Clone, Copy, Debug, Default)]
+struct Health {
+    /// Until when, on the monotonic clock, it isn't asked.
+    paused_until: Option<u64>,
+    /// Whether its fallback has been logged since it last answered.
+    logged: bool,
+}
+
+impl StoreHealth {
+    /// Whether `store` is asked at `now`, the monotonic clock's
+    /// milliseconds: always on a host with no such clock.
+    fn asks(&self, store: &str, now: Option<u64>) -> bool {
+        let stores = self.stores.lock().unwrap_or_else(PoisonError::into_inner);
+        match (
+            stores.get(store).and_then(|health| health.paused_until),
+            now,
+        ) {
+            (Some(until), Some(now)) => now >= until,
+            _ => true,
+        }
+    }
+
+    /// `store` answered: it is asked from now on, and its next fallback is
+    /// logged.
+    fn answered(&self, store: &str) {
+        let mut stores = self.stores.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(health) = stores.get_mut(store) {
+            *health = Health::default();
+        }
+    }
+
+    /// `store` couldn't count at `now`: it isn't asked again for
+    /// [`STORE_PAUSE_MS`]. Whether this is the first time since it last
+    /// answered, which is logged.
+    fn failed(&self, store: &str, now: Option<u64>) -> bool {
+        let mut stores = self.stores.lock().unwrap_or_else(PoisonError::into_inner);
+        let health = stores.entry(store.to_string()).or_default();
+        health.paused_until = now.map(|now| now.saturating_add(STORE_PAUSE_MS));
+        !std::mem::replace(&mut health.logged, true)
+    }
+}
+
+/// Counts a request for `key` against `limit` in `store`, connection
+/// `connection`, unless `health` says it isn't asked at `now` (the
+/// monotonic clock's milliseconds): its answer, or `None` when it couldn't
+/// count, and the host counts in its own memory instead. Each time it
+/// stops answering, `log` is given the `rate_limits.fallback` event's
+/// fields once: the connection, why (`unreachable`, `timed_out` or
+/// `failed`) and what that means, never a key.
+pub async fn counted_by_store(
+    health: &StoreHealth,
+    connection: &str,
+    store: &dyn CountingStore,
+    (key, limit): (&str, RateLimit),
+    now: Option<u64>,
+    log: impl FnOnce(serde_json::Map<String, serde_json::Value>),
+) -> Option<Allowed> {
+    if !health.asks(connection, now) {
+        return None;
+    }
+    match store.count(key, limit).await {
+        Ok(allowed) => {
+            health.answered(connection);
+            Some(allowed)
+        }
+        Err(why) => {
+            if health.failed(connection, now) {
+                log(fallback(connection, why));
+            }
+            None
+        }
+    }
+}
+
+/// The `rate_limits.fallback` event's fields for store `connection`,
+/// which couldn't count for `why`.
+pub fn fallback(connection: &str, why: Unasked) -> serde_json::Map<String, serde_json::Value> {
+    let said = match why {
+        Unasked::Unreachable => format!("`{connection}` couldn't be reached"),
+        Unasked::TimedOut => format!("`{connection}` didn't answer in time"),
+        Unasked::Failed => format!("`{connection}` answered with something other than a count"),
+    };
+    let mut fields = serde_json::Map::new();
+    fields.insert("connection".into(), connection.into());
+    fields.insert("reason".into(), why.word().into());
+    fields.insert(
+        "message".into(),
+        format!(
+            "{said}: each instance counts its rate limits in its own memory, asking again every {} seconds.",
+            STORE_PAUSE_MS / 1000
+        )
+        .into(),
+    );
+    fields
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,5 +525,90 @@ mod tests {
         let (counters, places) = limits.held();
         assert!(counters <= 20_000, "{counters} counters");
         assert!(places <= 2 * 20_000 + 16, "{places} places");
+    }
+
+    /// A store answering as scripted, counting how often it was asked.
+    struct Scripted {
+        answers: std::cell::RefCell<std::collections::VecDeque<Result<Allowed, Unasked>>>,
+        asked: std::cell::Cell<usize>,
+    }
+
+    impl CountingStore for Scripted {
+        fn count<'a>(
+            &'a self,
+            _: &'a str,
+            _: RateLimit,
+        ) -> LocalFuture<'a, Result<Allowed, Unasked>> {
+            self.asked.set(self.asked.get() + 1);
+            let answer = self
+                .answers
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or(Ok(Allowed::Yes));
+            Box::pin(async move { answer })
+        }
+    }
+
+    fn now<F: std::future::Future>(future: F) -> F::Output {
+        let mut future = std::pin::pin!(future);
+        match future
+            .as_mut()
+            .poll(&mut std::task::Context::from_waker(std::task::Waker::noop()))
+        {
+            std::task::Poll::Ready(answer) => answer,
+            std::task::Poll::Pending => panic!("answered at once"),
+        }
+    }
+
+    /// A store's answer stands while it answers; once it can't count, the
+    /// host counts in memory and doesn't ask it again for 10 seconds, and
+    /// each time it stops answering is logged once (chunk Q8).
+    #[test]
+    fn a_store_that_cant_count_is_left_alone_for_a_while_and_logged_once() {
+        let store = Scripted {
+            answers: std::cell::RefCell::new(
+                [
+                    Ok(Allowed::No { retry_after: 7 }),
+                    Err(Unasked::TimedOut),
+                    Err(Unasked::Unreachable),
+                    Ok(Allowed::Yes),
+                    Err(Unasked::Failed),
+                ]
+                .into(),
+            ),
+            asked: std::cell::Cell::new(0),
+        };
+        let health = StoreHealth::default();
+        let logged = std::cell::RefCell::new(Vec::new());
+        let ask = |at: u64| {
+            now(counted_by_store(
+                &health,
+                "cache",
+                &store,
+                ("address 203.0.113.9", ONE),
+                Some(at),
+                |fields| logged.borrow_mut().push(fields),
+            ))
+        };
+        assert_eq!(ask(0), Some(Allowed::No { retry_after: 7 }));
+        assert_eq!(ask(1), None, "timed out: counted in memory");
+        assert_eq!(ask(5_000), None, "not asked while it rests");
+        assert_eq!(store.asked.get(), 2);
+        assert_eq!(ask(11_001), None, "asked again, and still down");
+        assert_eq!(store.asked.get(), 3);
+        assert_eq!(logged.borrow().len(), 1, "one outage, one line");
+        assert_eq!(ask(21_001), Some(Allowed::Yes), "back");
+        assert_eq!(ask(21_002), None, "down again");
+        let logged = logged.borrow();
+        assert_eq!(logged.len(), 2, "a second outage, a second line");
+        assert_eq!(logged[0]["connection"], "cache");
+        assert_eq!(logged[0]["reason"], "timed_out");
+        assert_eq!(logged[1]["reason"], "failed");
+        assert!(
+            logged.iter().all(|fields| !fields
+                .values()
+                .any(|value| value.to_string().contains("203.0.113.9"))),
+            "never a key: {logged:?}"
+        );
     }
 }

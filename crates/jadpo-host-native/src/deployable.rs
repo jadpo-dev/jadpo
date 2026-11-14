@@ -367,8 +367,19 @@ fn handlers(
             None => Drivers::default(),
         };
         let logged = Rc::new(Logged::new(log, drivers.unbuilt()));
+        // Where its rate limits are counted: the store `rate_limits:`
+        // names, shared with every other server (chunk Q8).
+        let store = program
+            .plan()
+            .routes
+            .and_then(|routes| routes.rate_limits.as_ref())
+            .map(|store| store.connection.clone());
         let program: Rc<dyn Executor> = Rc::new(program);
-        let host = worker.host().with_drivers(drivers).with_log(log);
+        let host = worker
+            .host()
+            .with_drivers(drivers)
+            .with_log(log)
+            .counting_in(store.as_deref());
         let handler = AppHandler::new(host, move || Rc::clone(&program)).observed_by(logged);
         Box::new(if timed { handler } else { handler.untimed() })
     })

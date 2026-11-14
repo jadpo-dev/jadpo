@@ -145,7 +145,7 @@ pub mod provider;
 pub mod publishing;
 mod purge;
 mod race;
-mod ratelimit;
+pub mod ratelimit;
 mod read;
 pub mod receiving;
 #[cfg(feature = "testing")]
