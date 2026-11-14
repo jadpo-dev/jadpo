@@ -295,12 +295,11 @@ pub const LIST: &str = "SELECT \"id\", \"url\", \"registered_at\" FROM \"jadpo_w
 pub const REMOVE: &str = "DELETE FROM \"jadpo_webhook_addresses\" WHERE \"id\" = $1";
 
 /// The addresses a delivery has reached already: `$1` the delivery.
-pub const SENT: &str =
-    "SELECT \"address_id\" FROM \"jadpo_webhook_sends\" WHERE \"delivery_id\" = $1";
+pub const SENT: &str = "SELECT \"address_id\" FROM \"jadpo_webhook_sends\" WHERE \"delivery\" = $1";
 
 /// Keeps that a delivery reached an address: `$1` the delivery, `$2` the
 /// address, `$3` when.
-pub const RECORD_SENT: &str = "INSERT INTO \"jadpo_webhook_sends\" (\"delivery_id\", \"address_id\", \"sent_at\") VALUES ($1, $2, $3) ON CONFLICT DO NOTHING";
+pub const RECORD_SENT: &str = "INSERT INTO \"jadpo_webhook_sends\" (\"delivery\", \"address_id\", \"reached_at\") VALUES ($1, $2, $3) ON CONFLICT DO NOTHING";
 
 /// `<Entity>.webhooks(id)` at site `site`: the record's addresses, oldest
 /// first, as `RegisteredWebhook`s, never their secrets.
@@ -334,13 +333,15 @@ pub async fn listed(
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {
         let mut fields = Vec::with_capacity(REGISTERED_FIELDS.len());
-        for ((name, builtin), column) in REGISTERED_FIELDS.iter().zip(&row) {
-            let read = match builtin {
-                jadpo_std::Builtin::Uuid => jadpo_std::read::Column::Uuid,
-                jadpo_std::Builtin::Instant => jadpo_std::read::Column::Instant,
-                _ => jadpo_std::read::Column::Text,
-            };
-            match crate::from_sql(column, &read) {
+        // Each column as the listing's statement gives it: the address's
+        // `id`, its `url` and when it was registered.
+        let reads = [
+            jadpo_std::read::Column::Uuid,
+            jadpo_std::read::Column::Text,
+            jadpo_std::read::Column::Instant,
+        ];
+        for (((name, _), read), column) in REGISTERED_FIELDS.iter().zip(&reads).zip(&row) {
+            match crate::from_sql(column, read) {
                 Ok(value) => fields.push(((*name).into(), value)),
                 Err(error) => return Stored::Fault(defect(ctx, &error, site)),
             }

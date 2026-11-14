@@ -1129,14 +1129,14 @@ pub const WEBHOOK_ADDRESSES: SystemTable = SystemTable {
 pub const WEBHOOK_SENDS: SystemTable = SystemTable {
     table: "jadpo_webhook_sends",
     columns: &[
-        column("delivery_id", SqlType::Uuid, false),
+        column("delivery", SqlType::Uuid, false),
         column("address_id", SqlType::Uuid, false),
-        column("sent_at", SqlType::Timestamp, false),
+        column("reached_at", SqlType::Timestamp, false),
     ],
-    primary_key: &["delivery_id", "address_id"],
+    primary_key: &["delivery", "address_id"],
     unique: &[],
     foreign_keys: &[SystemForeignKey {
-        columns: &["delivery_id"],
+        columns: &["delivery"],
         table: DELIVERIES.table,
     }],
     indexes: &[],

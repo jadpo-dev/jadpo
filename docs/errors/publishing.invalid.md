@@ -162,21 +162,21 @@ application {
 ```
 
 ```jadpo check project=e-publishing-invalid-webhooks file=domains/market/events/order_moved.jadpo hidden
-use market/entities { Shop }
+use market/entities { Stall }
 
-/// An order moved to a shop.
+/// An order moved to a stall.
 public type OrderMoved = Event {
-    shop_id: Shop.id
+    stall_id: Stall.id
 }
 ```
 
-`domains/market/entities/shop.jadpo`:
+`domains/market/entities/stall.jadpo`:
 
-```jadpo check project=e-publishing-invalid-webhooks file=domains/market/entities/shop.jadpo migrate=initial
+```jadpo check project=e-publishing-invalid-webhooks file=domains/market/entities/stall.jadpo migrate=initial
 use market/events { OrderMoved }
 
-/// A shop, whose own systems hear of its orders.
-public entity Shop {
+/// A stall, whose own systems hear of its orders.
+public entity Stall {
     id: Uuid
 
     webhooks: {
@@ -191,26 +191,26 @@ public entity Shop {
 }
 ```
 
-`domains/market/events/order_moved.jadpo`, its event naming two shops:
+`domains/market/events/order_moved.jadpo`, its event naming two stalls:
 
 ```jadpo check project=e-publishing-invalid-webhooks file=domains/market/events/order_moved.jadpo expect=publishing.invalid
-use market/entities { Shop }
+use market/entities { Stall }
 
-/// An order moved from one shop to another.
+/// An order moved from one stall to another.
 public type OrderMoved = Event {
-    from_id: Shop.id
-    to_id: Shop.id
+    from_id: Stall.id
+    to_id: Stall.id
 }
 ```
 
 ```text output
-error: `OrderMoved` names two `Shop` records, `from_id` and `to_id`
- --> domains/market/entities/shop.jadpo:8:18
+error: `OrderMoved` names two `Stall` records, `from_id` and `to_id`
+ --> domains/market/entities/stall.jadpo:8:18
   |
 8 |         events: [OrderMoved]
   |                  ^^^^^^^^^^ which one's addresses?
-  reason: An entity's `webhooks:` lists, in `events:`, the events the addresses its records register receive: each a `public` event of one of the app's domains, since it becomes each customer's contract, with one field typed `<Entity>.id` naming the record whose addresses it goes to, so an event never reaches another customer.
-  next: Keep one field typed `Shop.id` in `OrderMoved`, naming the record whose addresses receive it (agent)
+  reason: An entity's `webhooks:` lists, in `events:`, the events the addresses its records register receive: each a `public` event of one of the app's domains, since it becomes the contract of each record's receivers, with one field typed `<Entity>.id` naming the record whose addresses it goes to, so an event never reaches another record's address.
+  next: Keep one field typed `Stall.id` in `OrderMoved`, naming the record whose addresses receive it (agent)
   rule: publishing.invalid
   help: https://jadpo.dev/docs/errors/publishing.invalid
 
@@ -300,16 +300,16 @@ and set it where the event is emitted. In
 
 ```jadpo fragment
 public type OrderMoved = Event {
-    shop_id: Shop.id
+    stall_id: Stall.id
 }
 ```
 
 ```jadpo check project=e-publishing-invalid-webhooks-fix file=domains/market/events/order_moved.jadpo hidden
-use market/entities { Shop }
+use market/entities { Stall }
 
-/// An order moved to a shop.
+/// An order moved to a stall.
 public type OrderMoved = Event {
-    shop_id: Shop.id
+    stall_id: Stall.id
 }
 ```
 
@@ -332,11 +332,11 @@ application {
 }
 ```
 
-```jadpo check project=e-publishing-invalid-webhooks-fix file=domains/market/entities/shop.jadpo hidden migrate=initial
+```jadpo check project=e-publishing-invalid-webhooks-fix file=domains/market/entities/stall.jadpo hidden migrate=initial
 use market/events { OrderMoved }
 
-/// A shop, whose own systems hear of its orders.
-public entity Shop {
+/// A stall, whose own systems hear of its orders.
+public entity Stall {
     id: Uuid
 
     webhooks: {
@@ -351,8 +351,8 @@ public entity Shop {
 }
 ```
 
-Each `OrderMoved` now goes to the addresses of the shop its `shop_id`
-names, and to no other shop's.
+Each `OrderMoved` now goes to the addresses of the stall its `stall_id`
+names, and to no other stall's.
 
 ## Related
 

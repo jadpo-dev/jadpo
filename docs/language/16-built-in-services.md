@@ -3958,77 +3958,13 @@ connection is, so it needs no exception. Receiving a webhook is
 ### Addresses customers register
 
 The customer's entity lists, in `webhooks:`, the events its records'
-addresses receive. Here each shop on a market hears of the orders placed
-with it, at the addresses its owner registers:
+addresses receive. Here each stall on a market hears of the orders placed
+with it, at the addresses its trader registers:
 
-`domains/market/entities/shop.jadpo`:
+`app.jadpo`:
 
-```jadpo check project=outgoing-webhooks file=domains/market/entities/shop.jadpo
-use market/entities { Seller }
-use market/types { ShopName }
-use market/events { OrderPlaced }
-
-/// A seller's shop, whose own systems hear of each order placed with it.
-public entity Shop {
-    id: Uuid
-    owner_id: Seller.id {
-        on_delete: OnDelete.restricted
-    }
-    name: ShopName
-
-    webhooks: {
-        events: [OrderPlaced]
-    }
-
-    policy: {
-        create: [owner_id]
-        read: [owner_id]
-        update: [owner_id]
-    }
-}
-```
-
-`domains/market/events/order_placed.jadpo`:
-
-```jadpo check project=outgoing-webhooks file=domains/market/events/order_placed.jadpo
-use market/entities { Shop }
-use market/types { OrderReference }
-
-/// An order was placed with a shop.
-public type OrderPlaced = Event {
-    wire_name: "order.placed"
-    shop_id: Shop.id
-    reference: OrderReference
-    placed_at: Instant
-}
-```
-
-`domains/market/actions/add_webhook.jadpo`:
-
-```jadpo check project=outgoing-webhooks file=domains/market/actions/add_webhook.jadpo
-use market/entities { Shop }
-use market/types { NewWebhook, WebhookAdded }
-
-/// Registers an address a shop's orders are sent to, and gives its
-/// secret, the one time anyone sees it.
-action add_webhook(input: NewWebhook) -> WebhookAdded {
-    return WebhookAdded {
-        secret: Shop.register_webhook(input.shop_id, input.url)
-    }
-}
-```
-
-`domains/market/types/webhook_added.jadpo`:
-
-```jadpo check project=outgoing-webhooks file=domains/market/types/webhook_added.jadpo
-/// A new address's secret, which its receiver checks each event with.
-type WebhookAdded = Output {
-    secret: WebhookSecret
-}
-```
-
-```jadpo check project=outgoing-webhooks file=app.jadpo hidden
-use market/entities { Seller }
+```jadpo check project=outgoing-webhooks file=app.jadpo
+use market/entities { Trader }
 
 application {
     connections: {
@@ -4045,18 +3981,14 @@ application {
 
 principal {
     user: {
-        subject: Seller.handle
+        subject: Trader.handle
     }
 }
 ```
 
-```jadpo check project=outgoing-webhooks file=authentication.jadpo hidden
-authentication {
-    api_token: {}
-}
-```
+`config.jadpo`:
 
-```jadpo check project=outgoing-webhooks file=config.jadpo hidden
+```jadpo check project=outgoing-webhooks file=config.jadpo
 config {
     /// What each webhook address's secret is kept sealed with.
     field_encryption_key: EncryptionKey
@@ -4064,80 +3996,15 @@ config {
 }
 ```
 
-```jadpo check project=outgoing-webhooks file=domains/market/types/handle.jadpo hidden
-/// What a seller signs in as.
-public type Handle = Text {
-    min_length: 3
-    max_length: 40
-}
-```
+`domains/market/entities/trader.jadpo`:
 
-```jadpo check project=outgoing-webhooks file=domains/market/types/shop_name.jadpo hidden
-/// What a shop is called.
-public type ShopName = Text {
-    min_length: 1
-    max_length: 60
-}
-```
-
-```jadpo check project=outgoing-webhooks file=domains/market/types/order_reference.jadpo hidden
-/// An order's reference, as its buyer sees it.
-public type OrderReference = Text {
-    min_length: 1
-    max_length: 20
-}
-```
-
-```jadpo check project=outgoing-webhooks file=domains/market/types/new_webhook.jadpo hidden
-use market/entities { Shop }
-
-/// Where a shop wants its orders sent.
-type NewWebhook = Input {
-    shop_id: Shop.id
-    url: Url
-}
-```
-
-```jadpo check project=outgoing-webhooks file=domains/market/types/webhook_list.jadpo hidden
-/// A shop's addresses, never their secrets.
-type WebhookList = Output {
-    webhooks: List<RegisteredWebhook>
-}
-```
-
-```jadpo check project=outgoing-webhooks file=domains/market/types/shop_view.jadpo hidden
-use market/entities { Shop }
-
-/// A shop.
-type ShopView = Output {
-    pick: [Shop.id, Shop.name]
-}
-```
-
-```jadpo check project=outgoing-webhooks file=domains/market/types/seller_view.jadpo hidden
-use market/entities { Seller }
-
-/// A seller.
-type SellerView = Output {
-    pick: [Seller.id, Seller.handle]
-}
-```
-
-```jadpo check project=outgoing-webhooks file=domains/market/failures/handle_taken.jadpo hidden
-/// Another seller has the handle.
-type HandleTaken = Failure {
-    kind: FailureKind.conflict
-    message: "That handle is taken."
-}
-```
-
-```jadpo check project=outgoing-webhooks file=domains/market/entities/seller.jadpo hidden
-use market/types { Handle }
-
-/// Someone who sells on the market.
-public entity Seller {
+```jadpo check project=outgoing-webhooks file=domains/market/entities/trader.jadpo
+/// Someone who trades on the market.
+public entity Trader {
     id: Uuid
-    handle: Handle {
+    handle: Text {
+        min_length: 3
+        max_length: 40
         unique: true
     }
 
@@ -4149,70 +4016,182 @@ public entity Seller {
 }
 ```
 
-```jadpo check project=outgoing-webhooks file=domains/market/actions/join.jadpo hidden
-use market/entities { Seller }
-use market/types { Handle, SellerView }
-use market/failures { HandleTaken }
+`domains/market/entities/stall.jadpo`:
 
-/// Signs a seller up.
-action join(handle: Handle) fails HandleTaken -> SellerView {
-    var seller: Seller = attempt Seller.create {
-        set: {
-            handle: handle
-        }
-        conflict: {
-            Seller.handle: HandleTaken
-        }
+```jadpo check project=outgoing-webhooks file=domains/market/entities/stall.jadpo
+use market/entities { Trader }
+use market/events { OrderPlaced }
+
+/// A trader's stall, whose own systems hear of each order placed with it.
+public entity Stall {
+    id: Uuid
+    owner_id: Trader.id {
+        on_delete: OnDelete.restricted
     }
-    return SellerView {
-        id: seller.id
-        handle: seller.handle
+    name: Text {
+        max_length: 60
+    }
+
+    webhooks: {
+        events: [OrderPlaced]
+    }
+
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+        update: [owner_id]
     }
 }
 ```
 
-```jadpo check project=outgoing-webhooks file=domains/market/actions/open_shop.jadpo hidden
-use market/entities { Shop }
-use market/types { ShopName, ShopView }
+`domains/market/events/order_placed.jadpo`:
 
-/// Opens a shop for the seller calling.
-action open_shop(name: ShopName, owner: Principal.user) -> ShopView {
-    var shop: Shop = Shop.create {
+```jadpo check project=outgoing-webhooks file=domains/market/events/order_placed.jadpo
+use market/entities { Stall }
+
+/// An order was placed with a stall.
+public type OrderPlaced = Event {
+    wire_name: "order.placed"
+    stall_id: Stall.id
+    reference: Text {
+        max_length: 20
+    }
+    ordered_at: Instant
+}
+```
+
+`domains/market/types/new_webhook.jadpo`:
+
+```jadpo check project=outgoing-webhooks file=domains/market/types/new_webhook.jadpo
+use market/entities { Stall }
+
+/// Where a stall wants its orders sent.
+type NewWebhook = Input {
+    stall_id: Stall.id
+    address: Url
+}
+```
+
+`domains/market/types/webhook_added.jadpo`:
+
+```jadpo check project=outgoing-webhooks file=domains/market/types/webhook_added.jadpo
+/// A new address's secret, which its receiver checks each event with.
+type WebhookAdded = Output {
+    signing_secret: WebhookSecret
+}
+```
+
+`domains/market/actions/add_webhook.jadpo`:
+
+```jadpo check project=outgoing-webhooks file=domains/market/actions/add_webhook.jadpo
+use market/entities { Stall }
+use market/types { NewWebhook, WebhookAdded }
+
+/// Registers an address a stall's orders are sent to, and gives its
+/// secret, the one time anyone sees it.
+action add_webhook(input: NewWebhook) -> WebhookAdded {
+    return WebhookAdded {
+        signing_secret: Stall.register_webhook(input.stall_id, input.address)
+    }
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/types/webhook_list.jadpo hidden
+/// A stall's addresses, never their secrets.
+type WebhookList = Output {
+    on_file: List<RegisteredWebhook>
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/types/stall_view.jadpo hidden
+use market/entities { Stall }
+
+/// A stall.
+type StallView = Output {
+    pick: [Stall.id, Stall.name]
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/types/trader_view.jadpo hidden
+use market/entities { Trader }
+
+/// A trader.
+type TraderView = Output {
+    pick: [Trader.id, Trader.handle]
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/failures/handle_taken.jadpo hidden
+/// Another trader has the handle.
+type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/actions/join_market.jadpo hidden
+use market/entities { Trader }
+use market/types { TraderView }
+use market/failures { HandleTaken }
+
+/// Signs a trader up.
+action join_market(handle: Trader.handle) fails HandleTaken -> TraderView {
+    var trader: Trader = attempt Trader.create {
+        set: {
+            handle: handle
+        }
+        conflict: {
+            Trader.handle: HandleTaken
+        }
+    }
+    return TraderView {
+        id: trader.id
+        handle: trader.handle
+    }
+}
+```
+
+```jadpo check project=outgoing-webhooks file=domains/market/actions/open_stall.jadpo hidden
+use market/entities { Stall }
+use market/types { StallView }
+
+/// Opens a stall for the trader calling.
+action open_stall(name: Stall.name, owner: Principal.user) -> StallView {
+    var stall: Stall = Stall.create {
         set: {
             owner_id: owner.id
             name: name
         }
     }
-    return ShopView {
-        id: shop.id
-        name: shop.name
+    return StallView {
+        id: stall.id
+        name: stall.name
     }
 }
 ```
 
 ```jadpo check project=outgoing-webhooks file=domains/market/actions/list_webhooks.jadpo hidden
-use market/entities { Shop }
+use market/entities { Stall }
 use market/types { WebhookList }
 
-/// A shop's addresses.
-action list_webhooks(shop_id: Shop.id) -> WebhookList {
+/// A stall's addresses.
+action list_webhooks(stall_id: Stall.id) -> WebhookList {
     return WebhookList {
-        webhooks: Shop.webhooks(shop_id)
+        on_file: Stall.webhooks(stall_id)
     }
 }
 ```
 
 ```jadpo check project=outgoing-webhooks file=domains/market/actions/place_order.jadpo hidden migrate=initial
-use market/entities { Shop }
-use market/types { OrderReference }
+use market/entities { Stall }
 use market/events { OrderPlaced }
 
-/// Places an order with a shop, which its addresses hear of.
-action place_order(shop_id: Shop.id, reference: OrderReference) -> Unit {
+/// Places an order with a stall, which its addresses hear of.
+action place_order(stall_id: Stall.id, reference: OrderPlaced.reference) -> Unit {
     emit OrderPlaced {
-        shop_id: shop_id
+        stall_id: stall_id
         reference: reference
-        placed_at: clock.now
+        ordered_at: clock.now
     }
 }
 ```
@@ -4222,24 +4201,24 @@ to the address once its action commits, and a test's host catches it, so
 nothing leaves the machine:
 
 ```jadpo check project=outgoing-webhooks file=domains/market/actions/add_webhook.test.jadpo
-use market/entities { Seller }
-use market/types { NewWebhook, SellerView, ShopView, WebhookAdded, WebhookList }
-use market/actions { join, list_webhooks, open_shop, place_order }
+use market/entities { Trader }
+use market/types { NewWebhook, StallView, TraderView, WebhookAdded, WebhookList }
+use market/actions { join_market, list_webhooks, open_stall, place_order }
 
-test "a shop's address is registered and hears of its orders" {
-    var joined: SellerView = attempt join("corner-books")
-    var seller: Seller = attempt Seller.get(joined.id)
-    var shop: ShopView = open_shop("Corner Books", Principal.user(seller))
-    var added: WebhookAdded = add_webhook(
+test "a stall's address is registered and hears of its orders" {
+    var trader_view: TraderView = attempt join_market("corner-books")
+    var trader: Trader = attempt Trader.get(trader_view.id)
+    var corner_stall: StallView = open_stall("Corner Books", Principal.user(trader))
+    var fresh_hook: WebhookAdded = add_webhook(
         NewWebhook {
-            shop_id: shop.id
-            url: "https://hooks.corner-books.example/orders"
+            stall_id: corner_stall.id
+            address: "https://hooks.corner-books.example/orders"
         }
     )
-    assert text.starts_with(added.secret, "whsec_")
-    var listed: WebhookList = list_webhooks(shop.id)
-    assert list.count(listed.webhooks) == 1
-    place_order(shop.id, "A-1001")
+    assert text.starts_with(fresh_hook.signing_secret, "whsec_")
+    var on_record: WebhookList = list_webhooks(corner_stall.id)
+    assert list.count(on_record.on_file) == 1
+    place_order(corner_stall.id, "A-1001")
 }
 ```
 
@@ -4247,7 +4226,7 @@ test "a shop's address is registered and hears of its orders" {
   one of your domains, as `publishing:`'s are, since it becomes each
   customer's contract, holding no `File` or `FileContents`, and named
   outside by its `wire_name:` or its domain and name, no two alike. It
-  has exactly one field typed `<Entity>.id`, here `shop_id: Shop.id`,
+  has exactly one field typed `<Entity>.id`, here `stall_id: Stall.id`,
   which names the record whose addresses receive it, so an event never
   reaches another customer's address. An event with no such field, with
   two, or with one that may be `none`, is
@@ -4256,8 +4235,8 @@ test "a shop's address is registered and hears of its orders" {
   `toolchain.not_built_yet`.
 - **The operations.** Jadpo keeps the addresses, as it keeps a service's
   keys, and generates three operations on the entity to register, list
-  and remove them: `Shop.register_webhook(shop_id, url)`,
-  `Shop.webhooks(shop_id)` and `Shop.remove_webhook(webhook_id)`
+  and remove them: `Stall.register_webhook(stall_id, url)`,
+  `Stall.webhooks(stall_id)` and `Stall.remove_webhook(webhook_id)`
   ([Service credentials](08-identity.md#service-credentials)). Only an
   action calls them (`type.auth_sessions_context`), and each is limited
   by the record's grants, as a key's are.
@@ -4295,7 +4274,7 @@ test "a shop's address is registered and hears of its orders" {
   entity's store. An app with `webhooks:` names a key, or it is
   [`data.field_encryption_key_required`](../errors/data.field_encryption_key_required.md).
   The key's re-seal moves the secrets to a new key with the sealed
-  fields, and `jadpo config rotation` counts them as `Shop.webhooks`. A
+  fields, and `jadpo config rotation` counts them as `Stall.webhooks`. A
   secret is never logged, listed or handed to the call that sends: each
   attempt opens it, signs the event, and hands on only the signed post.
 - **What is sent.** What a `Driver.webhook` connection sends
@@ -4328,7 +4307,7 @@ test "a shop's address is registered and hears of its orders" {
   same checks of the address as written, and the platform's strictly
   public `fetch`, which the generated Wrangler file turns on.
 - **Reports.** The network report lists the exception once, as
-  `outgoing_webhooks`, the addresses a `Shop` registers. It is kept in
+  `outgoing_webhooks`, the addresses a `Stall` registers. It is kept in
   `network.jadpo_record`, so the change that first adds `webhooks:` needs
   `outgoing_webhooks: NetworkChange.host_added`
   ([Acceptances](18-records-and-manifest.md#acceptances)). Personal data

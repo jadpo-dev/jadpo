@@ -743,7 +743,7 @@ impl Via {
             Via::ErasureAt => "by asking its provider to erase people".to_string(),
             Via::Publishing => "by publishing the app's events through it".to_string(),
             Via::Addresses => {
-                "by reading the addresses customers register for webhooks there".to_string()
+                "by reading the webhook addresses its records register there".to_string()
             }
         }
     }

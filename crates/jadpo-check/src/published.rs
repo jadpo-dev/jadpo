@@ -567,7 +567,7 @@ impl Reader<'_, '_> {
         {
             self.invalid(
                 at.clone(),
-                format!("`{name}` can't go to the addresses customers register"),
+                format!("`{name}` can't go to the webhook addresses records register"),
                 "the runtime's own event",
                 "List an event of your own that names the record whose addresses receive it",
             );

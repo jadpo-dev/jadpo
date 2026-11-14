@@ -121,7 +121,7 @@ impl Feature {
             Feature::Providers => "the application signs users in through a provider",
             Feature::Confirmation => "a route asks for a passkey's confirmation",
             Feature::Privacy => "the application takes data requests",
-            Feature::OutgoingWebhooks => "the application's customers register webhook addresses",
+            Feature::OutgoingWebhooks => "an entity's records register webhook addresses",
         }
     }
 

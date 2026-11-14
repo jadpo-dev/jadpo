@@ -83,7 +83,7 @@ impl Webhooks {
     }
 }
 
-const REASON: &str = "An entity's `webhooks:` lists, in `events:`, the events the addresses its records register receive: each a `public` event of one of the app's domains, since it becomes each customer's contract, with one field typed `<Entity>.id` naming the record whose addresses it goes to, so an event never reaches another customer.";
+const REASON: &str = "An entity's `webhooks:` lists, in `events:`, the events the addresses its records register receive: each a `public` event of one of the app's domains, since it becomes the contract of each record's receivers, with one field typed `<Entity>.id` naming the record whose addresses it goes to, so an event never reaches another record's address.";
 
 /// Every entity's `webhooks:`, read.
 #[salsa::tracked(returns(ref))]
@@ -106,7 +106,7 @@ pub fn webhooks(db: &dyn Db, project: Project) -> Webhooks {
                     ),
                 )
                 .at(span, "decided, not built")
-                .reason("Addresses registered by the records of one entity are built: the customer's entity, whose `webhooks:` lists the events they receive. Records of a second entity registering addresses of their own aren't built yet.")
+                .reason("Addresses registered by the records of one entity are built: the entity whose `webhooks:` lists the events they receive. Records of a second entity registering addresses of their own aren't built yet.")
                 .next(format!("Keep `webhooks:` on `{first}` alone for now")),
             );
             continue;
@@ -147,7 +147,7 @@ pub fn webhooks(db: &dyn Db, project: Project) -> Webhooks {
                     ),
                 )
                 .at(at, "leaves through `outgoing_webhooks`")
-                .reason("Every delivery to an address a customer registers leaves through the runtime's one network exception for outgoing webhooks, which the network report, the personal-data report and their acceptances name `outgoing_webhooks`, so no connection may take the name.")
+                .reason("Every delivery to an address a record registers leaves through the runtime's one network exception for outgoing webhooks, which the network report, the personal-data report and their acceptances name `outgoing_webhooks`, so no connection may take the name.")
                 .next("Give the connection another name"),
             );
         }
