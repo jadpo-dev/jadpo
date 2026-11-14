@@ -156,7 +156,7 @@ The application itself is built in the jadpo.dev repository against
 [the registry protocol](language/11-integrations.md#the-registry-protocol);
 these chunks are what is left on either side.
 
-- [ ] **R10b What an app's contract run sends** `opus · high` after K4: area
+- [ ] **R10b What an app's contract run sends** `opus · high` after K4b: area
   11, "What a release shows" and "The registry protocol". The app's opt-in,
   and `jadpo test --kind contract` reporting an answer a package can no longer
   decode to `POST decode-failures` with `jadpo_registry::report::shape_of`.
@@ -291,14 +291,16 @@ work below (Richard, 2026-11-08).
      "Commands for packages". `smithy`, `postman`, `har` (a capture's
      operations) and `dts`.
    - [x] **K2 What else a provider call can be**: area 11, "How provider calls are made", "How connections to packages are read" and "How webhooks are received", and its notes.
-   - [ ] **K4 Capability mappings and conformance suites** `opus · high`:
-     area 11, "How a package provides a capability", "Proving a package
-     works" and "Mistakes not reported yet"; area 21, "The conformance
-     suite"; area 14, "Commands for packages". Mappings other than
-     `receiving`'s and `email`'s; `jadpo package conform` for each capability
-     but `ai`, and for fixed `hosts:`; a passing run pinned to the package's
-     digest and shown on its listing; the scheduled CI run and the contract
-     run.
+   - [x] **K4 Capability mappings and conformance suites**: area 11, "How a package provides a capability" and "Proving a package works"; area 14, "`jadpo package conform`"; and the notes for area 11.
+   - [ ] **K4b Conformance runs pinned, scheduled and against the sandbox** `opus · high`:
+     area 11, "Proving a package works", "What a release shows" and
+     "Faked answers"; area 14, "Commands for packages". A passing
+     `jadpo package conform` run pinned to the package's digest and shown
+     on its listing; the app's own integrations running the suite in
+     scheduled CI; and `jadpo test --kind contract`, the same cases against
+     the provider's sandbox, every written operation no recording confirms
+     needing one. Done when each is built and tested against doubles, with
+     nothing sent to a third party.
    - [ ] **K5 Types from recordings and recipes' tests** `opus · high`:
      area 11, "Recordings", "Recipes" and "Installing safely". An operation's
      output type written from a recorded or sandbox answer, and a recipe's

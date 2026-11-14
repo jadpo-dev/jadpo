@@ -1,6 +1,6 @@
 # `conform.refused`
 
-The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, or `ai:` doesn't ask its models through it.
+The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, `ai:` or `email:` doesn't go through it, or the capability is `receiving`, which has no live run.
 
 ## Why Jadpo refuses it
 
@@ -10,6 +10,13 @@ provider answers today rather than against its recordings. It sends them
 through the app's own connection to the package, with that connection's
 credential and address, and asks the models the app's `ai:` names, so
 the run proves what the app itself will send.
+
+`jadpo package conform <package> email --live` sends one email the same
+way, through the connection the app's `email:` names, to the app's own
+sender address, so no one else gets mail; it is refused when `email:`
+names another connection. `receiving` has no live run: receiving takes
+messages off a queue and acknowledges them, so it would take the app's
+own messages from it.
 
 Without those, the only thing it could send is a stand-in key to a
 guessed address, and a failure would say nothing about the package.

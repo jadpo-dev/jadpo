@@ -317,7 +317,7 @@ rules! {
     CONFORM_FAILED: "conform.failed", area 14, Error, Agent,
         "A package's answers to `jadpo package conform` don't fit the capability it fills, or the suite couldn't run";
     CONFORM_REFUSED: "conform.refused", area 14, Error, Human,
-        "The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, or `ai:` doesn't ask its models through it";
+        "The conformance suite wasn't sent to the provider's live API, because the app has no connection to the package, nothing sets the connection's credential or address, `ai:` or `email:` doesn't go through it, or the capability is `receiving`, which has no live run";
     CONNECTION_DISK_PATH_INVALID: "connection.disk_path_invalid", area 16, Error, Human,
         "A disk store's `path:` isn't an absolute folder outside the project";
     CONNECTION_DOMAIN_NOT_LISTED: "connection.domain_not_listed", area 11, Error, Human,

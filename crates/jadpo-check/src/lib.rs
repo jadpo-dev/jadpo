@@ -65,6 +65,7 @@ pub mod prompt_recordings;
 pub mod prompts;
 pub mod provider_erasure;
 pub mod providers;
+pub mod provides;
 pub mod published;
 pub mod publishing;
 pub mod rate_limits;
@@ -258,11 +259,6 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             }
             out.extend(layout_problems(db, project, file).iter().cloned());
             out.extend(
-                packages::unbuilt_problems(db, project, file)
-                    .iter()
-                    .cloned(),
-            );
-            out.extend(
                 package_code::action_problems(db, project, file)
                     .iter()
                     .cloned(),
@@ -455,6 +451,7 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(receiving::mappings(db, project).problems.iter().cloned());
         out.extend(mail::mappings(db, project).problems.iter().cloned());
         out.extend(ai_mapping::mappings(db, project).problems.iter().cloned());
+        out.extend(provides::problems(db, project).iter().cloned());
         out.extend(receiving::receiving(db, project).problems.iter().cloned());
         out.extend(
             published::webhook_connections(db, project)

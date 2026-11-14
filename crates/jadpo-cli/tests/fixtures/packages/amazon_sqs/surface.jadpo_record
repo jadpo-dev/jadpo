@@ -32,6 +32,7 @@ operation messages.receive_message
     output ReceiveMessageResult
     fails QueueDoesNotExist
     source written https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_ReceiveMessage.html
+    confirmed recordings/messages.receive_message.json
 
 type DeleteMessageRequest = Object
     /// The message to delete from its queue, by the handle it was received with.
