@@ -2535,6 +2535,13 @@ and updates that refuse among them, loads nothing: the store checks a
 reference a create sets in the same statement, and a refused update asks
 afresh which rule refused it. Calling a function never loads a record.
 
+An action that writes a store counts only the records it loads in that
+store, itself or through the actions it calls. A record of another store
+is read outside its transaction
+([One store per action](#one-store-per-action)), where no isolation level
+of the transaction holds it. An action that writes no store counts every
+record it loads.
+
 `jadpo check` decides each action and fixture from these and the actions
 and fixtures it calls. It writes the level into the manifest as
 `isolation` (`read_committed` or `repeatable_read`), and the runtime
@@ -2656,13 +2663,10 @@ it, so the error names the cause:
 [`store.action_spans_stores`](../errors/store.action_spans_stores.md)
 points at the write or the call that brings in the second store.
 
-At run time, an action's transaction is begun in the store its first store
-operation names. Reading another store outside the transaction isn't
-built yet. For now, an action that reads a second store, itself or through
-an action it calls, is `toolchain.not_built_yet` at the read or call that
-brings it in, rather than failing as it runs:
+Here a shop keeps its products in a database of their own, `catalogue`,
+and an order copies the name of the product it is for:
 
-```jadpo check project=e-second-store-read file=app.jadpo hidden
+```jadpo check project=second-store-read file=app.jadpo hidden
 application {
     connections: {
         main: {
@@ -2675,13 +2679,13 @@ application {
 }
 ```
 
-```jadpo check project=e-second-store-read file=domains/ordering/types/product_name.jadpo hidden
+```jadpo check project=second-store-read file=domains/ordering/types/product_name.jadpo hidden
 type ProductName = Text {
     max_length: 80
 }
 ```
 
-```jadpo check project=e-second-store-read file=domains/ordering/entities/product.jadpo hidden
+```jadpo check project=second-store-read file=domains/ordering/entities/product.jadpo hidden
 use ordering/types { ProductName }
 
 entity Product {
@@ -2689,19 +2693,29 @@ entity Product {
     name: ProductName
 
     store: catalogue
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
 }
 ```
 
-```jadpo check project=e-second-store-read file=domains/ordering/entities/order.jadpo hidden migrate=initial
+```jadpo check project=second-store-read file=domains/ordering/entities/order.jadpo hidden migrate=initial
 use ordering/types { ProductName }
 
 entity Order {
     id: Uuid
     product_name: ProductName
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
 }
 ```
 
-```jadpo check project=e-second-store-read file=domains/ordering/actions/order_product.jadpo expect=toolchain.not_built_yet
+```jadpo check project=second-store-read file=domains/ordering/actions/order_product.jadpo
 use ordering/entities { Order, Product, ProductNotFound }
 
 action order_product(product_id: Product.id) fails ProductNotFound -> Order {
@@ -2714,18 +2728,39 @@ action order_product(product_id: Product.id) fails ProductNotFound -> Order {
 }
 ```
 
-```text output
-error: Reading a second store in `order_product` isn't built yet
- --> domains/ordering/actions/order_product.jadpo:4:36
-  |
-4 |     var product: Product = attempt Product.get(product_id)
-  |                                    ^^^^^^^^^^^^^^^^^^^^^^^ store `catalogue`
-  reason: An action may read another store outside its transaction, but this compiler runs all of an action's store operations in the one transaction its first begins; `order_product` uses `Order` (store `main`), and here it reads `Product` (store `catalogue`).
-  next: Read `Product` before `order_product` runs, and pass in what it needs, for now (agent)
-  rule: toolchain.not_built_yet
-  help: https://jadpo.dev/docs/errors/toolchain.not_built_yet
+An action's transaction is in the store it writes, itself or through the
+actions it calls. An action that writes no store has its transaction
+where its events are kept, or else in the first store it reads.
 
-check failed: 1 error, 5 files
+So `order_product`'s transaction is in `main`, and its read of `Product`
+runs in `catalogue`, in a read-only snapshot of its own. Each read of
+another store in the action sees that store's one snapshot, which closes
+when the action ends, or before an outside call goes out
+([Outside calls hold no transaction](#outside-calls-hold-no-transaction)).
+
+Nothing holds what was read there. A product renamed between the read
+and the commit is not a concurrent change, and the order keeps the name
+it read. A record read from another store doesn't count towards the
+action's isolation level either
+([Which isolation level an action runs at](#which-isolation-level-an-action-runs-at)):
+`order_product` loads nothing in `main`, so it runs at read committed.
+
+These tests run on PostgreSQL:
+
+```jadpo check project=second-store-read file=domains/ordering/actions/order_product.test.jadpo
+use ordering/entities { Order, Product, ProductNotFound }
+
+test "an order copies the name of a product in the catalogue" {
+    var product: Product = make.Product {
+        name: "Teapot"
+    }
+    var order: Order = attempt order_product(product.id)
+    assert order.product_name == "Teapot"
+}
+
+test "a product the catalogue doesn't hold is not found" {
+    assert order_product("0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e") fails ProductNotFound
+}
 ```
 
 ## Where a read comes from
@@ -2806,7 +2841,6 @@ var owners: List<OwnerView> = identity.users_by_ids(owner_ids)
 | Feature | Status |
 |---|---|
 | Everything else on this page | Built. |
-| Reading another store outside an action's transaction | Not built yet: it is `toolchain.not_built_yet` ("One store per action"). |
 | Caches and entities in Redis | Not built yet: there is no Redis driver ("Where a read comes from", "Entities in Redis"). |
 
 ## Errors

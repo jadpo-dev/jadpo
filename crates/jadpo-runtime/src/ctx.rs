@@ -1408,9 +1408,10 @@ impl<'p> Ctx<'p> {
         self.boundary.as_mut()
     }
 
-    /// Opens a boundary whose transaction begins at `isolation`.
-    pub(crate) fn open_boundary(&mut self, isolation: Isolation) {
-        self.boundary = Some(Boundary::new(isolation));
+    /// Opens a boundary whose transaction begins at `isolation`, in
+    /// `store` when a plan names it, otherwise in the first store it uses.
+    pub(crate) fn open_boundary(&mut self, isolation: Isolation, store: Option<String>) {
+        self.boundary = Some(Boundary::new(isolation, store));
     }
 
     /// Closes the running action's boundary, giving back what it holds.
@@ -1596,7 +1597,7 @@ impl<'p> Ctx<'p> {
     /// The running action's transaction in `store`, begun at the first
     /// store operation at the action's isolation level (area 6): every
     /// action it calls joins it. Outside an action there is none, and an
-    /// action writes one store (area 5), so asking for a second is a
+    /// action writes one store (area 5), so asking to write a second is a
     /// fault.
     pub async fn transaction(&mut self, store: &str) -> Result<&mut dyn Transaction, StoreError> {
         let Some(boundary) = &mut self.boundary else {
@@ -1610,7 +1611,9 @@ impl<'p> Ctx<'p> {
     /// [`Ctx::transaction`], for a statement that only reads: while the
     /// action has only read, its transaction is a snapshot, which an
     /// outside call closes before it goes out (area 6, "Outside calls
-    /// hold no transaction"; chunk 7.4).
+    /// hold no transaction"; chunk 7.4). A read of another store than the
+    /// action's own runs outside its transaction, in a read-only snapshot
+    /// of that store's own (area 6, "One store per action"; chunk Q5).
     pub async fn read_transaction(
         &mut self,
         store: &str,
@@ -1623,12 +1626,17 @@ impl<'p> Ctx<'p> {
         boundary.transaction(&self.capabilities, store, false).await
     }
 
-    /// Keeps `ids`, rows a read just loaded, while the running action has
-    /// only read, for the versions an outside call reads before it closes
-    /// the snapshot (chunk 7.4).
-    pub(crate) fn loaded(&mut self, versions: &jadpo_std::read::RowVersions, ids: Vec<SqlValue>) {
+    /// Keeps `ids`, rows a read of `store` just loaded, while the running
+    /// action has only read, for the versions an outside call reads before
+    /// it closes the snapshot (chunk 7.4): only those of its own store.
+    pub(crate) fn loaded(
+        &mut self,
+        store: &str,
+        versions: &jadpo_std::read::RowVersions,
+        ids: Vec<SqlValue>,
+    ) {
         if let Some(boundary) = &mut self.boundary {
-            boundary.loaded(versions, ids);
+            boundary.loaded(store, versions, ids);
         }
     }
 

@@ -591,6 +591,10 @@ impl<'p> ActionBody<'p> for Action<'_> {
         self.plan().and_then(|plan| plan.outbox.as_deref())
     }
 
+    fn store(&self) -> Option<&str> {
+        self.plan().and_then(|plan| plan.store.as_deref())
+    }
+
     fn record(&self) -> Option<crate::steps::Spec<'_>> {
         let plan = self.plan()?;
         let runtime = &self.program.process.plan;

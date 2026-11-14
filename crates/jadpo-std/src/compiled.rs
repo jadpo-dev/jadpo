@@ -77,6 +77,9 @@ pub struct ActionPlan {
     /// The store its events are kept in when it begins no transaction of
     /// its own (area 12).
     pub outbox: Option<String>,
+    /// The store a transaction of its own is in: a read of any other runs
+    /// outside it (area 6, "One store per action").
+    pub store: Option<String>,
     /// For an action whose longest way makes several changing calls:
     /// where the runtime keeps its record and its step shape (area 12).
     pub record: Option<RecordPlan>,

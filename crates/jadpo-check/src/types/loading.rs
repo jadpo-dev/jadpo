@@ -30,6 +30,12 @@
 //! by `id`, a counter (`Video.view_count + 1`, worked out by the database
 //! in one step), and calls to functions, which never touch a store.
 //!
+//! An action that writes a store counts only the records it loads there,
+//! through every call: a record of another store is read outside its
+//! transaction (area 6, "One store per action"; chunk Q5), so no level of
+//! that transaction holds it. One that writes no store counts every record
+//! it loads, since its transaction is whichever store it reads first.
+//!
 //! Each file's actions and fixtures are read from what their bodies do
 //! (`body_facts`, without positions, chunk 4.11) and their signatures
 //! ([`file_loading`]); the decision through every call is worked out once
@@ -94,8 +100,10 @@ impl Loads {
 /// its own signature and body.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Loading {
-    /// How it loads a record itself, if it does.
-    pub itself: Option<Loads>,
+    /// Each way it loads a record itself, its parameters first, then its
+    /// body in source order, with the entities whose records it loads that
+    /// way (none when the checker can't tell, which counts everywhere).
+    pub itself: Vec<(Loads, BTreeSet<String>)>,
     /// The actions and fixtures it calls, which join its transaction.
     pub calls: BTreeSet<Key>,
 }
@@ -123,34 +131,59 @@ pub fn file_loading(db: &dyn Db, project: Project, file: File) -> BTreeMap<Key, 
             continue;
         };
         let mut loading = Loading::default();
-        let found = |loads: Loads, loading: &mut Loading| {
-            loading.itself.get_or_insert(loads);
+        let found = |loads: Loads, entities: BTreeSet<String>, loading: &mut Loading| {
+            loading.itself.push((loads, entities));
         };
+        let one = |entity: &str| BTreeSet::from([entity.to_string()]);
         if let Some(sig) = lookup.signature(&item.name) {
             for (param, ty) in &sig.params {
-                if holds_record(&lookup, ty, &mut BTreeSet::new()) {
-                    found(Loads::Handed(param.clone()), &mut loading);
+                let mut held = BTreeSet::new();
+                if records_held(&lookup, ty, &mut BTreeSet::new(), &mut held) {
+                    found(Loads::Handed(param.clone()), held, &mut loading);
                 }
             }
         }
         for fact in &facts.facts {
             match fact {
-                Fact::Gets(entity) => found(Loads::Gets(entity.clone()), &mut loading),
-                Fact::Queries(query) => found(Loads::Queries(query.clone()), &mut loading),
+                Fact::Gets(entity) => found(Loads::Gets(entity.clone()), one(entity), &mut loading),
+                Fact::Queries(query) => {
+                    let entity = super::stores::query_entity(
+                        db,
+                        project,
+                        crate::lookups::Name::new(db, query.clone()),
+                    );
+                    found(
+                        Loads::Queries(query.clone()),
+                        entity.iter().cloned().collect(),
+                        &mut loading,
+                    );
+                }
                 Fact::Action(callee) | Fact::Fixture(callee) => {
                     loading.calls.insert(callee.clone());
                 }
                 Fact::Writes(write) => {
                     if write.erase {
-                        found(Loads::Erases(write.entity.clone()), &mut loading);
+                        found(
+                            Loads::Erases(write.entity.clone()),
+                            one(&write.entity),
+                            &mut loading,
+                        );
                     }
                     if write.given {
-                        found(Loads::WritesBack(write.entity.clone()), &mut loading);
+                        found(
+                            Loads::WritesBack(write.entity.clone()),
+                            one(&write.entity),
+                            &mut loading,
+                        );
                     }
                     if let Some(transition) = &write.transition
                         && guarded(&lookup, &write.entity, transition)
                     {
-                        found(Loads::Guarded(transition.name().to_string()), &mut loading);
+                        found(
+                            Loads::Guarded(transition.name().to_string()),
+                            one(&write.entity),
+                            &mut loading,
+                        );
                     }
                 }
                 // A run's own calls are the run's, never the action's
@@ -183,34 +216,63 @@ fn guarded(lookup: &Lookup<'_>, entity: &str, transition: &Key) -> bool {
 
 /// Whether a value of `ty` holds an entity's record: the entity itself,
 /// or one inside a list, set, map, optional, standard generic type, or an
-/// object's, input's, output's, event's or variant's fields.
-fn holds_record(lookup: &Lookup<'_>, ty: &Ty, seen: &mut BTreeSet<String>) -> bool {
+/// object's, input's, output's, event's or variant's fields. Each entity
+/// whose record it holds is added to `held`.
+fn records_held(
+    lookup: &Lookup<'_>,
+    ty: &Ty,
+    seen: &mut BTreeSet<String>,
+    held: &mut BTreeSet<String>,
+) -> bool {
     match ty {
         Ty::Named(name) | Ty::Variant(name, _) => {
             if !seen.insert(name.clone()) {
-                return false;
+                return held.contains(name);
             }
-            let fields = |fields: &[FieldDef], seen: &mut BTreeSet<String>| {
-                fields
-                    .iter()
-                    .any(|field| holds_record(lookup, &field.declared, seen))
-            };
+            let fields =
+                |fields: &[FieldDef], seen: &mut BTreeSet<String>, held: &mut BTreeSet<String>| {
+                    let mut any = false;
+                    for field in fields {
+                        any |= records_held(lookup, &field.declared, seen, held);
+                    }
+                    any
+                };
             match lookup.def(name) {
                 Some(Def::Fields {
                     base: FieldsBase::Entity,
                     ..
-                }) => true,
-                Some(Def::Fields { fields: own, .. }) => fields(own, seen),
-                Some(Def::Enum { variants }) => variants
-                    .iter()
-                    .filter_map(|variant| variant.fields.as_deref())
-                    .any(|own| fields(own, seen)),
+                }) => {
+                    held.insert(name.clone());
+                    true
+                }
+                Some(Def::Fields { fields: own, .. }) => fields(own, seen, held),
+                Some(Def::Enum { variants }) => {
+                    let mut any = false;
+                    for own in variants
+                        .iter()
+                        .filter_map(|variant| variant.fields.as_deref())
+                    {
+                        any |= fields(own, seen, held);
+                    }
+                    any
+                }
                 Some(Def::Scalar { .. } | Def::Format { .. }) | None => false,
             }
         }
-        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => holds_record(lookup, inner, seen),
-        Ty::Map(key, value) => holds_record(lookup, key, seen) || holds_record(lookup, value, seen),
-        Ty::Opaque(_, args) => args.iter().any(|arg| holds_record(lookup, arg, seen)),
+        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => {
+            records_held(lookup, inner, seen, held)
+        }
+        Ty::Map(key, value) => {
+            let key = records_held(lookup, key, seen, held);
+            records_held(lookup, value, seen, held) || key
+        }
+        Ty::Opaque(_, args) => {
+            let mut any = false;
+            for arg in args {
+                any |= records_held(lookup, arg, seen, held);
+            }
+            any
+        }
         Ty::Error
         | Ty::Prim(_)
         | Ty::Field(..)
@@ -223,8 +285,9 @@ fn holds_record(lookup: &Lookup<'_>, ty: &Ty, seen: &mut BTreeSet<String>) -> bo
 }
 
 /// Each action's and fixture's isolation, by key: repeatable read when it
-/// loads a record, itself or through any action or fixture it calls, and
-/// why; read committed otherwise.
+/// loads a record, itself or through any action or fixture it calls, in
+/// the store it writes (anywhere, when it writes none), and why; read
+/// committed otherwise.
 #[salsa::tracked(returns(ref))]
 pub fn isolation(db: &dyn Db, project: Project) -> BTreeMap<Key, Decided> {
     let mut loading: BTreeMap<Key, &Loading> = BTreeMap::new();
@@ -233,9 +296,39 @@ pub fn isolation(db: &dyn Db, project: Project) -> BTreeMap<Key, Decided> {
             loading.entry(key.clone()).or_insert(found);
         }
     }
+    let written = super::written_stores(db, project);
+    let store_of = |entity: &str| {
+        super::stores::entity_store(
+            db,
+            project,
+            crate::lookups::Name::new(db, entity.to_string()),
+        )
+        .clone()
+    };
     let mut out = BTreeMap::new();
     for (key, own) in &loading {
-        let because = own.itself.clone().or_else(|| {
+        // The store its transaction is in, when it writes one: a record
+        // loaded in another is read outside it.
+        let store = written
+            .get(key.name())
+            .and_then(|stores| stores.keys().next());
+        let counts = |entities: &BTreeSet<String>| {
+            let Some(store) = store else {
+                return true;
+            };
+            entities.is_empty()
+                || entities
+                    .iter()
+                    .any(|entity| store_of(entity).is_none_or(|kept| kept == *store))
+        };
+        let first = |loading: &Loading| {
+            loading
+                .itself
+                .iter()
+                .find(|(_, entities)| counts(entities))
+                .map(|(loads, _)| loads.clone())
+        };
+        let because = first(own).or_else(|| {
             // The nearest action it calls, directly or not, that loads a
             // record itself, named by the action it calls directly.
             let mut seen = BTreeSet::from([key.clone()]);
@@ -248,7 +341,7 @@ pub fn isolation(db: &dyn Db, project: Project) -> BTreeMap<Key, Decided> {
                 let Some(callee) = loading.get(current) else {
                     continue;
                 };
-                if callee.itself.is_some() {
+                if first(callee).is_some() {
                     return Some(Loads::Calls(through.name().to_string()));
                 }
                 queue.extend(callee.calls.iter().map(|next| (through, next)));

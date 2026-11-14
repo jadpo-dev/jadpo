@@ -488,6 +488,15 @@ impl<'p> ActionBody<'p> for Action<'_> {
             .and_then(|callable| callable.outbox.as_deref())
     }
 
+    /// The store its plan begins its transaction in (area 6, "One store
+    /// per action"; chunk Q5).
+    fn store(&self) -> Option<&str> {
+        self.program
+            .plan()
+            .callable(self.callee)
+            .and_then(|callable| callable.store.as_deref())
+    }
+
     /// What its plan keeps of its steps when it makes several changing
     /// calls, and the key their answers are sealed with (chunk 7.5b).
     fn record(&self) -> Option<jadpo_runtime::steps::Spec<'_>> {
