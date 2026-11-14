@@ -2250,8 +2250,33 @@ is made by `Failure::of` from the program's `FailurePlan`, as the program
 raises one, and a forced output is read through the program's codecs, so
 each executor writes the envelope and the output as a client gets them.
 Each `Answer` comes back in `Ran::answers`, and `generated::judge` holds
-it to the document. The compiled run compares their records with the
-interpreter's as any test's; the workerd comparison leaves them out.
+it to the document. The requests are plain data, `test_run::Requested`
+with its `Forcing`, made into exchanges by `test_run::exchanges` on the
+program that runs them, so a test Worker makes its own. The compiled run
+and the workerd comparison compare their records with the interpreter's
+as any test's.
+
+**The generated erasure test** (area 13, "Tests generated for each route";
+area 15, "Export"; chunk W2b). For each person entity, `jadpo-plan`'s
+`writes::erasure_tests` plans the records a builder the runner can call
+makes, into the plan's test section (`TestingPlan::erasures`): the
+person's create, one create of each kind that belongs to them
+(`persons::Person::records`), each of its references to the person filled
+by theirs, and the creates of the records those need, each filled as
+`make` fills it (`jadpo_check::types::builder_fills`, the generator `make`
+itself runs) and planned by `Planner::write` as a body of one site would
+be, then the person's `erase`. Each is kept without policy, since it runs
+with no caller, and each made value as a `Fill::Made` naming its type in
+the JSON table. `jadpo_test::generated::erasures` gives a test, keyed
+`generated erasure <entity key>`, to each person no test reaches an
+erasure of over the graph's `calls`, `runs`, `emits` and `subscribes`
+edges, with the records `test_run::erasure_makes` finds a value can be
+made for. `test_run::once` runs it given `Once::erasing`: each create a
+step through `store` with its deliveries after (`test_steps::after_step`),
+the export read for at least the person and each record of theirs, the
+erasure a step, and then the check every test that erases runs
+(`export_after_erasure`). It runs on a database as an action test does,
+once, with no crash runs.
 
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one
@@ -4572,9 +4597,10 @@ tests read for what a module links; and thin link-time optimisation,
 above.
 
 **Route tests on workerd.**
-`jadpo_test::workerd::differential_all` runs a project's route tests on
-its compiled program inside workerd and compares each test's record with
-the interpreter's, as `jadpo_test::compiled` compares compiled code's run
+`jadpo_test::workerd::differential_all` runs a project's route tests and
+its generated tests, a route's and a person's (§2.5, "Generated tests"),
+on its compiled program inside workerd and compares each test's record
+with the interpreter's, as `jadpo_test::compiled` compares compiled code's run
 natively (§2.5, "Differential test"). It writes each project as a module
 of one crate with the `testing` feature, as the native harness does,
 beside a test Worker's crate, `jadpo-test-worker`, a `cdylib` whose
@@ -4594,8 +4620,10 @@ tried again when npm leaves no binary, as it does without a word when it
 couldn't fetch the platform's package, an optional dependency. Each request
 is one run of one test, `Asked` posted as JSON: the program, the test's
 key, the run's order seed for a test with a database, a copy of each
-store's database by its address over TCP, a crash to make, and whether
-to run the batches it started and keep a record. The Worker makes the
+store's database by its address over TCP, a crash to make, whether
+to run the batches it started and keep a record, and for a generated
+test what it runs in place of a body, a route test's `Requested`s or the
+person whose erasure it runs. The Worker makes the
 program once per isolate with the settings a test run reads (`test:`
 values, defaults, throwaway secrets from Web Crypto) on
 `Target::Workers`, and runs the test through `test_run::once` on a host
@@ -4607,10 +4635,11 @@ timer or clock, as a test's host has none.
 It answers `Answered`: the record's lines, the rows its stores held when
 it used one (`test_run::rows`, over the same connections), how the run
 ended, whether a delivery between its steps failed for good, the fakes'
-use, the steps it reached and what its keyed calls did. The runner
-judges that as it judges a run of its own (`outcome::Ending`,
-`fake_rule`), crashes it again at each step it reached
-(`run::crash_runs`), each run on a fresh copy, and builds the record
+use, the steps it reached, what its keyed calls did and a generated
+route test's answers. The runner judges that as it judges a run of its
+own (`outcome::Ending`, `fake_rule`, and `generated::judge` for a route's
+generated test), crashes a test the project writes again at each step it
+reached (`run::crash_runs`), each run on a fresh copy, and builds the record
 (`TestRecord::of_lines`), which `differential::compare` holds to the
 interpreter's. The copies are made on the run's server when it is named
 by a URL, as CI's is, and otherwise on one the process starts on
@@ -4618,13 +4647,14 @@ by a URL, as CI's is, and otherwise on one the process starts on
 per server), since a local run's listens on a Unix socket, which
 `connect()` can't open. Proved (`crates/jadpo-cli/tests/compiled.rs`, a
 step of the `wasm32` group, whose job builds for wasm32 already): area 7's
-`todos` (3 route tests), teaching example 23's repair café (4, through
-`settle:`'s subscribers, a request's work after its answer delivered
-before the next line, and its fixtures), a write after an outside call
-(1) and teaching example 27's guest house (5, a passkey registered and
-signed in with, lost, and replaced after a magic link), every test
-passing with the interpreter's records, statements,
-events and rows among them. Nearly
+`todos` (3 route tests and 5 generated), teaching example 23's repair café
+(4, through `settle:`'s subscribers, a request's work after its answer
+delivered before the next line, and its fixtures, and 4 generated), a
+write after an outside call (1 and 3 generated), teaching example 27's
+guest house (5, a passkey registered and signed in with, lost, and
+replaced after a magic link, and 7 generated) and a person no test erases
+(the test generated for them), every test passing with the interpreter's
+records, statements, events and rows among them. Nearly
 all of the step's time is building and binding the module, which is kept
 warm between runs. *Rejected:* the release profile,
 which would build every runtime crate optimised for tests that run in

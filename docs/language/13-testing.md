@@ -2444,9 +2444,28 @@ the route, with the request, what it was to be answered with and what it
 was. The route and its document are both the compiler's work, so such a
 failure is a fault in Jadpo to report, never one in your code.
 
-Not built yet: the test for a person entity no test erases
-([Export](15-personal-data.md#export)), and these tests inside workerd.
-They run interpreted and natively compiled.
+`jadpo test` writes one more for each
+[person entity](15-personal-data.md#the-person) no test erases, through
+what it calls, the routes it sends requests through, the schedules it
+runs or the subscribers of what those emit. **`User.erase leaves nothing
+in User.export`** sits at the entity's lines and is an action test.
+[Data builders](#data-builders) the runner calls make the person, one
+record of each kind that belongs to them, each of its references to the
+person naming them, and the records those can't be without. Then the
+person is erased, with no caller, as a builder's create runs:
+
+- Before the erasure, their export holds the person and each record of
+  theirs it made, so the test proves something.
+- Once the erasure's deliveries are done, the export holds nothing
+  ([Export](15-personal-data.md#export)).
+
+A kind no builder can make a record of, such as one holding text with a
+`pattern:`, is left out, and a person no builder can make gets no test.
+With `--full`, `--json` lists the entity of each record it makes in
+`makes`. One that fails is `test.fault` at the entity, naming the entity
+and how many records were left, never a value.
+
+These tests run interpreted, natively compiled and inside workerd.
 
 ## The test database
 <!-- topic: the-test-database -->
@@ -2747,7 +2766,7 @@ Not built yet: caches, which need the Redis driver.
 | `assert emitted` | Built: `assert emitted Event { ... }` holds when an event of that type the test's committed steps or their deliveries emitted has the fields it gives; the report shows each emitted event of that type, and with one, a diff of the fields given. A batch's items run on their own runner, and the events they emit aren't listed. |
 | The trace `--keep-failed` keeps, for `jadpo trace` | Not built yet: it comes with [Debugging and review](17-debugging-and-review.md). |
 | Interactive mode | Built: `jadpo test --interactive` opens the keyboard view on the alternate screen: each domain and file with its tests and their last results (the project's record keeps passes as well as failures), search as you type, `enter` on a file or test, `a`, `f`, `o` for a failure's report as `jadpo test` prints it, `w` to watch, on the same long-lived session as `--watch`. A build with errors shows them in the view. On quit, the last run's footer is left in the scrollback. It refuses `--json`, a missing terminal, and a path, `--name`, `--kind`, `--failed` or `--affected`, as `cli.test_arguments`. |
-| Generated tests | Partly built: for every route the application declares, `jadpo test` runs a test that it refuses bad input with `{ field, rule }`, one that each failure its OpenAPI document lists reaches the client in its envelope with its status, and one that its output sends no member its schema doesn't declare, each at the route's lines and counted apart, interpreted and natively compiled ("Tests generated for each route"). Every person a test erases is checked once its deliveries are done, and an [`export`](15-personal-data.md#export) of them that holds anything ends the test as a fault. Not built yet: a generated test for a person entity no test erases, and generated tests inside workerd. |
+| Generated tests | Built: for every route the application declares, `jadpo test` runs a test that it refuses bad input with `{ field, rule }`, one that each failure its OpenAPI document lists reaches the client in its envelope with its status, and one that its output sends no member its schema doesn't declare, each at the route's lines and counted apart. Every person a test erases is checked once its deliveries are done, and an [`export`](15-personal-data.md#export) of them that holds anything ends the test as a fault; for each person entity no test erases, a test at the entity makes them and a record of each kind of theirs through builders the runner calls, erases them and holds their export to that. Each runs interpreted, natively compiled and inside workerd ("Tests generated for each route"). |
 | Caches in tests | Not built yet: caches need the Redis driver. |
 | Golden application contract | Built: the shared black-box harness in `benchmarks/contract/` executes all 44 versioned application cases interpreted, on generated native code and on compiled workerd, with real credential verification, raw invalid inputs, physical SQL observation, persisted-state assertions, controlled clocks and provider faults. These checks supplement authored Jadpo tests; they add no application-facing test controls. Full-gate ownership is interpreted and native in `compiled`, workerd in `wasm32`, and verifier negative controls in `lint`. |
 | `test.no_tests` | Built: raised by `jadpo test` only ([Tools](14-tooling.md)), when the project has no tests or a file, line, name, kind or `--failed` picks none. |

@@ -41,10 +41,11 @@ Why [Personal data](../15-personal-data.md) is the way it is: the decisions behi
   file it holds as a link, and an `ExportSummary` field is exported with
   its file, though a batch's other records stay out as they do from a
   response.
-- **The after-`erase` test.** Generating one for each person entity needs
-  a person to make, which data builders will give. Until then, every test
-  that erases a person is held to its export holding nothing, checked after
-  the test's deliveries.
+- **The after-`erase` test.** Every test that erases a person is held to
+  its export holding nothing, checked after the test's deliveries, and a
+  person entity no test erases gets a test that makes them and a record of
+  each kind of theirs through data builders, then erases them (area 13,
+  "Tests generated for each route").
 - **Options as enum values.** `PersonalData.contact` and `Erasure.deleted`
   follow area 2's `Type.value` rule and its "values, not verbs" naming.
 

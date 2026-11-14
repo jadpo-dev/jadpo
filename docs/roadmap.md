@@ -381,14 +381,7 @@ work below (Richard, 2026-11-08).
     - [x] **J4 File writers over a provider's list**: area 19, "`json_lines`"; area 12, "How an export's run is kept", and its notes.
     - [x] **W1 Data builders and `assert emitted`**: area 13, "Data builders", "Events and query cost" and its notes; compiler-runtime §2.5, "Data builders and `assert emitted`".
     - [x] **W2 Generated tests**: area 13, "Tests generated for each route" and its notes; compiler-runtime §2.5, "Generated tests".
-    - [ ] **W2b The generated erasure test** `opus · xhigh`: area 13, "Tests
-      generated for each route" and "What is built"; area 15, "Export". Area 15's
-      after-`erase` test for a person entity no test erases, through W1's data
-      builders, which today only a test's source makes: a builder the runner
-      can call makes the person and a record of each kind that belongs to them,
-      erases them, and the export must hold nothing. And the generated route
-      tests run inside workerd too, which today runs only the tests a project
-      writes.
+    - [x] **W2b The generated erasure test**: area 13, "Tests generated for each route" and its notes; area 15, "Export"; compiler-runtime §2.5, "The generated erasure test", and §2.6, "Route tests on workerd".
     - [ ] **W3 What a failed test reports** `opus · high` after item 3's trace:
       area 13, "What a failed test reports". The trace, fakes, kept database and
       clock in the report.
