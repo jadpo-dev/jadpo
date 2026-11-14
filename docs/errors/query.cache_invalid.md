@@ -152,7 +152,7 @@ type ProductName = Text {
 }
 ```
 
-```jadpo check project=e-query-cache-invalid-fix-1 file=domains/shop/entities/product.jadpo hidden migrate=initial
+```jadpo check project=e-query-cache-invalid-fix-1 file=domains/shop/entities/product.jadpo hidden
 use shop/types { ProductName }
 
 /// Something the shop sells.
@@ -166,7 +166,7 @@ entity Product {
 }
 ```
 
-```jadpo check project=e-query-cache-invalid-fix-1 file=domains/shop/types/product_card.jadpo hidden
+```jadpo check project=e-query-cache-invalid-fix-1 file=domains/shop/types/product_card.jadpo hidden migrate=initial
 use shop/entities { Product }
 
 /// A product as a list shows it.
