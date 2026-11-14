@@ -137,10 +137,7 @@ async fn play(
     let mut session = Session::default();
     let mut input = Vec::new();
     let mut buffer = [0u8; 4096];
-    loop {
-        let Ok(read) = server.read(&mut buffer).await else {
-            break;
-        };
+    while let Ok(read) = server.read(&mut buffer).await {
         if read == 0 {
             break;
         }
