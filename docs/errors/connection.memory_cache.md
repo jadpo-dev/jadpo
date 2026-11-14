@@ -39,7 +39,7 @@ error: `cache` keeps a cache in each server's own memory
 check failed: 1 error, 1 file
 ```
 
-`(human)` at the end of the `next:` line means a person decides.
+`(human)` at the end of the `next:` line tells your coding agent to stop and ask you which fix you want, because the choice is yours to make.
 
 ## How to fix it
 
@@ -71,6 +71,9 @@ config {
     redis_url: RedisUrl
 }
 ```
+
+Every server then reads one cache, and a change any of them makes clears it
+for all.
 
 **If it runs on one server**, decline it with the reason:
 

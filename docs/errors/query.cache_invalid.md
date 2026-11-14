@@ -42,7 +42,7 @@ type ProductName = Text {
 }
 ```
 
-```jadpo check project=e-query-cache-invalid file=domains/shop/entities/product.jadpo hidden
+```jadpo check project=e-query-cache-invalid file=domains/shop/entities/product.jadpo hidden migrate=initial
 use shop/types { ProductName }
 
 /// Something the shop sells.
@@ -65,14 +65,14 @@ type ProductCard = Output {
 }
 ```
 
-```jadpo check project=e-query-cache-invalid file=domains/shop/queries/products.jadpo expect=query.cache_invalid migrate=initial
+```jadpo check project=e-query-cache-invalid file=domains/shop/queries/products.jadpo expect=query.cache_invalid
 use shop/entities { Product }
 use shop/types { ProductCard }
 
-/// Every product, by name.
+/// Every product.
 query products() -> List<ProductCard> {
     from: Product
-    order: [Product.name asc]
+    order: [Product.id asc]
     limit: 50
     cache: {
         store: main
@@ -82,16 +82,6 @@ query products() -> List<ProductCard> {
 ```
 
 ```text output
-error: The entities have changed since the latest migration
- --> domains/shop/entities/product.jadpo:4:8
-  |
-4 | entity Product {
-  |        ^^^^^^^ changed
-  reason: `jadpo check` compares the database schema the entities ask for with the latest migration's snapshot (`database/migrations/20261020T1400_initial/snapshot.json`): new index for query `products`.
-  next: Run `jadpo migrate new index_products` (agent)
-  rule: migration.out_of_date
-  help: https://jadpo.dev/docs/errors/migration.out_of_date
-
 error: `products` keeps its cache in `main`, which isn't a cache
  --> domains/shop/queries/products.jadpo:10:16
    |
@@ -102,7 +92,7 @@ error: `products` keeps its cache in `main`, which isn't a cache
   rule: query.cache_invalid
   help: https://jadpo.dev/docs/errors/query.cache_invalid
 
-check failed: 2 errors, 6 files
+check failed: 1 error, 6 files
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -114,7 +104,7 @@ records give a sensitive field or a `File` are this error too.
 
 ## How to fix it
 
-**Name the cache**, a connection with `driver: Driver.redis`:
+**If the query should be cached**, name the cache, a connection with `driver: Driver.redis`:
 
 ```jadpo fragment
     cache: {
@@ -146,7 +136,7 @@ type ProductName = Text {
 }
 ```
 
-```jadpo check project=e-query-cache-invalid-fix-1 file=domains/shop/entities/product.jadpo hidden
+```jadpo check project=e-query-cache-invalid-fix-1 file=domains/shop/entities/product.jadpo hidden migrate=initial
 use shop/types { ProductName }
 
 /// Something the shop sells.
@@ -169,14 +159,14 @@ type ProductCard = Output {
 }
 ```
 
-```jadpo check project=e-query-cache-invalid-fix-1 file=domains/shop/queries/products.jadpo hidden migrate=initial
+```jadpo check project=e-query-cache-invalid-fix-1 file=domains/shop/queries/products.jadpo hidden
 use shop/entities { Product }
 use shop/types { ProductCard }
 
-/// Every product, by name.
+/// Every product.
 query products() -> List<ProductCard> {
     from: Product
-    order: [Product.name asc]
+    order: [Product.id asc]
     limit: 50
     cache: {
         store: cache
@@ -188,9 +178,9 @@ query products() -> List<ProductCard> {
 A route that runs `products` now reads it from `cache`, and a change to a
 product clears it.
 
-**If the records give a sensitive field or a `File`**, leave the query
-uncached, or give the route a query of its own that leaves that field out
-and caches it.
+A query whose records give a sensitive field or a `File` stays uncached;
+a route that needs a cache reads a query of its own that leaves the field
+out.
 
 ## Related
 
