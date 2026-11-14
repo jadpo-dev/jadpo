@@ -137,8 +137,9 @@ pub struct Test {
 }
 
 impl Test {
-    /// Whether the compiler generated it for a route, rather than the
-    /// project writing it (area 13, "Tests generated for each route").
+    /// Whether the compiler generated it, for a route or a person entity,
+    /// rather than the project writing it (area 13, "Tests generated for
+    /// each route").
     pub fn generated(&self) -> bool {
         self.key.starts_with(generated::GENERATED_KEY)
     }
@@ -553,11 +554,16 @@ pub(crate) fn prepare(loaded: &jadpo_db::Loaded, cwd: &std::path::Path) -> Resul
     // The tests generated for each route a project's APIs document (area
     // 13, "Tests generated for each route").
     let generated = if project {
-        let (made, table) = generated::discover(&prepared, graph, || {
+        let (made, mut table) = generated::discover(&prepared, graph, || {
             let title = jadpo_check::routes::openapi::title(db, loaded.project);
             jadpo_check::routes::openapi::documents(db, loaded.project, &title)
         });
         tests.extend(made);
+        // The test generated for each person entity no test erases (area
+        // 15, "Export"; chunk W2b).
+        let (made, erasures) = generated::erasures(&prepared, graph);
+        tests.extend(made);
+        table.extend(erasures);
         table
     } else {
         generated::Table::new()
@@ -625,6 +631,11 @@ pub(crate) fn choose_and_run(
         chosen.retain(|test| {
             only.contains(&test.key)
                 || generated::route_key(&test.key).is_some_and(|route| only.contains(route))
+                || matches!(
+                    generated.get(&test.key),
+                    Some(generated::Made::Erasure(erasure))
+                        if erasure.entities.iter().any(|entity| only.contains(entity))
+                )
         });
     }
     let seed = options.seed.unwrap_or_else(select::new_seed);

@@ -239,7 +239,18 @@ fn one<E: Executor>(
 ) -> Done {
     let mut kept = keep.record.then(Kept::default);
     let failure = match generated.get(&test.key) {
-        Some(made) => generated_test(executor, test, made, rerun, sources, stores, kept.as_mut()),
+        Some(generated::Made::Route(made)) => {
+            generated_test(executor, test, made, rerun, sources, stores, kept.as_mut())
+        }
+        Some(generated::Made::Erasure(erasure)) => erasure_test(
+            executor,
+            test,
+            erasure,
+            rerun,
+            sources,
+            stores,
+            kept.as_mut(),
+        ),
         None => tested(executor, test, rerun, sources, stores, kept.as_mut()),
     };
     let record =
@@ -347,6 +358,7 @@ fn tested<E: Executor>(
             runtime,
             callable,
             exchanges: &[],
+            erasing: None,
         };
         let first = stored.run(None, kept);
         if first.failure.is_some() {
@@ -389,6 +401,7 @@ fn tested<E: Executor>(
         crash: None,
         record: record.clone(),
         exchanges: &[],
+        erasing: None,
     };
     let ran = block_on(test_run::once(executor, &host, once))
         .unwrap_or_else(|_| test_run::stalled(places, record.as_deref()));
@@ -463,6 +476,9 @@ struct Stored<'s, E> {
     callable: u32,
     /// A generated test's requests, sent in place of running `callable`.
     exchanges: &'s [test_run::Exchange],
+    /// The person entity the test generated for it erases, in place of
+    /// running `callable` (chunk W2b).
+    erasing: Option<&'s str>,
 }
 
 /// How one run of a test with a database went.
@@ -500,6 +516,7 @@ impl<E: Executor> Stored<'_, E> {
                 crash,
                 record: record.clone(),
                 exchanges: self.exchanges,
+                erasing: self.erasing,
             },
         ));
         let failure = match &ran.outcome {
@@ -583,6 +600,7 @@ fn generated_test<E: Executor>(
                 runtime,
                 callable: u32::MAX,
                 exchanges: &exchanges,
+                erasing: None,
             };
             let ran = stored.run(None, kept);
             if ran.failure.is_some() {
@@ -599,6 +617,7 @@ fn generated_test<E: Executor>(
                 crash: None,
                 record: record.clone(),
                 exchanges: &exchanges,
+                erasing: None,
             };
             let ran = block_on(test_run::once(executor, &host, once))
                 .unwrap_or_else(|_| test_run::stalled(places, record.as_deref()));
@@ -618,6 +637,43 @@ fn generated_test<E: Executor>(
     }
     generated::judge(made, &answers)
         .map(|broken| Box::new(outcome::generated(sources, test, broken, rerun)))
+}
+
+/// Runs the test generated for a person entity no test erases (area 13,
+/// "Tests generated for each route"; area 15, "Export"; chunk W2b): the
+/// records its plan makes and the erasure, on its own copy of the
+/// database, and the person's export held to nothing once its deliveries
+/// are done, all by the runtime (`jadpo_runtime::test_run`). `None` when
+/// it passed.
+fn erasure_test<E: Executor>(
+    executor: &E,
+    test: &Test,
+    erasure: &generated::Erasure,
+    rerun: &Rerun,
+    sources: &dyn Sources,
+    stores: &Stores<'_>,
+    kept: Option<&mut Kept>,
+) -> Option<Box<TestFailure>> {
+    let (Some(databases), Some(runtime)) = (stores.databases, stores.runtime) else {
+        return Some(Box::new(outcome::not_runnable(
+            sources,
+            test,
+            &CallError::Unknown(test.key.clone()),
+            rerun,
+        )));
+    };
+    let stored = Stored {
+        executor,
+        test,
+        rerun,
+        sources,
+        databases,
+        runtime,
+        callable: u32::MAX,
+        exchanges: &[],
+        erasing: Some(&erasure.person),
+    };
+    stored.run(None, kept).failure
 }
 
 #[cfg(test)]

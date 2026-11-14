@@ -79,6 +79,7 @@ use crate::resolve::{Names, Walk, Want};
 use crate::std_lib::StdNames;
 use crate::tree::{self, node_span};
 
+pub use builders::{Filled, MakeFact, builder_fills};
 pub(crate) use expr::{members_of, range_unordered};
 use facts::{Facts, LocalFact};
 pub(crate) use facts::{NodeKey, node_key};

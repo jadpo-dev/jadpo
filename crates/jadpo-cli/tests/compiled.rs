@@ -1205,7 +1205,10 @@ fn a_route_tests_spans_are_in_its_record() {
 /// next line, and its fixtures. Teaching example 27, the guest house,
 /// registers and signs in with `test_passkeys` there, the test
 /// authenticator and the passkey ceremonies built for wasm32 (area 8,
-/// "Passkeys"), and area 8's payout is confirmed with one.
+/// "Passkeys"), and area 8's payout is confirmed with one. The tests the
+/// compiler generates run there too (chunk W2b): each route's, its
+/// requests sent to the Worker as data, and a person's, its records made
+/// and erased by the Worker's own runtime.
 #[test]
 fn route_tests_on_workerd_give_the_interpreters_records() {
     if !jadpo_test::live() {
@@ -1285,6 +1288,12 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             "the system writing a server-only field",
             corpus_project(&crate::server_only_writes::files(), "workerd-server-only"),
         ),
+        // A person no test erases, made with a record of each kind of
+        // theirs and erased by the test generated for them (chunk W2b).
+        (
+            "a person no test erases",
+            corpus_project(&crate::generated_erasure::files(), "workerd-person"),
+        ),
     ];
     let folders: Vec<PathBuf> = projects
         .iter()
@@ -1301,24 +1310,26 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
         .iter()
         .map(|compared| (compared.tests, compared.passed))
         .collect();
+    // Each project's route tests and the tests generated for it.
     assert_eq!(
         counts,
         [
-            (3, 3),
-            (2, 2),
+            (8, 8),
+            (10, 10),
+            (8, 8),
             (4, 4),
-            (1, 1),
+            (12, 12),
+            (4, 4),
+            (6, 6),
             (5, 5),
-            (1, 1),
             (3, 3),
+            (6, 6),
             (3, 3),
-            (1, 1),
-            (2, 2),
             (1, 1)
         ]
     );
     println!(
-        "compared on workerd: {} route tests of {} projects with the interpreter's records, every one passing, in {:.0?}",
+        "compared on workerd: {} route and generated tests of {} projects with the interpreter's records, every one passing, in {:.0?}",
         counts.iter().map(|(tests, _)| tests).sum::<usize>(),
         counts.len(),
         started.elapsed()

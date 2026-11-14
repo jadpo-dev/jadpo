@@ -379,7 +379,13 @@ impl Report {
         };
         Report {
             word: "fault",
-            subject: format!("{} in {label}", fault.kind.classification()),
+            // A fault at no frame, as the runtime's own check after a
+            // test raises, names no callable.
+            subject: if label.is_empty() {
+                fault.kind.classification().to_string()
+            } else {
+                format!("{} in {label}", fault.kind.classification())
+            },
             location: text.and_then(|text| text.location),
             detail: Detail::Fault {
                 reason,
