@@ -1341,6 +1341,17 @@ pub fn escape(cx: &mut Ctx<'_>, value: &Value, at: u32) -> Ran {
     called(calls::escape(cx, value, at))
 }
 
+/// A `telemetry.` call recording what `recording` says, given `args`, at
+/// site `at` (area 16; chunk O1), through the runtime's one entry point.
+pub fn telemetry(
+    cx: &mut Ctx<'_>,
+    recording: &jadpo_std::telemetry::Recording,
+    args: &[Value],
+    at: u32,
+) -> Ran {
+    called(crate::telemetry::record(cx, recording, args, at))
+}
+
 /// `store.put(bytes, type)` or `store.read(file)`, `op`, of the store
 /// that is connection `connection`, with `args`, at site `at` (area 16).
 pub async fn files(

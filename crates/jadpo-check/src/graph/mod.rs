@@ -63,7 +63,12 @@ pub fn kind_of(kind: &ItemKind) -> Option<Kind> {
         ItemKind::Test => Kind::Test,
         // Packages, resources and provider mappings come with area 11, the
         // setting blocks with areas 10, 11 and 14.
-        ItemKind::Package | ItemKind::Resource | ItemKind::Provide | ItemKind::Singleton => {
+        // A metric is carried by the plan by name (chunk O1).
+        ItemKind::Package
+        | ItemKind::Resource
+        | ItemKind::Provide
+        | ItemKind::Metric
+        | ItemKind::Singleton => {
             return None;
         }
     })

@@ -57,6 +57,7 @@ mod ranges;
 mod request;
 mod standard_rules;
 mod stream;
+mod telemetry;
 pub(crate) mod template;
 mod temporal;
 mod text;

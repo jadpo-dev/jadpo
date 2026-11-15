@@ -168,6 +168,7 @@ pub mod statements;
 pub mod steps;
 mod store;
 pub mod stream;
+pub mod telemetry;
 #[cfg(feature = "testing")]
 pub mod test_authenticator;
 #[cfg(feature = "testing")]

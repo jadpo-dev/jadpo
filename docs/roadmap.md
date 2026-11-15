@@ -404,13 +404,7 @@ work below (Richard, 2026-11-08).
     them, and nothing such a service gets that any other vendor couldn't
     use: a vendor stays an endpoint and a header. E1, in item 3, puts path
     IDs on requests.
-    - [ ] **O1 The `telemetry:` section** `opus · xhigh`: area 16,
-      "Telemetry"; area 17, "Traces, metrics and logs in development".
-      `telemetry:` sending traces, metrics and logs over OTLP, custom
-      metrics and `telemetry.note`, and the local `jadpo traces`, `metrics`
-      and `logs`. Done when spans, metrics and logs reach a local OTLP
-      collector double on both executors, carrying no field values, and a
-      personal field given as a label is refused.
+    - [x] **O1 The `telemetry:` section**: area 16, "Telemetry", "Custom metrics" and its notes; area 17, "Traces, metrics and logs in development"; area 14, "`jadpo traces`, `jadpo metrics` and `jadpo logs`"; compiler-runtime §2.6, "Telemetry".
     - [ ] **O2 Trace context and outside request IDs** `opus · high`
       **needs a maintainer** before building: area 16, "Telemetry"; area
       7, where `x-request-id` is written; area 11, "How provider calls are

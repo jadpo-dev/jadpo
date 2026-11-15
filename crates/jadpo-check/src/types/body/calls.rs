@@ -512,6 +512,13 @@ impl Body<'_> {
         if head == "translations" && names.namespace(&head) == Some(Namespace::Generated) {
             return self.translation_call(call, callee, &rest, &written);
         }
+        // What code records for its telemetry (area 16; chunk O1):
+        // `telemetry.<metric>.add(...)` and `telemetry.note(...)`.
+        if head == jadpo_std::telemetry::NAMESPACE
+            && names.namespace(&head) == Some(Namespace::Generated)
+        {
+            return self.telemetry_call(call, callee, &rest, &written);
+        }
         let [member] = rest.as_slice() else {
             self.args_only(call);
             return (Ty::Error, CallKind::Effect(written), Reach::Unknown);

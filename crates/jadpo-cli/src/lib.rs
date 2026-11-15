@@ -83,6 +83,7 @@ mod stamp;
 mod suggest;
 mod suggestions;
 mod table;
+pub mod telemetry;
 mod test;
 mod toolchain;
 mod toolchains;

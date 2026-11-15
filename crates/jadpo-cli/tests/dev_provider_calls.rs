@@ -347,6 +347,7 @@ fn named_operations_go_to_the_sandbox_never_live() {
         choice: jadpo_term::ColorChoice::Never,
         fake: Vec::new(),
         sandbox: Vec::new(),
+        export_telemetry: false,
     };
     let code = jadpo_cli::dev::serve_to(&args, &Environment::empty(), &mut out, &mut err, &|| true);
     assert_eq!(code, 1);

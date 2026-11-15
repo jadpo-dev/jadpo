@@ -326,6 +326,9 @@ pub struct NativeHost {
     /// The deployable's log, for what the runtime records as it runs
     /// (area 4, "Logging"); none for `jadpo dev` and a test.
     log: Option<jadpo_runtime::deployable::Log>,
+    /// The program's telemetry on this worker (area 16, "Telemetry";
+    /// chunk O1): what each request's trace, metrics and logs go to.
+    telemetry: Option<Rc<jadpo_runtime::telemetry::Telemetry>>,
     /// `jadpo dev`'s local issuer, in the configured external-token
     /// issuer's place (area 8, "External tokens in tests and `jadpo dev`";
     /// chunk A3). Only with `testing`: a deployable has none.
@@ -388,6 +391,16 @@ impl NativeHost {
     /// host.
     pub fn with_log(mut self, log: jadpo_runtime::deployable::Log) -> NativeHost {
         self.log = Some(log);
+        self
+    }
+
+    /// Sends and keeps the program's telemetry through `telemetry` (chunk
+    /// O1), which hears every event the runtime logs.
+    pub fn with_telemetry(
+        mut self,
+        telemetry: Rc<jadpo_runtime::telemetry::Telemetry>,
+    ) -> NativeHost {
+        self.telemetry = Some(telemetry);
         self
     }
 
@@ -536,6 +549,10 @@ impl Host for NativeHost {
         Some(&self.outbound)
     }
 
+    fn telemetry(&self) -> Option<&jadpo_runtime::telemetry::Telemetry> {
+        self.telemetry.as_deref()
+    }
+
     /// Kept for the HTTP worker, which runs it once the response is handed
     /// back ([`NativeHost::take_deferred`]).
     fn defer(&self, work: LocalFuture<'static, ()>) {
@@ -564,6 +581,9 @@ impl Host for NativeHost {
     }
 
     fn log(&self, event: &str, fields: serde_json::Map<String, serde_json::Value>) {
+        if let Some(telemetry) = &self.telemetry {
+            telemetry.log(jadpo_runtime::Host::now_ms(self), event, &fields);
+        }
         if let Some(log) = &self.log {
             log.event_of(event, fields);
         }

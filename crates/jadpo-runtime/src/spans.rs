@@ -121,6 +121,10 @@ pub struct Span {
     /// or a call, and for a read or a write that didn't finish.
     pub rows: Option<u64>,
     pub ended: Ended,
+    /// The span it started inside, by its place in the list: the
+    /// innermost one still open when it began. `None` for one directly
+    /// under the invocation (chunk O1): what a trace nests it under.
+    pub parent: Option<u32>,
 }
 
 impl Span {
@@ -146,6 +150,8 @@ pub struct Spans {
     list: Vec<Span>,
     /// How many started past [`MAX_SPANS`], not kept.
     dropped: u32,
+    /// The kept spans still open, by place, innermost last.
+    open: Vec<u32>,
 }
 
 /// Which span [`Spans::begin`] started, for [`Spans::end`]: `None` when
@@ -161,6 +167,7 @@ impl Spans {
             self.dropped = self.dropped.saturating_add(1);
             return Begun(None);
         }
+        let at = self.list.len();
         self.list.push(Span {
             kind,
             callable: frame.map(|frame| frame.callable),
@@ -169,8 +176,10 @@ impl Spans {
             end_ms: None,
             rows: None,
             ended: Ended::Open,
+            parent: self.open.last().copied(),
         });
-        Begun(Some(self.list.len() - 1))
+        self.open.push(at as u32);
+        Begun(Some(at))
     }
 
     /// Ends the span `begun` started, at `now`, as `ended`, having given
@@ -179,6 +188,11 @@ impl Spans {
         let Some(span) = begun.0.and_then(|at| self.list.get_mut(at)) else {
             return;
         };
+        if let Some(at) = begun.0
+            && let Some(place) = self.open.iter().rposition(|open| *open as usize == at)
+        {
+            self.open.remove(place);
+        }
         span.end_ms = now;
         span.rows = rows;
         span.ended = ended;
@@ -235,5 +249,21 @@ mod tests {
         assert_eq!(spans.dropped(), 1);
         assert!(spans.iter().all(|span| span.kind == Kind::Read));
         assert_eq!(spans.as_slice()[0].ms(), Some(1));
+    }
+
+    /// A span is nested under the innermost one open when it began.
+    #[test]
+    fn a_span_is_nested_under_the_one_open_when_it_began() {
+        let mut spans = Spans::default();
+        let action = spans.begin(Kind::Action, None, Some(1));
+        let read = spans.begin(Kind::Read, None, Some(2));
+        spans.end(read, Some(3), Some(1), Ended::Value);
+        let write = spans.begin(Kind::Write, None, Some(3));
+        spans.end(write, Some(4), Some(1), Ended::Value);
+        spans.end(action, Some(5), None, Ended::Value);
+        let after = spans.begin(Kind::Read, None, Some(6));
+        spans.end(after, Some(7), Some(0), Ended::Value);
+        let parents: Vec<Option<u32>> = spans.iter().map(|span| span.parent).collect();
+        assert_eq!(parents, [None, Some(0), Some(0), None]);
     }
 }

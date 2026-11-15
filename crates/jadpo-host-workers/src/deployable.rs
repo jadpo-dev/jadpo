@@ -91,6 +91,9 @@ struct Isolate {
     /// Whether each store has been compared with the build's migrations
     /// and found current: until then each request compares them again.
     current: Cell<bool>,
+    /// Its traces, metrics and logs, sent from the isolate (chunk O1):
+    /// `None` when the program has no `telemetry:`.
+    telemetry: Option<Rc<jadpo_runtime::telemetry::Telemetry>>,
 }
 
 thread_local! {
@@ -143,7 +146,8 @@ pub fn hand_on(deployable: &Deployable, work: String, env: JsValue, ctx: JsValue
     let deployable = *deployable;
     let host = Rc::new(
         host.with_drivers_built_by(drivers(&isolate.program))
-            .with_log(isolate.log),
+            .with_log(isolate.log)
+            .with_telemetry(isolate.telemetry.clone()),
     );
     let fresh = Rc::clone(&host);
     host.defer(Box::pin(async move {
@@ -172,7 +176,8 @@ async fn respond(
     let host = host
         .with_drivers_built_by(drivers(&isolate.program))
         .with_rate_limits(isolate.rate_limits.clone())
-        .with_log(isolate.log);
+        .with_log(isolate.log)
+        .with_telemetry(isolate.telemetry.clone());
     if !ready(deployable, &host, &isolate).await {
         return http::unavailable(&host);
     }
@@ -195,7 +200,8 @@ async fn cron(deployable: &Deployable, controller: &JsValue, env: JsValue, ctx: 
     };
     let host = host
         .with_drivers_built_by(drivers(&isolate.program))
-        .with_log(isolate.log);
+        .with_log(isolate.log)
+        .with_telemetry(isolate.telemetry.clone());
     if !ready(deployable, &host, &isolate).await {
         return;
     }
@@ -313,7 +319,16 @@ fn isolate(deployable: &Deployable, host: &WorkersHost) -> Option<Rc<Isolate>> {
 fn start(deployable: &Deployable, host: &WorkersHost) -> Option<Rc<Isolate>> {
     let log = Log::new(deployable.stamp, js::log);
     match started(deployable, host) {
-        Ok(program) => {
+        Ok((program, values)) => {
+            let variable = |name: &str| host.variable(name);
+            let telemetry = jadpo_runtime::deployable::telemetry(
+                &program,
+                &values,
+                &variable,
+                &deployable.stamp,
+                Rc::new(crate::fetch::WorkersFetch::default()),
+            )
+            .map(Rc::new);
             let program = Rc::new(program);
             // Built once to see which can't be, and dropped: nothing
             // connects until a transaction begins.
@@ -329,6 +344,7 @@ fn start(deployable: &Deployable, host: &WorkersHost) -> Option<Rc<Isolate>> {
                 unbuilt,
                 log,
                 current: Cell::new(false),
+                telemetry,
             }))
         }
         Err(problems) => {
@@ -343,9 +359,11 @@ fn start(deployable: &Deployable, host: &WorkersHost) -> Option<Rc<Isolate>> {
 
 /// The program, reading the settings the bindings give on Workers, or
 /// what stops it, as a native deployable starts.
-fn started(deployable: &Deployable, host: &WorkersHost) -> Result<Program, Vec<Value>> {
+fn started(
+    deployable: &Deployable,
+    host: &WorkersHost,
+) -> Result<(Program, jadpo_runtime::config::ConfigValues), Vec<Value>> {
     jadpo_runtime::deployable::start(deployable, &HostVariables(host), Target::Workers)
-        .map(|(program, _)| program)
 }
 
 /// What builds an invocation's drivers: the factory, from the program's

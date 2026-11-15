@@ -581,6 +581,18 @@ const BOUNDARIES: &[(&str, Option<&str>)] = &[
 /// anywhere else, a new crate's above all, fails here.
 const MAY_ENCODE: &[(&str, &str)] = &[
     (
+        "crates/jadpo-check/src/telemetry.rs",
+        "reads `detail: { samples: { every: } }` as a duration in milliseconds, by the contract's own reader (chunk O1)",
+    ),
+    (
+        "crates/jadpo-cli/src/telemetry.rs",
+        "reads `--slower-than` as a duration in milliseconds, by the contract's own reader (chunk O1)",
+    ),
+    (
+        "crates/jadpo-runtime/src/telemetry/mod.rs",
+        "records a `Measure` given a `Duration` as its milliseconds, a metric's number, never sent as the type (chunk O1)",
+    ),
+    (
         "crates/jadpo-runtime/src/logging.rs",
         "writes a log event: an access record's time through the contract's `text.from`, and a value by the rule a log follows",
     ),

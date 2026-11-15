@@ -107,6 +107,7 @@ pub mod standard;
 pub mod steps;
 pub mod subscriber;
 pub mod system;
+pub mod telemetry;
 #[cfg(feature = "testing")]
 pub mod testing;
 pub mod thresholds;

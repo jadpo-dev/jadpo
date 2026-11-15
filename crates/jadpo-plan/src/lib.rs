@@ -1215,6 +1215,10 @@ impl Plan {
         } else {
             Vec::new()
         };
+        // Where `telemetry:` sends, its settings asked for as any other
+        // setting a kept part reads (chunk O1).
+        let telemetry =
+            jadpo_check::telemetry::section(db, project).plan(&|name| setting_number(name));
         let field_key = jadpo_check::data::sealed::field_key(db, project)
             .setting
             .as_ref()
@@ -2008,6 +2012,9 @@ impl Plan {
             config,
             flags,
             thresholds: thresholds(db, project),
+            telemetry,
+            metrics: jadpo_check::telemetry::metrics(db, project).plans(),
+            buckets: buckets(db, project),
             routes,
             events,
             batches,
@@ -2522,6 +2529,28 @@ fn ai_package(
         embed,
         prices: mapping.prices.clone(),
     })
+}
+
+/// Each duration a threshold names, per request or across them, by the
+/// key of what it watches (chunk O1): its duration histogram's buckets.
+fn buckets(db: &dyn Db, project: Project) -> BTreeMap<String, Vec<u64>> {
+    use jadpo_check::thresholds::{Limit, Unit};
+    let mut out: BTreeMap<String, Vec<u64>> = BTreeMap::new();
+    for threshold in &jadpo_check::thresholds::thresholds(db, project).thresholds {
+        let durations = threshold
+            .limits
+            .iter()
+            .filter(|(limit, _)| limit.unit() == Unit::Duration && **limit != Limit::OldestWaiting)
+            .map(|(_, value)| *value);
+        let list = out
+            .entry(threshold.target.key.as_str().to_string())
+            .or_default();
+        list.extend(durations);
+        list.sort_unstable();
+        list.dedup();
+    }
+    out.retain(|_, list| !list.is_empty());
+    out
 }
 
 /// Each threshold with a limit judged per request (area 16; chunk B13),

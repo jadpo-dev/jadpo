@@ -1096,6 +1096,7 @@ impl Decoder<'_> {
                 | Callee::AdvanceClock
                 | Callee::Translation(_)
                 | Callee::Escape
+                | Callee::Telemetry(_)
                 | Callee::Unknown => Decoded::Nothing,
             },
             Node::Expr(Expr::Build {

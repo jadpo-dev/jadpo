@@ -238,6 +238,13 @@ enum Task<'p> {
         count: usize,
         at: SiteId,
     },
+    /// A `telemetry.` call (area 16; chunk O1): its value, then each
+    /// label or attribute, on the stack.
+    Record {
+        recording: &'p jadpo_std::telemetry::Recording,
+        count: usize,
+        at: SiteId,
+    },
     /// `prompts.render(prompt)` (area 21): the prompt's value on the
     /// stack.
     RenderPrompt(SiteId),
@@ -1115,6 +1122,17 @@ impl<'p> Machine<'p> {
                 let plan = self.program.runtime_plan();
                 let text = called(calls::translate(ctx, plan, key, &values, at.0))?;
                 self.values.push(text);
+            }
+            Task::Record {
+                recording,
+                count,
+                at,
+            } => {
+                let values = self.take(count);
+                let unit = called(jadpo_runtime::telemetry::record(
+                    ctx, recording, &values, at.0,
+                ))?;
+                self.values.push(unit);
             }
             Task::Escape(at) => {
                 let value = self.pop();
@@ -2617,6 +2635,15 @@ impl<'p> Machine<'p> {
                     at: id,
                 });
                 self.tasks.extend(work.into_iter().rev());
+            }
+            // What code records for its telemetry (area 16; chunk O1).
+            Callee::Telemetry(recording) => {
+                self.tasks.push(Task::Record {
+                    recording,
+                    count: args.len(),
+                    at: id,
+                });
+                self.arguments(args, id);
             }
             // A value an email's HTML template writes out (area 16).
             Callee::Escape => {

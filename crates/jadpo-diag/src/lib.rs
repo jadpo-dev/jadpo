@@ -196,8 +196,12 @@ rules! {
         "A `jadpo impact` command names no declaration, one the project doesn't have, or a name two domains share";
     CLI_INSPECT_ARGUMENTS: "cli.inspect_arguments", area 14, Error, Agent,
         "A `jadpo inspect` command names a declaration the project doesn't have, or a name two domains share";
+    CLI_LOGS_ARGUMENTS: "cli.logs_arguments", area 14, Error, Agent,
+        "A `jadpo logs` command is given something it doesn't take, or a filter or level it can't read";
     CLI_LSP_ARGUMENTS: "cli.lsp_arguments", area 14, Error, Agent,
         "A `jadpo lsp` command is given an argument, which it doesn't take";
+    CLI_METRICS_ARGUMENTS: "cli.metrics_arguments", area 14, Error, Agent,
+        "A `jadpo metrics` command is given something it doesn't take, or a filter it can't read";
     CLI_MIGRATE_ARGUMENTS: "cli.migrate_arguments", area 14, Error, Agent,
         "A `jadpo migrate` command names no action, one it doesn't have, a purpose for an action that takes none, or a `--drop` of what isn't retired";
     CLI_NEW_ARGUMENTS: "cli.new_arguments", area 14, Error, Agent,
@@ -236,6 +240,8 @@ rules! {
         "A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use, or asks for `--affected` with nothing to compare with or `--interactive` where it can't open";
     CLI_TOOLCHAIN_ARGUMENTS: "cli.toolchain_arguments", area 14, Error, Agent,
         "A `jadpo toolchain` command names an action it doesn't have, or a release that isn't kept";
+    CLI_TRACES_ARGUMENTS: "cli.traces_arguments", area 14, Error, Agent,
+        "A `jadpo traces` command is given something it doesn't take, or a filter it can't read";
     CLI_TRANSLATIONS_ARGUMENTS: "cli.translations_arguments", area 14, Error, Agent,
         "A `jadpo translations` command names no action, one it doesn't have, or a locale the project doesn't translate into";
     CLI_UNKNOWN_COMMAND: "cli.unknown_command", area 14, Error, Agent,
@@ -1276,6 +1282,14 @@ rules! {
         "A variable is declared with `let`, `const` or `val`, words from other languages, where Jadpo writes `var`";
     SYNTAX_VARIABLE_TYPE_REQUIRED: "syntax.variable_type_required", area 2, Error, Agent,
         "A variable or a constant is declared without a type";
+    TELEMETRY_METRIC_INVALID: "telemetry.metric_invalid", area 16, Error, Agent,
+        "A `metric` isn't in a domain's `monitoring.jadpo`, isn't a `Counter`, `Measure` or `Gauge`, or doesn't list its labels by name";
+    TELEMETRY_PERSONAL_DATA: "telemetry.personal_data", area 16, Error, Agent,
+        "A personal field is given as a metric's label or a note's attribute, which would send it to the monitoring service";
+    TELEMETRY_RECORD_INVALID: "telemetry.record_invalid", area 16, Error, Agent,
+        "A `telemetry.` call names a metric its domain doesn't declare, records it the wrong way, or gives a value, label or attribute of a type it can't carry";
+    TELEMETRY_SETTINGS_INVALID: "telemetry.settings_invalid", area 16, Error, Agent,
+        "The application's `telemetry:` section holds something it doesn't take, or a value it can't use";
     TEST_ASSERTION_FAILED: "test.assertion_failed", area 13, Error, Agent,
         "A test's `assert` doesn't hold: its condition is false, or a call checked with `assert … fails` returned or failed differently";
     TEST_DATABASE_UNAVAILABLE: "test.database_unavailable", area 14, Error, Human,

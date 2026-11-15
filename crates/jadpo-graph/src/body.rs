@@ -691,6 +691,11 @@ pub enum Callee {
     /// "Email"): never written in source, but made for each `{{ value }}`
     /// that isn't `Html`.
     Escape,
+    /// `telemetry.<metric>.add(value, label: ...)` and its kin, or
+    /// `telemetry.note(name: value, ...)` (area 16, "Custom metrics";
+    /// chunk O1): what it records, its arguments the value and then each
+    /// label or attribute in the order the recording names them.
+    Telemetry(jadpo_std::telemetry::Recording),
     /// Nothing that can be called: already reported.
     Unknown,
 }
@@ -733,6 +738,7 @@ impl Callee {
             | Callee::OperationRequests { .. }
             | Callee::FixtureFile { .. }
             | Callee::Escape
+            | Callee::Telemetry(_)
             | Callee::Unknown => None,
         }
     }

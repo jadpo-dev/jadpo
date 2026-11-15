@@ -67,6 +67,21 @@ pub struct RuntimePlan {
     /// 16, "Monitoring thresholds"; chunk B13): what the `telemetry:`
     /// section judges each request by.
     pub thresholds: Vec<crate::thresholds::ThresholdPlan>,
+    /// The `telemetry:` section (area 16, "Telemetry"; chunk O1): where
+    /// traces, metrics and logs are sent, which and how much; `None` when
+    /// it isn't written, and nothing is sent.
+    #[serde(default)]
+    pub telemetry: Option<crate::telemetry::TelemetryPlan>,
+    /// Every `metric` the domains' `monitoring.jadpo` declare, by the name
+    /// each is sent under (chunk O1).
+    #[serde(default)]
+    pub metrics: Vec<crate::telemetry::MetricPlan>,
+    /// Each duration a threshold names, per request or across them, in
+    /// milliseconds, by the key of what it watches (chunk O1): a bucket of
+    /// that subject's duration histogram, so a percentile's rule reads an
+    /// exact count.
+    #[serde(default)]
+    pub buckets: BTreeMap<String, Vec<u64>>,
     /// Every connection, in name order, with its driver, the settings
     /// that driver is built from and the targets it runs on (area 11;
     /// chunk 8.1d): what a host builds each connection's driver from.

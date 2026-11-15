@@ -915,6 +915,7 @@ fn stopping_a_native_server_gives_back_the_delivery_it_was_running() {
         choice: jadpo_term::ColorChoice::Never,
         fake: Vec::new(),
         sandbox: Vec::new(),
+        export_telemetry: false,
     };
     let session = {
         let mut out = out.clone();

@@ -692,7 +692,7 @@ status = [
   "16-built-in-services: The `telemetry:` section",
   "16-built-in-services: Path IDs",
 ]
-missing = "telemetry, recording the path each request takes, and `jadpo traces`, `metrics`, `logs` and `path`"
+missing = "recording the path each request takes, and `jadpo path`"
 topics = [
   "monitoring-thresholds",
   "telemetry",
@@ -969,7 +969,7 @@ commands = ["package"]
 [[group.page.section]]
 id = "commands-for-services-calls-email-and-stored-data"
 title = "Commands for services, calls, email and stored data"
-commands = ["flags", "calls", "email", "files", "batches", "runs"]
+commands = ["flags", "calls", "traces", "metrics", "logs", "email", "files", "batches", "runs"]
 
 [[group.page.section]]
 id = "commands-for-debugging-editors-and-help"
@@ -1025,9 +1025,10 @@ status = [
   "17-debugging-and-review: `jadpo calls`",
   "17-debugging-and-review: Mapped `.jadpo` stacks",
   "17-debugging-and-review: The developer console",
-  "17-debugging-and-review: `jadpo traces`",
+  "17-debugging-and-review: `jadpo traces`, `metrics` and `logs`",
+  "17-debugging-and-review: `jadpo watch`; path coverage, production counts in review, `jadpo replay` and query cost",
 ]
-missing = "jadpo incident, trace, traces, metrics, logs, watch, call, test new --from, replay and mcp"
+missing = "jadpo incident, trace, watch, call, test new --from, replay and mcp"
 topics = [
   "debugging-and-review",
   "errors-point-at-the-jadpo-line",
@@ -1103,11 +1104,11 @@ how-the-registry-commands-work = [
   "11-integrations: The `jadpo` tool's side of the public registry",
   "11-integrations: The registry at jadpo.dev",
 ]
-watching-code-run-jadpo-watch = ["17-debugging-and-review: `jadpo traces`, `metrics`, `logs` and `watch`"]
-traces-metrics-and-logs-in-development = ["17-debugging-and-review: `jadpo traces`, `metrics`, `logs` and `watch`"]
+watching-code-run-jadpo-watch = ["17-debugging-and-review: `jadpo watch`; path coverage, production counts in review, `jadpo replay` and query cost"]
+traces-metrics-and-logs-in-development = ["17-debugging-and-review: `jadpo traces`, `metrics` and `logs`"]
 production-incidents-after-the-code-has-changed = ["17-debugging-and-review: Mapped `.jadpo` stacks"]
 the-developer-console-and-mcp = ["17-debugging-and-review: The developer console"]
-what-the-graph-and-production-evidence-add = ["17-debugging-and-review: `jadpo traces`, `metrics`, `logs` and `watch`"]
+what-the-graph-and-production-evidence-add = ["17-debugging-and-review: `jadpo watch`; path coverage, production counts in review, `jadpo replay` and query cost"]
 
 # A topic whose first sentence doesn't say what it is, or runs too long for a row.
 [topic_summary]

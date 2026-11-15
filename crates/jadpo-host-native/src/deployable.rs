@@ -374,12 +374,24 @@ fn handlers(
             .routes
             .and_then(|routes| routes.rate_limits.as_ref())
             .map(|store| store.connection.clone());
+        // Its traces, metrics and logs, sent from this worker (chunk O1).
+        let environment = |name: &str| std::env::var(name).ok();
+        let telemetry = jadpo_runtime::deployable::telemetry(
+            &program,
+            &values,
+            &environment,
+            &log.stamp(),
+            Rc::new(crate::fetch::NativeFetch::new()),
+        );
         let program: Rc<dyn Executor> = Rc::new(program);
-        let host = worker
+        let mut host = worker
             .host()
             .with_drivers(drivers)
             .with_log(log)
             .counting_in(store.as_deref());
+        if let Some(telemetry) = telemetry {
+            host = host.with_telemetry(Rc::new(telemetry));
+        }
         let handler = AppHandler::new(host, move || Rc::clone(&program)).observed_by(logged);
         Box::new(if timed { handler } else { handler.untimed() })
     })

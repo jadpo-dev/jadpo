@@ -946,6 +946,12 @@ fn body_features(
                         Callee::AiFake { .. } => "script a model's answers",
                         Callee::AiRequests { .. } => "read what a model was asked",
                         Callee::OperationRequests { .. } => "read what a provider was sent",
+                        Callee::Telemetry(jadpo_std::telemetry::Recording::Metric { .. }) => {
+                            "record a metric"
+                        }
+                        Callee::Telemetry(jadpo_std::telemetry::Recording::Note { .. }) => {
+                            "note on the request's trace"
+                        }
                         // What an HTML template's value is written out
                         // through, which lowering makes, never source.
                         Callee::Escape => continue,
