@@ -1621,6 +1621,8 @@ pub mod cursor {
         let mut bytes = tag.to_be_bytes().to_vec();
         for value in values {
             match value {
+                // An optional order field's `none` (area 6, "Pages").
+                SqlValue::Null(_) => bytes.push(0),
                 SqlValue::Int8(n) => {
                     bytes.push(1);
                     bytes.extend_from_slice(&n.to_be_bytes());
@@ -1682,6 +1684,7 @@ pub mod cursor {
         for (_, ty) in types {
             let kind = *take(1)?.first()?;
             let value = match (kind, ty) {
+                (0, ty) => SqlValue::Null(*ty),
                 (1, SqlType::Int8) => SqlValue::Int8(i64::from_be_bytes(take(8)?.try_into().ok()?)),
                 (2, SqlType::Text) => {
                     let length = u32::from_be_bytes(take(4)?.try_into().ok()?);
@@ -1752,6 +1755,14 @@ pub mod cursor {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn a_cursor_holds_an_optional_fields_none() {
+            let values = vec![SqlValue::Null(SqlType::Date), SqlValue::Uuid([7; 16])];
+            let types = [(0, SqlType::Date), (1, SqlType::Uuid)];
+            let text = encode(42, &values).expect("encoded");
+            assert_eq!(decode(&text, 42, &types), Some(values));
+        }
 
         #[test]
         fn a_cursor_reads_back_only_for_its_own_query() {
