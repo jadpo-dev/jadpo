@@ -109,6 +109,11 @@ stop and ask you which fix you want, because the choice is yours to make
 (who can see data, what a setting holds). `(agent)` means your agent can
 make the fix itself.
 
+A check that passes can still print a `notice:` (for example what a first
+commit holds that nothing compares yet). It is marked `(agent)`: carry on,
+and tell the user what it said when you hand over. It is never a reason to
+stop.
+
 In the JSON this is `next.decides`: `"agent"` or `"human"`. When it is
 `"human"`, put the choices and what each changes to the user, and wait for
 the answer.
