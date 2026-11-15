@@ -6,8 +6,10 @@ A lifecycle, a transition or a `purge:` has a part it doesn't take, lacks one it
 
 A lifecycle holds `visible:`, `initial:`, `transitions:` and `purge:`, and
 has at least `visible:` or `transitions:`, since without either it would
-only stop its records being deleted. A transition holds `when:` and
-`set:`, and sets at least one field. `purge:` holds both `after:` and
+only stop its records being deleted. A transition holds `when:`,
+`reaches:` and `set:`, and sets at least one field. `reaches:` takes only
+`hidden`, and only in a lifecycle with `visible:`, since otherwise no
+record is hidden for it to reach. `purge:` holds both `after:` and
 `since:`. Each part is given once, and so is each transition and each
 field in `set:` or `initial:`, so there is never a question of which one
 counts.
