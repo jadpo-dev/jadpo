@@ -375,6 +375,9 @@ pub struct Order<'a> {
     pub column: &'a str,
     pub collate: bool,
     pub descending: bool,
+    /// Whether the column may be `NULL`: it then sorts `NULLS LAST`, in
+    /// either direction (area 6, "What can be sorted").
+    pub nullable: bool,
 }
 
 /// An order's fields, `qualifier.`-prefixed when one is given.
@@ -384,10 +387,11 @@ fn order_terms(order: &[Order<'_>], qualifier: Option<&str>) -> String {
         .map(|field| {
             let prefix = qualifier.map_or_else(String::new, |q| format!("{}.", ident(q)));
             format!(
-                "{prefix}{}{} {}",
+                "{prefix}{}{} {}{}",
                 ident(field.column),
                 collate(field.collate),
-                if field.descending { "DESC" } else { "ASC" }
+                if field.descending { "DESC" } else { "ASC" },
+                if field.nullable { " NULLS LAST" } else { "" }
             )
         })
         .collect::<Vec<_>>()
@@ -432,12 +436,17 @@ pub struct After<'a> {
     pub param: String,
     pub collate: bool,
     pub descending: bool,
+    /// Whether the column may be `NULL`, which sorts last either way.
+    pub nullable: bool,
 }
 
 /// The condition that starts a page after its cursor: the rows past the
 /// cursor's values of the order's fields, or every row when there is no
 /// cursor (its first parameter `NULL`); `None` for an order of no fields.
 pub fn after(parts: &[After<'_>]) -> Option<String> {
+    if parts.iter().any(|part| part.nullable) {
+        return after_nullable(parts);
+    }
     let first = parts.first()?;
     let column = |part: &After<'_>| format!("{}{}", ident(part.column), collate(part.collate));
     let param = |part: &After<'_>| format!("{}{}", part.param, collate(part.collate));
@@ -479,6 +488,55 @@ pub fn after(parts: &[After<'_>]) -> Option<String> {
         format!("({})", alternatives.join(" OR "))
     };
     Some(format!("({} IS NULL OR {past})", first.param))
+}
+
+/// [`after`] for an order with a column that may be `NULL`, sorted last
+/// in either direction: past on the first column, or equal on it and past
+/// on the next, and so on, where a `NULL` equals a `NULL` and every value
+/// comes before one. The order's last column is its tie-break, never
+/// `NULL` in a row, so its parameter says whether there is a cursor.
+fn after_nullable(parts: &[After<'_>]) -> Option<String> {
+    let last = parts.last()?;
+    let column = |part: &After<'_>| format!("{}{}", ident(part.column), collate(part.collate));
+    let param = |part: &After<'_>| format!("{}{}", part.param, collate(part.collate));
+    let equal = |part: &After<'_>| {
+        if part.nullable {
+            format!("{} IS NOT DISTINCT FROM {}", column(part), param(part))
+        } else {
+            format!("{} = {}", column(part), param(part))
+        }
+    };
+    let past = |part: &After<'_>| {
+        let op = if part.descending { "<" } else { ">" };
+        if part.nullable {
+            // After a value come the greater (or lesser) values and every
+            // `NULL`; after a `NULL`, nothing is past on this column.
+            format!(
+                "({} IS NOT NULL AND ({} {op} {} OR {} IS NULL))",
+                part.param,
+                column(part),
+                param(part),
+                ident(part.column)
+            )
+        } else {
+            format!("{} {op} {}", column(part), param(part))
+        }
+    };
+    let mut alternatives = Vec::new();
+    for (i, part) in parts.iter().enumerate() {
+        let mut terms: Vec<String> = parts.iter().take(i).map(equal).collect();
+        terms.push(past(part));
+        alternatives.push(if terms.len() == 1 {
+            terms.remove(0)
+        } else {
+            format!("({})", terms.join(" AND "))
+        });
+    }
+    Some(format!(
+        "({} IS NULL OR ({}))",
+        last.param,
+        alternatives.join(" OR ")
+    ))
 }
 
 /// The alias of an include's keys and of each one's rows.
@@ -1500,8 +1558,25 @@ mod tests {
             param: param.to_string(),
             collate: false,
             descending,
+            nullable: false,
         };
         assert_eq!(after(&[]), None);
+        let optional = |column, param: &str, descending| After {
+            nullable: true,
+            ..part(column, param, descending)
+        };
+        assert_eq!(
+            after(&[optional("due", "$2", false), part("id", "$3", false)]).as_deref(),
+            Some(
+                "($3 IS NULL OR (($2 IS NOT NULL AND (\"due\" > $2 OR \"due\" IS NULL)) OR (\"due\" IS NOT DISTINCT FROM $2 AND \"id\" > $3)))"
+            )
+        );
+        assert_eq!(
+            after(&[optional("due", "$2", true), part("id", "$3", false)]).as_deref(),
+            Some(
+                "($3 IS NULL OR (($2 IS NOT NULL AND (\"due\" < $2 OR \"due\" IS NULL)) OR (\"due\" IS NOT DISTINCT FROM $2 AND \"id\" > $3)))"
+            )
+        );
         assert_eq!(
             after(&[part("due", "$2", false)]).as_deref(),
             Some("($2 IS NULL OR \"due\" > $2)")

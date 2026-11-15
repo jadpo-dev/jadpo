@@ -13,6 +13,11 @@ An enum, a `Bool` or a structured field doesn't. The database could put
 `true` first where Jadpo puts it last, so records would come back in an
 order the code can't rely on.
 
+An optional field can be sorted by, on a page too: its `none` comes after
+every value, either way. The one optional field a page can't be ordered by
+is a value kept in several columns, such as an optional `Money`, since a
+page's cursor holds one value for each column it sorts by.
+
 ## What it looks like
 
 main.jadpo:
