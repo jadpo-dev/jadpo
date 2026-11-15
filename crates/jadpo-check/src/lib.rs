@@ -332,6 +332,11 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             out.extend(caches::cache_problems(db, project, file).iter().cloned());
             out.extend(
+                caches::record_cache_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
                 redis::redis_entity_problems(db, project, file)
                     .iter()
                     .cloned(),

@@ -2890,9 +2890,13 @@ route test says which scopes its token carries with `scopes:`
 <!-- topic: caches-and-personal-data -->
 
 A [cache](05-data.md#caches) never lets a caller around policy. A record
-cache applies policy on every read. A query-result cache is keyed by the
-tenant and every input policy used. Policy itself always reads the
-database.
+cache keeps one copy of each record for every caller and applies policy
+to it on every read, by what the record holds: `Access.public`,
+`Access.authenticated`, `Access.system` and a user field. A role or a
+tenant reads memberships from the database as policy is checked, so an
+entity with one isn't given a record cache (`data.cache_invalid`). A
+query-result cache is keyed by the tenant and every input policy used.
+Policy itself always reads the database.
 
 [Personal data](15-personal-data.md) takes its permissions from policy:
 erasing a person's data needs `delete` on their record, and exporting it

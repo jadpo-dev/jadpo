@@ -49,7 +49,7 @@ pub use columns::column_type;
 
 /// The sections an entity may hold besides its fields (area 5, "Where
 /// things live"), with area 9's `membership:`. `policy:` and `membership:`
-/// are read by [`crate::policy`]; `caches:` comes with Redis.
+/// are read by [`crate::policy`]; `caches:` by [`crate::caches`].
 pub const SECTIONS: [&str; 7] = [
     "store",
     "unique",
@@ -353,6 +353,11 @@ pub struct EntityModel {
     /// Its `expires_after:`, in milliseconds, when it reads: how long a
     /// record in Redis lives after its last write.
     pub expires_after_ms: Option<i64>,
+    /// Its `caches: { records: }`, when it reads cleanly (area 5, "A record
+    /// cache"; chunk Q9b): each record kept whole, by `id`, in a cache.
+    /// Whether its policy can be held to a cached copy is
+    /// [`crate::caches::record_cache`]'s to say.
+    pub records_cache: Option<crate::caches::QueryCache>,
 }
 
 /// One field of an entity.
@@ -631,6 +636,10 @@ pub struct EntitySpans {
     pub audit: Option<Span>,
     /// Its audit's `retention:` key, when that reads cleanly.
     pub audit_retention: Option<Span>,
+    /// Its `caches:` key, when it has one (area 5, "A record cache"; chunk
+    /// Q9b): where its `cache` node is placed and the problems of its
+    /// policy are reported.
+    pub caches: Option<Span>,
 }
 
 /// Where an entity kept in Redis declares what only a database keeps
@@ -737,6 +746,7 @@ pub fn entity_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
             field_erasures: Vec::new(),
             audit: None,
             audit_retention: None,
+            caches: None,
         },
         retentions: Vec::new(),
         out: Vec::new(),
@@ -1028,6 +1038,7 @@ impl Reader<'_> {
             webhooks: false,
             redis: false,
             expires_after_ms: None,
+            records_cache: None,
         };
         let mut store: Option<(String, Span)> = None;
         let mut expiry: Option<(ast::Member, Span)> = None;
@@ -1036,6 +1047,7 @@ impl Reader<'_> {
         let mut retention: Option<(ast::Member, Span)> = None;
         let mut with_matches: Option<(ast::Member, Span)> = None;
         let mut audited: Option<(ast::Member, Span)> = None;
+        let mut cached: Option<(ast::Member, Span)> = None;
         let mut unique = None;
         let mut indexes = None;
         let items: Vec<MemberItem> = decl
@@ -1078,18 +1090,11 @@ impl Reader<'_> {
                 "unique" => unique = Some(member.clone()),
                 "indexes" => indexes = Some(member.clone()),
                 "lifecycle" => lifecycle = Some(member.clone()),
-                // Read by `crate::policy` (area 9). A record cache isn't
-                // built yet (chunk Q9b).
+                // Read by `crate::policy` (area 9).
                 "policy" | "membership" => {}
-                "caches" => self.out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        "An entity's `caches:` isn't built yet",
-                    )
-                    .at(key_span, "decided, not built")
-                    .reason("A record cache, which applies policy to each record it holds as it is read, isn't built yet. A query's `cache:` is: its results are kept per caller.")
-                    .next("Leave `caches:` out, and give the query a route reads it through `cache: { store: keep: }`"),
-                ),
+                // A record cache (area 5, "A record cache"; chunk Q9b), read
+                // once the store is.
+                "caches" => cached = Some((member.clone(), key_span)),
                 // `person: true` (area 15; chunk P1). A field may still be
                 // named `person` (`person: Amount?`).
                 "person"
@@ -1229,6 +1234,16 @@ impl Reader<'_> {
             .as_ref()
             .and_then(|member| member.member_key().map(|key| node_span(path, key.syntax())));
         self.expiry(&mut entity, expiry, &name_span);
+        if let Some((member, key_span)) = cached {
+            self.spans.caches = Some(key_span.clone());
+            entity.records_cache = crate::caches::records_read(
+                self.connections,
+                path,
+                &entity,
+                (&member, &key_span),
+                &mut self.out,
+            );
+        }
         if entity.redis {
             let sections = RedisSections {
                 lifecycle: lifecycle_span.clone(),

@@ -239,12 +239,7 @@ async fn run(
             Ok(Found::Value(value)) => Stored::Value(value),
             // A read for exactly one record found none: the failure its
             // plan names, its fields from the read's arguments.
-            Ok(Found::Missing(concealed)) => {
-                match missing(ctx, plan.missing.as_ref(), failures, args) {
-                    Some(failure) => Stored::Failed(ctx.fail(concealing(failure, concealed), site)),
-                    None => defect(ctx, "a read for one record with no failure for none"),
-                }
-            }
+            Ok(Found::Missing(concealed)) => not_found(ctx, plan, failures, args, concealed, site),
             Err(stop) => interrupted(stop),
         },
         StoreOp::Write(plan) => match match &plan.redis {
@@ -308,6 +303,27 @@ async fn run(
 /// A not-found failure for a record policy hid, which its log says (area
 /// 4, "Concealing records"): the client sees the same failure as for a
 /// record that isn't there.
+/// What `plan`, a read for exactly one record called from site `site` with
+/// `args`, raises when it finds none: the failure it names, its fields
+/// from the read's arguments, saying so when policy hid the record
+/// (`concealed`). A record cache's read raises it too (chunk Q9b).
+pub(crate) fn not_found(
+    ctx: &mut Ctx<'_>,
+    plan: &ReadPlan,
+    failures: &[FailurePlan],
+    args: &[Value],
+    concealed: bool,
+    site: u32,
+) -> Stored {
+    match missing(ctx, plan.missing.as_ref(), failures, args) {
+        Some(failure) => Stored::Failed(ctx.fail(concealing(failure, concealed), site)),
+        None => Stored::Fault(ctx.fault(
+            FaultKind::Defect("a read for one record with no failure for none".into()),
+            site,
+        )),
+    }
+}
+
 fn concealing(mut failure: Failure, concealed: bool) -> Failure {
     if concealed {
         failure

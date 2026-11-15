@@ -344,6 +344,8 @@ rules! {
         "A constant has the same type and value as another constant";
     CONSTANT_VALUE_NOT_FIXED: "constant.value_not_fixed", area 3, Error, Agent,
         "A constant's value is only known while the app runs, because it comes from a call, `config` or `clock`";
+    DATA_CACHE_INVALID: "data.cache_invalid", area 5, Error, Agent,
+        "An entity's `caches:` names no cache, keeps its records too long or too briefly, or caches records whose policy a cached copy can't be held to";
     DATA_CLEARED_REQUIRED_REFERENCE: "data.cleared_required_reference", area 5, Error, Agent,
         "A reference that can't be `none` is set to be cleared when the record it refers to is deleted";
     DATA_CONFLICT_CANNOT_BREAK: "data.conflict_cannot_break", area 6, Error, Agent,

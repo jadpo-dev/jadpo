@@ -964,9 +964,10 @@ feature flag (using the enum it holds), the `locale_set application`,
 and, beside any API, `rate_limit address` and `rate_limit
 caller`, using the connection they are counted in; and an `oauth_scope`
 for each scope `external_token:` declares, with a `scopes` edge to each
-grant whose effect needs it. `cache` stays reserved: nothing the language
-builds declares one yet (an entity's `caches:` is chunk Q9b's, area 5), and
-it is built with those (decided in chunk 10.3g).
+grant whose effect needs it. A `cache` node is an entity's record cache
+(`graph::cache_nodes`, chunk Q9b), placed at its `caches:` under its
+entity, holding its store and `keep:`, with a `uses` edge to its
+connection.
 
 Each site says whether it can pause (§2.5): an effect (a
 store read or write, `emit`, an integration call, `clock.now`, a new
@@ -3767,6 +3768,42 @@ when the run has one, a real Redis (`jadpo-host-native`'s
 PostgreSQL (`jadpo-cli`'s `caches`): a change behind the app's back unseen,
 a later revision skipping, a write clearing, and an erasure leaving no
 copy.
+
+**Record caches** (area 5, "A record cache"; chunk Q9b). The checker
+reads an entity's `caches: { records: }` with its store
+(`EntityModel::records_cache`, `jadpo_check::caches::records_read`, the
+same settings a query's `cache:` takes, as `data.cache_invalid`), and
+`caches::record_cache_read` decides what a copy keeps (every field but
+those `caches::left_out` names: sensitive, sealed, a `File`) and whether
+the entity's `read:` grants can be held to it, refusing a role, a tenant
+and a user field it leaves out. `caches::record_lookup` decides which
+queries a route's display read of is served from it: at most one record
+by `Entity.id == <argument>` alone, giving only kept fields, with no
+`cache:` of its own; the plan, the query report and the deployables'
+reach all read it. The plan gives such a query a `RecordRead`
+(`jadpo_std::caches`) on its `QueryPlan`, which a route running it
+carries in its `RouteCache::records`, the cache's `tags` the entity alone
+and its key the entity's name with a digest of what a copy keeps: the
+`id`'s `redis::Given`, each kept field's born name and codec, the
+entity's `read:` grants as `RecordGrants`, the query's own type as a
+`redis::Element`, and `fill`, a read of the record by `id` with no
+policy, as `visible:` lets reads see it. Every entity's record cache joins
+`Caching`, so each write of the entity clears it whether or not this
+deployable serves a route reading it. The runtime's `caches::records`
+checks a listed query's line, keys the copy by BLAKE3 of the cache's key
+and the `id`, looks for it and the entity's generation in one ask, and on
+a miss runs `fill` and keeps the record by its born names, as `read`
+keeps a query's answer; then it holds the record to
+`jadpo_runtime::policy::permits`, a record the caller may not read being
+the query's not-found failure, concealed (`store::not_found`), and makes
+the query's type of it (`redis::element`). Where a route runs it, its
+future is boxed, so a Worker's request frame, which every route's shares,
+grows by a pointer alone. Proved in the runtime's own
+tests over `MemoryCache` (one copy for every caller, a change behind the
+app's back unseen, someone else refused from it, a later revision
+skipping, a clear emptying it), the plan's and the checker's
+`record_caches`, the area page's project under `jadpo test`, and end to
+end under `jadpo dev` against live PostgreSQL (`jadpo-cli`'s `caches`).
 
 **Entities in Redis** (area 5, "Entities in Redis"; area 6, "Reading and
 writing entities in Redis"; chunk Q10). The checker marks an entity whose

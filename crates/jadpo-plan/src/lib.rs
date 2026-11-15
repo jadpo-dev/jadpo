@@ -1678,7 +1678,8 @@ impl Plan {
             &tables,
             cached
                 .iter()
-                .filter_map(|query| caches::route_cache(db, project, &tables, query)),
+                .filter_map(|query| caches::route_cache(db, project, &tables, query))
+                .chain(caches::record_caches(db, project)),
         );
         routes.revisions = caching.longest_keep();
         for write in &mut writes {

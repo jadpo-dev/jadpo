@@ -1367,6 +1367,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             | Detail::Person { .. }
             | Detail::Retention { .. }
             | Detail::Audit { .. }
+            | Detail::Cache { .. }
             | Detail::Transition { .. }
             | Detail::Grant { .. }
             | Detail::FieldRestriction { .. }

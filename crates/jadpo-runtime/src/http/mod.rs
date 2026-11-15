@@ -1584,13 +1584,29 @@ async fn run_with_caller(
                     Frame::ENTRY,
                 )),
                 // A display read, served from its query's cache when it
-                // declares one (area 6, "Where a read comes from"; chunk
-                // Q9). An answer sent as raw bytes or holding a file's
-                // signed link is never kept.
+                // declares one, or from its entity's record cache when it
+                // reads one record by `id` (area 6, "Where a read comes
+                // from"; chunks Q9 and Q9b). An answer sent as raw bytes or
+                // holding a file's signed link is never kept.
                 Run::Query(plan) => match &route.cache {
-                    Some(cache) if route.sends.is_none() && !route.links => {
-                        crate::caches::read(ctx, app, route, (cache, plan), &args, revision).await
-                    }
+                    Some(cache) if route.sends.is_none() && !route.links => match &cache.records {
+                        // Boxed so this frame stays small: a Worker's stack
+                        // holds every route's.
+                        Some(records) => {
+                            Box::pin(crate::caches::records(
+                                ctx,
+                                app,
+                                (cache, records, plan),
+                                &args,
+                                revision,
+                            ))
+                            .await
+                        }
+                        None => {
+                            crate::caches::read(ctx, app, route, (cache, plan), &args, revision)
+                                .await
+                        }
+                    },
                     _ => match crate::store(
                         ctx,
                         StoreOp::Read(plan),

@@ -433,6 +433,15 @@ pub fn graph(db: &dyn Db, project: Project) -> Arc<Graph> {
     for node in retention_nodes(db, project) {
         builder.node(node.clone());
     }
+    // Each entity's record cache (area 5; chunk Q9b), placed at its
+    // `caches:`, using the connection it is kept in.
+    let (nodes, edges) = cache_nodes(db, project);
+    for node in nodes {
+        builder.node(node.clone());
+    }
+    for (from, kind, to) in edges {
+        builder.edge(from.clone(), *kind, to.clone());
+    }
     // The APIs (area 7), once there is a route or `apis:` declares them.
     let apis = crate::routes::api_table(db, project);
     if has_apis(db, project) {
@@ -632,6 +641,71 @@ pub fn retention_nodes(db: &dyn Db, project: Project) -> Vec<Node> {
         }
     }
     out
+}
+
+/// A `cache` node for each entity's record cache whose policy a copy can be
+/// held to (area 5, "A record cache"; chunk Q9b): under its entity, keyed
+/// by the entity's born name, placed at its `caches:` and holding its
+/// store and `keep:`, so a cache moved or kept longer changes the node,
+/// with a `uses` edge to the connection it is kept in.
+#[salsa::tracked(returns(ref))]
+pub fn cache_nodes(db: &dyn Db, project: Project) -> areas::Part {
+    let registry = registry(db, project);
+    let (mut nodes, mut edges) = (Vec::new(), Vec::new());
+    for entity in crate::data::entity_names(db, project) {
+        let Some(cache) = crate::caches::record_cache(db, project, entity) else {
+            continue;
+        };
+        let Some(read) =
+            crate::data::entity_read(db, project, crate::lookups::Name::new(db, entity.clone()))
+        else {
+            continue;
+        };
+        let Some(span) = &read.spans.caches else {
+            continue;
+        };
+        let Some(file) = crate::lookups::file_at(
+            db,
+            project,
+            crate::lookups::Name::new(db, read.model.path.clone()),
+        ) else {
+            continue;
+        };
+        let entity_key = registry.key(Kind::Entity, entity, None);
+        let lines = LineIndex::new(file.text(db));
+        let key = Key::new(Kind::Cache, &registry.born(Kind::Entity, entity, None));
+        let mut node = Node::new(key.clone(), Kind::Cache, entity.clone());
+        let last = span.end.saturating_sub(1).max(span.start);
+        node.place = Some(jadpo_graph::Place {
+            file: span.path.clone(),
+            start: span.start,
+            end: span.end,
+            lines: (lines.line(span.start), lines.line(last)),
+        });
+        node.domain = file_part(db, project, file)
+            .nodes
+            .iter()
+            .find(|found| found.key == entity_key)
+            .and_then(|found| found.domain.clone());
+        let keep = jadpo_std::caches::keep_text(cache.keep_ms);
+        node.digest = Some(jadpo_graph::Digest::of([
+            key.as_str(),
+            cache.store.as_str(),
+            keep.as_str(),
+        ]));
+        node.parent = Some(entity_key);
+        node.detail = jadpo_graph::Detail::Cache {
+            store: cache.store.clone(),
+            keep,
+        };
+        edges.push((
+            key,
+            jadpo_graph::EdgeKind::Uses,
+            registry.key(Kind::Connection, &cache.store, None),
+        ));
+        nodes.push(node);
+    }
+    (nodes, edges)
 }
 
 /// Whether the project has an HTTP surface: a route, or APIs `apis:`

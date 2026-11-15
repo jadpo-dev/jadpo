@@ -1,7 +1,8 @@
 //! Caches (area 5, "Caches"; area 6, "Where a read comes from"; area 7,
-//! "Write revisions"; chunk Q9): a route's display read of a query with
-//! `cache:` is served from its cache, and every committed change clears
-//! what it could have made stale.
+//! "Write revisions"; chunks Q9 and Q9b): a route's display read of a
+//! query with `cache:` is served from its cache, one of a record by `id`
+//! from its entity's record cache, and every committed change clears what
+//! it could have made stale.
 //!
 //! - **What an entry is kept under.** The query's key and its read plan's
 //!   digest ([`RouteCache::key`]), every argument the route passes it and
@@ -20,6 +21,14 @@
 //!   a change committed meanwhile, and the entry is deleted. A clear adds
 //!   one to each generation and deletes every entry each list names, so a
 //!   change leaves no copy behind (area 15, "What erasure reaches").
+//! - **A record cache** ([`records`]): each record is kept whole, but for
+//!   the fields it leaves out, under a key worked out from its entity and
+//!   its `id`, one copy for every caller, listed under its entity alone.
+//!   Each time a copy is read it is held to the entity's `read:` grants in
+//!   Jadpo's own code ([`crate::policy::permits`]), as a record in Redis
+//!   is, so a caller policy doesn't let in finds nothing, then becomes what
+//!   the query gives. A miss reads the record without policy, as
+//!   `visible:` lets reads see it, and keeps it.
 //! - **A revision** ([`revision_of`]): a request that carries one skips an
 //!   entry whose read began before it, and keeps what it reads instead.
 //! - **A cache that can't answer never fails a request.** A read goes to
@@ -38,14 +47,16 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
-use jadpo_std::caches::{Clear, RouteCache};
+use jadpo_std::caches::{Clear, RecordRead, RouteCache};
 use jadpo_std::http::RoutePlan;
-use jadpo_std::read::ReadPlan;
+use jadpo_std::read::{Cardinality, ReadPlan};
+use jadpo_std::types::FailurePlan;
 use jadpo_value::Value;
 
 use crate::http::{App, Request};
 use crate::ratelimit::{STORE_PAUSE_MS, Unasked};
-use crate::{Ctx, Frame, Host, LocalFuture, Outcome, StoreOp, Stored};
+use crate::read::JsonCodecs;
+use crate::{Ctx, FaultKind, Frame, Host, LocalFuture, Outcome, StoreOp, Stored};
 
 /// What a store said of an entry and the generations it was asked for.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -580,6 +591,234 @@ async fn queried(ctx: &mut Ctx<'_>, app: &App<'_>, plan: &ReadPlan, args: &[Valu
     }
 }
 
+/// What a route's display read of one record by `id` gives through its
+/// entity's record cache (area 5, "A record cache"; chunk Q9b): the copy
+/// `cache` keeps, or the record read and kept there, held to the entity's
+/// `read:` grants each time, then what the query gives. `revision` is the
+/// one the request carries.
+pub(crate) async fn records(
+    ctx: &mut Ctx<'_>,
+    app: &App<'_>,
+    read: (&RouteCache, &RecordRead, &ReadPlan),
+    args: &[Value],
+    revision: Option<i64>,
+) -> Outcome {
+    record_read(ctx, (app.failures, app.json), read, args, revision).await
+}
+
+/// [`records`], with the program's failures and JSON codecs.
+async fn record_read(
+    ctx: &mut Ctx<'_>,
+    (failures, json): (&[FailurePlan], JsonCodecs<'_>),
+    (cache, records, plan): (&RouteCache, &RecordRead, &ReadPlan),
+    args: &[Value],
+    revision: Option<i64>,
+) -> Outcome {
+    // A listed query's line, checked as it starts, as its statement would
+    // be (area 9, "Listing a query"): a copy is every caller's.
+    if let Some(gate) = &plan.gate {
+        match crate::admit(ctx, gate, Frame::ENTRY).await {
+            Stored::Value(_) => {}
+            refused => return outcome(refused),
+        }
+    }
+    let found = match crate::redis::given_value(ctx, &records.id, args) {
+        Some(Value::Uuid(id)) => {
+            match kept_record(ctx, (failures, json), cache, records, &id, revision).await {
+                Ok(found) => found,
+                Err(stopped) => return stopped,
+            }
+        }
+        Some(Value::None) => None,
+        _ => {
+            return Outcome::Fault(ctx.fault(
+                FaultKind::Defect("a cached record looked up by what isn't an `id`".into()),
+                Frame::ENTRY,
+            ));
+        }
+    };
+    // Policy on the copy, by what the record holds: one the caller may not
+    // read is not found, as policy hides a record in the store.
+    let (found, concealed) = match found {
+        Some(record) if crate::policy::permits(ctx, &records.grants, &record) => {
+            (Some(crate::redis::element(&records.element, record)), false)
+        }
+        Some(_) => (None, true),
+        None => (None, false),
+    };
+    match (plan.cardinality, found) {
+        (Cardinality::List | Cardinality::Page, _) => Outcome::Fault(ctx.fault(
+            FaultKind::Defect("a record cache serving a read of many records".into()),
+            Frame::ENTRY,
+        )),
+        (_, Some(value)) => Outcome::Value(value),
+        (Cardinality::Optional, None) => Outcome::Value(Value::None),
+        (Cardinality::One, None) => outcome(crate::store::not_found(
+            ctx,
+            plan,
+            failures,
+            args,
+            concealed,
+            Frame::ENTRY,
+        )),
+    }
+}
+
+/// What a store operation's end is as a route's.
+fn outcome(stored: Stored) -> Outcome {
+    match stored {
+        Stored::Value(value) => Outcome::Value(value),
+        Stored::Failed(failure) => Outcome::Failed(failure),
+        Stored::Conflict { cause, .. } => Outcome::Failed(cause),
+        Stored::Fault(fault) => Outcome::Fault(fault),
+    }
+}
+
+/// Record `id` of `records`' entity, as `cache` keeps a copy of it, or as
+/// its store holds it, kept once read; `None` when there is none to read.
+async fn kept_record(
+    ctx: &mut Ctx<'_>,
+    (failures, json): (&[FailurePlan], JsonCodecs<'_>),
+    cache: &RouteCache,
+    records: &RecordRead,
+    id: &str,
+    revision: Option<i64>,
+) -> Result<Option<Value>, Outcome> {
+    let Some(store) = ctx.host().cache(&cache.store) else {
+        return filled(ctx, (failures, json), records, id).await;
+    };
+    let health = ctx.host().cache_health();
+    let monotonic = ctx.host().monotonic_ms();
+    if !owed_cleared(ctx, &cache.store, store.as_ref(), health).await
+        || health.owes_any(&cache.store, &cache.tags)
+    {
+        return filled(ctx, (failures, json), records, id).await;
+    }
+    let key = record_key(&cache.key, id);
+    let began = now(ctx);
+    let looked = match store.look(&key, &cache.tags, began).await {
+        Ok(looked) => looked,
+        Err(why) => {
+            fell_back(ctx, &cache.store, why, health, monotonic, &[]);
+            return filled(ctx, (failures, json), records, id).await;
+        }
+    };
+    if let Some(bytes) = &looked.entry
+        && let Some((generations, filled_at, record)) = read_entry(bytes, |value, numbers| {
+            read_record(&json, records, value, numbers)
+        })
+        && generations == looked.generations
+        && revision.is_none_or(|revision| filled_at > revision)
+    {
+        health.answered(&cache.store, &[]);
+        return Ok(Some(record));
+    }
+    let found = filled(ctx, (failures, json), records, id).await?;
+    if let Some(text) = found
+        .as_ref()
+        .and_then(|record| written_record(&json, records, record))
+    {
+        let kept = entry(&looked.generations, began, |out| out.push_str(&text));
+        match store
+            .keep(&key, &kept, cache.keep_ms, &cache.tags, began)
+            .await
+        {
+            // A change committed while it read: what it kept may be older
+            // than that change, so it isn't kept.
+            Ok(after) if after != looked.generations => {
+                if let Err(why) = store.forget(&key).await {
+                    fell_back(ctx, &cache.store, why, health, monotonic, &cache.tags);
+                }
+            }
+            Ok(_) => health.answered(&cache.store, &[]),
+            Err(why) => fell_back(ctx, &cache.store, why, health, monotonic, &cache.tags),
+        }
+    }
+    Ok(found)
+}
+
+/// Record `id` as its store holds it, read with no policy, which each read
+/// of a copy applies.
+async fn filled(
+    ctx: &mut Ctx<'_>,
+    (failures, json): (&[FailurePlan], JsonCodecs<'_>),
+    records: &RecordRead,
+    id: &str,
+) -> Result<Option<Value>, Outcome> {
+    let stored = crate::store(
+        ctx,
+        StoreOp::Read(&records.fill),
+        failures,
+        json,
+        &[Value::uuid(id)],
+        Frame::ENTRY,
+    )
+    .await;
+    match stored {
+        Stored::Value(Value::None) => Ok(None),
+        Stored::Value(record) => Ok(Some(record)),
+        other => Err(outcome(other)),
+    }
+}
+
+/// The key a copy of record `id` is kept under, from `key`, its record
+/// cache's: never the `id` as written.
+fn record_key(key: &str, id: &str) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(key.as_bytes());
+    hasher.update(&[0]);
+    hasher.update(id.as_bytes());
+    let digest = hasher.finalize().to_hex();
+    jadpo_std::caches::entry_key(digest.get(..32).unwrap_or(digest.as_str()))
+}
+
+/// A copy of `record` as it is kept: each field `records` keeps, under the
+/// name it was born with, as its codec writes it; `None` for a record
+/// that doesn't hold them all.
+fn written_record(json: &JsonCodecs<'_>, records: &RecordRead, record: &Value) -> Option<String> {
+    let Value::Record(record) = record else {
+        return None;
+    };
+    let mut out = String::from("{");
+    for (at, kept) in records.fields.iter().enumerate() {
+        let codec = json.codec_of(kept.codec)?;
+        let value = record.get(&kept.field)?;
+        if at > 0 {
+            out.push(',');
+        }
+        out.push_str(&serde_json::to_string(&kept.born).ok()?);
+        out.push(':');
+        json.codecs.write(codec, value, &mut out);
+    }
+    out.push('}');
+    Some(out)
+}
+
+/// A copy read back as a record of `records`' entity; `None` for one this
+/// build can't read, which is then read from the store again.
+fn read_record(
+    json: &JsonCodecs<'_>,
+    records: &RecordRead,
+    value: &serde_json::Value,
+    numbers: &jadpo_value::json::Numbers,
+) -> Option<Value> {
+    let members = value.as_object()?;
+    let mut fields = Vec::with_capacity(records.fields.len());
+    for kept in &records.fields {
+        let codec = json.codec_of(kept.codec)?;
+        let member = members.get(&kept.born)?;
+        let path = jadpo_value::json::Path::default()
+            .numbered(&numbers.within(std::slice::from_ref(&kept.born)));
+        let mut problems = Vec::new();
+        let read = json.codecs.read(codec, member, &path, &mut problems)?;
+        if !problems.is_empty() {
+            return None;
+        }
+        fields.push((Rc::from(kept.field.as_str()), read));
+    }
+    Some(Value::record(&records.entity, fields))
+}
+
 /// Whether `cache`, store `store`, may be read: it is being asked, and
 /// every clear it owes has now been made.
 async fn owed_cleared(ctx: &Ctx<'_>, store: &str, cache: &dyn Cache, health: &CacheHealth) -> bool {
@@ -948,5 +1187,300 @@ mod tests {
         health.owe("cache", &tags(&["Category"]));
         assert!(health.owes_any("cache", &tags(&["Category"])));
         assert!(health.asks("cache", Some(100 + STORE_PAUSE_MS)));
+    }
+
+    // --- record caches (chunk Q9b) ---------------------------------------------------
+
+    const NOTE: &str = "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e";
+    const ADA: &str = "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2f";
+    const BOB: &str = "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d30";
+
+    fn bytes(id: &str) -> [u8; 16] {
+        let hex: String = id.chars().filter(|c| *c != '-').collect();
+        let mut out = [0u8; 16];
+        for (at, byte) in out.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&hex[at * 2..at * 2 + 2], 16).expect("hex");
+        }
+        out
+    }
+
+    /// The one note a store holds, Ada's, and how many reads it answered.
+    #[derive(Default)]
+    struct Notes {
+        title: std::cell::RefCell<String>,
+        reads: std::cell::Cell<usize>,
+    }
+
+    struct Reading(Rc<Notes>);
+
+    impl crate::Transaction for Reading {
+        fn query<'a>(
+            &'a mut self,
+            _sql: &'a str,
+            _params: &'a [crate::SqlValue],
+        ) -> LocalFuture<'a, Result<Vec<crate::Row>, crate::StoreError>> {
+            self.0.reads.set(self.0.reads.get() + 1);
+            let row = vec![
+                crate::SqlValue::Uuid(bytes(NOTE)),
+                crate::SqlValue::Uuid(bytes(ADA)),
+                crate::SqlValue::Text(self.0.title.borrow().clone()),
+            ];
+            Box::pin(async move { Ok(vec![row]) })
+        }
+
+        fn execute<'a>(
+            &'a mut self,
+            _sql: &'a str,
+            _params: &'a [crate::SqlValue],
+        ) -> LocalFuture<'a, Result<u64, crate::StoreError>> {
+            Box::pin(async { Ok(0) })
+        }
+
+        fn batch<'a>(
+            &'a mut self,
+            _sql: &'a str,
+        ) -> LocalFuture<'a, Result<(), crate::StoreError>> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), crate::StoreError>> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn rollback(self: Box<Self>) -> LocalFuture<'static, Result<(), crate::StoreError>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    struct NoteStore(Rc<Notes>);
+
+    impl crate::Database for NoteStore {
+        fn begin_at(
+            &self,
+            _isolation: crate::Isolation,
+        ) -> LocalFuture<'_, Result<Box<dyn crate::Transaction>, crate::StoreError>> {
+            let notes = Rc::clone(&self.0);
+            Box::pin(async move { Ok(Box::new(Reading(notes)) as Box<dyn crate::Transaction>) })
+        }
+    }
+
+    /// A host whose store holds the note and whose cache is in memory.
+    struct Shelved {
+        store: NoteStore,
+        cache: MemoryCache,
+        health: CacheHealth,
+    }
+
+    impl Host for Shelved {
+        fn database(&self, _: &str) -> Option<&dyn crate::Database> {
+            Some(&self.store)
+        }
+
+        fn random(&self, _: &mut [u8]) -> bool {
+            false
+        }
+
+        fn cache(&self, _: &str) -> Option<Rc<dyn Cache>> {
+            Some(Rc::new(self.cache.clone()))
+        }
+
+        fn cache_health(&self) -> &CacheHealth {
+            &self.health
+        }
+    }
+
+    /// `Note { id, owner_id, title }`, read by its owner alone, kept in
+    /// `cache` for a minute, as a route's read of one by `id` giving a
+    /// `NoteView { id, title }` reads it.
+    fn note_cache() -> (RouteCache, RecordRead, ReadPlan) {
+        use jadpo_std::caches::KeptField;
+        use jadpo_std::policy::{CallerPart, Narrowed, RecordGrant, RecordGrants};
+        use jadpo_std::read::{Column, Field, Param, Record, Select, Source, SqlType};
+        use jadpo_std::redis::{Element, Given};
+        let kept = |field: &str, codec: u32| KeptField {
+            field: field.into(),
+            born: field.into(),
+            codec,
+        };
+        let read = |cardinality: Cardinality| ReadPlan {
+            store: "main".into(),
+            settings: Vec::new(),
+            cardinality,
+            select: Select {
+                sql: "SELECT \"id\", \"owner_id\", \"title\" FROM \"note\" WHERE \"id\" = $1"
+                    .into(),
+                unpoliced: None,
+                permitted: None,
+                params: vec![Param {
+                    source: Source::Arg {
+                        index: 0,
+                        path: Vec::new(),
+                    },
+                    ty: SqlType::Uuid,
+                }],
+                columns: vec![Column::Uuid, Column::Uuid, Column::Text],
+                held: Vec::new(),
+                record: Record {
+                    ty: "Note".into(),
+                    fields: vec![
+                        ("id".into(), Field::Column(0)),
+                        ("owner_id".into(), Field::Column(1)),
+                        ("title".into(), Field::Column(2)),
+                    ],
+                },
+                includes: Vec::new(),
+                versions: None,
+                sensitive: None,
+            },
+            page: None,
+            missing: None,
+            recheck: None,
+            layer: false,
+            decided: None,
+            gate: None,
+            redis: None,
+        };
+        let records = RecordRead {
+            entity: "Note".into(),
+            id: Given::Arg {
+                index: 0,
+                path: Vec::new(),
+            },
+            fields: vec![kept("id", 0), kept("owner_id", 0), kept("title", 1)],
+            grants: RecordGrants {
+                grants: vec![RecordGrant::Caller {
+                    field: "owner_id".into(),
+                    part: CallerPart::User,
+                }],
+                narrowed: Narrowed::Untouched,
+            },
+            element: Element::Picked {
+                ty: "NoteView".into(),
+                fields: vec![("id".into(), "id".into()), ("title".into(), "title".into())],
+            },
+            fill: Box::new(read(Cardinality::Optional)),
+        };
+        let cache = RouteCache {
+            store: "cache".into(),
+            keep_ms: 60_000,
+            tags: tags(&["Note"]),
+            key: "Note records test".into(),
+            records: None,
+        };
+        (cache, records, read(Cardinality::Optional))
+    }
+
+    fn view(title: &str) -> Value {
+        Value::record(
+            "NoteView",
+            vec![
+                (Rc::from("id"), Value::uuid(NOTE)),
+                (Rc::from("title"), Value::text(title)),
+            ],
+        )
+    }
+
+    /// One copy of a record serves every caller, held to policy each time
+    /// it is read: its owner reads it from the cache, a change behind the
+    /// app's back unseen, someone else finds nothing, from the same copy
+    /// and without asking the store, and once its entity is cleared the
+    /// next read keeps the record as the store holds it now (area 5, "A
+    /// record cache"; chunk Q9b).
+    #[test]
+    fn one_copy_serves_every_caller_held_to_policy_as_it_is_read() {
+        use jadpo_std::http::{Codec, CodecId};
+        use jadpo_std::types::ValidatorId;
+        let validators = [
+            jadpo_value::Validator::new(Some(jadpo_std::Builtin::Uuid), vec![]),
+            jadpo_value::Validator::new(Some(jadpo_std::Builtin::Text), vec![]),
+        ];
+        let codecs = [
+            Codec::Scalar {
+                builtin: jadpo_std::Builtin::Uuid,
+                validator: ValidatorId(0),
+                int_as_number: false,
+            },
+            Codec::Scalar {
+                builtin: jadpo_std::Builtin::Text,
+                validator: ValidatorId(1),
+                int_as_number: false,
+            },
+        ];
+        let types = [CodecId(0), CodecId(1)];
+        let json = JsonCodecs {
+            codecs: jadpo_value::json::Codecs {
+                codecs: &codecs,
+                validators: &validators,
+                shapes: &[],
+                coder: None,
+            },
+            types: &types,
+        };
+        let notes = Rc::new(Notes::default());
+        *notes.title.borrow_mut() = "Buy tea".into();
+        let host = Shelved {
+            store: NoteStore(Rc::clone(&notes)),
+            cache: MemoryCache::new(),
+            health: CacheHealth::default(),
+        };
+        let (cache, records, plan) = note_cache();
+        let places = crate::Places::new();
+        let read_as = |who: &str, revision: Option<i64>| {
+            let mut ctx = Ctx::new(&places, &host, crate::Env::default());
+            let caller = crate::http::identity::principal(
+                jadpo_std::http::PrincipalKind::User,
+                Value::uuid(who),
+                Value::text("someone"),
+            );
+            crate::policy::call_as(&mut ctx, Some(&caller));
+            let args = [Value::uuid(NOTE)];
+            let outcome = run(record_read(
+                &mut ctx,
+                (&[], json),
+                (&cache, &records, &plan),
+                &args,
+                revision,
+            ));
+            match outcome {
+                Outcome::Value(value) => value,
+                other => panic!("{other:?}"),
+            }
+        };
+        assert_eq!(read_as(ADA, None), view("Buy tea"));
+        assert_eq!(notes.reads.get(), 1);
+        let now = {
+            let ctx = Ctx::new(&places, &host, crate::Env::default());
+            now(&ctx)
+        };
+        // The copy holds the record by the names its fields were born
+        // with, never under its `id` as written.
+        let kept = host.cache.texts(now);
+        assert_eq!(
+            kept,
+            [format!(
+                "{{\"generations\":[0],\"filled\":{now},\"value\":{{\"id\":\"{NOTE}\",\"owner_id\":\"{ADA}\",\"title\":\"Buy tea\"}}}}"
+            )]
+        );
+        assert!(!record_key(&cache.key, NOTE).contains(NOTE));
+        // A change behind the app's back is unseen, and someone else finds
+        // nothing in the same copy, the store unasked.
+        *notes.title.borrow_mut() = "Buy green tea".into();
+        assert_eq!(read_as(ADA, None), view("Buy tea"));
+        assert_eq!(read_as(BOB, None), Value::None);
+        assert_eq!(notes.reads.get(), 1);
+        // A request carrying a later revision reads the store.
+        assert_eq!(read_as(ADA, Some(now)), view("Buy green tea"));
+        assert_eq!(notes.reads.get(), 2);
+        // A change to the entity clears every copy.
+        *notes.title.borrow_mut() = "Buy oolong".into();
+        run(clear(
+            &host,
+            &BTreeMap::from([("cache".to_string(), tags(&["Note"]))]),
+            now,
+        ));
+        assert_eq!(host.cache.entries(now), 0);
+        assert_eq!(read_as(ADA, None), view("Buy oolong"));
+        assert_eq!(read_as(BOB, None), Value::None);
+        assert_eq!(notes.reads.get(), 3);
     }
 }

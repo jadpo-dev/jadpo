@@ -108,6 +108,7 @@ mod quantities;
 mod randomness;
 mod read_only_get;
 mod receiving;
+mod record_caches;
 mod records_measures;
 mod refusing_updates;
 mod release;

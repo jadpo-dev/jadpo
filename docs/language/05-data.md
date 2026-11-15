@@ -1188,7 +1188,8 @@ query on_the_shelf() -> List<ProductCard> {
 }
 ```
 
-You can cache single records too, on an entity, looked up by `id`:
+You can cache single records too, on an entity, looked up by `id`
+([A record cache](#a-record-cache)):
 
 ```jadpo fragment
 entity Product {
@@ -1221,7 +1222,8 @@ entity Product {
   depend on a cache.
 - **Permissions apply on every read.** Cached results are keyed by tenant
   and by the details policy depends on, so one user's results are never
-  served to another. Erasing personal data clears cached copies at once.
+  served to another, and a cached record is held to policy each time it is
+  read. Erasing personal data clears cached copies at once.
 - **Each entry is stored as one JSON value**, the same JSON the API sends,
   so every Jadpo type maps cleanly: money as `{"amount": 1250, "currency":
   "GBP"}`, large integers as strings, sets as arrays, enums tagged. Money
@@ -1312,10 +1314,233 @@ test "a new count shows at once, though the list is cached" {
 }
 ```
 
-Not built yet: an entity's `caches:`, `toolchain.not_built_yet` where it is
-written, since a record cache applies policy to each record as it is read,
-in Jadpo's own code. Clearing only the affected entries, for example the
-category pages a product moved out of and into, isn't designed yet.
+Clearing only the affected entries, for example the category pages a
+product moved out of and into, isn't designed yet.
+
+### A record cache
+
+An entity's `caches: { records: }` keeps each of its records whole, by
+`id`: one copy for every caller. A route whose query reads one record by
+`id` is served from it, and policy is applied to the copy each time it is
+read, so a record is shown only to the callers its `read:` lets in. Here
+each note is kept for an hour, and only its owner may read it:
+
+```jadpo check project=record-caches file=app.jadpo hidden
+use notes/entities { User }
+
+application {
+    connections: {
+        cache: {
+            driver: Driver.redis
+            url: config.redis_url
+        }
+    }
+}
+
+principal {
+    user: {
+        subject: User.email
+    }
+}
+```
+
+```jadpo check project=record-caches file=authentication.jadpo hidden
+authentication {
+    api_token: {}
+}
+```
+
+```jadpo check project=record-caches file=config.jadpo hidden
+config {
+    redis_url: RedisUrl
+}
+```
+
+```jadpo check project=record-caches file=domains/notes/entities/user.jadpo hidden
+/// Someone who keeps notes.
+entity User {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
+}
+```
+
+```jadpo check project=record-caches file=domains/notes/types/note_title.jadpo hidden
+type NoteTitle = Text {
+    min_length: 1
+    max_length: 200
+}
+```
+
+```jadpo check project=record-caches file=domains/notes/entities/note.jadpo
+use notes/entities { User }
+use notes/types { NoteTitle }
+
+/// Something a user wrote down for themselves.
+entity Note {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    title: NoteTitle
+
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+        update: [owner_id]
+    }
+    caches: {
+        records: {
+            store: cache
+            keep: 1h
+        }
+    }
+}
+```
+
+```jadpo check project=record-caches file=domains/notes/types/note_view.jadpo hidden
+use notes/entities { Note }
+
+/// A note as its owner sees it.
+type NoteView = Output {
+    pick: [Note.id, Note.title]
+}
+```
+
+```jadpo check project=record-caches file=domains/notes/queries/find_note.jadpo migrate=initial
+use notes/entities { Note, NoteNotFound }
+use notes/types { NoteView }
+
+/// One note, by its `id`.
+query find_note(note_id: Note.id) fails NoteNotFound -> NoteView {
+    from: Note
+    where: Note.id == note_id
+    missing: NoteNotFound
+}
+```
+
+```jadpo check project=record-caches file=domains/notes/routes/notes.jadpo hidden
+use notes/entities { Note }
+use notes/types { NoteView }
+use notes/queries { find_note }
+
+routes Notes {
+    prefix: /notes
+
+    GET /{note_id: Note.id} {
+        output: NoteView
+        run: find_note(note_id)
+    }
+}
+```
+
+```jadpo check project=record-caches file=domains/notes/actions/write_note.jadpo hidden
+use notes/entities { Note }
+use notes/types { NoteTitle }
+
+/// Writes a note for `me`.
+action write_note(me: Principal.user, title: NoteTitle) -> Note {
+    return Note.create {
+        set: {
+            owner_id: me.id
+            title: title
+        }
+    }
+}
+```
+
+```jadpo check project=record-caches file=domains/notes/actions/rename_note.jadpo hidden
+use notes/entities { Note, NoteNotFound }
+use notes/types { NoteTitle }
+
+/// Gives a note a new title.
+action rename_note(note_id: Note.id, title: NoteTitle) fails NoteNotFound -> Note {
+    return attempt Note.update(note_id) {
+        set: {
+            title: title
+        }
+    }
+}
+```
+
+`find_note` reads one note by `id`, so a route that runs it is served from
+the cache. The first read keeps Ada's note, and Bob, asking for it next,
+is refused it from that same copy:
+
+```jadpo check project=record-caches file=domains/notes/routes/notes.test.jadpo
+use notes/entities { Note, User }
+use notes/types { NoteView }
+use notes/actions { rename_note, write_note }
+
+test "a cached note is shown only to its owner, and a new title at once" {
+    var ada: User = make.User {
+        email: "ada@example.com"
+    }
+    var bob: User = make.User {
+        email: "bob@example.com"
+    }
+    var note: Note = write_note(Principal.user(ada), "Buy tea")
+    var first: Response = request {
+        method: HttpMethod.get
+        path: "/notes/{note_id}"
+        params: {
+            note_id: note.id
+        }
+        as: Principal.user(ada)
+    }
+    assert first.output == NoteView {
+        id: note.id
+        title: "Buy tea"
+    }
+    var refused: Response = request {
+        method: HttpMethod.get
+        path: "/notes/{note_id}"
+        params: {
+            note_id: note.id
+        }
+        as: Principal.user(bob)
+    }
+    assert refused.status == 404
+    var retitled: Note = attempt rename_note(note.id, "Buy green tea")
+    assert retitled.title == "Buy green tea"
+    var after: Response = request {
+        method: HttpMethod.get
+        path: "/notes/{note_id}"
+        params: {
+            note_id: note.id
+        }
+        as: Principal.user(ada)
+    }
+    assert after.output == NoteView {
+        id: note.id
+        title: "Buy green tea"
+    }
+}
+```
+
+- **What it serves.** A route's query that finds one record by `id`
+  (`where: Note.id == note_id`), with no include, giving only fields the
+  cache keeps. Any other read goes to the store, and so does a query with
+  a `cache:` of its own, which keeps its own results. A listed query's
+  line under `actions:` is checked first, as its statement would be.
+- **What it leaves out.** A sensitive field, whose every read is recorded,
+  an encrypted field and a `File`. A query that gives one reads the
+  store.
+- **What policy it applies.** Grants on what the record holds:
+  `Access.public`, `Access.authenticated`, `Access.system` and a user
+  field. A role or a tenant reads memberships from the database as policy
+  is checked, so an entity with a role in its `read:` grants, or a tenant,
+  is `data.cache_invalid`; a query's `cache:`, kept per caller, serves it
+  instead.
+- **What clears it.** A change to any of the entity's records clears every
+  record it keeps, as it clears every cached query result reading the
+  entity.
 
 ## Entities in Redis
 <!-- topic: entities-in-redis -->
@@ -2792,7 +3017,7 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | A backfill in Jadpo that fills a value held in several columns, or reads a field held so or as JSON | Built. |
 | A query's `cache:` | Built: a route's display read served from the query's cache in Redis or `Driver.memory`, per caller and arguments, and every cached result reading an entity a committed change wrote cleared, an erasure's and a purge's included ([Caches](#caches)). |
 | Entities in Redis | Built: `expires_after:`, get, create, update and delete by `id`, counters, lookup by a unique field, a page or a count by equality on an indexed field, revisions and grants checked after reading, natively and on Workers ([Entities in Redis](#entities-in-redis)). |
-| Record caches (`caches:`) | Not built yet. Clearing only the cached entries a change affects isn't designed yet. |
+| Record caches (`caches:`) | Built: each record kept whole by `id` but for a sensitive, encrypted or `File` field, a route's read of one by `id` served from it and held to the entity's `read:` grants as it is read, and every copy cleared by a change to the entity ([A record cache](#a-record-cache)). Clearing only the copies a change affects isn't designed yet. |
 | Index kinds: geographic, HNSW and JSON | Built. |
 | A database implied only when something needs one | Not built yet: it comes with the first feature that can run without one. |
 | Seeds and `jadpo seed` | Built. |
@@ -2841,6 +3066,7 @@ source.
 - [`data.lifecycle_purge_visible`](../errors/data.lifecycle_purge_visible.md)
 - [`data.lifecycle_purge_after`](../errors/data.lifecycle_purge_after.md)
 - [`data.lifecycle_purge_since`](../errors/data.lifecycle_purge_since.md)
+- [`data.cache_invalid`](../errors/data.cache_invalid.md)
 - [`query.cache_invalid`](../errors/query.cache_invalid.md)
 - [`migration.out_of_date`](../errors/migration.out_of_date.md)
 - [`migration.record_invalid`](../errors/migration.record_invalid.md)

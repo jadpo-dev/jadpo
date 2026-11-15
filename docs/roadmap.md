@@ -370,12 +370,7 @@ work below (Richard, 2026-11-08).
       area 7, "Write revisions"; area 16, "How a cache is kept"; compiler-runtime,
       "Caches".
     - [x] **Q10 Entities and geometries in Redis**: area 5, "Entities in Redis", and its notes; area 6, "Reading and writing entities in Redis"; area 16, "How an entity is kept"; area 20, "What is built"; compiler-runtime, "Entities in Redis".
-    - [ ] **Q9b Record caches** `opus · xhigh` after Q10: area 5, "Caches"; area
-      9, "Caches and personal data"; area 15, "Sensitive fields". An entity's
-      `caches: { records: }`, single records by `id` kept whole and policy
-      applied to each as it is read, in Jadpo's own code as Q10's Redis
-      entities apply it, sensitive fields left out. Split from Q9 (2026-11-14).
-      Clearing only the entries a change affects isn't designed (L3).
+    - [x] **Q9b Record caches**: area 5, "A record cache", and its notes, "Record caches, as built"; area 9, "Caches and personal data"; area 15, "Sensitive fields"; compiler-runtime, "Record caches".
 11. Background work and tests (areas 12 and 13), added by the audit of
     2026-11-08.
     - [x] **J3 Delivery and operator gaps**: area 12, "How long between tries", "Running background work" and "Watching schedules", and its notes; `cli.signal_handler_failed`'s page.

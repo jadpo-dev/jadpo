@@ -300,6 +300,10 @@ pub enum Detail {
     /// entry of its history is kept (`kept after config.audit_retention`,
     /// or `kept until erased`).
     Audit { kept: String },
+    /// An entity's record cache (area 5, "A record cache"): the cache
+    /// connection its records are kept in, whole, and how old a copy may
+    /// get (`1h`).
+    Cache { store: String, keep: String },
     /// A route (area 7): its API, success status, input and output, and
     /// deadline. Its method and full path are its name.
     Route {
