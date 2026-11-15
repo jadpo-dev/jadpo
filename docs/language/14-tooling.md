@@ -2445,7 +2445,9 @@ error: `titel` isn't defined in this scope
 `(human)` at the end of an error's `next:` line tells your coding agent to
 stop and ask you which fix you want, because the choice is yours to make
 (who can see data, what a setting holds). `(agent)` means your agent can
-make the fix itself.
+make the fix itself. A `notice:` on a check that passes
+([what a first record holds](18-records-and-manifest.md#what-a-first-record-holds))
+is not an error: its `next:` is `(agent)`, meaning carry on and tell the user.
 
 There is no warning severity. Every finding is an error, and it stops
 `check` and the build until it is answered: fixed or, for the few rules

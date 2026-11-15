@@ -650,10 +650,13 @@ costs one build per base commit.
 
 A first commit has nothing to compare with, so what would need a person on any
 later change passes unseen. The first of all is a new project's public create,
-update or delete, and personal data anyone may read. So `jadpo check` says what such a first record holds, marked
-`(human)`, and [the approval report](17-debugging-and-review.md#reviewing-a-change)
-leads with it. It is a notice and not an error, and `check` still passes: it is
-a decision, not a vulnerability, since an app may mean it.
+update or delete, and personal data anyone may read. So `jadpo check` says what
+such a first record holds, as a notice, and
+[the approval report](17-debugging-and-review.md#reviewing-a-change) leads with
+it as a decision marked `(human)`. A notice is not an error and not a stop:
+`check` still passes, and an agent carries on, marked `(agent)`, and tells its
+user what it said when it hands over. The decision is the person's, at review,
+since an app may mean it.
 
 ```text
 $ jadpo check
@@ -661,9 +664,11 @@ $ jadpo check
 ◆ anyone can create and change `lending.Book` records, with no sign-in  not compared
     access.jadpo_record:12
 
-◆ decision  nothing compares this, so a person reads it before it goes in
-  next      A person decides whether the app means it. This passes either way,
-            and it is compared as usual once a commit holds it. (human)
+◆ notice  nothing compares this yet, so a person reads it before it goes in
+  next    Carry on: this passes, and nothing here is yours to decide or to stop
+          for. When you hand over, tell your user what it said, so they decide
+          whether the app means it. It is compared as usual once a commit holds
+          it. (agent)
 
   before    none, so acceptances aren't judged: no commit yet
 
@@ -676,7 +681,8 @@ before side has no such record, as when `access.jadpo_record` arrives with this
 change. Outside git nothing is being reviewed, so nothing is said, as with
 `before none`. It is said only once `check` otherwise passes, since an agent's
 errors come first, and `--json` gives each in `notice_list`: its `subject`, its
-`kind`, what it `said`, `decides: human`, and its `file` and `line`. Once a
+`kind`, what it `said`, `decides: agent` (carry on and tell the user; the
+approval report's copy says `human`), and its `file` and `line`. Once a
 commit holds it, it goes: from then on it is compared.
 
 | Said | Kind | Goes once |

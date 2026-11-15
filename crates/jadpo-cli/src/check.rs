@@ -329,7 +329,12 @@ pub(crate) fn publishers_json(publishers: &[Publishers]) -> Json {
 /// What a person reads of `notice_list`: each thing nothing compared, then that
 /// it is theirs to decide. `jadpo check` shows them once it passes, and the
 /// approval report leads with them.
-pub(crate) fn notice_blocks(notice_list: &[Notice]) -> Vec<Block> {
+///
+/// `for_person` is the approval report, whose reader is the person who
+/// decides: a decision marked `(human)`. `jadpo check` is read by whoever
+/// is building, usually an agent, which carries on and tells its user, so
+/// it is a notice marked `(agent)` and nothing in it says to stop.
+pub(crate) fn notice_blocks(notice_list: &[Notice], for_person: bool) -> Vec<Block> {
     let (one, heading) = match notice_list.len() {
         0 => return Vec::new(),
         1 => (true, "1 decision compared with nothing".to_string()),
@@ -352,18 +357,35 @@ pub(crate) fn notice_blocks(notice_list: &[Notice]) -> Vec<Block> {
                 })
                 .collect(),
         },
-        Block::Decision {
-            subject: if one {
-                "nothing compares this, so a person reads it before it goes in".to_string()
-            } else {
-                "nothing compares these, so a person reads them before they go in".to_string()
-            },
-            location: None,
-            next: format!(
-                "A person decides whether the app means {it}. This passes either way, and {subject} compared as usual once a commit holds {it}.",
-                it = if one { "it" } else { "them" },
-                subject = if one { "it is" } else { "they are" },
-            ),
+        if for_person {
+            Block::Decision {
+                subject: if one {
+                    "nothing compares this, so a person reads it before it goes in".to_string()
+                } else {
+                    "nothing compares these, so a person reads them before they go in".to_string()
+                },
+                location: None,
+                next: format!(
+                    "A person decides whether the app means {it}. This passes either way, and {subject} compared as usual once a commit holds {it}.",
+                    it = if one { "it" } else { "them" },
+                    subject = if one { "it is" } else { "they are" },
+                ),
+            }
+        } else {
+            Block::Notice {
+                subject: if one {
+                    "nothing compares this yet, so a person reads it before it goes in".to_string()
+                } else {
+                    "nothing compares these yet, so a person reads them before they go in"
+                        .to_string()
+                },
+                next: format!(
+                    "Carry on: this passes, and nothing here is yours to decide or to stop for. When you hand over, tell your user what {said}, so they decide whether the app means {it}. {subject} compared as usual once a commit holds {it}.",
+                    said = if one { "it said" } else { "each said" },
+                    it = if one { "it" } else { "them" },
+                    subject = if one { "It is" } else { "They are" },
+                ),
+            }
         },
     ]
 }
@@ -375,7 +397,7 @@ fn notice_list_json(notice_list: &[Notice]) -> Json {
             ("subject", notice.subject.as_str().into()),
             ("kind", notice.kind.as_str().into()),
             ("said", notice.said.as_str().into()),
-            ("decides", "human".into()),
+            ("decides", "agent".into()),
             ("file", notice.path.as_str().into()),
             ("line", notice.line.map_or(Json::Null, Json::Int)),
         ])
@@ -600,7 +622,7 @@ fn report(
             screen.push(per_instance_block(per_instance));
         }
     }
-    for block in notice_blocks(notice_list) {
+    for block in notice_blocks(notice_list, false) {
         screen.push(block);
     }
     if let Some(said) = &not_judged {

@@ -112,7 +112,9 @@ long one gets a line of its own so it copies whole.
 
 - **Headline.** Symbol, severity word in its colour and bold, two spaces,
   the subject in bold. The words are a closed set: `error`, `failed`,
-  `fault`, `alert`, `decision`, `outcome unknown`. Identifiers belong on
+  `fault`, `alert`, `decision`, `notice`, `outcome unknown`. A `decision`
+  stops its reader and ends `(human)`; a `notice` on a passing command
+  never stops anyone and ends `(agent)`. Identifiers belong on
   the `rule` line. There is no `warning`: every finding is an error, and
   a declinable error's `next` offers its `decline` line.
 - **Errors.** Area 14's fields in its order: path, code frame,
