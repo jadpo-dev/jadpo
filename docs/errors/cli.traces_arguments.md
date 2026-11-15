@@ -1,22 +1,22 @@
-# `cli.telemetry_arguments`
+# `cli.traces_arguments`
 
-`jadpo traces`, `jadpo metrics` or `jadpo logs` is given something it doesn't take, or a filter it can't read.
+A `jadpo traces` command is given something it doesn't take, or a filter it can't read.
 
 ## Why Jadpo refuses it
 
-These commands read what `jadpo dev` keeps of your app's telemetry and
-choose requests by their filters. A filter it can't read would choose
+`jadpo traces` reads what `jadpo dev` keeps of your app's traces and
+chooses requests by its filters. A filter it can't read would choose
 nothing, or everything, without saying so.
 
 ## What it looks like
 
 `--slower-than` is given a number with no unit:
 
-```jadpo check project=e-telemetry-arguments file=app.jadpo hidden
+```jadpo check project=e-traces-arguments file=app.jadpo hidden
 application {}
 ```
 
-```sh run project=e-telemetry-arguments expect=cli.telemetry_arguments
+```sh run project=e-traces-arguments expect=cli.traces_arguments
 jadpo traces --slower-than 200
 ```
 
@@ -24,8 +24,8 @@ jadpo traces --slower-than 200
 error: `200` isn't a duration
   reason: `--slower-than` takes a duration, as Jadpo writes one: `200ms`, `2s`, `1m`.
   next: Give a duration such as `--slower-than 200ms` (agent)
-  rule: cli.telemetry_arguments
-  help: https://jadpo.dev/docs/errors/cli.telemetry_arguments
+  rule: cli.traces_arguments
+  help: https://jadpo.dev/docs/errors/cli.traces_arguments
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

@@ -1777,7 +1777,8 @@ Each takes `--json` and the same filters, which choose requests:
 - `jadpo logs` lists the events those requests logged, each with its
   time, level, request and fields; `--level` chooses the lowest level.
 
-A filter it can't read is `cli.telemetry_arguments`.
+A filter it can't read is `cli.traces_arguments`, `cli.metrics_arguments` or
+`cli.logs_arguments`.
 
 ### `jadpo email`
 
@@ -4197,7 +4198,9 @@ yet, or that other commands replace.
 | `cli.incident_read_failed` | `incident` | Runtime event file could not be read |
 | `cli.incident_revision_mismatch` | `incident` | Runtime event and local source revisions differ |
 | `cli.inspect_arguments` | `inspect` | A `jadpo inspect` command names a declaration the project doesn't have, or a name two domains share |
+| `cli.logs_arguments` | `logs` | A `jadpo logs` command is given something it doesn't take, or a filter or level it can't read |
 | `cli.lsp_arguments` | `lsp` | A `jadpo lsp` command is given an argument, which it doesn't take |
+| `cli.metrics_arguments` | `metrics` | A `jadpo metrics` command is given something it doesn't take, or a filter it can't read |
 | `cli.migrate_arguments` | `migrate` | A `jadpo migrate` command names no action, one it doesn't have, a purpose for an action that takes none, a `--drop` of what isn't retired, or a `--drop` of the flags' tables while a flag is declared |
 | `cli.new_arguments` | `new` | A `jadpo new` command names no project, or more than one |
 | `cli.package_arguments` | `package` | A `jadpo package` command names no action, one it doesn't have, or a package the project doesn't hold |
@@ -4224,9 +4227,9 @@ yet, or that other commands replace.
 | `cli.sql_arguments` | `sql` | A `jadpo sql` command names no query or action, one the project doesn't declare, or an action that writes nothing |
 | `cli.sql_explain_unavailable` | `sql --explain` | A `jadpo sql --explain` command can't make the disposable database it plans a query's statements on |
 | `cli.suggest_arguments` | `suggest` | A `jadpo suggest` command names an action it doesn't have, or a suggestion the last scan didn't find |
-| `cli.telemetry_arguments` | `traces`, `metrics`, `logs` | `jadpo traces`, `jadpo metrics` or `jadpo logs` is given something it doesn't take, or a filter it can't read |
 | `cli.test_arguments` | `test` | A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use, or asks for `--affected` with nothing to compare with or `--interactive` where it can't open |
 | `cli.toolchain_arguments` | `toolchain` | A `jadpo toolchain` command names an action it doesn't have, or a release that isn't kept |
+| `cli.traces_arguments` | `traces` | A `jadpo traces` command is given something it doesn't take, or a filter it can't read |
 | `cli.translations_arguments` | `translations` | A `jadpo translations` command names no action, one it doesn't have, or a locale the project doesn't translate into |
 | `cli.unknown_command` | any command | A `jadpo` command line starts with a command Jadpo doesn't have, or asks `jadpo help` about a command or rule it doesn't have |
 | `cli.unknown_flag` | any command | A `jadpo` command line has a flag the command doesn't take |

@@ -271,7 +271,7 @@ pub struct Filters {
 }
 
 impl Filters {
-    fn read(call: &Call) -> Result<Filters, Box<Diagnostic>> {
+    fn read(call: &Call, which: Which) -> Result<Filters, Box<Diagnostic>> {
         let slower_than = match call.value("--slower-than") {
             None => None,
             Some(written) => match jadpo_std::Dur::parse(written) {
@@ -280,7 +280,7 @@ impl Filters {
                 }
                 _ => {
                     return Err(Box::new(arguments(
-                        call,
+                        which,
                         format!("`{written}` isn't a duration"),
                         "`--slower-than` takes a duration, as Jadpo writes one: `200ms`, `2s`, `1m`.".to_string(),
                         "Give a duration such as `--slower-than 200ms`".to_string(),
@@ -360,11 +360,13 @@ impl Filters {
     }
 }
 
-fn arguments(call: &Call, headline: String, reason: String, next: String) -> Diagnostic {
-    let _ = call;
-    Diagnostic::new(&rule::CLI_TELEMETRY_ARGUMENTS, headline)
-        .reason(reason)
-        .next(next)
+fn arguments(which: Which, headline: String, reason: String, next: String) -> Diagnostic {
+    let rule = match which {
+        Which::Traces => &rule::CLI_TRACES_ARGUMENTS,
+        Which::Metrics => &rule::CLI_METRICS_ARGUMENTS,
+        Which::Logs => &rule::CLI_LOGS_ARGUMENTS,
+    };
+    Diagnostic::new(rule, headline).reason(reason).next(next)
 }
 
 /// Which of the three commands.
@@ -415,7 +417,7 @@ fn command(call: &Call, which: Which) -> Reply {
     };
     if let Some(extra) = call.arguments.first() {
         return Reply::failed(arguments(
-            call,
+            which,
             format!("`jadpo {}` takes no `{extra}`", which.name()),
             format!(
                 "`jadpo {}` lists what `jadpo dev` kept, chosen by its filters: `--route`, `--action`, `--domain`, `--failure`, `--slower-than` and `--request`.",
@@ -427,7 +429,7 @@ fn command(call: &Call, which: Which) -> Reply {
             ),
         ));
     }
-    let filters = match Filters::read(call) {
+    let filters = match Filters::read(call, which) {
         Ok(filters) => filters,
         Err(problem) => return Reply::Failed(problem),
     };
@@ -437,7 +439,7 @@ fn command(call: &Call, which: Which) -> Reply {
             Some(level) if which == Which::Logs => Some(level),
             Some(_) => {
                 return Reply::failed(arguments(
-                    call,
+                    which,
                     format!("`jadpo {}` takes no `--level`", which.name()),
                     "`--level` chooses the level `jadpo logs` lists events from.".to_string(),
                     "Use `--level` with `jadpo logs`".to_string(),
@@ -445,7 +447,7 @@ fn command(call: &Call, which: Which) -> Reply {
             }
             None => {
                 return Reply::failed(arguments(
-                    call,
+                    which,
                     format!("`{written}` isn't a level"),
                     "A log's level is one of OpenTelemetry's six: `trace`, `debug`, `info`, `warn`, `error` or `fatal`.".to_string(),
                     "Give a level such as `--level warn`".to_string(),

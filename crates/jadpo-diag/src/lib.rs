@@ -196,8 +196,12 @@ rules! {
         "A `jadpo impact` command names no declaration, one the project doesn't have, or a name two domains share";
     CLI_INSPECT_ARGUMENTS: "cli.inspect_arguments", area 14, Error, Agent,
         "A `jadpo inspect` command names a declaration the project doesn't have, or a name two domains share";
+    CLI_LOGS_ARGUMENTS: "cli.logs_arguments", area 14, Error, Agent,
+        "A `jadpo logs` command is given something it doesn't take, or a filter or level it can't read";
     CLI_LSP_ARGUMENTS: "cli.lsp_arguments", area 14, Error, Agent,
         "A `jadpo lsp` command is given an argument, which it doesn't take";
+    CLI_METRICS_ARGUMENTS: "cli.metrics_arguments", area 14, Error, Agent,
+        "A `jadpo metrics` command is given something it doesn't take, or a filter it can't read";
     CLI_MIGRATE_ARGUMENTS: "cli.migrate_arguments", area 14, Error, Agent,
         "A `jadpo migrate` command names no action, one it doesn't have, a purpose for an action that takes none, or a `--drop` of what isn't retired";
     CLI_NEW_ARGUMENTS: "cli.new_arguments", area 14, Error, Agent,
@@ -232,12 +236,12 @@ rules! {
         "A `jadpo sql --explain` command can't make the disposable database it plans a query's statements on";
     CLI_SUGGEST_ARGUMENTS: "cli.suggest_arguments", area 14, Error, Agent,
         "A `jadpo suggest` command names an action it doesn't have, or a suggestion the last scan didn't find";
-    CLI_TELEMETRY_ARGUMENTS: "cli.telemetry_arguments", area 17, Error, Agent,
-        "`jadpo traces`, `jadpo metrics` or `jadpo logs` is given something it doesn't take, or a filter it can't read";
     CLI_TEST_ARGUMENTS: "cli.test_arguments", area 14, Error, Agent,
         "A `jadpo test` command names a path that isn't there, or a seed, a kind or a `--name` it can't use, or asks for `--affected` with nothing to compare with or `--interactive` where it can't open";
     CLI_TOOLCHAIN_ARGUMENTS: "cli.toolchain_arguments", area 14, Error, Agent,
         "A `jadpo toolchain` command names an action it doesn't have, or a release that isn't kept";
+    CLI_TRACES_ARGUMENTS: "cli.traces_arguments", area 14, Error, Agent,
+        "A `jadpo traces` command is given something it doesn't take, or a filter it can't read";
     CLI_TRANSLATIONS_ARGUMENTS: "cli.translations_arguments", area 14, Error, Agent,
         "A `jadpo translations` command names no action, one it doesn't have, or a locale the project doesn't translate into";
     CLI_UNKNOWN_COMMAND: "cli.unknown_command", area 14, Error, Agent,

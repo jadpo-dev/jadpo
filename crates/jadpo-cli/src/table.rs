@@ -486,7 +486,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--export-telemetry",
                 value: None,
-                description: "Send traces, metrics and logs to the collector",
+                description: "Also send telemetry to the collector",
                 values: &[],
             },
         ],
@@ -2065,7 +2065,7 @@ pub static COMMANDS: &[Command] = &[
                 command: "jadpo traces --slower-than 200ms",
             },
         ],
-        arguments_rule: &rule::CLI_TELEMETRY_ARGUMENTS,
+        arguments_rule: &rule::CLI_TRACES_ARGUMENTS,
         raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
         run: commands::traces,
     },
@@ -2091,7 +2091,7 @@ pub static COMMANDS: &[Command] = &[
                 command: "jadpo metrics --route \"POST /greeting\"",
             },
         ],
-        arguments_rule: &rule::CLI_TELEMETRY_ARGUMENTS,
+        arguments_rule: &rule::CLI_METRICS_ARGUMENTS,
         raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
         run: commands::metrics,
     },
@@ -2117,7 +2117,7 @@ pub static COMMANDS: &[Command] = &[
                 command: "jadpo logs --level warn",
             },
         ],
-        arguments_rule: &rule::CLI_TELEMETRY_ARGUMENTS,
+        arguments_rule: &rule::CLI_LOGS_ARGUMENTS,
         raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
         run: commands::logs,
     },
@@ -3023,7 +3023,7 @@ pub fn in_help_order() -> Vec<&'static Command> {
 const ROUTE_FLAG: Flag = Flag {
     name: "--route",
     value: Some("route"),
-    description: "Only this route's requests, `POST /greeting` or `/greeting`",
+    description: "Only this route's requests",
     values: &[],
 };
 const ACTION_FLAG: Flag = Flag {
@@ -3035,19 +3035,19 @@ const ACTION_FLAG: Flag = Flag {
 const DOMAIN_FLAG: Flag = Flag {
     name: "--domain",
     value: Some("domain"),
-    description: "Only the requests that ran this domain's code",
+    description: "Only those that ran this domain's code",
     values: &[],
 };
 const FAILURE_FLAG: Flag = Flag {
     name: "--failure",
     value: Some("code"),
-    description: "Only the requests that failed with this code",
+    description: "Only those that failed with this code",
     values: &[],
 };
 const SLOWER_FLAG: Flag = Flag {
     name: "--slower-than",
     value: Some("duration"),
-    description: "Only the requests that took longer, such as 200ms",
+    description: "Only those slower than this, such as 200ms",
     values: &[],
 };
 const REQUEST_FLAG: Flag = Flag {
@@ -3085,7 +3085,7 @@ const LOG_FLAGS: &[Flag] = &[
     Flag {
         name: "--level",
         value: Some("level"),
-        description: "Only events at this level or above, such as warn",
+        description: "Only events at this level up, such as warn",
         values: &[],
     },
 ];

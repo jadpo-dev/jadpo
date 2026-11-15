@@ -564,7 +564,8 @@ in their colours, and a warning or an error is drawn in its own. With
 nothing kept yet, each says `No traces yet` and points at `jadpo dev`;
 with filters that match nothing, `No traces match` and the filters. A
 filter it can't read is
-[`cli.telemetry_arguments`](../errors/cli.telemetry_arguments.md).
+[`cli.traces_arguments`](../errors/cli.traces_arguments.md), and so on for the
+other two.
 `--path` comes with path IDs on requests
 ([Path IDs](16-built-in-services.md#path-ids)), and the developer console
 will show the same data.
