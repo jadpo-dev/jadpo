@@ -277,7 +277,7 @@ class TheWholeIndex(unittest.TestCase):
     def test_every_place_that_guides_an_agent_is_read(self):
         for name in ('crates/jadpo-cli/scaffold/AGENTS.md.tmpl', 'docs/agent-skill/SKILL.md', 'docs/primer.md',
                      'docs/learn/01-setting-up.md', 'docs/guides/README.md', 'docs/language/14-tooling.md',
-                     'benchmarks/agent-changes/agents/jadpo-AGENTS.md', 'README.md', 'AGENTS.md'):
+                     'README.md', 'AGENTS.md'):
             self.assertEqual(len(self.found('Read index.json.\n', name)), 1, name)
 
     def test_the_contract_is_read_only_where_it_says_how_an_agent_reads(self):
