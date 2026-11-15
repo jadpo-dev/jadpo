@@ -30,7 +30,9 @@ took, in `durationMs`.
 
 A report keeps what an agent reads short: what it repeats points back at
 the first, and what says nothing is left out. Every subcommand takes
-`--full`, which shows everything, on the screen or under `--json`.
+`--full`, which shows whole what a report shortens, on the screen or under
+`--json`. A report that counts what passed, such as `jadpo test`'s, lists it
+only under `--json --full`.
 
 Without it, a diagnostic or a failed test that repeats an earlier one keeps
 its headline and its place, and its `reason` points back at the first

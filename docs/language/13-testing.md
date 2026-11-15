@@ -145,6 +145,15 @@ A test that calls actions to set up its data and then makes a request is a
 route test. A fifth kind, recording tests, has no `test` declaration; it
 is described at the end of this topic.
 
+`jadpo test` also writes route tests of its own for every route, with
+nothing for you to write: one sends bad input, including one past each
+`min:`, `max:`, `min_length:` and `max_length:` of the input, and checks
+the 422 answer; one sends each failure the route declares; one checks the
+output has only its declared fields
+([Tests generated for each route](#tests-generated-for-each-route)). So
+a new field's limits are tested once the route takes it; a test of your
+own covers what the route does with the value.
+
 ### Action tests
 
 An action test calls actions and queries directly. Calling an action is an
@@ -2463,9 +2472,10 @@ whose placeholders, input or output hold something no value can be made
 for, such as text with a `pattern:`, gets only its bad-input test.
 
 The footer counts them apart, `tested: 7 passed, 1 route test, 6
-generated tests`. `--json` marks each `generated: true` and counts them
-in `counts.generated`; with `--full`, each lists the requests it sent and
-what each answer was to be. One that fails is `test.assertion_failed` at
+generated tests`. The screen counts the tests that pass and never lists
+them, `--full` included. `jadpo test --json --full` lists each, marked
+`generated: true` and counted in `counts.generated`, with the requests it
+sent and what each answer was to be. One that fails is `test.assertion_failed` at
 the route, with the request, what it was to be answered with and what it
 was. The route and its document are both the compiler's work, so such a
 failure is a fault in Jadpo to report, never one in your code.
