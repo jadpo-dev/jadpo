@@ -1590,14 +1590,16 @@ async fn run_with_caller(
                 // holding a file's signed link is never kept.
                 Run::Query(plan) => match &route.cache {
                     Some(cache) if route.sends.is_none() && !route.links => match &cache.records {
+                        // Boxed so this frame stays small: a Worker's stack
+                        // holds every route's.
                         Some(records) => {
-                            crate::caches::records(
+                            Box::pin(crate::caches::records(
                                 ctx,
                                 app,
                                 (cache, records, plan),
                                 &args,
                                 revision,
-                            )
+                            ))
                             .await
                         }
                         None => {

@@ -3796,7 +3796,9 @@ a miss runs `fill` and keeps the record by its born names, as `read`
 keeps a query's answer; then it holds the record to
 `jadpo_runtime::policy::permits`, a record the caller may not read being
 the query's not-found failure, concealed (`store::not_found`), and makes
-the query's type of it (`redis::element`). Proved in the runtime's own
+the query's type of it (`redis::element`). Where a route runs it, its
+future is boxed, so a Worker's request frame, which every route's shares,
+grows by a pointer alone. Proved in the runtime's own
 tests over `MemoryCache` (one copy for every caller, a change behind the
 app's back unseen, someone else refused from it, a later revision
 skipping, a clear emptying it), the plan's and the checker's
