@@ -89,8 +89,7 @@ READ_ONCE_TOKENS = 9_000
 # Every place that tells an agent what to read, which never sends it to the
 # whole of index.json. Of the contract, only what it says an agent does.
 AGENT_GUIDANCE = ('llms.txt', 'README.md', 'AGENTS.md', 'crates/jadpo-cli/scaffold/AGENTS.md.tmpl',
-                  'docs/agent-skill/SKILL.md', 'docs/primer.md', 'docs/writing.md', 'docs/language/README.md',
-                  'benchmarks/agent-changes/agents/jadpo-AGENTS.md')
+                  'docs/agent-skill/SKILL.md', 'docs/primer.md', 'docs/writing.md', 'docs/language/README.md')
 AGENT_GUIDANCE_GLOBS = ('docs/learn/*.md', 'docs/guides/*.md', 'docs/language/[0-9][0-9]-*.md')
 CONTRACT = 'docs/documentation.md'
 CONTRACT_HEADINGS = ('## The agent skill', '## How an agent uses it')
