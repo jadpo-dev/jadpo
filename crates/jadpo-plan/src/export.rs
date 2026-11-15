@@ -491,6 +491,7 @@ impl Planner<'_> {
                 layer: false,
                 decided: None,
                 gate: None,
+                redis: None,
             },
             fields: exported,
         })
