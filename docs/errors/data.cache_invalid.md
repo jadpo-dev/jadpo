@@ -105,30 +105,7 @@ belongs to a tenant are this error too.
     }
 ```
 
-```jadpo check project=e-data-cache-invalid-fix-1 file=app.jadpo hidden
-application {
-    connections: {
-        cache: {
-            driver: Driver.redis
-            url: config.redis_url
-        }
-    }
-}
-```
-
-```jadpo check project=e-data-cache-invalid-fix-1 file=config.jadpo hidden
-config {
-    redis_url: RedisUrl
-}
-```
-
-```jadpo check project=e-data-cache-invalid-fix-1 file=domains/shop/types/product_name.jadpo hidden
-type ProductName = Text {
-    max_length: 100
-}
-```
-
-```jadpo check project=e-data-cache-invalid-fix-1 file=domains/shop/entities/product.jadpo hidden migrate=initial
+```jadpo check project=e-data-cache-invalid-fix-1 file=domains/shop/entities/product.jadpo hidden
 use shop/types { ProductName }
 
 /// Something the shop sells.
@@ -148,12 +125,36 @@ entity Product {
 }
 ```
 
+```jadpo check project=e-data-cache-invalid-fix-1 file=app.jadpo hidden
+application {
+    connections: {
+        cache: {
+            driver: Driver.redis
+            url: config.redis_url
+        }
+    }
+}
+```
+
+```jadpo check project=e-data-cache-invalid-fix-1 file=config.jadpo hidden
+config {
+    redis_url: RedisUrl
+}
+```
+
+```jadpo check project=e-data-cache-invalid-fix-1 file=domains/shop/types/product_name.jadpo hidden migrate=initial
+type ProductName = Text {
+    max_length: 100
+}
+```
+
 A route whose query reads one product by `id` now reads it from `cache`,
 and a change to a product clears it.
 
-**If the entity's `read:` names a role or it belongs to a tenant**, leave
-`caches:` out, and give the query a route reads it through a `cache:` of
-its own, whose results are kept per caller.
+An entity whose `read:` names a role, or that belongs to a tenant, leaves
+`caches:` out. A route reads it through a query with a `cache:` of its own,
+whose results are kept per caller
+([`query.cache_invalid`](query.cache_invalid.md) shows one).
 
 ## Related
 
