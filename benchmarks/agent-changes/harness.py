@@ -544,7 +544,10 @@ def codex_config(settings, folder, environment, tools=True):
 
 
 def codex_environment(folder):
-    return {'CODEX_HOME': str(folder / 'codex-home'), 'HOME': str(folder / 'home'), 'TMPDIR': str(folder / 'tmp')}
+    # zsh writes here documents under TMPPREFIX (default /tmp/zsh), which the
+    # sandbox refuses, so it gets the run's own temporary folder too.
+    return {'CODEX_HOME': str(folder / 'codex-home'), 'HOME': str(folder / 'home'), 'TMPDIR': str(folder / 'tmp'),
+            'TMPPREFIX': str(folder / 'tmp/zsh')}
 
 
 @contextlib.contextmanager
