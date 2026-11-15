@@ -77,6 +77,7 @@ Decl =
 | PackageDecl
 | ResourceDecl
 | ProvideDecl
+| MetricDecl
 | SingletonDecl
 
 Visibility =
@@ -153,6 +154,12 @@ ResourceDecl =
 
 ProvideDecl =
   'provide' Name MemberList
+
+// `metric checkouts_completed = Counter { by: [plan] }`: a metric a
+// domain's `monitoring.jadpo` declares and its code records (area 16,
+// "Custom metrics").
+MetricDecl =
+  'metric' Name '=' base:Type MemberList
 
 // Declarations that exist once per project carry no name (area 1):
 // `application`, `config`, `principal`, `authentication`, `policy`,

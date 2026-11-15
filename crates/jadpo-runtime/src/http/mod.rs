@@ -200,6 +200,12 @@ pub struct Response {
     /// A model's answer to send after the head, event by event, in place
     /// of `body` (area 7, "Streaming a model's answer"; chunk 5.5v6).
     pub stream: Option<crate::stream::EventStream>,
+    /// The trace it was answered in, and the caller's span it continued
+    /// (chunk O1): what its telemetry is sent as; never sent.
+    pub trace: Option<crate::outbox::Trace>,
+    pub parent_span: Option<[u8; 8]>,
+    /// What its code recorded through `telemetry.` (chunk O1); never sent.
+    pub recorded: crate::telemetry::Recorded,
 }
 
 impl Response {
@@ -433,6 +439,7 @@ pub async fn serve_request(
     response.calls = ctx.take_calls();
     response.steps = ctx.take_steps(0);
     response.spans = ctx.take_spans();
+    response.recorded = ctx.take_recorded();
     response
 }
 
@@ -476,15 +483,17 @@ async fn answer_request(
     );
     // Its trace continues the caller's `traceparent`, or starts one, so
     // what it emits carries it to each subscriber (area 12, question 17).
-    let trace = match request
+    let parent = request
         .header("traceparent")
-        .and_then(crate::outbox::Trace::parse)
-    {
+        .and_then(crate::outbox::Trace::parse);
+    let trace = match parent {
         Some(parent) => ctx.new_span(parent),
         None => ctx.new_trace(),
     };
     ctx.set_trace(Some(trace));
     let mut response = respond(app, executor, ctx, request, request_id, ready).await;
+    response.trace = Some(trace);
+    response.parent_span = parent.map(|parent| parent.span_id);
     response.client = ctx.client().map(str::to_string);
     response.refused = ctx.take_sign_in_refused();
     response
@@ -2145,6 +2154,9 @@ fn json_response(status: u16, code: &str, body: Vec<u8>) -> Response {
         spans: crate::spans::Spans::default(),
         refused: None,
         stream: None,
+        trace: None,
+        parent_span: None,
+        recorded: crate::telemetry::Recorded::default(),
     }
 }
 

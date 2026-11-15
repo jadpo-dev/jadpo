@@ -133,6 +133,10 @@ impl Loaded {
             uploads: &plan.sites.uploads,
             callables: Some(&plan.callables),
             runs: plan.runs,
+            telemetry: plan.telemetry.as_ref(),
+            metrics: &plan.metrics,
+            thresholds: &plan.thresholds,
+            buckets: Some(&plan.buckets),
             #[cfg(feature = "testing")]
             testing: Some(&plan.testing),
         }
@@ -207,6 +211,17 @@ pub struct Plan<'a> {
     /// (chunk 8.1o2): everything but in a declared deployable that runs
     /// less.
     pub runs: Runs,
+    /// The `telemetry:` section (area 16, "Telemetry"; chunk O1): `None`
+    /// when it isn't written.
+    pub telemetry: Option<&'a jadpo_std::telemetry::TelemetryPlan>,
+    /// Every `metric` the domains declare.
+    pub metrics: &'a [jadpo_std::telemetry::MetricPlan],
+    /// Every threshold with a limit judged per request: what decides a
+    /// trace is slow.
+    pub thresholds: &'a [jadpo_std::thresholds::ThresholdPlan],
+    /// Each duration a threshold names, by what it watches: its duration
+    /// histogram's buckets.
+    pub buckets: Option<&'a BTreeMap<String, Vec<u64>>>,
     /// The dev and test section (chunk 8.1e): each test's key and what it
     /// gives itself, and the recordings.
     #[cfg(feature = "testing")]
@@ -250,6 +265,10 @@ impl Plan<'static> {
         uploads: &[],
         callables: None,
         runs: Runs::EVERYTHING,
+        telemetry: None,
+        metrics: &[],
+        thresholds: &[],
+        buckets: None,
         #[cfg(feature = "testing")]
         testing: None,
     };

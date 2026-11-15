@@ -306,6 +306,10 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
     }
     let (steps, steps_json) = crate::personal_held::step_records(db, project);
     markdown.push_str(&steps);
+    let kept = crate::personal_held::kept_prompts(db, project);
+    if let Some((section, _)) = &kept {
+        markdown.push_str(section);
+    }
     markdown.push_str(crate::personal_held::OAUTH);
     let (coverage, coverage_json) = crate::personal_held::coverage();
     markdown.push_str(&coverage);
@@ -331,6 +335,9 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
         );
     }
     json.set("step_records", steps_json);
+    if let Some((_, kept_json)) = kept {
+        json.set("kept_prompts", kept_json);
+    }
     json.set("oauth_grants", Vec::<Value>::new());
     json.set("coverage", coverage_json);
     Report { markdown, json }
@@ -528,6 +535,20 @@ pub fn entries(json: &Value) -> BTreeMap<String, Vec<String>> {
         .collect();
     if !steps.is_empty() {
         out.insert("step records".to_string(), sorted(steps));
+    }
+    let kept: Vec<String> = list("kept_prompts")
+        .iter()
+        .map(|kept| {
+            format!(
+                "`{}` in `{}` for {}",
+                text(kept, "prompt"),
+                text(kept, "store"),
+                text(kept, "kept_for")
+            )
+        })
+        .collect();
+    if !kept.is_empty() {
+        out.insert("prompts and answers kept".to_string(), sorted(kept));
     }
     let others: Vec<String> = list("belongs_to_no_person")
         .iter()

@@ -81,6 +81,39 @@ fn ran_out(went: &Cell<bool>, abort: &AbortController) -> FetchError {
     FetchError::TimedOut
 }
 
+/// Telemetry sent to the collector from Workers (area 16, "Telemetry";
+/// chunk O1): one OTLP payload `POST`ed through `fetch()`, in the
+/// invocation's `waitUntil`, sent once.
+impl jadpo_runtime::telemetry::Transport for WorkersFetch {
+    fn post<'a>(
+        &'a self,
+        url: &'a str,
+        headers: &'a [(String, String)],
+        body: Vec<u8>,
+        timeout_ms: u64,
+    ) -> LocalFuture<'a, Result<u16, String>> {
+        Box::pin(async move {
+            let request = Request {
+                method: jadpo_std::HttpMethod::Post,
+                url: url.to_string(),
+                headers: headers.to_vec(),
+                body: None,
+                raw_body: Some(body),
+                timeout_ms,
+                reading: Default::default(),
+                repeatable: false,
+            };
+            match self.fetch(&request).await {
+                Ok(answer) => Ok(answer.status),
+                Err(FetchError::TimedOut) => Err("timed out".to_string()),
+                Err(
+                    FetchError::NotSent(why) | FetchError::NoAnswer(why) | FetchError::Refused(why),
+                ) => Err(why),
+            }
+        })
+    }
+}
+
 impl Fetch for WorkersFetch {
     fn fetch<'a>(&'a self, request: &'a Request) -> LocalFuture<'a, Result<Response, FetchError>> {
         Box::pin(async move {

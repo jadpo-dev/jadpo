@@ -3667,6 +3667,28 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
                 columns::system_table(&system::AI_USAGE),
             );
     }
+    // The calls `ai: { keep_content: }` keeps (area 21, "Prompts and
+    // answers in logs"; chunk K6), in the store it names, once `ai:`
+    // checks.
+    if let Some(store) = ai
+        .keep
+        .as_ref()
+        .filter(|keep| keep.complete() && ai.problems.is_empty())
+        .and_then(|keep| keep.store.clone())
+    {
+        schema
+            .stores
+            .entry(store)
+            .or_insert_with(|| physical::Store {
+                driver: Driver::Postgres.name().to_string(),
+                tables: BTreeMap::new(),
+            })
+            .tables
+            .insert(
+                system::AI_CONTENT.table.to_string(),
+                columns::system_table(&system::AI_CONTENT),
+            );
+    }
     // The ids of webhooks' events already received are kept beside the
     // outbox they are written to (area 11, "Receiving from outside"; chunk
     // 7.7).

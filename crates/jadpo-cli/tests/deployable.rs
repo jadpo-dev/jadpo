@@ -1458,6 +1458,54 @@ fn a_deployable_counts_a_routes_own_limit_as_dev_does() {
     assert_eq!(ended(&mut child, 30), Some(0));
 }
 
+/// The `telemetry:` section on a native deployable (area 16, "Telemetry";
+/// chunk O1): compiled, the greeter of `telemetry.rs` sends the collector
+/// double on this machine what `jadpo dev --export-telemetry` sends it,
+/// interpreted, carrying no value from its requests.
+#[test]
+fn a_deployable_sends_spans_metrics_and_logs_to_the_collector() {
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let root = target
+        .parent()
+        .unwrap_or(target)
+        .join("jadpo-compiled/deployable/telemetry");
+    super::telemetry::project_at(&root, super::telemetry::APPLICATION);
+    jadpo(&root, &["records", "update"]);
+    jadpo(&root, &["build", "--json"]);
+    let binary = root.join("build/target/app/app");
+    let collector = super::telemetry::Collector::start();
+    let (mut child, lines) = start(
+        &binary,
+        &[
+            ("HOST", "127.0.0.1"),
+            ("PORT", "0"),
+            ("COLLECTOR", collector.address.as_str()),
+        ],
+    );
+    let started = next(&lines, 60);
+    assert_eq!(started["event"], "runtime.started", "{started}");
+    let address = started["address"]
+        .as_str()
+        .expect("its address")
+        .to_string();
+    super::telemetry::reaches_the_collector(&collector, |method, path, body| {
+        exchange(&address, method, path, body).0
+    });
+    let resource = collector.received();
+    let traces = resource
+        .iter()
+        .find(|one| one.path == "/v1/traces")
+        .expect("a trace");
+    assert!(traces.body.contains("\"jadpo.target\""), "{}", traces.body);
+    assert!(traces.body.contains("\"native\""), "{}", traces.body);
+    let stopped = Command::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()
+        .expect("kill runs");
+    assert!(stopped.success());
+    assert_eq!(ended(&mut child, 30), Some(0));
+}
+
 /// Two servers counting their rate limits in one Redis store (area 16,
 /// "Where the counts are kept"; chunk Q8): the requests of
 /// `route_limits.rs` sent to each in turn get the answers one server gives,

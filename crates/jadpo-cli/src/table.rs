@@ -483,6 +483,12 @@ pub static COMMANDS: &[Command] = &[
                 description: "Let this operation through to its sandbox",
                 values: &[],
             },
+            Flag {
+                name: "--export-telemetry",
+                value: None,
+                description: "Also send telemetry to the collector",
+                values: &[],
+            },
         ],
         examples: &[
             Example {
@@ -2036,6 +2042,86 @@ pub static COMMANDS: &[Command] = &[
         run: commands::calls,
     },
     Command {
+        name: "traces",
+        synonyms: &[],
+        group: "Look things up",
+        summary: "List the requests jadpo dev traced",
+        description: "Lists the requests `jadpo dev` answered, from the traces it keeps on this \
+                      machine (area 17): each request's id, route, how it ended, how long it took, \
+                      how many spans it has and its trace's id, oldest first. The filters choose \
+                      requests by route, action, domain, failure, slowness and request id; \
+                      `--follow` keeps printing as new ones arrive. `jadpo dev` keeps every \
+                      trace, whatever `telemetry: { detail: }` sends, the last 500 in build/dev/, \
+                      which is never committed.",
+        arguments: &[],
+        flags: TELEMETRY_FLAGS,
+        examples: &[
+            Example {
+                description: "See the requests the app answered",
+                command: "jadpo traces",
+            },
+            Example {
+                description: "See the slow ones",
+                command: "jadpo traces --slower-than 200ms",
+            },
+        ],
+        arguments_rule: &rule::CLI_TRACES_ARGUMENTS,
+        raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        run: commands::traces,
+    },
+    Command {
+        name: "metrics",
+        synonyms: &[],
+        group: "Look things up",
+        summary: "Add up the metrics jadpo dev kept",
+        description: "Adds up the metrics of the requests `jadpo dev` answered (area 17): the \
+                      runtime's own, per route, action, query and provider call, and the app's \
+                      own from `monitoring.jadpo`, a line for each series, with how many values \
+                      it has and what they come to. The filters choose which requests are added \
+                      up; `--follow` adds them up again as new ones arrive.",
+        arguments: &[],
+        flags: TELEMETRY_FLAGS,
+        examples: &[
+            Example {
+                description: "See every metric",
+                command: "jadpo metrics",
+            },
+            Example {
+                description: "See one route's",
+                command: "jadpo metrics --route \"POST /greeting\"",
+            },
+        ],
+        arguments_rule: &rule::CLI_METRICS_ARGUMENTS,
+        raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        run: commands::metrics,
+    },
+    Command {
+        name: "logs",
+        synonyms: &[],
+        group: "Look things up",
+        summary: "List the log events jadpo dev kept",
+        description: "Lists the events the app logged under `jadpo dev` (area 17), oldest first: \
+                      each one's time, level, event, request and fields, which never hold a \
+                      value the log's rules hash. `--level` lists events from that level up; \
+                      the other filters choose the requests whose events are listed; \
+                      `--follow` keeps printing as new ones arrive.",
+        arguments: &[],
+        flags: LOG_FLAGS,
+        examples: &[
+            Example {
+                description: "See what the app logged",
+                command: "jadpo logs",
+            },
+            Example {
+                description: "See what should be looked at",
+                command: "jadpo logs --level warn",
+            },
+        ],
+        arguments_rule: &rule::CLI_LOGS_ARGUMENTS,
+        raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        run: commands::logs,
+    },
+    Command {
         name: "email",
         synonyms: &["mail"],
         group: "Look things up",
@@ -2932,6 +3018,77 @@ pub fn in_help_order() -> Vec<&'static Command> {
     });
     commands
 }
+
+/// The filters `jadpo traces`, `metrics` and `logs` share (area 17).
+const ROUTE_FLAG: Flag = Flag {
+    name: "--route",
+    value: Some("route"),
+    description: "Only this route's requests",
+    values: &[],
+};
+const ACTION_FLAG: Flag = Flag {
+    name: "--action",
+    value: Some("action"),
+    description: "Only the requests that ran this action",
+    values: &[],
+};
+const DOMAIN_FLAG: Flag = Flag {
+    name: "--domain",
+    value: Some("domain"),
+    description: "Only those that ran this domain's code",
+    values: &[],
+};
+const FAILURE_FLAG: Flag = Flag {
+    name: "--failure",
+    value: Some("code"),
+    description: "Only those that failed with this code",
+    values: &[],
+};
+const SLOWER_FLAG: Flag = Flag {
+    name: "--slower-than",
+    value: Some("duration"),
+    description: "Only those slower than this, such as 200ms",
+    values: &[],
+};
+const REQUEST_FLAG: Flag = Flag {
+    name: "--request",
+    value: Some("id"),
+    description: "Only the request whose id starts so",
+    values: &[],
+};
+const FOLLOW_FLAG: Flag = Flag {
+    name: "--follow",
+    value: None,
+    description: "Keep printing as new ones arrive",
+    values: &[],
+};
+
+const TELEMETRY_FLAGS: &[Flag] = &[
+    ROUTE_FLAG,
+    ACTION_FLAG,
+    DOMAIN_FLAG,
+    FAILURE_FLAG,
+    SLOWER_FLAG,
+    REQUEST_FLAG,
+    FOLLOW_FLAG,
+];
+
+/// `jadpo logs`' flags: the shared filters and the lowest level listed.
+const LOG_FLAGS: &[Flag] = &[
+    ROUTE_FLAG,
+    ACTION_FLAG,
+    DOMAIN_FLAG,
+    FAILURE_FLAG,
+    SLOWER_FLAG,
+    REQUEST_FLAG,
+    FOLLOW_FLAG,
+    Flag {
+        name: "--level",
+        value: Some("level"),
+        description: "Only events at this level up, such as warn",
+        values: &[],
+    },
+];
 
 #[cfg(test)]
 mod tests {

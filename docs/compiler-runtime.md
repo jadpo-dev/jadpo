@@ -3040,6 +3040,33 @@ record's steps (`Ctx::steps_reached`, `Response::steps`) stay for what
 a span leaves out, a call's request and answer and a step's place in
 its record.
 
+**Telemetry** (area 16, "Telemetry"; chunk O1). `jadpo_runtime::
+telemetry` sends what an invocation did over OTLP as JSON, built
+entirely from what the runtime already keeps: a span's parent is the
+innermost span open when it began (`Span::parent`), and what code
+records through `telemetry.` is kept on `Ctx` (`Recorded`, at most 64
+notes and 1,000 points) by `telemetry::record`, the one entry point
+the interpreter's `Task::Record` and compiled code's `rt::telemetry`
+call, its `Recording` carried at the call's site by the graph's
+`Callee::Telemetry`. A host holds a `Telemetry` (`Host::telemetry`):
+natively one a worker, built by `deployable::telemetry` from the plan's
+`TelemetryPlan`, the settings and the standard `OTEL_*` variables over
+`NativeFetch`; on Workers one an isolate over `WorkersFetch`; under
+`jadpo dev` one a worker that keeps every payload in
+`build/dev/telemetry/` (`Keep`) and sends only with
+`--export-telemetry`. `Serving::handle` hands it each request but a
+health check (`Telemetry::answered`), which decides from `detail:`
+whether the whole trace goes (failure, fault, a threshold's
+per-request limit, a route new to the thread, or within its samples),
+encodes the trace, the request's metrics with delta temporality and
+the log events kept since the last send (`otlp`), and defers each
+`POST` through the host's `Transport` (`Host::defer`, `waitUntil` on
+Workers). The host's log hands it each event (`Telemetry::log`), at
+the level `level_of` gives; a tick sends what was logged since. Every
+duration a threshold names is a histogram bucket (`RuntimePlan::
+buckets`). A start with nowhere to send fails
+(`deployable::start`).
+
 **The request guarantees,** in the same component. A body
 over `BODY_LIMIT` (1 MB) is 413 before routing; the native host stops
 holding a body there and marks the request `too_large`. Health
@@ -4092,7 +4119,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Outbox | Delivery, retries, dead letters and a circuit breaker, run by the runner after the response, natively as a task on the worker's thread | `waitUntil` after the response, what one invocation leaves handed on to a fresh one, swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters | Cloudflare cron |
 | Rate limits, caches | Rate limits through `Host::rate_limit`: the Redis store `rate_limits:` names, through `ratelimit::counted_by_store`, otherwise, or while it can't count, one bounded table in memory for all of a server's workers; a route's display read through `caches::read`, the cache `Host::cache` gives, cleared after each commit | Redis or Cloudflare's rate-limiting binding required (area 16, "Rate limits"); the isolate's memory only while it can't be reached; caches in Redis only |
-| Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
+| Telemetry | Spans per declaration, metrics, threshold sampling, OTLP as JSON | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
 | AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake; `ai.embed` and `ai.embed_all`, the fake's embeddings and prompts' recordings; `ai.stream` read piece by piece and sent as server-sent events | same, through Workers' `fetch` |
 | Receiving | Queues fetched on the tick through a package, each message kept once as its event | Cloudflare Queues' consumer, the Worker's `queue`, hands each batch to `receiving::consume`, which answers each message |
@@ -5620,7 +5647,30 @@ its prompt's `ai.generate` sites decode into; `recorded(...)` lowers to
 `AiFakeAnswer::Recorded`, which the interpreter scripts with the answer
 `prompt_recordings::answer` fills (area 11's `recorded::filled_value`),
 and `jadpo test` runs `prompt_recordings::check_file` for each as a
-`recording` test, listing stale ones as `Run::alerts`.
+`recording` test, listing stale ones as `Run::alerts`. A package's
+`embed:` splits an `ai.embed_all` into requests of its `batch:`
+(`embed::batches`), sent one after another under one `Retry::timed`
+window, each answer placed among every text (`embed::placed`) and joined
+(`embed::joined`), so the step, the rerun digest (every body, a line
+each) and the budget's charge stay the call's own.
+
+**Kept prompts and answers** (area 21, "Keeping prompts and answers").
+`jadpo_check::ai_keep` reads `ai: { keep_content: }` into
+`AiSettings::keep` and checks it once the rest reads (`keep_problems`);
+`jadpo_std::system::AI_CONTENT` joins its store's schema, and the plan
+carries `AiPlan::keep`. After an `ai.generate` call a model answered,
+`jadpo_runtime::ai_keep::keep` writes one row with `KEEP`, its messages
+and answer sealed with `Started::field_ring` under
+`KEPT_MESSAGES_BOUND` and `KEPT_ANSWER_BOUND`, and the caller's record by
+its principal's `id`. The table is one of `purge::SIGN_IN_STATE`, so
+erasure and retention delete it with the caller's sessions; the export
+plan reads it as an `AiContent` part (`export::kept_part`, two
+`Column::Sealed` columns); `purge::reseals` re-seals both columns; the
+tick deletes rows past `keep:` (`SchedulesPlan::ai_content`,
+`ai_keep::OLD_CONTENT`); and `personal_held::kept_prompts` adds the
+report's section. `crates/jadpo-cli/tests/kept_ai_calls.rs` runs it
+through `jadpo test` and reads the rows erasure and the tick leave; its
+tests run compiled in the gate's compiled step.
 
 **Webhooks as events** (area 11). The
 checker reads a provider's `webhooks:` into `connections::WebhookReach`

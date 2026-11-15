@@ -153,6 +153,7 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 | Callee::FixtureFile { .. }
                 | Callee::AdvanceClock
                 | Callee::Escape
+                | Callee::Telemetry(_)
                 | Callee::Unknown => {}
                 // A prompt is used by the value built of its type, and so
                 // is the type a model's answer is read as (area 21).

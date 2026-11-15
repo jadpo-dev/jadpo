@@ -65,9 +65,12 @@ impl Bind for Purging {
 
 /// The runtime's own tables holding the sign-in state of someone who signs
 /// in, each with the column holding their `id` (area 5, "Tables for
-/// sign-in"): what retention deletes beside their record.
-pub(crate) const SIGN_IN_STATE: [(&str, &str); 5] = [
+/// sign-in"), and what was kept for them: what retention, erasure and a
+/// delete remove beside their record.
+pub(crate) const SIGN_IN_STATE: [(&str, &str); 6] = [
     (jadpo_std::system::SESSIONS.table, "principal_id"),
+    // The calls `ai: { keep_content: }` kept for them (area 21; chunk K6).
+    (jadpo_std::system::AI_CONTENT.table, "principal_id"),
     (jadpo_std::system::SERVICE_KEYS.table, "principal_id"),
     (jadpo_std::system::PASSKEYS.table, "principal_id"),
     (jadpo_std::system::PASSKEY_CHALLENGES.table, "principal_id"),
@@ -474,8 +477,12 @@ fn not_held(model: &DataModel, entity: &EntityModel, path: &[(String, String)]) 
 
 /// What the field key's re-seal reads and writes of each sealed field (area
 /// 15, "Rotating the key"; chunk P9): every sealed field of every entity in
-/// a store, in name order.
-pub(crate) fn reseals(model: &DataModel) -> Vec<jadpo_std::write::ResealPlan> {
+/// a store, in name order, then the calls `ai: { keep_content: }` keeps in
+/// `kept_in` (chunk K6).
+pub(crate) fn reseals(
+    model: &DataModel,
+    kept_in: Option<&str>,
+) -> Vec<jadpo_std::write::ResealPlan> {
     let mut out = Vec::new();
     for entity in &model.entities {
         let Some(store) = &entity.store else {
@@ -509,6 +516,22 @@ pub(crate) fn reseals(model: &DataModel) -> Vec<jadpo_std::write::ResealPlan> {
                 select: text::reseal_select(table, "secret", jadpo_std::write::RESEAL_BATCH),
                 update: text::reseal_update(table, "secret"),
                 count: text::reseal_count(table, "secret"),
+            });
+        }
+    }
+    if let Some(store) = kept_in {
+        let table = jadpo_std::system::AI_CONTENT.table;
+        for (column, bound) in [
+            ("messages", jadpo_std::ai::KEPT_MESSAGES_BOUND),
+            ("answer", jadpo_std::ai::KEPT_ANSWER_BOUND),
+        ] {
+            out.push(jadpo_std::write::ResealPlan {
+                field: format!("ai.keep_content.{column}"),
+                store: store.to_string(),
+                bound: bound.to_string(),
+                select: text::reseal_select(table, column, jadpo_std::write::RESEAL_BATCH),
+                update: text::reseal_update(table, column),
+                count: text::reseal_count(table, column),
             });
         }
     }

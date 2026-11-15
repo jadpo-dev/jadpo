@@ -74,6 +74,10 @@ fn main() -> ExitCode {
             &args,
             &Environment::from_process(),
         )),
+        Some(Session::Follow(args)) => ExitCode::from(jadpo_cli::telemetry::follow(
+            &args,
+            &Environment::from_process(),
+        )),
         None => ExitCode::from(output.code),
     }
 }

@@ -1022,6 +1022,16 @@ impl<H: Host> Host for AtClock<H> {
         self.host.outbound()
     }
 
+    fn telemetry(&self) -> Option<&crate::telemetry::Telemetry> {
+        self.host.telemetry()
+    }
+
+    /// The host's own log, which a test's record or a deployable's log
+    /// and its telemetry hear.
+    fn log(&self, event: &str, fields: serde_json::Map<String, serde_json::Value>) {
+        self.host.log(event, fields);
+    }
+
     fn defer(&self, work: LocalFuture<'static, ()>) {
         self.host.defer(work);
     }

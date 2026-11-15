@@ -75,6 +75,9 @@ Look things up
   impact        List what a change to a name reaches
   ai            Show prompts, record, usage   show, record, usage
   calls         Show provider calls in dev    list, show, script
+  traces        List the requests jadpo dev traced
+  metrics       Add up the metrics jadpo dev kept
+  logs          List the log events jadpo dev kept
   email         Read the dev inbox and check mail
   why           Explain why a schedule didn't run
 
@@ -164,6 +167,9 @@ Look things up
   impact        List what a change to a name reaches
   ai            Show prompts, record, usage   show · record · usage
   calls         Show provider calls in dev    list · show · script
+  traces        List the requests jadpo dev traced
+  metrics       Add up the metrics jadpo dev kept
+  logs          List the log events jadpo dev kept
   email         Read the dev inbox and check mail
   why           Explain why a schedule didn't run
 
@@ -354,6 +360,9 @@ fn help_json_is_the_whole_command_reference() {
             "impact",
             "ai",
             "calls",
+            "traces",
+            "metrics",
+            "logs",
             "email",
             "why",
             "api",
@@ -833,6 +842,9 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "impact\tList what a change to a name reaches",
             "ai\tShow prompts, record, usage",
             "calls\tShow provider calls in dev",
+            "traces\tList the requests jadpo dev traced",
+            "metrics\tAdd up the metrics jadpo dev kept",
+            "logs\tList the log events jadpo dev kept",
             "email\tRead the dev inbox and check mail",
             "why\tExplain why a schedule didn't run",
             "api\tRewrite the API records",

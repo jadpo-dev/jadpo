@@ -2468,6 +2468,38 @@ pub fn hosts(db: &dyn Db, project: Project, domains: bool) -> Vec<Row> {
             when: None, reached_for: "runtime sign-in: discovery, signing keys and the code exchange; public HTTPS, no redirects".into(), domains: Vec::new(),
         });
     }
+    // Where `telemetry:` sends traces, metrics and logs (area 16,
+    // "Telemetry"; chunk O1): its endpoint's setting, or the standard
+    // variable the runtime reads when it is left out.
+    let telemetry = crate::telemetry::section(db, project);
+    if telemetry.written {
+        let (host, setting) = match &telemetry.endpoint {
+            Some(setting) => (
+                format!("the address in `config.{setting}`"),
+                Some(setting.clone()),
+            ),
+            None => (
+                format!(
+                    "the address in `{}`",
+                    jadpo_std::telemetry::ENDPOINT_VARIABLE
+                ),
+                None,
+            ),
+        };
+        rows.push(Row {
+            connection: crate::telemetry::SECTION.to_string(),
+            host,
+            address: None,
+            setting,
+            image: None,
+            registered: None,
+            when: None,
+            reached_for:
+                "runtime telemetry: traces, metrics and logs over OTLP, carrying no field values"
+                    .into(),
+            domains: Vec::new(),
+        });
+    }
     rows.sort_by(|a, b| (&a.connection, &a.host).cmp(&(&b.connection, &b.host)));
     rows
 }

@@ -11,6 +11,7 @@
 
 pub mod acceptances;
 pub mod ai;
+pub mod ai_keep;
 pub mod ai_limits;
 pub mod ai_mapping;
 pub mod ai_personal;
@@ -86,6 +87,7 @@ pub mod sign_in_providers;
 mod std_lib;
 pub mod suggest;
 pub mod surface;
+pub mod telemetry;
 pub mod thresholds;
 pub mod translations;
 mod tree;
@@ -429,6 +431,7 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(personal_reads::unread_problems(db, project).iter().cloned());
         out.extend(disk::disk_problems(db, project).iter().cloned());
         out.extend(thresholds::problems(db, project));
+        out.extend(telemetry::problems(db, project));
         out.extend(ai::ai_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(

@@ -97,6 +97,7 @@ mod interactive;
 mod json_columns;
 mod json_migrations;
 mod jwk_upgrade;
+mod kept_ai_calls;
 mod kept_conditions;
 mod launcher;
 mod leaving;
@@ -191,6 +192,7 @@ mod swaps;
 mod system;
 mod system_statements;
 mod system_tenants;
+mod telemetry;
 mod tenant_moves;
 mod tenant_reach;
 #[path = "test.rs"]

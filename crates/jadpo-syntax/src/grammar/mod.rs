@@ -457,6 +457,7 @@ fn contextual_decl(p: &Parser<'_>, n: usize) -> Option<SyntaxKind> {
         "package" if next == IDENT && !p.nth_on_new_line(n + 1) => PACKAGE_DECL,
         "resource" if next == IDENT && p.nth(n + 2) == L_BRACE => RESOURCE_DECL,
         "provide" if next == IDENT && p.nth(n + 2) == L_BRACE => PROVIDE_DECL,
+        "metric" if next == IDENT && p.nth(n + 2) == EQ => METRIC_DECL,
         _ if next == L_BRACE && SINGLETONS.contains(&word) => SINGLETON_DECL,
         _ => return None,
     };
@@ -569,6 +570,7 @@ fn decl(p: &mut Parser<'_>) {
                 body_start(p, true);
                 m.complete(p, PACKAGE_DECL);
             }
+            Some(METRIC_DECL) => metric_decl(p, m),
             Some(kind @ (RESOURCE_DECL | PROVIDE_DECL)) => {
                 p.bump_remap(if kind == RESOURCE_DECL {
                     RESOURCE_KW
@@ -918,6 +920,34 @@ fn type_decl(p: &mut Parser<'_>, m: crate::parser::Marker) {
         skip_line(p);
     }
     m.complete(p, TYPE_DECL);
+}
+
+/// `metric name = Kind { by: [...] }` (area 16, "Custom metrics"): the
+/// kind is read as a type's base is, and its block as a declaration's
+/// members, which the checker reads.
+fn metric_decl(p: &mut Parser<'_>, m: crate::parser::Marker) {
+    p.bump_remap(METRIC_KW);
+    name(p, "this metric");
+    p.bump(EQ);
+    ty(p, "the metric's kind");
+    if p.at(L_BRACE) {
+        member_list(p, Members::Declaration);
+    } else {
+        let at = p.prev_end();
+        let error = SyntaxError::new(
+            &rule::SYNTAX_TYPE_BLOCK_REQUIRED,
+            "A metric needs a block",
+            at,
+            at,
+        )
+        .label("expected `{}` after the kind")
+        .reason("A metric is written `metric name = Counter { by: [...] }`; its block says what it is counted by, and may be empty.")
+        .next("Add `{}` after the kind")
+        .edit(TextEdit::insert(at, " {}"));
+        p.push_error(error);
+        skip_line(p);
+    }
+    m.complete(p, METRIC_DECL);
 }
 
 fn callable(p: &mut Parser<'_>, m: crate::parser::Marker, kind: SyntaxKind, members: bool) {

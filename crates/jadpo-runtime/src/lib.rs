@@ -94,6 +94,7 @@
 
 pub mod ai;
 pub mod ai_budget;
+pub mod ai_keep;
 mod audit;
 pub mod batches;
 mod boundary;
@@ -168,6 +169,7 @@ pub mod statements;
 pub mod steps;
 mod store;
 pub mod stream;
+pub mod telemetry;
 #[cfg(feature = "testing")]
 pub mod test_authenticator;
 #[cfg(feature = "testing")]

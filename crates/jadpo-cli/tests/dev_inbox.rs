@@ -455,6 +455,7 @@ fn dev_keeps_build_out_of_git() {
             choice: jadpo_term::ColorChoice::Never,
             fake: Vec::new(),
             sandbox: Vec::new(),
+            export_telemetry: false,
         };
         let (mut out, mut err) = (Vec::new(), Vec::new());
         jadpo_cli::dev::serve_to(&args, &Environment::empty(), &mut out, &mut err, &|| true);

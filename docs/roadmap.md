@@ -305,10 +305,7 @@ work below (Richard, 2026-11-08).
      when each is built and tested against doubles, with nothing sent to a
      third party.
    - [x] **K5 Types from recordings and recipes' tests**: area 11, "Recordings" and "Package subscribers and recipes in `sample/`"; area 14, "`jadpo package record`"; and the notes for area 11.
-   - [ ] **K6 What's left of `ai`** `opus · high` after P9: area 21,
-     "Budgets" and "Streams, embeddings and the OpenAI and Anthropic
-     packages". `keep_content:`, kept in encrypted fields, and an `embed:`
-     with a `batch:` below 100, split across requests.
+   - [x] **K6 What's left of `ai`**: area 21, "Keeping prompts and answers" and "Streams, embeddings and the OpenAI and Anthropic packages"; and the notes for area 21.
 6. Product work: the developer console and MCP, acting as an OAuth
    provider, D1 (area 5, "Actions on D1", with `jadpo sql` for SQLite) and
    row-level security (opt-in, design notes for area 6). The console holds
@@ -405,13 +402,7 @@ work below (Richard, 2026-11-08).
     them, and nothing such a service gets that any other vendor couldn't
     use: a vendor stays an endpoint and a header. E1, in item 3, puts path
     IDs on requests.
-    - [ ] **O1 The `telemetry:` section** `opus · xhigh`: area 16,
-      "Telemetry"; area 17, "Traces, metrics and logs in development".
-      `telemetry:` sending traces, metrics and logs over OTLP, custom
-      metrics and `telemetry.note`, and the local `jadpo traces`, `metrics`
-      and `logs`. Done when spans, metrics and logs reach a local OTLP
-      collector double on both executors, carrying no field values, and a
-      personal field given as a label is refused.
+    - [x] **O1 The `telemetry:` section**: area 16, "Telemetry", "Custom metrics" and its notes; area 17, "Traces, metrics and logs in development"; area 14, "`jadpo traces`, `jadpo metrics` and `jadpo logs`"; compiler-runtime §2.6, "Telemetry".
     - [ ] **O2 Trace context and outside request IDs** `opus · high`
       **needs a maintainer** before building: area 16, "Telemetry"; area
       7, where `x-request-id` is written; area 11, "How provider calls are

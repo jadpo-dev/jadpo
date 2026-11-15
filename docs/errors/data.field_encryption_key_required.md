@@ -9,7 +9,10 @@ sealed with the application's one key, which `application {
 field_encryption_key: }` names. Without one there is nothing to seal them
 with. Jadpo won't make up a secret for you: each environment has to be given
 this key, and losing it loses every value sealed with it for good. The error is
-reported once, at the first field that needs the key.
+reported once, at the first field that needs the key. The prompts and answers
+`ai: { keep_content: }` keeps are sealed with it too, so it is reported at
+`keep_content:` as well
+([Keeping prompts and answers](../language/21-ai.md#keeping-prompts-and-answers)).
 
 ## What it looks like
 

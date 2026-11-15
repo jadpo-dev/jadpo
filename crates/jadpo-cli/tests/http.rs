@@ -327,7 +327,23 @@ impl Dev {
         Dev::launch(root, None, fake, sandbox)
     }
 
+    /// As [`Dev::start_without_database`], with `--export-telemetry`
+    /// (chunk O1).
+    pub(super) fn start_exporting(root: &Path) -> Dev {
+        Dev::launch_with(root, None, Vec::new(), Vec::new(), true)
+    }
+
     fn launch(root: &Path, url: Option<String>, fake: Vec<String>, sandbox: Vec<String>) -> Dev {
+        Dev::launch_with(root, url, fake, sandbox, false)
+    }
+
+    fn launch_with(
+        root: &Path,
+        url: Option<String>,
+        fake: Vec<String>,
+        sandbox: Vec<String>,
+        export_telemetry: bool,
+    ) -> Dev {
         let out = Buffer::default();
         let stop = Arc::new(AtomicBool::new(false));
         let args = DevArgs {
@@ -339,6 +355,7 @@ impl Dev {
             choice: ColorChoice::Never,
             fake,
             sandbox,
+            export_telemetry,
         };
         let thread = {
             let mut out = out.clone();

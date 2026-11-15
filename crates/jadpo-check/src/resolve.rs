@@ -1459,6 +1459,13 @@ impl Names<'_> {
         // A message is `translations.<domain>.<message>` (area 10).
         let message = qualifier == "translations"
             && self.std.namespace(&qualifier) == Some(Namespace::Generated);
+        // A metric is recorded as `telemetry.<metric>.<operation>` (area
+        // 16, "Custom metrics"), which the body's check reads.
+        let metric = qualifier == jadpo_std::telemetry::NAMESPACE
+            && self.std.namespace(&qualifier) == Some(Namespace::Generated);
+        if metric && rest.len() == 2 {
+            return;
+        }
         if rest.len() > 1 && !message && !self.table.is_connection(&qualifier) {
             out.push(self.too_many_names(first, rest));
             return;

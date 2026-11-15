@@ -347,6 +347,8 @@ pub struct Ctx<'p> {
     /// What it did: a span for each action, read, write and outside call,
     /// in the order each started (chunk 10.3c).
     spans: crate::spans::Spans,
+    /// What its code recorded through `telemetry.` (chunk O1).
+    recorded: crate::telemetry::Recorded,
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -429,6 +431,7 @@ impl<'p> Ctx<'p> {
             ai_spent: (0, 0),
             paths: None,
             spans: crate::spans::Spans::default(),
+            recorded: crate::telemetry::Recorded::default(),
         }
     }
 
@@ -742,6 +745,21 @@ impl<'p> Ctx<'p> {
     /// response carries to its host's observer.
     pub fn take_spans(&mut self) -> crate::spans::Spans {
         std::mem::take(&mut self.spans)
+    }
+
+    /// What its code has recorded through `telemetry.` so far (chunk O1).
+    pub fn recorded(&self) -> &crate::telemetry::Recorded {
+        &self.recorded
+    }
+
+    pub(crate) fn recorded_mut(&mut self) -> &mut crate::telemetry::Recorded {
+        &mut self.recorded
+    }
+
+    /// What its code has recorded, leaving it none: what a request's
+    /// response carries to its host's telemetry.
+    pub fn take_recorded(&mut self) -> crate::telemetry::Recorded {
+        std::mem::take(&mut self.recorded)
     }
 
     /// Keeps the steps a record's run reached as it closes (chunk 7.5f).

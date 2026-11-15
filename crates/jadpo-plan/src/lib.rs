@@ -556,6 +556,21 @@ fn privacy_steps(
     })
 }
 
+/// The store the calls `ai: { keep_content: }` keeps are in, once it
+/// asks for their table (chunk K6).
+fn kept_in(db: &dyn Db, project: Project) -> Option<String> {
+    let schema = jadpo_check::data::schema(db, project);
+    schema
+        .stores
+        .iter()
+        .find(|(_, store)| {
+            store
+                .tables
+                .contains_key(jadpo_std::system::AI_CONTENT.table)
+        })
+        .map(|(name, _)| name.clone())
+}
+
 /// The schedule table (area 12, chunk 6.2): each schedule that reads
 /// cleanly, with the callable it runs, where their state is kept, and the
 /// stores holding the runtime's own tables, which the tick sweeps.
@@ -628,6 +643,14 @@ fn schedules_plan(
         steps: holding(STEP_RECORDS.table).collect(),
         parked: holding(jadpo_std::system::PARKED_MESSAGES.table).next(),
         ai_usage: holding(jadpo_std::system::AI_USAGE.table).next(),
+        // The calls `ai: { keep_content: }` keeps, deleted at `keep:`
+        // (chunk K6).
+        ai_content: holding(jadpo_std::system::AI_CONTENT.table)
+            .next()
+            .and_then(|store| {
+                let keep = jadpo_check::ai::settings(db, project).keep.as_ref()?;
+                Some((store, keep.keep_ms?))
+            }),
         trigger: jadpo_check::schedules::schedules_settings(db, project).trigger,
     }
 }
@@ -1189,10 +1212,14 @@ impl Plan {
         // goes wherever a sealed field is read or written, which only a
         // project keeping none has no need of (area 15; chunk P9).
         let reseals = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
-            purge::reseals(model)
+            purge::reseals(model, kept_in(db, project).as_deref())
         } else {
             Vec::new()
         };
+        // Where `telemetry:` sends, its settings asked for as any other
+        // setting a kept part reads (chunk O1).
+        let telemetry =
+            jadpo_check::telemetry::section(db, project).plan(&|name| setting_number(name));
         let field_key = jadpo_check::data::sealed::field_key(db, project)
             .setting
             .as_ref()
@@ -1824,6 +1851,15 @@ impl Plan {
                     })
                 })
                 .collect();
+            // The prompts whose calls are kept, and where (chunk K6).
+            let keep = kept_in(db, project).and_then(|store| {
+                let read = settings.keep.as_ref()?;
+                Some(jadpo_std::ai::AiKeep {
+                    prompts: read.prompts.clone(),
+                    store,
+                    keep_ms: read.keep_ms?,
+                })
+            });
             settings.connection.as_ref().and_then(|name| {
                 let models = settings
                     .models
@@ -1847,6 +1883,7 @@ impl Plan {
                         schema: jadpo_std::ai::SchemaMode::StrictSubset,
                         limits,
                         prices,
+                        keep: keep.clone(),
                     });
                 }
                 // A package filling `ai` (chunk 5.5v3b).
@@ -1867,6 +1904,7 @@ impl Plan {
                     schema: mapping.schema,
                     limits,
                     prices,
+                    keep: keep.clone(),
                 })
             })
         };
@@ -1975,6 +2013,9 @@ impl Plan {
             config,
             flags,
             thresholds: thresholds(db, project),
+            telemetry,
+            metrics: jadpo_check::telemetry::metrics(db, project).plans(),
+            buckets: buckets(db, project),
             routes,
             events,
             batches,
@@ -2489,6 +2530,28 @@ fn ai_package(
         embed,
         prices: mapping.prices.clone(),
     })
+}
+
+/// Each duration a threshold names, per request or across them, by the
+/// key of what it watches (chunk O1): its duration histogram's buckets.
+fn buckets(db: &dyn Db, project: Project) -> BTreeMap<String, Vec<u64>> {
+    use jadpo_check::thresholds::{Limit, Unit};
+    let mut out: BTreeMap<String, Vec<u64>> = BTreeMap::new();
+    for threshold in &jadpo_check::thresholds::thresholds(db, project).thresholds {
+        let durations = threshold
+            .limits
+            .iter()
+            .filter(|(limit, _)| limit.unit() == Unit::Duration && **limit != Limit::OldestWaiting)
+            .map(|(_, value)| *value);
+        let list = out
+            .entry(threshold.target.key.as_str().to_string())
+            .or_default();
+        list.extend(durations);
+        list.sort_unstable();
+        list.dedup();
+    }
+    out.retain(|_, list| !list.is_empty());
+    out
 }
 
 /// Each threshold with a limit judged per request (area 16; chunk B13),
