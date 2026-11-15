@@ -379,7 +379,7 @@ impl Body<'_> {
         } else if !actual.has_error()
             && !expected.has_unknown()
             && matches!(expected.strip_nullable(), Ty::Named(_) | Ty::Field(..))
-            && self.table.assignable(expected, actual)
+            && self.table.assignable(expected.strip_nullable(), actual)
         {
             // A general value where a refinement of it is required: only a
             // named type or a field type is built from a value.
