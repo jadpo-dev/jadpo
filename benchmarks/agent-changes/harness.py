@@ -1179,7 +1179,7 @@ def probe_row(name, command, expect, marker, seen, effects):
                              seen) is not None
         ok = evidence and not effects.get(target, False)
     elif expect == 'blocked':
-        ok = 'example.com' in seen and 'blocked' in seen.lower() and not re.search(r'^reached', seen, re.M)
+        ok = re.search(r'example\.com', seen) is not None and 'blocked' in seen.lower() and not re.search(r'^reached', seen, re.M)
     else:
         ok = effects.get(command, False) if marker is None else marker in seen
     return {'name': name, 'command': command, 'expect': expect, 'ok': bool(ok),
