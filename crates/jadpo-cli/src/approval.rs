@@ -236,7 +236,7 @@ fn count(n: usize, one: &str) -> String {
 /// What the terminal shows of `report`.
 fn screen(report: &Report) -> Screen {
     let mut screen = Screen::new();
-    for block in crate::check::notice_blocks(&report.notice_list) {
+    for block in crate::check::notice_blocks(&report.notice_list, true) {
         screen.push(block);
     }
     if let Some(reason) = &report.not_compared {
