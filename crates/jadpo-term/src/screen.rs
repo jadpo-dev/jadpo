@@ -373,6 +373,13 @@ pub enum Block {
         location: Option<String>,
         next: String,
     },
+    /// Something a passing command tells an agent to carry on past and
+    /// pass to its user: `◆ notice  <subject>`, then the next step, owned by
+    /// the agent. A decision stops the agent; a notice never does.
+    Notice {
+        subject: String,
+        next: String,
+    },
     /// A live line saying what a session is waiting for and the keys that
     /// work: a muted label and facts, then each key in bold and its action
     /// muted (`watching 41 files  ctrl-c quit`). Plain output reads
@@ -956,6 +963,25 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             lines.extend(field(
                 "next",
                 vec![raw(next.as_str()), decider(Decider::Human)],
+                style,
+            ));
+            lines
+        }
+        Block::Notice { subject, next } => {
+            let mut lines = Vec::new();
+            if rich(style) {
+                let word = format!("{} notice", Symbol::Decision.text(style.symbols));
+                lines.push(vec![
+                    strong(Token::Decision, word),
+                    raw("  "),
+                    bold(subject.as_str()),
+                ]);
+            } else {
+                lines.push(vec![raw(format!("notice: {subject}"))]);
+            }
+            lines.extend(field(
+                "next",
+                vec![raw(next.as_str()), decider(Decider::Agent)],
                 style,
             ));
             lines

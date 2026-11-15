@@ -89,8 +89,8 @@ Every error has the same parts:
   line tells your coding agent to stop and ask you which fix you want,
   because the choice is yours to make (who can see data, what a setting
   holds). `(agent)` means your agent can make the fix itself. The marker
-  is guidance that agents follow: nothing stops an agent that ignores it
-  yet.
+  is guidance that agents follow. A passing check's `notice:` is no stop:
+  carry on, and tell your user what it said.
 - `rule:` is the error's name. Its page, on the site at
   `https://jadpo.dev/docs/errors/<rule>`, explains it; read it only when
   the reason and the next step aren't enough.
