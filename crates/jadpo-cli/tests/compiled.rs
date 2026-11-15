@@ -753,6 +753,11 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             .expect("it checks"),
         ),
         (
+            "ai calls kept".into(),
+            corpus_project(&crate::kept_ai_calls::files(), "compiled-kept-ai-calls")
+                .expect("it checks"),
+        ),
+        (
             "a person's export".into(),
             corpus_project(
                 &crate::personal_data_export::files(),
@@ -997,6 +1002,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "an erasure across stores",
         "an erasure logged in a store of files",
         "a person's export",
+        "ai calls kept",
         "a file's bytes deleted",
         "an audit trail",
         "a subject kept in several columns",

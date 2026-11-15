@@ -16,6 +16,11 @@
 //!   <url>/embeddings` with `model` and the texts as `input`, and reads
 //!   `data[i].embedding` in `index` order. It doesn't send `dimensions`: a
 //!   local model makes vectors of its own length, which `V`'s codec checks.
+//! - **A package's `embed:`** sends its texts `batch:` at a time (chunk
+//!   K6), one request after another within the call's one `timeout:`,
+//!   and joins their vectors in the texts' order, so the step, the rerun
+//!   and the budget see one call. A request that fails ends the call with
+//!   its failure, and nothing after it is sent.
 //! - **Its three failures**: `timed_out` (no answer within `timeout:`),
 //!   `too_long` (a text longer than the model takes, as OpenAI answers one,
 //!   or more than [`MOST_TEXTS`] texts, sent nowhere) and `over_budget`
@@ -152,10 +157,11 @@ async fn embedded(
     let Some(model) = model else {
         return refused(ctx);
     };
-    // Through the built-in driver's `<url>/embeddings`, or a package's
-    // `embed:` (chunk 5.5v7).
+    // Through the built-in driver's `<url>/embeddings`, every text in one
+    // request, or a package's `embed:` (chunk 5.5v7), its texts split
+    // into requests of its `batch:` (chunk K6), each with its range.
     let mut package = None;
-    let request = match &ai.plan.driver {
+    let requests: Vec<(Request, std::ops::Range<usize>)> = match &ai.plan.driver {
         AiDriver::OpenAiCompatible(url) => {
             let base = match url {
                 AiUrl::Written(text) => Some(text.clone()),
@@ -167,24 +173,27 @@ async fn embedded(
             let Some(base) = base.and_then(|base| crate::provider::sendable(&base)) else {
                 return refused(ctx);
             };
-            Request {
-                method: HttpMethod::Post,
-                url: format!("{}/embeddings", base.trim_end_matches('/')),
-                headers: vec![
-                    ("Accept".to_string(), "application/json".to_string()),
-                    ("Content-Type".to_string(), "application/json".to_string()),
-                    ("user-agent".to_string(), "jadpo".to_string()),
-                ],
-                body: Some(request_body(&model, &texts)),
-                raw_body: None,
-                timeout_ms: site.timeout_ms,
-                reading: Reading {
-                    error_code: Some("error.code".to_string()),
-                    ..Reading::default()
+            vec![(
+                Request {
+                    method: HttpMethod::Post,
+                    url: format!("{}/embeddings", base.trim_end_matches('/')),
+                    headers: vec![
+                        ("Accept".to_string(), "application/json".to_string()),
+                        ("Content-Type".to_string(), "application/json".to_string()),
+                        ("user-agent".to_string(), "jadpo".to_string()),
+                    ],
+                    body: Some(request_body(&model, &texts)),
+                    raw_body: None,
+                    timeout_ms: site.timeout_ms,
+                    reading: Reading {
+                        error_code: Some("error.code".to_string()),
+                        ..Reading::default()
+                    },
+                    // Set when the call takes it.
+                    repeatable: false,
                 },
-                // Set when the call takes it.
-                repeatable: false,
-            }
+                0..texts.len(),
+            )]
         }
         AiDriver::Package(filled) => {
             let (Some(embed), Some(providers)) = (&filled.embed, ai.providers) else {
@@ -202,17 +211,6 @@ async fn embedded(
             {
                 return broke(RuleKey::TooLong);
             }
-            let given = crate::ai::Given {
-                model: name,
-                max_output: 0,
-                messages: &[],
-                instructions_apart: false,
-                texts: &texts,
-                dimensions: site.dimensions,
-            };
-            let Some(json) = crate::ai::mapped_input(&embed.input, &given, settings) else {
-                return refused(ctx);
-            };
             // Resolved from its connection's source before the request
             // is made (chunk 10.3f).
             let credential = match crate::provider::credential_of(&providers, embed.called) {
@@ -220,29 +218,51 @@ async fn embedded(
                 Err(crate::provider::Unready::Misconfigured) => return refused(ctx),
                 Err(crate::provider::Unready::Fault(kind)) => return Done::Fault(kind),
             };
-            match crate::ai::package_request(
-                ctx,
-                &providers,
-                embed.called,
-                &json,
-                settings,
-                credential.as_ref(),
-                None,
-                OPERATION,
-            ) {
-                Ok(request) => {
-                    package = Some((embed, providers));
-                    Request {
-                        timeout_ms: site.timeout_ms,
-                        ..request
-                    }
+            let mut made = Vec::new();
+            for range in batches(texts.len(), embed.batch) {
+                let given = crate::ai::Given {
+                    model: name,
+                    max_output: 0,
+                    messages: &[],
+                    instructions_apart: false,
+                    texts: texts.get(range.clone()).unwrap_or_default(),
+                    dimensions: site.dimensions,
+                };
+                let Some(json) = crate::ai::mapped_input(&embed.input, &given, settings) else {
+                    return refused(ctx);
+                };
+                match crate::ai::package_request(
+                    ctx,
+                    &providers,
+                    embed.called,
+                    &json,
+                    settings,
+                    credential.as_ref(),
+                    None,
+                    OPERATION,
+                ) {
+                    Ok(request) => made.push((
+                        Request {
+                            timeout_ms: site.timeout_ms,
+                            ..request
+                        },
+                        range,
+                    )),
+                    Err(crate::provider::Unready::Misconfigured) => return refused(ctx),
+                    Err(crate::provider::Unready::Fault(kind)) => return Done::Fault(kind),
                 }
-                Err(crate::provider::Unready::Misconfigured) => return refused(ctx),
-                Err(crate::provider::Unready::Fault(kind)) => return Done::Fault(kind),
             }
+            package = Some((embed, providers));
+            made
         }
     };
-    let body = request.body.clone().unwrap_or_default();
+    // The step's request, and the digest a rerun is given its answer back
+    // by: every request's body, one line each.
+    let body = requests
+        .iter()
+        .map(|(request, _)| request.body.clone().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\n");
     let digest = jadpo_value::hash::sha256(body.as_bytes());
     // Given back on a rerun: from the record of the action's steps, or
     // from the first run's answers kept by the invocation.
@@ -285,10 +305,13 @@ async fn embedded(
     // What the call may use, taken from every limit before it is sent:
     // its texts, since an embedding answers with no tokens of its own
     // (area 21, "Budgets"; chunk 5.5v5).
-    let input: u64 = texts
-        .iter()
-        .map(|text| jadpo_std::ai::estimated_tokens(text))
-        .sum();
+    let tokens_of = |texts: &[String]| -> u64 {
+        texts
+            .iter()
+            .map(|text| jadpo_std::ai::estimated_tokens(text))
+            .sum()
+    };
+    let input = tokens_of(&texts);
     let asked = crate::ai_budget::Asked {
         prompt: OPERATION,
         model: &site.model,
@@ -309,76 +332,110 @@ async fn embedded(
             return Done::Failed(Box::new(crate::misconfigured()));
         }
     };
+    // One `timeout:` for the whole call, however many requests it takes.
     let began = ctx.host().monotonic_ms();
     let mut call = made.clone();
     call.step = place.step;
-    // The sends a provider's error asked for again, each charged what it
-    // sent (chunk 7.9c).
-    let mut sent_again = crate::ai_budget::Used::default();
+    let call = call;
     let logged: crate::outside::Log<'_> =
         &|ctx, call, answer| crate::ai::log(ctx, call, None, answer);
-    let sending = Sending {
-        retry: Retry::timed(began, site.timeout_ms),
-        form: Form::Whole,
-        max_concurrent: crate::ai::max_concurrent_of(ai),
-        resend: Some(crate::ai_budget::Resend {
-            taken: &mut taken,
-            used: &mut sent_again,
-            input,
-        }),
-        log: Some(logged),
-    };
-    let sent = crate::outside::send(ctx, &call.with_request(request), sending)
-        .await
-        .map(|sent| {
-            let source = sent.source;
-            (sent.whole(), source)
-        })
-        .map_err(crate::ai::unanswered);
-    let texts_used = |tokens: u64| {
-        let mut used = texts_used(tokens);
+    let several = requests.len() > 1;
+    // What each request sent used, the sends a provider's error asked for
+    // again included, each charged what it sent (chunk 7.9c).
+    let mut used = crate::ai_budget::Used::default();
+    // Each request's vectors, by their place among every text, and the
+    // tokens the answers say they used, while every one says.
+    let mut data: Vec<serde_json::Value> = Vec::new();
+    let mut reported: Option<u64> = Some(0);
+    let mut ended = None;
+    for (request, range) in requests {
+        let batch = texts.get(range.clone()).unwrap_or_default();
+        let sent_input = tokens_of(batch);
+        let mut sent_again = crate::ai_budget::Used::default();
+        let sending = Sending {
+            retry: Retry::timed(began, site.timeout_ms),
+            form: Form::Whole,
+            max_concurrent: crate::ai::max_concurrent_of(ai),
+            resend: Some(crate::ai_budget::Resend {
+                taken: &mut taken,
+                used: &mut sent_again,
+                input: sent_input,
+            }),
+            log: Some(logged),
+        };
+        let sent = crate::outside::send(ctx, &call.clone().with_request(request), sending)
+            .await
+            .map(|sent| {
+                let source = sent.source;
+                (sent.whole(), source)
+            })
+            .map_err(crate::ai::unanswered);
         used.add(sent_again);
-        used
-    };
-    let (answer, source) = match sent {
-        Ok(sent) => sent,
-        Err(done) => {
-            return crate::ai_budget::debited(ctx, taken, texts_used(input), done).await;
-        }
-    };
-    // A fake's own: the vectors made from each text and the seed.
-    let answer = match answer {
-        #[cfg(feature = "testing")]
-        Answer::Generated => {
-            let seed = ctx.env().seed.unwrap_or_default();
-            Answer::Wire(fake_answer(&texts, seed, site.dimensions))
-        }
-        other => other,
-    };
-    // A package's own answer, read where its `embed:` says and kept in the
-    // built-in driver's form; a fake answers in that form already.
-    let answer = match (answer, package) {
-        (Answer::Wire(text), Some((embed, providers)))
-            if matches!(source, Source::Live | Source::Sandbox) =>
-        {
-            match package_vectors(ctx, &providers, &ai.plan.connection, embed, &text) {
-                Ok(vectors) => Answer::Wire(vectors),
-                Err(done) => {
-                    return crate::ai_budget::debited(ctx, taken, texts_used(input), done).await;
+        let (answer, source) = match sent {
+            Ok(sent) => sent,
+            Err(done) => {
+                used.add(texts_used(sent_input));
+                return crate::ai_budget::debited(ctx, taken, used, done).await;
+            }
+        };
+        // A fake's own: the vectors made from each text and the seed.
+        let answer = match answer {
+            #[cfg(feature = "testing")]
+            Answer::Generated => {
+                let seed = ctx.env().seed.unwrap_or_default();
+                Answer::Wire(fake_answer(batch, seed, site.dimensions))
+            }
+            other => other,
+        };
+        // A package's own answer, read where its `embed:` says and kept in
+        // the built-in driver's form; a fake answers in that form already.
+        let answer = match (answer, &package) {
+            (Answer::Wire(text), Some((embed, providers)))
+                if matches!(source, Source::Live | Source::Sandbox) =>
+            {
+                match package_vectors(ctx, providers, &ai.plan.connection, embed, &text) {
+                    Ok(vectors) => Answer::Wire(vectors),
+                    Err(done) => {
+                        used.add(texts_used(sent_input));
+                        return crate::ai_budget::debited(ctx, taken, used, done).await;
+                    }
                 }
             }
+            (answer, _) => answer,
+        };
+        // Charged what the answer says it used, or what was sent.
+        let text = match answer {
+            Answer::Wire(text) => text,
+            other => {
+                used.add(texts_used(sent_input));
+                ended = Some(other);
+                break;
+            }
+        };
+        let json = serde_json::from_str::<serde_json::Value>(&text).ok();
+        let said = json
+            .as_ref()
+            .and_then(|json| json.get("usage")?.get("prompt_tokens")?.as_u64());
+        used.add(texts_used(said.unwrap_or(sent_input)));
+        reported = reported
+            .zip(said)
+            .map(|(sum, said)| sum.saturating_add(said));
+        if !several {
+            ended = Some(Answer::Wire(text));
+            break;
         }
-        (answer, _) => answer,
-    };
-    // Charged what the answer says it used, or what was sent.
-    let used = match &answer {
-        Answer::Wire(text) => serde_json::from_str::<serde_json::Value>(text)
-            .ok()
-            .and_then(|json| json.get("usage")?.get("prompt_tokens")?.as_u64())
-            .map_or_else(|| texts_used(input), texts_used),
-        _ => texts_used(input),
-    };
+        // An answer that isn't an embedding of its texts ends the call,
+        // and is read as the call's, which says so.
+        match json.as_ref().and_then(|json| placed(json, range.start)) {
+            Some(items) => data.extend(items),
+            None => {
+                ended = Some(Answer::Wire(text));
+                break;
+            }
+        }
+    }
     crate::ai_budget::debit(ctx, taken, used).await;
+    let answer = ended.unwrap_or_else(|| Answer::Wire(joined(data, reported)));
     let kept = match &answer {
         Answer::Wire(text) => Kept::Answer(text.clone()),
         Answer::TimedOut => Kept::Condition(RuleKey::TimedOut),
@@ -423,6 +480,56 @@ fn texts_used(input: u64) -> crate::ai_budget::Used {
         output: 0,
         cached: 0,
     }
+}
+
+/// The texts' ranges a package's `embed:` sends one request each, in
+/// order: `batch` texts each, the last the rest.
+fn batches(count: usize, batch: u32) -> Vec<std::ops::Range<usize>> {
+    let size = usize::try_from(batch).unwrap_or(usize::MAX).max(1);
+    (0..count)
+        .step_by(size)
+        .map(|start| start..count.min(start.saturating_add(size)))
+        .collect()
+}
+
+/// One request's embeddings answer, in the built-in driver's form, its
+/// items placed among every text the call sent: each `index` moved on by
+/// `from`, the place of the request's first text. `None` when it isn't
+/// one.
+fn placed(answer: &serde_json::Value, from: usize) -> Option<Vec<serde_json::Value>> {
+    answer
+        .get("data")?
+        .as_array()?
+        .iter()
+        .enumerate()
+        .map(|(at, item)| {
+            let index = item
+                .get("index")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(at as u64);
+            let vector = item.get("embedding").filter(|vector| vector.is_array())?;
+            Some(serde_json::json!({
+                "object": "embedding",
+                "index": index.saturating_add(from as u64),
+                "embedding": vector,
+            }))
+        })
+        .collect()
+}
+
+/// The answer of a call its package split across requests: every
+/// request's items, and the tokens they used when every answer says.
+fn joined(data: Vec<serde_json::Value>, reported: Option<u64>) -> Rc<str> {
+    let mut kept = serde_json::Map::new();
+    kept.insert("object".into(), "list".into());
+    kept.insert("data".into(), serde_json::Value::Array(data));
+    if let Some(tokens) = reported {
+        kept.insert(
+            "usage".into(),
+            serde_json::json!({ "prompt_tokens": tokens }),
+        );
+    }
+    Rc::from(serde_json::Value::Object(kept).to_string())
 }
 
 /// What the call gives when its answer is given back without asking
@@ -712,6 +819,32 @@ mod tests {
         assert_eq!(vectors_of("{}"), None);
         let made = embeddings_answer(&[vec![0.25, -1.0]]);
         assert_eq!(vectors_of(&made), Some(vec!["[0.25,-1.0]".to_string()]));
+    }
+
+    /// A package's texts go `batch:` at a time, in order, the last the
+    /// rest; each request's items are placed among every text.
+    #[test]
+    fn texts_are_split_into_the_packages_batches() {
+        assert_eq!(batches(5, 2), vec![0..2, 2..4, 4..5]);
+        assert_eq!(batches(4, 2), vec![0..2, 2..4]);
+        assert_eq!(batches(3, 2048), vec![0..3]);
+        assert_eq!(batches(1, 1), vec![0..1]);
+        let answer: serde_json::Value = serde_json::from_str(
+            r#"{"data":[{"index":1,"embedding":[0,1]},{"index":0,"embedding":[1,0]}]}"#,
+        )
+        .expect("json");
+        let items = placed(&answer, 4).expect("placed");
+        let made = joined(items, Some(6));
+        assert_eq!(
+            vectors_of(&made),
+            Some(vec!["[1,0]".to_string(), "[0,1]".to_string()])
+        );
+        assert!(made.contains(r#""index":5"#), "{made}");
+        assert!(made.contains(r#""prompt_tokens":6"#), "{made}");
+        assert_eq!(
+            placed(&serde_json::json!({"data": [{"index": 0}]}), 0),
+            None
+        );
     }
 
     /// The request is OpenAI's: the model and the texts, nothing else.

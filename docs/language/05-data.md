@@ -2514,6 +2514,10 @@ can't turn back into the secret.
   a user, when `on_first_sign_in:` decides an external token's first
   sign-in ([A person the app has not seen](08-identity.md#a-person-the-app-has-not-seen)).
   Only in the store the principal's user entity lives in.
+- `jadpo_ai_content`: each model call `ai: { keep_content: }` keeps, by
+  the caller it was made for, with its messages and answer sealed
+  ([Keeping prompts and answers](21-ai.md#keeping-prompts-and-answers)).
+  Beside the sessions, so it goes with them.
 
 ### The audit trail's table
 

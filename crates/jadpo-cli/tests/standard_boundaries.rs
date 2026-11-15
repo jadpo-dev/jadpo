@@ -757,6 +757,14 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "gives `clock.now` as an instant (chunk 7.0b)",
     ),
     (
+        "crates/jadpo-check/src/ai_keep.rs",
+        "checks `keep_content: { keep: }`, a duration read by the contract's own reader (chunk K6)",
+    ),
+    (
+        "crates/jadpo-plan/src/export.rs",
+        "names the types an export writes the kept calls' columns with, and the period they are kept for, as the wire writes a duration (chunk K6)",
+    ),
+    (
         "crates/jadpo-check/src/privacy.rs",
         "reads which field an address is kept in; finding a person by an `Email` is the language's rule, not encoding one",
     ),

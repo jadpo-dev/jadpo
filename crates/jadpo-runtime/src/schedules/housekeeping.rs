@@ -52,6 +52,7 @@ fn stores(plan: &SchedulesPlan) -> Vec<String> {
     stores.extend(plan.received.iter().cloned());
     stores.extend(plan.parked.iter().cloned());
     stores.extend(plan.ai_usage.iter().cloned());
+    stores.extend(plan.ai_content.iter().map(|(store, _)| store.clone()));
     stores.extend(plan.steps.iter().cloned());
     stores.sort();
     stores.dedup();
@@ -161,6 +162,7 @@ pub(super) async fn run(
             received,
             parked,
             ai_usage,
+            ai_content,
             answers,
             step_records,
             ..
@@ -200,6 +202,13 @@ pub(super) async fn run(
                 crate::ai_budget::OLD_DAYS,
                 now.saturating_sub(crate::ai_budget::KEPT_MS),
                 ai_usage,
+            ));
+        }
+        if let Some((_, keep_ms)) = plan.ai_content.as_ref().filter(|(kept, _)| *kept == store) {
+            tasks.push((
+                crate::ai_keep::OLD_CONTENT,
+                now.saturating_sub(i64::try_from(*keep_ms).unwrap_or(i64::MAX)),
+                ai_content,
             ));
         }
         if plan.steps.contains(&store) {

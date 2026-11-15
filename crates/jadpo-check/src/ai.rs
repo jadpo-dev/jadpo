@@ -11,7 +11,8 @@
 //!   the length of every embedding (chunk 5.5v4), `limits:` (chunk 5.5v5)
 //!   and `personal_data: { allowed: }`, the personal-data categories the
 //!   model may be sent (chunk 5.5v5b, [`crate::ai_personal`]).
-//!   `keep_content:` is `toolchain.not_built_yet`. A package's connection
+//!   `keep_content:` the prompts whose calls are kept (chunk K6,
+//!   [`crate::ai_keep`]). A package's connection
 //!   fills `ai` through its `provides/ai.jadpo` (chunks 5.5v3b and 5.5v7,
 //!   [`crate::ai_mapping`]); `prices:` sets a model's price over its
 //!   package's (chunk 5.5v7).
@@ -84,6 +85,8 @@ pub struct AiSettings {
     pub allowed: Vec<String>,
     /// `prices:`, the prices it sets for its models (chunk 5.5v7).
     pub prices: Vec<crate::ai_limits::PriceRead>,
+    /// `keep_content:` (chunk K6), when it is written.
+    pub keep: Option<crate::ai_keep::KeepRead>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -309,6 +312,17 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                     );
                     continue;
                 }
+                if word == jadpo_std::ai::KEEP_CONTENT && given.insert(word.clone()) {
+                    out.keep = Some(crate::ai_keep::read(
+                        db,
+                        project,
+                        &found.path,
+                        key_span,
+                        &entry,
+                        &mut out.problems,
+                    ));
+                    continue;
+                }
                 if word == jadpo_std::ai::PRICES && given.insert(word.clone()) {
                     out.prices = crate::ai_limits::prices(
                         db,
@@ -319,13 +333,20 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                     );
                     continue;
                 }
-                if !jadpo_std::ai::KEYS.contains(&word.as_str()) && word != jadpo_std::ai::LIMITS {
+                if !jadpo_std::ai::KEYS.contains(&word.as_str())
+                    && word != jadpo_std::ai::LIMITS
+                    && word != jadpo_std::ai::KEEP_CONTENT
+                {
                     let near = nearest(
                         &word,
                         jadpo_std::ai::KEYS
                             .iter()
                             .copied()
-                            .chain([jadpo_std::ai::LIMITS, jadpo_std::ai::PRICES])
+                            .chain([
+                                jadpo_std::ai::LIMITS,
+                                jadpo_std::ai::PRICES,
+                                jadpo_std::ai::KEEP_CONTENT,
+                            ])
                             .chain(jadpo_std::ai::LATER_KEYS.iter().map(|(key, _)| *key)),
                     );
                     let mut problem = invalid(
@@ -583,6 +604,7 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
 pub fn ai_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let mut out = model_connections(db, project).problems.clone();
     out.extend(settings(db, project).problems.iter().cloned());
+    out.extend(crate::ai_keep::keep_problems(db, project).iter().cloned());
     out
 }
 

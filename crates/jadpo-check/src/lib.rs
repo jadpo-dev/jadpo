@@ -11,6 +11,7 @@
 
 pub mod acceptances;
 pub mod ai;
+pub mod ai_keep;
 pub mod ai_limits;
 pub mod ai_mapping;
 pub mod ai_personal;

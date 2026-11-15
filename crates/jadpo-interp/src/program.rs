@@ -523,11 +523,13 @@ impl Program {
     }
 
     /// The program's `ai:` with no limits: a developer's own call, outside
-    /// any running app, which no store counts (chunk 5.5v5). `None` for a
+    /// any running app, which no store counts (chunk 5.5v5) and none keeps
+    /// (chunk K6). `None` for a
     /// program that asks no model.
     fn unlimited(&self) -> Option<jadpo_std::ai::AiPlan> {
         Some(jadpo_std::ai::AiPlan {
             limits: None,
+            keep: None,
             ..self.plan().ai()?.clone()
         })
     }

@@ -52,6 +52,11 @@ pub struct SchedulesPlan {
     /// (`jadpo_ai_usage`), whose old days the tick deletes (area 21,
     /// "Budgets"; chunk 5.5v5); `None` when the app asks no model.
     pub ai_usage: Option<String>,
+    /// The store the prompts and answers `ai: { keep_content: }` keeps are
+    /// in (`jadpo_ai_content`), with how long each is kept, after which
+    /// the tick deletes it (area 21, "Prompts and answers in logs"; chunk
+    /// K6); `None` when nothing is kept.
+    pub ai_content: Option<(String, u64)>,
     /// What ticks a native deployable, `schedules: { trigger: }` (area 12,
     /// question 16; chunk 8.2g): the server's own timer, or another
     /// scheduler running its `tick` command. `jadpo dev` ticks on its

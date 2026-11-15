@@ -531,6 +531,9 @@ async fn generated(
         Err(crate::ai_budget::Refused::Misconfigured) => return misconfigured(ctx),
     };
     let mut used = crate::ai_budget::Used::default();
+    // The last answer a model gave, its text if it had any, for
+    // `keep_content:` (chunk K6).
+    let mut answered: Option<Option<String>> = None;
     let attempts = if ended.is_some() {
         0
     } else {
@@ -702,6 +705,7 @@ async fn generated(
                 .await;
             }
         };
+        answered = Some(reply.content.clone());
         // What the provider says the attempt used, or the estimate of
         // what was sent and answered.
         used.add(reply.usage.unwrap_or(crate::ai_budget::Used {
@@ -749,6 +753,23 @@ async fn generated(
             },
         )
     });
+    // A call a model answered is kept, once, where `keep_content:` lists
+    // its prompt (chunk K6); one given back on a rerun never comes here.
+    if let (Some(keep), Some(answer)) = (&ai.plan.keep, &answered) {
+        let call = crate::ai_keep::Call {
+            prompt: &site.prompt,
+            model: &asked.model,
+            messages: &messages,
+            answer: answer.as_deref(),
+        };
+        match crate::ai_keep::keep(ctx, keep, call).await {
+            Ok(()) => {}
+            Err(crate::ai_keep::Unkept::Unavailable) => {
+                return Done::Failed(Box::new(crate::unavailable()));
+            }
+            Err(crate::ai_keep::Unkept::Defect(what)) => return defect(what),
+        }
+    }
     if let Err(refused) = crate::outside::keep(ctx, place, kept).await {
         return unanswered(refused);
     }
@@ -1801,6 +1822,7 @@ mod tests {
             schema: SchemaMode::StrictSubset,
             limits: None,
             prices: Vec::new(),
+            keep: None,
         };
         let prompts = PromptPlan {
             entries: vec![PromptEntry {
@@ -1952,6 +1974,7 @@ mod tests {
                 per_caller_per_day: None,
             }),
             prices: Vec::new(),
+            keep: None,
         };
         let prompts = PromptPlan {
             entries: vec![PromptEntry {

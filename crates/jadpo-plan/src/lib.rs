@@ -555,6 +555,21 @@ fn privacy_steps(
     })
 }
 
+/// The store the calls `ai: { keep_content: }` keeps are in, once it
+/// asks for their table (chunk K6).
+fn kept_in(db: &dyn Db, project: Project) -> Option<String> {
+    let schema = jadpo_check::data::schema(db, project);
+    schema
+        .stores
+        .iter()
+        .find(|(_, store)| {
+            store
+                .tables
+                .contains_key(jadpo_std::system::AI_CONTENT.table)
+        })
+        .map(|(name, _)| name.clone())
+}
+
 /// The schedule table (area 12, chunk 6.2): each schedule that reads
 /// cleanly, with the callable it runs, where their state is kept, and the
 /// stores holding the runtime's own tables, which the tick sweeps.
@@ -627,6 +642,14 @@ fn schedules_plan(
         steps: holding(STEP_RECORDS.table).collect(),
         parked: holding(jadpo_std::system::PARKED_MESSAGES.table).next(),
         ai_usage: holding(jadpo_std::system::AI_USAGE.table).next(),
+        // The calls `ai: { keep_content: }` keeps, deleted at `keep:`
+        // (chunk K6).
+        ai_content: holding(jadpo_std::system::AI_CONTENT.table)
+            .next()
+            .and_then(|store| {
+                let keep = jadpo_check::ai::settings(db, project).keep.as_ref()?;
+                Some((store, keep.keep_ms?))
+            }),
         trigger: jadpo_check::schedules::schedules_settings(db, project).trigger,
     }
 }
@@ -1188,7 +1211,7 @@ impl Plan {
         // goes wherever a sealed field is read or written, which only a
         // project keeping none has no need of (area 15; chunk P9).
         let reseals = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
-            purge::reseals(model)
+            purge::reseals(model, kept_in(db, project).as_deref())
         } else {
             Vec::new()
         };
@@ -1823,6 +1846,15 @@ impl Plan {
                     })
                 })
                 .collect();
+            // The prompts whose calls are kept, and where (chunk K6).
+            let keep = kept_in(db, project).and_then(|store| {
+                let read = settings.keep.as_ref()?;
+                Some(jadpo_std::ai::AiKeep {
+                    prompts: read.prompts.clone(),
+                    store,
+                    keep_ms: read.keep_ms?,
+                })
+            });
             settings.connection.as_ref().and_then(|name| {
                 let models = settings
                     .models
@@ -1846,6 +1878,7 @@ impl Plan {
                         schema: jadpo_std::ai::SchemaMode::StrictSubset,
                         limits,
                         prices,
+                        keep: keep.clone(),
                     });
                 }
                 // A package filling `ai` (chunk 5.5v3b).
@@ -1866,6 +1899,7 @@ impl Plan {
                     schema: mapping.schema,
                     limits,
                     prices,
+                    keep: keep.clone(),
                 })
             })
         };
