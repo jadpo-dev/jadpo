@@ -312,6 +312,8 @@ pub(crate) struct Sorted {
     pub(crate) field: String,
     /// Its place among the field's columns.
     pub(crate) part: u32,
+    /// Whether the field may be `none`, which sorts last either way.
+    pub(crate) nullable: bool,
 }
 
 /// How a later column of a compound standard type (`Money`, area 19) is
@@ -1184,6 +1186,7 @@ impl Planner<'_> {
                 param,
                 collate: column.collate,
                 descending: column.descending,
+                nullable: column.nullable,
             });
         }
         text::after(&parts)
@@ -1209,6 +1212,7 @@ impl Planner<'_> {
                             descending: order.descending,
                             field: field.name.clone(),
                             part: at,
+                            nullable: field.nullable,
                         });
                     }
                 }
@@ -1219,6 +1223,7 @@ impl Planner<'_> {
                     descending: order.descending,
                     field: field.name.clone(),
                     part: 0,
+                    nullable: field.nullable,
                 }),
             }
         }
@@ -1233,6 +1238,7 @@ impl Planner<'_> {
                 column: &column.column,
                 collate: column.collate,
                 descending: column.descending,
+                nullable: column.nullable,
             })
             .collect()
     }

@@ -21,10 +21,10 @@ WHERE "id" = $1
     WHERE "board_id" = "key"."id"
       AND ("published_at" IS NOT NULL AND "published_at" <= $2)
       AND FALSE
-    ORDER BY "published_at" DESC, "id" DESC
+    ORDER BY "published_at" DESC NULLS LAST, "id" DESC
     LIMIT 20
   ) AS "row"
-  ORDER BY "key"."id", "row"."published_at" DESC, "row"."id" DESC
+  ORDER BY "key"."id", "row"."published_at" DESC NULLS LAST, "row"."id" DESC
   -- $1: keys as Array(Uuid)
   -- $2: clock.now as Timestamp
   -- columns: uuid, uuid, enum Stage, instant

@@ -102,6 +102,18 @@ const FILES: &[(&str, &str)] = &[
         "use planning/entities { Task }\nuse planning/types { Filter, TaskView }\n\n/// Every task, a page at a time.\nquery tasks_page(filter: Filter) -> Page<TaskView> {\n    from: Task\n    where_present: Task.status == filter.status\n    order: [Task.title desc]\n    page: {\n        size: filter.size\n        after: filter.after\n    }\n}\n",
     ),
     (
+        "domains/planning/queries/due_page.jadpo",
+        "use planning/entities { Task }\nuse planning/types { Filter, TaskView }\n\n/// Tasks soonest due first, a page at a time, undated last.\nquery due_page(filter: Filter) -> Page<TaskView> {\n    from: Task\n    order: [Task.due_on asc, Task.title asc]\n    page: {\n        size: filter.size\n        after: filter.after\n    }\n}\n",
+    ),
+    (
+        "domains/planning/queries/due_page_desc.jadpo",
+        "use planning/entities { Task }\nuse planning/types { Filter, TaskView }\n\n/// Tasks latest due first, a page at a time, undated last.\nquery due_page_desc(filter: Filter) -> Page<TaskView> {\n    from: Task\n    order: [Task.due_on desc, Task.title asc]\n    page: {\n        size: filter.size\n        after: filter.after\n    }\n}\n",
+    ),
+    (
+        "domains/planning/queries/due_list_desc.jadpo",
+        "use planning/entities { Task }\nuse planning/types { TaskView }\n\n/// Tasks latest due first, undated last.\nquery due_list_desc() -> List<TaskView> {\n    from: Task\n    order: [Task.due_on desc, Task.title asc]\n    limit: 10\n}\n",
+    ),
+    (
         "domains/planning/queries/other_page.jadpo",
         "use planning/entities { Task }\nuse planning/types { Filter, TaskView }\n\n/// Every task by status, a page at a time.\nquery other_page(filter: Filter) -> Page<TaskView> {\n    from: Task\n    order: [Task.title asc]\n    page: {\n        size: filter.size\n        after: filter.after\n    }\n}\n",
     ),
@@ -139,7 +151,7 @@ fn queries_read_what_area_6_says() {
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("7 passed"), "{}", tested.stdout);
+    assert!(tested.stdout.contains("9 passed"), "{}", tested.stdout);
 }
 
 #[test]
@@ -166,7 +178,7 @@ const TESTS_FILE: &str = "use planning/entities { Project }
 use planning/types { Board, Filter, Status, TaskView }
 use planning/failures { ProjectNotFound }
 use planning/actions { add_and_count, find_project }
-use planning/queries { boards, project_board, tasks_not_on, tasks_page }
+use planning/queries { boards, due_list_desc, due_page, due_page_desc, project_board, tasks_not_on, tasks_page }
 use planning/fixtures { two_projects }
 
 test \"not keeps a field that is none\" {
@@ -192,6 +204,30 @@ test \"pages follow each other, a filter left out applying to nothing\" {
     assert last.next == none
     var done: Page<TaskView> = tasks_page(Filter { status: Status.done })
     assert list.map(done.items, task -> task.title) == [\"Plant\"]
+}
+
+test \"a page ordered by an optional field puts none last and pages through it\" {
+    assert list.count(two_projects().tasks) == 5
+    var first: Page<TaskView> = due_page(Filter {})
+    assert list.map(first.items, task -> task.title) == [\"Dig\", \"Plant\"]
+    var second: Page<TaskView> = due_page(Filter { after: first.next })
+    assert list.map(second.items, task -> task.title) == [\"Paint\", \"Sweep\"]
+    var last: Page<TaskView> = due_page(Filter { after: second.next })
+    assert list.map(last.items, task -> task.title) == [\"Water\"]
+    assert last.next == none
+}
+
+test \"descending, none still comes last, on a page and in a list\" {
+    assert list.count(two_projects().tasks) == 5
+    var first: Page<TaskView> = due_page_desc(Filter {})
+    assert list.map(first.items, task -> task.title) == [\"Paint\", \"Plant\"]
+    var second: Page<TaskView> = due_page_desc(Filter { after: first.next })
+    assert list.map(second.items, task -> task.title) == [\"Dig\", \"Sweep\"]
+    var last: Page<TaskView> = due_page_desc(Filter { after: second.next })
+    assert list.map(last.items, task -> task.title) == [\"Water\"]
+    assert last.next == none
+    var all: List<TaskView> = due_list_desc()
+    assert list.map(all, task -> task.title) == [\"Paint\", \"Plant\", \"Dig\", \"Sweep\", \"Water\"]
 }
 
 test \"each record's list is ordered and limited on its own\" {

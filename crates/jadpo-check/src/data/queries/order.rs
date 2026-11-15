@@ -141,15 +141,21 @@ impl Reader<'_> {
                 );
                 continue;
             }
-            if page && field.nullable {
+            // An optional field sorts with `none` last, either way, and a
+            // page's cursor holds it (area 6, "Pages"); one kept in several
+            // columns has no single value for the cursor to hold.
+            if page && field.nullable && field.compound.is_some() {
                 self.out.push(
                     Diagnostic::new(
                         &rule::QUERY_ORDER_FIELD,
-                        format!("A page can't be ordered by `{written}`, which may be `none`"),
+                        format!("A page can't be ordered by `{written}`, an optional value kept in several columns"),
                     )
-                    .at(item_span.clone(), "may be `none`")
-                    .reason("The next page starts after the last record's values of the order fields, and a record without a value has no place to start after.")
-                    .next("Order the page by a required field"),
+                    .at(item_span.clone(), "optional, in several columns")
+                    .reason(format!(
+                        "A page sorts an optional field with `none` last, and its cursor holds the field's one value; `{written}` is `{}`, kept in several columns, which a cursor can't hold as one value that may be `none`.",
+                        field.ty
+                    ))
+                    .next("Order the page by a field kept in one column, or by a required one"),
                 );
                 continue;
             }
