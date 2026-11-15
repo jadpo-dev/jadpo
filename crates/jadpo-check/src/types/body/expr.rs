@@ -1072,6 +1072,23 @@ impl Body<'_> {
         });
     }
 
+    /// `value.field` where `value` may be `none`.
+    fn nullable_selection(&mut self, value: &str, field: &str, receiver: &Ty, span: Span) {
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_NULLABLE_SELECTION,
+                format!("`{value}` may be `none`, so `{field}` can't be read yet"),
+            )
+            .at(span, "may be `none`")
+            .reason(format!(
+                "`{value}` is `{receiver}`; a field is read once `match` has found a value."
+            ))
+            .next(format!(
+                "Match on `{value}` and read `{field}` inside `some(...)`"
+            )),
+        );
+    }
+
     /// The object a value's fields come from, following field types to
     /// their declared types.
     pub(super) fn object_of(&self, ty: &Ty) -> Option<String> {
@@ -1288,6 +1305,20 @@ impl Body<'_> {
             );
             return Ty::Error;
         }
+        // Whatever a value holds, a field is read through an optional one
+        // only once `match` has found it: a `Page<T>?`'s too, as a route
+        // test's `response.output` is.
+        if !receiver.has_error()
+            && self.table.is_nullable(receiver)
+            && matches!(receiver.strip_nullable(), Ty::Opaque(..))
+        {
+            let value = node
+                .expr()
+                .map(|e| tree::written(e.syntax()))
+                .unwrap_or_default();
+            self.nullable_selection(&value, &field, receiver, span);
+            return Ty::Error;
+        }
         // A type a later area defines has fields this check doesn't know yet.
         if receiver.has_error() || matches!(receiver.strip_nullable(), Ty::Opaque(..) | Ty::Var(_))
         {
@@ -1308,19 +1339,7 @@ impl Body<'_> {
             .map(|e| tree::written(e.syntax()))
             .unwrap_or_default();
         if self.table.is_nullable(receiver) {
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TYPE_NULLABLE_SELECTION,
-                    format!("`{value}` may be `none`, so `{field}` can't be read yet"),
-                )
-                .at(span, "may be `none`")
-                .reason(format!(
-                    "`{value}` is `{receiver}`; a field is read once `match` has found a value."
-                ))
-                .next(format!(
-                    "Match on `{value}` and read `{field}` inside `some(...)`"
-                )),
-            );
+            self.nullable_selection(&value, &field, receiver, span);
             return Ty::Error;
         }
         let Some(host) = self.object_of(receiver) else {
