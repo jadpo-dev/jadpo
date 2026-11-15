@@ -244,6 +244,9 @@ class Codex(unittest.TestCase):
                 self.assertFalse((folder / 'codex-home').exists())
         environment = harness.codex_environment(self.folder)
         self.assertEqual(environment['CODEX_HOME'], str(self.folder / 'codex-home'))
+        # zsh writes a here document under TMPPREFIX, not TMPDIR, and the
+        # sandbox refuses /tmp, its default.
+        self.assertEqual(environment['TMPPREFIX'], str(self.folder / 'tmp/zsh'))
         self.assertTrue(all(value.startswith(str(self.folder)) for value in environment.values()))
 
     def test_a_refreshed_login_goes_back_and_the_copy_does_not_stay(self):
