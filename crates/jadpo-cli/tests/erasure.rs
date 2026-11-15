@@ -1169,6 +1169,7 @@ async fn outcome_as(
         session: None,
         sign_in: None,
         multi_factor: false,
+        scopes: None,
     }));
     program.run(&mut ctx, id, args).await
 }
@@ -1411,6 +1412,7 @@ async fn done_on(
             session: None,
             sign_in: None,
             multi_factor: false,
+            scopes: None,
         }));
     }
     let outcome = program.run(&mut ctx, id, args).await;

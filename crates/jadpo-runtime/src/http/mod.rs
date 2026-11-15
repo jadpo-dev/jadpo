@@ -1115,9 +1115,15 @@ async fn run_route(
             return limited;
         }
     }
+    // A token narrowed to its scopes keeps its keys apart from its
+    // person's other credentials', so a repeat never answers it with a
+    // response they were given (area 9, "Scopes"; chunk N2).
     let scope = caller.as_ref().map_or_else(
         || idempotency::ANONYMOUS.to_string(),
-        |caller| caller.key.clone(),
+        |caller| match &caller.scopes {
+            Some(scopes) => format!("{} scopes {}", caller.key, scopes.join(" ")),
+            None => caller.key.clone(),
+        },
     );
     let mut response = match (exchanged, &route.run) {
         // The exchange runs nothing: the key's read signed its token.
@@ -1463,6 +1469,12 @@ async fn run_with_caller(
     }
     ctx.set_request_id(request_id);
     let claimed = Cell::new(false);
+    // The revision the request carries, which skips what a cache kept
+    // before it (area 7, "Write revisions").
+    let revision = route
+        .cache
+        .as_ref()
+        .and_then(|_| crate::caches::revision_of(request));
     // What was left for after the response before this route ran: only
     // its own action's work is waited for (chunk 6.3).
     let earlier = ctx.deferred().len();
@@ -1571,8 +1583,15 @@ async fn run_with_caller(
                     crate::FaultKind::Defect("an exchange with no key to trade".into()),
                     Frame::ENTRY,
                 )),
-                Run::Query(plan) => {
-                    match crate::store(
+                // A display read, served from its query's cache when it
+                // declares one (area 6, "Where a read comes from"; chunk
+                // Q9). An answer sent as raw bytes or holding a file's
+                // signed link is never kept.
+                Run::Query(plan) => match &route.cache {
+                    Some(cache) if route.sends.is_none() && !route.links => {
+                        crate::caches::read(ctx, app, route, (cache, plan), &args, revision).await
+                    }
+                    _ => match crate::store(
                         ctx,
                         StoreOp::Read(plan),
                         app.failures,
@@ -1586,8 +1605,8 @@ async fn run_with_caller(
                         Stored::Failed(failure) => Outcome::Failed(failure),
                         Stored::Conflict { cause, .. } => Outcome::Failed(cause),
                         Stored::Fault(fault) => Outcome::Fault(fault),
-                    }
-                }
+                    },
+                },
             })
         };
         let outcome = match race(work, &mut deadline).await {
@@ -1790,6 +1809,18 @@ async fn run_with_caller(
         // unless what ran started or ended the session it came with.
         if let (None, Some(reissued), Some(plan)) = (&session, &reissued, &app.table.identity) {
             response.headers.extend(identity::renewal(plan, reissued));
+        }
+        // A write's revision, which a client sends back to skip what a
+        // cache kept before it (area 7, "Write revisions"; chunk Q9).
+        if let Some(keep_ms) = app.table.revisions
+            && route.method != HttpMethod::Get
+            && matches!(route.run, Run::Action(_))
+            && (200..300).contains(&response.status)
+        {
+            response.headers.extend(crate::caches::revision_headers(
+                crate::steps::wall(ctx),
+                keep_ms,
+            ));
         }
         if keep.is_none()
             && let Some(guard) = guard
@@ -2222,6 +2253,12 @@ pub async fn session(
         .plan()
         .routes
         .and_then(|routes| routes.identity.as_ref());
+    // A token narrowed to its scopes never starts a session or issues an
+    // API token, which would carry the person's whole authority: scopes
+    // only ever take away (area 9, "Scopes"; chunk N2).
+    if matches!(op, SessionOp::Start | SessionOp::IssueToken) && ctx.narrowed().is_some() {
+        return Stored::Failed(ctx.fail(crate::read::not_permitted(), at));
+    }
     let stored = match (op, args) {
         // Magic links' operations, for the application's own routes (area
         // 8, "Writing the routes yourself"; chunk 7.3b3), through the code
@@ -2340,12 +2377,16 @@ pub struct RequestValues<'a> {
     pub caller: Option<&'a Value>,
     /// By magic link with one factor unless the request says otherwise.
     pub by: identity::SignedInBy,
+    /// `scopes:`: the scope-tokens the user's external token carries
+    /// (area 9, "Scopes"; chunk N2); given, the user signs in with an
+    /// external token, narrowed to them.
+    pub scopes: Option<Vec<String>>,
 }
 
 impl<'a> RequestValues<'a> {
-    /// `values` split as `[keyed, signed, way, strong]` say: each flag
-    /// set has its value, from the last back.
-    pub fn split(values: &'a [Value], [keyed, signed, way, strong]: [bool; 4]) -> Self {
+    /// `values` split as `[keyed, signed, way, strong, scoped]` say: each
+    /// flag set has its value, from the last back.
+    pub fn split(values: &'a [Value], [keyed, signed, way, strong, scoped]: [bool; 5]) -> Self {
         let mut rest = values;
         let mut last = |given: bool| -> Option<&'a Value> {
             if !given {
@@ -2355,6 +2396,15 @@ impl<'a> RequestValues<'a> {
             rest = before;
             Some(value)
         };
+        // The scope-tokens, joined by spaces as the checker gave them.
+        let scopes = last(scoped).map(|value| match value {
+            Value::Text(text) => text
+                .split(' ')
+                .filter(|token| !token.is_empty())
+                .map(str::to_string)
+                .collect(),
+            _ => Vec::new(),
+        });
         let strength = last(strong);
         let sign_in = last(way);
         let caller = last(signed);
@@ -2376,6 +2426,7 @@ impl<'a> RequestValues<'a> {
             key,
             caller,
             by,
+            scopes,
         }
     }
 }
@@ -2399,8 +2450,11 @@ pub async fn route_test(
         key,
         caller,
         by,
+        scopes,
     } = sent;
-    let Some(mut request) = test_request(ctx, app, route, args, key, caller, &by).await? else {
+    let Some(mut request) =
+        test_request(ctx, app, route, args, key, caller, &by, scopes.as_deref()).await?
+    else {
         return Ok(Value::None);
     };
     // A route with `confirm:`, confirmed with the test passkey
@@ -2437,8 +2491,10 @@ pub async fn route_test(
 /// as a real client would: `key`, the one the test gives, or a fresh one
 /// from the test's seed (chunk 4.7). With `caller` (`as:`), it signs in
 /// through the application's real authentication
-/// ([`identity::test_credentials`]). `None` when `route` isn't in the
-/// table.
+/// ([`identity::test_credentials`]), with an external token carrying
+/// `scopes` when it gives them (chunk N2). `None` when `route` isn't in
+/// the table.
+#[allow(clippy::too_many_arguments)]
 pub async fn test_request(
     ctx: &mut Ctx<'_>,
     app: &App<'_>,
@@ -2447,6 +2503,7 @@ pub async fn test_request(
     key: Option<&Value>,
     caller: Option<&Value>,
     by: &identity::SignedInBy,
+    scopes: Option<&[String]>,
 ) -> Result<Option<Request>, Box<Fault>> {
     let Some(mut request) = written_request(app, route, args) else {
         return Ok(None);
@@ -2469,7 +2526,8 @@ pub async fn test_request(
     let started = ctx.started();
     if let Some(caller) = caller {
         let headers =
-            identity::test_credentials(ctx, app, started.auth(), route, caller, by).await?;
+            identity::test_credentials_scoped(ctx, app, started.auth(), route, caller, by, scopes)
+                .await?;
         request.headers.extend(headers);
     }
     // The app's own site, as a browser's request from it says, so a route

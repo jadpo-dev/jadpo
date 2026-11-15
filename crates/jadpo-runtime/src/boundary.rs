@@ -127,6 +127,9 @@ pub(crate) struct Boundary {
     /// erasing"; chunk B3): then, in a store keeping the record of held
     /// files, the commit leaves the events that delete their bytes.
     releases: bool,
+    /// The cached entries its writes may have changed, cleared once it
+    /// commits (area 5, "Caches"; chunk Q9).
+    clears: Vec<jadpo_std::caches::Clear>,
 }
 
 impl Boundary {
@@ -430,6 +433,18 @@ impl Boundary {
 
     pub(crate) fn take_transaction(&mut self) -> Option<Box<dyn Transaction>> {
         self.transaction.take()
+    }
+
+    /// Keeps what a write may have changed in a cache, to clear once it
+    /// commits.
+    pub(crate) fn clearing(&mut self, clears: &[jadpo_std::caches::Clear]) {
+        self.clears.extend(clears.iter().cloned());
+    }
+
+    /// What its writes may have changed in a cache, to clear once it
+    /// commits.
+    pub(crate) fn take_clears(&mut self) -> Vec<jadpo_std::caches::Clear> {
+        std::mem::take(&mut self.clears)
     }
 
     /// Keeps a person it erased, to report only once it commits.
@@ -740,6 +755,7 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
                 session: boundary.session,
                 issued: boundary.issued,
                 binding: boundary.binding,
+                clears: boundary.clears,
             });
             return outcome;
         }
@@ -770,6 +786,7 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
                 confirm_erased(ctx, boundary.erased);
                 ctx.note_emitted(boundary.emitted);
                 committed(ctx, boundary.sealed);
+                cleared(ctx, &boundary.clears).await;
                 return outcome;
             }
             Ended::RolledBack => return outcome,
@@ -809,6 +826,17 @@ pub(crate) fn confirm_erased(ctx: &mut Ctx<'_>, erased: Vec<Erased>) {
         ctx.host().log("privacy.erased", erased.fields);
         ctx.note_erased(erased.entity, erased.id);
     }
+}
+
+/// Clears what a committed action's writes may have changed in a cache
+/// (area 5, "The running app keeps caches current"; chunk Q9), before its
+/// response goes.
+pub(crate) async fn cleared(ctx: &Ctx<'_>, clears: &[jadpo_std::caches::Clear]) {
+    if clears.is_empty() {
+        return;
+    }
+    let now = crate::steps::wall(ctx);
+    crate::caches::clear(ctx.host(), &crate::caches::merged(clears), now).await;
 }
 
 /// Leaves the deliveries of what a committed action emitted for the
@@ -1022,6 +1050,7 @@ pub async fn commit_held(
         kept,
         erased,
         emitted,
+        clears,
         ..
     } = held;
     if let Some((store, sql, params)) = then {
@@ -1054,6 +1083,7 @@ pub async fn commit_held(
         confirm_erased(ctx, erased);
         ctx.note_emitted(emitted);
         committed(ctx, deliveries);
+        cleared(ctx, &clears).await;
         return Ok(());
     }
     if let Some(open) = transaction {
@@ -1063,6 +1093,7 @@ pub async fn commit_held(
     confirm_erased(ctx, erased);
     ctx.note_emitted(emitted);
     committed(ctx, deliveries);
+    cleared(ctx, &clears).await;
     Ok(())
 }
 
@@ -1641,6 +1672,7 @@ mod tests {
                 session: None,
                 sign_in: None,
                 multi_factor: false,
+                scopes: None,
             }));
         };
         assert_eq!(
@@ -1680,6 +1712,69 @@ mod tests {
     }
 
     #[test]
+    fn a_narrowed_token_passes_a_gate_only_with_a_scope_it_asks_for() {
+        let ran = |gate: Gate, scopes: Option<Vec<String>>| {
+            let host = Recorded::new(0);
+            let mut body = Write::new(true, ok);
+            body.gate = Some(gate);
+            let places = Places::new();
+            let mut ctx = Ctx::new(&places, &host, Env::default());
+            ctx.set_caller(Some(crate::Caller {
+                value: Value::Unit,
+                key: "user 1".into(),
+                session: None,
+                sign_in: None,
+                multi_factor: false,
+                scopes,
+            }));
+            let outcome = block_on(action(&mut ctx, &mut body)).expect("nothing waits");
+            let code = match outcome {
+                Outcome::Failed(failure) => Some(failure.code),
+                _ => None,
+            };
+            (code, body.runs)
+        };
+        let gate = |callers: Callers, scopes: Option<Vec<&str>>| Gate {
+            callers,
+            system: false,
+            scopes: scopes.map(|scopes| scopes.into_iter().map(str::to_string).collect()),
+        };
+        let carrying = |scopes: &[&str]| Some(scopes.iter().map(|s| s.to_string()).collect());
+        let refused = (Some("not_permitted".to_string()), 0);
+        // A listed action, which no scope names, refuses every narrowed
+        // token, even one anyone at all may call, and lets in the rest.
+        for callers in [Callers::Anyone, Callers::Signed] {
+            assert_eq!(
+                ran(
+                    gate(callers.clone(), Some(Vec::new())),
+                    carrying(&["notes:read"])
+                ),
+                refused
+            );
+            assert_eq!(
+                ran(gate(callers.clone(), Some(Vec::new())), None),
+                (None, 1)
+            );
+        }
+        // An upload slot's: one of the scopes it asks for, compared whole.
+        let slot = || gate(Callers::Signed, Some(vec!["notes:write", "notes:create"]));
+        assert_eq!(ran(slot(), carrying(&["notes:create"])), (None, 1));
+        assert_eq!(ran(slot(), carrying(&["notes:read", "notes"])), refused);
+        assert_eq!(ran(slot(), carrying(&[])), refused);
+        assert_eq!(ran(slot(), None), (None, 1));
+        // The scope never stands in for the callers the gate names.
+        assert_eq!(
+            ran(
+                gate(Callers::Nobody, Some(vec!["notes:read"])),
+                carrying(&["notes:read"])
+            ),
+            refused
+        );
+        // A listed query's: its statements ask for the scope themselves.
+        assert_eq!(ran(gate(Callers::Signed, None), carrying(&[])), (None, 1));
+    }
+
+    #[test]
     fn the_system_passes_a_gate_only_when_its_line_names_access_system() {
         let ran = |gate: Gate, set: fn(&mut Ctx<'_>)| {
             let host = Recorded::new(0);
@@ -1702,11 +1797,13 @@ mod tests {
                 session: None,
                 sign_in: None,
                 multi_factor: false,
+                scopes: None,
             }));
         };
         let only_system = Gate {
             callers: Callers::Nobody,
             system: true,
+            scopes: None,
         };
         assert_eq!(ran(only_system.clone(), system), None);
         assert_eq!(
@@ -1722,6 +1819,7 @@ mod tests {
         let either = Gate {
             callers: Callers::Signed,
             system: true,
+            scopes: None,
         };
         assert_eq!(ran(either.clone(), system), None);
         assert_eq!(ran(either, signed_in), None);

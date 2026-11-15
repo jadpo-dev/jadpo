@@ -32,6 +32,7 @@
 //! every thread that runs the project.
 
 mod audit;
+mod caches;
 mod config;
 mod connections;
 mod constant;
@@ -554,6 +555,21 @@ fn privacy_steps(
     })
 }
 
+/// The store the calls `ai: { keep_content: }` keeps are in, once it
+/// asks for their table (chunk K6).
+fn kept_in(db: &dyn Db, project: Project) -> Option<String> {
+    let schema = jadpo_check::data::schema(db, project);
+    schema
+        .stores
+        .iter()
+        .find(|(_, store)| {
+            store
+                .tables
+                .contains_key(jadpo_std::system::AI_CONTENT.table)
+        })
+        .map(|(name, _)| name.clone())
+}
+
 /// The schedule table (area 12, chunk 6.2): each schedule that reads
 /// cleanly, with the callable it runs, where their state is kept, and the
 /// stores holding the runtime's own tables, which the tick sweeps.
@@ -626,6 +642,14 @@ fn schedules_plan(
         steps: holding(STEP_RECORDS.table).collect(),
         parked: holding(jadpo_std::system::PARKED_MESSAGES.table).next(),
         ai_usage: holding(jadpo_std::system::AI_USAGE.table).next(),
+        // The calls `ai: { keep_content: }` keeps, deleted at `keep:`
+        // (chunk K6).
+        ai_content: holding(jadpo_std::system::AI_CONTENT.table)
+            .next()
+            .and_then(|store| {
+                let keep = jadpo_check::ai::settings(db, project).keep.as_ref()?;
+                Some((store, keep.keep_ms?))
+            }),
         trigger: jadpo_check::schedules::schedules_settings(db, project).trigger,
     }
 }
@@ -1000,6 +1024,24 @@ impl Plan {
                 pruning.is_none_or(|pruning| pruning.keep.callables.contains(key))
                     || used.as_ref().is_some_and(|used| used.gets.contains(key))
             });
+        // Every query a cache keeps, whether or not this deployable serves
+        // the routes that read it, since each write it runs clears them
+        // (area 5, "Caches"; chunk Q9): planned apart for a deployable,
+        // whose own plan keeps only what it reaches.
+        let is_cached =
+            |key: &Key| jadpo_check::caches::query_cache(db, project, key.name()).is_some();
+        let cached: Vec<queries::QueryPlan> = match pruning {
+            None => queries
+                .iter()
+                .filter(|query| is_cached(&query.key))
+                .cloned()
+                .collect(),
+            Some(_) => {
+                let mut scratch = types.clone();
+                let json = std::cell::RefCell::new(json_types.borrow().clone());
+                queries::plans(db, project, &mut scratch, &json, &is_cached).0
+            }
+        };
         let query_ids: HashMap<Key, u32> = queries
             .iter()
             .enumerate()
@@ -1153,7 +1195,7 @@ impl Plan {
         });
         let model = jadpo_check::data::data_model(db, project);
         // An entity's purge and retentions run where schedules run.
-        let purges: Vec<PurgePlan> = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
+        let mut purges: Vec<PurgePlan> = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
             // Someone who signs in goes with their sign-in state, in the
             // tables their store holds (area 15; chunks P2 and P4).
             let sign_in = purge::sign_in_state(db, project);
@@ -1169,7 +1211,7 @@ impl Plan {
         // goes wherever a sealed field is read or written, which only a
         // project keeping none has no need of (area 15; chunk P9).
         let reseals = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
-            purge::reseals(model)
+            purge::reseals(model, kept_in(db, project).as_deref())
         } else {
             Vec::new()
         };
@@ -1628,6 +1670,22 @@ impl Plan {
         json.events = events;
         let mut routes =
             routes::table(db, project, &mut types, &callable_number, &queries, pruning);
+        // What each committed change clears, from every cache the
+        // application keeps (area 5, "Caches"; chunk Q9).
+        let tables = caches::Tables::of(db, project);
+        let caching = caches::Caching::of(
+            &tables,
+            cached
+                .iter()
+                .filter_map(|query| caches::route_cache(db, project, &tables, query)),
+        );
+        routes.revisions = caching.longest_keep();
+        for write in &mut writes {
+            write.plan.clears = caching.of_write(&write.plan);
+        }
+        for purge in &mut purges {
+            purge.clears = caching.of_purge(purge);
+        }
         routes.identity = identity;
         // A deployable keeps a method's signing key only where an API it
         // serves takes that method, and the browser session's origin only
@@ -1709,6 +1767,9 @@ impl Plan {
         // What the webhooks entity's operations run, which a deployable
         // serving its routes needs whether or not it delivers (chunk C1b).
         events.webhooks = webhooks;
+        // Each store's share of an erasure clears everything every cache
+        // holds (area 15, "What erasure reaches"; chunk Q9).
+        events.erasure.clears = caching.everything();
         let schedules = schedules_plan(
             db,
             project,
@@ -1789,6 +1850,15 @@ impl Plan {
                     })
                 })
                 .collect();
+            // The prompts whose calls are kept, and where (chunk K6).
+            let keep = kept_in(db, project).and_then(|store| {
+                let read = settings.keep.as_ref()?;
+                Some(jadpo_std::ai::AiKeep {
+                    prompts: read.prompts.clone(),
+                    store,
+                    keep_ms: read.keep_ms?,
+                })
+            });
             settings.connection.as_ref().and_then(|name| {
                 let models = settings
                     .models
@@ -1812,6 +1882,7 @@ impl Plan {
                         schema: jadpo_std::ai::SchemaMode::StrictSubset,
                         limits,
                         prices,
+                        keep: keep.clone(),
                     });
                 }
                 // A package filling `ai` (chunk 5.5v3b).
@@ -1832,6 +1903,7 @@ impl Plan {
                     schema: mapping.schema,
                     limits,
                     prices,
+                    keep: keep.clone(),
                 })
             })
         };

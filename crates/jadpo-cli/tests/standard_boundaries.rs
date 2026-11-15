@@ -653,6 +653,14 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "checks a schedule's `every:`, a duration read by the contract's own reader",
     ),
     (
+        "crates/jadpo-check/src/caches.rs",
+        "checks a query cache's `keep:`, a duration read by the contract's own reader (chunk Q9)",
+    ),
+    (
+        "crates/jadpo-runtime/src/caches.rs",
+        "hashes a cached read's arguments into its key, a value's text never sent (chunk Q9)",
+    ),
+    (
         "crates/jadpo-check/src/thresholds.rs",
         "checks a threshold's limits and `within:`, durations read by the contract's own reader (chunk B13)",
     ),
@@ -759,6 +767,14 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     (
         "crates/jadpo-runtime/src/effects.rs",
         "gives `clock.now` as an instant (chunk 7.0b)",
+    ),
+    (
+        "crates/jadpo-check/src/ai_keep.rs",
+        "checks `keep_content: { keep: }`, a duration read by the contract's own reader (chunk K6)",
+    ),
+    (
+        "crates/jadpo-plan/src/export.rs",
+        "names the types an export writes the kept calls' columns with, and the period they are kept for, as the wire writes a duration (chunk K6)",
     ),
     (
         "crates/jadpo-check/src/privacy.rs",

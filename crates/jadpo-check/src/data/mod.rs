@@ -72,6 +72,9 @@ pub const MAIN: &str = "main";
 pub enum ConnectionKind {
     Postgres,
     Redis,
+    /// A cache in each server's own memory, `Driver.memory` (area 16;
+    /// chunk Q9).
+    Memory,
     /// A store of files, `Driver.disk` (area 16; chunk 6.4b).
     Files,
     /// An SMTP server, `Driver.smtp`, which sends email (area 16; chunk
@@ -273,6 +276,7 @@ pub(crate) fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
                     [host, variant] if host == Driver::NAME => match Driver::from_name(variant) {
                         Some(Driver::Postgres) => ConnectionKind::Postgres,
                         Some(Driver::Redis) => ConnectionKind::Redis,
+                        Some(Driver::Memory) => ConnectionKind::Memory,
                         Some(Driver::Disk | Driver::S3) => ConnectionKind::Files,
                         Some(Driver::Smtp) => ConnectionKind::Smtp,
                         Some(Driver::OpenaiCompatible) => ConnectionKind::Model,
@@ -1033,8 +1037,8 @@ impl Reader<'_> {
                         "An entity's `caches:` isn't built yet",
                     )
                     .at(key_span, "decided, not built")
-                    .reason("A record cache keeps copies in a Redis store, and this compiler builds no Redis driver yet, so an entity using it couldn't run.")
-                    .next("Leave `caches:` out for now"),
+                    .reason("A record cache applies policy to each record it holds as it is read, in Jadpo's own code, which isn't built yet. A query's `cache:` is: its results are kept per caller.")
+                    .next("Leave `caches:` out, and give the query a route reads it through `cache: { store: keep: }`"),
                 ),
                 // `person: true` (area 15; chunk P1). A field may still be
                 // named `person` (`person: Amount?`).
@@ -3380,6 +3384,28 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             .insert(
                 system::AI_USAGE.table.to_string(),
                 columns::system_table(&system::AI_USAGE),
+            );
+    }
+    // The calls `ai: { keep_content: }` keeps (area 21, "Prompts and
+    // answers in logs"; chunk K6), in the store it names, once `ai:`
+    // checks.
+    if let Some(store) = ai
+        .keep
+        .as_ref()
+        .filter(|keep| keep.complete() && ai.problems.is_empty())
+        .and_then(|keep| keep.store.clone())
+    {
+        schema
+            .stores
+            .entry(store)
+            .or_insert_with(|| physical::Store {
+                driver: Driver::Postgres.name().to_string(),
+                tables: BTreeMap::new(),
+            })
+            .tables
+            .insert(
+                system::AI_CONTENT.table.to_string(),
+                columns::system_table(&system::AI_CONTENT),
             );
     }
     // The ids of webhooks' events already received are kept beside the

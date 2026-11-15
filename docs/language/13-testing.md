@@ -998,6 +998,32 @@ var stock: Response = request {
   admin signed in, as the admin's own request would.
 - Either without `as:` naming a user is `semantic.request_invalid`.
 
+A token issued to another application is narrowed to the scopes it
+carries ([Scopes](09-policy.md#scopes)), so a request says which, with
+`scopes:` beside `as:`:
+
+```jadpo fragment
+var scoped_note: Response = request {
+    method: HttpMethod.get
+    path: "/notebook/{note_id}"
+    params: {
+        note_id: note.id
+    }
+    as: Principal.user(ann)
+    scopes: [OAuthScope.notes_read]
+}
+```
+
+- `scopes:` lists scopes `external_token:` declares, each once, as
+  `OAuthScope.<name>`; `[]` is a token carrying none. The user signs in
+  with a token from the local issuer whose `scope` claim holds exactly
+  those, even on an API that takes browser sessions too.
+- Without `scopes:`, a request on an API that takes only external tokens
+  carries none, so a test says what its token may do.
+- `scopes:` without `as:` naming a user, a scope the app doesn't declare,
+  and `scopes:` in an app whose `external_token:` declares none are
+  `semantic.request_invalid`.
+
 A call with a caller, outside a request, runs as someone signed in by
 magic link with one factor too, so a role that needs a way in is tested
 through a route.
@@ -2738,7 +2764,9 @@ In the second, the delivery fails with `NoChef`, which is worth
 retrying, so it waits 30 seconds. Starting the shift doesn't move the
 clock, and the retry runs once `clock.advance(30s)` reaches it.
 
-Not built yet: caches.
+A test's caches expire by its clock, so `clock.advance` past a query's
+`keep:` empties its entries ([Caches](05-data.md#caches) has a test of a
+cached read).
 
 ## What is built
 <!-- topic: testing-built -->
@@ -2748,7 +2776,7 @@ Not built yet: caches.
 | Pure and action tests | Built: `jadpo test` runs `test "…" { }` and `assert` in the interpreter, for tests that call functions and actions. Each test gets its own environment (its seed and clock, its database and fakes), tests run on a thread per core, and the results are reported in the order seed's order. Each action or fixture a test calls commits on its own, through the runtime's action boundary; an action it calls joins its transaction. |
 | Kind of test | Built: the kind comes from what a test calls (an action, query or fixture makes it an action test, a `request` a route test, a schedule's `.run()` a schedule test), and the footer and `--json` count each kind. |
 | Schedule tests | Built: `schedule.run()` in a test runs the schedule once at the test's clock, its action called as the system with no tenant, with its own database like an action test; `--kind schedule` runs only these; anywhere but a test it is `semantic.not_callable`. |
-| Route tests | Built: `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token, and a service through a real service key; `sign_in:` and `strength:` record how the user signed in, by magic link with one factor when left out; a caller signs in once per test, and its later requests signed in the same way send the same session or key. Every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). An optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. A streaming route's `Response` has `pieces` in place of `output`, its events read to the last. A route with `sends:` has the body in its `Output`'s field. `request { link: range: }` follows a file's signed link, whole or by range, and gives `status`, `code` and `body`, and `request { upload: body: }` sends a file to a slot's address, or a part with `part:` and optionally `dropped:`, giving `status` and `code` ([Route tests](#route-tests)). |
+| Route tests | Built: `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token, and a service through a real service key; `sign_in:` and `strength:` record how the user signed in, by magic link with one factor when left out, and `scopes:` the scopes the user's external token carries; a caller signs in once per test, and its later requests signed in the same way send the same session or key. Every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). An optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. A streaming route's `Response` has `pieces` in place of `output`, its events read to the last. A route with `sends:` has the body in its `Output`'s field. `request { link: range: }` follows a file's signed link, whole or by range, and gives `status`, `code` and `body`, and `request { upload: body: }` sends a file to a slot's address, or a part with `part:` and optionally `dropped:`, giving `status` and `code` ([Route tests](#route-tests)). |
 | Assertion messages | Partly built: a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). Not built yet: the trace, fakes, kept database and clock in the report. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Built: `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
 | Events | Built: what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good, or stops as `diverged`, ends the test as `test.subscriber_failed` ("Caches and events"). |
@@ -2767,7 +2795,7 @@ Not built yet: caches.
 | The trace `--keep-failed` keeps, for `jadpo trace` | Not built yet: it comes with [Debugging and review](17-debugging-and-review.md). |
 | Interactive mode | Built: `jadpo test --interactive` opens the keyboard view on the alternate screen: each domain and file with its tests and their last results (the project's record keeps passes as well as failures), search as you type, `enter` on a file or test, `a`, `f`, `o` for a failure's report as `jadpo test` prints it, `w` to watch, on the same long-lived session as `--watch`. A build with errors shows them in the view. On quit, the last run's footer is left in the scrollback. It refuses `--json`, a missing terminal, and a path, `--name`, `--kind`, `--failed` or `--affected`, as `cli.test_arguments`. |
 | Generated tests | Built: for every route the application declares, `jadpo test` runs a test that it refuses bad input with `{ field, rule }`, one that each failure its OpenAPI document lists reaches the client in its envelope with its status, and one that its output sends no member its schema doesn't declare, each at the route's lines and counted apart. Every person a test erases is checked once its deliveries are done, and an [`export`](15-personal-data.md#export) of them that holds anything ends the test as a fault; for each person entity no test erases, a test at the entity makes them and a record of each kind of theirs through builders the runner calls, erases them and holds their export to that. Each runs interpreted, natively compiled and inside workerd ("Tests generated for each route"). |
-| Caches in tests | Not built yet. |
+| Caches in tests | Built: each cache a route's query keeps is the test's own, in memory, behaving as Redis does, empty at the start of each test and expiring by its clock, interpreted and compiled, natively and inside workerd ("Caches and events"). |
 | Golden application contract | Built: the shared black-box harness in `benchmarks/contract/` executes all 44 versioned application cases interpreted, on generated native code and on compiled workerd, with real credential verification, raw invalid inputs, physical SQL observation, persisted-state assertions, controlled clocks and provider faults. These checks supplement authored Jadpo tests; they add no application-facing test controls. Full-gate ownership is interpreted and native in `compiled`, workerd in `wasm32`, and verifier negative controls in `lint`. |
 | `test.no_tests` | Built: raised by `jadpo test` only ([Tools](14-tooling.md)), when the project has no tests or a file, line, name, kind or `--failed` picks none. |
 

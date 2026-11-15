@@ -443,5 +443,4 @@ Jadpo does and doesn't protect you from.
 
 ## Not built yet
 
-- Keeping prompts and answers in production with `keep_content:` isn't built yet.
-- A package's `embed:` with a `batch:` below 100 isn't built yet. It doesn't touch `ai.generate`.
+- `keep_content:` can't keep a prompt that `ai.stream` asks yet. It keeps `ai.generate`'s calls.

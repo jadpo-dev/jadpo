@@ -97,8 +97,12 @@ pub struct ExportKind {
 pub struct ExportRetention {
     /// The field it clears, or none when it deletes the record.
     pub field: Option<String>,
-    /// The `Duration` setting its period is read from, by its number.
-    pub setting: u32,
+    /// The `Duration` setting its period is read from, by its number;
+    /// `None` for a period written out.
+    pub setting: Option<u32>,
+    /// A period written out, as the wire writes a duration, `PT720H`:
+    /// `ai: { keep_content: { keep: } }`'s (chunk K6).
+    pub written: Option<String>,
     /// The `Instant` field it counts from.
     pub since: String,
 }
@@ -144,6 +148,10 @@ pub struct ErasurePlan {
     pub log: Option<ErasureLog>,
     /// Each connection that can ask its provider to erase someone.
     pub providers: Vec<ProviderErasure>,
+    /// Everything every cache holds, cleared once each store's share of an
+    /// erasure commits (area 15, "What erasure reaches"; chunk Q9).
+    #[serde(default)]
+    pub clears: Vec<crate::caches::Clear>,
 }
 
 impl ErasurePlan {

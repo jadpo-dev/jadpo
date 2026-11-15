@@ -367,13 +367,15 @@ pub fn key_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     out
 }
 
-/// Whether the project keeps anything sealed: a sealed field, or the
-/// secret of an address registered for outgoing webhooks.
+/// Whether the project keeps anything sealed: a sealed field, the
+/// secret of an address registered for outgoing webhooks, or the calls
+/// `ai: { keep_content: }` keeps.
 pub fn any_sealed(db: &dyn Db, project: Project) -> bool {
     data_model(db, project)
         .entities
         .iter()
         .any(|entity| entity.webhooks || entity.fields.iter().any(|field| field.sealed.is_some()))
+        || crate::ai::settings(db, project).keep.is_some()
 }
 
 /// `entity`'s sealed field called `field`, read as a record's field of

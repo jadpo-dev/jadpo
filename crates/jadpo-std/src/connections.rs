@@ -88,9 +88,13 @@ pub enum ConnectionDriver {
     /// development and tests give a database. `tls` is how it is secured
     /// (area 5, "PostgreSQL over TLS"; chunk 8.1n).
     Postgres { url: Option<u32>, tls: DatabaseTls },
-    /// `Driver.redis`, a cache (area 16): its `url:` setting. Its driver
-    /// comes with caches.
+    /// `Driver.redis`, a cache and a store rate limits are counted in
+    /// (area 16): its `url:` setting.
     Redis { url: Option<u32> },
+    /// `Driver.memory`, a cache kept in each server's own memory (area 16,
+    /// "`Driver.memory`"; chunk Q9): native only, since a Worker keeps no
+    /// memory between requests.
+    Memory,
     /// `Driver.disk`, a store of files on the server's own disk (area 16,
     /// "The disk driver"): the folder `path:` names, and the free space,
     /// in millionths of the disk, below which a put answers
@@ -134,7 +138,7 @@ impl ConnectionDriver {
     /// Cloudflare's queues and rate-limiting binding only on Workers.
     pub fn targets(&self) -> Vec<Target> {
         match self {
-            ConnectionDriver::Disk { .. } => vec![Target::Native],
+            ConnectionDriver::Disk { .. } | ConnectionDriver::Memory => vec![Target::Native],
             ConnectionDriver::CloudflareQueues(_)
             | ConnectionDriver::CloudflareRateLimits { .. } => vec![Target::Workers],
             ConnectionDriver::Package(plan) if plan.address == Address::Unknown => {
@@ -156,6 +160,7 @@ impl ConnectionDriver {
         match self {
             ConnectionDriver::Postgres { .. } => "Driver.postgres",
             ConnectionDriver::Redis { .. } => "Driver.redis",
+            ConnectionDriver::Memory => "Driver.memory",
             ConnectionDriver::Disk { .. } => "Driver.disk",
             ConnectionDriver::S3(_) => "Driver.s3",
             ConnectionDriver::Smtp(_) => "Driver.smtp",
@@ -210,6 +215,7 @@ impl ConnectionDriver {
                 .chain([target.secret])
                 .collect(),
             ConnectionDriver::Disk { .. }
+            | ConnectionDriver::Memory
             | ConnectionDriver::CloudflareQueues(_)
             | ConnectionDriver::CloudflareRateLimits { .. } => Vec::new(),
             ConnectionDriver::Package(plan) => {

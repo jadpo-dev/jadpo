@@ -374,6 +374,9 @@ pub struct Deleted {
     pub parked: u64,
     /// Counts of what `ai` calls used on days long past (chunk 5.5v5).
     pub ai_usage: u64,
+    /// Calls `ai: { keep_content: }` kept, once `keep:` had passed (chunk
+    /// K6).
+    pub ai_content: u64,
 }
 
 /// How many queue messages one tick kept as events, dropped as repeats,

@@ -818,7 +818,7 @@ async fn kept_records(
         else {
             continue;
         };
-        let after = match ctx.setting(retention.setting) {
+        let after = match retention.setting.and_then(|setting| ctx.setting(setting)) {
             Some(Value::Duration(after)) => *after,
             _ => 0,
         };
@@ -997,6 +997,10 @@ async fn erase(
         }
     }
     ctx.erasing(&steps.person, &format_uuid(&state.person));
+    // No cache keeps a copy of what it erased (area 15, "What erasure
+    // reaches"; chunk Q9).
+    let clears = ctx.started().erasure().clears.clone();
+    crate::boundary::cleared(ctx, &clears).await;
     // The step that waits goes last, so what it waits for has been tried.
     deliveries.push(completing);
     crate::boundary_committed(ctx, deliveries);

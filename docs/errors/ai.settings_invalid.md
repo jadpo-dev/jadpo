@@ -13,7 +13,10 @@ always names a provider and a model, never free text a typo can slip
 into. Jadpo refuses a model that isn't a `ModelId` setting, `models:`
 without `default`, a connection that answers no model and a key `ai:`
 doesn't take, since each leaves a call asking something other than
-what the reader of `app.jadpo` sees.
+what the reader of `app.jadpo` sees. `keep_content:` is checked the same
+way: each prompt it lists is one of the app's, `keep:` a duration from
+`1d` to `3650d`, and its store the one everyone who signs in is kept in
+([Keeping prompts and answers](../language/21-ai.md#keeping-prompts-and-answers)).
 
 ## What it looks like
 

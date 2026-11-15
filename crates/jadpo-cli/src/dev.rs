@@ -1103,6 +1103,9 @@ pub fn serve_unwatched_to(
         let mut native = worker
             .host()
             .with_drivers(drivers)
+            // Every cache in this process's memory (area 11, "In
+            // development"; chunk Q9).
+            .caching_in_memory()
             .with_files(kept, move |connection| {
                 let current = lock_current(&stores);
                 jadpo_std::connections::files(current.plan().connections())

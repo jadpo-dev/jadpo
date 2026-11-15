@@ -130,6 +130,8 @@ pub const ACCESS: Kind = Kind {
         "decline",
         "sign_in",
         "own_source",
+        // The scopes external tokens are narrowed to (chunk N2).
+        "scopes",
     ],
     facts: &[
         "create",
@@ -140,6 +142,10 @@ pub const ACCESS: Kind = Kind {
         "shared",
         "server_only",
         "who",
+        // A declared scope, `scope notes_read notes:read`, or the scope an
+        // entity's effect needs, `scope read OAuthScope.notes_read` (chunk
+        // N2).
+        "scope",
         // A role's requirement (chunk A10): `sign_in SignInMethod.google`,
         // `strength AuthenticationStrength.multi_factor`.
         "sign_in",

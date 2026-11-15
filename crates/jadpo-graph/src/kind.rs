@@ -152,7 +152,7 @@ kinds! {
     FieldRestriction: "field_restriction", Access, Built, 9;
     Tenancy: "tenancy", Access, Built, 9;
     ActionException: "action_exception", Access, Built, 9;
-    OauthScope: "oauth_scope", Access, Reserved, 8;
+    OauthScope: "oauth_scope", Access, Built, 8;
 
     Connection: "connection", Outside, Built, 11;
     Package: "package", Outside, Built, 11;
@@ -245,7 +245,7 @@ edges! {
     References: "references", Built, "An entity refers to another";
     Includes: "includes", Built, "A query includes related records of an entity";
     Grants: "grants", Built, "A grant or field restriction grants an effect on its entity or field; a listed action's line lets its callers in";
-    Scopes: "scopes", Built, "A tenancy limits an entity's records to its tenant";
+    Scopes: "scopes", Built, "A tenancy limits an entity's records to its tenant; an OAuth scope narrows a grant to the tokens that carry it";
     Invalidates: "invalidates", Reserved, "A write invalidates a cache";
     Uses: "uses", Built, "Names a type, entity, field or failure in its signature, fields or body, reads a constant or a setting, or goes through a connection; a connection uses its package";
     Provides: "provides", Built, "A package provides a capability through its capability mapping";

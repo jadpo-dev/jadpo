@@ -378,7 +378,7 @@ status = [
   "15-personal-data: `privacy:` in",
   "15-personal-data: The personal-data report",
 ]
-missing = "erasing someone whose audited records would be kept, caches, and OAuth grants in the report"
+missing = "erasing someone whose audited records would be kept, and OAuth grants in the report"
 topics = [
   "personal-data",
   "marking-personal-fields",
@@ -494,6 +494,7 @@ topics = [
   "the-permissions-report",
   "protecting-policy",
   "when-policy-says-no",
+  "scopes",
 ]
 built = [
   "policy-built",
@@ -650,11 +651,10 @@ topics = [
 title = "AI"
 status = [
   "21-ai: Everything else on this page",
-  "21-ai: Keeping prompts and answers in production",
-  "21-ai: A package's `embed:` with a `batch:` below 100",
+  "21-ai: Keeping a streamed prompt's calls",
   "21-ai: `jadpo call`",
 ]
-missing = "`keep_content:`, `embed:` batches below 100 and `jadpo call`"
+missing = "keeping a streamed prompt's calls and `jadpo call`"
 topics = [
   "ai",
   "the-ai-capability",
@@ -674,6 +674,7 @@ topics = [
 details = [
   "generating-its-fake-and-the-local-driver",
   "how-budgets-are-counted",
+  "keeping-prompts-and-answers",
   "following-personal-data",
   "embeddings-and-recordings",
   "a-package-filling-ai",
@@ -703,7 +704,11 @@ details = [
 
 [[group.page]]
 title = "Caches"
-status = ["05-data: Entities in Redis and record caches"]
+status = [
+  "05-data: A query's `cache:`",
+  "05-data: Entities in Redis and record caches",
+]
+missing = "record caches"
 topics = [
   "caches",
   "caches-drivers-and-what-they-hold",
@@ -1080,7 +1085,7 @@ topics = [
 [topic_status]
 logging = ["04-failures: Logging"]
 entities-in-redis = ["05-data: Entities in Redis and record caches"]
-queries-on-entities-in-redis = ["06-reads-and-writes: Caches and entities in Redis"]
+queries-on-entities-in-redis = ["06-reads-and-writes: Entities in Redis"]
 personal-data-export = ["15-personal-data: `User.export(id)`"]
 data-requests = ["15-personal-data: `privacy:` in `application { }`"]
 write-revisions = ["07-http: The `Jadpo-Revision` header"]

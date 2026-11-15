@@ -91,11 +91,25 @@ pub const REQUIRED_KEYS: [&str; 2] = ["connection", "models"];
 pub const LIMITS: &str = "limits";
 
 /// The keys area 21 gives `ai:` that later work builds, each with the
-/// work that does.
-pub const LATER_KEYS: [(&str, &str); 1] = [(
-    "keep_content",
-    "area 15's encrypted fields, after the first build",
-)];
+/// work that does: none now.
+pub const LATER_KEYS: [(&str, &str); 0] = [];
+
+/// `keep_content:` (area 21, "Prompts and answers in logs"; chunk K6):
+/// the prompts whose messages and answers are kept, sealed, in
+/// production.
+pub const KEEP_CONTENT: &str = "keep_content";
+
+/// What a kept call's sealed columns are bound to, with the row's `id`.
+pub const KEPT_MESSAGES_BOUND: &str = "jadpo_ai_content.messages";
+pub const KEPT_ANSWER_BOUND: &str = "jadpo_ai_content.answer";
+
+/// The shortest and longest `keep_content: { keep: }`: a day, and ten
+/// years.
+pub const KEEP_LEAST_MS: u64 = 86_400_000;
+pub const KEEP_MOST_MS: u64 = 3_650 * 86_400_000;
+
+/// What a person's export calls the calls kept for them.
+pub const KEPT_EXPORT: &str = "AiContent";
 
 /// How far a provider's structured-output mode goes (area 21, "How a
 /// provider fills it", `schema: { mode: }`).
@@ -139,6 +153,27 @@ pub struct AiPlan {
     /// The prices the application sets for its models, overriding the
     /// package's (chunk 5.5v7).
     pub prices: Vec<AiPriceSetting>,
+    /// `keep_content:` (chunk K6): the prompts whose calls are kept.
+    pub keep: Option<AiKeep>,
+}
+
+/// `ai: { keep_content: { prompts: store: keep: } }` (area 21, "Prompts
+/// and answers in logs"; chunk K6).
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct AiKeep {
+    /// Each prompt kept, by its name, `answer_question`.
+    pub prompts: Vec<String>,
+    /// The database `jadpo_ai_content` is in.
+    pub store: String,
+    /// How long each call is kept, from when it was made.
+    pub keep_ms: u64,
+}
+
+impl AiKeep {
+    /// Whether a call of `prompt` is kept.
+    pub fn keeps(&self, prompt: &str) -> bool {
+        self.prompts.iter().any(|kept| kept == prompt)
+    }
 }
 
 /// `ai: { prices: { <model>: { input: cached: output: } } }` (area 21,

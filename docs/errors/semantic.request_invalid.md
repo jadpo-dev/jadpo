@@ -97,7 +97,7 @@ error: `headers` isn't something a request holds
   |
 5 |         headers: {}
   |         ^^^^^^^ unknown item
-  reason: A request holds `method:`, `path:`, `params:`, `input:`, `idempotency_key:`, `as:`, and with `as:` `sign_in:` and `strength:`.
+  reason: A request holds `method:`, `path:`, `params:`, `input:`, `idempotency_key:`, `as:`, and with `as:` `sign_in:`, `strength:` and `scopes:`.
   next: Remove `headers` (agent)
   rule: semantic.request_invalid
   help: https://jadpo.dev/docs/errors/semantic.request_invalid

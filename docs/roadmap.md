@@ -266,8 +266,10 @@ work below (Richard, 2026-11-08).
    services run by Jadpo (`runs:`, Docker or Podman hidden behind
    `jadpo services`, and `jadpo dev` starting them); the `documents`
    capability, with its `Document` base and `documents/` folder; OAuth grants
-   per owner (`grants:`, `on_behalf_of:`, `OAuthGrant`, `jadpo dev grants add`
-   and grants as test fixtures); search (an engine's `store:` and `jadpo
+   per owner (`grants:`, `on_behalf_of:`, `OAuthGrant`, `jadpo dev grants add`,
+   grants as test fixtures, and calling an operation whose scope the grant
+   doesn't request refused when compiling, area 11, "Mistakes not reported
+   yet"); search (an engine's `store:` and `jadpo
    search reindex`), `bot_check` and `scanning` capabilities, with image
    variants, each with its fake; `jadpo watch`; a service's new or
    changed container image and its `outbound:` grants, each with a
@@ -303,10 +305,7 @@ work below (Richard, 2026-11-08).
      when each is built and tested against doubles, with nothing sent to a
      third party.
    - [x] **K5 Types from recordings and recipes' tests**: area 11, "Recordings" and "Package subscribers and recipes in `sample/`"; area 14, "`jadpo package record`"; and the notes for area 11.
-   - [ ] **K6 What's left of `ai`** `opus · high` after P9: area 21,
-     "Budgets" and "Streams, embeddings and the OpenAI and Anthropic
-     packages". `keep_content:`, kept in encrypted fields, and an `embed:`
-     with a `batch:` below 100, split across requests.
+   - [x] **K6 What's left of `ai`**: area 21, "Keeping prompts and answers" and "Streams, embeddings and the OpenAI and Anthropic packages"; and the notes for area 21.
 6. Product work: the developer console and MCP, acting as an OAuth
    provider, D1 (area 5, "Actions on D1", with `jadpo sql` for SQLite) and
    row-level security (opt-in, design notes for area 6). The console holds
@@ -365,15 +364,20 @@ work below (Richard, 2026-11-08).
       "A Redis store on Workers" and "The Redis driver", and its notes; area
       11, "No presets, no dependencies"; compiler-runtime §2.6, "What both
       executors share, and round trips".
-    - [ ] **Q9 Caches** `opus · xhigh` after Q8: area 5, "Caches"; area 6,
-      "Where a read comes from"; area 7, "Write revisions"; area 13, "What is
-      built"; area 11, "Targets". An entity's `caches:`, a query's `cache:`, the
-      `cache` capability, the `Jadpo-Revision` header, an in-memory cache checked
-      against its target, caches in tests and erasure reaching a cache.
-      Clearing only the entries a change affects isn't designed (L3).
+    - [x] **Q9 Caches**: a query's `cache:` in Redis or `Driver.memory`, the
+      `Jadpo-Revision` header, caches in tests and erasure reaching every cache,
+      in area 5, "Caches", and its notes; area 6, "Where a read comes from";
+      area 7, "Write revisions"; area 16, "How a cache is kept"; compiler-runtime,
+      "Caches".
     - [ ] **Q10 Entities and geometries in Redis** `opus · xhigh` after Q9: area 5,
       "Entities in Redis"; area 6, "Reading and writing entities in Redis"; area
       20, "What is built".
+    - [ ] **Q9b Record caches** `opus · xhigh` after Q10: area 5, "Caches"; area
+      9, "Caches and personal data"; area 15, "Sensitive fields". An entity's
+      `caches: { records: }`, single records by `id` kept whole and policy
+      applied to each as it is read, in Jadpo's own code as Q10's Redis
+      entities apply it, sensitive fields left out. Split from Q9 (2026-11-14).
+      Clearing only the entries a change affects isn't designed (L3).
 11. Background work and tests (areas 12 and 13), added by the audit of
     2026-11-08.
     - [x] **J3 Delivery and operator gaps**: area 12, "How long between tries", "Running background work" and "Watching schedules", and its notes; `cli.signal_handler_failed`'s page.
@@ -393,11 +397,7 @@ work below (Richard, 2026-11-08).
       secret is configured (an ES256 token the app signs with its private
       key, team ID and key ID) and how its `form_post` callback is taken,
       which needs a binding cookie a cross-site `POST` carries.
-    - [ ] **N2 Scopes** `opus · xhigh`: area 8, "What is built"; area 9,
-      "What is built"; area 19, "The token types"; area 11, "Mistakes not
-      reported yet". Scope declarations, `scopes:` and policy's restrictions
-      with `oauth_token` and `external_token`, `OAuthScope` narrowing, and an
-      operation whose scope a grant doesn't request.
+    - [x] **N2 Scopes**: area 9, "Scopes" and its notes; area 8, "`external_token`" and its notes; area 13, "Signing in for a route test"; compiler-runtime, "Scopes".
 13. Telemetry other services can read (areas 16, 17 and 18), added
     2026-11-14. Apps chained across Jadpo and other services, traced end to
     end, with what a monitoring, analytics or backup service needs to read

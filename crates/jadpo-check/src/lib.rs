@@ -11,6 +11,7 @@
 
 pub mod acceptances;
 pub mod ai;
+pub mod ai_keep;
 pub mod ai_limits;
 pub mod ai_mapping;
 pub mod ai_personal;
@@ -19,6 +20,7 @@ pub mod approval;
 pub mod assets;
 pub mod batches;
 pub mod born_names;
+pub mod caches;
 mod case;
 pub mod client_address;
 pub mod completion;
@@ -327,6 +329,7 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .iter()
                     .cloned(),
             );
+            out.extend(caches::cache_problems(db, project, file).iter().cloned());
             out.extend(routes::route_problems(db, project, file).iter().cloned());
             out.extend(
                 events::subscriber_problems(db, project, file)
@@ -467,6 +470,7 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(polls::declared(db, project).problems.iter().cloned());
         out.extend(polls::polls(db, project).problems.iter().cloned());
         out.extend(rate_limits::rate_limits_problems(db, project));
+        out.extend(caches::memory_problems(db, project).iter().cloned());
         out.extend(
             receiving::cloudflare_queues(db, project)
                 .problems

@@ -712,6 +712,12 @@ struct Access {
     sign_in: BTreeMap<String, String>,
     /// Each role's requirement lines (chunk A10), by `domain.Role.value`.
     roles: BTreeMap<String, BTreeSet<String>>,
+    /// The scopes external tokens are narrowed to, each name's scope-token
+    /// (chunk N2); `None` when no way in narrows.
+    scopes: Option<BTreeMap<String, String>>,
+    /// Each entity's scope by effect, as written: `read` →
+    /// `OAuthScope.notes_read`.
+    entity_scopes: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 const EFFECTS: [&str; 4] = ["create", "read", "update", "delete"];
@@ -751,6 +757,27 @@ fn access(text: &str) -> Access {
                 });
                 out.entities
                     .insert(rest.to_string(), (lists(&entry), tenancy));
+                let scopes: BTreeMap<String, String> = entry
+                    .members
+                    .iter()
+                    .filter_map(|member| member.line.strip_prefix("scope "))
+                    .filter_map(|line| line.split_once(' '))
+                    .map(|(effect, scope)| (effect.to_string(), scope.to_string()))
+                    .collect();
+                out.entity_scopes.insert(rest.to_string(), scopes);
+            }
+            "scopes" => {
+                out.scopes = Some(
+                    entry
+                        .members
+                        .iter()
+                        .filter_map(|member| member.line.strip_prefix("scope "))
+                        .filter_map(|line| line.split_once(' '))
+                        .map(|(name, token)| {
+                            (name.to_string(), token.trim_matches('"').to_string())
+                        })
+                        .collect(),
+                );
             }
             "field" => {
                 let server_only = entry.members.iter().any(|m| m.line == "server_only");
@@ -894,6 +921,58 @@ pub fn access_needs(path: &str, before: &str, after: &str, out: &mut Vec<Need>) 
             None,
             Vec::new(),
         );
+    }
+    // Scopes loosened (chunk N2): external tokens no longer narrowed, a
+    // scope reading another scope-token, or an effect a narrowed token
+    // was refused, or needed another scope for, now naming one.
+    if let Some(was_scopes) = &was.scopes {
+        match &now.scopes {
+            None => add(
+                "external_token".to_string(),
+                "PolicyChange.scopes_loosened",
+                None,
+                Some("tokens from `external_token` are no longer narrowed to their scopes, so each may do whatever its person may".to_string()),
+                Vec::new(),
+            ),
+            Some(now_scopes) => {
+                for (name, token) in now_scopes {
+                    if let Some(old) = was_scopes.get(name)
+                        && old != token
+                    {
+                        add(
+                            format!("OAuthScope.{name}"),
+                            "PolicyChange.scopes_loosened",
+                            Some("scopes external_token".to_string()),
+                            Some(format!(
+                                "`OAuthScope.{name}` now reads the scope-token `{token}`, where it read `{old}`"
+                            )),
+                            Vec::new(),
+                        );
+                    }
+                }
+                for (entity, scopes) in &now.entity_scopes {
+                    let Some(old_scopes) = was.entity_scopes.get(entity) else {
+                        continue;
+                    };
+                    if !was.entities.contains_key(entity) {
+                        continue;
+                    }
+                    for (effect, scope) in scopes {
+                        if old_scopes.get(effect) != Some(scope) {
+                            add(
+                                format!("{entity}.{effect}"),
+                                "PolicyChange.scopes_loosened",
+                                Some(format!("entity {entity}")),
+                                Some(format!(
+                                    "a token carrying `{scope}` can now {effect} `{entity}` records"
+                                )),
+                                Vec::new(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
     for (entity, (lists, tenancy)) in &now.entities {
         let heading = Some(format!("entity {entity}"));
@@ -1460,6 +1539,73 @@ sign_in magic_link
     expires_after: 15m
     failed_codes_per_day: 20
 ";
+
+    const SCOPED: &str = r#"
+scopes external_token
+    scope notes_read "notes:read"
+    scope notes_write "notes.write"
+
+entity notes.Note
+    create writer_id
+    read writer_id
+    delete writer_id
+    scope create OAuthScope.notes_write
+    scope read OAuthScope.notes_read
+"#;
+
+    #[test]
+    fn loosening_scopes_needs_a_person_and_narrowing_them_none() {
+        let loosened = |after: &str| widenings(SCOPED, after);
+        // External tokens no longer narrowed at all.
+        assert_eq!(
+            loosened(&SCOPED.replace(
+                "scopes external_token\n    scope notes_read \"notes:read\"\n    scope notes_write \"notes.write\"\n\n",
+                ""
+            )),
+            pairs(&[("external_token", "PolicyChange.scopes_loosened")])
+        );
+        // A scope reading another scope-token.
+        assert_eq!(
+            loosened(&SCOPED.replace("\"notes:read\"", "\"notes\"")),
+            pairs(&[("OAuthScope.notes_read", "PolicyChange.scopes_loosened")])
+        );
+        // An effect that was refused to every narrowed token now naming a
+        // scope, and one now naming another.
+        assert_eq!(
+            loosened(&SCOPED.replace(
+                "    scope read OAuthScope.notes_read\n",
+                "    scope delete OAuthScope.notes_write\n    scope read OAuthScope.notes_write\n"
+            )),
+            pairs(&[
+                ("notes.Note.delete", "PolicyChange.scopes_loosened"),
+                ("notes.Note.read", "PolicyChange.scopes_loosened"),
+            ])
+        );
+        // Narrowing needs no one: a scope removed from an effect, a scope
+        // declared that nothing names yet, or another removed, and an app
+        // that narrows its tokens for the first time.
+        for narrower in [
+            SCOPED.replace("    scope read OAuthScope.notes_read\n", ""),
+            SCOPED.replace(
+                "    scope notes_write \"notes.write\"\n",
+                "    scope notes_write \"notes.write\"\n    scope notes_admin \"notes:admin\"\n",
+            ),
+            SCOPED.replace("    scope notes_write \"notes.write\"\n", ""),
+        ] {
+            assert_eq!(
+                loosened(&narrower),
+                Vec::<(String, String)>::new(),
+                "{narrower}"
+            );
+        }
+        let unscoped = "
+entity notes.Note
+    create writer_id
+    read writer_id
+    delete writer_id
+";
+        assert_eq!(widenings(unscoped, SCOPED), Vec::<(String, String)>::new());
+    }
 
     #[test]
     fn every_widening_needs_a_person() {

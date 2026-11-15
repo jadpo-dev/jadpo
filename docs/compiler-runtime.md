@@ -962,11 +962,11 @@ declares the `webhooks` API, and health beside any API; and
 `service_nodes`, a `config_field` for each setting, a `flag` for each
 feature flag (using the enum it holds), the `locale_set application`,
 and, beside any API, `rate_limit address` and `rate_limit
-caller`, using the connection they are counted in. `cache` and
-`oauth_scope` stay reserved: nothing the language builds declares one yet
-(`caches:` comes with Redis entities, area 5; scope declarations with OAuth
-grants and tokens for other applications, areas 8 and 11), and they are
-built with those (decided in chunk 10.3g).
+caller`, using the connection they are counted in; and an `oauth_scope`
+for each scope `external_token:` declares, with a `scopes` edge to each
+grant whose effect needs it. `cache` stays reserved: nothing the language
+builds declares one yet (`caches:` comes with Redis entities, area 5), and
+it is built with those (decided in chunk 10.3g).
 
 Each site says whether it can pause (§2.5): an effect (a
 store read or write, `emit`, an integration call, `clock.now`, a new
@@ -1465,7 +1465,9 @@ store operation (`Ctx::transaction`); a concurrent change runs the whole
 body again, up to `RERUN_ATTEMPTS` (3) times, then fails `unavailable`; a
 body that fails rolls back; and what it emitted is delivered only after it
 commits. The second of area 6's budget isn't built: the boundary counts
-attempts only. Caches are not built yet. An action called inside another whose failure the caller
+attempts only. Once it commits, what its writes may have changed in a
+cache is cleared before the response goes (`boundary::cleared`, the
+`WritePlan::clears` each write it ran gathered; caches, below). An action called inside another whose failure the caller
 handles (`ActionBody::caught`: the call is an outcome `match`'s subject or
 an `assert … fails`'s) runs inside a savepoint: when it fails, the
 transaction returns to it, undoing its writes, a refused statement among
@@ -3273,6 +3275,34 @@ writes a `TestAccount`'s company as `hd` and `tid` and its strength as
 `amr`, and `jadpo dev`'s chooser gives each account the connection's
 company and a second factor.
 
+**Scopes** (area 9, "Scopes"; area 8, "`external_token`"; chunk N2).
+The checker reads `external_token: { scopes: }` into `Identity::scopes`
+(`identity::Scope`: a name and its scope-token), and an entity's
+`scopes:` into `EntityPolicy::scopes`, each effect's `ScopeNeed` with the
+token resolved; `Access::narrows` says whether any way in narrows. The
+plan's `Planner::granted` ANDs `Planner::scoped` after the tenancy, for
+every effect whatever grants decide it: `jadpo_sql::policy::scope_held`
+over `CallerPart::Scopes` and the effect's token bound as a literal, so
+the condition is in each statement's `WHERE` and a single record's
+`permitted` column, and nothing changes in an app that narrows nothing. A
+`Gate` carries `scopes`: none for a listed action's (refusing a narrowed
+caller, with `Callers::Anyone` for a line anyone may call), its entity's
+`create` and `update` tokens for an upload slot's, and `None` for a
+listed query's. `ExternalTokenPlan::scopes` gives the runtime the
+declared tokens; `external_token::check_token` reads the `scope` claim
+into `Checked::scopes` (`scopes_carried`), which `authenticate` puts on
+the `Caller`, bound as a space-joined text and read by
+`policy::admit`; `http::session` refuses `sessions.start` and
+`sessions.issue_token` to a narrowed caller. A route test's `scopes:` is
+one text site after `strength:` (`Expr::Request::scopes`, the fifth
+`given` flag), which `test_credentials_scoped` signs into the local
+issuer's token (`LocalIssuer::token_scoped`); `jadpo dev token` signs in
+every declared scope. The report, the access record
+(`acceptances::access`) and `compare::access_needs`'s
+`PolicyChange.scopes_loosened` read the same models, and the graph has an
+`oauth_scope` node per declared scope with a `scopes` edge to each grant
+that needs it.
+
 **Signed sessions** (area 8). The identity reads
 `revocation_delay:`, each method's `signing_key:` (a `SigningKey`
 setting) and a browser session's `origin:` (a `Url` setting) into the
@@ -3697,6 +3727,47 @@ time it checks a request's deadline (`Step::Yield`,
 doesn't hold the requests its worker serves until its deadline; an inline
 function inside a collection operation still only stops there.
 
+**Caches** (area 5, "Caches"; chunk Q9). A route whose `run:` is a
+query with `cache:` carries a `RouteCache` on its `RoutePlan`: the cache
+connection, `keep:` in milliseconds, the entities its statements name
+(`jadpo_plan::caches::Tables::read_by` over `ReadPlan::statements`, each
+entity's table as `jadpo_sql::ident` writes it, so policy's subqueries
+count), and the query's key with a digest of its read plan. Every
+`WritePlan` and `PurgePlan` carries `clears`, by cache, the entities among
+those a cache reads that its statement names, a delete's referrers too,
+and the `ErasurePlan` and an erasure's write everything every cache
+holds; the plan works them out from every cached query, a deployable's
+pruned plan planning those it doesn't serve apart, since its writes still
+clear them. `RouteTable::revisions` is the longest `keep:`, `None` with no
+cache. The runtime's `caches::read`, which both executors reach through
+the HTTP component, keys an entry by BLAKE3 of the route cache's key, the
+arguments (a secret among them reads the store) and every caller part
+(`read::callers`), asks `Cache::look` for the entry and the entities'
+generations in one round trip, and on a miss, or an entry under other
+generations or read before the request's revision, reads the store and
+`keep`s the answer as `{"generations", "filled", "value"}`, the value in
+the route's output codec, deleting it when the generations moved while it
+read. The boundary gathers each write's `clears` and, once it commits,
+`caches::clear` adds one to each generation and deletes the entries each
+entity's list names; a cache that can't answer is owed the clear in
+`CacheHealth` (the process's, so a server's workers share it), left alone
+for `STORE_PAUSE_MS`, tried once more through `Host::defer` and before its
+next use, and no entry reading what it owes is served meanwhile. Hosts give
+the cache by connection (`Host::cache`): natively and on Workers the
+factory's driver, a Redis connection (`jadpo_drivers::redis`'s `look`,
+`keep`, `forget`, `clear`) or `MemoryCache::process` for `Driver.memory`;
+`NativeHost::caching_in_memory`, `jadpo dev`'s, every cache in the
+process's memory; and `test_run::once` each cache a test's own
+`MemoryCache`, through `Faked::with_caches`, so both executors and
+workerd run the same code. A successful write route's response carries
+`Jadpo-Revision` and its cookie when `revisions` is set
+(`caches::revision_headers`). Proved against the in-process double and,
+when the run has one, a real Redis (`jadpo-host-native`'s
+`redis_caches`), and end to end under `jadpo dev` against live
+PostgreSQL (`jadpo-cli`'s `caches`): a change behind the app's back unseen,
+a later revision skipping, a write clearing, and an erasure leaving no
+copy.
+
 **The client's address.** The address a request counts as,
 for the default rate limits, `jadpo dev`'s request lines and the request
 timeline, is chosen in the runtime from plan data and not by a host:
@@ -4013,7 +4084,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
 | Outbox | Delivery, retries, dead letters and a circuit breaker, run by the runner after the response, natively as a task on the worker's thread | `waitUntil` after the response, what one invocation leaves handed on to a fresh one, swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters | Cloudflare cron |
-| Rate limits, caches | Rate limits through `Host::rate_limit`: the Redis store `rate_limits:` names, through `ratelimit::counted_by_store`, otherwise, or while it can't count, one bounded table in memory for all of a server's workers; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, "Rate limits"); the isolate's memory only while it can't be reached |
+| Rate limits, caches | Rate limits through `Host::rate_limit`: the Redis store `rate_limits:` names, through `ratelimit::counted_by_store`, otherwise, or while it can't count, one bounded table in memory for all of a server's workers; a route's display read through `caches::read`, the cache `Host::cache` gives, cleared after each commit | Redis or Cloudflare's rate-limiting binding required (area 16, "Rate limits"); the isolate's memory only while it can't be reached; caches in Redis only |
 | Telemetry | Spans per declaration, metrics, threshold sampling, OTLP as JSON | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
 | AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake; `ai.embed` and `ai.embed_all`, the fake's embeddings and prompts' recordings; `ai.stream` read piece by piece and sent as server-sent events | same, through Workers' `fetch` |
@@ -4023,7 +4094,7 @@ doubles the async signatures and lets bugs hide on one target.
 
 **Capability drivers.** `Database` (begin, query, execute, commit,
 rollback, and one statement on its own) and `Passkeys` are traits of
-their own, and `Cache` will be when caches are built; every outside capability's driver,
+their own, and so is `caches::Cache` (look, keep, forget, clear); every outside capability's driver,
 `files`', `email`'s, `publishing`'s and a package's alike, is one trait,
 `capability::Capability`, named by its connection, so the capability
 seam logs, records, guards and fakes them all one way (below). Rate
@@ -5542,7 +5613,30 @@ its prompt's `ai.generate` sites decode into; `recorded(...)` lowers to
 `AiFakeAnswer::Recorded`, which the interpreter scripts with the answer
 `prompt_recordings::answer` fills (area 11's `recorded::filled_value`),
 and `jadpo test` runs `prompt_recordings::check_file` for each as a
-`recording` test, listing stale ones as `Run::alerts`.
+`recording` test, listing stale ones as `Run::alerts`. A package's
+`embed:` splits an `ai.embed_all` into requests of its `batch:`
+(`embed::batches`), sent one after another under one `Retry::timed`
+window, each answer placed among every text (`embed::placed`) and joined
+(`embed::joined`), so the step, the rerun digest (every body, a line
+each) and the budget's charge stay the call's own.
+
+**Kept prompts and answers** (area 21, "Keeping prompts and answers").
+`jadpo_check::ai_keep` reads `ai: { keep_content: }` into
+`AiSettings::keep` and checks it once the rest reads (`keep_problems`);
+`jadpo_std::system::AI_CONTENT` joins its store's schema, and the plan
+carries `AiPlan::keep`. After an `ai.generate` call a model answered,
+`jadpo_runtime::ai_keep::keep` writes one row with `KEEP`, its messages
+and answer sealed with `Started::field_ring` under
+`KEPT_MESSAGES_BOUND` and `KEPT_ANSWER_BOUND`, and the caller's record by
+its principal's `id`. The table is one of `purge::SIGN_IN_STATE`, so
+erasure and retention delete it with the caller's sessions; the export
+plan reads it as an `AiContent` part (`export::kept_part`, two
+`Column::Sealed` columns); `purge::reseals` re-seals both columns; the
+tick deletes rows past `keep:` (`SchedulesPlan::ai_content`,
+`ai_keep::OLD_CONTENT`); and `personal_held::kept_prompts` adds the
+report's section. `crates/jadpo-cli/tests/kept_ai_calls.rs` runs it
+through `jadpo test` and reads the rows erasure and the tick leave; its
+tests run compiled in the gate's compiled step.
 
 **Webhooks as events** (area 11). The
 checker reads a provider's `webhooks:` into `connections::WebhookReach`

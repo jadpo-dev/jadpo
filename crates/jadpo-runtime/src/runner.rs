@@ -1920,6 +1920,8 @@ impl<'c, 'p> Batch<'c, 'p> {
         crate::boundary::confirm_erased(ctx, boundary.take_erased());
         ctx.note_emitted(boundary.take_emitted());
         crate::boundary::committed(ctx, boundary.take_sealed());
+        // What its items wrote leaves no stale cached copy (chunk Q9).
+        crate::boundary::cleared(ctx, &boundary.take_clears()).await;
         Ok(())
     }
 
@@ -2803,6 +2805,7 @@ mod tests {
             session: None,
             sign_in: None,
             multi_factor: false,
+            scopes: None,
         }));
     }
 

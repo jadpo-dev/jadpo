@@ -488,6 +488,7 @@ fn signed_in(seller: &Value) -> Caller {
         session: None,
         sign_in: None,
         multi_factor: false,
+        scopes: None,
     }
 }
 

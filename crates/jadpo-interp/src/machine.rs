@@ -102,6 +102,8 @@ pub(crate) enum Target {
         /// order (chunk A10).
         way: bool,
         strong: bool,
+        /// Whether `scopes:` follows them (chunk N2).
+        scoped: bool,
     },
     /// A route test's `request { link: }` (area 13).
     Download,
@@ -2108,6 +2110,7 @@ impl<'p> Machine<'p> {
                 caller,
                 sign_in,
                 strength,
+                scopes,
             } => {
                 let Some(index) = self.program.plan().routes().position_of(route.as_str()) else {
                     return Err(self.defect(ctx, "a request to a route with no plan", id));
@@ -2120,6 +2123,7 @@ impl<'p> Machine<'p> {
                     .chain(*caller)
                     .chain(*sign_in)
                     .chain(*strength)
+                    .chain(*scopes)
                     .collect();
                 self.tasks.push(Task::Invoke {
                     target: Target::Request {
@@ -2128,6 +2132,7 @@ impl<'p> Machine<'p> {
                         signed: caller.is_some(),
                         way: sign_in.is_some(),
                         strong: strength.is_some(),
+                        scoped: scopes.is_some(),
                     },
                     count: parts.len(),
                     at: id,

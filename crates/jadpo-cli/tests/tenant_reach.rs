@@ -444,6 +444,7 @@ async fn call(
         session: None,
         sign_in: None,
         multi_factor: false,
+        scopes: None,
     }));
     let outcome = program.run(&mut ctx, id, args).await;
     (outcome, ctx.take_deferred())

@@ -534,3 +534,123 @@ fn the_double_answers_as_redis_does() {
         Reply::Array(Some(vec![Reply::Integer(1)]))
     );
 }
+
+fn tags(names: &[&str]) -> Vec<String> {
+    names.iter().map(|name| name.to_string()).collect()
+}
+
+/// A cache's side of the driver (area 5, "Caches"; chunk Q9) against
+/// `redis`: an entry kept is read back with its generations in one ask; a
+/// clear moves the generation of each entity it names and deletes each
+/// entry that read one, and leaves the rest; an entry forgotten is gone.
+async fn a_cache_keeps_reads_and_clears(redis: &Redis) {
+    let product = tags(&["Teapot"]);
+    let both = tags(&["Category", "Teapot"]);
+    let looked = redis.look("jadpo:cache:entry:a", &product).await;
+    assert_eq!(
+        looked,
+        Ok(Looked {
+            generations: vec![0],
+            entry: None
+        })
+    );
+    let kept = redis
+        .keep("jadpo:cache:entry:a", b"{\"a\":1}", 60_000, &product)
+        .await;
+    assert_eq!(kept, Ok(vec![0]));
+    let kept = redis
+        .keep("jadpo:cache:entry:b", b"{\"b\":2}", 60_000, &both)
+        .await;
+    assert_eq!(kept, Ok(vec![0, 0]));
+    let kept = redis
+        .keep(
+            "jadpo:cache:entry:c",
+            b"{\"c\":3}",
+            60_000,
+            &tags(&["Category"]),
+        )
+        .await;
+    assert_eq!(kept, Ok(vec![0]));
+    let looked = redis.look("jadpo:cache:entry:b", &both).await;
+    assert_eq!(
+        looked,
+        Ok(Looked {
+            generations: vec![0, 0],
+            entry: Some(b"{\"b\":2}".to_vec())
+        })
+    );
+    assert_eq!(redis.clear(&product).await, Ok(()));
+    let looked = redis.look("jadpo:cache:entry:b", &both).await;
+    assert_eq!(
+        looked,
+        Ok(Looked {
+            generations: vec![0, 1],
+            entry: None
+        })
+    );
+    assert_eq!(
+        redis.look("jadpo:cache:entry:a", &product).await,
+        Ok(Looked {
+            generations: vec![1],
+            entry: None
+        })
+    );
+    let left = redis
+        .look("jadpo:cache:entry:c", &tags(&["Category"]))
+        .await
+        .expect("looked");
+    assert_eq!(left.entry.as_deref(), Some(&b"{\"c\":3}"[..]));
+    assert_eq!(redis.forget("jadpo:cache:entry:c").await, Ok(()));
+    let left = redis
+        .look("jadpo:cache:entry:c", &tags(&["Category"]))
+        .await
+        .expect("looked");
+    assert_eq!(left.entry, None);
+}
+
+#[test]
+fn a_cache_keeps_reads_and_clears_in_the_double() {
+    let host = Doubled::new(Double::new());
+    let redis = store("redis://cache", &host);
+    on_one_thread(async || a_cache_keeps_reads_and_clears(&redis).await);
+    // A clear is one transaction, then the entries it found, deleted.
+    let sent = host.double.borrow().sent.clone();
+    let clear = sent
+        .iter()
+        .position(|name| name == "INCR")
+        .expect("a clear");
+    assert_eq!(
+        &sent[clear - 1..clear + 5],
+        ["MULTI", "INCR", "SMEMBERS", "DEL", "EXEC", "DEL"]
+    );
+    // An entry expires with its `keep:`, and a list outlives every entry
+    // it names.
+    let mut double = host.double.borrow_mut();
+    let now = host.clock.get();
+    let mut session = Session::default();
+    let words = |parts: &[&str]| parts.iter().map(|part| part.as_bytes().to_vec()).collect();
+    double.answer(
+        &mut session,
+        words(&["SET", "jadpo:cache:entry:d", "{}", "PX", "1000"]),
+        now,
+    );
+    assert_eq!(
+        double.get(0, "jadpo:cache:entry:d", now + 999),
+        Some("{}".into())
+    );
+    assert_eq!(double.get(0, "jadpo:cache:entry:d", now + 1_000), None);
+}
+
+/// A cache's store that doesn't answer is told to the runtime as one
+/// that timed out, so its reads go to the database.
+#[test]
+fn a_silent_cache_times_out() {
+    let host = Doubled::new(Double::new());
+    host.plays.set(Plays::Silent);
+    host.timer_fires.set(true);
+    let redis = store("redis://cache", &host);
+    let looked = on_one_thread(async || {
+        Cache::look(&redis, "jadpo:cache:entry:a", &tags(&["Teapot"]), 0).await
+    });
+    assert_eq!(looked, Err(Unasked::TimedOut));
+}

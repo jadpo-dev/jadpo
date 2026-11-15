@@ -386,6 +386,10 @@ pub enum Expr {
         /// A10); by magic link with one factor when left out.
         sign_in: Option<SiteId>,
         strength: Option<SiteId>,
+        /// `scopes:`: the scope-tokens `as:`'s user's external token
+        /// carries, as one text joined by spaces (area 9, "Scopes"; chunk
+        /// N2); when given, the user signs in with an external token.
+        scopes: Option<SiteId>,
     },
     /// `request { link: ... }` in a route test (area 13): a file's signed
     /// link followed, with the `Range` it sends, answered with a `Response`

@@ -6049,9 +6049,9 @@ support can't arise.
 | `scanning` | Uploads scanned before they can be attached ([Built-in services](16-built-in-services.md)) | None | Yes (a ClamAV service, a scanning API); built when an app needs it |
 | `ai` | Prompts and `ai.generate`, embeddings ([AI](21-ai.md)) | OpenAI-compatible servers, for local models | Yes (`provides/ai.jadpo`: Anthropic, OpenAI and the rest) |
 
-This table is the whole design. Built so far: `database` on PostgreSQL, `email`,
-`receiving`, `schedules`, `ai`, `files` on the disk and S3, `search` on PostgreSQL
-and `publishing` through `Driver.webhook`.
+This table is the whole design. Built so far: `database` on PostgreSQL, `cache`
+on Redis and in memory, `email`, `receiving`, `schedules`, `ai`, `files` on the
+disk and S3, `search` on PostgreSQL and `publishing` through `Driver.webhook`.
 The others aren't built yet ([What is built](#what-is-built)).
 
 Some things are not capabilities:
@@ -6326,7 +6326,9 @@ refuses a deployable that uses one elsewhere, naming what to use instead.
 A deployable ([Declared deployables](14-tooling.md#declared-deployables))
 that declares a target is refused each connection it reaches whose driver
 that target can't run, with `deployable.target_unsupported` naming what
-to use instead. On Workers that is the disk and SMTP on port 25. Natively it is a Cloudflare queue, which a
+to use instead. On Workers that is the disk, a cache in memory, which
+every deployable reaches since its writes clear the caches, and SMTP on
+port 25. Natively it is a Cloudflare queue, which a
 deployable reaches when it runs `Trigger.subscribers`, where the queues
 `receiving:` reads are received.
 
@@ -6335,7 +6337,6 @@ serves and the background work it runs, through everything they call. An
 app that declares no deployables, and a deployable with no `target:`,
 have no target, so nothing is refused for them.
 
-> An in-memory cache is checked against the target once caches are built.
 
 ### Choosing a provider when deploying
 

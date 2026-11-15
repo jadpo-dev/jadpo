@@ -147,13 +147,15 @@ fn kind_json(ctx: &Ctx<'_>, kind: &ExportKind) -> String {
                 .as_ref()
                 .map_or("null".to_string(), |field| quoted(field));
             // In the API's form, as a duration is sent.
-            let after = ctx
-                .setting(kept.setting)
-                .and_then(|value| {
+            let after = match (&kept.written, kept.setting) {
+                (Some(written), _) => Some(written.clone()),
+                (None, Some(setting)) => ctx.setting(setting).and_then(|value| {
                     let entry = jadpo_value::standard::entry_of(value)?;
                     jadpo_value::standard::canonical(entry, value).ok()
-                })
-                .map_or("null".to_string(), |text| quoted(&text));
+                }),
+                (None, None) => None,
+            }
+            .map_or("null".to_string(), |text| quoted(&text));
             format!(
                 "{{\"field\":{field},\"after\":{after},\"since\":{}}}",
                 quoted(&kept.since)

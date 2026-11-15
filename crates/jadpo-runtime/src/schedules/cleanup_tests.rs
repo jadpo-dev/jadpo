@@ -187,6 +187,31 @@ fn cleanup_union_includes_ai_only_and_schedule_only_stores_without_prompt_trigge
     assert!(!calls.iter().any(|sql| sql == EXPIRED_KEYS));
 }
 
+/// The calls `ai: { keep_content: }` keeps are deleted in their store once
+/// `keep:` has passed (chunk K6), and no store without them is asked.
+#[test]
+fn kept_ai_calls_are_deleted_where_they_are_kept() {
+    let executor = OnlyState {
+        places: crate::Places::default(),
+        plan: SchedulesPlan {
+            ai_content: Some(("kept".into(), 30 * 86_400_000)),
+            ..SchedulesPlan::default()
+        },
+    };
+    let host = Deleting::new(false, false);
+    let ticked = crate::block_on(tick(&executor, &host, 0)).unwrap();
+    assert!(ticked.problems.is_empty(), "{ticked:?}");
+    let calls = host.calls.borrow();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|sql| sql.as_str() == housekeeping::CLAIM)
+            .count(),
+        1
+    );
+    assert!(calls.iter().any(|sql| sql == crate::ai_keep::OLD_CONTENT));
+}
+
 #[test]
 fn an_interrupted_pass_releases_without_completing_or_admitting_another_delete() {
     let executor = OnlyState {

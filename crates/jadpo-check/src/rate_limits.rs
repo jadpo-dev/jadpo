@@ -403,6 +403,7 @@ fn described(kind: ConnectionKind) -> &'static str {
         ConnectionKind::SignIn => "a sign-in provider",
         ConnectionKind::Webhook => "a webhook's address",
         ConnectionKind::Package => "a package's connection",
+        ConnectionKind::Memory => "a cache in each server's own memory",
         ConnectionKind::Redis | ConnectionKind::CloudflareRateLimits | ConnectionKind::Other => {
             "another kind of connection"
         }

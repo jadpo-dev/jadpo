@@ -314,6 +314,9 @@ pub struct NativeHost {
     counted_in: Option<String>,
     /// Whether that store is being asked, which the server's workers share.
     health: Arc<StoreHealth>,
+    /// Whether every cache is kept in this process's memory, whatever its
+    /// driver: `jadpo dev`'s (area 11, "In development"; chunk Q9).
+    caches_in_memory: bool,
     deferred: Deferred,
     /// The background work it has running (deferred work, ticks, work
     /// handed on), and whether it is shutting down (chunk 6.7).
@@ -432,6 +435,13 @@ impl NativeHost {
     ) -> NativeHost {
         self.limits = limits;
         self.health = health;
+        self
+    }
+
+    /// Keeps every cache in this process's memory, whatever its driver:
+    /// what `jadpo dev` does (area 11, "In development"; chunk Q9).
+    pub fn caching_in_memory(mut self) -> NativeHost {
+        self.caches_in_memory = true;
         self
     }
 
@@ -642,6 +652,18 @@ impl Host for NativeHost {
             .await;
             counted.unwrap_or_else(|| self.limits.allow(key, limit, now))
         })
+    }
+
+    /// The cache's driver as the factory built it: its Redis connection,
+    /// or this process's memory for `Driver.memory`; under `jadpo dev`,
+    /// this process's memory for every cache (chunk Q9).
+    fn cache(&self, connection: &str) -> Option<Rc<dyn jadpo_runtime::caches::Cache>> {
+        if self.caches_in_memory {
+            return Some(Rc::new(jadpo_runtime::caches::MemoryCache::process(
+                connection,
+            )));
+        }
+        self.drivers.cache(connection)
     }
 }
 

@@ -365,6 +365,7 @@ mod tests {
             session: None,
             sign_in: None,
             multi_factor: false,
+            scopes: None,
         };
         assert_eq!(person(Some(&caller("user 1"))), Some([1; 16]));
         assert_eq!(person(Some(&caller("service 1"))), None);

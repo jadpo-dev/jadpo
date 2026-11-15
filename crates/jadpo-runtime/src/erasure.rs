@@ -223,9 +223,15 @@ async fn apply(
         .database(&applying.part.store)
         .ok_or(StoreError::Unavailable)?;
     let mut transaction = database.begin_at(Isolation::RepeatableRead).await?;
+    let (clears, now) = (&applying.plan.clears, applying.now);
     match apply_in(transaction.as_mut(), applying, new_id).await {
         Ok(applied) => {
             transaction.commit().await?;
+            // No cache keeps a copy of what it erased (area 15, "What
+            // erasure reaches"; chunk Q9).
+            if !clears.is_empty() {
+                crate::caches::clear(host, &crate::caches::merged(clears), now).await;
+            }
             Ok(applied.deliveries)
         }
         Err(error) => {

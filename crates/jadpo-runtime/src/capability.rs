@@ -730,6 +730,10 @@ pub struct Faked<H> {
     record: Option<Rc<crate::record::Record>>,
     /// Whether `host`'s monotonic clock is read through it.
     clock: bool,
+    /// The cache connections a test keeps in memory of its own, and those
+    /// caches (area 13, "Events and caches in tests"; chunk Q9).
+    caches: Vec<String>,
+    memory: crate::caches::MemoryCaches,
 }
 
 #[cfg(feature = "testing")]
@@ -752,7 +756,21 @@ impl<H: Host> Faked<H> {
             choose: None,
             record: None,
             clock: true,
+            caches: Vec::new(),
+            memory: crate::caches::MemoryCaches::default(),
         }
+    }
+
+    /// Keeps each cache in `connections` in memory of its own, empty at
+    /// first: a test's caches (area 13, "Events and caches in tests").
+    pub fn with_caches<'s>(mut self, connections: impl IntoIterator<Item = &'s str>) -> Faked<H> {
+        self.caches = connections.into_iter().map(str::to_string).collect();
+        self
+    }
+
+    /// The caches it keeps in memory, by connection.
+    pub fn memory_caches(&self) -> &crate::caches::MemoryCaches {
+        &self.memory
     }
 
     /// Hides `host`'s monotonic clock, as a test's host has none: a
@@ -922,6 +940,17 @@ impl<H: Host> Host for Faked<H> {
 
     fn slots(&self) -> &crate::slots::Slots {
         self.host.slots()
+    }
+
+    fn cache(&self, connection: &str) -> Option<Rc<dyn crate::caches::Cache>> {
+        if self.caches.iter().any(|known| known == connection) {
+            return Some(Rc::new(self.memory.of(connection)));
+        }
+        self.host.cache(connection)
+    }
+
+    fn cache_health(&self) -> &crate::caches::CacheHealth {
+        self.host.cache_health()
     }
 }
 

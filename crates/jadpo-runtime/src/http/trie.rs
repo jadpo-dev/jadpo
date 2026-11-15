@@ -414,6 +414,7 @@ mod tests {
             })
             .collect();
         RoutePlan {
+            cache: None,
             key: format!("route {} {path}", method.word()),
             method,
             segments,

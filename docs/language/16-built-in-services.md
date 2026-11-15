@@ -671,9 +671,13 @@ listed on the driver's page, as every driver's are
 ### `Driver.memory`
 
 `Driver.memory` keeps a cache in each server's own memory. Each server
-then has its own cache, emptied on every restart. You may use it in
-production, and `jadpo check` warns you when you do. On Workers it is a
-compile error, because a Worker keeps no memory between requests.
+then has its own cache, emptied on every restart, and a change one server
+clears is still served by the others until their entries reach their
+`keep:`. You may use it in production on one server: `jadpo check`
+reports it as `connection.memory_cache` until you decline it with a
+reason. It takes no setting. On Workers it is a compile error
+(`deployable.target_unsupported`), because a Worker keeps no memory
+between requests.
 
 ### Cloudflare KV
 
@@ -4559,8 +4563,9 @@ Workers. Its one setting is `url:`, read from a `RedisUrl` setting, which is
 always secret
 ([Connection types](10-configuration-and-time.md#connection-types));
 [Where the counts are kept](#where-the-counts-are-kept-rate_limits--store-)
-shows one. What it does today is count rate limits. Caches and entities in
-Redis will use the same connections ([Caches](05-data.md#caches)).
+shows one. It counts rate limits and keeps caches
+([Caches](05-data.md#caches)); entities in Redis will use the same
+connections.
 
 ### The address
 
@@ -4605,6 +4610,22 @@ Natively each of a server's workers keeps one connection, opened when it first
 counts and again once it breaks, and each request's count is written to it as
 it comes, the answers read back in order. On Workers each request opens its
 own ([A Redis store on Workers](#a-redis-store-on-workers)).
+
+### How a cache is kept
+
+Each entry is one key, `jadpo:cache:entry:` and 32 hex digits of a hash of
+the query, the caller and the arguments, expiring with its `keep:`. Each
+entity has a generation, `jadpo:cache:generation:<Entity>`, and a set of
+the entries that read it, `jadpo:cache:entries:<Entity>`, kept a day and a
+minute after its latest entry. A read is one `MGET` of the generations and
+the entry. Keeping an entry is one transaction (`SET` with `PX`, and
+`SADD` and `PEXPIRE` for each entity), with the generations read again in
+the same write. A clear is one transaction of `INCR`, `SMEMBERS` and `DEL`
+for each entity, then a `DEL` of the entries the sets named. A cache that
+doesn't answer within a second, refuses or breaks is left alone for 10
+seconds, its reads going to the database, and logged once as
+`caches.fallback`, never with a key. Two apps sharing a database share
+their caches' generations, so give each a database of its own.
 
 ### When it can't count
 
@@ -5871,6 +5892,7 @@ The errors this page describes are built with the feature they belong to.
 | Mail packages | Built: a mail package as the connection, partials and `email.sent` ([Mail packages, partials and `email.sent`](#mail-packages-partials-and-emailsent)). |
 | The dev inbox and the health score | Partly built: the dev inbox, `jadpo email`, the health score, `email.health_problem` and `jadpo email check-domain` ([The dev inbox and the health score](#the-dev-inbox-and-the-health-score)), with SpamAssassin's rules in the score ([SpamAssassin in the health score](#spamassassin-in-the-health-score)). Not built yet: the inbox page as part of the developer console, and its link to each mail's trace, which comes with `jadpo trace`. |
 | Rate limits | Partly built: default rate limits with routes, a route's and an API's own `rate_limit:`, and their store: a Redis connection, natively and on Workers ([The Redis driver](#the-redis-driver)), or on Workers Cloudflare's rate-limiting binding ([Rate limits on Workers](#rate-limits-on-workers)). Not built: turning a limit off, which the design notes say needs an acceptance and which has no syntax yet; `requests:` and `within:` can only loosen it. The binding's windows, the Wrangler entries and what its documentation says of locations and accuracy aren't yet checked against the real edge. |
+| Caches | Built: a query's `cache:` in a Redis connection, natively and on Workers, or in `Driver.memory` natively, with `connection.memory_cache` ([Cache drivers and what a cache may hold](#cache-drivers-and-what-a-cache-may-hold), [How a cache is kept](#how-a-cache-is-kept)). |
 | Outside calls | Built: the one place in the runtime every capability's calls go through, with a delivery that hands its event to a capability, parked as `outcome_unknown` when a send without a key may have acted ([How every outside call is made safe](#how-every-outside-call-is-made-safe)). |
 | Files | Partly built. Built: the `files` capability's first part, its calls made the same way: `Driver.disk` and [`Driver.s3`](#the-s3-driver) connections, `File` fields, `store.put`, `store.read` with its whole-read cap and its two errors, the disk driver `jadpo dev` keeps files with and the in-memory store a test's are in, which the file helpers' reads walk ([Data formats](19-standard-library.md#data-formats-json-csv-tsv-and-json-lines); [File fields, `put`, `read` and the disk driver](#file-fields-put-read-and-the-disk-driver)); every write of a `File` field holding the file to the field's `store:`, `types:` and `max_size:` ([What a write checks](#what-a-write-checks)); the pieces the file helpers' writes put, joined into one file or dropped by the store ([How an export writes its file](#how-an-export-writes-its-file)); and a gzip file unpacked as the file helpers read it, up to `max_unpacked_size:` ([Reading gzip](#reading-gzip)). A native deployable's disk driver keeps each store at its `path:`, made the app's user's alone as it starts, a root other users can write to not built, and a write below `free_space_floor:` answering `storage_full`, in `jadpo dev` too; `jadpo check` refuses a `path:` that is relative or inside the project ([`connection.disk_path_invalid`](../errors/connection.disk_path_invalid.md)); and the manifest lists the disk stores that keep a deployable on one server ([The disk driver](#the-disk-driver)). A file's bytes are deleted once no record holds it, after the change commits, through the generated subscriber `files <store>`, and a day after a `put` when no record ever held them, a person's erasure and retention included, a `File` inside a structured field held as a `File` field's is ([Deleting and erasing](#deleting-and-erasing)). The floor is a monitoring threshold ([Monitoring](#monitoring)). A `File` an `Output` or a person's export reaches goes out as a signed link valid for five minutes, served from the disk with single ranges, `If-Range` and an ETag from the file's hash ([Downloading](#downloading)). A client's file reaches a store through a [slot](#uploading), single or [in parts](#large-uploads-go-in-parts): `Entity.field_upload()`, the disk driver's upload address, and a `FileUpload` attached by an ordinary create or update. A test keeps a fixture file in its in-memory store with `fixture_file`, and tells the store to fail every call or every write ([Files](13-testing.md#files)). `jadpo files` lists a store's files on either driver, or `jadpo dev`'s copy, shows, gets and puts one, and copies every file and the erasure log from one store into another, a disk store's folder among them ([`jadpo files`](14-tooling.md#jadpo-files)). A `File` an operation's `input:` or a webhook's `reply:` holds is sent as its bytes ([What a `File` holds](#what-a-file-holds)), and fields in entities of two databases may name one store of files, each counting its own records' holders ([Deleting and erasing](#deleting-and-erasing)). Not built yet: image variants and scanning when an app needs them, the application's `scanning:` being `toolchain.not_built_yet` where it is written. |
 | Flags | Partly built: `flags { }` of `Bool` and enum flags with their `default:`, `owner:` and `expires:`; `flags.<name>` in actions, tests and a route's `run:` arguments, worked out for the caller from `jadpo_flags` in `flags: { store: }`, held in each server's memory and fixed for the operation; a test's `flags:`; `flag.unknown`, `flag.read_context` and `flag.expired` ([Flag rules: declaring, reading, testing](#flag-rules-declaring-reading-testing)). `jadpo flags list`, `set`, `reset` and `remove`, each change logged in `jadpo_flag_changes`; `flag.value_untested`; and `client: true` with each API's `GET /flags` ([Flag rules: changing, listing, removing](#flag-rules-changing-listing-removing)). A person's erasure takes their `id` out of `jadpo_flags` and `jadpo_flag_changes`, and `jadpo migrate new --drop jadpo_flags` drops both once the last flag has gone ([The log](#the-log), [Removing](#removing)). Not built yet: named tenants, which wait for tenancy to be settled for flags. |
@@ -5900,6 +5922,7 @@ The errors this page describes are built with the feature they belong to.
 - [`email.sent_context`](../errors/email.sent_context.md)
 - [`search.settings_invalid`](../errors/search.settings_invalid.md)
 - [`search.undeclared`](../errors/search.undeclared.md)
+- [`connection.memory_cache`](../errors/connection.memory_cache.md)
 - [`rate_limits.store_invalid`](../errors/rate_limits.store_invalid.md)
 - [`rate_limits.store_required`](../errors/rate_limits.store_required.md)
 - [`rate_limits.window_unsupported`](../errors/rate_limits.window_unsupported.md)

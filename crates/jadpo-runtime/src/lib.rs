@@ -94,11 +94,13 @@
 
 pub mod ai;
 pub mod ai_budget;
+pub mod ai_keep;
 mod audit;
 pub mod batches;
 mod boundary;
 pub mod breaker;
 pub mod budget;
+pub mod caches;
 pub mod call_log;
 pub mod calls;
 pub mod capability;

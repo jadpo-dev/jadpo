@@ -447,6 +447,7 @@ fn children(expr: &Expr) -> Vec<SiteId> {
             caller,
             sign_in,
             strength,
+            scopes,
             ..
         } => {
             out.extend(params.iter().copied());
@@ -455,6 +456,7 @@ fn children(expr: &Expr) -> Vec<SiteId> {
             out.extend(*caller);
             out.extend(*sign_in);
             out.extend(*strength);
+            out.extend(*scopes);
         }
         Expr::Inline { .. }
         | Expr::Literal(_)

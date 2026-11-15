@@ -590,21 +590,6 @@ impl Reader<'_> {
             );
             return None;
         };
-        if (batch as usize) < jadpo_std::embed::MOST_TEXTS {
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("Embedding fewer than {} texts a request isn't built yet", jadpo_std::embed::MOST_TEXTS),
-                )
-                .at(self.span(batch_member), "decided, not built")
-                .reason(format!(
-                    "Area 21 has the package split an `ai.embed_all` of up to {} texts into the provider's batch size; this compiler sends them in one request, so it needs a provider that takes at least that many.",
-                    jadpo_std::embed::MOST_TEXTS
-                ))
-                .next(format!("Use a `batch:` of at least {}", jadpo_std::embed::MOST_TEXTS)),
-            );
-            return None;
-        }
         let usage = self.usage(&members["usage"], "response", &output, table)?;
         Some(EmbedMapping {
             operation: operation.full_name(),

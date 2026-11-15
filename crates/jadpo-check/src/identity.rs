@@ -134,6 +134,20 @@ pub struct ExternalToken {
     pub audience: String,
 }
 
+/// A scope `external_token: { scopes: }` declares it reads (area 8,
+/// "Scopes"; chunk N2): the name policy gives it, `OAuthScope.<name>`, and
+/// the scope-token a token carries for it, exactly as the provider spells
+/// it (RFC 6749 §3.3).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Scope {
+    /// `todos_read`.
+    pub name: String,
+    /// `todos:read`.
+    pub token: String,
+    /// Where it is declared.
+    pub span: Span,
+}
+
 /// A sign-in method `authentication { }` declares.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Method {
@@ -213,6 +227,11 @@ pub struct Identity {
     /// Each declared method, in written order.
     pub methods: Vec<Method>,
     pub external_token: Option<ExternalToken>,
+    /// The scopes `external_token: { scopes: }` declares it reads, each
+    /// that read cleanly, when `scopes:` is written (chunk N2): every token
+    /// through it is narrowed to the scopes it carries of these. `None`
+    /// when no way in declares any, so no token is narrowed.
+    pub scopes: Option<Vec<Scope>>,
     /// `application { revocation_delay: }` in milliseconds, when it is a
     /// duration above zero.
     pub revocation_delay: Option<i64>,
@@ -244,6 +263,21 @@ impl Identity {
 
     pub fn method(&self, method: AuthenticationMethod) -> Option<&Method> {
         self.methods.iter().find(|found| found.method == method)
+    }
+
+    /// The declared scope called `name` (`todos_read`), when one is.
+    pub fn scope(&self, name: &str) -> Option<&Scope> {
+        self.scopes
+            .iter()
+            .flatten()
+            .find(|scope| scope.name == name)
+    }
+
+    /// Whether a way in narrows its tokens to their scopes (area 9,
+    /// "Scopes"; chunk N2): an external token whose method declares the
+    /// scopes it reads. Every other caller is unaffected.
+    pub fn narrows(&self) -> bool {
+        self.scopes.is_some() && self.external_token.is_some()
     }
 
     /// The type of field `field` of a caller of kind `kind`: its `id`, its
@@ -1557,6 +1591,123 @@ impl Reader<'_> {
         }
     }
 
+    /// `external_token: { scopes: { todos_read: "todos:read" } }` (area 8,
+    /// "Scopes"; chunk N2): each scope a token through it is narrowed to,
+    /// by the name policy gives it and the scope-token the provider writes
+    /// in the token's `scope` claim. Each that reads cleanly; a mistake is
+    /// reported and leaves its scope out, which only narrows.
+    fn scopes(&mut self, path: &str, key: &Span, member: &ast::Member) -> Vec<Scope> {
+        let Some(list) = member.block() else {
+            let at = member
+                .value()
+                .map_or_else(|| key.clone(), |value| node_span(path, value.syntax()));
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                    "`scopes:` isn't a block of scopes",
+                )
+                .at(at, "not a block")
+                .reason("`scopes:` names each scope a token is narrowed to and the scope-token the provider writes for it: `scopes: { <name>: \"<scope-token>\" }`.")
+                .next("Write `scopes: { <name>: \"<scope-token>\" }`"),
+            );
+            return Vec::new();
+        };
+        let mut out: Vec<Scope> = Vec::new();
+        let mut written = false;
+        for (name_node, entry) in tree::members(Some(list)) {
+            let Some(name) = tree::name_text(&name_node) else {
+                continue;
+            };
+            written = true;
+            let at = node_span(path, name_node.syntax());
+            if let Some(first) = out.iter().find(|scope| scope.name == name) {
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                        format!("`scopes:` names `{name}` twice"),
+                    )
+                    .at(at, "named again")
+                    .also(first.span.clone(), "first named here")
+                    .reason("Each scope is declared once, so `OAuthScope.<name>` means one scope-token.")
+                    .next(format!("Remove the second `{name}:`")),
+                );
+                continue;
+            }
+            if !crate::case::is_lower_snake(&name) {
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                        format!("`{name}` isn't a scope's name"),
+                    )
+                    .at(at, "not in lower snake case")
+                    .reason("A scope's name is how policy names it, `OAuthScope.<name>`, so it is written as every value's name is: lower case words joined by `_`. The scope-token the provider spells it with goes after the colon.")
+                    .next("Name it in lower snake case: lower case words joined by `_`"),
+                );
+                continue;
+            }
+            let value_at = entry
+                .value()
+                .map_or_else(|| at.clone(), |value| node_span(path, value.syntax()));
+            let token = match entry.value().as_ref().map(crate::types::Const::from_expr) {
+                Some(crate::types::Const::Str(text)) => text,
+                _ => {
+                    self.out.problems.push(
+                        Diagnostic::new(
+                            &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                            format!("`{name}:` isn't given its scope-token"),
+                        )
+                        .at(value_at, "not text")
+                        .reason("Each scope gives, in quotes, the scope-token the provider writes in a token's `scope` claim for it, exactly: `<name>: \"<scope-token>\"`.")
+                        .next(format!("Write `{name}: \"<scope-token>\"`")),
+                    );
+                    continue;
+                }
+            };
+            if !jadpo_std::standard::security::OAUTH_SCOPE_ENTRY.accepts(&token) {
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                        format!("`{token}` isn't a scope-token"),
+                    )
+                    .at(value_at, "not an `OAuthScope`")
+                    .reason("A scope-token is 1 to 256 printable ASCII characters other than a space, `\"` and `\\` (RFC 6749 §3.3): a token's `scope` claim separates its scopes with spaces.")
+                    .next(format!("Give `{name}:` the scope-token exactly as the provider writes it")),
+                );
+                continue;
+            }
+            if let Some(first) = out.iter().find(|scope| scope.token == token) {
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                        format!("`{name}` and `{}` both read `{token}`", first.name),
+                    )
+                    .at(value_at, "read again")
+                    .also(first.span.clone(), "first read here")
+                    .reason("Each scope-token is one scope, so a policy that asks for one of the two names can't be met by a token meant for the other.")
+                    .next(format!("Remove `{name}:`, and name `OAuthScope.{}` where it is used", first.name)),
+                );
+                continue;
+            }
+            out.push(Scope {
+                name,
+                token,
+                span: at,
+            });
+        }
+        if !written {
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                    "`scopes:` declares no scope",
+                )
+                .at(key.clone(), "empty")
+                .reason("With `scopes:`, a token is narrowed to the scopes it carries of those declared, so with none declared no token could do anything.")
+                .next("Declare each scope a token may carry, `<name>: \"<scope-token>\"`, or remove `scopes:`"),
+            );
+        }
+        out
+    }
+
     /// External tokens use deployment-owned issuer and audience settings.
     fn external_token(&mut self, path: &str, span: &Span, member: &ast::Member) -> Option<Method> {
         let mut issuer = None;
@@ -1586,13 +1737,17 @@ impl Reader<'_> {
                 let needs = match name.as_str() {
                     "issuer" => jadpo_std::Builtin::Url,
                     "audience" => jadpo_std::Builtin::Text,
+                    "scopes" => {
+                        self.out.scopes = Some(self.scopes(path, &at, &setting));
+                        continue;
+                    }
                     _ => {
                         ok = false;
                         self.out.problems.push(Diagnostic::new(
                             &rule::SEMANTIC_AUTH_SETTING_UNKNOWN,
                             format!("`{name}` isn't an `external_token` setting"),
                         ).at(at, "unknown setting")
-                         .reason("External tokens take `issuer:` and `audience:` from configuration. The runtime owns discovery, keys and validation.")
+                         .reason("External tokens take `issuer:` and `audience:` from configuration, and `scopes:`, the scopes a token is narrowed to. The runtime owns discovery, keys and validation.")
                          .next(format!("Remove `{name}:`")));
                         continue;
                     }

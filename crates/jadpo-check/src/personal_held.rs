@@ -84,10 +84,17 @@ fn field_row(
     let readers = who_reads(access.entity(&entity.name), &field.name);
     let store = entity.store.clone().unwrap_or_default();
     let (keep, retention) = kept(entity, field);
+    let caches = crate::caches::caches_holding(db, project, &entity.name, &field.name);
+    let kept_in = if caches.is_empty() {
+        format!("`{store}`")
+    } else {
+        let named: Vec<String> = caches.iter().map(|cache| format!("`{cache}`")).collect();
+        format!("`{store}`, cached in {}", crate::and_list(&named))
+    };
     let cells = [
         format!("`{}.{}`", entity.name, field.name),
         category_cell(holding),
-        format!("`{store}`"),
+        kept_in,
         readers.clone(),
         keep.clone(),
     ];
@@ -101,8 +108,12 @@ fn field_row(
         categories.iter().any(|c| ai_personal::is_sensitive(c)),
     );
     json.set("store", store);
-    // No entity can have a cache yet (area 5, `caches:` is refused).
-    json.set("caches", Vec::<Value>::new());
+    // Each cache a query giving it keeps its copies in (area 5, "Caches";
+    // chunk Q9).
+    json.set(
+        "caches",
+        caches.into_iter().map(Value::from).collect::<Vec<Value>>(),
+    );
     json.set("read_by", readers);
     match retention {
         Some(retention) => json.set("retention", retention),
@@ -455,6 +466,43 @@ pub fn step_records(db: &dyn Db, project: Project) -> (String, Vec<Value>) {
         })
         .collect();
     (markdown, json)
+}
+
+/// The prompts `ai: { keep_content: }` keeps the calls of (area 21,
+/// "Prompts and answers in logs"; chunk K6): a section, and its JSON, only
+/// when it keeps any.
+pub fn kept_prompts(db: &dyn Db, project: Project) -> Option<(String, Vec<Value>)> {
+    let settings = crate::ai::settings(db, project);
+    let keep = settings.keep.as_ref().filter(|keep| keep.complete())?;
+    let store = keep.store.clone()?;
+    let days = keep.keep_ms? / 86_400_000;
+    let kept = if days == 1 {
+        "1 day".to_string()
+    } else {
+        format!("{days} days")
+    };
+    let mut markdown = String::from(
+        "## Prompts and answers kept\n\nEach call of these prompts is kept with its answer, encrypted, as `health` data: exported and erased with the person signed in when it was made, and deleted once its time is up.\n\n",
+    );
+    markdown.push_str(&table(
+        &["Prompt", "Store", "Kept for"],
+        keep.prompts
+            .iter()
+            .map(|prompt| vec![format!("`{prompt}`"), format!("`{store}`"), kept.clone()]),
+    ));
+    markdown.push('\n');
+    let json = keep
+        .prompts
+        .iter()
+        .map(|prompt| {
+            let mut entry = Value::object();
+            entry.set("prompt", prompt.as_str());
+            entry.set("store", store.as_str());
+            entry.set("kept_for", kept.as_str());
+            entry
+        })
+        .collect();
+    Some((markdown, json))
 }
 
 /// What a report always says about grants, which aren't built yet.
