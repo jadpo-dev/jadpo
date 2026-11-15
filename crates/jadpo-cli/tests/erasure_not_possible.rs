@@ -173,7 +173,7 @@ fn a_first_commit_says_so_rather_than_passing_unseen() {
         said,
         "from the next change",
         "connection `pay` can now reach `https://api.acme-pay.example`",
-        "(human)",
+        "(agent)",
     ] {
         assert!(
             checked.stdout.contains(words),

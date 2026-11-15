@@ -1,8 +1,9 @@
 //! What a first record holds (area 18, "What a first record holds"; chunk
 //! A15), end to end through git. A first commit has nothing to compare with,
 //! so what would need a person later passes `jadpo check` unseen. Each such
-//! thing is a notice marked `(human)`, once, and the approval report leads
-//! with it: a decision, not a fault, so nothing fails.
+//! thing is a notice, once: `jadpo check` marks it `(agent)` (carry on, tell the
+//! user) and the approval report leads with it as a `(human)` decision, so
+//! nothing fails.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -100,8 +101,9 @@ fn a_new_projects_public_write_is_a_notice_for_a_person() {
     for words in [
         "1 decision compared with nothing",
         PUBLIC,
-        "decision: nothing compares this, so a person reads it before it goes in",
-        "(human)",
+        "notice: nothing compares this yet, so a person reads it before it goes in",
+        "Carry on: this passes, and nothing here is yours to decide or to stop for.",
+        "(agent)",
         "before: none, so acceptances aren't judged: no commit yet",
     ] {
         assert!(
@@ -119,7 +121,7 @@ fn a_new_projects_public_write_is_a_notice_for_a_person() {
     assert_eq!(notice["subject"], "lending.Book");
     assert_eq!(notice["kind"], "public_write");
     assert_eq!(notice["said"], PUBLIC);
-    assert_eq!(notice["decides"], "human");
+    assert_eq!(notice["decides"], "agent");
     assert_eq!(notice["file"], "access.jadpo_record");
     let record = fs::read_to_string(root.join("access.jadpo_record")).expect("the record");
     let line = record
@@ -138,7 +140,11 @@ fn a_new_projects_public_write_is_a_notice_for_a_person() {
     assert_eq!(notices(&root), Vec::<String>::new());
     git(&root, &["checkout", "-q", "-b", "later"]);
     assert_eq!(notices(&root), Vec::<String>::new());
-    assert!(!jadpo(&root, &["check"]).stdout.contains("(human)"));
+    assert!(
+        !jadpo(&root, &["check"])
+            .stdout
+            .contains("Carry on: this passes")
+    );
 }
 
 #[test]
@@ -158,7 +164,11 @@ fn reads_and_signed_in_writes_are_no_notice() {
     );
     update(&root);
     assert_eq!(notices(&root), Vec::<String>::new());
-    assert!(!jadpo(&root, &["check"]).stdout.contains("(human)"));
+    assert!(
+        !jadpo(&root, &["check"])
+            .stdout
+            .contains("Carry on: this passes")
+    );
 }
 
 const MEMBER: &str = "domains/lending/entities/member.jadpo";
@@ -192,7 +202,7 @@ fn a_new_projects_public_read_of_an_email_is_a_notice_for_a_person() {
     public_member(&root, "    contact: Email?");
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
-    for words in [READ, "(human)"] {
+    for words in [READ, "(agent)"] {
         assert!(
             checked.stdout.contains(words),
             "{words}\n{}",
@@ -204,7 +214,7 @@ fn a_new_projects_public_read_of_an_email_is_a_notice_for_a_person() {
     assert_eq!(notice["subject"], "lending.Member");
     assert_eq!(notice["kind"], "public_read");
     assert_eq!(notice["said"], READ);
-    assert_eq!(notice["decides"], "human");
+    assert_eq!(notice["decides"], "agent");
     assert_eq!(notice["file"], "access.jadpo_record");
 
     commit(&root, "The library");
@@ -488,7 +498,11 @@ fn a_project_with_errors_shows_no_notice() {
     );
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 1, "{}", checked.stdout);
-    assert!(!checked.stdout.contains("(human)"), "{}", checked.stdout);
+    assert!(
+        !checked.stdout.contains("Carry on: this passes"),
+        "{}",
+        checked.stdout
+    );
 }
 
 /// The rest that area 18 compares and a first commit doesn't, each in its
