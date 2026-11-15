@@ -970,7 +970,122 @@ server. What happens on each kind of store:
 | Any store, in an application with no geometry column or index | Nothing: PostGIS is never needed |
 | PostgreSQL with PostGIS available | The first migration with a geometry column or index creates the extension; nothing to configure. Neon, Supabase, Amazon RDS and Google Cloud SQL all offer PostGIS (assumption from their documentation, not tested here) |
 | PostgreSQL without it, or a role that can't create it | `jadpo migrate apply` stops before changing anything, with `migration.extension_missing`. The error names the extension and says that a role allowed to create it runs `CREATE EXTENSION postgis` once. PostGIS isn't a trusted extension, so creating it needs a superuser or the provider's own admin role (verified). The application already refuses to start against a database whose migrations aren't applied ([Migrations](05-data.md#migrations)), which covers the rest |
-| Redis ([Reading and writing entities in Redis](06-reads-and-writes.md#reading-and-writing-entities-in-redis)), and D1 when it arrives | A geometry field is kept in the entity's JSON as its GeoJSON, as a Redis entity keeps all its fields. Any `geo.` condition or order is the compile error that names PostgreSQL, as for any query a Redis entity can't serve |
+| Redis ([Reading and writing entities in Redis](06-reads-and-writes.md#reading-and-writing-entities-in-redis)), and D1 when it arrives | A geometry field is kept in the entity's JSON as its GeoJSON, as a Redis entity keeps all its fields. Any `geo.` condition or order is `query.redis_unsupported`, which names PostgreSQL, as for any query a Redis entity can't serve |
+
+A Redis entity's geometry comes back as its GeoJSON gives it: a ring wound
+clockwise comes back wound by the right-hand rule. Here a planner's patch
+is kept for half an hour while they draw it:
+
+```jadpo check project=redis-patch file=app.jadpo hidden
+application {
+    connections: {
+        drafts: {
+            driver: Driver.redis
+            url: config.redis_url
+        }
+    }
+}
+```
+
+```jadpo check project=redis-patch file=config.jadpo hidden
+config {
+    redis_url: RedisUrl
+}
+```
+
+```jadpo check project=redis-patch file=domains/planning/entities/drawn_patch.jadpo
+/// A patch a planner is drawing, kept until they finish.
+entity DrawnPatch {
+    id: Uuid
+    outline: Polygon
+
+    store: drafts
+    expires_after: 30m
+}
+```
+
+```jadpo check project=redis-patch file=domains/planning/actions/draw_patch.jadpo hidden
+use planning/entities { DrawnPatch }
+
+/// Keeps the patch a planner drew.
+action draw_patch(outline: Polygon) -> DrawnPatch {
+    return DrawnPatch.create {
+        set: {
+            outline: outline
+        }
+    }
+}
+```
+
+```jadpo check project=redis-patch file=domains/planning/actions/draw_patch.test.jadpo
+use planning/entities { DrawnPatch }
+
+test "a patch drawn clockwise comes back by the right-hand rule" {
+    var clockwise: Polygon = Polygon {
+        outer: [
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            }
+        ]
+        holes: []
+    }
+    var made_patch: DrawnPatch = draw_patch(clockwise)
+    var stored_patch: DrawnPatch = attempt DrawnPatch.get(made_patch.id)
+    assert stored_patch.outline != clockwise
+    assert stored_patch.outline == Polygon {
+        outer: [
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            }
+        ]
+        holes: []
+    }
+}
+```
 
 So the compiler refuses what it can see, a `geo.` condition on a store
 that has no spatial queries, and `jadpo migrate apply` refuses what only
@@ -2139,4 +2254,4 @@ what to use instead:
 | Feature | Status |
 |---|---|
 | Everything on this page but the rows below | Built. |
-| Geometries in Redis | Not built yet: waits for entities in Redis ([Reading and writing entities in Redis](06-reads-and-writes.md#reading-and-writing-entities-in-redis)). Until then nothing stores a geometry there. A Redis entity will keep a geometry as its GeoJSON, and every geometry, with and without altitude, comes back from its GeoJSON unchanged, except that a polygon wound clockwise comes back wound by the right-hand rule, which PostGIS storage doesn't do. |
+| Geometries in Redis | Built: an entity in Redis keeps a geometry as its GeoJSON ([Entities in Redis](05-data.md#entities-in-redis)), and every geometry, with and without altitude, comes back from its GeoJSON unchanged, except that a polygon wound clockwise comes back wound by the right-hand rule, which PostGIS storage doesn't do. A `geo.` condition or order on one is `query.redis_unsupported`. |

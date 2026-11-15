@@ -619,6 +619,12 @@ impl Host for WorkersHost {
     fn cache(&self, connection: &str) -> Option<std::rc::Rc<dyn jadpo_runtime::caches::Cache>> {
         self.drivers().cache(connection)
     }
+
+    /// The Redis connection an entity's records are kept in, over the
+    /// invocation's own connection (chunk Q10).
+    fn records(&self, connection: &str) -> Option<std::rc::Rc<dyn jadpo_runtime::redis::Records>> {
+        self.drivers().records(connection)
+    }
 }
 
 #[cfg(test)]

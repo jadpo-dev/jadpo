@@ -368,6 +368,10 @@ rules! {
         "An action erases a person, and the application doesn't say where the erasure log is kept, so restoring a backup would bring them back";
     DATA_ERASURE_LOG_STORE: "data.erasure_log_store", area 15, Error, Human,
         "The erasure log is kept somewhere restoring a person's database would take it back with them, or somewhere it can't be kept";
+    DATA_EXPIRY_REQUIRED: "data.expiry_required", area 5, Error, Agent,
+        "An entity kept in Redis doesn't say with `expires_after:` how long its records live";
+    DATA_EXPIRY_UNEXPECTED: "data.expiry_unexpected", area 5, Error, Agent,
+        "An entity kept in a database says with `expires_after:` when its records expire, which only an entity in Redis does";
     DATA_FIELD_ENCRYPTION_KEY_INVALID: "data.field_encryption_key_invalid", area 15, Error, Agent,
         "The application's `field_encryption_key:` reads something other than an `EncryptionKey` setting";
     DATA_FIELD_ENCRYPTION_KEY_REQUIRED: "data.field_encryption_key_required", area 15, Error, Human,
@@ -432,6 +436,8 @@ rules! {
         "A setting under `privacy:` isn't one of its settings, or isn't valid";
     DATA_READ_IN_LOOP: "data.read_in_loop", area 6, Error, Agent,
         "A query or another database read, such as a `get`, is inside a `for` loop";
+    DATA_REDIS_UNSUPPORTED: "data.redis_unsupported", area 5, Error, Human,
+        "An entity kept in Redis, or a write of one, uses what only a database keeps, such as a lifecycle, a reference or an index over several fields";
     DATA_REFERENCE_ACROSS_STORES: "data.reference_across_stores", area 5, Error, Human,
         "A field refers to a record of an entity that is kept in a different database";
     DATA_REFERENCE_CYCLE: "data.reference_cycle", area 5, Error, Human,
@@ -906,6 +912,8 @@ rules! {
         "A query in one domain reads the records of an entity that belongs to another domain";
     QUERY_PAGE_SETTING: "query.page_setting", area 6, Error, Agent,
         "A query's `page:` isn't a block holding a `size:` and a `PageCursor` in `after:`";
+    QUERY_REDIS_UNSUPPORTED: "query.redis_unsupported", area 6, Error, Human,
+        "A query reads an entity kept in Redis in a way only a database can serve, such as a range, an `include` or an order";
     QUERY_REPEATED_SECTION: "query.repeated_section", area 6, Error, Agent,
         "A query gives one of its sections twice, or includes the same field twice";
     QUERY_RESULT_FIELD: "query.result_field", area 6, Error, Agent,

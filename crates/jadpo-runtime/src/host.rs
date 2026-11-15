@@ -678,6 +678,15 @@ pub trait Host {
     fn cache_health(&self) -> &crate::caches::CacheHealth {
         crate::caches::CacheHealth::process()
     }
+
+    /// The Redis connection `connection` an entity's records are kept in
+    /// (area 5, "Entities in Redis"; chunk Q10): its Redis driver, this
+    /// process's memory under `jadpo dev`, and a test's own, empty at the
+    /// start of each test (area 13). `None` on a host that keeps none.
+    fn records(&self, connection: &str) -> Option<std::rc::Rc<dyn crate::redis::Records>> {
+        let _ = connection;
+        None
+    }
 }
 
 /// A host borrowed is the host: what a wrapper such as
@@ -789,6 +798,10 @@ impl<H: Host + ?Sized> Host for &H {
 
     fn cache_health(&self) -> &crate::caches::CacheHealth {
         (**self).cache_health()
+    }
+
+    fn records(&self, connection: &str) -> Option<std::rc::Rc<dyn crate::redis::Records>> {
+        (**self).records(connection)
     }
 }
 

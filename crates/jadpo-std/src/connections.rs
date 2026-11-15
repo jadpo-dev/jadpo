@@ -335,6 +335,16 @@ pub fn webhooks(table: &[Connection]) -> impl Iterator<Item = &str> {
         .map(|connection| connection.name.as_str())
 }
 
+/// The Redis connections in `table`, by name: what a test's host and
+/// `jadpo dev` keep an entity in Redis in memory for (area 5, "Entities in
+/// Redis"; chunk Q10).
+pub fn redis(table: &[Connection]) -> impl Iterator<Item = &str> {
+    table
+        .iter()
+        .filter(|connection| matches!(connection.driver, ConnectionDriver::Redis { .. }))
+        .map(|connection| connection.name.as_str())
+}
+
 /// The stores of files in `table` (area 16): every `Driver.disk`
 /// connection, with the folder its `path:` names and its free-space floor,
 /// in millionths of the disk, and every `Driver.s3` connection, with

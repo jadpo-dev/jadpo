@@ -73,6 +73,7 @@ pub mod publishing;
 pub mod rate_limits;
 pub mod receiving;
 pub mod records;
+pub mod redis;
 pub mod release;
 pub mod rename;
 mod resolve;
@@ -328,6 +329,21 @@ fn every_problem(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .cloned(),
             );
             out.extend(caches::cache_problems(db, project, file).iter().cloned());
+            out.extend(
+                redis::redis_entity_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
+                redis::redis_query_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
+                redis::redis_write_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
             out.extend(routes::route_problems(db, project, file).iter().cloned());
             out.extend(
                 events::subscriber_problems(db, project, file)

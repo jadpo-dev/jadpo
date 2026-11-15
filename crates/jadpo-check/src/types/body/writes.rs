@@ -1830,6 +1830,16 @@ impl Body<'_> {
     /// would have needed an `attempt` (chunk Q2).
     fn one_step(&mut self, entity: &str, value: &Expr, written: &str) {
         let root = value.syntax().clone();
+        // Kept in Redis, a record is worked out again from what is stored
+        // as its action commits, only by adding whole numbers (chunk Q10).
+        if self
+            .writes
+            .write_rules(entity)
+            .is_some_and(|rules| rules.redis)
+            && self.redis_one_step(entity, &root, written)
+        {
+            return;
+        }
         // The arms after a construction that refuses: the executor works
         // out a failure's fields only when the update is refused, so they
         // may read what the action has, though never what is stored
@@ -1909,6 +1919,76 @@ impl Body<'_> {
                 self.stored_operand(&node, &root, entity, written);
             }
         }
+    }
+
+    /// What an update by `id` of an entity kept in Redis works out from
+    /// what is stored (area 6, "Reading and writing entities in Redis";
+    /// chunk Q10): a copy of a stored field, or whole numbers added and
+    /// taken away, under constructions that can't fail. Whether it
+    /// reported anything.
+    fn redis_one_step(&mut self, entity: &str, root: &SyntaxNode, written: &str) -> bool {
+        let stored: Vec<SyntaxNode> = std::iter::once(root.clone())
+            .chain(root.descendants())
+            .filter(|node| self.facts.stored.contains(&node_key(node)))
+            .collect();
+        for node in stored {
+            let mut child = node.clone();
+            while child != *root {
+                let Some(parent) = child.parent() else {
+                    break;
+                };
+                let refused = match parent.kind() {
+                    SyntaxKind::BIN_EXPR => {
+                        let whole = self
+                            .facts
+                            .types
+                            .get(&node_key(&parent))
+                            .is_some_and(|ty| self.table.representation(ty) == Some(Prim::Int));
+                        (!whole).then_some((
+                            "not a whole number",
+                            "a value worked out from what is stored that isn't a whole number",
+                            "Jadpo works out what an update by `id` stores again as its action commits, against the record as Redis holds it then, adding and taking away whole numbers, as a counter does; anything else needs the record loaded first.",
+                        ))
+                    }
+                    SyntaxKind::RECORD_EXPR
+                        if self.facts.refusing.contains_key(&node_key(&parent)) =>
+                    {
+                        Some((
+                            "refuses",
+                            "a construction that refuses what is stored",
+                            "A refusal is checked by the statement that writes, in the database; a write to Redis is worked out in Jadpo's own code as its action commits, with no statement to check it.",
+                        ))
+                    }
+                    _ => None,
+                };
+                if let Some((label, what, why)) = refused {
+                    let span = crate::tree::node_span(self.path, &parent);
+                    let store = self
+                        .writes
+                        .write_rules(entity)
+                        .map(|_| entity.to_string())
+                        .unwrap_or_default();
+                    let _ = store;
+                    self.out.push(
+                        Diagnostic::new(
+                            &rule::DATA_REDIS_UNSUPPORTED,
+                            format!("`{entity}` is kept in Redis, which can't keep {what}"),
+                        )
+                        .at(span, label)
+                        .reason(format!(
+                            "{why} `{written}` by `id` adds to a stored whole number, or copies a stored field, and nothing more."
+                        ))
+                        .next(format!(
+                            "Load the record and update it, `{written}({}) {{ set: {{ ... }} }}`, or keep `{entity}` in a PostgreSQL store",
+                            crate::case::to_snake(entity)
+                        )),
+                    );
+                    return true;
+                }
+                child = parent;
+            }
+        }
+        false
     }
 
     /// A decimal the database adds to, or subtracts from, a stored field

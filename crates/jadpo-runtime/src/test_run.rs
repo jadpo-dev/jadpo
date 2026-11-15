@@ -197,6 +197,9 @@ pub async fn once(executor: &dyn Executor, host: &dyn Host, once: Once<'_>) -> R
     // Every cache in memory of its own, empty at first (area 13, "Events
     // and caches in tests"; chunk Q9).
     let faked = faked.with_caches(plan.cache_connections());
+    // Every entity in Redis in memory of its own, empty at first (chunk
+    // Q10).
+    let faked = faked.with_records(plan.redis_connections());
     let mut ctx = Ctx::of(executor, &faked, env(plan, once.key, once.callable));
     ctx.set_settings(plan.test_settings(once.callable));
     ctx.set_test_flags(plan.test_flags(once.callable));
@@ -1094,6 +1097,10 @@ impl<H: Host> Host for AtClock<H> {
 
     fn cache_health(&self) -> &crate::caches::CacheHealth {
         self.host.cache_health()
+    }
+
+    fn records(&self, connection: &str) -> Option<Rc<dyn crate::redis::Records>> {
+        self.host.records(connection)
     }
 }
 

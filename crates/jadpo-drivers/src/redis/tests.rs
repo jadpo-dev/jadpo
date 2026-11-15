@@ -654,3 +654,38 @@ fn a_silent_cache_times_out() {
     });
     assert_eq!(looked, Err(Unasked::TimedOut));
 }
+
+/// An entity's records in Redis (area 5, "Entities in Redis"; chunk Q10):
+/// the driver against the double does what the runtime's store in memory
+/// does, every read one command or one script and every commit one
+/// script.
+#[test]
+fn records_are_kept_in_the_double_as_in_memory() {
+    let host = Doubled::new(Double::new());
+    let redis = store("redis://records", &host);
+    let now = host.clock.get();
+    on_one_thread(async || super::testing::records_behave(&redis, now).await);
+    let sent = host.double.borrow().sent.clone();
+    assert!(
+        sent.iter()
+            .all(|name| ["MGET", "EVAL", "ZCOUNT"].contains(&name.as_str())),
+        "{sent:?}"
+    );
+    let memory = jadpo_runtime::redis::MemoryRecords::new();
+    on_one_thread(async || super::testing::records_behave(&memory, now).await);
+}
+
+/// A store of records that doesn't answer is told to the runtime as one
+/// that timed out, which fails the read `unavailable`.
+#[test]
+fn a_silent_store_of_records_times_out() {
+    let host = Doubled::new(Double::new());
+    host.plays.set(Plays::Silent);
+    host.timer_fires.set(true);
+    let redis = store("redis://records", &host);
+    let found = on_one_thread(async || {
+        jadpo_runtime::redis::Records::get(&redis, &["jadpo:entity:a:record:b".to_string()], 0)
+            .await
+    });
+    assert_eq!(found, Err(Unasked::TimedOut));
+}

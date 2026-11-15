@@ -5,7 +5,9 @@ An entity's `store:` names something that isn't one of the app's database connec
 ## Why Jadpo refuses it
 
 `store:` says which database keeps an entity's records. It names a
-connection that `app.jadpo` declares with `driver: Driver.postgres`, or
+connection that `app.jadpo` declares with `driver: Driver.postgres`, a
+Redis connection for records that expire
+([Entities in Redis](../language/05-data.md#entities-in-redis)), or
 `main` when the app declares no database. A connection that keeps files or
 a name nothing declares has nowhere to put a table.
 
@@ -33,7 +35,7 @@ error: `archive` isn't a database `Note` can live in
   |
 4 |     store: archive
   |            ^^^^^^^ not a database
-  reason: `app.jadpo` declares no connection called `archive`; an entity's `store:` names a connection with `driver: Driver.postgres`, or `main` when `app.jadpo` declares no database.
+  reason: `app.jadpo` declares no connection called `archive`; an entity's `store:` names a connection with `driver: Driver.postgres` or `driver: Driver.redis`, or `main` when `app.jadpo` declares no database.
   next: Name a database connection, or declare one in `app.jadpo` (agent)
   rule: data.store_unknown
   help: https://jadpo.dev/docs/errors/data.store_unknown
@@ -72,7 +74,7 @@ error: `sheets` isn't a database `Note` can live in
   |
 4 |     store: sheets
   |            ^^^^^^ not a database
-  reason: `sheets` has no database driver; an entity's `store:` names a connection with `driver: Driver.postgres`, or `main` when `app.jadpo` declares no database.
+  reason: `sheets` has no database driver; an entity's `store:` names a connection with `driver: Driver.postgres` or `driver: Driver.redis`, or `main` when `app.jadpo` declares no database.
   next: Name a database connection, or declare one in `app.jadpo` (agent)
   rule: data.store_unknown
   help: https://jadpo.dev/docs/errors/data.store_unknown

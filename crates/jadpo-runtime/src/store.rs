@@ -176,6 +176,10 @@ impl<'p> ActionBody<'p> for Alone<'_> {
         Isolation::RepeatableRead
     }
 
+    fn json(&self) -> JsonCodecs<'_> {
+        self.json
+    }
+
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         Box::pin(async move {
             self.conflict = None;
@@ -226,7 +230,12 @@ async fn run(
             Ok(value) => Stored::Value(value),
             Err(stop) => interrupted(stop),
         },
-        StoreOp::Read(plan) => match read(ctx, plan, json, args, site).await {
+        StoreOp::Read(plan) => match match &plan.redis {
+            // An entity in Redis (area 6, "Reading and writing entities in
+            // Redis"; chunk Q10).
+            Some(redis) => crate::redis::read(ctx, plan, redis, json, args, site).await,
+            None => read(ctx, plan, json, args, site).await,
+        } {
             Ok(Found::Value(value)) => Stored::Value(value),
             // A read for exactly one record found none: the failure its
             // plan names, its fields from the read's arguments.
@@ -238,7 +247,10 @@ async fn run(
             }
             Err(stop) => interrupted(stop),
         },
-        StoreOp::Write(plan) => match write(ctx, plan, json, args, site).await {
+        StoreOp::Write(plan) => match match &plan.redis {
+            Some(redis) => crate::redis::write(ctx, plan, redis, json, args, site).await,
+            None => write(ctx, plan, json, args, site).await,
+        } {
             Ok(Written::Value(value)) => {
                 // What it may have changed in a cache, cleared once the
                 // action commits (area 5, "Caches"; chunk Q9).

@@ -706,7 +706,7 @@ details = [
 title = "Caches"
 status = [
   "05-data: A query's `cache:`",
-  "05-data: Entities in Redis and record caches",
+  "05-data: Record caches (`caches:`)",
 ]
 missing = "record caches"
 topics = [
@@ -1083,7 +1083,7 @@ topics = [
 # A topic whose rows are its own: wholly unbuilt, or a different story from its page.
 [topic_status]
 logging = ["04-failures: Logging"]
-entities-in-redis = ["05-data: Entities in Redis and record caches"]
+entities-in-redis = ["05-data: Entities in Redis"]
 queries-on-entities-in-redis = ["06-reads-and-writes: Entities in Redis"]
 personal-data-export = ["15-personal-data: `User.export(id)`"]
 data-requests = ["15-personal-data: `privacy:` in `application { }`"]

@@ -130,3 +130,42 @@ pub struct Gated {
     /// the time now when the holder's lifecycle reads `clock.now`.
     pub extra: Vec<Param>,
 }
+
+/// One effect's grants on an entity, applied to a record in Jadpo's own
+/// code once it is read rather than compiled into a statement (area 6,
+/// "Reading and writing entities in Redis"; chunk Q10): any of `grants`
+/// lets the caller in, and a narrowed token needs what `narrowed` says
+/// besides. An entity in Redis is held to these, and a record cache
+/// applies a read's the same way (area 9, "Caches and personal data").
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct RecordGrants {
+    /// Empty: nobody, since policy is always on.
+    pub grants: Vec<RecordGrant>,
+    pub narrowed: Narrowed,
+}
+
+/// A grant a record is tested against once read.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum RecordGrant {
+    /// `Access.public`: anyone at all.
+    Anyone,
+    /// `Access.authenticated`: anyone signed in.
+    Signed,
+    /// `Access.system`: a schedule's run or a subscriber's delivery.
+    System,
+    /// The caller a field of the record names: equal to the signed-in
+    /// user's `id` (`part` [`CallerPart::User`]) or service's.
+    Caller { field: String, part: CallerPart },
+}
+
+/// What a narrowed token needs besides a grant (area 9, "Scopes").
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum Narrowed {
+    /// No way in narrows: scopes don't touch it.
+    #[default]
+    Untouched,
+    /// This scope-token among those the token carries.
+    Needs(String),
+    /// Nothing lets a narrowed token in: the effect has no scope.
+    Refused,
+}

@@ -649,6 +649,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "hashes a cached read's arguments into its key, a value's text never sent (chunk Q9)",
     ),
     (
+        "crates/jadpo-runtime/src/redis.rs",
+        "works with an entity's records in Redis: a new record's `id`, the clock a generated field takes, and an `id` read as a key; every record crosses as its codec's JSON (chunk Q10)",
+    ),
+    (
         "crates/jadpo-check/src/thresholds.rs",
         "checks a threshold's limits and `within:`, durations read by the contract's own reader (chunk B13)",
     ),

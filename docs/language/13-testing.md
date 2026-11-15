@@ -2558,6 +2558,10 @@ line after the call:
   same invalidation as production. Tests can't read, fill or clear a
   cache directly. Actions never read caches, so only route tests meet
   them.
+- **Entities in Redis** ([Entities in Redis](05-data.md#entities-in-redis))
+  are kept in an in-memory store of the test's own, empty at its start,
+  that behaves as the Redis driver does, records expiring by the test's
+  clock.
 
 ### Steps and delivery
 

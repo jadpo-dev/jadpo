@@ -520,6 +520,11 @@ impl<'p> ActionBody<'p> for Action<'_> {
         })
     }
 
+    /// The program's JSON table (chunk Q10).
+    fn json(&self) -> jadpo_runtime::JsonCodecs<'_> {
+        self.program.stored_json()
+    }
+
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         Box::pin(async move {
             outcome(body(self.program, ctx, self.callee, self.args.clone(), self.at).await)

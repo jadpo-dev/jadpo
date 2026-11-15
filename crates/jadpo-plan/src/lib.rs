@@ -46,6 +46,7 @@ mod policy;
 mod providers;
 mod purge;
 mod queries;
+mod redis;
 mod routes;
 mod sites;
 mod types;

@@ -29,10 +29,12 @@
 //!   [`Redis::look`], [`Redis::keep`] and [`Redis::clear`] keep a cache's
 //!   entries (area 5, "Caches"; chunk Q9): each entry a key that expires
 //!   with its `keep:`, a generation for each entity, and a set per entity
-//!   of the entries that read it. [`Redis::run`] sends any commands, for
-//!   what comes next (entities in Redis).
+//!   of the entries that read it. An entity's records are kept as
+//!   [`entities`] says (area 5, "Entities in Redis"; chunk Q10).
+//!   [`Redis::run`] sends any commands.
 
 pub mod address;
+pub mod entities;
 pub mod resp;
 #[cfg(any(test, feature = "redis-testing"))]
 pub mod testing;

@@ -64,6 +64,7 @@ The numbers are the ones the compiler's messages cite.
 | Altitudes | Every position in a geometry has an altitude or none does: `format` when read, the rule `altitudes_agree` when built |
 | A `geo.` condition in an include or an aggregate | (2026-11-13, chunk Q4, the obvious recommendation) The code decides there as in a query. An include's rows are rechecked before they join a list, and the include asks again for four times as many rows a record while one record's list comes out short with its rows not run out. An aggregate query sends two statements, the records first and then its usual grouped statement with `"id" = ANY($n)` of those the code kept, rather than working the totals out in the runtime: the totals keep every aggregate's exact SQL form, and only which records count moves to the code |
 | A layer from a route | A route may send a `FeatureCollection<G, P>` bare, as it sends a `List` or `Page` of an `Output`, so a mapping library fetches the layer itself; `P` holds only what clients may see (area 7). A query gives one for a `GET` route (area 6) |
+| Geometries in Redis (2026-11-14, chunk Q10, the obvious recommendation) | A geometry on an entity in Redis is kept in its record's JSON as the contract's GeoJSON, so a ring wound clockwise is read back wound by the right-hand rule, unlike PostGIS's storage, which keeps it as given; `==` then tells the two apart. A `geo.` condition or order on one is `query.redis_unsupported`, as for any query Redis can't serve |
 
 ## Evidence and reasoning behind the area page
 

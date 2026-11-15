@@ -364,6 +364,13 @@ impl Planner<'_> {
     // --- queries -----------------------------------------------------------------
 
     pub fn query(&mut self, query: &QueryModel) -> Option<QueryPlan> {
+        // A query of an entity kept in Redis runs no statement (chunk Q10).
+        if let Some(entity) = self.model.entity(&query.entity)
+            && entity.redis
+        {
+            let entity = entity.clone();
+            return self.redis_query(query, &entity);
+        }
         // An aggregate query (chunk 5.6c) is one grouped statement.
         if let Some(grouping) = &query.grouping {
             return self.aggregate(query, grouping);
@@ -732,6 +739,7 @@ impl Planner<'_> {
                 layer: query.geometry.is_some(),
                 decided: None,
                 gate,
+                redis: None,
             },
         })
     }
@@ -1083,7 +1091,12 @@ impl Planner<'_> {
     /// Where a value compared with `field`, kept in several columns or as
     /// JSON, comes from (chunk Q1): an argument, or a literal or an enum
     /// value made the constant code makes of it for the field's type.
-    fn given(&self, entity: &EntityModel, field: &FieldModel, value: &Value) -> Option<Source> {
+    pub(crate) fn given(
+        &self,
+        entity: &EntityModel,
+        field: &FieldModel,
+        value: &Value,
+    ) -> Option<Source> {
         Some(match value {
             Value::Param { .. } | Value::Now => self.source(value)?,
             Value::Literal(literal) => {
@@ -1332,7 +1345,7 @@ impl Planner<'_> {
     }
 
     /// A `missing:` failure with its fields.
-    fn missing(&mut self, missing: &model::Missing) -> Option<MissingPlan> {
+    pub(crate) fn missing(&mut self, missing: &model::Missing) -> Option<MissingPlan> {
         let key = self.types.named(&missing.failure)?;
         let failure = self.types.failure_id(&key)?;
         let mut fields = Vec::new();
@@ -1378,6 +1391,9 @@ impl Planner<'_> {
     // --- entities -----------------------------------------------------------------
 
     pub fn entity(&mut self, entity: &EntityModel) -> Option<EntityPlan> {
+        if entity.redis {
+            return self.redis_get(entity);
+        }
         let store = entity.store.clone()?;
         let key = self.types.named(&entity.name)?;
         // `get`: every field, by `id`.
@@ -1445,6 +1461,7 @@ impl Planner<'_> {
             layer: false,
             decided: None,
             gate: None,
+            redis: None,
         };
         Some(EntityPlan {
             key,

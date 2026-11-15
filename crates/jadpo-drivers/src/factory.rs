@@ -370,6 +370,22 @@ impl Drivers {
         None
     }
 
+    /// The Redis connection `connection` an entity's records are kept in
+    /// (area 5, "Entities in Redis"; chunk Q10); none without the `redis`
+    /// feature.
+    pub fn records(&self, connection: &str) -> Option<Rc<dyn jadpo_runtime::redis::Records>> {
+        #[cfg(feature = "redis")]
+        return self
+            .redis
+            .get(connection)
+            .map(|store| Rc::clone(store) as Rc<dyn jadpo_runtime::redis::Records>);
+        #[cfg(not(feature = "redis"))]
+        {
+            let _ = connection;
+            None
+        }
+    }
+
     /// The connections whose drivers weren't built, and why.
     pub fn unbuilt(&self) -> &[Unbuilt] {
         &self.unbuilt

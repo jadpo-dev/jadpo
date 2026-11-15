@@ -965,7 +965,7 @@ and, beside any API, `rate_limit address` and `rate_limit
 caller`, using the connection they are counted in; and an `oauth_scope`
 for each scope `external_token:` declares, with a `scopes` edge to each
 grant whose effect needs it. `cache` stays reserved: nothing the language
-builds declares one yet (`caches:` comes with Redis entities, area 5), and
+builds declares one yet (an entity's `caches:` is chunk Q9b's, area 5), and
 it is built with those (decided in chunk 10.3g).
 
 Each site says whether it can pause (§2.5): an effect (a
@@ -3740,6 +3740,40 @@ when the run has one, a real Redis (`jadpo-host-native`'s
 PostgreSQL (`jadpo-cli`'s `caches`): a change behind the app's back unseen,
 a later revision skipping, a write clearing, and an erasure leaving no
 copy.
+
+**Entities in Redis** (area 5, "Entities in Redis"; area 6, "Reading and
+writing entities in Redis"; chunk Q10). The checker marks an entity whose
+`store:` is a Redis connection (`EntityModel::redis`, with
+`expires_after_ms`), leaves it out of every schema, migration and foreign
+key, and refuses what only a database keeps where it is written
+(`data.redis_unsupported`, `query.redis_unsupported`,
+`jadpo_check::redis`); `jadpo_check::redis::lookup_of` decides how a query
+finds its records, which the plan reads too. The plan gives each read and
+write of one a `RedisRead` or `RedisWrite` (`jadpo_std::redis`) on its
+`ReadPlan` or `WritePlan`, whose statement is then empty: the entity's
+keyspace, its record's codec by born names, its expiry, its unique and
+indexed fields' codecs, and its grants as `jadpo_std::policy::RecordGrants`;
+a write's `set:` as `Kept` values, the inputs its site works out or what
+is stored, added and taken away. `store` sends them to
+`jadpo_runtime::redis`, which works each write out where it is made and
+keeps it in the action's boundary (`Pending`), where later reads see it,
+and holds each record to the policy `jadpo_runtime::policy::permits`
+applies to a record read whole, the seam a record cache will use. As the
+action commits, `redis::commit` sends one `Commit` of checks (each record
+at the revision read, each unique value free) and changes; a check that
+fails on an update by `id` that read nothing is worked out again against
+what is stored then, and any other is a concurrent change, so the action
+reruns. A savepoint keeps a copy of what is pending. The store is a
+`redis::Records`, from `Host::records`: natively and on Workers the
+factory's Redis driver (`jadpo_drivers::redis::entities`, an `MGET`, a
+`ZCOUNT` and two Lua scripts sent with `EVAL`), `jadpo dev`'s
+`MemoryRecords::process`, and in a test, through `Faked::with_records`,
+one `MemoryRecords` per Redis connection, empty at its start, which
+behaves as the driver does: every store asks a check through
+`redis::holds`, and the RESP double runs the scripts by it. Proved against
+the double and, when the run has one, a real Redis (`jadpo-host-native`'s
+`redis_entities`), and through `jadpo test` both ways by the area pages'
+projects.
 
 **The client's address.** The address a request counts as,
 for the default rate limits, `jadpo dev`'s request lines and the request

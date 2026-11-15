@@ -606,6 +606,10 @@ impl<'p> ActionBody<'p> for Action<'_> {
         })
     }
 
+    fn json(&self) -> crate::JsonCodecs<'_> {
+        self.program.loaded.plan().json
+    }
+
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         Box::pin(async move {
             outcome(body(ctx, self.program, self.callee, self.args.clone(), self.at).await)

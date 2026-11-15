@@ -523,4 +523,11 @@ impl<'a> Plan<'a> {
         out.dedup();
         out
     }
+
+    /// The Redis connections (area 5, "Entities in Redis"; chunk Q10): what
+    /// a test's host keeps the records of an entity in Redis in, in memory
+    /// of its own.
+    pub fn redis_connections(self) -> Vec<&'a str> {
+        jadpo_std::connections::redis(self.connections).collect()
+    }
 }

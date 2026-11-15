@@ -2806,24 +2806,176 @@ is allowed:
 | Read or write | Allowed on a Redis entity |
 |---|---|
 | `get`, `create`, `update` and `delete` by `id` | Yes |
-| An update by `id` adding to a stored whole number (`Counter.views + 1`) | Yes, as one Redis `increment` |
+| An update by `id` adding to a stored whole number (`Counter.views + 1`) | Yes, worked out again against the stored record as the action commits |
 | A lifecycle and its transitions | No: a compile error; `expires_after:` takes its place |
-| A query whose `where:` is equality on a `unique:` field | Yes: one record, from the key Jadpo keeps per unique field |
-| A query whose `where:` is equality on one field in `indexes:` | Yes: a page, in creation order, from the set Jadpo keeps per value; counting the same |
+| A query whose `where:` is equality on `id` or a `unique:` field | Yes: one record, from the key Jadpo keeps per unique value |
+| A query whose `where:` is equality on one field in `indexes:` | Yes: a page, in creation order, from the set Jadpo keeps per value; `count()` the same |
 | Policy grants that are equality on the record's own fields | Yes, checked after reading |
-| Joins, `include`, ranges (`<`, `>`), `in`, `or`, ordering by any other field, `matches`, grants beyond simple equality | No: a compile error naming the reason and PostgreSQL as the alternative |
+| Joins, `include`, ranges (`<`, `>`), `in`, `or`, ordering by any other field, `matches`, grants beyond simple equality | No: `query.redis_unsupported` or `data.redis_unsupported`, naming the reason and PostgreSQL as the alternative |
+
+Here a shop keeps each basket in Redis for a day after it last changed,
+pages through the open ones and counts them by state:
+
+```jadpo check project=redis-baskets file=app.jadpo hidden
+application {
+    connections: {
+        baskets: {
+            driver: Driver.redis
+            url: config.redis_url
+        }
+    }
+}
+```
+
+```jadpo check project=redis-baskets file=config.jadpo hidden
+config {
+    redis_url: RedisUrl
+}
+```
+
+```jadpo check project=redis-baskets file=domains/shop/types/basket_state.jadpo hidden
+/// Whether a basket is still being filled.
+type BasketState = Enum {
+    open
+    paid
+}
+```
+
+```jadpo check project=redis-baskets file=domains/shop/types/item_count.jadpo hidden
+/// How many items a basket holds.
+type ItemCount = Int {
+    min: 0
+}
+```
+
+```jadpo check project=redis-baskets file=domains/shop/types/basket_tally.jadpo hidden
+/// How many baskets are in one state.
+type BasketTally = Output {
+    baskets: Int
+}
+```
+
+```jadpo check project=redis-baskets file=domains/shop/entities/basket.jadpo hidden
+use shop/types { BasketState, ItemCount }
+
+/// A shopper's basket, kept a day after it last changed.
+entity Basket {
+    id: Uuid
+    state: BasketState
+    items: ItemCount
+
+    store: baskets
+    expires_after: 1d
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+    indexes: {
+        by_state: [state]
+    }
+}
+```
+
+```jadpo check project=redis-baskets file=domains/shop/queries/open_baskets.jadpo
+use shop/entities { Basket }
+use shop/types { BasketState }
+
+/// The open baskets, a page at a time, in the order they were made.
+query open_baskets(after: PageCursor?) -> Page<Basket> {
+    from: Basket
+    where: Basket.state == BasketState.open
+    page: {
+        size: 2
+        after: after
+    }
+}
+```
+
+```jadpo check project=redis-baskets file=domains/shop/queries/baskets_in.jadpo
+use shop/entities { Basket }
+use shop/types { BasketState, BasketTally }
+
+/// How many baskets are in `state`.
+query baskets_in(state: BasketState) -> BasketTally {
+    from: Basket
+    where: Basket.state == state
+    aggregate: {
+        baskets: count()
+    }
+}
+```
+
+```jadpo check project=redis-baskets file=domains/shop/actions/check_out.jadpo hidden
+use shop/entities { Basket, BasketNotFound }
+use shop/types { BasketState }
+
+/// Pays for a basket.
+action check_out(basket_id: Basket.id) fails BasketNotFound -> Basket {
+    var basket: Basket = attempt Basket.get(basket_id)
+    return Basket.update(basket) {
+        set: {
+            state: BasketState.paid
+        }
+    }
+}
+```
+
+```jadpo check project=redis-baskets file=domains/shop/actions/check_out.test.jadpo
+use shop/entities { Basket }
+use shop/types { BasketState }
+use shop/queries { baskets_in, open_baskets }
+
+test "open baskets come a page at a time, and a paid one leaves them" {
+    var breakfast: Basket = make.Basket {
+        state: BasketState.open
+        items: 1
+    }
+    var elevenses: Basket = make.Basket {
+        state: BasketState.open
+        items: 2
+    }
+    var supper: Basket = make.Basket {
+        state: BasketState.open
+        items: 3
+    }
+    var page: Page<Basket> = open_baskets(none)
+    assert list.count(page.items) == 2
+    var later_page: Page<Basket> = open_baskets(page.next)
+    assert list.count(later_page.items) == 1
+    assert later_page.next == none
+    attempt check_out(breakfast.id)
+    attempt check_out(elevenses.id)
+    assert baskets_in(BasketState.open).baskets == 1
+    assert baskets_in(BasketState.paid).baskets == 2
+    assert open_baskets(none).items == [supper]
+}
+```
 
 - **Expired records are hidden** from every read and update, as
   `visible:` hides records: a record past its `expires_after:` (counted
   from its last write) is not found, even in the moment before Redis
   removes it.
-- **Concurrent change** is checked through a revision Jadpo keeps on each
-  record: a write to a record loaded earlier fails as a concurrent change
-  if the revision moved, and the action reruns as any action does.
+- **An action's writes commit together.** Each write is worked out where
+  it is made, and a later read in the action sees it. As the action
+  commits, Jadpo checks in one step that every record it read and wrote
+  is still at the revision it read, and that every unique value it takes
+  is free, then makes all its changes, or none.
+- **Concurrent change** is checked through that revision: a write to a
+  record loaded earlier fails as a concurrent change if the revision
+  moved, and the action reruns as any action does. An update by `id` that
+  loaded nothing is worked out again against the record as stored then,
+  without a rerun; the record it gave back is the one it worked out.
+- **Policy is applied in Jadpo's own code.** A record the caller may not
+  read is not found, and a page leaves it out and fetches on, so a page
+  is as full as policy allows.
 - **One store per action** applies as everywhere: an action writing a Redis
-  entity writes nothing in another store.
-
-None of this is built yet.
+  entity writes nothing in another store. Nor does it emit an event, keep
+  a record of several changing calls or start a batch over a query of a
+  Redis entity, each of which a database keeps beside the writes. A route
+  running it keeps its `Idempotency-Key` in a database: the one `events:
+  { store: }` names, else `main`.
 
 ## Reads across domains
 <!-- topic: reads-across-domains -->
@@ -2844,7 +2996,7 @@ var owners: List<OwnerView> = identity.users_by_ids(owner_ids)
 |---|---|
 | Everything else on this page | Built. |
 | Where a read comes from | Built: a route's display read of a query with `cache:` comes from its cache, skipped by a later revision ("Where a read comes from"). |
-| Entities in Redis | Not built yet ("Reading and writing entities in Redis"). |
+| Entities in Redis | Built: every read and write the table in "Reading and writing entities in Redis" allows, natively and on Workers. |
 
 ## Errors
 
@@ -2927,3 +3079,4 @@ below. A write placed before a later outside call is
 ### Stores
 
 - [`store.action_spans_stores`](../errors/store.action_spans_stores.md)
+- [`query.redis_unsupported`](../errors/query.redis_unsupported.md)

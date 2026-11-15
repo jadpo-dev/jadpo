@@ -372,9 +372,7 @@ work below (Richard, 2026-11-08).
       in area 5, "Caches", and its notes; area 6, "Where a read comes from";
       area 7, "Write revisions"; area 16, "How a cache is kept"; compiler-runtime,
       "Caches".
-    - [ ] **Q10 Entities and geometries in Redis** `opus · xhigh` after Q9: area 5,
-      "Entities in Redis"; area 6, "Reading and writing entities in Redis"; area
-      20, "What is built".
+    - [x] **Q10 Entities and geometries in Redis**: area 5, "Entities in Redis", and its notes; area 6, "Reading and writing entities in Redis"; area 16, "How an entity is kept"; area 20, "What is built"; compiler-runtime, "Entities in Redis".
     - [ ] **Q9b Record caches** `opus · xhigh` after Q10: area 5, "Caches"; area
       9, "Caches and personal data"; area 15, "Sensitive fields". An entity's
       `caches: { records: }`, single records by `id` kept whole and policy

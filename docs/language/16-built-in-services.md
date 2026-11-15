@@ -4516,9 +4516,9 @@ Workers. Its one setting is `url:`, read from a `RedisUrl` setting, which is
 always secret
 ([Connection types](10-configuration-and-time.md#connection-types));
 [Where the counts are kept](#where-the-counts-are-kept-rate_limits--store-)
-shows one. It counts rate limits and keeps caches
-([Caches](05-data.md#caches)); entities in Redis will use the same
-connections.
+shows one. It counts rate limits, keeps caches
+([Caches](05-data.md#caches)) and keeps entities in Redis
+([Entities in Redis](05-data.md#entities-in-redis)).
 
 ### The address
 
@@ -4579,6 +4579,31 @@ doesn't answer within a second, refuses or breaks is left alone for 10
 seconds, its reads going to the database, and logged once as
 `caches.fallback`, never with a key. Two apps sharing a database share
 their caches' generations, so give each a database of its own.
+
+### How an entity is kept
+
+An entity in Redis ([Entities in Redis](05-data.md#entities-in-redis))
+keeps each record under `jadpo:entity:<table>:record:<id>`, as one JSON
+value, `{"revision":3,"expires":...,"record":{...}}`: the revision Jadpo
+keeps on it, when it expires by the app's clock, and the record as the
+API's JSON. It expires `expires_after:` after its last write. Each unique
+field's value has a key holding the record's `id`,
+`jadpo:entity:<table>:unique:<field>:` and 32 hex digits of a hash of the
+value, never the value as written. Each indexed field's value has two
+sorted sets, `…:index:<field>:<hash>` of the records' ids, which a page
+reads in order, and `…:expiry:<field>:<hash>` of when each expires,
+which a count reads.
+
+A read by `id` is one `MGET`, and a read by a unique field two. A page is
+one script, run with `EVAL`, that takes the expired ids out of the sets
+and gives the next ids with their records. A count is one `ZCOUNT`. An
+action's writes commit as one more script, which checks every record's
+revision and every unique value it takes, then makes every change, so
+no other command comes between. The scripts are Lua, which Redis, Valkey,
+Upstash and ElastiCache all run.
+
+A store that can't answer fails the read or write `unavailable`, since a
+record in Redis has no other copy to fall back to.
 
 ### When it can't count
 

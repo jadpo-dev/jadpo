@@ -159,6 +159,11 @@ pub struct WritePlan {
     /// every cache holds.
     #[serde(default)]
     pub clears: Vec<crate::caches::Clear>,
+    /// For an entity in Redis (area 6, "Reading and writing entities in
+    /// Redis"; chunk Q10): what it keeps, in place of `sql`, which then
+    /// runs nothing.
+    #[serde(default)]
+    pub redis: Option<Box<crate::redis::RedisWrite>>,
 }
 
 /// A `File` field a write sets, and what the file it is given must be

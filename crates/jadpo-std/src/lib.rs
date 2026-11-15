@@ -98,6 +98,7 @@ pub mod publishing;
 pub mod quantity;
 pub mod read;
 pub mod receiving;
+pub mod redis;
 mod rules;
 mod runtime_plan;
 pub mod schedule;
