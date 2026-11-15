@@ -87,6 +87,9 @@ pub(crate) enum Reach {
     /// A query saying `include_erased: true` (area 15, "The person's own
     /// record"): the people erasure keeps a record of are found too.
     Erased,
+    /// A transition saying `reaches: hidden` (area 5, "Restoring a hidden
+    /// record"): only the records `visible:` hides are found.
+    Hidden,
 }
 
 /// Builds the plans of a project's queries and entities.
@@ -1068,7 +1071,8 @@ impl Planner<'_> {
         if reach != Reach::Parent
             && let Some(visible) = entity.lifecycle.as_ref().and_then(|l| l.visible.as_ref())
         {
-            out.push(jadpo_sql::condition(bind, entity, visible, false)?);
+            let hidden = reach == Reach::Hidden;
+            out.push(jadpo_sql::condition(bind, entity, visible, hidden)?);
         }
         if reach != Reach::Erased && entity.keeps_erased() {
             out.push(text::not_erased());
