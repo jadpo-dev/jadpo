@@ -77,13 +77,29 @@ const STREAM_REASON: &str = "A route whose action returns an `AiStream` sends th
 /// making a changing call, the one `events: { store: }` names, where the
 /// record of its steps is kept too (chunk 7.9a), so a client's retry is
 /// answered from what the first request did rather than acting twice.
-/// `None` for an action a retry changes nothing by running again, or one
-/// with no store to keep the key in.
+/// An action writing an entity in Redis keeps its key in a database that
+/// keeps the runtime's tables: `events: { store: }`'s, else `main` (chunk
+/// Q10). `None` for an action a
+/// retry changes nothing by running again, or one with no store to keep
+/// the key in.
 pub fn keys_store(db: &dyn Db, project: Project, key: &Key) -> Option<String> {
     let name = key.name();
-    crate::types::written_stores(db, project)
+    let connections = crate::data::connections(db, project);
+    let written = crate::types::written_stores(db, project)
         .get(name)
-        .and_then(|stores| stores.keys().next().cloned())
+        .and_then(|stores| stores.keys().next().cloned());
+    if let Some(store) = &written
+        && connections.kind(store) == Some(crate::data::ConnectionKind::Redis)
+    {
+        let schema = crate::data::schema(db, project);
+        return crate::events::events_settings(db, project)
+            .store
+            .clone()
+            .into_iter()
+            .chain([crate::data::MAIN.to_string()])
+            .find(|store| schema.stores.contains_key(store));
+    }
+    written
         .or_else(|| crate::events::outbox_store(db, project, name))
         .or_else(|| {
             crate::types::action_steps(db, project)

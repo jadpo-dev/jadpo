@@ -175,6 +175,7 @@ impl Planner<'_> {
                 layer: false,
                 decided,
                 gate: self.query_gate(&query.name),
+                redis: None,
             },
         })
     }

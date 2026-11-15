@@ -130,6 +130,9 @@ pub(crate) struct Boundary {
     /// The cached entries its writes may have changed, cleared once it
     /// commits (area 5, "Caches"; chunk Q9).
     clears: Vec<jadpo_std::caches::Clear>,
+    /// What it has read and written of each Redis store's entities,
+    /// committed as it commits (area 5, "Entities in Redis"; chunk Q10).
+    redis: BTreeMap<String, crate::redis::Pending>,
 }
 
 impl Boundary {
@@ -431,6 +434,11 @@ impl Boundary {
         self.concurrent_change
     }
 
+    /// What it has read and written in Redis, by store (chunk Q10).
+    pub(crate) fn redis_mut(&mut self) -> &mut BTreeMap<String, crate::redis::Pending> {
+        &mut self.redis
+    }
+
     pub(crate) fn take_transaction(&mut self) -> Option<Box<dyn Transaction>> {
         self.transaction.take()
     }
@@ -568,6 +576,12 @@ pub trait ActionBody<'p> {
     /// keeps one, and only for a runner that set [`Ctx::set_resumable`].
     fn record(&self) -> Option<crate::steps::Spec<'_>> {
         None
+    }
+
+    /// The program's JSON table, which the records it writes in Redis are
+    /// written by as it commits (area 5, "Entities in Redis"; chunk Q10).
+    fn json(&self) -> crate::JsonCodecs<'_> {
+        crate::JsonCodecs::NONE
     }
 }
 
@@ -745,7 +759,20 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
         let mut boundary = ctx.close_boundary();
         boundary.end_outside().await;
         let succeeded = matches!(outcome, Outcome::Value(_));
-        if hold && succeeded && !boundary.concurrent_change {
+        // What it wrote in Redis commits first, all of it or none (area
+        // 5, "Entities in Redis"; chunk Q10): an action writing there
+        // writes nothing in a database, so its transaction, if any, only
+        // read.
+        let mut redis_down = false;
+        if succeeded && !boundary.concurrent_change {
+            let pending = std::mem::take(&mut boundary.redis);
+            match crate::redis::commit_all(ctx, pending, body.json()).await {
+                crate::redis::Committed::Made => {}
+                crate::redis::Committed::Changed => boundary.concurrent_change = true,
+                crate::redis::Committed::Unavailable => redis_down = true,
+            }
+        }
+        if hold && succeeded && !boundary.concurrent_change && !redis_down {
             ctx.keep_held(Held {
                 transaction: boundary.transaction,
                 deliveries: boundary.sealed,
@@ -760,6 +787,12 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
             return outcome;
         }
         let ended = match boundary.transaction {
+            _ if redis_down => {
+                if let Some(transaction) = boundary.transaction {
+                    let _ = transaction.rollback().await;
+                }
+                Ended::Unavailable
+            }
             _ if boundary.concurrent_change => {
                 if let Some(transaction) = boundary.transaction {
                     let _ = transaction.rollback().await;
@@ -1130,6 +1163,8 @@ pub(crate) struct Undo {
     issued: bool,
     binding: Option<Binding>,
     checked: BTreeSet<RowKey>,
+    /// What it had read and written in Redis (chunk Q10).
+    redis: BTreeMap<String, crate::redis::Pending>,
 }
 
 impl Undo {
@@ -1146,6 +1181,7 @@ impl Undo {
                 issued: boundary.issued,
                 binding: boundary.binding.clone(),
                 checked: boundary.checked.clone(),
+                redis: boundary.redis.clone(),
             },
             None => Undo {
                 open: false,
@@ -1156,6 +1192,7 @@ impl Undo {
                 issued: false,
                 binding: None,
                 checked: BTreeSet::new(),
+                redis: BTreeMap::new(),
             },
         };
         if undo.open
@@ -1204,6 +1241,7 @@ impl Undo {
             boundary.session = self.session;
             boundary.issued = self.issued;
             boundary.binding = self.binding;
+            boundary.redis = self.redis;
         }
         outcome
     }

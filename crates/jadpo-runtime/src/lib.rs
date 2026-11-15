@@ -154,6 +154,7 @@ pub mod receiving;
 pub mod record;
 #[cfg(feature = "testing")]
 pub mod recorded;
+pub mod redis;
 mod report;
 pub mod rows;
 pub mod runner;

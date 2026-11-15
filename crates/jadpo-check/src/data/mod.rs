@@ -346,6 +346,13 @@ pub struct EntityModel {
     /// chunk C1b): its records register addresses that receive the events
     /// it lists, kept in its store. [`crate::outgoing`] reads the section.
     pub webhooks: bool,
+    /// Whether its `store:` is a Redis connection (area 5, "Entities in
+    /// Redis"; chunk Q10): its records are kept there, whole, by `id`, and
+    /// no database holds a table for it.
+    pub redis: bool,
+    /// Its `expires_after:`, in milliseconds, when it reads: how long a
+    /// record in Redis lives after its last write.
+    pub expires_after_ms: Option<i64>,
 }
 
 /// One field of an entity.
@@ -624,6 +631,45 @@ pub struct EntitySpans {
     pub audit: Option<Span>,
     /// Its audit's `retention:` key, when that reads cleanly.
     pub audit_retention: Option<Span>,
+}
+
+/// Where an entity kept in Redis declares what only a database keeps
+/// (chunk Q10).
+struct RedisSections {
+    lifecycle: Option<Span>,
+    unique: Option<Span>,
+    indexes: Option<Span>,
+    retention: Option<Span>,
+    search: Option<Span>,
+    audit: Option<Span>,
+    webhooks: Option<Span>,
+    person: Option<Span>,
+    field_retentions: Vec<(String, Span)>,
+}
+
+/// `data.redis_unsupported` (area 5, "Entities in Redis"; chunk Q10):
+/// `entity`, kept in Redis, has `what`, at `at`, which only a database
+/// keeps, for the reason `why` gives.
+pub fn redis_unsupported(
+    entity: &EntityModel,
+    at: Span,
+    label: &str,
+    what: &str,
+    why: &str,
+) -> Diagnostic {
+    let name = &entity.name;
+    let store = entity.store.as_deref().unwrap_or_default();
+    Diagnostic::new(
+        &rule::DATA_REDIS_UNSUPPORTED,
+        format!("`{name}` is kept in Redis, which can't keep {what}"),
+    )
+    .at(at, label)
+    .reason(format!(
+        "`{store}` is a Redis connection. {why} An entity in Redis keeps each record whole, by its `id`, with a key for each unique field's value and a set for each indexed field's, and nothing more."
+    ))
+    .next(format!(
+        "Keep `{name}` in a PostgreSQL store, or do without {what}"
+    ))
 }
 
 /// One entity read from its file: its model, where its parts are, and the
@@ -980,8 +1026,12 @@ impl Reader<'_> {
             search_written: false,
             audit: None,
             webhooks: false,
+            redis: false,
+            expires_after_ms: None,
         };
         let mut store: Option<(String, Span)> = None;
+        let mut expiry: Option<(ast::Member, Span)> = None;
+        let mut webhooks: Option<Span> = None;
         let mut lifecycle = None;
         let mut retention: Option<(ast::Member, Span)> = None;
         let mut with_matches: Option<(ast::Member, Span)> = None;
@@ -1028,8 +1078,8 @@ impl Reader<'_> {
                 "unique" => unique = Some(member.clone()),
                 "indexes" => indexes = Some(member.clone()),
                 "lifecycle" => lifecycle = Some(member.clone()),
-                // Read by `crate::policy` (area 9). A record cache needs
-                // the Redis driver, which no chunk builds yet.
+                // Read by `crate::policy` (area 9). A record cache isn't
+                // built yet (chunk Q9b).
                 "policy" | "membership" => {}
                 "caches" => self.out.push(
                     Diagnostic::new(
@@ -1037,7 +1087,7 @@ impl Reader<'_> {
                         "An entity's `caches:` isn't built yet",
                     )
                     .at(key_span, "decided, not built")
-                    .reason("A record cache applies policy to each record it holds as it is read, in Jadpo's own code, which isn't built yet. A query's `cache:` is: its results are kept per caller.")
+                    .reason("A record cache, which applies policy to each record it holds as it is read, isn't built yet. A query's `cache:` is: its results are kept per caller.")
                     .next("Leave `caches:` out, and give the query a route reads it through `cache: { store: keep: }`"),
                 ),
                 // `person: true` (area 15; chunk P1). A field may still be
@@ -1086,6 +1136,17 @@ impl Reader<'_> {
                         .is_some_and(|value| crate::types::looks_like_type(&value)) =>
                 {
                     entity.webhooks = true;
+                    webhooks = Some(key_span);
+                }
+                // `expires_after:` (area 5, "Entities in Redis"; chunk
+                // Q10), read once the store is. A field may still be named
+                // `expires_after`.
+                "expires_after"
+                    if !member
+                        .value()
+                        .is_some_and(|value| crate::types::looks_like_type(&value)) =>
+                {
+                    expiry = Some((member.clone(), key_span));
                 }
                 _ => match member.value() {
                     Some(value) if crate::types::looks_like_type(&value) => {
@@ -1146,6 +1207,12 @@ impl Reader<'_> {
                 }
             }
         }
+        let section = |member: &Option<ast::Member>| {
+            member
+                .as_ref()
+                .and_then(|member| member.member_key().map(|key| node_span(path, key.syntax())))
+        };
+        let (unique_span, indexes_span) = (section(&unique), section(&indexes));
         if let Some(member) = unique {
             entity.unique = self.rules(path, &entity, &member, true);
         }
@@ -1154,9 +1221,32 @@ impl Reader<'_> {
         }
         let field_spans = self.spans.fields.clone();
         entity.store = self.placement(store, &name, &name_span, (&entity.fields, &field_spans));
+        entity.redis = entity
+            .store
+            .as_deref()
+            .is_some_and(|store| self.connections.kind(store) == Some(ConnectionKind::Redis));
         let lifecycle_span = lifecycle
             .as_ref()
             .and_then(|member| member.member_key().map(|key| node_span(path, key.syntax())));
+        self.expiry(&mut entity, expiry, &name_span);
+        if entity.redis {
+            let sections = RedisSections {
+                lifecycle: lifecycle_span.clone(),
+                unique: unique_span,
+                indexes: indexes_span,
+                retention: retention.as_ref().map(|(_, span)| span.clone()),
+                search: with_matches.as_ref().map(|(_, span)| span.clone()),
+                audit: audited.as_ref().map(|(_, span)| span.clone()),
+                webhooks: webhooks.clone(),
+                person: self.spans.person.clone(),
+                field_retentions: self
+                    .retentions
+                    .iter()
+                    .map(|(field, span, _)| (field.clone(), span.clone()))
+                    .collect(),
+            };
+            self.redis_refusals(&entity, &sections);
+        }
         if let Some(member) = lifecycle {
             let lookup = self.lookup;
             entity.lifecycle = lifecycle::read(
@@ -1234,6 +1324,198 @@ impl Reader<'_> {
             }
         }
         Some(entity)
+    }
+
+    /// The entity's `expires_after:` (area 5, "Entities in Redis"; chunk
+    /// Q10): required of an entity in Redis, a duration written out of at
+    /// least a second, and refused on one in a database.
+    fn expiry(&mut self, entity: &mut EntityModel, expiry: Option<(ast::Member, Span)>, at: &Span) {
+        let name = entity.name.clone();
+        match (entity.redis, expiry) {
+            (true, None) => {
+                let store = entity.store.clone().unwrap_or_default();
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::DATA_EXPIRY_REQUIRED,
+                        format!("`{name}` is kept in Redis and doesn't say when its records expire"),
+                    )
+                    .at(at.clone(), "no `expires_after:`")
+                    .reason(format!(
+                        "`{store}` is a Redis connection, which keeps data that is short-lived and harmless to lose, so every record kept there expires: `expires_after:` says how long one lives after its last write."
+                    ))
+                    .next(format!("Add `expires_after:` to `{name}`, such as `expires_after: 2h`")),
+                );
+            }
+            (true, Some((member, key_span))) => {
+                let millis = member.value().and_then(|value| {
+                    let crate::types::Const::Duration(_) = crate::types::Const::from_expr(&value)
+                    else {
+                        return None;
+                    };
+                    jadpo_std::Dur::parse(&tree::written(value.syntax()))
+                        .and_then(|dur| i64::try_from(dur.millis).ok())
+                });
+                match millis {
+                    Some(millis) if millis >= jadpo_std::redis::LEAST_EXPIRY_MS => {
+                        entity.expires_after_ms = Some(millis);
+                    }
+                    _ => {
+                        let at = member.value().map_or(key_span.clone(), |value| {
+                            node_span(&key_span.path, value.syntax())
+                        });
+                        self.out.push(
+                            Diagnostic::new(
+                                &rule::TYPE_SETTING_VALUE,
+                                format!("`{name}`'s `expires_after:` must be a time of at least `1s`"),
+                            )
+                            .at(at, "not a time of at least 1s")
+                            .reason("`expires_after:` is how long a record in Redis lives after its last write, written out as a duration (`30m`, `2h`, `7d`) of at least a second, the finest expiry every Redis-compatible service keeps.")
+                            .next("Write how long a record lives, such as `expires_after: 2h`"),
+                        );
+                    }
+                }
+            }
+            (false, Some((_, key_span))) if entity.store.is_some() => {
+                let store = entity.store.clone().unwrap_or_default();
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::DATA_EXPIRY_UNEXPECTED,
+                        format!("`{name}` is kept in a database, where records don't expire"),
+                    )
+                    .at(key_span.clone(), "only an entity in Redis expires")
+                    .reason(format!(
+                        "`{store}` is a PostgreSQL store, which keeps a record until something deletes it. Only an entity kept in Redis, for data that is short-lived and harmless to lose, says how long its records live. A record that should go after a while is deleted by a lifecycle's `purge:` or a `retention:`."
+                    ))
+                    .next(format!("Remove `expires_after:` from `{name}`, or keep it in a Redis store")),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    /// What `entity`, kept in Redis, declares that only a database keeps
+    /// (area 5, "Entities in Redis"; chunk Q10): each one
+    /// `data.redis_unsupported`, naming PostgreSQL.
+    fn redis_refusals(&mut self, entity: &EntityModel, sections: &RedisSections) {
+        let refuse = |out: &mut Vec<Diagnostic>, at: &Span, label: &str, what: &str, why: &str| {
+            out.push(redis_unsupported(entity, at.clone(), label, what, why));
+        };
+        let out = &mut self.out;
+        if let Some(at) = &sections.lifecycle {
+            refuse(
+                out,
+                at,
+                "a lifecycle",
+                "a `lifecycle:`",
+                "Its records expire `expires_after:` from their last write instead, which takes a lifecycle's place.",
+            );
+        }
+        if let Some(at) = &sections.unique
+            && entity.unique.iter().any(|rule| rule.fields.len() > 1)
+        {
+            refuse(
+                out,
+                at,
+                "a rule over several fields",
+                "a unique rule over several fields",
+                "Jadpo keeps one key for each value of a field with `unique: true`, which a lookup by that field reads; nothing reads a key over several fields.",
+            );
+        }
+        if let Some(at) = &sections.indexes {
+            if entity.indexes.iter().any(|rule| rule.fields.len() > 1) {
+                refuse(
+                    out,
+                    at,
+                    "an index over several fields",
+                    "an index over several fields",
+                    "Jadpo keeps a set for each value of a field `indexes:` lists, which a query by equality on that one field reads; a set over several fields would need a query on all of them that Redis can't run.",
+                );
+            } else if entity.indexes.iter().any(|rule| rule.kind.is_some()) {
+                refuse(
+                    out,
+                    at,
+                    "a special kind of index",
+                    "an index with a `kind:`",
+                    "Redis keeps no index of its own: Jadpo keeps a set for each value of a field `indexes:` lists, which only equality reads.",
+                );
+            }
+        }
+        for (at, label, what, why) in [
+            (
+                &sections.retention,
+                "a retention",
+                "a `retention:`",
+                "Its records expire `expires_after:` from their last write, which is how long Redis keeps them.",
+            ),
+            (
+                &sections.search,
+                "a search",
+                "a `search:`",
+                "A search reads a full-text index, which only PostgreSQL keeps.",
+            ),
+            (
+                &sections.audit,
+                "an audit trail",
+                "an `audit:`",
+                "An audit trail's entries are kept in a database, in the same transaction as each change, and a write to Redis commits with no database.",
+            ),
+            (
+                &sections.webhooks,
+                "webhooks",
+                "`webhooks:`",
+                "The addresses a record registers are kept beside its events in a database, which a write to Redis doesn't commit with.",
+            ),
+            (
+                &sections.person,
+                "a person",
+                "`person: true`",
+                "Erasing and exporting a person find their records by the references to them, which only a database can search.",
+            ),
+        ] {
+            if let Some(at) = at {
+                refuse(out, at, label, what, why);
+            }
+        }
+        for (field, at) in &sections.field_retentions {
+            refuse(
+                out,
+                at,
+                "a retention",
+                &format!("`{field}`'s `retention:`"),
+                "Its records expire `expires_after:` from their last write, which is how long Redis keeps every field.",
+            );
+        }
+        for (field, at) in entity.fields.iter().zip(&self.spans.fields) {
+            if field.file.is_some() {
+                refuse(
+                    out,
+                    at,
+                    "a `File`",
+                    &format!("`{}`, a `File`", field.name),
+                    "A store of files keeps a record of which records hold each file, in a database, so a file nothing holds is deleted; a record in Redis expires without it.",
+                );
+            } else if field.sealed.is_some() {
+                refuse(
+                    out,
+                    at,
+                    "a sealed field",
+                    &format!("`{}`, a sealed field", field.name),
+                    "A sealed field's bytes are re-sealed in batches when the key changes, which reads every record of the entity, and Redis can't list them.",
+                );
+            } else if field
+                .reference
+                .as_ref()
+                .is_some_and(|reference| reference.on_delete.is_some())
+            {
+                refuse(
+                    out,
+                    at,
+                    "a reference saying `on_delete:`",
+                    &format!("`{}`'s `on_delete:`", field.name),
+                    "`on_delete:` is what a database does to the records holding a foreign key when the record it refers to goes, and Redis keeps no foreign key: a record here keeps the `id` it holds until it expires.",
+                );
+            }
+        }
     }
 
     /// The entity's `retention:` and its fields' (area 15, "Retention";
@@ -1431,17 +1713,11 @@ impl Reader<'_> {
                 );
                 None
             }
+            // An entity in Redis (area 5, "Entities in Redis"; chunk Q10):
+            // what it can't keep is the entity's own to report.
             Some(ConnectionKind::Redis) => {
-                self.out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("An entity stored in Redis (`{name}`) isn't built yet"),
-                    )
-                    .at(span, "a Redis connection")
-                    .reason("An entity in Redis must declare its expiry, whose syntax is still an open question, and this compiler builds PostgreSQL stores only.")
-                    .next(format!("Keep `{entity}` in a PostgreSQL store for now")),
-                );
-                None
+                let _ = span;
+                Some(name)
             }
             found => {
                 let what = match found {
@@ -1458,7 +1734,7 @@ impl Reader<'_> {
                 )
                 .at(span.clone(), "not a database")
                 .reason(format!(
-                    "{what}; an entity's `store:` names a connection with `driver: Driver.postgres`, or `main` when `app.jadpo` declares no database."
+                    "{what}; an entity's `store:` names a connection with `driver: Driver.postgres` or `driver: Driver.redis`, or `main` when `app.jadpo` declares no database."
                 ));
                 self.out.push(match near {
                     Some(near) => problem
@@ -2868,7 +3144,10 @@ pub fn entity_links(db: &dyn Db, project: Project) -> BTreeMap<String, EntityLin
     let by_name: BTreeMap<&str, &EntityModel> =
         entities.iter().map(|e| (e.name.as_str(), e)).collect();
     let mut out: BTreeMap<String, EntityLinks> = BTreeMap::new();
-    for entity in entities {
+    // A reference held by an entity in Redis is no foreign key: it keeps the
+    // `id` it holds until its record expires, and [`crate::redis`] says
+    // what it may refer to (chunk Q10).
+    for entity in entities.iter().filter(|entity| !entity.redis) {
         for (index, field) in entity.fields.iter().enumerate() {
             let Some(reference) = &field.reference else {
                 continue;
@@ -2920,6 +3199,7 @@ pub fn entity_links(db: &dyn Db, project: Project) -> BTreeMap<String, EntityLin
     // found the same way every time.
     let edges: BTreeMap<&str, Vec<Hop>> = entities
         .iter()
+        .filter(|entity| !entity.redis)
         .map(|entity| {
             let hops = entity
                 .fields
@@ -3301,7 +3581,8 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
         .iter()
         .map(|e| (e.name.as_str(), e))
         .collect();
-    for entity in &model.entities {
+    // An entity in Redis has no table (area 5, "Entities in Redis").
+    for entity in model.entities.iter().filter(|entity| !entity.redis) {
         let Some(store) = &entity.store else {
             continue;
         };
@@ -4474,6 +4755,10 @@ pub struct WriteRules {
     /// the entity holding it and the field (area 15, "What erasure
     /// reaches"; chunk P4c). No foreign key would apply it.
     pub removes_across: Option<(String, String, String)>,
+    /// Whether it is kept in Redis (area 5, "Entities in Redis"; chunk
+    /// Q10): an update by `id` works out only whole numbers from what is
+    /// stored, and its references hold no foreign key.
+    pub redis: bool,
 }
 
 /// What one transition writes (area 5, "Lifecycle").
@@ -4523,6 +4808,7 @@ pub fn write_rules<'db>(
         person: found.person,
         audited: found.audit.is_some(),
         person_owned: crate::erasure::erasures(db, project).reaches(found),
+        redis: found.redis,
         ..WriteRules::default()
     };
     for field in &found.fields {
@@ -4536,9 +4822,12 @@ pub fn write_rules<'db>(
                 fields: vec![field.name.clone()],
             });
         }
-        if let Some(reference) = &field.reference {
+        if let Some(reference) = &field.reference
+            && !found.redis
+        {
             // One to a person in another store is no foreign key, so
-            // nothing refuses a write for what it names (chunk P4c).
+            // nothing refuses a write for what it names (chunk P4c); nor
+            // is one held in Redis (chunk Q10).
             let across = reference.on_delete.is_none()
                 && entity_model(db, project, Name::new(db, reference.target.clone()))
                     .as_deref()

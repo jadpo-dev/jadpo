@@ -74,7 +74,7 @@ INSTALL_HEADING = '## Install it'
 # tables have the rest.
 PRIMER_NOT_BUILT = (
     ('05-data', '`jadpo rename`', '`jadpo rename`'),
-    ('05-data', 'Entities in Redis', 'entities and caches in Redis'),
+    ('05-data', 'Record caches (`caches:`)', 'record caches'),
     ('04-failures', 'Logging', 'failure logging'),
     ('08-identity', '`Driver.apple`', 'sign-in with Apple or your own OAuth provider'),
     ('08-identity', 'OAuth grants', 'OAuth grants'),

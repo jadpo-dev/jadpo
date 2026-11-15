@@ -58,7 +58,7 @@ pub(crate) enum Row<'r> {
 }
 
 /// The part of the caller a grant compares a field with.
-fn part(kind: PrincipalKind) -> CallerPart {
+pub(crate) fn caller_part(kind: PrincipalKind) -> CallerPart {
     match kind {
         PrincipalKind::User => CallerPart::User,
         PrincipalKind::Service => CallerPart::Service,
@@ -291,7 +291,7 @@ impl Planner<'_> {
             match grant {
                 Grant::Caller { field: name, kind } => {
                     let value = self.value_of(entity, name, row)?;
-                    let caller = bind.caller(part(*kind));
+                    let caller = bind.caller(caller_part(*kind));
                     whos.push(Who::Equals { value, caller });
                 }
                 Grant::Role {

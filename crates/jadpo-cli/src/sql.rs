@@ -122,6 +122,20 @@ pub fn sql(call: &Call) -> Reply {
     let Some(planned) = plan.query_named(name) else {
         panic!("query `{name}` checks, but no statement was made for it");
     };
+    // An entity kept in Redis is read with no SQL (chunk Q10).
+    if let Some(redis) = &planned.read.redis {
+        return Reply::failed(
+            Diagnostic::new(
+                &rule::CLI_SQL_ARGUMENTS,
+                format!("`{name}` reads `{}`, which is kept in Redis", redis.entity.entity),
+            )
+            .reason(format!(
+                "`jadpo sql` shows the PostgreSQL a query sends, and `{}` is kept in the Redis connection `{}`, read by key with no SQL (area 5, \"Entities in Redis\").",
+                redis.entity.entity, redis.entity.store
+            ))
+            .next("Name a query of an entity kept in a database"),
+        );
+    }
     let line = jadpo_check::graph::graph(db, loaded.project)
         .get(&query.key)
         .and_then(|node| node.place.as_ref())
@@ -300,6 +314,8 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
             Decoded::Write { plan: Some(id), .. } => Some((SiteId(at as u32), plan.write(*id)?)),
             _ => None,
         })
+        // A write of an entity kept in Redis sends no SQL (chunk Q10).
+        .filter(|(_, write)| write.plan.redis.is_none())
         .collect();
     let name = action.key.name().to_string();
     if writes.is_empty() {

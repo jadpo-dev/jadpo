@@ -800,7 +800,7 @@ Read only what a task needs.
 ## Not built yet
 
 A feature that isn't built is the error `toolchain.not_built_yet` where
-you use it. Not built yet, among others: entities and caches in Redis;
-sign-in with Apple or your own OAuth provider; OAuth grants; most of
-personal data; the developer console and MCP; and documents. Each area's
-`What is built` topic has the rest.
+you use it. Not built yet, among others: record caches; sign-in with
+Apple or your own OAuth provider; OAuth grants; most of personal data;
+the developer console and MCP; and documents. Each area's `What is
+built` topic has the rest.

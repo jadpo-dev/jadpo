@@ -467,6 +467,19 @@ struct RuleCheck {
     arm: u32,
 }
 
+/// What a write of an entity kept in Redis is planned from: its site's
+/// parts (chunk Q10).
+struct RedisSite<'b> {
+    op: WriteOp,
+    target: Option<SiteId>,
+    by_id: bool,
+    set: &'b [(Key, SiteId)],
+    patch: Option<SiteId>,
+    when_supplied: &'b [(Key, Vec<(Key, SiteId)>)],
+    conflicts: &'b [ConflictArm],
+    not_found: bool,
+}
+
 /// One write's statement as it is built.
 #[derive(Default)]
 struct Writing {
@@ -561,6 +574,23 @@ impl Planner<'_> {
         let entity_model = model.entity(&name)?;
         if *erase {
             return self.erase(entity_model, (*target)?);
+        }
+        // An entity kept in Redis runs no statement (chunk Q10).
+        if entity_model.redis {
+            return self.redis_write(
+                body,
+                entity_model,
+                RedisSite {
+                    op: *op,
+                    target: *target,
+                    by_id: *by_id,
+                    set,
+                    patch: *patch,
+                    when_supplied,
+                    conflicts,
+                    not_found: not_found.is_some(),
+                },
+            );
         }
         let store = entity_model.store.clone()?;
         let table = entity_model.table.as_str();
@@ -1345,8 +1375,217 @@ impl Planner<'_> {
                 files: writing.files,
                 audit,
                 erased: Vec::new(),
+                redis: None,
             },
             inputs: writing.inputs,
+        })
+    }
+
+    /// The plan of `site`, a write of `entity`, kept in Redis (area 6,
+    /// "Reading and writing entities in Redis"; chunk Q10): what each field
+    /// it sets keeps, from its site's inputs or, for an update by `id`,
+    /// worked out from what is stored as its action commits; and what each
+    /// unique field's refusal raises.
+    fn redis_write(
+        &mut self,
+        body: &Body,
+        entity: &EntityModel,
+        site: RedisSite<'_>,
+    ) -> Option<WriteSitePlan> {
+        use jadpo_std::redis::Kept;
+        let mut writing = Writing::default();
+        let target = match site.op {
+            WriteOp::Create => None,
+            WriteOp::Update | WriteOp::Delete => Some(writing.input(site.target?, None)),
+        };
+        let mut set: Vec<(String, Kept)> = Vec::new();
+        match site.op {
+            WriteOp::Create => {
+                let given: Vec<(String, u32)> = site
+                    .set
+                    .iter()
+                    .map(|(key, value)| {
+                        let validator = self.types.validator_id(&TypeRef::Field(key.clone()));
+                        let input = writing.input(*value, Some(validator));
+                        (self.types.field_name(key).to_string(), input)
+                    })
+                    .collect();
+                for field in &entity.fields {
+                    let kept = if field.name == "id" {
+                        Kept::NewId
+                    } else if field.generated.is_some() {
+                        Kept::Now
+                    } else {
+                        let (_, input) = given.iter().find(|(name, _)| *name == field.name)?;
+                        Kept::Input(*input)
+                    };
+                    set.push((field.name.clone(), kept));
+                }
+            }
+            WriteOp::Update => {
+                for (key, value) in site.set {
+                    let name = self.types.field_name(key).to_string();
+                    let kept = if site.by_id && stored_in(body, *value) {
+                        self.redis_kept(body, *value, &mut writing)?
+                    } else {
+                        let validator = self.types.validator_id(&TypeRef::Field(key.clone()));
+                        Kept::Input(writing.input(*value, Some(validator)))
+                    };
+                    set.push((name, kept));
+                }
+                if let Some(patch) = site.patch {
+                    let input = writing.input(patch, None);
+                    let input_ty = match &body.site(patch).ty {
+                        TypeRef::Node(key) => Some(key.clone()),
+                        _ => None,
+                    };
+                    let names: Vec<String> = input_ty
+                        .and_then(|key| self.types.shape_plan(&key))
+                        .map(|shape| shape.fields.iter().map(|f| f.name.clone()).collect())
+                        .unwrap_or_default();
+                    for name in names {
+                        if field(entity, &name).is_some() {
+                            set.push((name.clone(), Kept::Patched { input, field: name }));
+                        }
+                    }
+                    for (supplied, fields) in site.when_supplied {
+                        let supplied = self.types.field_name(supplied).to_string();
+                        for (key, value) in fields {
+                            let validator = self.types.validator_id(&TypeRef::Field(key.clone()));
+                            let at = writing.input(*value, Some(validator));
+                            set.push((
+                                self.types.field_name(key).to_string(),
+                                Kept::WhenSupplied {
+                                    input,
+                                    fields: vec![supplied.clone()],
+                                    value: Box::new(Kept::Input(at)),
+                                },
+                            ));
+                        }
+                    }
+                }
+                // Every field generated on change takes the clock.
+                for field in &entity.fields {
+                    if field.generated == Some(jadpo_std::Generated::OnChange)
+                        && !set.iter().any(|(name, _)| *name == field.name)
+                    {
+                        set.push((field.name.clone(), Kept::Now));
+                    }
+                }
+            }
+            WriteOp::Delete => {}
+        }
+        let redis_entity = self.redis_entity(entity)?;
+        // What each `conflict:` arm's unique field raises.
+        let mut refusals: Vec<Refusal> = Vec::new();
+        let mut conflicts: Vec<(u32, u32)> = Vec::new();
+        for (at, arm) in site.conflicts.iter().enumerate() {
+            if arm.stored.is_some() || arm.rule.kind() != Some(Kind::Field) {
+                continue;
+            }
+            let Some(constraint) = self.constraint(&arm.rule) else {
+                continue;
+            };
+            let name = self.types.name(&arm.rule).to_string();
+            let short = name.rsplit('.').next().unwrap_or_default();
+            let Some(place) = redis_entity
+                .unique
+                .iter()
+                .position(|keyed| keyed.field == short)
+            else {
+                continue;
+            };
+            conflicts.push((u32::try_from(place).ok()?, refusals.len() as u32));
+            refusals.push(Refusal {
+                constraint,
+                raises: Raises::Arm(at as u32),
+            });
+        }
+        let missing = if site.not_found {
+            Some(self.not_found(
+                entity,
+                MissingValue::Arg {
+                    index: 0,
+                    path: Vec::new(),
+                },
+            )?)
+        } else {
+            None
+        };
+        Some(WriteSitePlan {
+            plan: WritePlan {
+                store: redis_entity.store.clone(),
+                op: site.op,
+                sql: String::new(),
+                unpoliced: None,
+                policy: None,
+                params: Vec::new(),
+                returns: None,
+                by_id: site.by_id,
+                refusals,
+                guard: None,
+                missing,
+                kept_in_tenant: false,
+                row: None,
+                files: Vec::new(),
+                audit: None,
+                erased: Vec::new(),
+                clears: Vec::new(),
+                redis: Some(Box::new(jadpo_std::redis::RedisWrite {
+                    entity: redis_entity,
+                    target,
+                    set,
+                    conflicts,
+                })),
+            },
+            inputs: writing.inputs,
+        })
+    }
+
+    /// What an update by `id` of a record in Redis keeps from the value at
+    /// `site`: a stored field, whole numbers added and taken away, or an
+    /// input the executor works out.
+    fn redis_kept(
+        &mut self,
+        body: &Body,
+        site: SiteId,
+        writing: &mut Writing,
+    ) -> Option<jadpo_std::redis::Kept> {
+        use jadpo_std::redis::Kept;
+        if !stored_in(body, site) {
+            return Some(Kept::Input(writing.input(site, None)));
+        }
+        Some(match &body.site(site).node {
+            Node::Expr(Expr::Stored { field: key }) => {
+                Kept::Stored(self.types.field_name(key).to_string())
+            }
+            Node::Expr(Expr::Binary {
+                op: op @ (BinaryOp::Add | BinaryOp::Subtract),
+                lhs,
+                rhs,
+            }) => {
+                let lhs = Box::new(self.redis_kept(body, *lhs, writing)?);
+                let rhs = Box::new(self.redis_kept(body, *rhs, writing)?);
+                match op {
+                    BinaryOp::Add => Kept::Add(lhs, rhs),
+                    _ => Kept::Subtract(lhs, rhs),
+                }
+            }
+            Node::Expr(Expr::Unary {
+                op: UnaryOp::Negate,
+                operand,
+            }) => Kept::Negate(Box::new(self.redis_kept(body, *operand, writing)?)),
+            Node::Expr(Expr::Call {
+                callee: Callee::Construct(_),
+                args,
+                ..
+            }) => {
+                let [Some(inner)] = args.as_slice() else {
+                    return None;
+                };
+                self.redis_kept(body, *inner, writing)?
+            }
+            _ => return None,
         })
     }
 
@@ -1435,6 +1674,7 @@ impl Planner<'_> {
                 files: Vec::new(),
                 audit: None,
                 erased,
+                redis: None,
             },
             inputs: writing.inputs,
         })

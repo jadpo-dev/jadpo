@@ -314,8 +314,9 @@ pub struct NativeHost {
     counted_in: Option<String>,
     /// Whether that store is being asked, which the server's workers share.
     health: Arc<StoreHealth>,
-    /// Whether every cache is kept in this process's memory, whatever its
-    /// driver: `jadpo dev`'s (area 11, "In development"; chunk Q9).
+    /// Whether every cache, and every entity in Redis, is kept in this
+    /// process's memory, whatever its driver: `jadpo dev`'s (area 11, "In
+    /// development"; chunks Q9 and Q10).
     caches_in_memory: bool,
     deferred: Deferred,
     /// The background work it has running (deferred work, ticks, work
@@ -438,8 +439,9 @@ impl NativeHost {
         self
     }
 
-    /// Keeps every cache in this process's memory, whatever its driver:
-    /// what `jadpo dev` does (area 11, "In development"; chunk Q9).
+    /// Keeps every cache, and every entity in Redis, in this process's
+    /// memory, whatever its driver: what `jadpo dev` does (area 11, "In
+    /// development"; chunks Q9 and Q10).
     pub fn caching_in_memory(mut self) -> NativeHost {
         self.caches_in_memory = true;
         self
@@ -664,6 +666,17 @@ impl Host for NativeHost {
             )));
         }
         self.drivers.cache(connection)
+    }
+
+    /// The Redis connection an entity's records are kept in, as the factory
+    /// built it; under `jadpo dev`, this process's memory (chunk Q10).
+    fn records(&self, connection: &str) -> Option<Rc<dyn jadpo_runtime::redis::Records>> {
+        if self.caches_in_memory {
+            return Some(Rc::new(jadpo_runtime::redis::MemoryRecords::process(
+                connection,
+            )));
+        }
+        self.drivers.records(connection)
     }
 }
 

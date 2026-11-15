@@ -1322,11 +1322,10 @@ category pages a product moved out of and into, isn't designed yet.
 
 An entity may live in a Redis store, for data that is short-lived and
 harmless to lose. It must expire: `expires_after:` gives how long a record
-lives, counted from its last write.
+lives, counted from its last write, at least `1s`. Here a sign-up in
+progress lives in Redis for two hours after it last changed:
 
-app.jadpo:
-
-```jadpo fragment
+```jadpo check project=redis-drafts file=app.jadpo
 application {
     connections: {
         drafts: {
@@ -1337,9 +1336,30 @@ application {
 }
 ```
 
-domains/accounts/entities/sign_up_draft.jadpo:
+```jadpo check project=redis-drafts file=config.jadpo hidden
+config {
+    redis_url: RedisUrl
+}
+```
 
-```jadpo fragment
+```jadpo check project=redis-drafts file=domains/accounts/types/sign_up_step.jadpo hidden
+/// How far someone has got through signing up.
+type SignUpStep = Enum {
+    started
+    email_confirmed
+}
+```
+
+```jadpo check project=redis-drafts file=domains/accounts/types/attempts.jadpo hidden
+/// How many codes someone has tried.
+type Attempts = Int {
+    min: 0
+}
+```
+
+```jadpo check project=redis-drafts file=domains/accounts/entities/sign_up_draft.jadpo
+use accounts/types { Attempts, SignUpStep }
+
 /// A sign-up someone has started and not yet finished.
 entity SignUpDraft {
     id: Uuid
@@ -1347,7 +1367,7 @@ entity SignUpDraft {
         unique: true
     }
     step: SignUpStep
-    attempts: Int
+    attempts: Attempts
 
     store: drafts
     expires_after: 2h
@@ -1360,33 +1380,123 @@ entity SignUpDraft {
 Expired records are hidden from every read and update, as records
 `visible:` hides are
 ([Reading and writing entities in Redis](06-reads-and-writes.md#reading-and-writing-entities-in-redis) under
-Reads and writes). An `expires_after:` on an entity in a database, or a
-Redis entity without one, is a compile error.
+Reads and writes). A Redis entity without `expires_after:` is
+`data.expiry_required`, and one on an entity in a database is
+`data.expiry_unexpected`.
 
 A Redis entity supports:
 
 - **get, create, update and delete by `id`**, the generated operations
   every entity has. Counters are included: an update by `id` that adds to
-  a stored whole number (`SignUpDraft.attempts + 1`) is one Redis
-  `increment`.
+  a stored whole number (`SignUpDraft.attempts + 1`) is worked out again
+  against the record Redis holds as its action commits, so no increment
+  is lost and counters on one record never run each other again.
 - **lookup by a `unique:` field**, for which Jadpo keeps one key per
-  unique field.
+  unique field's value.
 - **listing and counting by equality on one field** declared in
   `indexes:`, for which Jadpo keeps a set per value. Pages come in
-  creation order.
+  creation order: by `id`, whose first 48 bits are the millisecond it was
+  made in.
 - **concurrent-change checks**, through a revision Jadpo keeps on each
   record, as every write checks ([Logic](03-logic.md)).
+- **grants that are equality on the record's own fields**:
+  `Access.public`, `Access.authenticated`, `Access.system` and a user
+  field, a reference to the principal's user or service entity, which
+  keeps its `id` with no foreign key and no `on_delete:`.
 
 Anything else is a compile error that names the reason and suggests
 PostgreSQL instead: joins and `include`, ranges, ordering by any other
-field, `matches`, an index over several fields, and policy grants beyond
-equality on the record's own fields. So is a `lifecycle:`, since expiry
-takes its place.
+field, `matches`, an index or a unique rule over several fields, a role,
+a tenant or a field's own `policy:`, any other reference, a `File` or a
+sealed field, `retention:`, `audit:`, `search:`, `webhooks:` and
+`person: true`. So is a `lifecycle:`, since expiry takes its place. On the
+entity or a write it is `data.redis_unsupported`, and on a query
+`query.redis_unsupported`.
 
 A record is stored as one JSON value, the same JSON the API sends, like a
-cache entry.
+cache entry, with the names its fields and variants were born with, so a
+rename keeps it. A record a later build can't read, such as one written
+before a required field was added, is treated as expired. Each test keeps
+every Redis store in memory of its own, empty at the start, and `jadpo
+dev` keeps them in its memory. How the driver keeps them is in
+[The Redis driver](16-built-in-services.md#how-an-entity-is-kept).
 
-Not built yet: entities in Redis.
+These actions start a sign-up and count a code someone tried:
+
+```jadpo check project=redis-drafts file=domains/accounts/failures/sign_up_under_way.jadpo hidden
+/// Someone is already signing up with this address.
+type SignUpUnderWay = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=redis-drafts file=domains/accounts/actions/start_sign_up.jadpo
+use accounts/entities { SignUpDraft }
+use accounts/types { SignUpStep }
+use accounts/failures { SignUpUnderWay }
+
+/// Starts a sign-up with `email`.
+action start_sign_up(email: Email) fails SignUpUnderWay -> SignUpDraft {
+    return attempt SignUpDraft.create {
+        set: {
+            email: email
+            step: SignUpStep.started
+            attempts: 0
+        }
+        conflict: {
+            SignUpDraft.email: SignUpUnderWay
+        }
+    }
+}
+```
+
+```jadpo check project=redis-drafts file=domains/accounts/actions/try_code.jadpo
+use accounts/entities { SignUpDraft, SignUpDraftNotFound }
+use accounts/types { Attempts }
+
+/// Counts a code tried against a sign-up.
+action try_code(draft_id: SignUpDraft.id) fails SignUpDraftNotFound -> SignUpDraft {
+    return attempt SignUpDraft.update(draft_id) {
+        set: {
+            attempts: Attempts(SignUpDraft.attempts + 1)
+        }
+    }
+}
+```
+
+```jadpo check project=redis-drafts file=domains/accounts/queries/draft_for_email.jadpo hidden
+use accounts/entities { SignUpDraft }
+
+/// The sign-up under way with `email`, if there is one.
+query draft_for_email(email: Email) -> SignUpDraft? {
+    from: SignUpDraft
+    where: SignUpDraft.email == email
+}
+```
+
+```jadpo check project=redis-drafts file=domains/accounts/actions/start_sign_up.test.jadpo
+use accounts/entities { SignUpDraft, SignUpDraftNotFound }
+use accounts/failures { SignUpUnderWay }
+use accounts/actions { try_code }
+use accounts/queries { draft_for_email }
+
+test "a sign-up is found by its address, and a second is refused" {
+    var draft: SignUpDraft = attempt start_sign_up("ada@example.com")
+    assert draft_for_email("ada@example.com") == draft
+    assert start_sign_up("ada@example.com") fails SignUpUnderWay
+}
+
+test "each code tried is counted, until the sign-up expires" {
+    clock: "2026-01-15T12:00:00Z"
+
+    var draft: SignUpDraft = attempt start_sign_up("ada@example.com")
+    var first_try: SignUpDraft = attempt try_code(draft.id)
+    assert first_try.attempts == 1
+    clock.advance(2h)
+    assert try_code(draft.id) fails SignUpDraftNotFound
+    assert draft_for_email("ada@example.com") == none
+}
+```
 
 ## Storage types
 <!-- topic: storage-types -->
@@ -2681,7 +2791,8 @@ Each feature not built yet is `toolchain.not_built_yet` where it is used.
 | A worked-out backfill for a field that allows less | Built: by `UPDATE` in batches, or in Jadpo. |
 | A backfill in Jadpo that fills a value held in several columns, or reads a field held so or as JSON | Built. |
 | A query's `cache:` | Built: a route's display read served from the query's cache in Redis or `Driver.memory`, per caller and arguments, and every cached result reading an entity a committed change wrote cleared, an erasure's and a purge's included ([Caches](#caches)). |
-| Entities in Redis and record caches (`caches:`) | Not built yet. Clearing only the cached entries a change affects isn't designed yet. |
+| Entities in Redis | Built: `expires_after:`, get, create, update and delete by `id`, counters, lookup by a unique field, a page or a count by equality on an indexed field, revisions and grants checked after reading, natively and on Workers ([Entities in Redis](#entities-in-redis)). |
+| Record caches (`caches:`) | Not built yet. Clearing only the cached entries a change affects isn't designed yet. |
 | Index kinds: geographic, HNSW and JSON | Built. |
 | A database implied only when something needs one | Not built yet: it comes with the first feature that can run without one. |
 | Seeds and `jadpo seed` | Built. |
@@ -2715,6 +2826,9 @@ source.
 - [`data.duplicate_rule`](../errors/data.duplicate_rule.md)
 - [`data.store_unknown`](../errors/data.store_unknown.md)
 - [`data.store_required`](../errors/data.store_required.md)
+- [`data.expiry_required`](../errors/data.expiry_required.md)
+- [`data.expiry_unexpected`](../errors/data.expiry_unexpected.md)
+- [`data.redis_unsupported`](../errors/data.redis_unsupported.md)
 - [`data.unknown_section`](../errors/data.unknown_section.md)
 - [`data.reserved_table_name`](../errors/data.reserved_table_name.md)
 - [`data.name_too_long`](../errors/data.name_too_long.md)

@@ -244,11 +244,13 @@ impl<'a> Reader<'a> {
 
         // What each cardinality needs and refuses. A search by words
         // (area 16, "Search"; chunk B12) needs no `order:`: without one,
-        // the best matches come first.
-        let with_matches = sections
-            .filters
-            .iter()
-            .any(|(_, member)| member.value().is_some_and(|value| holds_matches(&value)));
+        // the best matches come first. Nor does a query of an entity kept
+        // in Redis, whose records come in creation order (chunk Q10).
+        let with_matches = entity.redis
+            || sections
+                .filters
+                .iter()
+                .any(|(_, member)| member.value().is_some_and(|value| holds_matches(&value)));
         let (needs, refuses): (&[&str], &[&str]) = match (cardinality, with_matches) {
             (Cardinality::One, _) => (&["missing"], &["order", "limit", "page"]),
             (Cardinality::Optional, _) => (&[], &["missing", "order", "limit", "page"]),

@@ -105,6 +105,55 @@ pub async fn admit(ctx: &mut Ctx<'_>, gate: &Gate, site: u32) -> Stored {
     }
 }
 
+/// Whether the caller may do what `grants` decide to `record`, one record
+/// of an entity read whole (area 6, "Reading and writing entities in
+/// Redis"; chunk Q10): what a statement's compiled policy asks of a row,
+/// asked in Jadpo's own code once the record is read. Any grant lets the
+/// caller in; a narrowed token needs the effect's scope-token too. A call
+/// a test makes without a caller isn't checked (area 13). An entity in
+/// Redis is held to it on every read and write, and a record cache on
+/// every read (area 9, "Caches and personal data").
+pub fn permits(ctx: &Ctx<'_>, grants: &jadpo_std::policy::RecordGrants, record: &Value) -> bool {
+    use jadpo_std::policy::{Narrowed, RecordGrant};
+    if ctx.unpoliced() {
+        return true;
+    }
+    if let Some(held) = ctx.narrowed() {
+        match &grants.narrowed {
+            Narrowed::Untouched => {}
+            Narrowed::Needs(token) if held.iter().any(|scope| scope == token) => {}
+            Narrowed::Needs(_) | Narrowed::Refused => return false,
+        }
+    }
+    grants.grants.iter().any(|grant| match grant {
+        RecordGrant::Anyone => true,
+        RecordGrant::Signed => ctx.caller().is_some(),
+        RecordGrant::System => ctx.system().is_some(),
+        RecordGrant::Caller { field, part } => {
+            let held = match record {
+                Value::Record(record) => record.get(field),
+                _ => None,
+            };
+            let caller = ctx.caller_param(*part);
+            match (held, caller) {
+                (Some(Value::Uuid(held)), SqlValue::Uuid(bytes)) => {
+                    crate::read::uuid_text(&bytes) == held.as_ref()
+                }
+                _ => false,
+            }
+        }
+    })
+}
+
+/// Whether `grants` decide the same for every record: none tests a
+/// record's field, so a count needn't read each one.
+pub fn same_for_every_record(grants: &jadpo_std::policy::RecordGrants) -> bool {
+    !grants
+        .grants
+        .iter()
+        .any(|grant| matches!(grant, jadpo_std::policy::RecordGrant::Caller { .. }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

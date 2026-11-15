@@ -781,6 +781,11 @@ pub struct ReadPlan {
     /// "Listing a query"): who may run it, checked as it starts, before
     /// its statement runs, wherever it is run from.
     pub gate: Option<crate::policy::Gate>,
+    /// For an entity in Redis (area 6, "Reading and writing entities in
+    /// Redis"; chunk Q10): how it finds its records, in place of `select`,
+    /// which then runs nothing.
+    #[serde(default)]
+    pub redis: Option<Box<crate::redis::RedisRead>>,
 }
 
 impl ReadPlan {

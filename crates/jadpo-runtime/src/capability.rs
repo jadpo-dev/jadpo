@@ -734,6 +734,10 @@ pub struct Faked<H> {
     /// caches (area 13, "Events and caches in tests"; chunk Q9).
     caches: Vec<String>,
     memory: crate::caches::MemoryCaches,
+    /// The Redis connections a test keeps entities in, in memory of its
+    /// own, and those stores (area 13; chunk Q10).
+    stores: Vec<String>,
+    records: crate::redis::MemoryStores,
 }
 
 #[cfg(feature = "testing")]
@@ -758,7 +762,21 @@ impl<H: Host> Faked<H> {
             clock: true,
             caches: Vec::new(),
             memory: crate::caches::MemoryCaches::default(),
+            stores: Vec::new(),
+            records: crate::redis::MemoryStores::default(),
         }
+    }
+
+    /// Keeps the records of each entity in Redis in `connections` in
+    /// memory of its own, empty at first: a test's (area 13; chunk Q10).
+    pub fn with_records<'s>(mut self, connections: impl IntoIterator<Item = &'s str>) -> Faked<H> {
+        self.stores = connections.into_iter().map(str::to_string).collect();
+        self
+    }
+
+    /// The stores of records it keeps in memory, by connection.
+    pub fn memory_records(&self) -> &crate::redis::MemoryStores {
+        &self.records
     }
 
     /// Keeps each cache in `connections` in memory of its own, empty at
@@ -951,6 +969,13 @@ impl<H: Host> Host for Faked<H> {
 
     fn cache_health(&self) -> &crate::caches::CacheHealth {
         self.host.cache_health()
+    }
+
+    fn records(&self, connection: &str) -> Option<Rc<dyn crate::redis::Records>> {
+        if self.stores.iter().any(|known| known == connection) {
+            return Some(Rc::new(self.records.of(connection)));
+        }
+        self.host.records(connection)
     }
 }
 

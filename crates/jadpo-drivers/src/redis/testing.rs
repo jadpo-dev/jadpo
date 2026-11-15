@@ -36,6 +36,8 @@ pub const REDIS_URL_VARIABLE: &str = "JADPO_TEST_REDIS_URL";
 struct Entry {
     value: Vec<u8>,
     members: Option<std::collections::BTreeSet<Vec<u8>>>,
+    /// A sorted set's members, each with its score (chunk Q10).
+    scores: Option<BTreeMap<Vec<u8>, i64>>,
     expires: Option<i64>,
 }
 
@@ -182,6 +184,9 @@ impl Double {
             .first()
             .map(|word| String::from_utf8_lossy(word).to_ascii_uppercase())
             .unwrap_or_default();
+        if name == "EVAL" {
+            return self.eval(database, words, now);
+        }
         let keys = self.databases.entry(database).or_default();
         keys.retain(|_, entry| entry.expires.is_none_or(|at| at > now));
         let key = words.get(1).cloned().unwrap_or_default();
@@ -194,6 +199,9 @@ impl Double {
             "GET" => match keys.get(&key) {
                 Some(Entry {
                     members: Some(_), ..
+                })
+                | Some(Entry {
+                    scores: Some(_), ..
                 }) => Reply::Error(WRONG_TYPE.into()),
                 found => Reply::Bulk(found.map(|entry| entry.value.clone())),
             },
@@ -204,7 +212,7 @@ impl Double {
                     .map(|key| {
                         Reply::Bulk(
                             keys.get(key)
-                                .filter(|entry| entry.members.is_none())
+                                .filter(|entry| entry.members.is_none() && entry.scores.is_none())
                                 .map(|entry| entry.value.clone()),
                         )
                     })
@@ -221,6 +229,7 @@ impl Double {
                 let entry = keys.entry(key).or_insert(Entry {
                     value: Vec::new(),
                     members: Some(std::collections::BTreeSet::new()),
+                    scores: None,
                     expires: None,
                 });
                 let Some(members) = entry.members.as_mut() else {
@@ -287,6 +296,7 @@ impl Double {
                     Entry {
                         value: value.clone(),
                         members: None,
+                        scores: None,
                         expires,
                     },
                 );
@@ -296,9 +306,10 @@ impl Double {
                 let entry = keys.entry(key).or_insert(Entry {
                     value: b"0".to_vec(),
                     members: None,
+                    scores: None,
                     expires: None,
                 });
-                if entry.members.is_some() {
+                if entry.members.is_some() || entry.scores.is_some() {
                     return Reply::Error(WRONG_TYPE.into());
                 }
                 match text(&entry.value).parse::<i64>() {
@@ -316,8 +327,301 @@ impl Double {
                     expires: Some(at), ..
                 }) => Reply::Integer(at - now),
             },
+            "ZADD" => {
+                let entry = keys.entry(key).or_insert(Entry {
+                    value: Vec::new(),
+                    members: None,
+                    scores: Some(BTreeMap::new()),
+                    expires: None,
+                });
+                let Some(scores) = entry.scores.as_mut() else {
+                    return Reply::Error(WRONG_TYPE.into());
+                };
+                let mut added = 0;
+                for pair in words.get(2..).unwrap_or_default().chunks(2) {
+                    let [score, member] = pair else {
+                        return Reply::Error("ERR syntax error".into());
+                    };
+                    let Ok(score) = text(score).parse::<i64>() else {
+                        return Reply::Error("ERR value is not a valid float".into());
+                    };
+                    if scores.insert(member.clone(), score).is_none() {
+                        added += 1;
+                    }
+                }
+                Reply::Integer(added)
+            }
+            "ZREM" => {
+                let Some(entry) = keys.get_mut(&key) else {
+                    return Reply::Integer(0);
+                };
+                let Some(scores) = entry.scores.as_mut() else {
+                    return Reply::Error(WRONG_TYPE.into());
+                };
+                let removed = words
+                    .iter()
+                    .skip(2)
+                    .filter(|member| scores.remove(*member).is_some())
+                    .count();
+                if scores.is_empty() {
+                    keys.remove(&key);
+                }
+                Reply::Integer(removed as i64)
+            }
+            "ZRANGEBYLEX" => {
+                let scores = match keys.get(&key) {
+                    None => return Reply::Array(Some(Vec::new())),
+                    Some(Entry {
+                        scores: Some(scores),
+                        ..
+                    }) => scores,
+                    Some(_) => return Reply::Error(WRONG_TYPE.into()),
+                };
+                let (Some(min), Some(max)) = (words.get(2), words.get(3)) else {
+                    return Reply::Error("ERR wrong number of arguments".into());
+                };
+                let above = |member: &[u8]| match min.split_first() {
+                    Some((b'-', [])) => true,
+                    Some((b'(', from)) => member > from,
+                    Some((b'[', from)) => member >= from,
+                    _ => false,
+                };
+                let below = |member: &[u8]| match max.split_first() {
+                    Some((b'+', [])) => true,
+                    Some((b'(', to)) => member < to,
+                    Some((b'[', to)) => member <= to,
+                    _ => false,
+                };
+                let (offset, count) = limit(words.get(4..).unwrap_or_default());
+                Reply::Array(Some(
+                    scores
+                        .keys()
+                        .filter(|member| above(member) && below(member))
+                        .skip(offset)
+                        .take(count)
+                        .map(|member| Reply::Bulk(Some(member.clone())))
+                        .collect(),
+                ))
+            }
+            "ZRANGEBYSCORE" | "ZCOUNT" => {
+                let scores = match keys.get(&key) {
+                    None if name == "ZCOUNT" => return Reply::Integer(0),
+                    None => return Reply::Array(Some(Vec::new())),
+                    Some(Entry {
+                        scores: Some(scores),
+                        ..
+                    }) => scores,
+                    Some(_) => return Reply::Error(WRONG_TYPE.into()),
+                };
+                let (Some(min), Some(max)) = (
+                    words.get(2).and_then(|word| bound(word)),
+                    words.get(3).and_then(|word| bound(word)),
+                ) else {
+                    return Reply::Error("ERR min or max is not a float".into());
+                };
+                let within = |score: i64| min.starts_before(score) && max.ends_after(score);
+                let mut found: Vec<(&i64, &Vec<u8>)> = scores
+                    .iter()
+                    .filter(|(_, score)| within(**score))
+                    .map(|(member, score)| (score, member))
+                    .collect();
+                if name == "ZCOUNT" {
+                    return Reply::Integer(found.len() as i64);
+                }
+                found.sort();
+                Reply::Array(Some(
+                    found
+                        .into_iter()
+                        .map(|(_, member)| Reply::Bulk(Some(member.clone())))
+                        .collect(),
+                ))
+            }
             _ => Reply::Error(format!("ERR unknown command '{name}'")),
         }
+    }
+
+    /// `EVAL`: the two scripts the driver keeps entities in Redis with
+    /// (chunk Q10), each run as [`super::entities`] says Redis runs it, its
+    /// checks asked as the runtime asks them, and nothing else.
+    fn eval(&mut self, database: u32, words: &[Vec<u8>], now: i64) -> Reply {
+        let script = words.get(1).map(|word| text(word)).unwrap_or_default();
+        let args: Vec<Vec<u8>> = words.iter().skip(3).cloned().collect();
+        if script == super::entities::COMMIT {
+            let Some((asked_at, commit)) = super::entities::read_commit(&args) else {
+                return Reply::Error("ERR Error running script: bad arguments".into());
+            };
+            let failed = {
+                let keys = self.databases.entry(database).or_default();
+                keys.retain(|_, entry| entry.expires.is_none_or(|at| at > now));
+                let get = |key: &str| {
+                    keys.get(key.as_bytes())
+                        .filter(|entry| entry.members.is_none() && entry.scores.is_none())
+                        .map(|entry| entry.value.clone())
+                };
+                commit
+                    .checks
+                    .iter()
+                    .position(|check| !jadpo_runtime::redis::holds(check, &get, asked_at))
+            };
+            if let Some(at) = failed {
+                return Reply::Integer(at as i64 + 1);
+            }
+            use jadpo_runtime::redis::Change;
+            for change in &commit.changes {
+                let command: Vec<Vec<u8>> = match change {
+                    Change::Set { key, value, ttl_ms } => vec![
+                        b"SET".to_vec(),
+                        key.clone().into_bytes(),
+                        value.clone(),
+                        b"PX".to_vec(),
+                        ttl_ms.to_string().into_bytes(),
+                    ],
+                    Change::Delete { key } => vec![b"DEL".to_vec(), key.clone().into_bytes()],
+                    Change::Add { set, score, member } => vec![
+                        b"ZADD".to_vec(),
+                        set.clone().into_bytes(),
+                        score.to_string().into_bytes(),
+                        member.clone().into_bytes(),
+                    ],
+                    Change::Remove { set, member } => vec![
+                        b"ZREM".to_vec(),
+                        set.clone().into_bytes(),
+                        member.clone().into_bytes(),
+                    ],
+                    Change::Expire { key, ttl_ms } => vec![
+                        b"PEXPIRE".to_vec(),
+                        key.clone().into_bytes(),
+                        ttl_ms.to_string().into_bytes(),
+                    ],
+                };
+                let reply = self.run(database, &command, now);
+                if reply.refused().is_some() {
+                    return reply;
+                }
+            }
+            return Reply::Integer(0);
+        }
+        if script == super::entities::PAGE {
+            let [index, expiry, records, asked_at, after, size] = args.as_slice() else {
+                return Reply::Error("ERR Error running script: bad arguments".into());
+            };
+            let gone = self.run(
+                database,
+                &[
+                    b"ZRANGEBYSCORE".to_vec(),
+                    expiry.clone(),
+                    b"-inf".to_vec(),
+                    asked_at.clone(),
+                ],
+                now,
+            );
+            let Reply::Array(Some(gone)) = gone else {
+                return gone;
+            };
+            for member in gone {
+                let Reply::Bulk(Some(member)) = member else {
+                    continue;
+                };
+                for set in [index, expiry] {
+                    self.run(
+                        database,
+                        &[b"ZREM".to_vec(), set.clone(), member.clone()],
+                        now,
+                    );
+                }
+            }
+            let from = if after.is_empty() {
+                b"-".to_vec()
+            } else {
+                [b"(".as_slice(), after].concat()
+            };
+            let ids = self.run(
+                database,
+                &[
+                    b"ZRANGEBYLEX".to_vec(),
+                    index.clone(),
+                    from,
+                    b"+".to_vec(),
+                    b"LIMIT".to_vec(),
+                    b"0".to_vec(),
+                    size.clone(),
+                ],
+                now,
+            );
+            let Reply::Array(Some(ids)) = ids else {
+                return ids;
+            };
+            let mut out = Vec::new();
+            for id in ids {
+                let Reply::Bulk(Some(id)) = id else {
+                    continue;
+                };
+                let record = self.run(
+                    database,
+                    &[
+                        b"GET".to_vec(),
+                        [records.as_slice(), id.as_slice()].concat(),
+                    ],
+                    now,
+                );
+                out.push(Reply::Bulk(Some(id)));
+                out.push(record);
+            }
+            return Reply::Array(Some(out));
+        }
+        Reply::Error("NOSCRIPT No matching script. Please use EVAL.".into())
+    }
+}
+
+/// `LIMIT offset count` after a range's bounds: everything without one.
+fn limit(words: &[Vec<u8>]) -> (usize, usize) {
+    match words {
+        [word, offset, count, ..] if text(word).eq_ignore_ascii_case("LIMIT") => (
+            text(offset).parse().unwrap_or(0),
+            text(count).parse().unwrap_or(usize::MAX),
+        ),
+        _ => (0, usize::MAX),
+    }
+}
+
+/// One end of a score range: `-inf`, `+inf`, a whole number, or one after
+/// `(`, which leaves it out.
+#[derive(Clone, Copy, Debug)]
+enum Bound {
+    Least,
+    Most,
+    At(i64, bool),
+}
+
+impl Bound {
+    /// Whether `score` is past it, as a range's lower end.
+    fn starts_before(self, score: i64) -> bool {
+        match self {
+            Bound::Least => true,
+            Bound::Most => false,
+            Bound::At(at, open) => score > at || (!open && score == at),
+        }
+    }
+
+    /// Whether `score` is short of it, as a range's upper end.
+    fn ends_after(self, score: i64) -> bool {
+        match self {
+            Bound::Least => false,
+            Bound::Most => true,
+            Bound::At(at, open) => score < at || (!open && score == at),
+        }
+    }
+}
+
+fn bound(word: &[u8]) -> Option<Bound> {
+    let written = text(word);
+    match written.as_str() {
+        "-inf" => Some(Bound::Least),
+        "+inf" | "inf" => Some(Bound::Most),
+        _ => match written.strip_prefix('(') {
+            Some(rest) => rest.parse().ok().map(|at| Bound::At(at, true)),
+            None => written.parse().ok().map(|at| Bound::At(at, false)),
+        },
     }
 }
 
@@ -687,4 +991,147 @@ mod tcp {
         }
         Ok(())
     }
+}
+
+/// What every store of an entity's records does (area 5, "Entities in
+/// Redis"; chunk Q10), asked of `records` at `now`, the operation's clock:
+/// the Redis driver against the double or a real server, and the runtime's
+/// store in memory, alike. A record is made with its unique value and its
+/// indexed value in one commit; read back by key, by page and by count;
+/// refused a second commit at the revision it was made at, and refused to
+/// another record taking its unique value, each changing nothing; changed
+/// at its revision; and once past its expiry by the clock, gone from the
+/// page and the count, its unique value free.
+pub async fn records_behave(records: &dyn jadpo_runtime::redis::Records, now: i64) {
+    use jadpo_runtime::redis::{Change, Check, Commit, PageAsk};
+    use jadpo_std::redis::{expiry_key, index_key, record_key, record_prefix, unique_key};
+    let space = "tally";
+    let (a, b) = (
+        "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e",
+        "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2f",
+    );
+    let record = |id: &str| record_key(space, id);
+    let unique = unique_key(space, "email", "ab");
+    let (index, expiry) = (
+        index_key(space, "step", "cd"),
+        expiry_key(space, "step", "cd"),
+    );
+    let ttl = 60_000;
+    let kept = |revision: u64| -> Vec<u8> {
+        format!(
+            "{{\"revision\":{revision},\"expires\":{},\"record\":{{}}}}",
+            now + ttl
+        )
+        .into_bytes()
+    };
+    let made = |id: &str, revision: u64| Commit {
+        checks: vec![
+            Check::Revision {
+                key: record(id),
+                revision,
+            },
+            Check::Free {
+                key: unique.clone(),
+                id: id.to_string(),
+                records: record_prefix(space),
+            },
+        ],
+        changes: vec![
+            Change::Set {
+                key: record(id),
+                value: kept(revision + 1),
+                ttl_ms: ttl,
+            },
+            Change::Set {
+                key: unique.clone(),
+                value: id.as_bytes().to_vec(),
+                ttl_ms: ttl,
+            },
+            Change::Add {
+                set: index.clone(),
+                score: 0,
+                member: id.to_string(),
+            },
+            Change::Add {
+                set: expiry.clone(),
+                score: now + ttl,
+                member: id.to_string(),
+            },
+            Change::Expire {
+                key: index.clone(),
+                ttl_ms: ttl,
+            },
+            Change::Expire {
+                key: expiry.clone(),
+                ttl_ms: ttl,
+            },
+        ],
+    };
+    assert_eq!(records.get(&[record(a)], now).await, Ok(vec![None]));
+    assert_eq!(records.commit(&made(a, 0), now).await, Ok(None), "made");
+    assert_eq!(
+        records.get(&[record(a), record(b)], now).await,
+        Ok(vec![Some(kept(1)), None])
+    );
+    let ask = PageAsk {
+        index: index.clone(),
+        expiry: expiry.clone(),
+        records: record_prefix(space),
+        after: None,
+        size: 10,
+    };
+    assert_eq!(
+        records.page(&ask, now).await,
+        Ok(vec![(a.to_string(), Some(kept(1)))])
+    );
+    assert_eq!(records.count(&expiry, now).await, Ok(1));
+    // Made again at revision 0: the first check fails, nothing changes.
+    assert_eq!(records.commit(&made(a, 0), now).await, Ok(Some(0)));
+    // Another record taking its unique value: the second check fails.
+    assert_eq!(records.commit(&made(b, 0), now).await, Ok(Some(1)));
+    assert_eq!(records.get(&[record(b)], now).await, Ok(vec![None]));
+    assert_eq!(
+        records
+            .page(
+                &PageAsk {
+                    after: Some(a.to_string()),
+                    ..ask.clone()
+                },
+                now
+            )
+            .await,
+        Ok(Vec::new()),
+        "nothing after the last"
+    );
+    // Changed at its revision.
+    let changed = Commit {
+        checks: vec![Check::Revision {
+            key: record(a),
+            revision: 1,
+        }],
+        changes: vec![Change::Set {
+            key: record(a),
+            value: kept(2),
+            ttl_ms: ttl,
+        }],
+    };
+    assert_eq!(records.commit(&changed, now).await, Ok(None));
+    assert_eq!(
+        records.get(&[record(a)], now).await,
+        Ok(vec![Some(kept(2))])
+    );
+    // Past its expiry by the clock: gone from the page and the count, and
+    // its unique value free for another record.
+    let later = now + ttl + 1;
+    assert_eq!(records.count(&expiry, later).await, Ok(0));
+    assert_eq!(records.page(&ask, later).await, Ok(Vec::new()));
+    let taken = Commit {
+        checks: vec![Check::Free {
+            key: unique.clone(),
+            id: b.to_string(),
+            records: record_prefix(space),
+        }],
+        changes: Vec::new(),
+    };
+    assert_eq!(records.commit(&taken, later).await, Ok(None));
 }
