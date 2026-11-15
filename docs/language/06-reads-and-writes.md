@@ -854,9 +854,11 @@ There is no offset, because a large offset is slow, and it skips or
 repeats records when rows are added.
 
 A cursor records which query made it, so a cursor from another query is
-refused as invalid input: the runtime's 422 `invalid_input`. A page's
-order fields must be required fields, since the next page starts after
-the last record's values.
+refused as invalid input: the runtime's 422 `invalid_input`. A page may be
+ordered by an optional field: records without a value come after every
+record with one, and the cursor holds `none` for them, so paging walks
+through them too, each once. `order: [Todo.due_at asc]` gives the soonest
+due first and undated todos last, then by `id`.
 
 ### What can be sorted
 
@@ -867,6 +869,10 @@ type kept in named columns sorts by them in turn where the contract
 orders it so (a `YearMonth`, a `LocalTime`), and an amount of money by
 its minor units where its type fixes its currency; any other is
 `query.order_field` ([Values kept in several columns or as JSON](#values-kept-in-several-columns-or-as-json)).
+An optional field's `none` sorts after every value, in `asc` and in
+`desc` alike, in a list as on a page, so "sorted by due date" always ends
+with the undated ones. A page can't be ordered by an optional value kept
+in several columns, since its cursor holds one value per column.
 A page's cursor holds each column it sorts by.
 
 ### Nearest first
