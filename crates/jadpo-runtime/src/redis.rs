@@ -624,8 +624,9 @@ async fn record(
     Ok(stored.map(|stored| stored.record))
 }
 
-/// What `given` is for a read with `args`.
-fn given_value(ctx: &Ctx<'_>, given: &Given, args: &[Value]) -> Option<Value> {
+/// What `given` is for a read with `args`: a record cache's `id` too
+/// (chunk Q9b).
+pub(crate) fn given_value(ctx: &Ctx<'_>, given: &Given, args: &[Value]) -> Option<Value> {
     match given {
         Given::Arg { index, path } => {
             let mut value = args.get(*index as usize)?.clone();
@@ -643,8 +644,8 @@ fn given_value(ctx: &Ctx<'_>, given: &Given, args: &[Value]) -> Option<Value> {
     }
 }
 
-/// What a record read becomes.
-fn element(element: &Element, record: Value) -> Value {
+/// What a record read becomes, from Redis or a record cache (chunk Q9b).
+pub(crate) fn element(element: &Element, record: Value) -> Value {
     match element {
         Element::Record => record,
         Element::Picked { ty, fields } => Value::record(

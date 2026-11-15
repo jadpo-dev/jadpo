@@ -57,6 +57,10 @@ pub struct QueryPlan {
     /// The parameter whose type is a `Principal`, when it has one: the
     /// caller a test's, fixture's or seed's call of it runs as (area 9).
     pub caller: Option<u32>,
+    /// For a query that finds one record by `id`, its entity's record
+    /// cache, which a route's display read of it is served from (area 5,
+    /// "A record cache"; chunk Q9b).
+    pub records: Option<Box<jadpo_std::caches::RecordRead>>,
 }
 
 /// What an entity's operations run.
@@ -724,10 +728,12 @@ impl Planner<'_> {
             .position(|(_, ty)| crate::holds_caller_ty(ty))
             .and_then(|at| u32::try_from(at).ok());
         let gate = self.query_gate(&query.name);
+        let records = self.record_read(query, entity).map(Box::new);
         Some(QueryPlan {
             key: query.key.clone(),
             name: query.name.clone(),
             caller,
+            records,
             read: ReadPlan {
                 store,
                 settings,

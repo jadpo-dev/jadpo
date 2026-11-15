@@ -950,10 +950,16 @@ fn reach(
         }
     }
     roots.extend(named_by_the_runtime(db, project, deployable));
-    // Every deployable may read a query's cache or clear it as it writes
-    // (area 5, "Caches"; chunk Q9).
+    // Every deployable may read a query's cache or an entity's record
+    // cache, or clear it as it writes (area 5, "Caches"; chunks Q9 and
+    // Q9b).
     for name in crate::data::queries::query_names(db, project) {
         if let Some(cache) = crate::caches::query_cache(db, project, name) {
+            connection(&mut out, &cache.store, Via::Caches);
+        }
+    }
+    for name in crate::data::entity_names(db, project) {
+        if let Some(cache) = crate::caches::record_cache(db, project, name) {
             connection(&mut out, &cache.store, Via::Caches);
         }
     }

@@ -2771,8 +2771,10 @@ inside the action's transaction, so they are current.
 
 A display read is a query a route runs directly to show data
 ([What a route runs](07-http.md#what-a-route-runs)). It may be served from
-the cache its query file declares ([Caches](05-data.md#caches)). A client
-still sees its own writes: every write response carries a revision, and a
+the cache its query file declares ([Caches](05-data.md#caches)), or, for a
+query that reads one record by `id`, from its entity's record cache
+([A record cache](05-data.md#a-record-cache)). A client still sees its own
+writes: every write response carries a revision, and a
 request carrying a revision newer than the cache skips it. The build lists
 every query call with where it reads from.
 
@@ -2780,7 +2782,7 @@ every query call with where it reads from.
 |---|---|
 | Inside an action, policy or authentication | the store, in the action's transaction |
 | A route's display read, after this client wrote | the store |
-| A route's display read, otherwise | the query's cache when declared, up to its `keep:` |
+| A route's display read, otherwise | the query's cache when declared, else its entity's record cache for one record by `id`, up to its `keep:` |
 
 ```jadpo fragment
 route GET /todos {
@@ -2995,7 +2997,7 @@ var owners: List<OwnerView> = identity.users_by_ids(owner_ids)
 | Feature | Status |
 |---|---|
 | Everything else on this page | Built. |
-| Where a read comes from | Built: a route's display read of a query with `cache:` comes from its cache, skipped by a later revision ("Where a read comes from"). |
+| Where a read comes from | Built: a route's display read of a query with `cache:` comes from its cache, and one of a record by `id` from its entity's record cache, each skipped by a later revision ("Where a read comes from"). |
 | Entities in Redis | Built: every read and write the table in "Reading and writing entities in Redis" allows, natively and on Workers. |
 
 ## Errors

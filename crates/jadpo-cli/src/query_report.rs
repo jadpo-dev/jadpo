@@ -155,22 +155,39 @@ pub fn report(db: &dyn jadpo_db::Db, project: jadpo_db::Project, graph: &Graph) 
                     Kind::Query => {
                         queries += query_sends(&target.name);
                         // A route's own read comes from its query's
-                        // cache when it declares one (area 6, "Where a
-                        // read comes from"; chunk Q9).
+                        // cache when it declares one, or its entity's
+                        // record cache when it reads one record by `id`
+                        // (area 6, "Where a read comes from"; chunks Q9
+                        // and Q9b).
+                        let records = (kind == Kind::Route)
+                            .then(|| {
+                                let model = jadpo_check::data::queries::query_models(db, project)
+                                    .get(&target.name)?;
+                                let (cache, _) =
+                                    jadpo_check::caches::record_lookup(db, project, model)?;
+                                Some((model.entity.clone(), cache.settings()))
+                            })
+                            .flatten();
                         let cache = (kind == Kind::Route)
                             .then(|| jadpo_check::caches::query_cache(db, project, &target.name))
-                            .flatten();
+                            .flatten()
+                            .or_else(|| records.as_ref().map(|(_, cache)| cache.clone()));
                         calls.push(Call {
                             query: target.name.clone(),
                             caller: format!("{} {}", kind.word(), node.name),
                             place: node_place(&node.key),
-                            from: match &cache {
-                                Some(cache) => format!(
+                            from: match (&cache, &records) {
+                                (Some(cache), Some((entity, _))) => format!(
+                                    "`{entity}`'s record cache in `{}`, up to `{}` old, else the store",
+                                    cache.store,
+                                    jadpo_std::caches::keep_text(cache.keep_ms)
+                                ),
+                                (Some(cache), None) => format!(
                                     "the cache `{}`, up to `{}` old, else the store",
                                     cache.store,
                                     jadpo_std::caches::keep_text(cache.keep_ms)
                                 ),
-                                None => "the store".to_string(),
+                                (None, _) => "the store".to_string(),
                             },
                             kind: if cache.is_some() { "cache" } else { "store" },
                             cache,

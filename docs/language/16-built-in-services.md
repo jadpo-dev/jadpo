@@ -4614,7 +4614,10 @@ own ([A Redis store on Workers](#a-redis-store-on-workers)).
 ### How a cache is kept
 
 Each entry is one key, `jadpo:cache:entry:` and 32 hex digits of a hash of
-the query, the caller and the arguments, expiring with its `keep:`. Each
+the query, the caller and the arguments, expiring with its `keep:`. A
+record cache's copy is one too, hashed from its entity and the record's
+`id` alone, since one copy serves every caller, and listed under its
+entity only. Each
 entity has a generation, `jadpo:cache:generation:<Entity>`, and a set of
 the entries that read it, `jadpo:cache:entries:<Entity>`, kept a day and a
 minute after its latest entry. A read is one `MGET` of the generations and

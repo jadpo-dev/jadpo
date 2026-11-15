@@ -311,6 +311,10 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
         Detail::Audit { kept } => {
             out.set("kept", kept.as_str());
         }
+        Detail::Cache { store, keep } => {
+            out.set("store", store.as_str());
+            out.set("keep", keep.as_str());
+        }
         Detail::Route {
             api,
             status,

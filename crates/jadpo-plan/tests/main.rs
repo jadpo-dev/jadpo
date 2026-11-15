@@ -10,6 +10,7 @@ mod call_sites;
 mod deployable;
 mod keys;
 mod plan;
+mod record_caches;
 mod runtime_plan;
 mod sql;
 mod sql_text;

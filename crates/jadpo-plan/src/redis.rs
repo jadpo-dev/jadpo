@@ -67,7 +67,7 @@ impl Planner<'_> {
 
     /// A field Jadpo keeps a key or a set for, its value written by its
     /// type's codec with the names it was born with.
-    fn keyed(&self, entity: &EntityModel, name: &str) -> Option<KeyedField> {
+    pub(crate) fn keyed(&self, entity: &EntityModel, name: &str) -> Option<KeyedField> {
         let field = field(entity, name)?;
         let key = self.field_key(entity, name)?;
         Some(KeyedField {
@@ -153,7 +153,7 @@ impl Planner<'_> {
 
     /// Where a query's value comes from, as a read of a Redis record takes
     /// it: an argument, a constant made for `field`'s type, or the clock.
-    fn redis_given(
+    pub(crate) fn redis_given(
         &self,
         entity: &EntityModel,
         name: &str,
@@ -257,6 +257,7 @@ impl Planner<'_> {
             name: query.name.clone(),
             caller,
             read,
+            records: None,
         })
     }
 
@@ -297,7 +298,7 @@ impl Planner<'_> {
 
 /// What each record a query reads becomes: the entity itself, or a type
 /// whose fields pick the record's.
-fn picked(entity: &EntityModel, element: &QueryElement) -> Option<Element> {
+pub(crate) fn picked(entity: &EntityModel, element: &QueryElement) -> Option<Element> {
     if element.ty == entity.name {
         return Some(Element::Record);
     }

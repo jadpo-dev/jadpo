@@ -640,3 +640,294 @@ fn a_cache_in_memory_is_declined_and_never_on_workers() {
     write(root, "app.jadpo", &app);
     assert_eq!(rules(root), ["deployable.target_unsupported"]);
 }
+
+/// A desk's notes, each cached whole by `id` and read by its owner alone
+/// (area 5, "A record cache"; chunk Q9b), its staff signing in with tokens
+/// from `jadpo dev`'s local issuer.
+const RECORDS: &[(&str, &str)] = &[
+    (
+        "config.jadpo",
+        r#"config {
+    issuer: Url {
+        default: "https://id.lending.example/"
+    }
+    audience: Text {
+        default: "lending-desk"
+    }
+    redis_url: RedisUrl
+}
+"#,
+    ),
+    (
+        "app.jadpo",
+        r#"use desk/entities { Librarian }
+
+application {
+    apis: {
+        main: {
+            prefix: /
+            authentication: [AuthenticationMethod.browser_session]
+        }
+        staff: {
+            prefix: /staff
+            authentication: [AuthenticationMethod.external_token]
+        }
+    }
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        cache: {
+            driver: Driver.redis
+            url: config.redis_url
+        }
+    }
+}
+
+principal {
+    user: {
+        subject: Librarian.subject
+    }
+}
+"#,
+    ),
+    (
+        "authentication.jadpo",
+        r#"authentication {
+    browser_session: {
+        cookie: "desk_session"
+    }
+    external_token: {
+        issuer: config.issuer
+        audience: config.audience
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/entities/librarian.jadpo",
+        r#"entity Librarian {
+    id: Uuid
+    subject: Text {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [id]
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/entities/note.jadpo",
+        r#"use desk/entities { Librarian }
+
+/// Something a librarian wrote down for themselves.
+entity Note {
+    id: Uuid
+    owner_id: Librarian.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Text
+
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+        update: [owner_id]
+    }
+    caches: {
+        records: {
+            store: cache
+            keep: 1h
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/types/note_view.jadpo",
+        r#"use desk/entities { Note }
+
+/// A note as its owner sees it.
+type NoteView = Output {
+    pick: [Note.id, Note.title]
+}
+"#,
+    ),
+    (
+        "domains/desk/types/retitle.jadpo",
+        r#"use desk/entities { Note }
+
+/// A note's new title.
+type Retitle = Input {
+    title: Note.title
+}
+"#,
+    ),
+    (
+        "domains/desk/queries/find_note.jadpo",
+        r#"use desk/entities { Note, NoteNotFound }
+use desk/types { NoteView }
+
+/// One note, by its `id`.
+query find_note(note_id: Note.id) fails NoteNotFound -> NoteView {
+    from: Note
+    where: Note.id == note_id
+    missing: NoteNotFound
+}
+"#,
+    ),
+    (
+        "domains/desk/actions/retitle_note.jadpo",
+        r#"use desk/entities { Note, NoteNotFound }
+use desk/types { NoteView, Retitle }
+
+/// Gives a note a new title.
+action retitle_note(note_id: Note.id, input: Retitle) fails NoteNotFound -> NoteView {
+    var note: Note = attempt Note.update(note_id) {
+        set: {
+            title: input.title
+        }
+    }
+    return NoteView {
+        id: note.id
+        title: note.title
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/routes/staff.jadpo",
+        r#"use desk/entities { Note }
+use desk/types { NoteView, Retitle }
+use desk/queries { find_note }
+use desk/actions { retitle_note }
+
+/// A librarian's notes.
+routes Staff {
+    api: staff
+    prefix: /staff
+
+    GET /notes/{note_id: Note.id} {
+        output: NoteView
+        run: find_note(note_id)
+    }
+
+    PATCH /notes/{note_id: Note.id} {
+        input: Retitle
+        output: NoteView
+        run: retitle_note(note_id, input)
+    }
+}
+"#,
+    ),
+];
+
+/// A row `insert` makes in the session's database, giving its `id`.
+fn inserted(url: &str, insert: &str) -> String {
+    let rows = crate::deployable::rows(url, insert);
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    rows[0][0].clone()
+}
+
+/// A record is cached whole, one copy for every caller, under `jadpo dev`
+/// against live PostgreSQL: its owner reads it from the cache, so a change
+/// behind the app's back isn't seen; someone else is refused it from that
+/// copy, as policy is applied each time it is read; a later revision
+/// skips the copy; and a write through the app clears it. The query
+/// report says where the route reads from.
+#[test]
+fn a_record_is_cached_whole_and_held_to_policy_each_time_it_is_read() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let dir = tempdir::Dir::new("caches-records");
+    let root = dir.path().join("desk");
+    for (path, text) in RECORDS {
+        write(&root, path, text);
+    }
+    write(&root, ".env.local", "REDIS_URL=redis://127.0.0.1:9\n");
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["records", "update"][..],
+        &["check"][..],
+    ] {
+        let ran = jadpo(&root, args);
+        assert_eq!(ran.code, 0, "{args:?}: {}{}", ran.stdout, ran.stderr);
+    }
+    let report = std::fs::read_to_string(root.join("build/report/queries.md")).expect("the report");
+    assert!(
+        report.contains("`Note`'s record cache in `cache`, up to `1h` old, else the store"),
+        "{report}"
+    );
+    let dev = Dev::start(&root);
+    let token = |id: &str| {
+        let all = ["dev", "token", id, "--url", dev.url()].map(str::to_string);
+        let printed = jadpo_cli::run(&all, &jadpo_term::Environment::empty().with_cwd(&root));
+        assert_eq!(printed.code, 0, "{}{}", printed.stdout, printed.stderr);
+        format!("Bearer {}", printed.stdout.trim_end())
+    };
+    let ann = inserted(
+        dev.url(),
+        "INSERT INTO librarian (id, subject) VALUES (gen_random_uuid(), 'google-ann') RETURNING id::text",
+    );
+    let bo = inserted(
+        dev.url(),
+        "INSERT INTO librarian (id, subject) VALUES (gen_random_uuid(), 'google-bo') RETURNING id::text",
+    );
+    let note = inserted(
+        dev.url(),
+        &format!(
+            "INSERT INTO note (id, owner_id, title) VALUES (gen_random_uuid(), '{ann}', 'Buy tea') RETURNING id::text"
+        ),
+    );
+    let (ann, bo) = (token(&ann), token(&bo));
+    let path = format!("/staff/notes/{note}");
+    let read = |authorization: &str, more: &[(&str, &str)]| {
+        let mut headers = vec![("authorization", authorization)];
+        headers.extend_from_slice(more);
+        dev.send("GET", &path, &headers, "")
+    };
+    let title = |authorization: &str, more: &[(&str, &str)]| {
+        let answer = read(authorization, more);
+        assert_eq!(answer.status, 200, "{answer:?}");
+        answer.json()["title"]
+            .as_str()
+            .expect("a title")
+            .to_string()
+    };
+    assert_eq!(title(&ann, &[]), "Buy tea");
+    // Kept whole: a change behind the app's back isn't seen.
+    let changed = crate::deployable::rows(
+        dev.url(),
+        &format!("UPDATE note SET title = 'Buy green tea' WHERE id = '{note}' RETURNING title"),
+    );
+    assert_eq!(changed.len(), 1, "{changed:?}");
+    assert_eq!(title(&ann, &[]), "Buy tea", "served from the record cache");
+    // One copy, held to policy as it is read: someone else finds nothing.
+    let refused = read(&bo, &[]);
+    assert_eq!(refused.status, 404, "{refused:?}");
+    // A later revision skips the copy, and keeps what it read.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("after 1970")
+        .as_millis();
+    let later = (now + 3_600_000).to_string();
+    assert_eq!(title(&ann, &[("Jadpo-Revision", &later)]), "Buy green tea");
+    assert_eq!(title(&ann, &[]), "Buy green tea");
+    // A write through the app clears it.
+    crate::deployable::rows(
+        dev.url(),
+        &format!("UPDATE note SET title = 'Stale' WHERE id = '{note}' RETURNING title"),
+    );
+    let retitled = dev.send(
+        "PATCH",
+        &path,
+        &[("authorization", &ann)],
+        r#"{"title":"Buy oolong"}"#,
+    );
+    assert_eq!(retitled.status, 200, "{retitled:?}");
+    assert_eq!(title(&ann, &[]), "Buy oolong");
+    assert_eq!(read(&bo, &[]).status, 404);
+}

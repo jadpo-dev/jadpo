@@ -120,7 +120,7 @@ kinds! {
     Reference: "reference", Data, Built, 5;
     Lifecycle: "lifecycle", Data, Built, 5;
     Transition: "transition", Data, Built, 5;
-    Cache: "cache", Data, Reserved, 5;
+    Cache: "cache", Data, Built, 5;
     StorePlacement: "store_placement", Data, Built, 5;
     SystemTable: "system_table", Data, Built, 5;
     PersonalMark: "personal_mark", Data, Reserved, 15;

@@ -270,7 +270,10 @@ if a failure's field holds one.
 ### Sensitive fields
 
 A sensitive field is never put in a cache, and every read of one is
-recorded in the [access records](#access-records).
+recorded in the [access records](#access-records). A
+[record cache](05-data.md#a-record-cache) leaves it out, so a route's read
+that gives one goes to the store, and a query giving one can't take a
+`cache:` of its own (`query.cache_invalid`).
 
 ### Records a person owns
 
