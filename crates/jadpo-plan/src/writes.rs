@@ -604,6 +604,13 @@ impl Planner<'_> {
             }
             None => None,
         };
+        // A transition saying `reaches: hidden` finds only the records
+        // `visible:` hides (area 5, "Restoring a hidden record").
+        let reach = if transition.is_some_and(|t| t.hidden) {
+            Reach::Hidden
+        } else {
+            Reach::Write
+        };
         let mut writing = Writing::default();
         let mut guard: Option<(String, Option<String>, Vec<WriteParam>)> = None;
         // The rules an update by `id` checks of the values it works out from
@@ -1051,7 +1058,7 @@ impl Planner<'_> {
                 }
                 let id = writing.param(id_source.clone(), SqlType::Uuid);
                 let mut conditions = vec![text::equal("id", &id)];
-                conditions.extend(self.access(&mut writing, entity_model, Reach::Write)?);
+                conditions.extend(self.access(&mut writing, entity_model, reach)?);
                 // A delete needs `delete` whether it removes the record or
                 // runs the lifecycle's `delete` transition; every other
                 // transition is an update (area 9, "Grants").
@@ -1073,7 +1080,7 @@ impl Planner<'_> {
                     let mut asking = Writing::default();
                     let id = asking.param(id_source.clone(), SqlType::Uuid);
                     let mut asked = vec![text::equal("id", &id)];
-                    asked.extend(self.access(&mut asking, entity_model, Reach::Write)?);
+                    asked.extend(self.access(&mut asking, entity_model, reach)?);
                     let mut probe = text::select_one(table);
                     text::where_clause(&mut probe, &asked, "");
                     let fields_probe = if narrowed.is_empty() && kept.is_empty() {
@@ -1082,7 +1089,7 @@ impl Planner<'_> {
                         let mut asking = Writing::default();
                         let id = asking.param(id_source.clone(), SqlType::Uuid);
                         let mut asked = vec![text::equal("id", &id)];
-                        asked.extend(self.access(&mut asking, entity_model, Reach::Write)?);
+                        asked.extend(self.access(&mut asking, entity_model, reach)?);
                         let record = self.policy(&mut asking, entity_model, effect, &Row::Table)?;
                         if record != jadpo_sql::policy::ANYONE {
                             asked.push(record);
@@ -1110,7 +1117,7 @@ impl Planner<'_> {
                     let mut asking = Writing::default();
                     let id = asking.param(id_source.clone(), SqlType::Uuid);
                     let mut asked = vec![text::equal("id", &id)];
-                    asked.extend(self.access(&mut asking, entity_model, Reach::Write)?);
+                    asked.extend(self.access(&mut asking, entity_model, reach)?);
                     let mut bare = text::select_one(table);
                     text::where_clause(&mut bare, &asked, "");
                     let asked_policy =
@@ -1168,7 +1175,7 @@ impl Planner<'_> {
                     let mut asking = writing.probing();
                     let id = asking.param(id_source.clone(), SqlType::Uuid);
                     let mut asked = vec![text::equal("id", &id)];
-                    asked.extend(self.access(&mut asking, entity_model, Reach::Write)?);
+                    asked.extend(self.access(&mut asking, entity_model, reach)?);
                     let mut holds = Vec::new();
                     for check in &checked {
                         holds.push(self.rule_holds(body, check, entity_model, &mut asking)?);
