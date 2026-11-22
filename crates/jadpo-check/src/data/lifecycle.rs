@@ -54,9 +54,13 @@ pub struct TransitionModel {
     pub name: String,
     /// When it is allowed.
     pub when: Option<Condition>,
-    /// Whether `when:` can refuse a visible record: false when it is only
+    /// Whether `when:` can refuse a record it reaches: false when it is only
     /// what `visible:` says already, since a hidden record is not found.
     pub guarded: bool,
+    /// `reaches: hidden`: it finds a record only while `visible:` doesn't
+    /// hold, as a restore does, and a visible one is not found (area 5,
+    /// "Restoring a hidden record").
+    pub hidden: bool,
     /// Each field it sets, with its fixed value, as written.
     pub set: Vec<(String, Value)>,
 }
@@ -898,7 +902,7 @@ impl<'a> Reader<'a, '_> {
     ) -> (Vec<TransitionModel>, Vec<Span>) {
         let mut out: Vec<TransitionModel> = Vec::new();
         let mut spans: Vec<Span> = Vec::new();
-        let takes = "A transition has an optional `when:`, saying when it is allowed, and a `set:` giving the fields it changes.";
+        let takes = "A transition has an optional `when:`, saying when it is allowed, an optional `reaches: hidden`, when it changes records `visible:` hides, and a `set:` giving the fields it changes.";
         let entity = self.entity;
         for (name, entry) in tree::members(member.block()) {
             let Some(transition) = tree::name_text(&name) else {
@@ -955,7 +959,16 @@ impl<'a> Reader<'a, '_> {
                 );
                 continue;
             }
-            let sections = self.sections(entry.block(), &["when", "set"], takes, "transition");
+            let sections = self.sections(
+                entry.block(),
+                &["when", "reaches", "set"],
+                takes,
+                "transition",
+            );
+            let hidden = match sections.iter().find(|(word, _)| word == "reaches") {
+                Some((_, member)) => self.reaches(member, &transition, visible, unknown),
+                None => false,
+            };
             let when = sections
                 .iter()
                 .find(|(word, _)| word == "when")
@@ -989,6 +1002,8 @@ impl<'a> Reader<'a, '_> {
             let guarded = match (&when, visible) {
                 _ if unknown => false,
                 (None, _) => false,
+                // Any `when:` can refuse a hidden record it reaches.
+                (Some(_), _) if hidden => true,
                 (Some(_), None) => true,
                 (Some(when), Some(visible)) => {
                     let shown = conjuncts(visible);
@@ -999,11 +1014,56 @@ impl<'a> Reader<'a, '_> {
                 name: transition,
                 when,
                 guarded,
+                hidden,
                 set,
             });
             spans.push(span);
         }
         (out, spans)
+    }
+
+    /// `reaches:`, which takes `hidden`: whether the transition reaches the
+    /// records `visible:` hides, and only them.
+    fn reaches(
+        &mut self,
+        member: &ast::Member,
+        transition: &str,
+        visible: Option<&Condition>,
+        unknown: bool,
+    ) -> bool {
+        let at = member
+            .member_key()
+            .map_or_else(|| self.span(member), |k| self.span(&k));
+        let written = member.value().map(|value| tree::written(value.syntax()));
+        if written.as_deref() != Some("hidden") {
+            let given = written.map_or_else(String::new, |w| format!(" `{w}`"));
+            self.out.push(
+                Diagnostic::new(
+                    &rule::DATA_LIFECYCLE_SECTION,
+                    format!("`reaches:` takes `hidden`, not{given}"),
+                )
+                .at(at, "takes `hidden`")
+                .reason("A transition reaches the records `visible:` shows unless it says `reaches: hidden`, when it reaches only the records `visible:` hides, as a restore does.")
+                .next("Write `reaches: hidden`, or remove `reaches:`"),
+            );
+            return false;
+        }
+        if visible.is_none() && !unknown {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::DATA_LIFECYCLE_SECTION,
+                    format!("`{transition}` reaches hidden records, and the lifecycle hides none"),
+                )
+                .at(at, "nothing is hidden")
+                .reason(format!(
+                    "`reaches: hidden` lets `{}.{transition}` find a record only while `visible:` doesn't hold; with no `visible:`, every record is visible.",
+                    self.entity.name
+                ))
+                .next("Add `visible:` to the lifecycle, or remove `reaches: hidden`"),
+            );
+            return false;
+        }
+        true
     }
 
     // --- purge -------------------------------------------------------------------

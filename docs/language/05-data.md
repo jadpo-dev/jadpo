@@ -888,7 +888,9 @@ A lifecycle has three parts:
   change the fields a lifecycle owns. Each has a name, an optional `when:`
   that must be true for it to run, and a fixed `set:` saying what it
   changes. The generated operation `Todo.delete(todo_id)` runs the
-  `delete` transition.
+  `delete` transition. One marked `reaches: hidden` changes hidden
+  records instead, as a restore does
+  ([Restoring a hidden record](#restoring-a-hidden-record)).
 - **`purge:`** deletes hidden records for good once they have been hidden
   for `after:`, counted from the `since:` field. It runs in small, audited
   batches. Code can't hard-delete a record that has a lifecycle.
@@ -958,12 +960,16 @@ The details:
   record whose removal would cascade to one with a lifecycle
   (`data.lifecycle_hard_delete`). Only purge, retention and erasing a
   person ([Erasure](15-personal-data.md#erasure)) remove such records.
-- **Transitions see visible records only.** A transition is an update, so
-  it reaches a record only while `visible:` holds. A hidden record is the
-  entity's not-found failure, and restoring one needs a decision of its
-  own. A `when:` that asks only what `visible:` asks can't refuse a record
-  that is there. Any other `when:` can, and its callers map that refusal
-  in `conflict:` ([Conflicts](06-reads-and-writes.md#conflicts)).
+- **Transitions see visible records, unless they reach hidden ones.** A
+  transition is an update, so it reaches a record only while `visible:`
+  holds, and a hidden record is the entity's not-found failure. One
+  marked `reaches: hidden` is the other way round: it reaches a record
+  only while `visible:` doesn't hold
+  ([Restoring a hidden record](#restoring-a-hidden-record)). A `when:`
+  that asks only what `visible:` asks can't refuse a visible record that
+  is there. Any other `when:` can, as can any `when:` on a transition
+  that reaches hidden records, and its callers map that refusal in
+  `conflict:` ([Conflicts](06-reads-and-writes.md#conflicts)).
 - **How long purge waits.** `after:` takes a duration written in place
   (`30d`) or a `Duration` setting (`config.soft_delete_retention`,
   [Settings](10-configuration-and-time.md#settings-configjadpo)), whose value is
@@ -989,6 +995,73 @@ The details:
   ([Retention](15-personal-data.md#retention)). The same schedule applies
   it, and a field a lifecycle owns or reads can't have one, since clearing
   it would change which records are hidden.
+
+### Restoring a hidden record
+
+A record a lifecycle hides comes back through a transition marked
+`reaches: hidden`. It sets the fields that make `visible:` hold again:
+
+```jadpo check project=lifecycle-restore
+type NoteTitle = Text {
+    max_length: 120
+}
+
+entity Note {
+    id: Uuid
+    title: NoteTitle
+    deleted_at: Instant?
+
+    lifecycle: {
+        visible: deleted_at == none
+        transitions: {
+            delete: {
+                when: deleted_at == none
+                set: {
+                    deleted_at: clock.now
+                }
+            }
+            restore: {
+                reaches: hidden  // finds the record only while it is hidden
+                set: {
+                    deleted_at: none
+                }
+            }
+        }
+        purge: {
+            after: 30d
+            since: deleted_at
+        }
+    }
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.authenticated]
+        update: [Access.authenticated]
+        delete: [Access.authenticated]
+    }
+}
+
+/// Brings back a note deleted in the last 30 days.
+action restore_note(note_id: Note.id) fails NoteNotFound -> Note {
+    return attempt Note.restore(note_id)
+}
+```
+
+- **Only hidden records.** `Note.restore(note_id)` finds the note only
+  while `visible:` doesn't hold. A note that is visible, or that purge has
+  removed, is `NoteNotFound`, so restoring a note that isn't deleted
+  answers 404, as reading a deleted one does.
+- **Policy as for any update.** A transition is an update, so the
+  entity's `update:` grants decide who may run it, on the hidden record
+  as on a visible one. A record the caller couldn't change is not found
+  to them, so one user can't restore another's.
+- **Nothing else reaches them.** Reads, lists, counts, includes and every
+  other transition still leave hidden records out. A restore returns the
+  record it brought back, now visible.
+- **Said where it is written.** `reaches:` takes only `hidden`, and only in
+  a lifecycle with `visible:`, since otherwise nothing is hidden
+  (`data.lifecycle_section`). Its own `when:`, if it has one, can refuse a
+  hidden record, and is mapped in `conflict:` as any guard is.
 
 ## Indexes
 <!-- topic: indexes -->
