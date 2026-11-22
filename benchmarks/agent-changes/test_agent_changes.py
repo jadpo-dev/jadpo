@@ -162,6 +162,26 @@ class Isolation(unittest.TestCase):
         self.assertNotIn('THINKING', diff)
 
 
+class SideBySide(unittest.TestCase):
+    def test_each_run_keeps_its_own_native_driver(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            shared = Path(scratch) / 'target/debug/golden-native-contract'
+            shared.parent.mkdir(parents=True)
+            work = Path(scratch) / 'run/contract'
+            work.mkdir(parents=True)
+
+            def build():
+                shared.write_text('driver for this run')
+                return shared
+
+            with mock.patch.object(harness, 'ROOT', Path(scratch)):
+                own = harness.own_driver(build, work)
+            self.assertEqual(own, work / 'golden-native-contract')
+            shared.write_text('driver for the run beside it')
+            self.assertEqual(own.read_text(), 'driver for this run')
+            self.assertTrue((Path(scratch) / 'target/agent-changes/native.lock').exists())
+
+
 class Sets(unittest.TestCase):
     def test_six_tuning_changes_span_the_kinds(self):
         tuning = [changes.BY_ID[c] for c in harness.TUNING]
