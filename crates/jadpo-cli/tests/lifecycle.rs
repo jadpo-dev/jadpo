@@ -91,6 +91,12 @@ entity Member {
                     lapsed_at: clock.now
                 }
             }
+            rejoin: {
+                reaches: hidden  // a member who left
+                set: {
+                    left_at: none
+                }
+            }
         }
         purge: {
             after: 30d
@@ -172,6 +178,10 @@ entity Member {
         "use club/entities { Member }\nuse club/failures { NotActive }\n\n/// A member lapses.\naction lapse(member: Member) fails NotActive -> Member {\n    return attempt Member.lapse(member) {\n        conflict: {\n            Member.lapse: NotActive\n        }\n    }\n}\n",
     ),
     (
+        "domains/club/actions/rejoin.jadpo",
+        "use club/entities { Member }\nuse club/failures { MemberNotFound }\n\n/// A member who left comes back.\naction rejoin(member_id: Member.id) fails MemberNotFound -> Member {\n    return attempt Member.rejoin(member_id)\n}\n",
+    ),
+    (
         "domains/club/actions/rename.jadpo",
         "use club/entities { Member }\nuse club/failures { MemberNotFound }\n\n/// Renames a member, by id.\naction rename(member_id: Member.id, name: Member.name) fails MemberNotFound -> Member {\n    return attempt Member.update(member_id) {\n        set: {\n            name: name\n        }\n    }\n}\n",
     ),
@@ -212,7 +222,7 @@ entity Member {
 const TESTS: &str = "use club/entities { Member, Notice, Visit }
 use club/types { MemberPage, Stage, VisitPage }
 use club/failures { MemberNotFound, NotActive, NotPending }
-use club/actions { activate, lapse, leave, look_up, post_notice, record_visit, rename }
+use club/actions { activate, lapse, leave, look_up, post_notice, record_visit, rejoin, rename }
 use club/queries { member_with_visits, members_named, notices, visit_with_member }
 
 test \"a member who leaves is hidden from every read and write\" {
@@ -226,6 +236,20 @@ test \"a member who leaves is hidden from every read and write\" {
     assert activate(ada.id) fails MemberNotFound
     assert members_named(\"Ada\") == []
     assert member_with_visits(ada.id) fails MemberNotFound
+}
+
+test \"a member who left rejoins, and only a member who left\" {
+    var dee: Member = join(\"Dee\")
+    assert rejoin(dee.id) fails MemberNotFound
+    attempt leave(dee.id)
+    var back: Member = attempt rejoin(dee.id)
+    assert back.left_at == none
+    assert back.name == \"Dee\"
+    var found: Member = attempt look_up(dee.id)
+    assert found.left_at == none
+    assert members_named(\"Dee\") != []
+    assert rejoin(dee.id) fails MemberNotFound
+    assert rejoin(Member.id(Uuid(\"00000000-0000-4000-8000-000000000000\"))) fails MemberNotFound
 }
 
 test \"transitions move a member through its stages\" {
@@ -283,7 +307,79 @@ fn lifecycles_hide_records_and_run_transitions() {
     write(&root, "domains/club/actions/join.test.jadpo", TESTS);
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
-    assert!(tested.stdout.contains("4 passed"), "{}", tested.stdout);
+    assert!(tested.stdout.contains("5 passed"), "{}", tested.stdout);
+}
+
+/// A transition saying `reaches: hidden` asks for the records `visible:`
+/// hides, and when it writes no row the record is not there to it: not
+/// found, never a conflict (area 5, "Restoring a hidden record").
+#[test]
+fn a_transition_reaching_hidden_records_asks_for_them_alone() {
+    let root = project("reaches-hidden");
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
+    let out = jadpo(&root, &["sql", "rejoin"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout
+            .contains("WHERE \"id\" = $3\n    AND \"left_at\" IS NOT NULL\n"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        !out.stdout.contains("\"left_at\" IS NULL"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("no row: MemberNotFound"),
+        "{}",
+        out.stdout
+    );
+}
+
+/// `reaches:` takes `hidden`, and only where the lifecycle hides something.
+#[test]
+fn reaches_takes_hidden_where_something_is_hidden() {
+    let root = project("reaches-wrong");
+    let member = fs::read_to_string(root.join("domains/club/entities/member.jadpo")).expect("read");
+    write(
+        &root,
+        "domains/club/entities/member.jadpo",
+        &member.replace("reaches: hidden  // a member who left", "reaches: visible"),
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 1, "{}", checked.stdout);
+    assert!(
+        checked
+            .stdout
+            .contains("`reaches:` takes `hidden`, not `visible`"),
+        "{}",
+        checked.stdout
+    );
+    assert!(
+        checked.stdout.contains("data.lifecycle_section"),
+        "{}",
+        checked.stdout
+    );
+
+    let notice = fs::read_to_string(root.join("domains/club/entities/notice.jadpo")).expect("read");
+    write(&root, "domains/club/entities/member.jadpo", &member);
+    write(
+        &root,
+        "domains/club/entities/notice.jadpo",
+        &notice.replace(
+            "    lifecycle: {\n        visible: published_at != none and published_at <= clock.now\n    }",
+            "    lifecycle: {\n        transitions: {\n            unpublish: {\n                reaches: hidden\n                set: {\n                    published_at: none\n                }\n            }\n        }\n    }",
+        ),
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert!(
+        checked
+            .stdout
+            .contains("`unpublish` reaches hidden records, and the lifecycle hides none"),
+        "{}",
+        checked.stdout
+    );
 }
 
 // --- purge -----------------------------------------------------------------------
