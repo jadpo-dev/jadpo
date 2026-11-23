@@ -207,6 +207,16 @@ pub fn lookup_of<'q>(
     }
 }
 
+/// Whether `condition` is a search inside text, on a `where:` or a
+/// `where_present:` line.
+fn searches_inside_text(condition: &Condition) -> bool {
+    match condition {
+        Condition::Call { call, .. } => call.op == jadpo_std::Op::TextContainsIgnoringCase,
+        Condition::Present { condition, .. } => searches_inside_text(condition),
+        _ => false,
+    }
+}
+
 /// The field and value `condition` tests with `==`, or why Redis can't
 /// test it.
 fn equality(condition: &Condition) -> Result<(&str, &Value), Unserved> {
@@ -243,6 +253,19 @@ fn equality(condition: &Condition) -> Result<(&str, &Value), Unserved> {
             "`and`, `or` or `not`",
             "Jadpo finds a record in Redis by one key or one set, so a query tests one field with `==`.",
         )),
+        // A search inside text, on either line (area 6, "Searching inside
+        // text").
+        Condition::Call { .. } | Condition::Present { .. } if searches_inside_text(condition) => {
+            Err(unserved(
+                if matches!(condition, Condition::Present { .. }) {
+                    "where_present"
+                } else {
+                    "where"
+                },
+                "a search inside text, `text.contains_ignoring_case`",
+                "A search inside text reads a trigram index, which only PostgreSQL keeps.",
+            ))
+        }
         Condition::Present { .. } => Err(unserved(
             "where_present",
             "`where_present:`",

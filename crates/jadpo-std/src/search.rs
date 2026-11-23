@@ -72,9 +72,57 @@ pub fn phrase(text: &str) -> String {
     out
 }
 
+/// The ASCII letters a code point outside ASCII folds to by Unicode's
+/// simple case folding: `k`, from the Kelvin sign `K`, and `s`, from `ſ`.
+/// `jadpo-value`'s tests check the list against the pinned Unicode data.
+pub const FOLDED_INTO_ASCII: &[char] = &['k', 's'];
+
+/// The escape character of a search pattern ([`substring`]), which the
+/// statement names in `ESCAPE`.
+pub const ESCAPE: char = '\\';
+
+/// What `text.contains_ignoring_case` searches a field for (area 6,
+/// "Searching inside text"; chunk 10.3), as a `LIKE` pattern on the
+/// field's text with its ASCII letters lowered: `text` anywhere, read
+/// literally, so `%`, `_` and the escape are escaped; each ASCII letter
+/// lowered; and every other code point, and the letters in
+/// [`FOLDED_INTO_ASCII`], matched by `_`, any one code point. So a record
+/// the code keeps, its text holding `text` when both are simply
+/// case-folded, one code point for one, always matches, whatever the
+/// database's collation; a record that only matches is left out by the
+/// code, which decides each.
+pub fn substring(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('%');
+    for c in text.chars() {
+        match c {
+            '%' | '_' | ESCAPE => {
+                out.push(ESCAPE);
+                out.push(c);
+            }
+            c if c.is_ascii() && !FOLDED_INTO_ASCII.contains(&c.to_ascii_lowercase()) => {
+                out.push(c.to_ascii_lowercase())
+            }
+            _ => out.push('_'),
+        }
+    }
+    out.push('%');
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_substring_is_literal_and_wider_than_its_folding() {
+        assert_eq!(substring("Milk"), "%mil_%");
+        assert_eq!(substring("50%"), "%50\\%%");
+        assert_eq!(substring("a_b\\c"), "%a\\_b\\\\c%");
+        assert_eq!(substring("éclair"), "%_clair%");
+        assert_eq!(substring("SKY"), "%__y%");
+        assert_eq!(substring(""), "%%");
+    }
 
     #[test]
     fn an_or_between_words_becomes_a_word() {

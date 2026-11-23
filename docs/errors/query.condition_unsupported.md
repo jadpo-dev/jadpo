@@ -92,6 +92,45 @@ error: `text.lower(Book.title) == title` isn't a condition a query can use
 check failed: 1 error, 1 file
 ```
 
+An operation's arguments after the field are written out, so its index can
+hold its result for each record. Text to find that the query is given is a
+search inside text, `text.contains_ignoring_case`, which ignores case and
+reads a trigram index instead:
+
+main.jadpo:
+
+```jadpo check project=e-condition-contains-given expect=query.condition_unsupported
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+}
+
+query books_holding(title: Book.title) -> List<Book> {
+    from: Book
+    where: text.contains(Book.title, title)
+    order: [Book.title asc]
+    limit: 20
+}
+```
+
+```text output
+error: `text.contains(Book.title, title)` isn't a condition a query can use
+ --> main.jadpo:12:12
+   |
+12 |     where: text.contains(Book.title, title)
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not an indexable condition
+  reason: An index holds `text.contains`'s result for each record, so its text to find is written out, fixed while compiling; `title` is given when the query runs. A search for text given when the query runs ignores case, through a trigram index (area 6, "Searching inside text").
+  next: Write `text.contains_ignoring_case(Book.title, title)` (agent)
+  rule: query.condition_unsupported
+  help: https://jadpo.dev/docs/errors/query.condition_unsupported
+
+check failed: 1 error, 1 file
+```
+
 Comparing two fields of a record can't be served by an index, since no index
 holds one field against another:
 

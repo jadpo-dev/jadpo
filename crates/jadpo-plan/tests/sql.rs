@@ -70,6 +70,13 @@ fn source(source: &Source) -> String {
                 path: path.clone()
             })
         ),
+        Source::Substring { index, path } => format!(
+            "search pattern of {}",
+            self::source(&Source::Arg {
+                index: *index,
+                path: path.clone()
+            })
+        ),
         Source::DistanceBound {
             index,
             path,

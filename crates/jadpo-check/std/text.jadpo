@@ -18,12 +18,18 @@
 // The rest take any value built on `Text` and give plain `Text`, counted,
 // cut and padded in code points. A count or a position is never negative,
 // `find` and `separator` are never empty, `fill:` is one character written
-// out, and `trim`, `slice` and the four cuts are never longer than their
-// text, so a type built from one keeps the text's `max_length`.
+// out, and `trim`, `trim_start`, `trim_end`, `slice`, `truncate` and the
+// four cuts are never longer than their text, so a type built from one
+// keeps the text's `max_length`. Ignoring case is Unicode's simple case
+// folding, one code point for one.
 
 public library text {
     /// Text that `part` appears in.
     function contains(value: Text, part: Text) -> Bool {}
+
+    /// Text that `part` appears in, each code point of both simply
+    /// case-folded: `É` matches `é`, `ß` only itself.
+    function contains_ignoring_case(value: Text, part: Text) -> Bool {}
 
     /// `value` without its first `n` code points.
     function drop_first(value: Text, n: Int) -> Text {}
@@ -34,12 +40,19 @@ public library text {
     /// Text that ends with `suffix`.
     function ends_with(value: Text, suffix: Text) -> Bool {}
 
+    /// Text equal to `other`, each code point of both simply case-folded.
+    function equals_ignoring_case(value: Text, other: Text) -> Bool {}
+
     /// `value` shown to a person in `locale`, in the type's own words.
     function format(value: T, locale: Locale, zone: Zone?, format: TimeFormat?, precision: MoneyPrecision?, display: MoneyDisplay?, sign: MoneySign?, unit: QuantityUnit?) -> PresentationText {}
 
     /// `value`'s canonical text, the form `parse` reads back, or its code
     /// in another code system a closed list has, `form: CodeForm.alpha3`.
     function from(value: T, form: CodeForm?) -> Text {}
+
+    /// The code-point position `part` first starts at, from 0, or `none`
+    /// when it isn't there.
+    function index_of(value: Text, part: Text) -> Int? {}
 
     /// The items with `separator` between them.
     function join(items: List<Text>, separator: Text) -> Text {}
@@ -50,11 +63,22 @@ public library text {
     /// At most `n` code points from the end.
     function keep_last(value: Text, n: Int) -> Text {}
 
+    /// The code-point position `part` last starts at, from 0, or `none`
+    /// when it isn't there.
+    function last_index_of(value: Text, part: Text) -> Int? {}
+
     /// How many code points `value` holds, at least 0.
     function length(value: Text) -> Int {}
 
     /// `value` in lower case, by `locale`'s rules when it is given.
     function lower(value: Text, locale: Locale?) -> Text {}
+
+    /// `value` in Unicode's normalisation form `form`, NFC or NFKC.
+    function normalise(value: Text, form: NormalForm) -> Text {}
+
+    /// `value` with `fill` added at the end until it is `length` code
+    /// points long; never cut.
+    function pad_end(value: Text, length: Int, fill: Text) -> Text {}
 
     /// `value` with `fill` added at the start until it is `length` code
     /// points long; never cut.
@@ -88,6 +112,16 @@ public library text {
 
     /// `value` without Unicode white space at either end.
     function trim(value: Text) -> Text {}
+
+    /// `value` without Unicode white space at its end.
+    function trim_end(value: Text) -> Text {}
+
+    /// `value` without Unicode white space at its start.
+    function trim_start(value: Text) -> Text {}
+
+    /// `value` when it is at most `length` code points, else its first
+    /// `length - 1` and `…`: never longer than `length`.
+    function truncate(value: Text, length: Int) -> Text {}
 
     /// `value` in upper case, by `locale`'s rules when it is given.
     function upper(value: Text, locale: Locale?) -> Text {}

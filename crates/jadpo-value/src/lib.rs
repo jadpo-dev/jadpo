@@ -553,14 +553,20 @@ pub fn run(
         ) => Err(Fault::Shape),
         (
             Op::TextContains
+            | Op::TextContainsIgnoringCase
             | Op::TextDropFirst
             | Op::TextDropLast
             | Op::TextEndsWith
+            | Op::TextEqualsIgnoringCase
+            | Op::TextIndexOf
             | Op::TextJoin
             | Op::TextKeepFirst
             | Op::TextKeepLast
+            | Op::TextLastIndexOf
             | Op::TextLength
             | Op::TextLower
+            | Op::TextNormalise
+            | Op::TextPadEnd
             | Op::TextPadStart
             | Op::TextReplace
             | Op::TextSlice
@@ -568,6 +574,9 @@ pub fn run(
             | Op::TextSplit
             | Op::TextStartsWith
             | Op::TextTrim
+            | Op::TextTrimEnd
+            | Op::TextTrimStart
+            | Op::TextTruncate
             | Op::TextUpper,
             _,
         ) => run_text(op, args),
@@ -613,9 +622,23 @@ fn run_text(op: Op, args: &[Value]) -> Result<Value, Fault> {
     match (op, rest) {
         (Op::TextLength, []) => Ok(Value::Int(text::length(value))),
         (Op::TextTrim, []) => Ok(Value::text(text::trim(value))),
+        (Op::TextTrimStart, []) => Ok(Value::text(text::trim_start(value))),
+        (Op::TextTrimEnd, []) => Ok(Value::text(text::trim_end(value))),
         (Op::TextLower, [given]) => text::lower(value, locale(given)?).map(shown),
         (Op::TextUpper, [given]) => text::upper(value, locale(given)?).map(shown),
         (Op::TextContains, [Value::Text(part)]) => Ok(Value::Bool(text::contains(value, part))),
+        (Op::TextContainsIgnoringCase, [Value::Text(part)]) => {
+            Ok(Value::Bool(text::contains_ignoring_case(value, part)))
+        }
+        (Op::TextEqualsIgnoringCase, [Value::Text(other)]) => {
+            Ok(Value::Bool(text::equals_ignoring_case(value, other)))
+        }
+        (Op::TextIndexOf, [Value::Text(part)]) => {
+            Ok(text::index_of(value, part).map_or(Value::None, Value::Int))
+        }
+        (Op::TextLastIndexOf, [Value::Text(part)]) => {
+            Ok(text::last_index_of(value, part).map_or(Value::None, Value::Int))
+        }
         (Op::TextStartsWith, [Value::Text(prefix)]) => {
             Ok(Value::Bool(text::starts_with(value, prefix)))
         }
@@ -640,6 +663,13 @@ fn run_text(op: Op, args: &[Value]) -> Result<Value, Fault> {
         (Op::TextDropLast, [Value::Int(n)]) => text::drop_last(value, *n).map(shown),
         (Op::TextPadStart, [Value::Int(length), Value::Text(fill)]) => {
             text::pad_start(value, *length, fill).map(shown)
+        }
+        (Op::TextPadEnd, [Value::Int(length), Value::Text(fill)]) => {
+            text::pad_end(value, *length, fill).map(shown)
+        }
+        (Op::TextTruncate, [Value::Int(length)]) => text::truncate(value, *length).map(shown),
+        (Op::TextNormalise, [Value::Variant(form)]) => {
+            text::normalise(value, &form.name).map(shown)
         }
         (Op::TextSlug, []) => Ok(shown(text::slug(value))),
         _ => Err(Fault::Shape),
@@ -1181,7 +1211,17 @@ mod tests {
                 | Op::ListMinBy
                 | Op::ListReverse => vec![items.clone()],
                 Op::ListSortBy => vec![items.clone(), Value::None],
-                Op::TextLength | Op::TextTrim | Op::TextSlug => vec![Value::text("Rye loaf")],
+                Op::TextLength
+                | Op::TextTrim
+                | Op::TextTrimStart
+                | Op::TextTrimEnd
+                | Op::TextSlug => vec![Value::text("Rye loaf")],
+                Op::TextContainsIgnoringCase
+                | Op::TextEqualsIgnoringCase
+                | Op::TextIndexOf
+                | Op::TextLastIndexOf => vec![Value::text("Rye loaf"), Value::text("LOAF")],
+                Op::TextTruncate => vec![Value::text("Rye loaf"), Value::Int(5)],
+                Op::TextNormalise => vec![Value::text("Rye loaf"), variant("nfkc")],
                 Op::TextLower | Op::TextUpper => vec![Value::text("Rye"), english.clone()],
                 Op::TextContains | Op::TextStartsWith | Op::TextEndsWith | Op::TextSplit => {
                     vec![Value::text("Rye loaf"), Value::text(" ")]
@@ -1199,7 +1239,9 @@ mod tests {
                 Op::TextKeepFirst | Op::TextKeepLast | Op::TextDropFirst | Op::TextDropLast => {
                     vec![Value::text("Rye loaf"), Value::Int(3)]
                 }
-                Op::TextPadStart => vec![Value::text("42"), Value::Int(6), Value::text("0")],
+                Op::TextPadStart | Op::TextPadEnd => {
+                    vec![Value::text("42"), Value::Int(6), Value::text("0")]
+                }
                 Op::SetCount => vec![tags.clone()],
                 Op::SetContains | Op::SetWith | Op::SetWithout => {
                     vec![tags.clone(), Value::Int(2)]

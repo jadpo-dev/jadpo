@@ -365,10 +365,13 @@ A search by words is a condition of its own, `where: Todo matches
 phrase`, on an entity with a `search:` section; with no `order:` it gives
 the best matches first ([Search](16-built-in-services.md#search)).
 
-A field may be passed to three kinds of operation:
+A field may be passed to four kinds of operation:
 
 - **`ai.distance`**, compared with a bound
   ([The nearest-neighbour query](21-ai.md#the-nearest-neighbour-query)).
+- **`text.contains_ignoring_case`**, a search inside text for a value
+  given when the query runs, which a trigram index finds and Jadpo's own
+  code decides ([Searching inside text](#searching-inside-text)).
 - **A `geo.` test**, `geo.within`, `geo.contains` or `geo.intersects`. It
   takes a geometry field first and a parameter after, on a `where:` line
   of its own or joined by `and`. A GiST index, PostgreSQL's index for
@@ -733,7 +736,9 @@ The rules for an operation in a condition:
   writes it into the statement's text. That way the index and the
   statement hold the same expression, and PostgreSQL matches them. A value
   given when the query runs would change what the index holds, so a
-  parameter as another argument is `query.condition_unsupported`.
+  parameter as another argument is `query.condition_unsupported`, except
+  for `text.contains_ignoring_case`, whose index holds the field alone
+  ([Searching inside text](#searching-inside-text)).
 - **Only an exact form, and one an index can hold.** An operation without
   a SQL form is `query.condition_unsupported`: `text.lower`, for example,
   whose result PostgreSQL's collation would decide. So is an operation
@@ -749,7 +754,9 @@ The rules for an operation in a condition:
   read as a value of the result's type. The `not` of an operation that
   gives a `Bool` is written `IS FALSE`, since PostgreSQL turns
   `NOT (a = b)` into `a <> b` before it looks for an index. `== none` is
-  `type.incomparable`, since an operation always gives a value.
+  `type.incomparable`, since an operation always gives a value. One that
+  may give `none`, as `text.index_of` does, is `query.condition_unsupported`,
+  since `!=` and `not` would keep its `none` in code and not in SQL.
 - **`none`.** A record whose field is `none` meets no condition on an
   operation of that field, `not` included (the SQL is
   `"field" IS NOT NULL AND ...`), since code can't call the operation on
@@ -802,6 +809,272 @@ CREATE INDEX "book_title_length_idx" ON "book" ((char_length("title")::bigint));
 A live test (`jadpo-cli`'s `operation_conditions`) runs such queries on
 PostgreSQL, edge cases among them, and checks each gives the code's answer
 through its index.
+
+## Searching inside text
+<!-- topic: searching-inside-text -->
+
+To find the records whose text holds what someone typed, ignoring case,
+call `text.contains_ignoring_case` on the field with the text the query
+is given. It is the one operation whose second argument may be a value
+given when the query runs, so a search box's text goes straight in:
+
+```jadpo check project=text-search file=app.jadpo hidden
+use notes/entities { User }
+
+application {}
+
+principal {
+    user: {
+        subject: User.email
+    }
+}
+```
+
+```jadpo check project=text-search file=authentication.jadpo hidden
+authentication {
+    api_token: {}
+}
+```
+
+```jadpo check project=text-search file=domains/notes/entities/user.jadpo hidden
+/// Someone who keeps notes.
+entity User {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
+}
+```
+
+```jadpo check project=text-search file=domains/notes/types/note_title.jadpo hidden
+type NoteTitle = Text {
+    min_length: 1
+    max_length: 200
+}
+```
+
+```jadpo check project=text-search file=domains/notes/entities/note.jadpo
+use notes/entities { User }
+use notes/types { NoteTitle }
+
+/// Something a user wrote down for themselves.
+entity Note {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    title: NoteTitle
+
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+    }
+}
+```
+
+```jadpo check project=text-search file=domains/notes/types/note_view.jadpo hidden
+use notes/entities { Note }
+
+/// A note in a list.
+type NoteView = Output {
+    pick: [Note.id, Note.title]
+}
+```
+
+```jadpo check project=text-search file=domains/notes/types/find_notes.jadpo
+use notes/types { NoteTitle }
+
+/// What a list of notes is narrowed to: the text someone typed, if any.
+type FindNotes = Input {
+    q: NoteTitle {
+        optional: true
+    }
+}
+```
+
+```jadpo check project=text-search file=domains/notes/queries/my_notes.jadpo migrate=initial
+use notes/entities { Note }
+use notes/types { FindNotes, NoteView }
+
+/// The caller's notes, those whose title holds the text when one is given.
+query my_notes(asked: FindNotes) -> List<NoteView> {
+    from: Note
+    where_present: text.contains_ignoring_case(Note.title, asked.q)
+    order: [Note.title asc]
+    limit: 50
+}
+```
+
+```jadpo check project=text-search file=domains/notes/routes/notes.jadpo hidden
+use notes/types { FindNotes, NoteView }
+use notes/queries { my_notes }
+
+routes Notes {
+    prefix: /notes
+
+    GET / {
+        input: FindNotes
+        output: List<NoteView>
+        run: my_notes(input)
+    }
+}
+```
+
+```jadpo check project=text-search file=domains/notes/actions/write_note.jadpo hidden
+use notes/entities { Note }
+use notes/types { NoteTitle }
+
+/// Writes a note for `me`.
+action write_note(me: Principal.user, title: NoteTitle) -> Note {
+    return Note.create {
+        set: {
+            owner_id: me.id
+            title: title
+        }
+    }
+}
+```
+
+The search ignores case, reads `%` as a percent sign, and finds only the
+caller's own notes, since the read's policy still applies:
+
+```jadpo check project=text-search file=domains/notes/routes/notes.test.jadpo
+use notes/entities { Note, User }
+use notes/types { FindNotes, NoteView }
+use notes/actions { write_note }
+
+/// What the list shows of a note.
+function card_of_note(note: Note) -> NoteView {
+    return NoteView {
+        id: note.id
+        title: note.title
+    }
+}
+
+test "a search ignores case, reads its text literally and finds only the caller's notes" {
+    var ada: User = make.User {
+        email: "ada@example.com"
+    }
+    var bob: User = make.User {
+        email: "bob@example.com"
+    }
+    var milk: Note = write_note(Principal.user(ada), "Buy MILK")
+    var oat: Note = write_note(Principal.user(ada), "oat milk")
+    var half_price: Note = write_note(Principal.user(ada), "50% off")
+    var stock: Note = write_note(Principal.user(ada), "5000 items")
+    var eclairs: Note = write_note(Principal.user(ada), "ÉCLAIRS for Friday")
+    var bobs: Note = write_note(Principal.user(bob), "Bob's milk")
+    var with_milk: Response = request {
+        method: HttpMethod.get
+        path: "/notes"
+        as: Principal.user(ada)
+        input: FindNotes {
+            q: "milk"
+        }
+    }
+    assert with_milk.output == [card_of_note(milk), card_of_note(oat)]
+    var with_percent: Response = request {
+        method: HttpMethod.get
+        path: "/notes"
+        as: Principal.user(ada)
+        input: FindNotes {
+            q: "50%"
+        }
+    }
+    assert with_percent.output == [card_of_note(half_price)]
+    var with_eclair: Response = request {
+        method: HttpMethod.get
+        path: "/notes"
+        as: Principal.user(ada)
+        input: FindNotes {
+            q: "éclair"
+        }
+    }
+    assert with_eclair.output == [card_of_note(eclairs)]
+    var all_of_adas: Response = request {
+        method: HttpMethod.get
+        path: "/notes"
+        as: Principal.user(ada)
+        input: FindNotes {}
+    }
+    assert all_of_adas.output == [
+        card_of_note(half_price),
+        card_of_note(stock),
+        card_of_note(milk),
+        card_of_note(oat),
+        card_of_note(eclairs)
+    ]  // by code point
+    var for_bob: Response = request {
+        method: HttpMethod.get
+        path: "/notes"
+        as: Principal.user(bob)
+        input: FindNotes {
+            q: "MILK"
+        }
+    }
+    assert for_bob.output == [card_of_note(bobs)]
+}
+```
+
+- **What it keeps.** The records `text.contains_ignoring_case` keeps in
+  code: the field holds the text somewhere, each code point compared by
+  Unicode's simple case folding
+  ([Case and sorting in a locale](19-standard-library.md#case-and-sorting-in-a-locale)),
+  so `milk` finds `Buy MILK` and `éclair` finds `ÉCLAIRS`. The text is
+  literal: `%`, `_` and `\` are themselves, never a pattern, so `50%`
+  doesn't find `5000`. Empty text is in every text.
+- **The value.** A parameter, a field of one, or text written out. The
+  index holds the field's text, never the search's, so a value given
+  when the query runs changes nothing the index holds.
+- **Where it stands.** On a `where:` line of its own or joined by `and`,
+  in an include's `where:` and in an aggregate query, as a `geo.` test
+  does. On a `where_present:` line it applies only when the text is
+  there, as `asked.q` is above. Not under `not` or `or`, and not compared
+  with `== true` (`query.condition_unsupported`): the index finds every
+  record the search may keep, never those it doesn't.
+- **How the database finds them.** The statement searches the field's
+  text with its ASCII letters lowered, `lower("title" COLLATE "C") LIKE
+  $2 ESCAPE E'\\'`, through a trigram index, and Jadpo's own code
+  decides each record it finds, as it does for a `geo.` test. `$2` is the
+  text made a pattern when the query runs: `%`, `_` and `\` escaped,
+  ASCII letters lowered, and every other code point matched by `_`, as
+  are `k` and `s`, which `K` (the Kelvin sign) and `ſ` fold to. So the
+  pattern finds every record the code keeps, whatever the database's
+  collation, and perhaps a few more, which the code leaves out.
+- **The index.** The compiler derives one GIN index of trigrams,
+  PostgreSQL's `pg_trgm`, on each field searched this way, however many
+  queries search it: `<table>_<column>_trgm_idx`, partial with `visible:`
+  as every derived index is. The migration first creates the `pg_trgm`
+  extension, which ships with PostgreSQL and which the database's owner
+  may create. Text of fewer than three characters holds no trigram, so a
+  search that short reads every record the other conditions leave.
+- **Other operations.** Every other operation's arguments are still
+  written out ([Operations in conditions](#operations-in-conditions)), so
+  `text.contains(Note.title, asked.q)` is `query.condition_unsupported`,
+  its `next:` naming `text.contains_ignoring_case`. Words, stems and
+  ranking are `matches` ([Search](16-built-in-services.md#search)).
+- **Redis.** An entity kept in Redis isn't searched this way
+  (`query.redis_unsupported`), since Redis keeps no index of trigrams.
+
+The statement (`jadpo sql`) and the index derived for it:
+
+```sql
+-- my_notes
+SELECT "id", "title"
+FROM "note"
+WHERE ($1 IS NULL OR lower("title" COLLATE "C") LIKE $2 ESCAPE E'\\')
+  AND "note"."owner_id" = $3
+ORDER BY "title" COLLATE "C" ASC, "id" ASC
+LIMIT $4
+
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+CREATE INDEX "note_title_trgm_idx" ON "note" USING gin ((lower("title" COLLATE "C")) gin_trgm_ops);
+```
 
 ## Order and pages
 <!-- topic: order-and-pages -->
@@ -2939,7 +3212,7 @@ is allowed:
 | A query whose `where:` is equality on `id` or a `unique:` field | Yes: one record, from the key Jadpo keeps per unique value |
 | A query whose `where:` is equality on one field in `indexes:` | Yes: a page, in creation order, from the set Jadpo keeps per value; `count()` the same |
 | Policy grants that are equality on the record's own fields | Yes, checked after reading |
-| Joins, `include`, ranges (`<`, `>`), `in`, `or`, ordering by any other field, `matches`, grants beyond simple equality | No: `query.redis_unsupported` or `data.redis_unsupported`, naming the reason and PostgreSQL as the alternative |
+| Joins, `include`, ranges (`<`, `>`), `in`, `or`, ordering by any other field, `matches`, `text.contains_ignoring_case`, grants beyond simple equality | No: `query.redis_unsupported` or `data.redis_unsupported`, naming the reason and PostgreSQL as the alternative |
 
 Here a shop keeps each basket in Redis for a day after it last changed,
 pages through the open ones and counts them by state:

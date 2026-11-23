@@ -33,6 +33,16 @@ pub fn trim(value: &str) -> &str {
     value.trim()
 }
 
+/// `value` without Unicode white space at its start.
+pub fn trim_start(value: &str) -> &str {
+    value.trim_start()
+}
+
+/// `value` without Unicode white space at its end.
+pub fn trim_end(value: &str) -> &str {
+    value.trim_end()
+}
+
 /// `value` in lower case: Unicode's default case mapping, or `locale`'s
 /// (a BCP 47 tag) when one is given, so `İ` becomes `i` in Turkish.
 pub fn lower(value: &str, locale: Option<&str>) -> Result<String, Fault> {
@@ -62,6 +72,37 @@ fn language(locale: Option<&str>) -> Result<LanguageIdentifier, Fault> {
 /// Whether `part` appears in `value`, code point for code point.
 pub fn contains(value: &str, part: &str) -> bool {
     value.contains(part)
+}
+
+/// `value` with each code point simply case-folded (CaseFolding.txt's
+/// `C` and `S` entries): one code point for one, so `ß` stays `ß` and the
+/// text keeps its length. What `contains_ignoring_case` and
+/// `equals_ignoring_case` compare, and what a query's search finds
+/// (area 6, "Searching inside text").
+pub fn folded(value: &str) -> String {
+    let mapper = CaseMapper::new();
+    value.chars().map(|c| mapper.simple_fold(c)).collect()
+}
+
+/// Whether `part` is in `value` when both are [`folded`].
+pub fn contains_ignoring_case(value: &str, part: &str) -> bool {
+    folded(value).contains(&folded(part))
+}
+
+/// Whether `value` and `other` are equal when both are [`folded`].
+pub fn equals_ignoring_case(value: &str, other: &str) -> bool {
+    folded(value) == folded(other)
+}
+
+/// The code-point position `part` first starts at in `value`, from 0.
+pub fn index_of(value: &str, part: &str) -> Option<i64> {
+    value.find(part).map(|at| length(&value[..at]))
+}
+
+/// The code-point position `part` last starts at in `value`, from 0;
+/// `""` is last at the end.
+pub fn last_index_of(value: &str, part: &str) -> Option<i64> {
+    value.rfind(part).map(|at| length(&value[..at]))
 }
 
 pub fn starts_with(value: &str, prefix: &str) -> bool {
@@ -156,6 +197,55 @@ pub fn pad_start(value: &str, length: i64, fill: &str) -> Result<String, Fault> 
     Ok(out)
 }
 
+/// `value` with `fill`, one character, added at the end until it is
+/// `length` code points long; never cut, as [`pad_start`].
+pub fn pad_end(value: &str, length: i64, fill: &str) -> Result<String, Fault> {
+    let mut chars = fill.chars();
+    let (Some(fill), None) = (chars.next(), chars.next()) else {
+        return Err(Fault::Shape);
+    };
+    let has = value.chars().count();
+    let wanted = usize::try_from(length).unwrap_or(0);
+    let mut out = String::from(value);
+    for _ in has..wanted {
+        out.push(fill);
+    }
+    Ok(out)
+}
+
+/// What a cut text ends in: one code point, counted in its length.
+pub const ELLIPSIS: char = '\u{2026}';
+
+/// `value` when it is at most `length` code points, else its first
+/// `length - 1` and [`ELLIPSIS`], or `""` for a `length` of 0: never
+/// longer than `length` or than `value`.
+pub fn truncate(value: &str, length: i64) -> Result<String, Fault> {
+    let length = count(length)?;
+    if value.chars().count() <= length {
+        return Ok(value.to_string());
+    }
+    if length == 0 {
+        return Ok(String::new());
+    }
+    let mut out: String = value.chars().take(length - 1).collect();
+    out.push(ELLIPSIS);
+    Ok(out)
+}
+
+/// `value` in Unicode's normalisation form `form`, `nfc` or `nfkc`
+/// (`NormalForm`'s variants), by the pinned ICU4X release's data.
+pub fn normalise(value: &str, form: &str) -> Result<String, Fault> {
+    Ok(match form {
+        "nfc" => ComposingNormalizerBorrowed::new_nfc()
+            .normalize(value)
+            .into_owned(),
+        "nfkc" => ComposingNormalizerBorrowed::new_nfkc()
+            .normalize(value)
+            .into_owned(),
+        _ => return Err(Fault::Shape),
+    })
+}
+
 /// `value` as a URL's path segment: lowercase ASCII letters, digits and
 /// single `-`. Accents are dropped (the marks Unicode's canonical
 /// decomposition separates from their letters), every other run of
@@ -232,6 +322,68 @@ mod tests {
         let german = collation("de-DE").unwrap();
         assert_eq!(swedish("ö", "z"), Ordering::Greater);
         assert_eq!(german("ö", "z"), Ordering::Less);
+    }
+
+    #[test]
+    fn ignores_case_by_simple_folding() {
+        assert!(contains_ignoring_case("Buy MILK", "milk"));
+        assert!(contains_ignoring_case("ÉCLAIR", "éclair"));
+        assert!(contains_ignoring_case("ΟΔΟΣ", "οδος"));
+        assert!(contains_ignoring_case("\u{212a}elvin", "kelvin"));
+        assert!(contains_ignoring_case("anything", ""));
+        assert!(!contains_ignoring_case("Straße", "STRASSE"));
+        assert!(!contains_ignoring_case("50% off", "5000"));
+        assert!(equals_ignoring_case("Rye Loaf", "rYE lOAF"));
+        assert!(!equals_ignoring_case("Rye", "Rye loaf"));
+        assert_eq!(folded("İ"), "İ");
+    }
+
+    /// The ASCII letters another code point folds to, which a query's
+    /// search pattern matches with `_` (`jadpo_std::search::substring`):
+    /// only `k` (the Kelvin sign) and `s` (`ſ`), in the pinned Unicode
+    /// data.
+    #[test]
+    fn only_k_and_s_are_folded_to_from_outside_ascii() {
+        let mapper = CaseMapper::new();
+        let mut targets: Vec<char> = (0x80..=0x10ffff_u32)
+            .filter_map(char::from_u32)
+            .map(|c| mapper.simple_fold(c))
+            .filter(char::is_ascii)
+            .collect();
+        targets.sort_unstable();
+        targets.dedup();
+        assert_eq!(targets, ['k', 's']);
+        assert_eq!(
+            jadpo_std::search::FOLDED_INTO_ASCII,
+            &['k', 's'],
+            "the search pattern's list"
+        );
+        // Every ASCII letter folds to its lower case, and nothing else.
+        for c in (0..0x80_u8).map(char::from) {
+            assert_eq!(mapper.simple_fold(c), c.to_ascii_lowercase());
+        }
+    }
+
+    #[test]
+    fn finds_trims_pads_and_cuts_in_code_points() {
+        assert_eq!(index_of("rye and rye", "rye"), Some(0));
+        assert_eq!(last_index_of("rye and rye", "rye"), Some(8));
+        assert_eq!(index_of("面包店", "店"), Some(2));
+        assert_eq!(index_of("rye", "oat"), None);
+        assert_eq!(index_of("rye", ""), Some(0));
+        assert_eq!(last_index_of("rye", ""), Some(3));
+        assert_eq!(last_index_of("aaa", "aa"), Some(1));
+        assert_eq!(trim_start("\u{3000} rye "), "rye ");
+        assert_eq!(trim_end(" rye\u{a0}"), " rye");
+        assert_eq!(pad_end("rye", 6, ".").unwrap(), "rye...");
+        assert_eq!(pad_end("rye", -1, ".").unwrap(), "rye");
+        assert_eq!(truncate("Seeded sourdough", 10).unwrap(), "Seeded so…");
+        assert_eq!(truncate("Rye", 3).unwrap(), "Rye");
+        assert_eq!(truncate("Rye", 0).unwrap(), "");
+        assert_eq!(truncate("Rye", 1).unwrap(), "…");
+        assert_eq!(normalise("cafe\u{301}", "nfc").unwrap(), "café");
+        assert_eq!(normalise("\u{fb01}ne", "nfkc").unwrap(), "fine");
+        assert_eq!(normalise("\u{fb01}ne", "nfc").unwrap(), "\u{fb01}ne");
     }
 
     #[test]
