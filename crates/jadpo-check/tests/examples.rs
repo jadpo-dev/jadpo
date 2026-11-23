@@ -615,6 +615,7 @@ const BODY: &[&str] = &[
     "pattern wildcard",
     "pattern success",
     "pattern failure",
+    "pattern caller",
     "arm value",
     "arm block",
     "arm empty block",
@@ -1029,6 +1030,7 @@ fn body_features(
                             Pattern::Wildcard => "pattern wildcard",
                             Pattern::Success => "pattern success",
                             Pattern::Failure(_) => "pattern failure",
+                            Pattern::Caller(_) => "pattern caller",
                             Pattern::Unknown => continue,
                         });
                         out.insert(match &arm.body {

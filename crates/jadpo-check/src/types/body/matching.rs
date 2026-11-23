@@ -2,7 +2,8 @@
 //! a statement or as a value. The subject's type decides which patterns
 //! apply: an enum's variants, with brackets naming a variant's data;
 //! `true` and `false`; `some(name)` and `none`; literals and `_` for text
-//! and numbers. Enums, `Bool` and nullable values list every case and
+//! and numbers; `user(name)` and `service(name)` for a whole caller (area
+//! 8). Enums, `Bool`, nullable values and callers list every case and
 //! never use `_` (question 10).
 //!
 //! A `match` whose arms name `success(...)` or a failure is on a call's
@@ -21,6 +22,7 @@ use super::facts::PatternFact;
 use super::{Body, LocalKind, capital, did_you_mean, is_literal, line_span, node_key, text};
 use crate::case::starts_upper;
 use crate::tree;
+use jadpo_std::http::PrincipalKind;
 
 /// Where a `match` stands.
 #[derive(Clone, Copy)]
@@ -41,6 +43,9 @@ enum Subject {
     Nullable(Ty),
     /// Text and numbers: literals, and `_` for the rest.
     Open(Ty),
+    /// A whole caller, `Principal`, with the kinds `principal { }`
+    /// declares, each matched by its own arm (area 8).
+    Caller(Vec<PrincipalKind>),
     /// Anything else: only `_`.
     Other(Ty),
 }
@@ -54,6 +59,8 @@ enum Case {
     Some,
     None,
     Literal(String),
+    /// A kind of caller: `user(...)`.
+    Caller(PrincipalKind),
 }
 
 impl Case {
@@ -65,6 +72,7 @@ impl Case {
             Case::Some => "`some(...)`".to_string(),
             Case::None => "`none`".to_string(),
             Case::Literal(text) => format!("`{text}`"),
+            Case::Caller(kind) => format!("`{}(...)`", kind.name()),
         }
     }
 }
@@ -164,6 +172,10 @@ impl Body<'_> {
         if self.table.is_nullable(&ty) {
             return Subject::Nullable(self.non_null(&ty));
         }
+        if matches!(&ty, Ty::Opaque(name, args) if name == crate::identity::PRINCIPAL && args.is_empty())
+        {
+            return Subject::Caller(self.identity().written.clone());
+        }
         if let Ty::Named(name) = self.table.structure(&ty)
             && self.table.variants(&name).is_some()
         {
@@ -229,6 +241,7 @@ impl Body<'_> {
                         Some(PatternFact::Variant(host.clone(), variant.clone()))
                     }
                     (Some(Case::Some), _) => Some(PatternFact::Some),
+                    (Some(Case::Caller(kind)), _) => Some(PatternFact::Caller(*kind)),
                     _ if reading.wildcard => Some(PatternFact::Wildcard),
                     _ => None,
                 };
@@ -256,7 +269,10 @@ impl Body<'_> {
                 }
                 if reading.wildcard {
                     match subject {
-                        Subject::Enum(_) | Subject::Bool | Subject::Nullable(_) => {
+                        Subject::Enum(_)
+                        | Subject::Bool
+                        | Subject::Nullable(_)
+                        | Subject::Caller(_) => {
                             closed_wildcard.get_or_insert(span);
                         }
                         _ => {
@@ -459,6 +475,22 @@ impl Body<'_> {
                 ..Reading::none()
             };
         }
+        // A kind of caller, `user(member)`, binding that kind's caller
+        // (area 8, "Who is calling: `current_principal`").
+        if let Subject::Caller(kinds) = subject
+            && let [only] = names.as_slice()
+            && let Some(kind) = PrincipalKind::from_name(only)
+        {
+            if !kinds.contains(&kind) {
+                self.pattern_type(subject, span, format!("`{only}(...)`"));
+                return self.silenced(name);
+            }
+            return Reading {
+                case: Some(Case::Caller(kind)),
+                binding: bind(Ty::Opaque(kind.type_name().to_string(), Vec::new())),
+                ..Reading::none()
+            };
+        }
         match names.as_slice() {
             [only] if only == "some" => match subject {
                 Subject::Nullable(inner) => Reading {
@@ -472,6 +504,9 @@ impl Body<'_> {
                         Subject::Open(ty) | Subject::Other(ty) => ty.clone(),
                         Subject::Enum(name) => Ty::Named(name.clone()),
                         Subject::Bool => Ty::Prim(Prim::Bool),
+                        Subject::Caller(_) => {
+                            Ty::Opaque(crate::identity::PRINCIPAL.to_string(), Vec::new())
+                        }
                         _ => Ty::Error,
                     };
                     Reading {
@@ -584,6 +619,7 @@ impl Body<'_> {
             Subject::Bool => "a `Bool`".to_string(),
             Subject::Nullable(inner) => format!("a `{inner}?`"),
             Subject::Open(ty) | Subject::Other(ty) => format!("a `{ty}`"),
+            Subject::Caller(_) => "a `Principal`".to_string(),
             Subject::Error => "this value".to_string(),
         }
     }
@@ -600,6 +636,16 @@ impl Body<'_> {
                 format!("A `{name}` is matched by its variants, such as `{name}.{first}`.")
             }
             Subject::Bool => "A `Bool` is matched by `true` and `false`.".to_string(),
+            Subject::Caller(kinds) => {
+                let arms: Vec<String> = kinds
+                    .iter()
+                    .map(|kind| format!("`{}(name)`", kind.name()))
+                    .collect();
+                format!(
+                    "A `Principal` is matched by the kinds of caller `principal {{ }}` declares: {}.",
+                    crate::and_list(&arms)
+                )
+            }
             Subject::Nullable(_) => {
                 "A nullable value is matched by `some(name)` and `none`.".to_string()
             }
@@ -726,6 +772,11 @@ impl Body<'_> {
                 vec![Case::Some, Case::None],
                 "A `match` on a nullable value lists `some(name)` and `none`.".to_string(),
             ),
+            Subject::Caller(kinds) => (
+                String::new(),
+                kinds.iter().copied().map(Case::Caller).collect(),
+                "A `match` on a `Principal` has an arm for each kind of caller `principal { }` declares, so a kind declared later is caught at every `match` that has to consider it.".to_string(),
+            ),
             Subject::Open(ty) | Subject::Other(ty) => {
                 if !wildcard {
                     let what = match self.table.representation(ty) {
@@ -762,6 +813,7 @@ impl Body<'_> {
             let kind = match subject {
                 Subject::Enum(name) => format!("a `{name}`"),
                 Subject::Bool => "a `Bool`".to_string(),
+                Subject::Caller(_) => "a `Principal`".to_string(),
                 _ => "a nullable value".to_string(),
             };
             let next = if missing.is_empty() {
