@@ -270,7 +270,9 @@ enough to know its pinned model: `claude` on `PATH` (`claude auth status`
 in a plain terminal), or `codex` on `PATH` or in the ChatGPT app, signed in
 with ChatGPT (`~/.codex/auth.json`). A Codex run needs a PostgreSQL of its
 own, so `JADPO_TEST_DATABASE_URL` must be unset; its sandbox reaches the
-database through a Unix socket in the run's folder. A run whose session
+database through a Unix socket in the run's folder. The TypeScript copy's `AGENTS.md`
+gains an "In this environment" section saying that database is provided,
+since the app's own docs say its test runner starts one. A run whose session
 never reached the model is kept but left out of the summary. Runs can go
 side by side: each builds the contract's native driver into
 `target/agent-changes/` under a lock and keeps its own copy. Copies live under `~/.cache/jadpo-agent-changes/`
