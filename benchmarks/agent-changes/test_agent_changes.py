@@ -143,6 +143,15 @@ class Isolation(unittest.TestCase):
         environment = harness.agent_environment(Path('/nowhere/run'), 'postgresql://x/y')
         self.assertEqual(environment['NPM_CONFIG_UPDATE_NOTIFIER'], 'false')
 
+    def test_contamination_markers_name_the_repository_not_the_app(self):
+        # Both apps use `golden-todo` themselves (an OIDC audience, a package
+        # name), so an agent copying a test line was marked contaminated.
+        def marked(text):
+            return [marker for marker in harness.contamination_markers() if marker in text]
+        self.assertEqual(marked('OIDC_AUDIENCE: "golden-todo",'), [])
+        self.assertEqual(marked('cat ../../benchmarks/golden-todo/expected-audit.md'), ['benchmarks/golden-todo'])
+        self.assertEqual(marked("rg --files .. -g 'acceptance-v0.2.json'"), ['acceptance-v0.2'])
+
     def test_agent_command_is_pinned_and_closed(self):
         with tempfile.TemporaryDirectory() as scratch:
             app = Path(scratch)
