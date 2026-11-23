@@ -119,18 +119,7 @@ D1 first: the site starts once D1 has merged.
 ## Phase 10 — Golden todo
 
 - [x] **10.2 How easily agents write Jadpo**: the method, changes and harness are in [agent-changes](../benchmarks/agent-changes/README.md).
-- [ ] **10.3 Fix what the held-out runs found** `opus · high`: every
-  stumble from 10.2's report, general fixes only (Richard, 2026-11-23).
-  A count reaches JSON as a number, and route tests compare the JSON on
-  the wire. `record.out_of_date` and `migration.out_of_date` stop costing
-  an attempt each. A query takes a literal substring search driven by
-  request input, with case ignored, escaped `LIKE` and a trigram index,
-  never a pattern. `text` gains `normalise` (NFC, NFKC), `index_of`,
-  `last_index_of`, `trim_start`, `trim_end`, `pad_end`, truncation with
-  an ellipsis and comparison ignoring case. `policy.output_field_unproved`
-  across an action call gets a message that says what to do. A first
-  commit's notices stop reading as a network change. Area pages first;
-  each is a language addition.
+- [x] **10.3 Fix what the held-out runs found**: [Searching inside text](language/06-reads-and-writes.md#searching-inside-text), [Text](language/19-standard-library.md#text), and the decisions in the notes pages of areas 2, 9, 13 and 18.
 - [ ] **10.4 A fresh held-out comparison** `opus · high`: about 12 new
   changes to the golden todo that nobody has seen results for, written
   before 10.3's fixes are measured, with more tempting unsafe shortcuts
