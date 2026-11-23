@@ -401,6 +401,17 @@ def jadpo_ignore(directory, names):
     return [n for n in names if (top and n in JADPO_WITHHELD) or n in {'build', '.jadpo', '__pycache__'}]
 
 
+# What a TypeScript agent isn't told by the app's own docs, which say its
+# runner starts a PostgreSQL server: `jadpo test` finds the provided one itself.
+TYPESCRIPT_SANDBOX_NOTE = """
+## In this environment
+
+A PostgreSQL server is provided, reached through a Unix socket: `JADPO_TEST_DATABASE_URL` names it, and
+`TEST_DATABASE_URL` names an empty database on it. The sandbox can't start another PostgreSQL server or
+listen on a network port.
+"""
+
+
 def prepare(change, language, folder, compiler):
     """A fresh copy of the app, its own git history to diff against, and for
     Jadpo the docs bundle and the compiler beside it. Nothing else of the
@@ -421,6 +432,7 @@ def prepare(change, language, folder, compiler):
     else:
         shutil.copytree(TYPESCRIPT, app, ignore=shutil.ignore_patterns(*TYPESCRIPT_SKIPPED))
         install_typescript(app)
+        (app / 'AGENTS.md').write_text((app / 'AGENTS.md').read_text().rstrip('\n') + '\n' + TYPESCRIPT_SANDBOX_NOTE)
         install_wrapper(folder, app, {'npm': tool('npm'), 'npx': tool('npx')})
     (app / '.gitignore').write_text('node_modules/\nbuild/\n.jadpo/\n.wrangler/\n')
     git(app, 'init', '-q', '-b', 'main')

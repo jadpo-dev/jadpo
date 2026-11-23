@@ -161,6 +161,14 @@ class Isolation(unittest.TestCase):
         self.assertEqual(marked('cat ../../benchmarks/golden-todo/expected-audit.md'), ['benchmarks/golden-todo'])
         self.assertEqual(marked("rg --files .. -g 'acceptance-v0.2.json'"), ['acceptance-v0.2'])
 
+    def test_typescript_is_told_its_database_is_provided(self):
+        # `jadpo test` finds the provided server itself; TypeScript's own docs
+        # say its runner starts a server, which the sandbox refuses.
+        for name in ['JADPO_TEST_DATABASE_URL', 'TEST_DATABASE_URL', 'Unix socket', "can't start"]:
+            self.assertIn(name, harness.TYPESCRIPT_SANDBOX_NOTE)
+        source = inspect.getsource(harness.prepare)
+        self.assertIn('TYPESCRIPT_SANDBOX_NOTE', source)
+
     def test_agent_command_is_pinned_and_closed(self):
         with tempfile.TemporaryDirectory() as scratch:
             app = Path(scratch)
