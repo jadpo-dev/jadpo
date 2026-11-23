@@ -138,6 +138,9 @@ operations on it live in a package or on another page.
 | Generated scopes narrow `OAuthScope` | Area 9's enum of an application's declared scopes narrows the standard `OAuthScope` to them, a closed subset, rather than reusing the name |
 | A key's `key_ops` | Read and held as `Set<Text>`, not refused: RFC 7517 §4.3 allows it and WebCrypto always writes it. A key whose `key_ops` leaves out `"verify"` checks no signature (Richard, 2026-10-30) |
 | A UK postcode's parts | In the standard library, not a package: seven `postal` operations on a `PostalCode`, one per part as `money.minor` and `money.currency` are, each giving `Text` (`sub_district` `Text?`) and failing `not_uk_format` outside Royal Mail's format, since a `PostalCode` holds no country; a postcode written out in the format needs no arm. The format's shape only, not Royal Mail's list of areas, which `text.parse` with `country:` keeps; `GIR 0AA` and `BFPO` numbers have no parts; no `0`/`O` or `1`/`I` correction, which would widen what `text.parse` accepts (Richard, 2026-11-07) |
+| Text operations from the held-out runs | Richard accepted the recommendation, 2026-11-23 (chunk 10.3): `text` gains `normalise(value, form:)` with `NormalForm.nfc` and `NormalForm.nfkc`; `index_of` and `last_index_of`, `Int?` in code points from 0, `none` when absent, `""` at 0 and last at the length, so `slice` cuts from the position; `trim_start`, `trim_end` and `pad_end`, mirroring `trim` and `pad_start`; `truncate(value, length)`, the name agents reach for, which ends a cut text in `…` counted inside `length`, so it is never longer than `length` or than the text, and `""` at 0; and `equals_ignoring_case` and `contains_ignoring_case`. Agents in 10.2 wrote each by hand, or reached for one that wasn't there. An `ellipsis:` option and grapheme-aware cutting were left out, one way each |
+| SQL forms of the new text operations | Richard accepted the recommendation, 2026-11-23: a form where one is exact and an index can hold it: `ltrim` and `rtrim` with the `White_Space` characters, `rpad` as `pad_start`'s `lpad`, `truncate` as a `CASE` with `left`, `index_of` as `strpos` less one, `NULLIF` giving `NULL` for `none`, and `last_index_of` through `reverse`. None for `normalise`, since PostgreSQL's `normalize` follows the Unicode release PostgreSQL was built with, not the runtime's pinned one; and none for the two that ignore case, since PostgreSQL 16's case mapping follows the collation. `index_of` and `last_index_of` may give `none`, so a query's condition doesn't compare them |
+| What ignoring case means | Richard accepted the recommendation, 2026-11-23: Unicode's simple case folding (CaseFolding.txt's `C` and `S` entries), one code point for one, in every locale, through the pinned ICU4X release: `É` matches `é`, the three sigmas match, `ß` doesn't match `ss`. Full folding was weighed and left out: it changes length, so a query's pattern can't stand for it code point by code point, and code and query would part. PostgreSQL's `ILIKE` was weighed and left out: its lowering follows the database's collation, and under `"C"` changes ASCII letters only, so `É` wouldn't match `é` |
 
 ## The opening topics to SQL forms
 
@@ -387,11 +390,11 @@ cryptography" and "Signed tokens" topics.
 
 ### Text
 
-- **Left out by design:** `trim_start`, `trim_end` and `pad_end`, since
-  no scenario needs them and each is a second way near one that exists;
-  and iterating characters, since every job the scenarios found (slugs,
-  masks, previews, case) is an operation, and character loops are where
-  combining marks break.
+- **Left out by design:** iterating characters, since every job the
+  scenarios found (slugs, masks, previews, case) is an operation, and
+  character loops are where combining marks break. `trim_start`,
+  `trim_end` and `pad_end` were left out too until 10.2's held-out runs
+  found agents reaching for them (Decisions, above).
 - **Code points, not graphemes:** text is counted as `max_length` counts
   it and as PostgreSQL's `char_length` and Python do; graphemes are left
   out.

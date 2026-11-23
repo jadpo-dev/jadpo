@@ -818,10 +818,15 @@ fn then(recheck: &jadpo_std::read::Recheck) -> String {
     if !recheck.checks.is_empty() {
         let mut namespaces: Vec<String> = Vec::new();
         for check in &recheck.checks {
-            if let Some((namespace, _)) = operation(check.op)
-                && !namespaces.contains(&format!("`{namespace}.`"))
-            {
-                namespaces.push(format!("`{namespace}.`"));
+            // A search inside text is named whole; the `geo.` tests by
+            // their namespace.
+            let named = match operation(check.op) {
+                Some(("text", name)) => format!("`text.{name}`"),
+                Some((namespace, _)) => format!("`{namespace}.`"),
+                None => continue,
+            };
+            if !namespaces.contains(&named) {
+                namespaces.push(named);
             }
         }
         then.push(format!(
@@ -982,6 +987,13 @@ impl Names<'_> {
                     path: path.clone(),
                 });
                 format!("{phrase}, its `or` a word")
+            }
+            Source::Substring { index, path } => {
+                let text = self.source(&Source::Arg {
+                    index: *index,
+                    path: path.clone(),
+                });
+                format!("{text}, as a pattern found anywhere, ignoring case")
             }
             Source::Constant(constant) => constant_shown(constant),
             // A value laid out as the field it is compared with keeps it

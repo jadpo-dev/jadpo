@@ -39,6 +39,14 @@ impl Reader<'_> {
             );
             return None;
         }
+        // A search inside text, applied when its text is there (area 6,
+        // "Searching inside text").
+        if let Expr::CallExpr(call) = &expr
+            && standard_operation(call)
+                .is_some_and(|o| o.op == jadpo_std::Op::TextContainsIgnoringCase)
+        {
+            return self.condition(scope, entity, &expr, true);
+        }
         let comparison = match &expr {
             Expr::BinExpr(binary) => binary
                 .op()

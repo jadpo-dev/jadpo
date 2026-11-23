@@ -1569,7 +1569,7 @@ The rules every SQL form follows:
   from year 0 as the runtime does. It names its two dates once, in a
   subquery, and gives the three columns a `CalendarPeriod` is stored in.
 - **Counts and positions clamped to `integer`.** `left`, `right`,
-  `substr` and `lpad` take PostgreSQL's 32-bit `integer`; text is never
+  `substr`, `lpad` and `rpad` take PostgreSQL's 32-bit `integer`; text is never
   longer than a gigabyte, so a larger count means what the largest does
   and is clamped rather than cast, which would fail.
 - **Text in code points, whatever the collation.** Text is compared and
@@ -1579,9 +1579,10 @@ The rules every SQL form follows:
   never depends on the database's collation. That rules out `lower` and
   `upper`: PostgreSQL 16's follow the collation, and under `"C"` they
   change only ASCII letters. `ends_with` compares with `COLLATE "C"`;
-  `strpos`, `starts_with`, `replace` and `btrim` match code points
-  already. `trim`'s characters are Unicode's 25 `White_Space` characters,
-  which Rust's `str::trim` removes.
+  `strpos`, `starts_with`, `replace`, `reverse`, `btrim`, `ltrim` and
+  `rtrim` match code points already. The characters `trim`, `trim_start`
+  and `trim_end` remove are Unicode's 25 `White_Space` characters, which
+  Rust's `str::trim` removes.
 - **No session setting changes a form.** Dates are added without a zone,
   and escapes are written `E'...'`, so a session's time zone, date style,
   interval style and `standard_conforming_strings` make no difference.
@@ -5464,8 +5465,12 @@ formats for people, because it is a representation of its own
 |---|---|---|---|
 | `length(value)` | `Int`, at least 0, in code points | | `char_length(x)::bigint` |
 | `trim(value)` | `Text` without Unicode white space at either end; never longer | | `btrim(x, chars)`, `chars` the Unicode `White_Space` characters |
+| `trim_start(value)`, `trim_end(value)` | `Text` without Unicode white space at that end; never longer | | `ltrim(x, chars)`; `rtrim(x, chars)` |
 | `lower(value, locale:)`, `upper(value, locale:)` | `Text` in Unicode's default case mapping, or a locale's (`İ` in Turkish) with `locale:` | | none |
 | `contains(value, part)` | `Bool` | | `strpos(x, a) > 0` |
+| `contains_ignoring_case(value, part)` | `Bool`, whether `part` is in `value` when each code point of both is simply case-folded | | none; a query searches a trigram index for it ([Searching inside text](06-reads-and-writes.md#searching-inside-text)) |
+| `equals_ignoring_case(value, other)` | `Bool`, whether the two are equal when each code point of both is simply case-folded | | none |
+| `index_of(value, part)`, `last_index_of(value, part)` | `Int?`, the position in code points where `part` first or last starts, from 0, or `none` when it isn't there; `""` is at 0, and last at the length | | `NULLIF(strpos(x, a), 0) - 1`; `CASE` on `strpos(reverse(x), reverse(a))` |
 | `starts_with(value, prefix)`, `ends_with(value, suffix)` | `Bool` | | `starts_with(x, a)`; `right(x, char_length(a)) = a COLLATE "C"` |
 | `replace(value, find, with)` | `Text` with every `find` replaced, left to right; `find` never empty | | `replace(x, a, b)` |
 | `split(value, separator)` | `List<Text>`, at least one item; `separator` never empty; `""` gives `[""]`, and separators side by side give `""` between them | | none |
@@ -5474,6 +5479,9 @@ formats for people, because it is a representation of its own
 | `keep_first(value, n)`, `keep_last(value, n)` | `Text`, at most `n` code points from that end; `n` never negative; never longer | | `left(x, n)`; `right(x, n)` |
 | `drop_first(value, n)`, `drop_last(value, n)` | `Text` without `n` code points from that end; never longer | | `substr(x, n + 1)`; `CASE WHEN n = 0 THEN x ELSE left(x, -n) END` |
 | `pad_start(value, length, fill:)` | `Text` of at least `length` code points, `fill` added at the start; never cut; `fill:` one code point written out | | `CASE` on `char_length(x)` with `lpad` |
+| `pad_end(value, length, fill:)` | `Text` of at least `length` code points, `fill` added at the end; never cut; `fill:` one code point written out | | `CASE` on `char_length(x)` with `rpad` |
+| `truncate(value, length)` | `Text` of at most `length` code points: `value` itself when it fits, else its first `length - 1` and `…`, or `""` for a `length` of 0; `length` never negative; never longer than `value` or than `length` | | `CASE` on `char_length(x)` with `left(x, n - 1) \|\| '…'` |
+| `normalise(value, form:)` | `Text` in Unicode's normalisation form `NormalForm.nfc` or `NormalForm.nfkc` | | none |
 | `from(value)` | `Text`, the value as JSON carries it: an `Int`'s digits, a `Decimal` with its scale's places, a `Uuid` in lowercase, `true` or `false`, a time in its wire form | | `x::text` for `Int`, `Decimal`, `Uuid` and `Bool`; times none |
 | `parse(raw, as: T)` | `T`, any standard type or type built on a representation, from its canonical text ([the contract](#what-every-standard-type-can-do)) | `malformed`, or the rule it breaks | none |
 | `format(value, locale:)` | `PresentationText` for people, any standard type, with the type's own options (`unit:`, `precision:`) ([the contract](#what-every-standard-type-can-do)) | | none |
@@ -5647,6 +5655,26 @@ test "a locale's case and order" {
     assert tag_line(zopf) == "Swiss, plaited"
     assert count_pieces("Swiss,plaited", ",") == 2
 }
+
+test "finding, trimming one end, padding the other and cutting a preview" {
+    assert text.contains_ignoring_case("Buy OAT milk", "oat Milk")
+    assert text.contains_ignoring_case("ÉCLAIR", "éclair")
+    assert not text.contains_ignoring_case("Straße", "STRASSE")  // ß folds to itself
+    assert text.equals_ignoring_case("Rye Loaf", "rye loaf")
+    assert text.index_of("rye and more rye", "rye") == 0
+    assert text.last_index_of("rye and more rye", "rye") == 13
+    assert text.index_of("面包店", "店") == 2  // in code points
+    assert text.index_of("rye", "oat") == none
+    assert text.trim_start("  rye  ") == "rye  "
+    assert text.trim_end("  rye  ") == "  rye"
+    assert text.pad_end("rye", 6, fill: ".") == "rye..."
+    assert text.pad_end("sourdough", 3, fill: ".") == "sourdough"  // never cut
+    assert text.truncate("Seeded sourdough boule", 10) == "Seeded so…"
+    assert text.truncate("Rye", 10) == "Rye"
+    assert text.length(text.truncate("Seeded sourdough boule", 10)) == 10
+    assert text.normalise("café", form: NormalForm.nfc) == "café"
+    assert text.normalise("ﬁne", form: NormalForm.nfkc) == "fine"
+}
 ```
 
 ### Checking text against a pattern
@@ -5670,9 +5698,9 @@ Collections stay invariant everywhere else.
 
 ### Cutting and padding
 
-`trim`, `slice` and the four cuts (`keep_first`, `keep_last`,
-`drop_first` and `drop_last`) never give text longer than they were
-given. The compiler knows this (`at_most_length_of`), so a type built
+`trim`, `trim_start`, `trim_end`, `slice`, `truncate` and the four cuts
+(`keep_first`, `keep_last`, `drop_first` and `drop_last`) never give
+text longer than they were given. The compiler knows this (`at_most_length_of`), so a type built
 from the result keeps the text's `max_length` without an `attempt` arm.
 It reads the bound from the cut text's type's `max_length`, from a
 literal's length, or from a cut inside a cut. A count written out, as in
@@ -5680,24 +5708,37 @@ literal's length, or from a cut inside a cut. A count written out, as in
 records the argument only. `split`'s "at least one item" doesn't prove a
 `min_length` either.
 
-`lower` and `upper` can make text longer (`ß` becomes `SS`), so they
-carry no such bound.
+`lower` and `upper` can make text longer (`ß` becomes `SS`), and so can
+`normalise` (`ﬁ` becomes `fi` in NFKC), so they carry no such bound.
 
 `keep_first` can split what a person sees as one character, such as an
 emoji with a skin tone, which is two code points. The preview it cuts is
 still valid text.
 
-`pad_start`'s `length` is any `Int`. One at or below the text's own
-length gives the text back. `fill:` is required, and is one code point
-written as a text literal. A value, or a literal of any other length, is
-`type.mismatch`, as a `scale:` that isn't written out is.
+`pad_start`'s and `pad_end`'s `length` is any `Int`. One at or below
+the text's own length gives the text back. `fill:` is required, and is
+one code point written as a text literal. A value, or a literal of any
+other length, is `type.mismatch`, as a `scale:` that isn't written out
+is.
 
-White space, for `trim`, is Unicode's `White_Space` property.
+`truncate` cuts a preview to fit: text of `length` code points or fewer
+is given back whole, and longer text keeps its first `length - 1` and
+ends in `…`, one code point, so the result is never longer than
+`length`. Like `keep_first`, it can split what a person sees as one
+character.
 
-There is no `trim_start`, `trim_end` or `pad_end`, and no way to go
-through text character by character. Each job that needs one, such as a
-slug, a mask, a preview or a change of case, is an operation instead.
-Unicode normalisation happens where text comes in, not in a call (below).
+White space, for `trim`, `trim_start` and `trim_end`, is Unicode's
+`White_Space` property.
+
+`index_of` and `last_index_of` count in code points, as `slice` does, so
+`text.slice(value, at, n)` cuts from the position one gives. Text that
+isn't there gives `none`, which the code tests before using the
+position. An operation that may give `none` isn't compared in a query's
+condition ([Operations in conditions](06-reads-and-writes.md#operations-in-conditions)).
+
+There is no way to go through text character by character. Each job
+that needs one, such as a slug, a mask, a preview or a change of case,
+is an operation instead.
 
 ### Arguments checked while compiling
 
@@ -5721,6 +5762,15 @@ This holds for every type built on `Text`, an `Email` included, read
 through the route's codecs, a map's keys among them. Text written in code
 and text read back from the database are kept as they are.
 
+`text.normalise(value, form:)` composes text a request didn't bring,
+such as a file's lines or a provider's answer: `form: NormalForm.nfc`
+composes it as a request's text is, and `NormalForm.nfkc` also folds
+compatibility characters into their plain forms, so `ﬁ` becomes `fi` and
+a full-width `Ａ` becomes `A`, before text is compared or kept as a key.
+Its tables are the pinned ICU4X release's Unicode data, so every target
+gives the same text. It has no SQL form, since PostgreSQL's `normalize`
+follows the Unicode release PostgreSQL was built with.
+
 ### Case and sorting in a locale
 
 Without `locale:`, case follows Unicode's full default mapping (`ß`
@@ -5734,6 +5784,14 @@ through ICU4X's case mapping and collation.
 
 Case mapping takes any `Locale`, not only the ones `locales { }`
 declares, because its data is Unicode's: one table for every locale.
+
+`contains_ignoring_case` and `equals_ignoring_case` compare text by
+Unicode's simple case folding, one code point for another, the same in
+every locale: `É` matches `é`, `Σ`, `σ` and `ς` match each other, and
+`K` (the Kelvin sign) matches `k`. A folding that changes the length is
+left out, so `ß` doesn't match `ss`, and `İ` matches only itself. That
+one rule holds in code and in a query, whose search finds what the code
+finds ([Searching inside text](06-reads-and-writes.md#searching-inside-text)).
 
 Sorting uses only the locales `locales { }` declares. A `Locale` your
 application doesn't support sorts as the supported locale that a header

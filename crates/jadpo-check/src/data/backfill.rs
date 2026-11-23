@@ -619,8 +619,8 @@ impl Render<'_> {
     }
 
     /// What an operation takes written out rather than as a value: a
-    /// rounding mode, `decimal.round`'s `scale:`, `text.pad_start`'s
-    /// `fill:`.
+    /// rounding mode, `decimal.round`'s `scale:`, `text.pad_start`'s and
+    /// `text.pad_end`'s `fill:`.
     fn written_out(
         &self,
         frame: &Frame<'_>,
@@ -650,7 +650,7 @@ impl Render<'_> {
                 (value.scale == 0).then_some(())?;
                 Some(Arg::Whole(i64::try_from(value.mantissa).ok()?))
             }
-            (Op::TextPadStart, 2, Expr::Literal(Literal::Text(text))) => {
+            (Op::TextPadStart | Op::TextPadEnd, 2, Expr::Literal(Literal::Text(text))) => {
                 let mut chars = text.chars();
                 match (chars.next(), chars.next()) {
                     (Some(c), None) => Some(Arg::Character(c)),

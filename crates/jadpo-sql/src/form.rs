@@ -134,7 +134,11 @@ pub fn has_form(op: Op) -> bool {
             | Op::TemporalDay
             | Op::TextLength
             | Op::TextTrim
+            | Op::TextTrimStart
+            | Op::TextTrimEnd
             | Op::TextContains
+            | Op::TextIndexOf
+            | Op::TextLastIndexOf
             | Op::TextStartsWith
             | Op::TextEndsWith
             | Op::TextReplace
@@ -144,6 +148,8 @@ pub fn has_form(op: Op) -> bool {
             | Op::TextDropFirst
             | Op::TextDropLast
             | Op::TextPadStart
+            | Op::TextPadEnd
+            | Op::TextTruncate
             | Op::TextFrom
             | Op::HashSha256
             | Op::EncodingToBase64
@@ -236,8 +242,27 @@ pub fn operation(op: Op, args: &[Arg<'_>]) -> Option<Form> {
         (Op::TextTrim, [Value(x, held)]) if text(held) => {
             one(format!("btrim({x}, {})", text_literal(TRIMMED_CHARACTERS)))
         }
+        (Op::TextTrimStart, [Value(x, held)]) if text(held) => {
+            one(format!("ltrim({x}, {})", text_literal(TRIMMED_CHARACTERS)))
+        }
+        (Op::TextTrimEnd, [Value(x, held)]) if text(held) => {
+            one(format!("rtrim({x}, {})", text_literal(TRIMMED_CHARACTERS)))
+        }
         (Op::TextContains, [Value(x, held), Value(a, _)]) if text(held) => {
             one(format!("(strpos({x}, {a}) > 0)"))
+        }
+        // A position from 0, `NULL` for `none` when `part` isn't there
+        // (chunk 10.3).
+        (Op::TextIndexOf, [Value(x, held), Value(a, _)]) if text(held) => {
+            one(format!("(NULLIF(strpos({x}, {a}), 0) - 1)::bigint"))
+        }
+        // The last start is where the reversed part first starts in the
+        // reversed text, counted from the other end.
+        (Op::TextLastIndexOf, [Value(x, held), Value(a, _)]) if text(held) => {
+            let found = format!("strpos(reverse({x}), reverse({a}))");
+            one(format!(
+                "(CASE WHEN {found} = 0 THEN NULL ELSE char_length({x}) - {found} - char_length({a}) + 1 END)::bigint"
+            ))
         }
         (Op::TextStartsWith, [Value(x, held), Value(a, _)]) if text(held) => {
             one(format!("starts_with({x}, {a})"))
@@ -277,6 +302,20 @@ pub fn operation(op: Op, args: &[Arg<'_>]) -> Option<Form> {
                 text_literal(&fill.to_string())
             ))
         }
+        (Op::TextPadEnd, [Value(x, held), Value(length, _), Character(fill)])
+            if text(held) && *fill != '\0' =>
+        {
+            one(format!(
+                "(CASE WHEN char_length({x}) >= ({length}) THEN {x} ELSE rpad({x}, {}, {}) END)",
+                clamped(length, 0),
+                text_literal(&fill.to_string())
+            ))
+        }
+        (Op::TextTruncate, [Value(x, held), Value(length, _)]) if text(held) => one(format!(
+            "(CASE WHEN char_length({x}) <= ({length}) THEN {x} WHEN ({length}) = 0 THEN '' ELSE left({x}, {} - 1) || {} END)",
+            clamped(length, 0),
+            text_literal("\u{2026}")
+        )),
         (Op::TextFrom, [Value(x, Held::Builtin(builtin)), Absent])
             if matches!(
                 builtin.representation(),

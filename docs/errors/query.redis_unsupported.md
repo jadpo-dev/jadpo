@@ -9,8 +9,8 @@ Redis keeps no indexes of its own. Jadpo finds a record there by its
 or, for a field `indexes:` lists, by the set it keeps for each value,
 which gives a page in creation order and its `count()`. A query that
 asks anything else, a range, `in`, `or`, an `order:`, an `include:`,
-`matches` or a `geo.` test, would have to read every record, and Redis
-keeps no list of them.
+`matches`, a search inside text or a `geo.` test, would have to read
+every record, and Redis keeps no list of them.
 
 ## What it looks like
 
@@ -83,6 +83,62 @@ error: `locked_out` reads `SignUpDraft`, kept in Redis, with a range
   help: https://jadpo.dev/docs/errors/query.redis_unsupported
 
 check failed: 1 error, 4 files
+```
+
+A search inside text reads a trigram index, which Redis doesn't keep
+either:
+
+```jadpo check project=e-query-redis-search file=app.jadpo hidden
+application {
+    connections: {
+        drafts: {
+            driver: Driver.redis
+            url: config.redis_url
+        }
+    }
+}
+
+config {
+    redis_url: RedisUrl
+}
+```
+
+```jadpo check project=e-query-redis-search file=domains/accounts/entities/sign_up_draft.jadpo hidden
+/// A sign-up someone has started and not yet finished.
+entity SignUpDraft {
+    id: Uuid
+    email: Email
+
+    store: drafts
+    expires_after: 2h
+}
+```
+
+domains/accounts/queries/drafts_from.jadpo:
+
+```jadpo check project=e-query-redis-search file=domains/accounts/queries/drafts_from.jadpo expect=query.redis_unsupported
+use accounts/entities { SignUpDraft }
+
+/// The sign-ups whose address holds what someone typed.
+query drafts_from(part: SignUpDraft.email) -> List<SignUpDraft> {
+    from: SignUpDraft
+    where: text.contains_ignoring_case(SignUpDraft.email, part)
+    limit: 50
+}
+```
+
+```text output
+error: `drafts_from` reads `SignUpDraft`, kept in Redis, with a search inside text, `text.contains_ignoring_case`
+ --> domains/accounts/queries/drafts_from.jadpo:6:5
+  |
+6 |     where: text.contains_ignoring_case(SignUpDraft.email, part)
+  |     ^^^^^ only a database can
+  reason: `drafts` is a Redis connection. A search inside text reads a trigram index, which only PostgreSQL keeps. A query of an entity in Redis finds records by `id`, by a field with `unique: true`, or by `==` on one field `indexes:` lists, a page in creation order or its `count()`.
+  next: Keep `SignUpDraft` in a PostgreSQL store, or find its records by `id`, a unique field or an indexed one (human)
+  rule: query.redis_unsupported
+  help: https://jadpo.dev/docs/errors/query.redis_unsupported
+
+check failed: 1 error, 3 files
 ```
 
 `(human)` at the end of the `next:` line tells your coding agent to stop

@@ -53,6 +53,11 @@ impl Reader<'_> {
         optional: bool,
     ) -> Option<Condition> {
         let operation = standard_operation(call)?;
+        // A search inside text, which takes a value given when the query
+        // runs (area 6, "Searching inside text").
+        if operation.op == Op::TextContainsIgnoringCase {
+            return self.text_search(scope, entity, call, asked, whole, optional);
+        }
         let written = format!("{}.{}", operation.namespace, operation.name);
         let args: Vec<ast::Arg> = call
             .arg_list()
@@ -239,6 +244,17 @@ impl Reader<'_> {
                 }
             });
         }
+        // One that may give `none` would keep it under `!=` and `not` in
+        // code and not in SQL.
+        if matches!(operation.op, Op::TextIndexOf | Op::TextLastIndexOf) {
+            self.unsupported(
+                scope,
+                whole,
+                format!("`{written}` gives `Int?`, `none` where the text isn't there, and a condition compares a value an operation always gives: under `!=` or `not` the code would keep a `none` the database leaves out."),
+                format!("Test `text.contains({field_written}, ...)`, or keep the position in a field of its own"),
+            );
+            return None;
+        }
         // What it gives: a built-in type, or the field's own type.
         let (result_ty, result) = match operation.result {
             Kind::Builtin(builtin) => (Ty::Prim(builtin), form::Held::Builtin(builtin)),
@@ -353,6 +369,196 @@ impl Reader<'_> {
         })
     }
 
+    /// `text.contains_ignoring_case(Entity.field, value)` (area 6,
+    /// "Searching inside text"; chunk 10.3): a text field of `entity`
+    /// first, then text written out or given when the query runs, the
+    /// condition itself. A trigram index finds the records it may hold
+    /// for, and the code decides each, so it never stands under `not` or
+    /// `or`. On a `where_present:` line (`optional`) its value may be
+    /// absent, and the line applies only when it is there.
+    pub(super) fn text_search(
+        &mut self,
+        scope: &Scope<'_>,
+        entity: &EntityModel,
+        call: &ast::CallExpr,
+        asked: Asked<'_>,
+        whole: &Expr,
+        optional: bool,
+    ) -> Option<Condition> {
+        let written = "text.contains_ignoring_case";
+        let entity_name = entity.name.clone();
+        let shape = format!("`{written}({entity_name}.<field>, <text>)`");
+        if let Some(word) = self.under.last() {
+            self.unsupported(
+                scope,
+                whole,
+                format!("A trigram index finds the records a search inside text may keep, never those it doesn't, so the search can't be under `{word}`: it stands on a `where:` or `where_present:` line of its own, or joined to the others with `and` (area 6, \"Searching inside text\")."),
+                if *word == "or" {
+                    "Write each side as a query of its own".to_string()
+                } else {
+                    "Write the search without `not`, or filter the records after the query".to_string()
+                },
+            );
+            return None;
+        }
+        if !matches!(asked, Asked::Holds) {
+            self.unsupported(
+                scope,
+                whole,
+                format!("`{written}` gives a `Bool` and is the condition itself, as {shape}."),
+                format!("Write {shape} on its own"),
+            );
+            return None;
+        }
+        let args: Vec<ast::Arg> = call
+            .arg_list()
+            .into_iter()
+            .flat_map(|list| list.args())
+            .collect();
+        let mut slots: [Option<Expr>; 2] = [None, None];
+        for (index, arg) in args.iter().enumerate() {
+            let named = arg.name().and_then(|name| tree::name_text(&name));
+            let slot = match named.as_deref() {
+                Some("value") => Some(0),
+                Some("part") => Some(1),
+                Some(_) => None,
+                None => (index < 2).then_some(index),
+            };
+            match slot {
+                Some(slot) if slots[slot].is_none() => slots[slot] = arg.expr(),
+                _ => {
+                    self.unsupported(
+                        scope,
+                        whole,
+                        format!("`{written}` takes one of `{entity_name}`'s text fields and the text to find, `value` and `part`, each once."),
+                        format!("Write {shape}"),
+                    );
+                    return None;
+                }
+            }
+        }
+        let [Some(first), Some(second)] = slots else {
+            self.unsupported(
+                scope,
+                whole,
+                format!(
+                    "`{written}` takes one of `{entity_name}`'s text fields and the text to find."
+                ),
+                format!("Write {shape}"),
+            );
+            return None;
+        };
+        if !self.names_entity(&unparen(&first)) {
+            let reason = if self.field_named(entity, &second).is_some() {
+                format!(
+                    "A trigram index on the field serves the search when the field comes first and the text after: {shape}."
+                )
+            } else {
+                format!(
+                    "A search inside text tests one of `{entity_name}`'s text fields, named first, for the text the query is given."
+                )
+            };
+            self.unsupported(
+                scope,
+                whole,
+                reason,
+                format!("Write `{entity_name}.<field>` first"),
+            );
+            return None;
+        }
+        let field = self.field_ref(scope.path, entity, &unparen(&first))?;
+        let field_written = format!("{entity_name}.{}", field.name);
+        // Only the application can open a sealed field (area 15; chunk P9).
+        if field.sealed.is_some() {
+            self.out.push(crate::data::sealed::used(
+                &entity.name,
+                &field.name,
+                "A query's condition",
+                Self::span(scope.path, whole),
+                "Search a field that isn't encrypted, or find the records another way".to_string(),
+            ));
+            return None;
+        }
+        let field_ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
+        let text = form::Held::Builtin(Prim::Text);
+        if self
+            .lookup
+            .representation(&field_ty)
+            .map(Prim::representation)
+            != Some(Prim::Text)
+            || field.compound.is_some()
+            || field.json.is_some()
+        {
+            if !field.ty.has_error() {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_MISMATCH,
+                        format!("`{field_written}` can't be used where `Text` is required"),
+                    )
+                    .at(Self::span(scope.path, &first), format!("a `{}`", field.ty.strip_nullable()))
+                    .reason(format!(
+                        "`{written}` searches text kept in one column, as in code; `{field_written}` is `{}`.",
+                        field.ty.strip_nullable()
+                    ))
+                    .next("Search a field built on `Text`"),
+                );
+            }
+            return None;
+        }
+        let expected = Ty::Prim(Prim::Text);
+        let (value, ty) = self.value(scope, &second, &expected)?;
+        if !matches!(
+            value,
+            Value::Param { .. } | Value::Literal(jadpo_std::Literal::Text(_))
+        ) {
+            self.unsupported(
+                scope,
+                whole,
+                format!("A search inside text looks for text written out or given when the query runs, a parameter or a field of one; `{}` is neither.", shown(second.syntax())),
+                format!("Pass the text as a parameter of the query: {shape}"),
+            );
+            return None;
+        }
+        if !matches!(value, Value::Literal(_)) && !self.comparable(&ty, &expected) {
+            self.mismatch(scope, &second, &ty, &expected);
+            return None;
+        }
+        let nullable = self.lookup.is_nullable(&ty);
+        if !optional && nullable {
+            self.optional_in_where(scope, &second);
+            return None;
+        }
+        let condition = Condition::Call {
+            call: Call {
+                op: Op::TextContainsIgnoringCase,
+                field: field.name.clone(),
+                args: vec![CallArg::Value(value.clone(), text)],
+                result: form::Held::Builtin(Prim::Bool),
+            },
+            test: Test::Holds,
+        };
+        if !optional {
+            return Some(condition);
+        }
+        if !nullable && !ty.has_error() {
+            let shown_value = shown(second.syntax());
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_OPTIONAL_VALUE,
+                    format!("`{shown_value}` is always there, so `where_present:` would always apply"),
+                )
+                .at(Self::span(scope.path, &second), "never absent")
+                .reason("`where_present:` is for a value that may be absent, such as an optional field of a request's `Input`; a condition that always applies is a `where:` line.")
+                .next("Write `where:` instead"),
+            );
+            return None;
+        }
+        Some(Condition::Present {
+            value,
+            condition: Box::new(condition),
+        })
+    }
+
     /// Whether an expression names an entity's field, `Entity.field`, an
     /// entity's name first.
     fn names_entity(&self, expr: &Expr) -> bool {
@@ -435,7 +641,22 @@ impl Reader<'_> {
         whole: &Expr,
     ) -> Option<CallArg> {
         let expr = unparen(expr);
+        let searched = match field_ty {
+            Ty::Field(entity_name, path) => format!("{entity_name}.{}", path.join(".")),
+            _ => format!("{}.<field>", entity.name),
+        };
         let not_written = |this: &mut Self| {
+            // Text found anywhere in a field, given when the query runs,
+            // is a search inside text (area 6, "Searching inside text").
+            if written == "text.contains" {
+                this.unsupported(
+                    scope,
+                    whole,
+                    format!("An index holds `{written}`'s result for each record, so its text to find is written out, fixed while compiling; `{}` is given when the query runs. A search for text given when the query runs ignores case, through a trigram index (area 6, \"Searching inside text\").", shown(expr.syntax())),
+                    format!("Write `text.contains_ignoring_case({searched}, {})`", shown(expr.syntax())),
+                );
+                return;
+            }
             this.unsupported(
                 scope,
                 whole,

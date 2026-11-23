@@ -146,6 +146,7 @@ mod tenant_proofs;
 mod test_items;
 mod text;
 mod text_formats;
+mod text_search;
 mod time;
 mod tokens;
 mod translation_exchange;

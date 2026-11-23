@@ -4044,7 +4044,10 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
 /// `geometry` for each a `BoundingBox` filter tests, however many queries
 /// test it, as [`jadpo_sql::condition::search_index`] says the search reads.
 /// A field declared with `kind: IndexKind.geographic` already has the
-/// first. An include's conditions are searched so too (chunk Q4).
+/// first. An include's conditions are searched so too (chunk Q4). And the
+/// GIN trigram index on each text field a search inside text tests,
+/// `<table>_<column>_trgm_idx` (area 6, "Searching inside text"; chunk
+/// 10.3).
 fn search_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &mut Schema) {
     fn reads<'q>(
         entity: &'q str,
@@ -4095,18 +4098,27 @@ fn search_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &m
             };
             let method = physical::IndexMethod {
                 name: found.method.to_string(),
-                operator_class: String::new(),
+                operator_class: found.operator_class.to_string(),
                 cast: found.cast.map(str::to_string),
                 with: Vec::new(),
             };
             let column = field.column.clone();
+            // A search inside text's index holds the column's text with its
+            // ASCII letters lowered (area 6, "Searching inside text").
+            let expression = found
+                .folded
+                .then(|| jadpo_sql::condition::folded(&jadpo_sql::ident(&column)));
             if table.indexes.values().any(|index| {
-                index.columns == [column.clone()] && index.method.as_ref() == Some(&method)
+                index.columns == [column.clone()]
+                    && index.method.as_ref() == Some(&method)
+                    && index.expression == expression
             }) {
                 continue;
             }
             let table_name = entity.table.as_str();
-            let mut name = if found.cast.is_some() {
+            let mut name = if found.folded {
+                physical::object_name(&[table_name, column.as_str(), "trgm"], "idx")
+            } else if found.cast.is_some() {
                 physical::object_name(&[table_name, column.as_str(), "box"], "idx")
             } else {
                 physical::object_name(&[table_name, column.as_str()], "idx")
@@ -4120,7 +4132,7 @@ fn search_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &m
             table.indexes.insert(
                 name,
                 physical::Index {
-                    expression: None,
+                    expression,
                     columns: vec![column],
                     reason: format!("query {query}"),
                     predicate,

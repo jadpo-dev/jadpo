@@ -105,6 +105,20 @@ const QUERIES: &[(&str, &str, &str, &str)] = &[
         "where: text.trim(Book.title) == title",
         "book_title_trim_idx",
     ),
+    // A search inside text (area 6, "Searching inside text"; chunk 10.3),
+    // which a trigram index finds and the code decides.
+    (
+        "searched",
+        "part: Book.title",
+        "where: text.contains_ignoring_case(Book.title, part)",
+        "book_title_trgm_idx",
+    ),
+    (
+        "searched_subtitles",
+        "part: Book.title",
+        "where: text.contains_ignoring_case(Book.subtitle, part) and Book.pages > 100",
+        "book_subtitle_trgm_idx",
+    ),
 ];
 
 /// A catalogue of books, each query above and an action that calls it.
@@ -188,6 +202,8 @@ fn each_operation_derives_the_index_on_its_expression() {
         "CREATE INDEX \"book_title_length_idx\" ON \"book\" ((char_length(\"title\")::bigint));",
         "CREATE INDEX \"book_published_on_year_idx\" ON \"book\" (((CASE WHEN extract(year FROM \"published_on\") < 0 THEN extract(year FROM \"published_on\") + 1 ELSE extract(year FROM \"published_on\") END)::bigint));",
         "CREATE INDEX \"book_title_keep_first_idx\" ON \"book\" ((left(\"title\", LEAST(3, 2147483647)::integer)));",
+        "CREATE EXTENSION IF NOT EXISTS \"pg_trgm\";",
+        "CREATE INDEX \"book_title_trgm_idx\" ON \"book\" USING gin ((lower(\"title\" COLLATE \"C\")) gin_trgm_ops);",
     ] {
         assert!(sql.contains(index), "{index}\n{sql}");
     }
@@ -305,6 +321,15 @@ impl Live {
                     jadpo_runtime::to_sql(&args[*index as usize], param.ty).expect("a parameter")
                 }
                 Source::Stored(value) => value.clone(),
+                // A search's pattern, and how many rows a rechecked read
+                // asks for (chunk 10.3).
+                Source::Substring { index, path } if path.is_empty() => {
+                    match &args[*index as usize] {
+                        Value::Text(text) => SqlValue::Text(jadpo_std::search::substring(text)),
+                        other => panic!("a search for {other:?}"),
+                    }
+                }
+                Source::Fetch => SqlValue::Int8(100),
                 other => panic!("a parameter from {other:?}"),
             })
             .collect();
@@ -614,6 +639,84 @@ fn each_operation_gives_the_code_s_answer_through_its_index() {
             vec![text("Plain")],
             Box::new(move |book: &Book| ran(Op::TextTrim, &[text(&book.title)]) == text("Plain")),
         ),
+        // Case ignored by simple folding, the text literal, and every other
+        // code point, and `k` and `s`, wildcards the database's search
+        // leaves to the code (chunk 10.3).
+        (
+            "searched",
+            vec![text("THE")],
+            Box::new(move |book: &Book| {
+                holds(ran(
+                    Op::TextContainsIgnoringCase,
+                    &[text(&book.title), text("THE")],
+                ))
+            }),
+        ),
+        (
+            "searched",
+            vec![text("CAFÉ society")],
+            Box::new(move |book: &Book| {
+                holds(ran(
+                    Op::TextContainsIgnoringCase,
+                    &[text(&book.title), text("CAFÉ society")],
+                ))
+            }),
+        ),
+        (
+            "searched",
+            vec![text("plain")],
+            Box::new(move |book: &Book| {
+                holds(ran(
+                    Op::TextContainsIgnoringCase,
+                    &[text(&book.title), text("plain")],
+                ))
+            }),
+        ),
+        (
+            "searched",
+            vec![text("E\u{301}\u{301}")],
+            Box::new(move |book: &Book| {
+                holds(ran(
+                    Op::TextContainsIgnoringCase,
+                    &[text(&book.title), text("E\u{301}\u{301}")],
+                ))
+            }),
+        ),
+        (
+            "searched",
+            vec![text("!")],
+            Box::new(move |book: &Book| {
+                holds(ran(
+                    Op::TextContainsIgnoringCase,
+                    &[text(&book.title), text("!")],
+                ))
+            }),
+        ),
+        (
+            "searched",
+            vec![text("\u{212a}")],
+            Box::new(move |book: &Book| {
+                holds(ran(
+                    Op::TextContainsIgnoringCase,
+                    &[text(&book.title), text("\u{212a}")],
+                ))
+            }),
+        ),
+        ("searched", vec![text("%")], Box::new(move |_: &Book| false)),
+        (
+            "searched_subtitles",
+            vec![text("SHORT")],
+            Box::new(move |book: &Book| match &book.subtitle {
+                Some(subtitle) => {
+                    book.pages > 100
+                        && holds(ran(
+                            Op::TextContainsIgnoringCase,
+                            &[text(subtitle), text("SHORT")],
+                        ))
+                }
+                None => false,
+            }),
+        ),
     ];
     for (query, args, keeps) in &cases {
         let expected: Vec<u64> = books
@@ -766,6 +869,28 @@ fn every_indexable_form_can_be_indexed() {
                 Arg::Value("5", i),
                 Arg::Character('0'),
             ],
+        ),
+        (
+            Op::TextPadEnd,
+            vec![
+                Arg::Value("\"t\"", t),
+                Arg::Value("5", i),
+                Arg::Character('0'),
+            ],
+        ),
+        (Op::TextTrimStart, vec![Arg::Value("\"t\"", t)]),
+        (Op::TextTrimEnd, vec![Arg::Value("\"t\"", t)]),
+        (
+            Op::TextTruncate,
+            vec![Arg::Value("\"t\"", t), Arg::Value("5", i)],
+        ),
+        (
+            Op::TextIndexOf,
+            vec![Arg::Value("\"t\"", t), Arg::Value("'x'", t)],
+        ),
+        (
+            Op::TextLastIndexOf,
+            vec![Arg::Value("\"t\"", t), Arg::Value("'x'", t)],
         ),
         (Op::TextFrom, vec![Arg::Value("\"i\"", i), Arg::Absent]),
         (Op::TextFrom, vec![Arg::Value("\"d\"", d), Arg::Absent]),

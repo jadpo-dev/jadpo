@@ -1536,6 +1536,16 @@ pub fn extensions(schema: &Schema, store: &str) -> BTreeSet<&'static str> {
                 _ => {}
             }
         }
+        // A search inside text's trigram index (area 6, "Searching inside
+        // text"; chunk 10.3).
+        if table.indexes.values().any(|index| {
+            index
+                .method
+                .as_ref()
+                .is_some_and(|m| m.operator_class == jadpo_sql::condition::TRIGRAM_OPS)
+        }) {
+            out.insert("pg_trgm");
+        }
     }
     out
 }
@@ -2028,6 +2038,10 @@ fn create_index(table: &str, name: &str, def: &Table) -> Statement {
                 name,
                 expression,
                 found.predicate.as_deref(),
+                found
+                    .method
+                    .as_ref()
+                    .map(|m| (m.name.as_str(), m.operator_class.as_str())),
             ),
             does: "create index",
         };
