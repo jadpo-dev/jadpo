@@ -512,3 +512,15 @@ fn a_sibling_mismatch_names_the_type_both_refine() {
     let reason = found[0].reason.as_deref().unwrap_or_default();
     assert!(reason.starts_with("Both refine `Uuid`,"), "{reason}");
 }
+
+/// A field is read through an optional value only once `match` has found
+/// one, a built-in type's as an object's: `page.items` on a `Page<T>?`, as a
+/// route test's `response.output` is, is refused rather than left for the
+/// run to stop at (chunk 10.2's tuning runs).
+#[test]
+fn a_field_of_an_optional_page_is_read_after_match() {
+    let source = "type Name = Text {\n    max_length: 20\n}\n\ntype Item = Output {\n    name: Name\n}\n\nfunction first(page: Page<Item>?) -> List<Item> {\n    return page.items\n}\n";
+    assert_eq!(check(source), ["type.nullable_selection"]);
+    let matched = "type Name = Text {\n    max_length: 20\n}\n\ntype Item = Output {\n    name: Name\n}\n\nfunction first(page: Page<Item>?) -> List<Item> {\n    match page {\n        some(found) -> {\n            return found.items\n        }\n        none -> {\n            return []\n        }\n    }\n}\n";
+    assert_eq!(check(matched), Vec::<String>::new());
+}

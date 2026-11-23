@@ -160,6 +160,8 @@ pub(crate) enum PatternFact {
     /// A failure arm of an outcome `match`.
     Failure(String),
     Wildcard,
+    /// A kind of caller (area 8): `user(member)`.
+    Caller(jadpo_std::http::PrincipalKind),
     Unknown,
 }
 

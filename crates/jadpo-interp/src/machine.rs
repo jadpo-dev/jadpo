@@ -2870,6 +2870,10 @@ impl<'p> Machine<'p> {
             Pattern::Some => *value != Value::None,
             Pattern::None => *value == Value::None,
             Pattern::Wildcard => true,
+            // A caller is a record named for its kind, `Principal.user`.
+            Pattern::Caller(kind) => {
+                matches!(value, Value::Record(record) if &*record.ty == kind.type_name())
+            }
             Pattern::Literal(_) => match decoded {
                 Some(ArmPattern::Literal(Some(constant))) => {
                     ops::equal(value, &self.program.constant(*constant))

@@ -2601,6 +2601,7 @@ impl Lower<'_> {
                             .map_or(Pattern::Unknown, Pattern::Failure)
                     }
                     Some(PatternFact::Wildcard) => Pattern::Wildcard,
+                    Some(PatternFact::Caller(kind)) => Pattern::Caller(kind),
                     Some(PatternFact::Unknown) | None => {
                         self.path_names(&refs);
                         Pattern::Unknown
