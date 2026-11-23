@@ -478,8 +478,8 @@ fn a_signed_webhook_is_kept_once_and_delivered_to_its_subscriber() {
         };
         let payload: serde_json::Value = serde_json::from_str(payload).expect("JSON");
         assert_eq!(payload["paymentId"], "pi_1");
-        // An `Int` is the contract's text, as every payload writes one.
-        assert_eq!(payload["pence"], "1250");
+        // An `Int` is a JSON number, as every payload writes one.
+        assert_eq!(payload["pence"], 1250);
         assert_eq!(payload["occurred_at"], "2026-10-19T08:58:30Z");
         // Read by the package's own decoder as it arrived (chunk K2).
         assert_eq!(payload["method"], "card");

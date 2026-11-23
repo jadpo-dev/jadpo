@@ -474,7 +474,7 @@ fn allowing_less_replaces_the_stored_values_no_longer_allowed() {
         "type Size = Enum {\n    small\n    medium\n    large\n    huge\n}\n",
     );
     jadpo(&root, &["records", "update"]);
-    let drift = jadpo(&root, &["check"]);
+    let drift = jadpo_ci(&root, &["check"]);
     assert!(
         drift.stdout.contains("migration.out_of_date"),
         "{}",

@@ -705,8 +705,8 @@ impl Stand {
         };
         assert_eq!(file["key"], serde_json::Value::String(key.clone()));
         assert_eq!(file["store"], "exports");
-        // An `Int` with no range is a string in its JSON (area 7).
-        assert_eq!(file["size"], serde_json::json!(bytes.len().to_string()));
+        // An `Int` is a JSON number (area 2, "Numbers in JSON").
+        assert_eq!(file["size"], serde_json::json!(bytes.len()));
         Written {
             text: String::from_utf8(bytes).expect("UTF-8"),
             name: file["name"].as_str().expect("a name").to_string(),

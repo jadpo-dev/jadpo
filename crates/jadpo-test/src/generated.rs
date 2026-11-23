@@ -1373,6 +1373,16 @@ impl RouteSchemas<'_> {
                     let Some(property) = property else {
                         continue;
                     };
+                    // An optional field that is `none` is sent as `null`,
+                    // whatever its schema's type.
+                    let required = alternatives.iter().any(|one| {
+                        one.get("required")
+                            .and_then(J::as_array)
+                            .is_some_and(|names| names.iter().any(|n| n.as_str() == Some(name)))
+                    });
+                    if value.is_null() && !required {
+                        continue;
+                    }
                     at.push(name.clone());
                     if let Some(found) = self.mistyped(property, value, at, depth + 1) {
                         return Some(found);
