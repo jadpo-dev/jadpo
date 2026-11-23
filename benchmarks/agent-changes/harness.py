@@ -945,8 +945,14 @@ def keep_raw(folder, label, result):
     destination.write_text(json.dumps(result, indent=2) + '\n')
 
 
+def contamination_markers():
+    """What a tool call names only when it reaches for the repository or
+    the contract. Not the bare `golden-todo`: both apps use it themselves."""
+    return [str(ROOT), 'LLM-coding', 'benchmarks/golden-todo', 'acceptance-v0.2', 'adversarial-changes']
+
+
 def score(change, language, number, label, settings, transcript, diff, visible, reports, asked, timings, folder):
-    forbidden = [str(ROOT), 'LLM-coding', 'golden-todo', 'acceptance-v0.2', 'adversarial-changes']
+    forbidden = contamination_markers()
     lines = transcript.read_text().splitlines()
     rollout = folder / 'rollout.jsonl'
     log = folder / 'tmp/jadpo-calls/calls.jsonl'

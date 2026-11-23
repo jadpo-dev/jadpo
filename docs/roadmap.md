@@ -118,22 +118,7 @@ D1 first: the site starts once D1 has merged.
 
 ## Phase 10 — Golden todo
 
-- [ ] **10.2 How easily agents write Jadpo** `opus · high`: the same 10–20
-  realistic changes to one app (the golden todo, with its TypeScript
-  baseline and adversarial changes) done by fresh agent sessions in Jadpo
-  and in TypeScript, several runs each, with hidden acceptance tests.
-  Measures correctness, attempts and tokens to green, where each mistake
-  was caught (check, test or escaped), how easily a person reviews the
-  diff, and how often a tempting unsafe shortcut gets through. It also counts how
-  often a person is asked to sign off per change, and splits each session's
-  tokens between reading docs, reading and writing code, and command output. The agent
-  gets the docs as [documentation](documentation.md) delivers them, primer
-  first, since no model has seen Jadpo; the results
-  also say whether task guides are needed beyond the primer. The method is designed at the start of the chunk; its
-  results steer the order of the work after the first build.
-  Built: the method, 18 changes and the harness, in [agent-changes](../benchmarks/agent-changes/README.md); the
-  measured runs (108 sessions at `claude-opus-5-5`, about $200 estimated before any was measured, $648 at most by the
-  $6 cap a run) wait for a maintainer's approval and a signed-in `claude`.
+- [x] **10.2 How easily agents write Jadpo**: the method, changes and harness are in [agent-changes](../benchmarks/agent-changes/README.md).
 - [ ] **10.3 Fix what the held-out runs found** `opus · high`: every
   stumble from 10.2's report, general fixes only (Richard, 2026-11-23).
   A count reaches JSON as a number, and route tests compare the JSON on
