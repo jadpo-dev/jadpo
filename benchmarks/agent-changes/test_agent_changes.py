@@ -137,6 +137,12 @@ class Isolation(unittest.TestCase):
         self.assertRegex(suite, r'"enforces HTTP decoding boundaries over a real socket",\s*async \(context\) => \{[^}]*'
                                 r'if \(process\.env\.TEST_LOOPBACK === "unavailable"\) context\.skip\(\);')
 
+    def test_npm_never_asks_the_registry_for_an_update(self):
+        # A run's home is fresh, so npm's update check fires on its first
+        # command, and the sandbox kills a command that reaches for the network.
+        environment = harness.agent_environment(Path('/nowhere/run'), 'postgresql://x/y')
+        self.assertEqual(environment['NPM_CONFIG_UPDATE_NOTIFIER'], 'false')
+
     def test_agent_command_is_pinned_and_closed(self):
         with tempfile.TemporaryDirectory() as scratch:
             app = Path(scratch)
