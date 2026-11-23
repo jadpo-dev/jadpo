@@ -448,7 +448,10 @@ def agent_environment(folder, database_url, loopback=True):
     path += ['/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin']
     environment = {key: os.environ[key] for key in ['HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'LANG'] if key in os.environ}
     environment.update({'PATH': ':'.join(path), 'TERM': 'dumb', 'NO_COLOR': '1',
-                        'TEST_DATABASE_URL': database_url, 'JADPO_TEST_DATABASE_URL': database_url})
+                        'TEST_DATABASE_URL': database_url, 'JADPO_TEST_DATABASE_URL': database_url,
+                        # A fresh home makes npm check for its own update on the first
+                        # command, and the sandbox kills a command that reaches the network.
+                        'NPM_CONFIG_UPDATE_NOTIFIER': 'false'})
     if not loopback:
         environment['TEST_LOOPBACK'] = 'unavailable'
     return environment
