@@ -333,6 +333,7 @@ impl Reader<'_> {
 fn bound_most(lookup: &Lookup<'_>, query: &QueryModel, bound: &Bound) -> Option<u64> {
     match bound {
         Bound::Literal(n) => Some(*n),
+        Bound::Every => Some(jadpo_std::read::EVERY_MOST),
         Bound::Value(jadpo_sql::Value::Param { index, path }) => {
             let (_, ty) = query.params.get(*index as usize)?;
             let ty = match (path.is_empty(), ty.strip_nullable()) {

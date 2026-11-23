@@ -326,7 +326,11 @@ listed in `fails`. Every failure reaches a client in one JSON envelope:
 Every read is a named query in `queries/`. The result type says how many
 records come back: one (needs `missing:`), zero or one (`T?`), a list
 (needs `order:` and `limit:`) or a `Page<T>`. A query reads only the fields
-its result type needs.
+its result type needs. For "all of them", such as exporting all of a
+user's records or changing every one that matches, write `limit: every`:
+every record that matches, up to 10,000, and a fault rather than a
+shortened list when more do. Change many records with that query and a
+`for` loop of writes in one action.
 
 ```jadpo check project=tool-share file=domains/lending/types/tool_view.jadpo
 use lending/entities { Tool }

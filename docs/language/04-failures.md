@@ -628,7 +628,7 @@ fixed code and the cause is logged:
 | The route's deadline passed | 504 `deadline_exceeded` |
 | Storage failed before anything was committed | 503 `transaction_unavailable` or `read_unavailable` |
 | A write may have committed | 500 `outcome_unknown` |
-| `Int` overflow, the recursion limit, any defect | 500 `internal_fault` |
+| `Int` overflow, the recursion limit, more records than `limit: every` reads, any defect | 500 `internal_fault` |
 
 ### Reacting to a provider's problem
 
@@ -654,9 +654,11 @@ action send_reminder(todo: Todo) fails ReminderRejected, ReminderDelayed -> Rece
 
 ### Defects
 
-A runtime fault that comes from your code is a defect. `Int` overflow and
-the recursion limit ([Recursion](03-logic.md#recursion)) end the operation
-with `internal_fault`, undo its writes, and log which one happened:
+A runtime fault that comes from your code is a defect. `Int` overflow,
+the recursion limit ([Recursion](03-logic.md#recursion)) and more records
+matching than `limit: every` reads ([Every record that matches](06-reads-and-writes.md#every-record-that-matches))
+end the operation with `internal_fault`, undo its writes, and log which
+one happened:
 
 ```json
 {

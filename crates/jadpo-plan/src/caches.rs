@@ -259,6 +259,7 @@ impl Planner<'_> {
             decided: None,
             gate: None,
             redis: None,
+            every: None,
         })
     }
 }

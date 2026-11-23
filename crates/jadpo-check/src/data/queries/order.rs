@@ -2,6 +2,7 @@
 //! pages").
 
 use super::*;
+use jadpo_std::read::{EVERY_MOST, thousands};
 
 impl Reader<'_> {
     /// `order: [Entity.field asc, ...]`, with `id` added as the tie-break
@@ -181,32 +182,50 @@ impl Reader<'_> {
         out
     }
 
-    /// `limit:` or a page's `size:`: a whole number from 1, or a value
-    /// whose type has a `max:`.
+    /// `limit:` or a page's `size:`: a whole number from 1, a value whose
+    /// type has a `max:`, or, on a query's own list, `every` (area 6,
+    /// "Every record that matches").
     pub(super) fn bound(
         &mut self,
         scope: &Scope<'_>,
         value: Option<Expr>,
         member: &ast::Member,
-        what: &str,
+        at: BoundAt,
     ) -> Option<Bound> {
+        let what = if at == BoundAt::Page { "size" } else { "limit" };
         let Some(value) = value else {
-            let at = member.member_key().map_or_else(
+            let key = member.member_key().map_or_else(
                 || Span::new(scope.path, 0, 0),
                 |k| Self::span(scope.path, &k),
             );
+            let (reason, next) = if at == BoundAt::List {
+                (
+                    "Every list is bounded: a number, a value whose type has a `max:`, or `every`, for every record that matches.",
+                    "Give `limit:` a number, or `every`".to_string(),
+                )
+            } else {
+                (
+                    "Every list is bounded: a number, or a value whose type has a `max:`.",
+                    format!("Give `{what}:` a number"),
+                )
+            };
             self.out.push(
                 Diagnostic::new(
                     &rule::QUERY_LIMIT_UNBOUNDED,
                     format!("`{what}:` has no value"),
                 )
-                .at(at, "no value")
-                .reason("Every list is bounded: a number, or a value whose type has a `max:`.")
-                .next(format!("Give `{what}:` a number")),
+                .at(key, "no value")
+                .reason(reason)
+                .next(next),
             );
             return None;
         };
         let span = Self::span(scope.path, &value);
+        if let Expr::NameRef(name) = &value
+            && tree::name_ref_text(name).as_deref() == Some("every")
+        {
+            return self.every(span, at);
+        }
         match Const::from_expr(&value) {
             Const::Number {
                 value: n,
@@ -287,16 +306,30 @@ impl Reader<'_> {
             .find_map(|(_, rules)| rules.max);
         if max.is_none() {
             let written = shown(value.syntax());
+            let (reason, next) = if at == BoundAt::List {
+                (
+                    format!(
+                        "Every list is bounded: `limit:` is a number, a value whose type has a `max:`, such as the built-in `PageSize` (1 to 100), or `every`, for every record that matches, up to {}.",
+                        thousands(EVERY_MOST)
+                    ),
+                    "Write `limit: every` for every record that matches, or type the value as `PageSize`, or as an `Int` type of your own with a `max:`",
+                )
+            } else {
+                (
+                    format!(
+                        "Every list is bounded: `{what}:` is a number, or a value whose type has a `max:`, such as the built-in `PageSize` (1 to 100)."
+                    ),
+                    "Type the value as `PageSize`, or as an `Int` type of your own with a `max:`",
+                )
+            };
             self.out.push(
                 Diagnostic::new(
                     &rule::QUERY_LIMIT_UNBOUNDED,
                     format!("`{written}` has no maximum, so the {what} has no bound"),
                 )
                 .at(span, format!("`{ty}` has no `max:`"))
-                .reason(format!(
-                    "Every list is bounded: `{what}:` is a number, or a value whose type has a `max:`, such as the built-in `PageSize` (1 to 100)."
-                ))
-                .next("Type the value as `PageSize`, or as an `Int` type of your own with a `max:`"),
+                .reason(reason)
+                .next(next),
             );
             return None;
         }
@@ -324,6 +357,41 @@ impl Reader<'_> {
             return None;
         }
         Some(Bound::Value(bound))
+    }
+
+    /// `every` as a bound: a query's own list reads every record that
+    /// matches, up to [`EVERY_MOST`]; anywhere else it is refused.
+    fn every(&mut self, span: Span, at: BoundAt) -> Option<Bound> {
+        let (headline, label, reason, next) = match at {
+            BoundAt::List => return Some(Bound::Every),
+            BoundAt::Page => (
+                "A page can't hold `every` record".to_string(),
+                "a page's size",
+                "A page holds `size:` records at a time, and its cursor reaches the rest; every record that matches, at once, is a query returning `List<T>` with `limit: every`.".to_string(),
+                "Give `size:` a number or a `PageSize`, or return `List<T>` with `limit: every`".to_string(),
+            ),
+            BoundAt::Include => (
+                "An include can't read `every` record".to_string(),
+                "an include's limit",
+                "An include's `limit:` bounds the records it reads for each record it is included in, so it is a number; every record that matches is a query of its own, with `limit: every`.".to_string(),
+                "Give `limit:` a number, or read the records with a query of their own".to_string(),
+            ),
+            BoundAt::Nearest => (
+                "A `nearest` query can't read `every` record".to_string(),
+                "ordered by `nearest`",
+                format!(
+                    "A nearest-neighbour query returns at most {MOST_NEAREST} records: its index searches a few candidates beyond its limit, and the further it looks the slower and less exact the search."
+                ),
+                format!("Give `limit:` a number up to {MOST_NEAREST}"),
+            ),
+        };
+        self.out.push(
+            Diagnostic::new(&rule::QUERY_EVERY_UNSUPPORTED, headline)
+                .at(span, label)
+                .reason(reason)
+                .next(next),
+        );
+        None
     }
 
     /// `page: { size: ... after: ... }`.
@@ -358,7 +426,7 @@ impl Reader<'_> {
             let span = Self::span(scope.path, &name);
             seen.insert(word.clone());
             match word.as_str() {
-                "size" => size = self.bound(scope, setting.value(), &setting, "size"),
+                "size" => size = self.bound(scope, setting.value(), &setting, BoundAt::Page),
                 "after" => {
                     let Some(value) = setting.value() else {
                         continue;

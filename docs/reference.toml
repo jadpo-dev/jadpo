@@ -355,6 +355,7 @@ topics = [
   "filters",
   "searching-inside-text",
   "order-and-pages",
+  "every-record-that-matches",
   "counts-sums-and-groups",
   "children-and-parents",
   "a-query-giving-a-map-layer",

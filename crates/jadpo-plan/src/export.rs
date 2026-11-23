@@ -280,6 +280,7 @@ impl Planner<'_> {
             decided: None,
             gate: None,
             redis: None,
+            every: None,
         })
     }
 
@@ -379,6 +380,7 @@ impl Planner<'_> {
                 decided: None,
                 gate: None,
                 redis: None,
+                every: None,
             },
             fields,
         })
@@ -492,6 +494,7 @@ impl Planner<'_> {
                 decided: None,
                 gate: None,
                 redis: None,
+                every: None,
             },
             fields: exported,
         })

@@ -265,6 +265,9 @@ impl Report {
             FaultKind::Diverged(_) => "differs from its record".to_string(),
             FaultKind::Crashed => "crashed here".to_string(),
             FaultKind::FileRefused { .. } => "not kept".to_string(),
+            FaultKind::TooManyRecords { most } => {
+                format!("more than {} match", jadpo_std::read::thousands(*most))
+            }
         };
         let text = site.map(|frame| site_text(places, sources, frame, &caret));
         let written = text.as_ref().map_or("", |text| text.written.as_str());
@@ -367,6 +370,14 @@ impl Report {
                     "{why}; a field keeps only a file that fits its settings, so the write stopped before it ran and nothing the action wrote was kept."
                 ),
                 next.clone(),
+                "agent",
+            ),
+            FaultKind::TooManyRecords { most } => (
+                format!(
+                    "`{written}` reads every record that matches with `limit: every`, at most {}, and more matched; it gave back none of them rather than some, and nothing the action wrote was kept.",
+                    jadpo_std::read::thousands(*most)
+                ),
+                "Narrow the query's `where:`, or read the records a page at a time with `Page<T>`, or walk them in a batch".to_string(),
                 "agent",
             ),
             FaultKind::Diverged(what) => (

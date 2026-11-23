@@ -53,6 +53,7 @@ pub(crate) fn redis_read(
         decided: None,
         gate: None,
         redis: Some(Box::new(redis)),
+        every: None,
     }
 }
 
@@ -214,6 +215,8 @@ impl Planner<'_> {
             Some(match bound {
                 jadpo_check::data::queries::Bound::Literal(n) => Size::Fixed(*n),
                 jadpo_check::data::queries::Bound::Value(value) => Size::From(source(value)?),
+                // `query` reads `every` as one more than the most first.
+                jadpo_check::data::queries::Bound::Every => return None,
             })
         };
         let page = match query.cardinality {

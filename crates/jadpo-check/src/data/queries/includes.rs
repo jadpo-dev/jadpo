@@ -291,7 +291,7 @@ impl Reader<'_> {
                 None => self.include_needs(name, name_span, target, "order"),
             }
             match sections.first.get("limit") {
-                Some(member) => limit = self.bound(scope, member.value(), member, "limit"),
+                Some(member) => limit = self.bound(scope, member.value(), member, BoundAt::Include),
                 None => self.include_needs(name, name_span, target, "limit"),
             }
         }
