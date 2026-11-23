@@ -3561,6 +3561,140 @@ POST / {
 
 The route is written as [HTTP](07-http.md) describes.
 
+A route that both kinds of caller may use passes `current_principal`
+whole, a `Principal`. Code that does one thing for a user and another for
+a service matches it by kind: `user(name)` gives that arm the
+`Principal.user`, and `service` or `service(name)` the
+`Principal.service`. There is an arm for each kind `principal { }`
+declares and no `_`, as on an enum. A `Principal.user` or a
+`Principal.service` widens to a `Principal`, so the same action takes
+`current_principal` from a route and `Principal.user(ada)` from a test:
+
+```jadpo check project=caller-kinds file=app.jadpo hidden
+use accounts/entities { Service, User }
+
+application {}
+
+principal {
+    user: {
+        subject: User.email
+    }
+    service: {
+        subject: Service.name
+    }
+}
+```
+
+```jadpo check project=caller-kinds file=domains/accounts/entities/user.jadpo hidden
+/// A person with an account.
+entity User {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [id]
+    }
+}
+```
+
+```jadpo check project=caller-kinds file=domains/accounts/entities/service.jadpo hidden migrate=initial
+/// Another system that calls this app.
+entity Service {
+    id: Uuid
+    name: Text {
+        unique: true
+        max_length: 100
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [id]
+    }
+}
+```
+
+```jadpo check project=caller-kinds file=domains/accounts/types/asker.jadpo hidden
+/// Who is asking, as a reply says it.
+type Asker = Enum {
+    shopper
+    courier
+}
+```
+
+```jadpo check project=caller-kinds file=domains/accounts/actions/asker_id.jadpo
+use accounts/entities { User }
+
+/// Which person is asking, or `none` when another system is.
+action asker_id(caller: Principal) -> User.id? {
+    match caller {
+        user(asker) -> {
+            return asker.id
+        }
+        service -> {
+            return none
+        }
+    }
+}
+```
+
+```jadpo check project=caller-kinds file=domains/accounts/actions/asker_kind.jadpo
+use accounts/types { Asker }
+
+/// Whether a person or another system is asking, as a value.
+action asker_kind(caller: Principal) -> Asker {
+    return match caller {
+        user -> Asker.shopper
+        service -> Asker.courier
+    }
+}
+```
+
+```jadpo check project=caller-kinds file=domains/accounts/types/asker_pair.jadpo hidden
+use accounts/entities { Service, User }
+
+/// A person and another system, as the tests set them up.
+type AskerPair = Object {
+    ada: User
+    stock_sync: Service
+}
+```
+
+```jadpo check project=caller-kinds file=domains/accounts/fixtures/two_askers.jadpo hidden
+use accounts/types { AskerPair }
+
+/// Ada, a person, and the stock sync, another system.
+fixture two_askers() -> AskerPair {
+    return AskerPair {
+        ada: make.User {
+            email: "ada@example.test"
+        }
+        stock_sync: make.Service {
+            name: "stock-sync"
+        }
+    }
+}
+```
+
+```jadpo check project=caller-kinds file=domains/accounts/actions/asker_id.test.jadpo
+use accounts/entities { Service, User }
+use accounts/types { Asker, AskerPair }
+use accounts/actions { asker_kind }
+use accounts/fixtures { two_askers }
+
+test "each kind of caller takes its own arm" {
+    var both: AskerPair = two_askers()
+    var ada: User = both.ada
+    var stock_sync: Service = both.stock_sync
+    assert asker_id(Principal.user(ada)) == ada.id
+    assert asker_id(Principal.service(stock_sync)) == none
+    assert asker_kind(Principal.user(ada)) == Asker.shopper
+    assert asker_kind(Principal.service(stock_sync)) == Asker.courier
+}
+```
+
 - `current_principal` exists only in routes that need a signed-in caller.
   Actions, queries and functions get the caller as a parameter, so their
   signatures say they need one, and tests pass one in.
