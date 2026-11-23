@@ -1345,7 +1345,9 @@ function supplier_contact(supplier: Supplier) -> Email {
 Field types are how identifiers stay apart: `Customer.id` and `Supplier.id`
 are both UUIDs, and passing one where the other is expected is
 `type.sibling_mismatch`. To move a value into a field type on purpose, use the
-field as a constructor, as in `Customer.email(email)`.
+field as a constructor, as in `Customer.email(email)`. A field whose type is an
+enum is built the same way from a variant: `Ticket.status(Status.closed)`,
+which is also how a variant goes into an input or output that picks the field.
 
 A field can add rules of its own in a block after its type:
 

@@ -174,3 +174,51 @@ fn the_fixes_write_the_type_and_drop_the_label() {
         "type Test = Enum {\n    a\n    b\n}\n"
     );
 }
+
+const TICKET: &str = "entity Ticket {\n    id: Uuid\n    status: Status\n}\n\ntype Kind = Enum {\n    bug\n    idea\n}\n\ntype Edit = Input {\n    status: Ticket.status {\n        optional: true\n    }\n}\n\n";
+
+/// The next step of each diagnostic `source` gives, after `STATUS` and
+/// `TICKET`.
+fn next_steps(source: &str) -> Vec<String> {
+    let db = jadpo_db::Database::default();
+    let project = support::project(
+        &db,
+        Layout::Loose,
+        &[("main.jadpo", &format!("{STATUS}{TICKET}{source}"))],
+    );
+    jadpo_check::check(&db, project)
+        .iter()
+        .map(|found| {
+            let next = found.next.as_ref().map(|next| next.text.clone());
+            format!("{}: {}", found.rule.id, next.unwrap_or_default())
+        })
+        .collect()
+}
+
+/// A field whose type is an enum is built from a value of that enum with
+/// the field as a constructor, as any field type is (area 2, "Field
+/// types"), and the error for a bare variant names that constructor, for
+/// an optional field too.
+#[test]
+fn an_enum_fields_type_is_built_from_its_enum() {
+    assert_eq!(
+        next_steps(
+            "function closed() -> Ticket.status {\n    return Ticket.status(Status.closed)\n}\n\nfunction closing() -> Edit {\n    return Edit {\n        status: Ticket.status(Status.closed)\n    }\n}\n"
+        ),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        next_steps("function wrong() -> Ticket.status {\n    return Ticket.status(Kind.bug)\n}\n"),
+        ["type.constructor_input: Pass a `Status` value"]
+    );
+    for source in [
+        "function bare() -> Ticket.status {\n    return Status.closed\n}\n",
+        "function closing() -> Edit {\n    return Edit {\n        status: Status.closed\n    }\n}\n",
+    ] {
+        assert_eq!(
+            next_steps(source),
+            ["type.mismatch: Convert it with `Ticket.status(Status.closed)`"],
+            "for:\n{source}"
+        );
+    }
+}
