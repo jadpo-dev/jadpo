@@ -134,6 +134,31 @@ D1 first: the site starts once D1 has merged.
   Built: the method, 18 changes and the harness, in [agent-changes](../benchmarks/agent-changes/README.md); the
   measured runs (108 sessions at `claude-opus-5-5`, about $200 estimated before any was measured, $648 at most by the
   $6 cap a run) wait for a maintainer's approval and a signed-in `claude`.
+- [ ] **10.3 Fix what the held-out runs found** `opus · high`: every
+  stumble from 10.2's report, general fixes only (Richard, 2026-11-23).
+  A count reaches JSON as a number, and route tests compare the JSON on
+  the wire. `record.out_of_date` and `migration.out_of_date` stop costing
+  an attempt each. A query takes a literal substring search driven by
+  request input, with case ignored, escaped `LIKE` and a trigram index,
+  never a pattern. `text` gains `normalise` (NFC, NFKC), `index_of`,
+  `last_index_of`, `trim_start`, `trim_end`, `pad_end`, truncation with
+  an ellipsis and comparison ignoring case. `policy.output_field_unproved`
+  across an action call gets a message that says what to do. A first
+  commit's notices stop reading as a network change. Area pages first;
+  each is a language addition.
+- [ ] **10.4 A fresh held-out comparison** `opus · high`: about 12 new
+  changes to the golden todo that nobody has seen results for, written
+  before 10.3's fixes are measured, with more tempting unsafe shortcuts
+  than 10.2's set. Several runs per cell on Codex and on at least one
+  cheaper model, on Jadpo frozen after 10.3. 10.2's held-out runs are the
+  "before"; this is the honest "after".
+- [ ] **10.5 A mid-size app where rules live elsewhere** `opus · high`: a
+  multi-tenant backend in both languages, about 8–10 entities, 40 or more
+  routes, roles, a job and personal data, with the same hidden contract
+  tests. Changes look local but cross a rule enforced in another file (an
+  export, an admin search, a webhook, a job's report), and several run in
+  one session so earlier context scrolls away. Hidden tests check the
+  rule, not the feature. Codex and a cheaper model.
 
 ## What the 0.2.0 run found
 
