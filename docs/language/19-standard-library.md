@@ -5468,7 +5468,7 @@ formats for people, because it is a representation of its own
 | `trim_start(value)`, `trim_end(value)` | `Text` without Unicode white space at that end; never longer | | `ltrim(x, chars)`; `rtrim(x, chars)` |
 | `lower(value, locale:)`, `upper(value, locale:)` | `Text` in Unicode's default case mapping, or a locale's (`İ` in Turkish) with `locale:` | | none |
 | `contains(value, part)` | `Bool` | | `strpos(x, a) > 0` |
-| `contains_ignoring_case(value, part)` | `Bool`, whether `part` is in `value` when each code point of both is simply case-folded | | none; a query searches a trigram index for it ([Searching inside text](06-reads-and-writes.md#searching-inside-text)) |
+| `contains_ignoring_case(value, part)` | `Bool`, whether `part` is in `value` when each code point of both is simply case-folded; a query searches a trigram index for it ([Searching inside text](06-reads-and-writes.md#searching-inside-text)) | | none |
 | `equals_ignoring_case(value, other)` | `Bool`, whether the two are equal when each code point of both is simply case-folded | | none |
 | `index_of(value, part)`, `last_index_of(value, part)` | `Int?`, the position in code points where `part` first or last starts, from 0, or `none` when it isn't there; `""` is at 0, and last at the length | | `NULLIF(strpos(x, a), 0) - 1`; `CASE` on `strpos(reverse(x), reverse(a))` |
 | `starts_with(value, prefix)`, `ends_with(value, suffix)` | `Bool` | | `starts_with(x, a)`; `right(x, char_length(a)) = a COLLATE "C"` |
@@ -5771,86 +5771,6 @@ Its tables are the pinned ICU4X release's Unicode data, so every target
 gives the same text. It has no SQL form, since PostgreSQL's `normalize`
 follows the Unicode release PostgreSQL was built with.
 
-### Case and sorting in a locale
-
-Without `locale:`, case follows Unicode's full default mapping (`ß`
-becomes `SS`, and `İ` becomes `i` and a combining dot), and
-`list.sort_by` sorts text keys by code point, as queries sort them.
-
-With `locale:`, case follows that locale's rules (`i` becomes `İ` in
-Turkish), and `list.sort_by` orders text keys as the locale's alphabet
-does (`Ö` comes after `Z` in Swedish, and beside `O` in German). Both go
-through ICU4X's case mapping and collation.
-
-Case mapping takes any `Locale`, not only the ones `locales { }`
-declares, because its data is Unicode's: one table for every locale.
-
-`contains_ignoring_case` and `equals_ignoring_case` compare text by
-Unicode's simple case folding, one code point for another, the same in
-every locale: `É` matches `é`, `Σ`, `σ` and `ς` match each other, and
-`K` (the Kelvin sign) matches `k`. A folding that changes the length is
-left out, so `ß` doesn't match `ss`, and `İ` matches only itself. That
-one rule holds in code and in a query, whose search finds what the code
-finds ([Searching inside text](06-reads-and-writes.md#searching-inside-text)).
-
-Sorting uses only the locales `locales { }` declares. A `Locale` your
-application doesn't support sorts as the supported locale that a header
-asking for it would get, else as `default:`, the same way text for people
-is written ([Locales](10-configuration-and-time.md#locales)). A
-deployable carries only its supported locales' collation, so it sorts as
-`jadpo test` does. A project that sorts by a locale and declares none is
-`type.temporal_locales_required`, as one that formats is. Files handed to
-the compiler on their own have no application to declare locales, so
-they sort by the `Locale` they are given.
-
-Collation is the locale's default, at CLDR's default strength, so keys
-that are equal by its rules keep their order. On `list.sort_by`,
-`locale:` orders text keys only. With any other key it is
-`type.temporal_option_unused`, whose edit removes it.
-
-Here a shop supports British English and Swedish. A shopper writing
-Swedish in Finland gets Swedish order, the supported locale of their
-language. One writing Finnish gets British English order, the shop's
-default, since it supports no Finnish; in Finnish's own alphabet `Ö`
-would come after `Z`:
-
-```jadpo check project=sorting-supported-locales file=app.jadpo
-application {}
-
-locales {
-    default: Locale.en_gb
-    supported: [Locale.en_gb, Locale.sv_se]
-}
-```
-
-```jadpo check project=sorting-supported-locales file=domains/shop/types/product_name.jadpo
-type ProductName = Text {
-    min_length: 1
-    max_length: 60
-}
-```
-
-```jadpo check project=sorting-supported-locales file=domains/shop/actions/in_name_order.jadpo
-use shop/types { ProductName }
-
-/// The loaves in the order the shopper's alphabet puts their names, of the
-/// alphabets the shop supports.
-action in_name_order(loaves: List<ProductName>, shopper: Locale) -> List<ProductName> {
-    return list.sort_by(loaves, loaf -> loaf, locale: shopper)
-}
-```
-
-```jadpo check project=sorting-supported-locales file=domains/shop/actions/in_name_order.test.jadpo
-use shop/types { ProductName }
-
-test "a locale the shop doesn't support sorts in one it does" {
-    var loaves: List<ProductName> = ["Zopf", "Ölandsbröd", "Oat"]
-    assert in_name_order(loaves, Locale.sv_se) == ["Oat", "Zopf", "Ölandsbröd"]
-    assert in_name_order(loaves, Locale.sv_fi) == ["Oat", "Zopf", "Ölandsbröd"]
-    assert in_name_order(loaves, Locale.fi_fi) == ["Oat", "Ölandsbröd", "Zopf"]
-}
-```
-
 ### Values as text: `from`, `parse` and `format`
 
 `text.from` gives a value as JSON carries it
@@ -5946,6 +5866,87 @@ error: `text` is a standard-library namespace
   help: https://jadpo.dev/docs/errors/semantic.standard_namespace_reserved
 
 check failed: 1 error, 1 file
+```
+
+## Case and sorting in a locale
+<!-- topic: case-and-sorting-in-a-locale -->
+
+Without `locale:`, case follows Unicode's full default mapping (`ß`
+becomes `SS`, and `İ` becomes `i` and a combining dot), and
+`list.sort_by` sorts text keys by code point, as queries sort them.
+
+With `locale:`, case follows that locale's rules (`i` becomes `İ` in
+Turkish), and `list.sort_by` orders text keys as the locale's alphabet
+does (`Ö` comes after `Z` in Swedish, and beside `O` in German). Both go
+through ICU4X's case mapping and collation.
+
+Case mapping takes any `Locale`, not only the ones `locales { }`
+declares, because its data is Unicode's: one table for every locale.
+
+`contains_ignoring_case` and `equals_ignoring_case` compare text by
+Unicode's simple case folding, one code point for another, the same in
+every locale: `É` matches `é`, `Σ`, `σ` and `ς` match each other, and
+`K` (the Kelvin sign) matches `k`. A folding that changes the length is
+left out, so `ß` doesn't match `ss`, and `İ` matches only itself. That
+one rule holds in code and in a query, whose search finds what the code
+finds ([Searching inside text](06-reads-and-writes.md#searching-inside-text)).
+
+Sorting uses only the locales `locales { }` declares. A `Locale` your
+application doesn't support sorts as the supported locale that a header
+asking for it would get, else as `default:`, the same way text for people
+is written ([Locales](10-configuration-and-time.md#locales)). A
+deployable carries only its supported locales' collation, so it sorts as
+`jadpo test` does. A project that sorts by a locale and declares none is
+`type.temporal_locales_required`, as one that formats is. Files handed to
+the compiler on their own have no application to declare locales, so
+they sort by the `Locale` they are given.
+
+Collation is the locale's default, at CLDR's default strength, so keys
+that are equal by its rules keep their order. On `list.sort_by`,
+`locale:` orders text keys only. With any other key it is
+`type.temporal_option_unused`, whose edit removes it.
+
+Here a shop supports British English and Swedish. A shopper writing
+Swedish in Finland gets Swedish order, the supported locale of their
+language. One writing Finnish gets British English order, the shop's
+default, since it supports no Finnish; in Finnish's own alphabet `Ö`
+would come after `Z`:
+
+```jadpo check project=sorting-supported-locales file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.sv_se]
+}
+```
+
+```jadpo check project=sorting-supported-locales file=domains/shop/types/product_name.jadpo
+type ProductName = Text {
+    min_length: 1
+    max_length: 60
+}
+```
+
+```jadpo check project=sorting-supported-locales file=domains/shop/actions/in_name_order.jadpo
+use shop/types { ProductName }
+
+/// The loaves in the order the shopper's alphabet puts their names, of the
+/// alphabets the shop supports.
+action in_name_order(loaves: List<ProductName>, shopper: Locale) -> List<ProductName> {
+    return list.sort_by(loaves, loaf -> loaf, locale: shopper)
+}
+```
+
+```jadpo check project=sorting-supported-locales file=domains/shop/actions/in_name_order.test.jadpo
+use shop/types { ProductName }
+
+test "a locale the shop doesn't support sorts in one it does" {
+    var loaves: List<ProductName> = ["Zopf", "Ölandsbröd", "Oat"]
+    assert in_name_order(loaves, Locale.sv_se) == ["Oat", "Zopf", "Ölandsbröd"]
+    assert in_name_order(loaves, Locale.sv_fi) == ["Oat", "Zopf", "Ölandsbröd"]
+    assert in_name_order(loaves, Locale.fi_fi) == ["Oat", "Ölandsbröd", "Zopf"]
+}
 ```
 
 ## Text formats

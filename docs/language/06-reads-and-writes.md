@@ -810,7 +810,8 @@ A live test (`jadpo-cli`'s `operation_conditions`) runs such queries on
 PostgreSQL, edge cases among them, and checks each gives the code's answer
 through its index.
 
-### Searching inside text
+## Searching inside text
+<!-- topic: searching-inside-text -->
 
 To find the records whose text holds what someone typed, ignoring case,
 call `text.contains_ignoring_case` on the field with the text the query
@@ -948,7 +949,7 @@ use notes/types { FindNotes, NoteView }
 use notes/actions { write_note }
 
 /// What the list shows of a note.
-function shown(note: Note) -> NoteView {
+function card_of_note(note: Note) -> NoteView {
     return NoteView {
         id: note.id
         title: note.title
@@ -964,11 +965,11 @@ test "a search ignores case, reads its text literally and finds only the caller'
     }
     var milk: Note = write_note(Principal.user(ada), "Buy MILK")
     var oat: Note = write_note(Principal.user(ada), "oat milk")
-    var sale: Note = write_note(Principal.user(ada), "50% off")
+    var half_price: Note = write_note(Principal.user(ada), "50% off")
     var stock: Note = write_note(Principal.user(ada), "5000 items")
     var eclairs: Note = write_note(Principal.user(ada), "ÉCLAIRS for Friday")
     var bobs: Note = write_note(Principal.user(bob), "Bob's milk")
-    var found: Response = request {
+    var with_milk: Response = request {
         method: HttpMethod.get
         path: "/notes"
         as: Principal.user(ada)
@@ -976,8 +977,8 @@ test "a search ignores case, reads its text literally and finds only the caller'
             q: "milk"
         }
     }
-    assert found.output == [shown(milk), shown(oat)]
-    var percent: Response = request {
+    assert with_milk.output == [card_of_note(milk), card_of_note(oat)]
+    var with_percent: Response = request {
         method: HttpMethod.get
         path: "/notes"
         as: Principal.user(ada)
@@ -985,8 +986,8 @@ test "a search ignores case, reads its text literally and finds only the caller'
             q: "50%"
         }
     }
-    assert percent.output == [shown(sale)]
-    var accented: Response = request {
+    assert with_percent.output == [card_of_note(half_price)]
+    var with_eclair: Response = request {
         method: HttpMethod.get
         path: "/notes"
         as: Principal.user(ada)
@@ -994,14 +995,20 @@ test "a search ignores case, reads its text literally and finds only the caller'
             q: "éclair"
         }
     }
-    assert accented.output == [shown(eclairs)]
-    var everything: Response = request {
+    assert with_eclair.output == [card_of_note(eclairs)]
+    var all_of_adas: Response = request {
         method: HttpMethod.get
         path: "/notes"
         as: Principal.user(ada)
         input: FindNotes {}
     }
-    assert everything.output == [shown(sale), shown(stock), shown(milk), shown(oat), shown(eclairs)]  // by code point
+    assert all_of_adas.output == [
+        card_of_note(half_price),
+        card_of_note(stock),
+        card_of_note(milk),
+        card_of_note(oat),
+        card_of_note(eclairs)
+    ]  // by code point
     var for_bob: Response = request {
         method: HttpMethod.get
         path: "/notes"
@@ -1010,7 +1017,7 @@ test "a search ignores case, reads its text literally and finds only the caller'
             q: "MILK"
         }
     }
-    assert for_bob.output == [shown(bobs)]
+    assert for_bob.output == [card_of_note(bobs)]
 }
 ```
 

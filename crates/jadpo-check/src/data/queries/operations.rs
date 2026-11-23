@@ -641,7 +641,7 @@ impl Reader<'_> {
         whole: &Expr,
     ) -> Option<CallArg> {
         let expr = unparen(expr);
-        let searched = match field_ty {
+        let tested_field = match field_ty {
             Ty::Field(entity_name, path) => format!("{entity_name}.{}", path.join(".")),
             _ => format!("{}.<field>", entity.name),
         };
@@ -653,7 +653,7 @@ impl Reader<'_> {
                     scope,
                     whole,
                     format!("An index holds `{written}`'s result for each record, so its text to find is written out, fixed while compiling; `{}` is given when the query runs. A search for text given when the query runs ignores case, through a trigram index (area 6, \"Searching inside text\").", shown(expr.syntax())),
-                    format!("Write `text.contains_ignoring_case({searched}, {})`", shown(expr.syntax())),
+                    format!("Write `text.contains_ignoring_case({tested_field}, {})`", shown(expr.syntax())),
                 );
                 return;
             }
