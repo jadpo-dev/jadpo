@@ -1,0 +1,7 @@
+use desk/types { PersonLabel, WorkspaceName }
+
+/// What starting a workspace takes: its name and the founder's name in it.
+type NewWorkspace = Input {
+    name: WorkspaceName
+    display_name: PersonLabel
+}

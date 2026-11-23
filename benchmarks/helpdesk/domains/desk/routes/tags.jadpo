@@ -1,0 +1,21 @@
+use desk/entities { Tag }
+use desk/types { NameTag, TagView }
+use desk/actions { delete_tag, rename_tag }
+
+/// Tags, one at a time.
+routes Tags {
+    prefix: /tags
+
+    /// Renames a tag.
+    PATCH /{tag_id: Tag.id} {
+        input: NameTag
+        output: TagView
+        run: rename_tag(tag_id, input)
+    }
+
+    /// Deletes a tag.
+    DELETE /{tag_id: Tag.id} {
+        status: SuccessStatus.no_content
+        run: delete_tag(tag_id)
+    }
+}

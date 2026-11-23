@@ -1,0 +1,6 @@
+use desk/entities { Reply }
+
+/// A reply to the customer.
+type ReplyView = Output {
+    pick: [Reply.id, Reply.ticket_id, Reply.author_id, Reply.body, Reply.created_at, Reply.updated_at]
+}

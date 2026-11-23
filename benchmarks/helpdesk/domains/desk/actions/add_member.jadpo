@@ -1,0 +1,26 @@
+use desk/entities { Membership, UserNotFound, Workspace, WorkspaceNotFound }
+use desk/types { MemberView, NewMember }
+use desk/failures { AlreadyMember }
+
+/// Adds someone to a workspace; only its owners may.
+action add_member(workspace_id: Workspace.id, input: NewMember) fails WorkspaceNotFound, UserNotFound, AlreadyMember -> MemberView {
+    var member: Membership = attempt Membership.create {
+        set: {
+            workspace_id: workspace_id
+            user_id: input.user_id
+            role: input.role
+            display_name: input.display_name
+        }
+        conflict: {
+            Membership.one_per_person: AlreadyMember
+        }
+    }
+    return MemberView {
+        id: member.id
+        user_id: member.user_id
+        role: member.role
+        display_name: member.display_name
+        created_at: member.created_at
+        updated_at: member.updated_at
+    }
+}

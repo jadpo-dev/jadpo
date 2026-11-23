@@ -1,0 +1,8 @@
+use desk/entities { TicketTag }
+use desk/types { TagView }
+
+/// A tag on a ticket.
+type TicketTagView = Output {
+    pick: [TicketTag.id, TicketTag.created_at]
+    tag: TagView
+}

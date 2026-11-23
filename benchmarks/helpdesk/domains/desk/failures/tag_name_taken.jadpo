@@ -1,0 +1,5 @@
+/// The workspace has a tag with that name already.
+type TagNameTaken = Failure {
+    kind: FailureKind.conflict
+    message: "This workspace already has a tag with that name."
+}

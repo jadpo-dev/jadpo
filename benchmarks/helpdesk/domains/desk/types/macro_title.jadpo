@@ -1,0 +1,5 @@
+/// A macro's title.
+type MacroTitle = Text {
+    min_length: 1
+    max_length: 80
+}

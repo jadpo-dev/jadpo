@@ -1,0 +1,34 @@
+use desk/entities { CustomerNotFound, Ticket, Workspace, WorkspaceNotFound }
+use desk/types { CreateTicket, TicketStatus, TicketView }
+
+/// Opens a ticket for one of the workspace's customers.
+action open_ticket(workspace_id: Workspace.id, input: CreateTicket) fails WorkspaceNotFound, CustomerNotFound -> TicketView {
+    var ticket: Ticket = attempt Ticket.create {
+        set: {
+            workspace_id: workspace_id
+            customer_id: input.customer_id
+            assignee_id: none
+            subject: input.subject
+            status: TicketStatus.open
+            priority: input.priority
+            respond_by: clock.now + config.first_response_target
+            first_response_at: none
+            breached_at: none
+            solved_at: none
+        }
+    }
+    return TicketView {
+        id: ticket.id
+        customer_id: ticket.customer_id
+        assignee_id: ticket.assignee_id
+        subject: ticket.subject
+        status: ticket.status
+        priority: ticket.priority
+        respond_by: ticket.respond_by
+        first_response_at: ticket.first_response_at
+        breached_at: ticket.breached_at
+        solved_at: ticket.solved_at
+        created_at: ticket.created_at
+        updated_at: ticket.updated_at
+    }
+}

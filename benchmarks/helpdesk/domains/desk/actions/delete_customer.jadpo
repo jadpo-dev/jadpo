@@ -1,0 +1,7 @@
+use desk/entities { Customer, CustomerNotFound }
+
+/// Deletes a customer and their contact details; their tickets stay, without them.
+action delete_customer(customer_id: Customer.id) fails CustomerNotFound -> Unit {
+    var customer: Customer = attempt Customer.get(customer_id)
+    Customer.delete(customer)
+}

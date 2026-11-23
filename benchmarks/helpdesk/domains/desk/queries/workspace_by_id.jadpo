@@ -1,0 +1,9 @@
+use desk/entities { Workspace, WorkspaceNotFound }
+use desk/types { WorkspaceView }
+
+/// One workspace the caller belongs to.
+query workspace_by_id(workspace_id: Workspace.id) fails WorkspaceNotFound -> WorkspaceView {
+    from: Workspace
+    where: Workspace.id == workspace_id
+    missing: WorkspaceNotFound
+}

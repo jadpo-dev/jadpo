@@ -1,0 +1,7 @@
+use desk/actions { flag_breaches }
+
+/// Every five minutes, flags tickets past their first-response target.
+schedule first_response_breaches {
+    every: 5m
+    run: flag_breaches()
+}

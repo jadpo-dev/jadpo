@@ -1,0 +1,5 @@
+/// The text of a reply, a note or a macro.
+type MessageBody = Text {
+    min_length: 1
+    max_length: 5000
+}

@@ -1,0 +1,101 @@
+use desk/entities { Tag, Ticket }
+use desk/types { AddTicketTag, Assignment, CustomerView, NoteView, PatchTicket, ReplyView, TicketTagView, TicketView, WriteMessage }
+use desk/actions { add_note, add_reply, assign_ticket, delete_ticket, edit_ticket, reopen_ticket, solve_ticket, tag_ticket, ticket_customer, ticket_notes, ticket_replies, ticket_tags, untag_ticket }
+use desk/queries { ticket_by_id }
+
+/// Tickets, one at a time.
+routes Tickets {
+    prefix: /tickets
+
+    /// One ticket.
+    GET /{ticket_id: Ticket.id} {
+        output: TicketView
+        run: ticket_by_id(ticket_id)
+    }
+
+    /// Changes a ticket's subject or priority.
+    PATCH /{ticket_id: Ticket.id} {
+        input: PatchTicket
+        output: TicketView
+        run: edit_ticket(ticket_id, input)
+    }
+
+    /// Moves a ticket to the bin.
+    DELETE /{ticket_id: Ticket.id} {
+        status: SuccessStatus.no_content
+        run: delete_ticket(ticket_id)
+    }
+
+    /// Gives a ticket to a member, or to nobody.
+    POST /{ticket_id: Ticket.id}/assign {
+        input: Assignment
+        output: TicketView
+        run: assign_ticket(ticket_id, input)
+    }
+
+    /// Marks a ticket solved.
+    POST /{ticket_id: Ticket.id}/solve {
+        output: TicketView
+        run: solve_ticket(ticket_id)
+    }
+
+    /// Reopens a ticket.
+    POST /{ticket_id: Ticket.id}/reopen {
+        output: TicketView
+        run: reopen_ticket(ticket_id)
+    }
+
+    /// The ticket's customer.
+    GET /{ticket_id: Ticket.id}/customer {
+        output: CustomerView
+        run: ticket_customer(ticket_id)
+    }
+
+    /// The ticket's replies.
+    GET /{ticket_id: Ticket.id}/replies {
+        output: List<ReplyView>
+        run: ticket_replies(ticket_id)
+    }
+
+    /// Answers the customer.
+    POST /{ticket_id: Ticket.id}/replies {
+        input: WriteMessage
+        output: ReplyView
+        status: SuccessStatus.created
+        run: add_reply(ticket_id, input, current_principal.user)
+    }
+
+    /// The ticket's internal notes.
+    GET /{ticket_id: Ticket.id}/notes {
+        output: List<NoteView>
+        run: ticket_notes(ticket_id)
+    }
+
+    /// Adds an internal note.
+    POST /{ticket_id: Ticket.id}/notes {
+        input: WriteMessage
+        output: NoteView
+        status: SuccessStatus.created
+        run: add_note(ticket_id, input, current_principal.user)
+    }
+
+    /// The ticket's tags.
+    GET /{ticket_id: Ticket.id}/tags {
+        output: List<TicketTagView>
+        run: ticket_tags(ticket_id)
+    }
+
+    /// Puts a tag on the ticket.
+    POST /{ticket_id: Ticket.id}/tags {
+        input: AddTicketTag
+        output: TicketTagView
+        status: SuccessStatus.created
+        run: tag_ticket(ticket_id, input)
+    }
+
+    /// Takes a tag off the ticket.
+    DELETE /{ticket_id: Ticket.id}/tags/{tag_id: Tag.id} {
+        status: SuccessStatus.no_content
+        run: untag_ticket(ticket_id, tag_id)
+    }
+}

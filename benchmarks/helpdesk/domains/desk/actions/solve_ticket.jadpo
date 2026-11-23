@@ -1,0 +1,43 @@
+use desk/entities { Ticket, TicketNotFound }
+use desk/types { TicketStatus, TicketView }
+
+/// Marks a ticket solved, recording when.
+action solve_ticket(ticket_id: Ticket.id) fails TicketNotFound -> TicketView {
+    var ticket: Ticket = attempt Ticket.get(ticket_id)
+    if (ticket.status == TicketStatus.solved) {
+        return TicketView {
+            id: ticket.id
+            customer_id: ticket.customer_id
+            assignee_id: ticket.assignee_id
+            subject: ticket.subject
+            status: ticket.status
+            priority: ticket.priority
+            respond_by: ticket.respond_by
+            first_response_at: ticket.first_response_at
+            breached_at: ticket.breached_at
+            solved_at: ticket.solved_at
+            created_at: ticket.created_at
+            updated_at: ticket.updated_at
+        }
+    }
+    var changed: Ticket = Ticket.update(ticket) {
+        set: {
+            status: TicketStatus.solved
+            solved_at: clock.now
+        }
+    }
+    return TicketView {
+        id: changed.id
+        customer_id: changed.customer_id
+        assignee_id: changed.assignee_id
+        subject: changed.subject
+        status: changed.status
+        priority: changed.priority
+        respond_by: changed.respond_by
+        first_response_at: changed.first_response_at
+        breached_at: changed.breached_at
+        solved_at: changed.solved_at
+        created_at: changed.created_at
+        updated_at: changed.updated_at
+    }
+}

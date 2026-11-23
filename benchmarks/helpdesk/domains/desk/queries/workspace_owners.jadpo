@@ -1,0 +1,11 @@
+use desk/entities { Membership, Workspace }
+use desk/types { WorkspaceRole }
+
+/// Up to two of a workspace's owners: enough to tell whether one is the last.
+query workspace_owners(workspace_id: Workspace.id) -> List<Membership> {
+    from: Membership
+    where: Membership.workspace_id == workspace_id
+    where: Membership.role == WorkspaceRole.owner
+    order: [Membership.id asc]
+    limit: 2
+}

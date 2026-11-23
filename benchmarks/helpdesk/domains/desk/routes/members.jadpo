@@ -1,0 +1,21 @@
+use desk/entities { Membership }
+use desk/types { MemberChange, MemberView }
+use desk/actions { change_member, remove_member }
+
+/// A workspace's members, one at a time.
+routes Members {
+    prefix: /members
+
+    /// Changes a member's role or name.
+    PATCH /{member_id: Membership.id} {
+        input: MemberChange
+        output: MemberView
+        run: change_member(member_id, input)
+    }
+
+    /// Removes a member.
+    DELETE /{member_id: Membership.id} {
+        status: SuccessStatus.no_content
+        run: remove_member(member_id)
+    }
+}

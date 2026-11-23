@@ -1,0 +1,6 @@
+use desk/entities { Membership }
+
+/// A member as colleagues see them: never their email.
+type MemberView = Output {
+    pick: [Membership.id, Membership.user_id, Membership.role, Membership.display_name, Membership.created_at, Membership.updated_at]
+}

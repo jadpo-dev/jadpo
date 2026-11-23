@@ -1,0 +1,18 @@
+use desk/entities { Membership }
+use desk/types { TicketStatus }
+
+/// Which of a workspace's tickets to list.
+type ListTickets = Input {
+    status: TicketStatus {
+        optional: true
+    }
+    assignee_id: Membership.id {
+        optional: true
+    }
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}

@@ -1,0 +1,6 @@
+use desk/entities { Workspace }
+
+/// A workspace's new name.
+type WorkspaceRename = Input {
+    pick: [Workspace.name]
+}

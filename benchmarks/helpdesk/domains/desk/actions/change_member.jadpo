@@ -1,0 +1,31 @@
+use desk/entities { Membership, MembershipNotFound }
+use desk/types { MemberChange, MemberView, WorkspaceRole }
+use desk/failures { LastOwner }
+use desk/queries { workspace_owners }
+
+/// Changes a member's role or name; only owners may. The last owner
+/// can't stop being one.
+action change_member(member_id: Membership.id, input: MemberChange) fails MembershipNotFound, LastOwner -> MemberView {
+    var member: Membership = attempt Membership.get(member_id)
+    match input.role {
+        some(role) -> {
+            if (member.role == WorkspaceRole.owner and role != WorkspaceRole.owner) {
+                if (list.count(workspace_owners(member.workspace_id)) < 2) {
+                    reject LastOwner
+                }
+            }
+        }
+        none -> {}
+    }
+    var changed: Membership = Membership.update(member) {
+        patch: input
+    }
+    return MemberView {
+        id: changed.id
+        user_id: changed.user_id
+        role: changed.role
+        display_name: changed.display_name
+        created_at: changed.created_at
+        updated_at: changed.updated_at
+    }
+}

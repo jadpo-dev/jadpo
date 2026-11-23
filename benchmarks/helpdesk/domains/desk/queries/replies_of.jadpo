@@ -1,0 +1,10 @@
+use desk/entities { Reply, Ticket }
+use desk/types { ReplyView }
+
+/// A ticket's replies, oldest first.
+query replies_of(ticket_id: Ticket.id) -> List<ReplyView> {
+    from: Reply
+    where: Reply.ticket_id == ticket_id
+    order: [Reply.created_at asc, Reply.id asc]
+    limit: 500
+}

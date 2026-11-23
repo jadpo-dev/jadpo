@@ -1,0 +1,10 @@
+use desk/entities { Customer }
+use desk/types { PhoneText }
+
+/// A new customer.
+type CreateCustomer = Input {
+    pick: [Customer.name, Customer.email]
+    phone: PhoneText? {
+        default: none
+    }
+}

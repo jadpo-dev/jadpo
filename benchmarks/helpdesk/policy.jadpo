@@ -1,0 +1,9 @@
+use desk/entities { Workspace }
+use desk
+
+policy {
+    tenant: Workspace
+    actions: {
+        desk.found_workspace: [Access.authenticated]
+    }
+}

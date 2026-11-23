@@ -1,0 +1,28 @@
+use desk/entities { Tag, TagNotFound, Ticket, TicketNotFound, TicketTag }
+use desk/types { AddTicketTag, TagView, TicketTagView }
+use desk/failures { AlreadyTagged }
+
+/// Puts one of the workspace's tags on a ticket.
+action tag_ticket(ticket_id: Ticket.id, input: AddTicketTag) fails TicketNotFound, TagNotFound, AlreadyTagged -> TicketTagView {
+    var ticket: Ticket = attempt Ticket.get(ticket_id)
+    var tag: Tag = attempt Tag.get(input.tag_id)
+    var placed: TicketTag = attempt TicketTag.create {
+        set: {
+            workspace_id: ticket.workspace_id
+            ticket_id: ticket.id
+            tag_id: tag.id
+        }
+        conflict: {
+            TicketTag.once_per_ticket: AlreadyTagged
+        }
+    }
+    return TicketTagView {
+        id: placed.id
+        created_at: placed.created_at
+        tag: TagView {
+            id: tag.id
+            name: tag.name
+            created_at: tag.created_at
+        }
+    }
+}

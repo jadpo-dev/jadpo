@@ -1,0 +1,7 @@
+use desk/entities { Customer }
+
+/// A change to a customer.
+type PatchCustomer = Input {
+    pick: [Customer.name, Customer.email, Customer.phone]
+    optional: all
+}

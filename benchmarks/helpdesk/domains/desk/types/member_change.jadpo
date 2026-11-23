@@ -1,0 +1,7 @@
+use desk/entities { Membership }
+
+/// A member's new role or name.
+type MemberChange = Input {
+    pick: [Membership.role, Membership.display_name]
+    optional: all
+}

@@ -1,0 +1,6 @@
+use desk/entities { Tag }
+
+/// A tag.
+type TagView = Output {
+    pick: [Tag.id, Tag.name, Tag.created_at]
+}

@@ -1,0 +1,5 @@
+/// Whether someone may still sign in.
+type UserStatus = Enum {
+    active
+    disabled
+}

@@ -1,0 +1,9 @@
+use desk/entities { Macro, MacroNotFound }
+use desk/types { MacroView }
+
+/// One macro.
+query macro_by_id(macro_id: Macro.id) fails MacroNotFound -> MacroView {
+    from: Macro
+    where: Macro.id == macro_id
+    missing: MacroNotFound
+}

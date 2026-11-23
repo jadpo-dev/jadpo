@@ -1,0 +1,7 @@
+use desk/entities { Macro, MacroNotFound }
+
+/// Deletes a macro; owners and admins may.
+action delete_macro(macro_id: Macro.id) fails MacroNotFound -> Unit {
+    var saved: Macro = attempt Macro.get(macro_id)
+    Macro.delete(saved)
+}

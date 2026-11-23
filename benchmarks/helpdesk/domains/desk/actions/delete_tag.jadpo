@@ -1,0 +1,7 @@
+use desk/entities { Tag, TagNotFound }
+
+/// Deletes a tag and takes it off every ticket; owners and admins may.
+action delete_tag(tag_id: Tag.id) fails TagNotFound -> Unit {
+    var tag: Tag = attempt Tag.get(tag_id)
+    Tag.delete(tag)
+}

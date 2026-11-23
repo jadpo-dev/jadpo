@@ -1,0 +1,10 @@
+use desk/entities { Tag, Workspace }
+use desk/types { TagView }
+
+/// A workspace's tags, by name.
+query workspace_tags(workspace_id: Workspace.id) -> List<TagView> {
+    from: Tag
+    where: Tag.workspace_id == workspace_id
+    order: [Tag.name asc, Tag.id asc]
+    limit: 200
+}

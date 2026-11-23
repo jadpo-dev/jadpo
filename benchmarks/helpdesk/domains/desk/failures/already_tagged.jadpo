@@ -1,0 +1,5 @@
+/// The ticket has that tag already.
+type AlreadyTagged = Failure {
+    kind: FailureKind.conflict
+    message: "The ticket already has that tag."
+}

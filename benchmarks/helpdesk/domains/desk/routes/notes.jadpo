@@ -1,0 +1,21 @@
+use desk/entities { Note }
+use desk/types { NoteView, WriteMessage }
+use desk/actions { delete_note, edit_note }
+
+/// Notes, one at a time.
+routes Notes {
+    prefix: /notes
+
+    /// Changes a note's text.
+    PATCH /{note_id: Note.id} {
+        input: WriteMessage
+        output: NoteView
+        run: edit_note(note_id, input)
+    }
+
+    /// Deletes a note.
+    DELETE /{note_id: Note.id} {
+        status: SuccessStatus.no_content
+        run: delete_note(note_id)
+    }
+}

@@ -1,0 +1,13 @@
+config {
+    browser_origin: Url {
+        test: "https://desk.example.test"
+    }
+    database_url: PostgresUrl
+    session_signing_key: SigningKey
+    deleted_ticket_retention: Duration {
+        default: 30d
+    }
+    first_response_target: Duration {
+        default: 24h
+    }
+}

@@ -1,0 +1,5 @@
+/// The workspace has a customer with that email already.
+type CustomerEmailTaken = Failure {
+    kind: FailureKind.conflict
+    message: "This workspace already has a customer with that email."
+}

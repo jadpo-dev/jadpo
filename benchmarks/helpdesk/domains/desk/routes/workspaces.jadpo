@@ -1,0 +1,107 @@
+use desk/entities { Workspace }
+use desk/types { NewMember, CreateCustomer, NewMacro, CreateTicket, CustomerView, NewWorkspace, ListTickets, MacroView, MemberView, NameTag, WorkspaceRename, TagView, TicketView, WorkspaceView }
+use desk/actions { add_customer, add_member, create_macro, create_tag, found_workspace, open_ticket, rename_workspace }
+use desk/queries { my_workspaces, tickets_page, workspace_by_id, workspace_customers, workspace_macros, workspace_members, workspace_tags }
+
+/// Workspaces, and what belongs to each.
+routes Workspaces {
+    prefix: /workspaces
+
+    /// Starts a workspace with the caller as its owner.
+    POST / {
+        input: NewWorkspace
+        output: WorkspaceView
+        status: SuccessStatus.created
+        run: found_workspace(input, current_principal.user)
+    }
+
+    /// The workspaces the caller belongs to.
+    GET / {
+        output: List<WorkspaceView>
+        run: my_workspaces()
+    }
+
+    /// One workspace.
+    GET /{workspace_id: Workspace.id} {
+        output: WorkspaceView
+        run: workspace_by_id(workspace_id)
+    }
+
+    /// Renames a workspace.
+    PATCH /{workspace_id: Workspace.id} {
+        input: WorkspaceRename
+        output: WorkspaceView
+        run: rename_workspace(workspace_id, input)
+    }
+
+    /// The workspace's members.
+    GET /{workspace_id: Workspace.id}/members {
+        output: List<MemberView>
+        run: workspace_members(workspace_id)
+    }
+
+    /// Adds a member.
+    POST /{workspace_id: Workspace.id}/members {
+        input: NewMember
+        output: MemberView
+        status: SuccessStatus.created
+        run: add_member(workspace_id, input)
+    }
+
+    /// The workspace's customers.
+    GET /{workspace_id: Workspace.id}/customers {
+        output: List<CustomerView>
+        run: workspace_customers(workspace_id)
+    }
+
+    /// Adds a customer.
+    POST /{workspace_id: Workspace.id}/customers {
+        input: CreateCustomer
+        output: CustomerView
+        status: SuccessStatus.created
+        run: add_customer(workspace_id, input)
+    }
+
+    /// A page of the workspace's tickets.
+    GET /{workspace_id: Workspace.id}/tickets {
+        input: ListTickets
+        output: Page<TicketView>
+        run: tickets_page(workspace_id, input)
+    }
+
+    /// Opens a ticket.
+    POST /{workspace_id: Workspace.id}/tickets {
+        input: CreateTicket
+        output: TicketView
+        status: SuccessStatus.created
+        run: open_ticket(workspace_id, input)
+    }
+
+    /// The workspace's tags.
+    GET /{workspace_id: Workspace.id}/tags {
+        output: List<TagView>
+        run: workspace_tags(workspace_id)
+    }
+
+    /// Adds a tag.
+    POST /{workspace_id: Workspace.id}/tags {
+        input: NameTag
+        output: TagView
+        status: SuccessStatus.created
+        run: create_tag(workspace_id, input)
+    }
+
+    /// The workspace's macros.
+    GET /{workspace_id: Workspace.id}/macros {
+        output: List<MacroView>
+        run: workspace_macros(workspace_id)
+    }
+
+    /// Saves a macro.
+    POST /{workspace_id: Workspace.id}/macros {
+        input: NewMacro
+        output: MacroView
+        status: SuccessStatus.created
+        run: create_macro(workspace_id, input)
+    }
+}

@@ -1,0 +1,6 @@
+use desk/entities { Macro }
+
+/// A saved answer.
+type MacroView = Output {
+    pick: [Macro.id, Macro.title, Macro.body, Macro.created_at, Macro.updated_at]
+}

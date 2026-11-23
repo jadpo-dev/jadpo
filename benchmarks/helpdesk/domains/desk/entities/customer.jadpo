@@ -1,0 +1,28 @@
+use desk/entities { Workspace }
+use desk/types { PersonLabel, PhoneText, WorkspaceRole }
+
+/// Someone who asks the desk for help. Viewers never see customers.
+entity Customer {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    name: PersonLabel
+    email: Email {
+        unique: true
+    }
+    phone: PhoneText?
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+    updated_at: Instant {
+        generated: Generated.on_change
+    }
+
+    policy: {
+        create: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent]
+        read: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent]
+        update: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent]
+        delete: [WorkspaceRole.owner, WorkspaceRole.admin]
+    }
+}

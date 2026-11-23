@@ -1,0 +1,9 @@
+use desk/entities { User }
+use desk/types { PersonLabel, WorkspaceRole }
+
+/// Who to add to a workspace, and as what.
+type NewMember = Input {
+    user_id: User.id
+    role: WorkspaceRole
+    display_name: PersonLabel
+}

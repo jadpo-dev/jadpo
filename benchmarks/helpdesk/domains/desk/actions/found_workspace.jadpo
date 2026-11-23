@@ -1,0 +1,30 @@
+use desk/entities { Membership, Workspace }
+use desk/types { NewWorkspace, WorkspaceRole, WorkspaceView }
+use desk/failures { AlreadyMember }
+
+/// Starts a workspace with its founder as its owner.
+action found_workspace(input: NewWorkspace, founder: Principal.user) fails AlreadyMember -> WorkspaceView {
+    var workspace: Workspace = Workspace.create {
+        set: {
+            name: input.name
+        }
+    }
+    var owner: Membership = attempt Membership.create {
+        set: {
+            workspace_id: workspace.id
+            user_id: founder.id
+            role: WorkspaceRole.owner
+            display_name: input.display_name
+        }
+        conflict: {
+            Membership.one_per_person: AlreadyMember
+        }
+    }
+    assert owner.role == WorkspaceRole.owner
+    return WorkspaceView {
+        id: workspace.id
+        name: workspace.name
+        created_at: workspace.created_at
+        updated_at: workspace.updated_at
+    }
+}

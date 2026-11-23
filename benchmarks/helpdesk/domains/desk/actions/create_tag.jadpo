@@ -1,0 +1,21 @@
+use desk/entities { Tag, Workspace, WorkspaceNotFound }
+use desk/types { NameTag, TagView }
+use desk/failures { TagNameTaken }
+
+/// Adds a tag to a workspace; owners and admins may.
+action create_tag(workspace_id: Workspace.id, input: NameTag) fails WorkspaceNotFound, TagNameTaken -> TagView {
+    var tag: Tag = attempt Tag.create {
+        set: {
+            workspace_id: workspace_id
+            name: input.name
+        }
+        conflict: {
+            Tag.name: TagNameTaken
+        }
+    }
+    return TagView {
+        id: tag.id
+        name: tag.name
+        created_at: tag.created_at
+    }
+}

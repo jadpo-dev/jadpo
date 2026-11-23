@@ -1,0 +1,37 @@
+use desk/entities { Membership, MembershipNotFound, Ticket, TicketNotFound }
+use desk/types { Assignment, TicketView, WorkspaceRole }
+use desk/failures { AssigneeCannotWork }
+
+/// Gives a ticket to a member of its workspace, or to nobody. Viewers
+/// can't be given tickets.
+action assign_ticket(ticket_id: Ticket.id, input: Assignment) fails TicketNotFound, MembershipNotFound, AssigneeCannotWork -> TicketView {
+    var ticket: Ticket = attempt Ticket.get(ticket_id)
+    match input.assignee_id {
+        some(assignee_id) -> {
+            var assignee: Membership = attempt Membership.get(assignee_id)
+            if (assignee.role == WorkspaceRole.viewer) {
+                reject AssigneeCannotWork
+            }
+        }
+        none -> {}
+    }
+    var changed: Ticket = attempt Ticket.update(ticket) {
+        set: {
+            assignee_id: input.assignee_id
+        }
+    }
+    return TicketView {
+        id: changed.id
+        customer_id: changed.customer_id
+        assignee_id: changed.assignee_id
+        subject: changed.subject
+        status: changed.status
+        priority: changed.priority
+        respond_by: changed.respond_by
+        first_response_at: changed.first_response_at
+        breached_at: changed.breached_at
+        solved_at: changed.solved_at
+        created_at: changed.created_at
+        updated_at: changed.updated_at
+    }
+}

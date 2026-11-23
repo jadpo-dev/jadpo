@@ -1,0 +1,5 @@
+/// What a ticket is about.
+type TicketSubject = Text {
+    min_length: 1
+    max_length: 200
+}

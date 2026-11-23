@@ -1,0 +1,6 @@
+/// Where a ticket is.
+type TicketStatus = Enum {
+    open
+    pending
+    solved
+}

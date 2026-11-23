@@ -1,0 +1,13 @@
+use desk/entities { Ticket }
+use desk/types { TicketStatus }
+
+/// Open tickets nobody answered by their first-response deadline.
+query breach_candidates() -> List<Ticket> {
+    from: Ticket
+    where: Ticket.status == TicketStatus.open
+    where: Ticket.first_response_at == none
+    where: Ticket.breached_at == none
+    where: Ticket.respond_by < clock.now
+    order: [Ticket.respond_by asc, Ticket.id asc]
+    limit: 500
+}

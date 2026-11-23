@@ -1,0 +1,26 @@
+use desk/entities { Customer, Workspace, WorkspaceNotFound }
+use desk/types { CreateCustomer, CustomerView }
+use desk/failures { CustomerEmailTaken }
+
+/// Adds a customer to a workspace.
+action add_customer(workspace_id: Workspace.id, input: CreateCustomer) fails WorkspaceNotFound, CustomerEmailTaken -> CustomerView {
+    var customer: Customer = attempt Customer.create {
+        set: {
+            workspace_id: workspace_id
+            name: input.name
+            email: input.email
+            phone: input.phone
+        }
+        conflict: {
+            Customer.email: CustomerEmailTaken
+        }
+    }
+    return CustomerView {
+        id: customer.id
+        name: customer.name
+        email: customer.email
+        phone: customer.phone
+        created_at: customer.created_at
+        updated_at: customer.updated_at
+    }
+}

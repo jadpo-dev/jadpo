@@ -1,0 +1,23 @@
+use desk/entities { Workspace }
+use desk/types { TagName, WorkspaceRole }
+
+/// A label tickets can carry.
+entity Tag {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    name: TagName {
+        unique: true
+    }
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+
+    policy: {
+        create: [WorkspaceRole.owner, WorkspaceRole.admin]
+        read: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent, WorkspaceRole.viewer]
+        update: [WorkspaceRole.owner, WorkspaceRole.admin]
+        delete: [WorkspaceRole.owner, WorkspaceRole.admin]
+    }
+}

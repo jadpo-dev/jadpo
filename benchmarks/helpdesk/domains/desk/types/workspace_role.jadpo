@@ -1,0 +1,7 @@
+/// What a member may do in a workspace.
+type WorkspaceRole = Enum {
+    owner
+    admin
+    agent
+    viewer
+}

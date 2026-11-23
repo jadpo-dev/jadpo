@@ -1,0 +1,18 @@
+use desk/types { WorkspaceName, WorkspaceRole }
+
+/// A customer company of the desk: the tenant every other record belongs to.
+entity Workspace {
+    id: Uuid
+    name: WorkspaceName
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+    updated_at: Instant {
+        generated: Generated.on_change
+    }
+
+    policy: {
+        read: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent, WorkspaceRole.viewer, Access.system]
+        update: [WorkspaceRole.owner]
+    }
+}

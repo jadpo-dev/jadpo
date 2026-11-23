@@ -1,0 +1,23 @@
+use desk/entities { Customer, CustomerNotFound, Ticket, TicketNotFound }
+use desk/types { CustomerView }
+
+/// The customer a ticket is for. Viewers can't read customers.
+action ticket_customer(ticket_id: Ticket.id) fails TicketNotFound, CustomerNotFound -> CustomerView {
+    var ticket: Ticket = attempt Ticket.get(ticket_id)
+    match ticket.customer_id {
+        some(customer_id) -> {
+            var customer: Customer = attempt Customer.get(customer_id)
+            return CustomerView {
+                id: customer.id
+                name: customer.name
+                email: customer.email
+                phone: customer.phone
+                created_at: customer.created_at
+                updated_at: customer.updated_at
+            }
+        }
+        none -> {
+            reject CustomerNotFound
+        }
+    }
+}

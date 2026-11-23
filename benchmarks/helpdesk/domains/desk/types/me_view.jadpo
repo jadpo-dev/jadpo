@@ -1,0 +1,6 @@
+use desk/entities { User }
+
+/// The signed-in person's own account.
+type MeView = Output {
+    pick: [User.id, User.email, User.status]
+}

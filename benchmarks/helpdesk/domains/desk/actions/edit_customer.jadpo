@@ -1,0 +1,22 @@
+use desk/entities { Customer, CustomerNotFound }
+use desk/types { CustomerView, PatchCustomer }
+use desk/failures { CustomerEmailTaken }
+
+/// Changes a customer's name or contact details.
+action edit_customer(customer_id: Customer.id, input: PatchCustomer) fails CustomerNotFound, CustomerEmailTaken -> CustomerView {
+    var customer: Customer = attempt Customer.get(customer_id)
+    var changed: Customer = attempt Customer.update(customer) {
+        patch: input
+        conflict: {
+            Customer.email: CustomerEmailTaken
+        }
+    }
+    return CustomerView {
+        id: changed.id
+        name: changed.name
+        email: changed.email
+        phone: changed.phone
+        created_at: changed.created_at
+        updated_at: changed.updated_at
+    }
+}

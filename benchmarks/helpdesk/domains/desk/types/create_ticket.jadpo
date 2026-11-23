@@ -1,0 +1,11 @@
+use desk/entities { Customer }
+use desk/types { TicketPriority, TicketSubject }
+
+/// A new ticket for a customer.
+type CreateTicket = Input {
+    customer_id: Customer.id
+    subject: TicketSubject
+    priority: TicketPriority {
+        default: TicketPriority.normal
+    }
+}

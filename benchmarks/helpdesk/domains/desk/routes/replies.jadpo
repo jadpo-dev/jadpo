@@ -1,0 +1,21 @@
+use desk/entities { Reply }
+use desk/types { ReplyView, WriteMessage }
+use desk/actions { delete_reply, edit_reply }
+
+/// Replies, one at a time.
+routes Replies {
+    prefix: /replies
+
+    /// Changes a reply's text.
+    PATCH /{reply_id: Reply.id} {
+        input: WriteMessage
+        output: ReplyView
+        run: edit_reply(reply_id, input)
+    }
+
+    /// Deletes a reply.
+    DELETE /{reply_id: Reply.id} {
+        status: SuccessStatus.no_content
+        run: delete_reply(reply_id)
+    }
+}

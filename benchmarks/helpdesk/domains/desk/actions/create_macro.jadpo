@@ -1,0 +1,20 @@
+use desk/entities { Macro, Workspace, WorkspaceNotFound }
+use desk/types { NewMacro, MacroView }
+
+/// Saves an answer agents can reuse; owners and admins may.
+action create_macro(workspace_id: Workspace.id, input: NewMacro) fails WorkspaceNotFound -> MacroView {
+    var saved: Macro = attempt Macro.create {
+        set: {
+            workspace_id: workspace_id
+            title: input.title
+            body: input.body
+        }
+    }
+    return MacroView {
+        id: saved.id
+        title: saved.title
+        body: saved.body
+        created_at: saved.created_at
+        updated_at: saved.updated_at
+    }
+}

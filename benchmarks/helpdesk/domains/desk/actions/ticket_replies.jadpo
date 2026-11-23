@@ -1,0 +1,9 @@
+use desk/entities { Ticket, TicketNotFound }
+use desk/types { ReplyView }
+use desk/queries { replies_of }
+
+/// A ticket's replies. A ticket in the bin shows none.
+action ticket_replies(ticket_id: Ticket.id) fails TicketNotFound -> List<ReplyView> {
+    var ticket: Ticket = attempt Ticket.get(ticket_id)
+    return replies_of(ticket.id)
+}
