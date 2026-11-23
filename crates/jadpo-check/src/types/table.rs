@@ -1415,6 +1415,16 @@ pub trait TypeView {
                     if name == jadpo_std::files::FILE || name == jadpo_std::files::FILE_UPLOAD
             );
         }
+        // One kind of caller is a caller (area 8): a `Principal.user` widens
+        // to a `Principal`, as a variant does to its enum.
+        if matches!(expected, Ty::Opaque(name, args) if name == crate::identity::PRINCIPAL && args.is_empty())
+            && matches!(actual.strip_nullable(), Ty::Opaque(name, args)
+                if args.is_empty() && name.strip_prefix(crate::identity::PRINCIPAL)
+                    .and_then(|kind| kind.strip_prefix('.'))
+                    .is_some_and(|kind| jadpo_std::http::PrincipalKind::from_name(kind).is_some()))
+        {
+            return true;
+        }
         // A provider package's `AnyObject` field takes any of the app's own
         // object types, sent as its JSON (areas 2 and 11, "Types").
         if is_any_object(&self.structure(expected)) {

@@ -948,6 +948,9 @@ pub enum Pattern {
     Success,
     /// A failure the call can give.
     Failure(Key),
+    /// A kind of caller, on a whole `Principal` (area 8): `user(member)`
+    /// matches a caller signed in as a user, binding it.
+    Caller(jadpo_std::http::PrincipalKind),
     /// Already reported.
     Unknown,
 }
