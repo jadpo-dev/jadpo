@@ -704,6 +704,32 @@ def unavailable(change, cases, message):
             + [{'name': c, 'kind': 'regression', 'status': 'not_run', 'message': message} for c in cases])
 
 
+@contextlib.contextmanager
+def native_lock(folder):
+    """One run at a time builds the contract's native driver: every run
+    builds it into the same target folder, so runs side by side would
+    replace each other's driver."""
+    import fcntl
+    folder.mkdir(parents=True, exist_ok=True)
+    with (folder / 'native.lock').open('w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def own_driver(build, work):
+    """The native driver `build` gives, built under the lock and copied into
+    the run's own folder, so a run beside it rebuilding the shared one
+    leaves this run's alone."""
+    with native_lock(ROOT / 'target/agent-changes'):
+        built = Path(build())
+        own = work / built.name
+        shutil.copy2(built, own)
+    return own
+
+
 def hidden_jadpo(app, change, work, server, compiler, diff, pristine=False):
     cases = regression_cases(change)
     driver = None
@@ -711,7 +737,7 @@ def hidden_jadpo(app, change, work, server, compiler, diff, pristine=False):
         runner = load('agent_contract_run', CONTRACT / 'run.py', CONTRACT)
         runner.PROJECT, runner.WORK, runner.CACHE = app, work / 'contract', ROOT / 'target/agent-changes'
         runner.WORK.mkdir(parents=True, exist_ok=True)
-        binary = runner.build_native(ROOT)
+        binary = own_driver(lambda: runner.build_native(ROOT), runner.WORK)
         if change.deployable:
             subprocess.run([str(compiler), 'build', '--json'], cwd=app, check=True, capture_output=True,
                            env={**os.environ, 'CARGO_INCREMENTAL': '0', 'CARGO_PROFILE_DEV_DEBUG': '0'})
