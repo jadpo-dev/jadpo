@@ -188,8 +188,8 @@ database to match your entities, as with any ORM. You never write one:
 the next, named after what it does, `initial` for the first. When a
 change needs a decision from you, such as a value for a new field in the
 rows already stored, it stops and names `jadpo migrate new` instead
-(page 10 meets one). `access.jadpo_record` records who may do what to
-your todos, and page 12 reads it.
+(page 10 meets one). `access.jadpo_record` now says who may create a
+todo.
 
 The folder's name starts with the date and time you ran it, so yours
 differs. It holds two files, both written by Jadpo: you commit them, and

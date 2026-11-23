@@ -135,9 +135,9 @@ query by name.
 
 ## Let people read todos
 
-Check the project. It writes the API record again, and one thing needs
-fixing: permission. the entity says who may create a todo, but not who may
-read one, so the compiler refuses both new routes:
+Check the project. It writes the API record again, and two things need
+fixing. The first is permission: the entity says who may create a todo,
+but not who may read one, so the compiler refuses both new routes:
 
 ```text
 error: `GET /todos` reads `Todo` records, which nobody may do
@@ -171,14 +171,16 @@ entity Todo {
 }
 ```
 
-Check again, and it passes, having written a migration:
+The second, `migration.out_of_date`, says the entities need a
+migration. `jadpo check` writes one only once nothing else is wrong, so
+check again, and it passes, having written it and the access record:
 
 ```text
 Wrote database/migrations/20261029T1100_index_list_todos/
 
 Wrote access.jadpo_record
 
-checked: 12 files
+checked: 14 files
 
 next: git diff  shows what it wrote, to commit with the code
 ```

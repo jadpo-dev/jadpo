@@ -1200,7 +1200,7 @@ type TodoTitle = Text {
 }
 ```
 
-```jadpo check project=open-count file=domains/planning/entities/todo.jadpo hidden migrate=initial
+```jadpo check project=open-count file=domains/planning/entities/todo.jadpo hidden
 use planning/types { TodoTitle }
 
 /// Something to do.
@@ -1243,7 +1243,7 @@ type OpenTodos = Output {
 }
 ```
 
-```jadpo check project=open-count file=domains/planning/queries/count_open.jadpo
+```jadpo check project=open-count file=domains/planning/queries/count_open.jadpo migrate=initial
 use planning/entities { Todo }
 use planning/types { OpenTodos }
 
@@ -1275,25 +1275,27 @@ routes Todos {
 ```
 
 ```jadpo check project=open-count file=domains/planning/routes/todos.test.jadpo
-use planning/actions { NewTodo, add_todo }
 use planning/entities { Todo }
+use planning/actions { NewTodo, add_todo }
 
 test "the open count reaches a client as a number" {
-    var added: List<Todo> = [
-        add_todo(NewTodo {
+    var flour: Todo = add_todo(
+        NewTodo {
             title: "Buy flour"
-        }),
-        add_todo(NewTodo {
+        }
+    )
+    var eggs: Todo = add_todo(
+        NewTodo {
             title: "Buy eggs"
-        })
-    ]
-    assert list.count(added) == 2
-    var counted: Response = request {
+        }
+    )
+    assert flour.id != eggs.id
+    var open_count: Response = request {
         method: HttpMethod.get
         path: "/todos/open"
     }
-    assert counted.status == 200
-    assert json.write(counted.output) == "{\"open\":2}"
+    assert open_count.status == 200
+    assert json.write(open_count.output) == "{\"open\":2}"
 }
 ```
 

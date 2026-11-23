@@ -323,9 +323,16 @@ jadpo fmt
 ```
 
 ```text
+Wrote access.jadpo_record
+
 checked: 7 files
+
+next: git diff  shows what it wrote, to commit with the code
 formatted: 7 unchanged
 ```
+
+`access.jadpo_record` is another record `jadpo check` keeps: who may do
+what, now that `policy.jadpo` lets anyone add a todo. Page 12 reads it.
 
 `jadpo fmt` lays every file out the one way Jadpo formats code, and adds
 or removes `use` lines to match what the file uses. Your files were

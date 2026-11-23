@@ -237,7 +237,7 @@ fn the_snapshot_records_what_a_json_columns_type_reads() {
     // Changing the rules inside the value is drift `jadpo check` reports.
     write(&root, TAG, &tag(30));
     jadpo(&root, &["records", "update"]);
-    let check = jadpo(&root, &["check"]);
+    let check = crate::acceptances::jadpo_ci(&root, &["check"]);
     assert_ne!(check.code, 0);
     assert!(
         check.stdout.contains("migration.out_of_date"),

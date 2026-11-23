@@ -201,7 +201,7 @@ entity Todo {
 }
 ```
 
-Check the project: it writes the API record again, with the new routes, and passes.
+Check the project: it writes the API record and the access record again, with the new routes and grants, and passes.
 
 ## Try it
 

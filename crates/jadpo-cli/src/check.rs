@@ -108,7 +108,7 @@ fn kept_up_to_date(checked: &Checked) -> Result<Vec<(String, &'static str)>, Box
     if out_of_date(rule::RECORD_OUT_OF_DATE.id) {
         written.extend(
             crate::records::kept_by_check(loaded)
-                .map_err(|problem| Box::new(Reply::failed(problem)))?,
+                .map_err(|problem| Box::new(Reply::failed(*problem)))?,
         );
     }
     Ok(written)
@@ -315,9 +315,9 @@ pub(crate) fn reported(
             &per_instance,
             notice_list,
             &publishers,
+            &updated,
         ),
         (elapsed, failed, before, not_judged, full),
-        &updated,
     )
 }
 
@@ -615,6 +615,7 @@ type Shown<'a> = (
     &'a [PerInstance],
     &'a [Notice],
     &'a [Publishers],
+    &'a [(String, &'static str)],
 );
 
 fn count(n: usize, one: &str, many: &str) -> String {
@@ -627,7 +628,7 @@ fn report(
     root: Option<String>,
     paths: &[&String],
     unreadable: usize,
-    (layout, written, reviews, per_instance, notice_list, publishers): Shown<'_>,
+    (layout, written, reviews, per_instance, notice_list, publishers, updated): Shown<'_>,
     (elapsed, failed, before, not_judged, full): (
         Duration,
         &str,
@@ -635,7 +636,6 @@ fn report(
         Option<String>,
         bool,
     ),
-    updated: &[(String, &'static str)],
 ) -> Reply {
     let errors = diagnostics.len();
     // With errors the agent's work comes first: a person is asked once it
@@ -668,7 +668,11 @@ fn report(
             outcome: Outcome::Success,
             text: format!(
                 "{} {path}",
-                if *change == "removed" { "Removed" } else { "Wrote" }
+                if *change == "removed" {
+                    "Removed"
+                } else {
+                    "Wrote"
+                }
             ),
             rows: Vec::new(),
         });

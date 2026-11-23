@@ -49,7 +49,8 @@ fn commit(root: &Path, message: &str) {
 
 /// Each record problem `jadpo check --json` reports, `rule: message`.
 fn problems(root: &Path) -> Vec<String> {
-    let output = jadpo(root, &["check", "--json"]);
+    // As CI judges it: outside CI `jadpo check` writes the view itself.
+    let output = crate::acceptances::jadpo_ci(root, &["check", "--json"]);
     let document: Value = serde_json::from_str(&output.stdout).expect("JSON");
     // What a change to the routes needs besides is the acceptances' to say.
     document["diagnostics"]

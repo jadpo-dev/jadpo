@@ -2515,12 +2515,7 @@ pub async fn route_test(
 /// first member that differs, by its path, with what was sent and what
 /// the type writes. `None` for a route that sends no JSON output, and for
 /// one whose body is that JSON, whatever order its members come in.
-fn unwritten_body(
-    app: &App<'_>,
-    route: u32,
-    response: &Response,
-    value: &Value,
-) -> Option<String> {
+fn unwritten_body(app: &App<'_>, route: u32, response: &Response, value: &Value) -> Option<String> {
     let plan = app.table.routes.get(route as usize)?;
     let codec = plan.output?;
     if plan.stream || plan.sends.is_some() || !(200..300).contains(&response.status) {

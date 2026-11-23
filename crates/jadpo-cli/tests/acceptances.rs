@@ -24,6 +24,18 @@ pub(crate) fn jadpo(cwd: &Path, args: &[&str]) -> Output {
     output
 }
 
+/// [`jadpo`] with `CI` set, as CI runs it: `jadpo check` writes no record
+/// or migration and fails on one out of date (area 18).
+pub(crate) fn jadpo_ci(cwd: &Path, args: &[&str]) -> Output {
+    let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+    let mut output = run(
+        &args,
+        &Environment::empty().with_var("CI", "true").with_cwd(cwd),
+    );
+    output.stdout = support::without_run_time(&output.stdout);
+    output
+}
+
 pub(crate) fn git(cwd: &Path, args: &[&str]) {
     let output = Command::new("git")
         .args([

@@ -41,11 +41,11 @@ your project: it finds the project by looking upwards for `app.jadpo`.
 | Command | What it does |
 |---|---|
 | `jadpo new <name>` | Starts a project in a new folder, with a starter route and its test |
-| `jadpo check` | Checks the whole project quickly, building nothing, and writes the API record and migration your change needs |
+| `jadpo check` | Checks the project, and writes the records and migration a change needs |
 | `jadpo fmt` | Formats your files, and adds, removes and sorts their `use` lines |
 | `jadpo test` | Runs the tests. Tests that use the database need PostgreSQL installed |
-| `jadpo migrate new <purpose>` | Writes the next database migration when it needs a decision, or a purpose of your own |
-| `jadpo api update` | Updates the committed record of your API, as `jadpo check` does |
+| `jadpo migrate new <purpose>` | Writes a migration that needs a decision |
+| `jadpo api update` | Updates the committed record of your API |
 | `jadpo dev` | Runs the app on `http://127.0.0.1:3000` and reloads it when you save |
 | `jadpo help <name>` | Explains a command, a rule or a standard type |
 
@@ -735,8 +735,7 @@ jadpo check
 jadpo test
 ```
 
-`jadpo check` lists each file it wrote, the migration and the records,
-before its result:
+`jadpo check` first lists the files it wrote:
 
 ```text
 checked: 19 files in 0.1 s

@@ -211,7 +211,7 @@ fn list(call: &Call) -> Reply {
 /// which, or why one couldn't be.
 pub(crate) fn kept_by_check(
     loaded: &jadpo_db::Loaded,
-) -> Result<Vec<(String, &'static str)>, Diagnostic> {
+) -> Result<Vec<(String, &'static str)>, Box<Diagnostic>> {
     let mut done = Vec::new();
     for standing in standings(&loaded.db, loaded.project) {
         if !matches!(
@@ -233,12 +233,16 @@ pub(crate) fn kept_by_check(
             match result {
                 Ok(change) => done.push((path.clone(), change)),
                 Err(error) => {
-                    return Err(Diagnostic::new(
-                        &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
-                        format!("`{path}` couldn't be written"),
-                    )
-                    .reason(format!("Writing it failed: {error}."))
-                    .next("Check that the folder can be written, then run `jadpo records update`"));
+                    return Err(Box::new(
+                        Diagnostic::new(
+                            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+                            format!("`{path}` couldn't be written"),
+                        )
+                        .reason(format!("Writing it failed: {error}."))
+                        .next(
+                            "Check that the folder can be written, then run `jadpo records update`",
+                        ),
+                    ));
                 }
             }
         }

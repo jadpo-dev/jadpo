@@ -172,7 +172,7 @@ fn a_first_commit_says_so_rather_than_passing_unseen() {
     for words in [
         said,
         "from the next change",
-        "connection `pay` can now reach `https://api.acme-pay.example`",
+        "connection `pay` reaches `https://api.acme-pay.example`",
         "(agent)",
     ] {
         assert!(

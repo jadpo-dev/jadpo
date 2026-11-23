@@ -83,8 +83,7 @@ pub fn merge<'r>(chain: impl IntoIterator<Item = &'r Rules>) -> Rules {
 /// accepted the recommendation, 2026-11-23). A bare `Int`, a count among
 /// them, is a number.
 pub fn int_as_number(rules: &Rules) -> bool {
-    let fits =
-        |n: Option<Num>| n.is_none_or(|n| n.scale == 0 && n.mantissa.abs() <= SAFE_INTEGER);
+    let fits = |n: Option<Num>| n.is_none_or(|n| n.scale == 0 && n.mantissa.abs() <= SAFE_INTEGER);
     fits(rules.min) && fits(rules.max)
 }
 

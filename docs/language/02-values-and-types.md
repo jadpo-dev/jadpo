@@ -58,7 +58,6 @@ There is no `Float`. Arithmetic on `Decimal` is exact, and its other
 operations are under `decimal.` ([Numbers](19-standard-library.md#numbers)).
 
 #### Numbers in JSON
-<!-- topic: numbers-in-json -->
 
 An `Int` is a JSON number, `{"open": 3}`, whether it is a type's field, a
 route's input or a count a query worked out. The one exception is a type
