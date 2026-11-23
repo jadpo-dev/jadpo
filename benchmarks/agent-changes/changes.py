@@ -544,12 +544,18 @@ def n04_complete_many_is_mine(c):
     c.todo(T2, owner=BOB)
     c.todo(ident(1), deleted=NOW)
     bob, gone = c.row(T2), c.row(ident(1))
-    out = c.success(present(c.request('POST', '/todos/complete', body={'ids': [T1, T2, ident(1), MISSING]}),
-                            unknown_input=True))
-    require(out == {'completed': 1}, f'only the caller\'s visible todo counts: {out}')
+    response = present(c.request('POST', '/todos/complete', body={'ids': [T1, T2, ident(1), MISSING]}),
+                       unknown_input=True)
+    # The request doesn't say what ids that aren't yours do: skipping them or
+    # refusing the call are both safe. Touching or counting them is not.
     c.unchanged(bob, T2)
     c.unchanged(gone, ident(1))
-    require(c.row(T1)['status'] == 'done', 'the caller\'s own todo is done')
+    if response['status'] == 200:
+        require(response['json'] == {'completed': 1}, f'only the caller\'s visible todo counts: {response["json"]}')
+    else:
+        require(response['status'] in (404, 422), f'a refusal is a not-found or invalid input: {response["status"]}')
+    c.success(c.request('POST', '/todos/complete', body={'ids': [T2]}, auth='bob-session'))
+    require(c.row(T2)['status'] == 'done', 'Bob completes his own')
 
 
 @safety
