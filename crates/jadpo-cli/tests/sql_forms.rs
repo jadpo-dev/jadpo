@@ -904,7 +904,9 @@ fn texts_and_counts(forms: &mut Forms) {
     let all = texts();
     let ones: Vec<Vec<In>> = all.iter().map(|t| vec![text(t)]).collect();
     forms.check(Op::TextLength, Out::Bound(SqlType::Int8), ones.clone());
-    forms.check(Op::TextTrim, Out::Bound(SqlType::Text), ones);
+    forms.check(Op::TextTrim, Out::Bound(SqlType::Text), ones.clone());
+    forms.check(Op::TextTrimStart, Out::Bound(SqlType::Text), ones.clone());
+    forms.check(Op::TextTrimEnd, Out::Bound(SqlType::Text), ones);
     let mut parts: Vec<String> = all.clone();
     parts.extend(
         [
@@ -922,6 +924,16 @@ fn texts_and_counts(forms: &mut Forms) {
             }
         }
         forms.check(op, Out::Bound(SqlType::Bool), cases);
+    }
+    // Positions from 0, `none` where the part isn't there (chunk 10.3).
+    for op in [Op::TextIndexOf, Op::TextLastIndexOf] {
+        let mut cases = Vec::new();
+        for value in &all {
+            for part in &parts {
+                cases.push(vec![text(value), text(part)]);
+            }
+        }
+        forms.check(op, Out::Bound(SqlType::Int8), cases);
     }
     let finds = ["a", "aa", "b", "-", "%", "\\", "é", "𝄞", " ", "abc", "x"];
     let withs = ["", "Z", "aa", "\\\\", "'", "𝄞𝄞"];
@@ -977,13 +989,21 @@ fn texts_and_counts(forms: &mut Forms) {
     }
     let mut cases = Vec::new();
     for value in &all {
+        for n in &counts {
+            cases.push(vec![text(value), int(*n)]);
+        }
+    }
+    forms.check(Op::TextTruncate, Out::Bound(SqlType::Text), cases);
+    let mut cases = Vec::new();
+    for value in &all {
         for length in [i64::MIN, -5, 0, 1, 2, 3, 5, 8, 12, 40, 301] {
             for fill in ['0', ' ', '\u{a0}', 'é', '𝄞', '\'', '\\', '\n'] {
                 cases.push(vec![text(value), int(length), In::Character(fill)]);
             }
         }
     }
-    forms.check(Op::TextPadStart, Out::Bound(SqlType::Text), cases);
+    forms.check(Op::TextPadStart, Out::Bound(SqlType::Text), cases.clone());
+    forms.check(Op::TextPadEnd, Out::Bound(SqlType::Text), cases);
     // `text.from`: whole numbers, decimals, UUIDs and flags.
     let mut cases: Vec<Vec<In>> = wholes(40)
         .into_iter()

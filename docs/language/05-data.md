@@ -1161,6 +1161,10 @@ reference's own index goes once a query's index starts with its column.
 - **Geometry.** A geometry field a `geo.` condition tests gets a GiST
   index, and a `Point` field a box filter tests gets one on the point cast
   to `geometry` ([Indexes](20-geospatial.md#indexes) under Geospatial).
+- **Text searched inside.** A text field `text.contains_ignoring_case`
+  searches gets a GIN index of its trigrams, `_trgm_idx`, and its
+  migration creates PostgreSQL's `pg_trgm` extension
+  ([Searching inside text](06-reads-and-writes.md#searching-inside-text)).
 - **Values kept in several columns or as JSON.** A field stored in named
   columns that is tested with `==` or `in` puts each of them in the
   index, in its layout's order, and one it sorts by the columns it sorts

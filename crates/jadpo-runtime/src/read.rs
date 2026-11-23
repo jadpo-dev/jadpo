@@ -568,6 +568,24 @@ fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Probl
                 }
             }
         }
+        // What a search inside text looks for, as a pattern; absent on a
+        // `where_present:` line that doesn't apply (chunk 10.3).
+        Source::Substring { index, path } => {
+            let typed = value_at(
+                &Source::Arg {
+                    index: *index,
+                    path: path.clone(),
+                },
+                env.args,
+            );
+            match &typed {
+                Some(Value::Text(text)) => SqlValue::Text(jadpo_std::search::substring(text)),
+                Some(Value::None) | None => SqlValue::Null(SqlType::Text),
+                _ => {
+                    return Err(Problem::Defect("a search's text that isn't text".into()));
+                }
+            }
+        }
         // Only ever laid out, below.
         Source::Constant(_) => {
             return Err(Problem::Defect(
@@ -886,8 +904,17 @@ fn checked(
                 }
                 value
             }
-            Operand::Value(source) => value_at(source, env.args)
-                .ok_or_else(|| Problem::Defect("a value the read wasn't given".into()))?,
+            Operand::Value(source) => {
+                let value = value_at(source, env.args)
+                    .ok_or_else(|| Problem::Defect("a value the read wasn't given".into()))?;
+                // Only a `where_present:` line's value may be absent, and
+                // the line doesn't apply then (area 6, "Searching inside
+                // text"): the row passes it.
+                if value == Value::None {
+                    return Ok(Some(Value::Bool(true)));
+                }
+                value
+            }
             Operand::Constant(constant) => Value::constant(constant),
             Operand::Absent => Value::None,
         });

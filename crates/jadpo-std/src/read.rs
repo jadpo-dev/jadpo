@@ -390,6 +390,12 @@ pub enum Source {
     /// inside it, `path`) holds, as `websearch_to_tsquery` is given it
     /// ([`crate::search::phrase`]), so `or` is a word, never an operator.
     SearchPhrase { index: u32, path: Vec<String> },
+    /// The `LIKE` pattern a search inside text looks for (area 6,
+    /// "Searching inside text"; chunk 10.3): made from the text the read's
+    /// argument at `index` (or a field inside it, `path`) holds by
+    /// [`crate::search::substring`], or `NULL` when it is absent, as a
+    /// `where_present:` line's is.
+    Substring { index: u32, path: Vec<String> },
     /// A literal or an enum value a condition compares a field held in
     /// several columns or as JSON with, as code makes it, which only
     /// [`Source::Laid`] reads: the storage codec lays such a value out

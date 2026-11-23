@@ -339,16 +339,22 @@ pub enum Op {
     TemporalYearBounds,
     TemporalZone,
     TextContains,
+    TextContainsIgnoringCase,
     TextDropFirst,
     TextDropLast,
     TextEndsWith,
+    TextEqualsIgnoringCase,
     TextFormat,
     TextFrom,
+    TextIndexOf,
     TextJoin,
     TextKeepFirst,
     TextKeepLast,
+    TextLastIndexOf,
     TextLength,
     TextLower,
+    TextNormalise,
+    TextPadEnd,
     TextPadStart,
     TextParse,
     TextPick,
@@ -358,6 +364,9 @@ pub enum Op {
     TextSplit,
     TextStartsWith,
     TextTrim,
+    TextTrimEnd,
+    TextTrimStart,
+    TextTruncate,
     TextUpper,
     UnitsIn,
     UnitsOf,
@@ -2616,6 +2625,17 @@ pub const OPERATIONS: &[Operation] = &[
         BOOL,
         "text::contains",
     ),
+    // Whether `part` is in `value` when each code point of both is simply
+    // case-folded (area 19, "Case and sorting in a locale"); in a query, a
+    // search a trigram index serves and the code decides (area 6,
+    // "Searching inside text").
+    text(
+        Op::TextContainsIgnoringCase,
+        "contains_ignoring_case",
+        &[VALUE, param("part", TEXT)],
+        BOOL,
+        "text::contains_ignoring_case",
+    ),
     text(
         Op::TextDropFirst,
         "drop_first",
@@ -2636,6 +2656,13 @@ pub const OPERATIONS: &[Operation] = &[
         &[VALUE, param("suffix", TEXT)],
         BOOL,
         "text::ends_with",
+    ),
+    text(
+        Op::TextEqualsIgnoringCase,
+        "equals_ignoring_case",
+        &[VALUE, param("other", TEXT)],
+        BOOL,
+        "text::equals_ignoring_case",
     ),
     // The standard type contract's three operations (area 19, "What every standard type can do"), each one implementation in
     // `jadpo-value`'s `standard` module over the data entries in
@@ -2681,6 +2708,14 @@ pub const OPERATIONS: &[Operation] = &[
         conditions: &[],
         rust: "standard::from",
     },
+    // The code-point position `part` first starts at, or `none`.
+    text(
+        Op::TextIndexOf,
+        "index_of",
+        &[VALUE, param("part", TEXT)],
+        INT,
+        "text::index_of",
+    ),
     text(
         Op::TextJoin,
         "join",
@@ -2702,6 +2737,14 @@ pub const OPERATIONS: &[Operation] = &[
         TEXT,
         "text::keep_last",
     ),
+    // The code-point position `part` last starts at, or `none`.
+    text(
+        Op::TextLastIndexOf,
+        "last_index_of",
+        &[VALUE, param("part", TEXT)],
+        INT,
+        "text::last_index_of",
+    ),
     Operation {
         at_least: Some(0),
         ..text(Op::TextLength, "length", &[VALUE], INT, "text::length")
@@ -2715,6 +2758,28 @@ pub const OPERATIONS: &[Operation] = &[
         &[VALUE, option("locale", LOCALE)],
         TEXT,
         "text::lower",
+    ),
+    // Unicode's NFC or NFKC, through the pinned ICU4X release's data.
+    text(
+        Op::TextNormalise,
+        "normalise",
+        &[VALUE, param("form", Kind::Enum(crate::NormalForm::NAME))],
+        TEXT,
+        "text::normalise",
+    ),
+    text(
+        Op::TextPadEnd,
+        "pad_end",
+        &[
+            VALUE,
+            param("length", INT),
+            Param {
+                character: true,
+                ..param("fill", TEXT)
+            },
+        ],
+        TEXT,
+        "text::pad_end",
     ),
     text(
         Op::TextPadStart,
@@ -2795,6 +2860,22 @@ pub const OPERATIONS: &[Operation] = &[
         "text::starts_with",
     ),
     text(Op::TextTrim, "trim", &[CUT], TEXT, "text::trim"),
+    text(Op::TextTrimEnd, "trim_end", &[CUT], TEXT, "text::trim_end"),
+    text(
+        Op::TextTrimStart,
+        "trim_start",
+        &[CUT],
+        TEXT,
+        "text::trim_start",
+    ),
+    // At most `length` code points, a cut text ending in `…`.
+    text(
+        Op::TextTruncate,
+        "truncate",
+        &[CUT, count("length")],
+        TEXT,
+        "text::truncate",
+    ),
     text(
         Op::TextUpper,
         "upper",

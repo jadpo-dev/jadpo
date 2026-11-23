@@ -243,6 +243,9 @@ pub enum Lowering {
 pub fn lowering(op: Op) -> Option<Lowering> {
     match op {
         Op::GeoWithin | Op::GeoContains | Op::GeoIntersects => Some(Lowering::Search),
+        // A search inside text (area 6, "Searching inside text"; chunk
+        // 10.3): a trigram index finds what may match, the code decides.
+        Op::TextContainsIgnoringCase => Some(Lowering::Search),
         Op::AiDistance => Some(Lowering::Exact),
         other if form::has_form(other) => Some(Lowering::Exact),
         _ => None,
@@ -365,6 +368,11 @@ pub fn search_calls(filter: &[Condition]) -> Vec<&Call> {
                 out.push(call)
             }
             Condition::And(parts) => out.extend(search_calls(parts)),
+            // A search inside text on a `where_present:` line, which the
+            // runtime holds a row to only when its text is there.
+            Condition::Present { condition, .. } => {
+                out.extend(search_calls(std::slice::from_ref(condition.as_ref())))
+            }
             _ => {}
         }
     }
@@ -574,6 +582,15 @@ pub trait Bind {
         None
     }
 
+    /// `$n` for the `LIKE` pattern a search inside text looks for, made
+    /// from the text `value` holds when the statement runs
+    /// ([`jadpo_std::search::substring`]; area 6, "Searching inside
+    /// text"), `NULL` when it is absent. `None` when the statement can't
+    /// take it.
+    fn substring(&mut self, _value: &Value) -> Option<String> {
+        None
+    }
+
     /// `$n` for `value` laid out as the field kept in the column `column`
     /// keeps it, sent as `ty` (`laying`): one of the columns a standard
     /// type is stored in, the JSON a structured value is kept as, or
@@ -755,6 +772,11 @@ pub fn condition(
                     call,
                     test: Test::In { .. },
                 } => result_column(call).param()?.array(),
+                // A search inside text, applied when its text is there.
+                Condition::Call {
+                    call,
+                    test: Test::Holds,
+                } if call.op == Op::TextContainsIgnoringCase => SqlType::Text,
                 _ => return None,
             };
             let n = bind.bind(value, ty)?;
@@ -1210,21 +1232,53 @@ pub fn index_expression(entity: &dyn Columns, call: &Call) -> Option<String> {
 
 /// The index a search reads (area 20, "Indexes", chunk 5.5u5): a GiST
 /// index on the field's column, cast to `geometry` for a box, whose
-/// envelopes compare longitude and latitude directly.
+/// envelopes compare longitude and latitude directly; or, for a search
+/// inside text, a GIN index of the trigrams of the field's text with its
+/// ASCII letters lowered ([`folded`]; area 6, "Searching inside text").
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SearchIndex {
     /// The index's method.
     pub method: &'static str,
     /// The type the column is cast to, when it is.
     pub cast: Option<&'static str>,
+    /// Its column's operator class, empty for its type's own.
+    pub operator_class: &'static str,
+    /// Whether it holds the column's [`folded`] text rather than the
+    /// column itself.
+    pub folded: bool,
 }
+
+/// The operator class of `pg_trgm`'s GIN index, which serves `LIKE`.
+pub const TRIGRAM_OPS: &str = "gin_trgm_ops";
 
 /// The index `call`'s search reads; `None` for a call decided in SQL.
 pub fn search_index(call: &Call) -> Option<SearchIndex> {
-    (lowering(call.op)? == Lowering::Search).then(|| SearchIndex {
-        method: "gist",
-        cast: call.is_box().then_some("geometry"),
+    if lowering(call.op)? != Lowering::Search {
+        return None;
+    }
+    Some(if call.op == Op::TextContainsIgnoringCase {
+        SearchIndex {
+            method: "gin",
+            cast: None,
+            operator_class: TRIGRAM_OPS,
+            folded: true,
+        }
+    } else {
+        SearchIndex {
+            method: "gist",
+            cast: call.is_box().then_some("geometry"),
+            operator_class: "",
+            folded: false,
+        }
     })
+}
+
+/// A text column's text with its ASCII letters lowered, and nothing else
+/// changed, whatever the database's collation: what a search inside text
+/// matches its pattern against and its trigram index holds (area 6,
+/// "Searching inside text"). `column` is quoted already.
+pub fn folded(column: &str) -> String {
+    format!("lower({column} COLLATE \"C\")")
 }
 
 /// A `geo.` test on `column` as a condition an index serves, which never
@@ -1235,6 +1289,20 @@ pub fn search_index(call: &Call) -> Option<SearchIndex> {
 /// by its envelopes on the column cast to `geometry`.
 fn search(bind: &mut dyn Bind, column: &str, call: &Call) -> Option<String> {
     let value = call.value()?;
+    // A search inside text (chunk 10.3): the field's text with its ASCII
+    // letters lowered, as a pattern made from the text finds it, `\`
+    // escaping; the pattern is wider than the code's folding, which
+    // decides each row.
+    if call.op == Op::TextContainsIgnoringCase {
+        let pattern = match value {
+            Value::Literal(Literal::Text(text)) => {
+                bind.stored(SqlValue::Text(jadpo_std::search::substring(text)))?
+            }
+            Value::Param { .. } => bind.substring(value)?,
+            _ => return None,
+        };
+        return Some(format!("{} LIKE {pattern} ESCAPE E'\\\\'", folded(column)));
+    }
     let reach = match call.args.get(1) {
         Some(CallArg::Value(reach, held)) => Some((reach, *held)),
         _ => None,

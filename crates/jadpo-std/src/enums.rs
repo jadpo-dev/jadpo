@@ -755,6 +755,19 @@ std_enum! {
 }
 
 std_enum! {
+    /// A Unicode normalisation form (area 19, "Text from outside is NFC"):
+    /// `text.normalise`'s `form:`.
+    NormalForm: "NormalForm" {
+        /// Canonical composition, the form a request's text is decoded to:
+        /// `e` and a combining acute become `é`.
+        Nfc: "nfc",
+        /// Compatibility composition: NFC, with compatibility characters
+        /// folded into their plain forms, `ﬁ` into `fi`.
+        Nfkc: "nfkc",
+    }
+}
+
+std_enum! {
     /// How a vector type's vectors are compared (area 21, "Storing a
     /// vector"; decision 14): a property of the model that made them, so
     /// `distance:` sets it on the type and every comparison and index
@@ -944,6 +957,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (crate::FILE_TYPE, names(crate::FILE_TYPES)),
         (crate::CURRENCY, names(crate::CURRENCIES)),
         (CodeForm::NAME, CodeForm::NAMES.to_vec()),
+        (NormalForm::NAME, NormalForm::NAMES.to_vec()),
         (VectorDistance::NAME, VectorDistance::NAMES.to_vec()),
         (SearchLanguage::NAME, SearchLanguage::NAMES.to_vec()),
         (RateLimitKey::NAME, RateLimitKey::NAMES.to_vec()),
@@ -1024,6 +1038,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         crate::FILE_TYPE => crate::FILE_TYPES.iter().position(|(v, _)| *v == variant),
         crate::CURRENCY => crate::CURRENCIES.iter().position(|(v, _)| *v == variant),
         CodeForm::NAME => position(CodeForm::NAMES),
+        NormalForm::NAME => position(NormalForm::NAMES),
         VectorDistance::NAME => position(VectorDistance::NAMES),
         SearchLanguage::NAME => position(SearchLanguage::NAMES),
         RateLimitKey::NAME => position(RateLimitKey::NAMES),

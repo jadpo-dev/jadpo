@@ -653,3 +653,7 @@ delivered
 delivers
 overdue
 staff
+
+# A Unicode normalisation form, `text.normalise`'s `form:` (area 19, "Text
+# from outside is NFC"; chunk 10.3)
+normal

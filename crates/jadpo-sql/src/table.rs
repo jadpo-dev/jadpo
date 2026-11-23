@@ -715,18 +715,26 @@ fn index_columns(columns: &[IndexColumn<'_>], method: Option<IndexMethod<'_>>) -
 
 /// `CREATE INDEX` of `expression` on `table` (area 6, "Operations in
 /// conditions", chunk 6.3b): a B-tree of an operation's SQL form, the
-/// expression a query's condition compares, partial with `predicate`.
+/// expression a query's condition compares, partial with `predicate`; or,
+/// with `method`, an index by that method and operator class, as a
+/// search inside text's GIN index of trigrams is (chunk 10.3).
 pub fn create_expression_index(
     table: &str,
     name: &str,
     expression: &str,
     predicate: Option<&str>,
+    method: Option<(&str, &str)>,
 ) -> String {
     let partial = predicate
         .map(|predicate| format!(" WHERE {predicate}"))
         .unwrap_or_default();
+    let (using, class) = match method {
+        Some((method, "")) => (format!(" USING {method}"), String::new()),
+        Some((method, class)) => (format!(" USING {method}"), format!(" {class}")),
+        None => (String::new(), String::new()),
+    };
     format!(
-        "CREATE INDEX {} ON {} (({expression})){partial}",
+        "CREATE INDEX {} ON {}{using} (({expression}){class}){partial}",
         ident(name),
         ident(table)
     )

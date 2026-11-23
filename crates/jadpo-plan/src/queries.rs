@@ -177,6 +177,10 @@ impl Bind for Laying<'_, '_, '_> {
         self.statement.search_phrase(value)
     }
 
+    fn substring(&mut self, value: &Value) -> Option<String> {
+        self.statement.substring(value)
+    }
+
     fn distance_bound(&mut self, bound: &Value, strict: bool) -> Option<String> {
         self.statement.distance_bound(bound, strict)
     }
@@ -262,6 +266,21 @@ impl Bind for Statement {
         };
         Some(self.param(
             Source::SearchPhrase {
+                index: *index,
+                path: path.clone(),
+            },
+            SqlType::Text,
+        ))
+    }
+
+    /// The pattern a search inside text looks for, made from its text
+    /// when the read runs (chunk 10.3).
+    fn substring(&mut self, value: &Value) -> Option<String> {
+        let Value::Param { index, path } = value else {
+            return None;
+        };
+        Some(self.param(
+            Source::Substring {
                 index: *index,
                 path: path.clone(),
             },
