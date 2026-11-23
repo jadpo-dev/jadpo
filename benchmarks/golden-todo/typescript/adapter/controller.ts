@@ -132,6 +132,13 @@ const transport: Transport = async (input, _scope) => {
 };
 const egress = new Egress(transport);
 const logs: unknown[] = [];
+// Console output joins the logged events: stdout is the protocol, and a
+// hidden test reads every line the application writes.
+for (const name of ["log", "info", "warn", "error", "debug"] as const) {
+  console[name] = (...parts: unknown[]) => {
+    logs.push(parts.map((part) => (typeof part === "string" ? part : JSON.stringify(part))).join(" "));
+  };
+}
 const { app, auth, limits } = createApplication({
   config,
   store,
@@ -368,6 +375,8 @@ async function dispatch(command: Record<string, unknown>): Promise<unknown> {
       limits.reset();
       hook = undefined;
       return {};
+    case "logs":
+      return { logs: logs.splice(0) };
     case "digest":
       return { digest: digest(String(command.text)) };
     case "sign":

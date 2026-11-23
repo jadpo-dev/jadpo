@@ -100,7 +100,14 @@ DEBRIEF = '''The task is over and your work has been kept; change nothing more. 
 # (README, "Runs"). The six span the kinds: a plain feature, two with an
 # unsafe shortcut, the change the owner decides, and two to decline.
 TUNING = ('F01', 'F03', 'F06', 'C03', 'C11', 'C14')
-SETS = {'tuning': TUNING, 'held-out': tuple(c.id for c in change_set.CHANGES if c.id not in TUNING)}
+# 10.2's held-out twelve, and 10.4's fresh twelve, written before any was measured.
+SETS = {'tuning': TUNING,
+        'held-out': tuple(c.id for c in change_set.CHANGES if c.id not in TUNING and c.id not in change_set.FRESH),
+        'fresh': change_set.FRESH}
+
+
+def set_of(change_id):
+    return next(name for name, ids in SETS.items() if change_id in ids)
 
 # What jadpo.dev's "Paste into your agent" prompt asks, beyond what `jadpo
 # new`'s AGENTS.md already says.
@@ -865,7 +872,7 @@ def run(change, language, number, label, settings, agent='claude', keep=False, f
             reports = hidden(language, app, change, folder / 'hidden', server, compiler, diff)
             result = score(change, language, number, label, settings, transcript, diff, visible, reports, asked, timings,
                            folder)
-            result |= {'agent': agent_version(agent), 'set': 'tuning' if tuning else 'held-out', 'frozen': frozen,
+            result |= {'agent': agent_version(agent), 'set': set_of(change.id), 'frozen': frozen,
                        'thinking': thinking}
             if codex:
                 result['sandbox'] = codex_config(settings, folder, environment)
@@ -1338,7 +1345,7 @@ def main(argv=None):
         sub.add_argument('--timeout-minutes', dest='timeout_minutes', type=int)
         sub.add_argument('--agent', default='claude', help='claude, codex, or a stand-in command (replay.py) for plumbing checks')
         sub.add_argument('--spend', action='store_true', help='allow real agent sessions')
-        sub.add_argument('--set', choices=sorted(SETS), help='the tuning changes, or the held-out ones')
+        sub.add_argument('--set', choices=sorted(SETS), help='the tuning changes, 10.2\'s held-out ones, or 10.4\'s fresh ones')
         sub.add_argument('--frozen', metavar='REVISION', help='the frozen Jadpo revision a held-out run is against')
         sub.add_argument('--again', action='store_true')
         sub.add_argument('--keep', action='store_true', help='keep the run folder whole')
