@@ -133,7 +133,9 @@ class Isolation(unittest.TestCase):
         self.assertEqual(closed['TEST_LOOPBACK'], 'unavailable')
         self.assertNotIn('TEST_LOOPBACK', harness.agent_environment(Path('/nowhere/run'), 'postgresql://x/y'))
         suite = (harness.TYPESCRIPT / 'test/postgres.test.ts').read_text()
-        self.assertRegex(suite, r'it\.skipIf\(\s*process\.env\.TEST_LOOPBACK === "unavailable",?\s*\)\(\s*"enforces HTTP decoding boundaries over a real socket"')
+        # Skipped as it runs, so `vitest list` (the adapter's count) still has it.
+        self.assertRegex(suite, r'"enforces HTTP decoding boundaries over a real socket",\s*async \(context\) => \{[^}]*'
+                                r'if \(process\.env\.TEST_LOOPBACK === "unavailable"\) context\.skip\(\);')
 
     def test_agent_command_is_pinned_and_closed(self):
         with tempfile.TemporaryDirectory() as scratch:

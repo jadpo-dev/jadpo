@@ -62,13 +62,12 @@ describe("real PostgreSQL mutation/lifetime boundaries", () => {
   it("preserves signed64 revision storage, ABA fences, outbox and exact provider bytes", async () => {
     await revisionNegatives(store, url);
   });
-  // A sandbox that can't listen on loopback sets TEST_LOOPBACK=unavailable.
-  it.skipIf(process.env.TEST_LOOPBACK === "unavailable")(
-    "enforces HTTP decoding boundaries over a real socket",
-    async () => {
-      await httpNegatives(store, url);
-    },
-  );
+  it("enforces HTTP decoding boundaries over a real socket", async (context) => {
+    // A sandbox that can't listen on loopback sets TEST_LOOPBACK=unavailable;
+    // skipping here, not at collection, keeps the test in `vitest list`.
+    if (process.env.TEST_LOOPBACK === "unavailable") context.skip();
+    await httpNegatives(store, url);
+  });
   it("fences idempotency replay, concurrent claims, cancelled writes and expired runners", async () => {
     await idempotencyNegatives(store);
   });
