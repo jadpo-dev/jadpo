@@ -196,8 +196,12 @@ class Server:
     def url(self, database):
         return self.normalize(self.base, database)
 
-    def socket_url(self, database):
-        """The database through the Unix socket, its folder as the host."""
+    def socket_url(self, database, language='jadpo'):
+        """The database through the Unix socket. Jadpo takes the folder as
+        the host; postgres.js takes a hostname literally, so TypeScript gets
+        it in ?host=, as its own adapter writes it."""
+        if language == 'typescript':
+            return f'postgresql://golden@localhost:{self.port}/{database}?host={quote(str(self.socket), safe="/")}'
         return f'postgresql://golden@{quote(str(self.socket), safe="")}:{self.port}/{database}'
 
     def sql(self, statement):
@@ -409,8 +413,7 @@ def prepare(change, language, folder, compiler):
         install_wrapper(folder, app, {'jadpo': compiler})
     else:
         shutil.copytree(TYPESCRIPT, app, ignore=shutil.ignore_patterns(*TYPESCRIPT_SKIPPED))
-        subprocess.run(['npm', 'ci', '--ignore-scripts', '--no-audit', '--no-fund'], cwd=app, check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        install_typescript(app)
         install_wrapper(folder, app, {'npm': tool('npm'), 'npx': tool('npx')})
     (app / '.gitignore').write_text('node_modules/\nbuild/\n.jadpo/\n.wrangler/\n')
     git(app, 'init', '-q', '-b', 'main')
@@ -430,10 +433,12 @@ def final_diff(app):
     return git(app, 'diff', '--cached', '--no-color', '--find-renames', 'HEAD', '--', '.', ':(exclude)THINKING.md')
 
 
-def agent_environment(folder, database_url):
+def agent_environment(folder, database_url, loopback=True):
     """Only what a fresh terminal has: no variable of the host session (a
     parent Claude Code's CLAUDE_*, ANTHROPIC_BASE_URL) and nothing naming the
-    repository."""
+    repository. A sandbox that can't listen on loopback says so, and the
+    one test that needs it skips instead of failing for a reason no change
+    could fix."""
     path = [str(folder / 'bin')] if (folder / 'bin').is_dir() else []
     for name in ['node', 'npm', 'bun', 'git', 'psql']:
         with contextlib.suppress(RuntimeError):
@@ -444,6 +449,8 @@ def agent_environment(folder, database_url):
     environment = {key: os.environ[key] for key in ['HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'LANG'] if key in os.environ}
     environment.update({'PATH': ':'.join(path), 'TERM': 'dumb', 'NO_COLOR': '1',
                         'TEST_DATABASE_URL': database_url, 'JADPO_TEST_DATABASE_URL': database_url})
+    if not loopback:
+        environment['TEST_LOOPBACK'] = 'unavailable'
     return environment
 
 
@@ -705,18 +712,32 @@ def unavailable(change, cases, message):
 
 
 @contextlib.contextmanager
-def native_lock(folder):
+def native_lock(folder, name='native'):
     """One run at a time builds the contract's native driver: every run
     builds it into the same target folder, so runs side by side would
     replace each other's driver."""
     import fcntl
     folder.mkdir(parents=True, exist_ok=True)
-    with (folder / 'native.lock').open('w') as lock:
+    with (folder / f'{name}.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
             yield
         finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def install_typescript(app, run=subprocess.run):
+    """npm ci, one run at a time, then the pristine app's own typecheck:
+    npm ci has exited 0 leaving node_modules short of files, and an agent
+    then spends its session on a broken install. One retry, then the run
+    fails as the harness's fault."""
+    quiet = {'cwd': app, 'stdout': subprocess.DEVNULL, 'stderr': subprocess.DEVNULL}
+    with native_lock(ROOT / 'target/agent-changes', 'npm'):
+        for _ in range(2):
+            run(['npm', 'ci', '--ignore-scripts', '--no-audit', '--no-fund'], check=True, **quiet)
+            if run(['npm', 'run', 'check'], check=False, **quiet).returncode == 0:
+                return
+    raise RuntimeError(f'npm ci left an incomplete node_modules in {app} twice')
 
 
 def own_driver(build, work):
@@ -815,7 +836,8 @@ def run(change, language, number, label, settings, agent='claude', keep=False, f
     tuning = change.id in TUNING
     try:
         database = server.create()
-        environment = agent_environment(folder, server.socket_url(database) if codex else server.url(database))
+        environment = agent_environment(folder, server.socket_url(database, language) if codex else server.url(database),
+                                        loopback=not codex)
         if codex:
             environment |= codex_environment(folder)
         transcript = folder / 'transcript.jsonl'

@@ -116,6 +116,27 @@ class Isolation(unittest.TestCase):
         self.assertNotIn(str(harness.ROOT), json.dumps(environment))
         self.assertEqual(environment['TEST_DATABASE_URL'], 'postgresql://x/y')
 
+    def test_typescript_reaches_its_socket_the_way_its_client_reads_one(self):
+        # postgres.js takes a hostname literally, so the folder goes in
+        # ?host=, the form the app's own adapter writes.
+        from urllib.parse import parse_qs, urlsplit
+        server = object.__new__(harness.Server)
+        server.socket, server.port = Path('/runs/held/F02-typescript-r1/sock'), 5999
+        jadpo = urlsplit(server.socket_url('agent_1'))
+        typescript = urlsplit(server.socket_url('agent_1', 'typescript'))
+        self.assertEqual(jadpo.netloc, 'golden@%2Fruns%2Fheld%2FF02-typescript-r1%2Fsock:5999')
+        self.assertEqual((typescript.hostname, typescript.port, typescript.path), ('localhost', 5999, '/agent_1'))
+        self.assertEqual(parse_qs(typescript.query), {'host': ['/runs/held/F02-typescript-r1/sock']})
+
+    def test_a_sandboxed_run_is_told_loopback_is_closed(self):
+        closed = harness.agent_environment(Path('/nowhere/run'), 'postgresql://x/y', loopback=False)
+        self.assertEqual(closed['TEST_LOOPBACK'], 'unavailable')
+        self.assertNotIn('TEST_LOOPBACK', harness.agent_environment(Path('/nowhere/run'), 'postgresql://x/y'))
+        suite = (harness.TYPESCRIPT / 'test/postgres.test.ts').read_text()
+        # Skipped as it runs, so `vitest list` (the adapter's count) still has it.
+        self.assertRegex(suite, r'"enforces HTTP decoding boundaries over a real socket",\s*async \(context\) => \{[^}]*'
+                                r'if \(process\.env\.TEST_LOOPBACK === "unavailable"\) context\.skip\(\);')
+
     def test_agent_command_is_pinned_and_closed(self):
         with tempfile.TemporaryDirectory() as scratch:
             app = Path(scratch)
@@ -180,6 +201,28 @@ class SideBySide(unittest.TestCase):
             shared.write_text('driver for the run beside it')
             self.assertEqual(own.read_text(), 'driver for this run')
             self.assertTrue((Path(scratch) / 'target/agent-changes/native.lock').exists())
+
+
+    def test_a_typescript_install_is_checked_and_retried_once(self):
+        # npm ci has exited 0 with node_modules missing files; the pristine
+        # app's own typecheck is what shows it.
+        def runner(outcomes):
+            calls = []
+
+            def run(command, **_):
+                calls.append(command[:2])
+                ok = outcomes.pop(0) if command[:2] == ['npm', 'run'] else True
+                return subprocess.CompletedProcess(command, 0 if ok else 2, '', '')
+            return calls, run
+
+        with tempfile.TemporaryDirectory() as scratch, mock.patch.object(harness, 'ROOT', Path(scratch)):
+            calls, run = runner([False, True])
+            harness.install_typescript(Path(scratch), run)
+            self.assertEqual(calls, [['npm', 'ci'], ['npm', 'run'], ['npm', 'ci'], ['npm', 'run']])
+            self.assertTrue((Path(scratch) / 'target/agent-changes/npm.lock').exists())
+            calls, run = runner([False, False])
+            with self.assertRaisesRegex(RuntimeError, 'incomplete'):
+                harness.install_typescript(Path(scratch), run)
 
 
 class Sets(unittest.TestCase):
