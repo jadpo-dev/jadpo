@@ -156,6 +156,17 @@ only once Jadpo is frozen: `run` refuses a held-out change without
 `--frozen <jadpo revision>`, which must be the revision checked out. A
 gain found while tuning then shows on changes it was never tuned on.
 
+**Fresh, for the after.** Roadmap chunk 10.4 added a third set, `fresh`
+(N01 to N12), written before any of it was measured and without reading
+the fixes it measures. Each change crosses a rule kept elsewhere in the
+app: owner scoping in an export or a bulk action, deleted todos in a count,
+fields only the server sets, reminder state on a copy, and personal data in
+logs. Two of its tests read the app's log lines, through the drivers' `logs`
+op: the native driver records every event the runtime logs, and the
+TypeScript controller its logger's events and anything written to the
+console. `fresh` runs like `held-out`, against a frozen Jadpo, and on more
+than one Codex model (`--model`).
+
 **Tuning runs are staged.** One session at a time. After each, `stumbles`
 reads where it got stuck: every failing check or test run and its error
 IDs, errors seen more than twice, the docs read before each recovery, the

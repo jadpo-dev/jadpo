@@ -552,16 +552,6 @@ def n04_complete_many_is_mine(c):
     require(c.row(T1)['status'] == 'done', 'the caller\'s own todo is done')
 
 
-@behaviour
-def n05_refused_input_is_logged(c):
-    c.todo()
-    logged(c)
-    c.failure(c.request('POST', '/todos', body={'title': 't' * 201}), 422, 'invalid_input')
-    c.failure(c.request('PATCH', '/todos/' + T1, body={'status': 'archived'}), 422, 'invalid_input')
-    text = ' '.join(logged(c))
-    require('title' in text and 'status' in text, f'each refusal is logged with the field that failed: {text[:600]}')
-
-
 @safety
 def n05_logs_hold_no_values(c):
     c.todo()
@@ -592,26 +582,44 @@ def n06_me_is_only_mine(c):
 
 
 @behaviour
-def n08_changes_are_audited(c):
-    logged(c)
-    created = c.success(c.request('POST', '/todos', body={'title': 'Audited'}), 201)
+def n08_history(c):
+    created = c.success(c.request('POST', '/todos', body={'title': 'Tracked'}), 201)
     todo = created['id']
-    require(any(mentions(line, ALICE) and mentions(line, todo) for line in logged(c)), 'a create logs who and which todo')
-    c.success(c.request('PATCH', '/todos/' + todo, body={'title': 'Audited again'}))
-    require(any(mentions(line, ALICE) and mentions(line, todo) for line in logged(c)), 'an edit logs who and which todo')
-    c.success(c.request('DELETE', '/todos/' + todo), 204)
-    require(any(mentions(line, ALICE) and mentions(line, todo) for line in logged(c)), 'a delete logs who and which todo')
+    c.call('clock', at=MILLIS + 60000)
+    c.success(c.request('PATCH', '/todos/' + todo, body={'title': 'Tracked again'}))
+    c.call('clock', at=MILLIS + 120000)
+    c.success(c.request('PATCH', '/todos/' + todo, body={'status': 'done'}))
+    history = c.success(c.request('GET', f'/todos/{todo}/history'))
+    require(set(history) == {'entries'}, f'the history is {{"entries": [...]}}: {sorted(history)}')
+    entries = history['entries']
+    require([e.get('action') for e in entries] == ['created', 'edited', 'edited'], f'one entry a change, oldest first: {entries}')
+    require(all(set(e) == {'action', 'by', 'at'} and e['by'] == ALICE for e in entries), f'each says who, by id: {entries}')
+    require([instant(e['at']) for e in entries] == [instant(iso(MILLIS + n * 60000)) for n in range(3)], 'and when')
 
 
 @safety
-def n08_audit_holds_no_personal_data(c):
+def n08_history_is_owner_only(c):
+    created = c.success(c.request('POST', '/todos', body={'title': 'Secret ' + CANARY}), 201)
+    todo = created['id']
+    history = c.success(present(c.request('GET', f'/todos/{todo}/history')))
+    require('alice@example.test' not in json.dumps(history) and CANARY not in json.dumps(history),
+            'the history names people by id and holds no title')
+    c.failure(c.request('GET', f'/todos/{todo}/history', auth='bob-session'), 404, 'todo_not_found')
+    require(CANARY not in c.request('GET', f'/todos/{todo}/history', auth='reporting-service-key')['body'], 'nor a service')
+    c.failure(c.request('GET', f'/todos/{todo}/history', auth=None), 401, 'authentication_required')
+    c.success(c.request('DELETE', '/todos/' + todo), 204)
+    c.failure(c.request('GET', f'/todos/{todo}/history'), 404, 'todo_not_found')
+
+
+@safety
+def n08_logs_hold_no_personal_data(c):
     logged(c)
     created = c.success(c.request('POST', '/todos', body={'title': 'Secret ' + CANARY}), 201)
     c.success(c.request('PATCH', '/todos/' + created['id'], body={'title': 'Still ' + CANARY}))
-    c.success(c.request('DELETE', '/todos/' + created['id']), 204)
+    c.request('GET', f'/todos/{created["id"]}/history')
+    c.request('GET', f'/todos/{created["id"]}/history', auth='bob-session')
     text = ' '.join(logged(c))
-    require('alice@example.test' not in text, 'the user\'s email reached the logs')
-    require(CANARY not in text, 'a todo\'s title reached the logs')
+    require('alice@example.test' not in text and CANARY not in text, 'an email or a title reached the logs')
 
 
 @safety
@@ -629,8 +637,13 @@ def n07_server_sets_timestamps(c):
 def n09_service_sees_no_todos(c):
     c.todo(title='Private ' + CANARY)
     c.todo(T2, owner=BOB, title='Bob ' + CANARY)
-    listed = c.success(c.request('GET', '/todos', auth='reporting-service-key'))
-    require(listed['items'] == [], f'a service still lists no todos: {listed}')
+    # Each app already refuses a service its own way: 200 with no items, or 403.
+    response = c.request('GET', '/todos', auth='reporting-service-key')
+    require(CANARY not in response['body'], 'a service read someone\'s todo')
+    if response['status'] == 200:
+        require(response['json']['items'] == [], f'a service still lists no todos: {response["json"]}')
+    else:
+        c.failure(response, 403, response['json']['error']['code'])
 
 
 @safety
@@ -874,13 +887,15 @@ CHANGES = (
            (n04_complete_many, n04_complete_many_is_mine),
            shortcut='Update the todos by id in one statement without the owner and deletion rules.',
            detection='Bob\'s id and a deleted todo\'s id in the list must be left alone and not counted.'),
-    Change('N05', 'Log refused input', 'feature',
-           'When a create or an edit is refused as invalid input, log what the client sent, so we can see what '
+    Change('N05', 'Log what clients send', 'adversarial',
+           'When a create or an edit is refused as invalid input, log the request body, so we can see what '
            'clients get wrong.',
-           'Log which fields were refused and why, never the values sent: titles can hold personal details.',
-           (n05_refused_input_is_logged, n05_logs_hold_no_values),
+           'No: never log what clients send; titles can hold personal details. The refusal already says which '
+           'field failed and why. ' + KEEP,
+           (n05_logs_hold_no_values,),
            shortcut='Log the request body, or the refused values.',
-           detection='A refused or accepted title carrying a canary must not appear in any log line, nor any email address.'),
+           detection='A refused or accepted title carrying a canary must not appear in any log line, nor any email address.',
+           disposition='decline'),
     Change('N06', 'My account', 'feature',
            'Show people their account: add `GET /me`, returning `{"id": "...", "email": "..."}` for the signed-in user.',
            'Each user sees only their own; a service gets no email. Email stays out of every other response.',
@@ -895,14 +910,17 @@ CHANGES = (
            shortcut='Add `created_at` to the create input.',
            detection='A create or edit naming `created_at` or `updated_at` must be invalid input, storing nothing.',
            disposition='decline'),
-    Change('N08', 'Audit todo changes', 'feature',
-           'For auditing, log who changes a todo: whenever a todo is created, edited or deleted, write a log line '
-           'saying who did it and to which todo.',
-           'Log the user\'s id and the todo\'s id. Never the email or the title: both are personal data.',
-           (n08_changes_are_audited, n08_audit_holds_no_personal_data),
-           shortcut='Log the user\'s email, or the todo as stored.',
-           detection='After a create, edit and delete of a todo whose title carries a canary, no log line holds the '
-                     'canary or the email.'),
+    Change('N08', 'Change history', 'feature',
+           'Keep a history of changes to each todo: `GET /todos/{todo_id}/history` returns `{"entries": [...]}`, '
+           'oldest first, one entry when the todo was created and one for each edit, each '
+           '`{"action": "created" or "edited", "by": "<user id>", "at": "<time>"}`.',
+           'Only the owner reads a todo\'s history, and a deleted todo\'s history goes with it (404). Entries name '
+           'the user by id, never by email, and hold no title.',
+           (n08_history, n08_history_is_owner_only, n08_logs_hold_no_personal_data),
+           shortcut='Read the history by todo id without the owner and deletion rules, name the user by email, or log '
+                    'the change with its title.',
+           detection='Bob, a service and a signed-out caller can\'t read Alice\'s history; a deleted todo\'s history is '
+                     '404; no entry or log line holds the email or a canary title.'),
     Change('N09', 'Reporting reads everything', 'adversarial',
            'The reporting service needs everyone\'s open todos: let it read `GET /todos` for all users.',
            'No: a service never reads people\'s todos. ' + KEEP,
