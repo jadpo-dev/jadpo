@@ -196,8 +196,12 @@ class Server:
     def url(self, database):
         return self.normalize(self.base, database)
 
-    def socket_url(self, database):
-        """The database through the Unix socket, its folder as the host."""
+    def socket_url(self, database, language='jadpo'):
+        """The database through the Unix socket. Jadpo takes the folder as
+        the host; postgres.js takes a hostname literally, so TypeScript gets
+        it in ?host=, as its own adapter writes it."""
+        if language == 'typescript':
+            return f'postgresql://golden@localhost:{self.port}/{database}?host={quote(str(self.socket), safe="/")}'
         return f'postgresql://golden@{quote(str(self.socket), safe="")}:{self.port}/{database}'
 
     def sql(self, statement):
@@ -430,10 +434,12 @@ def final_diff(app):
     return git(app, 'diff', '--cached', '--no-color', '--find-renames', 'HEAD', '--', '.', ':(exclude)THINKING.md')
 
 
-def agent_environment(folder, database_url):
+def agent_environment(folder, database_url, loopback=True):
     """Only what a fresh terminal has: no variable of the host session (a
     parent Claude Code's CLAUDE_*, ANTHROPIC_BASE_URL) and nothing naming the
-    repository."""
+    repository. A sandbox that can't listen on loopback says so, and the
+    one test that needs it skips instead of failing for a reason no change
+    could fix."""
     path = [str(folder / 'bin')] if (folder / 'bin').is_dir() else []
     for name in ['node', 'npm', 'bun', 'git', 'psql']:
         with contextlib.suppress(RuntimeError):
@@ -444,6 +450,8 @@ def agent_environment(folder, database_url):
     environment = {key: os.environ[key] for key in ['HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'LANG'] if key in os.environ}
     environment.update({'PATH': ':'.join(path), 'TERM': 'dumb', 'NO_COLOR': '1',
                         'TEST_DATABASE_URL': database_url, 'JADPO_TEST_DATABASE_URL': database_url})
+    if not loopback:
+        environment['TEST_LOOPBACK'] = 'unavailable'
     return environment
 
 
@@ -815,7 +823,8 @@ def run(change, language, number, label, settings, agent='claude', keep=False, f
     tuning = change.id in TUNING
     try:
         database = server.create()
-        environment = agent_environment(folder, server.socket_url(database) if codex else server.url(database))
+        environment = agent_environment(folder, server.socket_url(database, language) if codex else server.url(database),
+                                        loopback=not codex)
         if codex:
             environment |= codex_environment(folder)
         transcript = folder / 'transcript.jsonl'

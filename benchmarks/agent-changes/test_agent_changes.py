@@ -116,6 +116,25 @@ class Isolation(unittest.TestCase):
         self.assertNotIn(str(harness.ROOT), json.dumps(environment))
         self.assertEqual(environment['TEST_DATABASE_URL'], 'postgresql://x/y')
 
+    def test_typescript_reaches_its_socket_the_way_its_client_reads_one(self):
+        # postgres.js takes a hostname literally, so the folder goes in
+        # ?host=, the form the app's own adapter writes.
+        from urllib.parse import parse_qs, urlsplit
+        server = object.__new__(harness.Server)
+        server.socket, server.port = Path('/runs/held/F02-typescript-r1/sock'), 5999
+        jadpo = urlsplit(server.socket_url('agent_1'))
+        typescript = urlsplit(server.socket_url('agent_1', 'typescript'))
+        self.assertEqual(jadpo.netloc, 'golden@%2Fruns%2Fheld%2FF02-typescript-r1%2Fsock:5999')
+        self.assertEqual((typescript.hostname, typescript.port, typescript.path), ('localhost', 5999, '/agent_1'))
+        self.assertEqual(parse_qs(typescript.query), {'host': ['/runs/held/F02-typescript-r1/sock']})
+
+    def test_a_sandboxed_run_is_told_loopback_is_closed(self):
+        closed = harness.agent_environment(Path('/nowhere/run'), 'postgresql://x/y', loopback=False)
+        self.assertEqual(closed['TEST_LOOPBACK'], 'unavailable')
+        self.assertNotIn('TEST_LOOPBACK', harness.agent_environment(Path('/nowhere/run'), 'postgresql://x/y'))
+        suite = (harness.TYPESCRIPT / 'test/postgres.test.ts').read_text()
+        self.assertRegex(suite, r'it\.skipIf\(\s*process\.env\.TEST_LOOPBACK === "unavailable",?\s*\)\(\s*"enforces HTTP decoding boundaries over a real socket"')
+
     def test_agent_command_is_pinned_and_closed(self):
         with tempfile.TemporaryDirectory() as scratch:
             app = Path(scratch)
