@@ -203,6 +203,49 @@ fn list(call: &Call) -> Reply {
     }
 }
 
+/// Each record view `jadpo check` brings up to date itself outside CI
+/// (area 18, "How `jadpo check` keeps records up to date"): one that is
+/// missing, out of date or under its old name, written from source that
+/// reads. One edited by hand, in a newer format, or a ledger a person
+/// settles, is left to its error. Each path written or removed, with
+/// which, or why one couldn't be.
+pub(crate) fn kept_by_check(
+    loaded: &jadpo_db::Loaded,
+) -> Result<Vec<(String, &'static str)>, Diagnostic> {
+    let mut done = Vec::new();
+    for standing in standings(&loaded.db, loaded.project) {
+        if !matches!(
+            standing.state,
+            State::Missing | State::OutOfDate | State::OldName
+        ) {
+            continue;
+        }
+        for (path, fix) in &standing.fixes {
+            let full = loaded.root.join(path);
+            let result = match fix {
+                Fix::Write(text) => full
+                    .parent()
+                    .map_or(Ok(()), std::fs::create_dir_all)
+                    .and_then(|()| std::fs::write(&full, text))
+                    .map(|()| "written"),
+                Fix::Remove => std::fs::remove_file(&full).map(|()| "removed"),
+            };
+            match result {
+                Ok(change) => done.push((path.clone(), change)),
+                Err(error) => {
+                    return Err(Diagnostic::new(
+                        &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+                        format!("`{path}` couldn't be written"),
+                    )
+                    .reason(format!("Writing it failed: {error}."))
+                    .next("Check that the folder can be written, then run `jadpo records update`"));
+                }
+            }
+        }
+    }
+    Ok(done)
+}
+
 fn update(call: &Call) -> Reply {
     let (cwd, loaded) = match load(call) {
         Ok(found) => found,

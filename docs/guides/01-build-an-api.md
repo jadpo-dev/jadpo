@@ -229,8 +229,9 @@ failures of your own.
 
 Each API keeps a committed record of its routes, fields and failure
 codes, so every change a client would notice shows as a diff of one
-file. You never write it: `jadpo check` fails while it disagrees with
-the routes, and `jadpo api update` rewrites it.
+file. You never write it: `jadpo check` writes it whenever it disagrees
+with the routes (in CI it fails instead), and `jadpo api update` writes
+it on its own.
 
 ```sh
 jadpo api update
@@ -291,8 +292,8 @@ failure book_not_found
 
 The app declares no API of its own, so it has one, called `main`.
 `GET /openapi.json` is Jadpo's: it serves the API's OpenAPI document.
-Run `jadpo api update` again after every change to a route or a type it
-uses, and commit the record with the code. A change that breaks
+After every change to a route or a type it uses, `jadpo check` writes it
+again; commit the record with the code. A change that breaks
 clients, such as removing a field, also needs a person's sign-off;
 [Approve a risky change](09-get-a-sign-off.md) covers that.
 

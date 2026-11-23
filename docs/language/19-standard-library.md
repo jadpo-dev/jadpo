@@ -3315,8 +3315,8 @@ Stripe sends it: `{"amount": 1050, "currency": "GBP"}`. `json.read` and
 `json.write` use the same shape.
 
 - The amount is always a JSON number. It is never sent as a string,
-  which is how [Values and types](02-values-and-types.md) sends a large
-  `Int`.
+  which is how [Values and types](02-values-and-types.md#numbers-in-json)
+  sends an `Int` whose range goes past 2^53 - 1.
 - JSON past `Money`'s limit is refused as `max`.
 - The currency is read in any case and written in capitals.
 - OpenAPI describes it by the JSON it sends, as it does every standard

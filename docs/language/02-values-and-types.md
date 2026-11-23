@@ -57,6 +57,23 @@ six representation types are:
 There is no `Float`. Arithmetic on `Decimal` is exact, and its other
 operations are under `decimal.` ([Numbers](19-standard-library.md#numbers)).
 
+#### Numbers in JSON
+<!-- topic: numbers-in-json -->
+
+An `Int` is a JSON number, `{"open": 3}`, whether it is a type's field, a
+route's input or a count a query worked out. The one exception is a type
+whose declared `min:` or `max:` goes past JavaScript's safe integers,
+2^53 - 1 either side of zero: it is sent as a string, `"9007199254740993"`,
+so a JavaScript client, which reads every JSON number as a double, reads it
+exactly. Reading takes either form. A `Decimal` is always a string,
+`"12.50"`, since a double can't hold one exactly.
+
+Jadpo writes an `Int` exactly however large it is, so a bare `Int` that
+goes past 2^53 - 1 reaches a client whole and a JavaScript client rounds
+it. A field that can hold numbers that large declares its range, and is
+then a string. OpenAPI gives an `Int` that is a number as `integer`, with
+`format: int64` when a side has no bound.
+
 Text that arrives from outside, such as a request body, is put into Unicode's
 NFC form as it is read, before its rules are checked. NFC writes each
 character one way, so the same text always compares equal.

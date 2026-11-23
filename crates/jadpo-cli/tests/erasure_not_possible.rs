@@ -185,7 +185,7 @@ fn a_first_commit_says_so_rather_than_passing_unseen() {
     assert_eq!(approved.code, 0, "{}{}", approved.stdout, approved.stderr);
     let markdown = fs::read_to_string(root.join("build/review/approval.md")).expect("the report");
     assert!(
-        markdown.contains("## Decisions compared with nothing"),
+        markdown.contains("## Decisions about the app as it stands"),
         "{markdown}"
     );
     assert!(

@@ -54,10 +54,32 @@ pub fn check(call: &Call) -> Reply {
         },
     };
     let started = Instant::now();
-    let checked = match checked_before(call, &target, JudgedOn::Today) {
+    let mut checked = match checked_before(call, &target, JudgedOn::Today) {
         Ok(checked) => checked,
         Err(reply) => return *reply,
     };
+    // Outside CI, what only a command would write from the source is
+    // written here, and the project checked again: an out-of-date record
+    // or migration costs no run of its own (area 18, "How `jadpo check`
+    // keeps records up to date"). CI holds the commit to them as it is.
+    if !crate::run::in_ci(&call.environment) {
+        let mut updated: Vec<(String, &'static str)> = Vec::new();
+        for _ in 0..2 {
+            let written = match kept_up_to_date(&checked) {
+                Ok(written) => written,
+                Err(reply) => return *reply,
+            };
+            if written.is_empty() {
+                break;
+            }
+            updated.extend(written);
+            checked = match checked_before(call, &target, JudgedOn::Today) {
+                Ok(checked) => checked,
+                Err(reply) => return *reply,
+            };
+        }
+        checked.updated = updated;
+    }
     reported(
         &cwd,
         checked,
@@ -65,6 +87,31 @@ pub fn check(call: &Call) -> Reply {
         "check failed",
         call.flag("--full"),
     )
+}
+
+/// What `jadpo check` writes itself of `checked`'s project, each path
+/// with what was done to it: the next migration when one is out of date
+/// and needs no decision, then each record view out of date, missing or
+/// under its old name. Nothing for loose files.
+fn kept_up_to_date(checked: &Checked) -> Result<Vec<(String, &'static str)>, Box<Reply>> {
+    let loaded = &checked.loaded;
+    if loaded.project.layout(&loaded.db) != Layout::Project {
+        return Ok(Vec::new());
+    }
+    let out_of_date = |id: &str| checked.diagnostics.iter().any(|d| d.rule.id == id);
+    let mut written = Vec::new();
+    if out_of_date(rule::MIGRATION_OUT_OF_DATE.id)
+        && let Some(folder) = crate::migrate::written_by_check(loaded, &checked.diagnostics)
+    {
+        written.push((folder, "written"));
+    }
+    if out_of_date(rule::RECORD_OUT_OF_DATE.id) {
+        written.extend(
+            crate::records::kept_by_check(loaded)
+                .map_err(|problem| Box::new(Reply::failed(problem)))?,
+        );
+    }
+    Ok(written)
 }
 
 /// The date a rule triggered by time passing is judged at (area 1, "Rules
@@ -191,6 +238,7 @@ pub(crate) fn reported(
         mut diagnostics,
         written,
         publishers,
+        updated,
     } = checked;
     let db = &loaded.db;
     let layout = loaded.project.layout(db);
@@ -269,6 +317,7 @@ pub(crate) fn reported(
             &publishers,
         ),
         (elapsed, failed, before, not_judged, full),
+        &updated,
     )
 }
 
@@ -337,8 +386,8 @@ pub(crate) fn publishers_json(publishers: &[Publishers]) -> Json {
 pub(crate) fn notice_blocks(notice_list: &[Notice], for_person: bool) -> Vec<Block> {
     let (one, heading) = match notice_list.len() {
         0 => return Vec::new(),
-        1 => (true, "1 decision compared with nothing".to_string()),
-        n => (false, format!("{n} decisions compared with nothing")),
+        1 => (true, "1 decision about the app as it stands".to_string()),
+        n => (false, format!("{n} decisions about the app as it stands")),
     };
     vec![
         Block::Decisions {
@@ -351,7 +400,7 @@ pub(crate) fn notice_blocks(notice_list: &[Notice], for_person: bool) -> Vec<Blo
                     state: if notice.refused_next() {
                         "refused from the next change".to_string()
                     } else {
-                        "not compared".to_string()
+                        "as it stands".to_string()
                     },
                     path: vec![notice.place()],
                 })
@@ -360,9 +409,9 @@ pub(crate) fn notice_blocks(notice_list: &[Notice], for_person: bool) -> Vec<Blo
         if for_person {
             Block::Decision {
                 subject: if one {
-                    "nothing compares this, so a person reads it before it goes in".to_string()
+                    "no commit holds this to compare it with, so a person reads it before it goes in".to_string()
                 } else {
-                    "nothing compares these, so a person reads them before they go in".to_string()
+                    "no commit holds these to compare them with, so a person reads them before they go in".to_string()
                 },
                 location: None,
                 next: format!(
@@ -374,13 +423,13 @@ pub(crate) fn notice_blocks(notice_list: &[Notice], for_person: bool) -> Vec<Blo
         } else {
             Block::Notice {
                 subject: if one {
-                    "nothing compares this yet, so a person reads it before it goes in".to_string()
+                    "this is the app as it stands, with no commit to compare it with, so a person reads it before it goes in".to_string()
                 } else {
-                    "nothing compares these yet, so a person reads them before they go in"
+                    "these are the app as it stands, with no commit to compare them with, so a person reads them before they go in"
                         .to_string()
                 },
                 next: format!(
-                    "Carry on: this passes, and nothing here is yours to decide or to stop for. When you hand over, tell your user what {said}, so they decide whether the app means {it}. {subject} compared as usual once a commit holds {it}.",
+                    "Carry on: this passes, it describes the app rather than a change you made, and nothing here is yours to decide or to stop for. When you hand over, tell your user what {said}, so they decide whether the app means {it}. {subject} compared as usual once a commit holds {it}.",
                     said = if one { "it said" } else { "each said" },
                     it = if one { "it" } else { "them" },
                     subject = if one { "It is" } else { "They are" },
@@ -443,6 +492,9 @@ pub(crate) struct Checked {
     /// Each installed package's findings left to its publisher
     /// ([`jadpo_check::Checked::publishers`]).
     pub publishers: Vec<Publishers>,
+    /// The records and migration `jadpo check` wrote itself, each with
+    /// what was done to it.
+    pub updated: Vec<(String, &'static str)>,
 }
 
 /// Checks `target` as `jadpo check` does, once `prepare` has set what it
@@ -549,6 +601,7 @@ fn checked_with(
         diagnostics,
         written,
         publishers,
+        updated: Vec::new(),
     })
 }
 
@@ -582,6 +635,7 @@ fn report(
         Option<String>,
         bool,
     ),
+    updated: &[(String, &'static str)],
 ) -> Reply {
     let errors = diagnostics.len();
     // With errors the agent's work comes first: a person is asked once it
@@ -607,6 +661,18 @@ fn report(
         (Outcome::Success, "checked")
     };
     let mut screen = Screen::new();
+    // What it brought up to date itself, first, so the diff to commit is
+    // said before anything left to do.
+    for (path, change) in updated {
+        screen.push(Block::Status {
+            outcome: Outcome::Success,
+            text: format!(
+                "{} {path}",
+                if *change == "removed" { "Removed" } else { "Wrote" }
+            ),
+            rows: Vec::new(),
+        });
+    }
     for diagnostic in &diagnostics {
         screen.push(Block::diagnostic_from(
             diagnostic,
@@ -632,6 +698,12 @@ fn report(
         screen.push(alerts);
     }
     screen.push(Block::summary(outcome, headline, facts));
+    if errors == 0 && !updated.is_empty() {
+        screen.push(Block::hint(
+            "git diff",
+            "shows what it wrote, to commit with the code",
+        ));
+    }
     let files_written = if full {
         vec![
             ("files", Json::array(paths.iter().map(|path| path.as_str()))),
@@ -671,6 +743,15 @@ fn report(
             ),
             ("notice_list", notice_list_json(notice_list)),
             ("package_alerts", publishers_json(publishers)),
+            (
+                "updated",
+                Json::array(updated.iter().map(|(path, change)| {
+                    Json::object([
+                        ("path", Json::from(path.as_str())),
+                        ("change", Json::from(*change)),
+                    ])
+                })),
+            ),
         ]),
     );
     if let (Some(before), Json::Object(fields)) = (before, &mut data) {

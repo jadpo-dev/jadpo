@@ -77,10 +77,14 @@ pub fn merge<'r>(chain: impl IntoIterator<Item = &'r Rules>) -> Rules {
     out
 }
 
-/// Whether an `Int` with these rules is a JSON number: its declared range
-/// fits JavaScript's safe integers (area 2, question 8).
+/// Whether an `Int` with these rules is a JSON number: unless a bound it
+/// declares goes past JavaScript's safe integers, when it is a string a
+/// JavaScript client reads exactly (area 2, "Numbers in JSON"; Richard
+/// accepted the recommendation, 2026-11-23). A bare `Int`, a count among
+/// them, is a number.
 pub fn int_as_number(rules: &Rules) -> bool {
-    let fits = |n: Option<Num>| n.is_some_and(|n| n.scale == 0 && n.mantissa.abs() <= SAFE_INTEGER);
+    let fits =
+        |n: Option<Num>| n.is_none_or(|n| n.scale == 0 && n.mantissa.abs() <= SAFE_INTEGER);
     fits(rules.min) && fits(rules.max)
 }
 
@@ -938,6 +942,10 @@ pub fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
         Builtin::Bool => out.set("type", "boolean"),
         Builtin::Int if int_as_number(rules) => {
             out.set("type", "integer");
+            // A side with no bound is held only by `Int`'s 64 bits.
+            if rules.min.is_none() || rules.max.is_none() {
+                out.set("format", "int64");
+            }
             if let Some(min) = rules.min.and_then(whole) {
                 out.set("minimum", min);
             }
@@ -1148,6 +1156,46 @@ pub fn rules_text(rules: &Rules) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An `Int` is a JSON number unless a bound it declares goes past
+    /// JavaScript's safe integers: a bare `Int`, as a count is, is a
+    /// number (area 2, "Numbers in JSON").
+    #[test]
+    fn an_int_is_a_number_unless_its_range_passes_the_safe_integers() {
+        let whole = |n: i128| {
+            Some(Num {
+                mantissa: n,
+                scale: 0,
+            })
+        };
+        let bare = Rules::default();
+        assert!(int_as_number(&bare), "a count's bare `Int` is a number");
+        let mut expected = Value::object();
+        expected.set("type", "integer");
+        expected.set("format", "int64");
+        assert_eq!(scalar_schema(Builtin::Int, &bare), expected);
+        let small = Rules {
+            min: whole(0),
+            max: whole(500),
+            ..Rules::default()
+        };
+        assert!(int_as_number(&small));
+        let from_zero = Rules {
+            min: whole(0),
+            ..Rules::default()
+        };
+        assert!(int_as_number(&from_zero), "one bound, the other open");
+        let past = Rules {
+            min: whole(0),
+            max: whole(SAFE_INTEGER + 1),
+            ..Rules::default()
+        };
+        assert!(!int_as_number(&past), "a range past 2^53 - 1 is a string");
+        assert_eq!(
+            scalar_schema(Builtin::Int, &past).get("type"),
+            Some(&Value::from("string"))
+        );
+    }
 
     #[test]
     fn a_rate_type_shows_the_currencies_it_fixes() {

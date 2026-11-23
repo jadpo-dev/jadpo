@@ -22,7 +22,7 @@
 //! `emit` stores nothing a caller reads: an event's subscribers are server
 //! work (area 12), as `Access.system` reading a field is.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_graph::body::{Callee, Expr, Node, SiteId};
@@ -174,12 +174,37 @@ impl Dest {
         }
     }
 
-    /// As a summary holds it: no [`Origin`].
-    fn erased(&self) -> Dest {
+    /// As a summary holds it: no [`Origin`]. A record the body found by
+    /// a parameter's `id` (`found`) is held as that parameter, so where
+    /// the action is called it is the record the caller passed the `id`
+    /// of: the record a caller read and the one its callee changes are
+    /// then the same record (area 9, "Field restrictions").
+    fn erased(&self, found: &BTreeMap<u32, Ident>) -> Dest {
+        let by_param = |src: &Src| match src {
+            Src::Record {
+                entity,
+                origin: Some(origin),
+                ..
+            } if *entity == self.entity => match found.get(origin) {
+                Some(Ident::Param(at, path)) => Some(Src::Param(*at, path.clone())),
+                _ => None,
+            },
+            _ => None,
+        };
+        let mut target: Vec<Src> = self
+            .target
+            .iter()
+            .map(|src| by_param(src).unwrap_or_else(|| erased(src)))
+            .collect();
+        if let Some(Ident::Param(at, path)) = self.own.and_then(|own| found.get(&own))
+            && target.is_empty()
+        {
+            target.push(Src::Param(*at, path.clone()));
+        }
         Dest {
             entity: self.entity.clone(),
             own: None,
-            target: self.target.iter().map(erased).collect(),
+            target,
             refs: self
                 .refs
                 .iter()
@@ -623,7 +648,7 @@ impl Walk<'_> {
                 continue;
             }
             let store = Store {
-                dest: dest.erased(),
+                dest: dest.erased(&self.found),
                 field: field.to_string(),
                 value: erased(&src),
                 run: self.run.as_ref().map(|run| run.tenant.clone()),
@@ -700,6 +725,24 @@ impl Walk<'_> {
             None if decided => "Which value is stored shows what decided it, so a value made under an `if`, a `match` or a loop, or kept by a filter, is stored only where everyone who may read it may read the fields they test.".to_string(),
             None => "A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.".to_string(),
         };
+        // Passed to an action that changes a record of the same entity it
+        // finds by an `id` it is given: proved when that is the `id` of
+        // the record the value came from (area 9, "Field restrictions").
+        if let Some(callee) = callee
+            && self.event.is_none()
+            && !decided
+            && dest.entity == entity
+            && single(&dest.target).is_some()
+        {
+            return Diagnostic::new(&rule::POLICY_OUTPUT_FIELD_UNPROVED, headline)
+                .at(span, label)
+                .reason(format!(
+                    "`{callee}` stores what it is given here in {into} of the `{entity}` it changes, and nothing here shows that is the `{entity}` `{from}` was read from. Another `{entity}` has other readers, and {readers} `{from}`, so it is stored only in the record it came from."
+                ))
+                .next(format!(
+                    "Pass `{callee}` the `id` of the `{entity}` `{from}` was read from, which proves it changes that record, or pass only what everyone who may read {into} may read"
+                ));
+        }
         let passed = callee
             .map(|callee| format!("`{callee}` stores what it is given here in {into}, and "))
             .unwrap_or_default();

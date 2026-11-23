@@ -201,7 +201,7 @@ entity Todo {
 }
 ```
 
-Update the record, and `jadpo check` passes.
+Check the project: it writes the API record again, with the new routes, and passes.
 
 ## Try it
 

@@ -177,28 +177,22 @@ values an enum lists.
 steps fail.
 
 From here on, every time you change a route or a type a route uses,
-`jadpo check` reports the API record as out of date, and the fix is
-always `jadpo api update`. Later pages just say "update the record".
+`jadpo check` writes the API record again and says so. You commit it
+with the code.
 
-## Update the API record
+## The API record follows
 
 Check the project. The types changed what clients send and get back, so
-the API record is out of date:
+`jadpo check` writes the API record again:
 
 ```text
-error: `api/main.jadpo_record` is out of date
- --> api/main.jadpo_record:15:1
-   |
-15 | input NewTodo
-   | ^^^^^^^^^^^^^ the source says otherwise
-  reason: The record is a promise to API `main`'s clients, and the routes now say otherwise: changed `input NewTodo`, added `enum TodoStatus` and changed `output TodoView`.
-  next: Run `jadpo api update`, and commit the record with the code (agent)
-  rule: record.out_of_date
-  help: https://jadpo.dev/docs/errors/record.out_of_date
+Wrote api/main.jadpo_record
+
+checked: 9 files
 ```
 
-Run `jadpo api update`. If your project is in git, `git diff api/` shows
-what changed, which is what a reviewer sees:
+If your project is in git, `git diff api/` shows what changed, which is
+what a reviewer sees:
 
 ```text
  input NewTodo

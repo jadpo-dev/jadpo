@@ -1179,6 +1179,124 @@ whatever their fields hold; to count a field's values, add a condition
 (`where: ApiCall.wait != none`). A group whose values are all `none` sums
 to zero, and its `min`, `max` and `average` are `none`.
 
+### A count on the wire
+
+A count is an `Int`, and an `Int` reaches a client as a JSON number
+([Numbers in JSON](02-values-and-types.md#numbers-in-json)), as does a
+sum of whole numbers and a group by `temporal.year` or `temporal.month`.
+A `min` or `max` is sent as its field's type is, and a `Decimal` sum and
+an average are strings, as every `Decimal` is. A route test reads its
+output from the body as sent, so `json.write` of it is what the client
+got:
+
+```jadpo check project=open-count file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=open-count file=domains/planning/types/todo_title.jadpo hidden
+/// What a todo says.
+type TodoTitle = Text {
+    max_length: 200
+}
+```
+
+```jadpo check project=open-count file=domains/planning/entities/todo.jadpo hidden migrate=initial
+use planning/types { TodoTitle }
+
+/// Something to do.
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+    done: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=open-count file=domains/planning/actions/add_todo.jadpo hidden
+use planning/entities { Todo }
+use planning/types { TodoTitle }
+
+/// A new todo's title.
+type NewTodo = Input {
+    title: TodoTitle
+}
+
+/// Adds a todo, not done yet.
+action add_todo(input: NewTodo) -> Todo {
+    return Todo.create {
+        set: {
+            title: input.title
+            done: false
+        }
+    }
+}
+```
+
+```jadpo check project=open-count file=domains/planning/types/open_todos.jadpo
+/// How many todos are still to do.
+type OpenTodos = Output {
+    open: Int
+}
+```
+
+```jadpo check project=open-count file=domains/planning/queries/count_open.jadpo
+use planning/entities { Todo }
+use planning/types { OpenTodos }
+
+/// Counts the todos not done yet.
+query count_open() -> OpenTodos {
+    from: Todo
+    where: Todo.done == false
+    aggregate: {
+        open: count()
+    }
+}
+```
+
+```jadpo check project=open-count file=domains/planning/routes/todos.jadpo
+use planning/types { OpenTodos }
+use planning/queries { count_open }
+
+/// The todo list.
+routes Todos {
+    prefix: /todos
+
+    /// How many todos are still to do.
+    GET /open {
+        authentication: RouteAuthentication.none
+        output: OpenTodos
+        run: count_open()
+    }
+}
+```
+
+```jadpo check project=open-count file=domains/planning/routes/todos.test.jadpo
+use planning/actions { NewTodo, add_todo }
+use planning/entities { Todo }
+
+test "the open count reaches a client as a number" {
+    var added: List<Todo> = [
+        add_todo(NewTodo {
+            title: "Buy flour"
+        }),
+        add_todo(NewTodo {
+            title: "Buy eggs"
+        })
+    ]
+    assert list.count(added) == 2
+    var counted: Response = request {
+        method: HttpMethod.get
+        path: "/todos/open"
+    }
+    assert counted.status == 200
+    assert json.write(counted.output) == "{\"open\":2}"
+}
+```
+
 ### The groups
 
 A group is a field, or a time bucket: `temporal.year`, `temporal.month` or

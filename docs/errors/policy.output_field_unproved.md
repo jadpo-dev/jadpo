@@ -1160,6 +1160,150 @@ error: `answer_call`'s reply shows whether a `PhoneLog` is there, which not ever
 check failed: 1 error, 11 files
 ```
 
+A value passed to another action is checked where it is passed, against
+the record that action changes. `summarise` finds the note it changes by
+the `id` it is given, so it changes the note whose `id` it is passed, and
+`from.appraisal` came from another note, whose reviewer may not be this
+one's:
+
+```jadpo check project=e-output-field-passed expect=policy.output_field_unproved
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    reviewer_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    appraisal: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+    summary: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+
+    policy: {
+        read: [Access.authenticated]
+        update: [reviewer_id]
+    }
+}
+
+action summarise(note_id: Note.id, summary: NoteText) fails NoteNotFound -> Unit {
+    var note: Note = attempt Note.get(note_id)
+    var summarised: Note = Note.update(note) {
+        set: {
+            summary: summary
+        }
+    }
+    assert summarised.summary == summary
+}
+
+action summarise_from(note_id: Note.id, from_id: Note.id) fails NoteNotFound -> Unit {
+    var from: Note = attempt Note.get(from_id)
+    attempt summarise(note_id, from.appraisal)
+}
+```
+
+```text output
+error: `summarise_from` passes `Note.appraisal` to `summarise`, which stores it in `Note.summary`, though not everyone who may read `summary` may read it
+ --> main.jadpo:56:32
+   |
+56 |     attempt summarise(note_id, from.appraisal)
+   |                                ^^^^^^^^^^^^^^ from `Note.appraisal`
+  reason: `summarise` stores what it is given here in `Note.summary` of the `Note` it changes, and nothing here shows that is the `Note` `appraisal` was read from. Another `Note` has other readers, and only the user `reviewer_id` points at may read `appraisal`, so it is stored only in the record it came from.
+  next: Pass `summarise` the `id` of the `Note` `appraisal` was read from, which proves it changes that record, or pass only what everyone who may read `Note.summary` may read (agent)
+  rule: policy.output_field_unproved
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
+
+check failed: 1 error, 1 file
+```
+
+Passed beside the `id` of the note it was read from, the appraisal stays
+in that note, which only its reviewer may read, as a copy within one body
+does:
+
+```jadpo check project=e-output-field-passed-same
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    reviewer_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    appraisal: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+    summary: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+
+    policy: {
+        read: [Access.authenticated]
+        update: [reviewer_id]
+    }
+}
+
+action summarise(note_id: Note.id, summary: NoteText) fails NoteNotFound -> Unit {
+    var note: Note = attempt Note.get(note_id)
+    var summarised: Note = Note.update(note) {
+        set: {
+            summary: summary
+        }
+    }
+    assert summarised.summary == summary
+}
+
+action summarise_from(note_id: Note.id) fails NoteNotFound -> Unit {
+    var note: Note = attempt Note.get(note_id)
+    attempt summarise(note.id, note.appraisal)
+}
+```
+
 ## How to fix it
 
 The question is whether everyone who may run `find_note` should see the

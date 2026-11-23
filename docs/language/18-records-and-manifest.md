@@ -85,8 +85,32 @@ folder keeps its own files ([Migrations](05-data.md#migrations)).
 ### How `jadpo check` keeps records up to date
 
 You never edit a record by hand. `jadpo check` works out each record
-again and fails while one disagrees with the source, naming the command
-that brings it up to date. A hand edit is an error naming that command.
+again and, when one is missing, out of date or under its old name,
+writes it itself, as `jadpo records update` would, and checks the
+project again. So does the next migration when the entities have moved
+on from the latest and the change needs no decision
+([Migrations](#migrations)). It says each file it wrote before anything
+else, `✓ Wrote api/main.jadpo_record`, and in `--json` lists each in
+`updated` with its `path` and `change`. Nothing is left for a command to
+do, so an agent's next check passes, and the diff to commit holds the
+record beside the code that changed it:
+
+```text
+$ jadpo check
+✓ Wrote database/migrations/20261020T1401_add_pinned/
+
+✓ Wrote api/main.jadpo_record
+
+✓ checked  6 files
+
+→ git diff  shows what it wrote, to commit with the code
+```
+
+With `CI` set, as every CI service sets it, `jadpo check` writes nothing
+and fails while a record or migration disagrees with the source, naming
+the command that brings it up to date: CI holds a commit to the records
+it carries. A hand edit is an error naming that command everywhere, and
+is never written over, since only a person can say why it was made.
 There are three such errors:
 
 - `record.out_of_date`: the record disagrees with the source.
@@ -129,11 +153,15 @@ also how a project moves a record from an older name (`api/<api>.api`,
 
 Migrations are records too. `jadpo migrate new` writes each folder in
 `database/migrations/`: `snapshot.json`, `postgres.sql` and, when the
-migration needs a person's decision, `changes.jadpo`. `jadpo check`
-fails, naming the command to run, while the entities and the latest
-snapshot disagree, while the latest migration waits for a decision, and
-when a record can't be read. Each folder is a `migration_snapshot` node
-in the manifest.
+migration needs a person's decision, `changes.jadpo`. When the entities
+and the latest snapshot disagree, `jadpo check` writes the next
+migration itself, named after the purpose the changes suggest
+(`add_pinned`, `initial` for the first), as long as the project has no
+other errors, the latest migration waits for no decision and the next
+needs none. Otherwise it fails, naming the command to run: while a
+change needs a person's decision, while the latest migration waits for one, when a record can't be read,
+and with `CI` set. Each folder is a `migration_snapshot` node in the
+manifest.
 
 ### Folders at the root
 
@@ -220,7 +248,8 @@ read, so no key changes before the move.
 format 1, with its own header line, is still read, and
 `jadpo records update` rewrites it.
 
-**Records don't stop a program running.** `record.out_of_date` and
+**Records don't stop a program running.** `jadpo test` and `jadpo dev`
+write no record, and `record.out_of_date` and
 `record.edited` are promises that `jadpo check` and CI hold you to, so
 `jadpo test` and `jadpo dev` run past them. `record.format_newer` stops
 them, because this Jadpo can't read what the project holds.
@@ -660,20 +689,25 @@ since an app may mean it.
 
 ```text
 $ jadpo check
-1 decision compared with nothing
-◆ anyone can create and change `lending.Book` records, with no sign-in  not compared
+1 decision about the app as it stands
+◆ anyone can create and change `lending.Book` records, with no sign-in  as it stands
     access.jadpo_record:12
 
-◆ notice  nothing compares this yet, so a person reads it before it goes in
-  next    Carry on: this passes, and nothing here is yours to decide or to stop
-          for. When you hand over, tell your user what it said, so they decide
-          whether the app means it. It is compared as usual once a commit holds
-          it. (agent)
+◆ notice  this is the app as it stands, with no commit to compare it with, so a
+          person reads it before it goes in
+  next    Carry on: this passes, it describes the app rather than a change you
+          made, and nothing here is yours to decide or to stop for. When you
+          hand over, tell your user what it said, so they decide whether the app
+          means it. It is compared as usual once a commit holds it. (agent)
 
   before    none, so acceptances aren't judged: no commit yet
 
 checked: 14 files
 ```
+
+A notice says how the app stands, never that something changed: a
+connection "reaches" a host, where a later change's decision says it "can
+now reach" one, since a first commit has nothing before it to change.
 
 It is said while there is no before side (no commit yet, the first commit
 itself, a project new since its base) and, for what a record holds, while the
@@ -705,7 +739,7 @@ a later one is the diff's to show. A public read of personal data goes the same
 way:
 
 ```text
-◆ anyone can read `shop.Customer.email`, personal data, with no sign-in  not compared
+◆ anyone can read `shop.Customer.email`, personal data, with no sign-in  as it stands
     access.jadpo_record:7
 ```
 
@@ -1004,7 +1038,8 @@ Every command takes `--json`, and `jadpo help --json` describes them all
 | Job | Command | Then |
 |---|---|---|
 | After any edit | `jadpo check --json` | Each error says who acts (`agent` or `human`) and the next command |
-| A record is out of date | `jadpo records`, then the command it names (`jadpo api update`, `jadpo migrate new <purpose>` …) | Commit the record with the code |
+| A record or migration is out of date | Nothing: `jadpo check` writes it, and says so | Commit it with the code |
+| A migration needs a decision | `jadpo migrate new <purpose>`, then the decisions in its `changes.jadpo` | Commit it with the code |
 | Rename anything | `jadpo rename <old> <new>` | The registry gains one line |
 | What did my change do? | `jadpo approval --json` | Decisions first |
 | A change needs a person | `jadpo acceptance new <purpose>` | Stop and hand over |
@@ -1117,8 +1152,8 @@ that the path number can't be decoded.
 | Views of it | Partly built: the library and failure catalogues are built, one OpenAPI document per API in `build/openapi/`, and the monitoring rules in `build/monitoring/`; the other reports come with their parts of the language. |
 | Migrations | Built: `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
 | Stable identity | Built: a key is the kind and the born name, a function or type declared in a domain carries its domain, and a test's key is the file it sits beside and its sentence. `jadpo check` reads the registry, and `jadpo rename`, the `jadpo domain` commands and promotion with `jadpo fmt --layout` write it ([Tools](14-tooling.md#jadpo-rename)); a domain's line carries the keys named after it. |
-| API record | Built: `jadpo api update` writes `api/<api>.jadpo_record` for each API with routes, `jadpo check` fails with `record.out_of_date` while one disagrees with the routes, naming what changed, and a breaking change needs an [acceptance](#acceptances). |
-| `.jadpo_record` files | Partly built: every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, a careful hand edit of a view told from a stale one by building the base, as `jadpo approval` does, in `jadpo check` and `jadpo records`, `jadpo records` and `jadpo records update`, the `.gitattributes` lines `jadpo new` writes, the record grammar in the VS Code extension, and `jadpo lsp` serving a record's errors, outline, folding and file links. Not built yet: checking that each ledger line added since the base is one its command could write. |
+| API record | Built: `jadpo api update` writes `api/<api>.jadpo_record` for each API with routes; `jadpo check` writes one that disagrees with the routes itself, and with `CI` set fails with `record.out_of_date`, naming what changed; a breaking change needs an [acceptance](#acceptances). |
+| `.jadpo_record` files | Partly built: `jadpo check` writing each view that is missing, out of date or under its old name, and the next migration that needs no decision, outside CI; every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, a careful hand edit of a view told from a stale one by building the base, as `jadpo approval` does, in `jadpo check` and `jadpo records`, `jadpo records` and `jadpo records update`, the `.gitattributes` lines `jadpo new` writes, the record grammar in the VS Code extension, and `jadpo lsp` serving a record's errors, outline, folding and file links. Not built yet: checking that each ledger line added since the base is one its command could write. |
 | Event records | Built: one view per domain with events, `domains/<domain>/events/events.jadpo_record`, written by `jadpo records update` and checked as the API record is; what [The event record](12-jobs-and-events.md#the-event-record) records, and its breaking changes need an [acceptance](#acceptances). |
 | Access and network records | Built: `access.jadpo_record` and `network.jadpo_record` at the root, written by `jadpo records update` and checked as the API record is ([Acceptances](#acceptances)). |
 | Acceptances | Partly built: `jadpo acceptance new <purpose>`, the before side read from git (`--before` on `jadpo check`), matching, the `///` reason and history, for `ApiChange` (the API and event records), `PolicyChange` (widenings, routes made public, security declines, sign-in settings past their limit), `DomainChange.created` and `.renamed`, `NetworkChange.host_added`, `PackageChange.git_source`, an upgrade's `PackageChange`s ([Package upgrades](#package-upgrades)), `ThresholdChange` (each domain's `monitoring.jadpo` and `app.jadpo`'s disk floors read from git) and `DataChange` (read from the migrations a change adds, [Removing data](05-data.md#removing-data)). And `ErasureNotPossible`, which says how things stand rather than what changed, read from [where personal data goes](15-personal-data.md#where-personal-data-goes). The before side's records are read in today's names, so a domain renamed, split or merged keeps its events, grants and thresholds. Not built yet: `PackageChange.service_image`, which comes with services. |

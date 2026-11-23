@@ -135,8 +135,8 @@ query by name.
 
 ## Let people read todos
 
-Check the project. Besides the record, two things need fixing. The first
-is permission: the entity says who may create a todo, but not who may
+Check the project. It writes the API record again, and one thing needs
+fixing: permission. the entity says who may create a todo, but not who may
 read one, so the compiler refuses both new routes:
 
 ```text
@@ -171,40 +171,23 @@ entity Todo {
 }
 ```
 
-The second is new:
+Check again, and it passes, having written a migration:
 
 ```text
-error: The entities have changed since the latest migration
- --> domains/todos/entities/todo.jadpo:4:8
-  |
-4 | entity Todo {
-  |        ^^^^ changed
-  reason: `jadpo check` compares the database schema the entities ask for with the latest migration's snapshot (`database/migrations/20261029T1000_initial/snapshot.json`): new index for query `list_todos`.
-  next: Run `jadpo migrate new index_list_todos` (agent)
-  rule: migration.out_of_date
-  help: https://jadpo.dev/docs/errors/migration.out_of_date
+Wrote database/migrations/20261029T1100_index_list_todos/
+
+Wrote access.jadpo_record
+
+checked: 12 files
+
+next: git diff  shows what it wrote, to commit with the code
 ```
 
 You didn't change the entity, but the compiler saw that `list_todos`
 sorts by `created_at`, and that a table of todos needs an index for
-that to stay fast. So it asks for a migration that makes the index:
-
-```sh
-jadpo migrate new index_list_todos
-```
-
-```text
-  compared the entities with 20261029T1000_initial
-
-  Todo
-    + index  (created_at, id)  for list_todos
-
-Wrote database/migrations/20261029T1100_index_list_todos/
-    snapshot.json  the whole schema at this point
-    postgres.sql   1 statement: create index
-
-next: jadpo check  confirms the migration matches the entities
-```
+that to stay fast. So it wrote a migration that makes the index, named
+after what it is for. Its `postgres.sql` holds one statement, the
+`CREATE INDEX`.
 
 The index includes `id` because the query's order does too: two todos
 made at the same moment still come back in the same order every time.
@@ -224,8 +207,7 @@ query list_todos
   $1: filter.status · text
 ```
 
-It reads only the columns `TodoView` sends. Run `jadpo api update`, and
-`jadpo check` passes.
+It reads only the columns `TodoView` sends.
 
 ## Try it
 

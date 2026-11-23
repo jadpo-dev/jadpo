@@ -47,7 +47,7 @@ fn notice_section(out: &mut String, report: &Report) {
     if report.notice_list.is_empty() {
         return;
     }
-    let _ = writeln!(out, "## Decisions compared with nothing\n");
+    let _ = writeln!(out, "## Decisions about the app as it stands\n");
     let _ = writeln!(
         out,
         "These arrive with this change and there is nothing to compare them with, so `jadpo check` passes them unseen. None is a fault in itself: a person decides whether the app means each one. Once a commit holds them, they are compared as usual.\n"

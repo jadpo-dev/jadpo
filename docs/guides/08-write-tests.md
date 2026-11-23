@@ -392,7 +392,7 @@ kind apart, since an action test doesn't prove the route decodes its
 input or checks who is signed in. The generated tests are its own, three
 at most for each route: that the route refuses bad input, that each
 failure it declares reaches a client as its API document says, and that
-it sends only the fields its output declares. When a test fails, it shows each value
+it sends its output as its schema says. When a test fails, it shows each value
 in the assertion and the command that reruns just that test:
 
 ```text

@@ -11,13 +11,15 @@ to what the API's clients see shows in review as a diff of that one file,
 rather than spread through the code.
 
 When the code changes and the record doesn't, the record no longer says
-what the API does. `jadpo check` fails until the record is written again,
-and names the command that writes it. `jadpo test` and `jadpo dev` still
-run.
+what the API does. Outside CI, `jadpo check` writes the record again
+itself and says so, so you commit it with the code and never see this
+error. With `CI` set, as every CI service sets it, `jadpo check` writes
+nothing and fails until the commit carries the record, naming the
+command that writes it. `jadpo test` and `jadpo dev` still run.
 
 ## What it looks like
 
-A project whose routes have no record yet:
+A project whose routes have no record yet, checked in CI:
 
 ```jadpo check project=e-record file=app.jadpo hidden
 application {}

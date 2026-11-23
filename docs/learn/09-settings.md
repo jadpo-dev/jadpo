@@ -135,7 +135,8 @@ test "a due date further ahead than the setting allows is refused" {
 }
 ```
 
-Update the record for the new failure. Then:
+Then check, which writes the API record again with the new failure, and
+test:
 
 ```sh
 jadpo check

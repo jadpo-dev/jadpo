@@ -92,7 +92,7 @@ Four new things are in this action:
 `fails DueDateInPast`, before the `->`, says the action can end with
 that failure. It's part of the action's type, like its result. The
 compiler holds you to it: take `fails DueDateInPast` out, and check
-says (the record's error is left out here):
+says:
 
 ```text
 error: `DueDateInPast` can leave `add_todo`, but its `fails` list doesn't say so
@@ -107,9 +107,9 @@ error: `DueDateInPast` can leave `add_todo`, but its `fails` list doesn't say so
 ```
 
 Put it back. You don't change the route: a route can fail with whatever
-its action can. Update the record: the route's failures are part of
-your API, so the record now lists this one, with its status and
-message:
+its action can. Check again, and it writes the API record: the route's
+failures are part of your API, so the record now lists this one, with
+its status and message:
 
 ```text
 POST /todos

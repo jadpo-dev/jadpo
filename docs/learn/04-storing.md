@@ -168,55 +168,32 @@ Check the project:
 jadpo check
 ```
 
-It reports the API record, which `jadpo api update` fixes, and something
-new. The "system tables" it lists are Jadpo's own, explained below:
+It writes three files itself, and passes:
 
 ```text
-error: No migration creates these entities' tables yet
- --> domains/todos/entities/todo.jadpo:4:8
-  |
-4 | entity Todo {
-  |        ^^^^ no table yet
-  reason: `jadpo check` compares the database schema the entities ask for with the migrations in `database/migrations/`, and there are none: new entity `Todo`, new system table for circuit breakers, new system table for deliveries, new system table for handled deliveries, new system table for housekeeping, and 3 more.
-  next: Run `jadpo migrate new initial` (agent)
-  rule: migration.out_of_date
-  help: https://jadpo.dev/docs/errors/migration.out_of_date
-```
-
-A migration is the SQL that changes the database to match your
-entities, as with any ORM. You never write one: `jadpo migrate new`
-compares the entities with the last migration and writes the next.
-`initial` is the migration's name, saying what it is for.
-
-```sh
-jadpo migrate new initial
-```
-
-```text
-  compared the entities with an empty database
-
-  Todo
-    + table  todo                      new entity
-
-  System tables
-    + table  jadpo_circuit_breakers    system table for circuit breakers
-    + table  jadpo_deliveries          system table for deliveries
-    + table  jadpo_handled_deliveries  system table for handled deliveries
-    + table  jadpo_housekeeping        system table for housekeeping
-    + table  jadpo_idempotency_keys    system table for idempotency keys
-    + table  jadpo_operator_actions    system table for operator actions
-    + table  jadpo_outbox              system table for outbox
-
 Wrote database/migrations/20261029T1000_initial/
-    snapshot.json  the whole schema at this point
-    postgres.sql   14 statements: create table, add unique rule, add reference, create index
 
-next: jadpo check  confirms the migration matches the entities
+Wrote access.jadpo_record
+
+Wrote api/main.jadpo_record
+
+checked: 9 files
+
+next: git diff  shows what it wrote, to commit with the code
 ```
+
+The first is a migration. A migration is the SQL that changes the
+database to match your entities, as with any ORM. You never write one:
+`jadpo check` compares the entities with the last migration and writes
+the next, named after what it does, `initial` for the first. When a
+change needs a decision from you, such as a value for a new field in the
+rows already stored, it stops and names `jadpo migrate new` instead
+(page 10 meets one). `access.jadpo_record` records who may do what to
+your todos, and page 12 reads it.
 
 The folder's name starts with the date and time you ran it, so yours
-differs. It holds two files, both written by `jadpo migrate new`: you
-commit them, and never edit them. `postgres.sql` is the SQL, and this
+differs. It holds two files, both written by Jadpo: you commit them, and
+never edit them. `postgres.sql` is the SQL, and this
 is the part for your todos:
 
 ```text
@@ -235,13 +212,7 @@ in your database, such as work waiting to be retried, so that it commits
 or rolls back with your data. You don't use them directly.
 
 `snapshot.json` is the whole schema as it stands after this migration;
-the next `jadpo migrate new` compares against it.
-
-Run `jadpo api update` for the record too, and `jadpo check` passes:
-
-```text
-checked: 9 files
-```
+the next migration is worked out against it.
 
 ## Run it
 

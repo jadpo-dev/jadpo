@@ -82,7 +82,7 @@ impl Check {
         match self {
             Check::BadInput => format!("{label} refuses bad input with {{ field, rule }}"),
             Check::Failures => format!("{label} sends each failure it declares in its envelope"),
-            Check::Output => format!("{label} sends only the fields its output declares"),
+            Check::Output => format!("{label} sends its output as its schema says"),
         }
     }
 }
@@ -1182,7 +1182,7 @@ fn judged(
             Ok(())
         }
         Expect::Output { status, schema } => {
-            let wanted = format!("{status} with only the fields its output declares");
+            let wanted = format!("{status} with its output as its schema says");
             if answer.status != *status {
                 return Err((wanted, shown(answer)));
             }
@@ -1191,6 +1191,16 @@ fn judged(
                 return Err((
                     wanted,
                     format!("{} (`{extra}` isn't declared)", shown(answer)),
+                ));
+            }
+            let mut at = Vec::new();
+            if let Some((place, sent, says)) = mistyped(generated, schema, &body, &mut at) {
+                return Err((
+                    wanted,
+                    format!(
+                        "{} (`{place}` is sent as {sent}, where its schema says {says})",
+                        shown(answer)
+                    ),
                 ));
             }
             Ok(())
@@ -1239,6 +1249,42 @@ fn undeclared(generated: &Generated, schema: &J, json: &J, at: &mut Vec<String>)
     doc.undeclared(schema, json, at, 0)
 }
 
+/// The first member of `json` sent in a JSON form its `schema` doesn't
+/// give, as a string where it says `integer`: its path from the body
+/// (`body` for the body itself), the form sent and the forms the schema
+/// allows.
+fn mistyped(
+    generated: &Generated,
+    schema: &J,
+    json: &J,
+    at: &mut Vec<String>,
+) -> Option<(String, String, String)> {
+    let doc = RouteSchemas {
+        document: &generated.document,
+    };
+    doc.mistyped(schema, json, at, 0).map(|(sent, says)| {
+        let place = if at.is_empty() {
+            "body".to_string()
+        } else {
+            at.join(".")
+        };
+        (place, sent, says)
+    })
+}
+
+/// The JSON form `json` is, as a schema's `type` names it.
+fn form(json: &J) -> &'static str {
+    match json {
+        J::Null => "null",
+        J::Bool(_) => "boolean",
+        J::Number(n) if n.is_i64() || n.is_u64() => "integer",
+        J::Number(_) => "number",
+        J::String(_) => "string",
+        J::Array(_) => "array",
+        J::Object(_) => "object",
+    }
+}
+
 /// The document's schemas, followed through their `$ref`s.
 struct RouteSchemas<'d> {
     document: &'d J,
@@ -1274,6 +1320,79 @@ impl RouteSchemas<'_> {
                 .flat_map(|one| self.alternatives(one))
                 .collect(),
             None => vec![schema],
+        }
+    }
+
+    /// The first part of `json` in a form none of `schema`'s alternatives
+    /// gives, with that form and the forms they give; its path is left in
+    /// `at`. An alternative that names no `type` allows any form.
+    fn mistyped(
+        &self,
+        schema: &J,
+        json: &J,
+        at: &mut Vec<String>,
+        depth: usize,
+    ) -> Option<(String, String)> {
+        if depth > 32 {
+            return None;
+        }
+        let alternatives = self.alternatives(schema);
+        let mut says: Vec<&str> = Vec::new();
+        let mut any = alternatives.is_empty();
+        for one in &alternatives {
+            match one.get("type") {
+                Some(J::String(kind)) => says.push(kind),
+                Some(J::Array(kinds)) => says.extend(kinds.iter().filter_map(J::as_str)),
+                _ => any = true,
+            }
+            if one.get("nullable") == Some(&J::Bool(true)) {
+                says.push("null");
+            }
+        }
+        let sent = form(json);
+        let allowed = any
+            || says
+                .iter()
+                .any(|kind| *kind == sent || (*kind == "number" && sent == "integer"));
+        if !allowed {
+            says.dedup();
+            return Some((sent.to_string(), says.join(" or ")));
+        }
+        match json {
+            J::Object(members) => {
+                for (name, value) in members {
+                    let property = alternatives
+                        .iter()
+                        .find_map(|one| one.get("properties").and_then(|props| props.get(name)))
+                        .or_else(|| {
+                            alternatives
+                                .iter()
+                                .find_map(|one| one.get("additionalProperties"))
+                                .filter(|extra| extra.is_object())
+                        });
+                    let Some(property) = property else {
+                        continue;
+                    };
+                    at.push(name.clone());
+                    if let Some(found) = self.mistyped(property, value, at, depth + 1) {
+                        return Some(found);
+                    }
+                    at.pop();
+                }
+                None
+            }
+            J::Array(items) => {
+                let item = alternatives.iter().find_map(|one| one.get("items"))?;
+                for (place, value) in items.iter().enumerate() {
+                    at.push(place.to_string());
+                    if let Some(found) = self.mistyped(item, value, at, depth + 1) {
+                        return Some(found);
+                    }
+                    at.pop();
+                }
+                None
+            }
+            _ => None,
         }
     }
 

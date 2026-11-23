@@ -2143,8 +2143,12 @@ compiler checks each like an output:
   only of the record it is stored in, so a copy into any other record
   proves only what holds of anyone signed in. A patch, `when_supplied:`, a
   counter and a transition store values too, and so does an action a
-  value is passed to. What decided a value is stored with it. Since an
-  action is all-or-nothing, so is whatever a `reject` in it tests.
+  value is passed to. An action that finds the record it changes by an
+  `id` it is given changes the record whose `id` its caller passes, so a
+  value read from that record and passed beside its `id` stays within
+  the record, as a copy in one body does. What decided a value is stored
+  with it. Since an action is all-or-nothing, so is whatever a `reject`
+  in it tests.
 
 ### Events
 
