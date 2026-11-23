@@ -203,6 +203,28 @@ class SideBySide(unittest.TestCase):
             self.assertTrue((Path(scratch) / 'target/agent-changes/native.lock').exists())
 
 
+    def test_a_typescript_install_is_checked_and_retried_once(self):
+        # npm ci has exited 0 with node_modules missing files; the pristine
+        # app's own typecheck is what shows it.
+        def runner(outcomes):
+            calls = []
+
+            def run(command, **_):
+                calls.append(command[:2])
+                ok = outcomes.pop(0) if command[:2] == ['npm', 'run'] else True
+                return subprocess.CompletedProcess(command, 0 if ok else 2, '', '')
+            return calls, run
+
+        with tempfile.TemporaryDirectory() as scratch, mock.patch.object(harness, 'ROOT', Path(scratch)):
+            calls, run = runner([False, True])
+            harness.install_typescript(Path(scratch), run)
+            self.assertEqual(calls, [['npm', 'ci'], ['npm', 'run'], ['npm', 'ci'], ['npm', 'run']])
+            self.assertTrue((Path(scratch) / 'target/agent-changes/npm.lock').exists())
+            calls, run = runner([False, False])
+            with self.assertRaisesRegex(RuntimeError, 'incomplete'):
+                harness.install_typescript(Path(scratch), run)
+
+
 class Sets(unittest.TestCase):
     def test_six_tuning_changes_span_the_kinds(self):
         tuning = [changes.BY_ID[c] for c in harness.TUNING]
