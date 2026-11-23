@@ -791,6 +791,12 @@ pub fn is_variant(value: &Value, ty: &str, name: &str) -> bool {
     matches!(value, Value::Variant(variant) if &*variant.ty == ty && &*variant.name == name)
 }
 
+/// Whether `value` is a record of type `ty`: a caller of one kind,
+/// `Principal.user` (area 8).
+pub fn is_record(value: &Value, ty: &str) -> bool {
+    matches!(value, Value::Record(record) if &*record.ty == ty)
+}
+
 /// The items a `for` at site `at` walks: a list's in order, a set's in
 /// the canonical order it is held in (area 2, "Set order").
 pub fn items(cx: &mut Ctx<'_>, value: &Value, at: u32) -> Result<Rc<[Value]>, Stop> {

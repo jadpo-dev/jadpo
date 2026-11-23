@@ -1823,6 +1823,10 @@ impl Emitter<'_> {
                 Pattern::Some => quote!(subject != Value::None),
                 Pattern::None => quote!(subject == Value::None),
                 Pattern::Wildcard => quote!(true),
+                Pattern::Caller(kind) => {
+                    let ty = text(kind.type_name());
+                    quote!(rt::is_record(&subject, #ty))
+                }
                 Pattern::Literal(_) => match patterns.get(index) {
                     Some(ArmPattern::Literal(Some(constant))) => {
                         let constant = number(constant.0);
