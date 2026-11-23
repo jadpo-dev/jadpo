@@ -913,13 +913,13 @@ fn tsv_json_lines_and_json_exports_write_the_same_rows() {
             ),
             (
                 "export_lines",
-                "{\"code\":\"T1\",\"name\":\"Tea\\tgreen\",\"count\":2,\"scaled\":\"20000000000000\",\"note\":null}\n{\"code\":\"T2\",\"name\":\"-Toffee\",\"count\":1,\"scaled\":\"10000000000000\",\"note\":null}\n",
+                "{\"code\":\"T1\",\"name\":\"Tea\\tgreen\",\"count\":2,\"scaled\":20000000000000,\"note\":null}\n{\"code\":\"T2\",\"name\":\"-Toffee\",\"count\":1,\"scaled\":10000000000000,\"note\":null}\n",
                 "items.jsonl",
                 "application/jsonl",
             ),
             (
                 "export_json",
-                "[{\"code\":\"T1\",\"name\":\"Tea\\tgreen\",\"count\":2,\"scaled\":\"20000000000000\",\"note\":null},{\"code\":\"T2\",\"name\":\"-Toffee\",\"count\":1,\"scaled\":\"10000000000000\",\"note\":null}]",
+                "[{\"code\":\"T1\",\"name\":\"Tea\\tgreen\",\"count\":2,\"scaled\":20000000000000,\"note\":null},{\"code\":\"T2\",\"name\":\"-Toffee\",\"count\":1,\"scaled\":10000000000000,\"note\":null}]",
                 "items.json",
                 "application/json",
             ),
