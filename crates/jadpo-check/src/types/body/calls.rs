@@ -3038,6 +3038,30 @@ impl Body<'_> {
             let fallible = self.proved(value, &actual, &target, call);
             return (target, fallible);
         }
+        // A field type over an enum, `Ticket.status(Status.closed)`, is built
+        // from a value of that enum (area 2, "Field types"); another enum's
+        // value is refused, naming the one it takes.
+        if let Ty::Named(name) = &object
+            && matches!(self.table.def(name), Some(Def::Enum { .. }))
+        {
+            if self.table.structure(&actual) == object {
+                let fallible = self.proved(value, &actual, &target, call);
+                return (target, fallible);
+            }
+            let span = self.span(value);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_CONSTRUCTOR_INPUT,
+                    format!("`{target}` can't be built from `{actual}`"),
+                )
+                .at(span, format!("this is `{actual}`"))
+                .reason(format!(
+                    "`{target}` holds a `{name}`, and `{actual}` is another type; a field type is built from a value of the type it refines."
+                ))
+                .next(format!("Pass a `{name}` value")),
+            );
+            return (target, Fallible::Unknown);
+        }
         let from = self.table.representation(&actual);
         let to = self.table.representation(&target);
         // A number where a quantity goes needs its unit (area 19).
