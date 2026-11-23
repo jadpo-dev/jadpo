@@ -4,8 +4,8 @@ Roadmap chunk 10.2's experiment: fresh agent sessions make the same
 realistic changes to the [golden todo](../golden-todo/README.md), once in
 Jadpo and once in its [TypeScript twin](../golden-todo/typescript/README.md),
 and hidden tests then say whether each change is right. The agent is
-Claude Code or Codex. The harness is built and checked; the measured runs
-wait for a maintainer's approval, since they spend many agent sessions.
+Claude Code or Codex. The held-out runs were made with Codex; their
+results are in roadmap chunk 10.2's pull request.
 
 | File | What it is |
 |---|---|
@@ -129,9 +129,21 @@ without the hidden results; the language can't be hidden.
   whether the ChatGPT account personalises a session server-side can't be
   seen or set from here (Codex's own memories are off and its fresh
   folder holds none). Both get an
-  empty PostgreSQL database for their own tests. The contract documents,
+  empty PostgreSQL database for their own tests, through the run's socket:
+  Jadpo's URL names the socket folder as its host, TypeScript's gives it
+  in `?host=`, the form postgres.js reads. The TypeScript copy's
+  `node_modules` comes from `npm ci`, one run at a time, and the pristine
+  app's own typecheck must pass before the agent starts. npm's update
+  check is off (`NPM_CONFIG_UPDATE_NOTIFIER=false`), since a fresh home
+  would make it reach for the registry and the sandbox fails that
+  command. The sandbox can't listen on loopback, so a run sets
+  `TEST_LOOPBACK=unavailable` and the one TypeScript test that needs it
+  skips. The contract documents,
   hidden tests and the other language are never in reach; any tool call
-  naming the repository or the contract marks the run `contaminated`.
+  naming the repository or the contract marks the run `contaminated`
+  (its path, `benchmarks/golden-todo`, not the bare `golden-todo` both
+  apps use themselves). A mark means the call reached for it; the
+  sandbox's refusal or an empty search shows whether anything was read.
 - **One reply**: if the agent writes `QUESTIONS.md`, the session resumes
   once with the owner's fixed reply, the same in both languages.
 
@@ -162,8 +174,8 @@ behaviour and tokens, so held-out runs never get it, in either language.
 The notes are kept out of the scored diff, the review metrics and the edit
 count; their tokens are estimated apart.
 
-**The pilot**: one run a cell, both languages, under one agent: 18
-changes, 36 sessions once Jadpo is frozen. Then only the cells where the
+**The pilot**: one run a cell, both languages, under one agent: the 12
+held-out changes, 24 sessions once Jadpo is frozen. Then only the cells where the
 languages differ are repeated, up to three runs, a cell differing only
 when it does in at least two of its three. Runs that fail for a harness
 reason are rerun under a new label and reported, never overwritten.
@@ -248,8 +260,8 @@ in a plain terminal), or `codex` on `PATH` or in the ChatGPT app, signed in
 with ChatGPT (`~/.codex/auth.json`). A Codex run needs a PostgreSQL of its
 own, so `JADPO_TEST_DATABASE_URL` must be unset; its sandbox reaches the
 database through a Unix socket in the run's folder. A run whose session
-never reached the model is kept but left out of the summary. Runs are
-sequential; each builds the contract's native driver from its copy into
-`target/agent-changes/`. Copies live under `~/.cache/jadpo-agent-changes/`
+never reached the model is kept but left out of the summary. Runs can go
+side by side: each builds the contract's native driver into
+`target/agent-changes/` under a lock and keeps its own copy. Copies live under `~/.cache/jadpo-agent-changes/`
 (`JADPO_AGENT_WORK` moves them). `run`, `matrix` and `knowledge-probe`
 refuse real sessions without `--spend`.
