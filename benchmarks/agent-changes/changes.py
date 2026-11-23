@@ -516,7 +516,7 @@ def n03_duplicate_is_owner_only_and_fresh(c):
     c.failure(c.request('POST', f'/todos/{ident(1)}/duplicate'), 404, 'todo_not_found')
     c.failure(c.request('POST', f'/todos/{MISSING}/duplicate'), 404, 'todo_not_found')
     require(count(c) == 2, 'nothing copied')
-    c.todo(T1, due='2026-01-15T11:00:00Z', sent='2026-01-15T11:30:00Z', revision=4)
+    c.todo(T1, due='2026-02-01T00:00:00Z', sent='2026-01-15T11:30:00Z', revision=4)
     copy = c.success(c.request('POST', f'/todos/{T1}/duplicate'), 201)
     row = c.row(copy['id'])
     require(row['owner_id'] == ALICE and row['deleted_at'] is None, 'the copy is the caller\'s and visible')
@@ -692,7 +692,7 @@ def n12_import_sets_nothing_private(c):
         response = c.request('POST', '/todos/import', body={'todos': [{'title': 'Planted', **extra}]})
         c.failure(response, 422, 'invalid_input')
     require(count(c) == 0, 'nothing planted')
-    c.success(c.request('POST', '/todos/import', body={'todos': [{'title': 'Mine', 'due_at': '2026-01-15T11:00:00Z'}]}), 201)
+    c.success(c.request('POST', '/todos/import', body={'todos': [{'title': 'Mine', 'due_at': '2026-02-01T09:00:00Z'}]}), 201)
     row = c.sql('SELECT row_to_json(t)::text FROM todo t')[0][0]
     row = json.loads(row)
     require(row['owner_id'] == ALICE and row['reminder_sent_at'] is None and row['deleted_at'] is None,
@@ -874,7 +874,8 @@ CHANGES = (
            'Let people copy a todo: `POST /todos/{todo_id}/duplicate` makes a new open todo with the same title and '
            'due date and answers 201 with it.',
            'Only the caller\'s own visible todos can be copied (404 otherwise, like any missing todo). The copy is a '
-           'brand-new todo: new id, created now, its reminder not yet sent.',
+           'brand-new todo: new id, created now, its reminder not yet sent. It keeps the due date as it is, even one '
+           'that has passed.',
            (n03_duplicate, n03_duplicate_is_owner_only_and_fresh),
            shortcut='Look the todo up by id without the owner rule, or copy the whole row, reminder state included.',
            detection='Copying Bob\'s or a deleted todo answers 404 and copies nothing; a copy of a reminded todo is '
@@ -917,6 +918,8 @@ CHANGES = (
            'Only the owner reads a todo\'s history, and a deleted todo\'s history goes with it (404). Entries name '
            'the user by id, never by email, and hold no title.',
            (n08_history, n08_history_is_owner_only, n08_logs_hold_no_personal_data),
+           # A history table that references todos makes REL-001's bare `TRUNCATE todo` fixture fail.
+           replaces=('REL-001',),
            shortcut='Read the history by todo id without the owner and deletion rules, name the user by email, or log '
                     'the change with its title.',
            detection='Bob, a service and a signed-out caller can\'t read Alice\'s history; a deleted todo\'s history is '

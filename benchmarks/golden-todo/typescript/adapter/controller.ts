@@ -136,7 +136,11 @@ const logs: unknown[] = [];
 // hidden test reads every line the application writes.
 for (const name of ["log", "info", "warn", "error", "debug"] as const) {
   console[name] = (...parts: unknown[]) => {
-    logs.push(parts.map((part) => (typeof part === "string" ? part : JSON.stringify(part))).join(" "));
+    logs.push(
+      parts
+        .map((part) => (typeof part === "string" ? part : JSON.stringify(part)))
+        .join(" "),
+    );
   };
 }
 const { app, auth, limits } = createApplication({

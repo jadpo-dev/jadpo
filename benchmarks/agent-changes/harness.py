@@ -1111,7 +1111,9 @@ def command_knowledge_probe(args):
     an empty folder, no docs, no tools, no network."""
     if not args.spend:
         raise SystemExit('the probe is an agent session; pass --spend')
-    settings = PINNED_CODEX if args.agent == 'codex' else PINNED
+    settings = dict(PINNED_CODEX if args.agent == 'codex' else PINNED)
+    if args.model:
+        settings['model'] = args.model
     folder = WORK / args.label / 'knowledge-probe'
     if folder.exists():
         shutil.rmtree(folder)
@@ -1366,6 +1368,7 @@ def main(argv=None):
     sub = commands.add_parser('knowledge-probe', help="what the model knows of Jadpo with no docs and no tools")
     sub.add_argument('--label', required=True)
     sub.add_argument('--agent', choices=AGENTS, default='codex')
+    sub.add_argument('--model', help='the model, if not the pinned one')
     sub.add_argument('--spend', action='store_true')
     sub.set_defaults(handler=command_knowledge_probe)
     for name, handler in [('summary', command_summary), ('estimate', command_estimate)]:
