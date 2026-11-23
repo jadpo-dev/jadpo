@@ -99,10 +99,10 @@ fn a_new_projects_public_write_is_a_notice_for_a_person() {
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     for words in [
-        "1 decision compared with nothing",
+        "1 decision about the app as it stands",
         PUBLIC,
-        "notice: nothing compares this yet, so a person reads it before it goes in",
-        "Carry on: this passes, and nothing here is yours to decide or to stop for.",
+        "notice: this is the app as it stands, with no commit to compare it with, so a person reads it before it goes in",
+        "Carry on: this passes, it describes the app rather than a change you made, and nothing here is yours to decide or to stop for.",
         "(agent)",
         "before: none, so acceptances aren't judged: no commit yet",
     ] {
@@ -632,7 +632,7 @@ fn the_approval_report_leads_with_a_notice() {
     assert!(output.stdout.contains("(human)"), "{}", output.stdout);
     let markdown = fs::read_to_string(root.join("build/review/approval.md")).expect("the report");
     let lead = markdown
-        .find("## Decisions compared with nothing")
+        .find("## Decisions about the app as it stands")
         .expect("its section");
     assert!(
         lead < markdown
@@ -667,7 +667,7 @@ fn with_no_commit_the_report_is_what_nothing_compared() {
     }
     let markdown = fs::read_to_string(root.join("build/review/approval.md")).expect("the report");
     assert!(
-        markdown.contains("## Decisions compared with nothing"),
+        markdown.contains("## Decisions about the app as it stands"),
         "{markdown}"
     );
     assert!(markdown.contains("no commit yet"), "{markdown}");

@@ -2306,6 +2306,11 @@ database/migrations/20261020T1400_add_priority/
   changes.jadpo        only when a decision is needed
 ```
 
+When no change needs a decision, `jadpo check` writes the next migration
+itself, named after the purpose the changes suggest (`add_priority`), and
+says so; with `CI` set it fails naming the command instead
+([Migrations](18-records-and-manifest.md#migrations)).
+
 When a change needs a decision, `jadpo migrate new` writes `changes.jadpo`
 with a line to fill in for each one, such as `Todo.priority: {}`. `jadpo
 check` names what is missing until it is written, and running `jadpo

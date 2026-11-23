@@ -2497,7 +2497,93 @@ pub async fn route_test(
             events.push(event);
         }
     }
-    Ok(response_value(app, route, &response, &events))
+    let value = response_value(app, route, &response, &events);
+    // The body as sent, not only the typed value read back from it: a
+    // member sent in another form than its type writes ends the test
+    // (area 13, "Route tests").
+    if let Some(problem) = unwritten_body(app, route, &response, &value) {
+        return Err(Box::new(Fault {
+            kind: crate::FaultKind::Defect(problem),
+            frames: ctx.frames(),
+        }));
+    }
+    Ok(value)
+}
+
+/// What is wrong with a successful answer's body, when it isn't the JSON
+/// its route's output type writes for the value read back from it: the
+/// first member that differs, by its path, with what was sent and what
+/// the type writes. `None` for a route that sends no JSON output, and for
+/// one whose body is that JSON, whatever order its members come in.
+fn unwritten_body(app: &App<'_>, route: u32, response: &Response, value: &Value) -> Option<String> {
+    let plan = app.table.routes.get(route as usize)?;
+    let codec = plan.output?;
+    if plan.stream || plan.sends.is_some() || !(200..300).contains(&response.status) {
+        return None;
+    }
+    let sent: serde_json::Value = serde_json::from_slice(&response.body).ok()?;
+    let output = match value {
+        Value::Record(record) => record.get("output")?,
+        _ => return None,
+    };
+    let mut written = String::new();
+    app.codecs.write(codec, output, &mut written);
+    let wanted: serde_json::Value = serde_json::from_str(&written).ok()?;
+    let mut at = Vec::new();
+    let (was, is) = first_difference(&sent, &wanted, &mut at)?;
+    let place = if at.is_empty() {
+        "the body".to_string()
+    } else {
+        format!("`{}`", at.join("."))
+    };
+    Some(format!(
+        "the route sent {place} as `{was}`, where its output's type writes `{is}`"
+    ))
+}
+
+/// The first place `sent` and `wanted` differ, with each side there; its
+/// path from the top is left in `at`.
+fn first_difference(
+    sent: &serde_json::Value,
+    wanted: &serde_json::Value,
+    at: &mut Vec<String>,
+) -> Option<(String, String)> {
+    use serde_json::Value as J;
+    match (sent, wanted) {
+        (J::Object(sent), J::Object(wanted)) => {
+            for (name, value) in wanted {
+                at.push(name.clone());
+                let found = match sent.get(name) {
+                    Some(was) => first_difference(was, value, at),
+                    None => Some(("nothing".to_string(), value.to_string())),
+                };
+                if found.is_some() {
+                    return found;
+                }
+                at.pop();
+            }
+            for (name, value) in sent {
+                if !wanted.contains_key(name) {
+                    at.push(name.clone());
+                    return Some((value.to_string(), "nothing".to_string()));
+                }
+            }
+            None
+        }
+        (J::Array(sent), J::Array(wanted)) if sent.len() == wanted.len() => {
+            for (place, (was, is)) in sent.iter().zip(wanted).enumerate() {
+                at.push(place.to_string());
+                let found = first_difference(was, is, at);
+                if found.is_some() {
+                    return found;
+                }
+                at.pop();
+            }
+            None
+        }
+        _ if sent == wanted => None,
+        _ => Some((sent.to_string(), wanted.to_string())),
+    }
 }
 
 /// The request a route test sends: route `route`'s method and path, its

@@ -220,7 +220,9 @@ route needs someone signed in, which is the default from page 2.
 
 ## The migration needs a decision
 
-Run `jadpo migrate new add_users`. This time it stops to ask something
+Check the project. This time `jadpo check` writes no migration: one
+change needs a decision from you, so it fails naming
+`jadpo migrate new add_users`. Run that, and it stops to ask something
 (the list of changes it prints first is left out here):
 
 ```text
@@ -261,8 +263,9 @@ next: jadpo check  confirms the migration matches the entities
 ```
 
 Once the app has a real database anywhere, never do this: answer the
-decision in `changes.jadpo` instead, as the reference describes. Update
-the record too: it now says every route needs a session.
+decision in `changes.jadpo` instead, as the reference describes. The
+next `jadpo check` writes the API record again: it now says every route
+needs a session.
 
 ## Tests that sign in
 

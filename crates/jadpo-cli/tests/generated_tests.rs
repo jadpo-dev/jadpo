@@ -145,10 +145,10 @@ fn each_route_gets_tests_generated_from_its_api_and_shown_at_it() {
                 10
             ),
             at(
-                "GET /items/{item_id} sends only the fields its output declares",
+                "GET /items/{item_id} sends its output as its schema says",
                 19
             ),
-            at("POST /items sends only the fields its output declares", 10),
+            at("POST /items sends its output as its schema says", 10),
             (
                 "an item is stocked".to_string(),
                 "domains/shop/routes/items.test.jadpo".to_string(),
@@ -224,8 +224,8 @@ fn a_routes_place_a_name_or_its_kind_picks_its_generated_tests() {
     assert_eq!(
         names,
         [
-            "GET /items/{item_id} sends only the fields its output declares",
-            "POST /items sends only the fields its output declares",
+            "GET /items/{item_id} sends its output as its schema says",
+            "POST /items sends its output as its schema says",
         ]
     );
 }

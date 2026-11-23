@@ -309,6 +309,10 @@ def jadpo(args, cwd=None, env=None):
     # This checkout's own build checks every example, whatever line it
     # names, and never fetches a release (area 14, "Which jadpo runs").
     env['JADPO_TOOLCHAIN'] = 'local'
+    # As CI runs it, on every machine: outside CI `jadpo check` writes an
+    # out-of-date record or migration itself (area 18), and a page shows
+    # the error a commit is held to.
+    env['CI'] = 'true'
     env.update(extra)
     result = subprocess.run([str(JADPO), *args], cwd=cwd, capture_output=True, text=True, env=env)
     return result.returncode, result.stdout + result.stderr

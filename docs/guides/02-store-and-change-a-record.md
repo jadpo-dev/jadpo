@@ -74,8 +74,9 @@ entity Book {
 ## Write the migration
 
 A migration is the SQL that changes the database to match your entities.
-`jadpo check` fails while they disagree, and `jadpo migrate new` writes
-the next one, comparing the entities with the last migration:
+When they disagree, `jadpo check` writes the next one itself if it
+needs no decision, and `jadpo migrate new` writes it on its own, comparing
+the entities with the last migration:
 
 ```sh
 jadpo migrate new initial

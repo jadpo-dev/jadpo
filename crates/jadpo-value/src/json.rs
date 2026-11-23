@@ -1779,7 +1779,7 @@ mod tests {
         codecs.write(CodecId(2), &value.unwrap(), &mut out);
         assert_eq!(
             out, r#"{"quantity":3,"total":"12"}"#,
-            "an unbounded Int is text"
+            "an `Int` whose range passes the safe integers is text"
         );
         // A field left out is written left out, and one sent as `null`
         // as `null`, so each reads back as it was.

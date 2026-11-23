@@ -6,13 +6,17 @@ The entities ask for a database schema that no migration has written yet, becaus
 
 Entities describe the tables you want, and migrations are the steps that
 take a real database there. `jadpo check` compares the two. When they
-disagree, a deploy would run code against tables that don't match it, so
-the check fails at once, in the editor, the build and CI, rather than
-when the code first reads a missing column.
+disagree, a deploy would run code against tables that don't match it.
+
+Outside CI, when the change needs no decision and the project has no
+other errors, `jadpo check` writes the next migration itself, named
+after what changed, and says so; you commit it with the code. Otherwise,
+and always with `CI` set, the check fails at once, rather than when the
+code first reads a missing column, and names the command to run.
 
 ## What it looks like
 
-A project with an entity and no migration yet:
+A project with an entity and no migration yet, checked in CI:
 
 ```jadpo check project=e-out-of-date file=app.jadpo hidden
 application {}

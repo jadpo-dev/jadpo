@@ -2962,7 +2962,7 @@ fn work_that_never_waits_stops_at_its_deadline_and_keeps_nothing() {
     let dev = Dev::start(&root);
     let quick = dev.send("POST", "/busywork", &[], r#"{"label":"quick","depth":3}"#);
     assert_eq!(quick.status, 200, "{quick:?}");
-    assert_eq!(quick.json()["total"], "8", "an unbounded Int is text");
+    assert_eq!(quick.json()["total"], 8, "an `Int` is a JSON number");
     let started = Instant::now();
     let slow = dev.send(
         "POST",

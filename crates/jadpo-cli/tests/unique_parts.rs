@@ -286,7 +286,7 @@ fn a_key_written_before_is_rebuilt_and_refused_while_records_break_it() {
     ok(&jadpo(&root, &["migrate", "new", "initial"]));
     as_written_before(&root);
     // The snapshot no longer says what the entity needs.
-    let drift = jadpo(&root, &["check"]);
+    let drift = crate::acceptances::jadpo_ci(&root, &["check"]);
     assert_ne!(drift.code, 0, "{}", drift.stdout);
     ok(&jadpo(&root, &["migrate", "new", "rebuild_keys"]));
     jadpo(&root, &["records", "update"]);

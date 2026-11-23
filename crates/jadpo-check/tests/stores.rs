@@ -581,6 +581,47 @@ action cost_from_other(task_id: Task.id, other_id: Project.id) fails TaskNotFoun
     );
 }
 
+/// An action that finds the record it changes by an `id` it is given
+/// changes the record its caller passes the `id` of: a value read from
+/// that record and passed beside its `id` stays within the record, as a
+/// copy in one body does (area 9, "Field restrictions"). A value from
+/// another record of the entity is refused; its message, which says to
+/// pass the `id` of the record it came from, is the error page's.
+#[test]
+fn a_value_passed_with_its_own_records_id_is_a_copy_within_the_record() {
+    let found = stores(
+        r#"action set_forecast(project_id: Project.id, forecast: Amount) fails ProjectNotFound -> Project {
+    var project: Project = attempt Project.get(project_id)
+    return Project.update(project) {
+        set: {
+            forecast: forecast
+        }
+    }
+}
+
+action forecast_from_budget(project_id: Project.id) fails ProjectNotFound -> Project {
+    var project: Project = attempt Project.get(project_id)
+    return attempt set_forecast(project.id, project.budget)
+}
+
+action forecast_from_other(project_id: Project.id, other_id: Project.id) fails ProjectNotFound -> Project {
+    var other: Project = attempt Project.get(other_id)
+    return attempt set_forecast(project_id, other.budget)
+}
+"#,
+    );
+    let all = messages(&found);
+    assert!(
+        !all.contains("`forecast_from_budget` passes"),
+        "the same record, by the `id` passed beside it\n{all}"
+    );
+    assert!(
+        all.contains("`forecast_from_other` passes `Project.budget` to `set_forecast`"),
+        "{all}"
+    );
+    assert_eq!(found.len(), 1, "{all}");
+}
+
 #[test]
 fn a_create_in_a_loop_stores_each_item_and_what_decided_it() {
     let found = stores(

@@ -110,9 +110,15 @@ stop and ask you which fix you want, because the choice is yours to make
 make the fix itself.
 
 A check that passes can still print a `notice:` (for example what a first
-commit holds that nothing compares yet). It is marked `(agent)`: carry on,
-and tell the user what it said when you hand over. It is never a reason to
-stop.
+commit holds, which describes the app as it stands rather than your
+change). It is marked `(agent)`: carry on, and tell the user what it said
+when you hand over. It is never a reason to stop.
+
+`jadpo check` writes the API record, the other records and the next
+migration itself when your change moved them on, and lists each file it
+wrote (`updated` in `--json`). Commit them with the code. Only a migration
+that needs a decision is left to `jadpo migrate new`, which the error
+names.
 
 In the JSON this is `next.decides`: `"agent"` or `"human"`. When it is
 `"human"`, put the choices and what each changes to the user, and wait for

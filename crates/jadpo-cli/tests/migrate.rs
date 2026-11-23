@@ -36,6 +36,11 @@ fn jadpo(cwd: &Path, args: &[&str]) -> Output {
     output
 }
 
+/// [`jadpo`] as CI runs it: `jadpo check` writes no migration (area 18).
+fn jadpo_ci(cwd: &Path, args: &[&str]) -> Output {
+    crate::acceptances::jadpo_ci(cwd, args)
+}
+
 /// A project with one entity and no migration yet.
 fn project(name: &str) -> PathBuf {
     let root = folder(name);
@@ -61,11 +66,58 @@ fn migrations(root: &Path) -> Vec<String> {
     names
 }
 
+/// Outside CI, `jadpo check` writes the next migration itself when it
+/// needs no decision, named after what changed, and leaves one that needs
+/// a decision to `jadpo migrate new` and its error (area 18,
+/// "Migrations").
+#[test]
+fn check_writes_the_next_migration_when_it_needs_no_decision() {
+    let root = project("check-writes");
+    let first = jadpo(&root, &["check"]);
+    assert_eq!(first.code, 0, "{}", first.stdout);
+    let names = migrations(&root);
+    assert_eq!(names.len(), 1, "{names:?}");
+    assert!(names[0].ends_with("_initial"), "{names:?}");
+    assert!(
+        first
+            .stdout
+            .contains(&format!("Wrote database/migrations/{}/", names[0])),
+        "{}",
+        first.stdout
+    );
+    write(
+        &root,
+        TODO,
+        "entity Todo {\n    id: Uuid\n    title: Text\n    pinned: Bool?\n}\n",
+    );
+    let pinned = jadpo(&root, &["check", "--json"]);
+    assert_eq!(pinned.code, 0, "{}", pinned.stdout);
+    let names = migrations(&root);
+    assert_eq!(names.len(), 2, "{names:?}");
+    assert!(names[1].ends_with("_add_pinned"), "{names:?}");
+    // A required field needs a value for the rows already stored: a
+    // decision, so nothing is written and the error names the command.
+    write(
+        &root,
+        TODO,
+        "entity Todo {\n    id: Uuid\n    title: Text\n    pinned: Bool?\n    owner: Text\n}\n",
+    );
+    let owner = jadpo(&root, &["check"]);
+    assert_eq!(owner.code, 1, "{}", owner.stdout);
+    assert!(
+        owner.stdout.contains("rule: migration.out_of_date")
+            && owner.stdout.contains("jadpo migrate new"),
+        "{}",
+        owner.stdout
+    );
+    assert_eq!(migrations(&root).len(), 2);
+}
+
 #[test]
 fn the_first_migration_creates_the_tables_and_check_agrees() {
     let root = project("first");
     jadpo(&root, &["records", "update"]);
-    let before = jadpo(&root, &["check"]);
+    let before = jadpo_ci(&root, &["check"]);
     assert_eq!(before.code, 1);
     assert!(
         before.stdout.contains("rule: migration.out_of_date")
@@ -422,7 +474,7 @@ fn allowing_less_replaces_the_stored_values_no_longer_allowed() {
         "type Size = Enum {\n    small\n    medium\n    large\n    huge\n}\n",
     );
     jadpo(&root, &["records", "update"]);
-    let drift = jadpo(&root, &["check"]);
+    let drift = jadpo_ci(&root, &["check"]);
     assert!(
         drift.stdout.contains("migration.out_of_date"),
         "{}",
@@ -734,7 +786,7 @@ fn a_unique_key_moved_within_the_tenant_is_made_again_without_a_decision() {
     // The projects now belong to their company.
     write(&root, PROJECT, &tenant_project(false));
     jadpo(&root, &["records", "update"]);
-    let before = jadpo(&root, &["check"]);
+    let before = jadpo_ci(&root, &["check"]);
     assert!(
         before.stdout.contains("rule: migration.out_of_date"),
         "{}",

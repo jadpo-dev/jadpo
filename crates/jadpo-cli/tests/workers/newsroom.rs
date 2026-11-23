@@ -994,7 +994,7 @@ fn a_worker_streams_answers_and_hands_on_what_one_invocation_leaves() {
         match expected {
             Ok(()) => assert_eq!(
                 (status, body.as_str()),
-                (200, format!(r#"{{"depth":"{depth}"}}"#).as_str()),
+                (200, format!(r#"{{"depth":{depth}}}"#).as_str()),
                 "{path} {depth}\n{}",
                 worker.log()
             ),

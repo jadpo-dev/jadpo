@@ -144,7 +144,11 @@ line, the `routes` and the `files` it wrote.
 
 `jadpo check` checks the whole project and writes the files derived from
 it: `build/manifest.json` and the catalogues in `build/catalogue/`
-([The `build/` folder](#the-build-folder)). In a git repository it
+([The `build/` folder](#the-build-folder)). Outside CI it also writes each
+committed record that is out of date, and the next migration when it
+needs no decision, says each file it wrote, and checks again; with `CI`
+set it fails on them instead, naming the command
+([How `jadpo check` keeps records up to date](18-records-and-manifest.md#how-jadpo-check-keeps-records-up-to-date)). In a git repository it
 compares the change with the default branch at its merge base, and fails
 on each change that needs a person's acceptance and has none
 ([Review and sign-off](#review-and-sign-off)); `--before <branch or
@@ -896,7 +900,10 @@ language.
 ### `jadpo migrate`
 
 `new` writes the next migration, or finishes the latest once its
-decisions are written ([Migrations](05-data.md#migrations)). `apply` and
+decisions are written ([Migrations](05-data.md#migrations)). Outside CI,
+`jadpo check` writes the next migration itself when it needs no decision,
+named after the purpose `new` would offer, so `new` is what a change that
+needs a decision, or a purpose of your own, runs. `apply` and
 `status` take the database's URL with `--url`, and `--store` when there
 are several. Otherwise they read it from the connection's setting, in the
 environment and then `.env.local`.
@@ -1063,9 +1070,10 @@ format](18-records-and-manifest.md#the-record-format), and removes the
 record of an API that has no routes. A record has no `version:`: the
 OpenAPI version is a hash of it.
 
-`jadpo check` fails while a record disagrees with the source
-(`record.out_of_date`) or was edited by hand (`record.edited`). A record
-under its old name, `api/<api>.api`, is removed.
+`jadpo check` writes a record that disagrees with the source itself
+outside CI, and fails on it with `CI` set (`record.out_of_date`); it fails
+everywhere on one edited by hand (`record.edited`). A record under its
+old name, `api/<api>.api`, is removed.
 
 ### `jadpo records`
 

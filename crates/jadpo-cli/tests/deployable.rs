@@ -454,7 +454,7 @@ fn probed(send: impl Fn(&str, &str, &str) -> (u16, String)) -> Vec<Probed> {
             Ok(()) => {
                 assert_eq!(status, 200, "{path} {depth}: {body}");
                 let walked: Value = serde_json::from_str(&body).expect("JSON");
-                assert_eq!(walked["depth"], depth.to_string(), "{path} {depth}");
+                assert_eq!(walked["depth"], *depth, "{path} {depth}");
             }
             Err(expected) => {
                 assert_eq!(status, 500, "{path} {depth}: {body}");

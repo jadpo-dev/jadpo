@@ -402,6 +402,55 @@ pub(crate) fn plan_swap(loaded: &Loaded, purpose: &str) -> Result<Planned, Box<D
     })
 }
 
+/// The next migration, written as `jadpo check` writes it itself outside
+/// CI (area 18, "How `jadpo check` keeps records up to date"): only when
+/// the project's errors are those `jadpo migrate new` answers, the latest
+/// migration waits for no decision, and the next needs none, named after
+/// the purpose the changes suggest. Its folder, relative to the root, or
+/// `None` when it is left to `jadpo migrate new` and the error naming it.
+pub(crate) fn written_by_check(loaded: &Loaded, problems: &[Diagnostic]) -> Option<String> {
+    if !problems
+        .iter()
+        .any(|d| d.rule.id == rule::MIGRATION_OUT_OF_DATE.id)
+        || !problems.iter().all(answers)
+        || problems.iter().any(|d| {
+            [
+                rule::MIGRATION_DECISION_REQUIRED.id,
+                rule::MIGRATION_DECISION_INVALID.id,
+                rule::MIGRATION_DECISION_UNKNOWN.id,
+                rule::MIGRATION_UNFINISHED.id,
+            ]
+            .contains(&d.rule.id)
+        })
+    {
+        return None;
+    }
+    let (db, project) = (&loaded.db, loaded.project);
+    let set = records::migrations(db, project);
+    if set.list.last().is_some_and(|latest| latest.changes) {
+        return None;
+    }
+    let latest = set.latest_schema();
+    let next = next_snapshot(&latest, schema(db, project));
+    if next.same_but_reasons(&latest) {
+        return None;
+    }
+    let purpose = if set.list.is_empty() {
+        "initial".to_string()
+    } else {
+        records::purpose(&records::readable_changes(&latest, &next), &latest, &next)
+    };
+    if !valid_purpose(&purpose) {
+        return None;
+    }
+    let planned = plan_swap(loaded, &purpose).ok()?;
+    if planned.pending > 0 || !planned.swapped.is_empty() {
+        return None;
+    }
+    write_planned(&loaded.root, loaded, &planned).ok()?;
+    Some(planned.relative())
+}
+
 /// Writes the planned migration's folder under `root`: each file, with
 /// what it is, as `jadpo migrate new` lists them.
 pub(crate) fn write_planned(

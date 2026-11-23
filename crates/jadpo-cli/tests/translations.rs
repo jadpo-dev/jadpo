@@ -363,7 +363,7 @@ fn a_save_of_a_translation_file_reruns_the_tests_that_reach_its_key() {
         "an order's shipping is told in French".to_string(),
         "the cart is described in each language".to_string(),
         "POST /cart refuses bad input with { field, rule }".to_string(),
-        "POST /cart sends only the fields its output declares".to_string(),
+        "POST /cart sends its output as its schema says".to_string(),
     ]
     .into();
     assert_eq!(ran(&event), both);
