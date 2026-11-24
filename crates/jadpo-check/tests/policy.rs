@@ -1130,6 +1130,207 @@ routes Projects {
 }
 
 #[test]
+fn a_route_whose_patch_may_set_a_field_no_client_may_change_is_refused() {
+    let found = company(
+        r#"type Retag = Input {
+    pick: [Project.name, Project.import_reference]
+    optional: all
+}
+
+action retag(project_id: Project.id, input: Retag) fails ProjectNotFound -> ProjectCard {
+    var project: Project = attempt Project.update(project_id) {
+        patch: input
+    }
+    return ProjectCard {
+        id: project.id
+        name: project.name
+    }
+}
+
+routes Projects {
+    prefix: /projects
+
+    PATCH /{project_id: Project.id} {
+        input: Retag
+        output: ProjectCard
+        run: retag(project_id, input)
+    }
+}
+"#,
+    );
+    assert_eq!(rules_of(&found), ["policy.effect_ungranted"], "{found:#?}");
+    assert!(
+        found[0].contains("may set `Project.import_reference`, which nobody may"),
+        "{found:#?}"
+    );
+}
+
+/// An account whose email only provisioning sets: its own `update:`
+/// names nobody (chunk 10.4b).
+const ACCOUNT: &str = r#"entity Account {
+    id: Uuid
+    owner_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    email: Email {
+        policy: {
+            update: []
+        }
+    }
+    nickname: NoteText?
+
+    policy: {
+        read: [owner_id]
+        update: [owner_id]
+    }
+}
+
+type AccountChanges = Input {
+    pick: [Account.email, Account.nickname]
+    optional: all
+}
+
+type Renaming = Input {
+    pick: [Account.nickname]
+    optional: all
+}
+
+action edit_account(account_id: Account.id, changes: AccountChanges) fails AccountNotFound -> Unit {
+    attempt Account.update(account_id) {
+        patch: changes
+    }
+}
+
+action rename_account(account_id: Account.id, changes: Renaming) fails AccountNotFound -> Unit {
+    attempt Account.update(account_id) {
+        patch: changes
+    }
+}
+"#;
+
+#[test]
+fn a_patch_reaching_a_field_whose_own_update_names_nobody_is_the_owners_call() {
+    let found = with(&format!(
+        r#"{ACCOUNT}
+routes Accounts {{
+    prefix: /accounts
+
+    PATCH /{{account_id: Account.id}} {{
+        input: AccountChanges
+        status: SuccessStatus.no_content
+        run: edit_account(account_id, input)
+    }}
+}}
+"#
+    ));
+    assert_eq!(rules_of(&found), ["policy.effect_ungranted"], "{found:#?}");
+    assert!(
+        found[0].contains("may set `Account.email`, which nobody may"),
+        "{found:#?}"
+    );
+    // A patch that leaves the field out is the ordinary case.
+    let found = with(&format!(
+        r#"{ACCOUNT}
+routes Accounts {{
+    prefix: /accounts
+
+    PATCH /{{account_id: Account.id}} {{
+        input: Renaming
+        status: SuccessStatus.no_content
+        run: rename_account(account_id, input)
+    }}
+}}
+"#
+    ));
+    assert_eq!(rules_of(&found), Vec::<&str>::new(), "{found:#?}");
+}
+
+#[test]
+fn a_copy_into_a_record_the_caller_owns_keeps_what_the_caller_read() {
+    // The caller read the source under its `read:`, and owns the copy, so
+    // whoever may read the copy read the source too (chunk 10.4b).
+    let found = with(
+        r#"entity Card {
+    id: Uuid
+    owner_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+    }
+}
+
+action copy_note(note_id: Note.id, me: Principal.user) fails NoteNotFound -> NoteView {
+    var source: Note = attempt Note.get(note_id)
+    var copy: Note = Note.create {
+        set: {
+            owner_id: me.id
+            text: source.text
+            stamp: source.stamp
+        }
+    }
+    return NoteView {
+        text: copy.text
+    }
+}
+
+action card_from_note(note_id: Note.id, me: Principal.user) fails NoteNotFound -> Card.id {
+    var source: Note = attempt Note.get(note_id)
+    var card: Card = Card.create {
+        set: {
+            owner_id: me.id
+            text: source.text
+        }
+    }
+    return card.id
+}
+"#,
+    );
+    assert_eq!(rules_of(&found), Vec::<&str>::new(), "{found:#?}");
+}
+
+#[test]
+fn a_copy_into_a_record_someone_else_owns_is_still_refused() {
+    let found = with(
+        r#"entity Card {
+    id: Uuid
+    owner_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    text: NoteText
+
+    policy: {
+        create: [Access.authenticated]
+        read: [owner_id]
+    }
+}
+
+action card_for(note_id: Note.id, to: Person.id) fails NoteNotFound, PersonNotFound -> Unit {
+    var source: Note = attempt Note.get(note_id)
+    attempt Card.create {
+        set: {
+            owner_id: to
+            text: source.text
+        }
+    }
+}
+"#,
+    );
+    assert_eq!(
+        rules_of(&found),
+        ["policy.output_field_unproved"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains("`card_for` stores `Note.text` in `Card.text`"),
+        "{found:#?}"
+    );
+}
+
+#[test]
 fn a_failures_client_fields_keep_their_values_rules_too() {
     let found = company(
         r#"type OverBudget = Failure {

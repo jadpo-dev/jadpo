@@ -27,13 +27,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_graph::body::{Callee, Expr, Node, SiteId};
 use jadpo_graph::{Key, TypeRef};
+use jadpo_std::http::PrincipalKind;
 use jadpo_std::write::WriteOp;
 
 use super::{
     DEPTH, Flow, Origin, Prov, Run, Src, Walk, erased, field_name, retold, shallow, tenancy_of,
     widen,
 };
-use crate::policy::proof::{Fact, Facts, Reached};
+use crate::policy::proof::{Fact, Facts, Reached, Way};
 use crate::policy::{Effect, Grant};
 use crate::types::{Fact as Did, TypeView, body_facts, resolve};
 
@@ -334,6 +335,81 @@ fn readers(flow: &Flow<'_>, entity: &str, field: &str) -> Reached {
     reached
 }
 
+/// A user field of `dest`'s `read:` that its write sets, from anything
+/// but the caller: set from the caller, a copy into it would be proved.
+fn owner_not_caller(flow: &Flow<'_>, dest: &Dest) -> Option<String> {
+    let grants = flow.prover.grants(&dest.entity, Effect::Read);
+    dest.refs.iter().find_map(|(name, srcs)| {
+        let names = grants.iter().any(|grant| {
+            matches!(grant, Grant::Caller { field, kind: PrincipalKind::User } if field == name)
+        });
+        (names && !matches!(srcs.as_slice(), [Src::Caller(_)])).then(|| name.clone())
+    })
+}
+
+/// The user or service fields of `dest` its write sets from the caller:
+/// a reader they let in is the caller of the request that stored it.
+fn caller_fields(dest: &Dest) -> Vec<(String, PrincipalKind)> {
+    dest.refs
+        .iter()
+        .filter_map(|(name, srcs)| match srcs.as_slice() {
+            [Src::Caller(kind)] => Some((name.clone(), *kind)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// `readers` of `dest`, as what is known of them on the record the
+/// caller reached as `reached`, when the write set one of `dest`'s user
+/// fields from the caller (chunk 10.4b): a reader that field lets in is
+/// that caller, who passed every check of `reached` to read the value,
+/// so each check is one way the stored value is proved. Every other
+/// reader is known only to be signed in, as on any other record. A
+/// request's caller is never the system, so a grant to it is no way in.
+fn as_caller(dest: &Dest, readers: &Reached, reached: &Reached) -> Vec<Reached> {
+    let fields = caller_fields(dest);
+    if fields.is_empty() {
+        return Vec::new();
+    }
+    let is_caller = |facts: &Facts| {
+        facts.iter().any(|fact| {
+            matches!(fact, Fact::Grant(Grant::Caller { field, kind })
+                if fields.iter().any(|(name, of)| name == field && of == kind))
+        })
+    };
+    if !readers.ways.iter().flatten().any(|facts| is_caller(facts)) {
+        return Vec::new();
+    }
+    reached
+        .ways
+        .iter()
+        .map(|passed| {
+            let passed: Way = passed
+                .iter()
+                .filter(|facts| !facts.contains(&Fact::Grant(Grant::System)))
+                .cloned()
+                .collect();
+            Reached {
+                ways: readers
+                    .ways
+                    .iter()
+                    .map(|way| {
+                        let mut out: Way = Vec::new();
+                        for facts in way {
+                            if is_caller(facts) {
+                                out.extend(passed.iter().cloned());
+                            } else {
+                                out.push(loose(facts));
+                            }
+                        }
+                        out
+                    })
+                    .collect(),
+            }
+        })
+        .collect()
+}
+
 /// What is known of a reader of one record on a record of any other: that
 /// they are signed in, or hold a role across the whole application.
 fn loose(facts: &Facts) -> Facts {
@@ -547,10 +623,13 @@ impl Walk<'_> {
             _ => return None,
         };
         let relations = self.relations(flow, dest, entity, origin);
-        let moved: Vec<Reached> = relations
+        let mut moved: Vec<Reached> = relations
             .iter()
             .map(|rel| self.moved(flow, readers, rel, &dest.entity, entity))
             .collect();
+        if let Src::Field { reached, .. } | Src::Record { reached, .. } = src {
+            moved.extend(as_caller(dest, readers, reached));
+        }
         let field = fields.into_iter().find(|field| {
             !moved
                 .iter()
@@ -763,6 +842,19 @@ impl Walk<'_> {
             (None, true) => format!(
                 "Decide what is stored in `{field}` by what everyone who may read it may read"
             ),
+            // A new record a user field of whose grants the write sets
+            // from somewhere else: owned by the caller, it would hold only
+            // what the caller read (chunk 10.4b).
+            (None, false) if self.event.is_none() && dest.target.is_empty() => {
+                match owner_not_caller(flow, dest) {
+                    Some(owner) => format!(
+                        "Set `{owner}` from the caller, a `Principal.user` the action takes, so the copy is read by whoever read `{from}`, or leave `{from}` out of `{field}`"
+                    ),
+                    None => format!(
+                        "Leave `{from}` out of `{field}`, or store it in a field only those who may read `{from}` may read"
+                    ),
+                }
+            }
             (None, false) => format!(
                 "Leave `{from}` out of `{field}`, or store it in a field only those who may read `{from}` may read"
             ),

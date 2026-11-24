@@ -15,6 +15,9 @@ entity bakery.Order
     read outlet_id
     update customer_id
 
+field bakery.Order.ordered_at
+    generated
+
 entity bakery.Outlet
     read Access.public
     update id

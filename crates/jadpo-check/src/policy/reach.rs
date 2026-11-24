@@ -46,6 +46,84 @@ pub enum Act {
     /// A field its own body always changes, by entity and field name: an
     /// update's `set:`, or a create giving a field that can't be `none`.
     Field(String, String, Effect),
+    /// A field its own body changes when the request supplies it (chunk
+    /// 10.4b): a field of a patch's `Input`, one a `when_supplied:` sets,
+    /// or an optional field a create gives a value that may be one.
+    MaySet(String, String, Effect),
+}
+
+/// The fields the write sites of `callable`'s body change only when the
+/// request supplies them, each as an [`Act::MaySet`] (chunk 10.4b).
+fn may_set(db: &dyn Db, project: Project, callable: crate::types::Callable<'_>) -> Vec<Act> {
+    use crate::types::TypeView;
+    use jadpo_graph::TypeRef;
+    use jadpo_graph::body::{Expr, Literal, Node};
+    let checked = crate::types::typed_body(db, project, callable);
+    let body = &checked.body;
+    let lookup = Lookup::new(db, project);
+    let entities = crate::data::Entities::new(db, project);
+    let short = |key: &jadpo_graph::Key| {
+        key.name()
+            .rsplit('.')
+            .next()
+            .unwrap_or_default()
+            .to_string()
+    };
+    let mut out = Vec::new();
+    for site in &body.sites {
+        let Node::Expr(Expr::Write {
+            entity,
+            op,
+            transition: None,
+            set,
+            patch,
+            when_supplied,
+            ..
+        }) = &site.node
+        else {
+            continue;
+        };
+        let effect = match op {
+            WriteOp::Create => Effect::Create,
+            WriteOp::Update => Effect::Update,
+            WriteOp::Delete => continue,
+        };
+        let name = entity.name().to_string();
+        if *op == WriteOp::Create {
+            for (key, value) in set {
+                let field = short(key);
+                let optional = entities.get(&name).is_some_and(|model| {
+                    model.fields.iter().any(|f| f.name == field && f.nullable)
+                });
+                let none = matches!(
+                    body.site(*value).node,
+                    Node::Expr(Expr::Literal(Literal::None))
+                );
+                if optional && !none {
+                    out.push(Act::MaySet(name.clone(), field, effect));
+                }
+            }
+        }
+        if let Some(patch) = patch {
+            let mut ty = &body.site(*patch).ty;
+            while let TypeRef::Nullable(inner) = ty {
+                ty = inner;
+            }
+            if let TypeRef::Node(key) = ty
+                && let Some(fields) = lookup.fields(key.name())
+            {
+                for field in fields.iter() {
+                    out.push(Act::MaySet(name.clone(), field.name.clone(), effect));
+                }
+            }
+        }
+        for (_, sets) in when_supplied {
+            for (key, _) in sets {
+                out.push(Act::MaySet(name.clone(), short(key), effect));
+            }
+        }
+    }
+    out
 }
 
 /// What the action or fixture called `name` acts, read from what its body
@@ -59,6 +137,7 @@ pub fn acts_of<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> BTree
         if facts.key_of(&[Kind::Action, Kind::Fixture]).is_none() {
             continue;
         }
+        found.extend(may_set(db, project, callable));
         for fact in &facts.facts {
             let act = match fact {
                 Fact::Writes(write) => {
@@ -243,6 +322,9 @@ struct Reached {
     tenant: bool,
     /// For a field whose own `policy:` narrows the record's: its name.
     field: Option<String>,
+    /// Whether the field is changed only when the request supplies it
+    /// ([`Act::MaySet`]).
+    may: bool,
     /// The line under `actions:` whose grants these are, as written, when
     /// a listed action's own body writes the record.
     line: Option<String>,
@@ -303,6 +385,7 @@ fn reached(
             grants,
             tenant,
             field: None,
+            may: false,
             line,
             by: by.map(str::to_string),
         });
@@ -381,24 +464,30 @@ fn reached(
                     }
                 }
                 Act::SignsIn => any = true,
-                Act::Field(entity, field, effect) => {
+                Act::Field(entity, field, effect) | Act::MaySet(entity, field, effect) => {
+                    let may = matches!(act, Act::MaySet(..));
                     let narrowed = access
                         .entity(entity)
                         .and_then(|policy| policy.field_grants(field, *effect));
-                    if let Some(grants) = narrowed
-                        && !out
+                    if let Some(grants) = narrowed {
+                        let known = out
                             .iter()
-                            .any(|r| r.field.as_deref() == Some(field) && r.entity == *entity)
-                    {
-                        out.push(Reached {
-                            entity: entity.clone(),
-                            effect: *effect,
-                            grants: grants.to_vec(),
-                            tenant: false,
-                            field: Some(field.clone()),
-                            line: None,
-                            by: Some(current.clone()),
-                        });
+                            .position(|r| r.field.as_deref() == Some(field) && r.entity == *entity);
+                        match known {
+                            // A field always set says more than one that may be.
+                            Some(at) if out[at].may && !may => out[at].may = false,
+                            Some(_) => {}
+                            None => out.push(Reached {
+                                entity: entity.clone(),
+                                effect: *effect,
+                                grants: grants.to_vec(),
+                                tenant: false,
+                                field: Some(field.clone()),
+                                may,
+                                line: None,
+                                by: Some(current.clone()),
+                            }),
+                        }
                     }
                 }
             }
@@ -442,6 +531,7 @@ fn generated_reach(
             grants,
             tenant,
             field: None,
+            may: false,
             line: None,
             by: None,
         }],
@@ -725,16 +815,36 @@ pub fn reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                             reach.effect.word()
                         )
                     };
+                    // Who may set a field is the owner's decision (chunk
+                    // 10.4b): a route that may set one nobody may is
+                    // refused here, whether it always sets it or only when
+                    // the request supplies it, and the way to allow it is
+                    // a line a person accepts.
+                    let (sets, outcome) = if reach.may {
+                        ("may set", "every request that supplies it is refused")
+                    } else {
+                        ("sets", "this route could never succeed")
+                    };
+                    let allow = if server_only {
+                        format!("remove `FieldAccess.server_only` from `{field}`")
+                    } else {
+                        format!("name who may in `{field}`'s own `{}:`", reach.effect.word())
+                    };
                     out.push(
                         Diagnostic::new(
                             &rule::POLICY_EFFECT_UNGRANTED,
-                            format!("`{label}` sets `{}.{field}`, which nobody may", reach.entity),
+                            format!(
+                                "`{label}` {sets} `{}.{field}`, which nobody may",
+                                reach.entity
+                            ),
                         )
-                        .at(span, format!("sets `{field}`"))
+                        .at(span, format!("{sets} `{field}`"))
                         .reason(format!(
-                            "Policy is always on, and a field's own `policy:` narrows who may change it: {why}, so this route could never succeed."
+                            "Policy is always on, and a field's own `policy:` narrows who may change it: {why}, so {outcome}. Who may set a field is the app owner's decision, not the code's, and letting more people set it is a widening a person accepts."
                         ))
-                        .next(format!("Leave `{field}` out of what this route's action writes")),
+                        .next(format!(
+                            "Leave `{field}` out of what this route's action writes, or ask the app's owner whether a request may set it: they {allow}"
+                        )),
                     );
                     break;
                 }

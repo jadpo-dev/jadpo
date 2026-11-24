@@ -868,7 +868,7 @@ Each change the compiler reports, and the subject it names:
 | `PolicyChange.route_public` | `"main GET /books"` | A route that needed a signed-in caller is open to anyone |
 | `PolicyChange.confirmation_removed` | `"main POST /payouts/{payout_id: Uuid}/send"` | A route that needed the person's passkey no longer asks for it ([Confirm one request with a passkey](08-identity.md#confirm-one-request-with-a-passkey-confirm-confirmationpasskey)) |
 | `PolicyChange.widened` | `library.Book.read`, `library.Book.cost.read`, `lending.borrow` | A caller is added to an entity's or a field's grant, or to a listed action's or query's line; or a field's own list now follows its record's |
-| `PolicyChange.restriction_removed` | `library.Book.cost` | A field's own row, or its `server_only`, is gone |
+| `PolicyChange.restriction_removed` | `library.Book.cost` | A field's own row, its `server_only`, or its `generated` or `immutable` is gone, from a field that is still there |
 | `PolicyChange.tenancy_loosened` | `library.Book`, or `tenant` | An entity that belonged to the tenant is shared by every tenant, or the app's tenant is gone |
 | `PolicyChange.shared_entity_added` | `library.Genre` | A new entity shared by every tenant |
 | `PolicyChange.listing_added` | `lending.borrow` | An action is newly listed under `actions:`, which replaces its entities' grants |
@@ -949,7 +949,10 @@ connection main
 ```
 
 A field's own list that lets nobody in is written `read nobody`, so it
-reads apart from a field that follows its record's list. A route made
+reads apart from a field that follows its record's list. A field only the
+store sets says `generated`, and one no update changes says `immutable`,
+since who may set a field is policy too
+([Who may set a field](09-policy.md#who-may-set-a-field)). A route made
 public is read from the API record, whose route entry says
 `authentication none`.
 

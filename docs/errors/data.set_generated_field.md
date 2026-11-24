@@ -42,7 +42,7 @@ error: `Note.create` sets `written_at`, which the store generates
    |
 17 |             written_at: at
    |             ^^^^^^^^^^ generated
-  reason: `Note.written_at` is generated from the operation's clock; code never assigns it.
+  reason: `Note.written_at` is generated from the operation's clock; code never assigns it. Letting a caller set it is the app owner's decision: removing `generated:` is a widening a person accepts.
   next: Remove `written_at` from `set:` (agent)
   rule: data.set_generated_field
   help: https://jadpo.dev/docs/errors/data.set_generated_field
@@ -87,7 +87,7 @@ error: `Note.update` sets `written_at`, which the store generates
    |
 20 |         patch: amendment
    |                ^^^^^^^^^ generated
-  reason: `Note.written_at` is generated from the operation's clock; code never assigns it.
+  reason: `Note.written_at` is generated from the operation's clock; code never assigns it. Letting a caller set it is the app owner's decision: removing `generated:` is a widening a person accepts.
   next: Remove `written_at` from `NoteChanges` (agent)
   rule: data.set_generated_field
   help: https://jadpo.dev/docs/errors/data.set_generated_field
@@ -205,8 +205,12 @@ action edit(note: Note, amendment: NoteChanges) -> Note {
 
 A request can no longer send a time for `written_at`.
 
-**If your code should decide the value**, remove `generated:` from the
-field:
+**If a caller should decide the value**, ask the app's owner first: who
+sets a field is theirs to decide, as policy is. With their agreement,
+remove `generated:` from the field. Once a commit holds the field, that
+change needs a person's acceptance,
+`PolicyChange.restriction_removed`
+([Protecting policy](../language/09-policy.md#protecting-policy)):
 
 ```jadpo fragment
     written_at: Instant
@@ -233,7 +237,8 @@ action jot_down(title: Note.title, at: Note.written_at) -> Note {
 }
 ```
 
-`written_at` is now set by whoever calls the action.
+`written_at` is now set by whoever calls the action, with the value they
+choose.
 
 ## Related
 

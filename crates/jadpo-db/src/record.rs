@@ -150,6 +150,10 @@ pub const ACCESS: Kind = Kind {
         // `strength AuthenticationStrength.multi_factor`.
         "sign_in",
         "strength",
+        // A field nobody sets but the store, or nobody changes once its
+        // record exists (chunk 10.4b): removing either lets callers set it.
+        "generated",
+        "immutable",
     ],
     older: &[],
 };

@@ -720,7 +720,12 @@ reviewer's draft, which only the reviewer may read, becomes the
 appraisal, which only the reviewer may read too. A copy into a record
 that refers to the one it came from, or into one of the same tenant, is
 allowed in the same way when everyone who may read the field may read
-the value there:
+the value there. So is a copy into a new record whose user field the
+write sets from the caller, such as a duplicate of the caller's own
+todo: whoever that field lets in is the caller, who read the value
+([Copying a record the caller owns](../language/09-policy.md#copying-a-record-the-caller-owns)).
+A copy whose owner comes from the request is refused, and the error says
+to set the owner from the caller:
 
 ```jadpo check project=stored-field-same-readers
 type Handle = Text {

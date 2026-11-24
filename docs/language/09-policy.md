@@ -2074,6 +2074,40 @@ record but not the field gets 403 `not_permitted`. A create that leaves an
 optional field `none` sets nothing, so the field's policy never refuses
 it.
 
+### Who may set a field
+
+Who may set a field is the app owner's decision, like the rest of
+policy. A field says it in its own `create:` and `update:`, with
+`FieldAccess.server_only`, with `immutable: true`, which no update
+changes, or with `generated:`, which only the store sets
+([Fields and their settings](05-data.md#fields-and-their-settings)). A
+field that says none of these follows its record's grants: whoever may
+change the record may change it.
+
+A route whose action may set a field nobody may set is refused at check
+(`policy.effect_ungranted`), not answered with 403 at run time. That
+covers a field the action always sets, and one it sets only when the
+request supplies it: a field of a patch's `Input`, one `when_supplied:`
+sets, or an optional field a create gives a value. The error's next
+step is a person's: leave the field out, or ask the app's owner, who
+names who may set it. Here the email comes from the identity provider,
+so no request changes it:
+
+```jadpo fragment
+entity User {
+    ...
+    email: Email {
+        policy: {
+            update: []
+        }
+    }
+}
+```
+
+Letting more people set a field is a widening a person accepts, like
+any other ([Protecting policy](#protecting-policy)): a caller added to
+its `update:`, or its `immutable: true` or `generated:` removed.
+
 ### Outputs
 
 An output type has one shape for everyone. If anyone allowed to call a
@@ -2139,7 +2173,10 @@ compiler checks each like an output:
   proved as an output is. Otherwise `policy.output_field_unproved` names
   the value in the write. A copy between fields the same callers read
   stays allowed: within a record, into a record that refers to the one it
-  came from, or into one of the same tenant. Who reads a field is known
+  came from, or into one of the same tenant. So does a copy into a
+  record whose user field the write sets from the caller, such as a
+  duplicate of the caller's own todo: whoever that field lets in is the
+  caller, who read the value. Who reads a field is known
   only of the record it is stored in, so a copy into any other record
   proves only what holds of anyone signed in. A patch, `when_supplied:`, a
   counter and a transition store values too, and so does an action a
@@ -2149,6 +2186,233 @@ compiler checks each like an output:
   the record, as a copy in one body does. What decided a value is stored
   with it. Since an action is all-or-nothing, so is whatever a `reject`
   in it tests.
+
+### Copying a record the caller owns
+
+A copy of a caller's own record, owned by the same caller, is stored
+like a copy within one record. The write sets the copy's user field from
+the caller, so whoever that field lets in is the caller who read the
+value. Here a person duplicates one of their todos, and the copy keeps
+its title and due date:
+
+```jadpo check project=copy-own-todo file=app.jadpo hidden
+use todos/entities { User }
+
+application {}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+```
+
+```jadpo check project=copy-own-todo file=authentication.jadpo hidden
+authentication {
+    api_token: {}
+}
+```
+
+```jadpo check project=copy-own-todo file=domains/todos/types/handle.jadpo hidden
+type Handle = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=copy-own-todo file=domains/todos/types/title.jadpo hidden
+type Title = Text {
+    min_length: 1
+    max_length: 200
+}
+```
+
+```jadpo check project=copy-own-todo file=domains/todos/types/todo_view.jadpo hidden
+use todos/entities { Todo }
+
+/// A todo as its owner sees it.
+type TodoView = Output {
+    pick: [Todo.id, Todo.title, Todo.due_at]
+}
+```
+
+```jadpo check project=copy-own-todo file=domains/todos/failures/handle_taken.jadpo hidden
+type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+```
+
+```jadpo check project=copy-own-todo file=domains/todos/entities/user.jadpo hidden
+use todos/types { Handle }
+
+/// A person with an account.
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+    }
+}
+```
+
+```jadpo check project=copy-own-todo file=domains/todos/entities/todo.jadpo
+use todos/entities { User }
+use todos/types { Title }
+
+/// Something to do, which only its owner sees.
+entity Todo {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Title
+    due_at: Instant?
+
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+    }
+}
+```
+
+```jadpo check project=copy-own-todo file=domains/todos/fixtures/person.jadpo hidden
+use todos/entities { User }
+use todos/types { Handle }
+use todos/failures { HandleTaken }
+
+/// Someone with an account called `handle`.
+fixture person(handle: Handle) -> User {
+    return attempt User.create {
+        set: {
+            handle: handle
+        }
+        conflict: {
+            User.handle: HandleTaken
+        }
+    }
+}
+```
+
+```jadpo check project=copy-own-todo file=domains/todos/actions/duplicate_todo.jadpo
+use todos/entities { Todo, TodoNotFound }
+use todos/types { TodoView }
+
+/// A new todo for the caller, with the title and due date of one of
+/// theirs.
+action duplicate_todo(todo_id: Todo.id, caller: Principal.user) fails TodoNotFound -> TodoView {
+    var source: Todo = attempt Todo.get(todo_id)
+    var copy: Todo = Todo.create {
+        set: {
+            owner_id: caller.id
+            title: source.title
+            due_at: source.due_at
+        }
+    }
+    return TodoView {
+        id: copy.id
+        title: copy.title
+        due_at: copy.due_at
+    }
+}
+```
+
+```jadpo check project=copy-own-todo file=domains/todos/routes/todos.jadpo migrate=initial hidden
+use todos/entities { Todo }
+use todos/types { TodoView }
+use todos/actions { duplicate_todo }
+
+routes Todos {
+    prefix: /todos
+
+    /// A copy of one of the caller's todos.
+    POST /{todo_id: Todo.id}/duplicate {
+        output: TodoView
+        status: SuccessStatus.created
+        run: duplicate_todo(todo_id, current_principal.user)
+    }
+}
+```
+
+```jadpo check project=copy-own-todo file=api/main.jadpo_record hidden
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+api main
+    authentication api_token
+
+GET /openapi.json
+    generated openapi
+    status 200
+
+POST /todos/{todo_id: Uuid}/duplicate
+    caller user
+    output TodoView
+    status 201
+    fails todo_not_found
+
+output TodoView
+    due_at: Instant?
+    id: Uuid
+    title: Text { min_length: 1, max_length: 200 }
+
+failure todo_not_found
+    status 404
+```
+
+Another person's todo is hidden from them, so asking to copy it is
+404, as reading it would be. A copy stored in a record whose owner comes
+from anywhere else, such as the request, is still
+`policy.output_field_unproved`, since that owner may not be who read
+the value:
+
+```jadpo check project=copy-own-todo file=domains/todos/routes/todos.test.jadpo
+use todos/entities { Todo, User }
+use todos/types { TodoView }
+use todos/fixtures { person }
+
+test "a copy belongs to the caller, and another's todo is not found" {
+    var ann: User = person("ann")
+    var cyd: User = person("cyd")
+    var bins: Todo = make.Todo {
+        owner_id: ann.id
+        title: "Put the bins out"
+    }
+    var copied: Response = request {
+        method: HttpMethod.post
+        path: "/todos/{todo_id}/duplicate"
+        params: {
+            todo_id: bins.id
+        }
+        as: Principal.user(ann)
+    }
+    assert copied.status == 201
+    var view: TodoView = match copied.output {
+        some(made) -> made
+        none -> TodoView {
+            id: bins.id
+            title: "No copy"
+            due_at: none
+        }
+    }
+    assert view.title == "Put the bins out"
+    assert view.id != bins.id
+    var copy: Todo = attempt Todo.get(view.id)
+    assert copy.owner_id == ann.id
+    var refused: Response = request {
+        method: HttpMethod.post
+        path: "/todos/{todo_id}/duplicate"
+        params: {
+            todo_id: bins.id
+        }
+        as: Principal.user(cyd)
+    }
+    assert refused.status == 404
+}
+```
+
 
 ### Events
 
@@ -2219,7 +2483,8 @@ compares the change with the default branch at its merge base through
 
 - a caller added to any grant list, an entity's or a field's
   (`library.Book.read: PolicyChange.widened`);
-- a field's own row, or its `FieldAccess.server_only`, removed
+- a field's own row, its `FieldAccess.server_only`, its `immutable: true`
+  or its `generated:` removed, from a field that is still there
   (`PolicyChange.restriction_removed`);
 - tenancy loosened: an entity that belonged to the tenant now shared by
   every tenant, or the app's tenant gone (`PolicyChange.tenancy_loosened`),

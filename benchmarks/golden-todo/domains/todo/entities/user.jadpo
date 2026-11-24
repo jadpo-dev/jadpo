@@ -6,9 +6,12 @@ entity User {
         unique: true
     }
     status: UserStatus
+    // Set when the account is provisioned from the identity provider;
+    // no request changes it.
     email: Email {
         policy: {
             read: [Access.system]
+            update: []
         }
     }
     policy: {

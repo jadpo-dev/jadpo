@@ -142,6 +142,86 @@ error: `POST /tidings` runs `note_tidings`, which nobody may call
 check failed: 1 error, 1 file
 ```
 
+A field's own `policy:` can let nobody change it, as a field only the
+identity provider sets does. A route whose action may set such a field
+could only be refused, whether it always sets it or only when the
+request supplies it, as a patch does. Here a user may change their
+display name, but nobody may change their email:
+
+main.jadpo:
+
+```jadpo check project=e-effect-ungranted-field expect=policy.effect_ungranted
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+    display_name: Handle
+    email: Email {
+        policy: {
+            update: []
+        }
+    }
+
+    policy: {
+        read: [id]
+        update: [id]
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+authentication {
+    api_token: {}
+}
+
+type AccountChanges = Input {
+    pick: [User.display_name, User.email]
+    optional: all
+}
+
+action edit_account(user_id: User.id, changes: AccountChanges) fails UserNotFound -> Unit {
+    attempt User.update(user_id) {
+        patch: changes
+    }
+}
+
+routes Accounts {
+    prefix: /users
+
+    PATCH /{user_id: User.id} {
+        input: AccountChanges
+        status: SuccessStatus.no_content
+        run: edit_account(user_id, input)
+    }
+}
+```
+
+```text output
+error: `PATCH /users/{user_id}` may set `User.email`, which nobody may
+ --> main.jadpo:47:5
+   |
+47 |     PATCH /{user_id: User.id} {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ may set `email`
+  reason: Policy is always on, and a field's own `policy:` narrows who may change it: `User.email`'s own `update:` names nobody, so every request that supplies it is refused. Who may set a field is the app owner's decision, not the code's, and letting more people set it is a widening a person accepts.
+  next: Leave `email` out of what this route's action writes, or ask the app's owner whether a request may set it: they name who may in `email`'s own `update:` (human)
+  rule: policy.effect_ungranted
+  help: https://jadpo.dev/docs/errors/policy.effect_ungranted
+
+check failed: 1 error, 1 file
+```
+
+Who may set a field is the app owner's decision, so this one stops for
+them too.
+
 ## How to fix it
 
 The question is who should be able to call the action.
@@ -266,6 +346,77 @@ application, such as `StaffRole.operator`, a membership whose scope is
 the application ([A membership role](../language/09-policy.md#a-membership-role)).
 A role held in one record lets nobody in here, for the reason above.
 
+**If a route sets a field nobody may change**, leave the field out of
+what its action writes. For a patch, take it out of the `Input`:
+
+```jadpo fragment
+type AccountChanges = Input {
+    pick: [User.display_name]
+    optional: all
+}
+```
+
+```jadpo check project=e-effect-ungranted-field-fix hidden
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+    display_name: Handle
+    email: Email {
+        policy: {
+            update: []
+        }
+    }
+
+    policy: {
+        read: [id]
+        update: [id]
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+authentication {
+    api_token: {}
+}
+
+type AccountChanges = Input {
+    pick: [User.display_name]
+    optional: all
+}
+
+action edit_account(user_id: User.id, changes: AccountChanges) fails UserNotFound -> Unit {
+    attempt User.update(user_id) {
+        patch: changes
+    }
+}
+
+routes Accounts {
+    prefix: /users
+
+    PATCH /{user_id: User.id} {
+        input: AccountChanges
+        status: SuccessStatus.no_content
+        run: edit_account(user_id, input)
+    }
+}
+```
+
+If the app's owner decides people may change it after all, they name who
+in the field's own `update:`, such as `update: [id]` for the person
+themselves. That widens who may change it, so once a commit holds the
+field it needs a person's acceptance
+([Who may set a field](../language/09-policy.md#who-may-set-a-field)).
+
 ## Related
 
 - [Permissions on actions](../language/09-policy.md#permissions-on-actions)
@@ -273,3 +424,4 @@ A role held in one record lets nobody in here, for the reason above.
 - [Lines that depend on a record](../language/09-policy.md#lines-that-depend-on-a-record)
 - [Anyone signed in, or anyone](../language/09-policy.md#anyone-signed-in-or-anyone)
 - [Routes: signed in by default](../language/08-identity.md#routes-signed-in-by-default)
+- [Who may set a field](../language/09-policy.md#who-may-set-a-field)
