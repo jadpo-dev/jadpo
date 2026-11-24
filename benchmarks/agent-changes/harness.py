@@ -100,7 +100,14 @@ DEBRIEF = '''The task is over and your work has been kept; change nothing more. 
 # (README, "Runs"). The six span the kinds: a plain feature, two with an
 # unsafe shortcut, the change the owner decides, and two to decline.
 TUNING = ('F01', 'F03', 'F06', 'C03', 'C11', 'C14')
-SETS = {'tuning': TUNING, 'held-out': tuple(c.id for c in change_set.CHANGES if c.id not in TUNING)}
+# 10.2's held-out twelve, and 10.4's fresh twelve, written before any was measured.
+SETS = {'tuning': TUNING,
+        'held-out': tuple(c.id for c in change_set.CHANGES if c.id not in TUNING and c.id not in change_set.FRESH),
+        'fresh': change_set.FRESH}
+
+
+def set_of(change_id):
+    return next(name for name, ids in SETS.items() if change_id in ids)
 
 # What jadpo.dev's "Paste into your agent" prompt asks, beyond what `jadpo
 # new`'s AGENTS.md already says.
@@ -394,6 +401,17 @@ def jadpo_ignore(directory, names):
     return [n for n in names if (top and n in JADPO_WITHHELD) or n in {'build', '.jadpo', '__pycache__'}]
 
 
+# What a TypeScript agent isn't told by the app's own docs, which say its
+# runner starts a PostgreSQL server: `jadpo test` finds the provided one itself.
+TYPESCRIPT_SANDBOX_NOTE = """
+## In this environment
+
+A PostgreSQL server is provided, reached through a Unix socket: `JADPO_TEST_DATABASE_URL` names it, and
+`TEST_DATABASE_URL` names an empty database on it. The sandbox can't start another PostgreSQL server or
+listen on a network port.
+"""
+
+
 def prepare(change, language, folder, compiler):
     """A fresh copy of the app, its own git history to diff against, and for
     Jadpo the docs bundle and the compiler beside it. Nothing else of the
@@ -414,6 +432,7 @@ def prepare(change, language, folder, compiler):
     else:
         shutil.copytree(TYPESCRIPT, app, ignore=shutil.ignore_patterns(*TYPESCRIPT_SKIPPED))
         install_typescript(app)
+        (app / 'AGENTS.md').write_text((app / 'AGENTS.md').read_text().rstrip('\n') + '\n' + TYPESCRIPT_SANDBOX_NOTE)
         install_wrapper(folder, app, {'npm': tool('npm'), 'npx': tool('npx')})
     (app / '.gitignore').write_text('node_modules/\nbuild/\n.jadpo/\n.wrangler/\n')
     git(app, 'init', '-q', '-b', 'main')
@@ -865,7 +884,7 @@ def run(change, language, number, label, settings, agent='claude', keep=False, f
             reports = hidden(language, app, change, folder / 'hidden', server, compiler, diff)
             result = score(change, language, number, label, settings, transcript, diff, visible, reports, asked, timings,
                            folder)
-            result |= {'agent': agent_version(agent), 'set': 'tuning' if tuning else 'held-out', 'frozen': frozen,
+            result |= {'agent': agent_version(agent), 'set': set_of(change.id), 'frozen': frozen,
                        'thinking': thinking}
             if codex:
                 result['sandbox'] = codex_config(settings, folder, environment)
@@ -1104,7 +1123,9 @@ def command_knowledge_probe(args):
     an empty folder, no docs, no tools, no network."""
     if not args.spend:
         raise SystemExit('the probe is an agent session; pass --spend')
-    settings = PINNED_CODEX if args.agent == 'codex' else PINNED
+    settings = dict(PINNED_CODEX if args.agent == 'codex' else PINNED)
+    if args.model:
+        settings['model'] = args.model
     folder = WORK / args.label / 'knowledge-probe'
     if folder.exists():
         shutil.rmtree(folder)
@@ -1338,7 +1359,7 @@ def main(argv=None):
         sub.add_argument('--timeout-minutes', dest='timeout_minutes', type=int)
         sub.add_argument('--agent', default='claude', help='claude, codex, or a stand-in command (replay.py) for plumbing checks')
         sub.add_argument('--spend', action='store_true', help='allow real agent sessions')
-        sub.add_argument('--set', choices=sorted(SETS), help='the tuning changes, or the held-out ones')
+        sub.add_argument('--set', choices=sorted(SETS), help='the tuning changes, 10.2\'s held-out ones, or 10.4\'s fresh ones')
         sub.add_argument('--frozen', metavar='REVISION', help='the frozen Jadpo revision a held-out run is against')
         sub.add_argument('--again', action='store_true')
         sub.add_argument('--keep', action='store_true', help='keep the run folder whole')
@@ -1359,6 +1380,7 @@ def main(argv=None):
     sub = commands.add_parser('knowledge-probe', help="what the model knows of Jadpo with no docs and no tools")
     sub.add_argument('--label', required=True)
     sub.add_argument('--agent', choices=AGENTS, default='codex')
+    sub.add_argument('--model', help='the model, if not the pinned one')
     sub.add_argument('--spend', action='store_true')
     sub.set_defaults(handler=command_knowledge_probe)
     for name, handler in [('summary', command_summary), ('estimate', command_estimate)]:

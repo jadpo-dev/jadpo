@@ -241,6 +241,8 @@ struct Controlled {
     database: Counted,
     now: Cell<i64>,
     outbound: FixtureOutbound,
+    // Every event the application logs, for a hidden test to read back.
+    logs: RefCell<Vec<Value>>,
 }
 impl Host for Controlled {
     fn database(&self, _: &str) -> Option<&dyn Database> {
@@ -265,6 +267,11 @@ impl Host for Controlled {
     }
     fn outbound(&self) -> Option<&dyn Outbound> {
         Some(&self.outbound)
+    }
+    fn log(&self, event: &str, fields: serde_json::Map<String, Value>) {
+        self.logs
+            .borrow_mut()
+            .push(json!({"event": event, "fields": fields}));
     }
 }
 fn instant(ms: i64) -> String {
@@ -376,6 +383,7 @@ fn serve<P: Executor>(program: P, variables: &BTreeMap<String, String>) {
             jwks,
             unavailable: Cell::new(false),
         },
+        logs: RefCell::new(Vec::new()),
     };
     let mut worker = jadpo_runtime::http::Worker::default();
     let mut deferred = Vec::new();
@@ -428,6 +436,7 @@ fn serve<P: Executor>(program: P, variables: &BTreeMap<String, String>) {
                     json!({"first":format!("{first:?}"),"second":format!("{second:?}")})
                 }
                 "tick"=>{let tick=jadpo_runtime::schedules::tick(&program,&host,host.now.get()).await; json!({"tick":format!("{tick:?}")})}
+                "logs"=>{let taken:Vec<Value>=host.logs.borrow_mut().drain(..).collect();json!({"logs":taken})}
                 "jwks"=>json!({"jwks":serde_json::from_str::<Value>(&host.outbound.jwks).expect("fixture JWKS")}),
                 "jwt"=>{let claims=json!({"iss":"https://identity.example/tenant/","aud":"golden-todo","sub":command["subject"],"exp":host.now.get()/1000+3600,"email":"attacker@example.test","role":"administrator"});let body=format!("{}.{}",jadpo_value::encoding::to_base64url(br#"{"alg":"EdDSA","kid":"fixture"}"#),jadpo_value::encoding::to_base64url(claims.to_string().as_bytes()));let sig=jadpo_value::crypto::sign(body.as_bytes(),&signing).expect("fixture JWT");json!({"token":format!("{body}.{}",jadpo_value::encoding::to_base64url(&sig))})}
                 "digest"=>{json!({"digest":blake3::hash(command["text"].as_str().unwrap().as_bytes()).to_hex().to_string()})}
