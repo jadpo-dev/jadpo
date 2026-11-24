@@ -125,11 +125,7 @@ D1 first: the site starts once D1 has merged.
   and pages". `limit: every` covers every matching record up to a standard
   maximum and fails, changing nothing, past it; `query.limit_unbounded`
   points to it. 10.4's N01 and N02 stopped on the bound.
-- [ ] **10.4b Field writes the owner decides** `opus · high`: areas 5, 9
-  and 17. A route that newly lets its caller set a field such as
-  `User.email` or `created_at` is an owner decision `jadpo check` names,
-  allowed in one reviewable line; duplicating a record the caller owns
-  compiles without a policy rewrite. 10.4's N11, N07 and N03.
+- [x] **10.4b Field writes the owner decides**: [Policy](language/09-policy.md) ("Who may set a field", "Copying a record the caller owns") and the decisions in [its notes](language/notes/09-policy.md).
 - [ ] **10.5 A mid-size app where rules live elsewhere** `opus · high`: a
   multi-tenant backend in both languages, about 8–10 entities, 40 or more
   routes, roles, a job and personal data, with the same hidden contract
