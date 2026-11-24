@@ -33,7 +33,7 @@ error: removing an output field can break clients: main.BookView.author
 21 | output BookView
    | ^^^^^^^^^^^^^^^ ApiChange.output_field_removed
   reason: Clients that read it find it gone. So a person accepts it: no acceptance this change adds lists `main.BookView.author: ApiChange.output_field_removed`.
-  next: Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` drafts one for them to give the reason (human)
+  next: Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason (human)
   rule: acceptance.missing
   help: https://jadpo.dev/docs/errors/acceptance.missing
 
@@ -55,7 +55,7 @@ error: a connection that can't erase the personal data it receives needs a perso
 9 |         couriers: {
   |         ^^^^^^^^ ErasureNotPossible.data_stays
   reason: Erasing a person asks each provider that holds their data to erase it, and this one can't be asked. Here: connection `couriers` keeps `User.email` after a person is erased: `AcmeCouriers.v1` declares no `erasure:`. So a person says why the data stays: no acceptance lists `couriers: ErasureNotPossible.data_stays`.
-  next: Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` drafts one for them to give the reason (human)
+  next: Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason (human)
   rule: acceptance.missing
   help: https://jadpo.dev/docs/errors/acceptance.missing
 

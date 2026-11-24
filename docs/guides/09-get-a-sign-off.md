@@ -125,7 +125,7 @@ error: removing an output field can break clients: main.BookView.author
 15 | output BookView
    | ^^^^^^^^^^^^^^^ ApiChange.output_field_removed
   reason: Clients that read it find it gone. So a person accepts it: no acceptance this change adds lists `main.BookView.author: ApiChange.output_field_removed`.
-  next: Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` drafts one for them to give the reason (human)
+  next: Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason (human)
   rule: acceptance.missing
   help: https://jadpo.dev/docs/errors/acceptance.missing
 

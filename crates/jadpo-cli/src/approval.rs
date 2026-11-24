@@ -30,8 +30,8 @@
 //! ✓ Wrote build/review/approval.md
 //! ◆ decision  5 changes wait for a person's acceptance
 //!   next      Stop and ask your user whether to accept them; if they
-//!             agree, `jadpo acceptance new <purpose>` drafts one for
-//!             them. (human)
+//!             agree, `jadpo acceptance new <purpose>` prepares one
+//!             for them. (human)
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -371,7 +371,7 @@ fn screen(report: &Report) -> Screen {
             subject: format!("{} for a person's acceptance", waiting_changes(missing)),
             location: None,
             next:
-                "Stop and ask your user whether to accept them; if they agree, `jadpo acceptance new <purpose>` drafts one for them."
+                "Stop and ask your user whether to accept them; if they agree, `jadpo acceptance new <purpose>` prepares one for them."
                     .to_string(),
         });
     } else if reason > 0 {

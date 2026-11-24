@@ -761,7 +761,7 @@ fn missing_acceptance(
                 format!("these as `{change}`")
             }
         ))
-        .next("Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` drafts one for them to give the reason");
+        .next("Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason");
     }
     Diagnostic::new(
         &rule::ACCEPTANCE_MISSING,
@@ -776,7 +776,7 @@ fn missing_acceptance(
             format!("these as `{change}`")
         }
     ))
-    .next("Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` drafts one for them to give the reason")
+    .next("Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason")
 }
 
 /// The `decline` line a need for a declined security rule is about.

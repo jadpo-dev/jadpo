@@ -773,7 +773,7 @@ $ jadpo approval --before main
 
 ◆ decision  1 change waits for a person's acceptance
   next      Stop and ask your user whether to accept them; if they agree,
-            `jadpo acceptance new <purpose>` drafts one for them. (human)
+            `jadpo acceptance new <purpose>` prepares one for them. (human)
 ```
 
 With `--json`, `data` holds the same report as `build/review/approval.json`

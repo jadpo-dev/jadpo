@@ -1206,7 +1206,7 @@ fn screen_for_new(
             ),
             location: None,
             next: format!(
-                "Stop and ask your user whether to accept {}; if they agree, `jadpo acceptance new <purpose>` drafts one for them.",
+                "Stop and ask your user whether to accept {}; if they agree, `jadpo acceptance new <purpose>` prepares one for them.",
                 if removed.len() == 1 { "it" } else { "them" }
             ),
         });
