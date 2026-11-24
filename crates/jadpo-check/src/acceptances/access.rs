@@ -5,7 +5,8 @@
 //!
 //! It holds what a widening is read from: the tenant, the scopes external
 //! tokens are narrowed to, each entity's grants, the scope each effect
-//! needs and where its records belong, each field's own narrower grants, the
+//! needs and where its records belong, each field's own narrower grants and
+//! whether only the store sets it or no update changes it (chunk 10.4b), the
 //! actions and queries listed under `actions:`, every decline of a rule
 //! the catalogue marks as a security rule, the sign-in settings that have
 //! a limit (area 8, "Magic links"), and the company's own git locations
@@ -29,6 +30,8 @@
 //! action todos.transfer_todo
 //!     who Todo.owner_id
 //! ```
+
+use std::collections::BTreeMap;
 
 use jadpo_db::record::{self as format, Entry};
 use jadpo_db::{Db, Project};
@@ -86,6 +89,7 @@ fn entries(db: &dyn Db, project: Project) -> Vec<Entry> {
     let access = crate::policy::access(db, project);
     let lookup = Lookup::new(db, project);
     let identity = crate::identity::identity(db, project);
+    let models = crate::data::Entities::new(db, project);
     let mut out = Vec::new();
     if let Some(tenant) = &access.root.tenant {
         out.push(Entry::new(format!("tenant {tenant}")));
@@ -137,10 +141,11 @@ fn entries(db: &dyn Db, project: Project) -> Vec<Entry> {
             }
         }
         out.push(entry);
-        let mut fields: Vec<&FieldPolicy> = policy.fields.iter().collect();
-        fields.sort_by(|a, b| a.field.cmp(&b.field));
-        for field in fields {
-            let mut entry = Entry::new(format!("field {name}.{}", field.field));
+        let mut fields: BTreeMap<&str, Entry> = BTreeMap::new();
+        for field in &policy.fields {
+            let entry = fields
+                .entry(field.field.as_str())
+                .or_insert_with(|| Entry::new(format!("field {name}.{}", field.field)));
             if field.server_only {
                 entry.push("server_only");
             } else {
@@ -157,8 +162,26 @@ fn entries(db: &dyn Db, project: Project) -> Vec<Entry> {
                     }
                 }
             }
-            out.push(entry);
         }
+        // Who sets a field is policy too (chunk 10.4b): a field only the
+        // store sets, or that never changes once its record exists, says
+        // so, so a change that lets callers set it is a widening.
+        if let Some(model) = models.get(&policy.entity) {
+            for field in &model.fields {
+                let fact = if field.generated.is_some() {
+                    "generated"
+                } else if field.immutable {
+                    "immutable"
+                } else {
+                    continue;
+                };
+                fields
+                    .entry(field.name.as_str())
+                    .or_insert_with(|| Entry::new(format!("field {name}.{}", field.name)))
+                    .push(fact);
+            }
+        }
+        out.extend(fields.into_values());
     }
     for (word, lines) in [
         ("action", &access.root.actions),

@@ -52,6 +52,9 @@ entity kitchen.StaffMember
     delete baker_id
     tenant bakery_id
 
+field kitchen.StaffMember.joined_at
+    generated
+
 action kitchen.hand_over_recipe
     who Recipe.author_id
 

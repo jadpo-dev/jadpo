@@ -164,7 +164,7 @@ fn from_access(
         return;
     }
     let mut found = Vec::new();
-    compare::access_needs(access::PATH, "", now, &mut found);
+    compare::access_needs(access::PATH, "", now, &|_| true, &mut found);
     if side.is_none() {
         compare::own_source_needs(access::PATH, "", now, &mut found);
     }

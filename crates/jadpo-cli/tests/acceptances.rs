@@ -470,6 +470,90 @@ fn an_acceptance_on_the_before_side_is_history() {
     );
 }
 
+/// Who may set a field is policy (area 9, "Who may set a field"; chunk
+/// 10.4b): letting callers set one only the store set, or change one that
+/// never changed, needs a person, and so does naming who may change a
+/// field whose own `update:` named nobody.
+#[test]
+fn letting_callers_set_a_field_they_could_not_needs_a_person() {
+    let root = library("set-by");
+    git(&root, &["checkout", "-q", "main"]);
+    write(
+        &root,
+        "domains/lending/entities/plaque.jadpo",
+        r#"use lending/entities { Book }
+use lending/types { Handle, StaffRole }
+
+/// A plaque on a donated book.
+entity Plaque {
+    id: Uuid
+    book_id: Book.id {
+        on_delete: OnDelete.cascade
+    }
+    shelf_mark: Handle {
+        immutable: true
+    }
+    note: Handle? {
+        policy: {
+            update: []
+        }
+    }
+    added_at: Instant {
+        generated: Generated.on_create
+    }
+
+    policy: {
+        create: [StaffRole.admin]
+        read: [Access.authenticated]
+        update: [StaffRole.admin]
+    }
+}
+"#,
+    );
+    let migrated = jadpo(&root, &["migrate", "new", "add_plaques"]);
+    assert_eq!(migrated.code, 0, "{}", migrated.stdout);
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
+    let access = fs::read_to_string(root.join("access.jadpo_record")).expect("read");
+    assert!(
+        access.contains(
+            "field lending.Plaque.added_at\n    generated\n\nfield lending.Plaque.note\n    update nobody\n\nfield lending.Plaque.shelf_mark\n    immutable\n"
+        ),
+        "{access}"
+    );
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "Plaques"]);
+    git(&root, &["checkout", "-q", "-b", "set-by"]);
+    assert_eq!(problems(&root), Vec::<String>::new());
+    let plaque = "domains/lending/entities/plaque.jadpo";
+    edit(
+        &root,
+        plaque,
+        "    shelf_mark: Handle {\n        immutable: true\n    }\n",
+        "    shelf_mark: Handle\n",
+    );
+    edit(
+        &root,
+        plaque,
+        "            update: []\n",
+        "            update: [StaffRole.admin]\n",
+    );
+    edit(
+        &root,
+        plaque,
+        "    added_at: Instant {\n        generated: Generated.on_create\n    }\n",
+        "    added_at: Instant\n",
+    );
+    let recorded = jadpo(&root, &["records", "update"]);
+    assert_eq!(recorded.code, 0, "{}", recorded.stdout);
+    assert_eq!(
+        problems(&root),
+        [
+            "acceptance.missing: removing a field's restriction widens who can reach it: lending.Plaque.added_at, lending.Plaque.shelf_mark",
+            "acceptance.missing: widening who can do what needs a person: lending.Plaque.note.update",
+        ]
+    );
+}
+
 #[test]
 fn with_nothing_to_compare_with_check_says_so_in_one_line() {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("acceptances-nothing");

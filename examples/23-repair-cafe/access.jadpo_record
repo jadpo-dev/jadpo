@@ -13,6 +13,9 @@ entity cafe.Repair
     read Access.system
     update Access.system
 
+field cafe.Repair.booked_at
+    generated
+
 entity cafe.ThankYouNote
     create Access.system
     read Access.public

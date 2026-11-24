@@ -39,6 +39,23 @@ use jadpo_diag::{Diagnostic, Span, rule};
 
 pub use compare::{Family, Need};
 
+/// Every stored field the project has, as the access record names it:
+/// `todo.Todo.created_at` (chunk 10.4b).
+fn present_fields(db: &dyn Db, project: Project) -> std::collections::BTreeSet<String> {
+    let lookup = crate::lookups::Lookup::new(db, project);
+    let entities = crate::data::Entities::new(db, project);
+    let mut out = std::collections::BTreeSet::new();
+    for policy in crate::policy::access(db, project).entities.values() {
+        let name = crate::policy::report::qualified(&lookup, &policy.entity);
+        if let Some(model) = entities.get(&policy.entity) {
+            for field in &model.fields {
+                out.insert(format!("{name}.{}", field.name));
+            }
+        }
+    }
+    out
+}
+
 /// Every change since the before side that needs a person, sorted by
 /// subject; empty without a before side. A record whose source has errors
 /// isn't compared, since what it would say isn't known.
@@ -57,7 +74,14 @@ pub fn needs(db: &dyn Db, project: Project) -> Vec<Need> {
         let was = before.text(access::PATH);
         if let Some(was) = was {
             // Read in today's names, so a domain moved keeps its grants.
-            compare::access_needs(access::PATH, &moves.text_now(was), now, &mut out);
+            let fields = present_fields(db, project);
+            compare::access_needs(
+                access::PATH,
+                &moves.text_now(was),
+                now,
+                &|field| fields.contains(field),
+                &mut out,
+            );
         }
         compare::own_source_needs(access::PATH, was.unwrap_or(""), now, &mut out);
     }

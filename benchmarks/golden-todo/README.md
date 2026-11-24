@@ -66,8 +66,9 @@ The source has three stored entities: User, Todo, and the Service principal
 required by AUTH-009/011. It has no sharing, administrator bypass, ownership
 transfer action, public authentication fixture route, raw SQL or secret reads.
 Fixture SQL and test credentials belong only to the black-box controller.
-`User.email` is provisioning-only and readable by system delivery work; the
-self-service projection exposes only `id` and bounded ordered todos.
+`User.email` is provisioning-only and readable by system delivery work: its
+own `update:` names nobody, so no request changes it. The self-service
+projection exposes only `id` and bounded ordered todos.
 
 The app’s own `ReminderMail.v1` provider package defines a fixed hosted
 reminder-template contract at the non-routable fixture hostname

@@ -121,6 +121,11 @@ D1 first: the site starts once D1 has merged.
 - [x] **10.2 How easily agents write Jadpo**: the method, changes and harness are in [agent-changes](../benchmarks/agent-changes/README.md).
 - [x] **10.3 Fix what the held-out runs found**: [Searching inside text](language/06-reads-and-writes.md#searching-inside-text), [Text](language/19-standard-library.md#text), and the decisions in the notes pages of areas 2, 9, 13 and 18.
 - [x] **10.4 A fresh held-out comparison**: the fresh set and its method are in [agent-changes](../benchmarks/agent-changes/README.md).
+- [ ] **10.4a A bound for "all of them"** `opus · high`: area 6, "Order
+  and pages". `limit: every` covers every matching record up to a standard
+  maximum and fails, changing nothing, past it; `query.limit_unbounded`
+  points to it. 10.4's N01 and N02 stopped on the bound.
+- [x] **10.4b Field writes the owner decides**: [Policy](language/09-policy.md) ("Who may set a field", "Copying a record the caller owns") and the decisions in [its notes](language/notes/09-policy.md).
 - [ ] **10.5 A mid-size app where rules live elsewhere** `opus · high`: a
   multi-tenant backend in both languages, about 8–10 entities, 40 or more
   routes, roles, a job and personal data, with the same hidden contract
