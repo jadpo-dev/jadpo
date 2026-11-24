@@ -107,7 +107,8 @@ TUNING = ('F01', 'F03', 'F06', 'C03', 'C11', 'C14')
 SETS = {'tuning': TUNING,
         'held-out': tuple(c.id for c in change_set.CHANGES if c.id not in TUNING and c.id not in change_set.FRESH),
         'fresh': change_set.FRESH,
-        'desk': tuple(desk_set.BY_ID)}
+        'desk': tuple(i for i in desk_set.BY_ID if i not in desk_set.FRESH),
+        'desk-fresh': desk_set.FRESH}
 
 # The apps a change is made to: the golden todo, and 10.5's helpdesk, whose
 # changes run five to a session (desk_changes.SESSIONS).
@@ -147,6 +148,17 @@ ANSWER = '''The product owner replies to QUESTIONS.md:
 > {answer}
 
 Carry on: make whatever change this calls for (or none), run the project's checks and tests, and say in a few lines what you did.'''
+
+
+def owner_reply(change):
+    """The owner's one reply, the same in both languages. From 10.6 it ends
+    with what the owner accepts, in their own words, as an owner answering an
+    acceptance would: a check that needs a person's acceptance then has one to
+    quote, and a change that needs none reads it as a plain yes."""
+    answer = change.owner_answer
+    if change.owner_accepts:
+        answer += f'\n>\n> If a check needs me to accept something for this: I accept it. Yes, {change.owner_accepts}.'
+    return ANSWER.format(answer=answer)
 
 
 def tool(name):
@@ -906,7 +918,7 @@ def run(change, language, number, label, settings, agent='claude', keep=False, f
                 first = scoring.parse_transcript(transcript.read_text().splitlines(), language) if not codex else None
                 remaining = max(0.0, settings['budget_usd'] - first['cost_usd']) if 'budget_usd' in settings else None
                 if remaining is None or remaining > 0:
-                    timings.append(session(agent, settings, ANSWER.format(answer=change.owner_answer), app, folder,
+                    timings.append(session(agent, settings, owner_reply(change), app, folder,
                                            environment, transcript, resume=identifier, budget=remaining, minutes=minutes))
             if codex:
                 save_rollout(folder)
@@ -1022,7 +1034,7 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
                 asked = questions_text(app) not in ('', before)
                 minutes = settings['timeout_minutes'] - timings[0]['seconds'] / 60
                 if asked and minutes > 0 and identifier:
-                    timings.append(session(agent, settings, ANSWER.format(answer=change.owner_answer), app, folder,
+                    timings.append(session(agent, settings, owner_reply(change), app, folder,
                                            environment, transcript, resume=identifier, minutes=minutes))
                 if codex:
                     save_rollout(folder)
@@ -1052,7 +1064,7 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
                     total = thread_usage(transcript)
                     result['tokens'] = {key: max(0, total[key] - spent.get(key, 0)) for key in total}
                     spent = total
-                result |= {'agent': agent_version(agent), 'set': 'desk', 'frozen': frozen, 'thinking': None,
+                result |= {'agent': agent_version(agent), 'set': set_of(change.id), 'frozen': frozen, 'thinking': None,
                            'session': name, 'step': step}
                 if codex:
                     result['sandbox'] = codex_config(settings, folder, environment)

@@ -273,7 +273,7 @@ class Sets(unittest.TestCase):
         self.assertTrue(any(c.kind == 'feature' for c in tuning))
         self.assertEqual(len(harness.SETS['held-out']), 12)
         self.assertEqual(harness.SETS['fresh'], changes.FRESH)
-        sets = [set(ids) for name, ids in harness.SETS.items() if name != 'desk']
+        sets = [set(ids) for name, ids in harness.SETS.items() if not name.startswith('desk')]
         self.assertEqual(sum(map(len, sets)), len(changes.CHANGES))
         self.assertEqual(set().union(*sets), set(changes.BY_ID))
         self.assertEqual(harness.set_of('N01'), 'fresh')
@@ -303,6 +303,23 @@ class Helpdesk(unittest.TestCase):
         self.assertEqual(harness.app_of(desk_changes.BY_ID['H01']), 'desk')
         self.assertEqual(harness.app_of(changes.BY_ID['F01']), 'todo')
         self.assertFalse(set(desk_changes.BY_ID) & set(changes.BY_ID))
+
+    def test_fresh_changes_are_their_own_set(self):
+        self.assertEqual(harness.SETS['desk-fresh'], ('H11', 'H12', 'H13', 'H14', 'H15', 'H16', 'H17', 'H18', 'H19', 'H20'))
+        self.assertEqual(set(harness.SETS['desk']) | set(harness.SETS['desk-fresh']), set(desk_changes.BY_ID))
+        self.assertEqual(harness.set_of('H11'), 'desk-fresh')
+        self.assertEqual(desk_changes.SESSIONS['S3'] + desk_changes.SESSIONS['S4'], desk_changes.FRESH)
+
+    def test_the_owner_answers_an_acceptance_in_both_languages_alike(self):
+        fresh = desk_changes.BY_ID['H15']
+        reply = harness.owner_reply(fresh)
+        self.assertIn(fresh.owner_answer, reply)
+        self.assertIn('I accept it. Yes, the hourly job may read', reply)
+        self.assertTrue(all(desk_changes.BY_ID[i].owner_accepts for i in desk_changes.FRESH))
+        # 10.5's changes keep the reply they were measured with.
+        old = desk_changes.BY_ID['H09']
+        self.assertIsNone(old.owner_accepts)
+        self.assertEqual(harness.owner_reply(old), harness.ANSWER.format(answer=old.owner_answer))
 
     def test_every_change_checks_the_rules_every_change_keeps(self):
         for change in desk_changes.CHANGES:
