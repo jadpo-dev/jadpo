@@ -1053,13 +1053,10 @@ decisions themselves are `acceptances::needs`, the same list `check` judges,
 each carrying its plain words and the callers it lets in from where its
 record is read.
 
-`jadpo check` builds the same base for records (area 18, "Checking a
-record"): `records::candidates` names each view that changed since the base
-and disagrees with the source, `before::judge_views` loads the base the same
-way for those alone and sets `Project::base_views` from
-`records::base_view`, kept in `build/before/<commit>/records.json`, and
-`records::hand_edit` compares entry by entry. A project with no such view
-builds nothing.
+Records are never judged against the base (area 18, "Checking a
+record"): a view Jadpo could have written that disagrees with the source
+is out of date, whatever the base says, so `jadpo check` builds no base
+for them.
 
 **The registry commands** (chunk R5, area 11, "How the registry commands
 work") are `jadpo-cli`'s `registry` (asking the protocol over `download`,
@@ -2665,9 +2662,11 @@ restricting reference's foreign key, reached through every `cascade`), and
 each reference the write sets, which raises that entity's not-found failure
 unless its value was read from a record loaded earlier, when the record
 deleted since is a fault. `Transaction` has `savepoint`,
-`release_savepoint` and `rollback_to_savepoint`; the PostgreSQL driver
-forgets a refused statement's error once the transaction returns to its
-savepoint, so the transaction can still commit. Every action that loads
+`release_savepoint` and `rollback_to_savepoint`, with no default bodies,
+so a wrapper around a store's transaction forwards them rather than
+running the statements itself and skipping the store's bookkeeping; the
+PostgreSQL driver forgets a refused statement's error once the
+transaction returns to its savepoint, so the transaction can still commit. Every action that loads
 a record runs at repeatable read, so an update or delete of a row another transaction
 changed since the first statement is PostgreSQL's serialisation failure,
 classified as a concurrent change: the boundary rolls back and runs the

@@ -35,8 +35,8 @@ compiler catches most of them and shows you the Jadpo way:
 ## The commands
 
 Everything goes through one command, `jadpo`
-([install it](learn/01-setting-up.md#install-it)). Run it anywhere inside
-your project: it finds the project by looking upwards for `app.jadpo`.
+([install it](learn/01-setting-up.md#install-it)), run anywhere inside
+your project: it looks upwards for `app.jadpo`.
 
 | Command | What it does |
 |---|---|
@@ -85,18 +85,17 @@ check failed: 1 error, 1 file
 Every error has the same parts:
 
 - `reason:` says why the code is wrong.
-- `next:` says what to do. `(human)` at the end of an error's `next:`
-  line tells your coding agent to stop and ask you which fix you want,
-  because the choice is yours to make (who can see data, what a setting
-  holds). `(agent)` means your agent can make the fix itself. The marker
-  is guidance that agents follow. A passing check's `notice:` is no stop:
-  carry on, and tell your user what it said.
-- `rule:` is the error's name. Its page, on the site at
-  `https://jadpo.dev/docs/errors/<rule>`, explains it; read it only when
-  the reason and the next step aren't enough.
+- `next:` says what to do. `(human)` at its end tells your agent to stop
+  and ask you, since the choice is yours (who can see data, what a setting
+  holds). `(agent)` means your agent fixes it alone. A passing check's
+  `notice:` is no stop: carry on, and tell your user what it said. Nor is
+  a detail the request leaves open: your agent picks a reading, notes it
+  and carries on, and before any stop backs out what waits on you.
+- `rule:` is the error's name. Its page,
+  `https://jadpo.dev/docs/errors/<rule>`, explains it when the reason and
+  next step aren't enough.
 
-`jadpo check --json` gives the same parts as JSON, for tools. A few rules
-are judgement calls: when the code is right as written, a line
+A few rules are judgement calls: when the code is right as written, a line
 `decline <rule>: "<why>"` above the declaration answers that one finding.
 Unsure which value goes somewhere? Write `_`: `jadpo check` names the
 type and what in scope fits ([Typed holes](language/02-values-and-types.md#typed-holes)).
@@ -109,8 +108,8 @@ domains: one folder for each part of the business, such as `lending` or
 its own folder, such as `types/`, `entities/` or `actions/`. Each file
 holds one declaration and is named after it.
 
-This primer builds a small app for neighbours on one street to lend each
-other tools. These are all the files it ends with:
+This primer builds an app for neighbours to lend each other tools. Its
+files:
 
 ```text
 app.jadpo               the application and who can sign in
@@ -135,8 +134,7 @@ Built-in types and the standard library (`list.`, `money.`, `temporal.`)
 are never imported. `jadpo fmt` adds missing imports and removes unused
 ones, so run it after writing a file. A type that a second file uses must move to its own file in
 `types/`; the compiler says so (`layout.promotion_required`) and
-`jadpo fmt --layout` makes the move. A file outside any project is checked
-on its own, with no layout and no `use` lines.
+`jadpo fmt --layout` makes the move.
 
 ## Syntax essentials
 
@@ -186,7 +184,10 @@ function sticker(parcel: Parcel) -> Label {
 - Every type is declared `type Name = Base { ... }`. A block holds one
   item per line, with no commas; only a `use` line's names take commas.
   `///` documents the next declaration; `//` is a plain comment.
-- Types are `UpperCamelCase`; everything else is `lower_snake_case`.
+- Types are `UpperCamelCase`; everything else is `lower_snake_case`. Two
+  names can't fold to one file name: a type `CompleteTodos` and an action
+  `complete_todos` would both be `complete_todos.jadpo`, so name an input
+  for what it holds.
 - Every variable states its type. `var` is like `const` and never
   changes; `var mut` can be given a new value. Values never change:
   build a new object instead.
@@ -205,7 +206,6 @@ between them silently. The built-in representations are `Bool`, `Int`,
 `Decimal`, `Text`, `Bytes` and `Uuid`. About 260 standard types cover the
 rest (`Email`, `Money`, `Instant`, `PostalAddress` and more), so look in
 [their A-to-Z list](https://jadpo.dev/docs/types) before inventing one.
-`jadpo help Money` prints one's shape and an example.
 
 ```jadpo check project=tool-share file=domains/lending/types/tool_name.jadpo
 /// What a tool is called, as its owner wrote it.
@@ -280,11 +280,12 @@ but one can't be passed for the other. Every entity gets `Tool.get(id)`,
 `Tool.create`, `Tool.update` and `Tool.delete`, and a not-found failure,
 `ToolNotFound`, imported from `lending/entities`.
 
-After changing an entity, run `jadpo check`. It writes a dated folder in
-`database/migrations/` with a snapshot and the SQL, and says so. Commit
-it. When a change needs a decision, such as a value for a new field,
-`jadpo check` fails naming `jadpo migrate new <purpose>`, which writes the
-folder with a `changes.jadpo` to fill in, and run again finishes it.
+After changing an entity, run `jadpo check`. Once nothing else is wrong,
+it writes a dated folder in `database/migrations/` with a snapshot and the
+SQL, and says so. Commit it. When a change needs a decision, such as a
+value for a new field, `jadpo check` fails naming
+`jadpo migrate new <purpose>`, which writes the folder with a
+`changes.jadpo` to fill in, and run again finishes it.
 
 ## Failures
 
@@ -722,8 +723,11 @@ test "only a tool's owner lends it out" {
 }
 ```
 
-Shared test data goes in a `fixture` in `fixtures/`. A test's `fakes:`
-scripts what a provider package answers.
+A test never writes a record itself:
+`make.Member { email: "bob@example.test" }` builds one without policy,
+filling in every field it isn't given; shared test data goes in a
+`fixture` in `fixtures/`. A test's `fakes:` scripts a provider
+package's answers.
 
 ## Run it
 

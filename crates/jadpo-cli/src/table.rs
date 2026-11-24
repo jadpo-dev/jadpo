@@ -1349,7 +1349,8 @@ pub static COMMANDS: &[Command] = &[
                       writes acceptances/<stamp>_<purpose>.jadpo listing every such change since the \
                       default branch at its merge base that no acceptance this change adds lists yet, \
                       with no reason. A person writes the reason on a /// line above `acceptance`; \
-                      until then `jadpo check` fails. An agent runs it, then stops and hands over.",
+                      until then `jadpo check` fails. An agent asks its user first, runs it only \
+                      once they agree, then stops and hands over.",
         arguments: &[
             Argument {
                 name: "action",

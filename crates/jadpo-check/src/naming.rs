@@ -459,7 +459,20 @@ fn declaration(
                 other.name,
                 described(other)
             ))
-            .next("Rename one of them so their file names differ"),
+            .next(match library {
+                // Loose files have no layout for `jadpo rename` to keep.
+                _ if here.project.layout(here.db) != Layout::Project => {
+                    "Rename one of them so their file names differ".to_string()
+                }
+                // A library's function is named after its library, and
+                // has no file of its own to move.
+                Some((_, library)) => format!(
+                    "Rename `{library}.{name}` with `jadpo rename {library}.{name} <new name>`, which changes every use with it"
+                ),
+                None => format!(
+                    "Rename `{name}` with `jadpo rename {name} <new name>`, which moves its file and every use with it"
+                ),
+            }),
         );
     }
     if item.kind == ItemKind::Library && names.is_generic(name) {

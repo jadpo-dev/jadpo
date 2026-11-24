@@ -1814,6 +1814,200 @@ every caller may read, as an output's fields must be
 ([Field restrictions](09-policy.md#field-restrictions),
 `policy.output_field_unproved`).
 
+## A report of counts
+<!-- topic: a-report-of-counts -->
+
+A report that counts several things is a query for each count and an
+action that puts them together. Each query has `aggregate:` and no
+`group:`, so it gives one row, whose count is 0 when nothing matches
+([Counts, sums and groups](#counts-sums-and-groups)).
+
+Here a help desk reports, for the past 7 days, how many enquiries were
+opened and solved, and how many are open now. The request didn't say what
+"the past 7 days" means, so the action reads it one reasonable way and
+says so in its `///` line, where the app's owner sees it:
+
+```jadpo check project=enquiry-report file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=enquiry-report file=domains/desk/types/enquiry_status.jadpo hidden
+/// Where a enquiry is.
+type EnquiryStatus = Enum {
+    open
+    pending
+    solved
+}
+```
+
+```jadpo check project=enquiry-report file=domains/desk/types/enquiry_subject.jadpo hidden
+/// What a enquiry is about.
+type EnquirySubject = Text {
+    min_length: 1
+    max_length: 200
+}
+```
+
+```jadpo check project=enquiry-report file=domains/desk/types/enquiry_time.jadpo hidden
+/// A moment in a enquiry's life.
+type EnquiryTime = Instant {}
+```
+
+```jadpo check project=enquiry-report file=domains/desk/entities/enquiry.jadpo hidden
+use desk/types { EnquiryStatus, EnquirySubject, EnquiryTime }
+
+/// A customer's request for help.
+entity Enquiry {
+    id: Uuid
+    subject: EnquirySubject
+    status: EnquiryStatus
+    raised_at: EnquiryTime {
+        generated: Generated.on_create
+    }
+    solved_at: EnquiryTime?
+}
+```
+
+```jadpo check project=enquiry-report file=domains/desk/types/enquiry_count.jadpo hidden
+/// How many enquiries a count found.
+type EnquiryCount = Output {
+    enquiries: Int
+}
+```
+
+```jadpo check project=enquiry-report file=domains/desk/types/week_of_enquiries.jadpo
+/// The desk's last seven days, and how it stands now.
+type WeekOfEnquiries = Output {
+    opened: Int
+    solved: Int
+    open_now: Int
+}
+```
+
+```jadpo check project=enquiry-report file=domains/desk/queries/opened_since.jadpo
+use desk/entities { Enquiry }
+use desk/types { EnquiryCount, EnquiryTime }
+
+/// How many enquiries were opened at or after `since`.
+query opened_since(since: EnquiryTime) -> EnquiryCount {
+    from: Enquiry
+    where: Enquiry.raised_at >= since
+    aggregate: {
+        enquiries: count()
+    }
+}
+```
+
+```jadpo check project=enquiry-report file=domains/desk/queries/solved_since.jadpo
+use desk/entities { Enquiry }
+use desk/types { EnquiryCount, EnquiryStatus, EnquiryTime }
+
+/// How many enquiries are solved and were solved at or after `since`.
+/// Reopening a enquiry clears `solved_at`, so a enquiry solved and reopened
+/// since isn't counted.
+query solved_since(since: EnquiryTime) -> EnquiryCount {
+    from: Enquiry
+    where: Enquiry.status == EnquiryStatus.solved
+    where: Enquiry.solved_at >= since
+    aggregate: {
+        enquiries: count()
+    }
+}
+```
+
+```jadpo check project=enquiry-report file=domains/desk/queries/open_now.jadpo
+use desk/entities { Enquiry }
+use desk/types { EnquiryCount, EnquiryStatus }
+
+/// How many enquiries aren't solved: open or pending.
+query open_now() -> EnquiryCount {
+    from: Enquiry
+    where: Enquiry.status != EnquiryStatus.solved
+    aggregate: {
+        enquiries: count()
+    }
+}
+```
+
+```jadpo check project=enquiry-report file=domains/desk/actions/weekly_report.jadpo
+use desk/types { EnquiryCount, EnquiryTime, WeekOfEnquiries }
+use desk/queries { open_now, opened_since, solved_since }
+
+/// The report for the past 7 days. The request said only "the past 7
+/// days", so this reads it as the 7 × 24 hours before the report is made
+/// (a rolling week, in UTC as every `Instant` is), not 7 calendar days.
+action weekly_report() -> WeekOfEnquiries {
+    var since: EnquiryTime = EnquiryTime(clock.now - 7d)
+    var opened: EnquiryCount = opened_since(since)
+    var solved: EnquiryCount = solved_since(since)
+    var open: EnquiryCount = open_now()
+    return WeekOfEnquiries {
+        opened: opened.enquiries
+        solved: solved.enquiries
+        open_now: open.enquiries
+    }
+}
+```
+
+```jadpo check project=enquiry-report file=domains/desk/actions/open_enquiry.jadpo hidden
+use desk/entities { Enquiry }
+use desk/types { EnquiryStatus }
+
+/// Opens a enquiry.
+action open_enquiry(subject: Enquiry.subject) -> Enquiry {
+    return Enquiry.create {
+        set: {
+            subject: subject
+            status: EnquiryStatus.open
+            solved_at: none
+        }
+    }
+}
+```
+
+```jadpo check project=enquiry-report file=domains/desk/actions/solve_enquiry.jadpo hidden migrate=initial
+use desk/entities { Enquiry }
+use desk/types { EnquiryStatus, EnquiryTime }
+
+/// Solves a enquiry now.
+action solve_enquiry(enquiry: Enquiry) -> Enquiry {
+    return Enquiry.update(enquiry) {
+        set: {
+            status: EnquiryStatus.solved
+            solved_at: EnquiryTime(clock.now)
+        }
+    }
+}
+```
+
+```jadpo check project=enquiry-report file=domains/desk/actions/weekly_report.test.jadpo
+use desk/entities { Enquiry }
+use desk/types { WeekOfEnquiries }
+use desk/actions { open_enquiry, solve_enquiry }
+
+test "the report counts the last 7 × 24 hours, and what is open now" {
+    clock: "2026-11-01T09:00:00Z"
+
+    var old: Enquiry = open_enquiry("Printer jammed")
+    clock.advance(3d)
+    var login: Enquiry = open_enquiry("Can't sign in")
+    var refund: Enquiry = open_enquiry("Refund, please")
+    var solved: Enquiry = solve_enquiry(refund)
+    assert solved.solved_at == clock.now
+    clock.advance(5d)
+    assert weekly_report() == WeekOfEnquiries {
+        opened: 2
+        solved: 1
+        open_now: 2
+    }
+    assert login.status == old.status
+}
+```
+
+A report kept for each day is the same action run by a
+[schedule](12-jobs-and-events.md#schedules), its counts stored in a record
+of their own.
+
 ## A query giving a map layer
 <!-- topic: a-query-giving-a-map-layer -->
 
@@ -2612,7 +2806,177 @@ all-or-nothing whoever calls it.
 
 An action that passes its failure on with `attempt` needs no savepoint:
 the failure ends its caller too, up to a `match` that undoes both, or up
-to the outermost action, which rolls back.
+to the outermost action, which rolls back. [An import that skips duplicates](#an-import-that-skips-duplicates)
+uses this to carry on past each create a unique rule refuses.
+
+## An import that skips duplicates
+<!-- topic: an-import-that-skips-duplicates -->
+
+An import that skips a record already there recovers from the create's
+`conflict:` failure instead of passing it on. A `match` handles a call's
+failures, and a write isn't a call, so the create goes in an action of its
+own, which passes its failure on with `attempt`, and the import matches on
+each call to it ([A failed action inside another](#a-failed-action-inside-another)).
+Each call runs in a savepoint, so a refused create is undone alone and the
+import carries on. A `match` around the create itself is
+`failure.attempt_required`, whose next step says the same.
+
+Here contacts come over from an old system, and two contacts never share
+an email:
+
+```jadpo check project=skipping-duplicates file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=skipping-duplicates file=domains/contacts/types/contact_name.jadpo hidden
+/// What a contact is called.
+type ContactName = Text {
+    min_length: 1
+    max_length: 120
+}
+```
+
+```jadpo check project=skipping-duplicates file=domains/contacts/entities/contact.jadpo migrate=initial
+use contacts/types { ContactName }
+
+/// Someone in the address book. Two contacts never share an email.
+entity Contact {
+    id: Uuid
+    name: ContactName
+    email: Email {
+        unique: true
+    }
+}
+```
+
+```jadpo check project=skipping-duplicates file=domains/contacts/failures/email_taken.jadpo hidden
+/// Another contact has this email.
+type EmailTaken = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=skipping-duplicates file=domains/contacts/types/contact_row.jadpo hidden
+use contacts/entities { Contact }
+
+/// One contact from an old system's export.
+type ContactRow = Input {
+    pick: [Contact.name, Contact.email]
+}
+```
+
+```jadpo check project=skipping-duplicates file=domains/contacts/types/contact_import.jadpo hidden
+use contacts/types { ContactRow }
+
+/// Contacts brought over from an old system, up to 500 at a time.
+type ContactImport = Input {
+    contacts: List<ContactRow> {
+        max_length: 500
+    }
+}
+```
+
+```jadpo check project=skipping-duplicates file=domains/contacts/types/import_counts.jadpo hidden
+/// How many contacts an import added, and how many it skipped.
+type ImportCounts = Output {
+    imported: Int
+    skipped: Int
+}
+```
+
+`add_contact` makes one contact and fails with `EmailTaken` when the email
+is there:
+
+```jadpo check project=skipping-duplicates file=domains/contacts/actions/add_contact.jadpo
+use contacts/entities { Contact }
+use contacts/types { ContactRow }
+use contacts/failures { EmailTaken }
+
+/// Adds one contact, failing if its email is taken.
+action add_contact(row: ContactRow) fails EmailTaken -> Contact {
+    return attempt Contact.create {
+        set: {
+            name: row.name
+            email: row.email
+        }
+        conflict: {
+            Contact.email: EmailTaken
+        }
+    }
+}
+```
+
+The import counts what each call gave. A row whose email an earlier row of
+the same import added is skipped too, since that contact is there by then:
+
+```jadpo check project=skipping-duplicates file=domains/contacts/actions/import_contacts.jadpo
+use contacts/types { ContactImport, ImportCounts }
+use contacts/failures { EmailTaken }
+use contacts/actions { add_contact }
+
+/// Adds each contact whose email isn't taken yet, and skips the rest,
+/// including a second row with an email the import already added.
+action import_contacts(input: ContactImport) -> ImportCounts {
+    var mut imported: Int = 0
+    var mut skipped: Int = 0
+    for row in input.contacts {
+        match add_contact(row) {
+            success -> {
+                imported = imported + 1
+            }
+            EmailTaken -> {
+                skipped = skipped + 1
+            }
+        }
+    }
+    return ImportCounts {
+        imported: imported
+        skipped: skipped
+    }
+}
+```
+
+```jadpo check project=skipping-duplicates file=domains/contacts/actions/import_contacts.test.jadpo
+use contacts/entities { Contact }
+use contacts/types { ContactImport, ContactRow, ImportCounts }
+use contacts/actions { add_contact }
+
+test "an import skips an email already there, and a repeat of its own" {
+    var ada: Contact = attempt add_contact(
+        ContactRow {
+            name: "Ada"
+            email: "ada@example.com"
+        }
+    )
+    var counts: ImportCounts = import_contacts(
+        ContactImport {
+            contacts: [
+                ContactRow {
+                    name: "Ada Lovelace"
+                    email: "ada@example.com"
+                },
+                ContactRow {
+                    name: "Bo"
+                    email: "bo@example.com"
+                },
+                ContactRow {
+                    name: "Bo again"
+                    email: "bo@example.com"
+                }
+            ]
+        }
+    )
+    assert counts == ImportCounts {
+        imported: 1
+        skipped: 2
+    }
+    var kept: Contact = attempt Contact.get(ada.id)
+    assert kept.name == "Ada"
+}
+```
+
+`attempt add_contact(row)` in the loop would pass `EmailTaken` on instead,
+ending the import and undoing every contact it had added.
 
 ## All-or-nothing actions and concurrent changes
 <!-- topic: all-or-nothing-actions-and-concurrent-changes -->

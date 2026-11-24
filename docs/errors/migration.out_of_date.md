@@ -14,6 +14,16 @@ after what changed, and says so; you commit it with the code. Otherwise,
 and always with `CI` set, the check fails at once, rather than when the
 code first reads a missing column, and names the command to run.
 
+Beside another error, outside CI, there is nothing to run yet:
+`jadpo migrate new` stops on that error too. The `next:` line says to fix
+the other errors first, and then either that `jadpo check` writes the
+migration itself or, when the change needs a decision, the command to
+run:
+
+```text
+  next: Fix the other errors first: `jadpo check` then writes this migration itself (agent)
+```
+
 ## What it looks like
 
 A project with an entity and no migration yet, checked in CI:

@@ -47,10 +47,26 @@ change what.
 6. **Some changes need a person's acceptance:** widening who can do
    what, breaking the API (a route removed, a field clients read removed
    or retyped, a required input added) and adding an outside host the
-   app can send data to. When `jadpo check` asks for one, run
-   `jadpo acceptance new <purpose>`, then stop and hand over: the person
-   writes why it is accepted, so never write the reason yourself.
-7. **Start from the closest example** below.
+   app can send data to. When `jadpo check` asks for one, stop and ask
+   the person whether to accept the change, saying what it allows and
+   for whom: it is their decision. Go on only once they agree to that
+   change, in their answer or in a request that asks in so many words
+   for what it does; "do whatever it needs" agrees to nothing. Then run
+   `jadpo acceptance new <purpose>` and write their own words as its
+   `///` reason, with who said them and where, such as
+   `/// Sam (owner), in chat: "Yes, owners and admins may import."`.
+   Never write a reason of your own.
+7. **Stop only for those two.** A `(human)` error and an acceptance are
+   the decisions Jadpo names as the owner's. A product detail the
+   request leaves open is not one, such as whether "the past 7 days" is a
+   rolling week in UTC, or whether a count includes reopened tickets:
+   choose the reasonable reading, write it down where the owner will see
+   it, as a `///` line on the code that applies it and in your summary,
+   and carry on. Before you stop to ask, leave the project passing
+   `jadpo check` and `jadpo test`: back out or set aside the part that
+   needs the owner, keep the rest of the change that works, and say what
+   is waiting on them. The next change starts from what you leave.
+8. **Start from the closest example** below.
 
 ## The closest example for each feature
 

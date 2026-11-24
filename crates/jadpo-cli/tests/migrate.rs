@@ -113,6 +113,57 @@ fn check_writes_the_next_migration_when_it_needs_no_decision() {
     assert_eq!(migrations(&root).len(), 2);
 }
 
+/// While another error stands, `jadpo check` writes no migration and
+/// `jadpo migrate new` stops on that error, so the next step says what
+/// will happen instead: the migration is written once the other errors
+/// are fixed, or, when it needs a decision, the command to run then
+/// (chunk 10.4c: agents ran `jadpo help migration.out_of_date` and `jadpo
+/// migrate new` beside an unrelated error).
+#[test]
+fn beside_another_error_the_migration_waits_for_it_and_says_so() {
+    let root = project("beside-another");
+    assert_eq!(jadpo(&root, &["check"]).code, 0);
+    let broken = "\n/// A todo's title, read back.\nfunction title_of(todo: Todo) -> Int {\n    return todo.title\n}\n";
+    write(
+        &root,
+        TODO,
+        &format!("entity Todo {{\n    id: Uuid\n    title: Text\n    pinned: Bool?\n}}\n{broken}"),
+    );
+    let pinned = jadpo(&root, &["check"]);
+    assert_eq!(pinned.code, 1, "{}", pinned.stdout);
+    assert!(
+        pinned.stdout.contains(
+            "next: Fix the other errors first: `jadpo check` then writes this migration itself (agent)"
+        ),
+        "{}",
+        pinned.stdout
+    );
+    assert_eq!(migrations(&root).len(), 1);
+    write(
+        &root,
+        TODO,
+        &format!(
+            "entity Todo {{\n    id: Uuid\n    title: Text\n    pinned: Bool?\n    owner: Text\n}}\n{broken}"
+        ),
+    );
+    let owner = jadpo(&root, &["check"]);
+    assert_eq!(owner.code, 1, "{}", owner.stdout);
+    assert!(
+        owner.stdout.contains(
+            "next: Fix the other errors first, then run `jadpo migrate new add_owner` (agent)"
+        ),
+        "{}",
+        owner.stdout
+    );
+    // CI holds the commit to the migration as before.
+    let ci = jadpo_ci(&root, &["check"]);
+    assert!(
+        ci.stdout.contains("next: Run `jadpo migrate new"),
+        "{}",
+        ci.stdout
+    );
+}
+
 #[test]
 fn the_first_migration_creates_the_tables_and_check_agrees() {
     let root = project("first");

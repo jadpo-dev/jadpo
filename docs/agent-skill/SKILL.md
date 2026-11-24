@@ -136,6 +136,54 @@ In the JSON this is `next.decides`: `"agent"` or `"human"`. When it is
 `"human"`, put the choices and what each changes to the user, and wait for
 the answer.
 
+## What you decide yourself
+
+Stop and ask only where Jadpo names the decision as the owner's: an
+error or step whose `next:` ends `(human)`, and an acceptance (below).
+Everything else is yours. A product detail the request leaves open isn't
+the owner's decision in this sense, such as whether "the past 7 days" is
+a rolling week in UTC or whether a count includes tickets reopened
+since. Choose the reasonable reading, write it down where the owner will
+see it, as a `///` line on the code that applies it and in your summary,
+and carry on. The owner can change a reading they disagree with; a
+change that stopped to ask gives them nothing to look at.
+
+Before you stop to ask, leave the project passing `jadpo check` and
+`jadpo test`. Back out or set aside the part that needs the owner, keep
+the rest of the change that works, and say in your summary what is
+waiting on them. Whatever comes next, yours or another agent's, starts
+from the project you leave, and one that doesn't check fails every
+change after it.
+
+## Changes that need the owner's acceptance
+
+Some changes need a person to accept them: removing what clients read,
+widening who can do what, dropping stored data, a new outside host. `check`
+fails with `acceptance.missing` until an acceptance lists them, and with
+`acceptance.no_reason` until its `///` line says why. An acceptance is the
+owner's decision, not yours:
+
+1. Stop and ask your user whether to accept the change, saying what it
+   allows and for whom, such as "the daily job would run as the system
+   and read every workspace's replies". Ask about it on its own, so the
+   answer is about it.
+2. Go on only once they agree to that change: in their answer, or in a
+   request that asks in so many words for what it does ("owners and
+   admins only" agrees to listing the new action for those roles). A
+   general go-ahead, such as "do whatever it needs" or "carry on", agrees
+   to nothing that widens access or breaks a client. If they don't
+   agree, undo the change. While you wait for the answer, the change
+   that needs it is backed out, so `jadpo check` and `jadpo test` pass.
+3. Run `jadpo acceptance new <purpose>` and write their own words as the
+   `///` reason, with who said them and where:
+
+   ```text
+   /// Sam Okafor (product owner), replying in QUESTIONS.md: "Yes, the daily job may read reply times."
+   ```
+
+   Never write a reason of your own, and never get `check` passing by
+   inventing one.
+
 ## A bug in Jadpo
 
 If the compiler crashes, rejects code the docs say is valid, or a doc is

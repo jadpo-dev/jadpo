@@ -761,7 +761,7 @@ fn missing_acceptance(
                 format!("these as `{change}`")
             }
         ))
-        .next("Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or a person accepts it: `jadpo acceptance new <purpose>` writes the draft for them");
+        .next("Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` writes it, and its reason quotes their words");
     }
     Diagnostic::new(
         &rule::ACCEPTANCE_MISSING,
@@ -776,7 +776,7 @@ fn missing_acceptance(
             format!("these as `{change}`")
         }
     ))
-    .next("A person accepts it: `jadpo acceptance new <purpose>` writes the draft for them")
+    .next("Stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` writes it, and its reason quotes their words")
 }
 
 /// The `decline` line a need for a declined security rule is about.
@@ -799,8 +799,8 @@ fn no_reason(acceptance: &files::Acceptance) -> Diagnostic {
         format!("`{}` has no reason", acceptance.path),
     )
     .at(acceptance.span.clone(), "no `///` reason above")
-    .reason("An acceptance records a person's decision, so it says why on a `///` line above `acceptance`; an agent writes the draft and stops there.")
-    .next("A person writes why these changes are accepted on a `///` line above `acceptance`")
+    .reason("An acceptance records a person's decision, so its reason is their own words, on a `///` line above `acceptance`, saying who gave them and where.")
+    .next("Write your user's own words agreeing to these changes as the reason, with who said them and where, and never a reason of your own; if they haven't agreed, stop and ask them, and if they don't accept, delete the draft and undo the changes")
 }
 
 fn unmatched(entry: &files::Entry, needs: &[Need]) -> Diagnostic {

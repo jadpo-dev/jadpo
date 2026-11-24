@@ -237,3 +237,52 @@ fn a_promotion_onto_a_name_the_file_folds_to_says_which_to_rename_first() {
         next.text
     );
 }
+
+/// Customers whose email is unique, and the failure a clash maps to.
+const CUSTOMERS: &str = "entity Customer {\n    id: Uuid\n    email: Email {\n        unique: true\n    }\n}\n\ntype EmailTaken = Failure {\n    kind: FailureKind.conflict\n}\n\ntype Added = Bool {}\n\n";
+
+/// A create a `match` is on, to skip a duplicate (chunk 10.4e): a
+/// held-out run was told to start the statement with `attempt`, which
+/// would pass the clash on and end the import. The step names the action
+/// a `match` can recover from.
+#[test]
+fn a_write_in_a_match_is_moved_into_an_action_of_its_own() {
+    let source = format!(
+        "{CUSTOMERS}action import_one(email: Email) -> Added {{\n    return match (Customer.create {{\n        set: {{\n            email: email\n        }}\n        conflict: {{\n            Customer.email: EmailTaken\n        }}\n    }}) {{\n        success -> true\n        EmailTaken -> false\n    }}\n}}\n"
+    );
+    let db = Database::default();
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", source.as_str())]);
+    let found = jadpo_check::check(&db, project);
+    assert_eq!(
+        found.iter().map(|d| d.rule.id).collect::<Vec<_>>(),
+        ["failure.attempt_required"]
+    );
+    let next = found[0].next.as_ref().expect("a next step");
+    assert_eq!(
+        next.text,
+        "Move `Customer.create` into an action that lists `EmailTaken` after `fails` and returns it with `attempt`, then `match` on a call to that action with an arm for `EmailTaken`"
+    );
+    assert!(
+        found[0]
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("a write isn't a call")),
+        "{:?}",
+        found[0].reason
+    );
+    // Done that way, it checks.
+    let moved = format!(
+        "{CUSTOMERS}action add_customer(email: Email) fails EmailTaken -> Customer {{\n    return attempt Customer.create {{\n        set: {{\n            email: email\n        }}\n        conflict: {{\n            Customer.email: EmailTaken\n        }}\n    }}\n}}\n\naction import_one(email: Email) -> Added {{\n    return match add_customer(email) {{\n        success -> true\n        EmailTaken -> false\n    }}\n}}\n"
+    );
+    let db = Database::default();
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", moved.as_str())]);
+    let found = jadpo_check::check(&db, project);
+    assert!(
+        found.is_empty(),
+        "{:?}",
+        found
+            .iter()
+            .map(|d| (d.rule.id, &d.message))
+            .collect::<Vec<_>>()
+    );
+}

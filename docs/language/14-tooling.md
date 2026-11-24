@@ -107,8 +107,14 @@ todo-app/
   supporting type alone is `layout.unused_declaration`), one
   topic read rather than a whole page, a feature declared and checked
   before it is designed around, `jadpo help <rule>` for an error, and
-  `jadpo acceptance new` then a stop for a change that needs a person
-  ([Acceptances](18-records-and-manifest.md#acceptances)). It ends with
+  for a change that needs a person, a stop to ask them and, once they
+  agree to that change, `jadpo acceptance new` with their words as the
+  reason ([Acceptances](18-records-and-manifest.md#acceptances)). Those
+  and a `(human)` step are its only stops: a product detail a request
+  leaves open, the agent chooses a reasonable reading of, writes down
+  where the owner will see it and carries on. Before a stop it leaves
+  the project passing `jadpo check` and `jadpo test`, the part that
+  waits on the owner backed out. It ends with
   the closest teaching example for each feature, linked at this
   `jadpo`'s own release, and what isn't built
   yet, area by area, both written from the docs, so they
@@ -1089,9 +1095,11 @@ date at once and moves records from their old names.
 default branch at its merge base that needs a person and that no
 acceptance this change adds lists yet, with no reason
 ([Acceptances](18-records-and-manifest.md#acceptances)). The stamp is the
-minute in UTC, as a migration's is. An agent runs it, then stops: a
-person writes the reason on a `///` line above `acceptance`, and `jadpo
-check` fails until they do.
+minute in UTC, as a migration's is. Accepting is the person's decision,
+so an agent asks them first and runs it only once they agree to the
+change, then writes their own words as the reason on a `///` line above
+`acceptance`, with who said them and where; `jadpo check` fails until a
+reason is there.
 
 ```text
 $ jadpo acceptance new open_the_catalogue
@@ -1101,8 +1109,9 @@ $ jadpo acceptance new open_the_catalogue
 
 ◆ decision  2 changes wait for a person's reason
   at        acceptances/20261030T1400_open_the_catalogue.jadpo:1
-  next      Stop and hand over: a person reads the changes and writes why
-            they are accepted on a `///` line above `acceptance`. (human)
+  next      Write your user's own words agreeing to these changes on a `///`
+            line above `acceptance`, with who said them and where; without
+            their agreement, stop and ask them. (human)
 ```
 
 With `--json`, `data` holds the `file`, each change's `subject` and
@@ -2458,6 +2467,11 @@ stop and ask you which fix you want, because the choice is yours to make
 make the fix itself. A `notice:` on a check that passes
 ([what a first record holds](18-records-and-manifest.md#what-a-first-record-holds))
 is not an error: its `next:` is `(agent)`, meaning carry on and tell the user.
+A `(human)` step and an acceptance are the only decisions Jadpo names as
+the owner's; a product detail a request leaves open is the agent's to
+choose, write down and carry on from. Before stopping for one, the agent
+backs out the part that waits on the owner, so the project it leaves
+passes `jadpo check` and `jadpo test`.
 
 There is no warning severity. Every finding is an error, and it stops
 `check` and the build until it is answered: fixed or, for the few rules

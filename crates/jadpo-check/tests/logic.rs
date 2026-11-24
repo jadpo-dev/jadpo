@@ -50,6 +50,33 @@ fn unit_calls_attempt_and_bare_return_stand_alone() {
     );
 }
 
+/// A call made for what it does stands alone whatever it gives back: an
+/// action, a create, an update or a transition, whose record nobody needs
+/// then. A call that only computes or reads its result does nothing
+/// without it, and says which (chunk 10.4c: agents bound a write's
+/// record and invented a use for it).
+#[test]
+fn a_call_made_for_what_it_does_stands_alone_whatever_it_gives() {
+    let base = "entity Todo {\n    id: Uuid\n    title: Label\n    done: Flag\n}\n\nquery open_todos() -> List<Todo> {\n    from: Todo\n    where: Todo.done == false\n    order: [Todo.title asc]\n    limit: 50\n}\n\naction rename(item: Todo, title: Todo.title) -> Todo {\n    return Todo.update(item) {\n        set: {\n            title: title\n        }\n    }\n}\n\n";
+    assert_eq!(
+        with_names(&format!(
+            "{base}action finish_all() -> Unit {{\n    var todos: List<Todo> = open_todos()\n    for item in todos {{\n        Todo.update(item) {{\n            set: {{\n                done: true\n            }}\n        }}\n        rename(item, \"done\")\n    }}\n    Todo.create {{\n        set: {{\n            title: \"Next\"\n            done: false\n        }}\n    }}\n}}\n"
+        )),
+        CLEAN
+    );
+    let db = Database::default();
+    let source = format!("{NAMES}{base}action peek() -> Unit {{\n    open_todos()\n}}\n");
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", source.as_str())]);
+    let read = jadpo_check::check(&db, project);
+    assert_eq!(read.len(), 1, "{read:#?}");
+    assert_eq!(read[0].rule.id, "semantic.unused_result", "{read:#?}");
+    assert_eq!(
+        read[0].reason.as_deref(),
+        Some("`open_todos` only reads, so calling it without using what it gives does nothing."),
+        "{read:#?}"
+    );
+}
+
 #[test]
 fn loops_inline_functions_and_recursive_functions_check() {
     assert_eq!(
@@ -417,4 +444,29 @@ fn a_new_call_that_closes_a_cycle_is_reported_where_it_is() {
         })
         .collect();
     assert_eq!(found, [("b.jadpo", "effect.recursive_action")]);
+}
+
+/// An object where one of its fields' types is required says which field
+/// to read (chunk 10.4c: an agent passed a query's `UserWithTodos` to
+/// `list.count`, told only to use a `List<T>` value).
+#[test]
+fn an_object_whose_one_field_fits_names_that_field() {
+    let db = Database::default();
+    let source = format!(
+        "{NAMES}type Shelf = Object {{\n    name: Label\n    labels: List<Label>\n}}\n\nfunction count_labels(shelf: Shelf) -> Coins {{\n    return Coins(list.count(shelf))\n}}\n"
+    );
+    let project = support::project(&db, Layout::Loose, &[("main.jadpo", source.as_str())]);
+    let found = jadpo_check::check(&db, project);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].rule.id, "type.mismatch", "{found:#?}");
+    assert_eq!(
+        found[0].next.as_ref().map(|next| next.text.as_str()),
+        Some("Read its `labels` field: `shelf.labels`"),
+        "{found:#?}"
+    );
+    assert_eq!(
+        found[0].reason.as_deref(),
+        Some("`Shelf` is an object, and of its fields only `labels` is a `List<T>`."),
+        "{found:#?}"
+    );
 }

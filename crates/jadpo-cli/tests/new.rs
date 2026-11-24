@@ -135,9 +135,10 @@ fn the_project_is_on_this_jadpos_own_line() {
 }
 
 /// The AGENTS.md an agent reads every session (roadmap chunk A6): its
-/// working method, what isn't built yet and the closest example for each
-/// feature, each generated from the docs (`tools/docs/agent_guidance.py`),
-/// and short enough to read every time.
+/// working method, when to stop for the owner and when to choose, what
+/// isn't built yet and the closest example for each feature, each
+/// generated from the docs (`tools/docs/agent_guidance.py`), and short
+/// enough to read every time.
 #[test]
 fn agents_md_gives_a_working_method_what_is_built_and_the_examples() {
     let parent = folder("agents");
@@ -151,7 +152,15 @@ fn agents_md_gives_a_working_method_what_is_built_and_the_examples() {
         "Declare a feature and check it",
         "`jadpo help <rule>`",
         "`jadpo acceptance new <purpose>`",
-        "never write the reason yourself",
+        "Never write a reason of your own",
+        "\"do whatever it needs\" agrees to nothing",
+        // A product detail the request leaves open is the agent's to
+        // choose and write down, not a reason to stop (chunk 10.4e).
+        "Stop only for those two",
+        "choose the reasonable reading, write it down",
+        // A stop leaves the project checking, so the next change doesn't
+        // start from a broken one (10.5, H03).
+        "Before you stop to ask, leave the project passing",
         "## The closest example for each feature",
         &format!(
             "https://github.com/jadpo-dev/jadpo/tree/v{}/examples/29-lending-desk",

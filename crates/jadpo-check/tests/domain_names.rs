@@ -419,3 +419,44 @@ fn a_package_sharing_a_private_types_name_leaves_its_stored_shape_alone() {
         |schema: &jadpo_graph::schema::Schema| schema.stores["main"].tables["invoice"].clone();
     assert_eq!(invoice(&after), invoice(&before));
 }
+
+/// A route's input named after the action that takes it folds to the
+/// action's file name: the next step names the command that renames the
+/// type with its file and every use, since renaming by hand left the file
+/// behind for agents in 10.4's held-out runs (chunk 10.4c).
+#[test]
+fn a_folded_collision_names_the_rename_that_moves_the_file() {
+    let db = Database::default();
+    let project = support::project(
+        &db,
+        Layout::Project,
+        &[
+            APP,
+            (
+                "domains/planning/types/complete_todos.jadpo",
+                "/// Which todos to complete.\ntype CompleteTodos = Input {\n    count: Int\n}\n",
+            ),
+            (
+                "domains/planning/actions/complete_todos.jadpo",
+                "use planning/types { CompleteTodos }\n\naction complete_todos(input: CompleteTodos) -> Int {\n    return input.count\n}\n",
+            ),
+            (
+                "domains/planning/actions/count_completed.jadpo",
+                "use planning/types { CompleteTodos }\n\naction count_completed(input: CompleteTodos) -> Int {\n    return input.count\n}\n",
+            ),
+        ],
+    );
+    let found = jadpo_check::check(&db, project);
+    let folded: Vec<_> = found
+        .iter()
+        .filter(|d| d.rule.id == "naming.folded_collision")
+        .collect();
+    assert_eq!(folded.len(), 1, "{found:#?}");
+    assert_eq!(
+        folded[0].next.as_ref().map(|next| next.text.as_str()),
+        Some(
+            "Rename `CompleteTodos` with `jadpo rename CompleteTodos <new name>`, which moves its file and every use with it"
+        ),
+        "{found:#?}"
+    );
+}

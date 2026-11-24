@@ -94,20 +94,21 @@ pub(super) fn single(srcs: &[Src]) -> Option<Ident> {
 }
 
 /// The record of `entity` a write's target `srcs` is, when it is one
-/// record the body loaded.
+/// record the body loaded. A `var mut` a change's result is put back in
+/// holds that record as each write gave it back, with what each set, so
+/// sources that differ only in that are still the one record.
 pub(super) fn loaded(entity: &str, srcs: &[Src]) -> Origin {
-    let values: Vec<&Src> = srcs
+    let mut origins = srcs
         .iter()
         .filter(|src| !matches!(src, Src::Decided(_)))
-        .collect();
-    match values.as_slice() {
-        [
+        .map(|src| match src {
             Src::Record {
                 entity: of, origin, ..
-            },
-        ] if of == entity => *origin,
-        _ => None,
-    }
+            } if of == entity => *origin,
+            _ => None,
+        });
+    let first = origins.next()??;
+    origins.all(|origin| origin == Some(first)).then_some(first)
 }
 
 /// The values of `srcs` beside what decided them.
