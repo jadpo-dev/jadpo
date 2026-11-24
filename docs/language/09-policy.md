@@ -2278,13 +2278,13 @@ entity Todo {
 }
 ```
 
-```jadpo check project=copy-own-todo file=domains/todos/fixtures/person.jadpo hidden
+```jadpo check project=copy-own-todo file=domains/todos/fixtures/account_named.jadpo hidden
 use todos/entities { User }
 use todos/types { Handle }
 use todos/failures { HandleTaken }
 
 /// Someone with an account called `handle`.
-fixture person(handle: Handle) -> User {
+fixture account_named(handle: Handle) -> User {
     return attempt User.create {
         set: {
             handle: handle
@@ -2303,18 +2303,18 @@ use todos/types { TodoView }
 /// A new todo for the caller, with the title and due date of one of
 /// theirs.
 action duplicate_todo(todo_id: Todo.id, caller: Principal.user) fails TodoNotFound -> TodoView {
-    var source: Todo = attempt Todo.get(todo_id)
-    var copy: Todo = Todo.create {
+    var first_todo: Todo = attempt Todo.get(todo_id)
+    var twin: Todo = Todo.create {
         set: {
             owner_id: caller.id
-            title: source.title
-            due_at: source.due_at
+            title: first_todo.title
+            due_at: first_todo.due_at
         }
     }
     return TodoView {
-        id: copy.id
-        title: copy.title
-        due_at: copy.due_at
+        id: twin.id
+        title: twin.title
+        due_at: twin.due_at
     }
 }
 ```
@@ -2371,16 +2371,16 @@ the value:
 ```jadpo check project=copy-own-todo file=domains/todos/routes/todos.test.jadpo
 use todos/entities { Todo, User }
 use todos/types { TodoView }
-use todos/fixtures { person }
+use todos/fixtures { account_named }
 
 test "a copy belongs to the caller, and another's todo is not found" {
-    var ann: User = person("ann")
-    var cyd: User = person("cyd")
+    var ann: User = account_named("ann")
+    var cyd: User = account_named("cyd")
     var bins: Todo = make.Todo {
         owner_id: ann.id
         title: "Put the bins out"
     }
-    var copied: Response = request {
+    var duplicated: Response = request {
         method: HttpMethod.post
         path: "/todos/{todo_id}/duplicate"
         params: {
@@ -2388,8 +2388,8 @@ test "a copy belongs to the caller, and another's todo is not found" {
         }
         as: Principal.user(ann)
     }
-    assert copied.status == 201
-    var view: TodoView = match copied.output {
+    assert duplicated.status == 201
+    var view: TodoView = match duplicated.output {
         some(made) -> made
         none -> TodoView {
             id: bins.id
@@ -2399,8 +2399,8 @@ test "a copy belongs to the caller, and another's todo is not found" {
     }
     assert view.title == "Put the bins out"
     assert view.id != bins.id
-    var copy: Todo = attempt Todo.get(view.id)
-    assert copy.owner_id == ann.id
+    var twin: Todo = attempt Todo.get(view.id)
+    assert twin.owner_id == ann.id
     var refused: Response = request {
         method: HttpMethod.post
         path: "/todos/{todo_id}/duplicate"

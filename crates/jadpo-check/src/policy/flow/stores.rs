@@ -377,7 +377,7 @@ fn as_caller(dest: &Dest, readers: &Reached, reached: &Reached) -> Vec<Reached> 
                 if fields.iter().any(|(name, of)| name == field && of == kind))
         })
     };
-    if !readers.ways.iter().flatten().any(|facts| is_caller(facts)) {
+    if !readers.ways.iter().flatten().any(&is_caller) {
         return Vec::new();
     }
     reached
