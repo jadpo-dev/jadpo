@@ -2442,11 +2442,11 @@ something only some callers may see. Keep that part on a record of its
 own whose `read:` names only them, read it with a query of its own, and
 give the output a field `T?` for it: everyone who may see the record gets
 it, and everyone else gets `none`. Here a company's projects are listed
-to all its members, and each project's client, with their email, only to
+to all its members, and each project's customer, with their email, only to
 owners and editors.
 
 The `Company`, its `CompanyRole` and the memberships that hold roles are as
-in [Policy, end to end](#policy-end-to-end). A client is a record of its
+in [Policy, end to end](#policy-end-to-end). A customer is a record of its
 own, which viewers may not read at all:
 
 ```jadpo check project=roles-in-practice file=app.jadpo hidden
@@ -2511,8 +2511,8 @@ type ProjectName = Text {
 }
 ```
 
-```jadpo check project=roles-in-practice file=domains/work/types/client_name.jadpo hidden
-type ClientName = Text {
+```jadpo check project=roles-in-practice file=domains/work/types/customer_name.jadpo hidden
+type CustomerName = Text {
     min_length: 1
     max_length: 120
 }
@@ -2647,18 +2647,18 @@ action add_member(
 }
 ```
 
-```jadpo check project=roles-in-practice file=domains/work/entities/client.jadpo
+```jadpo check project=roles-in-practice file=domains/work/entities/customer.jadpo
 use work/entities { Company }
-use work/types { ClientName, CompanyRole }
+use work/types { CompanyRole, CustomerName }
 
 /// Who a project is for. Only a company's owners and editors see its
-/// clients.
-entity Client {
+/// customers.
+entity Customer {
     id: Uuid
     company_id: Company.id {
         on_delete: OnDelete.cascade
     }
-    name: ClientName
+    name: CustomerName
     email: Email
 
     policy: {
@@ -2669,10 +2669,10 @@ entity Client {
 ```
 
 ```jadpo check project=roles-in-practice file=domains/work/entities/project.jadpo hidden
-use work/entities { Client, Company }
+use work/entities { Company, Customer }
 use work/types { CompanyRole, ProjectName }
 
-/// A piece of work in a company, perhaps for a client.
+/// A piece of work in a company, perhaps for a customer.
 entity Project {
     id: Uuid
     company_id: Company.id {
@@ -2680,7 +2680,7 @@ entity Project {
     }
     name: ProjectName
     archived: Bool
-    client_id: Client.id? {
+    customer_id: Customer.id? {
         on_delete: OnDelete.cleared
     }
 
@@ -2693,37 +2693,37 @@ entity Project {
 }
 ```
 
-The row holds the client's fields as `T?`, so it is one shape for
+The row holds the customer's fields as `T?`, so it is one shape for
 everyone, as every output is:
 
 ```jadpo check project=roles-in-practice file=domains/work/types/project_row.jadpo
-use work/entities { Client, Project }
+use work/entities { Customer, Project }
 
-/// A project in a company's list. Its client's name and email are there
-/// only for those who may see the company's clients, and `none` for
+/// A project in a company's list. Its customer's name and email are there
+/// only for those who may see the company's customers, and `none` for
 /// everyone else.
 type ProjectRow = Output {
     pick: [Project.id, Project.name]
-    client_name: Client.name?
-    client_email: Client.email?
+    customer_name: Customer.name?
+    contact_email: Customer.email?
 }
 ```
 
 ```jadpo check project=roles-in-practice file=domains/work/types/project_source.jadpo hidden
 use work/entities { Project }
 
-/// A project as the list reads it, with the client it refers to.
+/// A project as the list reads it, with the customer it refers to.
 type ProjectSource = Object {
-    pick: [Project.id, Project.name, Project.client_id]
+    pick: [Project.id, Project.name, Project.customer_id]
 }
 ```
 
-```jadpo check project=roles-in-practice file=domains/work/types/client_card.jadpo hidden
-use work/entities { Client }
+```jadpo check project=roles-in-practice file=domains/work/types/customer_card.jadpo hidden
+use work/entities { Customer }
 
-/// What the list shows of a client.
-type ClientCard = Object {
-    pick: [Client.id, Client.name, Client.email]
+/// What the list shows of a customer.
+type CustomerCard = Object {
+    pick: [Customer.id, Customer.name, Customer.email]
 }
 ```
 
@@ -2740,43 +2740,43 @@ query projects_of(company_id: Company.id) -> List<ProjectSource> {
 }
 ```
 
-The clients come from a query of their own. For a viewer, policy keeps
-every client out of it, so it gives an empty list rather than failing:
+The customers come from a query of their own. For a viewer, policy keeps
+every customer out of it, so it gives an empty list rather than failing:
 
-```jadpo check project=roles-in-practice file=domains/work/queries/clients_of.jadpo
-use work/entities { Client, Company }
-use work/types { ClientCard }
+```jadpo check project=roles-in-practice file=domains/work/queries/customers_of.jadpo
+use work/entities { Company, Customer }
+use work/types { CustomerCard }
 
-/// The company's clients the caller may see: none for a viewer.
-query clients_of(company_id: Company.id) -> List<ClientCard> {
-    from: Client
-    where: Client.company_id == company_id
-    order: [Client.name asc]
+/// The company's customers the caller may see: none for a viewer.
+query customers_of(company_id: Company.id) -> List<CustomerCard> {
+    from: Customer
+    where: Customer.company_id == company_id
+    order: [Customer.name asc]
     limit: every
 }
 ```
 
-The action puts the two together, by each project's `client_id`. It
+The action puts the two together, by each project's `customer_id`. It
 never asks for the caller's role: what policy let the caller read decides
 what each row holds.
 
 ```jadpo check project=roles-in-practice file=domains/work/actions/project_list.jadpo
-use work/entities { Client, Company }
-use work/types { ClientCard, ProjectRow, ProjectSource }
-use work/queries { clients_of, projects_of }
+use work/entities { Company, Customer }
+use work/types { CustomerCard, ProjectRow, ProjectSource }
+use work/queries { customers_of, projects_of }
 
-/// A company's projects, each with its client for those who may see it.
+/// A company's projects, each with its customer for those who may see it.
 action project_list(company_id: Company.id) -> List<ProjectRow> {
     var projects: List<ProjectSource> = projects_of(company_id)
-    var clients: List<ClientCard> = clients_of(company_id)
-    var mut by_id: Map<Client.id, ClientCard> = []
-    for client in clients {
-        by_id = map.with(by_id, client.id, client)
+    var customers: List<CustomerCard> = customers_of(company_id)
+    var mut by_id: Map<Customer.id, CustomerCard> = []
+    for customer in customers {
+        by_id = map.with(by_id, customer.id, customer)
     }
     var mut rows: List<ProjectRow> = []
     for project in projects {
-        var client: ClientCard? = match project.client_id {
-            some(client_id) -> map.get(by_id, client_id)
+        var customer: CustomerCard? = match project.customer_id {
+            some(customer_id) -> map.get(by_id, customer_id)
             none -> none
         }
         rows = list.append(
@@ -2784,11 +2784,11 @@ action project_list(company_id: Company.id) -> List<ProjectRow> {
             ProjectRow {
                 id: project.id
                 name: project.name
-                client_name: match client {
+                customer_name: match customer {
                     some(found) -> found.name
                     none -> none
                 }
-                client_email: match client {
+                contact_email: match customer {
                     some(found) -> found.email
                     none -> none
                 }
@@ -2800,26 +2800,26 @@ action project_list(company_id: Company.id) -> List<ProjectRow> {
 ```
 
 ```jadpo check project=roles-in-practice file=domains/work/actions/project_list.test.jadpo
-use work/entities { Client, Company, CompanyMembership, Member, Project }
+use work/entities { Company, CompanyMembership, Customer, Member, Project }
 use work/types { CompanyRole, ProjectRow }
 use work/actions { add_member, found_company, register }
 
-test "a viewer sees each project without its client" {
+test "a viewer sees each project without its customer" {
     var ann: Member = attempt register("ann")
     var bob: Member = attempt register("bob")
     var northwind: Company = found_company("Northwind", Principal.user(ann))
     var viewer: CompanyMembership = attempt add_member(northwind.id, bob.id, CompanyRole.viewer)
     assert viewer.role == CompanyRole.viewer
-    var acme: Client = make.Client {
+    var first_customer: Customer = make.Customer {
         company_id: northwind.id
         name: "Acme"
-        email: "buyer@acme.example"
+        email: "buyer@first_customer.example"
     }
     var launch: Project = make.Project {
         company_id: northwind.id
         name: "Launch"
         archived: false
-        client_id: acme.id
+        customer_id: first_customer.id
     }
     var for_ann: Response = request {
         method: HttpMethod.get
@@ -2833,8 +2833,8 @@ test "a viewer sees each project without its client" {
         ProjectRow {
             id: launch.id
             name: "Launch"
-            client_name: "Acme"
-            client_email: "buyer@acme.example"
+            customer_name: "Acme"
+            contact_email: "buyer@first_customer.example"
         }
     ]
     var for_bob: Response = request {
@@ -2849,8 +2849,8 @@ test "a viewer sees each project without its client" {
         ProjectRow {
             id: launch.id
             name: "Launch"
-            client_name: none
-            client_email: none
+            customer_name: none
+            contact_email: none
         }
     ]
 }
@@ -2860,7 +2860,7 @@ A field restricted on the project itself, with its own `policy:`,
 can't be shown this way: a query whose callers include someone who may
 not read one of its output fields doesn't compile
 (`policy.output_field_unproved`). Put what only some roles see on a
-record of its own, as `Client` is here.
+record of its own, as `Customer` is here.
 
 ## A change that may match nothing
 <!-- topic: a-change-that-may-match-nothing -->
@@ -2941,7 +2941,7 @@ use work/actions { archive_projects, project_list }
 routes Projects {
     prefix: /projects
 
-    /// A company's projects, with their clients for those who may see them.
+    /// A company's projects, with their customers for those who may see them.
     GET /{company_id: Company.id} {
         output: List<ProjectRow>
         run: project_list(company_id)
@@ -2972,7 +2972,7 @@ test "each project archived is checked, and an archive of none checks nothing" {
         company_id: northwind.id
         name: "Launch"
         archived: false
-        client_id: none
+        customer_id: none
     }
     var by_bob: Response = request {
         method: HttpMethod.post

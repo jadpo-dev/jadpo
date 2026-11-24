@@ -1057,7 +1057,7 @@ $ jadpo check
 error: removing an output field can break clients: main.TodoSummary.priority, main.TodoView.priority
  --> api/main.jadpo_record:31:1
   …
-  next: Stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` drafts it, and its reason quotes their words (human)
+  next: Stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` writes it, and its reason quotes their words (human)
 
 $ jadpo acceptance new remove_todo_priority
 ✓ Wrote acceptances/20261020T1400_remove_todo_priority.jadpo

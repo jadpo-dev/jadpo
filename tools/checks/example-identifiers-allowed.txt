@@ -657,3 +657,17 @@ staff
 # A Unicode normalisation form, `text.normalise`'s `form:` (area 19, "Text
 # from outside is NFC"; chunk 10.3)
 normal
+
+# Ordinary English the 10.4e worked examples declare (an import's counts,
+# a report's window, a match's binding)
+counts
+found
+imported
+kept
+login
+old
+opened
+row
+since
+skipped
+solved

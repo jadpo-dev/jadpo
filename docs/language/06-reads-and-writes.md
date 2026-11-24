@@ -1822,180 +1822,180 @@ action that puts them together. Each query has `aggregate:` and no
 `group:`, so it gives one row, whose count is 0 when nothing matches
 ([Counts, sums and groups](#counts-sums-and-groups)).
 
-Here a help desk reports, for the past 7 days, how many tickets were
+Here a help desk reports, for the past 7 days, how many enquiries were
 opened and solved, and how many are open now. The request didn't say what
 "the past 7 days" means, so the action reads it one reasonable way and
 says so in its `///` line, where the app's owner sees it:
 
-```jadpo check project=ticket-report file=app.jadpo hidden
+```jadpo check project=enquiry-report file=app.jadpo hidden
 application {}
 ```
 
-```jadpo check project=ticket-report file=domains/desk/types/ticket_status.jadpo hidden
-/// Where a ticket is.
-type TicketStatus = Enum {
+```jadpo check project=enquiry-report file=domains/desk/types/enquiry_status.jadpo hidden
+/// Where a enquiry is.
+type EnquiryStatus = Enum {
     open
     pending
     solved
 }
 ```
 
-```jadpo check project=ticket-report file=domains/desk/types/subject.jadpo hidden
-/// What a ticket is about.
-type Subject = Text {
+```jadpo check project=enquiry-report file=domains/desk/types/enquiry_subject.jadpo hidden
+/// What a enquiry is about.
+type EnquirySubject = Text {
     min_length: 1
     max_length: 200
 }
 ```
 
-```jadpo check project=ticket-report file=domains/desk/types/ticket_time.jadpo hidden
-/// A moment in a ticket's life.
-type TicketTime = Instant {}
+```jadpo check project=enquiry-report file=domains/desk/types/enquiry_time.jadpo hidden
+/// A moment in a enquiry's life.
+type EnquiryTime = Instant {}
 ```
 
-```jadpo check project=ticket-report file=domains/desk/entities/ticket.jadpo hidden
-use desk/types { Subject, TicketStatus, TicketTime }
+```jadpo check project=enquiry-report file=domains/desk/entities/enquiry.jadpo hidden
+use desk/types { EnquiryStatus, EnquirySubject, EnquiryTime }
 
 /// A customer's request for help.
-entity Ticket {
+entity Enquiry {
     id: Uuid
-    subject: Subject
-    status: TicketStatus
-    opened_at: TicketTime {
+    subject: EnquirySubject
+    status: EnquiryStatus
+    raised_at: EnquiryTime {
         generated: Generated.on_create
     }
-    solved_at: TicketTime?
+    solved_at: EnquiryTime?
 }
 ```
 
-```jadpo check project=ticket-report file=domains/desk/types/ticket_count.jadpo hidden
-/// How many tickets a count found.
-type TicketCount = Output {
-    tickets: Int
+```jadpo check project=enquiry-report file=domains/desk/types/enquiry_count.jadpo hidden
+/// How many enquiries a count found.
+type EnquiryCount = Output {
+    enquiries: Int
 }
 ```
 
-```jadpo check project=ticket-report file=domains/desk/types/week_of_tickets.jadpo
+```jadpo check project=enquiry-report file=domains/desk/types/week_of_enquiries.jadpo
 /// The desk's last seven days, and how it stands now.
-type WeekOfTickets = Output {
+type WeekOfEnquiries = Output {
     opened: Int
     solved: Int
     open_now: Int
 }
 ```
 
-```jadpo check project=ticket-report file=domains/desk/queries/opened_since.jadpo
-use desk/entities { Ticket }
-use desk/types { TicketCount, TicketTime }
+```jadpo check project=enquiry-report file=domains/desk/queries/opened_since.jadpo
+use desk/entities { Enquiry }
+use desk/types { EnquiryCount, EnquiryTime }
 
-/// How many tickets were opened at or after `since`.
-query opened_since(since: TicketTime) -> TicketCount {
-    from: Ticket
-    where: Ticket.opened_at >= since
+/// How many enquiries were opened at or after `since`.
+query opened_since(since: EnquiryTime) -> EnquiryCount {
+    from: Enquiry
+    where: Enquiry.raised_at >= since
     aggregate: {
-        tickets: count()
+        enquiries: count()
     }
 }
 ```
 
-```jadpo check project=ticket-report file=domains/desk/queries/solved_since.jadpo
-use desk/entities { Ticket }
-use desk/types { TicketCount, TicketStatus, TicketTime }
+```jadpo check project=enquiry-report file=domains/desk/queries/solved_since.jadpo
+use desk/entities { Enquiry }
+use desk/types { EnquiryCount, EnquiryStatus, EnquiryTime }
 
-/// How many tickets are solved and were solved at or after `since`.
-/// Reopening a ticket clears `solved_at`, so a ticket solved and reopened
+/// How many enquiries are solved and were solved at or after `since`.
+/// Reopening a enquiry clears `solved_at`, so a enquiry solved and reopened
 /// since isn't counted.
-query solved_since(since: TicketTime) -> TicketCount {
-    from: Ticket
-    where: Ticket.status == TicketStatus.solved
-    where: Ticket.solved_at >= since
+query solved_since(since: EnquiryTime) -> EnquiryCount {
+    from: Enquiry
+    where: Enquiry.status == EnquiryStatus.solved
+    where: Enquiry.solved_at >= since
     aggregate: {
-        tickets: count()
+        enquiries: count()
     }
 }
 ```
 
-```jadpo check project=ticket-report file=domains/desk/queries/open_now.jadpo
-use desk/entities { Ticket }
-use desk/types { TicketCount, TicketStatus }
+```jadpo check project=enquiry-report file=domains/desk/queries/open_now.jadpo
+use desk/entities { Enquiry }
+use desk/types { EnquiryCount, EnquiryStatus }
 
-/// How many tickets aren't solved: open or pending.
-query open_now() -> TicketCount {
-    from: Ticket
-    where: Ticket.status != TicketStatus.solved
+/// How many enquiries aren't solved: open or pending.
+query open_now() -> EnquiryCount {
+    from: Enquiry
+    where: Enquiry.status != EnquiryStatus.solved
     aggregate: {
-        tickets: count()
+        enquiries: count()
     }
 }
 ```
 
-```jadpo check project=ticket-report file=domains/desk/actions/weekly_report.jadpo
-use desk/types { TicketCount, TicketTime, WeekOfTickets }
+```jadpo check project=enquiry-report file=domains/desk/actions/weekly_report.jadpo
+use desk/types { EnquiryCount, EnquiryTime, WeekOfEnquiries }
 use desk/queries { open_now, opened_since, solved_since }
 
 /// The report for the past 7 days. The request said only "the past 7
 /// days", so this reads it as the 7 × 24 hours before the report is made
 /// (a rolling week, in UTC as every `Instant` is), not 7 calendar days.
-action weekly_report() -> WeekOfTickets {
-    var since: TicketTime = TicketTime(clock.now - 7d)
-    var opened: TicketCount = opened_since(since)
-    var solved: TicketCount = solved_since(since)
-    var open: TicketCount = open_now()
-    return WeekOfTickets {
-        opened: opened.tickets
-        solved: solved.tickets
-        open_now: open.tickets
+action weekly_report() -> WeekOfEnquiries {
+    var since: EnquiryTime = EnquiryTime(clock.now - 7d)
+    var opened: EnquiryCount = opened_since(since)
+    var solved: EnquiryCount = solved_since(since)
+    var open: EnquiryCount = open_now()
+    return WeekOfEnquiries {
+        opened: opened.enquiries
+        solved: solved.enquiries
+        open_now: open.enquiries
     }
 }
 ```
 
-```jadpo check project=ticket-report file=domains/desk/actions/open_ticket.jadpo hidden
-use desk/entities { Ticket }
-use desk/types { TicketStatus }
+```jadpo check project=enquiry-report file=domains/desk/actions/open_enquiry.jadpo hidden
+use desk/entities { Enquiry }
+use desk/types { EnquiryStatus }
 
-/// Opens a ticket.
-action open_ticket(subject: Ticket.subject) -> Ticket {
-    return Ticket.create {
+/// Opens a enquiry.
+action open_enquiry(subject: Enquiry.subject) -> Enquiry {
+    return Enquiry.create {
         set: {
             subject: subject
-            status: TicketStatus.open
+            status: EnquiryStatus.open
             solved_at: none
         }
     }
 }
 ```
 
-```jadpo check project=ticket-report file=domains/desk/actions/solve_ticket.jadpo hidden migrate=initial
-use desk/entities { Ticket }
-use desk/types { TicketStatus, TicketTime }
+```jadpo check project=enquiry-report file=domains/desk/actions/solve_enquiry.jadpo hidden migrate=initial
+use desk/entities { Enquiry }
+use desk/types { EnquiryStatus, EnquiryTime }
 
-/// Solves a ticket now.
-action solve_ticket(ticket: Ticket) -> Ticket {
-    return Ticket.update(ticket) {
+/// Solves a enquiry now.
+action solve_enquiry(enquiry: Enquiry) -> Enquiry {
+    return Enquiry.update(enquiry) {
         set: {
-            status: TicketStatus.solved
-            solved_at: TicketTime(clock.now)
+            status: EnquiryStatus.solved
+            solved_at: EnquiryTime(clock.now)
         }
     }
 }
 ```
 
-```jadpo check project=ticket-report file=domains/desk/actions/weekly_report.test.jadpo
-use desk/entities { Ticket }
-use desk/types { WeekOfTickets }
-use desk/actions { open_ticket, solve_ticket }
+```jadpo check project=enquiry-report file=domains/desk/actions/weekly_report.test.jadpo
+use desk/entities { Enquiry }
+use desk/types { WeekOfEnquiries }
+use desk/actions { open_enquiry, solve_enquiry }
 
 test "the report counts the last 7 × 24 hours, and what is open now" {
     clock: "2026-11-01T09:00:00Z"
 
-    var old: Ticket = open_ticket("Printer jammed")
+    var old: Enquiry = open_enquiry("Printer jammed")
     clock.advance(3d)
-    var login: Ticket = open_ticket("Can't sign in")
-    var refund: Ticket = open_ticket("Refund, please")
-    var solved: Ticket = solve_ticket(refund)
+    var login: Enquiry = open_enquiry("Can't sign in")
+    var refund: Enquiry = open_enquiry("Refund, please")
+    var solved: Enquiry = solve_enquiry(refund)
     assert solved.solved_at == clock.now
     clock.advance(5d)
-    assert weekly_report() == WeekOfTickets {
+    assert weekly_report() == WeekOfEnquiries {
         opened: 2
         solved: 1
         open_now: 2

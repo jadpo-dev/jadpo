@@ -773,7 +773,7 @@ $ jadpo approval --before main
 
 ◆ decision  1 change waits for a person's acceptance
   next      Stop and ask your user whether to accept them; once they agree to
-            these changes, `jadpo acceptance new <purpose>` drafts one, and
+            these changes, `jadpo acceptance new <purpose>` writes one, and
             its reason quotes their words. (human)
 ```
 
