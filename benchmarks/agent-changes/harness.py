@@ -1029,9 +1029,11 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
                 diff = final_diff(app)
                 git(app, '-c', 'user.name=harness', '-c', 'user.email=harness@example.invalid', 'commit', '-q',
                     '--allow-empty', '-m', f'{change.id}: {change.title}')
+                # The gate a pull request meets: main is still the step before,
+                # so `jadpo check` judges this change's acceptances.
+                visible = visible_gate(language, app, environment)
                 # The change merges: the next one's before side is this one's result.
                 git(app, 'branch', '-f', 'main', 'HEAD')
-                visible = visible_gate(language, app, environment)
                 reports = hidden(language, app, change, folder / 'hidden' / change.id, server, compiler, diff)
                 mark = marks[-1]
                 step_folder = folder / 'steps' / run_name(change.id, language, number)

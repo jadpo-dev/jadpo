@@ -368,6 +368,12 @@ class Scoring105(unittest.TestCase):
         for name in ('h03_bulk_tag_stays_in_its_workspace', 'h08_merge_keeps_the_rules', 'h10_import_keeps_the_rules'):
             self.assertNotIn('unknown_input', inspect.getsource(getattr(desk_changes, name)), name)
 
+    def test_the_visible_gate_runs_before_the_step_merges(self):
+        # With main already at the step, `jadpo check` has no policy change
+        # to judge, and an acceptance with no reason passes.
+        source = inspect.getsource(harness.run_session)
+        self.assertLess(source.index('visible = visible_gate('), source.index("'branch', '-f', 'main', 'HEAD'"))
+
     def test_the_contract_runner_forwards_savepoints(self):
         runner = (HERE.parent / 'contract/native/main.rs').read_text()
         hooked = runner[runner.index('impl Transaction for Hooked'):]
