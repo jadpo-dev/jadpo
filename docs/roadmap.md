@@ -127,6 +127,14 @@ D1 first: the site starts once D1 has merged.
 - [x] **10.4d Test data runs without policy**: [Data builders](language/13-testing.md#data-builders) and the [primer](primer.md).
 - [x] **10.4e What stopped agents in 10.5's first round**: the [agent skill](agent-skill/SKILL.md) and the `jadpo new` AGENTS.md, [Acceptances](language/18-records-and-manifest.md#acceptances) and [Checking a record](language/18-records-and-manifest.md#checking-a-record), [Fields shown by role](language/09-policy.md#fields-shown-by-role), [A change that may match nothing](language/09-policy.md#a-change-that-may-match-nothing), [An import that skips duplicates](language/06-reads-and-writes.md#an-import-that-skips-duplicates), [A report of counts](language/06-reads-and-writes.md#a-report-of-counts), and the decisions in the notes of areas 3, 4, 14 and 18.
 - [x] **10.5 A mid-size app where rules live elsewhere**: the helpdesk in both languages, its changes and sessions are in [agent-changes](../benchmarks/agent-changes/README.md).
+- [ ] **10.6 The helpdesk again, on today's Jadpo** `opus · high`: fresh
+  held-out changes to the 10.5 helpdesk, never seen by any tuning run, on
+  Jadpo frozen after 10.4e, both languages, Sol and Luna, three runs per
+  cell, one run at a time. The scripted owner can answer an acceptance the
+  way the owner would, and the report discloses that change of method.
+  Find where Jadpo's extra fresh tokens go (10.5: about twice
+  TypeScript's) and say what would cut them. If Jadpo still loses on
+  correctness, stop and report to Richard before tuning further.
 
 ## What the 0.2.0 run found
 
