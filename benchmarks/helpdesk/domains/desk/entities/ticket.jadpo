@@ -18,7 +18,12 @@ entity Ticket {
     priority: TicketPriority
     respond_by: Instant
     first_response_at: Instant?
-    breached_at: Instant?
+    breached_at: Instant? {
+        policy: {
+            create: []
+            update: [Access.system]
+        }
+    }
     solved_at: Instant?
     deleted_at: Instant?
     created_at: Instant {

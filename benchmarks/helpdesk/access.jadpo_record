@@ -17,6 +17,12 @@ entity desk.Customer
     delete WorkspaceRole.owner
     tenant workspace_id
 
+field desk.Customer.created_at
+    generated
+
+field desk.Customer.updated_at
+    generated
+
 entity desk.Macro
     create WorkspaceRole.admin
     create WorkspaceRole.owner
@@ -29,6 +35,12 @@ entity desk.Macro
     delete WorkspaceRole.owner
     tenant workspace_id
 
+field desk.Macro.created_at
+    generated
+
+field desk.Macro.updated_at
+    generated
+
 entity desk.Membership
     create WorkspaceRole.owner
     read Access.system
@@ -39,6 +51,12 @@ entity desk.Membership
     update WorkspaceRole.owner
     delete WorkspaceRole.owner
     tenant workspace_id
+
+field desk.Membership.created_at
+    generated
+
+field desk.Membership.updated_at
+    generated
 
 entity desk.Note
     create WorkspaceRole.admin
@@ -54,6 +72,12 @@ entity desk.Note
     delete WorkspaceRole.owner
     delete author_id
     tenant workspace_id
+
+field desk.Note.created_at
+    generated
+
+field desk.Note.updated_at
+    generated
 
 entity desk.Reply
     create WorkspaceRole.admin
@@ -71,6 +95,12 @@ entity desk.Reply
     delete author_id
     tenant workspace_id
 
+field desk.Reply.created_at
+    generated
+
+field desk.Reply.updated_at
+    generated
+
 entity desk.Tag
     create WorkspaceRole.admin
     create WorkspaceRole.owner
@@ -83,6 +113,9 @@ entity desk.Tag
     delete WorkspaceRole.admin
     delete WorkspaceRole.owner
     tenant workspace_id
+
+field desk.Tag.created_at
+    generated
 
 entity desk.Ticket
     create WorkspaceRole.admin
@@ -101,6 +134,16 @@ entity desk.Ticket
     delete WorkspaceRole.owner
     tenant workspace_id
 
+field desk.Ticket.breached_at
+    create nobody
+    update Access.system
+
+field desk.Ticket.created_at
+    generated
+
+field desk.Ticket.updated_at
+    generated
+
 entity desk.TicketTag
     create WorkspaceRole.admin
     create WorkspaceRole.agent
@@ -114,10 +157,16 @@ entity desk.TicketTag
     delete WorkspaceRole.owner
     tenant workspace_id
 
+field desk.TicketTag.created_at
+    generated
+
 entity desk.User
     read Access.system
     read id
     shared
+
+field desk.User.created_at
+    generated
 
 entity desk.Workspace
     read Access.system
@@ -127,6 +176,12 @@ entity desk.Workspace
     read WorkspaceRole.viewer
     update WorkspaceRole.owner
     tenant id
+
+field desk.Workspace.created_at
+    generated
+
+field desk.Workspace.updated_at
+    generated
 
 action desk.found_workspace
     who Access.authenticated
