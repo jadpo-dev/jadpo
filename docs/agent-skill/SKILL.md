@@ -136,6 +136,18 @@ In the JSON this is `next.decides`: `"agent"` or `"human"`. When it is
 `"human"`, put the choices and what each changes to the user, and wait for
 the answer.
 
+## Changes that need the owner's acceptance
+
+Some changes need a person to accept them: removing what clients read,
+widening who can do what, dropping stored data, a new outside host. `check`
+fails with `acceptance.missing` until an acceptance lists them, and with
+`acceptance.no_reason` until its `///` line says why. An acceptance is the
+owner's decision, not yours. Stop and ask your user whether to accept the
+change, saying what it changes for whom; don't draft one or write its
+reason to get `check` passing. If they agree,
+`jadpo acceptance new <purpose>` drafts it for them to give the reason. If
+they don't, undo the change.
+
 ## A bug in Jadpo
 
 If the compiler crashes, rejects code the docs say is valid, or a doc is

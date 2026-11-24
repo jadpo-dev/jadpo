@@ -10,14 +10,15 @@ decision: it tells the reviewer of the pull request, and anyone reading
 the history later, why it was safe.
 
 `jadpo acceptance new` drafts the file listing the changes, and an agent
-may run it, but it writes no reason. The reason has to come from a
-person, so Jadpo won't write it, and neither should your agent.
+may run it once you agree, but it writes no reason. The reason has to come
+from a person, so Jadpo won't write it, and neither should your agent: it
+stops and asks you.
 
 ## What it looks like
 
 A book catalogue's `BookView` stops sending each book's `author`, which
 is [`acceptance.missing`](../errors/acceptance.missing.md) until a person
-accepts it. The agent drafts the acceptance:
+accepts it. You agree, and the agent drafts the acceptance:
 
 ```sh
 jadpo acceptance new remove_book_author
@@ -55,8 +56,8 @@ error: `acceptances/20261020T1400_remove_book_author.jadpo` has no reason
   |
 1 | acceptance {
   | ^^^^^^^^^^ no `///` reason above
-  reason: An acceptance records a person's decision, so it says why on a `///` line above `acceptance`; an agent writes the draft and stops there.
-  next: A person writes why these changes are accepted on a `///` line above `acceptance` (human)
+  reason: An acceptance records a person's decision, so only a person writes why, on a `///` line above `acceptance`.
+  next: Stop and ask your user why these changes are accepted, and never write the reason yourself; if they don't accept them, delete the draft and undo the changes (human)
   rule: acceptance.no_reason
   help: https://jadpo.dev/docs/errors/acceptance.no_reason
 

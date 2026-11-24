@@ -761,7 +761,7 @@ fn missing_acceptance(
                 format!("these as `{change}`")
             }
         ))
-        .next("Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or a person accepts it: `jadpo acceptance new <purpose>` writes the draft for them");
+        .next("Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` drafts one for them to give the reason");
     }
     Diagnostic::new(
         &rule::ACCEPTANCE_MISSING,
@@ -776,7 +776,7 @@ fn missing_acceptance(
             format!("these as `{change}`")
         }
     ))
-    .next("A person accepts it: `jadpo acceptance new <purpose>` writes the draft for them")
+    .next("Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` drafts one for them to give the reason")
 }
 
 /// The `decline` line a need for a declined security rule is about.
@@ -799,8 +799,8 @@ fn no_reason(acceptance: &files::Acceptance) -> Diagnostic {
         format!("`{}` has no reason", acceptance.path),
     )
     .at(acceptance.span.clone(), "no `///` reason above")
-    .reason("An acceptance records a person's decision, so it says why on a `///` line above `acceptance`; an agent writes the draft and stops there.")
-    .next("A person writes why these changes are accepted on a `///` line above `acceptance`")
+    .reason("An acceptance records a person's decision, so only a person writes why, on a `///` line above `acceptance`.")
+    .next("Stop and ask your user why these changes are accepted, and never write the reason yourself; if they don't accept them, delete the draft and undo the changes")
 }
 
 fn unmatched(entry: &files::Entry, needs: &[Need]) -> Diagnostic {

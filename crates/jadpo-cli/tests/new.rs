@@ -151,7 +151,7 @@ fn agents_md_gives_a_working_method_what_is_built_and_the_examples() {
         "Declare a feature and check it",
         "`jadpo help <rule>`",
         "`jadpo acceptance new <purpose>`",
-        "never write the reason yourself",
+        "never draft an acceptance or write its reason on your own",
         "## The closest example for each feature",
         &format!(
             "https://github.com/jadpo-dev/jadpo/tree/v{}/examples/29-lending-desk",

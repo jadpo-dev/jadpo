@@ -429,6 +429,50 @@ fn each_change_that_needs_a_person_fails_until_an_added_acceptance_gives_a_reaso
     );
 }
 
+/// Each diagnostic's rule and `next.text`, as `jadpo check --json` gives
+/// them.
+fn next_steps(root: &Path) -> Vec<(String, String)> {
+    let output = jadpo(root, &["check", "--json"]);
+    let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
+    document["diagnostics"]
+        .as_array()
+        .expect("diagnostics")
+        .iter()
+        .map(|d| {
+            (
+                d["rule"].as_str().unwrap_or("").to_string(),
+                d["next"]["text"].as_str().unwrap_or("").to_string(),
+            )
+        })
+        .collect()
+}
+
+/// An acceptance is the owner's decision, so its errors tell an agent to
+/// stop and ask them, not to write one: a held-out run drafted the
+/// acceptance itself and stopped with `check` red without asking (chunk
+/// 10.4c).
+#[test]
+fn an_acceptance_error_tells_an_agent_to_stop_and_ask() {
+    let root = library("ask");
+    change(&root);
+    let asked = "Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` drafts one for them to give the reason";
+    for (rule, next) in next_steps(&root) {
+        assert_eq!(rule, "acceptance.missing");
+        assert_eq!(next, asked);
+    }
+    assert_eq!(
+        jadpo(&root, &["acceptance", "new", "open_the_catalogue"]).code,
+        0
+    );
+    assert_eq!(
+        next_steps(&root),
+        [(
+            "acceptance.no_reason".to_string(),
+            "Stop and ask your user why these changes are accepted, and never write the reason yourself; if they don't accept them, delete the draft and undo the changes".to_string()
+        )]
+    );
+}
+
 #[test]
 fn an_acceptance_on_the_before_side_is_history() {
     let root = library("history");
