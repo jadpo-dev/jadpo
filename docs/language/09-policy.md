@@ -2173,7 +2173,14 @@ compiler checks each like an output:
   proved as an output is. Otherwise `policy.output_field_unproved` names
   the value in the write. A copy between fields the same callers read
   stays allowed: within a record, into a record that refers to the one it
-  came from, or into one of the same tenant. So does a copy into a
+  came from, or into one of the same tenant. A record is one record
+  however the body holds it: the record a change gives back is the one it
+  changed, so a `var mut` holding it through a second change still names
+  it, as does a `match` binding the one record a value such as
+  `list.first(...)` holds (never a collection's records, which are many),
+  and a change finds a record it is given by its `id`, not by what an
+  earlier change stored in it. What the change gives back is still proved
+  against its entity's `read:`. So does a copy into a
   record whose user field the write sets from the caller, such as a
   duplicate of the caller's own todo: whoever that field lets in is the
   caller, who read the value. Who reads a field is known

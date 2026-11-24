@@ -2087,6 +2087,103 @@ type OpenBoard = Input {
     );
 }
 
+/// A record changed again through a `var mut`, or bound by a `match`, is
+/// still the one record to the prover (chunk 10.4c), and that identity
+/// proves only copies within it: what an update found by `id` gives back
+/// is still proved against the entity's `read:`, so a helper who may only
+/// update a board never reads its secret through the second change.
+#[test]
+fn a_record_changed_twice_still_proves_its_fields_against_read() {
+    let found = support::problems(
+        Layout::Loose,
+        &[(
+            "main.jadpo",
+            r#"principal {
+    user: {
+        subject: Person.handle
+    }
+}
+
+authentication {
+    api_token: {}
+}
+
+type Handle = Text {
+    max_length: 40
+}
+
+type Words = Text {
+    max_length: 200
+}
+
+entity Person {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
+}
+
+entity Board {
+    id: Uuid
+    owner_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    helper_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Words
+    secret: Words
+
+    policy: {
+        create: [Access.authenticated]
+        read: [owner_id]
+        update: [owner_id, helper_id]
+    }
+}
+
+type BoardView = Output {
+    pick: [Board.id, Board.secret]
+}
+
+type Retitle = Input {
+    title: Words
+}
+
+action bump_twice(board_id: Board.id, input: Retitle) fails BoardNotFound -> BoardView {
+    var mut board: Board = attempt Board.update(board_id) {
+        set: {
+            title: input.title
+        }
+    }
+    board = Board.update(board) {
+        set: {
+            title: input.title
+        }
+    }
+    return BoardView {
+        id: board.id
+        secret: board.secret
+    }
+}
+"#,
+        )],
+    );
+    assert_eq!(
+        rules_of(&found),
+        ["policy.output_field_unproved"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains("`BoardView.secret` carries `Board.secret`, which not every caller of `bump_twice` may read"),
+        "{found:#?}"
+    );
+}
+
 #[test]
 fn an_update_whose_record_may_come_from_several_places_is_proved_for_each() {
     // Only editors may create a ledger, and only they read its total; anyone
