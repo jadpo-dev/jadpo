@@ -1,0 +1,23 @@
+use desk/entities { Note, Ticket, TicketNotFound }
+use desk/types { NoteView, WriteMessage }
+
+/// Adds an internal note to a ticket.
+action add_note(ticket_id: Ticket.id, input: WriteMessage, caller: Principal.user) fails TicketNotFound -> NoteView {
+    var ticket: Ticket = attempt Ticket.get(ticket_id)
+    var note: Note = Note.create {
+        set: {
+            workspace_id: ticket.workspace_id
+            ticket_id: ticket.id
+            author_id: caller.id
+            body: input.body
+        }
+    }
+    return NoteView {
+        id: note.id
+        ticket_id: note.ticket_id
+        author_id: note.author_id
+        body: note.body
+        created_at: note.created_at
+        updated_at: note.updated_at
+    }
+}

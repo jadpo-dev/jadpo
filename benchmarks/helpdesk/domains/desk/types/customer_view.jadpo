@@ -1,0 +1,6 @@
+use desk/entities { Customer }
+
+/// A customer with their contact details.
+type CustomerView = Output {
+    pick: [Customer.id, Customer.name, Customer.email, Customer.phone, Customer.created_at, Customer.updated_at]
+}

@@ -1,0 +1,13 @@
+use desk/types { MeView }
+use desk/actions { my_account }
+
+/// The signed-in person's own account.
+routes Me {
+    prefix: /me
+
+    /// Who the caller is.
+    GET / {
+        output: MeView
+        run: my_account(current_principal.user)
+    }
+}

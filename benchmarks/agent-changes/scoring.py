@@ -20,6 +20,7 @@ COMMANDS = {
         'test': re.compile(r'\b(vitest\b|npm\s+(run\s+)?test(:all)?\b)'),
     },
 }
+HEREDOC = re.compile(r"(<<-?\s*(['\"]?)(\w+)\2[^\n]*)\n.*?^\s*\3\s*$", re.S | re.M)
 CHECK_MARKERS = {
     'jadpo': re.compile(r'check failed|^\s*rule: |^error: ', re.M),
     'typescript': re.compile(r'error TS\d+|✖ \d+ problems?|\d+:\d+\s+error\s|Code style issues', re.M),
@@ -147,7 +148,7 @@ def parse_transcript(lines, language, run_root=None, forbidden=()):
                     edits += 1
                 if name == 'Bash':
                     command = data.get('command', '')
-                    categories = [c for c, pattern in COMMANDS[language].items() if pattern.search(command)]
+                    categories = [c for c, pattern in COMMANDS[language].items() if pattern.search(HEREDOC.sub(r"\1", command))]
                     if categories:
                         calls[block.get('id')] = (command, categories, sum(spent.values()), edits)
         elif kind == 'user':
@@ -235,7 +236,10 @@ def parse_codex(lines, rollout=(), language='jadpo', forbidden=()):
         bad = item.get('status') in {'failed', 'declined'} or item.get('exit_code') not in {0, None}
         made.append({'tool': 'shell', 'input': text[:1000], 'output': output[:OUTPUT_KEPT], 'failed': bad, 'time': time,
                      'inside': inside})
-        categories = [c for c, pattern in COMMANDS[language].items() if pattern.search(text)]
+        # A script's here-document is its input, not commands: one that
+        # writes `jadpo test` into a file runs no test.
+        run = HEREDOC.sub(r'\1', text)
+        categories = [c for c, pattern in COMMANDS[language].items() if pattern.search(run)]
         if not categories:
             return
         category = categories[0] if len(categories) == 1 else (

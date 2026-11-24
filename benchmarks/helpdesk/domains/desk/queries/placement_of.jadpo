@@ -1,0 +1,9 @@
+use desk/entities { Tag, Ticket, TicketTag, TicketTagNotFound }
+
+/// A tag's place on a ticket.
+query placement_of(ticket_id: Ticket.id, tag_id: Tag.id) fails TicketTagNotFound -> TicketTag {
+    from: TicketTag
+    where: TicketTag.ticket_id == ticket_id
+    where: TicketTag.tag_id == tag_id
+    missing: TicketTagNotFound
+}

@@ -1,0 +1,28 @@
+use desk/entities { Macro }
+use desk/types { MacroView, PatchMacro }
+use desk/actions { delete_macro, edit_macro }
+use desk/queries { macro_by_id }
+
+/// Macros, one at a time.
+routes Macros {
+    prefix: /macros
+
+    /// One macro.
+    GET /{macro_id: Macro.id} {
+        output: MacroView
+        run: macro_by_id(macro_id)
+    }
+
+    /// Changes a macro.
+    PATCH /{macro_id: Macro.id} {
+        input: PatchMacro
+        output: MacroView
+        run: edit_macro(macro_id, input)
+    }
+
+    /// Deletes a macro.
+    DELETE /{macro_id: Macro.id} {
+        status: SuccessStatus.no_content
+        run: delete_macro(macro_id)
+    }
+}

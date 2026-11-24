@@ -1,0 +1,5 @@
+/// The person belongs to the workspace already.
+type AlreadyMember = Failure {
+    kind: FailureKind.conflict
+    message: "That person is already a member of this workspace."
+}

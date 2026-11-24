@@ -1,0 +1,6 @@
+use desk/entities { Workspace }
+
+/// A workspace as its members see it.
+type WorkspaceView = Output {
+    pick: [Workspace.id, Workspace.name, Workspace.created_at, Workspace.updated_at]
+}

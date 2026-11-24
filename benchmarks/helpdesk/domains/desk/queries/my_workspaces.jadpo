@@ -1,0 +1,9 @@
+use desk/entities { Workspace }
+use desk/types { WorkspaceView }
+
+/// The workspaces the caller belongs to.
+query my_workspaces() -> List<WorkspaceView> {
+    from: Workspace
+    order: [Workspace.created_at asc, Workspace.id asc]
+    limit: 100
+}

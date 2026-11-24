@@ -1,0 +1,29 @@
+use desk/entities { Tag, Ticket, Workspace }
+use desk/types { WorkspaceRole }
+
+/// A tag on a ticket.
+entity TicketTag {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    ticket_id: Ticket.id {
+        on_delete: OnDelete.cascade
+    }
+    tag_id: Tag.id {
+        on_delete: OnDelete.cascade
+    }
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+
+    unique: {
+        once_per_ticket: [ticket_id, tag_id]
+    }
+
+    policy: {
+        create: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent]
+        read: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent, WorkspaceRole.viewer]
+        delete: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent]
+    }
+}

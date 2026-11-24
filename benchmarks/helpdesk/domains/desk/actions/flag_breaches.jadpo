@@ -1,0 +1,15 @@
+use desk/entities { Ticket }
+use desk/queries { breach_candidates }
+
+/// Marks open tickets nobody answered by their first-response deadline.
+action flag_breaches() -> Unit {
+    var candidates: List<Ticket> = breach_candidates()
+    for ticket in candidates {
+        var flagged: Ticket = Ticket.update(ticket) {
+            set: {
+                breached_at: clock.now
+            }
+        }
+        assert flagged.breached_at != none
+    }
+}

@@ -1,0 +1,6 @@
+use desk/entities { Tag }
+
+/// Which tag to put on a ticket.
+type AddTicketTag = Input {
+    tag_id: Tag.id
+}

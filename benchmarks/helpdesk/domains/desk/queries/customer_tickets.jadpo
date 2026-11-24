@@ -1,0 +1,10 @@
+use desk/entities { Customer, Ticket }
+use desk/types { TicketView }
+
+/// A customer's tickets, newest first.
+query customer_tickets(customer_id: Customer.id) -> List<TicketView> {
+    from: Ticket
+    where: Ticket.customer_id == customer_id
+    order: [Ticket.created_at desc, Ticket.id desc]
+    limit: 100
+}

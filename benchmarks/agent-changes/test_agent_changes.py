@@ -18,7 +18,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-import changes  # noqa: E402
+import changes
+import desk_changes  # noqa: E402
 import harness  # noqa: E402
 import scoring  # noqa: E402
 
@@ -190,7 +191,7 @@ class Isolation(unittest.TestCase):
         self.assertIn('--spend', str(raised.exception))
 
     def test_prompt_shape_is_shared(self):
-        prompt = harness.PROMPT.format(request='Do X.')
+        prompt = harness.PROMPT.format(app='todo', request='Do X.')
         self.assertIn('> Do X.', prompt)
         self.assertNotIn('Jadpo', prompt)
         self.assertNotIn('TypeScript', prompt)
@@ -199,7 +200,8 @@ class Isolation(unittest.TestCase):
         tuning, held = changes.BY_ID[harness.TUNING[0]], changes.BY_ID[harness.SETS['held-out'][0]]
         self.assertIn('THINKING.md', harness.task_prompt(tuning))
         self.assertIn('not a deliverable', harness.task_prompt(tuning))
-        self.assertEqual(harness.task_prompt(held), harness.PROMPT.format(request=held.request))
+        self.assertEqual(harness.task_prompt(held), harness.PROMPT.format(app='todo', request=held.request))
+        self.assertIn('the helpdesk application', harness.task_prompt(desk_changes.BY_ID['H01']))
 
     def test_notes_are_not_part_of_the_diff(self):
         with tempfile.TemporaryDirectory() as scratch:
@@ -208,10 +210,15 @@ class Isolation(unittest.TestCase):
             (app / 'a.txt').write_text('a\n')
             harness.git(app, 'add', '-A')
             harness.git(app, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 's')
+            harness.git(app, 'checkout', '-q', '-b', 'change')
+            (app / 'c.txt').write_text('committed by the agent\n')
+            harness.git(app, 'add', '-A')
+            harness.git(app, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 'agent')
             (app / 'a.txt').write_text('b\n')
             (app / 'THINKING.md').write_text('trying b\n')
             diff = harness.final_diff(app)
         self.assertIn('a.txt', diff)
+        self.assertIn('c.txt', diff, 'a commit the agent made on its branch is part of its change')
         self.assertNotIn('THINKING', diff)
 
 
@@ -266,7 +273,7 @@ class Sets(unittest.TestCase):
         self.assertTrue(any(c.kind == 'feature' for c in tuning))
         self.assertEqual(len(harness.SETS['held-out']), 12)
         self.assertEqual(harness.SETS['fresh'], changes.FRESH)
-        sets = [set(ids) for ids in harness.SETS.values()]
+        sets = [set(ids) for name, ids in harness.SETS.items() if name != 'desk']
         self.assertEqual(sum(map(len, sets)), len(changes.CHANGES))
         self.assertEqual(set().union(*sets), set(changes.BY_ID))
         self.assertEqual(harness.set_of('N01'), 'fresh')
@@ -285,6 +292,94 @@ class Sets(unittest.TestCase):
         # Tuning changes need no frozen revision; the revision checked out is accepted for held-out ones.
         harness.check_frozen([changes.BY_ID[harness.TUNING[0]]], None)
         harness.check_frozen([changes.BY_ID[held]], harness.git(harness.ROOT, 'rev-parse', 'HEAD').strip())
+
+
+class Helpdesk(unittest.TestCase):
+    def test_each_change_runs_once_in_a_session_of_five(self):
+        ids = [i for session in desk_changes.SESSIONS.values() for i in session]
+        self.assertEqual(sorted(ids), sorted(desk_changes.BY_ID))
+        self.assertTrue(all(len(s) == 5 for s in desk_changes.SESSIONS.values()))
+        self.assertEqual(harness.set_of('H01'), 'desk')
+        self.assertEqual(harness.app_of(desk_changes.BY_ID['H01']), 'desk')
+        self.assertEqual(harness.app_of(changes.BY_ID['F01']), 'todo')
+        self.assertFalse(set(desk_changes.BY_ID) & set(changes.BY_ID))
+
+    def test_every_change_checks_the_rules_every_change_keeps(self):
+        for change in desk_changes.CHANGES:
+            with self.subTest(change.id):
+                self.assertTrue(set(desk_changes.PROBES) <= set(change.tests))
+                self.assertTrue(any(t.kind == 'behaviour' for t in change.tests))
+                self.assertTrue(any(t.kind == 'safety' and t not in desk_changes.PROBES for t in change.tests))
+                self.assertTrue(change.shortcut and change.detection and change.owner_answer)
+                self.assertEqual(harness.regression_cases(change), [])
+
+    def test_jadpo_copy_withholds_the_twin_and_keeps_the_product(self):
+        names = ['app.jadpo', 'README.md', 'typescript', 'domains', 'build']
+        ignored = harness.jadpo_ignore(str(harness.HELPDESK), names, 'desk')
+        self.assertEqual(set(names) - set(ignored), {'app.jadpo', 'README.md', 'domains'})
+        readme = (harness.HELPDESK / 'README.md').read_text()
+        self.assertNotIn('TypeScript', readme)
+        self.assertNotIn('Jadpo', readme)
+
+    def test_route_fill_uses_acme_ids(self):
+        self.assertEqual(desk_changes.fill('/tickets/{ticket_id}/tags/{tag_id}'),
+                         f'/tickets/{desk_changes.T_OPEN}/tags/{desk_changes.TAG_BILLING}')
+        self.assertEqual(desk_changes.fill('/workspaces/{id}/reports'), f'/workspaces/{desk_changes.ACME}/reports')
+        self.assertEqual(desk_changes.fill('/customers/:id/merge'), f'/customers/{desk_changes.CORA}/merge')
+
+    def test_sessions_need_spend_and_a_frozen_jadpo(self):
+        with self.assertRaises(SystemExit) as raised:
+            harness.main(['session', '--session', 'S1', '--agent', 'codex'])
+        self.assertIn('--spend', str(raised.exception))
+        with self.assertRaises(SystemExit) as raised:
+            harness.main(['session', '--session', 'S1', '--agent', 'codex', '--spend'])
+        self.assertIn('frozen', str(raised.exception))
+        with self.assertRaises(SystemExit) as raised:
+            harness.main(['session', '--session', 'S9', '--agent', 'codex', '--spend'])
+        self.assertIn('unknown session', str(raised.exception))
+
+
+class Scoring105(unittest.TestCase):
+    """Faults found in 10.5's first round, which skewed scores, not sessions."""
+
+    def test_a_heredoc_that_names_jadpo_test_runs_no_test(self):
+        script = "python3 - <<'PY'\nPath('QUESTIONS.md').write_text('`jadpo test` passed')\nPY\n"
+        run = scoring.HEREDOC.sub(r'\1', script)
+        self.assertFalse(scoring.COMMANDS['jadpo']['test'].search(run))
+        self.assertTrue(scoring.COMMANDS['jadpo']['test'].search(scoring.HEREDOC.sub(r'\1', 'cat <<EOF > x\nhi\nEOF\njadpo test')))
+
+    def test_a_session_step_counts_only_its_own_tokens(self):
+        result = {'verifications': [{'category': 'check', 'failed': False, 'edits_before': 1, 'tokens_before': 1500},
+                                    {'category': 'test', 'failed': False, 'edits_before': 1, 'tokens_before': 1800}],
+                  'edits': 1}
+        harness.per_change(result, 1000)
+        self.assertEqual([v['tokens_before'] for v in result['verifications']], [500, 800])
+        self.assertEqual(result['green'], {'attempts': 2, 'tokens': 800})
+
+    def test_rollout_spent_reads_the_running_total_before_a_line(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'rollout.jsonl'
+            count = lambda n: json.dumps({'type': 'event_msg', 'payload': {'type': 'token_count', 'info': {'total_token_usage': {'total_tokens': n}}}})
+            path.write_text('\n'.join([count(100), count(250), count(900)]) + '\n')
+            self.assertEqual(harness.rollout_spent(path, 2), 250)
+            self.assertEqual(harness.rollout_spent(path, 0), 0)
+
+    def test_new_routes_never_read_invalid_input_as_absent(self):
+        for name in ('h03_bulk_tag_stays_in_its_workspace', 'h08_merge_keeps_the_rules', 'h10_import_keeps_the_rules'):
+            self.assertNotIn('unknown_input', inspect.getsource(getattr(desk_changes, name)), name)
+
+    def test_the_visible_gate_runs_before_the_step_merges(self):
+        # With main already at the step, `jadpo check` has no policy change
+        # to judge, and an acceptance with no reason passes.
+        source = inspect.getsource(harness.run_session)
+        self.assertLess(source.index('visible = visible_gate('), source.index("'branch', '-f', 'main', 'HEAD'"))
+
+    def test_the_contract_runner_forwards_savepoints(self):
+        runner = (HERE.parent / 'contract/native/main.rs').read_text()
+        hooked = runner[runner.index('impl Transaction for Hooked'):]
+        hooked = hooked[:hooked.index('\n}\n')]
+        for method in ('savepoint', 'release_savepoint', 'rollback_to_savepoint'):
+            self.assertIn(f'self.inner.{method}()', hooked)
 
 
 class Codex(unittest.TestCase):

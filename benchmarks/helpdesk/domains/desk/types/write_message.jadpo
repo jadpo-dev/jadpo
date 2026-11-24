@@ -1,0 +1,6 @@
+use desk/types { MessageBody }
+
+/// The text of a reply or a note.
+type WriteMessage = Input {
+    body: MessageBody
+}

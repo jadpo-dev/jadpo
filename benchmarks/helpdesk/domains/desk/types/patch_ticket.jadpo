@@ -1,0 +1,7 @@
+use desk/entities { Ticket }
+
+/// A change to a ticket's subject or priority. Status moves by solving and reopening.
+type PatchTicket = Input {
+    pick: [Ticket.subject, Ticket.priority]
+    optional: all
+}

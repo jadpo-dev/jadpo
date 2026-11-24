@@ -1,0 +1,38 @@
+use desk/entities { User, Workspace }
+use desk/types { PersonLabel, WorkspaceRole }
+
+/// A person's role in a workspace, and the name colleagues see.
+entity Membership {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: WorkspaceRole
+    display_name: PersonLabel
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+    updated_at: Instant {
+        generated: Generated.on_change
+    }
+
+    membership: {
+        scope: workspace_id
+        member: user_id
+        role: role
+    }
+
+    unique: {
+        one_per_person: [workspace_id, user_id]
+    }
+
+    policy: {
+        create: [WorkspaceRole.owner]
+        read: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent, WorkspaceRole.viewer, Access.system]
+        update: [WorkspaceRole.owner]
+        delete: [WorkspaceRole.owner]
+    }
+}

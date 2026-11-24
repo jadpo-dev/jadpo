@@ -1,0 +1,6 @@
+use desk/entities { Tag }
+
+/// A tag's name.
+type NameTag = Input {
+    pick: [Tag.name]
+}

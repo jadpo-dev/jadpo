@@ -1,0 +1,37 @@
+use desk/entities { Reply, Ticket, TicketNotFound }
+use desk/types { ReplyView, TicketStatus, WriteMessage }
+
+/// Answers the customer. The first answer stops the first-response clock,
+/// and an open ticket waits on the customer.
+action add_reply(ticket_id: Ticket.id, input: WriteMessage, caller: Principal.user) fails TicketNotFound -> ReplyView {
+    var ticket: Ticket = attempt Ticket.get(ticket_id)
+    var reply: Reply = Reply.create {
+        set: {
+            workspace_id: ticket.workspace_id
+            ticket_id: ticket.id
+            author_id: caller.id
+            body: input.body
+        }
+    }
+    if (ticket.status == TicketStatus.open) {
+        var answered_at: Instant = match ticket.first_response_at {
+            some(first_response_at) -> first_response_at
+            none -> clock.now
+        }
+        var waiting: Ticket = Ticket.update(ticket) {
+            set: {
+                status: TicketStatus.pending
+                first_response_at: answered_at
+            }
+        }
+        assert waiting.status == TicketStatus.pending
+    }
+    return ReplyView {
+        id: reply.id
+        ticket_id: reply.ticket_id
+        author_id: reply.author_id
+        body: reply.body
+        created_at: reply.created_at
+        updated_at: reply.updated_at
+    }
+}

@@ -1,0 +1,9 @@
+use desk/entities { Ticket, TicketNotFound }
+use desk/types { TicketTagView }
+use desk/queries { tags_of }
+
+/// The tags on a ticket. A ticket in the bin shows none.
+action ticket_tags(ticket_id: Ticket.id) fails TicketNotFound -> List<TicketTagView> {
+    var ticket: Ticket = attempt Ticket.get(ticket_id)
+    return tags_of(ticket.id)
+}

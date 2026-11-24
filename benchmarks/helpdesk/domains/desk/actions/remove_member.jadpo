@@ -1,0 +1,16 @@
+use desk/entities { Membership, MembershipNotFound }
+use desk/types { WorkspaceRole }
+use desk/failures { LastOwner }
+use desk/queries { workspace_owners }
+
+/// Removes someone from a workspace; only owners may. Their tickets
+/// become unassigned. The last owner can't be removed.
+action remove_member(member_id: Membership.id) fails MembershipNotFound, LastOwner -> Unit {
+    var member: Membership = attempt Membership.get(member_id)
+    if (member.role == WorkspaceRole.owner) {
+        if (list.count(workspace_owners(member.workspace_id)) < 2) {
+            reject LastOwner
+        }
+    }
+    Membership.delete(member)
+}

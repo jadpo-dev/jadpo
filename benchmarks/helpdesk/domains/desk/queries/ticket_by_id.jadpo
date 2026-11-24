@@ -1,0 +1,9 @@
+use desk/entities { Ticket, TicketNotFound }
+use desk/types { TicketView }
+
+/// One ticket.
+query ticket_by_id(ticket_id: Ticket.id) fails TicketNotFound -> TicketView {
+    from: Ticket
+    where: Ticket.id == ticket_id
+    missing: TicketNotFound
+}

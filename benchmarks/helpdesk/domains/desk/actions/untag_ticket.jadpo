@@ -1,0 +1,9 @@
+use desk/entities { Tag, Ticket, TicketNotFound, TicketTag, TicketTagNotFound }
+use desk/queries { placement_of }
+
+/// Takes a tag off a ticket.
+action untag_ticket(ticket_id: Ticket.id, tag_id: Tag.id) fails TicketNotFound, TicketTagNotFound -> Unit {
+    var ticket: Ticket = attempt Ticket.get(ticket_id)
+    var placed: TicketTag = attempt placement_of(ticket.id, tag_id)
+    TicketTag.delete(placed)
+}

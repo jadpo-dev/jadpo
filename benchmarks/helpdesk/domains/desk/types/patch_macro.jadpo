@@ -1,0 +1,7 @@
+use desk/entities { Macro }
+
+/// A change to a macro.
+type PatchMacro = Input {
+    pick: [Macro.title, Macro.body]
+    optional: all
+}

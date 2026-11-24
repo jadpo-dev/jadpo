@@ -1,0 +1,9 @@
+use desk/entities { Ticket, TicketNotFound }
+use desk/types { NoteView }
+use desk/queries { notes_of }
+
+/// A ticket's notes. A ticket in the bin shows none.
+action ticket_notes(ticket_id: Ticket.id) fails TicketNotFound -> List<NoteView> {
+    var ticket: Ticket = attempt Ticket.get(ticket_id)
+    return notes_of(ticket.id)
+}

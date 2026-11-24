@@ -1,0 +1,9 @@
+use desk/entities { Customer, CustomerNotFound }
+use desk/types { CustomerView }
+
+/// One customer.
+query customer_by_id(customer_id: Customer.id) fails CustomerNotFound -> CustomerView {
+    from: Customer
+    where: Customer.id == customer_id
+    missing: CustomerNotFound
+}

@@ -1,0 +1,19 @@
+use desk/entities { Note, NoteNotFound }
+use desk/types { NoteView, WriteMessage }
+
+/// Changes a note's text; owners, admins and agents may.
+action edit_note(note_id: Note.id, input: WriteMessage) fails NoteNotFound -> NoteView {
+    var note: Note = attempt Note.update(note_id) {
+        set: {
+            body: input.body
+        }
+    }
+    return NoteView {
+        id: note.id
+        ticket_id: note.ticket_id
+        author_id: note.author_id
+        body: note.body
+        created_at: note.created_at
+        updated_at: note.updated_at
+    }
+}

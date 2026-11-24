@@ -1,0 +1,17 @@
+use desk/entities { Workspace, WorkspaceNotFound }
+use desk/types { WorkspaceRename, WorkspaceView }
+
+/// Renames a workspace; only its owners may.
+action rename_workspace(workspace_id: Workspace.id, input: WorkspaceRename) fails WorkspaceNotFound -> WorkspaceView {
+    var workspace: Workspace = attempt Workspace.update(workspace_id) {
+        set: {
+            name: input.name
+        }
+    }
+    return WorkspaceView {
+        id: workspace.id
+        name: workspace.name
+        created_at: workspace.created_at
+        updated_at: workspace.updated_at
+    }
+}

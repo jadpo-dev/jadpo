@@ -1,0 +1,7 @@
+/// How soon a ticket needs an answer.
+type TicketPriority = Enum {
+    low
+    normal
+    high
+    urgent
+}

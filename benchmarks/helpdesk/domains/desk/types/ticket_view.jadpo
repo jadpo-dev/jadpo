@@ -1,0 +1,6 @@
+use desk/entities { Ticket }
+
+/// A ticket. It names its customer by id only; viewers can't read customers.
+type TicketView = Output {
+    pick: [Ticket.id, Ticket.customer_id, Ticket.assignee_id, Ticket.subject, Ticket.status, Ticket.priority, Ticket.respond_by, Ticket.first_response_at, Ticket.breached_at, Ticket.solved_at, Ticket.created_at, Ticket.updated_at]
+}

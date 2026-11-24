@@ -1,0 +1,6 @@
+use desk/entities { Note }
+
+/// An internal note.
+type NoteView = Output {
+    pick: [Note.id, Note.ticket_id, Note.author_id, Note.body, Note.created_at, Note.updated_at]
+}

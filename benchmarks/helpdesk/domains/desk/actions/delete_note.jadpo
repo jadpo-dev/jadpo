@@ -1,0 +1,7 @@
+use desk/entities { Note, NoteNotFound }
+
+/// Deletes a note; its author, owners and admins may.
+action delete_note(note_id: Note.id) fails NoteNotFound -> Unit {
+    var note: Note = attempt Note.get(note_id)
+    Note.delete(note)
+}

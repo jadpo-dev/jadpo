@@ -1,0 +1,1839 @@
+[
+  {
+    "body": [
+      {
+        "created_at": "2026-01-14T09:00:00Z",
+        "id": "00000000-0000-4000-8000-000200000001",
+        "name": "Acme Support",
+        "updated_at": "2026-01-14T09:00:00Z"
+      }
+    ],
+    "request": null,
+    "status": 200,
+    "step": "ann GET /workspaces"
+  },
+  {
+    "body": [
+      {
+        "created_at": "2026-01-14T09:00:00Z",
+        "id": "00000000-0000-4000-8000-000200000002",
+        "name": "Globex globex-canary-9e2a",
+        "updated_at": "2026-01-14T09:00:00Z"
+      }
+    ],
+    "request": null,
+    "status": 200,
+    "step": "eve GET /workspaces"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "authentication_required"
+      }
+    },
+    "request": null,
+    "status": 401,
+    "step": "nobody GET /workspaces"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-14T09:00:00Z",
+      "id": "00000000-0000-4000-8000-000200000001",
+      "name": "Acme Support",
+      "updated_at": "2026-01-14T09:00:00Z"
+    },
+    "request": null,
+    "status": 200,
+    "step": "ann GET /workspaces/00000000-0000-4000-8000-000200000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "workspace_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "eve GET /workspaces/00000000-0000-4000-8000-000200000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "invalid_input",
+        "details": {
+          "problems": [
+            {
+              "field": "workspace_id",
+              "rule": "format"
+            }
+          ]
+        }
+      }
+    },
+    "request": null,
+    "status": 422,
+    "step": "ann GET /workspaces/not-a-uuid"
+  },
+  {
+    "body": {
+      "email": "ann@staff.example.test",
+      "id": "00000000-0000-4000-8000-000100000001",
+      "status": "active"
+    },
+    "request": null,
+    "status": 200,
+    "step": "ann GET /me"
+  },
+  {
+    "body": {
+      "email": "dan@staff.example.test",
+      "id": "00000000-0000-4000-8000-000100000004",
+      "status": "active"
+    },
+    "request": null,
+    "status": 200,
+    "step": "dan GET /me"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "workspace_not_found"
+      }
+    },
+    "request": {
+      "name": "Acme Help"
+    },
+    "status": 404,
+    "step": "ben PATCH /workspaces/00000000-0000-4000-8000-000200000001"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-14T09:00:00Z",
+      "id": "00000000-0000-4000-8000-000200000001",
+      "name": "Acme Help",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "name": "Acme Help"
+    },
+    "status": 200,
+    "step": "ann PATCH /workspaces/00000000-0000-4000-8000-000200000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "invalid_input",
+        "details": {
+          "problems": [
+            {
+              "field": "name",
+              "rule": "min_length"
+            }
+          ]
+        }
+      }
+    },
+    "request": {
+      "name": ""
+    },
+    "status": 422,
+    "step": "ann PATCH /workspaces/00000000-0000-4000-8000-000200000001"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-15T12:00:00Z",
+      "id": "<id1>",
+      "name": "Initech",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "display_name": "Ann Again",
+      "name": "Initech"
+    },
+    "status": 201,
+    "step": "ann POST /workspaces"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "invalid_input",
+        "details": {
+          "problems": [
+            {
+              "field": "display_name",
+              "rule": "required"
+            }
+          ]
+        }
+      }
+    },
+    "request": {
+      "name": "Initech"
+    },
+    "status": 422,
+    "step": "ann POST /workspaces"
+  },
+  {
+    "body": [
+      {
+        "created_at": "2026-01-14T09:00:00Z",
+        "display_name": "Ann Owner",
+        "id": "00000000-0000-4000-8000-000300000001",
+        "role": "owner",
+        "updated_at": "2026-01-14T09:00:00Z",
+        "user_id": "00000000-0000-4000-8000-000100000001"
+      },
+      {
+        "created_at": "2026-01-14T09:00:00Z",
+        "display_name": "Ben Admin",
+        "id": "00000000-0000-4000-8000-000300000002",
+        "role": "admin",
+        "updated_at": "2026-01-14T09:00:00Z",
+        "user_id": "00000000-0000-4000-8000-000100000002"
+      },
+      {
+        "created_at": "2026-01-14T09:00:00Z",
+        "display_name": "Cat Agent",
+        "id": "00000000-0000-4000-8000-000300000003",
+        "role": "agent",
+        "updated_at": "2026-01-14T09:00:00Z",
+        "user_id": "00000000-0000-4000-8000-000100000003"
+      },
+      {
+        "created_at": "2026-01-14T09:00:00Z",
+        "display_name": "Dan Viewer",
+        "id": "00000000-0000-4000-8000-000300000004",
+        "role": "viewer",
+        "updated_at": "2026-01-14T09:00:00Z",
+        "user_id": "00000000-0000-4000-8000-000100000004"
+      }
+    ],
+    "request": null,
+    "status": 200,
+    "step": "dan GET /workspaces/00000000-0000-4000-8000-000200000001/members"
+  },
+  {
+    "body": [],
+    "request": null,
+    "status": 200,
+    "step": "eve GET /workspaces/00000000-0000-4000-8000-000200000001/members"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": {
+      "display_name": "Fay Visiting",
+      "role": "agent",
+      "user_id": "00000000-0000-4000-8000-000100000006"
+    },
+    "status": 403,
+    "step": "ben POST /workspaces/00000000-0000-4000-8000-000200000001/members"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-15T12:00:00Z",
+      "display_name": "Fay Visiting",
+      "id": "<id2>",
+      "role": "agent",
+      "updated_at": "2026-01-15T12:00:00Z",
+      "user_id": "00000000-0000-4000-8000-000100000006"
+    },
+    "request": {
+      "display_name": "Fay Visiting",
+      "role": "agent",
+      "user_id": "00000000-0000-4000-8000-000100000006"
+    },
+    "status": 201,
+    "step": "ann POST /workspaces/00000000-0000-4000-8000-000200000001/members"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "already_member"
+      }
+    },
+    "request": {
+      "display_name": "Fay Again",
+      "role": "agent",
+      "user_id": "00000000-0000-4000-8000-000100000006"
+    },
+    "status": 409,
+    "step": "ann POST /workspaces/00000000-0000-4000-8000-000200000001/members"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "user_not_found"
+      }
+    },
+    "request": {
+      "display_name": "Nobody",
+      "role": "agent",
+      "user_id": "00000000-0000-4000-8000-000099999999"
+    },
+    "status": 404,
+    "step": "ann POST /workspaces/00000000-0000-4000-8000-000200000001/members"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "invalid_input",
+        "details": {
+          "problems": [
+            {
+              "field": "role",
+              "rule": "variant"
+            }
+          ]
+        }
+      }
+    },
+    "request": {
+      "display_name": "Ben",
+      "role": "boss",
+      "user_id": "00000000-0000-4000-8000-000100000002"
+    },
+    "status": 422,
+    "step": "ann POST /workspaces/00000000-0000-4000-8000-000200000001/members"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-14T09:00:00Z",
+      "display_name": "Dan Viewer",
+      "id": "00000000-0000-4000-8000-000300000004",
+      "role": "agent",
+      "updated_at": "2026-01-15T12:00:00Z",
+      "user_id": "00000000-0000-4000-8000-000100000004"
+    },
+    "request": {
+      "role": "agent"
+    },
+    "status": 200,
+    "step": "ann PATCH /members/00000000-0000-4000-8000-000300000004"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": {
+      "role": "viewer"
+    },
+    "status": 403,
+    "step": "ben PATCH /members/00000000-0000-4000-8000-000300000004"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-14T09:00:00Z",
+      "display_name": "Dan V",
+      "id": "00000000-0000-4000-8000-000300000004",
+      "role": "viewer",
+      "updated_at": "2026-01-15T12:00:00Z",
+      "user_id": "00000000-0000-4000-8000-000100000004"
+    },
+    "request": {
+      "display_name": "Dan V",
+      "role": "viewer"
+    },
+    "status": 200,
+    "step": "ann PATCH /members/00000000-0000-4000-8000-000300000004"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "last_owner"
+      }
+    },
+    "request": {
+      "role": "agent"
+    },
+    "status": 422,
+    "step": "ann PATCH /members/00000000-0000-4000-8000-000300000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "last_owner"
+      }
+    },
+    "request": null,
+    "status": 422,
+    "step": "ann DELETE /members/00000000-0000-4000-8000-000300000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "membership_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "eve DELETE /members/00000000-0000-4000-8000-000300000004"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "membership_not_found"
+      }
+    },
+    "request": {
+      "role": "agent"
+    },
+    "status": 404,
+    "step": "ann PATCH /members/00000000-0000-4000-8000-000300000005"
+  },
+  {
+    "body": [
+      {
+        "created_at": "2026-01-14T09:00:00Z",
+        "email": "cora@customer.example.test",
+        "id": "00000000-0000-4000-8000-000400000001",
+        "name": "Cora Customer",
+        "phone": "+44 20 7946 0001",
+        "updated_at": "2026-01-14T09:00:00Z"
+      },
+      {
+        "created_at": "2026-01-14T09:00:00Z",
+        "email": "colin@customer.example.test",
+        "id": "00000000-0000-4000-8000-000400000002",
+        "name": "Colin Client",
+        "phone": null,
+        "updated_at": "2026-01-14T09:00:00Z"
+      }
+    ],
+    "request": null,
+    "status": 200,
+    "step": "cat GET /workspaces/00000000-0000-4000-8000-000200000001/customers"
+  },
+  {
+    "body": [],
+    "request": null,
+    "status": 200,
+    "step": "dan GET /workspaces/00000000-0000-4000-8000-000200000001/customers"
+  },
+  {
+    "body": [],
+    "request": null,
+    "status": 200,
+    "step": "eve GET /workspaces/00000000-0000-4000-8000-000200000001/customers"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-15T12:00:00Z",
+      "email": "cleo@customer.example.test",
+      "id": "<id3>",
+      "name": "Cleo New",
+      "phone": null,
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "email": "cleo@customer.example.test",
+      "name": "Cleo New"
+    },
+    "status": 201,
+    "step": "cat POST /workspaces/00000000-0000-4000-8000-000200000001/customers"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "customer_email_taken"
+      }
+    },
+    "request": {
+      "email": "cleo@customer.example.test",
+      "name": "Cleo Dup",
+      "phone": "+44 1234"
+    },
+    "status": 409,
+    "step": "cat POST /workspaces/00000000-0000-4000-8000-000200000001/customers"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "invalid_input",
+        "details": {
+          "problems": [
+            {
+              "field": "email",
+              "rule": "format"
+            }
+          ]
+        }
+      }
+    },
+    "request": {
+      "email": "not-an-email",
+      "name": "Bad"
+    },
+    "status": 422,
+    "step": "cat POST /workspaces/00000000-0000-4000-8000-000200000001/customers"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": {
+      "email": "dan-made@customer.example.test",
+      "name": "Dan Made"
+    },
+    "status": 403,
+    "step": "dan POST /workspaces/00000000-0000-4000-8000-000200000001/customers"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": {
+      "email": "eve-made@customer.example.test",
+      "name": "Eve Made"
+    },
+    "status": 403,
+    "step": "eve POST /workspaces/00000000-0000-4000-8000-000200000001/customers"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-14T09:00:00Z",
+      "email": "cora@customer.example.test",
+      "id": "00000000-0000-4000-8000-000400000001",
+      "name": "Cora Customer",
+      "phone": "+44 20 7946 0001",
+      "updated_at": "2026-01-14T09:00:00Z"
+    },
+    "request": null,
+    "status": 200,
+    "step": "cat GET /customers/00000000-0000-4000-8000-000400000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "customer_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "dan GET /customers/00000000-0000-4000-8000-000400000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "customer_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "eve GET /customers/00000000-0000-4000-8000-000400000001"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-14T09:00:00Z",
+      "email": "cora@customer.example.test",
+      "id": "00000000-0000-4000-8000-000400000001",
+      "name": "Cora Customer",
+      "phone": null,
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "phone": null
+    },
+    "status": 200,
+    "step": "cat PATCH /customers/00000000-0000-4000-8000-000400000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "customer_email_taken"
+      }
+    },
+    "request": {
+      "email": "colin@customer.example.test"
+    },
+    "status": 409,
+    "step": "cat PATCH /customers/00000000-0000-4000-8000-000400000001"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-14T09:00:00Z",
+      "email": "cora@customer.example.test",
+      "id": "00000000-0000-4000-8000-000400000001",
+      "name": "Cora Customer",
+      "phone": null,
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {},
+    "status": 200,
+    "step": "cat PATCH /customers/00000000-0000-4000-8000-000400000001"
+  },
+  {
+    "body": [
+      {
+        "assignee_id": "00000000-0000-4000-8000-000300000002",
+        "breached_at": null,
+        "created_at": "2026-01-14T09:00:00Z",
+        "customer_id": "00000000-0000-4000-8000-000400000001",
+        "first_response_at": "2026-01-14T09:00:00Z",
+        "id": "00000000-0000-4000-8000-000500000003",
+        "priority": "low",
+        "respond_by": "2026-01-15T09:00:00Z",
+        "solved_at": "2026-01-15T12:00:00Z",
+        "status": "solved",
+        "subject": "Change of address",
+        "updated_at": "2026-01-14T09:00:00Z"
+      },
+      {
+        "assignee_id": "00000000-0000-4000-8000-000300000003",
+        "breached_at": null,
+        "created_at": "2026-01-14T09:00:00Z",
+        "customer_id": "00000000-0000-4000-8000-000400000001",
+        "first_response_at": null,
+        "id": "00000000-0000-4000-8000-000500000001",
+        "priority": "high",
+        "respond_by": "2026-01-15T09:00:00Z",
+        "solved_at": null,
+        "status": "open",
+        "subject": "Cannot sign in",
+        "updated_at": "2026-01-14T09:00:00Z"
+      }
+    ],
+    "request": null,
+    "status": 200,
+    "step": "cat GET /customers/00000000-0000-4000-8000-000400000001/tickets"
+  },
+  {
+    "body": [
+      {
+        "assignee_id": "00000000-0000-4000-8000-000300000002",
+        "breached_at": null,
+        "created_at": "2026-01-14T09:00:00Z",
+        "customer_id": "00000000-0000-4000-8000-000400000001",
+        "first_response_at": "2026-01-14T09:00:00Z",
+        "id": "00000000-0000-4000-8000-000500000003",
+        "priority": "low",
+        "respond_by": "2026-01-15T09:00:00Z",
+        "solved_at": "2026-01-15T12:00:00Z",
+        "status": "solved",
+        "subject": "Change of address",
+        "updated_at": "2026-01-14T09:00:00Z"
+      },
+      {
+        "assignee_id": "00000000-0000-4000-8000-000300000003",
+        "breached_at": null,
+        "created_at": "2026-01-14T09:00:00Z",
+        "customer_id": "00000000-0000-4000-8000-000400000001",
+        "first_response_at": null,
+        "id": "00000000-0000-4000-8000-000500000001",
+        "priority": "high",
+        "respond_by": "2026-01-15T09:00:00Z",
+        "solved_at": null,
+        "status": "open",
+        "subject": "Cannot sign in",
+        "updated_at": "2026-01-14T09:00:00Z"
+      }
+    ],
+    "request": null,
+    "status": 200,
+    "step": "dan GET /customers/00000000-0000-4000-8000-000400000001/tickets"
+  },
+  {
+    "body": [],
+    "request": null,
+    "status": 200,
+    "step": "eve GET /customers/00000000-0000-4000-8000-000400000001/tickets"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "customer_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "cat DELETE /customers/00000000-0000-4000-8000-000400000003"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": null,
+    "status": 403,
+    "step": "cat DELETE /customers/00000000-0000-4000-8000-000400000002"
+  },
+  {
+    "body": null,
+    "request": null,
+    "status": 204,
+    "step": "ben DELETE /customers/00000000-0000-4000-8000-000400000002"
+  },
+  {
+    "body": {
+      "assignee_id": "00000000-0000-4000-8000-000300000003",
+      "breached_at": null,
+      "created_at": "2026-01-14T09:00:00Z",
+      "customer_id": null,
+      "first_response_at": "2026-01-14T09:00:00Z",
+      "id": "00000000-0000-4000-8000-000500000002",
+      "priority": "normal",
+      "respond_by": "2026-01-15T09:00:00Z",
+      "solved_at": null,
+      "status": "pending",
+      "subject": "Invoice is wrong",
+      "updated_at": "2026-01-14T09:00:00Z"
+    },
+    "request": null,
+    "status": 200,
+    "step": "ben GET /tickets/00000000-0000-4000-8000-000500000002"
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "assignee_id": "00000000-0000-4000-8000-000300000002",
+          "breached_at": null,
+          "created_at": "2026-01-14T09:00:00Z",
+          "customer_id": "00000000-0000-4000-8000-000400000001",
+          "first_response_at": "2026-01-14T09:00:00Z",
+          "id": "00000000-0000-4000-8000-000500000003",
+          "priority": "low",
+          "respond_by": "2026-01-15T09:00:00Z",
+          "solved_at": "2026-01-15T12:00:00Z",
+          "status": "solved",
+          "subject": "Change of address",
+          "updated_at": "2026-01-14T09:00:00Z"
+        },
+        {
+          "assignee_id": "00000000-0000-4000-8000-000300000003",
+          "breached_at": null,
+          "created_at": "2026-01-14T09:00:00Z",
+          "customer_id": null,
+          "first_response_at": "2026-01-14T09:00:00Z",
+          "id": "00000000-0000-4000-8000-000500000002",
+          "priority": "normal",
+          "respond_by": "2026-01-15T09:00:00Z",
+          "solved_at": null,
+          "status": "pending",
+          "subject": "Invoice is wrong",
+          "updated_at": "2026-01-14T09:00:00Z"
+        },
+        {
+          "assignee_id": "00000000-0000-4000-8000-000300000003",
+          "breached_at": null,
+          "created_at": "2026-01-14T09:00:00Z",
+          "customer_id": "00000000-0000-4000-8000-000400000001",
+          "first_response_at": null,
+          "id": "00000000-0000-4000-8000-000500000001",
+          "priority": "high",
+          "respond_by": "2026-01-15T09:00:00Z",
+          "solved_at": null,
+          "status": "open",
+          "subject": "Cannot sign in",
+          "updated_at": "2026-01-14T09:00:00Z"
+        }
+      ],
+      "next": null
+    },
+    "request": null,
+    "status": 200,
+    "step": "dan GET /workspaces/00000000-0000-4000-8000-000200000001/tickets"
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "assignee_id": "00000000-0000-4000-8000-000300000003",
+          "breached_at": null,
+          "created_at": "2026-01-14T09:00:00Z",
+          "customer_id": "00000000-0000-4000-8000-000400000001",
+          "first_response_at": null,
+          "id": "00000000-0000-4000-8000-000500000001",
+          "priority": "high",
+          "respond_by": "2026-01-15T09:00:00Z",
+          "solved_at": null,
+          "status": "open",
+          "subject": "Cannot sign in",
+          "updated_at": "2026-01-14T09:00:00Z"
+        }
+      ],
+      "next": null
+    },
+    "request": null,
+    "status": 200,
+    "step": "cat GET /workspaces/00000000-0000-4000-8000-000200000001/tickets?status=open"
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "assignee_id": "00000000-0000-4000-8000-000300000003",
+          "breached_at": null,
+          "created_at": "2026-01-14T09:00:00Z",
+          "customer_id": null,
+          "first_response_at": "2026-01-14T09:00:00Z",
+          "id": "00000000-0000-4000-8000-000500000002",
+          "priority": "normal",
+          "respond_by": "2026-01-15T09:00:00Z",
+          "solved_at": null,
+          "status": "pending",
+          "subject": "Invoice is wrong",
+          "updated_at": "2026-01-14T09:00:00Z"
+        }
+      ],
+      "next": "<cursor>"
+    },
+    "request": null,
+    "status": 200,
+    "step": "cat GET /workspaces/00000000-0000-4000-8000-000200000001/tickets?assignee_id=00000000-0000-4000-8000-000300000003&page_size=1"
+  },
+  {
+    "body": {
+      "items": [],
+      "next": null
+    },
+    "request": null,
+    "status": 200,
+    "step": "eve GET /workspaces/00000000-0000-4000-8000-000200000001/tickets"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "invalid_input",
+        "details": {
+          "problems": [
+            {
+              "field": "status",
+              "rule": "variant"
+            }
+          ]
+        }
+      }
+    },
+    "request": null,
+    "status": 422,
+    "step": "cat GET /workspaces/00000000-0000-4000-8000-000200000001/tickets?status=closed"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "invalid_input",
+        "details": {
+          "problems": [
+            {
+              "field": "page_size",
+              "rule": "min"
+            }
+          ]
+        }
+      }
+    },
+    "request": null,
+    "status": 422,
+    "step": "cat GET /workspaces/00000000-0000-4000-8000-000200000001/tickets?page_size=0"
+  },
+  {
+    "body": {
+      "assignee_id": null,
+      "breached_at": null,
+      "created_at": "2026-01-15T12:00:00Z",
+      "customer_id": "00000000-0000-4000-8000-000400000001",
+      "first_response_at": null,
+      "id": "<id4>",
+      "priority": "normal",
+      "respond_by": "2026-01-16T12:00:00Z",
+      "solved_at": null,
+      "status": "open",
+      "subject": "Printer on fire",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "customer_id": "00000000-0000-4000-8000-000400000001",
+      "subject": "Printer on fire"
+    },
+    "status": 201,
+    "step": "cat POST /workspaces/00000000-0000-4000-8000-000200000001/tickets"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": {
+      "customer_id": "00000000-0000-4000-8000-000400000003",
+      "subject": "Wrong workspace"
+    },
+    "status": 403,
+    "step": "cat POST /workspaces/00000000-0000-4000-8000-000200000001/tickets"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "customer_not_found"
+      }
+    },
+    "request": {
+      "customer_id": "00000000-0000-4000-8000-000099999999",
+      "subject": "Nobody"
+    },
+    "status": 404,
+    "step": "cat POST /workspaces/00000000-0000-4000-8000-000200000001/tickets"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": {
+      "customer_id": "00000000-0000-4000-8000-000400000001",
+      "subject": "Viewer ticket"
+    },
+    "status": 403,
+    "step": "dan POST /workspaces/00000000-0000-4000-8000-000200000001/tickets"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "invalid_input",
+        "details": {
+          "problems": [
+            {
+              "field": "subject",
+              "rule": "max_length"
+            }
+          ]
+        }
+      }
+    },
+    "request": {
+      "customer_id": "00000000-0000-4000-8000-000400000001",
+      "subject": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    "status": 422,
+    "step": "cat POST /workspaces/00000000-0000-4000-8000-000200000001/tickets"
+  },
+  {
+    "body": {
+      "assignee_id": "00000000-0000-4000-8000-000300000003",
+      "breached_at": null,
+      "created_at": "2026-01-14T09:00:00Z",
+      "customer_id": "00000000-0000-4000-8000-000400000001",
+      "first_response_at": null,
+      "id": "00000000-0000-4000-8000-000500000001",
+      "priority": "high",
+      "respond_by": "2026-01-15T09:00:00Z",
+      "solved_at": null,
+      "status": "open",
+      "subject": "Cannot sign in",
+      "updated_at": "2026-01-14T09:00:00Z"
+    },
+    "request": null,
+    "status": 200,
+    "step": "dan GET /tickets/00000000-0000-4000-8000-000500000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "ticket_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "eve GET /tickets/00000000-0000-4000-8000-000500000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "ticket_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "ann GET /tickets/00000000-0000-4000-8000-000500000004"
+  },
+  {
+    "body": {
+      "assignee_id": "00000000-0000-4000-8000-000300000003",
+      "breached_at": null,
+      "created_at": "2026-01-14T09:00:00Z",
+      "customer_id": "00000000-0000-4000-8000-000400000001",
+      "first_response_at": null,
+      "id": "00000000-0000-4000-8000-000500000001",
+      "priority": "urgent",
+      "respond_by": "2026-01-15T09:00:00Z",
+      "solved_at": null,
+      "status": "open",
+      "subject": "Cannot sign in",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "priority": "urgent"
+    },
+    "status": 200,
+    "step": "cat PATCH /tickets/00000000-0000-4000-8000-000500000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": {
+      "priority": "low"
+    },
+    "status": 403,
+    "step": "dan PATCH /tickets/00000000-0000-4000-8000-000500000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "invalid_input",
+        "details": {
+          "problems": [
+            {
+              "field": "status",
+              "rule": "unknown_field"
+            }
+          ]
+        }
+      }
+    },
+    "request": {
+      "status": "solved"
+    },
+    "status": 422,
+    "step": "cat PATCH /tickets/00000000-0000-4000-8000-000500000001"
+  },
+  {
+    "body": {
+      "assignee_id": "00000000-0000-4000-8000-000300000002",
+      "breached_at": null,
+      "created_at": "2026-01-14T09:00:00Z",
+      "customer_id": "00000000-0000-4000-8000-000400000001",
+      "first_response_at": null,
+      "id": "00000000-0000-4000-8000-000500000001",
+      "priority": "urgent",
+      "respond_by": "2026-01-15T09:00:00Z",
+      "solved_at": null,
+      "status": "open",
+      "subject": "Cannot sign in",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "assignee_id": "00000000-0000-4000-8000-000300000002"
+    },
+    "status": 200,
+    "step": "cat POST /tickets/00000000-0000-4000-8000-000500000001/assign"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "assignee_cannot_work"
+      }
+    },
+    "request": {
+      "assignee_id": "00000000-0000-4000-8000-000300000004"
+    },
+    "status": 422,
+    "step": "cat POST /tickets/00000000-0000-4000-8000-000500000001/assign"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "membership_not_found"
+      }
+    },
+    "request": {
+      "assignee_id": "00000000-0000-4000-8000-000300000005"
+    },
+    "status": 404,
+    "step": "cat POST /tickets/00000000-0000-4000-8000-000500000001/assign"
+  },
+  {
+    "body": {
+      "assignee_id": null,
+      "breached_at": null,
+      "created_at": "2026-01-14T09:00:00Z",
+      "customer_id": "00000000-0000-4000-8000-000400000001",
+      "first_response_at": null,
+      "id": "00000000-0000-4000-8000-000500000001",
+      "priority": "urgent",
+      "respond_by": "2026-01-15T09:00:00Z",
+      "solved_at": null,
+      "status": "open",
+      "subject": "Cannot sign in",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "assignee_id": null
+    },
+    "status": 200,
+    "step": "cat POST /tickets/00000000-0000-4000-8000-000500000001/assign"
+  },
+  {
+    "body": {
+      "assignee_id": null,
+      "breached_at": null,
+      "created_at": "2026-01-14T09:00:00Z",
+      "customer_id": "00000000-0000-4000-8000-000400000001",
+      "first_response_at": null,
+      "id": "00000000-0000-4000-8000-000500000001",
+      "priority": "urgent",
+      "respond_by": "2026-01-15T09:00:00Z",
+      "solved_at": "2026-01-15T12:00:00Z",
+      "status": "solved",
+      "subject": "Cannot sign in",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": null,
+    "status": 200,
+    "step": "cat POST /tickets/00000000-0000-4000-8000-000500000001/solve"
+  },
+  {
+    "body": {
+      "assignee_id": null,
+      "breached_at": null,
+      "created_at": "2026-01-14T09:00:00Z",
+      "customer_id": "00000000-0000-4000-8000-000400000001",
+      "first_response_at": null,
+      "id": "00000000-0000-4000-8000-000500000001",
+      "priority": "urgent",
+      "respond_by": "2026-01-15T09:00:00Z",
+      "solved_at": "2026-01-15T12:00:00Z",
+      "status": "solved",
+      "subject": "Cannot sign in",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": null,
+    "status": 200,
+    "step": "cat POST /tickets/00000000-0000-4000-8000-000500000001/solve"
+  },
+  {
+    "body": {
+      "assignee_id": null,
+      "breached_at": null,
+      "created_at": "2026-01-14T09:00:00Z",
+      "customer_id": "00000000-0000-4000-8000-000400000001",
+      "first_response_at": null,
+      "id": "00000000-0000-4000-8000-000500000001",
+      "priority": "urgent",
+      "respond_by": "2026-01-15T09:00:00Z",
+      "solved_at": null,
+      "status": "open",
+      "subject": "Cannot sign in",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": null,
+    "status": 200,
+    "step": "cat POST /tickets/00000000-0000-4000-8000-000500000001/reopen"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": null,
+    "status": 403,
+    "step": "dan POST /tickets/00000000-0000-4000-8000-000500000001/solve"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-14T09:00:00Z",
+      "email": "cora@customer.example.test",
+      "id": "00000000-0000-4000-8000-000400000001",
+      "name": "Cora Customer",
+      "phone": null,
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": null,
+    "status": 200,
+    "step": "cat GET /tickets/00000000-0000-4000-8000-000500000001/customer"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "customer_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "dan GET /tickets/00000000-0000-4000-8000-000500000001/customer"
+  },
+  {
+    "body": [
+      {
+        "author_id": "00000000-0000-4000-8000-000100000003",
+        "body": "We are looking into it.",
+        "created_at": "2026-01-14T09:00:00Z",
+        "id": "00000000-0000-4000-8000-000600000001",
+        "ticket_id": "00000000-0000-4000-8000-000500000001",
+        "updated_at": "2026-01-14T09:00:00Z"
+      }
+    ],
+    "request": null,
+    "status": 200,
+    "step": "dan GET /tickets/00000000-0000-4000-8000-000500000001/replies"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "ticket_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "eve GET /tickets/00000000-0000-4000-8000-000500000001/replies"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "ticket_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "ann GET /tickets/00000000-0000-4000-8000-000500000004/replies"
+  },
+  {
+    "body": {
+      "author_id": "00000000-0000-4000-8000-000100000003",
+      "body": "Fixed it for you.",
+      "created_at": "2026-01-15T12:00:00Z",
+      "id": "<id5>",
+      "ticket_id": "00000000-0000-4000-8000-000500000001",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "body": "Fixed it for you."
+    },
+    "status": 201,
+    "step": "cat POST /tickets/00000000-0000-4000-8000-000500000001/replies"
+  },
+  {
+    "body": {
+      "assignee_id": null,
+      "breached_at": null,
+      "created_at": "2026-01-14T09:00:00Z",
+      "customer_id": "00000000-0000-4000-8000-000400000001",
+      "first_response_at": "2026-01-15T12:00:00Z",
+      "id": "00000000-0000-4000-8000-000500000001",
+      "priority": "urgent",
+      "respond_by": "2026-01-15T09:00:00Z",
+      "solved_at": null,
+      "status": "pending",
+      "subject": "Cannot sign in",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": null,
+    "status": 200,
+    "step": "cat GET /tickets/00000000-0000-4000-8000-000500000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": {
+      "body": "Viewer reply"
+    },
+    "status": 403,
+    "step": "dan POST /tickets/00000000-0000-4000-8000-000500000001/replies"
+  },
+  {
+    "body": {
+      "author_id": "00000000-0000-4000-8000-000100000003",
+      "body": "Edited",
+      "created_at": "2026-01-14T09:00:00Z",
+      "id": "00000000-0000-4000-8000-000600000001",
+      "ticket_id": "00000000-0000-4000-8000-000500000001",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "body": "Edited"
+    },
+    "status": 200,
+    "step": "cat PATCH /replies/00000000-0000-4000-8000-000600000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "reply_not_found"
+      }
+    },
+    "request": {
+      "body": "Viewer edit"
+    },
+    "status": 404,
+    "step": "dan PATCH /replies/00000000-0000-4000-8000-000600000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "reply_not_found"
+      }
+    },
+    "request": {
+      "body": "Outsider edit"
+    },
+    "status": 404,
+    "step": "eve PATCH /replies/00000000-0000-4000-8000-000600000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "reply_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "cat DELETE /replies/00000000-0000-4000-8000-000600000003"
+  },
+  {
+    "body": [
+      {
+        "author_id": "00000000-0000-4000-8000-000100000003",
+        "body": "Customer sounded upset note-canary-4b1d",
+        "created_at": "2026-01-14T09:00:00Z",
+        "id": "00000000-0000-4000-8000-000700000001",
+        "ticket_id": "00000000-0000-4000-8000-000500000001",
+        "updated_at": "2026-01-14T09:00:00Z"
+      }
+    ],
+    "request": null,
+    "status": 200,
+    "step": "cat GET /tickets/00000000-0000-4000-8000-000500000001/notes"
+  },
+  {
+    "body": [],
+    "request": null,
+    "status": 200,
+    "step": "dan GET /tickets/00000000-0000-4000-8000-000500000001/notes"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "ticket_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "eve GET /tickets/00000000-0000-4000-8000-000500000001/notes"
+  },
+  {
+    "body": {
+      "author_id": "00000000-0000-4000-8000-000100000003",
+      "body": "Second note",
+      "created_at": "2026-01-15T12:00:00Z",
+      "id": "<id6>",
+      "ticket_id": "00000000-0000-4000-8000-000500000001",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "body": "Second note"
+    },
+    "status": 201,
+    "step": "cat POST /tickets/00000000-0000-4000-8000-000500000001/notes"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": {
+      "body": "Viewer note"
+    },
+    "status": 403,
+    "step": "dan POST /tickets/00000000-0000-4000-8000-000500000001/notes"
+  },
+  {
+    "body": {
+      "author_id": "00000000-0000-4000-8000-000100000003",
+      "body": "Edited note",
+      "created_at": "2026-01-14T09:00:00Z",
+      "id": "00000000-0000-4000-8000-000700000001",
+      "ticket_id": "00000000-0000-4000-8000-000500000001",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "body": "Edited note"
+    },
+    "status": 200,
+    "step": "ben PATCH /notes/00000000-0000-4000-8000-000700000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "note_not_found"
+      }
+    },
+    "request": {
+      "body": "Viewer edit"
+    },
+    "status": 404,
+    "step": "dan PATCH /notes/00000000-0000-4000-8000-000700000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "note_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "cat DELETE /notes/00000000-0000-4000-8000-000700000002"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "note_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "dan DELETE /notes/00000000-0000-4000-8000-000700000001"
+  },
+  {
+    "body": null,
+    "request": null,
+    "status": 204,
+    "step": "cat DELETE /notes/00000000-0000-4000-8000-000700000001"
+  },
+  {
+    "body": [
+      {
+        "created_at": "2026-01-14T09:00:00Z",
+        "id": "00000000-0000-4000-8000-000800000001",
+        "name": "billing"
+      }
+    ],
+    "request": null,
+    "status": 200,
+    "step": "dan GET /workspaces/00000000-0000-4000-8000-000200000001/tags"
+  },
+  {
+    "body": [],
+    "request": null,
+    "status": 200,
+    "step": "eve GET /workspaces/00000000-0000-4000-8000-000200000001/tags"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": {
+      "name": "urgent"
+    },
+    "status": 403,
+    "step": "cat POST /workspaces/00000000-0000-4000-8000-000200000001/tags"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-15T12:00:00Z",
+      "id": "<id7>",
+      "name": "urgent"
+    },
+    "request": {
+      "name": "urgent"
+    },
+    "status": 201,
+    "step": "ben POST /workspaces/00000000-0000-4000-8000-000200000001/tags"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "tag_name_taken"
+      }
+    },
+    "request": {
+      "name": "urgent"
+    },
+    "status": 409,
+    "step": "ben POST /workspaces/00000000-0000-4000-8000-000200000001/tags"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-14T09:00:00Z",
+      "id": "00000000-0000-4000-8000-000800000001",
+      "name": "invoices"
+    },
+    "request": {
+      "name": "invoices"
+    },
+    "status": 200,
+    "step": "ben PATCH /tags/00000000-0000-4000-8000-000800000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "tag_not_found"
+      }
+    },
+    "request": {
+      "name": "mine"
+    },
+    "status": 404,
+    "step": "ben PATCH /tags/00000000-0000-4000-8000-000800000002"
+  },
+  {
+    "body": [
+      {
+        "created_at": "2026-01-14T09:00:00Z",
+        "id": "<id8>",
+        "tag": {
+          "created_at": "2026-01-14T09:00:00Z",
+          "id": "00000000-0000-4000-8000-000800000001",
+          "name": "invoices"
+        }
+      }
+    ],
+    "request": null,
+    "status": 200,
+    "step": "dan GET /tickets/00000000-0000-4000-8000-000500000002/tags"
+  },
+  {
+    "body": {
+      "created_at": "2026-01-15T12:00:00Z",
+      "id": "<id9>",
+      "tag": {
+        "created_at": "2026-01-14T09:00:00Z",
+        "id": "00000000-0000-4000-8000-000800000001",
+        "name": "invoices"
+      }
+    },
+    "request": {
+      "tag_id": "00000000-0000-4000-8000-000800000001"
+    },
+    "status": 201,
+    "step": "cat POST /tickets/00000000-0000-4000-8000-000500000001/tags"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "already_tagged"
+      }
+    },
+    "request": {
+      "tag_id": "00000000-0000-4000-8000-000800000001"
+    },
+    "status": 409,
+    "step": "cat POST /tickets/00000000-0000-4000-8000-000500000001/tags"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "tag_not_found"
+      }
+    },
+    "request": {
+      "tag_id": "00000000-0000-4000-8000-000800000002"
+    },
+    "status": 404,
+    "step": "cat POST /tickets/00000000-0000-4000-8000-000500000001/tags"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": {
+      "tag_id": "00000000-0000-4000-8000-000800000001"
+    },
+    "status": 403,
+    "step": "dan POST /tickets/00000000-0000-4000-8000-000500000003/tags"
+  },
+  {
+    "body": null,
+    "request": null,
+    "status": 204,
+    "step": "cat DELETE /tickets/00000000-0000-4000-8000-000500000001/tags/00000000-0000-4000-8000-000800000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "ticket_tag_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "cat DELETE /tickets/00000000-0000-4000-8000-000500000001/tags/00000000-0000-4000-8000-000800000001"
+  },
+  {
+    "body": null,
+    "request": null,
+    "status": 204,
+    "step": "ben DELETE /tags/00000000-0000-4000-8000-000800000001"
+  },
+  {
+    "body": [],
+    "request": null,
+    "status": 200,
+    "step": "cat GET /tickets/00000000-0000-4000-8000-000500000002/tags"
+  },
+  {
+    "body": [
+      {
+        "body": "Thanks for getting in touch.",
+        "created_at": "2026-01-14T09:00:00Z",
+        "id": "00000000-0000-4000-8000-000900000001",
+        "title": "Thanks",
+        "updated_at": "2026-01-14T09:00:00Z"
+      }
+    ],
+    "request": null,
+    "status": 200,
+    "step": "cat GET /workspaces/00000000-0000-4000-8000-000200000001/macros"
+  },
+  {
+    "body": [],
+    "request": null,
+    "status": 200,
+    "step": "dan GET /workspaces/00000000-0000-4000-8000-000200000001/macros"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": {
+      "body": "Hello",
+      "title": "Hi"
+    },
+    "status": 403,
+    "step": "cat POST /workspaces/00000000-0000-4000-8000-000200000001/macros"
+  },
+  {
+    "body": {
+      "body": "Hello",
+      "created_at": "2026-01-15T12:00:00Z",
+      "id": "<id10>",
+      "title": "Hi",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "body": "Hello",
+      "title": "Hi"
+    },
+    "status": 201,
+    "step": "ben POST /workspaces/00000000-0000-4000-8000-000200000001/macros"
+  },
+  {
+    "body": {
+      "body": "Thanks for getting in touch.",
+      "created_at": "2026-01-14T09:00:00Z",
+      "id": "00000000-0000-4000-8000-000900000001",
+      "title": "Thanks",
+      "updated_at": "2026-01-14T09:00:00Z"
+    },
+    "request": null,
+    "status": 200,
+    "step": "cat GET /macros/00000000-0000-4000-8000-000900000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "macro_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "dan GET /macros/00000000-0000-4000-8000-000900000001"
+  },
+  {
+    "body": {
+      "body": "Thanks again.",
+      "created_at": "2026-01-14T09:00:00Z",
+      "id": "00000000-0000-4000-8000-000900000001",
+      "title": "Thanks",
+      "updated_at": "2026-01-15T12:00:00Z"
+    },
+    "request": {
+      "body": "Thanks again."
+    },
+    "status": 200,
+    "step": "ben PATCH /macros/00000000-0000-4000-8000-000900000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": {
+      "body": "Agent edit"
+    },
+    "status": 403,
+    "step": "cat PATCH /macros/00000000-0000-4000-8000-000900000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": null,
+    "status": 403,
+    "step": "cat DELETE /macros/00000000-0000-4000-8000-000900000001"
+  },
+  {
+    "body": null,
+    "request": null,
+    "status": 204,
+    "step": "ben DELETE /macros/00000000-0000-4000-8000-000900000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "macro_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "ben GET /macros/00000000-0000-4000-8000-000900000001"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "not_permitted"
+      }
+    },
+    "request": null,
+    "status": 403,
+    "step": "cat DELETE /tickets/00000000-0000-4000-8000-000500000003"
+  },
+  {
+    "body": null,
+    "request": null,
+    "status": 204,
+    "step": "ben DELETE /tickets/00000000-0000-4000-8000-000500000003"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "ticket_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "ben DELETE /tickets/00000000-0000-4000-8000-000500000003"
+  },
+  {
+    "body": {
+      "items": [
+        {
+          "assignee_id": null,
+          "breached_at": null,
+          "created_at": "2026-01-15T12:00:00Z",
+          "customer_id": "00000000-0000-4000-8000-000400000001",
+          "first_response_at": null,
+          "id": "<id4>",
+          "priority": "normal",
+          "respond_by": "2026-01-16T12:00:00Z",
+          "solved_at": null,
+          "status": "open",
+          "subject": "Printer on fire",
+          "updated_at": "2026-01-15T12:00:00Z"
+        },
+        {
+          "assignee_id": "00000000-0000-4000-8000-000300000003",
+          "breached_at": null,
+          "created_at": "2026-01-14T09:00:00Z",
+          "customer_id": null,
+          "first_response_at": "2026-01-14T09:00:00Z",
+          "id": "00000000-0000-4000-8000-000500000002",
+          "priority": "normal",
+          "respond_by": "2026-01-15T09:00:00Z",
+          "solved_at": null,
+          "status": "pending",
+          "subject": "Invoice is wrong",
+          "updated_at": "2026-01-14T09:00:00Z"
+        },
+        {
+          "assignee_id": null,
+          "breached_at": null,
+          "created_at": "2026-01-14T09:00:00Z",
+          "customer_id": "00000000-0000-4000-8000-000400000001",
+          "first_response_at": "2026-01-15T12:00:00Z",
+          "id": "00000000-0000-4000-8000-000500000001",
+          "priority": "urgent",
+          "respond_by": "2026-01-15T09:00:00Z",
+          "solved_at": null,
+          "status": "pending",
+          "subject": "Cannot sign in",
+          "updated_at": "2026-01-15T12:00:00Z"
+        }
+      ],
+      "next": null
+    },
+    "request": null,
+    "status": 200,
+    "step": "ben GET /workspaces/00000000-0000-4000-8000-000200000001/tickets"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "ticket_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "eve DELETE /tickets/00000000-0000-4000-8000-000500000002"
+  },
+  {
+    "body": {
+      "error": {
+        "code": "ticket_not_found"
+      }
+    },
+    "request": null,
+    "status": 404,
+    "step": "cat GET /tickets/00000000-0000-4000-8000-000500000005"
+  },
+  {
+    "body": null,
+    "request": null,
+    "status": 204,
+    "step": "ann DELETE /members/00000000-0000-4000-8000-000300000003"
+  },
+  {
+    "body": {
+      "assignee_id": null,
+      "breached_at": null,
+      "created_at": "2026-01-14T09:00:00Z",
+      "customer_id": null,
+      "first_response_at": "2026-01-14T09:00:00Z",
+      "id": "00000000-0000-4000-8000-000500000002",
+      "priority": "normal",
+      "respond_by": "2026-01-15T09:00:00Z",
+      "solved_at": null,
+      "status": "pending",
+      "subject": "Invoice is wrong",
+      "updated_at": "2026-01-14T09:00:00Z"
+    },
+    "request": null,
+    "status": 200,
+    "step": "ann GET /tickets/00000000-0000-4000-8000-000500000002"
+  },
+  {
+    "body": {
+      "items": [],
+      "next": null
+    },
+    "request": null,
+    "status": 200,
+    "step": "cat GET /workspaces/00000000-0000-4000-8000-000200000001/tickets"
+  }
+]

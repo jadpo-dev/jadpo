@@ -1,0 +1,25 @@
+use desk/entities { Workspace }
+use desk/types { MacroTitle, MessageBody, WorkspaceRole }
+
+/// A saved answer agents can reuse.
+entity Macro {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    title: MacroTitle
+    body: MessageBody
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+    updated_at: Instant {
+        generated: Generated.on_change
+    }
+
+    policy: {
+        create: [WorkspaceRole.owner, WorkspaceRole.admin]
+        read: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent]
+        update: [WorkspaceRole.owner, WorkspaceRole.admin]
+        delete: [WorkspaceRole.owner, WorkspaceRole.admin]
+    }
+}

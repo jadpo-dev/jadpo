@@ -1,0 +1,10 @@
+use desk/entities { Note, Ticket }
+use desk/types { NoteView }
+
+/// A ticket's internal notes, oldest first.
+query notes_of(ticket_id: Ticket.id) -> List<NoteView> {
+    from: Note
+    where: Note.ticket_id == ticket_id
+    order: [Note.created_at asc, Note.id asc]
+    limit: 500
+}

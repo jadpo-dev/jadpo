@@ -1,0 +1,30 @@
+use desk/entities { Ticket, User, Workspace }
+use desk/types { MessageBody, WorkspaceRole }
+
+/// An internal note on a ticket. Never shown to viewers or to the customer.
+entity Note {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    ticket_id: Ticket.id {
+        on_delete: OnDelete.cascade
+    }
+    author_id: User.id? {
+        on_delete: OnDelete.cleared
+    }
+    body: MessageBody
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+    updated_at: Instant {
+        generated: Generated.on_change
+    }
+
+    policy: {
+        create: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent]
+        read: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent]
+        update: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent]
+        delete: [author_id, WorkspaceRole.owner, WorkspaceRole.admin]
+    }
+}

@@ -1,0 +1,15 @@
+use desk/entities { Ticket, Workspace }
+use desk/types { ListTickets, TicketView }
+
+/// A page of a workspace's tickets, newest first.
+query tickets_page(workspace_id: Workspace.id, input: ListTickets) -> Page<TicketView> {
+    from: Ticket
+    where: Ticket.workspace_id == workspace_id
+    where_present: Ticket.status == input.status
+    where_present: Ticket.assignee_id == input.assignee_id
+    order: [Ticket.created_at desc, Ticket.id desc]
+    page: {
+        size: input.page_size
+        after: input.after
+    }
+}

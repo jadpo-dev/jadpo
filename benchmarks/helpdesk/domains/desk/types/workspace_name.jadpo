@@ -1,0 +1,5 @@
+/// A workspace's name.
+type WorkspaceName = Text {
+    min_length: 1
+    max_length: 80
+}

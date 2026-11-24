@@ -1,0 +1,58 @@
+use desk/entities { Customer, Membership, Workspace }
+use desk/types { TicketPriority, TicketStatus, TicketSubject, WorkspaceRole }
+
+/// A customer's request for help.
+entity Ticket {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    customer_id: Customer.id? {
+        on_delete: OnDelete.cleared
+    }
+    assignee_id: Membership.id? {
+        on_delete: OnDelete.cleared
+    }
+    subject: TicketSubject
+    status: TicketStatus
+    priority: TicketPriority
+    respond_by: Instant
+    first_response_at: Instant?
+    breached_at: Instant? {
+        policy: {
+            create: []
+            update: [Access.system]
+        }
+    }
+    solved_at: Instant?
+    deleted_at: Instant?
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+    updated_at: Instant {
+        generated: Generated.on_change
+    }
+
+    lifecycle: {
+        visible: deleted_at == none
+        transitions: {
+            delete: {
+                when: deleted_at == none
+                set: {
+                    deleted_at: clock.now
+                }
+            }
+        }
+        purge: {
+            after: config.deleted_ticket_retention
+            since: deleted_at
+        }
+    }
+
+    policy: {
+        create: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent]
+        read: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent, WorkspaceRole.viewer, Access.system]
+        update: [WorkspaceRole.owner, WorkspaceRole.admin, WorkspaceRole.agent, Access.system]
+        delete: [WorkspaceRole.owner, WorkspaceRole.admin]
+    }
+}

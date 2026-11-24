@@ -1,0 +1,7 @@
+use desk/entities { Ticket, TicketNotFound }
+
+/// Moves a ticket to the bin; owners and admins may. It is purged after the retention period.
+action delete_ticket(ticket_id: Ticket.id) fails TicketNotFound -> Unit {
+    var ticket: Ticket = attempt Ticket.get(ticket_id)
+    Ticket.delete(ticket)
+}

@@ -1,0 +1,10 @@
+use desk/entities { Customer, Workspace }
+use desk/types { CustomerView }
+
+/// A workspace's customers, oldest first.
+query workspace_customers(workspace_id: Workspace.id) -> List<CustomerView> {
+    from: Customer
+    where: Customer.workspace_id == workspace_id
+    order: [Customer.created_at asc, Customer.id asc]
+    limit: 200
+}

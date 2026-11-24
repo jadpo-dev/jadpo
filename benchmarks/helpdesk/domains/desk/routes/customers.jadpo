@@ -1,0 +1,34 @@
+use desk/entities { Customer }
+use desk/types { CustomerView, PatchCustomer, TicketView }
+use desk/actions { edit_customer, delete_customer }
+use desk/queries { customer_by_id, customer_tickets }
+
+/// Customers, one at a time.
+routes Customers {
+    prefix: /customers
+
+    /// One customer.
+    GET /{customer_id: Customer.id} {
+        output: CustomerView
+        run: customer_by_id(customer_id)
+    }
+
+    /// Changes a customer.
+    PATCH /{customer_id: Customer.id} {
+        input: PatchCustomer
+        output: CustomerView
+        run: edit_customer(customer_id, input)
+    }
+
+    /// Deletes a customer.
+    DELETE /{customer_id: Customer.id} {
+        status: SuccessStatus.no_content
+        run: delete_customer(customer_id)
+    }
+
+    /// A customer's tickets.
+    GET /{customer_id: Customer.id}/tickets {
+        output: List<TicketView>
+        run: customer_tickets(customer_id)
+    }
+}

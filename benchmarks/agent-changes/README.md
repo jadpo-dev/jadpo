@@ -105,7 +105,11 @@ without the hidden results; the language can't be hidden.
   without the docs is recorded, not hidden: `knowledge-probe` asks it with
   no docs and no tools.
 - **Nothing else**: each run is a fresh copy outside the repository with
-  its own git history and a clean environment holding none of the host
+  its own git history: the app committed on `main`, and the agent working
+  on a branch, `change`, in both languages, as in a real project, so
+  `jadpo check` has a before side and judges acceptances. (Until 10.5 the
+  copy was a single commit with the agent working on top of it, so no
+  acceptance was ever judged.) It has a clean environment holding none of the host
   session's variables. Claude Code runs in its safe and restricted modes
   (no CLAUDE.md, skills, plugins, hooks or MCP servers; file tools
   confined to the copy and the docs), with `Bash`, `Read`, `Edit`,
@@ -166,6 +170,22 @@ op: the native driver records every event the runtime logs, and the
 TypeScript controller its logger's events and anything written to the
 console. `fresh` runs like `held-out`, against a frozen Jadpo, and on more
 than one Codex model (`--model`).
+
+**A mid-size app, several changes to a session.** Roadmap chunk 10.5 adds
+a second app, the helpdesk (`benchmarks/helpdesk/`, a workspace per
+customer company, four roles, ten entities, 44 routes), its TypeScript
+twin, which answers every route the same way (`desk_parity.py`), and ten
+changes, H01 to H10 (`desk_changes.py`). Each looks local but crosses a
+rule kept in another file: a workspace's walls, what a viewer may see, a
+member's private email, the bin, how a ticket is solved, who may delete a
+customer. Its tests check that rule, and four probes of the rules every
+change keeps run after each one over every read route the app then has.
+`session` runs them five to a conversation (S1, S2): the first change
+starts it and each later one resumes it, the app is committed and `main`
+moved to it between changes, as a merge would, and each change is scored
+when it is done and again on the app the whole session left. A change's
+own checks run before `main` moves, as a pull request meets them, so
+`jadpo check` still judges the acceptances it needs.
 
 **Tuning runs are staged.** One session at a time. After each, `stumbles`
 reads where it got stuck: every failing check or test run and its error

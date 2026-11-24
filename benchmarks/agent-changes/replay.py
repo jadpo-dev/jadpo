@@ -4,6 +4,9 @@ tokens: it plays a scripted session (edits and commands) in the working
 directory and prints it as Claude Code's stream-json, usage zero.
 
   python3 replay.py <script.json> <prompt>
+
+A script for a session gives `by_prompt`, a list of {"match", "steps"}: each
+prompt plays the steps of the first entry whose `match` it contains.
 """
 import json
 import subprocess
@@ -17,6 +20,15 @@ def emit(event):
 
 def main():
     script = json.loads(Path(sys.argv[1]).read_text())
+    prompt = sys.argv[2] if len(sys.argv) > 2 else ''
+    # A session's script holds one entry per change, chosen by text its request carries.
+    for entry in script.get('by_prompt', []):
+        if entry['match'] in prompt:
+            script = {**script, **entry}
+            break
+    else:
+        if 'by_prompt' in script:
+            script = {**script, 'steps': []}
     usage = {'input_tokens': 0, 'output_tokens': 0, 'cache_creation_input_tokens': 0, 'cache_read_input_tokens': 0}
     emit({'type': 'system', 'subtype': 'init', 'model': 'replay', 'tools': ['Bash', 'Edit']})
     for number, step in enumerate(script['steps']):

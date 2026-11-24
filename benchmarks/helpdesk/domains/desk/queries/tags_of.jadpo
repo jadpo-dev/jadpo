@@ -1,0 +1,13 @@
+use desk/entities { Ticket, TicketTag }
+use desk/types { TicketTagView }
+
+/// The tags on a ticket.
+query tags_of(ticket_id: Ticket.id) -> List<TicketTagView> {
+    from: TicketTag
+    where: TicketTag.ticket_id == ticket_id
+    order: [TicketTag.created_at asc, TicketTag.id asc]
+    limit: 100
+    include: {
+        tag: TicketTag.tag_id
+    }
+}

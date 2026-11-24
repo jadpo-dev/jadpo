@@ -1,0 +1,20 @@
+use desk/entities { Tag, TagNotFound }
+use desk/types { NameTag, TagView }
+use desk/failures { TagNameTaken }
+
+/// Renames a tag; owners and admins may.
+action rename_tag(tag_id: Tag.id, input: NameTag) fails TagNotFound, TagNameTaken -> TagView {
+    var tag: Tag = attempt Tag.update(tag_id) {
+        set: {
+            name: input.name
+        }
+        conflict: {
+            Tag.name: TagNameTaken
+        }
+    }
+    return TagView {
+        id: tag.id
+        name: tag.name
+        created_at: tag.created_at
+    }
+}

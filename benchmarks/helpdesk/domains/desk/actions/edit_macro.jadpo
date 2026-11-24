@@ -1,0 +1,17 @@
+use desk/entities { Macro, MacroNotFound }
+use desk/types { MacroView, PatchMacro }
+
+/// Changes a macro; owners and admins may.
+action edit_macro(macro_id: Macro.id, input: PatchMacro) fails MacroNotFound -> MacroView {
+    var saved: Macro = attempt Macro.get(macro_id)
+    var changed: Macro = Macro.update(saved) {
+        patch: input
+    }
+    return MacroView {
+        id: changed.id
+        title: changed.title
+        body: changed.body
+        created_at: changed.created_at
+        updated_at: changed.updated_at
+    }
+}

@@ -1,0 +1,12 @@
+use desk/entities { User, UserNotFound }
+use desk/types { MeView }
+
+/// The signed-in person's own account.
+action my_account(caller: Principal.user) fails UserNotFound -> MeView {
+    var me: User = attempt User.get(caller.id)
+    return MeView {
+        id: me.id
+        email: me.email
+        status: me.status
+    }
+}

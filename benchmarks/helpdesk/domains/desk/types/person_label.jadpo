@@ -1,0 +1,5 @@
+/// A person's name as the desk shows it.
+type PersonLabel = Text {
+    min_length: 1
+    max_length: 120
+}

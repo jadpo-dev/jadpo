@@ -1,0 +1,5 @@
+/// A viewer can't be given tickets.
+type AssigneeCannotWork = Failure {
+    kind: FailureKind.rejected
+    message: "Tickets can only be assigned to owners, admins and agents."
+}

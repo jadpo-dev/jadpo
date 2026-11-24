@@ -1,0 +1,5 @@
+/// A tag's name.
+type TagName = Text {
+    min_length: 1
+    max_length: 40
+}

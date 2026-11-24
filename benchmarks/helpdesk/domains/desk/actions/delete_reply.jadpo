@@ -1,0 +1,7 @@
+use desk/entities { Reply, ReplyNotFound }
+
+/// Deletes a reply; its author, owners and admins may.
+action delete_reply(reply_id: Reply.id) fails ReplyNotFound -> Unit {
+    var reply: Reply = attempt Reply.get(reply_id)
+    Reply.delete(reply)
+}

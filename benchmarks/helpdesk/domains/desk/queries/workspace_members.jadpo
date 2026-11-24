@@ -1,0 +1,10 @@
+use desk/entities { Membership, Workspace }
+use desk/types { MemberView }
+
+/// A workspace's members.
+query workspace_members(workspace_id: Workspace.id) -> List<MemberView> {
+    from: Membership
+    where: Membership.workspace_id == workspace_id
+    order: [Membership.created_at asc, Membership.id asc]
+    limit: 200
+}

@@ -1,0 +1,27 @@
+use desk/entities { Ticket, TicketNotFound }
+use desk/types { TicketStatus, TicketView }
+
+/// Reopens a solved ticket.
+action reopen_ticket(ticket_id: Ticket.id) fails TicketNotFound -> TicketView {
+    var ticket: Ticket = attempt Ticket.get(ticket_id)
+    var changed: Ticket = Ticket.update(ticket) {
+        set: {
+            status: TicketStatus.open
+            solved_at: none
+        }
+    }
+    return TicketView {
+        id: changed.id
+        customer_id: changed.customer_id
+        assignee_id: changed.assignee_id
+        subject: changed.subject
+        status: changed.status
+        priority: changed.priority
+        respond_by: changed.respond_by
+        first_response_at: changed.first_response_at
+        breached_at: changed.breached_at
+        solved_at: changed.solved_at
+        created_at: changed.created_at
+        updated_at: changed.updated_at
+    }
+}

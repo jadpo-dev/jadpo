@@ -1,0 +1,10 @@
+use desk/entities { Macro, Workspace }
+use desk/types { MacroView }
+
+/// A workspace's macros, by title.
+query workspace_macros(workspace_id: Workspace.id) -> List<MacroView> {
+    from: Macro
+    where: Macro.workspace_id == workspace_id
+    order: [Macro.title asc, Macro.id asc]
+    limit: 200
+}

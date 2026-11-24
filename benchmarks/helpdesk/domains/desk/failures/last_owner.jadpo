@@ -1,0 +1,5 @@
+/// A workspace always keeps at least one owner.
+type LastOwner = Failure {
+    kind: FailureKind.rejected
+    message: "A workspace must keep at least one owner."
+}

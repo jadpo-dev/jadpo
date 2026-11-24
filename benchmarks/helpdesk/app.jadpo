@@ -1,0 +1,31 @@
+use desk/entities { User }
+use desk/types { UserStatus }
+
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+    }
+    schedules: {
+        store: main
+        trigger: ScheduleTrigger.external
+    }
+    events: {
+        store: main
+    }
+    apis: {
+        main: {
+            prefix: /
+            serve_openapi: false
+        }
+    }
+}
+
+principal {
+    user: {
+        subject: User.authentication_subject
+        active: User.status == UserStatus.active
+    }
+}

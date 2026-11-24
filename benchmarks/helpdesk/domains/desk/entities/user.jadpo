@@ -1,0 +1,19 @@
+use desk/types { UserStatus }
+
+/// Someone who signs in. Their email is theirs alone.
+entity User {
+    id: Uuid
+    authentication_subject: Text {
+        unique: true
+    }
+    status: UserStatus
+    email: Email
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+
+    policy: {
+        read: [id, Access.system]
+        tenant: Tenancy.shared
+    }
+}

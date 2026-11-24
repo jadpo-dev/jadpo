@@ -1,0 +1,6 @@
+use desk/entities { Membership }
+
+/// Who a ticket goes to; none unassigns it.
+type Assignment = Input {
+    assignee_id: Membership.id?
+}

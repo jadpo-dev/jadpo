@@ -1,0 +1,19 @@
+use desk/entities { Reply, ReplyNotFound }
+use desk/types { ReplyView, WriteMessage }
+
+/// Changes a reply's text; owners, admins and agents may.
+action edit_reply(reply_id: Reply.id, input: WriteMessage) fails ReplyNotFound -> ReplyView {
+    var reply: Reply = attempt Reply.update(reply_id) {
+        set: {
+            body: input.body
+        }
+    }
+    return ReplyView {
+        id: reply.id
+        ticket_id: reply.ticket_id
+        author_id: reply.author_id
+        body: reply.body
+        created_at: reply.created_at
+        updated_at: reply.updated_at
+    }
+}
