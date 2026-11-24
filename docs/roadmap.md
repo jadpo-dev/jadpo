@@ -124,6 +124,11 @@ D1 first: the site starts once D1 has merged.
 - [x] **10.4a A bound for "all of them"**: [Every record that matches](language/06-reads-and-writes.md#every-record-that-matches) and its decision in [the notes](language/notes/06-reads-and-writes.md).
 - [x] **10.4b Field writes the owner decides**: [Policy](language/09-policy.md) ("Who may set a field", "Copying a record the caller owns") and the decisions in [its notes](language/notes/09-policy.md).
 - [x] **10.4c Errors that cost agents attempts**: [Statements](language/03-logic.md#statements) and its decision in [the notes](language/notes/03-logic.md), the [primer](primer.md), and the error pages of [`semantic.not_callable`](errors/semantic.not_callable.md), [`naming.folded_collision`](errors/naming.folded_collision.md) and [`migration.out_of_date`](errors/migration.out_of_date.md).
+- [ ] **10.4d Test data runs without policy** `opus · high`: area 9's
+  notes and area 13 say a test's, fixture's or seed's call without a
+  caller runs without policy, but a data builder (`make.X`) on an entity
+  with no `create:` grant is refused at run time. Make the runtime match
+  the pages in both executors; found while building 10.4c.
 - [ ] **10.5 A mid-size app where rules live elsewhere** `opus · high`: a
   multi-tenant backend in both languages, about 8–10 entities, 40 or more
   routes, roles, a job and personal data, with the same hidden contract
