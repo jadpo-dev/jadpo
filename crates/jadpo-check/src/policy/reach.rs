@@ -47,8 +47,9 @@ pub enum Act {
     /// update's `set:`, or a create giving a field that can't be `none`.
     Field(String, String, Effect),
     /// A field its own body changes when the request supplies it (chunk
-    /// 10.4b): a field of a patch's `Input`, one a `when_supplied:` sets,
-    /// or an optional field a create gives a value that may be one.
+    /// 10.4b): a field of a patch's `Input`, or one a `when_supplied:`
+    /// sets. A create's optional field stays as decided: `none` sets
+    /// nothing, so a request that leaves it out is never refused.
     MaySet(String, String, Effect),
 }
 
@@ -57,11 +58,10 @@ pub enum Act {
 fn may_set(db: &dyn Db, project: Project, callable: crate::types::Callable<'_>) -> Vec<Act> {
     use crate::types::TypeView;
     use jadpo_graph::TypeRef;
-    use jadpo_graph::body::{Expr, Literal, Node};
+    use jadpo_graph::body::{Expr, Node};
     let checked = crate::types::typed_body(db, project, callable);
     let body = &checked.body;
     let lookup = Lookup::new(db, project);
-    let entities = crate::data::Entities::new(db, project);
     let short = |key: &jadpo_graph::Key| {
         key.name()
             .rsplit('.')
@@ -75,7 +75,6 @@ fn may_set(db: &dyn Db, project: Project, callable: crate::types::Callable<'_>) 
             entity,
             op,
             transition: None,
-            set,
             patch,
             when_supplied,
             ..
@@ -89,21 +88,6 @@ fn may_set(db: &dyn Db, project: Project, callable: crate::types::Callable<'_>) 
             WriteOp::Delete => continue,
         };
         let name = entity.name().to_string();
-        if *op == WriteOp::Create {
-            for (key, value) in set {
-                let field = short(key);
-                let optional = entities.get(&name).is_some_and(|model| {
-                    model.fields.iter().any(|f| f.name == field && f.nullable)
-                });
-                let none = matches!(
-                    body.site(*value).node,
-                    Node::Expr(Expr::Literal(Literal::None))
-                );
-                if optional && !none {
-                    out.push(Act::MaySet(name.clone(), field, effect));
-                }
-            }
-        }
         if let Some(patch) = patch {
             let mut ty = &body.site(*patch).ty;
             while let TypeRef::Nullable(inner) = ty {

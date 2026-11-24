@@ -2087,8 +2087,8 @@ change the record may change it.
 A route whose action may set a field nobody may set is refused at check
 (`policy.effect_ungranted`), not answered with 403 at run time. That
 covers a field the action always sets, and one it sets only when the
-request supplies it: a field of a patch's `Input`, one `when_supplied:`
-sets, or an optional field a create gives a value. The error's next
+request supplies it: a field of a patch's `Input`, or one
+`when_supplied:` sets. The error's next
 step is a person's: leave the field out, or ask the app's owner, who
 names who may set it. Here the email comes from the identity provider,
 so no request changes it:
