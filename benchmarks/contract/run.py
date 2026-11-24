@@ -65,7 +65,7 @@ def build_native(source):
 
 class Native:
     executor='compiled'
-    supported={'clock','worker_reset','outage','mail','sql','request','drain','deliver_one','sweep','tick','schedule','jwks','jwt','digest','sign','open','mutation_hook','concurrent_tick'}
+    supported={'clock','worker_reset','outage','mail','sql','request','drain','deliver_one','sweep','tick','schedule','jwks','jwt','digest','sign','open','mutation_hook','concurrent_tick','logs'}
     def __init__(self,binary,url,compiler):
         self.binary=binary;self.compiler=compiler;self.lock=threading.Lock()
         self.environment={**os.environ,'GOLDEN_EXECUTOR':self.executor,'GOLDEN_PROJECT':str(PROJECT),'DATABASE_URL':url,'SESSION_SIGNING_KEY':secrets.token_urlsafe(32),'BROWSER_ORIGIN':'https://todo.example.test','OIDC_ISSUER':'https://identity.example/tenant/','OIDC_AUDIENCE':'golden-todo','MAIL_API_KEY':secrets.token_urlsafe(32),'JWT_SIGNING_KEY':secrets.token_urlsafe(24)}

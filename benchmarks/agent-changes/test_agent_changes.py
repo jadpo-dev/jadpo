@@ -34,7 +34,8 @@ def plain(text):
 class ChangeSet(unittest.TestCase):
     def test_size_and_ids(self):
         ids = [c.id for c in changes.CHANGES]
-        self.assertTrue(10 <= len(ids) <= 20)
+        self.assertEqual(len(ids) - len(changes.FRESH), 18)
+        self.assertTrue(10 <= len(changes.FRESH) <= 20)
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(changes.BY_ID.keys(), set(ids))
 
@@ -57,13 +58,21 @@ class ChangeSet(unittest.TestCase):
     def test_adversarial_changes_come_from_the_frozen_sequence(self):
         rows = dict(re.findall(r'^\| (C\d\d) \| “(.+?)” \|', FROZEN, re.M))
         for change in changes.CHANGES:
-            if change.kind != 'adversarial':
+            if change.kind != 'adversarial' or change.id in changes.FRESH:
                 continue
             with self.subTest(change.id):
                 self.assertEqual(change.source, change.id)
                 self.assertIn(change.id, rows)
                 if change.id not in ADAPTED:
                     self.assertEqual(plain(change.request), plain(rows[change.id]))
+
+    def test_fresh_changes_are_new(self):
+        # 10.4's set isn't drawn from the frozen sequence, and every one has a shortcut to catch.
+        for change_id in changes.FRESH:
+            change = changes.BY_ID[change_id]
+            with self.subTest(change_id):
+                self.assertIsNone(change.source)
+                self.assertTrue(change.shortcut and any(t.kind == 'safety' for t in change.tests))
 
     def test_only_a_decide_change_needs_its_answer_to_pass(self):
         decide = [c.id for c in changes.CHANGES if c.disposition == 'decide']
@@ -151,6 +160,14 @@ class Isolation(unittest.TestCase):
         self.assertEqual(marked('OIDC_AUDIENCE: "golden-todo",'), [])
         self.assertEqual(marked('cat ../../benchmarks/golden-todo/expected-audit.md'), ['benchmarks/golden-todo'])
         self.assertEqual(marked("rg --files .. -g 'acceptance-v0.2.json'"), ['acceptance-v0.2'])
+
+    def test_typescript_is_told_its_database_is_provided(self):
+        # `jadpo test` finds the provided server itself; TypeScript's own docs
+        # say its runner starts a server, which the sandbox refuses.
+        for name in ['JADPO_TEST_DATABASE_URL', 'TEST_DATABASE_URL', 'Unix socket', "can't start"]:
+            self.assertIn(name, harness.TYPESCRIPT_SANDBOX_NOTE)
+        source = inspect.getsource(harness.prepare)
+        self.assertIn('TYPESCRIPT_SANDBOX_NOTE', source)
 
     def test_agent_command_is_pinned_and_closed(self):
         with tempfile.TemporaryDirectory() as scratch:
@@ -247,8 +264,12 @@ class Sets(unittest.TestCase):
         self.assertTrue(any(c.kind == 'adversarial' for c in tuning))
         self.assertTrue(any(c.disposition == 'decide' for c in tuning))
         self.assertTrue(any(c.kind == 'feature' for c in tuning))
-        self.assertEqual(len(harness.SETS['held-out']), len(changes.CHANGES) - 6)
-        self.assertFalse(set(harness.SETS['held-out']) & set(harness.TUNING))
+        self.assertEqual(len(harness.SETS['held-out']), 12)
+        self.assertEqual(harness.SETS['fresh'], changes.FRESH)
+        sets = [set(ids) for ids in harness.SETS.values()]
+        self.assertEqual(sum(map(len, sets)), len(changes.CHANGES))
+        self.assertEqual(set().union(*sets), set(changes.BY_ID))
+        self.assertEqual(harness.set_of('N01'), 'fresh')
 
     def test_held_out_needs_a_frozen_jadpo(self):
         held = harness.SETS['held-out'][0]

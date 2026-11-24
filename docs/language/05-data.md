@@ -472,7 +472,10 @@ entity Todo {
 `Generated.on_create` sets it once, when the record is created, and
 `Generated.on_change` sets it on create and on every change. A generated
 field is a required `Instant`. Code never assigns it, and it is never in
-an `Input`.
+an `Input`. Letting callers set one instead, such as an import keeping
+its original dates, is the app owner's decision: removing `generated:`
+is a widening a person accepts
+([Who may set a field](09-policy.md#who-may-set-a-field)).
 
 A field that may be empty is written `T?`, like `due_at` above. Only an
 `Input` has `optional:` and `default:`. A starting value that Jadpo sets,

@@ -706,6 +706,8 @@ struct Access {
     entities: BTreeMap<String, (Lists, Option<String>)>,
     /// Each field row: `server_only`, and its own lists by effect.
     fields: BTreeMap<String, (bool, Lists)>,
+    /// Each field row's `generated` or `immutable` (chunk 10.4b).
+    fixed: BTreeMap<String, BTreeSet<String>>,
     actions: BTreeMap<String, BTreeSet<String>>,
     queries: BTreeMap<String, BTreeSet<String>>,
     declines: BTreeSet<(String, String)>,
@@ -783,6 +785,15 @@ fn access(text: &str) -> Access {
                 let server_only = entry.members.iter().any(|m| m.line == "server_only");
                 out.fields
                     .insert(rest.to_string(), (server_only, lists(&entry)));
+                let fixed: BTreeSet<String> = entry
+                    .members
+                    .iter()
+                    .filter(|m| m.line == "generated" || m.line == "immutable")
+                    .map(|m| m.line.clone())
+                    .collect();
+                if !fixed.is_empty() {
+                    out.fixed.insert(rest.to_string(), fixed);
+                }
             }
             "action" | "query" => {
                 let who: BTreeSet<String> = entry
@@ -887,7 +898,18 @@ fn added<'a>(was: Option<&'a BTreeSet<String>>, now: &'a BTreeSet<String>) -> bo
 /// rule declined; a sign-in setting loosened past its limit; a role's
 /// requirement changed at all, or its line added or removed (chunk A10).
 /// Narrowing, listing a query and a new entity of a tenant need no one.
-pub fn access_needs(path: &str, before: &str, after: &str, out: &mut Vec<Need>) {
+///
+/// A field `exists` no longer has had nothing widened: removing it is
+/// the data change it is. A field that does exist and was `generated` or
+/// `immutable` before, but isn't now, can be set by callers it couldn't
+/// be: `PolicyChange.restriction_removed` (chunk 10.4b).
+pub fn access_needs(
+    path: &str,
+    before: &str,
+    after: &str,
+    exists: &dyn Fn(&str) -> bool,
+    out: &mut Vec<Need>,
+) {
     use super::words::{callers, can_run, widened};
     let was = access(before);
     let now = access(after);
@@ -1018,6 +1040,9 @@ pub fn access_needs(path: &str, before: &str, after: &str, out: &mut Vec<Need>) 
         let Some((entity_lists, _)) = now.entities.get(entity) else {
             continue;
         };
+        if !exists(field) {
+            continue;
+        }
         let Some((now_server_only, now_lists)) = now.fields.get(field) else {
             add(
                 field.clone(),
@@ -1029,6 +1054,34 @@ pub fn access_needs(path: &str, before: &str, after: &str, out: &mut Vec<Need>) 
             continue;
         };
         let heading = Some(format!("field {field}"));
+        let unfixed = was.fixed.get(field).is_some_and(|fixed| {
+            fixed
+                .iter()
+                .any(|fact| !now.fixed.get(field).is_some_and(|now| now.contains(fact)))
+        });
+        if unfixed {
+            let said = if was
+                .fixed
+                .get(field)
+                .is_some_and(|f| f.contains("generated"))
+            {
+                format!(
+                    "`{field}` is no longer set by the store alone, so callers its record's grants let in may set it"
+                )
+            } else {
+                format!(
+                    "`{field}` is no longer `immutable`, so callers its record's `update:` lets in may change it"
+                )
+            };
+            add(
+                field.clone(),
+                "PolicyChange.restriction_removed",
+                heading.clone(),
+                Some(said),
+                Vec::new(),
+            );
+            continue;
+        }
         if *server_only && !now_server_only {
             add(
                 field.clone(),
@@ -1507,11 +1560,20 @@ failure todo_locked
     }
 
     fn widenings(before: &str, after: &str) -> Vec<(String, String)> {
+        widenings_where(before, after, &|_| true)
+    }
+
+    fn widenings_where(
+        before: &str,
+        after: &str,
+        exists: &dyn Fn(&str) -> bool,
+    ) -> Vec<(String, String)> {
         let mut out = Vec::new();
         access_needs(
             "access.jadpo_record",
             &access_record(before),
             &access_record(after),
+            exists,
             &mut out,
         );
         out.into_iter().map(|n| (n.subject, n.change)).collect()
@@ -1605,6 +1667,51 @@ entity notes.Note
     delete writer_id
 ";
         assert_eq!(widenings(unscoped, SCOPED), Vec::<(String, String)>::new());
+    }
+
+    const SET_BY: &str = "
+entity todo.Todo
+    create owner_id
+    read owner_id
+    update owner_id
+
+field todo.Todo.created_at
+    generated
+
+field todo.Todo.reference
+    read owner_id
+    immutable
+";
+
+    #[test]
+    fn letting_callers_set_a_field_the_store_sets_or_that_never_changes_needs_a_person() {
+        // `generated:` gone from a field that is still there (chunk 10.4b).
+        assert_eq!(
+            widenings(
+                SET_BY,
+                &SET_BY.replace("field todo.Todo.created_at\n    generated\n\n", "")
+            ),
+            pairs(&[("todo.Todo.created_at", "PolicyChange.restriction_removed")])
+        );
+        // `immutable: true` gone, its own `read:` kept.
+        assert_eq!(
+            widenings(SET_BY, &SET_BY.replace("    immutable\n", "")),
+            pairs(&[("todo.Todo.reference", "PolicyChange.restriction_removed")])
+        );
+        // A field removed altogether widens nothing.
+        assert_eq!(
+            widenings_where(
+                SET_BY,
+                &SET_BY.replace("field todo.Todo.created_at\n    generated\n\n", ""),
+                &|field| field != "todo.Todo.created_at"
+            ),
+            Vec::<(String, String)>::new()
+        );
+        // A field newly generated or immutable narrows.
+        assert_eq!(
+            widenings(&SET_BY.replace("    immutable\n", ""), SET_BY),
+            Vec::<(String, String)>::new()
+        );
     }
 
     #[test]

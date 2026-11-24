@@ -4,4 +4,11 @@ record access 1
 entity lending.Book
 entity lending.Card
 entity lending.Loan
+
+field lending.Loan.changed_at
+    generated
+
 entity lending.Member
+
+field lending.Member.joined_at
+    generated

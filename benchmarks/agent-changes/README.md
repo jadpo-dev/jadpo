@@ -156,6 +156,17 @@ only once Jadpo is frozen: `run` refuses a held-out change without
 `--frozen <jadpo revision>`, which must be the revision checked out. A
 gain found while tuning then shows on changes it was never tuned on.
 
+**Fresh, for the after.** Roadmap chunk 10.4 added a third set, `fresh`
+(N01 to N12), written before any of it was measured and without reading
+the fixes it measures. Each change crosses a rule kept elsewhere in the
+app: owner scoping in an export or a bulk action, deleted todos in a count,
+fields only the server sets, reminder state on a copy, and personal data in
+logs. Two of its tests read the app's log lines, through the drivers' `logs`
+op: the native driver records every event the runtime logs, and the
+TypeScript controller its logger's events and anything written to the
+console. `fresh` runs like `held-out`, against a frozen Jadpo, and on more
+than one Codex model (`--model`).
+
 **Tuning runs are staged.** One session at a time. After each, `stumbles`
 reads where it got stuck: every failing check or test run and its error
 IDs, errors seen more than twice, the docs read before each recovery, the
@@ -259,7 +270,9 @@ enough to know its pinned model: `claude` on `PATH` (`claude auth status`
 in a plain terminal), or `codex` on `PATH` or in the ChatGPT app, signed in
 with ChatGPT (`~/.codex/auth.json`). A Codex run needs a PostgreSQL of its
 own, so `JADPO_TEST_DATABASE_URL` must be unset; its sandbox reaches the
-database through a Unix socket in the run's folder. A run whose session
+database through a Unix socket in the run's folder. The TypeScript copy's `AGENTS.md`
+gains an "In this environment" section saying that database is provided,
+since the app's own docs say its test runner starts one. A run whose session
 never reached the model is kept but left out of the summary. Runs can go
 side by side: each builds the contract's native driver into
 `target/agent-changes/` under a lock and keeps its own copy. Copies live under `~/.cache/jadpo-agent-changes/`
