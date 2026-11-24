@@ -487,7 +487,14 @@ impl Formatter {
                 (i > 0 && first.is_some_and(|t| blank_before(&t)), item)
             })
             .collect();
-        if let Some(order) = Order::of(node) {
+        // A declaration written inside the braces keeps its place: moved
+        // after a member, it would join that member's line and read as
+        // part of it.
+        if let Some(order) = Order::of(node)
+            && !placed
+                .iter()
+                .any(|(_, item)| ends_block_on_new_line(node, item))
+        {
             placed.sort_by_key(|(_, item)| order.rank(item));
         }
         let mut body = Vec::new();

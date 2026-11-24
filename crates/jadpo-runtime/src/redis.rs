@@ -1042,6 +1042,14 @@ async fn listed(
                 None => None,
             };
             let found = holding(ctx, store, json, entity, keyed, value, None, limit, site).await?;
+            // `limit: every` asked for one more than the most (area 6,
+            // "Every record that matches").
+            if plan
+                .every
+                .is_some_and(|most| crate::read::too_many(found.len(), most))
+            {
+                return Err(crate::read::too_many_records(ctx, plan, site));
+            }
             Ok(Found::Value(Value::list(
                 found
                     .into_iter()
@@ -1887,6 +1895,7 @@ mod tests {
                 element: Element::Record,
                 limit: None,
             })),
+            every: None,
         }
     }
 

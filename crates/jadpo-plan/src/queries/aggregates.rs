@@ -91,6 +91,8 @@ impl Planner<'_> {
                 let source = self.source(value)?;
                 Some(statement.param(source, SqlType::Int8))
             }
+            // `query` reads `every` as one more than the most first.
+            Some(Bound::Every) => return None,
             None => None,
         };
         // The grouped rows' columns, then the outer statement's, each
@@ -176,6 +178,7 @@ impl Planner<'_> {
                 decided,
                 gate: self.query_gate(&query.name),
                 redis: None,
+                every: None,
             },
             records: None,
         })

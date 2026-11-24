@@ -57,6 +57,11 @@ pub enum FaultKind {
     /// and `next` what to change. The program's own mistake, since only
     /// the runtime makes a `File`, from what the action gave `put`.
     FileRefused { why: String, next: String },
+    /// More records matched a query's `limit: every` than it reads, the
+    /// most (area 6, "Every record that matches"): the read gives none
+    /// back rather than a list cut short, and the operation ends as a
+    /// defect does, its writes undone.
+    TooManyRecords { most: u64 },
     /// A crash `jadpo test` made at a step of an action with several
     /// changing calls (area 13; chunk 7.5d): the run stops as a process
     /// that died would, nothing it wrote kept, and what ran it starts it
@@ -95,6 +100,7 @@ impl FaultKind {
             | FaultKind::ClockBackward
             | FaultKind::RecursionLimit
             | FaultKind::DeadlineExceeded
+            | FaultKind::TooManyRecords { .. }
             | FaultKind::Crashed => None,
         }
     }
@@ -115,6 +121,7 @@ impl FaultKind {
             FaultKind::Diverged(_) => "diverged",
             FaultKind::Crashed => "crashed",
             FaultKind::FileRefused { .. } => "file_refused",
+            FaultKind::TooManyRecords { .. } => "too_many_records",
             FaultKind::Defect(_) | FaultKind::Store(_) | FaultKind::Provider(_) => "internal_fault",
         }
     }

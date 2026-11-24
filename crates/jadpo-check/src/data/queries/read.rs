@@ -342,7 +342,12 @@ impl<'a> Reader<'a> {
         };
         let limit = match (cardinality, sections.first.get("limit")) {
             (Cardinality::List, Some(member)) => {
-                self.bound(&scope, member.value(), member, "limit")
+                let at = if nearest_written.is_some() {
+                    BoundAt::Nearest
+                } else {
+                    BoundAt::List
+                };
+                self.bound(&scope, member.value(), member, at)
             }
             _ => None,
         };
@@ -765,8 +770,11 @@ impl<'a> Reader<'a> {
                 "Add `order: [<Entity>.<field> asc]`".to_string(),
             ),
             "limit" => (
-                "Every list is bounded: `limit:` is a number, or a value whose type has a `max:`.".to_string(),
-                "Add `limit: <number>`, or return `Page<T>` to read it a page at a time".to_string(),
+                format!(
+                    "Every list is bounded: `limit:` is a number, a value whose type has a `max:`, or `every`, for every record that matches, up to {}.",
+                    jadpo_std::read::thousands(jadpo_std::read::EVERY_MOST)
+                ),
+                "Add `limit: every` for every record that matches, `limit: <number>` for at most that many, or return `Page<T>` to read it a page at a time".to_string(),
             ),
             "geometry" => (
                 "A map layer's features each hold one geometry, the stored field `geometry:` names, with their properties filled from the record's other fields.".to_string(),

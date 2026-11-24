@@ -755,6 +755,25 @@ pub struct PageRead {
     pub tag: u64,
 }
 
+/// The most records `limit: every` reads (area 6, "Every record that
+/// matches"): when more match, the read gives none back and the runtime
+/// raises the fault `too_many_records`, never a list cut short.
+pub const EVERY_MOST: u64 = 10_000;
+
+/// `n` with a comma between each three digits, as messages write a count:
+/// `10,000`.
+pub fn thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (at, digit) in digits.chars().enumerate() {
+        if at > 0 && (digits.len() - at).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
+
 /// A read: a query, or an entity's `get`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ReadPlan {
@@ -792,6 +811,12 @@ pub struct ReadPlan {
     /// which then runs nothing.
     #[serde(default)]
     pub redis: Option<Box<crate::redis::RedisRead>>,
+    /// For a list with `limit: every` (area 6, "Every record that
+    /// matches"): the most it holds, [`EVERY_MOST`]. Its statement asks
+    /// for one more, and finding that many is the fault
+    /// `too_many_records`.
+    #[serde(default)]
+    pub every: Option<u64>,
 }
 
 impl ReadPlan {

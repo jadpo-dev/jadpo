@@ -35,9 +35,9 @@ use jadpo_sql::form::Held;
 use jadpo_sql::statement::{self as text, After, Order};
 use jadpo_std::Op;
 use jadpo_std::read::{
-    Cardinality, Check, Column, EnvelopePart, Field, FieldRules, IncludeRead, IncludeShape,
-    MissingPlan, MissingValue, Operand, PageRead, Param, ReadPlan, Recheck, RecheckOrder, Record,
-    RowVersions, Select, SensitiveRead, Size, Source, SqlType,
+    Cardinality, Check, Column, EVERY_MOST, EnvelopePart, Field, FieldRules, IncludeRead,
+    IncludeShape, MissingPlan, MissingValue, Operand, PageRead, Param, ReadPlan, Recheck,
+    RecheckOrder, Record, RowVersions, Select, SensitiveRead, Size, Source, SqlType,
 };
 
 use crate::constant::Constant;
@@ -392,6 +392,16 @@ impl Planner<'_> {
     // --- queries -----------------------------------------------------------------
 
     pub fn query(&mut self, query: &QueryModel) -> Option<QueryPlan> {
+        // `limit: every` (area 6, "Every record that matches") reads one
+        // more than the most it gives, so the runtime knows when more
+        // match, on PostgreSQL and in Redis alike.
+        if query.limit == Some(Bound::Every) {
+            let mut asked = query.clone();
+            asked.limit = Some(Bound::Literal(EVERY_MOST + 1));
+            let mut plan = self.query(&asked)?;
+            plan.read.every = Some(EVERY_MOST);
+            return Some(plan);
+        }
         // A query of an entity kept in Redis runs no statement (chunk Q10).
         if let Some(entity) = self.model.entity(&query.entity)
             && entity.redis
@@ -598,6 +608,8 @@ impl Planner<'_> {
                 let source = self.source(value)?;
                 Some(statement.param(source, SqlType::Int8))
             }
+            // Read above as one more than the most.
+            (Some(Bound::Every), _) => return None,
             (None, _) => None,
         };
         // The statement with its policy, and without, which a test's call
@@ -770,6 +782,7 @@ impl Planner<'_> {
                 decided: None,
                 gate,
                 redis: None,
+                every: None,
             },
         })
     }
@@ -907,7 +920,8 @@ impl Planner<'_> {
                             let source = self.source(value)?;
                             statement.param(source, SqlType::Int8)
                         }
-                        None => return None,
+                        // The checker refuses `every` on an include.
+                        Some(Bound::Every) | None => return None,
                     };
                     // The outer statement gives the key, then each of the
                     // inner columns but the first, which is the key again.
@@ -933,6 +947,7 @@ impl Planner<'_> {
                     limit: match &include.limit {
                         Some(Bound::Literal(n)) => Some(Size::Fixed(*n)),
                         Some(Bound::Value(value)) => Some(Size::From(self.source(value)?)),
+                        Some(Bound::Every) => return None,
                         None => None,
                     },
                 })
@@ -1497,6 +1512,7 @@ impl Planner<'_> {
             decided: None,
             gate: None,
             redis: None,
+            every: None,
         };
         Some(EntityPlan {
             key,

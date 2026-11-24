@@ -1339,6 +1339,7 @@ mod tests {
             decided: None,
             gate: None,
             redis: None,
+            every: None,
         };
         let records = RecordRead {
             entity: "Note".into(),

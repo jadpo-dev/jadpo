@@ -66,6 +66,9 @@ fn the_reviews_reproducers_format_safely() {
         // example found: on a line of its own its keyword would end the
         // block, so it stays on the brace's line.
         "/// When an order was placed.\ntype OrderedAt = Instant {type OrderedAt = Instant { }\n}\n",
+        // The same inside an entity, whose members are put in order: the
+        // declaration keeps its place rather than join a field's line.
+        "entity Draft {entity Draft {\n    id: Uuid\n}\n\n    id: Uuid\n\n}",
     ] {
         assert_eq!(holds(text), Ok(()), "{text}");
     }

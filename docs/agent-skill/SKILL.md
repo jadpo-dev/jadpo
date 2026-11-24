@@ -83,6 +83,18 @@ need a value per deployment is moved with `jadpo config move <constant>`,
 which makes it a setting and rewrites every read to `config.<name>`. Don't
 move it by hand. The reasons are in https://jadpo.dev/docs/constants.md.
 
+## All of the records
+
+When a request means every record that matches, such as "export all my
+todos" or "clear all my completed todos", the query's bound is
+`limit: every`: every match, up to 10,000, in one list. Don't ask your
+user for a number. When more than 10,000 match, the query gives none of
+them and the action stops with a fault, so nothing is cut short or half
+changed. A change to every match is that query and a `for` loop of
+writes in one action. Use `Page<T>` or a batch only when the request
+says to page or the set can grow past 10,000. The details are in
+https://jadpo.dev/docs/every-record-that-matches.md.
+
 ## Working beside other agents
 
 When other agents work on the same project at the same time, each in its
