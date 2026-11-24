@@ -368,7 +368,11 @@ Jadpo). Its front matter has a `name`, `jadpo`, and a one-line
 first and find pages through a guide or a group of the reference; to read
 the catalogues before adding code and run `jadpo impact` before changing
 anything shared; to run `jadpo check --json` and `jadpo test --json` and
-read the error document and what `(agent)` and `(human)` mean; to make a
+read the error document and what `(agent)` and `(human)` mean; to stop
+for the owner only at a `(human)` step or an acceptance, choosing and
+writing down a reading of whatever else a request leaves open, and leaving
+the project passing `check` and `test` before a stop; to ask
+before an acceptance and write the owner's own words as its reason; to make a
 fixed value a constant or a setting, never both; to merge `main` and check
 before pushing when agents work in parallel; and to report a bug in Jadpo
 through the user, as "Using Jadpo" in `AGENTS.md` says ([Tools for

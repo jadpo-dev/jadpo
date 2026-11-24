@@ -33,7 +33,7 @@ error: removing an output field can break clients: main.BookView.author
 21 | output BookView
    | ^^^^^^^^^^^^^^^ ApiChange.output_field_removed
   reason: Clients that read it find it gone. So a person accepts it: no acceptance this change adds lists `main.BookView.author: ApiChange.output_field_removed`.
-  next: Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason (human)
+  next: Stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` writes it, and its reason quotes their words (human)
   rule: acceptance.missing
   help: https://jadpo.dev/docs/errors/acceptance.missing
 
@@ -55,7 +55,7 @@ error: a connection that can't erase the personal data it receives needs a perso
 9 |         couriers: {
   |         ^^^^^^^^ ErasureNotPossible.data_stays
   reason: Erasing a person asks each provider that holds their data to erase it, and this one can't be asked. Here: connection `couriers` keeps `User.email` after a person is erased: `AcmeCouriers.v1` declares no `erasure:`. So a person says why the data stays: no acceptance lists `couriers: ErasureNotPossible.data_stays`.
-  next: Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason (human)
+  next: Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` writes it, and its reason quotes their words (human)
   rule: acceptance.missing
   help: https://jadpo.dev/docs/errors/acceptance.missing
 
@@ -79,8 +79,10 @@ The API record matches the default branch's again, so there is nothing
 to accept and the check passes.
 
 **If it should**, that is your user's decision, so an agent stops and
-asks them, and never writes an acceptance on its own. Once they agree,
-an agent may draft it:
+asks them, saying what the change allows and for whom, and never writes
+an acceptance on its own. A general go-ahead isn't agreement. Once they
+agree to this change, in their answer or in a request that asks in so
+many words for what it does, the agent drafts it:
 
 ```sh
 jadpo acceptance new remove_book_author
@@ -92,15 +94,16 @@ Wrote acceptances/20261020T1400_remove_book_author.jadpo
 
 decision: 1 change waits for a person's reason
  --> acceptances/20261020T1400_remove_book_author.jadpo:1
-  next: Stop and hand over: a person reads the changes and writes why they are accepted on a `///` line above `acceptance`. (human)
+  next: Write your user's own words agreeing to these changes on a `///` line above `acceptance`, with who said them and where; without their agreement, stop and ask them. (human)
 ```
 
 The draft lists every change this branch makes that needs a person, each
-as `subject: Kind.change`. Then the agent stops, because `jadpo check`
-fails with [`acceptance.no_reason`](../errors/acceptance.no_reason.md)
-until a person writes why on the `///` line above `acceptance`, such
-as "No client reads a book's author: the catalogue pages stopped showing
-it in version 2."
+as `subject: Kind.change`. `jadpo check` fails with
+[`acceptance.no_reason`](../errors/acceptance.no_reason.md) until the
+`///` line above `acceptance` holds the user's own words agreeing to it,
+with who said them and where, such as `/// Ana Ruiz (catalogue owner),
+in chat on 2026-10-20: "No client reads a book's author."` The agent
+writes what they said, never a reason of its own.
 
 Once the reason is written, `jadpo check` passes. The acceptance is
 committed with the change, and the pull request's review is where an

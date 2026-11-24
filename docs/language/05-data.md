@@ -2547,7 +2547,7 @@ Wrote database/migrations/20261020T1402_drop_legacy_flag/
     changes.jadpo  every decision made
 
 decision: 1 change waits for a person's acceptance
-  next: Stop and ask your user whether to accept it; if they agree, `jadpo acceptance new <purpose>` prepares one for them. (human)
+  next: Stop and ask your user whether to accept it; once they agree, `jadpo acceptance new <purpose>` writes one, and its reason quotes their words. (human)
 ```
 
 Its `changes.jadpo` says the same, `Todo.legacy_flag: FieldChange.dropped`,

@@ -1659,6 +1659,10 @@ the line's other entries: anyone signed in, or a role held across the
 whole application. With none left, it refuses every caller, so its route
 is `policy.effect_ungranted`.
 
+A change that matches no record when it runs changes nothing, so no line
+and no grant is checked
+([A change that may match nothing](#a-change-that-may-match-nothing)).
+
 ### A call the listing doesn't cover
 
 Because a called action keeps its own grants, a listed action can call
@@ -2113,9 +2117,10 @@ its `update:`, or its `immutable: true` or `generated:` removed.
 An output type has one shape for everyone. If anyone allowed to call a
 query can't read one of its output fields, the query doesn't compile
 (`policy.output_field_unproved`). The fix is a second query with a
-narrower output. The same holds for a record a query includes through a
-reference: everyone who may read the record must be able to read what it
-refers to.
+narrower output, or, for what only some roles see, a record of its own
+([Fields shown by role](#fields-shown-by-role)). The same holds for a
+record a query includes through a reference: everyone who may read the
+record must be able to read what it refers to.
 
 Who may read a value is proved from the grants alone, not from the data.
 Two records that each refer to a company may refer to different
@@ -2428,6 +2433,591 @@ subscribers are server work, so `emit` stores nothing a caller reads.
 What a subscriber stores from an event is checked where it stores it
 ([Subscribers](12-jobs-and-events.md#subscribers)). What a log holds is
 covered by log redaction in [Personal data](15-personal-data.md).
+
+## Fields shown by role
+<!-- topic: fields-shown-by-role -->
+
+Policy filters records by their `read:` grants, so a list can carry
+something only some callers may see. Keep that part on a record of its
+own whose `read:` names only them, read it with a query of its own, and
+give the output a field `T?` for it: everyone who may see the record gets
+it, and everyone else gets `none`. Here a company's projects are listed
+to all its members, and each project's customer, with their email, only to
+owners and editors.
+
+The `Company`, its `CompanyRole` and the memberships that hold roles are as
+in [Policy, end to end](#policy-end-to-end). A customer is a record of its
+own, which viewers may not read at all:
+
+```jadpo check project=roles-in-practice file=app.jadpo hidden
+use work/entities { Member }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+```
+
+```jadpo check project=roles-in-practice file=authentication.jadpo hidden
+authentication {
+    browser_session: {
+        cookie: "studio_session"
+    }
+}
+```
+
+```jadpo check project=roles-in-practice file=policy.jadpo hidden
+use work/entities { Company }
+use work
+
+policy {
+    tenant: Company
+    actions: {
+        work.found_company: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/types/handle.jadpo hidden
+type Handle = Text {
+    min_length: 3
+    max_length: 40
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/types/company_name.jadpo hidden
+type CompanyName = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/types/company_role.jadpo hidden
+/// What a member may do in a company.
+type CompanyRole = Enum {
+    owner
+    editor
+    viewer
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/types/project_name.jadpo hidden
+type ProjectName = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/types/customer_name.jadpo hidden
+type CustomerName = Text {
+    min_length: 1
+    max_length: 120
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/failures/handle_taken.jadpo hidden
+type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/entities/member.jadpo hidden
+use work/types { Handle }
+
+/// Someone who signs in.
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/entities/company.jadpo hidden
+use work/types { CompanyName, CompanyRole }
+
+/// A customer: the tenant every other record belongs to.
+entity Company {
+    id: Uuid
+    name: CompanyName
+
+    policy: {
+        read: [CompanyRole.owner, CompanyRole.editor, CompanyRole.viewer]
+    }
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/entities/company_membership.jadpo hidden
+use work/entities { Company, Member }
+use work/types { CompanyRole }
+
+/// A member's role in a company.
+entity CompanyMembership {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    member_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+    role: CompanyRole
+
+    membership: {
+        scope: company_id
+        member: member_id
+        role: role
+    }
+
+    policy: {
+        create: [CompanyRole.owner]
+        read: [CompanyRole.owner, member_id]
+        delete: [CompanyRole.owner, member_id]
+    }
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/actions/register.jadpo hidden
+use work/entities { Member }
+use work/types { Handle }
+use work/failures { HandleTaken }
+
+/// Signs a new member up; anyone may.
+action register(handle: Handle) fails HandleTaken -> Member {
+    return attempt Member.create {
+        set: {
+            handle: handle
+        }
+        conflict: {
+            Member.handle: HandleTaken
+        }
+    }
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/actions/found_company.jadpo hidden
+use work/entities { Company, CompanyMembership }
+use work/types { CompanyName, CompanyRole }
+
+/// Starts a company with its founder as its owner.
+action found_company(name: CompanyName, founder: Principal.user) -> Company {
+    var company: Company = Company.create {
+        set: {
+            name: name
+        }
+    }
+    var owner: CompanyMembership = CompanyMembership.create {
+        set: {
+            company_id: company.id
+            member_id: founder.id
+            role: CompanyRole.owner
+        }
+    }
+    assert owner.role == CompanyRole.owner
+    return company
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/actions/add_member.jadpo hidden
+use work/entities { Company, CompanyMembership, CompanyNotFound, Member, MemberNotFound }
+use work/types { CompanyRole }
+
+/// Gives a member a role in a company; only its owners may.
+action add_member(
+    company_id: Company.id,
+    member_id: Member.id,
+    role: CompanyRole
+) fails CompanyNotFound, MemberNotFound -> CompanyMembership {
+    return attempt CompanyMembership.create {
+        set: {
+            company_id: company_id
+            member_id: member_id
+            role: role
+        }
+    }
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/entities/customer.jadpo
+use work/entities { Company }
+use work/types { CompanyRole, CustomerName }
+
+/// Who a project is for. Only a company's owners and editors see its
+/// customers.
+entity Customer {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    name: CustomerName
+    email: Email
+
+    policy: {
+        create: [CompanyRole.owner, CompanyRole.editor]
+        read: [CompanyRole.owner, CompanyRole.editor]
+    }
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/entities/project.jadpo hidden
+use work/entities { Company, Customer }
+use work/types { CompanyRole, ProjectName }
+
+/// A piece of work in a company, perhaps for a customer.
+entity Project {
+    id: Uuid
+    company_id: Company.id {
+        on_delete: OnDelete.cascade
+    }
+    name: ProjectName
+    archived: Bool
+    customer_id: Customer.id? {
+        on_delete: OnDelete.cleared
+    }
+
+    policy: {
+        create: [CompanyRole.owner, CompanyRole.editor]
+        read: [CompanyRole.owner, CompanyRole.editor, CompanyRole.viewer]
+        update: [CompanyRole.owner, CompanyRole.editor]
+        delete: [CompanyRole.owner]
+    }
+}
+```
+
+The row holds the customer's fields as `T?`, so it is one shape for
+everyone, as every output is:
+
+```jadpo check project=roles-in-practice file=domains/work/types/project_row.jadpo
+use work/entities { Customer, Project }
+
+/// A project in a company's list. Its customer's name and email are there
+/// only for those who may see the company's customers, and `none` for
+/// everyone else.
+type ProjectRow = Output {
+    pick: [Project.id, Project.name]
+    customer_name: Customer.name?
+    contact_email: Customer.email?
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/types/project_source.jadpo hidden
+use work/entities { Project }
+
+/// A project as the list reads it, with the customer it refers to.
+type ProjectSource = Object {
+    pick: [Project.id, Project.name, Project.customer_id]
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/types/customer_card.jadpo hidden
+use work/entities { Customer }
+
+/// What the list shows of a customer.
+type CustomerCard = Object {
+    pick: [Customer.id, Customer.name, Customer.email]
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/queries/projects_of.jadpo hidden
+use work/entities { Company, Project }
+use work/types { ProjectSource }
+
+/// A company's projects, by name.
+query projects_of(company_id: Company.id) -> List<ProjectSource> {
+    from: Project
+    where: Project.company_id == company_id
+    order: [Project.name asc]
+    limit: 100
+}
+```
+
+The customers come from a query of their own. For a viewer, policy keeps
+every customer out of it, so it gives an empty list rather than failing:
+
+```jadpo check project=roles-in-practice file=domains/work/queries/customers_of.jadpo
+use work/entities { Company, Customer }
+use work/types { CustomerCard }
+
+/// The company's customers the caller may see: none for a viewer.
+query customers_of(company_id: Company.id) -> List<CustomerCard> {
+    from: Customer
+    where: Customer.company_id == company_id
+    order: [Customer.name asc]
+    limit: every
+}
+```
+
+The action puts the two together, by each project's `customer_id`. It
+never asks for the caller's role: what policy let the caller read decides
+what each row holds.
+
+```jadpo check project=roles-in-practice file=domains/work/actions/project_list.jadpo
+use work/entities { Company, Customer }
+use work/types { CustomerCard, ProjectRow, ProjectSource }
+use work/queries { customers_of, projects_of }
+
+/// A company's projects, each with its customer for those who may see it.
+action project_list(company_id: Company.id) -> List<ProjectRow> {
+    var projects: List<ProjectSource> = projects_of(company_id)
+    var customers: List<CustomerCard> = customers_of(company_id)
+    var mut by_id: Map<Customer.id, CustomerCard> = []
+    for customer in customers {
+        by_id = map.with(by_id, customer.id, customer)
+    }
+    var mut rows: List<ProjectRow> = []
+    for project in projects {
+        var customer: CustomerCard? = match project.customer_id {
+            some(customer_id) -> map.get(by_id, customer_id)
+            none -> none
+        }
+        rows = list.append(
+            rows,
+            ProjectRow {
+                id: project.id
+                name: project.name
+                customer_name: match customer {
+                    some(found) -> found.name
+                    none -> none
+                }
+                contact_email: match customer {
+                    some(found) -> found.email
+                    none -> none
+                }
+            }
+        )
+    }
+    return rows
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/actions/project_list.test.jadpo
+use work/entities { Company, CompanyMembership, Customer, Member, Project }
+use work/types { CompanyRole, ProjectRow }
+use work/actions { add_member, found_company, register }
+
+test "a viewer sees each project without its customer" {
+    var ann: Member = attempt register("ann")
+    var bob: Member = attempt register("bob")
+    var northwind: Company = found_company("Northwind", Principal.user(ann))
+    var viewer: CompanyMembership = attempt add_member(northwind.id, bob.id, CompanyRole.viewer)
+    assert viewer.role == CompanyRole.viewer
+    var first_customer: Customer = make.Customer {
+        company_id: northwind.id
+        name: "Acme"
+        email: "buyer@first_customer.example"
+    }
+    var launch: Project = make.Project {
+        company_id: northwind.id
+        name: "Launch"
+        archived: false
+        customer_id: first_customer.id
+    }
+    var for_ann: Response = request {
+        method: HttpMethod.get
+        path: "/projects/{company_id}"
+        params: {
+            company_id: northwind.id
+        }
+        as: Principal.user(ann)
+    }
+    assert for_ann.output == [
+        ProjectRow {
+            id: launch.id
+            name: "Launch"
+            customer_name: "Acme"
+            contact_email: "buyer@first_customer.example"
+        }
+    ]
+    var for_bob: Response = request {
+        method: HttpMethod.get
+        path: "/projects/{company_id}"
+        params: {
+            company_id: northwind.id
+        }
+        as: Principal.user(bob)
+    }
+    assert for_bob.output == [
+        ProjectRow {
+            id: launch.id
+            name: "Launch"
+            customer_name: none
+            contact_email: none
+        }
+    ]
+}
+```
+
+A field restricted on the project itself, with its own `policy:`,
+can't be shown this way: a query whose callers include someone who may
+not read one of its output fields doesn't compile
+(`policy.output_field_unproved`). Put what only some roles see on a
+record of its own, as `Customer` is here.
+
+## A change that may match nothing
+<!-- topic: a-change-that-may-match-nothing -->
+
+Policy checks a change on each record it changes. A change to every
+listed record that matches nothing changes nothing, so nothing is checked:
+the action succeeds, writes nothing and says so. A caller who may not
+make the change still can't make it to any record, and learns nothing
+they couldn't read. So a bulk change needs no permission check of its
+own. A role check written by hand is refused: the role would decide what
+is stored, and is proved like a stored value
+(`policy.output_field_unproved`).
+
+Here archiving several of a company's projects at once is one query and
+a loop of updates. A viewer who lists a project gets 403 and nothing is
+archived, since the action is all-or-nothing. A viewer who lists none, or
+only projects that aren't there, gets `{"archived": 0}`:
+
+```jadpo check project=roles-in-practice file=domains/work/types/projects_to_archive.jadpo hidden
+use work/entities { Project }
+
+/// Which projects to archive.
+type ProjectsToArchive = Input {
+    project_ids: List<Project.id> {
+        max_length: 100
+    }
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/types/archived_count.jadpo hidden
+/// How many projects an archive changed.
+type ArchivedCount = Output {
+    archived: Int
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/queries/listed_projects.jadpo
+use work/entities { Company, Project }
+
+/// The listed projects that are in the company and not yet archived.
+query listed_projects(company_id: Company.id, project_ids: List<Project.id>) -> List<Project> {
+    from: Project
+    where: Project.company_id == company_id
+    where: Project.id in project_ids
+    where: Project.archived == false
+    order: [Project.name asc]
+    limit: 100
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/actions/archive_projects.jadpo
+use work/entities { Company, Project }
+use work/types { ArchivedCount, ProjectsToArchive }
+use work/queries { listed_projects }
+
+/// Archives each listed project of the company that isn't archived yet.
+action archive_projects(company_id: Company.id, input: ProjectsToArchive) -> ArchivedCount {
+    var found: List<Project> = listed_projects(company_id, input.project_ids)
+    for project in found {
+        Project.update(project) {
+            set: {
+                archived: true
+            }
+        }
+    }
+    return ArchivedCount {
+        archived: list.count(found)
+    }
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/routes/projects.jadpo hidden migrate=initial
+use work/entities { Company }
+use work/types { ArchivedCount, ProjectRow, ProjectsToArchive }
+use work/actions { archive_projects, project_list }
+
+/// A company's projects.
+routes Projects {
+    prefix: /projects
+
+    /// A company's projects, with their customers for those who may see them.
+    GET /{company_id: Company.id} {
+        output: List<ProjectRow>
+        run: project_list(company_id)
+    }
+
+    /// Archives several of a company's projects at once.
+    POST /{company_id: Company.id}/archive {
+        input: ProjectsToArchive
+        output: ArchivedCount
+        run: archive_projects(company_id, input)
+    }
+}
+```
+
+```jadpo check project=roles-in-practice file=domains/work/actions/archive_projects.test.jadpo
+use work/entities { Company, CompanyMembership, Member, Project }
+use work/types { ArchivedCount, CompanyRole, ProjectsToArchive }
+use work/actions { add_member, found_company, register }
+use work/queries { listed_projects }
+
+test "each project archived is checked, and an archive of none checks nothing" {
+    var ann: Member = attempt register("ann")
+    var bob: Member = attempt register("bob")
+    var northwind: Company = found_company("Northwind", Principal.user(ann))
+    var viewer: CompanyMembership = attempt add_member(northwind.id, bob.id, CompanyRole.viewer)
+    assert viewer.role == CompanyRole.viewer
+    var launch: Project = make.Project {
+        company_id: northwind.id
+        name: "Launch"
+        archived: false
+        customer_id: none
+    }
+    var by_bob: Response = request {
+        method: HttpMethod.post
+        path: "/projects/{company_id}/archive"
+        params: {
+            company_id: northwind.id
+        }
+        as: Principal.user(bob)
+        input: ProjectsToArchive {
+            project_ids: [launch.id]
+        }
+    }
+    assert by_bob.status == 403
+    assert list.count(listed_projects(northwind.id, [launch.id])) == 1
+    var none_by_bob: Response = request {
+        method: HttpMethod.post
+        path: "/projects/{company_id}/archive"
+        params: {
+            company_id: northwind.id
+        }
+        as: Principal.user(bob)
+        input: ProjectsToArchive {
+            project_ids: []
+        }
+    }
+    assert none_by_bob.status == 200
+    assert none_by_bob.output == ArchivedCount {
+        archived: 0
+    }
+    var by_ann: Response = request {
+        method: HttpMethod.post
+        path: "/projects/{company_id}/archive"
+        params: {
+            company_id: northwind.id
+        }
+        as: Principal.user(ann)
+        input: ProjectsToArchive {
+            project_ids: [launch.id]
+        }
+    }
+    assert by_ann.output == ArchivedCount {
+        archived: 1
+    }
+}
+```
 
 ## The permissions report
 <!-- topic: the-permissions-report -->

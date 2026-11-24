@@ -198,6 +198,18 @@ impl Transaction for Tx {
         Box::pin(async move { done })
     }
 
+    fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.batch(crate::SAVEPOINT)
+    }
+
+    fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.batch(crate::RELEASE_SAVEPOINT)
+    }
+
+    fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.batch(crate::ROLLBACK_TO_SAVEPOINT)
+    }
+
     fn commit(mut self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
         self.ended = true;
         let mut state = self.store.0.borrow_mut();

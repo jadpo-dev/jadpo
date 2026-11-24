@@ -93,22 +93,21 @@ pub trait Transaction {
 
     /// Marks where the transaction returns to if the action about to run
     /// fails: one whose failure its caller handles and carries on from
-    /// (area 6).
-    fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
-        self.batch(SAVEPOINT)
-    }
+    /// (area 6). A store runs [`SAVEPOINT`] and keeps whatever bookkeeping
+    /// of its own a savepoint needs; a wrapper forwards all three savepoint
+    /// methods to what it wraps, never running the statements itself, or
+    /// the wrapped store's bookkeeping is skipped. None has a default, so
+    /// every implementor says which it does.
+    fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>>;
 
-    /// Forgets the latest savepoint: what ran after it stands.
-    fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
-        self.batch(RELEASE_SAVEPOINT)
-    }
+    /// Forgets the latest savepoint: what ran after it stands
+    /// ([`RELEASE_SAVEPOINT`]).
+    fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>>;
 
     /// Returns to the latest savepoint and forgets it: everything after
     /// it, a refused statement among them, is undone, and the transaction
-    /// carries on.
-    fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
-        self.batch(ROLLBACK_TO_SAVEPOINT)
-    }
+    /// carries on ([`ROLLBACK_TO_SAVEPOINT`]).
+    fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>>;
 
     fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>>;
     fn rollback(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>>;
@@ -843,6 +842,18 @@ impl Transaction for NoTransaction {
 
     fn batch<'a>(&'a mut self, _sql: &'a str) -> LocalFuture<'a, Result<(), StoreError>> {
         Box::pin(async { Err(StoreError::Fault("no store holds any data".into())) })
+    }
+
+    fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.batch(SAVEPOINT)
+    }
+
+    fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.batch(RELEASE_SAVEPOINT)
+    }
+
+    fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.batch(ROLLBACK_TO_SAVEPOINT)
     }
 
     fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {

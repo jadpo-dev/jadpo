@@ -761,7 +761,7 @@ fn missing_acceptance(
                 format!("these as `{change}`")
             }
         ))
-        .next("Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason");
+        .next("Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` writes it, and its reason quotes their words");
     }
     Diagnostic::new(
         &rule::ACCEPTANCE_MISSING,
@@ -776,7 +776,7 @@ fn missing_acceptance(
             format!("these as `{change}`")
         }
     ))
-    .next("Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason")
+    .next("Stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` writes it, and its reason quotes their words")
 }
 
 /// The `decline` line a need for a declined security rule is about.
@@ -799,8 +799,8 @@ fn no_reason(acceptance: &files::Acceptance) -> Diagnostic {
         format!("`{}` has no reason", acceptance.path),
     )
     .at(acceptance.span.clone(), "no `///` reason above")
-    .reason("An acceptance records a person's decision, so only a person writes why, on a `///` line above `acceptance`.")
-    .next("Stop and ask your user why these changes are accepted, and never write the reason yourself; if they don't accept them, delete the draft and undo the changes")
+    .reason("An acceptance records a person's decision, so its reason is their own words, on a `///` line above `acceptance`, saying who gave them and where.")
+    .next("Write your user's own words agreeing to these changes as the reason, with who said them and where, and never a reason of your own; if they haven't agreed, stop and ask them, and if they don't accept, delete the draft and undo the changes")
 }
 
 fn unmatched(entry: &files::Entry, needs: &[Need]) -> Diagnostic {

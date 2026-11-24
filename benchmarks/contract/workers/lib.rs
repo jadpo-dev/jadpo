@@ -86,6 +86,18 @@ impl Transaction for Hooked {
     fn batch<'a>(&'a mut self, sql: &'a str) -> LocalFuture<'a, Result<(), StoreError>> {
         self.inner.batch(sql)
     }
+    fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.inner.savepoint()
+    }
+
+    fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.inner.release_savepoint()
+    }
+
+    fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.inner.rollback_to_savepoint()
+    }
+
     fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
         self.inner.commit()
     }

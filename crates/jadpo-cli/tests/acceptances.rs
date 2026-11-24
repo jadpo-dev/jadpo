@@ -455,7 +455,7 @@ fn next_steps(root: &Path) -> Vec<(String, String)> {
 fn an_acceptance_error_tells_an_agent_to_stop_and_ask() {
     let root = library("ask");
     change(&root);
-    let asked = "Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason";
+    let asked = "Stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` writes it, and its reason quotes their words";
     for (rule, next) in next_steps(&root) {
         assert_eq!(rule, "acceptance.missing");
         assert_eq!(next, asked);
@@ -468,7 +468,7 @@ fn an_acceptance_error_tells_an_agent_to_stop_and_ask() {
         next_steps(&root),
         [(
             "acceptance.no_reason".to_string(),
-            "Stop and ask your user why these changes are accepted, and never write the reason yourself; if they don't accept them, delete the draft and undo the changes".to_string()
+            "Write your user's own words agreeing to these changes as the reason, with who said them and where, and never a reason of your own; if they haven't agreed, stop and ask them, and if they don't accept, delete the draft and undo the changes".to_string()
         )]
     );
 }

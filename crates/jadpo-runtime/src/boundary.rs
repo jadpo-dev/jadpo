@@ -2168,6 +2168,18 @@ mod tests {
             Box::pin(async { Ok(()) })
         }
 
+        fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+            self.batch(crate::SAVEPOINT)
+        }
+
+        fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+            self.batch(crate::RELEASE_SAVEPOINT)
+        }
+
+        fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+            self.batch(crate::ROLLBACK_TO_SAVEPOINT)
+        }
+
         fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
             self.0.line("commit");
             Box::pin(async { Ok(()) })

@@ -168,6 +168,21 @@ impl Transaction for CountedTransaction {
         self.inner.batch(sql)
     }
 
+    fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.sent.set(self.sent.get() + 1);
+        self.inner.savepoint()
+    }
+
+    fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.sent.set(self.sent.get() + 1);
+        self.inner.release_savepoint()
+    }
+
+    fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.sent.set(self.sent.get() + 1);
+        self.inner.rollback_to_savepoint()
+    }
+
     fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
         self.inner.commit()
     }

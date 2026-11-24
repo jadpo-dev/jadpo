@@ -215,7 +215,6 @@ pub(crate) fn checked_before_as(
         match crate::before::read(&loaded.root, with, has_acceptances) {
             Ok(before) => {
                 loaded.set_before(before);
-                crate::before::judge_views(loaded, day);
                 Ok(())
             }
             Err(crate::before::UnknownRef(reference)) => Err(Box::new(Reply::failed(
@@ -248,7 +247,6 @@ pub(crate) fn judge_acceptances(call: &Call, loaded: &mut jadpo_db::Loaded) {
         || jadpo_check::acceptances::data::removes_data(&loaded.db, loaded.project);
     if let Ok(before) = crate::before::read(&loaded.root, None, has_acceptances) {
         loaded.set_before(before);
-        crate::before::judge_views(loaded, day);
     }
 }
 

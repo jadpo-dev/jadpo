@@ -68,6 +68,38 @@ error: `min:` has no value
 check failed: 1 error, 1 file
 ```
 
+A statement written as a `match` arm's result is this error too: an arm's
+result is a value, and a statement such as `assert` or `return` goes in a
+block. Its edit writes the block:
+
+main.jadpo:
+
+```jadpo check project=e-expression-arm expect=syntax.expected_expression
+type Note = Text {}
+
+function shown(note: Note?) -> Note {
+    match note {
+        some(found) -> return found
+        none -> {}
+    }
+    return ""
+}
+```
+
+```text output
+error: `return` starts a statement, and an arm's result is a value
+ --> main.jadpo:5:24
+  |
+5 |         some(found) -> return found
+  |                        ^^^^^^ a statement
+  reason: An arm's result is a value, `reject`, `propagate` or a block; a statement such as `return` goes inside the block.
+  next: Write the statement in a block: `some(found) -> { return found }` (agent)
+  rule: syntax.expected_expression
+  help: https://jadpo.dev/docs/errors/syntax.expected_expression
+
+check failed: 1 error, 1 file
+```
+
 ## How to fix it
 
 **If a variable has no value**, write it after `=`:
