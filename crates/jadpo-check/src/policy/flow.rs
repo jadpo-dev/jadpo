@@ -1980,10 +1980,11 @@ impl Walk<'_> {
                 self.decided_by(&subject);
                 // A binding names the one value the subject is: when that
                 // is a record some read gave, such as a list's first, it
-                // is the same record all through the arm.
+                // is the same record all through the arm. A list, a set
+                // or a map holds many, so never one.
                 let one = match at {
-                    Some(at) => self.item(at, &subject),
-                    None => subject.clone(),
+                    Some(at) if one_value(&self.body.site(at).ty) => self.item(at, &subject),
+                    _ => subject.clone(),
                 };
                 let mut out = Prov::default();
                 for arm in &arms {
@@ -2162,13 +2163,14 @@ impl Walk<'_> {
                 if self.report
                     && let (Some(at), Some(target)) = (at, &target)
                 {
-                    let by = if target.whole.iter().any(
-                        |src| matches!(src, Src::Record { entity: of, .. } if *of == entity),
-                    ) {
-                        target.field("id")
-                    } else {
-                        target.clone()
-                    };
+                    let by =
+                        if target.whole.iter().any(
+                            |src| matches!(src, Src::Record { entity: of, .. } if *of == entity),
+                        ) {
+                            target.field("id")
+                        } else {
+                            target.clone()
+                        };
                     self.lookup(flow, at, &by, &Finding::Changes(entity.clone()));
                 }
                 if let Some(transition) = &transition {
@@ -3665,6 +3667,16 @@ fn client_field(flow: &Flow<'_>, key: &Key) -> bool {
 /// Whether the type called `name` is an `Output`.
 /// A map layer's type as written, `FeatureCollection<Point, PinProperties>`,
 /// when `ty` is one (area 20).
+/// Whether a value of `ty` is one declared value, or none: a record, not
+/// a collection of them.
+fn one_value(ty: &TypeRef) -> bool {
+    match ty {
+        TypeRef::Nullable(inner) => one_value(inner),
+        TypeRef::Node(_) => true,
+        _ => false,
+    }
+}
+
 fn collection_type(ty: &TypeRef) -> Option<String> {
     match ty {
         TypeRef::Nullable(inner) => collection_type(inner),

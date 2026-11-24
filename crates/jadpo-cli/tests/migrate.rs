@@ -127,9 +127,7 @@ fn beside_another_error_the_migration_waits_for_it_and_says_so() {
     write(
         &root,
         TODO,
-        &format!(
-            "entity Todo {{\n    id: Uuid\n    title: Text\n    pinned: Bool?\n}}\n{broken}"
-        ),
+        &format!("entity Todo {{\n    id: Uuid\n    title: Text\n    pinned: Bool?\n}}\n{broken}"),
     );
     let pinned = jadpo(&root, &["check"]);
     assert_eq!(pinned.code, 1, "{}", pinned.stdout);
