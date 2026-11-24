@@ -120,12 +120,7 @@ D1 first: the site starts once D1 has merged.
 
 - [x] **10.2 How easily agents write Jadpo**: the method, changes and harness are in [agent-changes](../benchmarks/agent-changes/README.md).
 - [x] **10.3 Fix what the held-out runs found**: [Searching inside text](language/06-reads-and-writes.md#searching-inside-text), [Text](language/19-standard-library.md#text), and the decisions in the notes pages of areas 2, 9, 13 and 18.
-- [ ] **10.4 A fresh held-out comparison** `opus · high`: about 12 new
-  changes to the golden todo that nobody has seen results for, written
-  before 10.3's fixes are measured, with more tempting unsafe shortcuts
-  than 10.2's set. Several runs per cell on Codex and on at least one
-  cheaper model, on Jadpo frozen after 10.3. 10.2's held-out runs are the
-  "before"; this is the honest "after".
+- [x] **10.4 A fresh held-out comparison**: the fresh set and its method are in [agent-changes](../benchmarks/agent-changes/README.md).
 - [ ] **10.5 A mid-size app where rules live elsewhere** `opus · high`: a
   multi-tenant backend in both languages, about 8–10 entities, 40 or more
   routes, roles, a job and personal data, with the same hidden contract
