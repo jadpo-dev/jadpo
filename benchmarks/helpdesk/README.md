@@ -6,10 +6,6 @@ customer sees and **notes** only staff see, label tickets with **tags**,
 and keep saved answers as **macros**. A schedule flags tickets nobody
 answered in time.
 
-This is an ordinary Jadpo application with no compiler special case. Its
-twin in TypeScript, in [`typescript/`](typescript/README.md), answers every
-route the same way.
-
 ## Who may do what
 
 Everyone signs in as a `User`. A person belongs to a workspace through a

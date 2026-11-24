@@ -38,6 +38,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 GOLDEN = ROOT / 'benchmarks/golden-todo'
 TYPESCRIPT = GOLDEN / 'typescript'
+HELPDESK = ROOT / 'benchmarks/helpdesk'
 CONTRACT = ROOT / 'benchmarks/contract'
 RESULTS = HERE / 'results'
 WORK = Path(os.environ.get('JADPO_AGENT_WORK', Path.home() / '.cache/jadpo-agent-changes'))
@@ -45,6 +46,8 @@ sys.path[:0] = [str(HERE), str(CONTRACT)]
 
 import changes as change_set  # noqa: E402
 import contract  # noqa: E402
+import desk  # noqa: E402
+import desk_changes as desk_set  # noqa: E402
 import scoring  # noqa: E402
 from scoring import events  # noqa: E402
 
@@ -74,7 +77,7 @@ EXPECTED_UNTOUCHED = {'behaviour': {'failed', 'absent'}, 'safety': {'passed', 'a
 # Cases that need a real deployable; they run only for a change that asks for one.
 DEPLOYABLE_CASES = {'CONFIG-001', 'CONFIG-002'}
 
-PROMPT = '''You are working on the todo application in this directory.
+PROMPT = '''You are working on the {app} application in this directory.
 
 The product owner asks:
 
@@ -103,7 +106,24 @@ TUNING = ('F01', 'F03', 'F06', 'C03', 'C11', 'C14')
 # 10.2's held-out twelve, and 10.4's fresh twelve, written before any was measured.
 SETS = {'tuning': TUNING,
         'held-out': tuple(c.id for c in change_set.CHANGES if c.id not in TUNING and c.id not in change_set.FRESH),
-        'fresh': change_set.FRESH}
+        'fresh': change_set.FRESH,
+        'desk': tuple(desk_set.BY_ID)}
+
+# The apps a change is made to: the golden todo, and 10.5's helpdesk, whose
+# changes run five to a session (desk_changes.SESSIONS).
+APPS = {
+    'todo': {'jadpo': GOLDEN, 'typescript': TYPESCRIPT, 'noun': 'todo', 'withheld': JADPO_WITHHELD},
+    'desk': {'jadpo': HELPDESK, 'typescript': HELPDESK / 'typescript', 'noun': 'helpdesk',
+             'withheld': {'typescript', 'build', '.jadpo', 'target'}},
+}
+
+
+def app_of(change):
+    return 'desk' if change is not None and change.id in desk_set.BY_ID else 'todo'
+
+
+def change_by_id(identifier):
+    return desk_set.BY_ID.get(identifier) or change_set.BY_ID[identifier]
 
 
 def set_of(change_id):
@@ -396,9 +416,9 @@ def install_wrapper(folder, app, programs):
         wrapper.chmod(0o755)
 
 
-def jadpo_ignore(directory, names):
-    top = Path(directory).resolve() == GOLDEN.resolve()
-    return [n for n in names if (top and n in JADPO_WITHHELD) or n in {'build', '.jadpo', '__pycache__'}]
+def jadpo_ignore(directory, names, app='todo'):
+    top = Path(directory).resolve() == APPS[app]['jadpo'].resolve()
+    return [n for n in names if (top and n in APPS[app]['withheld']) or n in {'build', '.jadpo', '__pycache__'}]
 
 
 # What a TypeScript agent isn't told by the app's own docs, which say its
@@ -420,8 +440,9 @@ def prepare(change, language, folder, compiler):
         shutil.rmtree(folder)
     app = folder / 'app'
     (folder / 'tmp').mkdir(parents=True)
+    which = app_of(change)
     if language == 'jadpo':
-        shutil.copytree(GOLDEN, app, ignore=jadpo_ignore)
+        shutil.copytree(APPS[which]['jadpo'], app, ignore=lambda directory, names: jadpo_ignore(directory, names, which))
         bundle = folder / 'docs'
         subprocess.run([sys.executable, str(ROOT / 'tools/docs/language_docs.py'), '--bundle', str(bundle)], cwd=ROOT,
                        check=True, stdout=subprocess.DEVNULL)
@@ -430,7 +451,10 @@ def prepare(change, language, folder, compiler):
         (app / 'AGENTS.md').write_text(jadpo_agents_file(compiler, bundle))
         install_wrapper(folder, app, {'jadpo': compiler})
     else:
-        shutil.copytree(TYPESCRIPT, app, ignore=shutil.ignore_patterns(*TYPESCRIPT_SKIPPED))
+        shutil.copytree(APPS[which]['typescript'], app, ignore=shutil.ignore_patterns(*TYPESCRIPT_SKIPPED))
+        if which == 'desk':
+            # The product's description, which the Jadpo copy has as its README.
+            shutil.copy2(HELPDESK / 'README.md', app / 'PRODUCT.md')
         install_typescript(app)
         (app / 'AGENTS.md').write_text((app / 'AGENTS.md').read_text().rstrip('\n') + '\n' + TYPESCRIPT_SANDBOX_NOTE)
         install_wrapper(folder, app, {'npm': tool('npm'), 'npx': tool('npx')})
@@ -663,6 +687,8 @@ def visible_gate(language, app, environment):
 # Hidden tests ------------------------------------------------------------------
 
 def regression_cases(change):
+    if app_of(change) == 'desk':
+        return []  # the helpdesk's rule probes are among each change's own tests
     return [identifier for identifier in contract.CASES if identifier not in change.replaces
             and (change.deployable or identifier not in DEPLOYABLE_CASES)]
 
@@ -713,7 +739,7 @@ def execute(driver, change, routes, diff, secret_values, cases, pristine=False):
         reports = []
         for name, function, kind in ([(t.__name__, t, t.kind) for t in change.tests]
                                      + [(identifier, contract.CASES[identifier], 'regression') for identifier in cases]):
-            harness = contract.Contract(driver)
+            harness = (desk.Desk if app_of(change) == 'desk' else contract.Contract)(driver)
             harness.routes, harness.diff, harness.secrets = routes, diff, secret_values
             try:
                 harness.reset()
@@ -804,7 +830,8 @@ def hidden_typescript(app, change, work, server, diff, pristine=False):
     controller = None
     try:
         shutil.rmtree(app / 'adapter', ignore_errors=True)
-        shutil.copytree(TYPESCRIPT / 'adapter', app / 'adapter', ignore=shutil.ignore_patterns('__pycache__'))
+        shutil.copytree(APPS[app_of(change)]['typescript'] / 'adapter', app / 'adapter',
+                        ignore=shutil.ignore_patterns('__pycache__'))
         sys.modules.pop('support', None)
         runner = load('agent_typescript_run', app / 'adapter/run.py', app / 'adapter')
         runner.ROOT = ROOT
@@ -903,9 +930,127 @@ def run(change, language, number, label, settings, agent='claude', keep=False, f
 THINKING_FILE = scoring.THINKING_FILE
 
 
+# A session: several changes in one conversation --------------------------------
+
+def questions_text(app):
+    questions = app / 'QUESTIONS.md'
+    return questions.read_text().strip() if questions.is_file() else ''
+
+
+def thread_usage(transcript):
+    """Codex's usage for the whole thread so far, from its last turn."""
+    last = [json.loads(line) for line in transcript.read_text().splitlines() if '"turn.completed"' in line] \
+        if transcript.is_file() else []
+    return scoring.codex_usage(last[-1].get('usage') if last else {})
+
+
+def line_count(path):
+    return len(path.read_text(errors='replace').splitlines()) if path.is_file() else 0
+
+
+def tail_file(source, start, destination):
+    lines = source.read_text(errors='replace').splitlines(keepends=True) if source.is_file() else []
+    destination.write_text(''.join(lines[start:]))
+    return destination
+
+
+def run_session(name, language, number, label, settings, agent='codex', keep=False, frozen=None):
+    """One session's changes, one after another in the same conversation: the
+    first starts it and each later one resumes it, so what the first met has
+    scrolled back by the last. After each change the harness commits the app,
+    as a merge would, and scores that change on the app as it stands; at the
+    end every change of the session is scored again on the final app, which
+    shows a rule a later change broke. One result per change, as for a
+    single-change run, each with the session's name and its step."""
+    ids = desk_set.SESSIONS[name]
+    changes = [desk_set.BY_ID[i] for i in ids]
+    folder = WORK / label / run_name(name, language, number)
+    if agent not in AGENTS:
+        agent = stand_in(agent, language)
+    codex = agent == 'codex'
+    compiler = jadpo_binary()
+    app = prepare(changes[0], language, folder, compiler)
+    server = Server(folder / 'postgres', unix=folder / 'sock' if codex else None)
+    results = []
+    try:
+        database = server.create()
+        environment = agent_environment(folder, server.socket_url(database, language) if codex else server.url(database),
+                                        loopback=not codex)
+        if codex:
+            environment |= codex_environment(folder)
+        transcript = folder / 'transcript.jsonl'
+        calls = folder / 'tmp/jadpo-calls/calls.jsonl'
+        with codex_home(folder, settings, environment) if codex else contextlib.nullcontext():
+            identifier, spent, marks = None, scoring.codex_usage({}), []
+            for step, change in enumerate(changes, 1):
+                marks.append({'transcript': line_count(transcript), 'calls': line_count(calls),
+                              'rollout': line_count(folder / 'rollout.jsonl')})
+                before = questions_text(app)
+                timings = [session(agent, settings, task_prompt(change), app, folder, environment, transcript,
+                                   resume=identifier)]
+                identifier = identifier or session_id(transcript, codex, language)
+                asked = questions_text(app) not in ('', before)
+                minutes = settings['timeout_minutes'] - timings[0]['seconds'] / 60
+                if asked and minutes > 0 and identifier:
+                    timings.append(session(agent, settings, ANSWER.format(answer=change.owner_answer), app, folder,
+                                           environment, transcript, resume=identifier, minutes=minutes))
+                if codex:
+                    save_rollout(folder)
+                diff = final_diff(app)
+                git(app, '-c', 'user.name=harness', '-c', 'user.email=harness@example.invalid', 'commit', '-q',
+                    '--allow-empty', '-m', f'{change.id}: {change.title}')
+                visible = visible_gate(language, app, environment)
+                reports = hidden(language, app, change, folder / 'hidden' / change.id, server, compiler, diff)
+                mark = marks[-1]
+                step_folder = folder / 'steps' / run_name(change.id, language, number)
+                (step_folder / 'tmp/jadpo-calls').mkdir(parents=True, exist_ok=True)
+                step_transcript = tail_file(transcript, mark['transcript'], step_folder / 'transcript.jsonl')
+                tail_file(calls, mark['calls'], step_folder / 'tmp/jadpo-calls/calls.jsonl')
+                if codex:
+                    tail_file(folder / 'rollout.jsonl', mark['rollout'], step_folder / 'rollout.jsonl')
+                result = score(change, language, number, label, settings, step_transcript, diff, visible, reports, asked,
+                               timings, step_folder)
+                if codex:
+                    # Codex reports the thread's usage so far: the step is what it added.
+                    total = thread_usage(transcript)
+                    result['tokens'] = {key: max(0, total[key] - spent.get(key, 0)) for key in total}
+                    spent = total
+                result |= {'agent': agent_version(agent), 'set': 'desk', 'frozen': frozen, 'thinking': None,
+                           'session': name, 'step': step}
+                if codex:
+                    result['sandbox'] = codex_config(settings, folder, environment)
+                results.append(result)
+            # Every change again, on the app the whole session left.
+            final = final_diff(app)
+            for result, change in zip(results, changes):
+                kept = hidden(language, app, change, folder / 'hidden-final' / change.id, server, compiler, final)
+                tests = [r for r in kept if r['kind'] != 'regression']
+                result['kept_hidden'] = kept
+                result['kept'] = scoring.outcome(dataclasses.asdict(change) | {'tests': None}, tests, [], result['outcome']['asked'],
+                                                 result['outcome']['visible_green'], result['diff'])
+            if identifier and agent in AGENTS:
+                spent_all = thread_usage(transcript) if codex else {}
+                results[-1]['debrief'] = debrief(agent, settings, app, folder, environment, identifier, spent_all)
+    finally:
+        server.stop()
+    for result in results:
+        keep_raw(folder / 'steps' / run_name(result['change'], language, number), label, result)
+    # The whole conversation, beside its steps' results.
+    raw = RESULTS / label / 'sessions' / run_name(name, language, number)
+    raw.mkdir(parents=True, exist_ok=True)
+    for source in ['transcript.jsonl', 'rollout.jsonl', 'debrief.jsonl', 'agent.stderr']:
+        if (folder / source).is_file():
+            shutil.copy2(folder / source, raw / source)
+    if not keep:
+        for heavy in ['app/node_modules', 'app/build', 'hidden', 'hidden-final', 'postgres', 'bin', 'compiler', 'docs', 'tmp',
+                      'home', 'sock']:
+            shutil.rmtree(folder / heavy, ignore_errors=True)
+    return results
+
+
 def task_prompt(change):
     """The same prompt in both languages; tuning runs add the THINKING.md ask."""
-    return PROMPT.format(request=change.request) + (THINKING if change.id in TUNING else '')
+    return PROMPT.format(app=APPS[app_of(change)]['noun'], request=change.request) + (THINKING if change.id in TUNING else '')
 
 
 DEBRIEF_MINUTES = 10
@@ -967,7 +1112,8 @@ def keep_raw(folder, label, result):
 def contamination_markers():
     """What a tool call names only when it reaches for the repository or
     the contract. Not the bare `golden-todo`: both apps use it themselves."""
-    return [str(ROOT), 'LLM-coding', 'benchmarks/golden-todo', 'acceptance-v0.2', 'adversarial-changes']
+    return [str(ROOT), 'LLM-coding', 'benchmarks/golden-todo', 'acceptance-v0.2', 'adversarial-changes',
+            'benchmarks/helpdesk', 'desk_changes', 'parity-reference']
 
 
 def score(change, language, number, label, settings, transcript, diff, visible, reports, asked, timings, folder):
@@ -1027,16 +1173,17 @@ def command_list(_):
 
 
 def selected(values, which=None):
-    pool = [c for c in change_set.CHANGES if which is None or c.id in SETS[which]]
+    every = change_set.CHANGES + desk_set.CHANGES
+    pool = [c for c in every if (c.id in SETS[which] if which else c.id in change_set.BY_ID)]
     if not values:
         return pool
-    unknown = set(values) - set(change_set.BY_ID)
+    unknown = set(values) - set(change_set.BY_ID) - set(desk_set.BY_ID)
     if unknown:
         raise SystemExit('unknown change: ' + ', '.join(sorted(unknown)))
     outside = [v for v in values if v not in {c.id for c in pool}]
     if outside:
         raise SystemExit(f'not in the {which} set: ' + ', '.join(outside))
-    return [change_set.BY_ID[v] for v in values]
+    return [change_by_id(v) for v in values]
 
 
 def check_frozen(changes, frozen):
@@ -1102,6 +1249,36 @@ def command_run(args):
                 cost = 'subscription' if result['cost_usd'] is None else f'${result["cost_usd"]:.2f}'
                 print(f'{state}: {change.id} {language} r{number} · {cost} · '
                       f'{scoring.total(result["tokens"]):,} tokens · results/{label}/{path.name}')
+    command_summary(argparse.Namespace(label=label))
+
+
+def command_session(args):
+    """The helpdesk's sessions: each runs its five changes in one conversation."""
+    if args.agent in AGENTS and not args.spend:
+        raise SystemExit('agent sessions spend tokens; pass --spend once a maintainer has approved the runs')
+    settings = settings_for(args)
+    label = args.label or time.strftime('%Y%m%d-%H%M') + ('-dry' if args.dry else '')
+    languages = [args.language] if args.language else list(LANGUAGES)
+    numbers = [args.run] if args.run else list(range(1, args.runs + 1))
+    names = args.session or sorted(desk_set.SESSIONS)
+    unknown = set(names) - set(desk_set.SESSIONS)
+    if unknown:
+        raise SystemExit('unknown session: ' + ', '.join(sorted(unknown)))
+    if args.agent in AGENTS:
+        check_frozen([desk_set.BY_ID[i] for n in names for i in desk_set.SESSIONS[n]], args.frozen)
+    for number in numbers:
+        for name in names:
+            for language in languages:
+                path = RESULTS / label / 'sessions' / run_name(name, language, number)
+                if path.exists() and not args.again:
+                    print(f'kept: {path.name} (already run; --again reruns it)')
+                    continue
+                capacity()
+                for result in run_session(name, language, number, label, settings, args.agent, args.keep, args.frozen):
+                    state = 'correct' if result['outcome']['correct'] else 'incorrect'
+                    kept = 'kept' if result['kept']['correct'] else 'not kept'
+                    print(f'{state} ({kept}): {name} {result["change"]} {language} r{number} · '
+                          f'{scoring.total(result["tokens"]):,} tokens')
     command_summary(argparse.Namespace(label=label))
 
 
@@ -1325,10 +1502,11 @@ def command_calibrate(args):
     report = {}
     server = Server(WORK / label / 'postgres')
     try:
+        chosen = selected(args.change, args.set)
         for language in ([args.language] if args.language else LANGUAGES):
             folder = WORK / label / language
-            app = prepare(None, language, folder, compiler)
-            for change in selected(args.change):
+            app = prepare(chosen[0] if chosen else None, language, folder, compiler)
+            for change in chosen:
                 reports = hidden(language, app, change, folder / 'hidden' / change.id, server, compiler, '', pristine=True)
                 wrong = [r for r in reports if r['status'] not in EXPECTED_UNTOUCHED[r['kind']]]
                 report.setdefault(language, {})[change.id] = {'reports': reports, 'wrong': [r['name'] for r in wrong]}
@@ -1364,8 +1542,27 @@ def main(argv=None):
         sub.add_argument('--again', action='store_true')
         sub.add_argument('--keep', action='store_true', help='keep the run folder whole')
         sub.set_defaults(handler=command_run)
+    sub = commands.add_parser('session', help="the helpdesk's changes, five to a conversation")
+    sub.add_argument('--session', action='append', default=[], help='S1 or S2; both if left out')
+    sub.add_argument('--language', choices=LANGUAGES)
+    sub.add_argument('--run', type=int)
+    sub.add_argument('--runs', type=int, default=3)
+    sub.add_argument('--label')
+    sub.add_argument('--dry', action='store_true')
+    sub.add_argument('--model')
+    sub.add_argument('--effort')
+    sub.add_argument('--budget-usd', dest='budget_usd', type=float)
+    sub.add_argument('--timeout-minutes', dest='timeout_minutes', type=int)
+    sub.add_argument('--agent', default='codex', help='claude, codex, or a stand-in command (replay.py) for plumbing checks')
+    sub.add_argument('--spend', action='store_true', help='allow real agent sessions')
+    sub.add_argument('--frozen', metavar='REVISION', help='the frozen Jadpo revision the runs are against')
+    sub.add_argument('--again', action='store_true')
+    sub.add_argument('--keep', action='store_true', help='keep the run folder whole')
+    sub.set_defaults(handler=command_session)
+
     sub = commands.add_parser('calibrate')
     sub.add_argument('--change', action='append', default=[])
+    sub.add_argument('--set', choices=sorted(SETS), help='desk calibrates the helpdesk\'s changes')
     sub.add_argument('--language', choices=LANGUAGES)
     sub.add_argument('--label')
     sub.set_defaults(handler=command_calibrate)

@@ -18,7 +18,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-import changes  # noqa: E402
+import changes
+import desk_changes  # noqa: E402
 import harness  # noqa: E402
 import scoring  # noqa: E402
 
@@ -190,7 +191,7 @@ class Isolation(unittest.TestCase):
         self.assertIn('--spend', str(raised.exception))
 
     def test_prompt_shape_is_shared(self):
-        prompt = harness.PROMPT.format(request='Do X.')
+        prompt = harness.PROMPT.format(app='todo', request='Do X.')
         self.assertIn('> Do X.', prompt)
         self.assertNotIn('Jadpo', prompt)
         self.assertNotIn('TypeScript', prompt)
@@ -199,7 +200,8 @@ class Isolation(unittest.TestCase):
         tuning, held = changes.BY_ID[harness.TUNING[0]], changes.BY_ID[harness.SETS['held-out'][0]]
         self.assertIn('THINKING.md', harness.task_prompt(tuning))
         self.assertIn('not a deliverable', harness.task_prompt(tuning))
-        self.assertEqual(harness.task_prompt(held), harness.PROMPT.format(request=held.request))
+        self.assertEqual(harness.task_prompt(held), harness.PROMPT.format(app='todo', request=held.request))
+        self.assertIn('the helpdesk application', harness.task_prompt(desk_changes.BY_ID['H01']))
 
     def test_notes_are_not_part_of_the_diff(self):
         with tempfile.TemporaryDirectory() as scratch:
@@ -266,7 +268,7 @@ class Sets(unittest.TestCase):
         self.assertTrue(any(c.kind == 'feature' for c in tuning))
         self.assertEqual(len(harness.SETS['held-out']), 12)
         self.assertEqual(harness.SETS['fresh'], changes.FRESH)
-        sets = [set(ids) for ids in harness.SETS.values()]
+        sets = [set(ids) for name, ids in harness.SETS.items() if name != 'desk']
         self.assertEqual(sum(map(len, sets)), len(changes.CHANGES))
         self.assertEqual(set().union(*sets), set(changes.BY_ID))
         self.assertEqual(harness.set_of('N01'), 'fresh')
@@ -285,6 +287,51 @@ class Sets(unittest.TestCase):
         # Tuning changes need no frozen revision; the revision checked out is accepted for held-out ones.
         harness.check_frozen([changes.BY_ID[harness.TUNING[0]]], None)
         harness.check_frozen([changes.BY_ID[held]], harness.git(harness.ROOT, 'rev-parse', 'HEAD').strip())
+
+
+class Helpdesk(unittest.TestCase):
+    def test_each_change_runs_once_in_a_session_of_five(self):
+        ids = [i for session in desk_changes.SESSIONS.values() for i in session]
+        self.assertEqual(sorted(ids), sorted(desk_changes.BY_ID))
+        self.assertTrue(all(len(s) == 5 for s in desk_changes.SESSIONS.values()))
+        self.assertEqual(harness.set_of('H01'), 'desk')
+        self.assertEqual(harness.app_of(desk_changes.BY_ID['H01']), 'desk')
+        self.assertEqual(harness.app_of(changes.BY_ID['F01']), 'todo')
+        self.assertFalse(set(desk_changes.BY_ID) & set(changes.BY_ID))
+
+    def test_every_change_checks_the_rules_every_change_keeps(self):
+        for change in desk_changes.CHANGES:
+            with self.subTest(change.id):
+                self.assertTrue(set(desk_changes.PROBES) <= set(change.tests))
+                self.assertTrue(any(t.kind == 'behaviour' for t in change.tests))
+                self.assertTrue(any(t.kind == 'safety' and t not in desk_changes.PROBES for t in change.tests))
+                self.assertTrue(change.shortcut and change.detection and change.owner_answer)
+                self.assertEqual(harness.regression_cases(change), [])
+
+    def test_jadpo_copy_withholds_the_twin_and_keeps_the_product(self):
+        names = ['app.jadpo', 'README.md', 'typescript', 'domains', 'build']
+        ignored = harness.jadpo_ignore(str(harness.HELPDESK), names, 'desk')
+        self.assertEqual(set(names) - set(ignored), {'app.jadpo', 'README.md', 'domains'})
+        readme = (harness.HELPDESK / 'README.md').read_text()
+        self.assertNotIn('TypeScript', readme)
+        self.assertNotIn('Jadpo', readme)
+
+    def test_route_fill_uses_acme_ids(self):
+        self.assertEqual(desk_changes.fill('/tickets/{ticket_id}/tags/{tag_id}'),
+                         f'/tickets/{desk_changes.T_OPEN}/tags/{desk_changes.TAG_BILLING}')
+        self.assertEqual(desk_changes.fill('/workspaces/{id}/reports'), f'/workspaces/{desk_changes.ACME}/reports')
+        self.assertEqual(desk_changes.fill('/customers/:id/merge'), f'/customers/{desk_changes.CORA}/merge')
+
+    def test_sessions_need_spend_and_a_frozen_jadpo(self):
+        with self.assertRaises(SystemExit) as raised:
+            harness.main(['session', '--session', 'S1', '--agent', 'codex'])
+        self.assertIn('--spend', str(raised.exception))
+        with self.assertRaises(SystemExit) as raised:
+            harness.main(['session', '--session', 'S1', '--agent', 'codex', '--spend'])
+        self.assertIn('frozen', str(raised.exception))
+        with self.assertRaises(SystemExit) as raised:
+            harness.main(['session', '--session', 'S9', '--agent', 'codex', '--spend'])
+        self.assertIn('unknown session', str(raised.exception))
 
 
 class Codex(unittest.TestCase):
