@@ -1988,8 +1988,11 @@ A test never loads a seed: seeds change whenever the demo changes.
 A data builder makes one record with valid defaults, for a test that
 needs a record in a particular state. The compiler generates one for each
 entity: `make.Loan { title: "Middlemarch" }` fills every other field and
-goes through the real create operation, so the store's rules and policy
-apply as for any create. A builder may set any field that isn't
+goes through the real create operation, so the store's rules apply as for
+any create. It runs as the code around it: in a test with no caller, so
+without policy ([Calls with no caller](#calls-with-no-caller)), even on
+an entity whose `create:` grants no one, and in a fixture called with a
+caller, as that caller. A builder may set any field that isn't
 generated, including ones ordinary inputs don't accept, such as a field
 only a lifecycle's transitions change, so hard-to-reach states are easy
 to build.

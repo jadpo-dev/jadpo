@@ -878,6 +878,247 @@ fn policy_decides_what_each_caller_reads_writes_and_revokes() {
     );
 }
 
+/// A person no request may create, made by data builders in tests and in
+/// a fixture with no caller, so without policy (areas 9 and 13, "Calls
+/// with no caller"), beside a route that renames them, which policy still
+/// refuses another caller, before a builder and after one.
+pub(crate) const BUILDERS: &[(&str, &str)] = &[
+    (
+        "app.jadpo",
+        r#"use people/entities { User }
+
+application {}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+"#,
+    ),
+    (
+        "authentication.jadpo",
+        r#"authentication {
+    api_token: {}
+}
+"#,
+    ),
+    (
+        "domains/people/actions/rename_user.jadpo",
+        r#"use people/entities { User, UserNotFound }
+use people/types { Handle, UserView }
+
+/// What renaming a person takes.
+type RenameUser = Input {
+    name: Handle
+}
+
+/// Gives a person another name.
+action rename_user(user_id: User.id, input: RenameUser) fails UserNotFound -> UserView {
+    var user: User = attempt User.update(user_id) {
+        set: {
+            name: input.name
+        }
+    }
+    return UserView {
+        id: user.id
+        name: user.name
+    }
+}
+"#,
+    ),
+    (
+        "domains/people/entities/user.jadpo",
+        r#"use people/types { Handle }
+
+/// A person with an account, which no request creates. Anyone signed in
+/// may change a person's record, but only they may change their name.
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+    name: Handle {
+        policy: {
+            update: [id]
+        }
+    }
+
+    policy: {
+        read: [Access.authenticated]
+        update: [Access.authenticated]
+    }
+}
+"#,
+    ),
+    (
+        "domains/people/fixtures/account_named.jadpo",
+        r#"use people/entities { User }
+use people/types { Handle }
+
+/// Someone with an account called `handle`, made with no caller.
+fixture account_named(handle: Handle) -> User {
+    return make.User {
+        handle: handle
+        name: handle
+    }
+}
+"#,
+    ),
+    (
+        "domains/people/fixtures/seen_by.jadpo",
+        r#"use people/entities { User }
+
+/// The person `user_id` names, as `caller` reads them.
+fixture seen_by(user_id: User.id, caller: Principal.user) -> User {
+    return attempt User.get(user_id)
+}
+"#,
+    ),
+    (
+        "domains/people/routes/users.jadpo",
+        r#"use people/entities { User }
+use people/types { UserView }
+use people/actions { RenameUser, rename_user }
+
+routes Users {
+    prefix: /users
+
+    /// Renames a person: only they may.
+    PATCH /{user_id: User.id} {
+        input: RenameUser
+        output: UserView
+        run: rename_user(user_id, input)
+    }
+}
+"#,
+    ),
+    (
+        "domains/people/routes/users.test.jadpo",
+        r#"use people/entities { User }
+use people/actions { RenameUser }
+use people/fixtures { account_named, seen_by }
+
+test "a builder makes a person no request may create" {
+    var bea: User = make.User {
+        handle: "bea"
+    }
+    assert bea.handle == "bea"
+}
+
+test "a route may not rename someone else, after a builder or before one" {
+    var ann: User = make.User {
+        handle: "ann"
+    }
+    var cyd: User = make.User {
+        handle: "cyd"
+    }
+    var refused: Response = request {
+        method: HttpMethod.patch
+        path: "/users/{user_id}"
+        params: {
+            user_id: ann.id
+        }
+        input: RenameUser {
+            name: "Not Ann"
+        }
+        as: Principal.user(cyd)
+    }
+    assert refused.status == 403
+    var dee: User = make.User {
+        handle: "dee"
+    }
+    var again: Response = request {
+        method: HttpMethod.patch
+        path: "/users/{user_id}"
+        params: {
+            user_id: dee.id
+        }
+        input: RenameUser {
+            name: "Not Dee"
+        }
+        as: Principal.user(cyd)
+    }
+    assert again.status == 403
+    var renamed: Response = request {
+        method: HttpMethod.patch
+        path: "/users/{user_id}"
+        params: {
+            user_id: ann.id
+        }
+        input: RenameUser {
+            name: "Anna"
+        }
+        as: Principal.user(ann)
+    }
+    assert renamed.status == 200
+}
+
+test "a builder after a call with a caller runs without one" {
+    var ann: User = account_named("ann")
+    var seen: User = seen_by(ann.id, Principal.user(ann))
+    assert seen.handle == "ann"
+    var eve: User = make.User {
+        handle: "eve"
+    }
+    assert eve.handle == "eve"
+}
+"#,
+    ),
+    (
+        "domains/people/types/handle.jadpo",
+        r#"/// What a person goes by.
+type Handle = Text {
+    min_length: 1
+    max_length: 40
+}
+"#,
+    ),
+    (
+        "domains/people/types/user_view.jadpo",
+        r#"use people/entities { User }
+
+/// A person as anyone signed in sees them.
+type UserView = Output {
+    pick: [User.id, User.name]
+}
+"#,
+    ),
+];
+
+/// [`BUILDERS`]' files, as the compiled corpus writes them too.
+pub(crate) fn builders() -> Vec<(String, String)> {
+    BUILDERS
+        .iter()
+        .map(|(path, text)| (path.to_string(), text.to_string()))
+        .collect()
+}
+
+#[test]
+fn a_builder_runs_without_policy_and_a_route_after_it_with_policy() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("policy-builders");
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in BUILDERS {
+        write(&root, path, text);
+    }
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    }
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(
+        tested
+            .stdout
+            .contains("6 passed, 2 action tests, 1 route test, 3 generated tests"),
+        "{}",
+        tested.stdout
+    );
+}
+
 // --- through the runtime ---------------------------------------------------------
 
 use jadpo_host_native::Runtime;

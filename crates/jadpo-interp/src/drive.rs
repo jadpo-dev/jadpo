@@ -31,13 +31,24 @@ async fn body(
     args: Vec<Value>,
     at: u32,
 ) -> Result<Value, Stop> {
-    let mut machine = Machine::new(program);
-    let mut step = machine.start(ctx, callee, args, SiteId(at));
     // A test, fixture or seed runs each call as the caller it passes
     // (area 9): policy then applies as to that caller.
     let plan = program.plan();
     let kind = plan.callable(callee).map(|callable| callable.kind);
     let test_like = matches!(kind, Some(Kind::Test | Kind::Fixture | Kind::Seed));
+    // Its own writes, a data builder's among them, run as the code around
+    // them: a test's with no caller, so without policy, and a fixture's or
+    // a seed's as the caller it was called with, or none (area 13, "Data
+    // builders"). Nothing a request runs is one of these.
+    let own_caller: Option<Value> = if test_like {
+        plan.callable(callee)
+            .and_then(|callable| callable.caller)
+            .and_then(|place| args.get(place as usize).cloned())
+    } else {
+        None
+    };
+    let mut machine = Machine::new(program);
+    let mut step = machine.start(ctx, callee, args, SiteId(at));
     loop {
         match step {
             Step::Done(result) => return result,
@@ -62,6 +73,8 @@ async fn body(
                     if let Some(caller) = caller {
                         let passed = caller.and_then(|at| args.get(at as usize));
                         jadpo_runtime::call_as(ctx, passed);
+                    } else if matches!(target, Target::Write(_)) {
+                        jadpo_runtime::call_as(ctx, own_caller.as_ref());
                     }
                 }
                 let result = match target {

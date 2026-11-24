@@ -724,9 +724,10 @@ test "only a tool's owner lends it out" {
 ```
 
 A test never writes a record itself:
-`make.Member { email: "bob@example.test" }` builds one, filling in every
-field it isn't given, and shared test data goes in a `fixture` in
-`fixtures/`. A test's `fakes:` scripts what a provider package answers.
+`make.Member { email: "bob@example.test" }` builds one without policy,
+filling in every field it isn't given, and shared test data goes in a
+`fixture` in `fixtures/`. A test's `fakes:` scripts what a provider
+package answers.
 
 ## Run it
 
