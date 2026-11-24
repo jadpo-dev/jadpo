@@ -144,6 +144,7 @@ mod surfaces;
 mod tenant_keys;
 mod tenant_proofs;
 mod test_items;
+mod test_writes;
 mod text;
 mod text_formats;
 mod text_search;

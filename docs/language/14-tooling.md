@@ -1089,9 +1089,10 @@ date at once and moves records from their old names.
 default branch at its merge base that needs a person and that no
 acceptance this change adds lists yet, with no reason
 ([Acceptances](18-records-and-manifest.md#acceptances)). The stamp is the
-minute in UTC, as a migration's is. An agent runs it, then stops: a
-person writes the reason on a `///` line above `acceptance`, and `jadpo
-check` fails until they do.
+minute in UTC, as a migration's is. Accepting is the person's decision,
+so an agent asks them first and runs it only once they agree, then stops:
+the person writes the reason on a `///` line above `acceptance`, and
+`jadpo check` fails until they do.
 
 ```text
 $ jadpo acceptance new open_the_catalogue

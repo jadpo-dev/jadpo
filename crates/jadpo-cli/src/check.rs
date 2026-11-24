@@ -79,6 +79,7 @@ pub fn check(call: &Call) -> Reply {
             };
         }
         checked.updated = updated;
+        migration_waits(&mut checked);
     }
     reported(
         &cwd,
@@ -112,6 +113,34 @@ fn kept_up_to_date(checked: &Checked) -> Result<Vec<(String, &'static str)>, Box
         );
     }
     Ok(written)
+}
+
+/// A migration out of date beside another error, outside CI: `jadpo
+/// check` writes none while the error stands and `jadpo migrate new` stops
+/// on it, so its next step says to fix that first, and what happens then:
+/// the migration written by the next check, or the command a decision
+/// needs (chunk 10.4c).
+fn migration_waits(checked: &mut Checked) {
+    if checked.diagnostics.iter().all(crate::migrate::answers) {
+        return;
+    }
+    let written = crate::migrate::written_once_fixed(&checked.loaded, &checked.diagnostics);
+    for diagnostic in checked
+        .diagnostics
+        .iter_mut()
+        .filter(|d| d.rule.id == rule::MIGRATION_OUT_OF_DATE.id)
+    {
+        let Some(next) = diagnostic.next.as_mut() else {
+            continue;
+        };
+        if written {
+            next.text =
+                "Fix the other errors first: `jadpo check` then writes this migration itself"
+                    .to_string();
+        } else if let Some(command) = next.text.strip_prefix("Run ") {
+            next.text = format!("Fix the other errors first, then run {command}");
+        }
+    }
 }
 
 /// The date a rule triggered by time passing is judged at (area 1, "Rules

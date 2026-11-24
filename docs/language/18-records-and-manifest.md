@@ -89,11 +89,13 @@ again and, when one is missing, out of date or under its old name,
 writes it itself, as `jadpo records update` would, and checks the
 project again. So does the next migration when the entities have moved
 on from the latest and the change needs no decision
-([Migrations](#migrations)). It says each file it wrote before anything
-else, `✓ Wrote api/main.jadpo_record`, and in `--json` lists each in
-`updated` with its `path` and `change`. Nothing is left for a command to
-do, so an agent's next check passes, and the diff to commit holds the
-record beside the code that changed it:
+([Migrations](#migrations)), once the project has no other errors; until
+then the migration's error says that the next check writes it, since
+`jadpo migrate new` would stop on them too. It says each file it wrote
+before anything else, `✓ Wrote api/main.jadpo_record`, and in `--json`
+lists each in `updated` with its `path` and `change`. Nothing is left for
+a command to do, so an agent's next check passes, and the diff to commit
+holds the record beside the code that changed it:
 
 ```text
 $ jadpo check
@@ -815,9 +817,10 @@ file (below).
   [`acceptance.invalid`](../errors/acceptance.invalid.md). A quoted key
   anywhere else is a syntax error.
 - **Drafting is a command.** `jadpo acceptance new <purpose>` writes a
-  file listing every change not yet accepted, with no reason. An agent
-  may run it, then stops: the missing reason keeps `check` failing until
-  a person writes one.
+  file listing every change not yet accepted, with no reason. Accepting
+  is the person's decision, so an agent asks them first and may run it
+  once they agree, then stops: the missing reason keeps `check` failing
+  until the person writes one. The errors' next steps say so.
 - **The git host is the gate.** `acceptances/`, `api/`,
   `access.jadpo_record` and `network.jadpo_record` are owned in
   CODEOWNERS, so the owner's approval of the pull request is what lets a
@@ -1069,7 +1072,7 @@ $ jadpo check
 error: removing an output field can break clients: main.TodoSummary.priority, main.TodoView.priority
  --> api/main.jadpo_record:31:1
   …
-  next: A person accepts it: `jadpo acceptance new <purpose>` writes the draft for them (human)
+  next: Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason (human)
 
 $ jadpo acceptance new remove_todo_priority
 ✓ Wrote acceptances/20261020T1400_remove_todo_priority.jadpo

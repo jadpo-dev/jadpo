@@ -144,8 +144,9 @@ pub(crate) fn blocked(
 // --- new ----------------------------------------------------------------
 
 /// The rules `migrate new` itself answers, and another record out of date
-/// or edited, which has its own command; any other error stops it.
-fn answers(diagnostic: &Diagnostic) -> bool {
+/// or edited, which has its own command; any other error stops it, and
+/// stops `jadpo check` writing the migration.
+pub(crate) fn answers(diagnostic: &Diagnostic) -> bool {
     [
         rule::RECORD_OUT_OF_DATE.id,
         rule::RECORD_EDITED.id,
@@ -409,10 +410,26 @@ pub(crate) fn plan_swap(loaded: &Loaded, purpose: &str) -> Result<Planned, Box<D
 /// the purpose the changes suggest. Its folder, relative to the root, or
 /// `None` when it is left to `jadpo migrate new` and the error naming it.
 pub(crate) fn written_by_check(loaded: &Loaded, problems: &[Diagnostic]) -> Option<String> {
+    if !problems.iter().all(answers) {
+        return None;
+    }
+    let planned = planned_for_check(loaded, problems)?;
+    write_planned(&loaded.root, loaded, &planned).ok()?;
+    Some(planned.relative())
+}
+
+/// Whether `jadpo check` writes the next migration itself once the
+/// project's other errors are fixed: [`written_by_check`] but for them.
+pub(crate) fn written_once_fixed(loaded: &Loaded, problems: &[Diagnostic]) -> bool {
+    planned_for_check(loaded, problems).is_some()
+}
+
+/// The next migration as [`written_by_check`] would write it, whatever
+/// else is wrong: `None` when the latest or the next waits for a decision.
+fn planned_for_check(loaded: &Loaded, problems: &[Diagnostic]) -> Option<Planned> {
     if !problems
         .iter()
         .any(|d| d.rule.id == rule::MIGRATION_OUT_OF_DATE.id)
-        || !problems.iter().all(answers)
         || problems.iter().any(|d| {
             [
                 rule::MIGRATION_DECISION_REQUIRED.id,
@@ -447,8 +464,7 @@ pub(crate) fn written_by_check(loaded: &Loaded, problems: &[Diagnostic]) -> Opti
     if planned.pending > 0 || !planned.swapped.is_empty() {
         return None;
     }
-    write_planned(&loaded.root, loaded, &planned).ok()?;
-    Some(planned.relative())
+    Some(planned)
 }
 
 /// Writes the planned migration's folder under `root`: each file, with
@@ -1190,7 +1206,7 @@ fn screen_for_new(
             ),
             location: None,
             next: format!(
-                "A person accepts {}: `jadpo acceptance new <purpose>` writes the draft for them.",
+                "Stop and ask your user whether to accept {}; if they agree, `jadpo acceptance new <purpose>` prepares one for them.",
                 if removed.len() == 1 { "it" } else { "them" }
             ),
         });

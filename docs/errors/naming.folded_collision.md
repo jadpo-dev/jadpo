@@ -9,7 +9,8 @@ both become `due_date.jadpo`, and a search for one finds the other. A type
 beside the action, query or function it belongs to, in the same file, is the
 one exception, such as `CreateTodo` in `create_todo.jadpo`.
 
-Jadpo can't tell which name you'd rather change, so it asks you to.
+Jadpo can't tell which name you'd rather change. Its next step names the
+one it reached second, and either may be renamed.
 
 ## What it looks like
 
@@ -62,6 +63,13 @@ type DueDate = CalendarDate {}
 
 Each name now has a file of its own, so a search for either finds only that
 one.
+
+In a project, `jadpo rename DueDate <new name>` does it: it renames the
+declaration, moves it to the new name's file and changes every place that
+uses it, so the error's `next:` names that command. A route's input is the
+usual case: `type CompleteTodos = Input` for `action complete_todos` is
+used by the route too, so it has a file of its own in `types/` and can't
+share the action's. Name it for what it holds, such as `TodoSelection`.
 
 ## Related
 

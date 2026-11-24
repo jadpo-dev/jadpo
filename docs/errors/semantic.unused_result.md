@@ -4,9 +4,15 @@ A value is computed and thrown away.
 
 ## Why Jadpo refuses it
 
-A call stands on its own only when its result is `Unit`. A value that
-nothing uses means either the call does nothing, or the code forgot to
-use what it asked for, and Jadpo won't guess which.
+A function, a constructor, a standard-library operation, a query or a
+`get` only computes or reads its result, so one whose result nothing uses
+does nothing: either the call isn't needed, or the code forgot to use what
+it asked for, and Jadpo won't guess which.
+
+A call made for what it does stands on its own whatever it gives back: an
+action, or a write such as `Todo.update(item) { ... }` whose record nothing
+needs. So does `attempt` on a call that can fail, meaning "this must
+succeed".
 
 ## What it looks like
 

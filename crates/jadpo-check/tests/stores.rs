@@ -622,6 +622,66 @@ action forecast_from_other(project_id: Project.id, other_id: Project.id) fails P
     assert_eq!(found.len(), 1, "{all}");
 }
 
+/// The record a change gives back is the record it changed, so a `var
+/// mut` that holds it through a second change, and a match's binding of
+/// the one record a list gives first, still name one record: a copy into
+/// it stays within the record, and changing it finds it by its `id`
+/// alone, not by what the first change stored (chunk 10.4c, from a
+/// held-out run's change history).
+#[test]
+fn a_record_changed_twice_or_bound_by_a_match_is_still_one_record() {
+    let found = stores(
+        r#"action note_spend(project_id: Project.id) fails ProjectNotFound -> Project {
+    var project: Project = attempt Project.get(project_id)
+    var mut changed: Project = Project.update(project) {
+        set: {
+            spent: project.spent
+        }
+    }
+    if (changed.spent > 0) {
+        changed = Project.update(changed) {
+            set: {
+                forecast: project.budget
+            }
+        }
+    }
+    return changed
+}
+
+action forecast_first(company_id: Company.id) -> Project? {
+    var projects: List<Project> = company_projects(company_id)
+    return match list.first(projects) {
+        some(project) -> Project.update(project) {
+            set: {
+                forecast: project.budget
+            }
+        }
+        none -> none
+    }
+}
+
+action share_first(company_id: Company.id) -> Project? {
+    var projects: List<Project> = company_projects(company_id)
+    return match list.first(projects) {
+        some(project) -> Project.update(project) {
+            set: {
+                spent: project.budget
+            }
+        }
+        none -> none
+    }
+}
+"#,
+    );
+    assert_stores(
+        &found,
+        &[
+            "`share_first` stores `Project.budget` in `Project.spent`, which not everyone who may read `spent` may read",
+        ],
+        &["note_spend", "forecast_first"],
+    );
+}
+
 #[test]
 fn a_create_in_a_loop_stores_each_item_and_what_decided_it() {
     let found = stores(

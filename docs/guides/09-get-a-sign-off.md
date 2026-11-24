@@ -125,7 +125,7 @@ error: removing an output field can break clients: main.BookView.author
 15 | output BookView
    | ^^^^^^^^^^^^^^^ ApiChange.output_field_removed
   reason: Clients that read it find it gone. So a person accepts it: no acceptance this change adds lists `main.BookView.author: ApiChange.output_field_removed`.
-  next: A person accepts it: `jadpo acceptance new <purpose>` writes the draft for them (human)
+  next: Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason (human)
   rule: acceptance.missing
   help: https://jadpo.dev/docs/errors/acceptance.missing
 
@@ -168,8 +168,8 @@ error: `acceptances/20261020T1400_remove_book_author.jadpo` has no reason
   |
 1 | acceptance {
   | ^^^^^^^^^^ no `///` reason above
-  reason: An acceptance records a person's decision, so it says why on a `///` line above `acceptance`; an agent writes the draft and stops there.
-  next: A person writes why these changes are accepted on a `///` line above `acceptance` (human)
+  reason: An acceptance records a person's decision, so only a person writes why, on a `///` line above `acceptance`.
+  next: Stop and ask your user why these changes are accepted, and never write the reason yourself; if they don't accept them, delete the draft and undo the changes (human)
   rule: acceptance.no_reason
   help: https://jadpo.dev/docs/errors/acceptance.no_reason
 

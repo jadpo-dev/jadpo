@@ -439,9 +439,15 @@ impl Body<'_> {
                 .reason(format!(
                     "Only actions write records (area 6), so a test changes data through the action that does it, which is what it proves; a fixture, a test-only action, or a data builder, `make.{entity} {{ ... }}`, builds the data a test starts from. A test may still read, with `{entity}.get` and queries."
                 ))
-                .next(format!(
-                    "Call the action that writes `{entity}`, or make the record it starts from with `make.{entity} {{ ... }}`"
-                )),
+                .next(if op == WriteOp::Create {
+                    format!(
+                        "Build the record with `make.{entity} {{ ... }}`, giving it the fields `set:` gives, with no `conflict:`"
+                    )
+                } else {
+                    format!(
+                        "Call the action that writes `{entity}`, or make the record it starts from with `make.{entity} {{ ... }}`"
+                    )
+                }),
             );
         }
         let result = match op {
@@ -2531,7 +2537,13 @@ impl Body<'_> {
         for (arm, rule) in &unbreakable {
             self.conflict_cannot_break(arm, rule, entity, op, written, unmapped.first());
         }
-        let unmapped: Vec<String> = if rejected { Vec::new() } else { unmapped };
+        // A test's write is refused whole (`semantic.not_callable`), so
+        // what it would map is no step towards the fix.
+        let unmapped: Vec<String> = if rejected || self.test {
+            Vec::new()
+        } else {
+            unmapped
+        };
         if let Some(first_rule) = unmapped.first() {
             let listed: Vec<String> = unmapped.iter().map(|r| format!("`{r}`")).collect();
             let (them, each) = if unmapped.len() == 1 {

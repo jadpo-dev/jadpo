@@ -33,7 +33,7 @@ error: removing an output field can break clients: main.BookView.author
 21 | output BookView
    | ^^^^^^^^^^^^^^^ ApiChange.output_field_removed
   reason: Clients that read it find it gone. So a person accepts it: no acceptance this change adds lists `main.BookView.author: ApiChange.output_field_removed`.
-  next: A person accepts it: `jadpo acceptance new <purpose>` writes the draft for them (human)
+  next: Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason (human)
   rule: acceptance.missing
   help: https://jadpo.dev/docs/errors/acceptance.missing
 
@@ -55,7 +55,7 @@ error: a connection that can't erase the personal data it receives needs a perso
 9 |         couriers: {
   |         ^^^^^^^^ ErasureNotPossible.data_stays
   reason: Erasing a person asks each provider that holds their data to erase it, and this one can't be asked. Here: connection `couriers` keeps `User.email` after a person is erased: `AcmeCouriers.v1` declares no `erasure:`. So a person says why the data stays: no acceptance lists `couriers: ErasureNotPossible.data_stays`.
-  next: Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or a person accepts it: `jadpo acceptance new <purpose>` writes the draft for them (human)
+  next: Declare the package's `erasure:` and name the connection's `erasure: { key: }`, or stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason (human)
   rule: acceptance.missing
   help: https://jadpo.dev/docs/errors/acceptance.missing
 
@@ -78,7 +78,9 @@ jadpo check
 The API record matches the default branch's again, so there is nothing
 to accept and the check passes.
 
-**If it should**, draft the acceptance. An agent may run this:
+**If it should**, that is your user's decision, so an agent stops and
+asks them, and never writes an acceptance on its own. Once they agree,
+an agent may draft it:
 
 ```sh
 jadpo acceptance new remove_book_author
@@ -129,8 +131,8 @@ couriers: {
 The connection can then erase its copy, so it needs no acceptance
 ([Erasure at providers](../language/15-personal-data.md#erasure-at-providers)).
 
-**If the data has to stay at the provider**, draft the acceptance, and say why
-on its `///` line:
+**If the data has to stay at the provider**, and your user agrees, draft the
+acceptance for them to say why on its `///` line:
 
 ```sh
 jadpo acceptance new invoices_at_couriers
