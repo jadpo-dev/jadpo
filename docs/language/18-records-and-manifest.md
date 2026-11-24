@@ -89,11 +89,13 @@ again and, when one is missing, out of date or under its old name,
 writes it itself, as `jadpo records update` would, and checks the
 project again. So does the next migration when the entities have moved
 on from the latest and the change needs no decision
-([Migrations](#migrations)). It says each file it wrote before anything
-else, `✓ Wrote api/main.jadpo_record`, and in `--json` lists each in
-`updated` with its `path` and `change`. Nothing is left for a command to
-do, so an agent's next check passes, and the diff to commit holds the
-record beside the code that changed it:
+([Migrations](#migrations)), once the project has no other errors; until
+then the migration's error says that the next check writes it, since
+`jadpo migrate new` would stop on them too. It says each file it wrote
+before anything else, `✓ Wrote api/main.jadpo_record`, and in `--json`
+lists each in `updated` with its `path` and `change`. Nothing is left for
+a command to do, so an agent's next check passes, and the diff to commit
+holds the record beside the code that changed it:
 
 ```text
 $ jadpo check

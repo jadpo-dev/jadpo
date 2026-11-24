@@ -240,6 +240,51 @@ function chosen(title: Title) -> Title? {
 `chosen` now returns the title, and its `Title?` result still tells a
 caller it may be `none`.
 
+**If a test creates the record it starts from**, build it with the data
+builder, `make.Shelf { ... }`, giving it the fields `set:` gave. It fills
+every other field with a valid value, so a unique field gets one no other
+record has, and it needs no `conflict:`:
+
+```jadpo fragment
+test "a shelf counts its visits" {
+    var shelf: Shelf = make.Shelf {
+        visits: 3
+    }
+    assert shelf.visits == 3
+}
+```
+
+```jadpo check project=e-not-callable-fix-3 file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-not-callable-fix-3 file=domains/shop/types/count.jadpo hidden
+type Count = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-not-callable-fix-3 file=domains/shop/entities/shelf.jadpo hidden migrate=initial
+use shop/types { Count }
+
+entity Shelf {
+    id: Uuid
+    visits: Count
+}
+```
+
+```jadpo check project=e-not-callable-fix-3 file=domains/shop/entities/shelf.test.jadpo hidden
+test "a shelf counts its visits" {
+    var shelf: Shelf = make.Shelf {
+        visits: 3
+    }
+    assert shelf.visits == 3
+}
+```
+
+The test starts from a shelf with three visits, built the way any create
+builds one.
+
 ## Related
 
 - [Calling](../language/03-logic.md#calling)

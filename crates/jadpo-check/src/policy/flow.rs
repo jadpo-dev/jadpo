@@ -1970,6 +1970,7 @@ impl Walk<'_> {
             }
             Expr::Unary { operand, .. } => self.eval(flow, operand),
             Expr::Match { subject, arms, .. } => {
+                let at = subject;
                 let subject = match subject {
                     Some(subject) => self.eval(flow, subject),
                     None => Prov::default(),
@@ -1977,9 +1978,16 @@ impl Walk<'_> {
                 // Which arm runs shows what the subject holds.
                 let saved = self.pc.clone();
                 self.decided_by(&subject);
+                // A binding names the one value the subject is: when that
+                // is a record some read gave, such as a list's first, it
+                // is the same record all through the arm.
+                let one = match at {
+                    Some(at) => self.item(at, &subject),
+                    None => subject.clone(),
+                };
                 let mut out = Prov::default();
                 for arm in &arms {
-                    let bound = self.with_pc(subject.clone());
+                    let bound = self.with_pc(one.clone());
                     self.local(arm.binding, &bound);
                     match &arm.body {
                         ArmBody::Value(value) => {
@@ -2148,11 +2156,20 @@ impl Walk<'_> {
                 if let Some(transition) = &transition {
                     self.transition(flow, site, &dest, transition, ways.first());
                 }
-                // Which record a change finds shows what found it.
+                // Which record a change finds shows what found it: a
+                // record it was given is found by its `id`, whatever an
+                // earlier change stored in it.
                 if self.report
                     && let (Some(at), Some(target)) = (at, &target)
                 {
-                    self.lookup(flow, at, target, &Finding::Changes(entity.clone()));
+                    let by = if target.whole.iter().any(
+                        |src| matches!(src, Src::Record { entity: of, .. } if *of == entity),
+                    ) {
+                        target.field("id")
+                    } else {
+                        target.clone()
+                    };
+                    self.lookup(flow, at, &by, &Finding::Changes(entity.clone()));
                 }
                 if let Some(transition) = &transition {
                     for reached in &ways {

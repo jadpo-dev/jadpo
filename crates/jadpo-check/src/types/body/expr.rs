@@ -13,7 +13,7 @@ use super::super::rules::{Const, Rules};
 use super::super::shape::FieldsBase;
 use super::super::table::{Def, FieldDef, TypeView, is_any_object, packaged_name};
 use super::super::ty::{Prim, Ty, shown};
-use super::{Body, did_you_mean, is_literal, node_key, text};
+use super::{Body, CallKind, did_you_mean, is_literal, node_key, text};
 use crate::case::starts_upper;
 use crate::std_lib::{Namespace, StdNames};
 use crate::tree::{self, dotted};
@@ -400,6 +400,18 @@ impl Body<'_> {
                     "Collections keep their element type, so a `{actual}` is never a `{expected}`, even where each element would widen."
                 ))
                 .next(format!("Build a `{expected}` here"))
+        } else if let Some(field) = self.one_field_fitting(actual, expected) {
+            // An object where one of its fields would do (chunk 10.4c).
+            let read = if written.contains('\n') || written.len() > 60 {
+                format!("Read its `{field}` field")
+            } else {
+                format!("Read its `{field}` field: `{written}.{field}`")
+            };
+            problem
+                .reason(format!(
+                    "`{actual}` is an object, and of its fields only `{field}` is a `{expected}`."
+                ))
+                .next(read)
         } else if let Some(object) = literal::object_wanted(self.table, expected) {
             // An object: its shape, and the value written out (chunk A14).
             problem
@@ -426,6 +438,43 @@ impl Body<'_> {
                 ))
         };
         self.out.push(problem);
+    }
+
+    /// The one field of the object `actual` whose type may stand where
+    /// `expected` is required, when exactly one may.
+    fn one_field_fitting(&self, actual: &Ty, expected: &Ty) -> Option<String> {
+        let Ty::Named(name) = actual else {
+            return None;
+        };
+        if actual.has_error() || expected.is_error() {
+            return None;
+        }
+        let fits: Vec<&FieldDef> = self
+            .table
+            .fields(name)?
+            .iter()
+            .filter(|field| {
+                let declared = &field.declared;
+                if declared.has_error() {
+                    return false;
+                }
+                // A standard-library operation's type variable: the
+                // collection it takes, whatever it holds.
+                if expected.has_unknown() {
+                    return matches!(
+                        (declared, expected.strip_nullable()),
+                        (Ty::List(_), Ty::List(_))
+                            | (Ty::Set(_), Ty::Set(_))
+                            | (Ty::Map(..), Ty::Map(..))
+                    );
+                }
+                self.table.assignable(declared, expected)
+            })
+            .collect();
+        match fits.as_slice() {
+            [field] => Some(field.name.clone()),
+            _ => None,
+        }
     }
 
     /// A literal where `expected` is required; `constructor` when it is the
@@ -1622,6 +1671,7 @@ impl Body<'_> {
                     None,
                 );
                 self.unhandled_write(record.syntax(), &written);
+                self.last_call = CallKind::Effect(written);
                 ty
             }
             ([operation], Some(_)) if text(operation) == "create" => {

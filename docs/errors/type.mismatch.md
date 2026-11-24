@@ -96,6 +96,15 @@ declared ranges prove the sum is a valid `Stock`. When nothing proves it,
 the construction starts with `attempt` and says what happens when it
 fails.
 
+**If the value holds what is required**, read that field. When an object
+has exactly one field of the required type, such as a query's
+`UserWithTodos` given where a list goes, the error names it:
+
+```text
+  reason: `UserWithTodos` is an object, and of its fields only `todos` is a `List<T>`.
+  next: Read its `todos` field: `mine.todos` (agent)
+```
+
 ## Related
 
 - [Creating values](../language/02-values-and-types.md#creating-values)

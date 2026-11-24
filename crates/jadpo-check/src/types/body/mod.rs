@@ -546,7 +546,10 @@ enum CallKind {
     /// A function, a constructor or a standard-library operation: it only
     /// computes its result.
     Pure(String),
-    /// An action, or anything else that may have effects.
+    /// A query, or an entity's `get` or history: it only reads its result.
+    Read(String),
+    /// An action, a write, or anything else that may have effects: it
+    /// stands alone whatever it gives back (area 3, "Statements").
     Effect(String),
     /// Not known yet.
     Other,
@@ -1963,8 +1966,9 @@ impl Body<'_> {
         });
     }
 
-    /// An expression standing as a statement: a call whose result is
-    /// `Unit`, `attempt`, `reject` or a `match` (area 3, question 4).
+    /// An expression standing as a statement: a call made for what it
+    /// does, whatever its result, `attempt`, `reject` or a `match` (area
+    /// 3, question 4).
     fn standalone(&mut self, expr: &Expr) -> bool {
         match expr {
             Expr::RejectExpr(reject) => {
@@ -1993,12 +1997,12 @@ impl Body<'_> {
                     return true;
                 }
                 match kind {
-                    CallKind::Effect(_) if ty == Ty::Prim(Prim::Unit) => {}
-                    CallKind::Effect(name) => self.unused_result(
+                    CallKind::Effect(_) => {}
+                    CallKind::Read(name) => self.unused_result(
                         expr,
                         &ty,
                         format!(
-                            "`{name}` gives a `{ty}`; a call stands on its own only when its result is `Unit`."
+                            "`{name}` only reads, so calling it without using what it gives does nothing."
                         ),
                     ),
                     CallKind::Pure(name) => self.unused_result(

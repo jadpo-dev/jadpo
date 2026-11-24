@@ -123,14 +123,7 @@ D1 first: the site starts once D1 has merged.
 - [x] **10.4 A fresh held-out comparison**: the fresh set and its method are in [agent-changes](../benchmarks/agent-changes/README.md).
 - [x] **10.4a A bound for "all of them"**: [Every record that matches](language/06-reads-and-writes.md#every-record-that-matches) and its decision in [the notes](language/notes/06-reads-and-writes.md).
 - [x] **10.4b Field writes the owner decides**: [Policy](language/09-policy.md) ("Who may set a field", "Copying a record the caller owns") and the decisions in [its notes](language/notes/09-policy.md).
-- [ ] **10.4c Errors that cost agents attempts** `opus · high`: the
-  errors 10.4's agents hit most and recovered from slowly
-  (`semantic.not_callable`, `semantic.unused_result`,
-  `data.conflict_unmapped`, `naming.folded_collision`,
-  `policy.output_field_unproved`, `type.mismatch`). From the sessions,
-  find why each cost attempts and fix the message, its next step or the
-  docs an agent reads, or the rule where it is wrong. Built while 10.5
-  measures a frozen Jadpo, so the next held-out run measures it.
+- [x] **10.4c Errors that cost agents attempts**: [Statements](language/03-logic.md#statements) and its decision in [the notes](language/notes/03-logic.md), the [primer](primer.md), and the error pages of [`semantic.not_callable`](errors/semantic.not_callable.md), [`naming.folded_collision`](errors/naming.folded_collision.md) and [`migration.out_of_date`](errors/migration.out_of_date.md).
 - [ ] **10.5 A mid-size app where rules live elsewhere** `opus · high`: a
   multi-tenant backend in both languages, about 8–10 entities, 40 or more
   routes, roles, a job and personal data, with the same hidden contract

@@ -663,7 +663,18 @@ action archive_todo(todo_id: Todo.id) fails TodoNotFound -> Unit {
     if (already_archived(todo_id)) {
         return  // leaves a Unit action early
     }
-    notify_owner(todo_id)  // a Unit action called for its effect
+    notify_owner(todo_id)  // an action called for its effect
+}
+
+action close_todo(todo_id: Todo.id) fails TodoNotFound -> Unit {
+    var item: Todo = attempt Todo.get(todo_id)
+    if (item.status == TodoStatus.open) {
+        Todo.update(item) {  // a write made for its effect
+            set: {
+                status: TodoStatus.archived
+            }
+        }
+    }
 }
 ```
 
@@ -671,12 +682,15 @@ action archive_todo(todo_id: Todo.id) fails TodoNotFound -> Unit {
   fails, the failure is passed on; if not, the action carries on, and the
   value isn't needed.
 - A bare `return` leaves an action or function that returns `Unit` early.
-- A call to an action that returns `Unit`, such as `notify_owner`, is made
-  for what it does.
+- A call made for what it does stands alone whatever it gives back: an
+  action such as `notify_owner`, or a write such as `Todo.update(item)`,
+  whose record nobody needs here.
 
-A function call standing alone is an error
-([`semantic.unused_result`](../errors/semantic.unused_result.md)): its
-value is thrown away, so it does nothing.
+A call that only computes or reads its result does nothing without it,
+so one standing alone is an error
+([`semantic.unused_result`](../errors/semantic.unused_result.md)): a
+function's, a constructor's or a standard-library operation's, and a
+query's or a `get` without `attempt`.
 
 ### Conditions
 

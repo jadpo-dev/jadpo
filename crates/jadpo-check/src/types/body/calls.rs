@@ -193,6 +193,7 @@ impl Body<'_> {
                 };
                 let call_kind = match kind {
                     Some(ItemKind::Function) => CallKind::Pure(callee),
+                    Some(ItemKind::Query) => CallKind::Read(callee),
                     _ => CallKind::Effect(callee),
                 };
                 (sig.result, call_kind, reach)
@@ -337,7 +338,7 @@ impl Body<'_> {
                 }
                 if rest[0] == "get" {
                     let ty = self.entity_get(&head, call, span);
-                    return (ty, CallKind::Effect(written), reach);
+                    return (ty, CallKind::Read(written), reach);
                 }
                 // A `File` field's upload slot (area 16, "Uploading"),
                 // unless a lifecycle's transition has the name.
@@ -358,7 +359,7 @@ impl Body<'_> {
                     })
                 {
                     let ty = self.entity_history(&head, call, span);
-                    return (ty, CallKind::Effect(written), reach);
+                    return (ty, CallKind::Read(written), reach);
                 }
                 // A person's erasure (area 15; chunk P3), unless an entity
                 // that is no person names a transition `erase`.
