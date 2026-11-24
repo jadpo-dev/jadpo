@@ -326,7 +326,8 @@ listed in `fails`. Every failure reaches a client in one JSON envelope:
 Every read is a named query in `queries/`. The result type says how many
 records come back: one (needs `missing:`), zero or one (`T?`), a list
 (needs `order:` and `limit:`) or a `Page<T>`. A query reads only the fields
-its result type needs.
+its result type needs. `limit: every` reads all of them, up to 10,000;
+more is a fault.
 
 ```jadpo check project=tool-share file=domains/lending/types/tool_view.jadpo
 use lending/entities { Tool }

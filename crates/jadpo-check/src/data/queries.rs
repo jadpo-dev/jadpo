@@ -203,6 +203,25 @@ pub enum Bound {
     Literal(u64),
     /// A value whose type has a `max:`.
     Value(Value),
+    /// `limit: every`: every record that matches, up to
+    /// [`jadpo_std::read::EVERY_MOST`] (area 6, "Every record that
+    /// matches").
+    Every,
+}
+
+/// Where a `limit:` or a page's `size:` is, which decides whether it may
+/// say `every`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BoundAt {
+    /// A query's own `limit:`, returning a list.
+    List,
+    /// A list ordered by `nearest`, which returns at most
+    /// [`MOST_NEAREST`].
+    Nearest,
+    /// A page's `size:`.
+    Page,
+    /// An include's `limit:`, on the children of each record.
+    Include,
 }
 
 /// Where a result type's field gets its value.

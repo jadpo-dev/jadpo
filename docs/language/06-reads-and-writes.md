@@ -184,7 +184,7 @@ names the failure it gives when no record matches
 |---|---|---|
 | `TodoView` | exactly one record | a `where:` on a unique field, and `missing:` |
 | `TodoView?` | zero or one | a `where:` on a unique field |
-| `List<TodoView>` | up to the number `limit:` sets | `order:` and `limit:` |
+| `List<TodoView>` | up to the number `limit:` sets, or every record that matches with `limit: every` | `order:` and `limit:` |
 | `Page<TodoView>` | one page and a cursor for the next | `order:` and `page:` |
 | `FeatureCollection<Point, TodoPin>` | a map layer of up to the number `limit:` sets, each record a point on the map ([A query giving a map layer](#a-query-giving-a-map-layer)) | `geometry:`, `order:` and `limit:` |
 
@@ -1083,8 +1083,9 @@ CREATE INDEX "note_title_trgm_idx" ON "note" USING gin ((lower("title" COLLATE "
 the compiler adds `id` as the last field, so records with equal values
 never swap places between pages.
 
-Every list has a bound: `limit:` is a number, or a value whose type has a
-`max:`.
+Every list has a bound: `limit:` is a number, a value whose type has a
+`max:`, or `every`, for every record that matches, up to 10,000
+([Every record that matches](#every-record-that-matches)).
 
 ### Pages
 
@@ -1160,6 +1161,180 @@ A point field is ordered by distance, nearest first, with
 it goes with `where: geo.within(F, p, distance: d)` on the same field and
 point, which bounds what is sorted. Records are sorted by the distance
 `geo.distance` gives, then by `id` ([Finding records by place](20-geospatial.md#finding-records-by-place)).
+
+## Every record that matches
+<!-- topic: every-record-that-matches -->
+
+`limit: every` reads every record that matches, up to 10,000. Use it when
+a request means all of them: "export all my todos", "clear all my
+completed todos". If more than 10,000 match, the query gives back none of
+them and the action stops, so a list is never cut short without anyone
+knowing.
+
+```jadpo check project=every-record file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=every-record file=domains/planning/entities/user.jadpo hidden
+type UserName = Text {
+    max_length: 80
+}
+
+entity User {
+    id: Uuid
+    name: UserName
+}
+```
+
+```jadpo check project=every-record file=domains/planning/types/todo_status.jadpo hidden
+/// Whether a todo is still to do.
+type TodoStatus = Enum {
+    open
+    done
+}
+```
+
+```jadpo check project=every-record file=domains/planning/entities/todo.jadpo hidden
+use planning/entities { User }
+use planning/types { TodoStatus }
+
+type TodoTitle = Text {
+    max_length: 200
+}
+
+entity Todo {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    title: TodoTitle
+    status: TodoStatus
+    created_at: Instant {
+        generated: Generated.on_create
+    }
+}
+```
+
+`domains/planning/queries/done_todos.jadpo`:
+
+```jadpo check project=every-record file=domains/planning/queries/done_todos.jadpo
+use planning/entities { Todo, User }
+use planning/types { TodoStatus }
+
+/// Every one of the owner's todos that is done, oldest first.
+query done_todos(owner_id: User.id) -> List<Todo> {
+    from: Todo
+    where: Todo.owner_id == owner_id
+    where: Todo.status == TodoStatus.done
+    order: [Todo.created_at asc]
+    limit: every
+}
+```
+
+A change to every record that matches is that query and a loop of writes
+in one action. `clear_done` deletes all of the owner's done todos and
+says how many it deleted. The query runs before anything is written, and
+the action is all-or-nothing, so when too many match, nothing is deleted:
+
+`domains/planning/actions/clear_done.jadpo`:
+
+```jadpo check project=every-record file=domains/planning/actions/clear_done.jadpo migrate=initial
+use planning/entities { Todo, User }
+use planning/queries { done_todos }
+
+/// How many todos a clear deleted.
+type ClearedCount = Int {}
+
+/// Deletes every one of the owner's done todos, and gives how many.
+action clear_done(owner_id: User.id) -> ClearedCount {
+    var done: List<Todo> = done_todos(owner_id)
+    for todo in done {
+        Todo.delete(todo)
+    }
+    return ClearedCount(list.count(done))
+}
+```
+
+```jadpo check project=every-record file=domains/planning/actions/add_user.jadpo hidden
+use planning/entities { User }
+
+/// Adds a user called `name`.
+action add_user(name: User.name) -> User {
+    return User.create {
+        set: {
+            name: name
+        }
+    }
+}
+```
+
+```jadpo check project=every-record file=domains/planning/actions/add_todo.jadpo hidden
+use planning/entities { Todo, User }
+use planning/types { TodoStatus }
+
+/// Adds a todo for `owner`.
+action add_todo(owner: User, title: Todo.title, status: TodoStatus) -> Todo {
+    return Todo.create {
+        set: {
+            owner_id: owner.id
+            title: title
+            status: status
+        }
+    }
+}
+```
+
+```jadpo check project=every-record file=domains/planning/actions/clear_done.test.jadpo
+use planning/entities { Todo, User }
+use planning/types { TodoStatus }
+use planning/actions { add_todo, add_user }
+use planning/queries { done_todos }
+
+test "clearing deletes every done todo of the owner's, and nobody else's" {
+    var ada: User = add_user("Ada")
+    var bob: User = add_user("Bob")
+    var milk: Todo = add_todo(ada, "Buy milk", TodoStatus.done)
+    var bread: Todo = add_todo(ada, "Buy bread", TodoStatus.done)
+    var bins: Todo = add_todo(ada, "Put the bins out", TodoStatus.open)
+    var bobs: Todo = add_todo(bob, "Walk the dog", TodoStatus.done)
+    assert list.map(done_todos(ada.id), todo -> todo.id) == [milk.id, bread.id]
+    assert clear_done(ada.id) == 2
+    assert done_todos(ada.id) == []
+    assert list.map(done_todos(bob.id), todo -> todo.id) == [bobs.id]
+    assert bins.status == TodoStatus.open
+}
+```
+
+The statement asks for one more than 10,000, so the runtime knows when
+more match:
+
+```sql
+-- done_todos
+SELECT "id", "owner_id", "title", "status", "created_at"
+FROM "todo"
+WHERE "owner_id" = $1
+  AND "status" = $2
+ORDER BY "created_at" ASC, "id" ASC
+LIMIT 10001
+```
+
+When more than 10,000 match, the action ends as a
+[defect](04-failures.md#defects) does: the client gets 500
+`internal_fault`, nothing the action wrote is kept, and the log names the
+query's call with the classification `too_many_records`. It is a fault
+rather than a failure in `fails`, so a call of the query takes no
+`attempt`.
+
+The maximum is the same in every app and every deployment, so an action
+behaves the same in tests as in production; it isn't a setting. Where a
+set can grow past it, read the records a page at a time
+([Pages](#pages)), or walk them in a [batch](12-jobs-and-events.md#batches),
+which a large export is.
+
+`limit: every` goes on a query that returns a `List<T>`, a map layer or a
+list of groups. A page's `size:`, an include's `limit:` and a list ordered
+by `nearest` each take a number
+([`query.every_unsupported`](../errors/query.every_unsupported.md)).
 
 ## Counts, sums and groups
 <!-- topic: counts-sums-and-groups -->
@@ -3038,7 +3213,9 @@ query todos_by_ids(todo_ids: List<Todo.id>) -> List<TodoView> {
 ```
 
 Writes inside a loop are allowed: the list is bounded, and every write
-joins the action's transaction.
+joins the action's transaction. A change to every record that matches is
+a query with `limit: every` and a loop of writes
+([Every record that matches](#every-record-that-matches)).
 
 An outside call inside a loop isn't allowed ([Loops](03-logic.md#loops)).
 A loop of calls is `batches.each`
@@ -3429,6 +3606,7 @@ triggers it and the compiler's actual output.
 - [`query.order_field`](../errors/query.order_field.md)
 - [`query.limit_range`](../errors/query.limit_range.md)
 - [`query.limit_unbounded`](../errors/query.limit_unbounded.md)
+- [`query.every_unsupported`](../errors/query.every_unsupported.md)
 - [`query.page_setting`](../errors/query.page_setting.md)
 ### Includes
 

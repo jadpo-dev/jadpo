@@ -8,7 +8,8 @@ A query's result type says how many records come back, and each kind of
 result needs sections of its own. Every query names the entity it reads
 in `from:`. A list needs `order:` and `limit:`, because every list is
 bounded: a query that could read a whole table would grow slower as the
-table grows, with nothing in the code to show it.
+table grows, with nothing in the code to show it. `limit: every` bounds
+it at every record that matches, up to 10,000.
 
 ## What it looks like
 
@@ -39,8 +40,8 @@ error: `books_titled` returns `List<Book>` but has no `limit:`
    |
 12 | query books_titled(title: Book.title) -> List<Book> {
    |       ^^^^^^^^^^^^ no `limit:`
-  reason: Every list is bounded: `limit:` is a number, or a value whose type has a `max:`.
-  next: Add `limit: <number>`, or return `Page<T>` to read it a page at a time (agent)
+  reason: Every list is bounded: `limit:` is a number, a value whose type has a `max:`, or `every`, for every record that matches, up to 10,000.
+  next: Add `limit: every` for every record that matches, `limit: <number>` for at most that many, or return `Page<T>` to read it a page at a time (agent)
   rule: query.section_required
   help: https://jadpo.dev/docs/errors/query.section_required
 
@@ -90,6 +91,37 @@ check failed: 1 error, 1 file
 
 ## How to fix it
 
+**If the caller wants every book with that title**, add `limit: every`:
+
+```jadpo fragment
+    order: [Book.id asc]
+    limit: every
+```
+
+```jadpo check project=e-section-required-fix-every hidden
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+    subtitle: Title?
+    available: Bool
+}
+
+query books_titled(title: Book.title) -> List<Book> {
+    from: Book
+    where: Book.title == title
+    order: [Book.id asc]
+    limit: every
+}
+```
+
+The query gives every book with that title, up to 10,000. When more
+match it gives none of them, and the action that called it stops with a
+fault rather than give part of the list.
+
 **If a fixed number of books is enough**, add `limit:`:
 
 ```jadpo fragment
@@ -119,8 +151,8 @@ query books_titled(title: Book.title) -> List<Book> {
 
 The query gives up to 20 books with that title.
 
-**If the caller should be able to read every one**, return a `Page<Book>`
-and read it a page at a time. The caller passes the page size and the
+**If there can be more than 10,000**, return a `Page<Book>` and read it
+a page at a time. The caller passes the page size and the
 cursor from the page before:
 
 ```jadpo fragment
@@ -197,4 +229,5 @@ fields.
 - [Named queries](../language/06-reads-and-writes.md#named-queries)
 - [How many records come back](../language/06-reads-and-writes.md#how-many-records-come-back)
 - [Order and pages](../language/06-reads-and-writes.md#order-and-pages)
+- [Every record that matches](../language/06-reads-and-writes.md#every-record-that-matches)
 - [Pages](../language/06-reads-and-writes.md#pages)

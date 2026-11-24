@@ -140,7 +140,9 @@ query list_books(filter: BookFilter) -> Page<BookView> {
   same order.
 - `Page<BookView>` comes back as one page and a cursor for the next.
   For a fixed number of records with no cursor, give
-  `List<BookView>` and `limit:` instead of `page:`.
+  `List<BookView>` and `limit:` instead of `page:`. For every record
+  that matches at once, up to 10,000, give `List<BookView>` and
+  `limit: every`.
 
 `jadpo sql` shows the statement it sends. A missing filter and the
 first page's missing cursor are written `IS NULL OR`, so the query

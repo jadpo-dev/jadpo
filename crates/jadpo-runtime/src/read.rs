@@ -181,6 +181,11 @@ pub(crate) async fn read_as(
             None => Found::Missing(hidden),
         },
         Cardinality::Optional => Found::Value(values.into_iter().next().unwrap_or(Value::None)),
+        // `limit: every` asked for one more than the most: finding it is
+        // more records than it reads (area 6, "Every record that matches").
+        Cardinality::List if plan.every.is_some_and(|most| too_many(values.len(), most)) => {
+            return Err(too_many_records(ctx, plan, site));
+        }
         // A map layer's features, as one collection (chunk 5.5u8).
         Cardinality::List if plan.layer => Found::Value(Value::record(
             jadpo_std::standard::geo::FEATURE_COLLECTION,
@@ -228,6 +233,19 @@ pub(crate) async fn read_as(
             ))
         }
     })
+}
+
+/// Whether a list of `found` records is more than `most`, the most
+/// `limit: every` reads.
+pub(crate) fn too_many(found: usize, most: u64) -> bool {
+    u64::try_from(found).map_or(true, |found| found > most)
+}
+
+/// The fault a list with `limit: every` raises when more records match
+/// than it reads: never a list cut short.
+pub(crate) fn too_many_records(ctx: &mut Ctx<'_>, plan: &ReadPlan, site: u32) -> Interrupt {
+    let most = plan.every.unwrap_or(jadpo_std::read::EVERY_MOST);
+    Interrupt::Fault(ctx.fault(FaultKind::TooManyRecords { most }, site))
 }
 
 /// A read that isn't part of the running action's transaction: one

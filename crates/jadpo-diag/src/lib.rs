@@ -880,6 +880,8 @@ rules! {
         "A query's `cache:` names no cache, keeps its entries too long or too briefly, or caches what a cache may not hold";
     QUERY_CONDITION_UNSUPPORTED: "query.condition_unsupported", area 6, Error, Agent,
         "A query's `where:` or `where_present:` line holds a condition the database can't serve";
+    QUERY_EVERY_UNSUPPORTED: "query.every_unsupported", area 6, Error, Agent,
+        "A query says `limit: every` where it can't read every record that matches: a page's `size:`, an include, or a list ordered by `nearest`";
     QUERY_FROM_NOT_ENTITY: "query.from_not_entity", area 6, Error, Agent,
         "A query's `from:` names something that isn't an entity";
     QUERY_GEOMETRY_FIELD: "query.geometry_field", area 6, Error, Agent,

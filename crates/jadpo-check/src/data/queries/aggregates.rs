@@ -361,7 +361,7 @@ impl Reader<'_> {
             _ => None,
         };
         let limit = match sections.first.get("limit") {
-            Some(member) if grouped => self.bound(scope, member.value(), member, "limit"),
+            Some(member) if grouped => self.bound(scope, member.value(), member, BoundAt::List),
             _ => None,
         };
         if grouped && (order.is_none() || limit.is_none()) {
