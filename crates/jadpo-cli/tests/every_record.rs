@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use jadpo_cli::{Output, run};
 use jadpo_interp::Program;
-use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, FaultKind, Outcome, Transaction as _};
+use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, FaultKind, Outcome};
 use jadpo_term::Environment;
 use jadpo_test::host::Harness;
 use jadpo_value::Value;
@@ -173,4 +173,76 @@ fn every_reads_ten_thousand_and_more_is_a_fault_that_changes_nothing() {
         other => panic!("not a count: {other:?}"),
     }
     assert_eq!(listed(&call(&program, &url, "export_done")), 0);
+}
+
+/// Baskets kept in Redis, a query of every open one, and tests reading
+/// three and then 10,001.
+fn redis_project() -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("every-record-redis");
+    let _ = fs::remove_dir_all(&root);
+    write(
+        &root,
+        "app.jadpo",
+        "application {\n    connections: {\n        baskets: {\n            driver: Driver.redis\n            url: config.redis_url\n        }\n    }\n}\n",
+    );
+    write(
+        &root,
+        "config.jadpo",
+        "config {\n    redis_url: RedisUrl\n}\n",
+    );
+    for (file, text) in [
+        (
+            "types/basket_state.jadpo",
+            "/// Whether a basket is still being filled.\ntype BasketState = Enum {\n    open\n    paid\n}\n",
+        ),
+        (
+            "types/item_count.jadpo",
+            "/// How many items a basket holds.\ntype ItemCount = Int {\n    min: 0\n}\n",
+        ),
+        (
+            "entities/basket.jadpo",
+            "use shop/types { BasketState, ItemCount }\n\n/// A shopper's basket.\nentity Basket {\n    id: Uuid\n    state: BasketState\n    items: ItemCount\n\n    store: baskets\n    expires_after: 1d\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n    }\n    indexes: {\n        by_state: [state]\n    }\n}\n",
+        ),
+        (
+            "queries/all_open.jadpo",
+            "use shop/entities { Basket }\nuse shop/types { BasketState }\n\n/// Every open basket.\nquery all_open() -> List<Basket> {\n    from: Basket\n    where: Basket.state == BasketState.open\n    limit: every\n}\n",
+        ),
+        (
+            "actions/open_baskets_for.jadpo",
+            "use shop/entities { Basket }\nuse shop/types { BasketState }\n\n/// Opens one basket for each of `items`, holding that many items.\naction open_baskets_for(items: List<Basket.items>) -> List<Basket.id> {\n    var mut opened: List<Basket.id> = []\n    for count in items {\n        var basket: Basket = Basket.create {\n            set: {\n                state: BasketState.open\n                items: count\n            }\n        }\n        opened = list.append(opened, basket.id)\n    }\n    return opened\n}\n",
+        ),
+        (
+            "actions/open_baskets_for.test.jadpo",
+            "use shop/entities { Basket }\nuse shop/queries { all_open }\n\ntest \"every open basket comes back\" {\n    var opened: List<Basket.id> = open_baskets_for([1, 2, 3])\n    assert list.count(all_open()) == list.count(opened)\n}\n\ntest \"more than ten thousand is too many\" {\n    var ten: List<Basket.items> = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\n    var hundred: List<Basket.items> = list.flatten(list.map(ten, a -> ten))\n    var many: List<Basket.items> = list.flatten(list.map(hundred, a -> hundred))\n    var opened: List<Basket.id> = open_baskets_for(list.append(many, 1))\n    assert list.count(all_open()) == list.count(opened)\n}\n",
+        ),
+    ] {
+        write(&root, &format!("domains/shop/{file}"), text);
+    }
+    jadpo(&root, &["records", "update"]);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    root
+}
+
+#[test]
+fn every_reads_a_redis_list_and_more_is_the_same_fault() {
+    let root = redis_project();
+    let loaded = jadpo_db::load(&root);
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let plan = program.plan().query_named("all_open").expect("the plan");
+    assert_eq!(plan.read.every, Some(10_000));
+    if !jadpo_test::live() {
+        return;
+    }
+    let tested = jadpo(&root, &["test"]);
+    let said = format!("{}{}", tested.stdout, tested.stderr);
+    assert!(
+        said.contains("test failed: 1 failed, 1 passed"),
+        "the three come back, and 10,001 are too many: {said}"
+    );
+    assert!(
+        said.contains("fault: too_many_records in test \"more than ten thousand is too many\""),
+        "{said}"
+    );
+    assert!(said.contains("more than 10,000 match"), "{said}");
 }

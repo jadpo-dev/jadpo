@@ -1285,19 +1285,19 @@ action add_todo(owner: User, title: Todo.title, status: TodoStatus) -> Todo {
 ```
 
 ```jadpo check project=every-record file=domains/planning/actions/clear_done.test.jadpo
-use planning/actions { add_todo, add_user }
 use planning/entities { Todo, User }
-use planning/queries { done_todos }
 use planning/types { TodoStatus }
+use planning/actions { add_todo, add_user }
+use planning/queries { done_todos }
 
 test "clearing deletes every done todo of the owner's, and nobody else's" {
     var ada: User = add_user("Ada")
     var bob: User = add_user("Bob")
     var milk: Todo = add_todo(ada, "Buy milk", TodoStatus.done)
-    var post: Todo = add_todo(ada, "Post the letter", TodoStatus.done)
+    var bread: Todo = add_todo(ada, "Buy bread", TodoStatus.done)
     var bins: Todo = add_todo(ada, "Put the bins out", TodoStatus.open)
     var bobs: Todo = add_todo(bob, "Walk the dog", TodoStatus.done)
-    assert list.map(done_todos(ada.id), todo -> todo.id) == [milk.id, post.id]
+    assert list.map(done_todos(ada.id), todo -> todo.id) == [milk.id, bread.id]
     assert clear_done(ada.id) == 2
     assert done_todos(ada.id) == []
     assert list.map(done_todos(bob.id), todo -> todo.id) == [bobs.id]

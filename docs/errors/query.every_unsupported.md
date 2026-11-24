@@ -166,6 +166,8 @@ query shelf(after: PageCursor?) -> Page<Book> {
 }
 ```
 
+Each call gives up to 50 books and a `next` cursor while more remain.
+
 **For an include**, give its `limit:` a number, or read every book of the
 shelf with a query of its own:
 
@@ -194,6 +196,9 @@ query books_on_shelf(shelf_id: Shelf.id) -> List<Book> {
     limit: every
 }
 ```
+
+`books_on_shelf` gives every book on the shelf, up to 10,000, in title
+order.
 
 ## Related
 
