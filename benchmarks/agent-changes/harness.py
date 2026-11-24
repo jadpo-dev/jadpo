@@ -462,6 +462,10 @@ def prepare(change, language, folder, compiler):
     git(app, 'init', '-q', '-b', 'main')
     git(app, 'add', '-A')
     git(app, '-c', 'user.name=harness', '-c', 'user.email=harness@example.invalid', 'commit', '-q', '-m', 'start')
+    # As in a real project: the app is committed on main and the agent works
+    # on a branch, so `jadpo check` has a before side and judges acceptances.
+    git(app, 'tag', 'start')
+    git(app, 'checkout', '-q', '-b', 'change')
     return app
 
 
@@ -469,11 +473,12 @@ def git(app, *arguments):
     return subprocess.run(['git', *arguments], cwd=app, check=True, capture_output=True, text=True).stdout
 
 
-def final_diff(app):
-    """The change as a reviewer sees it: THINKING.md, the tuning runs' notes,
-    is not part of it."""
+def final_diff(app, base='main'):
+    """The change as a reviewer sees it, against the branch it will merge
+    into, the agent's own commits included: THINKING.md, the tuning runs'
+    notes, is not part of it."""
     git(app, 'add', '-A')
-    return git(app, 'diff', '--cached', '--no-color', '--find-renames', 'HEAD', '--', '.', ':(exclude)THINKING.md')
+    return git(app, 'diff', '--cached', '--no-color', '--find-renames', base, '--', '.', ':(exclude)THINKING.md')
 
 
 def agent_environment(folder, database_url, loopback=True):
@@ -999,6 +1004,8 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
                 diff = final_diff(app)
                 git(app, '-c', 'user.name=harness', '-c', 'user.email=harness@example.invalid', 'commit', '-q',
                     '--allow-empty', '-m', f'{change.id}: {change.title}')
+                # The change merges: the next one's before side is this one's result.
+                git(app, 'branch', '-f', 'main', 'HEAD')
                 visible = visible_gate(language, app, environment)
                 reports = hidden(language, app, change, folder / 'hidden' / change.id, server, compiler, diff)
                 mark = marks[-1]
@@ -1021,7 +1028,7 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
                     result['sandbox'] = codex_config(settings, folder, environment)
                 results.append(result)
             # Every change again, on the app the whole session left.
-            final = final_diff(app)
+            final = final_diff(app, 'start')
             for result, change in zip(results, changes):
                 kept = hidden(language, app, change, folder / 'hidden-final' / change.id, server, compiler, final)
                 tests = [r for r in kept if r['kind'] != 'regression']

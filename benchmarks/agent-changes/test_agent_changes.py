@@ -210,10 +210,15 @@ class Isolation(unittest.TestCase):
             (app / 'a.txt').write_text('a\n')
             harness.git(app, 'add', '-A')
             harness.git(app, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 's')
+            harness.git(app, 'checkout', '-q', '-b', 'change')
+            (app / 'c.txt').write_text('committed by the agent\n')
+            harness.git(app, 'add', '-A')
+            harness.git(app, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 'agent')
             (app / 'a.txt').write_text('b\n')
             (app / 'THINKING.md').write_text('trying b\n')
             diff = harness.final_diff(app)
         self.assertIn('a.txt', diff)
+        self.assertIn('c.txt', diff, 'a commit the agent made on its branch is part of its change')
         self.assertNotIn('THINKING', diff)
 
 
