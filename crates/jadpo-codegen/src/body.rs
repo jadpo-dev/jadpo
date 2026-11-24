@@ -261,6 +261,28 @@ impl Emitter<'_> {
         }
     }
 
+    /// In a test, fixture or seed, who its own writes run as, a data
+    /// builder's among them: as the code around them, a test's with no
+    /// caller, so without policy, and a fixture's or a seed's as the
+    /// caller it was called with, or none (area 13, "Data builders").
+    /// Nothing a request runs is one of these.
+    fn own_caller(&self) -> TokenStream {
+        if !self.test_like() {
+            return TokenStream::new();
+        }
+        let param = self
+            .callable
+            .caller
+            .and_then(|place| self.body().params.get(place as usize));
+        match param {
+            Some(param) => {
+                let local = format_ident!("l{}", param.0);
+                quote!(jadpo_runtime::call_as(cx, Some(&#local));)
+            }
+            None => quote!(jadpo_runtime::call_as(cx, None);),
+        }
+    }
+
     // --- callables --------------------------------------------------------------
 
     /// The callable's function and its table entry.
@@ -2400,6 +2422,7 @@ impl Emitter<'_> {
             return quote!({ #(#lets)* #defect });
         }
         let plan = number(plan);
+        let call_as = self.own_caller();
         let ran = self.stepped(
             quote!(rt::write(cx, p, #plan, &[#(#names),*], #at).await),
             id,
@@ -2409,6 +2432,7 @@ impl Emitter<'_> {
         let written = self.tri(quote!(ran));
         quote!({
             #(#lets)*
+            #call_as
             let ran = #ran;
             match ran {
                 Err(Stop::Refused { arm, cause }) => match arm {

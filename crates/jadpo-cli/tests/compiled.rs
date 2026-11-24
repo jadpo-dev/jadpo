@@ -687,6 +687,10 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
             corpus_project(&recursion, "compiled-recursion").expect("it checks"),
         ),
         (
+            "data builders without policy".into(),
+            corpus_project(&crate::policy::builders(), "compiled-builders").expect("it checks"),
+        ),
+        (
             "a file held to its field".into(),
             corpus_project(&file_held(), "compiled-file-held").expect("it checks"),
         ),
@@ -1058,6 +1062,10 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     assert_eq!(counted("an export run to its end"), Some((1, 1)));
     assert_eq!(counted("a package's action caught"), Some((2, 2)));
     assert_eq!(counted("a recursion to the limits"), Some((4, 2)));
+    // A data builder in a test runs without policy, on an entity whose
+    // `create:` grants no one, and a route after it with policy (chunk
+    // 10.4d).
+    assert_eq!(counted("data builders without policy"), Some((6, 6)));
     // A sheet that fits is kept; each setting broken is a fault (chunk
     // B1).
     assert_eq!(counted("a file held to its field"), Some((4, 1)));
