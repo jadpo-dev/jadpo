@@ -85,18 +85,15 @@ check failed: 1 error, 1 file
 Every error has the same parts:
 
 - `reason:` says why the code is wrong.
-- `next:` says what to do. `(human)` at the end of an error's `next:`
-  line tells your coding agent to stop and ask you which fix you want,
-  because the choice is yours to make (who can see data, what a setting
-  holds). `(agent)` means your agent can make the fix itself. A passing
-  check's `notice:` is no stop: carry on, and tell your user what it said.
-  Nor is a product detail the request leaves open: choose the reasonable
-  reading, note it on the code and in your summary, and carry on. Before
-  stopping to ask, back out what waits on your user, so `check` and
-  `test` pass.
-- `rule:` is the error's name. Its page, on the site at
-  `https://jadpo.dev/docs/errors/<rule>`, explains it; read it only when
-  the reason and the next step aren't enough.
+- `next:` says what to do. `(human)` at its end tells your agent to stop
+  and ask you, since the choice is yours (who can see data, what a setting
+  holds). `(agent)` means your agent fixes it alone. A passing check's
+  `notice:` is no stop: carry on, and tell your user what it said. Nor is
+  a detail the request leaves open: your agent picks a reading, notes it
+  and carries on, and before any stop backs out what waits on you.
+- `rule:` is the error's name. Its page,
+  `https://jadpo.dev/docs/errors/<rule>`, explains it when the reason and
+  next step aren't enough.
 
 A few rules are judgement calls: when the code is right as written, a line
 `decline <rule>: "<why>"` above the declaration answers that one finding.

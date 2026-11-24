@@ -1853,7 +1853,7 @@ type Subject = Text {
 type TicketTime = Instant {}
 ```
 
-```jadpo check project=ticket-report file=domains/desk/entities/ticket.jadpo hidden migrate=initial
+```jadpo check project=ticket-report file=domains/desk/entities/ticket.jadpo hidden
 use desk/types { Subject, TicketStatus, TicketTime }
 
 /// A customer's request for help.
@@ -1965,7 +1965,7 @@ action open_ticket(subject: Ticket.subject) -> Ticket {
 }
 ```
 
-```jadpo check project=ticket-report file=domains/desk/actions/solve_ticket.jadpo hidden
+```jadpo check project=ticket-report file=domains/desk/actions/solve_ticket.jadpo hidden migrate=initial
 use desk/entities { Ticket }
 use desk/types { TicketStatus, TicketTime }
 

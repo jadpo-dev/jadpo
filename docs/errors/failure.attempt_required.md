@@ -116,6 +116,17 @@ action import_one(email: Email) -> Added {
 ```
 
 ```text output
+error: `Contact.create` can fail, and nothing handles it
+ --> main.jadpo:15:19
+   |
+15 |     return match (Contact.create {
+   |                   ^^^^^^^^^^^^^^^^ can fail with `EmailTaken`
+  reason: A `match` handles a call's failures, and a write isn't a call. In an action of its own, a write runs in a savepoint when the caller matches the call, so `EmailTaken` undoes it and the caller carries on; `attempt` here would pass the failure on and end this action.
+  next: Move `Contact.create` into an action that lists `EmailTaken` after `fails` and returns it with `attempt`, then `match` on a call to that action with an arm for `EmailTaken` (agent)
+  rule: failure.attempt_required
+  help: https://jadpo.dev/docs/errors/failure.attempt_required
+
+check failed: 1 error, 1 file
 ```
 
 ## How to fix it
@@ -257,6 +268,9 @@ action import_one(email: Email) -> Added {
     }
 }
 ```
+
+`import_one` now answers `false` for an email that is taken, and the
+create it tried is undone alone.
 
 ## Related
 

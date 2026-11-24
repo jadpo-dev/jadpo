@@ -77,14 +77,10 @@ default branch is history, and editing it is
 ## How to fix it
 
 **If you accept the changes**, the `///` line directly above
-`acceptance` holds your words, with who said them and where. You write it
-yourself, or your agent writes what you told it:
-
-```jadpo fragment
-/// Ana Ruiz (catalogue owner), in chat on 2026-10-20: "No client reads a book's author: the catalogue pages stopped showing it in version 2."
-```
-
-Then check again:
+`acceptance` holds your words, with who said them and where, such as
+`/// Ana Ruiz (catalogue owner), in chat on 2026-10-20: "No client reads
+a book's author."` You write it yourself, or your agent writes what you
+told it. Then check again:
 
 ```sh
 jadpo check

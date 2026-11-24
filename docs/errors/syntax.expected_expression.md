@@ -87,6 +87,17 @@ function shown(note: Note?) -> Note {
 ```
 
 ```text output
+error: `return` starts a statement, and an arm's result is a value
+ --> main.jadpo:5:24
+  |
+5 |         some(found) -> return found
+  |                        ^^^^^^ a statement
+  reason: An arm's result is a value, `reject`, `propagate` or a block; a statement such as `return` goes inside the block.
+  next: Write the statement in a block: `some(found) -> { return found }` (agent)
+  rule: syntax.expected_expression
+  help: https://jadpo.dev/docs/errors/syntax.expected_expression
+
+check failed: 1 error, 1 file
 ```
 
 ## How to fix it
