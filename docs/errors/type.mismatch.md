@@ -105,6 +105,9 @@ has exactly one field of the required type, such as a query's
   next: Read its `todos` field: `mine.todos` (agent)
 ```
 
+Reading the field passes the list the object holds, and the object's
+other fields stay where they are.
+
 ## Related
 
 - [Creating values](../language/02-values-and-types.md#creating-values)

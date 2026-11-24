@@ -254,6 +254,15 @@ test "a shelf counts its visits" {
 }
 ```
 
+```jadpo check project=e-not-callable-fix-3 file=domains/shop/entities/shelf.test.jadpo hidden
+test "a shelf counts its visits" {
+    var shelf: Shelf = make.Shelf {
+        visits: 3
+    }
+    assert shelf.visits == 3
+}
+```
+
 ```jadpo check project=e-not-callable-fix-3 file=app.jadpo hidden
 application {}
 ```
@@ -270,20 +279,16 @@ use shop/types { Count }
 entity Shelf {
     id: Uuid
     visits: Count
-}
-```
 
-```jadpo check project=e-not-callable-fix-3 file=domains/shop/entities/shelf.test.jadpo hidden
-test "a shelf counts its visits" {
-    var shelf: Shelf = make.Shelf {
-        visits: 3
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
     }
-    assert shelf.visits == 3
 }
 ```
 
-The test starts from a shelf with three visits, built the way any create
-builds one.
+The test starts from a shelf with three visits, built through the
+entity's own create, so its rules and policy apply as they do anywhere.
 
 ## Related
 
