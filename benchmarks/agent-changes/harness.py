@@ -444,6 +444,16 @@ listen on a network port.
 """
 
 
+# What a Jadpo agent isn't told by `jadpo new`'s AGENTS.md: as for the
+# TypeScript copy, the sandbox refuses a listening port, so `jadpo dev` can't
+# start (10.6: three Sol runs met `cli.dev_start_failed` and one stopped on it).
+JADPO_SANDBOX_NOTE = """
+## In this environment
+
+The sandbox can't listen on a network port, so `jadpo dev` can't start here.
+"""
+
+
 def prepare(change, language, folder, compiler):
     """A fresh copy of the app, its own git history to diff against, and for
     Jadpo the docs bundle and the compiler beside it. Nothing else of the
@@ -460,7 +470,7 @@ def prepare(change, language, folder, compiler):
                        check=True, stdout=subprocess.DEVNULL)
         (bundle / 'llms.txt').write_text(local_links((ROOT / 'llms.txt').read_text(), bundle_pages(bundle), ''))
         copy_examples(bundle)
-        (app / 'AGENTS.md').write_text(jadpo_agents_file(compiler, bundle))
+        (app / 'AGENTS.md').write_text(jadpo_agents_file(compiler, bundle) + JADPO_SANDBOX_NOTE)
         install_wrapper(folder, app, {'jadpo': compiler})
     else:
         shutil.copytree(APPS[which]['typescript'], app, ignore=shutil.ignore_patterns(*TYPESCRIPT_SKIPPED))

@@ -170,6 +170,18 @@ class Isolation(unittest.TestCase):
         source = inspect.getsource(harness.prepare)
         self.assertIn('TYPESCRIPT_SANDBOX_NOTE', source)
 
+    def test_jadpo_is_told_it_cannot_listen(self):
+        # `jadpo dev` fails as `cli.dev_start_failed`, which a person decides,
+        # so an agent not told stops on a refusal no change could fix.
+        self.assertIn("can't listen on a network port", harness.JADPO_SANDBOX_NOTE)
+        self.assertIn('jadpo dev', harness.JADPO_SANDBOX_NOTE)
+        self.assertIn('JADPO_SANDBOX_NOTE', inspect.getsource(harness.prepare))
+
+    def test_solving_without_a_reply_still_works(self):
+        # H17's request says solving without a reply works as today, which has no body.
+        source = inspect.getsource(harness.desk_set.h17_solve_with_reply)
+        self.assertIn("f'/tickets/{T_PENDING}/solve', auth='ben')", source)
+
     def test_agent_command_is_pinned_and_closed(self):
         with tempfile.TemporaryDirectory() as scratch:
             app = Path(scratch)

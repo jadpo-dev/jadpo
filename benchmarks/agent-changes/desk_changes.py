@@ -640,6 +640,9 @@ def h17_solve_with_reply(c):
     require(row['status'] == 'solved' and row['solved_at'], f'solved, with its solved_at: {row}')
     require(CLOSING in replies_on(c, T_OPEN), 'the closing reply was posted')
     require(row['first_response_at'], f'the closing reply is the first response: {row}')
+    plain = c.request('POST', f'/tickets/{T_PENDING}/solve', auth='ben')
+    require(plain['status'] == 200 and c.row('ticket', T_PENDING)['status'] == 'solved',
+            f'without a reply, solving works as today: {plain["status"]} {plain["body"][:300]}')
 
 
 @safety
