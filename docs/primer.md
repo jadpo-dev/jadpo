@@ -88,8 +88,8 @@ Every error has the same parts:
 - `next:` says what to do. `(human)` at the end of an error's `next:`
   line tells your coding agent to stop and ask you which fix you want,
   because the choice is yours to make (who can see data, what a setting
-  holds). `(agent)` means your agent can make the fix itself. A passing check's `notice:` is no stop:
-  carry on, and tell your user what it said.
+  holds). `(agent)` means your agent can make the fix itself. A passing
+  check's `notice:` is no stop: carry on, and tell your user what it said.
 - `rule:` is the error's name. Its page, on the site at
   `https://jadpo.dev/docs/errors/<rule>`, explains it; read it only when
   the reason and the next step aren't enough.
@@ -281,9 +281,10 @@ but one can't be passed for the other. Every entity gets `Tool.get(id)`,
 
 After changing an entity, run `jadpo check`. Once nothing else is wrong,
 it writes a dated folder in `database/migrations/` with a snapshot and the
-SQL, and says so. Commit it. When a change needs a decision, such as a value for a new field,
-`jadpo check` fails naming `jadpo migrate new <purpose>`, which writes the
-folder with a `changes.jadpo` to fill in, and run again finishes it.
+SQL, and says so. Commit it. When a change needs a decision, such as a
+value for a new field, `jadpo check` fails naming
+`jadpo migrate new <purpose>`, which writes the folder with a
+`changes.jadpo` to fill in, and run again finishes it.
 
 ## Failures
 
@@ -721,10 +722,10 @@ test "only a tool's owner lends it out" {
 }
 ```
 
-A test never writes a record itself: `make.Member { email:
-"bob@example.test" }` builds one, filling in every field it isn't given,
-and shared test data goes in a `fixture` in `fixtures/`. A test's
-`fakes:` scripts what a provider package answers.
+A test never writes a record itself:
+`make.Member { email: "bob@example.test" }` builds one, filling in every
+field it isn't given, and shared test data goes in a `fixture` in
+`fixtures/`. A test's `fakes:` scripts what a provider package answers.
 
 ## Run it
 
