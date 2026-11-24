@@ -183,7 +183,9 @@ change keeps run after each one over every read route the app then has.
 `session` runs them five to a conversation (S1, S2): the first change
 starts it and each later one resumes it, the app is committed and `main`
 moved to it between changes, as a merge would, and each change is scored
-when it is done and again on the app the whole session left.
+when it is done and again on the app the whole session left. A change's
+own checks run before `main` moves, as a pull request meets them, so
+`jadpo check` still judges the acceptances it needs.
 
 **Tuning runs are staged.** One session at a time. After each, `stumbles`
 reads where it got stuck: every failing check or test run and its error
