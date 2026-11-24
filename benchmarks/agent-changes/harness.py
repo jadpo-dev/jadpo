@@ -953,6 +953,31 @@ def line_count(path):
     return len(path.read_text(errors='replace').splitlines()) if path.is_file() else 0
 
 
+def rollout_spent(path, upto):
+    """The thread's running token total in Codex's record before line `upto`,
+    counted as scoring.parse_codex counts it."""
+    spent = 0
+    for line in (path.read_text(errors='replace').splitlines()[:upto] if path.is_file() else []):
+        if '"token_count"' not in line:
+            continue
+        try:
+            payload = json.loads(line).get('payload') or {}
+        except ValueError:
+            continue
+        usage = (payload.get('info') or {}).get('total_token_usage') or {}
+        if usage:
+            spent = int(usage.get('total_tokens') or scoring.total(scoring.codex_usage(usage)))
+    return spent
+
+
+def per_change(result, before):
+    """A session step's tokens before each command, and to green, less what
+    the thread had spent before the step began."""
+    for item in result.get('verifications') or []:
+        item['tokens_before'] = max(0, (item.get('tokens_before') or 0) - before)
+    result['green'] = scoring.to_green(result['verifications'], result['edits'])
+
+
 def tail_file(source, start, destination):
     lines = source.read_text(errors='replace').splitlines(keepends=True) if source.is_file() else []
     destination.write_text(''.join(lines[start:]))
@@ -1018,6 +1043,9 @@ def run_session(name, language, number, label, settings, agent='codex', keep=Fal
                 result = score(change, language, number, label, settings, step_transcript, diff, visible, reports, asked,
                                timings, step_folder)
                 if codex:
+                    # Codex counts tokens for the whole thread: before each
+                    # command, and to green, a step counts only its own.
+                    per_change(result, rollout_spent(folder / 'rollout.jsonl', mark['rollout']))
                     # Codex reports the thread's usage so far: the step is what it added.
                     total = thread_usage(transcript)
                     result['tokens'] = {key: max(0, total[key] - spent.get(key, 0)) for key in total}

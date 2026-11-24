@@ -339,6 +339,43 @@ class Helpdesk(unittest.TestCase):
         self.assertIn('unknown session', str(raised.exception))
 
 
+class Scoring105(unittest.TestCase):
+    """Faults found in 10.5's first round, which skewed scores, not sessions."""
+
+    def test_a_heredoc_that_names_jadpo_test_runs_no_test(self):
+        script = "python3 - <<'PY'\nPath('QUESTIONS.md').write_text('`jadpo test` passed')\nPY\n"
+        run = scoring.HEREDOC.sub(r'\1', script)
+        self.assertFalse(scoring.COMMANDS['jadpo']['test'].search(run))
+        self.assertTrue(scoring.COMMANDS['jadpo']['test'].search(scoring.HEREDOC.sub(r'\1', 'cat <<EOF > x\nhi\nEOF\njadpo test')))
+
+    def test_a_session_step_counts_only_its_own_tokens(self):
+        result = {'verifications': [{'category': 'check', 'failed': False, 'edits_before': 1, 'tokens_before': 1500},
+                                    {'category': 'test', 'failed': False, 'edits_before': 1, 'tokens_before': 1800}],
+                  'edits': 1}
+        harness.per_change(result, 1000)
+        self.assertEqual([v['tokens_before'] for v in result['verifications']], [500, 800])
+        self.assertEqual(result['green'], {'attempts': 2, 'tokens': 800})
+
+    def test_rollout_spent_reads_the_running_total_before_a_line(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'rollout.jsonl'
+            count = lambda n: json.dumps({'type': 'event_msg', 'payload': {'type': 'token_count', 'info': {'total_token_usage': {'total_tokens': n}}}})
+            path.write_text('\n'.join([count(100), count(250), count(900)]) + '\n')
+            self.assertEqual(harness.rollout_spent(path, 2), 250)
+            self.assertEqual(harness.rollout_spent(path, 0), 0)
+
+    def test_new_routes_never_read_invalid_input_as_absent(self):
+        for name in ('h03_bulk_tag_stays_in_its_workspace', 'h08_merge_keeps_the_rules', 'h10_import_keeps_the_rules'):
+            self.assertNotIn('unknown_input', inspect.getsource(getattr(desk_changes, name)), name)
+
+    def test_the_contract_runner_forwards_savepoints(self):
+        runner = (HERE.parent / 'contract/native/main.rs').read_text()
+        hooked = runner[runner.index('impl Transaction for Hooked'):]
+        hooked = hooked[:hooked.index('\n}\n')]
+        for method in ('savepoint', 'release_savepoint', 'rollback_to_savepoint'):
+            self.assertIn(f'self.inner.{method}()', hooked)
+
+
 class Codex(unittest.TestCase):
     folder = Path('/work/label/F07-jadpo-r1')
     environment = {'PATH': '/work/label/F07-jadpo-r1/bin:/opt/node/bin:/usr/bin:/bin'}

@@ -179,12 +179,12 @@ def h03_bulk_tag(c):
 def h03_bulk_tag_stays_in_its_workspace(c):
     """No tag crosses workspaces, the bin stays untouched and a viewer or an
     outsider tags nothing."""
-    present(bulk_tag(c, 'dan', TAG_BILLING, [T_OPEN]), unknown_input=True)
-    present(bulk_tag(c, 'eve', TAG_BILLING, [T_OPEN]), unknown_input=True)
+    present(bulk_tag(c, 'dan', TAG_BILLING, [T_OPEN]))
+    present(bulk_tag(c, 'eve', TAG_BILLING, [T_OPEN]))
     require(not tags_on(c, T_OPEN), 'a viewer or an outsider tagged a ticket')
-    present(bulk_tag(c, 'cat', TAG_BILLING, [T_OPEN, G_OPEN]), unknown_input=True)
-    present(bulk_tag(c, 'cat', TAG_VIP, [T_OPEN]), unknown_input=True)
-    present(bulk_tag(c, 'cat', TAG_BILLING, [T_BIN, T_SOLVED]), unknown_input=True)
+    present(bulk_tag(c, 'cat', TAG_BILLING, [T_OPEN, G_OPEN]))
+    present(bulk_tag(c, 'cat', TAG_VIP, [T_OPEN]))
+    present(bulk_tag(c, 'cat', TAG_BILLING, [T_BIN, T_SOLVED]))
     require(tags_on(c, G_OPEN) == {TAG_VIP}, 'Globex\'s ticket gained none of Acme\'s tags')
     require(TAG_VIP not in tags_on(c, T_OPEN), 'Acme\'s ticket gained none of Globex\'s tags')
     require(not tags_on(c, T_BIN), 'the binned ticket was tagged')
@@ -343,7 +343,7 @@ def h08_merge_keeps_the_rules(c):
     never reaches into another workspace."""
     for who, keep, duplicate in [('cat', CORA, COLIN), ('dan', CORA, COLIN), ('eve', CORA, COLIN),
                                  ('ann', CORA, GAIL), ('eve', GAIL, COLIN)]:
-        present(merge(c, who, keep, duplicate), unknown_input=True)
+        present(merge(c, who, keep, duplicate))
         require(c.row('customer', COLIN) is not None, f'{who} merged {duplicate} into {keep}')
         require(c.row('customer', GAIL) is not None, f'{who} merged Globex\'s customer')
         require(c.row('ticket', G_OPEN)['customer_id'] == GAIL, 'Globex\'s ticket moved')
@@ -403,18 +403,17 @@ def h10_import_keeps_the_rules(c):
     """Rows land in the workspace named by the path, set nothing private,
     skip only on this workspace's own customers, and agents import nothing."""
     before = len(c.rows('customer'))
-    present(import_customers(c, 'cat', [{'name': 'Agent Row', 'email': 'agent-row@customer.example.test'}]), unknown_input=True)
+    present(import_customers(c, 'cat', [{'name': 'Agent Row', 'email': 'agent-row@customer.example.test'}]))
     require(len(c.rows('customer')) == before, 'an agent imported customers')
-    present(import_customers(c, 'eve', [{'name': 'Eve Row', 'email': 'eve-row@customer.example.test'}]), unknown_input=True)
+    present(import_customers(c, 'eve', [{'name': 'Eve Row', 'email': 'eve-row@customer.example.test'}]))
     require(not c.rows('customer', "email='eve-row@customer.example.test'"), 'an outsider imported into Acme')
     present(import_customers(c, 'ben', [{'name': 'Smuggled', 'email': 'smuggled@customer.example.test', 'id': NEW_ID,
-                                         'workspace_id': GLOBEX, 'created_at': '2020-01-01T00:00:00Z'}]), unknown_input=True)
+                                         'workspace_id': GLOBEX, 'created_at': '2020-01-01T00:00:00Z'}]))
     require(not c.rows('customer', f"workspace_id='{GLOBEX}' AND email='smuggled@customer.example.test'"),
             'a row chose its own workspace')
     require(c.row('customer', NEW_ID) is None, 'a row chose its own id')
     require(not c.rows('customer', "created_at < '2021-01-01'"), 'a row chose its own creation time')
-    response = present(import_customers(c, 'ben', [{'name': 'Gail Here', 'email': 'gail@globex-customer.example.test'}]),
-                       unknown_input=True)
+    response = present(import_customers(c, 'ben', [{'name': 'Gail Here', 'email': 'gail@globex-customer.example.test'}]))
     require(not (isinstance(response['json'], dict) and response['json'].get('skipped') == 1),
             'another workspace\'s customer made the import skip a row, which shows they exist')
 

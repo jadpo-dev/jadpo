@@ -109,6 +109,18 @@ impl Transaction for Hooked {
     fn batch<'a>(&'a mut self, sql: &'a str) -> LocalFuture<'a, Result<(), StoreError>> {
         self.inner.batch(sql)
     }
+    // Forward the driver's own savepoints: the trait's defaults send the SQL
+    // through `batch`, so the driver never learns a refused statement was
+    // rolled back to its savepoint, and rolls back the commit.
+    fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.inner.savepoint()
+    }
+    fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.inner.release_savepoint()
+    }
+    fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.inner.rollback_to_savepoint()
+    }
     fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
         self.inner.commit()
     }
