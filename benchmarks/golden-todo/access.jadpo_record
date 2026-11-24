@@ -12,6 +12,12 @@ entity todo.Todo
     update owner_id
     delete owner_id
 
+field todo.Todo.created_at
+    generated
+
+field todo.Todo.updated_at
+    generated
+
 entity todo.User
     read Access.system
     read id
@@ -19,3 +25,4 @@ entity todo.User
 
 field todo.User.email
     read Access.system
+    update nobody

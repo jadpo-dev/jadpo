@@ -1276,9 +1276,9 @@ impl Body<'_> {
         self.out.push(if immutable {
             problem
                 .reason(format!(
-                    "`{entity}.{field}` says `immutable: true`: it keeps the value its record was created with."
+                    "`{entity}.{field}` says `immutable: true`: it keeps the value its record was created with. Letting it change is the app owner's decision: removing `immutable: true` is a widening a person accepts."
                 ))
-                .next(format!("Remove `{field}` from the update, or `immutable: true` from the field"))
+                .next(format!("Remove `{field}` from the update, or ask the app's owner whether `{field}` may change"))
         } else {
             problem
                 .reason(format!(
@@ -1460,7 +1460,7 @@ impl Body<'_> {
             )
         } else {
             format!(
-                "`{entity}.{field}` is generated from the operation's clock; code never assigns it."
+                "`{entity}.{field}` is generated from the operation's clock; code never assigns it. Letting a caller set it is the app owner's decision: removing `generated:` is a widening a person accepts."
             )
         };
         self.out.push(

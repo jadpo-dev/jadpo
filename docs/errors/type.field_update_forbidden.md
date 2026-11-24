@@ -133,8 +133,8 @@ error: `Note.update` changes `Note.reference`, which an update can't change
    |
 41 |             reference: reference
    |             ^^^^^^^^^ immutable
-  reason: `Note.reference` says `immutable: true`: it keeps the value its record was created with.
-  next: Remove `reference` from the update, or `immutable: true` from the field (agent)
+  reason: `Note.reference` says `immutable: true`: it keeps the value its record was created with. Letting it change is the app owner's decision: removing `immutable: true` is a widening a person accepts.
+  next: Remove `reference` from the update, or ask the app's owner whether `reference` may change (agent)
   rule: type.field_update_forbidden
   help: https://jadpo.dev/docs/errors/type.field_update_forbidden
 
@@ -212,8 +212,12 @@ The owner of a note may now give it to another user. On `give_note`'s
 own update, its line replaces `Note`'s `update:` grant, so nobody else
 may hand the note over.
 
-**If a field marked `immutable: true` should be able to change**, remove
-`immutable: true` from it:
+**If a field marked `immutable: true` should be able to change**, ask the
+app's owner first: who may change a field is theirs to decide, as policy
+is. With their agreement, remove `immutable: true` from it. Once a commit
+holds the field, that change needs a person's acceptance,
+`PolicyChange.restriction_removed`
+([Protecting policy](../language/09-policy.md#protecting-policy)):
 
 ```jadpo fragment
     reference: NoteText
