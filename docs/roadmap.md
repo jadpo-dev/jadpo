@@ -124,6 +124,16 @@ D1 first: the site starts once D1 has merged.
 - [x] **10.4a A bound for "all of them"**: [Every record that matches](language/06-reads-and-writes.md#every-record-that-matches) and its decision in [the notes](language/notes/06-reads-and-writes.md).
 - [x] **10.4b Field writes the owner decides**: [Policy](language/09-policy.md) ("Who may set a field", "Copying a record the caller owns") and the decisions in [its notes](language/notes/09-policy.md).
 - [x] **10.4c Errors that cost agents attempts**: [Statements](language/03-logic.md#statements) and its decision in [the notes](language/notes/03-logic.md), the [primer](primer.md), and the error pages of [`semantic.not_callable`](errors/semantic.not_callable.md), [`naming.folded_collision`](errors/naming.folded_collision.md) and [`migration.out_of_date`](errors/migration.out_of_date.md).
+- [ ] **10.4e What stopped agents in 10.5's first round** `opus · high`:
+  the `jadpo new` AGENTS.md asks agents to stop for product details a
+  request leaves open, so they stopped where TypeScript's chose a reading
+  (H05); how an agent writes an acceptance the owner agreed to, in the
+  owner's words (H09, H10); worked examples for fields shown by role, a
+  bulk change that writes nothing, an import that skips duplicates, and
+  counts; the misleading `record.edited`, bare `assert` in a match arm and
+  `failure.attempt_required` inside `match`; and the runtime's
+  `Transaction` savepoint defaults, which let a wrapper skip the driver's
+  own.
 - [ ] **10.5 A mid-size app where rules live elsewhere** `opus · high`: a
   multi-tenant backend in both languages, about 8–10 entities, 40 or more
   routes, roles, a job and personal data, with the same hidden contract
