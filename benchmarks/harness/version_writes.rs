@@ -95,6 +95,21 @@ impl Transaction for Tx {
         self.meter.record(sql, &[]);
         self.inner.batch(sql)
     }
+    fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.meter.record(jadpo_runtime::SAVEPOINT, &[]);
+        self.inner.savepoint()
+    }
+
+    fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.meter.record(jadpo_runtime::RELEASE_SAVEPOINT, &[]);
+        self.inner.release_savepoint()
+    }
+
+    fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.meter.record(jadpo_runtime::ROLLBACK_TO_SAVEPOINT, &[]);
+        self.inner.rollback_to_savepoint()
+    }
+
     fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
         self.meter.record("COMMIT", &[]);
         self.inner.commit()

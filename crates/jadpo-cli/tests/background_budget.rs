@@ -567,6 +567,18 @@ impl Transaction for Paced {
         self.inner.batch(sql)
     }
 
+    fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.inner.savepoint()
+    }
+
+    fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.inner.release_savepoint()
+    }
+
+    fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+        self.inner.rollback_to_savepoint()
+    }
+
     fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
         self.monotonic.set(self.monotonic.get() + self.step);
         self.inner.commit()

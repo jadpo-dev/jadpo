@@ -272,18 +272,38 @@ impl Body<'_> {
         let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
         let span = crate::tree::node_span(self.path, node);
         self.flow.open = true;
-        self.out.push(
-            Diagnostic::new(
-                &rule::FAILURE_ATTEMPT_REQUIRED,
-                format!("`{written}` can fail, and nothing handles it"),
-            )
-            .at(span, format!("can fail with {}", crate::and_list(&listed)))
-            .reason("A call that can fail says so where it is made: `attempt` passes its failures on to the caller's `fails` list.")
-            .next(format!(
-                "Start the statement with `attempt`, and list {} after `fails`",
-                crate::and_list(&listed)
-            )),
-        );
+        let found = Diagnostic::new(
+            &rule::FAILURE_ATTEMPT_REQUIRED,
+            format!("`{written}` can fail, and nothing handles it"),
+        )
+        .at(span, format!("can fail with {}", crate::and_list(&listed)));
+        // A write a `match` is on: `attempt` would pass the failure on and
+        // end the action, where the `match` meant to recover from it. Only
+        // a called action runs in a savepoint its failure returns to (area
+        // 6, "A failed action inside another"; chunk 10.4e).
+        let found = if write_matched(node) {
+            let arms = match listed.as_slice() {
+                [one] => format!("an arm for {one}"),
+                _ => format!("arms for {}", crate::and_list(&listed)),
+            };
+            found
+                .reason(format!(
+                    "A `match` handles a call's failures, and a write isn't a call. In an action of its own, a write runs in a savepoint when the caller matches the call, so {} undoes it and the caller carries on; `attempt` here would pass the failure on and end this action.",
+                    crate::or_list(&listed)
+                ))
+                .next(format!(
+                    "Move `{written}` into an action that lists {} after `fails` and returns it with `attempt`, then `match` on a call to that action with {arms}",
+                    crate::and_list(&listed)
+                ))
+        } else {
+            found
+                .reason("A call that can fail says so where it is made: `attempt` passes its failures on to the caller's `fails` list.")
+                .next(format!(
+                    "Start the statement with `attempt`, and list {} after `fails`",
+                    crate::and_list(&listed)
+                ))
+        };
+        self.out.push(found);
     }
 
     /// A call nothing handles: one that can fail needs `attempt` or an
@@ -2003,4 +2023,17 @@ fn is_problem_field(field: &FieldDef) -> bool {
             &field.declared,
             Ty::Opaque(name, args) if name == jadpo_std::http::DECODE_PROBLEM && args.is_empty()
         )
+}
+
+/// Whether the write at `node` is what a `match` is on, brackets aside:
+/// `match (Customer.create { ... }) { ... }`.
+fn write_matched(node: &jadpo_syntax::SyntaxNode) -> bool {
+    let mut at = node.clone();
+    while let Some(paren) = at.parent().and_then(ast::ParenExpr::cast) {
+        at = paren.syntax().clone();
+    }
+    at.parent()
+        .and_then(ast::MatchExpr::cast)
+        .and_then(|matched| matched.expr())
+        .is_some_and(|subject| subject.syntax() == &at)
 }

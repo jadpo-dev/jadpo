@@ -5,9 +5,9 @@ Some changes can hurt someone outside the code: removing a field a
 client reads, letting more people see a record, sending data to a new
 outside host, or dropping data for good. `jadpo check` fails on each of them
 until a person accepts it in an acceptance, a small file that says what
-was decided and why. A coding agent drafts the file and then stops,
-because the reason has to come from you. This guide removes a field
-from an API's output and gets it accepted.
+was decided and why. A coding agent asks you first, and drafts the file
+only once you agree, with your own words as the reason. This guide
+removes a field from an API's output and gets it accepted.
 
 You start from a small book catalogue, committed to git: a stored `Book`, a
 `BookView` output type that sends each book's `author`, and a route,
@@ -125,7 +125,7 @@ error: removing an output field can break clients: main.BookView.author
 15 | output BookView
    | ^^^^^^^^^^^^^^^ ApiChange.output_field_removed
   reason: Clients that read it find it gone. So a person accepts it: no acceptance this change adds lists `main.BookView.author: ApiChange.output_field_removed`.
-  next: Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason (human)
+  next: Stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` drafts it, and its reason quotes their words (human)
   rule: acceptance.missing
   help: https://jadpo.dev/docs/errors/acceptance.missing
 
@@ -155,12 +155,15 @@ Wrote acceptances/20261020T1400_remove_book_author.jadpo
 
 decision: 1 change waits for a person's reason
  --> acceptances/20261020T1400_remove_book_author.jadpo:1
-  next: Stop and hand over: a person reads the changes and writes why they are accepted on a `///` line above `acceptance`. (human)
+  next: Write your user's own words agreeing to these changes on a `///` line above `acceptance`, with who said them and where; without their agreement, stop and ask them. (human)
 ```
 
 It writes one file listing every change this branch makes that needs a
-person, each as `subject: Kind.change`. An agent may run this; then it
-stops, and `jadpo check` keeps failing:
+person, each as `subject: Kind.change`. An agent runs it only after you
+agree to that change, in answer to its question or in a request that
+asks for exactly what the change does; "go ahead" with no more is not
+agreement to break a client or widen access. Until the file has a
+reason, `jadpo check` keeps failing:
 
 ```text
 error: `acceptances/20261020T1400_remove_book_author.jadpo` has no reason
@@ -168,8 +171,8 @@ error: `acceptances/20261020T1400_remove_book_author.jadpo` has no reason
   |
 1 | acceptance {
   | ^^^^^^^^^^ no `///` reason above
-  reason: An acceptance records a person's decision, so only a person writes why, on a `///` line above `acceptance`.
-  next: Stop and ask your user why these changes are accepted, and never write the reason yourself; if they don't accept them, delete the draft and undo the changes (human)
+  reason: An acceptance records a person's decision, so its reason is their own words, on a `///` line above `acceptance`, saying who gave them and where.
+  next: Write your user's own words agreeing to these changes as the reason, with who said them and where, and never a reason of your own; if they haven't agreed, stop and ask them, and if they don't accept, delete the draft and undo the changes (human)
   rule: acceptance.no_reason
   help: https://jadpo.dev/docs/errors/acceptance.no_reason
 
@@ -178,13 +181,14 @@ check failed: 1 error, 6 files
 
 ## Write the reason
 
-Only a person writes the `///` line above `acceptance`, saying why the
-change is safe:
+The `///` line above `acceptance` holds your decision in your words,
+with who gave it and where. You can write it yourself, or your agent
+writes what you told it, quoted, and never a reason of its own:
 
 `acceptances/20261020T1400_remove_book_author.jadpo`:
 
 ```jadpo check project=guide-sign-off file=acceptances/20261020T1400_remove_book_author.jadpo
-/// No client reads a book's author: the catalogue pages stopped showing it in version 2.
+/// Ana Ruiz (catalogue owner), in chat on 2026-10-20: "No client reads a book's author: the catalogue pages stopped showing it in version 2."
 acceptance {
     changes: {
         main.BookView.author: ApiChange.output_field_removed

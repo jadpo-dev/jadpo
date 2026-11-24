@@ -942,3 +942,47 @@ fn a_reserved_word_hidden_behind_a_clean_habit_is_not_checkable() {
     assert!(hidden.checkable_reading_names(), "{:#?}", hidden.errors());
     assert_eq!(hidden.errors()[0].rule.id, "syntax.logical_operator");
 }
+
+#[test]
+fn a_statement_as_an_arms_result_is_written_in_a_block() {
+    // A held-out run wrote `none -> assert false` in a test and was told
+    // `assert` is a reserved word to read as `thing.assert` (chunk 10.4e).
+    // An arm's result is a value; a statement goes in a block, and the
+    // edit writes one around it.
+    let text = "test \"found\" {\n    var maybe: Text? = none\n    match maybe {\n        some(found) -> assert found == \"x\"\n        none -> assert false\n    }\n}\n";
+    let parse = parse_file(text);
+    let errors = parse.errors();
+    assert_eq!(errors.len(), 2, "{errors:#?}");
+    let error = &errors[1];
+    assert_eq!(error.rule.id, "syntax.expected_expression");
+    assert_eq!(
+        error.message,
+        "`assert` starts a statement, and an arm's result is a value"
+    );
+    assert_eq!(&text[error.start as usize..error.end as usize], "assert");
+    assert_eq!(error.label, "a statement");
+    assert_eq!(
+        error.next,
+        "Write the statement in a block: `none -> { assert false }`"
+    );
+    let mut out = text.to_string();
+    for one in errors.iter().rev() {
+        let mut edits = one.edits.clone();
+        edits.sort_by_key(|edit| std::cmp::Reverse(edit.start));
+        for edit in edits {
+            out.replace_range(edit.start as usize..edit.end as usize, &edit.text);
+        }
+    }
+    assert!(out.contains("none -> { assert false }"), "{out}");
+    assert!(
+        out.contains("some(found) -> { assert found == \"x\" }"),
+        "{out}"
+    );
+    assert!(parse_file(&out).errors().is_empty(), "{out}");
+    // `return` and `var` are statements too.
+    let (error, covered) = one_error(
+        "function f(maybe: Text?) -> Text {\n    match maybe {\n        some(found) -> return found\n        none -> {}\n    }\n    return \"\"\n}\n",
+    );
+    assert_eq!(error.rule.id, "syntax.expected_expression");
+    assert_eq!(covered, "return");
+}

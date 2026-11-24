@@ -610,6 +610,11 @@ The arms handle only the call itself. A failure that leaves while the
 call's arguments are worked out leaves the callable around the `match`, as
 it would anywhere else.
 
+A write, such as a create refused by a unique rule, isn't a call, so a
+`match` can't be on it: put the write in an action of its own and match on
+a call to that action
+([An import that skips duplicates](06-reads-and-writes.md#an-import-that-skips-duplicates)).
+
 The `match` errors, the `failure.outcome_*` rules, are listed on
 [Logic](03-logic.md#errors).
 

@@ -185,39 +185,18 @@ A record is one of two shapes:
   the suggestion records or the lock, is a list of one-line entries that
   hold history.
 
-**A hand edit of a view is told by its shape, then by its base.** A view
-that differs from what its writer gives today is `record.edited` when
-Jadpo couldn't have written it: a comment, a fact outside the kind's
-closed list, a tab, a trailing space, a layout Jadpo doesn't write, or a
-header other than the one it writes.
+**A hand edit of a view is told by its shape.** A view that differs from
+what its writer gives today is `record.edited` when Jadpo couldn't have
+written it: a comment, a fact outside the kind's closed list, a tab, a
+trailing space, a layout Jadpo doesn't write, or a header other than the
+one it writes.
 
-A view Jadpo could have written is judged against the
-[before side](#comparing-two-builds). `jadpo check` builds the base
-commit, as `jadpo approval` does, and compares entry by entry. An entry
-that changed since the base, where the source gives the same at the base
-as today, was edited by hand, however carefully. That holds for a fact
-changed, an entry added and an entry removed:
-
-```text
-error: `api/main.jadpo_record` was edited by hand: `POST /memos` changed since main at 1a2b3c4, and the routes didn't
- --> api/main.jadpo_record:8:1
-  |
-8 |     status 201
-  | ^^^^^^^^^^^^^^ not what Jadpo writes
-  reason: Jadpo writes this record with `jadpo api update`, and a record is never edited by hand, so its diff always means what the source or a command changed.
-  next: Run `jadpo api update`, which writes it again (agent)
-  rule: record.edited
-  help: https://jadpo.dev/docs/errors/record.edited
-```
-
-Anything else is `record.out_of_date`: a view nobody changed since the
-base, or one its command wrote from source that has since moved on
-again. The base is built only for a view that changed since it and
-disagrees with the source, and what it gives is kept in
-`build/before/<commit>/records.json`, so each base is built once. With
-no before side, or while the base's source has errors, the shape alone
-decides. Both errors name the same command, which writes the record
-again.
+Any other difference is `record.out_of_date`, whoever made it. A record
+`jadpo check` wrote from an earlier state of a change, whose source has
+moved on since, reads exactly like one edited with care, and both are put
+right by writing the record again from the source. So outside CI
+`jadpo check` writes it, and in CI it fails naming the command. Nothing
+builds the base commit to judge a record.
 
 **A ledger is checked against its own rewrite.** Each line must read,
 each key must appear once, and the file must equal what Jadpo writes
@@ -230,7 +209,7 @@ from its lines: sorted, with the header in the newest format.
   left for a person to settle.
 
 Checking that each line added since the base is one its command could
-write needs the base commit's build too.
+write needs the base commit's build.
 
 **`jadpo records update` brings every record up to date at once.** It
 writes each view from the source, rewrites each ledger, and moves a
@@ -789,7 +768,7 @@ application {}
 `acceptances/20261020T1400_remove_todo_priority.jadpo`:
 
 ```jadpo check project=acceptance-first file=acceptances/20261020T1400_remove_todo_priority.jadpo
-/// Priority was never shown by any client; the mobile app stopped sending it in 3.2.
+/// Sam Okafor (product owner), in chat on 2026-10-20: "Drop priority: no client shows it, and the mobile app stopped sending it in 3.2."
 acceptance {
     changes: {
         main.TodoView.priority: ApiChange.output_field_removed
@@ -816,11 +795,17 @@ file (below).
   that isn't one acceptance with its `changes:` is
   [`acceptance.invalid`](../errors/acceptance.invalid.md). A quoted key
   anywhere else is a syntax error.
-- **Drafting is a command.** `jadpo acceptance new <purpose>` writes a
-  file listing every change not yet accepted, with no reason. Accepting
-  is the person's decision, so an agent asks them first and may run it
-  once they agree, then stops: the missing reason keeps `check` failing
-  until the person writes one. The errors' next steps say so.
+- **Drafting is a command; the reason is the person's words.**
+  `jadpo acceptance new <purpose>` writes a file listing every change not
+  yet accepted, with no reason. Accepting is the person's decision, so an
+  agent first asks them, saying what the change allows and for whom, and
+  drafts the acceptance only once they agree to that change: in their
+  answer, or in a request that asks in so many words for what the change
+  allows. A general go-ahead, such as "do whatever it needs", agrees to
+  nothing that widens access or breaks a client. The agent then writes
+  their own words as the reason, saying who gave them and where, as in
+  the example above, and never a reason of its own. Without a reason,
+  `check` fails. The errors' next steps say so.
 - **The git host is the gate.** `acceptances/`, `api/`,
   `access.jadpo_record` and `network.jadpo_record` are owned in
   CODEOWNERS, so the owner's approval of the pull request is what lets a
@@ -1048,7 +1033,7 @@ Every command takes `--json`, and `jadpo help --json` describes them all
 | A migration needs a decision | `jadpo migrate new <purpose>`, then the decisions in its `changes.jadpo` | Commit it with the code |
 | Rename anything | `jadpo rename <old> <new>` | The registry gains one line |
 | What did my change do? | `jadpo approval --json` | Decisions first |
-| A change needs a person | `jadpo acceptance new <purpose>` | Stop and hand over |
+| A change needs a person | Ask them; once they agree, `jadpo acceptance new <purpose>` | Their words, quoted, are the reason |
 | A check passes with a `notice_list` | Tell a person what each says | They decide whether the app means it ([What a first record holds](#what-a-first-record-holds)) |
 | Look something up | `jadpo inspect <name> --json` | One node from the manifest |
 | Upgrade a package | `jadpo package update <name> --plan`, then without `--plan` | Fix compile errors, then as above |
@@ -1072,7 +1057,7 @@ $ jadpo check
 error: removing an output field can break clients: main.TodoSummary.priority, main.TodoView.priority
  --> api/main.jadpo_record:31:1
   …
-  next: Stop and ask your user whether to accept this: the decision is theirs, so don't write an acceptance yourself. If they agree, `jadpo acceptance new <purpose>` prepares one for them to give the reason (human)
+  next: Stop and ask your user whether to accept this, saying what it allows and for whom: the decision is theirs, and a general go-ahead isn't one. Once they agree to this change, `jadpo acceptance new <purpose>` drafts it, and its reason quotes their words (human)
 
 $ jadpo acceptance new remove_todo_priority
 ✓ Wrote acceptances/20261020T1400_remove_todo_priority.jadpo
@@ -1081,16 +1066,19 @@ $ jadpo acceptance new remove_todo_priority
 
 ◆ decision  2 changes wait for a person's reason
   at        acceptances/20261020T1400_remove_todo_priority.jadpo:1
-  next      Stop and hand over: a person reads the changes and writes why
-            they are accepted on a `///` line above `acceptance`. (human)
+  next      Write your user's own words agreeing to these changes on a `///`
+            line above `acceptance`, with who said them and where; without
+            their agreement, stop and ask them. (human)
 ```
 
-The agent commits and opens the pull request, saying a reason is needed.
-CI runs `jadpo check`, which fails on the missing reason
-([`acceptance.no_reason`](../errors/acceptance.no_reason.md)). The code
-owner reads the diff of `api/main.jadpo_record` and the acceptance,
-writes the `///` line, and approves. CI passes and the change merges. On
-the default branch the acceptance is now history.
+Before drafting, the agent stopped and asked its user whether clients
+may lose `priority`. The user answered in chat, "Drop priority: no client
+shows it", so the agent wrote that as the reason, with who said it and
+where, and `jadpo check` passed; without a reason it fails
+([`acceptance.no_reason`](../errors/acceptance.no_reason.md)). The agent
+commits and opens the pull request. The code owner reads the diff of
+`api/main.jadpo_record` and the acceptance and approves. CI passes and
+the change merges. On the default branch the acceptance is now history.
 
 ### A provider package upgrade
 
@@ -1117,9 +1105,10 @@ Needs a person
 ```
 
 The removed field is also a compile error in `delivery_view`, which the
-agent fixes first. The agent then runs
-`jadpo acceptance new upgrade_acme_couriers` and hands over. A person
-writes one reason covering all three changes, and the owner approves.
+agent fixes first. The agent then asks its user about the three
+changes, and once they agree runs
+`jadpo acceptance new upgrade_acme_couriers` and writes their words as
+one reason covering all three. The owner approves.
 
 A new major version is a new package beside the old one ([External services](11-integrations.md)),
 so `update` refuses it: the agent adds it, moves the calls across and removes
@@ -1159,7 +1148,7 @@ that the path number can't be decoded.
 | Migrations | Built: `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
 | Stable identity | Built: a key is the kind and the born name, a function or type declared in a domain carries its domain, and a test's key is the file it sits beside and its sentence. `jadpo check` reads the registry, and `jadpo rename`, the `jadpo domain` commands and promotion with `jadpo fmt --layout` write it ([Tools](14-tooling.md#jadpo-rename)); a domain's line carries the keys named after it. |
 | API record | Built: `jadpo api update` writes `api/<api>.jadpo_record` for each API with routes; `jadpo check` writes one that disagrees with the routes itself, and with `CI` set fails with `record.out_of_date`, naming what changed; a breaking change needs an [acceptance](#acceptances). |
-| `.jadpo_record` files | Partly built: `jadpo check` writing each view that is missing, out of date or under its old name, and the next migration that needs no decision, outside CI; every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, a careful hand edit of a view told from a stale one by building the base, as `jadpo approval` does, in `jadpo check` and `jadpo records`, `jadpo records` and `jadpo records update`, the `.gitattributes` lines `jadpo new` writes, the record grammar in the VS Code extension, and `jadpo lsp` serving a record's errors, outline, folding and file links. Not built yet: checking that each ledger line added since the base is one its command could write. |
+| `.jadpo_record` files | Partly built: `jadpo check` writing each view that is missing, out of date or under its old name, and the next migration that needs no decision, outside CI; every record in the record format, the API record without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, a view Jadpo could have written judged out of date rather than edited, `jadpo records` and `jadpo records update`, the `.gitattributes` lines `jadpo new` writes, the record grammar in the VS Code extension, and `jadpo lsp` serving a record's errors, outline, folding and file links. Not built yet: checking that each ledger line added since the base is one its command could write. |
 | Event records | Built: one view per domain with events, `domains/<domain>/events/events.jadpo_record`, written by `jadpo records update` and checked as the API record is; what [The event record](12-jobs-and-events.md#the-event-record) records, and its breaking changes need an [acceptance](#acceptances). |
 | Access and network records | Built: `access.jadpo_record` and `network.jadpo_record` at the root, written by `jadpo records update` and checked as the API record is ([Acceptances](#acceptances)). |
 | Acceptances | Partly built: `jadpo acceptance new <purpose>`, the before side read from git (`--before` on `jadpo check`), matching, the `///` reason and history, for `ApiChange` (the API and event records), `PolicyChange` (widenings, routes made public, security declines, sign-in settings past their limit), `DomainChange.created` and `.renamed`, `NetworkChange.host_added`, `PackageChange.git_source`, an upgrade's `PackageChange`s ([Package upgrades](#package-upgrades)), `ThresholdChange` (each domain's `monitoring.jadpo` and `app.jadpo`'s disk floors read from git) and `DataChange` (read from the migrations a change adds, [Removing data](05-data.md#removing-data)). And `ErasureNotPossible`, which says how things stand rather than what changed, read from [where personal data goes](15-personal-data.md#where-personal-data-goes). The before side's records are read in today's names, so a domain renamed, split or merged keeps its events, grants and thresholds. Not built yet: `PackageChange.service_image`, which comes with services. |

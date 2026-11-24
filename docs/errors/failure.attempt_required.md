@@ -80,6 +80,44 @@ error: `Quantity(...)` can fail at runtime, and nothing handles it
 check failed: 1 error, 1 file
 ```
 
+A write a `match` is on is this error too, since a `match` handles a
+call's failures and a write isn't a call. Its next step moves the write
+into an action of its own, whose call the `match` can be on:
+
+main.jadpo:
+
+```jadpo check project=e-attempt-write-match expect=failure.attempt_required
+entity Contact {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+}
+
+type EmailTaken = Failure {
+    kind: FailureKind.conflict
+}
+
+type Added = Bool {}
+
+action import_one(email: Email) -> Added {
+    return match (Contact.create {
+        set: {
+            email: email
+        }
+        conflict: {
+            Contact.email: EmailTaken
+        }
+    }) {
+        success -> true
+        EmailTaken -> false
+    }
+}
+```
+
+```text output
+```
+
 ## How to fix it
 
 **If the caller should fail the same way**, start the statement with
@@ -179,6 +217,46 @@ A count outside 1 to 1000 now ends `from_count` with `QuantityOutOfRange`.
 the construction that leaves when `n` is out of range also proves it,
 and then it takes no `attempt`
 ([Conditions as proof](../language/02-values-and-types.md#conditions-as-proof)).
+
+
+**If a write's failure should be recovered from**, as an import skips a
+contact whose email is there, move the write into an action that passes
+its failure on, and `match` on a call to it. That action runs in a
+savepoint, so a refused write is undone alone and the caller carries on
+([An import that skips duplicates](../language/06-reads-and-writes.md#an-import-that-skips-duplicates)):
+
+```jadpo check project=e-attempt-write-match-fix
+entity Contact {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+}
+
+type EmailTaken = Failure {
+    kind: FailureKind.conflict
+}
+
+type Added = Bool {}
+
+action add_contact(email: Email) fails EmailTaken -> Contact {
+    return attempt Contact.create {
+        set: {
+            email: email
+        }
+        conflict: {
+            Contact.email: EmailTaken
+        }
+    }
+}
+
+action import_one(email: Email) -> Added {
+    return match add_contact(email) {
+        success -> true
+        EmailTaken -> false
+    }
+}
+```
 
 ## Related
 

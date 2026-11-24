@@ -10,9 +10,10 @@ decision: it tells the reviewer of the pull request, and anyone reading
 the history later, why it was safe.
 
 `jadpo acceptance new` drafts the file listing the changes, and an agent
-may run it once you agree, but it writes no reason. The reason has to come
-from a person, so Jadpo won't write it, and neither should your agent: it
-stops and asks you.
+runs it only once you agree to them, but it writes no reason. The reason
+has to come from a person: your own words, with who said them and where.
+Your agent may write them on the `///` line, quoted as you said them, and
+never a reason of its own; without them, it stops and asks you.
 
 ## What it looks like
 
@@ -30,7 +31,7 @@ Wrote acceptances/20261020T1400_remove_book_author.jadpo
 
 decision: 1 change waits for a person's reason
  --> acceptances/20261020T1400_remove_book_author.jadpo:1
-  next: Stop and hand over: a person reads the changes and writes why they are accepted on a `///` line above `acceptance`. (human)
+  next: Write your user's own words agreeing to these changes on a `///` line above `acceptance`, with who said them and where; without their agreement, stop and ask them. (human)
 ```
 
 The draft lists the change and nothing else:
@@ -44,7 +45,7 @@ acceptance {
 }
 ```
 
-Until a person writes the reason, `jadpo check` fails:
+Until the reason is written, `jadpo check` fails:
 
 ```sh
 jadpo check
@@ -56,8 +57,8 @@ error: `acceptances/20261020T1400_remove_book_author.jadpo` has no reason
   |
 1 | acceptance {
   | ^^^^^^^^^^ no `///` reason above
-  reason: An acceptance records a person's decision, so only a person writes why, on a `///` line above `acceptance`.
-  next: Stop and ask your user why these changes are accepted, and never write the reason yourself; if they don't accept them, delete the draft and undo the changes (human)
+  reason: An acceptance records a person's decision, so its reason is their own words, on a `///` line above `acceptance`, saying who gave them and where.
+  next: Write your user's own words agreeing to these changes as the reason, with who said them and where, and never a reason of your own; if they haven't agreed, stop and ask them, and if they don't accept, delete the draft and undo the changes (human)
   rule: acceptance.no_reason
   help: https://jadpo.dev/docs/errors/acceptance.no_reason
 
@@ -75,10 +76,15 @@ default branch is history, and editing it is
 
 ## How to fix it
 
-**If you accept the changes**, write why on a `///` line directly above
-`acceptance`, in your own words, such as "No client reads a book's
-author: the catalogue pages stopped showing it in version 2." Then check
-again:
+**If you accept the changes**, the `///` line directly above
+`acceptance` holds your words, with who said them and where. You write it
+yourself, or your agent writes what you told it:
+
+```jadpo fragment
+/// Ana Ruiz (catalogue owner), in chat on 2026-10-20: "No client reads a book's author: the catalogue pages stopped showing it in version 2."
+```
+
+Then check again:
 
 ```sh
 jadpo check

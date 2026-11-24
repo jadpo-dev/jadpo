@@ -3300,7 +3300,9 @@ fn match_arm(p: &mut Parser<'_>) {
         return;
     }
     let m = p.start();
+    let pattern_start = p.range().0;
     pattern(p);
+    let pattern_end = p.prev_end();
     if p.at(FAT_ARROW) {
         let (start, end) = p.range();
         habits::report(
@@ -3336,10 +3338,41 @@ fn match_arm(p: &mut Parser<'_>) {
             .reason("An arm's result is a value, `reject`, `propagate` or a block, on the same line as its pattern.")
             .next("Write the arm's result after `->`");
         p.push_error(error);
+    } else if STATEMENT_KEYWORDS.contains(&p.current()) && !keyword_qualifier(p, 0) {
+        let pattern = p.text()[pattern_start as usize..pattern_end as usize].to_string();
+        statement_arm(p, &pattern);
     } else {
         expr(p);
     }
     m.complete(p, MATCH_ARM);
+}
+
+/// A statement where an arm's result goes, as in `none -> assert false`:
+/// read as the statement it is, with one error whose edit writes the block
+/// around it (chunk 10.4e). Read alone, the word would be a reserved word
+/// used as a name, which sends the reader the wrong way.
+fn statement_arm(p: &mut Parser<'_>, pattern: &str) {
+    let word = p.current_text().to_string();
+    let (start, word_end) = p.range();
+    block_item(p);
+    let end = p.prev_end().max(word_end);
+    let statement = p.text()[start as usize..end as usize].to_string();
+    let error = SyntaxError::new(
+        &rule::SYNTAX_EXPECTED_EXPRESSION,
+        format!("`{word}` starts a statement, and an arm's result is a value"),
+        start,
+        word_end,
+    )
+    .label("a statement")
+    .reason(format!(
+        "An arm's result is a value, `reject`, `propagate` or a block; a statement such as `{word}` goes inside the block."
+    ))
+    .next(format!(
+        "Write the statement in a block: `{pattern} -> {{ {statement} }}`"
+    ))
+    .edit(TextEdit::insert(start, "{ "))
+    .edit(TextEdit::insert(end, " }"));
+    p.push_error(error);
 }
 
 fn pattern(p: &mut Parser<'_>) {

@@ -1,8 +1,9 @@
 //! `jadpo acceptance new <purpose>` (area 18, "Acceptances"; chunk A8):
 //! drafts `acceptances/<stamp>_<purpose>.jadpo` listing every change since
 //! the before side that needs a person and no added acceptance lists yet,
-//! with no reason. An agent may run it, then stops: the missing reason
-//! keeps `jadpo check` failing until a person writes one.
+//! with no reason. An agent runs it once its user agrees to the changes,
+//! and writes their own words as the reason, saying who gave them and
+//! where; until a reason is there, `jadpo check` fails.
 //!
 //! ```text
 //! ✓ Wrote acceptances/20261030T1400_remove_todo_priority.jadpo
@@ -11,8 +12,9 @@
 //!
 //! ◆ decision  2 changes wait for a person's reason
 //!   at        acceptances/20261030T1400_remove_todo_priority.jadpo:1
-//!   next      Stop and hand over: a person reads the changes and writes why
-//!             they are accepted on a `///` line above `acceptance`. (human)
+//!   next      Write your user's own words agreeing to these changes on a `///`
+//!             line above `acceptance`, with who said them and where; without
+//!             their agreement, stop and ask them. (human)
 //! ```
 
 use std::path::PathBuf;
@@ -159,7 +161,7 @@ pub fn acceptance(call: &Call) -> Reply {
             if count == 1 { "change waits" } else { "changes wait" }
         ),
         location: Some(format!("{relative}:1")),
-        next: "Stop and hand over: a person reads the changes and writes why they are accepted on a `///` line above `acceptance`.".to_string(),
+        next: "Write your user's own words agreeing to these changes on a `///` line above `acceptance`, with who said them and where; without their agreement, stop and ask them.".to_string(),
     });
     let data = Json::object([
         ("file", relative.as_str().into()),
