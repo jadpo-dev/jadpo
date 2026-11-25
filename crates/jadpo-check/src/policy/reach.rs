@@ -142,6 +142,18 @@ pub fn acts_of<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> BTree
                             }
                         }
                     }
+                    // Bringing back a record its `delete` may have hidden
+                    // needs `delete` too (area 9, "Transitions and
+                    // deletes").
+                    if let Some(transition) = &write.transition
+                        && let Some((_, short)) = transition.name().rsplit_once('.')
+                        && entities
+                            .get(name)
+                            .and_then(|model| model.lifecycle.as_ref())
+                            .is_some_and(|lifecycle| lifecycle.restores_deleted(short))
+                    {
+                        found.insert(Act::Entity(name.clone(), Effect::Delete));
+                    }
                     Act::Entity(name.clone(), effect)
                 }
                 Fact::Action(callee) => Act::Calls(callee.name().to_string()),

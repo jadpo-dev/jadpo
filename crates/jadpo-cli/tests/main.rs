@@ -34,6 +34,7 @@ mod batch_stores;
 mod batch_tenants;
 mod batches;
 mod binary;
+mod blank_bodies;
 mod build;
 mod build_reports;
 mod caches;
