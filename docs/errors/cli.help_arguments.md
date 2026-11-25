@@ -1,10 +1,10 @@
 # `cli.help_arguments`
 
-A `jadpo help` command names more than one command or rule.
+A `jadpo help` command names more than one command or rule, or a topic the docs don't have.
 
 ## Why Jadpo refuses it
 
-`jadpo help` explains one command, or one rule by the id on an error's `rule:` line. It prints one page, so with two names it can't tell which you meant.
+`jadpo help` explains one command, or one rule by the id on an error's `rule:` line. It prints one page, so with two names it can't tell which you meant. `jadpo help topic <id>` prints one topic of the language pages, so it needs an ID one of them declares.
 
 ## What it looks like
 
@@ -34,6 +34,12 @@ jadpo help test
 ```
 
 Each prints the command's usage, flags and examples.
+
+**If you named a topic**, copy its ID from `jadpo explain`'s `Docs` block, or take the one the `next:` line suggests:
+
+```sh
+jadpo help topic lifecycle
+```
 
 ## Related
 

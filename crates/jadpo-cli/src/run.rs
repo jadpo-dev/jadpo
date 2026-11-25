@@ -761,7 +761,11 @@ fn dispatch(parsed: Parsed, env: &Environment) -> (Option<&'static str>, Reply) 
     let any_words = (command.name == "package"
         && parsed.arguments.first().map(String::as_str) == Some("search"))
         || (command.name == "domain"
-            && parsed.arguments.first().map(String::as_str) == Some("split"));
+            && parsed.arguments.first().map(String::as_str) == Some("split"))
+        // `jadpo help topic <id>`: a topic, by its ID.
+        || (command.name == "help"
+            && parsed.arguments.first().map(String::as_str) == Some("topic")
+            && parsed.arguments.len() == 2);
     // `jadpo dev` answers a word it doesn't have itself, however many follow
     // it: what would be kept of them here is no command.
     let unknown_dev_word =
@@ -833,6 +837,9 @@ pub fn unknown_topic(word: &str) -> Diagnostic {
     if word.starts_with(|c: char| c.is_ascii_uppercase()) {
         return unknown_type(word);
     }
+    if word.contains('-') {
+        return unknown_docs_topic(word);
+    }
     if !word.contains('.') {
         return unknown_command(word);
     }
@@ -849,6 +856,32 @@ pub fn unknown_topic(word: &str) -> Diagnostic {
         None => diagnostic
             .reason("`jadpo help` explains a command, or a rule by the id on an error's `rule:` line.")
             .next("Copy the id from the error's `rule:` line"),
+    }
+}
+
+/// `jadpo help topic <id>` naming no topic of the area pages, or none.
+pub fn unknown_docs_topic(id: &str) -> Diagnostic {
+    let reason = "`jadpo help topic <id>` prints a topic of the language pages by its ID, as `jadpo explain` lists them and a topic's page declares it.";
+    if id.is_empty() {
+        return Diagnostic::new(
+            &rule::CLI_HELP_ARGUMENTS,
+            "`jadpo help topic` needs a topic's ID",
+        )
+        .reason(reason)
+        .next("Add the topic's ID, such as `jadpo help topic lifecycle`");
+    }
+    let diagnostic = Diagnostic::new(
+        &rule::CLI_HELP_ARGUMENTS,
+        format!("`{id}` isn't a docs topic"),
+    );
+    let topics = crate::help::topics();
+    match nearest(id, topics.iter().map(|topic| topic.id.as_str())) {
+        Some(near) => diagnostic
+            .reason(format!("{reason} Did you mean `{near}`?"))
+            .next(format!("Run `jadpo help topic {near}`")),
+        None => diagnostic
+            .reason(reason)
+            .next("Run `jadpo explain` in your app to see the topics it uses"),
     }
 }
 

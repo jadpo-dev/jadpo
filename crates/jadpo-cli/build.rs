@@ -106,6 +106,7 @@ fn main() {
         scaffold(folder, list, &out.join(file));
     }
     error_pages(&root.join("docs").join("errors"), &out);
+    topic_pages(&root.join("docs").join("language"), &out);
     type_goldens(
         &root
             .join("crates")
@@ -175,6 +176,101 @@ fn error_pages(folder: &Path, out: &Path) {
         miniz_oxide::deflate::compress_to_vec(&packed, 9),
     )
     .expect("the packed error pages");
+}
+
+/// Every topic of the area pages, `docs/language/NN-*.md`, for `jadpo help
+/// <topic>` offline (`src/help.rs`; docs/documentation.md, "Topic IDs"):
+/// each `#` or `##` heading that declares a topic ID on the line after it
+/// starts one, which runs to the next `#` or `##` heading, its ID line
+/// left out. Packed as `errors.deflate` is, each topic's names a line of
+/// three tab-separated parts: its ID and any old IDs split by spaces, its
+/// area, and its title.
+fn topic_pages(folder: &Path, out: &Path) {
+    println!("cargo::rerun-if-changed={}", folder.display());
+    let mut pages: Vec<PathBuf> = std::fs::read_dir(folder)
+        .expect("the area pages")
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension().is_some_and(|ext| ext == "md")
+                && path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with(|c: char| c.is_ascii_digit()))
+        })
+        .collect();
+    pages.sort();
+    let mut packed = Vec::new();
+    let mut push = |names: &str, text: &str| {
+        packed.extend_from_slice(&(names.len() as u32).to_le_bytes());
+        packed.extend_from_slice(names.as_bytes());
+        packed.extend_from_slice(&(text.len() as u32).to_le_bytes());
+        packed.extend_from_slice(text.as_bytes());
+    };
+    for page in pages {
+        println!("cargo::rerun-if-changed={}", page.display());
+        let area: u32 = page
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.split('-').next())
+            .and_then(|number| number.parse().ok())
+            .expect("an area page's number");
+        let text = std::fs::read_to_string(&page).expect("an area page");
+        let lines: Vec<&str> = text.lines().collect();
+        // Past the front matter.
+        let mut at = 0;
+        if lines.first() == Some(&"---") {
+            at = lines[1..]
+                .iter()
+                .position(|line| *line == "---")
+                .expect("the front matter's end")
+                + 2;
+        }
+        let mut fenced = false;
+        let mut current: Option<(String, String)> = None;
+        while at < lines.len() {
+            let line = lines[at];
+            if line.starts_with("```") {
+                fenced = !fenced;
+            }
+            if !fenced && (line.starts_with("# ") || line.starts_with("## ")) {
+                if let Some((names, text)) = current.take() {
+                    push(&names, &text);
+                }
+                let declared = lines
+                    .get(at + 1)
+                    .and_then(|next| next.strip_prefix("<!-- topic: ")?.strip_suffix(" -->"));
+                if let Some(declared) = declared {
+                    let (id, old) = match declared.split_once(" (was ") {
+                        Some((id, old)) => (id, old.trim_end_matches(')')),
+                        None => (declared, ""),
+                    };
+                    let mut ids = vec![id];
+                    ids.extend(old.split(", ").filter(|old| !old.is_empty()));
+                    let title = line.trim_start_matches('#').trim();
+                    current = Some((
+                        format!("{}\t{area}\t{title}", ids.join(" ")),
+                        format!("{line}\n"),
+                    ));
+                    at += 2;
+                    continue;
+                }
+            }
+            if let Some((_, text)) = current.as_mut() {
+                text.push_str(line);
+                text.push('\n');
+            }
+            at += 1;
+        }
+        if let Some((names, text)) = current.take() {
+            push(&names, &text);
+        }
+    }
+    std::fs::write(
+        out.join("topics.deflate"),
+        miniz_oxide::deflate::compress_to_vec(&packed, 9),
+    )
+    .expect("the packed topics");
 }
 
 /// What `jadpo new` (`src/new.rs`) and `jadpo package new`

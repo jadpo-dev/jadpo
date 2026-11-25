@@ -33,6 +33,7 @@ mod domain;
 mod download;
 mod email;
 mod exchange;
+mod explain;
 mod failure_text;
 mod files;
 mod fix;
