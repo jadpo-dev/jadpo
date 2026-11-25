@@ -832,8 +832,10 @@ run.
 `.run()` takes no arguments (`type.argument_count`). It writes no run
 record and takes no lease, as the tick does: a schedule test proves what
 one run does, and the compiler's own live tests prove the tick's records.
-What the run emits is delivered once it comes back, as any step's is
-([Events and caches in tests](#events-and-caches-in-tests)).
+What the run emits is delivered once it comes back, and a batch it starts
+runs to its end, as any step's do
+([Events and caches in tests](#events-and-caches-in-tests),
+[Batches](#batches)).
 
 A test that runs a schedule is a schedule test, whatever it calls to set
 up its data, a `request` included. `--kind schedule` runs only those.
@@ -1843,10 +1845,16 @@ test "a sheet the store has no room for isn't kept" {
 A batch run works through many items, such as the rows of a file, a few
 at a time ([Batches](12-jobs-and-events.md#batches)).
 In a test, batches run to the end within the test, after the action that
-started them commits, like events. `jadpo test` runs them in batches of
-two items and simulates a restart between every batch, so every import or
-export test also tests resuming. A test asserts on what the app recorded
-and on the summary `finished:` received, and can read `batches.status`.
+started them commits, like events: one a step starts, a schedule's
+`.run()` included, or a delivery or an item starts in turn. `jadpo test`
+runs them in batches of two items and simulates a restart between every
+batch, so every import or export test also tests resuming. A test asserts
+on what the app recorded and on the summary `finished:` received, and
+reads `batches.status` through an action of its app, since only an action
+reads a run ([`type.batch_context`](../errors/type.batch_context.md)). A
+batch whose run would reach nothing because it names no tenant is refused
+before any test runs
+([`policy.batch_tenant_missing`](../errors/policy.batch_tenant_missing.md)).
 A run whose batch couldn't commit, such as one whose item's call a fake
 answers `unavailable`, gives its lease back and waits, as it would for
 the tick, and the test's next `clock.advance`, of any length, carries it

@@ -23,6 +23,7 @@
 
 pub mod access;
 pub mod compare;
+pub mod copies;
 pub mod data;
 pub mod files;
 pub mod first;
@@ -41,7 +42,7 @@ pub use compare::{Family, Need};
 
 /// Every stored field the project has, as the access record names it:
 /// `todo.Todo.created_at` (chunk 10.4b).
-fn present_fields(db: &dyn Db, project: Project) -> std::collections::BTreeSet<String> {
+pub(crate) fn present_fields(db: &dyn Db, project: Project) -> std::collections::BTreeSet<String> {
     let lookup = crate::lookups::Lookup::new(db, project);
     let entities = crate::data::Entities::new(db, project);
     let mut out = std::collections::BTreeSet::new();
@@ -694,6 +695,10 @@ fn said(change: &str, family: &Family) -> (&'static str, &'static str) {
         "DataChange.entity_moved" => (
             "moving an entity to another store leaves its records behind",
             "Its table starts empty in the new store, and nothing copies the records across.",
+        ),
+        copies::CHANGE => (
+            "copying a field where more people may read it needs a person",
+            "Everyone who may read the field it is stored in sees what only some could read where it came from.",
         ),
         change if change.ends_with("_declined") => (
             "declining a security rule needs a person",

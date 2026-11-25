@@ -32,6 +32,7 @@ mod batch_limits;
 mod batch_operators;
 mod batch_stores;
 mod batch_tenants;
+mod batch_tests;
 mod batches;
 mod binary;
 mod blank_bodies;

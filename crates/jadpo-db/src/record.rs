@@ -128,6 +128,7 @@ pub const ACCESS: Kind = Kind {
         "query",
         "role",
         "decline",
+        "copy",
         "sign_in",
         "own_source",
         // The scopes external tokens are narrowed to (chunk N2).

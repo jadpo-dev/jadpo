@@ -875,6 +875,11 @@ none by design, and none for work that names its tenant by a value. [Jobs
 and events](12-jobs-and-events.md) covers this under "Background work and
 tenants".
 
+A batch that saves no value of the tenant's `id` type, and reaches a
+tenant's records, would walk nothing every time, so it is
+[`policy.batch_tenant_missing`](../errors/policy.batch_tenant_missing.md).
+Work for every tenant at once belongs in a schedule's own action.
+
 The system never moves a record to another tenant, which needs a
 membership there, and never founds a tenant's first membership.
 
@@ -2642,7 +2647,23 @@ compiler checks each like an output:
   value read from that record and passed beside its `id` stays within
   the record, as a copy in one body does. What decided a value is stored
   with it. Since an action is all-or-nothing, so is whatever a `reject`
-  in it tests.
+  in it tests. A value read through a query's `Output` is still the field
+  it picks, so storing it is checked as storing one read from the record
+  is.
+- **Copies a person approves.** A copy that lets people read what a
+  field keeps from them, such as a staff-only macro's text stored in a
+  reply every member reads, is the app owner's decision, so it is allowed
+  only when a person approves it. An acceptance may approve a named field
+  flow from a source field to a target field
+  (`"desk.Macro.body -> desk.Reply.body": PolicyChange.field_copied`,
+  [Acceptances](18-records-and-manifest.md#acceptances)). It allows that
+  flow from any action while the acceptance is kept, and nothing else:
+  another source or another target needs its own. `access.jadpo_record`
+  keeps each as a `copy` line, so a reviewer sees it beside the grants.
+  The error says which reader may not read the source field, and whether
+  the cause is their role, which only such an approval answers, the
+  tenant, when nothing shows the copy is in the source's tenant, or the
+  record, when a reference of the target lets in someone else.
 
 ### Copying a record the caller owns
 
@@ -3543,6 +3564,10 @@ compares the change with the default branch at its merge base through
   PolicyChange.confirmation_removed`);
 - a decline of `policy.call_ungranted`, a security rule
   (`PolicyChange.call_ungranted_declined`);
+- a field copied into a field people may read who may not read it
+  (`"desk.Macro.body -> desk.Reply.body": PolicyChange.field_copied`),
+  which only an acceptance allows
+  ([What else shows a field](#what-else-shows-a-field));
 - scopes loosened: `external_token:`'s `scopes:` removed, so its tokens
   are no longer narrowed; a declared scope reading another scope-token; or
   an effect naming a scope it didn't, or another
@@ -4225,6 +4250,7 @@ Everything on this page is built except the features below. Each is
 | [Scopes](#scopes): `scopes:`, with the tokens `external_token` narrows | Built. |
 | Scopes on `oauth_token` tokens | Not built yet: they come with acting as an OAuth provider ([What is built: Sign-in and identity](08-identity.md#what-is-built)). |
 | An acceptance for a change that widens access, with `access.jadpo_record` ([Acceptances](18-records-and-manifest.md#acceptances)) | Built. |
+| A field copy a person approves, `PolicyChange.field_copied` ([What else shows a field](#what-else-shows-a-field)) | Built. |
 | The approval report that shows the report's changes in plain terms ([Reviewing a change](17-debugging-and-review.md#reviewing-a-change)) | Built. |
 
 ## Errors
@@ -4260,6 +4286,7 @@ beside the entities they name; a project keeps them in `app.jadpo` and
 - [`policy.declaration_duplicate`](../errors/policy.declaration_duplicate.md)
 - [`policy.system_grant_missing`](../errors/policy.system_grant_missing.md)
 - [`policy.event_tenant_unproved`](../errors/policy.event_tenant_unproved.md)
+- [`policy.batch_tenant_missing`](../errors/policy.batch_tenant_missing.md)
 - [`policy.public_grant_missing`](../errors/policy.public_grant_missing.md)
 ### Fields
 

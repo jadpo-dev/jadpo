@@ -33,6 +33,7 @@ mod conditions;
 mod config;
 mod confirmations;
 mod constants;
+mod copies;
 mod crypto;
 mod data_formats;
 mod declines;

@@ -183,6 +183,7 @@ fn decided_even_when_first(change: &str) -> bool {
     change == "PolicyChange.shared_entity_added"
         || change == "PolicyChange.sign_in_loosened"
         || change == "PolicyChange.own_source_added"
+        || change == super::copies::CHANGE
         || change.ends_with("_declined")
 }
 

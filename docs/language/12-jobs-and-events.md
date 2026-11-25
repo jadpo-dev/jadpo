@@ -1593,6 +1593,18 @@ run that saves no such value, one whose value is `none`, or one with
 values naming different tenants, reaches no tenant's records, only those
 every tenant shares.
 
+A batch that saves no such value at all, and whose `from:` query, or the
+action `each:` or `finished:` calls (itself or through what it calls),
+reaches a tenant's records, is
+[`policy.batch_tenant_missing`](../errors/policy.batch_tenant_missing.md),
+at that call: every run would find none of them and finish as if there
+were nothing to do. Save the tenant the run is for, read from a record
+the action reaches, usually as `key:`. Work over every tenant at once is
+a schedule's own action, which reaches every tenant, reading with a
+`limit: every` query and writing in a loop
+([Every record that matches](06-reads-and-writes.md#every-record-that-matches));
+no batch reaches every tenant.
+
 ### What a batch needs from policy
 
 A batch runs as the system, so what it reaches must let `Access.system`
@@ -1935,8 +1947,8 @@ error: `post_all` passes `Diary.confession` to `post_item`, which stores it in `
    |
 11 |     return batches.each(from: diaries(page), each: diary -> post_item(diary))
    |                                                                       ^^^^^ from `Diary.confession`
-  reason: `post_item` stores what it is given here in `Board.text`, and everyone who may read `Board.text`, anyone signed in among them, reads what is stored there, from any request, and only the user `owner_id` points at and schedules and subscribers may read `confession`. A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.
-  next: Pass `post_item` what everyone who may read `Board.text` may read, or give `text`'s `read:` only those who may read `confession` (agent)
+  reason: `post_item` stores what it is given here in `Board.text`. Anyone signed in may read `Board.text` but not `Diary.confession`, which only the user `owner_id` points at and schedules and subscribers may read. The cause is the role: no `Diary` lets anyone signed in read its `confession`, whatever the record or its tenant, and everyone who may read `Board.text` reads what is stored there, from any request.
+  next: Stop and ask your user whether anyone signed in may read what `Diary.confession` holds once it is stored in `Board.text`: the decision is theirs, and a general go-ahead isn't one. Once they agree, add a file to `acceptances/` listing `"Diary.confession -> Board.text": PolicyChange.field_copied` with their words as its reason; otherwise leave `Diary.confession` out of `Board.text` (human)
   rule: policy.output_field_unproved
   help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
@@ -2488,7 +2500,7 @@ means the same thing for each: only the records every tenant shares
 |---|---|
 | A schedule's run | Every tenant's records: no tenant's event starts it. A run by hand, and a test's `.run()`, too |
 | A subscriber's delivery | The tenant its event's one field of the tenant's `id` type names (`household_id: Household.id`), so the tenant is written in the event where a reviewer sees it. With no such field, more than one, or `none` in it: no tenant's records, only those every tenant shares |
-| A batch's run | The tenant its saved values of the tenant's `id` type name, values naming the same tenant counting as that one ([Batches, tenants and grants](#batches-tenants-and-grants)). With none, `none`, or values naming different tenants: no tenant's records, only those every tenant shares |
+| A batch's run | The tenant its saved values of the tenant's `id` type name, values naming the same tenant counting as that one ([Batches, tenants and grants](#batches-tenants-and-grants)). With none, `none`, or values naming different tenants: no tenant's records, only those every tenant shares. One saving no such value that reaches a tenant's records is `policy.batch_tenant_missing` |
 | The magic-link `send:` action | The tenant of its delivery, as a subscriber's: `jadpo.MagicLinkEmail` names none, so no tenant's records, only those every tenant shares ([Magic links](08-identity.md#magic-links)) |
 | A webhook's reply action, and `on_first_sign_in:`'s | No tenant's records, only those every tenant shares: each runs as the system inside a request no tenant's event starts, and "no tenant" is never every tenant for them |
 

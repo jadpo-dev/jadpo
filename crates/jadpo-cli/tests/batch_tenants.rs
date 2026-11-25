@@ -1,9 +1,10 @@
 //! Batches in an application with a tenant, against live PostgreSQL
 //! (area 12, "A batch's tenant"; chunk 6.4c): a run works as the system
 //! limited to the tenant its one saved value holding a tenant's id names,
-//! so another tenant's records are never touched; a run that saves no
-//! tenant id, or ids naming different tenants, reaches no tenant's
-//! records.
+//! so another tenant's records are never touched; a run whose saved ids
+//! name different tenants reaches no tenant's records. One that saves no
+//! tenant id and reaches a tenant's records is refused by the checker
+//! (`policy.batch_tenant_missing`, chunk 10.7d).
 //!
 //! A household application: each sweep walks every chore the system may
 //! see a page at a time and ticks it. Two households, Ash with three
@@ -295,17 +296,6 @@ action sweep_household(household: Household, page: SweepPage) -> BatchRun {
 "#,
     ),
     (
-        "domains/home/actions/sweep_unnamed.jadpo",
-        r#"use home/actions { tick }
-use home/queries { all_chores }
-use home/types { SweepPage }
-
-action sweep_unnamed(page: SweepPage) -> BatchRun {
-    return batches.each(from: all_chores(page), each: chore -> tick(chore))
-}
-"#,
-    ),
-    (
         "domains/home/actions/sweep_pair.jadpo",
         r#"use home/actions { tick_with }
 use home/entities { Household }
@@ -555,10 +545,6 @@ fn a_run_reaches_only_the_tenant_its_one_saved_tenant_id_names() {
                 ("birch-2".to_string(), 0),
             ]
         );
-
-        // No saved tenant id: the run reaches no tenant's records.
-        let run = sweep(program, &host, "sweep_unnamed", vec![page(2)]).await;
-        assert_eq!(kept(&host, &run).await, ("finished".to_string(), 0));
 
         // Two saved tenant ids naming different tenants: none either.
         let run = sweep(

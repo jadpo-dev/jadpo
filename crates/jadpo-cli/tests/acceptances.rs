@@ -807,3 +807,348 @@ fn a_project_with_no_connections_gaining_its_first_host_needs_a_person() {
     .expect("written");
     assert_eq!(problems(&root), Vec::<String>::new());
 }
+
+/// A change that widens a grant and changes the schema needs both a
+/// person's acceptance and a migration, and neither waits for the other: a
+/// held-out run (chunk 10.7d) was told to fix the acceptance first by the
+/// migration's error, and `jadpo acceptance new` stopped on the migration.
+#[test]
+fn a_migration_and_an_acceptance_never_wait_for_each_other() {
+    let root = library("both");
+    let widen = |root: &Path| {
+        edit(
+            root,
+            "domains/lending/entities/book.jadpo",
+            "read: [Access.authenticated]",
+            "read: [Access.authenticated, Access.public]",
+        );
+        edit(
+            root,
+            "domains/lending/entities/book.jadpo",
+            "    title: Handle\n",
+            "    title: Handle\n    shelf: Handle?\n",
+        );
+    };
+    widen(&root);
+    // In CI nothing is written, and the acceptance is drafted all the same.
+    let ci: Vec<String> = {
+        let output = jadpo_ci(&root, &["check", "--json"]);
+        let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
+        document["diagnostics"]
+            .as_array()
+            .expect("diagnostics")
+            .iter()
+            .map(|d| d["rule"].as_str().unwrap_or("").to_string())
+            .collect()
+    };
+    assert_eq!(
+        ci,
+        [
+            "acceptance.missing",
+            "record.out_of_date",
+            "migration.out_of_date"
+        ]
+    );
+    let drafted = jadpo(&root, &["acceptance", "new", "open_the_catalogue"]);
+    assert_eq!(drafted.code, 0, "{}", drafted.stdout);
+    assert_eq!(acceptance_files(&root).len(), 1);
+    // Outside CI, `jadpo check` writes the migration itself beside the
+    // acceptance waiting for its reason.
+    assert_eq!(
+        next_steps(&root)
+            .into_iter()
+            .map(|(rule, _)| rule)
+            .collect::<Vec<_>>(),
+        ["acceptance.no_reason"]
+    );
+    let migrations = fs::read_dir(root.join("database/migrations"))
+        .expect("migrations")
+        .count();
+    assert_eq!(migrations, 2);
+
+    // And before any acceptance: the migration is written beside the
+    // error waiting for a person, which is all that is left.
+    let root = library("both-first");
+    widen(&root);
+    assert_eq!(
+        next_steps(&root)
+            .into_iter()
+            .map(|(rule, _)| rule)
+            .collect::<Vec<_>>(),
+        ["acceptance.missing"]
+    );
+}
+
+/// When what is left beside a migration needing a decision waits for a
+/// person, the migration's `next:` names its own command, not "fix the
+/// other errors first" (chunk 10.7d).
+#[test]
+fn a_migration_waiting_for_a_decision_beside_a_persons_error_names_its_command() {
+    let root = library("decision");
+    edit(
+        &root,
+        "domains/lending/entities/book.jadpo",
+        "read: [Access.authenticated]",
+        "read: [Access.authenticated, Access.public]",
+    );
+    edit(
+        &root,
+        "domains/lending/entities/book.jadpo",
+        "    title: Handle\n",
+        "    title: Handle\n    shelf: Handle\n",
+    );
+    let steps = next_steps(&root);
+    let migration: Vec<&String> = steps
+        .iter()
+        .filter(|(rule, _)| rule == "migration.out_of_date")
+        .map(|(_, next)| next)
+        .collect();
+    assert_eq!(migration.len(), 1, "{steps:?}");
+    assert!(
+        migration[0].starts_with("Run `jadpo migrate new "),
+        "{steps:?}"
+    );
+}
+
+/// A desk whose saved answers only staff read, and whose answers every
+/// member reads (chunk 10.7c).
+const DESK: &[(&str, &str)] = &[
+    (
+        "app.jadpo",
+        r#"use desk/entities { User }
+
+application {}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+"#,
+    ),
+    (
+        "authentication.jadpo",
+        r#"authentication {
+    api_token: {}
+}
+"#,
+    ),
+    (
+        "policy.jadpo",
+        r#"use desk/entities { Workspace }
+
+policy {
+    tenant: Workspace
+}
+"#,
+    ),
+    (
+        "domains/desk/types/role.jadpo",
+        r#"/// What a member may do.
+type Role = Enum {
+    owner
+    agent
+    viewer
+}
+"#,
+    ),
+    (
+        "domains/desk/types/body.jadpo",
+        r#"/// A message's text.
+type Body = Text {
+    max_length: 500
+}
+"#,
+    ),
+    (
+        "domains/desk/types/saved_view.jadpo",
+        r#"use desk/entities { SavedAnswer }
+
+/// A saved answer.
+type SavedView = Output {
+    pick: [SavedAnswer.id, SavedAnswer.body]
+}
+"#,
+    ),
+    (
+        "domains/desk/entities/user.jadpo",
+        r#"use desk/types { Body }
+
+/// Someone who signs in.
+entity User {
+    id: Uuid
+    handle: Body {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/entities/workspace.jadpo",
+        r#"use desk/types { Body, Role }
+
+/// The tenant.
+entity Workspace {
+    id: Uuid
+    name: Body
+
+    policy: {
+        read: [Role.owner, Role.agent, Role.viewer]
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/entities/membership.jadpo",
+        r#"use desk/entities { User, Workspace }
+use desk/types { Role }
+
+/// A role in a workspace.
+entity Membership {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: Role
+
+    membership: {
+        scope: workspace_id
+        member: user_id
+        role: role
+    }
+
+    policy: {
+        read: [Role.owner, user_id]
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/entities/saved_answer.jadpo",
+        r#"use desk/entities { Workspace }
+use desk/types { Body, Role }
+
+/// A saved answer staff reuse.
+entity SavedAnswer {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    body: Body
+
+    policy: {
+        create: [Role.owner]
+        read: [Role.owner, Role.agent]
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/entities/answer.jadpo",
+        r#"use desk/entities { Workspace }
+use desk/types { Body, Role }
+
+/// An answer every member reads.
+entity Answer {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    body: Body
+
+    policy: {
+        create: [Role.owner, Role.agent]
+        read: [Role.owner, Role.agent, Role.viewer]
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/queries/saved_by_id.jadpo",
+        r#"use desk/entities { SavedAnswer, SavedAnswerNotFound }
+use desk/types { SavedView }
+
+/// One saved answer.
+query saved_by_id(saved_id: SavedAnswer.id) fails SavedAnswerNotFound -> SavedView {
+    from: SavedAnswer
+    where: SavedAnswer.id == saved_id
+    missing: SavedAnswerNotFound
+}
+"#,
+    ),
+];
+
+const ANSWER_FROM_SAVED: &str = r#"use desk/entities { Answer, SavedAnswer, SavedAnswerNotFound, Workspace, WorkspaceNotFound }
+
+/// Answers with a saved answer's text.
+action answer_from_saved(workspace_id: Workspace.id, saved_id: SavedAnswer.id) fails SavedAnswerNotFound, WorkspaceNotFound -> Answer {
+    var saved: SavedAnswer = attempt SavedAnswer.get(saved_id)
+    return attempt Answer.create {
+        set: {
+            workspace_id: workspace_id
+            body: saved.body
+        }
+    }
+}
+"#;
+
+/// A field copied into one more people read is refused until an
+/// acceptance names that field flow; the acceptance that adds it matches
+/// the `copy` line it adds to the access record, and it goes on allowing
+/// the copy, from any action, on the branches after it (chunk 10.7c).
+#[test]
+fn copying_a_restricted_field_needs_an_acceptance_naming_the_flow() {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("acceptances-copy");
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in DESK {
+        write(&root, path, text);
+    }
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}", migrated.stdout);
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
+    git(&root, &["init", "-q"]);
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "The desk"]);
+    git(&root, &["checkout", "-q", "-b", "copy"]);
+    let action = "domains/desk/actions/answer_from_saved.jadpo";
+    write(&root, action, ANSWER_FROM_SAVED);
+    assert_eq!(
+        problems(&root),
+        [
+            "policy.output_field_unproved: `answer_from_saved` stores `SavedAnswer.body` in `Answer.body`, which not everyone who may read `body` may read"
+        ]
+    );
+    let accepted = "acceptances/20261125T1000_send_saved_answers.jadpo";
+    write(
+        &root,
+        accepted,
+        "/// Sam Okafor (support lead), in chat on 2026-11-25: \"Viewers may see a saved answer's text once it is sent as an answer.\"\nacceptance {\n    changes: {\n        \"desk.SavedAnswer.body -> desk.Answer.body\": PolicyChange.field_copied\n    }\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
+    let access = fs::read_to_string(root.join("access.jadpo_record")).expect("read");
+    assert!(
+        access.contains("\ncopy desk.SavedAnswer.body -> desk.Answer.body\n"),
+        "{access}"
+    );
+    assert_eq!(problems(&root), Vec::<String>::new());
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "Send saved answers"]);
+    git(&root, &["checkout", "-q", "main"]);
+    git(&root, &["merge", "-q", "--ff-only", "copy"]);
+    git(&root, &["checkout", "-q", "-b", "again"]);
+    // A second action making the same copy needs nothing more.
+    write(
+        &root,
+        "domains/desk/actions/answer_again.jadpo",
+        &ANSWER_FROM_SAVED.replace("answer_from_saved", "answer_again"),
+    );
+    assert_eq!(problems(&root), Vec::<String>::new());
+}
