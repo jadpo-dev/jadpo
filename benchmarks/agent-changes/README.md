@@ -199,6 +199,16 @@ who may take a ticket out of the bin, a schedule that reads tags, a customer's c
 a reply posted while solving, a field only the server sets, binning by
 customer, and the last owner.
 
+**A held-out set for the final measurement.** Roadmap chunk 10.8 adds H21
+to H30, the `desk-held` set, run as S5 and S6. A subagent that saw no
+tuning run, diagnosis or fix list wrote, calibrated and piloted them, and
+they were kept out of the repository until 10.8 measured them on a Jadpo
+frozen after the 10.7 fixes, so nothing that tuned Jadpo saw them. They
+cross: taking the next ticket, moving a ticket to another customer,
+members renaming themselves, leaving a workspace, anonymising a customer,
+the customer's name on tickets (decide), pinning a note, snoozing a
+ticket, saved filters, and opening a ticket from an email.
+
 **Tuning runs are staged.** One session at a time. After each, `stumbles`
 reads where it got stuck: every failing check or test run and its error
 IDs, errors seen more than twice, the docs read before each recovery, the

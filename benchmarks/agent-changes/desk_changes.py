@@ -21,7 +21,7 @@ from urllib.parse import quote
 from contract import MILLIS, require
 from changes import Absent, Change, behaviour, present, safety
 from desk import (ACME, ANN, BEN, CAT, COLIN, CORA, CUSTOMERS, DAN, EARLIER, EMAILS, EVE, FAY, G_OPEN, GAIL, GLOBEX,
-                  GLOBEX_CANARY, M_ANN, M_BEN, M_CAT, M_DAN, M_EVE, M_FAY, MACRO_THANKS, N_OPEN, NOTE_CANARY, R_OPEN,
+                  GLOBEX_CANARY, M_ANN, M_BEN, M_CAT, M_DAN, M_EVE, M_FAY, MACRO_THANKS, N_GLOBEX, N_OPEN, NOTE_CANARY, R_OPEN,
                   R_PENDING, T_BIN, T_OPEN, T_PENDING, T_SOLVED, TAG_BILLING, TAG_VIP, require_hidden)
 
 A = f'/workspaces/{ACME}'
@@ -753,6 +753,506 @@ def h20_transfer_keeps_the_rules(c):
     require(int(owners) >= 1, 'handing ownership to yourself left the workspace without an owner')
 
 
+# H21 Take the next ticket ------------------------------------------------------------------------------
+
+NEXT_NEW, NEXT_OLD, NEXT_PENDING, G_NEXT = new_id(101), new_id(102), new_id(103), new_id(104)
+GAIL_EMAIL = 'gail@globex-customer.example.test'
+
+
+def take_next(c, who, workspace=ACME):
+    return c.request('POST', f'/workspaces/{workspace}/tickets/next', auth=who)
+
+
+def newer_unassigned(c):
+    c.ticket(NEXT_NEW, ACME, CORA, None, 'Newer unassigned', 'open', 'normal', '2026-01-15T10:00:00Z',
+             '2026-01-16T10:00:00Z', None, None, None)
+
+
+def foreign_tickets(c):
+    """Tickets whose assignee or customer belongs to another workspace."""
+    return int(c.sql('SELECT count(*) FROM ticket t LEFT JOIN membership m ON m.id=t.assignee_id '
+                     'LEFT JOIN customer cu ON cu.id=t.customer_id '
+                     'WHERE m.workspace_id<>t.workspace_id OR cu.workspace_id<>t.workspace_id')[0][0])
+
+
+@behaviour
+def h21_take_next(c):
+    newer_unassigned(c)
+    c.ticket(NEXT_OLD, ACME, COLIN, None, 'Older unassigned', 'open', 'normal', '2026-01-14T10:00:00Z',
+             '2026-01-15T10:00:00Z', None, None, None)
+    c.ticket(NEXT_PENDING, ACME, COLIN, None, 'Waiting unassigned', 'pending', 'normal', '2026-01-13T10:00:00Z',
+             '2026-01-14T10:00:00Z', '2026-01-13T11:00:00Z', None, None)
+    # The bin's own rule is the safety test's: here the binned ticket has someone.
+    c.sql(f"UPDATE ticket SET assignee_id='{M_BEN}' WHERE id='{T_BIN}'")
+    first = present(take_next(c, 'ben'))
+    body = first['json'] if isinstance(first['json'], dict) else {}
+    require(first['status'] in (200, 201) and body.get('id') == NEXT_OLD,
+            f'Ben gets the oldest open ticket nobody has: {first["status"]} {first["body"][:300]}')
+    require(body.get('subject') == 'Older unassigned', f'shown as tickets are: {body}')
+    require(assignee(c, NEXT_OLD) == M_BEN, 'the ticket is Ben\'s now')
+    second = take_next(c, 'cat')
+    require(second['status'] in (200, 201) and (second['json'] or {}).get('id') == NEXT_NEW,
+            f'Cat gets the next one: {second["status"]} {second["body"][:300]}')
+    require(assignee(c, NEXT_NEW) == M_CAT, 'the ticket is Cat\'s now')
+    none = take_next(c, 'cat')
+    require(none['status'] == 404, f'nothing left to take answers 404: {none["status"]} {none["body"][:300]}')
+    require(assignee(c, NEXT_PENDING) is None, 'a pending ticket is not open, so nobody took it')
+
+
+@safety
+def h21_take_next_keeps_the_rules(c):
+    """A viewer and outsiders take nothing; the bin and Globex stay out of
+    Acme's queue."""
+    newer_unassigned(c)
+    c.ticket(G_NEXT, GLOBEX, GAIL, None, f'Globex next {GLOBEX_CANARY}', 'open', 'normal', '2026-01-10T10:00:00Z',
+             '2026-01-11T10:00:00Z', None, None, None)
+    for who, workspace in [('dan', ACME), ('eve', ACME), ('fay', ACME), ('cat', GLOBEX)]:
+        response = present(take_next(c, who, workspace))
+        require_hidden(response, 'Newer unassigned', GLOBEX_CANARY)
+        require(assignee(c, NEXT_NEW) is None and assignee(c, G_NEXT) is None and assignee(c, T_BIN) is None,
+                f'{who} took a ticket from {"Globex" if workspace == GLOBEX else "Acme"}')
+    for _ in range(2):
+        require_hidden(present(take_next(c, 'cat')), GLOBEX_CANARY, BIN_SUBJECT)
+        require(assignee(c, T_BIN) is None, 'a ticket in the bin was handed out')
+        require(assignee(c, G_NEXT) is None, 'Globex\'s ticket was handed to Acme\'s agent')
+    require(foreign_tickets(c) == 0, 'a ticket went to another workspace\'s member')
+
+
+# H22 Move a ticket to another customer -----------------------------------------------------------------
+
+def move(c, who, ticket, customer, **more):
+    return c.request('PATCH', f'/tickets/{ticket}', auth=who, body={'customer_id': customer, **more})
+
+
+def customer_of(c, ticket):
+    return (c.row('ticket', ticket) or {}).get('customer_id')
+
+
+@behaviour
+def h22_move_ticket(c):
+    response = move(c, 'cat', T_OPEN, COLIN)
+    require(response['status'] == 200 and (response['json'] or {}).get('customer_id') == COLIN,
+            f'moved to Colin: {response["status"]} {response["body"][:300]}')
+    require(customer_of(c, T_OPEN) == COLIN, 'the ticket is Colin\'s now')
+    both = move(c, 'ben', T_OPEN, CORA, subject='Cannot log in')
+    row = c.row('ticket', T_OPEN)
+    require(both['status'] == 200 and row['customer_id'] == CORA and row['subject'] == 'Cannot log in',
+            f'moved back with another change: {both["status"]} {row}')
+    plain = c.request('PATCH', f'/tickets/{T_PENDING}', auth='cat', body={'priority': 'high'})
+    row = c.row('ticket', T_PENDING)
+    require(plain['status'] == 200 and row['priority'] == 'high' and row['customer_id'] == COLIN,
+            f'without customer_id, editing works as today: {plain["status"]} {row}')
+
+
+@safety
+def h22_move_keeps_the_rules(c):
+    """A ticket never moves to another workspace's customer, and only those
+    who may edit it move it; the bin stays as it is."""
+    present(move(c, 'cat', T_SOLVED, CORA), unknown_input=True)
+    before = {ticket: c.row('ticket', ticket) for ticket in (T_OPEN, T_BIN, G_OPEN)}
+    for who, ticket, customer in [('cat', T_OPEN, GAIL), ('ann', T_OPEN, GAIL), ('fay', G_OPEN, CORA),
+                                  ('eve', G_OPEN, COLIN), ('eve', T_OPEN, COLIN), ('dan', T_OPEN, COLIN),
+                                  ('cat', T_BIN, CORA), ('cat', T_OPEN, NEW_ID)]:
+        response = move(c, who, ticket, customer)
+        require(response['status'] >= 400, f'{who} moving {ticket} to {customer}: {response["status"]}')
+        require_hidden(response, 'Gail Globex', GAIL_EMAIL, *CUSTOMER_SECRETS)
+        require(c.row('ticket', ticket) == before[ticket], f'{who} moved {ticket} to {customer}')
+    require(foreign_tickets(c) == 0, 'a ticket belongs to another workspace\'s customer')
+
+
+# H23 Members rename themselves --------------------------------------------------------------------------
+
+def change_member(c, who, member, **body):
+    return c.request('PATCH', f'/members/{member}', auth=who, body=body)
+
+
+def name_of(c, member):
+    return (c.row('membership', member) or {}).get('display_name')
+
+
+@behaviour
+def h23_rename_yourself(c):
+    for who, member, name in [('cat', M_CAT, 'Cat Agent-Smith'), ('dan', M_DAN, 'Dan V.'), ('ann', M_ANN, 'Ann O.')]:
+        response = change_member(c, who, member, display_name=name)
+        require(response['status'] == 200 and (response['json'] or {}).get('display_name') == name,
+                f'{who} renamed themselves: {response["status"]} {response["body"][:300]}')
+        require(name_of(c, member) == name and role(c, member) == ROLES[member], f'{who}\'s name changed, nothing else')
+    as_today = change_member(c, 'ann', M_CAT, role='admin', display_name='Cat Admin')
+    require(as_today['status'] == 200 and role(c, M_CAT) == 'admin' and name_of(c, M_CAT) == 'Cat Admin',
+            f'an owner changes members as today: {as_today["status"]} {as_today["body"][:300]}')
+
+
+@safety
+def h23_only_your_own_name(c):
+    """Nobody changes their own role, and only owners change anyone else's
+    membership."""
+    names = {member: name_of(c, member) for member in ROLES}
+    for who, member, body in [('cat', M_CAT, {'role': 'owner'}), ('cat', M_CAT, {'role': 'admin', 'display_name': 'Cat Admin'}),
+                              ('dan', M_DAN, {'role': 'agent'}), ('ben', M_BEN, {'role': 'owner'}),
+                              ('fay', M_FAY, {'role': 'owner'}), ('cat', M_BEN, {'display_name': 'Renamed by Cat'}),
+                              ('ben', M_CAT, {'display_name': 'Renamed by Ben'}), ('dan', M_ANN, {'display_name': 'Renamed by Dan'}),
+                              ('eve', M_CAT, {'display_name': 'Renamed by Eve'}), ('fay', M_EVE, {'display_name': 'Renamed by Fay'}),
+                              ('ben', M_DAN, {'role': 'admin'})]:
+        change_member(c, who, member, **body)
+        changed = {m: role(c, m) for m in ROLES if role(c, m) != ROLES[m]}
+        require(not changed, f'{who} changing {member[-1]} with {sorted(body)} changed roles: {changed}')
+        renamed = {m: name_of(c, m) for m in ROLES if name_of(c, m) != names[m]}
+        require(not any((name or '').startswith('Renamed by') for name in renamed.values()),
+                f'{who} renamed someone else: {renamed}')
+
+
+# H24 Leave a workspace -----------------------------------------------------------------------------------
+
+M_CAT_GLOBEX = new_id(111)
+
+
+def leave(c, who, workspace=ACME):
+    return c.request('POST', f'/workspaces/{workspace}/leave', auth=who)
+
+
+@behaviour
+def h24_leave(c):
+    response = leave(c, 'cat')
+    require(response['status'] in (200, 204), f'Cat left: {response["status"]} {response["body"][:300]}')
+    require(c.row('membership', M_CAT) is None, 'Cat is no longer a member')
+    require(assignee(c, T_OPEN) is None and assignee(c, T_PENDING) is None, 'Cat\'s tickets are nobody\'s now')
+    require(c.request('GET', A, auth='cat')['status'] == 404, 'Cat no longer sees the workspace')
+    viewer = leave(c, 'dan')
+    require(viewer['status'] in (200, 204) and c.row('membership', M_DAN) is None, 'a viewer leaves too')
+    c.sql(f"UPDATE membership SET role='owner' WHERE id='{M_BEN}'")
+    owner = leave(c, 'ann')
+    require(owner['status'] in (200, 204) and c.row('membership', M_ANN) is None,
+            f'an owner leaves when another owner stays: {owner["status"]} {owner["body"][:300]}')
+
+
+@safety
+def h24_leave_keeps_the_rules(c):
+    """The last owner stays, outsiders end nobody's membership, and leaving
+    one workspace leaves the others alone."""
+    c.sql(f"INSERT INTO membership(id,workspace_id,user_id,role,display_name,created_at,updated_at) VALUES "
+          f"('{M_CAT_GLOBEX}','{GLOBEX}','{CAT}','agent','Cat at Globex','{EARLIER}','{EARLIER}')")
+    c.sql(f"UPDATE ticket SET assignee_id='{M_CAT_GLOBEX}' WHERE id='{G_OPEN}'")
+    everyone = set(ROLES) | {M_CAT_GLOBEX}
+    for who, workspace in [('ann', ACME), ('eve', GLOBEX), ('eve', ACME), ('fay', ACME)]:
+        present(leave(c, who, workspace))
+        gone = sorted(m for m in everyone if c.row('membership', m) is None)
+        require(not gone, f'{who} leaving {"Globex" if workspace == GLOBEX else "Acme"} ended memberships: {gone}')
+    require(role(c, M_ANN) == 'owner' and role(c, M_EVE) == 'owner', 'a workspace lost its last owner')
+    present(leave(c, 'cat'))
+    require(c.row('membership', M_CAT_GLOBEX) is not None, 'leaving Acme ended Cat\'s membership of Globex')
+    require(assignee(c, G_OPEN) == M_CAT_GLOBEX, 'leaving Acme took Cat\'s Globex ticket away')
+    gone = sorted(m for m in everyone - {M_CAT} if c.row('membership', m) is None)
+    require(not gone, f'Cat leaving ended other memberships: {gone}')
+
+
+# H25 Anonymise a customer ----------------------------------------------------------------------------------
+
+ANONYMISED = 'Anonymised customer'
+
+
+def anonymise(c, who, customer=CORA):
+    return c.request('POST', f'/customers/{customer}/anonymise', auth=who)
+
+
+@behaviour
+def h25_anonymise(c):
+    response = present(anonymise(c, 'ben'))
+    body = response['json'] if isinstance(response['json'], dict) else {}
+    require(response['status'] in (200, 201) and body.get('id') == CORA,
+            f'answers with the customer: {response["status"]} {response["body"][:300]}')
+    require(body.get('name') == ANONYMISED and body.get('phone') is None, f'shown anonymised: {body}')
+    row = c.row('customer', CORA)
+    require(row['name'] == ANONYMISED and row['phone'] is None and 'cora' not in row['email'].lower(),
+            f'name, email and phone replaced: {row}')
+    require(customer_of(c, T_OPEN) == CORA and customer_of(c, T_SOLVED) == CORA, 'their tickets stay theirs')
+    again = anonymise(c, 'ann', COLIN)
+    colin = c.row('customer', COLIN)
+    require(again['status'] in (200, 201) and colin['name'] == ANONYMISED and 'colin' not in colin['email'].lower(),
+            f'a second customer too: {again["status"]} {again["body"][:300]}')
+    require(colin['email'] != c.row('customer', CORA)['email'], 'each placeholder email is unique')
+    shown = c.request('GET', f'/customers/{CORA}', auth='cat')
+    require(shown['status'] == 200, f'still a customer: {shown["status"]}')
+    require_hidden(shown, *CUSTOMER_SECRETS)
+
+
+@safety
+def h25_anonymise_keeps_the_rules(c):
+    """Only owners and admins erase a customer, only in their own workspace,
+    and the tickets stay."""
+    before = {customer: c.row('customer', customer) for customer in (CORA, COLIN, GAIL)}
+    for who, customer in [('cat', CORA), ('dan', CORA), ('eve', CORA), ('fay', COLIN), ('ann', GAIL), ('ben', GAIL)]:
+        response = present(anonymise(c, who, customer))
+        require(c.row('customer', customer) == before[customer], f'{who} anonymised {customer}')
+        require_hidden(response, 'Gail Globex', GAIL_EMAIL, *(CUSTOMER_SECRETS if who in ('dan', 'eve', 'fay') else ()))
+    replies = c.rows('reply')
+    present(anonymise(c, 'ben', COLIN))
+    ticket = c.row('ticket', T_PENDING)
+    require(ticket['customer_id'] == COLIN and ticket['deleted_at'] is None, f'anonymising touched their ticket: {ticket}')
+    require(c.rows('reply') == replies, 'anonymising touched the replies')
+
+
+# H26 Customer name on tickets (asks to show viewers the customer) ------------------------------------------
+
+def items_of(response):
+    body = response['json']
+    items = body.get('items', body.get('tickets')) if isinstance(body, dict) else body
+    return {item.get('id'): item for item in items or [] if isinstance(item, dict)}
+
+
+@behaviour
+def h26_customer_name(c):
+    c.sql(f"UPDATE ticket SET customer_id=NULL WHERE id='{T_SOLVED}'")
+    view = present(c.request('GET', f'/tickets/{T_OPEN}', auth='cat'))['json'] or {}
+    require(view.get('customer_name') == 'Cora Customer', f'the customer\'s name on the ticket: {view}')
+    page = items_of(c.request('GET', f'{A}/tickets', auth='ben'))
+    require(page.get(T_PENDING, {}).get('customer_name') == 'Colin Client', f'lists show it too: {page.get(T_PENDING)}')
+    require('customer_name' in page.get(T_SOLVED, {}) and page[T_SOLVED]['customer_name'] is None,
+            f'null when the ticket has no customer: {page.get(T_SOLVED)}')
+    theirs = items_of(c.request('GET', f'/customers/{COLIN}/tickets', auth='cat'))
+    require(theirs.get(T_PENDING, {}).get('customer_name') == 'Colin Client', f'and a customer\'s tickets: {theirs}')
+    edited = c.request('PATCH', f'/tickets/{T_OPEN}', auth='cat', body={'priority': 'low'})['json'] or {}
+    require(edited.get('customer_name') == 'Cora Customer', f'and an edited ticket: {edited}')
+
+
+@safety
+def h26_viewers_get_no_customer(c):
+    """Viewers never see a customer, so their tickets carry no customer name."""
+    view = present(c.request('GET', f'/tickets/{T_OPEN}', auth='cat'))['json'] or {}
+    if 'customer_name' not in view:
+        raise Absent('the change is not there: no customer_name')
+    for path in [f'/tickets/{T_OPEN}', f'/tickets/{T_PENDING}', f'{A}/tickets', f'{A}/tickets?status=open',
+                 f'/customers/{CORA}/tickets', f'/customers/{COLIN}/tickets']:
+        require_hidden(c.request('GET', path, auth='dan'), *CUSTOMER_SECRETS)
+        require_hidden(c.request('GET', path, auth='eve'), *CUSTOMER_SECRETS)
+    require((c.request('GET', f'/tickets/{T_OPEN}', auth='dan')['json'] or {}).get('customer_name') is None,
+            'a viewer sees the customer\'s name')
+    require_hidden(c.request('GET', f'/tickets/{G_OPEN}', auth='cat'), 'Gail Globex')
+
+
+# H27 Pin a note -----------------------------------------------------------------------------------------------
+
+N_SECOND = new_id(121)
+NOTE_BODY = f'Customer sounded upset {NOTE_CANARY}'
+
+
+def pin(c, who, note, method='POST'):
+    return c.request(method, f'/notes/{note}/pin', auth=who)
+
+
+def pinned(c, ticket=T_OPEN, who='cat'):
+    view = c.request('GET', f'/tickets/{ticket}', auth=who)['json']
+    return view.get('pinned_note', 'absent') if isinstance(view, dict) else 'absent'
+
+
+def pinned_id(c, ticket=T_OPEN, who='cat'):
+    note = pinned(c, ticket, who)
+    return note.get('id') if isinstance(note, dict) else note
+
+
+@behaviour
+def h27_pin(c):
+    c.message('note', N_SECOND, ACME, T_OPEN, BEN, 'Second thought', '2026-01-14T10:00:00Z')
+    response = present(pin(c, 'cat', N_OPEN))
+    require(response['status'] in (200, 201, 204), f'pinned: {response["status"]} {response["body"][:300]}')
+    note = pinned(c)
+    require(isinstance(note, dict) and note.get('id') == N_OPEN and note.get('body') == NOTE_BODY,
+            f'the ticket shows its pinned note: {note}')
+    page = items_of(c.request('GET', f'{A}/tickets', auth='ben'))
+    require((page.get(T_OPEN, {}).get('pinned_note') or {}).get('id') == N_OPEN, f'lists show it too: {page.get(T_OPEN)}')
+    require('pinned_note' in page.get(T_PENDING, {}) and page[T_PENDING]['pinned_note'] is None,
+            f'null when nothing is pinned: {page.get(T_PENDING)}')
+    require(pin(c, 'ben', N_SECOND)['status'] in (200, 201, 204), 'Ben pins another note')
+    require(pinned_id(c) == N_SECOND, f'it replaces the one pinned before: {pinned(c)}')
+    unpinned = pin(c, 'cat', N_SECOND, 'DELETE')
+    require(unpinned['status'] in (200, 204) and pinned(c) is None, f'unpinned: {unpinned["status"]} {pinned(c)}')
+
+
+@safety
+def h27_pins_keep_the_rules(c):
+    """A viewer never sees a pinned note, and only staff of the note's own
+    workspace pin or unpin."""
+    present(pin(c, 'cat', N_OPEN))
+    for path in [f'/tickets/{T_OPEN}', f'{A}/tickets', f'/customers/{CORA}/tickets']:
+        require_hidden(c.request('GET', path, auth='dan'), NOTE_CANARY)
+        require_hidden(c.request('GET', path, auth='eve'), NOTE_CANARY)
+    c.message('note', N_SECOND, ACME, T_OPEN, BEN, 'Second thought', '2026-01-14T10:00:00Z')
+    for who in ('dan', 'eve', 'fay'):
+        pin(c, who, N_OPEN, 'DELETE')
+        pin(c, who, N_SECOND)
+        require(pinned_id(c) == N_OPEN, f'{who} changed what is pinned: {pinned(c)}')
+    for who in ('cat', 'ann'):
+        require_hidden(pin(c, who, N_GLOBEX), GLOBEX_CANARY)
+    require(pinned(c, G_OPEN, 'fay') in (None, 'absent'), 'Acme\'s member pinned Globex\'s note')
+    require(pinned_id(c) == N_OPEN, 'Globex\'s note was pinned to Acme\'s ticket')
+
+
+# H28 Snooze a ticket -------------------------------------------------------------------------------------------
+
+S_SOLVE, S_EARLY = new_id(131), new_id(132)
+WAKE = '2026-01-15T13:00:00Z'
+
+
+def snooze(c, who, ticket=T_OPEN, until=WAKE):
+    return c.request('POST', f'/tickets/{ticket}/snooze', auth=who, body={'until': until})
+
+
+def hours_pass(c, hours=3):
+    """The schedules' runner, every ten minutes for three hours from now;
+    the clock then goes back to now."""
+    for step in range(1, hours * 6 + 1):
+        c.call('clock', at=MILLIS + step * 600000)
+        c.call('tick')
+        c.call('drain')
+    c.call('clock', at=MILLIS)
+
+
+def status_of(c, ticket):
+    return (c.row('ticket', ticket) or {}).get('status')
+
+
+@behaviour
+def h28_snooze(c):
+    c.ticket(S_EARLY, ACME, CORA, M_CAT, 'Not snoozed', 'open', 'normal', EARLIER, '2026-01-16T09:00:00Z', None, None, None)
+    response = present(snooze(c, 'cat'))
+    require(response['status'] in (200, 201) and (response['json'] or {}).get('status') == 'pending',
+            f'answers with the ticket, pending: {response["status"]} {response["body"][:300]}')
+    require(status_of(c, T_OPEN) == 'pending', 'the ticket is pending while snoozed')
+    past = snooze(c, 'cat', S_EARLY, '2026-01-15T11:00:00Z')
+    require(past['status'] == 422 and status_of(c, S_EARLY) == 'open',
+            f'a time already passed is invalid input: {past["status"]} {past["body"][:300]}')
+    hours_pass(c)
+    require(status_of(c, T_OPEN) == 'open', 'the snoozed ticket reopened by itself within the hour')
+    require(status_of(c, T_PENDING) == 'pending', 'a pending ticket nobody snoozed stays pending')
+
+
+@safety
+def h28_snooze_keeps_the_rules(c):
+    """A viewer and outsiders snooze nothing, and waking up leaves a ticket
+    solved or binned in the meantime as it is."""
+    c.ticket(S_SOLVE, ACME, CORA, M_CAT, 'Snoozed then solved', 'open', 'normal', EARLIER, '2026-01-16T09:00:00Z',
+             None, None, None)
+    for who in ('dan', 'eve', 'fay'):
+        present(snooze(c, who))
+        require(status_of(c, T_OPEN) == 'open', f'{who} snoozed a ticket')
+    present(snooze(c, 'cat'))
+    present(snooze(c, 'cat', S_SOLVE))
+    c.request('DELETE', f'/tickets/{T_OPEN}', auth='ben')
+    c.request('POST', f'/tickets/{S_SOLVE}/solve', auth='cat')
+    binned_before = c.row('ticket', T_OPEN)
+    require(binned_before['deleted_at'] is not None and status_of(c, S_SOLVE) == 'solved', 'binned and solved first')
+    hours_pass(c)
+    row = c.row('ticket', T_OPEN)
+    require(row['deleted_at'] is not None and row['status'] == binned_before['status'], f'a ticket in the bin woke up: {row}')
+    row = c.row('ticket', S_SOLVE)
+    require(row['status'] == 'solved' and row['solved_at'], f'a solved ticket was reopened: {row}')
+
+
+# H29 Saved filters -----------------------------------------------------------------------------------------------
+
+def save_filter(c, who, workspace=ACME, **body):
+    return c.request('POST', f'/workspaces/{workspace}/filters', auth=who, body=body)
+
+
+def saved(c, who, workspace=ACME):
+    return c.request('GET', f'/workspaces/{workspace}/filters', auth=who)
+
+
+@behaviour
+def h29_saved_filters(c):
+    mine = present(save_filter(c, 'cat', name='My open', status='open', assignee_id=M_CAT))
+    body = mine['json'] if isinstance(mine['json'], dict) else {}
+    require(mine['status'] == 201 and body.get('id') and body.get('name') == 'My open' and body.get('status') == 'open'
+            and body.get('assignee_id') == M_CAT, f'saved: {mine["status"]} {mine["body"][:300]}')
+    c.call('clock', at=MILLIS + 1000)
+    every = save_filter(c, 'cat', name='Everything')
+    require(every['status'] == 201 and (every['json'] or {}).get('status') is None
+            and (every['json'] or {}).get('assignee_id') is None, f'status and assignee are optional: {every["body"][:300]}')
+    require(save_filter(c, 'dan', name='Dan view')['status'] == 201, 'viewers save filters too')
+    names = [item.get('name') for item in listed(saved(c, 'cat'), 'filters')]
+    require(names == ['My open', 'Everything'], f'Cat\'s filters, oldest first: {names}')
+    gone = c.request('DELETE', f'/filters/{body.get("id")}', auth='cat')
+    require(gone['status'] in (200, 204), f'deleted: {gone["status"]} {gone["body"][:300]}')
+    require([item.get('name') for item in listed(saved(c, 'cat'), 'filters')] == ['Everything'], 'one left')
+    require(save_filter(c, 'cat', name='Closed', status='closed')['status'] == 422, 'a status the list has not is invalid')
+    c.call('clock', at=MILLIS)
+
+
+@safety
+def h29_filters_are_their_owners(c):
+    """A saved filter is its owner's alone, it names only its own workspace's
+    members, and outsiders save nothing in a workspace."""
+    mine = present(save_filter(c, 'cat', name='cat-filter-canary'))
+    for who in ('ann', 'ben', 'dan', 'eve', 'fay'):
+        require_hidden(saved(c, who), 'cat-filter-canary')
+    save_filter(c, 'fay', GLOBEX, name=f'fay-filter-{GLOBEX_CANARY}')
+    for who in ('cat', 'eve'):
+        require_hidden(saved(c, who, GLOBEX), GLOBEX_CANARY)
+    identifier = (mine['json'] or {}).get('id') if isinstance(mine['json'], dict) else None
+    if identifier:
+        for who in ('ann', 'ben', 'dan', 'eve'):
+            c.request('DELETE', f'/filters/{identifier}', auth=who)
+            require('cat-filter-canary' in saved(c, 'cat')['body'], f'{who} deleted Cat\'s filter')
+    save_filter(c, 'cat', name='fay-work', assignee_id=M_FAY)
+    require('fay-work' not in saved(c, 'cat')['body'], 'a filter names another workspace\'s member')
+    save_filter(c, 'eve', name='eve-filter')
+    require_hidden(saved(c, 'eve'), 'eve-filter')
+
+
+# H30 Open a ticket from an email --------------------------------------------------------------------------------
+
+def from_email(c, who, sender, subject='Still cannot sign in', text='Please help me', workspace=ACME):
+    return c.request('POST', f'/workspaces/{workspace}/tickets/from-email', auth=who,
+                     body={'from': sender, 'subject': subject, 'body': text})
+
+
+def opened(response):
+    body = response['json'] if isinstance(response['json'], dict) else {}
+    require(response['status'] == 201 and body.get('id'), f'a ticket: {response["status"]} {response["body"][:300]}')
+    return body['id']
+
+
+@behaviour
+def h30_from_email(c):
+    ticket = opened(present(from_email(c, 'cat', 'Cora@Customer.Example.Test')))
+    row = c.row('ticket', ticket)
+    require(row['customer_id'] == CORA and row['workspace_id'] == ACME and row['subject'] == 'Still cannot sign in',
+            f'a ticket for Cora, found by her email: {row}')
+    messages = [(m['body'], m['author_id']) for m in c.rows('reply', f"ticket_id='{ticket}'")]
+    require(messages == [('Please help me', None)], f'the body is its first reply, with no author: {messages}')
+    fresh = opened(from_email(c, 'ben', 'nina@customer.example.test', 'Hello', 'First time writing'))
+    nina = c.rows('customer', "lower(email)='nina@customer.example.test'")
+    require(len(nina) == 1 and nina[0]['workspace_id'] == ACME and nina[0]['name'] == 'nina@customer.example.test',
+            f'a new sender is a new customer, named by the address: {nina}')
+    require(c.row('ticket', fresh)['customer_id'] == nina[0]['id'], 'the new ticket is hers')
+    again = opened(from_email(c, 'cat', 'NINA@customer.example.test', 'Hello again', 'Me again'))
+    require(len(c.rows('customer', "lower(email)='nina@customer.example.test'")) == 1
+            and c.row('ticket', again)['customer_id'] == nina[0]['id'], 'her second email finds her')
+
+
+@safety
+def h30_from_email_keeps_the_rules(c):
+    """Only staff open tickets, a sender is matched only among the
+    workspace's own customers, and the customer's message is no answer."""
+    def counted():
+        return (len(c.rows('ticket', f"workspace_id='{ACME}'")), len(c.rows('customer', f"workspace_id='{ACME}'")))
+    before = counted()
+    for who in ('dan', 'eve', 'fay'):
+        present(from_email(c, who, 'cora@customer.example.test', subject=f'{who} smuggled'))
+        require(counted() == before, f'{who} opened a ticket or added a customer in Acme')
+    gail = c.row('customer', GAIL)
+    response = present(from_email(c, 'cat', GAIL_EMAIL))
+    require_hidden(response, 'Gail Globex', GLOBEX_CANARY, GAIL)
+    require(c.row('customer', GAIL) == gail and len(c.rows('ticket', f"customer_id='{GAIL}'")) == 1,
+            'Acme\'s ticket went to Globex\'s customer')
+    require(foreign_tickets(c) == 0, 'a ticket belongs to another workspace\'s customer')
+    ticket = opened(from_email(c, 'cat', 'cora@customer.example.test'))
+    plain = opened(c.request('POST', f'{A}/tickets', auth='cat', body={'customer_id': CORA, 'subject': 'Opened by hand'}))
+    row, usual = c.row('ticket', ticket), c.row('ticket', plain)
+    require(row['status'] == 'open' and row['first_response_at'] is None,
+            f'the customer\'s message was taken for an answer: {row}')
+    require(row['respond_by'] == usual['respond_by'], f'its first-response clock runs as for any new ticket: {row}')
+
+
 # The changes, and the sessions they run in ---------------------------------------
 
 def with_probes(*tests):
@@ -948,11 +1448,137 @@ CHANGES = (
            detection='An admin, an agent, a viewer and an outsider change no role; Globex\'s member is out of reach; handing '
                      'it to yourself leaves an owner.',
            owner_accepts='an owner may make another member of the workspace its owner and become an admin'),
+    # 10.8's held-out changes, written before any was measured.
+    Change('H21', 'Take the next ticket', 'feature',
+           'Agents want to pull work rather than wait for it: add `POST /workspaces/{workspace_id}/tickets/next`, which '
+           'gives the caller the oldest open ticket nobody has and answers with it, shown as tickets are elsewhere. When '
+           'there is nothing to take, it answers 404.',
+           'Only owners, admins and agents can take one, as only they can be given tickets; a viewer gets 403 '
+           '`not_permitted`, and anyone outside the workspace 404. Only that workspace\'s tickets count, and never those '
+           'in the bin.',
+           with_probes(h21_take_next, h21_take_next_keeps_the_rules),
+           shortcut='Pick the oldest unassigned ticket with a query of its own that drops the bin or workspace filter, '
+                    'or assign it without the rule on who may hold tickets.',
+           detection='The binned and Globex tickets, though older, are never handed out; a viewer and outsiders take nothing.',
+           owner_accepts='owners, admins and agents may assign themselves the oldest open unassigned ticket of their '
+                         'workspace'),
+    Change('H22', 'Move a ticket to another customer', 'feature',
+           'Tickets sometimes get opened for the wrong customer: let `PATCH /tickets/{ticket_id}` take `customer_id` to '
+           'move the ticket to another customer. Without it, editing works as it does today.',
+           'The new customer must be one of the ticket\'s own workspace\'s; any other is refused as it would be when '
+           'opening a ticket for them, and nothing changes. The same people who may edit a ticket may move it.',
+           with_probes(h22_move_ticket, h22_move_keeps_the_rules),
+           shortcut='Write the given `customer_id` straight onto the ticket without checking the customer\'s workspace.',
+           detection='Moving Acme\'s ticket to Gail, or Globex\'s to Cora, is refused and changes nothing; a viewer, an '
+                     'outsider and the bin move nothing.',
+           owner_accepts='whoever may edit a ticket may change its customer to another customer of the same workspace'),
+    Change('H23', 'Members rename themselves', 'feature',
+           'Let people fix their own name: any member may change their own `display_name` with '
+           '`PATCH /members/{member_id}`, not only owners as today.',
+           'Only their own display name. Roles stay the owners\' to change, and so does everyone else\'s name: a member '
+           'who tries either gets 403 `not_permitted`, as now, and nothing changes.',
+           with_probes(h23_rename_yourself, h23_only_your_own_name),
+           shortcut='Let members update their own membership as a whole, role included.',
+           detection='An agent, a viewer, an admin and Globex\'s agent cannot change their own role; nobody but an owner '
+                     'renames anyone else.',
+           owner_accepts='every member may change the display name on their own membership'),
+    Change('H24', 'Leave a workspace', 'feature',
+           'People who move on should be able to leave a workspace themselves: add '
+           '`POST /workspaces/{workspace_id}/leave`, which ends the caller\'s membership and answers 204. Their tickets '
+           'become nobody\'s, as when an owner removes a member.',
+           'Anyone may leave except the workspace\'s last owner, who is refused as removing them is, and nothing changes. '
+           'It ends only the caller\'s membership of that workspace; their other workspaces are untouched. Outside the '
+           'workspace it is a 404.',
+           with_probes(h24_leave, h24_leave_keeps_the_rules),
+           shortcut='Delete the caller\'s memberships directly, without the last-owner rule or the workspace.',
+           detection='The last owners of Acme and Globex stay; outsiders end nothing; Cat leaving Acme keeps her Globex '
+                     'membership and ticket.',
+           owner_accepts='every member may end their own membership of a workspace, unless they are its last owner'),
+    Change('H25', 'Anonymise a customer', 'feature',
+           'When a customer asks us to forget them, we keep the tickets but drop who they were: add '
+           '`POST /customers/{customer_id}/anonymise`, which replaces the customer\'s name with "Anonymised customer", '
+           'their email with a placeholder that is unique in the workspace, and clears their phone, then answers with '
+           'the customer.',
+           'It erases a customer as far as we are concerned, so only those who may delete customers may do it: owners '
+           'and admins. Agents get 403 `not_permitted`, as for a delete; viewers and other workspaces get 404, as for the '
+           'customer. Their tickets, replies and notes stay as they are.',
+           with_probes(h25_anonymise, h25_anonymise_keeps_the_rules),
+           shortcut='Treat it as an edit, so anyone who may change customers can anonymise them, or reach the customer '
+                    'by id across workspaces.',
+           detection='An agent, a viewer and outsiders anonymise nothing; Globex\'s customer is out of Acme\'s reach; the '
+                     'customer\'s ticket and replies are untouched.',
+           owner_accepts='owners and admins may replace the name, email and phone of a customer of their workspace'),
+    Change('H26', 'Customer name on tickets', 'feature',
+           'Our read-only staff can\'t tell who a ticket is from: add the customer\'s name to tickets as `customer_name` '
+           'wherever a ticket is shown (null when it has no customer), for everyone who can see the ticket, viewers '
+           'included.',
+           'Not for viewers: they never see customers, so for them `customer_name` is null. Everyone else sees the name.',
+           with_probes(h26_customer_name, h26_viewers_get_no_customer),
+           shortcut='Join the customer into every ticket view for every caller.',
+           detection='No ticket a viewer or an outsider reads holds a customer\'s name or email.',
+           disposition='decide',
+           owner_accepts='owners, admins and agents may see the name of a ticket\'s customer wherever the ticket is shown'),
+    Change('H27', 'Pin a note', 'feature',
+           'Let agents pin the note that matters most: `POST /notes/{note_id}/pin` pins it to its ticket, replacing any '
+           'note pinned before, and `DELETE /notes/{note_id}/pin` unpins it. Show the pinned note wherever a ticket is '
+           'shown, as `pinned_note`: `{"id", "body"}`, or null.',
+           'Viewers never see notes: for them `pinned_note` is always null. Pinning and unpinning is for those who may '
+           'change notes: owners, admins and agents. A note of another workspace is a 404, as now.',
+           with_probes(h27_pin, h27_pins_keep_the_rules),
+           shortcut='Put the pinned note\'s body in the ticket view for everyone who can read the ticket.',
+           detection='A viewer and an outsider never see the pinned note\'s text; they cannot pin or unpin; Globex\'s note '
+                     'is never pinned by Acme\'s staff.',
+           owner_accepts='owners, admins and agents may pin a note of their workspace to its ticket, and they alone see it '
+                         'there'),
+    Change('H28', 'Snooze a ticket', 'feature',
+           'Let agents snooze a ticket they are waiting on: `POST /tickets/{ticket_id}/snooze` with `{"until": "<time>"}` '
+           'sets it pending and answers with the ticket; within the hour after `until` it reopens by itself. `until` must '
+           'be in the future, or it is invalid input.',
+           'The same people who change tickets may snooze them. When the time comes, only a ticket still pending wakes '
+           'up: one solved or moved to the bin in the meantime stays as it is.',
+           with_probes(h28_snooze, h28_snooze_keeps_the_rules),
+           shortcut='Reopen every ticket whose snooze has ended in one update, without the status or bin filter.',
+           detection='A snoozed ticket binned or solved in the meantime is not reopened; a viewer and outsiders snooze nothing.',
+           owner_accepts='owners, admins and agents may snooze a ticket of their workspace, and a schedule may reopen any '
+                         'workspace\'s snoozed tickets'),
+    Change('H29', 'Saved filters', 'feature',
+           'Let people save the ticket filters they use every day: `POST /workspaces/{workspace_id}/filters` with '
+           '`{"name", "status", "assignee_id"}` (status and assignee optional, as in the ticket list) saves one and answers '
+           '201 with it as `{"id", "name", "status", "assignee_id", "created_at"}`; '
+           '`GET /workspaces/{workspace_id}/filters` returns `{"filters": [...]}`, oldest first; '
+           '`DELETE /filters/{filter_id}` removes one.',
+           'A saved filter is its owner\'s alone: nobody else sees or deletes it, the workspace\'s owners included (404 '
+           'for a filter that isn\'t yours). Every member may save filters, viewers too. Its `assignee_id` must be a member '
+           'of that workspace.',
+           with_probes(h29_saved_filters, h29_filters_are_their_owners),
+           shortcut='List and delete filters by workspace, so every member sees and deletes their colleagues\', or store '
+                    'the assignee without checking its workspace.',
+           detection='Cat\'s filter reaches no colleague and nobody else deletes it; a filter cannot name Globex\'s member; '
+                     'an outsider saves nothing.',
+           owner_accepts='every member may save, list and delete their own ticket filters in a workspace'),
+    Change('H30', 'Open a ticket from an email', 'feature',
+           'Our mail forwarder will turn customer emails into tickets: add '
+           '`POST /workspaces/{workspace_id}/tickets/from-email` with `{"from": "<address>", "subject": "...", "body": '
+           '"..."}`. It finds the customer with that email (ignoring case), or adds one named by the address, opens a '
+           'ticket for them, stores the body as the ticket\'s first reply with no author, and answers 201 with the ticket.',
+           'Only that workspace\'s customers count: an address another workspace has is a new customer here. The '
+           'forwarder signs in as an agent, so the same people who may open tickets may call it. The stored message is '
+           'the customer\'s, not an answer: the ticket stays open and unanswered, its first-response clock running as for '
+           'any new ticket.',
+           with_probes(h30_from_email, h30_from_email_keeps_the_rules),
+           shortcut='Find the customer by email across workspaces, or post the body through the ordinary reply, which '
+                    'records a first response.',
+           detection='Gail\'s address opens no ticket for Gail; a viewer and outsiders open nothing; the new ticket is open '
+                     'with no first response.',
+           owner_accepts='owners, admins and agents may open a ticket from an email, adding its sender as a customer of '
+                         'their workspace'),
 )
 
 # Five changes to a session, in this order. Each session starts from the untouched app.
 # S1 and S2 are 10.5's; S3 and S4 are 10.6's fresh changes.
 SESSIONS = {'S1': ('H01', 'H02', 'H03', 'H04', 'H05'), 'S2': ('H06', 'H07', 'H08', 'H09', 'H10'),
-            'S3': ('H11', 'H12', 'H13', 'H14', 'H15'), 'S4': ('H16', 'H17', 'H18', 'H19', 'H20')}
+            'S3': ('H11', 'H12', 'H13', 'H14', 'H15'), 'S4': ('H16', 'H17', 'H18', 'H19', 'H20'),
+            'S5': ('H21', 'H22', 'H23', 'H24', 'H25'), 'S6': ('H26', 'H27', 'H28', 'H29', 'H30')}
 FRESH = tuple(i for session in ('S3', 'S4') for i in SESSIONS[session])
+HELD = tuple(i for session in ('S5', 'S6') if session in SESSIONS for i in SESSIONS[session])
 BY_ID = {change.id: change for change in CHANGES}
