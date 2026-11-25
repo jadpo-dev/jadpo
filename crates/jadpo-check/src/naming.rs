@@ -2,7 +2,9 @@
 //! survive the trip to a file name, unique names, names that fold to the
 //! same file, reserved and generic names.
 
-use jadpo_db::{Db, File, Item, ItemKind, Layout, Ownership, Project, Symbol, item_tree, symbols};
+use jadpo_db::{
+    Base, Db, File, Item, ItemKind, Layout, Ownership, Project, Symbol, item_tree, symbols,
+};
 use jadpo_diag::{Decider, Diagnostic, Span, rule};
 
 use crate::case::{is_lower_snake, is_upper_camel, round_trips, to_camel, to_snake};
@@ -44,6 +46,40 @@ fn callable_and_its_type(path: &str, item: &Item, in_library: bool, other: &Symb
     other.path == path
         && ((is_type(&item.kind) && callable(&other.kind, other.library.is_some()))
             || (callable(&item.kind, in_library) && is_type(&other.kind)))
+}
+
+/// Of a declaration and the one whose file name it shares, when one is an
+/// input or output and the other an action, query or function outside a
+/// library: the type's name, the word for it, the callable's kind, and the
+/// suffix its usual name takes (area 1, "Names are unique"; chunk 10.7e).
+fn typed_pair(
+    item: &Item,
+    in_library: bool,
+    other: &Symbol,
+) -> Option<(String, &'static str, &'static str, &'static str)> {
+    let callable = |kind: &ItemKind, library: bool| match kind {
+        ItemKind::Action if !library => Some("action"),
+        ItemKind::Query if !library => Some("query"),
+        ItemKind::Function if !library => Some("function"),
+        _ => None,
+    };
+    let typed = |kind: &ItemKind| match kind {
+        ItemKind::Type(Base::Input) => Some(("input", "Request")),
+        ItemKind::Type(Base::Output) => Some(("output", "View")),
+        _ => None,
+    };
+    if let (Some((word, suffix)), Some(kind)) = (
+        typed(&item.kind),
+        callable(&other.kind, other.library.is_some()),
+    ) {
+        return Some((item.name.clone(), word, kind, suffix));
+    }
+    if let (Some(kind), Some((word, suffix))) =
+        (callable(&item.kind, in_library), typed(&other.kind))
+    {
+        return Some((other.name.clone(), word, kind, suffix));
+    }
+    None
 }
 
 /// `public` on a declaration that isn't part of a domain's interface: only
@@ -448,28 +484,55 @@ fn declaration(
         .filter(|symbol| mine.is_none_or(|mine| here.clash(mine, symbol)))
         .min_by_key(|symbol| symbol_order(symbol))
     {
+        let loose = here.project.layout(here.db) != Layout::Project;
+        // An input or output against a callable: the type is renamed, an
+        // input to the callable's name with `Request` and an output with
+        // `View`, unless that name folds to one in use (chunk 10.7e).
+        let typed = typed_pair(item, library.is_some(), other);
+        let rename = typed.as_ref().map(|(ty, word, callable, suffix)| {
+            let to = Some(format!("{}{suffix}", to_camel(&folded))).filter(|to| {
+                table.same_file_name(&to_snake(to)).is_empty()
+                    && table.facts(to).declarations.is_empty()
+            });
+            (ty.clone(), *word, *callable, to)
+        });
+        let mut reason = format!(
+            "Both names become `{folded}.jadpo`, so a search for one finds the other; `{}` is {}.",
+            other.name,
+            described(other)
+        );
+        if let Some((_, word, callable, _)) = &rename {
+            reason.push_str(&format!(
+                " Only an {word} in its {callable}'s own file may take the {callable}'s name."
+            ));
+        }
         return Some(
             Diagnostic::new(
                 &rule::NAMING_FOLDED_COLLISION,
                 format!("`{name}` and `{}` share a file name", other.name),
             )
             .at(span, format!("also `{folded}.jadpo`"))
-            .reason(format!(
-                "Both names become `{folded}.jadpo`, so a search for one finds the other; `{}` is {}.",
-                other.name,
-                described(other)
-            ))
-            .next(match library {
-                // Loose files have no layout for `jadpo rename` to keep.
-                _ if here.project.layout(here.db) != Layout::Project => {
-                    "Rename one of them so their file names differ".to_string()
+            .reason(reason)
+            .next(match (library, rename) {
+                (_, Some((ty, word, _, to))) if loose => match to {
+                    Some(to) => format!("Rename the {word} `{ty}` to `{to}`"),
+                    None => format!("Rename the {word} `{ty}` so its file name differs"),
+                },
+                (_, Some((ty, word, _, to))) => {
+                    let to_word = to.as_deref().map_or(String::new(), |to| format!(" to `{to}`"));
+                    let new = to.as_deref().unwrap_or("<new name>");
+                    format!(
+                        "Rename the {word} `{ty}`{to_word} with `jadpo rename {ty} {new}`, which moves its file and every use with it"
+                    )
                 }
+                // Loose files have no layout for `jadpo rename` to keep.
+                _ if loose => "Rename one of them so their file names differ".to_string(),
                 // A library's function is named after its library, and
                 // has no file of its own to move.
-                Some((_, library)) => format!(
+                (Some((_, library)), _) => format!(
                     "Rename `{library}.{name}` with `jadpo rename {library}.{name} <new name>`, which changes every use with it"
                 ),
-                None => format!(
+                (None, _) => format!(
                     "Rename `{name}` with `jadpo rename {name} <new name>`, which moves its file and every use with it"
                 ),
             }),

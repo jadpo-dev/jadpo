@@ -452,10 +452,60 @@ fn a_folded_collision_names_the_rename_that_moves_the_file() {
         .filter(|d| d.rule.id == "naming.folded_collision")
         .collect();
     assert_eq!(folded.len(), 1, "{found:#?}");
+    // The input is the one to rename, and to what: its action's name with
+    // `Request` (chunk 10.7e).
     assert_eq!(
         folded[0].next.as_ref().map(|next| next.text.as_str()),
         Some(
-            "Rename `CompleteTodos` with `jadpo rename CompleteTodos <new name>`, which moves its file and every use with it"
+            "Rename the input `CompleteTodos` to `CompleteTodosRequest` with `jadpo rename CompleteTodos CompleteTodosRequest`, which moves its file and every use with it"
+        ),
+        "{found:#?}"
+    );
+    assert!(
+        folded[0].reason.as_deref().is_some_and(|reason| reason
+            .ends_with("Only an input in its action's own file may take the action's name.")),
+        "{found:#?}"
+    );
+}
+
+/// When the name the convention gives is taken, the next step still says
+/// which declaration to rename, and leaves the new name to the agent.
+#[test]
+fn a_folded_collision_whose_usual_name_is_taken_names_the_one_to_rename() {
+    let db = Database::default();
+    let project = support::project(
+        &db,
+        Layout::Project,
+        &[
+            APP,
+            (
+                "domains/planning/types/complete_todos.jadpo",
+                "/// Which todos to complete.\ntype CompleteTodos = Input {\n    count: Int\n}\n",
+            ),
+            (
+                "domains/planning/types/complete_todos_request.jadpo",
+                "/// Asked for elsewhere.\ntype CompleteTodosRequest = Input {\n    count: Int\n}\n",
+            ),
+            (
+                "domains/planning/actions/complete_todos.jadpo",
+                "use planning/types { CompleteTodos }\n\naction complete_todos(input: CompleteTodos) -> Int {\n    return input.count\n}\n",
+            ),
+            (
+                "domains/planning/actions/count_completed.jadpo",
+                "use planning/types { CompleteTodos, CompleteTodosRequest }\n\naction count_completed(input: CompleteTodos, other: CompleteTodosRequest) -> Int {\n    return input.count + other.count\n}\n",
+            ),
+        ],
+    );
+    let found = jadpo_check::check(&db, project);
+    let folded: Vec<_> = found
+        .iter()
+        .filter(|d| d.rule.id == "naming.folded_collision")
+        .collect();
+    assert_eq!(folded.len(), 1, "{found:#?}");
+    assert_eq!(
+        folded[0].next.as_ref().map(|next| next.text.as_str()),
+        Some(
+            "Rename the input `CompleteTodos` with `jadpo rename CompleteTodos <new name>`, which moves its file and every use with it"
         ),
         "{found:#?}"
     );

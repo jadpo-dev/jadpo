@@ -1,26 +1,24 @@
 # Jadpo primer
 
-Read this once before you write a Jadpo app. It shows how a project is
-laid out, the syntax, and the parts nearly every app uses, and it ends
-with a small app you can run. Every example here is compiled and tested.
+Read this once before you write a Jadpo app. It covers the layout, the
+syntax and the parts nearly every app uses, as a small app you can run.
+Every example here is compiled and tested.
 
 ## What Jadpo is
 
-Jadpo is a language for web backends: the server side of an app, which
-stores its data and answers its HTTP requests. Coding agents write most
-of it, and people review it.
+Jadpo is a language for web backends, which store an app's data and
+answer its HTTP requests. Coding agents write it and people review it.
 
-One compiler checks the whole app at once. That covers the types, the
-stored data, the HTTP routes, who can sign in, what each person may see
-and change, the settings, calls to outside services, background work and
-the tests. You write each rule once, in the place the language gives it,
-and the compiler applies it everywhere.
+One compiler checks the whole app at once: types, stored data, routes,
+sign-in, who may see and change what, settings, outside calls,
+background work and tests. You write each rule once, where the language
+puts it, and the compiler applies it everywhere.
 
 Jadpo has no front end: a web page or a phone app calls it over HTTP.
 It is at version 0.x, so a new minor release can still break your app.
 
-Some habits from TypeScript and other languages don't carry over. The
-compiler catches most of them and shows you the Jadpo way:
+Some TypeScript habits don't carry over, and the compiler shows the Jadpo
+way:
 
 - No `null`. A type ending in `?` may hold `none`, and `match` reads it.
 - No exceptions. A function lists what can go wrong with `fails`, raises
@@ -102,11 +100,10 @@ type and what in scope fits ([Typed holes](language/02-values-and-types.md#typed
 
 ## How a project is laid out
 
-A project is a folder with `app.jadpo` at its top. Your code lives in
-domains: one folder for each part of the business, such as `lending` or
-`billing`, inside `domains/`. In a domain, each kind of declaration has
-its own folder, such as `types/`, `entities/` or `actions/`. Each file
-holds one declaration and is named after it.
+A project is a folder with `app.jadpo` at its top. Code lives in
+`domains/`, a folder per part of the business, such as `lending`; in each,
+a folder per kind of declaration (`types/`, `entities/`, `actions/`) and a
+file per declaration, named after it.
 
 This primer builds an app for neighbours to lend each other tools. Its
 files:
@@ -122,7 +119,7 @@ domains/
     types/              tool_name.jadpo  tool_status.jadpo  tool_view.jadpo  loan_length.jadpo
     entities/           member.jadpo  tool.jadpo
     failures/           email_taken.jadpo  tool_already_lent.jadpo
-    queries/            available_tools.jadpo  tool_by_id.jadpo
+    queries/            available_tools.jadpo  tool_by_id.jadpo  tools_by_status.jadpo
     actions/            join.jadpo  add_tool.jadpo  lend_tool.jadpo  lend_tool.test.jadpo
     routes/             tools.jadpo  tools.test.jadpo
 ```
@@ -185,9 +182,8 @@ function sticker(parcel: Parcel) -> Label {
   item per line, with no commas; only a `use` line's names take commas.
   `///` documents the next declaration; `//` is a plain comment.
 - Types are `UpperCamelCase`; everything else is `lower_snake_case`. Two
-  names can't fold to one file name: a type `CompleteTodos` and an action
-  `complete_todos` would both be `complete_todos.jadpo`, so name an input
-  for what it holds.
+  names can't fold to one file name, but for an input in its action's file
+  (see "Actions and writes").
 - Every variable states its type. `var` is like `const` and never
   changes; `var mut` can be given a new value. Values never change:
   build a new object instead.
@@ -282,10 +278,9 @@ but one can't be passed for the other. Every entity gets `Tool.get(id)`,
 
 After changing an entity, run `jadpo check`. Once nothing else is wrong,
 it writes a dated folder in `database/migrations/` with a snapshot and the
-SQL, and says so. Commit it. When a change needs a decision, such as a
-value for a new field, `jadpo check` fails naming
-`jadpo migrate new <purpose>`, which writes the folder with a
-`changes.jadpo` to fill in, and run again finishes it.
+SQL: commit it. A change that needs a decision, such as a value for a new
+field, fails naming `jadpo migrate new <purpose>`, which writes the folder
+with a `changes.jadpo` to fill in.
 
 ## Failures
 
@@ -364,6 +359,32 @@ query tool_by_id(tool_id: Tool.id) fails ToolNotFound -> ToolView {
 }
 ```
 
+`group:` and `aggregate:` count instead, one row per group:
+
+```jadpo check project=tool-share file=domains/lending/queries/tools_by_status.jadpo
+use lending/entities { Tool }
+use lending/types { ToolStatus }
+
+/// How many tools have one status.
+type StatusCount = Output {
+    status: ToolStatus
+    total: Int
+}
+
+/// How many tools are free and how many lent, the most first.
+query tools_by_status() -> List<StatusCount> {
+    from: Tool
+    group: {
+        status: Tool.status
+    }
+    aggregate: {
+        total: count()
+    }
+    order: [total desc]
+    limit: 2
+}
+```
+
 ## Actions and writes
 
 A `function` is pure. A `query` only reads. An `action` may read, write,
@@ -391,7 +412,8 @@ action join(email: Member.email) fails EmailTaken -> Member {
 
 An action that needs the caller takes it as a parameter of type
 `Principal.user`, the signed-in user (see "Signing in and permissions").
-An `Input` used by one action lives in the action's file:
+An `Input` only its action uses (routes and tests don't count) lives in
+the action's file and takes its name:
 
 ```jadpo check project=tool-share file=domains/lending/actions/add_tool.jadpo
 use lending/entities { Tool }
@@ -420,6 +442,10 @@ action add_tool(input: AddTool, caller: Principal.user) -> ToolView {
     }
 }
 ```
+
+Once another action or query uses it, it moves to `types/` and can't
+share the action's file name: `AddTool` becomes `AddToolRequest`, and an
+output takes `View` (`naming.folded_collision`).
 
 `fails` lists exactly the failures that can leave a callable. `attempt`
 starts a statement and passes a call's failures on; `reject` raises one,
@@ -461,6 +487,8 @@ A route group is a thin door: method, path, input, output and the one
 action or query it runs. A `GET` runs a query, or an action the compiler
 proves only reads; every other method runs an action. `GET` and `DELETE` read
 their input from the query string, the other methods from the JSON body.
+A blank body reads as `{}` when no field must come in it: each is
+optional, has a `default:` or comes from a header.
 `output:` must be exactly what the route runs returns. A failure's kind sets
 the status.
 
@@ -502,10 +530,10 @@ routes Tools {
 }
 ```
 
-The group's name matches its file and its prefix. `jadpo check`
-writes an OpenAPI document per API to `build/openapi/`, and
-`api/main.jadpo_record` when a route changed. Commit the record: it is
-the wire contract, and CI fails while it disagrees with the routes.
+The group's name matches its file and its prefix. `jadpo check` writes
+`build/openapi/` and, when a route changed, `api/main.jadpo_record`.
+Commit the record: it is the wire contract, and CI fails while it
+disagrees with the routes.
 
 ```jadpo check project=tool-share file=api/main.jadpo_record hidden
 // Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
@@ -590,10 +618,9 @@ authentication {
 
 This keeps people signed in with a cookie, but gives them no way to sign
 in yet. `sign_in: { magic_link: { link: "/sign-in" } }` emails a link and
-a six-digit code that sign the person in, and needs the session's
-`origin:` and an email connection; the [Learn path](learn/11-sign-in.md)
-builds it step by step. There are no passwords. Passkeys go beside the
-magic link, and `api_token`, `service_key` and `external_token` sign in
+a six-digit code, and needs the session's `origin:` and an email
+connection ([Learn path](learn/11-sign-in.md)). There are no passwords.
+Passkeys go beside the magic link, and `api_token`, `service_key` and `external_token` sign in
 other programs. Code never sees a cookie or a token. Every route needs a signed-in caller unless it says
 `authentication: RouteAuthentication.none`; without one it answers 401. A
 route reads the caller as `current_principal` and passes
@@ -680,8 +707,7 @@ test "a tool can't be lent twice" {
 }
 ```
 
-A route test goes through the real HTTP boundary: input decoding, sign-in,
-policy and statuses.
+A route test goes through the real HTTP boundary:
 
 ```jadpo check project=tool-share file=domains/lending/routes/tools.test.jadpo
 use lending/entities { Member }
@@ -699,6 +725,7 @@ test "a signed-in member adds a tool" {
         }
     }
     assert response.status == 201
+    assert response.code == none
 }
 
 test "only a tool's owner lends it out" {
@@ -723,6 +750,11 @@ test "only a tool's owner lends it out" {
 }
 ```
 
+Every route test has this shape: set up with actions or `make.`, send one
+`request { }` (`method:`, `path:`, `params:` for its placeholders, `as:`
+the caller or no one, `input:`), and assert on `response.status`,
+`response.code` (`none` on success) and `response.output`.
+
 A test never writes a record itself:
 `make.Member { email: "bob@example.test" }` builds one without policy,
 filling in every field it isn't given; shared test data goes in a
@@ -743,21 +775,12 @@ jadpo test
 `jadpo check` first lists the files it wrote:
 
 ```text
-checked: 19 files in 0.1 s
+checked: 20 files in 0.1 s
 tested: 14 passed, 2 action tests, 2 route tests, 10 generated tests in 1.0 s
 ```
 
-`jadpo dev` serves it, with a throwaway database of its own. Every route
-needs someone signed in, so until you add a way to sign in, a request
-is refused:
-
-```sh
-curl http://localhost:3000/tools
-```
-
-```text
-{"error":{"code":"authentication_required","message":"Sign in first.","request_id":"req_9342ee18ff3ce32e"}}
-```
+`jadpo dev` serves it, but until you add a way to sign in, every request
+answers 401.
 
 ## Finding more
 
@@ -765,14 +788,9 @@ Read only what a task needs.
 
 - **The Learn path** builds a todo app with sign-in a step at a time,
   starting from [Learn Jadpo](learn/README.md).
-- **Topics.** Every section of the reference is a topic with a stable ID,
-  such as [`named-queries`](language/06-reads-and-writes.md#named-queries),
-  [`the-operations-every-entity-gets`](language/06-reads-and-writes.md#the-operations-every-entity-gets),
-  [`grants`](language/09-policy.md#grants),
-  [`magic-links`](language/08-identity.md#magic-links),
-  [`migrations`](language/05-data.md#migrations) and
-  [`kinds-of-test`](language/13-testing.md#kinds-of-test). The IDs never
-  change.
+- **Topics.** Every section of the reference is a topic with an ID that
+  never changes, such as [`grants`](language/09-policy.md#grants) or
+  [`kinds-of-test`](language/13-testing.md#kinds-of-test).
 - **Finding a topic.** The site's `llms.txt` lists the guides and the
   reference's groups. Open the guide or the group's page for your task,
   and fetch only the topic it leads to.
@@ -782,23 +800,17 @@ Read only what a task needs.
 - **Errors.** Each rule has a page named after its ID, such as
   [`failure.kind_required`](errors/failure.kind_required.md).
 - **Commands.** `jadpo help <command>`, or `jadpo <command> --help`.
-- **Whole apps.** The teaching projects in the repository's `examples/`
-  folder build up from a first project to apps with tenants, roles,
-  providers, background work and AI. Each passes its tests.
-- **The rules.** Where anything disagrees with the reference, the
-  reference wins.
-- **A bug in Jadpo.** If the compiler crashes, rejects code these docs say
-  is valid, accepts code they say it refuses, or a page is wrong, read the
-  error's page first. Then cut the problem down to the smallest project
-  that shows it and ask your user before filing anything: an issue is
-  published under their name. Give them a drafted report, or a link to the
+- **Whole apps.** The repository's `examples/` build up from a first
+  project to tenants, roles, providers, background work and AI.
+- **A bug in Jadpo** (a crash, or code the docs call valid refused, or the
+  reverse): cut it down to the smallest project that shows it, and ask your
+  user before filing: an issue is published under their name. Give them a
+  drafted report or the
   [issue form](https://github.com/jadpo-dev/jadpo/issues/new?template=bug.yml)
-  with `title=` filled in. Put no secrets, settings values or other app
-  code in it. After a crash, `~/.cache/jadpo/crashes/` holds a file for the
-  report; your user reads it before it is attached. Never post on your own.
-  A suspected security hole goes to the private route in
-  the repository's `SECURITY.md` (GitHub's "Report a vulnerability"
-  under Security), never to a public issue.
+  link, with no secrets, settings or other app code; a crash's file in
+  `~/.cache/jadpo/crashes/` is attached only once they have read it. Never
+  post on your own. A suspected security hole goes to the private route in
+  the repository's `SECURITY.md`, never to a public issue.
 
 ## Not built yet
 
