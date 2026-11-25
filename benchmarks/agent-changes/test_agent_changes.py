@@ -318,7 +318,9 @@ class Helpdesk(unittest.TestCase):
 
     def test_fresh_changes_are_their_own_set(self):
         self.assertEqual(harness.SETS['desk-fresh'], ('H11', 'H12', 'H13', 'H14', 'H15', 'H16', 'H17', 'H18', 'H19', 'H20'))
-        self.assertEqual(set(harness.SETS['desk']) | set(harness.SETS['desk-fresh']), set(desk_changes.BY_ID))
+        self.assertEqual(set(harness.SETS['desk']) | set(harness.SETS['desk-fresh']) | set(harness.SETS['desk-held']),
+                         set(desk_changes.BY_ID))
+        self.assertFalse(set(harness.SETS['desk-held']) & (set(harness.SETS['desk']) | set(harness.SETS['desk-fresh'])))
         self.assertEqual(harness.set_of('H11'), 'desk-fresh')
         self.assertEqual(desk_changes.SESSIONS['S3'] + desk_changes.SESSIONS['S4'], desk_changes.FRESH)
 
