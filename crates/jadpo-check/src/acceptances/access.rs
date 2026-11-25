@@ -213,6 +213,21 @@ fn entries(db: &dyn Db, project: Project) -> Vec<Entry> {
     declined.sort();
     declined.dedup();
     out.extend(declined.into_iter().map(Entry::new));
+    // Each field copy a person approved (chunk 10.7c), between fields
+    // that are there: one naming a field that isn't approves nothing.
+    let fields = super::present_fields(db, project);
+    out.extend(
+        super::copies::accepted(db, project)
+            .into_iter()
+            .filter(|(from, to)| fields.contains(from) && fields.contains(to))
+            .map(|(from, to)| {
+                Entry::new(format!(
+                    "{}{}",
+                    super::copies::HEADING,
+                    super::copies::flow(&from, &to)
+                ))
+            }),
+    );
     let identity = crate::identity::identity(db, project);
     if let Some(magic) = &identity.magic_link {
         let mut entry = Entry::new("sign_in magic_link");

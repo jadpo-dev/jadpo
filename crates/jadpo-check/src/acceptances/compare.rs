@@ -711,6 +711,8 @@ struct Access {
     actions: BTreeMap<String, BTreeSet<String>>,
     queries: BTreeMap<String, BTreeSet<String>>,
     declines: BTreeSet<(String, String)>,
+    /// Each field copy a person approved (chunk 10.7c), as `from -> to`.
+    copies: BTreeSet<String>,
     sign_in: BTreeMap<String, String>,
     /// Each role's requirement lines (chunk A10), by `domain.Role.value`.
     roles: BTreeMap<String, BTreeSet<String>>,
@@ -806,6 +808,9 @@ fn access(text: &str) -> Access {
                 } else {
                     out.queries.insert(rest.to_string(), who);
                 }
+            }
+            "copy" => {
+                out.copies.insert(rest.to_string());
             }
             "decline" => {
                 if let Some((rule, subject)) = rest.split_once(' ') {
@@ -1227,6 +1232,24 @@ pub fn access_needs(
                 who: Vec::new(),
             });
         }
+    }
+    // A field copy newly approved (chunk 10.7c): what only some may read
+    // is now stored where more people may read it.
+    for copy in now.copies.difference(&was.copies) {
+        let Some((from, to)) = copy.split_once(" -> ") else {
+            continue;
+        };
+        out.push(Need {
+            said: format!(
+                "what `{from}` holds may now be stored in `{to}`, which people who may not read `{from}` may read"
+            ),
+            subject: super::copies::subject(from, to),
+            change: super::copies::CHANGE.to_string(),
+            family: Family::Access,
+            path: path.to_string(),
+            heading: Some(format!("{}{copy}", super::copies::HEADING)),
+            who: Vec::new(),
+        });
     }
     for (setting, limit) in super::access::sign_in_limits() {
         let key = format!("magic_link.{setting}");

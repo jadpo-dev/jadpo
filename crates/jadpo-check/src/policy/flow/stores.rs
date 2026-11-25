@@ -24,7 +24,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use jadpo_diag::{Diagnostic, rule};
+use jadpo_diag::{Decider, Diagnostic, rule};
 use jadpo_graph::body::{Callee, Expr, Node, SiteId};
 use jadpo_graph::{Key, TypeRef};
 use jadpo_std::http::PrincipalKind;
@@ -435,6 +435,61 @@ fn loose(facts: &Facts) -> Facts {
     out
 }
 
+/// Why a reader of the field a value is stored in isn't proved to read it
+/// (chunk 10.7c): the error says which, and the way through follows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum Cause {
+    /// The reader's role, or anyone signed in, isn't let in to the source
+    /// field in any record: only a person approving the copy lets it
+    /// through.
+    Role,
+    /// The reader holds a role that reads the source field, but in the
+    /// stored record's tenant, which nothing shows is the source's.
+    Tenant,
+    /// The reader is let in by a reference of the stored record, which
+    /// says nothing of who may read the source's.
+    Record,
+}
+
+/// A reader who may not read a stored value: who, described, and why.
+pub(super) struct Unread {
+    pub(super) who: Option<String>,
+    pub(super) cause: Cause,
+}
+
+/// Whether `list` lets in everyone `grant` names, whichever record each
+/// is held on: the same role of the same membership, anyone signed in for
+/// a role, a user or anyone signed in, or anyone at all.
+fn lets_in(list: &[Grant], grant: &Grant) -> bool {
+    list.iter().any(|entry| match (entry, grant) {
+        (Grant::Public, _) => true,
+        (Grant::Signed, Grant::Role { .. } | Grant::Caller { .. } | Grant::Signed) => true,
+        (
+            Grant::Role {
+                membership: a,
+                role: r,
+                ..
+            },
+            Grant::Role {
+                membership: b,
+                role: s,
+                ..
+            },
+        ) => a == b && r == s,
+        (a, b) => a == b,
+    })
+}
+
+/// The reference `entity` names its tenant by, when it belongs to one.
+fn tenancy_via(flow: &Flow<'_>, entity: &str) -> Option<String> {
+    flow.prover
+        .policies
+        .entity(entity)
+        .and_then(|policy| policy.tenancy.as_ref())
+        .filter(|tenancy| tenancy.via != "id")
+        .map(|tenancy| tenancy.via.clone())
+}
+
 impl Walk<'_> {
     /// Whether the record of the body's [`Origin`] `origin` is the one with
     /// `id`, an entity of `entity`'s: its own `id`, or what it was found
@@ -593,7 +648,7 @@ impl Walk<'_> {
         dest: &Dest,
         readers: &Reached,
         src: &Src,
-    ) -> Option<(String, String, Option<String>)> {
+    ) -> Option<(String, String, Unread)> {
         let (entity, fields, origin) = match src {
             Src::Field {
                 entity,
@@ -628,6 +683,7 @@ impl Walk<'_> {
             .iter()
             .map(|rel| self.moved(flow, readers, rel, &dest.entity, entity))
             .collect();
+        let related = moved.len();
         if let Src::Field { reached, .. } | Src::Record { reached, .. } = src {
             moved.extend(as_caller(dest, readers, reached));
         }
@@ -636,19 +692,115 @@ impl Walk<'_> {
                 .iter()
                 .any(|reached| flow.prover.field_proved(entity, field, reached))
         })?;
-        // Who may not, from the most telling relation: a reader the
-        // field's own `read:` lets in, or else the record's.
-        let first = &moved[0];
-        let who = (0..readers.ways.len()).rev().find_map(|way| {
-            let at = first.ways[way]
-                .iter()
-                .position(|facts| !flow.prover.field_readable(entity, &field, facts))?;
-            readers.ways[way][at].iter().find_map(|fact| match fact {
-                Fact::Grant(grant) => Some(flow.prover.described(grant)),
-                _ => None,
-            })
-        });
-        Some((entity.clone(), field, who))
+        let unread = self.unread_reader(flow, dest, readers, &moved[..related], entity, &field);
+        Some((entity.clone(), field, unread))
+    }
+
+    /// Who among `readers` of `dest` may not read `entity`'s `field`, as
+    /// `moved` along each relation knows them, and why (chunk 10.7c): a
+    /// reader whose role the field never lets in first, since nothing but
+    /// a person's approval lets the copy through for them; then one who
+    /// holds the right role in the stored record's tenant; then one a
+    /// reference of the stored record lets in. Read from the narrowest
+    /// check, the field's own `read:` when it has one.
+    fn unread_reader(
+        &self,
+        flow: &Flow<'_>,
+        dest: &Dest,
+        readers: &Reached,
+        moved: &[Reached],
+        entity: &str,
+        field: &str,
+    ) -> Unread {
+        let prover = &flow.prover;
+        let mut lists = vec![prover.grants(entity, Effect::Read)];
+        if let Some(own) = prover
+            .policies
+            .entity(entity)
+            .and_then(|policy| policy.field_grants(field, Effect::Read))
+        {
+            lists.push(own.to_vec());
+        }
+        let tenancy = match (tenancy_via(flow, &dest.entity), tenancy_via(flow, entity)) {
+            (Some(theirs), Some(own)) => Some(Rel::Tenant(theirs, own)),
+            _ => None,
+        };
+        let mut found: Option<Unread> = None;
+        for (way, readers_way) in readers.ways.iter().enumerate().rev() {
+            for (at, facts) in readers_way.iter().enumerate() {
+                let proved = moved.iter().any(|reached| {
+                    reached
+                        .ways
+                        .get(way)
+                        .and_then(|way| way.get(at))
+                        .is_some_and(|facts| prover.field_readable(entity, field, facts))
+                });
+                if proved {
+                    continue;
+                }
+                let Some(grant) = facts.iter().find_map(|fact| match fact {
+                    Fact::Grant(grant) => Some(grant),
+                    _ => None,
+                }) else {
+                    continue;
+                };
+                let cause = if matches!(grant, Grant::Role { .. } | Grant::Signed | Grant::Public)
+                    && lists.iter().any(|list| !lets_in(list, grant))
+                {
+                    Cause::Role
+                } else if let Some(rel) = &tenancy
+                    && self
+                        .moved(
+                            flow,
+                            &Reached::by(vec![facts.clone()]),
+                            rel,
+                            &dest.entity,
+                            entity,
+                        )
+                        .ways
+                        .iter()
+                        .flatten()
+                        .all(|facts| prover.field_readable(entity, field, facts))
+                {
+                    Cause::Tenant
+                } else {
+                    Cause::Record
+                };
+                if found.as_ref().is_none_or(|found| cause < found.cause) {
+                    found = Some(Unread {
+                        who: Some(prover.described(grant)),
+                        cause,
+                    });
+                }
+            }
+            if found.is_some() {
+                break;
+            }
+        }
+        found.unwrap_or(Unread {
+            who: None,
+            cause: Cause::Record,
+        })
+    }
+
+    /// Whether a person approved storing `entity`'s `from` in `dest`'s
+    /// `field` (chunk 10.7c), in an acceptance naming that field flow.
+    fn copy_accepted(
+        &self,
+        flow: &Flow<'_>,
+        entity: &str,
+        from: &str,
+        dest: &Dest,
+        field: &str,
+    ) -> bool {
+        let qualified = |entity: &str, field: &str| {
+            format!(
+                "{}.{field}",
+                crate::policy::report::qualified(&flow.lookup, entity)
+            )
+        };
+        crate::acceptances::copies::accepted(flow.db, flow.project)
+            .contains(&(qualified(entity, from), qualified(&dest.entity, field)))
     }
 
     /// A value `prov`, given at `at`, stored in `field` of `dest`: every
@@ -697,6 +849,9 @@ impl Walk<'_> {
                     else {
                         continue;
                     };
+                    if self.copy_accepted(flow, &entity, &from, dest, field) {
+                        continue;
+                    }
                     if decided && !self.kept.insert((entity.clone(), from.clone())) {
                         continue;
                     }
@@ -749,7 +904,7 @@ impl Walk<'_> {
         span: jadpo_diag::Span,
         entity: &str,
         from: &str,
-        who: Option<String>,
+        unread: Unread,
         decided: bool,
         callee: Option<&str>,
     ) -> Diagnostic {
@@ -775,10 +930,15 @@ impl Walk<'_> {
             (None, true) => format!("decided by `{entity}.{from}`"),
             (None, false) => format!("from `{entity}.{from}`"),
         };
-        let among = who
-            .map(|who| format!(", {who} among them,"))
-            .unwrap_or_default();
+        let source = format!("`{entity}.{from}`");
+        // "only `Role.editor` may read", and "... may read it" for a
+        // sentence that needs its object.
         let readers = flow.prover.readers(entity, from);
+        let readers_it = if readers.ends_with("may read") {
+            format!("{readers} it")
+        } else {
+            readers.clone()
+        };
         let keeps = match &self.event {
             // What an event carries has left its record, which may change
             // before the delivery (chunk 6.1c).
@@ -803,7 +963,9 @@ impl Walk<'_> {
                 )
             }
             None if decided => "Which value is stored shows what decided it, so a value made under an `if`, a `match` or a loop, or kept by a filter, is stored only where everyone who may read it may read the fields they test.".to_string(),
-            None => "A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.".to_string(),
+            // The reason already says everyone who may read the field
+            // reads what is stored there.
+            None => String::new(),
         };
         // Passed to an action that changes a record of the same entity it
         // finds by an `id` it is given: proved when that is the `id` of
@@ -813,51 +975,103 @@ impl Walk<'_> {
             && !decided
             && dest.entity == entity
             && single(&dest.target).is_some()
+            && unread.cause != Cause::Role
         {
             return Diagnostic::new(&rule::POLICY_OUTPUT_FIELD_UNPROVED, headline)
                 .at(span, label)
                 .reason(format!(
-                    "`{callee}` stores what it is given here in {into} of the `{entity}` it changes, and nothing here shows that is the `{entity}` `{from}` was read from. Another `{entity}` has other readers, and {readers} `{from}`, so it is stored only in the record it came from."
+                    "`{callee}` stores what it is given here in {into} of the `{entity}` it changes, and nothing here shows that is the `{entity}` `{from}` was read from. Another `{entity}` has other readers, and {readers_it}, so it is stored only in the record it came from."
                 ))
                 .next(format!(
                     "Pass `{callee}` the `id` of the `{entity}` `{from}` was read from, which proves it changes that record, or pass only what everyone who may read {into} may read"
                 ));
         }
         let passed = callee
-            .map(|callee| format!("`{callee}` stores what it is given here in {into}, and "))
+            .map(|callee| format!("`{callee}` stores what it is given here in {into}. "))
             .unwrap_or_default();
-        let reason = format!(
-            "{passed}{}veryone who may read {into}{among} reads what is stored there, from any request, and {readers} `{from}`. {keeps}",
-            if passed.is_empty() { "E" } else { "e" }
-        );
+        let who = unread.who.unwrap_or_else(|| "someone".to_string());
+        // Why, in the reader's terms: the role, the tenant or the record
+        // (chunk 10.7c).
+        let why = match unread.cause {
+            Cause::Role => format!(
+                "{who} may read {into} but not {source}, which {readers}. The cause is the role: no `{entity}` lets {who} read its `{from}`, whatever the record or its tenant, and everyone who may read {into} reads what is stored there, from any request."
+            ),
+            Cause::Tenant => format!(
+                "Everyone who may read {into} reads what is stored there, from any request, and holds their role in the tenant of the `{}` it is stored in. The cause is the tenant: {who} may read {source}, but only in its own tenant, and nothing here shows the `{entity}` `{from}` is read from is in the same one.",
+                dest.entity
+            ),
+            Cause::Record => format!(
+                "Everyone who may read {into}, {who} among them, reads what is stored there, from any request. The cause is the record: nothing here shows they may read the `{entity}` `{from}` is read from, and of that `{entity}` {readers_it}."
+            ),
+        };
+        let mut why = why;
+        if let Some(first) = why.get(..1) {
+            why = format!("{}{}", first.to_uppercase(), &why[1..]);
+        }
+        let reason = if keeps.is_empty() {
+            format!("{passed}{why}")
+        } else {
+            format!("{passed}{why} {keeps}")
+        };
+        // Only a person lets a role read what its field keeps from it: an
+        // acceptance naming this field flow (chunk 10.7c).
+        if unread.cause == Cause::Role {
+            let qualified = |entity: &str, field: &str| {
+                format!(
+                    "{}.{field}",
+                    crate::policy::report::qualified(&flow.lookup, entity)
+                )
+            };
+            let subject = crate::acceptances::copies::subject(
+                &qualified(entity, from),
+                &qualified(&dest.entity, field),
+            );
+            return Diagnostic::new(&rule::POLICY_OUTPUT_FIELD_UNPROVED, headline)
+                .at(span, label)
+                .reason(reason)
+                .next_for(
+                    format!(
+                        "Stop and ask your user whether {who} may read what {source} holds once it is stored in {into}: the decision is theirs, and a general go-ahead isn't one. Once they agree, add a file to `acceptances/` listing `{subject}: {}` with their words as its reason; otherwise leave {source} out of {into}",
+                        crate::acceptances::copies::CHANGE
+                    ),
+                    Decider::Human,
+                );
+        }
         let next = match (callee, decided) {
             (Some(callee), _) if self.event.is_some() => format!(
-                "Pass the event's ids and have `{callee}` read what it stores, or give `{field}`'s `read:` only those who may read `{from}`"
+                "Pass the event's ids and have `{callee}` read what it stores, or give `{field}`'s `read:` only those who may read {source}"
             ),
             (Some(_), true) if self.summary => format!(
-                "Decide which items fail by what everyone who may read {into} may read, or give `{field}`'s `read:` only those who may read `{from}`"
+                "Decide which items fail by what everyone who may read {into} may read, or give `{field}`'s `read:` only those who may read {source}"
             ),
             (Some(callee), _) => format!(
-                "Pass `{callee}` what everyone who may read {into} may read, or give `{field}`'s `read:` only those who may read `{from}`"
+                "Pass `{callee}` what everyone who may read {into} may read, or give `{field}`'s `read:` only those who may read {source}"
             ),
-            (None, true) => format!(
-                "Decide what is stored in `{field}` by what everyone who may read it may read"
-            ),
+            (None, true) => {
+                format!("Decide what is stored in {into} by what everyone who may read it may read")
+            }
+            (None, false) if unread.cause == Cause::Tenant => {
+                let via = tenancy_via(flow, &dest.entity).unwrap_or_default();
+                format!(
+                    "Set `{}.{via}` from the `{entity}` that `{from}` is read from, so the copy stays in its tenant, or leave {source} out of {into}",
+                    dest.entity
+                )
+            }
             // A new record a user field of whose grants the write sets
             // from somewhere else: owned by the caller, it would hold only
             // what the caller read (chunk 10.4b).
             (None, false) if self.event.is_none() && dest.target.is_empty() => {
                 match owner_not_caller(flow, dest) {
                     Some(owner) => format!(
-                        "Set `{owner}` from the caller, a `Principal.user` the action takes, so the copy is read by whoever read `{from}`, or leave `{from}` out of `{field}`"
+                        "Set `{owner}` from the caller, a `Principal.user` the action takes, so the copy is read by whoever read {source}, or leave {source} out of {into}"
                     ),
                     None => format!(
-                        "Leave `{from}` out of `{field}`, or store it in a field only those who may read `{from}` may read"
+                        "Leave {source} out of {into}, or store it in a field only those who may read {source} may read"
                     ),
                 }
             }
             (None, false) => format!(
-                "Leave `{from}` out of `{field}`, or store it in a field only those who may read `{from}` may read"
+                "Leave {source} out of {into}, or store it in a field only those who may read {source} may read"
             ),
         };
         Diagnostic::new(&rule::POLICY_OUTPUT_FIELD_UNPROVED, headline)

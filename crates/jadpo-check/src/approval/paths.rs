@@ -169,6 +169,15 @@ fn target(view: &View<'_>, need: &Need) -> Option<Target> {
             }
         }
         "PolicyChange.listing_added" | "PolicyChange.listing_removed" => callable_named(subject),
+        // Who reaches the field a copy is stored in (chunk 10.7c).
+        crate::acceptances::copies::CHANGE => {
+            let (_, to) = crate::acceptances::copies::parse(subject)?;
+            let (_, entity, field, _) = grant_parts(&to);
+            Some(Target::Reads {
+                entity: entity?.to_string(),
+                field: field.map(str::to_string),
+            })
+        }
         change if change.ends_with("_declined") => callable_named(subject),
         "NetworkChange.host_added" | crate::provider_erasure::DATA_STAYS => {
             Some(Target::Connection {

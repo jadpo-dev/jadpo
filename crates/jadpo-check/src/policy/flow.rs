@@ -2907,13 +2907,12 @@ impl Walk<'_> {
         ) else {
             return Prov::default();
         };
-        // A map layer is proved where it is declared, as an `Output` is
-        // (chunk 5.5u8); what reaches a model is followed through both.
-        if !flow.personal
-            && (model.geometry.is_some() || is_output(&flow.lookup, &model.element.ty))
-        {
-            return Prov::default();
-        }
+        // What a query's `Output` or map layer gives is proved where it is
+        // declared, for whoever may run the query (chunk 5.5u8), and is
+        // still the fields it picks: a value read off it carries their
+        // rules wherever it goes next, as one read from the record does,
+        // so storing it where more people read it is checked as a copy
+        // (chunk 10.7c).
         // A listed query's callers passed its line too, as it started
         // (area 9, "Listing a query").
         let line = flow.prover.query_line(&model.name);
