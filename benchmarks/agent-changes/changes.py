@@ -723,6 +723,7 @@ class Change:
     extra_fields: frozenset = field(default_factory=frozenset)  # fields the change adds to every todo
     replaces: tuple = ()         # contract cases the change legitimately alters
     deployable: bool = False     # needs a real deployable (startup preflight)
+    owner_accepts: str | None = None  # what the owner accepts, should a check ask a person to (10.6)
 
 
 KEEP = 'Keep the current behaviour; don\'t make this change.'
