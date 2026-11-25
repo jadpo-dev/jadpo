@@ -125,6 +125,451 @@ removes the record or runs the lifecycle's `delete` transition
 So a soft delete, which keeps the record but hides it, still needs
 `delete`.
 
+Bringing a record back needs both. A transition marked `reaches: hidden`
+([Restoring a hidden record](05-data.md#restoring-a-hidden-record)) needs
+`update`, as every transition does, and, when the lifecycle has a `delete`
+transition, `delete` as well, so nobody can undo a delete they couldn't
+have made. Without a `delete` transition, the records it reaches were
+hidden by other transitions or by time, which `update` governs, so
+`update` alone decides. An action listed under `actions:` has its line
+decide both, as it decides every write in its own body
+([Permissions on actions](#permissions-on-actions)). A caller who lacks
+either gets the record's not-found failure, as for any record they may not
+change ([When policy says no](#when-policy-says-no)).
+
+Here responders work on a support desk's enquiries, and only its owners may
+bin one or take it out of the bin:
+
+```jadpo check project=restore-by-role file=app.jadpo hidden
+use desk/entities { Member }
+
+application {}
+
+principal {
+    user: {
+        subject: Member.handle
+    }
+}
+```
+
+```jadpo check project=restore-by-role file=authentication.jadpo hidden
+authentication {
+    browser_session: {
+        cookie: "desk_session"
+    }
+}
+```
+
+```jadpo check project=restore-by-role file=policy.jadpo hidden
+use desk/entities { Desk }
+use desk
+
+policy {
+    tenant: Desk
+    actions: {
+        desk.found_desk: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/types/handle.jadpo hidden
+type Handle = Text {
+    min_length: 3
+    max_length: 40
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/types/desk_name.jadpo hidden
+type DeskName = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/types/desk_role.jadpo hidden
+/// What a member may do on a desk.
+type DeskRole = Enum {
+    owner
+    responder
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/types/enquiry_title.jadpo hidden
+type EnquiryTitle = Text {
+    min_length: 1
+    max_length: 120
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/failures/handle_taken.jadpo hidden
+type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/entities/member.jadpo hidden
+use desk/types { Handle }
+
+/// Someone who signs in.
+entity Member {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/entities/desk.jadpo hidden
+use desk/types { DeskName, DeskRole }
+
+/// A front_desk desk: the tenant every other record belongs to.
+entity Desk {
+    id: Uuid
+    name: DeskName
+
+    policy: {
+        read: [DeskRole.owner, DeskRole.responder]
+    }
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/entities/desk_membership.jadpo hidden
+use desk/entities { Desk, Member }
+use desk/types { DeskRole }
+
+/// A member's role on a desk.
+entity DeskMembership {
+    id: Uuid
+    desk_id: Desk.id {
+        on_delete: OnDelete.cascade
+    }
+    member_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+    role: DeskRole
+
+    membership: {
+        scope: desk_id
+        member: member_id
+        role: role
+    }
+
+    policy: {
+        create: [DeskRole.owner]
+        read: [DeskRole.owner, member_id]
+        delete: [DeskRole.owner, member_id]
+    }
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/entities/enquiry.jadpo
+use desk/entities { Desk }
+use desk/types { DeskRole, EnquiryTitle }
+
+/// A customer's question. Responders work on enquiries; only owners bin
+/// them.
+entity Enquiry {
+    id: Uuid
+    desk_id: Desk.id {
+        on_delete: OnDelete.cascade
+    }
+    title: EnquiryTitle
+    binned_at: Instant?
+
+    lifecycle: {
+        visible: binned_at == none
+        transitions: {
+            delete: {
+                when: binned_at == none
+                set: {
+                    binned_at: clock.now
+                }
+            }
+            restore: {
+                reaches: hidden  // needs `update` and `delete`
+                set: {
+                    binned_at: none
+                }
+            }
+        }
+        purge: {
+            after: 30d
+            since: binned_at
+        }
+    }
+
+    policy: {
+        create: [DeskRole.owner, DeskRole.responder]
+        read: [DeskRole.owner, DeskRole.responder]
+        update: [DeskRole.owner, DeskRole.responder]
+        delete: [DeskRole.owner]
+    }
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/types/enquiry_view.jadpo hidden
+use desk/entities { Enquiry }
+
+/// An enquiry as members see it.
+type EnquiryView = Output {
+    pick: [Enquiry.id, Enquiry.title]
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/actions/register.jadpo hidden
+use desk/entities { Member }
+use desk/types { Handle }
+use desk/failures { HandleTaken }
+
+/// Signs a new member up; anyone may.
+action register(handle: Handle) fails HandleTaken -> Member {
+    return attempt Member.create {
+        set: {
+            handle: handle
+        }
+        conflict: {
+            Member.handle: HandleTaken
+        }
+    }
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/actions/found_desk.jadpo hidden
+use desk/entities { Desk, DeskMembership }
+use desk/types { DeskName, DeskRole }
+
+/// Starts a desk with its founder as its owner.
+action found_desk(name: DeskName, founder: Principal.user) -> Desk {
+    var founded: Desk = Desk.create {
+        set: {
+            name: name
+        }
+    }
+    var owner: DeskMembership = DeskMembership.create {
+        set: {
+            desk_id: founded.id
+            member_id: founder.id
+            role: DeskRole.owner
+        }
+    }
+    assert owner.role == DeskRole.owner
+    return founded
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/actions/add_member.jadpo hidden
+use desk/entities { Desk, DeskMembership, DeskNotFound, Member, MemberNotFound }
+use desk/types { DeskRole }
+
+/// Gives a member a role on a desk; only its owners may.
+action add_member(
+    desk_id: Desk.id,
+    member_id: Member.id,
+    role: DeskRole
+) fails DeskNotFound, MemberNotFound -> DeskMembership {
+    return attempt DeskMembership.create {
+        set: {
+            desk_id: desk_id
+            member_id: member_id
+            role: role
+        }
+    }
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/actions/retitle_enquiry.jadpo hidden
+use desk/entities { Enquiry, EnquiryNotFound }
+use desk/types { EnquiryTitle, EnquiryView }
+
+/// What retitling an enquiry takes.
+type RetitleEnquiry = Input {
+    title: EnquiryTitle
+}
+
+/// Gives an enquiry a clearer title; owners and responders may.
+action retitle_enquiry(
+    enquiry_id: Enquiry.id,
+    input: RetitleEnquiry
+) fails EnquiryNotFound -> EnquiryView {
+    var changed: Enquiry = attempt Enquiry.update(enquiry_id) {
+        set: {
+            title: input.title
+        }
+    }
+    return EnquiryView {
+        id: changed.id
+        title: changed.title
+    }
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/actions/bin_enquiry.jadpo hidden
+use desk/entities { Enquiry, EnquiryNotFound }
+
+/// Moves an enquiry to the bin; only owners may.
+action bin_enquiry(enquiry_id: Enquiry.id) fails EnquiryNotFound -> Unit {
+    attempt Enquiry.delete(enquiry_id)
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/actions/restore_enquiry.jadpo
+use desk/entities { Enquiry, EnquiryNotFound }
+use desk/types { EnquiryView }
+
+/// Takes an enquiry out of the bin; only those who may bin it may.
+action restore_enquiry(enquiry_id: Enquiry.id) fails EnquiryNotFound -> EnquiryView {
+    var changed: Enquiry = attempt Enquiry.restore(enquiry_id)
+    return EnquiryView {
+        id: changed.id
+        title: changed.title
+    }
+}
+```
+
+```jadpo check project=restore-by-role file=domains/desk/routes/enquiries.jadpo migrate=initial hidden
+use desk/entities { Enquiry }
+use desk/types { EnquiryView }
+use desk/actions { RetitleEnquiry, bin_enquiry, restore_enquiry, retitle_enquiry }
+
+/// A desk's enquiries.
+routes Enquiries {
+    prefix: /enquiries
+
+    /// Retitles an enquiry.
+    PATCH /{enquiry_id: Enquiry.id} {
+        input: RetitleEnquiry
+        output: EnquiryView
+        run: retitle_enquiry(enquiry_id, input)
+    }
+
+    /// Moves an enquiry to the bin.
+    DELETE /{enquiry_id: Enquiry.id} {
+        status: SuccessStatus.no_content
+        run: bin_enquiry(enquiry_id)
+    }
+
+    /// Takes an enquiry out of the bin.
+    POST /{enquiry_id: Enquiry.id}/restore {
+        output: EnquiryView
+        run: restore_enquiry(enquiry_id)
+    }
+}
+```
+
+```jadpo check project=restore-by-role file=api/main.jadpo_record hidden
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+api main
+    authentication browser_session
+
+PATCH /enquiries/{enquiry_id: Uuid}
+    input RetitleEnquiry (body)
+    output EnquiryView
+    status 200
+    fails enquiry_not_found
+
+DELETE /enquiries/{enquiry_id: Uuid}
+    status 204
+    fails enquiry_not_found
+
+POST /enquiries/{enquiry_id: Uuid}/restore
+    output EnquiryView
+    status 200
+    fails enquiry_not_found
+
+GET /openapi.json
+    generated openapi
+    status 200
+
+output EnquiryView
+    id: Uuid
+    title: Text { min_length: 1, max_length: 120 }
+
+input RetitleEnquiry
+    title: Text { min_length: 1, max_length: 120 }
+
+failure enquiry_not_found
+    status 404
+```
+
+The responder may retitle the enquiry, but binning it and bringing it back
+are both not found to them:
+
+```jadpo check project=restore-by-role file=domains/desk/routes/enquiries.test.jadpo
+use desk/entities { Desk, DeskMembership, Enquiry, Member }
+use desk/types { DeskRole }
+use desk/actions { RetitleEnquiry, add_member, found_desk, register }
+
+test "a responder may retitle an enquiry, but not bin it or bring it back" {
+    var ann: Member = attempt register("ann")
+    var bob: Member = attempt register("bob")
+    var front_desk: Desk = found_desk("Support", Principal.user(ann))
+    var bobs_seat: DeskMembership = attempt add_member(front_desk.id, bob.id, DeskRole.responder)
+    assert bobs_seat.role == DeskRole.responder
+    var printer: Enquiry = make.Enquiry {
+        desk_id: front_desk.id
+        title: "Printer jam"
+    }
+    var retitled: Response = request {
+        method: HttpMethod.patch
+        path: "/enquiries/{enquiry_id}"
+        params: {
+            enquiry_id: printer.id
+        }
+        as: Principal.user(bob)
+        input: RetitleEnquiry {
+            title: "Printer jam on floor 2"
+        }
+    }
+    assert retitled.status == 200
+    var binned_by_bob: Response = request {
+        method: HttpMethod.delete
+        path: "/enquiries/{enquiry_id}"
+        params: {
+            enquiry_id: printer.id
+        }
+        as: Principal.user(bob)
+    }
+    assert binned_by_bob.status == 404
+    var binned: Response = request {
+        method: HttpMethod.delete
+        path: "/enquiries/{enquiry_id}"
+        params: {
+            enquiry_id: printer.id
+        }
+        as: Principal.user(ann)
+    }
+    assert binned.status == 204
+    var restored_by_bob: Response = request {
+        method: HttpMethod.post
+        path: "/enquiries/{enquiry_id}/restore"
+        params: {
+            enquiry_id: printer.id
+        }
+        as: Principal.user(bob)
+    }
+    assert restored_by_bob.status == 404
+    assert restored_by_bob.code == "enquiry_not_found"
+    var back_again: Response = request {
+        method: HttpMethod.post
+        path: "/enquiries/{enquiry_id}/restore"
+        params: {
+            enquiry_id: printer.id
+        }
+        as: Principal.user(ann)
+    }
+    assert back_again.status == 200
+}
+```
+
 ### Asking for an upload slot
 
 `Entity.field_upload()` gives a client somewhere to send a file for one of

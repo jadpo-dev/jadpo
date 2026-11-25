@@ -3037,3 +3037,152 @@ query ledgers() -> List<LedgerView> {
     let listed = ledger("        ledgers: [Auditor.auditor]\n");
     assert_eq!(listed, Vec::<String>::new());
 }
+
+/// A memo kept in a bin by `delete`, and a shelf archived by a transition
+/// of its own, each brought back by one marked `reaches: hidden`, with
+/// `update:` granted and `delete:` granted to nobody, and a route running
+/// each restore.
+fn restoring(memo_delete: &str) -> Vec<String> {
+    let text = format!(
+        r#"principal {{
+    user: {{
+        subject: Person.handle
+    }}
+}}
+
+authentication {{
+    api_token: {{}}
+}}
+
+type Handle = Text {{
+    max_length: 40
+}}
+
+type MemoText = Text {{
+    max_length: 200
+}}
+
+type MemoView = Output {{
+    text: MemoText
+}}
+
+entity Person {{
+    id: Uuid
+    handle: Handle {{
+        unique: true
+    }}
+
+    policy: {{
+        read: [id]
+    }}
+}}
+
+entity Memo {{
+    id: Uuid
+    owner_id: Person.id {{
+        on_delete: OnDelete.cascade
+    }}
+    text: MemoText
+    binned_at: Instant?
+
+    lifecycle: {{
+        visible: binned_at == none
+        transitions: {{
+            delete: {{
+                set: {{
+                    binned_at: clock.now
+                }}
+            }}
+            restore: {{
+                reaches: hidden
+                set: {{
+                    binned_at: none
+                }}
+            }}
+        }}
+    }}
+
+    policy: {{
+        create: [owner_id]
+        read: [owner_id]
+        update: [owner_id]{memo_delete}
+    }}
+}}
+
+entity Shelf {{
+    id: Uuid
+    owner_id: Person.id {{
+        on_delete: OnDelete.cascade
+    }}
+    text: MemoText
+    archived_at: Instant?
+
+    lifecycle: {{
+        visible: archived_at == none
+        transitions: {{
+            archive: {{
+                set: {{
+                    archived_at: clock.now
+                }}
+            }}
+            unarchive: {{
+                reaches: hidden
+                set: {{
+                    archived_at: none
+                }}
+            }}
+        }}
+    }}
+
+    policy: {{
+        create: [owner_id]
+        read: [owner_id]
+        update: [owner_id]
+    }}
+}}
+
+action restore_memo(memo_id: Memo.id) fails MemoNotFound -> MemoView {{
+    var memo: Memo = attempt Memo.restore(memo_id)
+    return MemoView {{
+        text: memo.text
+    }}
+}}
+
+action unarchive_shelf(shelf_id: Shelf.id) fails ShelfNotFound -> MemoView {{
+    var shelf: Shelf = attempt Shelf.unarchive(shelf_id)
+    return MemoView {{
+        text: shelf.text
+    }}
+}}
+
+routes Memos {{
+    prefix: /memos
+
+    POST /{{memo_id: Memo.id}}/restore {{
+        output: MemoView
+        run: restore_memo(memo_id)
+    }}
+
+    POST /shelves/{{shelf_id: Shelf.id}}/unarchive {{
+        output: MemoView
+        run: unarchive_shelf(shelf_id)
+    }}
+}}
+"#
+    );
+    support::problems(Layout::Loose, &[("main.jadpo", text.as_str())])
+}
+
+/// Bringing back a record a delete may have hidden needs `delete` as well
+/// as `update` (area 9, "Transitions and deletes"): a restore on an entity
+/// whose `delete:` grants nobody could never succeed. With no `delete`
+/// transition, `update:` alone decides, so the shelf's route is fine.
+#[test]
+fn restoring_what_a_delete_hid_needs_the_delete_grant_too() {
+    let found = restoring("");
+    assert_eq!(rules_of(&found), ["policy.effect_ungranted"], "{found:#?}");
+    assert!(found[0].contains("/memos/{memo_id}/restore"), "{found:#?}");
+    assert!(found[0].contains("`Memo`"), "{found:#?}");
+    let granted = restoring("\n        delete: [owner_id]");
+    assert_eq!(granted, Vec::<String>::new());
+}

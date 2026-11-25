@@ -86,6 +86,15 @@ impl LifecycleModel {
         self.transitions.iter().find(|t| t.name == name)
     }
 
+    /// Whether running `transition` needs the entity's `delete:` grants
+    /// beside its `update:` ones: it reaches hidden records, and the
+    /// lifecycle has a `delete` transition, so a record may be hidden
+    /// because it was deleted, and nobody brings back a record they
+    /// couldn't have deleted (area 9, "Transitions and deletes").
+    pub fn restores_deleted(&self, transition: &str) -> bool {
+        self.transition(transition).is_some_and(|t| t.hidden) && self.transition("delete").is_some()
+    }
+
     /// Whether only its transitions change `field`.
     pub fn owns(&self, field: &str) -> bool {
         self.owned.iter().any(|owned| owned == field)

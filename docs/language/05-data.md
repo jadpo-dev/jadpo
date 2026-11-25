@@ -1054,10 +1054,18 @@ action restore_note(note_id: Note.id) fails NoteNotFound -> Note {
   while `visible:` doesn't hold. A note that is visible, or that purge has
   removed, is `NoteNotFound`, so restoring a note that isn't deleted
   answers 404, as reading a deleted one does.
-- **Policy as for any update.** A transition is an update, so the
-  entity's `update:` grants decide who may run it, on the hidden record
-  as on a visible one. A record the caller couldn't change is not found
-  to them, so one user can't restore another's.
+- **Only for those who could have hidden it.** A transition is an update,
+  so it needs the entity's `update:` grants. One marked `reaches: hidden`
+  in a lifecycle with a `delete` transition needs its `delete:` grants
+  too, since deleting is how the record may have come to be hidden: nobody
+  brings back a record they couldn't have deleted. Without a `delete`
+  transition, records are hidden only by other transitions or by time,
+  and `update:` alone decides
+  ([Transitions and deletes](09-policy.md#transitions-and-deletes)). A
+  record the caller may not restore is not found to them, as a record
+  they may not change is, so one user can't restore another's, and a
+  helpdesk agent who may edit tickets but not delete them can't take one
+  out of the bin.
 - **Nothing else reaches them.** Reads, lists, counts, includes and every
   other transition still leave hidden records out. A restore returns the
   record it brought back, now visible.
