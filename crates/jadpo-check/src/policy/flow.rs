@@ -2067,7 +2067,15 @@ impl Walk<'_> {
                 // Each way the caller may have reached the record: a create's
                 // is new, and a change to a record loaded earlier is proved
                 // for every record it may be.
-                let base = self.written(flow, &entity, effect, &set_names);
+                let restores = transition.as_ref().is_some_and(|key| {
+                    key.name().rsplit_once('.').is_some_and(|(_, short)| {
+                        flow.entities
+                            .get(&entity)
+                            .and_then(|model| model.lifecycle.as_ref())
+                            .is_some_and(|lifecycle| lifecycle.restores_deleted(short))
+                    })
+                });
+                let base = self.written(flow, &entity, effect, restores, &set_names);
                 let ways = match op {
                     WriteOp::Create => vec![fresh(base)],
                     WriteOp::Update | WriteOp::Delete => targets(&entity, base, target.as_ref()),
@@ -2217,15 +2225,28 @@ impl Walk<'_> {
     }
 
     /// How a caller reached the record a write gives back: the grants its
-    /// statement checked (the entity's, or the action's line), and each
-    /// restricted field it sets.
-    fn written(&self, flow: &Flow<'_>, entity: &str, effect: Effect, set: &[String]) -> Reached {
+    /// statement checked (the entity's, or the action's line), with
+    /// `delete`'s too for a transition bringing back what a delete may
+    /// have hidden (`restores`; area 9, "Transitions and deletes"), and
+    /// each restricted field it sets.
+    fn written(
+        &self,
+        flow: &Flow<'_>,
+        entity: &str,
+        effect: Effect,
+        restores: bool,
+        set: &[String],
+    ) -> Reached {
         let prover = &flow.prover;
         let grants = match (&self.line, flow.entities.get(entity)) {
             (Some(line), Some(model)) => line.on(model, prover.policies.memberships()),
             _ => prover.grants(entity, effect),
         };
         let mut reached = Reached::by(prover.way(entity, &grants));
+        if restores && self.line.is_none() {
+            let deletes = prover.grants(entity, Effect::Delete);
+            reached = reached.and(Reached::by(prover.way(entity, &deletes)));
+        }
         if let Some(policy) = prover.policies.entity(entity) {
             for name in set {
                 if let Some(grants) = policy.field_grants(name, effect) {
@@ -2907,13 +2928,12 @@ impl Walk<'_> {
         ) else {
             return Prov::default();
         };
-        // A map layer is proved where it is declared, as an `Output` is
-        // (chunk 5.5u8); what reaches a model is followed through both.
-        if !flow.personal
-            && (model.geometry.is_some() || is_output(&flow.lookup, &model.element.ty))
-        {
-            return Prov::default();
-        }
+        // What a query's `Output` or map layer gives is proved where it is
+        // declared, for whoever may run the query (chunk 5.5u8), and is
+        // still the fields it picks: a value read off it carries their
+        // rules wherever it goes next, as one read from the record does,
+        // so storing it where more people read it is checked as a copy
+        // (chunk 10.7c).
         // A listed query's callers passed its line too, as it started
         // (area 9, "Listing a query").
         let line = flow.prover.query_line(&model.name);

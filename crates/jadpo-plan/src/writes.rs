@@ -1061,13 +1061,20 @@ impl Planner<'_> {
                 conditions.extend(self.access(&mut writing, entity_model, reach)?);
                 // A delete needs `delete` whether it removes the record or
                 // runs the lifecycle's `delete` transition; every other
-                // transition is an update (area 9, "Grants").
-                let effect = if *op == WriteOp::Delete {
-                    Effect::Delete
+                // transition is an update, and one bringing back a record
+                // a delete may have hidden needs `delete` too (area 9,
+                // "Transitions and deletes").
+                let restores = transition.is_some_and(|t| {
+                    lifecycle.is_some_and(|lifecycle| lifecycle.restores_deleted(&t.name))
+                });
+                let effects: &[Effect] = if *op == WriteOp::Delete {
+                    &[Effect::Delete]
+                } else if restores {
+                    &[Effect::Update, Effect::Delete]
                 } else {
-                    Effect::Update
+                    &[Effect::Update]
                 };
-                let granted = self.policy(&mut writing, entity_model, effect, &Row::Table)?;
+                let granted = self.policy_all(&mut writing, entity_model, effects, &Row::Table)?;
                 let open =
                     granted == jadpo_sql::policy::ANYONE && narrowed.is_empty() && kept.is_empty();
                 // Writing no row asks whether the record is there under its
@@ -1090,7 +1097,8 @@ impl Planner<'_> {
                         let id = asking.param(id_source.clone(), SqlType::Uuid);
                         let mut asked = vec![text::equal("id", &id)];
                         asked.extend(self.access(&mut asking, entity_model, reach)?);
-                        let record = self.policy(&mut asking, entity_model, effect, &Row::Table)?;
+                        let record =
+                            self.policy_all(&mut asking, entity_model, effects, &Row::Table)?;
                         if record != jadpo_sql::policy::ANYONE {
                             asked.push(record);
                         }
@@ -1121,7 +1129,7 @@ impl Planner<'_> {
                     let mut bare = text::select_one(table);
                     text::where_clause(&mut bare, &asked, "");
                     let asked_policy =
-                        self.policy(&mut asking, entity_model, effect, &Row::Table)?;
+                        self.policy_all(&mut asking, entity_model, effects, &Row::Table)?;
                     // A field the caller may not change refuses the write
                     // before its condition can: the probe asks with the
                     // fields' grants too, so a refused field is 403, not
@@ -1183,7 +1191,7 @@ impl Planner<'_> {
                     let mut bare = text::select_values(table, &holds);
                     text::where_clause(&mut bare, &asked, "");
                     let asked_policy =
-                        self.policy(&mut asking, entity_model, effect, &Row::Table)?;
+                        self.policy_all(&mut asking, entity_model, effects, &Row::Table)?;
                     // A field the caller may not change refuses the write
                     // before a rule can, as a transition's guard asks.
                     let mut fields = Vec::new();

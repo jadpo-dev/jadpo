@@ -1947,8 +1947,8 @@ error: `post_all` passes `Diary.confession` to `post_item`, which stores it in `
    |
 11 |     return batches.each(from: diaries(page), each: diary -> post_item(diary))
    |                                                                       ^^^^^ from `Diary.confession`
-  reason: `post_item` stores what it is given here in `Board.text`, and everyone who may read `Board.text`, anyone signed in among them, reads what is stored there, from any request, and only the user `owner_id` points at and schedules and subscribers may read `confession`. A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.
-  next: Pass `post_item` what everyone who may read `Board.text` may read, or give `text`'s `read:` only those who may read `confession` (agent)
+  reason: `post_item` stores what it is given here in `Board.text`. Anyone signed in may read `Board.text` but not `Diary.confession`, which only the user `owner_id` points at and schedules and subscribers may read. The cause is the role: no `Diary` lets anyone signed in read its `confession`, whatever the record or its tenant, and everyone who may read `Board.text` reads what is stored there, from any request.
+  next: Stop and ask your user whether anyone signed in may read what `Diary.confession` holds once it is stored in `Board.text`: the decision is theirs, and a general go-ahead isn't one. Once they agree, add a file to `acceptances/` listing `"Diary.confession -> Board.text": PolicyChange.field_copied` with their words as its reason; otherwise leave `Diary.confession` out of `Board.text` (human)
   rule: policy.output_field_unproved
   help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 

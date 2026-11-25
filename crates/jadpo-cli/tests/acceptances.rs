@@ -908,4 +908,245 @@ fn a_migration_waiting_for_a_decision_beside_a_persons_error_names_its_command()
         migration[0].starts_with("Run `jadpo migrate new "),
         "{steps:?}"
     );
+/// A desk whose saved answers only staff read, and whose answers every
+/// member reads (chunk 10.7c).
+const DESK: &[(&str, &str)] = &[
+    (
+        "app.jadpo",
+        r#"use desk/entities { User }
+
+application {}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+"#,
+    ),
+    (
+        "authentication.jadpo",
+        r#"authentication {
+    api_token: {}
+}
+"#,
+    ),
+    (
+        "policy.jadpo",
+        r#"use desk/entities { Workspace }
+
+policy {
+    tenant: Workspace
+}
+"#,
+    ),
+    (
+        "domains/desk/types/role.jadpo",
+        r#"/// What a member may do.
+type Role = Enum {
+    owner
+    agent
+    viewer
+}
+"#,
+    ),
+    (
+        "domains/desk/types/body.jadpo",
+        r#"/// A message's text.
+type Body = Text {
+    max_length: 500
+}
+"#,
+    ),
+    (
+        "domains/desk/types/saved_view.jadpo",
+        r#"use desk/entities { SavedAnswer }
+
+/// A saved answer.
+type SavedView = Output {
+    pick: [SavedAnswer.id, SavedAnswer.body]
+}
+"#,
+    ),
+    (
+        "domains/desk/entities/user.jadpo",
+        r#"use desk/types { Body }
+
+/// Someone who signs in.
+entity User {
+    id: Uuid
+    handle: Body {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/entities/workspace.jadpo",
+        r#"use desk/types { Body, Role }
+
+/// The tenant.
+entity Workspace {
+    id: Uuid
+    name: Body
+
+    policy: {
+        read: [Role.owner, Role.agent, Role.viewer]
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/entities/membership.jadpo",
+        r#"use desk/entities { User, Workspace }
+use desk/types { Role }
+
+/// A role in a workspace.
+entity Membership {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: Role
+
+    membership: {
+        scope: workspace_id
+        member: user_id
+        role: role
+    }
+
+    policy: {
+        read: [Role.owner, user_id]
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/entities/saved_answer.jadpo",
+        r#"use desk/entities { Workspace }
+use desk/types { Body, Role }
+
+/// A saved answer staff reuse.
+entity SavedAnswer {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    body: Body
+
+    policy: {
+        create: [Role.owner]
+        read: [Role.owner, Role.agent]
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/entities/answer.jadpo",
+        r#"use desk/entities { Workspace }
+use desk/types { Body, Role }
+
+/// An answer every member reads.
+entity Answer {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    body: Body
+
+    policy: {
+        create: [Role.owner, Role.agent]
+        read: [Role.owner, Role.agent, Role.viewer]
+    }
+}
+"#,
+    ),
+    (
+        "domains/desk/queries/saved_by_id.jadpo",
+        r#"use desk/entities { SavedAnswer, SavedAnswerNotFound }
+use desk/types { SavedView }
+
+/// One saved answer.
+query saved_by_id(saved_id: SavedAnswer.id) fails SavedAnswerNotFound -> SavedView {
+    from: SavedAnswer
+    where: SavedAnswer.id == saved_id
+    missing: SavedAnswerNotFound
+}
+"#,
+    ),
+];
+
+const ANSWER_FROM_SAVED: &str = r#"use desk/entities { Answer, SavedAnswer, SavedAnswerNotFound, Workspace, WorkspaceNotFound }
+
+/// Answers with a saved answer's text.
+action answer_from_saved(workspace_id: Workspace.id, saved_id: SavedAnswer.id) fails SavedAnswerNotFound, WorkspaceNotFound -> Answer {
+    var saved: SavedAnswer = attempt SavedAnswer.get(saved_id)
+    return attempt Answer.create {
+        set: {
+            workspace_id: workspace_id
+            body: saved.body
+        }
+    }
+}
+"#;
+
+/// A field copied into one more people read is refused until an
+/// acceptance names that field flow; the acceptance that adds it matches
+/// the `copy` line it adds to the access record, and it goes on allowing
+/// the copy, from any action, on the branches after it (chunk 10.7c).
+#[test]
+fn copying_a_restricted_field_needs_an_acceptance_naming_the_flow() {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("acceptances-copy");
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in DESK {
+        write(&root, path, text);
+    }
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}", migrated.stdout);
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
+    git(&root, &["init", "-q"]);
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "The desk"]);
+    git(&root, &["checkout", "-q", "-b", "copy"]);
+    let action = "domains/desk/actions/answer_from_saved.jadpo";
+    write(&root, action, ANSWER_FROM_SAVED);
+    assert_eq!(
+        problems(&root),
+        [
+            "policy.output_field_unproved: `answer_from_saved` stores `SavedAnswer.body` in `Answer.body`, which not everyone who may read `body` may read"
+        ]
+    );
+    let accepted = "acceptances/20261125T1000_send_saved_answers.jadpo";
+    write(
+        &root,
+        accepted,
+        "/// Sam Okafor (support lead), in chat on 2026-11-25: \"Viewers may see a saved answer's text once it is sent as an answer.\"\nacceptance {\n    changes: {\n        \"desk.SavedAnswer.body -> desk.Answer.body\": PolicyChange.field_copied\n    }\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
+    let access = fs::read_to_string(root.join("access.jadpo_record")).expect("read");
+    assert!(
+        access.contains("\ncopy desk.SavedAnswer.body -> desk.Answer.body\n"),
+        "{access}"
+    );
+    assert_eq!(problems(&root), Vec::<String>::new());
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "Send saved answers"]);
+    git(&root, &["checkout", "-q", "main"]);
+    git(&root, &["merge", "-q", "--ff-only", "copy"]);
+    git(&root, &["checkout", "-q", "-b", "again"]);
+    // A second action making the same copy needs nothing more.
+    write(
+        &root,
+        "domains/desk/actions/answer_again.jadpo",
+        &ANSWER_FROM_SAVED.replace("answer_from_saved", "answer_again"),
+    );
+    assert_eq!(problems(&root), Vec::<String>::new());
 }
