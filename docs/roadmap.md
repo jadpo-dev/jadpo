@@ -135,6 +135,7 @@ D1 first: the site starts once D1 has merged.
   Find where Jadpo's extra fresh tokens go (10.5: about twice
   TypeScript's) and say what would cut them. If Jadpo still loses on
   correctness, stop and report to Richard before tuning further.
+- [x] **10.7a Bringing back a hidden record**: [Restoring a hidden record](language/05-data.md#restoring-a-hidden-record), [Transitions and deletes](language/09-policy.md#transitions-and-deletes), and the decisions in the notes of [area 5](language/notes/05-data.md) and [area 9](language/notes/09-policy.md).
 
 ## What the 0.2.0 run found
 

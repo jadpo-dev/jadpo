@@ -988,6 +988,9 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "docs/language/09-policy.md policy-end-to-end",
         "docs/language/09-policy.md tenant-references",
         "docs/language/09-policy.md listed-query",
+        // An agent who may change a ticket but not delete one can't bring
+        // one back from the bin, compiled as interpreted (chunk 10.7a).
+        "docs/language/09-policy.md restore-by-role",
         "docs/language/10-configuration-and-time.md deliveries",
         "docs/language/13-testing.md events-in-tests",
         "docs/language/13-testing.md lending",

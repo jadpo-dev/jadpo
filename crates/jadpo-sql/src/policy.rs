@@ -268,6 +268,22 @@ pub fn all_of(parts: &[String]) -> String {
     }
 }
 
+/// Whether every one of `conditions`, each a whole policy condition that
+/// may hold `OR`s of its own, holds: each in brackets, joined by `AND`, as
+/// a transition bringing back a deleted record needs both its `update`
+/// and its `delete` grants (area 9, "Transitions and deletes").
+pub fn every_condition(conditions: &[String]) -> String {
+    match conditions {
+        [] => ANYONE.to_string(),
+        [one] => one.clone(),
+        _ => conditions
+            .iter()
+            .map(|condition| format!("({condition})"))
+            .collect::<Vec<_>>()
+            .join(" AND "),
+    }
+}
+
 /// What a narrowed token needs (area 9, "Scopes"; chunk N2), `held` the
 /// caller's scope-tokens joined by spaces, `NULL` for a caller that isn't
 /// narrowed: with `token`, that it carries that scope-token, compared

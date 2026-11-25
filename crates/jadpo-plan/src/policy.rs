@@ -610,6 +610,27 @@ impl Planner<'_> {
         self.granted(bind, entity, effect, &grants, row)
     }
 
+    /// The condition policy adds to a statement doing every one of
+    /// `effects` at once, as a transition bringing back a record a delete
+    /// may have hidden needs both `update` and `delete` (area 9,
+    /// "Transitions and deletes"): each effect's condition, all holding.
+    pub(crate) fn policy_all(
+        &self,
+        bind: &mut dyn CallerBind,
+        entity: &EntityModel,
+        effects: &[Effect],
+        row: &Row<'_>,
+    ) -> Option<String> {
+        let mut parts: Vec<String> = Vec::new();
+        for effect in effects {
+            let condition = self.policy(bind, entity, *effect, row)?;
+            if condition != jadpo_sql::policy::ANYONE && !parts.contains(&condition) {
+                parts.push(condition);
+            }
+        }
+        Some(jadpo_sql::policy::every_condition(&parts))
+    }
+
     /// What the plan checks as an action starts, from who its line under
     /// `actions:` lets call it (area 9, "Actions"): nothing for anyone at
     /// all or when the statements its own body writes decide, anyone
