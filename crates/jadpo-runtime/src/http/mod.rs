@@ -45,6 +45,8 @@
 #[cfg(feature = "testing")]
 pub mod account_chooser;
 pub mod address;
+#[cfg(test)]
+mod blank_body;
 pub(crate) mod confirmation;
 pub mod downloads;
 pub mod external_token;
@@ -887,6 +889,31 @@ pub fn read_request(app: &App<'_>, number: u32, request: &Request) -> Read {
     Read::Values { params, input }
 }
 
+/// Whether `request`'s body is blank, empty or only whitespace, and read
+/// as `{}` (area 7, "A request with no body"; chunk 10.7b): it is when no
+/// field of input `plan` must come in the body, each optional, with a
+/// default or read from a header, whatever its `Content-Type` says. When
+/// one must, a blank body is refused as any body that can't be read is.
+fn blank_reads_empty(
+    codecs: &Codecs<'_>,
+    plan: &jadpo_std::http::InputPlan,
+    request: &Request,
+) -> bool {
+    if plan.query || !request.body.iter().all(u8::is_ascii_whitespace) {
+        return false;
+    }
+    let Some(Codec::Object { shape, fields, .. }) = codecs.codecs.get(plan.codec.0 as usize) else {
+        return false;
+    };
+    let Some(shape) = codecs.shapes.get(shape.0 as usize) else {
+        return false;
+    };
+    (0..fields.len()).all(|slot| match shape.field(slot) {
+        Some((name, absent)) => absent || plan.headers.iter().any(|(field, _)| field == name),
+        None => true,
+    })
+}
+
 /// A route's input read by the codec walk: its query string's values or
 /// its body as a `serde_json` object, its header fields put in, then read
 /// by its codec.
@@ -923,7 +950,8 @@ fn walked_input(
             };
             object.insert(key, value);
         }
-    } else {
+    } else if !blank_reads_empty(&app.codecs, plan, request) {
+        // The body's members, unless it is blank and read as `{}`.
         if !json_content(request) {
             return Err(BODY_NOT_JSON);
         }
@@ -986,15 +1014,18 @@ fn typed_input(
         values = query_values(request.query.as_deref().unwrap_or("")).ok_or(INVALID_REQUEST)?;
         Members::query(&values)
     } else {
-        if !json_content(request) {
+        let blank = blank_reads_empty(reading.codecs(), plan, request);
+        if !blank && !json_content(request) {
             return Err(BODY_NOT_JSON);
         }
-        if request.body.iter().all(u8::is_ascii_whitespace) {
+        if !blank && request.body.iter().all(u8::is_ascii_whitespace) {
             return Err(INVALID_REQUEST);
         }
         // A member named twice makes the body unreadable, as `json.read`
-        // reads it (chunk 5.8c).
-        doc = Doc::parse(&request.body).ok_or(INVALID_REQUEST)?;
+        // reads it (chunk 5.8c). A blank body read as `{}` is parsed as
+        // one, so it is read exactly as `{}` sent is.
+        let body: &[u8] = if blank { b"{}" } else { &request.body };
+        doc = Doc::parse(body).ok_or(INVALID_REQUEST)?;
         match doc.root().members() {
             Some(members) => members,
             None => {

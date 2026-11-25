@@ -135,6 +135,7 @@ D1 first: the site starts once D1 has merged.
   Find where Jadpo's extra fresh tokens go (10.5: about twice
   TypeScript's) and say what would cut them. If Jadpo still loses on
   correctness, stop and report to Richard before tuning further.
+- [x] **10.7b A request with no body**: [A request with no body](language/07-http.md#a-request-with-no-body) and [Breaking changes](language/07-http.md#breaking-changes), and its decision in [the notes](language/notes/07-http.md).
 
 ## What the 0.2.0 run found
 
