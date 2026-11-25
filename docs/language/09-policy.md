@@ -875,6 +875,11 @@ none by design, and none for work that names its tenant by a value. [Jobs
 and events](12-jobs-and-events.md) covers this under "Background work and
 tenants".
 
+A batch that saves no value of the tenant's `id` type, and reaches a
+tenant's records, would walk nothing every time, so it is
+[`policy.batch_tenant_missing`](../errors/policy.batch_tenant_missing.md).
+Work for every tenant at once belongs in a schedule's own action.
+
 The system never moves a record to another tenant, which needs a
 membership there, and never founds a tenant's first membership.
 
@@ -4281,6 +4286,7 @@ beside the entities they name; a project keeps them in `app.jadpo` and
 - [`policy.declaration_duplicate`](../errors/policy.declaration_duplicate.md)
 - [`policy.system_grant_missing`](../errors/policy.system_grant_missing.md)
 - [`policy.event_tenant_unproved`](../errors/policy.event_tenant_unproved.md)
+- [`policy.batch_tenant_missing`](../errors/policy.batch_tenant_missing.md)
 - [`policy.public_grant_missing`](../errors/policy.public_grant_missing.md)
 ### Fields
 

@@ -222,3 +222,50 @@ fn a_batch_naming_a_tenant_its_caller_passed_is_refused() {
     let read = "action sweep_house(household_id: Household.id, page: SweepPage) fails HouseholdNotFound -> BatchRun {\n    var household: Household = attempt Household.get(household_id)\n    return batches.each(from: all_chores(page), each: chore -> tick(chore), key: household.id)\n}\n";
     assert_eq!(unproved(read), Vec::<String>::new());
 }
+
+/// The `policy.batch_tenant_missing` problems `actions` give beside
+/// [`BASE`], each with what it says.
+fn unnamed(actions: &str) -> Vec<String> {
+    let source = format!("{BASE}\n{actions}");
+    support::problems(Layout::Loose, &[("main.jadpo", source.as_str())])
+        .into_iter()
+        .filter(|problem| problem.contains("policy.batch_tenant_missing"))
+        .collect()
+}
+
+#[test]
+fn a_batch_naming_no_tenant_that_reaches_a_tenants_records_is_refused() {
+    // Chunk 10.7d: the helpdesk's hourly job started a batch over every
+    // workspace's tickets with no workspace saved, and every run quietly
+    // walked nothing.
+    let sweep = "action sweep_all(page: SweepPage) -> BatchRun {\n    return batches.each(from: all_chores(page), each: chore -> tick(chore))\n}\n";
+    assert_eq!(
+        unnamed(sweep),
+        [
+            "main.jadpo policy.batch_tenant_missing: `sweep_all` starts a batch that names no `Household`"
+        ]
+    );
+    // Naming the household it read is the fix.
+    let named = "action sweep_house(household: Household, page: SweepPage) -> BatchRun {\n    return batches.each(from: all_chores(page), each: chore -> tick(chore), key: household.id)\n}\n";
+    assert_eq!(unnamed(named), Vec::<String>::new());
+    // So is a capture of the tenant's id.
+    let captured = "action keep(chore: Chore, household_id: Household.id) -> Unit {\n    assert chore.household_id == household_id\n}\n\naction sweep_house(household: Household, page: SweepPage) -> BatchRun {\n    return batches.each(from: all_chores(page), each: chore -> keep(chore, household.id))\n}\n";
+    assert_eq!(unnamed(captured), Vec::<String>::new());
+}
+
+#[test]
+fn a_batch_reaching_a_tenants_records_through_its_action_names_its_tenant() {
+    // The query reads only what every tenant shares; the action changes a
+    // household's chore.
+    let shared = "query people(page: SweepPage) -> Page<Person> {\n    from: Person\n    order: [Person.id asc]\n    page: {\n        size: page.page_size\n        after: page.after\n    }\n}\n\naction touch(person: Person, chore_id: Chore.id) fails ChoreNotFound -> Unit {\n    assert person.handle != \"\"\n    attempt Chore.update(chore_id) {\n        set: {\n            ticks: 0\n        }\n    }\n}\n\naction sweep_people(chore: Chore, page: SweepPage) -> BatchRun {\n    return batches.each(from: people(page), each: person -> touch(person, chore.id))\n}\n";
+    assert_eq!(
+        unnamed(shared),
+        [
+            "main.jadpo policy.batch_tenant_missing: `sweep_people` starts a batch that names no `Household`"
+        ]
+    );
+    // A batch over what every tenant shares alone names none, and needs
+    // none.
+    let only_shared = "query people(page: SweepPage) -> Page<Person> {\n    from: Person\n    order: [Person.id asc]\n    page: {\n        size: page.page_size\n        after: page.after\n    }\n}\n\naction look(person: Person) -> Unit {\n    assert person.handle != \"\"\n}\n\naction sweep_people(page: SweepPage) -> BatchRun {\n    return batches.each(from: people(page), each: person -> look(person))\n}\n";
+    assert_eq!(unnamed(only_shared), Vec::<String>::new());
+}

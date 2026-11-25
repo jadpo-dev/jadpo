@@ -909,7 +909,9 @@ language.
 decisions are written ([Migrations](05-data.md#migrations)). Outside CI,
 `jadpo check` writes the next migration itself when it needs no decision,
 named after the purpose `new` would offer, so `new` is what a change that
-needs a decision, or a purpose of your own, runs. `apply` and
+needs a decision, or a purpose of your own, runs. An error waiting for a
+person's acceptance (`acceptance.missing`, `acceptance.no_reason`) stops
+neither, since no migration waits for an acceptance. `apply` and
 `status` take the database's URL with `--url`, and `--store` when there
 are several. Otherwise they read it from the connection's setting, in the
 environment and then `.env.local`.
@@ -1114,7 +1116,11 @@ $ jadpo acceptance new open_the_catalogue
             their agreement, stop and ask them. (human)
 ```
 
-With `--json`, `data` holds the `file`, each change's `subject` and
+A migration still to write doesn't stop it: what needs a person is read
+from the source and its records, and a data change's acceptance is
+drafted once the migration making it is written, so neither ever waits
+for the other. Other errors in the source stop it, as they stop `jadpo
+check`. With `--json`, `data` holds the `file`, each change's `subject` and
 `change`, and `reason: false`. A purpose that isn't lower_snake_case,
 nothing waiting for an acceptance, or nothing to compare with (outside
 git, before the first commit) is `cli.acceptance_arguments`; a base the

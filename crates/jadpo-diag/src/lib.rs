@@ -770,6 +770,8 @@ rules! {
         "A provider package's field or failure says how it is sent in a way it can't";
     PACKAGE_WIRE_NAME_INVALID: "package.wire_name_invalid", area 11, Error, Agent,
         "A `wire_name:` is outside a provider package, or repeats or empties a spelling";
+    POLICY_BATCH_TENANT_MISSING: "policy.batch_tenant_missing", area 9, Error, Agent,
+        "A batch reaches a tenant's records but saves no value naming which tenant, so every run would find none of them";
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
         "A grant, a membership or a `tenant:` names something that can't say who is allowed or where";
     POLICY_CALL_UNGRANTED: "policy.call_ungranted", area 9, Security, Human,

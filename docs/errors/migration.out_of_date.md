@@ -24,6 +24,13 @@ run:
   next: Fix the other errors first: `jadpo check` then writes this migration itself (agent)
 ```
 
+An error that waits for a person's acceptance, `acceptance.missing` or
+`acceptance.no_reason`, is never one of those: no migration waits for an
+acceptance. Beside one, `jadpo check` still writes the migration itself,
+or the `next:` line names `jadpo migrate new` when it needs a decision,
+and `jadpo acceptance new` drafts the acceptance while the migration is
+still to write.
+
 ## What it looks like
 
 A project with an entity and no migration yet, checked in CI:
