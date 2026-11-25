@@ -142,14 +142,18 @@ without the hidden results; the language can't be hidden.
   would make it reach for the registry and the sandbox fails that
   command. The sandbox can't listen on loopback, so a run sets
   `TEST_LOOPBACK=unavailable` and the one TypeScript test that needs it
-  skips. The contract documents,
+  skips. Each copy's AGENTS.md says so: `jadpo dev` can't start, which
+  `cli.dev_start_failed` would otherwise leave to a person. The contract documents,
   hidden tests and the other language are never in reach; any tool call
   naming the repository or the contract marks the run `contaminated`
   (its path, `benchmarks/golden-todo`, not the bare `golden-todo` both
   apps use themselves). A mark means the call reached for it; the
   sandbox's refusal or an empty search shows whether anything was read.
 - **One reply**: if the agent writes `QUESTIONS.md`, the session resumes
-  once with the owner's fixed reply, the same in both languages.
+  once with the owner's fixed reply, the same in both languages. From
+  10.6 a change's reply ends with what the owner accepts, in their words
+  (`owner_accepts`), so a check that needs a person's acceptance has one
+  to quote; 10.5's changes keep the reply they were measured with.
 
 ## Runs, reporting and what the results steer
 
@@ -186,6 +190,14 @@ moved to it between changes, as a merge would, and each change is scored
 when it is done and again on the app the whole session left. A change's
 own checks run before `main` moves, as a pull request meets them, so
 `jadpo check` still judges the acceptances it needs.
+
+**Fresh changes on the same app.** Roadmap chunk 10.6 adds H11 to H20, the
+`desk-fresh` set, run as S3 and S4 against a Jadpo frozen after the fixes
+10.5 led to, so no tuning run has seen them. They cross the same kinds of
+rule: a viewer and a note's words, a macro's workspace, members' emails,
+who may take a ticket out of the bin, a schedule that reads tags, a customer's counts,
+a reply posted while solving, a field only the server sets, binning by
+customer, and the last owner.
 
 **Tuning runs are staged.** One session at a time. After each, `stumbles`
 reads where it got stuck: every failing check or test run and its error
