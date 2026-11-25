@@ -908,6 +908,8 @@ fn a_migration_waiting_for_a_decision_beside_a_persons_error_names_its_command()
         migration[0].starts_with("Run `jadpo migrate new "),
         "{steps:?}"
     );
+}
+
 /// A desk whose saved answers only staff read, and whose answers every
 /// member reads (chunk 10.7c).
 const DESK: &[(&str, &str)] = &[
