@@ -75,6 +75,21 @@ def literal(value):
     return 'NULL' if value is None else "'" + str(value).replace("'", "''") + "'"
 
 
+# A required column the agent's change added, with no database default, is
+# one these fixtures can't name: they hold the rows the app had before the
+# change, and so can the inserts of a change's own tests. When an insert is
+# refused for it (23502), the row takes the type's neutral value, as a
+# migration's backfill would give it, and the app's schema is left as the
+# agent wrote it.
+REQUIRED_WITHOUT_DEFAULT = (
+    "SELECT table_name, column_name, CASE WHEN data_type = 'boolean' THEN 'false' "
+    "WHEN data_type IN ('text', 'character varying') THEN '''''' ELSE '0' END "
+    "FROM information_schema.columns WHERE table_schema = 'public' AND is_nullable = 'NO' "
+    "AND column_default IS NULL AND is_identity = 'NO' AND is_generated = 'NEVER' "
+    "AND data_type IN ('boolean', 'smallint', 'integer', 'bigint', 'numeric', 'real', 'double precision', "
+    "'text', 'character varying') ORDER BY table_name, column_name")
+
+
 class Desk(Contract):
     """The contract controller with the helpdesk's fixtures."""
 
@@ -84,6 +99,26 @@ class Desk(Contract):
         self.call('worker_reset')
         self.sql("DO $$ DECLARE r record; BEGIN FOR r IN SELECT tablename FROM pg_tables WHERE schemaname='public' "
                  "AND tablename<>'jadpo_migrations' LOOP EXECUTE format('TRUNCATE TABLE %I CASCADE',r.tablename); END LOOP; END $$")
+        self.seed()
+        self.call('logs')
+        self.history = []
+
+    def sql(self, statement):
+        try:
+            return super().sql(statement)
+        except AssertionError as refused:
+            if '23502' not in str(refused) or not statement.lstrip().upper().startswith('INSERT'):
+                raise
+            added = super().sql(REQUIRED_WITHOUT_DEFAULT)
+            for table, column, value in added:
+                super().sql(f'ALTER TABLE "{table}" ALTER COLUMN "{column}" SET DEFAULT {value}')
+            try:
+                return super().sql(statement)
+            finally:
+                for table, column, _ in added:
+                    super().sql(f'ALTER TABLE "{table}" ALTER COLUMN "{column}" DROP DEFAULT')
+
+    def seed(self):
         self.sql('INSERT INTO "user"(id,authentication_subject,status,email,created_at) VALUES '
                  + ','.join(f"('{i}','{who}','active','{EMAILS[who]}','{EARLIER}')" for who, i in PEOPLE.items()))
         self.sql(f"INSERT INTO workspace(id,name,created_at,updated_at) VALUES ('{ACME}','Acme Support','{EARLIER}','{EARLIER}'),"
@@ -118,8 +153,6 @@ class Desk(Contract):
             signed = self.call('sign', payload=json.dumps(payload, separators=(',', ':')))['signed']
             self.auth[who] = [['authorization', 'Bearer jadpo_token_' + secret + '.' + signed]]
         self.auth['nobody'] = []
-        self.call('logs')
-        self.history = []
 
     def ticket(self, identifier, workspace, customer, assignee, subject, status, priority, created, respond_by,
                first_response, solved, deleted, breached=None):

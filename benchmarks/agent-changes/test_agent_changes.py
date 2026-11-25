@@ -352,6 +352,36 @@ class Helpdesk(unittest.TestCase):
         self.assertNotIn('TypeScript', readme)
         self.assertNotIn('Jadpo', readme)
 
+    def test_fixtures_fill_a_required_column_the_change_added(self):
+        import desk
+
+        class Driver:
+            def __init__(self):
+                self.statements, self.defaulted = [], False
+
+            def call(self, request):
+                op, sql = request['op'], request.get('sql', '')
+                result = {'digest': {'digest': 'd'}, 'sign': {'signed': 's'}}.get(op, {'rows': []})
+                if op == 'sql':
+                    self.statements.append(sql)
+                    if sql.startswith('SELECT table_name'):
+                        result = {'rows': [['note', 'is_pinned', 'false']]}
+                    elif 'SET DEFAULT' in sql:
+                        self.defaulted = True
+                    elif 'DROP DEFAULT' in sql:
+                        self.defaulted = False
+                    elif sql.startswith('INSERT INTO note') and not self.defaulted:
+                        result = {'error': '23502: null value in column "is_pinned" of relation "note"'}
+                return {'result': result}
+
+        driver = Driver()
+        desk.Desk(driver).reset()
+        self.assertIn('ALTER TABLE "note" ALTER COLUMN "is_pinned" SET DEFAULT false', driver.statements)
+        self.assertIn('ALTER TABLE "note" ALTER COLUMN "is_pinned" DROP DEFAULT', driver.statements)
+        self.assertFalse(driver.defaulted)
+        # Each of the two notes is refused once, then inserted with the default.
+        self.assertEqual(sum(s.startswith('INSERT INTO note') for s in driver.statements), 4)
+
     def test_route_fill_uses_acme_ids(self):
         self.assertEqual(desk_changes.fill('/tickets/{ticket_id}/tags/{tag_id}'),
                          f'/tickets/{desk_changes.T_OPEN}/tags/{desk_changes.TAG_BILLING}')
