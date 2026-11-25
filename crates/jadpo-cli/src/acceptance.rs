@@ -93,10 +93,18 @@ pub fn acceptance(call: &Call) -> Reply {
         return project_not_found("acceptance");
     }
     // What changed can only be worked out from a source without errors.
+    // A migration out of date is no such error: the changes are read from
+    // the source and its records, and an acceptance of a data change is
+    // drafted again once the migration making it is written, so the two
+    // never wait for each other (chunk 10.7d).
     let blocking: Vec<Diagnostic> = checked
         .diagnostics
         .iter()
-        .filter(|d| !d.rule.id.starts_with("acceptance.") && !d.rule.id.starts_with("record."))
+        .filter(|d| {
+            !d.rule.id.starts_with("acceptance.")
+                && !d.rule.id.starts_with("record.")
+                && !crate::migrate::answers(d)
+        })
         .cloned()
         .collect();
     if !blocking.is_empty() {

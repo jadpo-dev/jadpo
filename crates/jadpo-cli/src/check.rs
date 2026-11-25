@@ -121,7 +121,11 @@ fn kept_up_to_date(checked: &Checked) -> Result<Vec<(String, &'static str)>, Box
 /// the migration written by the next check, or the command a decision
 /// needs (chunk 10.4c).
 fn migration_waits(checked: &mut Checked) {
-    if checked.diagnostics.iter().all(crate::migrate::answers) {
+    if checked
+        .diagnostics
+        .iter()
+        .all(crate::migrate::leaves_migration)
+    {
         return;
     }
     let written = crate::migrate::written_once_fixed(&checked.loaded, &checked.diagnostics);

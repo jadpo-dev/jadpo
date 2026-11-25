@@ -807,3 +807,105 @@ fn a_project_with_no_connections_gaining_its_first_host_needs_a_person() {
     .expect("written");
     assert_eq!(problems(&root), Vec::<String>::new());
 }
+
+/// A change that widens a grant and changes the schema needs both a
+/// person's acceptance and a migration, and neither waits for the other: a
+/// held-out run (chunk 10.7d) was told to fix the acceptance first by the
+/// migration's error, and `jadpo acceptance new` stopped on the migration.
+#[test]
+fn a_migration_and_an_acceptance_never_wait_for_each_other() {
+    let root = library("both");
+    let widen = |root: &Path| {
+        edit(
+            root,
+            "domains/lending/entities/book.jadpo",
+            "read: [Access.authenticated]",
+            "read: [Access.authenticated, Access.public]",
+        );
+        edit(
+            root,
+            "domains/lending/entities/book.jadpo",
+            "    title: Handle\n",
+            "    title: Handle\n    shelf: Handle?\n",
+        );
+    };
+    widen(&root);
+    // In CI nothing is written, and the acceptance is drafted all the same.
+    let ci: Vec<String> = {
+        let output = jadpo_ci(&root, &["check", "--json"]);
+        let document: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON");
+        document["diagnostics"]
+            .as_array()
+            .expect("diagnostics")
+            .iter()
+            .map(|d| d["rule"].as_str().unwrap_or("").to_string())
+            .collect()
+    };
+    assert_eq!(
+        ci,
+        [
+            "acceptance.missing",
+            "record.out_of_date",
+            "migration.out_of_date"
+        ]
+    );
+    let drafted = jadpo(&root, &["acceptance", "new", "open_the_catalogue"]);
+    assert_eq!(drafted.code, 0, "{}", drafted.stdout);
+    assert_eq!(acceptance_files(&root).len(), 1);
+    // Outside CI, `jadpo check` writes the migration itself beside the
+    // acceptance waiting for its reason.
+    assert_eq!(
+        next_steps(&root)
+            .into_iter()
+            .map(|(rule, _)| rule)
+            .collect::<Vec<_>>(),
+        ["acceptance.no_reason"]
+    );
+    let migrations = fs::read_dir(root.join("database/migrations"))
+        .expect("migrations")
+        .count();
+    assert_eq!(migrations, 2);
+
+    // And before any acceptance: the migration is written beside the
+    // error waiting for a person, which is all that is left.
+    let root = library("both-first");
+    widen(&root);
+    assert_eq!(
+        next_steps(&root)
+            .into_iter()
+            .map(|(rule, _)| rule)
+            .collect::<Vec<_>>(),
+        ["acceptance.missing"]
+    );
+}
+
+/// When what is left beside a migration needing a decision waits for a
+/// person, the migration's `next:` names its own command, not "fix the
+/// other errors first" (chunk 10.7d).
+#[test]
+fn a_migration_waiting_for_a_decision_beside_a_persons_error_names_its_command() {
+    let root = library("decision");
+    edit(
+        &root,
+        "domains/lending/entities/book.jadpo",
+        "read: [Access.authenticated]",
+        "read: [Access.authenticated, Access.public]",
+    );
+    edit(
+        &root,
+        "domains/lending/entities/book.jadpo",
+        "    title: Handle\n",
+        "    title: Handle\n    shelf: Handle\n",
+    );
+    let steps = next_steps(&root);
+    let migration: Vec<&String> = steps
+        .iter()
+        .filter(|(rule, _)| rule == "migration.out_of_date")
+        .map(|(_, next)| next)
+        .collect();
+    assert_eq!(migration.len(), 1, "{steps:?}");
+    assert!(
+        migration[0].starts_with("Run `jadpo migrate new "),
+        "{steps:?}"
+    );
+}

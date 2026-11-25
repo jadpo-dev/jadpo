@@ -159,6 +159,21 @@ pub(crate) fn answers(diagnostic: &Diagnostic) -> bool {
     .contains(&diagnostic.rule.id)
 }
 
+/// The errors that wait for a person's acceptance (area 18,
+/// "Acceptances"): no migration waits for them, and an acceptance of a
+/// data change is drafted from the migration that makes it, so they never
+/// stop a migration being written, by `jadpo migrate new` or by `jadpo
+/// check` itself (chunk 10.7d).
+pub(crate) fn awaits_person(diagnostic: &Diagnostic) -> bool {
+    [rule::ACCEPTANCE_MISSING.id, rule::ACCEPTANCE_NO_REASON.id].contains(&diagnostic.rule.id)
+}
+
+/// Whether `diagnostic` leaves the next migration to be written: one
+/// `migrate new` answers, or one waiting for a person.
+pub(crate) fn leaves_migration(diagnostic: &Diagnostic) -> bool {
+    answers(diagnostic) || awaits_person(diagnostic)
+}
+
 fn new(call: &Call) -> Reply {
     let (cwd, loaded) = match load(call) {
         Ok(found) => found,
@@ -167,7 +182,7 @@ fn new(call: &Call) -> Reply {
     let (db, project) = (&loaded.db, loaded.project);
     let problems: Vec<Diagnostic> = jadpo_check::check(db, project)
         .into_iter()
-        .filter(|d| !answers(d))
+        .filter(|d| !leaves_migration(d))
         .collect();
     if !problems.is_empty() {
         return blocked(&loaded, &cwd, problems, "migrate new stopped");
@@ -410,7 +425,7 @@ pub(crate) fn plan_swap(loaded: &Loaded, purpose: &str) -> Result<Planned, Box<D
 /// the purpose the changes suggest. Its folder, relative to the root, or
 /// `None` when it is left to `jadpo migrate new` and the error naming it.
 pub(crate) fn written_by_check(loaded: &Loaded, problems: &[Diagnostic]) -> Option<String> {
-    if !problems.iter().all(answers) {
+    if !problems.iter().all(leaves_migration) {
         return None;
     }
     let planned = planned_for_check(loaded, problems)?;

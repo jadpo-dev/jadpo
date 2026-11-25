@@ -524,7 +524,7 @@ fn generated_reach(
 }
 
 /// What `effect` does to an entity, for a headline: "creates a `Note`".
-fn doing(effect: Effect, entity: &str) -> String {
+pub(crate) fn doing(effect: Effect, entity: &str) -> String {
     match effect {
         Effect::Create => format!("creates a `{entity}`"),
         Effect::Read => format!("reads `{entity}` records"),
@@ -1004,6 +1004,24 @@ pub fn system_refused(db: &dyn Db, project: Project, run: &str) -> Option<System
 pub fn system_refused_query(db: &dyn Db, project: Project, query: &str) -> Option<SystemRefused> {
     let access = &Policies::new(db, project);
     system_refused_reached(db, project, access, query, true).or_else(|| listed_query(access, query))
+}
+
+/// The first of a tenant's entities the action called `run` (or, with
+/// `query`, the query) reaches, itself or through what it calls, with
+/// what it does there: what a batch naming no tenant would find none of
+/// (chunk 10.7d). `None` when it reaches only what every tenant shares.
+pub fn tenant_reached(
+    db: &dyn Db,
+    project: Project,
+    run: &str,
+    query: bool,
+) -> Option<(String, Effect)> {
+    let access = &Policies::new(db, project);
+    let (reached, _) = reached(db, project, access, run, query);
+    reached
+        .into_iter()
+        .find(|reach| reach.tenant && reach.field.is_none())
+        .map(|reach| (reach.entity, reach.effect))
 }
 
 fn listed_query(access: &Policies<'_>, query: &str) -> Option<SystemRefused> {

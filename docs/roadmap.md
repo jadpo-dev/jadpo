@@ -129,6 +129,7 @@ D1 first: the site starts once D1 has merged.
 - [x] **10.5 A mid-size app where rules live elsewhere**: the helpdesk in both languages, its changes and sessions are in [agent-changes](../benchmarks/agent-changes/README.md).
 - [x] **10.6 The helpdesk again, on today's Jadpo**: the fresh changes H11–H20 and the owner's acceptance line are in [agent-changes](../benchmarks/agent-changes/README.md); the report is in the results pull request.
 - [x] **10.7b A request with no body**: [A request with no body](language/07-http.md#a-request-with-no-body) and [Breaking changes](language/07-http.md#breaking-changes), and its decision in [the notes](language/notes/07-http.md).
+- [x] **10.7d Batches and migrations**: [`policy.batch_tenant_missing`](errors/policy.batch_tenant_missing.md), [Which tenant a run reaches](language/12-jobs-and-events.md#which-tenant-a-run-reaches), [Batches in tests](language/13-testing.md#batches), [`jadpo acceptance new`](language/14-tooling.md#jadpo-acceptance-new) and [`migration.out_of_date`](errors/migration.out_of_date.md), and the decisions in the notes of [area 9](language/notes/09-policy.md) and [area 14](language/notes/14-tooling.md).
 
 ## What the 0.2.0 run found
 
