@@ -130,6 +130,7 @@ D1 first: the site starts once D1 has merged.
 - [x] **10.6 The helpdesk again, on today's Jadpo**: the fresh changes H11–H20 and the owner's acceptance line are in [agent-changes](../benchmarks/agent-changes/README.md); the report is in the results pull request.
 - [x] **10.7a Bringing back a hidden record**: [Restoring a hidden record](language/05-data.md#restoring-a-hidden-record), [Transitions and deletes](language/09-policy.md#transitions-and-deletes), and the decisions in the notes of [area 5](language/notes/05-data.md) and [area 9](language/notes/09-policy.md).
 - [x] **10.7b A request with no body**: [A request with no body](language/07-http.md#a-request-with-no-body) and [Breaking changes](language/07-http.md#breaking-changes), and its decision in [the notes](language/notes/07-http.md).
+- [x] **10.7c Copying a restricted field**: [What else shows a field](language/09-policy.md#what-else-shows-a-field) and [Acceptances](language/18-records-and-manifest.md#acceptances), the decision in [the notes](language/notes/09-policy.md), and the error page of [`policy.output_field_unproved`](errors/policy.output_field_unproved.md).
 
 ## What the 0.2.0 run found
 

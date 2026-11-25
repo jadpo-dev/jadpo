@@ -13,7 +13,9 @@ Who may read a value is proved from the grants alone, not from the data.
 And a field's value reaches a caller in more ways than an output: through
 a copy, a condition, a value or failure it decides, a record it finds, or
 what a write stores for others to read later. Jadpo checks each of these
-like an output, so a field's `policy:` can't be got round.
+like an output, so a field's `policy:` can't be got round. Only a
+person can let people read what a field keeps from them: by changing its
+`policy:`, or by approving one copy of it in an acceptance.
 
 ## What it looks like
 
@@ -707,8 +709,8 @@ error: `publish_appraisal` stores `Note.appraisal` in `Note.summary`, which not 
    |
 47 |             summary: note.appraisal
    |                      ^^^^^^^^^^^^^^ from `Note.appraisal`
-  reason: Everyone who may read `Note.summary`, the user `owner_id` points at among them, reads what is stored there, from any request, and only the user `reviewer_id` points at may read `appraisal`. A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.
-  next: Leave `appraisal` out of `summary`, or store it in a field only those who may read `appraisal` may read (agent)
+  reason: Everyone who may read `Note.summary`, the user `owner_id` points at among them, reads what is stored there, from any request. The cause is the record: nothing here shows they may read the `Note` `appraisal` is read from, and of that `Note` only the user `reviewer_id` points at may read it.
+  next: Leave `Note.appraisal` out of `Note.summary`, or store it in a field only those who may read `Note.appraisal` may read (agent)
   rule: policy.output_field_unproved
   help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
@@ -892,8 +894,8 @@ error: `post_circulated` passes `Note.appraisal` to `post_bulletin`, which store
    |
 91 |     run: post_bulletin(event.blurb)
    |                        ^^^^^^^^^^^ an `emit` filled this from `Note.appraisal`
-  reason: `post_bulletin` stores what it is given here in `Bulletin.blurb`, and everyone who may read `Bulletin.blurb`, anyone signed in among them, reads what is stored there, from any request, and only the user `reviewer_id` points at may read `appraisal`. An event carries what each `emit` of it put there away from the record it came from, so its subscriber stores it only where everyone who may read it may read `appraisal` of any `Note`.
-  next: Pass the event's ids and have `post_bulletin` read what it stores, or give `blurb`'s `read:` only those who may read `appraisal` (agent)
+  reason: `post_bulletin` stores what it is given here in `Bulletin.blurb`. Anyone signed in may read `Bulletin.blurb` but not `Note.appraisal`, which only the user `reviewer_id` points at may read. The cause is the role: no `Note` lets anyone signed in read its `appraisal`, whatever the record or its tenant, and everyone who may read `Bulletin.blurb` reads what is stored there, from any request. An event carries what each `emit` of it put there away from the record it came from, so its subscriber stores it only where everyone who may read it may read `appraisal` of any `Note`.
+  next: Stop and ask your user whether anyone signed in may read what `Note.appraisal` holds once it is stored in `Bulletin.blurb`: the decision is theirs, and a general go-ahead isn't one. Once they agree, add a file to `acceptances/` listing `"Note.appraisal -> Bulletin.blurb": PolicyChange.field_copied` with their words as its reason; otherwise leave `Note.appraisal` out of `Bulletin.blurb` (human)
   rule: policy.output_field_unproved
   help: https://jadpo.dev/docs/errors/policy.output_field_unproved
 
@@ -1165,6 +1167,215 @@ error: `answer_call`'s reply shows whether a `PhoneLog` is there, which not ever
 check failed: 1 error, 11 files
 ```
 
+A value read through a query's `Output` is still the field it picks.
+Here only staff may read a saved answer, a `Macro`, and every member of
+the workspace reads a `Reply`, viewers too. Copying the macro's text into
+a reply, read through `macro_by_id`'s `MacroView`, shows viewers what only
+staff may read:
+
+```jadpo check project=e-copy-unproved file=app.jadpo hidden
+use desk/entities { User }
+
+application {}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+```
+
+```jadpo check project=e-copy-unproved file=authentication.jadpo hidden
+authentication {
+    api_token: {}
+}
+```
+
+```jadpo check project=e-copy-unproved file=policy.jadpo hidden
+use desk/entities { Workspace }
+
+policy {
+    tenant: Workspace
+}
+```
+
+```jadpo check project=e-copy-unproved file=domains/desk/types/role.jadpo hidden
+/// What a member may do.
+type Role = Enum {
+    owner
+    agent
+    viewer
+}
+```
+
+```jadpo check project=e-copy-unproved file=domains/desk/types/message_body.jadpo hidden
+/// A message's text.
+type MessageBody = Text {
+    max_length: 500
+}
+```
+
+```jadpo check project=e-copy-unproved file=domains/desk/entities/user.jadpo hidden
+use desk/types { MessageBody }
+
+/// Someone who signs in.
+entity User {
+    id: Uuid
+    handle: MessageBody {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+```
+
+```jadpo check project=e-copy-unproved file=domains/desk/entities/workspace.jadpo hidden
+use desk/types { MessageBody, Role }
+
+/// A customer of the desk, which every other record belongs to.
+entity Workspace {
+    id: Uuid
+    name: MessageBody
+
+    policy: {
+        read: [Role.owner, Role.agent, Role.viewer]
+    }
+}
+```
+
+```jadpo check project=e-copy-unproved file=domains/desk/entities/membership.jadpo hidden
+use desk/entities { User, Workspace }
+use desk/types { Role }
+
+/// A person's role in a workspace.
+entity Membership {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: Role
+
+    membership: {
+        scope: workspace_id
+        member: user_id
+        role: role
+    }
+
+    policy: {
+        read: [Role.owner, user_id]
+    }
+}
+```
+
+```jadpo check project=e-copy-unproved file=domains/desk/entities/macro.jadpo hidden
+use desk/entities { Workspace }
+use desk/types { MessageBody, Role }
+
+/// A saved answer staff reuse.
+entity Macro {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    body: MessageBody
+
+    policy: {
+        create: [Role.owner]
+        read: [Role.owner, Role.agent]
+    }
+}
+```
+
+```jadpo check project=e-copy-unproved file=domains/desk/entities/reply.jadpo hidden
+use desk/entities { Workspace }
+use desk/types { MessageBody, Role }
+
+/// A message to the customer, which every member reads.
+entity Reply {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    body: MessageBody
+
+    policy: {
+        create: [Role.owner, Role.agent]
+        read: [Role.owner, Role.agent, Role.viewer]
+    }
+}
+```
+
+```jadpo check project=e-copy-unproved file=domains/desk/types/macro_view.jadpo hidden
+use desk/entities { Macro }
+
+/// A saved answer.
+type MacroView = Output {
+    pick: [Macro.id, Macro.body]
+}
+```
+
+```jadpo check project=e-copy-unproved file=domains/desk/queries/macro_by_id.jadpo migrate=initial hidden
+use desk/entities { Macro, MacroNotFound }
+use desk/types { MacroView }
+
+/// One saved answer.
+query macro_by_id(macro_id: Macro.id) fails MacroNotFound -> MacroView {
+    from: Macro
+    where: Macro.id == macro_id
+    missing: MacroNotFound
+}
+```
+
+domains/desk/actions/reply_with_macro.jadpo:
+
+```jadpo check project=e-copy-unproved file=domains/desk/actions/reply_with_macro.jadpo expect=policy.output_field_unproved
+use desk/entities { Macro, MacroNotFound, Reply, Workspace, WorkspaceNotFound }
+use desk/types { MacroView }
+use desk/queries { macro_by_id }
+
+/// Answers the customer with a saved answer's text.
+action reply_with_macro(
+    workspace_id: Workspace.id,
+    macro_id: Macro.id
+) fails MacroNotFound, WorkspaceNotFound -> Reply {
+    var saved: MacroView = attempt macro_by_id(macro_id)
+    return attempt Reply.create {
+        set: {
+            workspace_id: workspace_id
+            body: saved.body
+        }
+    }
+}
+```
+
+```text output
+error: `reply_with_macro` stores `Macro.body` in `Reply.body`, which not everyone who may read `body` may read
+ --> domains/desk/actions/reply_with_macro.jadpo:14:19
+   |
+14 |             body: saved.body
+   |                   ^^^^^^^^^^ from `Macro.body`
+  reason: `Role.viewer` may read `Reply.body` but not `Macro.body`, which only `Role.owner` and `Role.agent` may read. The cause is the role: no `Macro` lets `Role.viewer` read its `body`, whatever the record or its tenant, and everyone who may read `Reply.body` reads what is stored there, from any request.
+  next: Stop and ask your user whether `Role.viewer` may read what `Macro.body` holds once it is stored in `Reply.body`: the decision is theirs, and a general go-ahead isn't one. Once they agree, add a file to `acceptances/` listing `"desk.Macro.body -> desk.Reply.body": PolicyChange.field_copied` with their words as its reason; otherwise leave `Macro.body` out of `Reply.body` (human)
+  rule: policy.output_field_unproved
+  help: https://jadpo.dev/docs/errors/policy.output_field_unproved
+
+check failed: 1 error, 13 files
+```
+
+The reason names the reader who may not read the source field and why:
+their role, as here, which no record or tenant changes; the tenant, when
+they hold the right role but nothing shows the copy stays in the source's
+tenant; or the record, when a reference of the target lets in someone
+else.
+
+`(human)` at the end of the `next:` line tells your coding agent to stop and ask you which fix you want, because the choice is yours to make.
+
 A value passed to another action is checked where it is passed, against
 the record that action changes. `summarise` finds the note it changes by
 the `id` it is given, so it changes the note whose `id` it is passed, and
@@ -1237,7 +1448,7 @@ error: `summarise_from` passes `Note.appraisal` to `summarise`, which stores it 
    |
 56 |     attempt summarise(note_id, from.appraisal)
    |                                ^^^^^^^^^^^^^^ from `Note.appraisal`
-  reason: `summarise` stores what it is given here in `Note.summary` of the `Note` it changes, and nothing here shows that is the `Note` `appraisal` was read from. Another `Note` has other readers, and only the user `reviewer_id` points at may read `appraisal`, so it is stored only in the record it came from.
+  reason: `summarise` stores what it is given here in `Note.summary` of the `Note` it changes, and nothing here shows that is the `Note` `appraisal` was read from. Another `Note` has other readers, and only the user `reviewer_id` points at may read it, so it is stored only in the record it came from.
   next: Pass `summarise` the `id` of the `Note` `appraisal` was read from, which proves it changes that record, or pass only what everyone who may read `Note.summary` may read (agent)
   rule: policy.output_field_unproved
   help: https://jadpo.dev/docs/errors/policy.output_field_unproved
@@ -1382,6 +1593,207 @@ query find_note(note_id: Note.id) fails NoteNotFound -> NoteView {
 lets in, owners and reviewers alike, and the appraisal stays the
 reviewer's.
 
+**If those who may not read the field should see the copy**, it is the
+app owner's decision. Ask them, and once they agree, add an acceptance
+naming that field flow, with their words as its reason
+([Acceptances](../language/18-records-and-manifest.md#acceptances)).
+For the macro copied into a reply above:
+
+```jadpo check project=e-copy-accepted file=app.jadpo hidden
+use desk/entities { User }
+
+application {}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+```
+
+```jadpo check project=e-copy-accepted file=authentication.jadpo hidden
+authentication {
+    api_token: {}
+}
+```
+
+```jadpo check project=e-copy-accepted file=policy.jadpo hidden
+use desk/entities { Workspace }
+
+policy {
+    tenant: Workspace
+}
+```
+
+```jadpo check project=e-copy-accepted file=domains/desk/types/role.jadpo hidden
+/// What a member may do.
+type Role = Enum {
+    owner
+    agent
+    viewer
+}
+```
+
+```jadpo check project=e-copy-accepted file=domains/desk/types/message_body.jadpo hidden
+/// A message's text.
+type MessageBody = Text {
+    max_length: 500
+}
+```
+
+```jadpo check project=e-copy-accepted file=domains/desk/entities/user.jadpo hidden
+use desk/types { MessageBody }
+
+/// Someone who signs in.
+entity User {
+    id: Uuid
+    handle: MessageBody {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+```
+
+```jadpo check project=e-copy-accepted file=domains/desk/entities/workspace.jadpo hidden
+use desk/types { MessageBody, Role }
+
+/// A customer of the desk, which every other record belongs to.
+entity Workspace {
+    id: Uuid
+    name: MessageBody
+
+    policy: {
+        read: [Role.owner, Role.agent, Role.viewer]
+    }
+}
+```
+
+```jadpo check project=e-copy-accepted file=domains/desk/entities/membership.jadpo hidden
+use desk/entities { User, Workspace }
+use desk/types { Role }
+
+/// A person's role in a workspace.
+entity Membership {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    user_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    role: Role
+
+    membership: {
+        scope: workspace_id
+        member: user_id
+        role: role
+    }
+
+    policy: {
+        read: [Role.owner, user_id]
+    }
+}
+```
+
+```jadpo check project=e-copy-accepted file=domains/desk/entities/macro.jadpo hidden
+use desk/entities { Workspace }
+use desk/types { MessageBody, Role }
+
+/// A saved answer staff reuse.
+entity Macro {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    body: MessageBody
+
+    policy: {
+        create: [Role.owner]
+        read: [Role.owner, Role.agent]
+    }
+}
+```
+
+```jadpo check project=e-copy-accepted file=domains/desk/entities/reply.jadpo hidden
+use desk/entities { Workspace }
+use desk/types { MessageBody, Role }
+
+/// A message to the customer, which every member reads.
+entity Reply {
+    id: Uuid
+    workspace_id: Workspace.id {
+        on_delete: OnDelete.cascade
+    }
+    body: MessageBody
+
+    policy: {
+        create: [Role.owner, Role.agent]
+        read: [Role.owner, Role.agent, Role.viewer]
+    }
+}
+```
+
+```jadpo check project=e-copy-accepted file=domains/desk/types/macro_view.jadpo hidden
+use desk/entities { Macro }
+
+/// A saved answer.
+type MacroView = Output {
+    pick: [Macro.id, Macro.body]
+}
+```
+
+```jadpo check project=e-copy-accepted file=domains/desk/queries/macro_by_id.jadpo migrate=initial hidden
+use desk/entities { Macro, MacroNotFound }
+use desk/types { MacroView }
+
+/// One saved answer.
+query macro_by_id(macro_id: Macro.id) fails MacroNotFound -> MacroView {
+    from: Macro
+    where: Macro.id == macro_id
+    missing: MacroNotFound
+}
+```
+
+```jadpo check project=e-copy-accepted file=domains/desk/actions/reply_with_macro.jadpo hidden
+use desk/entities { Macro, MacroNotFound, Reply, Workspace, WorkspaceNotFound }
+use desk/types { MacroView }
+use desk/queries { macro_by_id }
+
+/// Answers the customer with a saved answer's text.
+action reply_with_macro(
+    workspace_id: Workspace.id,
+    macro_id: Macro.id
+) fails MacroNotFound, WorkspaceNotFound -> Reply {
+    var saved: MacroView = attempt macro_by_id(macro_id)
+    return attempt Reply.create {
+        set: {
+            workspace_id: workspace_id
+            body: saved.body
+        }
+    }
+}
+```
+
+`acceptances/20261125T1000_send_macros_in_replies.jadpo`:
+
+```jadpo check project=e-copy-accepted file=acceptances/20261125T1000_send_macros_in_replies.jadpo
+/// Sam Okafor (support lead), in chat on 2026-11-25: "Viewers may read a macro's text once an agent has sent it as a reply."
+acceptance {
+    changes: {
+        "desk.Macro.body -> desk.Reply.body": PolicyChange.field_copied
+    }
+}
+```
+
+The copy now checks, from `reply_with_macro` or any other action, and
+`access.jadpo_record` keeps it as a `copy` line. Viewers still may not
+read the macros themselves. The approval covers this one flow: the
+macro's text stored in any other field is refused as before.
+
 **If everyone who may read a note should read its appraisal**, remove the
 field's own `policy:`, so it follows `Note`'s grants:
 
@@ -1452,3 +1864,4 @@ already on its default branch the change also needs a person's acceptance
 - [Webhook replies](../language/09-policy.md#webhook-replies)
 - [Events](../language/09-policy.md#events)
 - [Listing a query](../language/09-policy.md#listing-a-query)
+- [Acceptances](../language/18-records-and-manifest.md#acceptances)
