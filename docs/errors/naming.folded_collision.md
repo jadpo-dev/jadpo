@@ -82,6 +82,10 @@ query's or function's name likewise), unless that name is taken:
   next: Rename the input `CompleteTodos` to `CompleteTodosRequest` with `jadpo rename CompleteTodos CompleteTodosRequest`, which moves its file and every use with it (agent)
 ```
 
+Once renamed, the input is `CompleteTodosRequest` in
+`types/complete_todos_request.jadpo`, and a search for the action finds
+only the action.
+
 ## Related
 
 - [Naming](../language/01-project-layout-and-modules.md#naming)
