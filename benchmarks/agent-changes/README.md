@@ -142,7 +142,8 @@ without the hidden results; the language can't be hidden.
   would make it reach for the registry and the sandbox fails that
   command. The sandbox can't listen on loopback, so a run sets
   `TEST_LOOPBACK=unavailable` and the one TypeScript test that needs it
-  skips. The contract documents,
+  skips. Each copy's AGENTS.md says so: `jadpo dev` can't start, which
+  `cli.dev_start_failed` would otherwise leave to a person. The contract documents,
   hidden tests and the other language are never in reach; any tool call
   naming the repository or the contract marks the run `contaminated`
   (its path, `benchmarks/golden-todo`, not the bare `golden-todo` both
