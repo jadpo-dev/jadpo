@@ -114,8 +114,11 @@ todo-app/
   leaves open, the agent chooses a reasonable reading of, writes down
   where the owner will see it and carries on. Before a stop it leaves
   the project passing `jadpo check` and `jadpo test`, the part that
-  waits on the owner backed out. It ends with
-  the closest teaching example for each feature, linked at this
+  waits on the owner backed out. In an app that has code, the app is the
+  agent's closest example: it reads the app's code before the docs and
+  doesn't reopen a page it has read. It ends with
+  the closest teaching example for each feature, for a new app with no
+  code yet, linked at this
   `jadpo`'s own release, and what isn't built
   yet, area by area, both written from the docs, so they
   can't drift from them. `.gitignore` holds `build/`, and

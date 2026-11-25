@@ -132,6 +132,7 @@ D1 first: the site starts once D1 has merged.
 - [x] **10.7b A request with no body**: [A request with no body](language/07-http.md#a-request-with-no-body) and [Breaking changes](language/07-http.md#breaking-changes), and its decision in [the notes](language/notes/07-http.md).
 - [x] **10.7c Copying a restricted field**: [What else shows a field](language/09-policy.md#what-else-shows-a-field) and [Acceptances](language/18-records-and-manifest.md#acceptances), the decision in [the notes](language/notes/09-policy.md), and the error page of [`policy.output_field_unproved`](errors/policy.output_field_unproved.md).
 - [x] **10.7d Batches and migrations**: [`policy.batch_tenant_missing`](errors/policy.batch_tenant_missing.md), [Which tenant a run reaches](language/12-jobs-and-events.md#which-tenant-a-run-reaches), [Batches in tests](language/13-testing.md#batches), [`jadpo acceptance new`](language/14-tooling.md#jadpo-acceptance-new) and [`migration.out_of_date`](errors/migration.out_of_date.md), and the decisions in the notes of [area 9](language/notes/09-policy.md) and [area 14](language/notes/14-tooling.md).
+- [x] **10.7e Fewer docs reads and error loops**: the [primer](primer.md), the `jadpo new` AGENTS.md and [`jadpo new`](language/14-tooling.md#jadpo-new), [Files and names](language/01-project-layout-and-modules.md#files-and-names), and the error pages of [`type.mismatch`](errors/type.mismatch.md) and [`naming.folded_collision`](errors/naming.folded_collision.md).
 
 ## What the 0.2.0 run found
 

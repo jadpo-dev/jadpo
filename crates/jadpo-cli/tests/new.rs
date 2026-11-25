@@ -161,6 +161,11 @@ fn agents_md_gives_a_working_method_what_is_built_and_the_examples() {
         // A stop leaves the project checking, so the next change doesn't
         // start from a broken one (10.5, H03).
         "Before you stop to ask, leave the project passing",
+        // In an existing app, its own code comes before the docs and the
+        // examples, and a page read once isn't read again (chunk 10.7e).
+        "this app is your closest example",
+        "its code before the docs, and don't reopen pages you have already",
+        "Only a new app with no code of its own yet starts from the",
         "## The closest example for each feature",
         &format!(
             "https://github.com/jadpo-dev/jadpo/tree/v{}/examples/29-lending-desk",

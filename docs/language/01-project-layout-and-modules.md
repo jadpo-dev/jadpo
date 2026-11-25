@@ -665,7 +665,10 @@ There is one exception to file names being unique. A type declared in the
 same file as an action, query or function may fold to that callable's
 name, as an input does: `type CreateTodo = Input` beside
 `action create_todo` in `actions/create_todo.jadpo`. Only one file carries
-the name. If the type is promoted to its own file, the rule applies again.
+the name. If the type is promoted to its own file, the rule applies again,
+and `naming.folded_collision` names the type to rename and its new name:
+the callable's name with `Request` for an input, `CompleteTodosRequest`,
+or with `View` for an output, unless that name is taken.
 
 ### When two names clash
 

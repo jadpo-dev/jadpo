@@ -470,3 +470,65 @@ fn an_object_whose_one_field_fits_names_that_field() {
         "{found:#?}"
     );
 }
+
+/// A list of one type where a list of another goes, when each item maps
+/// to the other, shows the `list.map` that converts it (chunk 10.7e: agents
+/// changing the helpdesk looped on `type.mismatch` told only to build the
+/// list).
+#[test]
+fn a_list_that_maps_to_the_required_list_shows_the_list_map() {
+    let next = |source: &str| {
+        let db = Database::default();
+        let source = format!(
+            "{NAMES}type Shelf = Object {{\n    name: Label\n    size: Coins\n}}\n\n{source}"
+        );
+        let project = support::project(&db, Layout::Loose, &[("main.jadpo", source.as_str())]);
+        let found = jadpo_check::check(&db, project);
+        assert_eq!(found.len(), 1, "{found:#?}");
+        assert_eq!(found[0].rule.id, "type.mismatch", "{found:#?}");
+        (
+            found[0].reason.clone().unwrap_or_default(),
+            found[0]
+                .next
+                .as_ref()
+                .map(|next| next.text.clone())
+                .unwrap_or_default(),
+        )
+    };
+    // Each item's one field of the required type.
+    assert_eq!(
+        next("function shelf_labels(shelves: List<Shelf>) -> List<Label> {\n    return shelves\n}\n"),
+        (
+            "Collections keep their element type, so a `List<Shelf>` is never a `List<Label>`; each `Shelf`'s `name` field is a `Label`.".to_string(),
+            "Convert each item with `list.map(shelves, shelf -> shelf.name)`".to_string(),
+        )
+    );
+    // An object built from each item's fields.
+    assert_eq!(
+        next("type Tag = Output {\n    name: Label\n}\n\nfunction shelf_tags(shelves: List<Shelf>) -> List<Tag> {\n    return shelves\n}\n"),
+        (
+            "Collections keep their element type, so a `List<Shelf>` is never a `List<Tag>`; each `Shelf` has the fields a `Tag` is built from.".to_string(),
+            "Convert each item with `list.map(shelves, shelf -> Tag { name: shelf.name })`".to_string(),
+        )
+    );
+    // An object of several fields is shown in short; its edit writes each
+    // member on its own line.
+    assert_eq!(
+        next("type Plate = Output {\n    name: Label\n    size: Coins\n}\n\nfunction shelf_plates(shelves: List<Shelf>) -> List<Plate> {\n    return shelves\n}\n").1,
+        "Convert each item with `list.map(shelves, shelf -> Plate { ... })`, setting each field from `shelf`'s field of the same name"
+    );
+    // A refinement that adds no rules, so building it can't fail.
+    assert_eq!(
+        next("type ShelfName = Label {}\n\nfunction shelf_names(labels: List<Label>) -> List<ShelfName> {\n    return labels\n}\n"),
+        (
+            "Collections keep their element type, so a `List<Label>` is never a `List<ShelfName>`; each `Label` becomes a `ShelfName` through `ShelfName(...)`, which can't fail here.".to_string(),
+            "Convert each item with `list.map(labels, label -> ShelfName(label))`".to_string(),
+        )
+    );
+    // A refinement whose rules each item may break has no `list.map`: an
+    // inline function can't use `attempt`.
+    assert_eq!(
+        next("type ShortName = Label {\n    max_length: 10\n}\n\nfunction short_names(labels: List<Label>) -> List<ShortName> {\n    return labels\n}\n").1,
+        "Build a `List<ShortName>` here"
+    );
+}

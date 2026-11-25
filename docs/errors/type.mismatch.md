@@ -108,6 +108,68 @@ has exactly one field of the required type, such as a query's
 Reading the field passes the list the object holds, and the object's
 other fields stay where they are.
 
+**If each item of a list converts to the required item**, map the list.
+A list never widens, so a list of one type goes where a list of another
+is required only through `list.map`. When each item has one field of the
+required type, has every field the required object is built from, or
+becomes the required type through a constructor that can't fail, the
+error writes the `list.map` out, as an edit:
+
+```jadpo check project=e-mismatch-list expect=type.mismatch
+type BookTitle = Text {
+    max_length: 200
+}
+
+type PageCount = Int {
+    min: 1
+}
+
+type Book = Object {
+    title: BookTitle
+    pages: PageCount
+}
+
+function titles(books: List<Book>) -> List<BookTitle> {
+    return books
+}
+```
+
+```text output
+error: `List<Book>` can't be used where `List<BookTitle>` is required
+ --> main.jadpo:15:12
+   |
+15 |     return books
+   |            ^^^^^ this is `List<Book>`
+  reason: Collections keep their element type, so a `List<Book>` is never a `List<BookTitle>`; each `Book`'s `title` field is a `BookTitle`.
+  next: Convert each item with `list.map(books, book -> book.title)` (agent)
+  rule: type.mismatch
+  help: https://jadpo.dev/docs/errors/type.mismatch
+
+check failed: 1 error, 1 file
+```
+
+```jadpo check project=e-mismatch-list-fix hidden
+type BookTitle = Text {
+    max_length: 200
+}
+
+type PageCount = Int {
+    min: 1
+}
+
+type Book = Object {
+    title: BookTitle
+    pages: PageCount
+}
+
+function titles(books: List<Book>) -> List<BookTitle> {
+    return list.map(books, book -> book.title)
+}
+```
+
+An inline function can't use `attempt`, so a construction that may fail
+gets no `list.map`: build each item in a `for` loop instead.
+
 ## Related
 
 - [Creating values](../language/02-values-and-types.md#creating-values)

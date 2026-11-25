@@ -445,8 +445,9 @@ def agents_tail(root: Path = ROOT) -> str:
     return f"""{FEATURES_HEADING}
 
 Each is a complete project in Jadpo's repository, commented throughout,
-with tests that pass. Read the closest one's README and the files it
-names before you write the feature yourself.
+with tests that pass. For a new app with no code of its own yet, read the
+closest one's README and the files it names before you write the feature
+yourself.
 
 {feature_table(closest_examples(root), GITHUB_TREE)}
 

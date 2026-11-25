@@ -66,10 +66,25 @@ one.
 
 In a project, `jadpo rename DueDate <new name>` does it: it renames the
 declaration, moves it to the new name's file and changes every place that
-uses it, so the error's `next:` names that command. A route's input is the
-usual case: `type CompleteTodos = Input` for `action complete_todos` is
-used by the route too, so it has a file of its own in `types/` and can't
-share the action's. Name it for what it holds, such as `TodoSelection`.
+uses it, so the error's `next:` names that command.
+
+**If an input or output shares its action's name**, rename the type. An
+input that only its action uses (its route and tests don't count) sits in
+the action's file and may take its name: `type CompleteTodos = Input`
+beside `action complete_todos` in `actions/complete_todos.jadpo`. Once
+another action or query uses it, it has a file of its own in `types/`,
+where it can't. The error then names the type and its new name: the
+action's name with `Request` for an input, or `View` for an output (a
+query's or function's name likewise), unless that name is taken:
+
+```text
+  reason: Both names become `complete_todos.jadpo`, so a search for one finds the other; `complete_todos` is an action in `domains/planning/actions/complete_todos.jadpo`. Only an input in its action's own file may take the action's name.
+  next: Rename the input `CompleteTodos` to `CompleteTodosRequest` with `jadpo rename CompleteTodos CompleteTodosRequest`, which moves its file and every use with it (agent)
+```
+
+Once renamed, the input is `CompleteTodosRequest` in
+`types/complete_todos_request.jadpo`, and a search for the action finds
+only the action.
 
 ## Related
 

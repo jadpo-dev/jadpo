@@ -395,11 +395,21 @@ impl Body<'_> {
             (actual.strip_nullable(), expected.strip_nullable()),
             (Ty::List(_), Ty::List(_)) | (Ty::Set(_), Ty::Set(_)) | (Ty::Map(..), Ty::Map(..))
         ) {
-            problem
-                .reason(format!(
-                    "Collections keep their element type, so a `{actual}` is never a `{expected}`, even where each element would widen."
-                ))
-                .next(format!("Build a `{expected}` here"))
+            match self.list_mapping(expr, actual, expected, &written) {
+                // Each item converts to the required item (chunk 10.7e).
+                Some(mapping) => problem
+                    .reason(format!(
+                        "Collections keep their element type, so a `{actual}` is never a `{expected}`; {}.",
+                        mapping.why
+                    ))
+                    .next(format!("Convert each item with {}", mapping.shown))
+                    .edit(span.clone(), mapping.edit),
+                None => problem
+                    .reason(format!(
+                        "Collections keep their element type, so a `{actual}` is never a `{expected}`, even where each element would widen."
+                    ))
+                    .next(format!("Build a `{expected}` here")),
+            }
         } else if let Some(field) = self.one_field_fitting(actual, expected) {
             // An object where one of its fields would do (chunk 10.4c).
             let read = if written.contains('\n') || written.len() > 60 {
@@ -438,6 +448,187 @@ impl Body<'_> {
                 ))
         };
         self.out.push(problem);
+    }
+
+    /// How each item of the list `actual` converts to an item of the list
+    /// `expected`, as `list.map(written, item -> ...)`, with why: through
+    /// the one field of the item that fits, by building the required
+    /// object from the item's fields, or through a constructor that can't
+    /// fail. An inline function can't use `attempt`, so a construction
+    /// that may fail gives none.
+    fn list_mapping(
+        &self,
+        expr: &Expr,
+        actual: &Ty,
+        expected: &Ty,
+        written: &str,
+    ) -> Option<ListMapping> {
+        let (Ty::List(from), Ty::List(to)) = (actual.strip_nullable(), expected.strip_nullable())
+        else {
+            return None;
+        };
+        let (from, to) = (from.as_ref(), to.as_ref());
+        if self.table.is_nullable(actual)
+            || from.has_error()
+            || to.has_error()
+            || to.has_unknown()
+            || written.contains('\n')
+        {
+            return None;
+        }
+        let item = self.item_name(from);
+        let map = |body: &str| format!("list.map({written}, {item} -> {body})");
+        let one_line = |why: String, body: String| {
+            let mapped = map(&body);
+            Some(ListMapping {
+                why,
+                shown: format!("`{mapped}`"),
+                edit: mapped,
+            })
+        };
+        if let Some(field) = self.one_read_fitting(from, to) {
+            return one_line(
+                format!("each `{from}`'s `{field}` field is a `{to}`"),
+                format!("{item}.{field}"),
+            );
+        }
+        if let Some(fields) = self.built_from_fields(from, to, &item) {
+            let why = format!("each `{from}` has the fields a `{to}` is built from");
+            // An object's members go one to a line, so one with several
+            // is shown in short and written out in the edit.
+            if let [(field, value)] = fields.as_slice() {
+                return one_line(why, format!("{to} {{ {field}: {value} }}"));
+            }
+            let indent = line_indent(expr);
+            let members: String = fields
+                .iter()
+                .map(|(field, value)| format!("{indent}    {field}: {value}\n"))
+                .collect();
+            return Some(ListMapping {
+                why,
+                shown: format!(
+                    "`{}`, setting each field from `{item}`'s field of the same name",
+                    map(&format!("{to} {{ ... }}"))
+                ),
+                edit: format!(
+                    "{}{members}{indent}}})",
+                    map(&format!("{to} {{\n")).trim_end_matches(')')
+                ),
+            });
+        }
+        if matches!(to, Ty::Named(_) | Ty::Field(..))
+            && self.table.assignable(to, from)
+            && self.adds_no_rules(from, to)
+        {
+            return one_line(
+                format!(
+                    "each `{from}` becomes a `{to}` through `{to}(...)`, which can't fail here"
+                ),
+                format!("{to}({item})"),
+            );
+        }
+        None
+    }
+
+    /// The one field of the object or entity `from` whose value, as code
+    /// reads it (`Tool.id`, not its declared `Uuid`), may stand where `to`
+    /// is required, when exactly one may.
+    fn one_read_fitting(&self, from: &Ty, to: &Ty) -> Option<String> {
+        let Ty::Named(name) = from else {
+            return None;
+        };
+        let fits: Vec<&FieldDef> = self
+            .table
+            .fields(name)?
+            .iter()
+            .filter(|field| {
+                let mut read = self
+                    .table
+                    .field_type(name, std::slice::from_ref(&field.name));
+                if self.table.is_nullable(&field.declared) {
+                    read = read.nullable();
+                }
+                !read.has_error() && self.table.assignable(&read, to)
+            })
+            .collect();
+        match fits.as_slice() {
+            [field] => Some(field.name.clone()),
+            _ => None,
+        }
+    }
+
+    /// The name an inline function gives an item of type `ty`: the type's
+    /// own name in snake case, or `item` where that is a standard-library
+    /// namespace or a reserved word.
+    fn item_name(&self, ty: &Ty) -> String {
+        let name = match ty.strip_nullable() {
+            Ty::Named(name) => crate::case::to_snake(name.rsplit('.').next().unwrap_or(name)),
+            Ty::Field(_, path) => path.last().cloned().unwrap_or_default(),
+            _ => String::new(),
+        };
+        let names = StdNames::get();
+        if name.is_empty() || names.reserved(&name) || names.namespace(&name).is_some() {
+            "item".to_string()
+        } else {
+            name
+        }
+    }
+
+    /// Each field of `to` and its value, `item.field`, when `to` is an
+    /// object written as a value and every field it needs is a field of
+    /// `from` of a type that fits; a field that may be `none` and that
+    /// `from` lacks is `none`.
+    fn built_from_fields(&self, from: &Ty, to: &Ty, item: &str) -> Option<Vec<(String, String)>> {
+        let (Ty::Named(source), Ty::Named(target)) = (from, to) else {
+            return None;
+        };
+        if !matches!(
+            self.table.base(target),
+            Some(FieldsBase::Object | FieldsBase::Input | FieldsBase::Output)
+        ) {
+            return None;
+        }
+        let have = self.table.fields(source)?;
+        let need = self.table.fields(target)?;
+        if need.is_empty() {
+            return None;
+        }
+        let mut parts = Vec::new();
+        for field in need {
+            let may_be_none = field.optional || self.table.is_nullable(&field.declared);
+            match have.iter().find(|own| own.name == field.name) {
+                Some(own) => {
+                    let mut read = self
+                        .table
+                        .field_type(source, std::slice::from_ref(&own.name));
+                    if self.table.is_nullable(&own.declared) {
+                        read = read.nullable();
+                    }
+                    if read.has_error() || !self.table.assignable(&read, &field.declared) {
+                        return None;
+                    }
+                    parts.push((field.name.clone(), format!("{item}.{}", own.name)));
+                }
+                None if may_be_none => parts.push((field.name.clone(), "none".to_string())),
+                None => return None,
+            }
+        }
+        Some(parts)
+    }
+
+    /// Whether building `to` from a `from` checks no rule a `from` may
+    /// break: every rule along `to`'s chain is one `from` already follows.
+    fn adds_no_rules(&self, from: &Ty, to: &Ty) -> bool {
+        let has: Vec<String> = self
+            .table
+            .rule_chain(from)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        self.table
+            .rule_chain(to)
+            .into_iter()
+            .all(|(name, rules)| has.contains(&name) || *rules == Rules::default())
     }
 
     /// The one field of the object `actual` whose type may stand where
@@ -2744,4 +2935,29 @@ pub(crate) fn range_unordered(item: &Ty, span: Span) -> Diagnostic {
         "A range holds the values from its start up to its end, so its ends are a type `<` orders: a number, an `Instant`, a `CalendarDate` or a `Duration`, or a type built on one; `{item}` isn't."
     ))
     .next("Make the range of an ordered type")
+}
+
+/// How a list converts to the list required, item by item (chunk 10.7e).
+struct ListMapping {
+    /// Why each item converts, for the reason.
+    why: String,
+    /// The conversion as the next step shows it, in backticks.
+    shown: String,
+    /// The conversion written out, replacing the list.
+    edit: String,
+}
+
+/// The indentation of the line `expr` starts on.
+fn line_indent(expr: &Expr) -> String {
+    let mut token = expr
+        .syntax()
+        .first_token()
+        .and_then(|first| first.prev_token());
+    while let Some(at) = token {
+        if let Some((_, after)) = at.text().rsplit_once('\n') {
+            return after.chars().take_while(|c| *c == ' ').collect();
+        }
+        token = at.prev_token();
+    }
+    String::new()
 }
