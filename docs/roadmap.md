@@ -128,6 +128,7 @@ D1 first: the site starts once D1 has merged.
 - [x] **10.4e What stopped agents in 10.5's first round**: the [agent skill](agent-skill/SKILL.md) and the `jadpo new` AGENTS.md, [Acceptances](language/18-records-and-manifest.md#acceptances) and [Checking a record](language/18-records-and-manifest.md#checking-a-record), [Fields shown by role](language/09-policy.md#fields-shown-by-role), [A change that may match nothing](language/09-policy.md#a-change-that-may-match-nothing), [An import that skips duplicates](language/06-reads-and-writes.md#an-import-that-skips-duplicates), [A report of counts](language/06-reads-and-writes.md#a-report-of-counts), and the decisions in the notes of areas 3, 4, 14 and 18.
 - [x] **10.5 A mid-size app where rules live elsewhere**: the helpdesk in both languages, its changes and sessions are in [agent-changes](../benchmarks/agent-changes/README.md).
 - [x] **10.6 The helpdesk again, on today's Jadpo**: the fresh changes H11–H20 and the owner's acceptance line are in [agent-changes](../benchmarks/agent-changes/README.md); the report is in the results pull request.
+- [x] **10.7b A request with no body**: [A request with no body](language/07-http.md#a-request-with-no-body) and [Breaking changes](language/07-http.md#breaking-changes), and its decision in [the notes](language/notes/07-http.md).
 
 ## What the 0.2.0 run found
 

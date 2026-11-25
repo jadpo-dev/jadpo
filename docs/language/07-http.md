@@ -266,8 +266,127 @@ the rest come in the body
   goes to a [slot's address](16-built-in-services.md#uploading), which holds
   it to the field's `max_size:`.
 - A body is read only when it is sent as JSON (`Content-Type:
-  application/json`, or another `application/…+json` type). So a form a
-  browser posts from another site never reaches an action.
+  application/json`, or another `application/…+json` type). Sent with
+  another type, or with no `Content-Type` at all, it answers 400
+  `invalid_request`. So what a form a browser posts from another site
+  sends never reaches an action. A blank body is the one exception
+  ([A request with no body](#a-request-with-no-body)), and a write a
+  [browser session](08-identity.md#browser_session) signs in still needs
+  its CSRF token.
+
+### A request with no body
+
+A body that is empty, or only whitespace, reads as `{}` when the route's
+input has no field the body must send: each is `optional: true`, has a
+`default:` or is read from a header. That holds with a JSON `Content-Type`,
+with another, or with none. So adding an optional field breaks no client
+that sends nothing, and the record asks no one to accept it
+([Breaking changes](#breaking-changes)). Here an engineer may close a
+callout with a note, or with no body at all:
+
+```jadpo check project=close-callout file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=close-callout file=domains/fieldwork/types/closing_note.jadpo hidden
+/// What an engineer says about how a callout was closed.
+type ClosingNote = Text {
+    max_length: 500
+}
+```
+
+```jadpo check project=close-callout file=domains/fieldwork/entities/callout.jadpo hidden migrate=initial
+use fieldwork/types { ClosingNote }
+
+/// A customer's callout.
+entity Callout {
+    id: Uuid
+    closed: Bool
+    note: ClosingNote?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+```
+
+```jadpo check project=close-callout file=domains/fieldwork/types/callout_view.jadpo hidden
+use fieldwork/entities { Callout }
+
+/// A callout as clients see it.
+type CalloutView = Output {
+    pick: [Callout.id, Callout.closed, Callout.note]
+}
+```
+
+```jadpo check project=close-callout file=domains/fieldwork/actions/close_callout.jadpo
+use fieldwork/entities { Callout, CalloutNotFound }
+use fieldwork/types { CalloutView, ClosingNote }
+
+/// What closing a callout may say.
+type CloseCallout = Input {
+    note: ClosingNote {
+        optional: true
+    }
+}
+
+/// Marks a callout closed, with the engineer's note when there is one.
+action close_callout(
+    callout_id: Callout.id,
+    input: CloseCallout
+) fails CalloutNotFound -> CalloutView {
+    var callout: Callout = attempt Callout.update(callout_id) {
+        set: {
+            closed: true
+            note: input.note
+        }
+    }
+    return CalloutView {
+        id: callout.id
+        closed: callout.closed
+        note: callout.note
+    }
+}
+```
+
+```jadpo check project=close-callout file=domains/fieldwork/routes/callouts.jadpo
+use fieldwork/entities { Callout }
+use fieldwork/types { CalloutView }
+use fieldwork/actions { CloseCallout, close_callout }
+
+/// Callouts.
+routes Callouts {
+    prefix: /callouts
+
+    /// Closes a callout.
+    POST /{callout_id: Callout.id}/close {
+        authentication: RouteAuthentication.none
+        input: CloseCallout
+        output: CalloutView
+        run: close_callout(callout_id, input)
+    }
+}
+```
+
+A client that sends nothing closes the callout with no note, as one that
+sends `{}` does:
+
+```text
+POST /callouts/0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e/close HTTP/1.1
+Content-Length: 0
+
+HTTP/1.1 200 OK
+content-type: application/json
+
+{"id":"0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e","closed":true,"note":null}
+```
+
+When the body must send a field, a blank body is refused as one that
+can't be read: 400 `invalid_request`, "A request body is JSON, sent with
+`Content-Type: application/json`." without a JSON `Content-Type`, and
+"Request could not be read." with one.
 
 ### Text is normalised
 
@@ -2104,8 +2223,14 @@ test "a todo that isn't there is not found" {
 ### Breaking changes
 
 A change that can break a client also needs an acceptance written by a
-person: a route removed, a required input field added, an output field
-removed, a body sent as another media type, or a failure code changed. An acceptance is a file in
+person: a route removed, a field clients must send added to an input, an
+output field removed, a body sent as another media type, or a failure code
+changed. A field clients must send has neither `optional: true` nor a
+`default:`, even one that may be `none`, which is then sent as `null`. A
+route that had no input and now has one with such a field breaks too,
+since its clients send no body. A new optional field, or an input of only
+optional fields where there was none, breaks no one
+([A request with no body](#a-request-with-no-body)). An acceptance is a file in
 `acceptances/` saying a person accepts the change
 ([Acceptances](18-records-and-manifest.md#acceptances)). Every change that
 needs one uses the same form, such as a database drop, a policy weakening
@@ -2118,7 +2243,8 @@ acceptance lists: `"main GET /todos/{todo_id: Uuid}":
 ApiChange.route_removed`, `main.CreateTodo.due:
 ApiChange.input_field_required`, `main.CreateTodo.title:
 ApiChange.rule_tightened` (a bound raised or lowered, a rule added, a type
-changed, `none` no longer allowed, an enum variant gone),
+changed, `none` no longer allowed, an enum variant gone, an optional
+field now one clients must send),
 `main.TodoView.priority: ApiChange.output_field_removed` or
 `.output_field_retyped`, and `main.todo_locked: ApiChange.failure_changed`
 (the code gone or its status changed). A route that now takes or
@@ -2161,7 +2287,7 @@ where an app uses it.
 |---|---|
 | Checking routes | Built: `jadpo check` checks route groups, their prefixes and APIs (with `idempotency:`), methods and typed placeholders, the one input (from the query string for `GET` and `DELETE`, the JSON body otherwise, and `header:` fields), `output:` and `status:`, `deadline:`'s range and what `run:` calls, every route of the project against the others and the health paths, and each API's record. |
 | OpenAPI | Built: `jadpo check` writes one OpenAPI document per API to `build/openapi/`, and the failure wording for client apps beside it. Each API serves its own document at `<prefix>/openapi.json` (`serve_openapi: false` turns it off, `authentication: []` opens it to anyone), listed in its record, its document and `jadpo routes`, and the documents carry the `x-jadpo` fields the OpenAPI importer reads ([OpenAPI](#openapi)). OpenAPI derives each route's responses from what it runs and shows `ZonedTime`, `Zone` and a mixed enum as they are sent. |
-| Serving a request | Built: the runtime's HTTP component routes a request, decodes and checks its input (each problem as `{ field, rule }`), runs the action or query, and answers with the output or the failure envelope, its `request_id` and `x-request-id`, with the status the failure's kind sets; it answers `HEAD` and `OPTIONS` itself and counts the default rate limits. It reads a body only as JSON, and refuses a query string or body a route doesn't read, a header it can't read and a body over 1 MB. |
+| Serving a request | Built: the runtime's HTTP component routes a request, decodes and checks its input (each problem as `{ field, rule }`), runs the action or query, and answers with the output or the failure envelope, its `request_id` and `x-request-id`, with the status the failure's kind sets; it answers `HEAD` and `OPTIONS` itself and counts the default rate limits. It reads a body only as JSON, a blank one as `{}` where no field must be sent, interpreted and compiled alike, and refuses a query string or body a route doesn't read, a header it can't read and a body over 1 MB. |
 | Deadlines and concurrent changes | Built: the runtime stops a route at its deadline without committing, even work that never waits, and runs an action again on a concurrent change found as it commits. |
 | Health endpoints | Built: `/health/live` and `/health/ready`. |
 | File downloads | Built: `GET /files/<store>/<link>` for a store of files whose driver has no links of its own, answered ahead of any route ([Downloading](16-built-in-services.md#downloading)); a route whose path it would answer is `route.path_overlap`. |
