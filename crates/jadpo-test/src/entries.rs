@@ -460,6 +460,17 @@ impl Made<'_> {
                 Shape::Json,
             ));
         }
+        // A blank body, as JSON, as plain text and saying nothing, with
+        // the input's header fields sent (area 7, "A request with no body").
+        for shape in [Shape::Json, Shape::Plain, Shape::Unsaid] {
+            for blank in ["", " \r\n"] {
+                let mut sent = self.request(route, &valid, documents.first(), shape);
+                if sent.query.is_none() {
+                    sent.body = blank.as_bytes().to_vec();
+                }
+                out.push(sent);
+            }
+        }
         let mut odd = self.request(route, &valid, documents.first(), Shape::Json);
         odd.query = Some("zz=1&a=%zz".to_string());
         out.push(odd);

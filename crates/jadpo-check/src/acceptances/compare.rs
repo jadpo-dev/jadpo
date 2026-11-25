@@ -106,9 +106,12 @@ struct FieldLine {
 }
 
 impl FieldLine {
-    /// Whether a client must send it.
-    fn required(&self) -> bool {
-        !self.optional && !self.ty.nullable
+    /// Whether a client must send it. An API's client must send every
+    /// field of what it sends that is neither `optional` nor has a
+    /// `default`, a `none` one too, if only as `null` (area 2; chunk
+    /// 10.7b). An event's field that may be `none` isn't counted.
+    fn required(&self, family: &Family) -> bool {
+        !self.optional && (*family == Family::Api || !self.ty.nullable)
     }
 }
 
@@ -348,13 +351,13 @@ fn compare_fields(
     for (name, field) in &now {
         let subject = format!("{}.{name}", pair.now);
         let Some(old) = was.get(name) else {
-            if pair.sent && field.required() {
+            if pair.sent && field.required(&pair.family) {
                 add(subject, "ApiChange.input_field_required");
             }
             continue;
         };
         let cmp = compare(&old.ty, &field.ty);
-        let newly_required = old.optional && !field.optional && !field.ty.nullable;
+        let newly_required = old.optional && field.required(&pair.family);
         if pair.sent
             && (matches!(cmp, Cmp::Narrower)
                 || (cmp == Cmp::Different && !pair.read)
@@ -1513,6 +1516,64 @@ failure todo_locked
         assert_eq!(
             api_needs(TODOS, &after),
             pairs(&[("\"main POST /todos\"", "PolicyChange.route_public")])
+        );
+    }
+
+    /// A client that sends no body still may once a route takes an input
+    /// none of whose fields must be sent, since a blank body reads as `{}`;
+    /// a field it must send, `none` or not, breaks it (area 7, "A request
+    /// with no body"; chunk 10.7b).
+    #[test]
+    fn an_input_needs_a_person_only_when_it_gains_a_field_clients_must_send() {
+        let solve = |fields: Option<&str>| {
+            let route = "POST /todos/{todo_id: Uuid}/solve\n";
+            match fields {
+                None => format!("{TODOS}\n{route}    status 204\n"),
+                Some(fields) => format!(
+                    "{TODOS}\n{route}    input SolveTodo (body)\n    status 204\n\ninput SolveTodo\n{fields}"
+                ),
+            }
+        };
+        let none = Vec::<(String, String)>::new();
+        let required = |field: &str| {
+            vec![(
+                format!("main.SolveTodo.{field}"),
+                "ApiChange.input_field_required".to_string(),
+            )]
+        };
+        let note = "    note: Text optional\n";
+        // A route that had no input.
+        assert_eq!(api_needs(&solve(None), &solve(Some(note))), none);
+        assert_eq!(
+            api_needs(&solve(None), &solve(Some("    note: Text default none\n"))),
+            none
+        );
+        assert_eq!(
+            api_needs(&solve(None), &solve(Some("    note: Text\n"))),
+            required("note")
+        );
+        assert_eq!(
+            api_needs(&solve(None), &solve(Some("    assignee_id: Uuid?\n"))),
+            required("assignee_id")
+        );
+        // An input that had only optional fields.
+        let with = |more: &str| solve(Some(&format!("{more}{note}")));
+        assert_eq!(
+            api_needs(&solve(Some(note)), &with("    kind: Text optional\n")),
+            none
+        );
+        assert_eq!(
+            api_needs(&solve(Some(note)), &with("    kind: Text\n")),
+            required("kind")
+        );
+        assert_eq!(
+            api_needs(&solve(Some(note)), &with("    assignee_id: Uuid?\n")),
+            required("assignee_id")
+        );
+        // An optional field clients must now send, if only as `null`.
+        assert_eq!(
+            api_needs(&solve(Some(note)), &solve(Some("    note: Text?\n"))),
+            pairs(&[("main.SolveTodo.note", "ApiChange.rule_tightened")])
         );
     }
 
