@@ -224,7 +224,7 @@ error: `couriers`'s `sandbox:` lists `bookings.creat`, which `AcmeCouriers.v1` d
 
 check failed: 1 error, 12 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `erasure: { key: }` names the field of the person's record holding what the

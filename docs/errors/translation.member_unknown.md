@@ -109,7 +109,7 @@ error: `text_directions` words nothing of Jadpo's
 
 check failed: 1 error, 2 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A member of a package's group in the root file has to be one of that

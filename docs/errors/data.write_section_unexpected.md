@@ -54,7 +54,7 @@ error: `Item.update` takes no `missing:`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -102,7 +102,7 @@ error: `Item.update` takes no `patch:`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 So is a section given twice:
@@ -148,7 +148,7 @@ error: `set:` is given twice
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 So is `when_supplied:` with no `patch:`, since nothing was supplied:
@@ -276,7 +276,7 @@ error: `Item.archive` takes no `set:`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ## How to fix it

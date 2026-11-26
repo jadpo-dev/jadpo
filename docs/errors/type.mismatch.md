@@ -40,7 +40,7 @@ error: `Int` can't be used where `Stock` is required
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -73,7 +73,7 @@ error: `"Frank Herbert"` can't be used where `PersonName` is required
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A second error with the same reason keeps its place and its own edit, and
@@ -160,7 +160,7 @@ error: `List<Book>` can't be used where `List<BookTitle>` is required
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ```jadpo check project=e-mismatch-list-fix hidden

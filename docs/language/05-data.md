@@ -638,7 +638,8 @@ the next migration. Like any unique rule added to a table that holds
 records, it first looks for records that hold the same value, and while
 it finds any, `jadpo migrate apply` refuses it with
 `migration.apply_failed`, naming the first set's records by `id`, never
-their values. The search runs before the migration changes
+their values. Records that hold `none` share no value, so any number of
+them never stop a rule over a field that may be `none`. The search runs before the migration changes
 anything, unless it reads a column the migration adds, and the step that
 finds them rolls back. Change or delete all but one record of each set,
 then apply it again.

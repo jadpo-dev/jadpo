@@ -380,3 +380,76 @@ fn a_key_written_before_is_rebuilt_and_refused_while_records_break_it() {
         conflict("contact_email_key")
     );
 }
+
+const MEMBER: &str = "domains/people/entities/member.jadpo";
+
+/// A member whose phone, kept in one column, may be `none`, made unique
+/// later with `unique` as given.
+fn member(unique: &str) -> String {
+    format!("entity Member {{\n    id: Uuid\n    phone: Text?{unique}\n}}\n")
+}
+
+fn member_row(phone: Option<&str>) -> String {
+    format!(
+        "INSERT INTO \"member\" (\"id\", \"phone\") VALUES (gen_random_uuid(), {})",
+        phone.map_or("NULL".to_string(), |p| format!("'{p}'"))
+    )
+}
+
+/// Any number of records hold `none` in an optional unique field kept in
+/// one column (area 5, "Unique rules"; chunk 10.9e): both when the key is
+/// made with the table and when it is added over stored records, several
+/// of which hold none.
+#[test]
+fn several_records_hold_none_in_an_optional_unique_field() {
+    let root = folder("optional-one-column");
+    write(&root, "app.jadpo", "application {}\n");
+    write(&root, MEMBER, &member(""));
+    ok(&jadpo(&root, &["migrate", "new", "initial"]));
+    write(&root, MEMBER, &member(" {\n        unique: true\n    }"));
+    ok(&jadpo(&root, &["migrate", "new", "unique_phone"]));
+    jadpo(&root, &["records", "update"]);
+    ok(&jadpo(&root, &["check"]));
+    let sql = file(&root, &latest(&root), "postgres.sql");
+    // The search for records sharing a value skips those holding none,
+    // which the key doesn't hold equal.
+    assert!(
+        sql.contains("FROM \"member\" WHERE \"phone\" IS NOT NULL GROUP BY \"phone\""),
+        "{sql}"
+    );
+    if !jadpo_test::live() {
+        return;
+    }
+    let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
+    let url = server
+        .create_database("unique_parts_optional")
+        .expect("database");
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    let store = jadpo_host_native::postgres(&url).expect("store");
+    runtime
+        .block_on(jadpo_runtime::migrate(&store, &migrations(&root)[..1]))
+        .expect("the table, with no key");
+    for phone in [None, None, Some("+441234")] {
+        assert_eq!(tried(&url, &member_row(phone)), Ok(()), "{phone:?}");
+    }
+    ok(&jadpo(&root, &["migrate", "apply", "--url", &url]));
+    assert_eq!(tried(&url, &member_row(None)), Ok(()), "a third with none");
+    assert_eq!(
+        tried(&url, &member_row(Some("+441234"))),
+        conflict("member_phone_key")
+    );
+    // A table made with the key holds any number with none too.
+    let fresh = server
+        .create_database("unique_parts_optional_fresh")
+        .expect("database");
+    let store = jadpo_host_native::postgres(&fresh).expect("store");
+    runtime
+        .block_on(jadpo_runtime::migrate(&store, &migrations(&root)))
+        .expect("migrated");
+    assert_eq!(tried(&fresh, &member_row(None)), Ok(()));
+    assert_eq!(
+        tried(&fresh, &member_row(None)),
+        Ok(()),
+        "two absent values"
+    );
+}

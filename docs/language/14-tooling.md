@@ -176,9 +176,9 @@ the person, the `accept` entries their agreement writes, ready to paste,
 and the next step, theirs. Each such error's own `next:` points there,
 so an agent asks the owner once. `--json` gives them in `data.sign_off`,
 each with its `rule`, `question` and `entries`, and keeps every error's
-`next` whole. When some errors carry an automatic fix, the one hint after
-the summary names it, counting only those:
-`next: jadpo fix  applies the edits shown for 3 of these 5 errors`;
+`next` whole. When some errors carry an automatic fix, the one hint, the last line
+after the summary, names it, counting only those:
+`next: jadpo fix  fixes 3 of these 5 errors for you, then checks again`;
 `data.automatic_fixes` counts them. A migration the next check writes
 itself once the other errors are fixed isn't reported beside them at all.
 

@@ -41,7 +41,7 @@ error: `store: mian` isn't a database
 
 check failed: 1 error, 3 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ```jadpo check project=e-flag-store-invalid file=config.jadpo hidden

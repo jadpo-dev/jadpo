@@ -3163,7 +3163,7 @@ error: `postcodes` words package `Postcodes`, which is held in two versions
 
 check failed: 1 error, 9 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ### Packages' text: groups, calls and the surface

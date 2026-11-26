@@ -108,7 +108,7 @@ fn problems_print_in_the_error_shape_then_the_summary() {
 
 check failed: 1 error, 3 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 "
     );
     assert_eq!(output.code, 1);
@@ -139,7 +139,7 @@ fn a_terminal_gets_the_rich_form() {
 
 ✗ check failed  1 error · 3 files
 
-→ jadpo fix  applies the edit shown for this error
+→ jadpo fix  fixes this error for you, then checks again
 "
     );
 }
@@ -558,7 +558,7 @@ fn fixable_errors_show_their_edit_and_the_hint_names_jadpo_fix() {
     assert!(
         output
             .stdout
-            .ends_with("\nnext: jadpo fix  applies the edit shown for 1 of these 2 errors\n"),
+            .ends_with("\nnext: jadpo fix  fixes 1 of these 2 errors for you, then checks again\n"),
         "{}",
         output.stdout
     );

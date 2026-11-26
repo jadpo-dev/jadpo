@@ -77,7 +77,7 @@ error: `translations.shipping.order_shiped` is not a message
 
 check failed: 1 error, 6 files
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make

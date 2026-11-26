@@ -243,7 +243,7 @@ error: `where_present:` can't hold a `geo.` condition
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A distance is the same, since its vector and its bound are both always
@@ -285,7 +285,7 @@ error: `where_present:` can't hold a distance
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A search ranks the records it finds by how well they match one phrase, so a

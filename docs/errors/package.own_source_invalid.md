@@ -67,7 +67,7 @@ error: `github.com/acme` isn't a host and a path ending in `/`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 So is an address with a scheme, which says how a repository is fetched,
@@ -97,7 +97,7 @@ error: `https://github.com/acme/` isn't a host and a path ending in `/`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A misspelt setting is refused with the edit to `own_sources`, since a list
@@ -127,7 +127,7 @@ error: `own_source` isn't something `packages:` holds
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ## How to fix it

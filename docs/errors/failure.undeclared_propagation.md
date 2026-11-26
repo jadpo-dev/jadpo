@@ -42,7 +42,7 @@ error: `RegistrationClosed` can leave `register`, but its `fails` list doesn't s
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -85,7 +85,7 @@ error: `Refused` can leave `parent`, but its `fails` list doesn't say so
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ## How to fix it

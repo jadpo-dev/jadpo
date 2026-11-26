@@ -49,7 +49,7 @@ error: A query returning `Book?` takes no `order:`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `(agent)` at the end of the `next:` line means your coding agent can make
@@ -99,7 +99,7 @@ error: A query returning `Book?` takes no `missing:`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A `limit:` bounds a list, and a page's size is in its `page:` block:
@@ -145,7 +145,7 @@ error: A query returning `Page<Book>` takes no `limit:`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `page:` belongs to a query returning `Page<T>`:
@@ -194,7 +194,7 @@ error: A query returning `List<Book>` takes no `page:`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `geometry:` names the field each feature of a map layer holds, and a list of
@@ -232,7 +232,7 @@ error: A query returning `List<Shop>` takes no `geometry:`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A `group:` gives one row for each group, so the query returns them as a
@@ -324,7 +324,7 @@ error: An aggregate query takes no `limit:`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 An include of a parent record is the one record a reference points at, which
@@ -384,7 +384,7 @@ error: This include takes no `order:`
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 ## How to fix it

@@ -73,7 +73,7 @@ error: `store: limit` isn't a connection
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 `rate_limits:` holds `store:` and nothing else, is declared once, and needs a

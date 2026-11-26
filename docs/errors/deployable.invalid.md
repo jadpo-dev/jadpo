@@ -68,7 +68,7 @@ error: `serve` isn't a setting of a deployable
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 So is an entry listed twice:
@@ -100,7 +100,7 @@ error: `kiosk`'s `serves:` lists `main` twice
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 And a `deployables:` with nothing in it, which would build nothing:

@@ -82,7 +82,7 @@ error: `paid` is never used
 
 check failed: 1 error, 1 file
 
-next: jadpo fix  applies the edit shown for this error
+next: jadpo fix  fixes this error for you, then checks again
 ```
 
 A `for` loop whose body never reads its item is the error too, and its
